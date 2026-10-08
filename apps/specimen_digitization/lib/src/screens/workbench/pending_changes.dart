@@ -7,6 +7,8 @@
 /// what will change.
 library;
 
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 
 import '../../models.dart';
@@ -25,6 +27,7 @@ class PendingFieldChange {
     this.evidenceIds = const <String>[],
     this.regionId,
     this.baseLiteral,
+    this.baseFieldBasis,
     this.candidateSelectionId,
     this.candidateLabel,
     this.candidateValue,
@@ -62,6 +65,10 @@ class PendingFieldChange {
   /// Used to tell a stale pending change from one that is still safe to
   /// re-apply after the record moves under the reviewer (blueprint 6.7).
   final String? baseLiteral;
+
+  /// Immutable canonical field content when this correction was started.
+  /// Includes derived values, evidence and locks that can change without text.
+  final String? baseFieldBasis;
 
   /// Opaque server receipt for accepting a displayed research candidate.
   final String? candidateSelectionId;
@@ -142,11 +149,25 @@ class PendingFieldChange {
 String pendingChangesLabel(int count) =>
     count == 1 ? '1 pending change' : '$count pending changes';
 
+/// Stable snapshot of a canonical field, independent of JSON map key order.
+String fieldBasis(Json field) {
+  Object? ordered(Object? value) {
+    if (value is Map<String, dynamic>) {
+      final keys = value.keys.toList()..sort();
+      return {for (final key in keys) key: ordered(value[key])};
+    }
+    if (value is List) return value.map(ordered).toList();
+    return value;
+  }
+
+  return jsonEncode(ordered(field));
+}
+
 /// Drops pending changes whose field moved under the reviewer.
 ///
-/// A change is kept when the field's verbatim value on the new version is the
-/// same one the reviewer was looking at when they typed. Anything else is
-/// returned in [stale] so the reviewer is told rather than silently
+/// A change is kept when the canonical field on the new version matches the
+/// original field basis. Legacy drafts compare only their verbatim value.
+/// Anything else is returned in [stale] so the reviewer is told rather than silently
 /// overwriting someone else's work (blueprint 6.7).
 ({List<PendingFieldChange> keep, List<PendingFieldChange> stale}) reapply(
   List<PendingFieldChange> pending,
@@ -163,7 +184,10 @@ String pendingChangesLabel(int count) =>
       continue;
     }
     final String? now = field['literal_value'] as String?;
-    if (change.baseLiteral == now) {
+    final matches = change.baseFieldBasis != null
+        ? change.baseFieldBasis == fieldBasis(field)
+        : change.baseLiteral == now;
+    if (matches) {
       keep.add(change);
     } else {
       stale.add(change);

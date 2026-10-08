@@ -197,10 +197,20 @@ class NativeCausalReceiptV2(FrozenRecord):
             or self.progress_receipt.field_work_digest!=digest(self.before_state.get("jobs",{}).get(self.job_key,{}).get("fields"))
             or digest(self.before_state)!=self.before_state_digest or digest(self.after_state)!=self.after_state_digest):
             fail("native_v2_causal_receipt_invalid")
-        expected=outbox_completion(self.before_state,self.publication_outbox_key,self.checkpoint_outbox_key,self.native_commit)
-        if expected!=self.after_state or self.chain_digest!=chain_digest(self):
+        if not outbox_delta_matches(self.before_state,self.after_state,self.publication_outbox_key,
+            self.checkpoint_outbox_key,self.native_commit) or self.chain_digest!=chain_digest(self):
             fail("native_v2_causal_delta_invalid")
         return self
+
+
+from .progress_publication_v2 import NativeProgressCausalReceiptV2, MAX_CAUSAL_RECEIPTS, MAX_PROGRESS_RECEIPTS
+
+CausalReceiptV2 = Annotated[NativeCausalReceiptV2 | NativeProgressCausalReceiptV2, Field(discriminator="contract_version")]
+
+
+def parse_causal_receipt_v2(value):
+    from pydantic import TypeAdapter
+    return TypeAdapter(CausalReceiptV2).validate_python(value)
 
 
 class PreparationV2(FrozenRecord):
@@ -279,10 +289,56 @@ def outbox_completion(state,publication_key,checkpoint_key,native_commit):
     return result
 
 
+def _unaliased_json_tree(value):
+    # A comparison view may share unchanged values only for ordinary JSON trees.
+    # Preserve deepcopy behavior for direct Python aliases and custom values.
+    pending=[value];seen=set();none_type=type(None)
+    while pending:
+        item=pending.pop();kind=type(item)
+        if kind is dict or kind is list:
+            if id(item) in seen:
+                return False
+            seen.add(id(item))
+            if kind is dict:
+                for key in item:
+                    if type(key) is not str:
+                        return False
+                pending.extend(item.values())
+            else:
+                pending.extend(item)
+        elif (kind is not str and kind is not int and kind is not float
+            and kind is not bool and kind is not none_type):
+            return False
+    return True
+
+
+def outbox_delta_matches(state,after_state,publication_key,checkpoint_key,native_commit):
+    """Compare the entire permitted delta without copying unchanged JSON branches."""
+    if (type(publication_key) is not str or type(checkpoint_key) is not str
+        or not all(_unaliased_json_tree(value) for value in (state,after_state,native_commit))):
+        return not (outbox_completion(state,publication_key,checkpoint_key,native_commit)!=after_state)
+    try:
+        outbox=state["outbox"]
+        publication=outbox[publication_key];checkpoint=outbox[checkpoint_key]
+        if publication["delivered"] is not False or checkpoint["delivered"] is not False:
+            fail("native_v2_outbox_not_pending")
+        expected=state.copy();expected_outbox=outbox.copy();expected["outbox"]=expected_outbox
+        publication=publication.copy();expected_outbox[publication_key]=publication
+        if publication_key==checkpoint_key:
+            checkpoint=publication
+        else:
+            checkpoint=checkpoint.copy();expected_outbox[checkpoint_key]=checkpoint
+        publication["delivered"]=True;checkpoint["delivered"]=True
+        publication["canonical_commit"]=native_commit
+    except (KeyError,TypeError):
+        fail("native_v2_outbox_unproved")
+    return not (expected!=after_state)
+
+
 def verify_chain(intent,base,current,head_receipt_id,head_chain_digest,chain):
-    if base!=intent.original_base or len(chain)>20:
+    if base!=intent.original_base or len(chain)>MAX_CAUSAL_RECEIPTS:
         fail("native_v2_original_base_unproved")
-    previous=base;parent=None;chain_sha=genesis_digest(intent.binding_id,base);seen=set()
+    previous=base;parent=None;chain_sha=genesis_digest(intent.binding_id,base);seen=set();progresses=set()
     identity={key:getattr(intent.original_prepared.basis.scope,key) for key in
         ("organization_id","collection_id","specimen_id","job_id","generation")}
     for receipt in chain:
@@ -294,9 +350,20 @@ def verify_chain(intent,base,current,head_receipt_id,head_chain_digest,chain):
             or receipt.input_digest!=intent.original_prepared.basis.scope.input_digest
             or receipt.profile_digest!=intent.original_prepared.basis.scope.profile_digest
             or receipt.runtime_binding_digest!=intent.original_prepared.basis.binding_digest
-            or receipt.changed_field in seen):
+            or (isinstance(receipt, NativeCausalReceiptV2) and receipt.changed_field in seen)):
             fail("native_v2_causal_chain_unproved")
-        seen.add(receipt.changed_field);previous=receipt.resulting;parent=receipt.receipt_id;chain_sha=receipt.chain_digest
+        if isinstance(receipt, NativeCausalReceiptV2):
+            seen.add(receipt.changed_field)
+        elif isinstance(receipt, NativeProgressCausalReceiptV2):
+            basis=receipt.progress_receipt.field_work_digest
+            if basis in progresses:
+                fail("native_progress_duplicate_basis")
+            progresses.add(basis)
+        else:
+            fail("native_v2_causal_kind_unproved")
+        if len(seen)>20 or len(progresses)>MAX_PROGRESS_RECEIPTS:
+            fail("native_v2_causal_inventory_unproved")
+        previous=receipt.resulting;parent=receipt.receipt_id;chain_sha=receipt.chain_digest
     if previous!=current or parent!=head_receipt_id or chain_sha!=head_chain_digest:
         fail("native_v2_current_pointer_unproved")
     return tuple(chain)
@@ -309,7 +376,7 @@ def verify_admission(intent,preparation,current,head_id,chain_sha,chain,state_re
         or preparation.human_locks!=intent.human_locks):
         fail("native_v2_same_science_unproved")
     verify_chain(intent,intent.original_base,current,head_id,chain_sha,chain)
-    if any(receipt.changed_field==intent.changed_field for receipt in chain):
+    if any(isinstance(receipt, NativeCausalReceiptV2) and receipt.changed_field==intent.changed_field for receipt in chain):
         fail("native_v2_target_already_native_published")
     anchors=[-1] if preparation.anchor==intent.original_base else [i for i,row in enumerate(chain) if row.resulting==preparation.anchor]
     if len(anchors)!=1:
@@ -324,7 +391,7 @@ def verify_admission(intent,preparation,current,head_id,chain_sha,chain,state_re
     expected=copy.deepcopy(preparation.expected_state);expected_revision=preparation.state_revision
     reg_revision=preparation.anchor_registration_revision
     for receipt in chain[index+1:]:
-        if (receipt.changed_field in blocked or receipt.before_state!=expected
+        if (getattr(receipt, "changed_field", None) in blocked or receipt.before_state!=expected
             or receipt.before_state_revision!=expected_revision or receipt.before_registration_revision!=reg_revision
             or receipt.human_locks!=preparation.human_locks):
             fail("native_v2_post_preparation_drift")

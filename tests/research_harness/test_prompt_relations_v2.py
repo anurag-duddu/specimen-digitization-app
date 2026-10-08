@@ -28,6 +28,8 @@ from specimen_digitization.research_harness.prompts import (
 )
 from specimen_digitization.research_harness.sources import insects_registry
 
+from prompt_test_fixtures import ACTIVE_PROMPTS, retained_text
+
 ROOT = Path(prompts.__file__).parent
 PIN = "0" * 64
 FIVE = (SpecialistRole.TAXONOMY, SpecialistRole.TEMPORAL, SpecialistRole.MEASUREMENT,
@@ -73,17 +75,13 @@ def flat(text):
 
 
 @pytest.mark.parametrize("role", FIVE)
-def test_each_v2_file_is_its_v1_text_followed_by_the_relation_rule_and_the_pin_extends_it(role):
+def test_each_v2_file_is_retained_and_the_current_pin_preserves_relation_rules(role):
     # The v2 files stay on disk as the audit record (their digests: test_geography_prompt_v2.py). The live
     # pins moved to the v3 files (test_prompt_reading_citation_v3.py), then to the v4 files, each the v3
     # file followed by the missing-policy block (test_prompt_missing_policy_v4.py), then to the v5 files,
-    # each the v4 file followed by the hand-over block (test_prompt_handover_v5.py); all extend the v2 text.
-    version = 9 if role == SpecialistRole.MEASUREMENT else 7 if role == SpecialistRole.TEMPORAL else 6 if role == SpecialistRole.TAXONOMY else 5
-    assert ROLE_PROMPTS[role] == (f"{role.value}-v{version}.txt",
-        MEASUREMENT_EVIDENCE_PROMPT_VERSION if role == SpecialistRole.MEASUREMENT else
-        TEMPORAL_CONTEXT_PROMPT_VERSION if role == SpecialistRole.TEMPORAL else
-        TAXONOMY_QUERY_PROMPT_VERSION if role == SpecialistRole.TAXONOMY else
-        QUALIFIED_PROMPT_VERSION if role in SETTLED else HANDOVER_PROMPT_VERSION)
+    # each the v4 file followed by the hand-over block. Coherent current replacements
+    # retain their own relation instructions; historical files stay unchanged.
+    assert ROLE_PROMPTS[role] == ACTIVE_PROMPTS[role]
     assert RELATIONS_PROMPT_VERSION == "specialists-relations-v2-2026-10-03"
     (ROOT / f"{role.value}-v2.txt").read_bytes().decode("ascii")
     rule = added(role)
@@ -97,6 +95,13 @@ def test_each_v2_file_is_its_v1_text_followed_by_the_relation_rule_and_the_pin_e
         assert "without changing those objects or their provenance" in prompt.text
     elif role == SpecialistRole.TEMPORAL:
         assert rule.strip() in prompt.text
+    elif role in {SpecialistRole.PARTIES, SpecialistRole.COLLECTION}:
+        assert retained_text(role, 5).startswith((ROOT / "common-v1.txt").read_text() + "\n" + v2)
+        if role == SpecialistRole.PARTIES:
+            assert "Copy its exact collector resolution." in prompt.text
+            assert "maps each native evidence ID to supports" in prompt.text
+        else:
+            assert SHARED.strip() in prompt.text
     else:
         assert prompt.text.startswith((ROOT / "common-v1.txt").read_text(encoding="utf-8") + "\n" + v2)
     assert prompt.digest == hashlib.sha256(prompt.text.encode()).hexdigest()

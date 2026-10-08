@@ -250,7 +250,7 @@ def _sibling_winner(context, checkpoint, intent, retained_history):
     native, _ = _checkpoint(context, checkpoint)
     key = context.field_mapping[str(checkpoint.field_key)]
     winners = retained_history()
-    matches = [row for row in winners if row.changed_field == key
+    matches = [row for row in winners if getattr(row, "changed_field", None) == key
         and row.checkpoint_outbox_key == "checkpoint/" + native["id"]]
     if not matches:
         return None
@@ -265,7 +265,7 @@ def _sibling_winner(context, checkpoint, intent, retained_history):
 
 def _consumed_sources(context, checkpoint, intent, native_inputs, prior, *, retained_history, target=True):
     rows = native_inputs["projection_rows"]
-    bases = intent.dependency_sources
+    bases = getattr(intent, "dependency_sources", ())
     if not target:
         # A terminal sibling has its own winning immutable receipt; target
         # intent dependencies cannot stand in for the sibling's source intent.
@@ -293,8 +293,9 @@ def _consumed_sources(context, checkpoint, intent, native_inputs, prior, *, reta
         from .publication import _native_checkpoint
         # These typed views were normalized by the native loader's exact
         # journal-reuse predicate; no ad-hoc scope rebinding is performed.
-        inventory = [native_inputs["checkpoint_inputs"]["target"],
-            *native_inputs["checkpoint_inputs"]["terminal_siblings"]]
+        inventory = (native_inputs["checkpoint_inputs"]["terminal_fields"]
+            if "terminal_fields" in native_inputs["checkpoint_inputs"] else
+            [native_inputs["checkpoint_inputs"]["target"], *native_inputs["checkpoint_inputs"]["terminal_siblings"]])
         current = _one([FieldCheckpoint.model_validate(row) for row in inventory],
             lambda cp: cp.field_key == pin.field_key, "canonical_native_dependency_checkpoint_unavailable")
         native, original = _native_checkpoint(context.job, current, context.scope)
@@ -332,7 +333,10 @@ def _consumed_sources(context, checkpoint, intent, native_inputs, prior, *, reta
             candidate_contract=contract, candidate=copy.deepcopy(candidate), record=copy.deepcopy(record),
             resolved_field=copy.deepcopy(resolved), record_projection=copy.deepcopy(projection),
             record_projection_digest=digest(projection), candidate_digest=digest(candidate), record_digest=digest(record),
-            source_publication_lineage_digest=publication_digest))
+            source_publication_lineage_digest=publication_digest,
+            source_lineage=copy.deepcopy(lineage[0]) if lineage else None,
+            source_evidence_rows=tuple(copy.deepcopy(row) for row in native_inputs["lineage_rows"]["value_evidence"]
+                if lineage and row.get("lineageId") == lineage[0]["id"])))
     return tuple(proofs)
 
 
@@ -349,8 +353,10 @@ class NativeMaterializationInputBundleV2:
             prior: Specimen, accepted_checkpoint_proofs, captured_tools=(), projection_services,
             active_graph_bytes: bytes | None = None, human_carries=None):
         from .canonical_materialization_v2 import MaterializationRequestV2, TerminalFieldProofV2
+        from .progress_publication_v2 import ProgressIntentV2
+        progress_only = isinstance(intent, ProgressIntentV2)
         if (not isinstance(prior, Specimen) or set(native_inputs) != INPUT_KEYS
-                or native_inputs["contract_version"] != "research-native-materialization-inputs/v2"
+                or native_inputs["contract_version"] != ("research-native-progress-inputs/v2" if progress_only else "research-native-materialization-inputs/v2")
                 or preparation.prepared.basis.scope != intent.original_prepared.basis.scope
                 or native_inputs["scoped_state"] != current_binding.registration.read_bundle
                 or preparation not in tuple(type(preparation).model_validate(row)
@@ -368,8 +374,9 @@ class NativeMaterializationInputBundleV2:
         prior_projection = canonical_prior_projection_v2(native_inputs["projection_rows"]["resolved_fields"],
             current_binding.canonical.record_version_id)
         checkpoints = native_inputs["checkpoint_inputs"]
-        target_cp = FieldCheckpoint.model_validate(checkpoints["target"])
-        all_cp = (target_cp, *(FieldCheckpoint.model_validate(row) for row in checkpoints["terminal_siblings"]))
+        target_cp = None if progress_only else FieldCheckpoint.model_validate(checkpoints["target"])
+        all_cp = (tuple(FieldCheckpoint.model_validate(row) for row in checkpoints["terminal_fields"])
+            if progress_only else (target_cp, *(FieldCheckpoint.model_validate(row) for row in checkpoints["terminal_siblings"])))
         if len({cp.field_key for cp in all_cp}) != len(all_cp):
             hold("canonical_native_terminal_checkpoint_duplicate")
         requests = []
@@ -390,8 +397,8 @@ class NativeMaterializationInputBundleV2:
         def retained_history():
             nonlocal winners
             if winners is None:
-                from .publication_v2 import NativeCausalReceiptV2
-                winners = tuple(NativeCausalReceiptV2.model_validate(row)
+                from .publication_v2 import parse_causal_receipt_v2
+                winners = tuple(parse_causal_receipt_v2(row)
                     for row in native_inputs["retained_history"])
             return winners
 
@@ -446,8 +453,21 @@ class NativeMaterializationInputBundleV2:
             _source_lineage(context, prior, proof.original_checkpoint, consumed)
             originals[key] = proof
             contexts.append((cp, context))
+        if progress_only:
+            return NativeProgressInputBundleV2(tuple(TerminalFieldProofV2(cp, context) for cp, context in contexts),
+                native_proof, digest(native_inputs), NORMALIZATION_VERSION, originals, human_carries)
         target_context = contexts[0][1]
         target = MaterializationRequestV2(digest(preparation.prepared), current_binding.canonical.snapshot_sha256,
             target_context.original_request, target_context.tool_results, target_context,
             tuple(TerminalFieldProofV2(cp, context) for cp, context in contexts[1:]), human_carries=human_carries)
         return cls(target, digest(native_inputs), NORMALIZATION_VERSION, originals, human_carries)
+
+
+@dataclass(frozen=True)
+class NativeProgressInputBundleV2:
+    terminal_contexts: tuple
+    native_prior_snapshot: NativePriorSnapshotProofV2
+    native_inputs_digest: str
+    normalization_version: str
+    original_request_proofs: Mapping[str, OriginalRequestProofV2]
+    human_carries: object = None

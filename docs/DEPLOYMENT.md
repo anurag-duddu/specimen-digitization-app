@@ -113,12 +113,20 @@ which only their own workflows call; see
 | Required check | What it proves |
 |---|---|
 | `Repository checks` | Sensitive-file policy, secret scans, formatting, YAML/JSON/TOML validity, shell checks, and GitHub Actions syntax |
-| `Python tests` | Locked Python environment and all backend/policy tests |
+| `Python tests` | Locked Python environment and the complete default pytest collection, including backend, policy and script tests; all six module shards must succeed and their combined execution must cover every collected test exactly once |
 | `Flutter checks and web build` | Locked Flutter dependencies, Dart formatting, the `specimen_ui` design system's own analysis and tests, client static analysis, client widget tests, release build, immutable deployment metadata, and a loopback route smoke over the built artifact |
 
 Pull requests use `apps/specimen_digitization/lib/firebase_options.ci.dart`.
 They receive neither the real FlutterFire configuration nor a Google OIDC
 token and cannot deploy.
+
+Python tests run in six isolated runner jobs. Each runner performs the same
+complete pytest discovery, then keeps whole test files assigned deterministically
+by collection size. Module fixtures and the original order within each file are
+preserved. The required `Python tests` aggregate checks matching collections,
+source/run/attempt identity, successful test phases and complete execution with
+no missing, duplicate or extra tests. A failed or missing shard fails the gate.
+Every shard also reports its 25 slowest test durations for performance diagnosis.
 
 `scripts/ci/smoke_web_routes.py` runs between the deployment stamp and the
 artifact upload, so a build that fails it is never uploaded and therefore can
@@ -286,6 +294,13 @@ It runs the same Dart formatting and route checks the `Flutter checks and web
 build` job runs, so a branch that passes here passes those two in CI. On a
 loaded workstation the whole script can be reaped part way through; run its
 gates one at a time when that happens and read each gate's own exit status.
+
+The local Python gate uses the same module partition and complete-coverage
+verification, running six isolated Python processes. Its logs and results remain
+in a uniquely named temporary directory printed by the command. Set
+`PYTHON_TEST_SHARDS=1` to run the complete Python collection in one process for
+diagnosis; this preserves all tests and assertions. Local shards must run in a
+quiet worktree without source edits or a second verification process.
 
 ### Repository and secret checks only
 

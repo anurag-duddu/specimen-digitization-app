@@ -29,7 +29,7 @@ from specimen_digitization.application.lookup import (
 )
 
 from .contracts import (
-    Digest, EvidenceItem, FieldKey, FrozenRecord, SourceCoverageReceipt,
+    ROLE_FIELDS, Digest, EvidenceItem, FieldKey, FrozenRecord, SourceCoverageReceipt,
     SourceCoverageState, SourceQuery, SourceResult, SpecialistRequest,
     SpecialistRole, ToolReceipt, digest,
 )
@@ -75,21 +75,39 @@ def local_settlement_result(request: SpecialistRequest, tool_id: str, arguments:
     identifiers already in this role's request and never raw model-supplied text,
     source authority, evidence relation or revision.
     """
-    from .evidence import elevation_resolutions, settle_elevation, temporal_resolutions
+    from .evidence import settle_elevation, temporal_resolutions
 
-    if tool_id == "settle_temporal":
+    if tool_id == "settle_collection":
+        from .collection import COLLECTION_FIELDS, collection_resolution
+        if request.role != SpecialistRole.COLLECTION or set(arguments) != {"field_key"}:
+            raise UtilityInputError("Collection settlement requires only its owned field key")
+        field_key = _utility_field_key(arguments["field_key"])
+        if field_key not in request.field_keys or field_key not in COLLECTION_FIELDS:
+            raise UtilityInputError("Collection settlement exceeds scoped request or defined fields")
+        resolutions = (collection_resolution(request, field_key),)
+    elif tool_id == "settle_temporal":
         if request.role != SpecialistRole.TEMPORAL or set(arguments) != {"field_key", "event_id"}:
             raise UtilityInputError("Temporal settlement requires its exact owned event")
         field_key = _utility_field_key(arguments["field_key"])
         event_id = arguments["event_id"]
         if field_key not in request.field_keys or not isinstance(event_id, str):
             raise UtilityInputError("Temporal settlement exceeds scoped request")
-        source_revision = request.field_revisions.get(FieldKey.DATE_VISITED_FROM, 0)
+        source_pin = next((pin for pin in request.dependencies
+                           if pin.field_key == FieldKey.DATE_VISITED_FROM), None)
+        source_revision = (source_pin.revision if source_pin is not None
+                           else request.field_revisions.get(FieldKey.DATE_VISITED_FROM, 0))
         resolutions = temporal_resolutions(request, event_id=event_id, source_revision=source_revision)
-        if resolutions[0].field_key != field_key:
+        selected = next((item for item in resolutions if item.field_key == field_key), None)
+        if selected is None:
             raise UtilityInputError("Temporal event does not establish the requested field")
+        if (field_key == FieldKey.DATE_VISITED_TO and selected.value_layer == "derived"
+                and FieldKey.DATE_VISITED_FROM not in request.field_keys and source_pin is None):
+            raise UtilityInputError("Temporal To repair requires exact native From dependency")
         assembly_ids = tuple(item.id for item in request.assemblies if item.event_id == event_id)
-        if not assembly_ids or any(item.field_key not in request.field_keys
+        context_fields = set(request.field_keys)
+        if field_key == FieldKey.DATE_VISITED_TO:
+            context_fields.add(FieldKey.DATE_VISITED_FROM)
+        if not assembly_ids or any(item.field_key not in context_fields
                                    for item in request.assemblies if item.event_id == event_id):
             raise UtilityInputError("Temporal event has no complete scoped assembly")
     elif tool_id == "settle_elevation":
@@ -101,10 +119,14 @@ def local_settlement_result(request: SpecialistRequest, tool_id: str, arguments:
         if (field_key not in request.field_keys or not isinstance(event_id, str)
             or not isinstance(ids, list) or not ids or any(not isinstance(item, str) for item in ids)):
             raise UtilityInputError("Elevation settlement exceeds scoped request")
+        # Evidence from an omitted native source remains available for a
+        # derived-only retry; output scope and native checkpoint availability
+        # are separate checks. Include every elevation assertion of the event.
         assemblies = tuple(item for item in request.assemblies
-                           if item.event_id == event_id and item.field_key in request.field_keys)
+            if item.event_id == event_id and str(item.field_key).startswith("elevation_"))
+        requested = tuple(item for item in assemblies if item.field_key in request.field_keys)
         if (not assemblies or tuple(ids) != tuple(item.id for item in assemblies)
-            or assemblies[0].field_key != field_key):
+            or requested and requested[0].field_key != field_key):
             raise UtilityInputError("Elevation settlement needs every assembly in immutable request order")
         # G41 always derives from a written From quantity of the matching unit,
         # even when the organiser's original proposal named a To slot.
@@ -113,7 +135,21 @@ def local_settlement_result(request: SpecialistRequest, tool_id: str, arguments:
         source_key = FieldKey(f"elevation_from_{first.from_unit}")
         source_revision = request.field_revisions.get(source_key, 0)
         settled = settle_elevation(request, assembly_ids=ids, source_revision=source_revision)
-        resolutions = elevation_resolutions(settled)
+        from .measurement import pinned_elevation_resolutions
+        resolutions = pinned_elevation_resolutions(request, settled)
+    elif tool_id == "settle_collectors":
+        if request.role != SpecialistRole.PARTIES or set(arguments) != {"field_key", "event_id"}:
+            raise UtilityInputError("Collector settlement requires its exact owned event")
+        field_key = _utility_field_key(arguments["field_key"])
+        event_id = arguments["event_id"]
+        if field_key != FieldKey.COLLECTORS or field_key not in request.field_keys or not isinstance(event_id, str):
+            raise UtilityInputError("Collector settlement exceeds scoped request")
+        assemblies = [item for item in request.assemblies if item.event_id == event_id
+            and item.field_key == FieldKey.COLLECTORS]
+        if not assemblies:
+            raise UtilityInputError("Collector event has no available assembly")
+        from .people import collector_resolution
+        resolutions = (collector_resolution(request, assembly_id=assemblies[0].id),)
     else:
         raise ValueError("Unknown settlement utility")
     return SourceResult(status=LookupStatus.SUCCESS,
@@ -278,14 +314,18 @@ GEOLOCATE_QUALIFICATION = {
 GEOLOCATE_AGREEMENT_KM = 10.0
 SOURCE_REQUEST_INTERVAL_SECONDS = {"geolocate": 3.0}
 _GEOLOCATE_TEXT = ("country", "state", "county", "locality", "place", "value")
-_GEOLOCATE_REQUIRED = ("country", "locality", "place", "value", "latitude", "longitude", "radius_km")
+_GEOLOCATE_REQUIRED = ("country", "locality", "place", "value")
 _GEOLOCATE_BOUNDS = {"latitude": (-90.0, 90.0), "longitude": (-180.0, 180.0), "radius_km": (1.0, 50.0)}
 _USA = {("usa",), ("us",), ("united", "states"), ("united", "states", "of", "america")}
 
 
 @dataclass(frozen=True, slots=True)
 class GeolocateInterpretation:
-    """The historian's reading of one locality, as sent to GEOLocate and checked against it."""
+    """Place text, with an optional placement reserved for the trusted derivation worker.
+
+    GEOLocate receives only the text. A placement is a local match filter, so
+    accepting model-created coordinates would conceal otherwise valid namesakes.
+    """
 
     country: str
     state: str
@@ -293,9 +333,9 @@ class GeolocateInterpretation:
     locality: str
     place: str
     value: str
-    latitude: float
-    longitude: float
-    radius_km: float
+    latitude: float | None
+    longitude: float | None
+    radius_km: float | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -306,11 +346,16 @@ class _GeolocateMatch:
     admin: str
     precision: str
     score: int
-    distance_km: float
+    distance_km: float | None
 
 
 def geolocate_interpretation(query_text: str, field_key: FieldKey | None = None) -> GeolocateInterpretation:
     """Parse the query_text JSON; the ValueError message tells the agent what to correct.
+
+    Model queries omit placement. The trusted derivation worker may supply all
+    three placement numbers after proving its captured seed and boundary footprint.
+    Parsing numbers does not authorize their use; the broker checks that boundary
+    before opening an effect.
 
     With a field key, also refuse a value GEOLocate cannot confirm for that field: country and
     city must be the queried country and place, and a county exists only inside the USA, where
@@ -334,14 +379,21 @@ def geolocate_interpretation(query_text: str, field_key: FieldKey | None = None)
         if (type(item) is not str or item != item.strip() or len(item) > 200
                 or any(ord(character) < 32 for character in item) or (key in _GEOLOCATE_REQUIRED and not item)):
             raise ValueError(f"GEOLocate {key} must be trimmed text of at most 200 characters")
+    placement_keys = set(value) & set(_GEOLOCATE_BOUNDS)
+    if placement_keys and placement_keys != set(_GEOLOCATE_BOUNDS):
+        raise ValueError("GEOLocate placement requires latitude, longitude and radius_km together")
     for key, (low, high) in _GEOLOCATE_BOUNDS.items():
+        if key not in value:
+            continue
         item = value[key]
         if not _finite_number(item) or not low <= item <= high:
             raise ValueError(f"GEOLocate {key} must be a number from {low:g} to {high:g}")
     place = GeolocateInterpretation(
         country=value["country"], state=value.get("state", ""), county=value.get("county", ""),
-        locality=value["locality"], place=value["place"], value=value["value"], latitude=float(value["latitude"]),
-        longitude=float(value["longitude"]), radius_km=float(value["radius_km"]))
+        locality=value["locality"], place=value["place"], value=value["value"],
+        latitude=float(value["latitude"]) if placement_keys else None,
+        longitude=float(value["longitude"]) if placement_keys else None,
+        radius_km=float(value["radius_km"]) if placement_keys else None)
     claimed = _fold_words(place.value)
     usa = _fold_words(place.country) in _USA
     if field_key == FieldKey.COUNTRY and claimed != _fold_words(place.country):
@@ -391,6 +443,101 @@ def geolocate_place_text_defect(request: SpecialistRequest, place: GeolocateInte
         return ("GEOLocate locality must use only the words of place and the named units, "
                 "or the exact text of an accepted precise_location assembly")
     return None
+
+
+def _captured_geography_results(request: SpecialistRequest,
+                               trusted_results: Sequence[SourceResult]) -> tuple[SourceResult, ...]:
+    """Same-scope semantic closures only; model-provided candidate text is not context."""
+    retained = []
+    for supplied in trusted_results:
+        try:
+            result = SourceResult.model_validate(supplied.model_dump(mode="json"))
+            receipt, coverage = result.receipt, result.coverage
+            ids = tuple(item.id for item in result.evidence)
+            raw = result_envelope(result)
+            if (receipt is None or receipt.scope != request.scope
+                or coverage.source_id not in {"geolocate", "tgn", "wikidata", "nga"}
+                or coverage.field_key not in ROLE_FIELDS[SpecialistRole.GEOGRAPHY]
+                or receipt.source_id != coverage.source_id or receipt.field_keys != (coverage.field_key,)
+                or receipt.effect_status != "completed" or receipt.outcome != result.status
+                or not receipt.capture_locator or not receipt.response_digest
+                or not coverage.qualification_digest or not coverage.query_digest
+                or receipt.result_json != raw or receipt.result_digest != hashlib.sha256(raw.encode()).hexdigest()
+                or not ids or len(set(ids)) != len(ids) or receipt.evidence_ids != ids
+                or coverage.receipt_ids != ids
+                or any(item.source_id != coverage.source_id for item in result.evidence)):
+                continue
+            retained.append(result)
+        except (ValueError, TypeError, AttributeError):
+            continue
+    return tuple(retained)
+
+
+def geolocate_grounding_defect(request: SpecialistRequest, query: SourceQuery,
+        place: GeolocateInterpretation, trusted_results: Sequence[SourceResult], *,
+        collecting_context=None) -> str | None:
+    """Bind proposed names to immutable readings or verified captured hierarchy.
+
+    A historical place's name/aliases authorize a place-name hypothesis, not an
+    invented geographic level. Missing country/admin names need the exact next
+    query computed by the reviewed hierarchy helper. Previously validated
+    same-field GEOLocate values can then serve as context for sibling fields.
+    """
+    geo_fields = {FieldKey.COUNTRY, FieldKey.PROVINCE_STATE, FieldKey.COUNTY,
+                  FieldKey.CITY, FieldKey.PRECISE_LOCATION}
+    texts = [item.literal for item in request.fragments if item.scope == request.scope and not item.unreadable]
+    texts.extend(item.interpreted_text for item in request.assemblies
+                 if item.scope == request.scope and item.field_key in geo_fields)
+
+    def printed(name):
+        words = _fold_words(name)
+        return bool(words) and any(any(tuple(line[index:index + len(words)]) == words
+            for index in range(len(line) - len(words) + 1)) for line in map(_fold_words, texts))
+
+    retained = _captured_geography_results(request, trusted_results)
+    captured_names, validated = set(), {key: set() for key in geo_fields}
+    for result in retained:
+        if result.status not in {LookupStatus.SUCCESS, LookupStatus.AMBIGUOUS}:
+            continue
+        for raw in result.candidate_json:
+            candidate = json.loads(raw)
+            for key in ("name", "match_name"):
+                if isinstance(candidate.get(key), str):
+                    captured_names.add(_fold_words(candidate[key]))
+            for alias in candidate.get("names", ()):
+                if isinstance(alias, str):
+                    captured_names.add(_fold_words(alias))
+            if (result.coverage.source_id == "geolocate" and result.status == LookupStatus.SUCCESS
+                and candidate.get("field_key") == str(result.coverage.field_key)
+                and isinstance(candidate.get("value"), str)):
+                validated[result.coverage.field_key].add(_fold_words(candidate["value"]))
+    missing = []
+    for key, field in (("country", FieldKey.COUNTRY), ("state", FieldKey.PROVINCE_STATE),
+                       ("county", FieldKey.COUNTY)):
+        value = getattr(place, key)
+        if value and not printed(value) and _fold_words(value) not in validated[field]:
+            missing.append(key)
+    if not printed(place.place) and _fold_words(place.place) not in captured_names:
+        missing.append("place")
+    if (query.field_key not in {FieldKey.CITY, FieldKey.COUNTRY}
+        and not printed(place.value) and _fold_words(place.value) not in validated[query.field_key]):
+        missing.append("value")
+    if not missing:
+        return None
+    # Import only at invocation: geography_context itself uses source envelopes.
+    from .geography_context import hierarchy_research
+
+    history = tuple(result for result in retained if result.coverage.source_id in {"tgn", "wikidata", "nga"})
+    try:
+        research = hierarchy_research(request, history, context=collecting_context)
+        if any(item.field_key == query.field_key
+               and geolocate_interpretation(item.query_text, item.field_key) == place
+               for item in research.next_queries):
+            return None
+    except (ValueError, TypeError, KeyError):
+        pass
+    return ("GEOLocate " + ", ".join(missing)
+            + " absent from immutable place reading or verified captured hierarchy; research the printed place first")
 
 
 def historical_place_name_defect(request: SpecialistRequest, name: str,
@@ -480,19 +627,28 @@ def _geolocate_matches(payload, place: GeolocateInterpretation) -> tuple[str, in
             latitude=latitude, longitude=longitude, name=properties["parsePattern"],
             admin=admin.group(1) if admin else "", precision=properties["precision"],
             score=properties["score"],
-            distance_km=_distance_km(place.latitude, place.longitude, latitude, longitude)))
+            distance_km=(_distance_km(place.latitude, place.longitude, latitude, longitude)
+                         if place.latitude is not None else None)))
     return engine, count, matches
 
 
 def _geolocate_agrees(field_key: FieldKey, place: GeolocateInterpretation, match: _GeolocateMatch) -> bool:
-    """The match must be the named place, near the historian's placement, inside the claimed unit."""
-    if match.distance_km > place.radius_km or _fold_words(match.name) != _fold_words(place.place):
+    """The match must be the named place and agree with the declared place context."""
+    if (_fold_words(match.name) != _fold_words(place.place)
+        or (place.radius_km is not None and match.distance_km > place.radius_km)):
         return False
     # The admin unit is the county inside the USA and the first-level unit outside it; inside
     # the USA GEOLocate confines the search to the queried State instead.
     usa = _fold_words(place.country) in _USA
     if field_key == FieldKey.COUNTY or (field_key == FieldKey.PROVINCE_STATE and not usa):
         return bool(match.admin) and _fold_words(match.admin) == _fold_words(place.value)
+    # Outside the USA State is ignored by the provider. Without a proven
+    # placement, enforce any named first-level context on its returned admin
+    # unit ourselves rather than selecting a namesake in another province.
+    if place.latitude is None:
+        unit = place.county if usa else place.state
+        if unit:
+            return bool(match.admin) and _fold_words(match.admin) == _fold_words(unit)
     return True
 
 
@@ -521,18 +677,27 @@ def geolocate_authority_id(match: _GeolocateMatch) -> str:
     return "geolocate:" + identity[:16]
 
 
-def geolocate_verdict(policy: SourcePolicy, query: SourceQuery, payload) -> tuple[LookupStatus, list[dict], int, str]:
+def geolocate_verdict(policy: SourcePolicy, query: SourceQuery, payload, *,
+                      trusted_placement: bool = False) -> tuple[LookupStatus, list[dict], int, str]:
     """Verify every GEOLocate match against the interpretation; only agreeing points become candidates."""
     place = geolocate_interpretation(query.query_text, query.field_key)
+    if place.latitude is not None and not trusted_placement:
+        raise ValueError("GEOLocate placement requires the trusted derivation worker; omit latitude, longitude and radius_km")
     engine, count, matches = _geolocate_matches(payload, place)
     agreeing = sorted((item for item in matches if _geolocate_agrees(query.field_key, place, item)),
-                      key=lambda item: (-item.score, item.distance_km))
+                      key=lambda item: (-item.score, item.distance_km or 0.0))
     if not agreeing:
-        named = sorted({item.admin or "no unit" for item in matches if item.distance_km <= place.radius_km
+        named = sorted({item.admin or "no unit" for item in matches
+                        if (place.radius_km is None or item.distance_km <= place.radius_km)
                         and _fold_words(item.name) == _fold_words(place.place)})
         if named:
+            claimed_unit = (place.value if query.field_key in {FieldKey.COUNTY, FieldKey.PROVINCE_STATE}
+                            else place.county if _fold_words(place.country) in _USA else place.state)
             return (LookupStatus.NO_MATCH, [], count,
-                    f"GEOLocate places {place.place!r} in {', '.join(named)}, not {place.value!r}")
+                    f"GEOLocate places {place.place!r} in {', '.join(named)}, not {claimed_unit!r}")
+        if place.radius_km is None:
+            return (LookupStatus.NO_MATCH, [], count,
+                    f"GEOLocate returned {count} match(es); none is {place.place!r} in the queried place context")
         return (LookupStatus.NO_MATCH, [], count,
                 f"GEOLocate returned {count} match(es); none is {place.place!r} "
                 f"within {place.radius_km:g} km of the interpreted placement")
@@ -545,7 +710,8 @@ def geolocate_verdict(policy: SourcePolicy, query: SourceQuery, payload) -> tupl
         "authority_role": policy.authority_role, "input_literal": place.locality, "rank": rank,
         "decimal_latitude": item.latitude, "decimal_longitude": item.longitude, "geodetic_datum": "EPSG:4326",
         "match_name": item.name, "match_admin": item.admin, "match_precision": item.precision,
-        "match_score": item.score, "distance_km": round(item.distance_km, 1), "engine_version": engine,
+        "match_score": item.score, "engine_version": engine,
+        **({"distance_km": round(item.distance_km, 1)} if item.distance_km is not None else {}),
     } for rank, item in enumerate(chosen, 1)]
     if len(chosen) == 1:
         return (LookupStatus.SUCCESS, candidates, count,
@@ -663,11 +829,13 @@ class SourceBroker:
     """Capabilities enforced in code. Every actual source call needs effect dispatch."""
 
     def __init__(self, registry: SourceRegistry, *, transport: SourceTransport | None = None,
-                 effect_dispatch: EffectDispatch | None = None, georeferencing_adapter=None):
+                 effect_dispatch: EffectDispatch | None = None, georeferencing_adapter=None,
+                 collecting_context=None):
         self.registry = registry
         self.transport = transport or BoundedHTTPTransport()
         self.effect_dispatch = effect_dispatch
         self.georeferencing_adapter = georeferencing_adapter
+        self.collecting_context = collecting_context
         if type(self.transport) is BoundedHTTPTransport and effect_dispatch is not None and type(effect_dispatch) is not DurableSourceEffects:
             raise ValueError("Actual HTTP source calls require the durable live effect adapter")
         if effect_dispatch is not None and hasattr(effect_dispatch, "validate_transport"):
@@ -751,7 +919,14 @@ class SourceBroker:
         if query.source_id == "geolocate":
             # Checked before effect dispatch: a request that cannot be sent must never hold an effect.
             try:
-                defect = geolocate_place_text_defect(request, geolocate_interpretation(query.query_text, query.field_key))
+                place = geolocate_interpretation(query.query_text, query.field_key)
+                defect = geolocate_place_text_defect(request, place)
+                if not defect and place.latitude is not None and not trusted_anchor:
+                    defect = ("GEOLocate placement requires the trusted derivation worker; "
+                              "omit latitude, longitude and radius_km")
+                if not defect and not trusted_anchor:
+                    defect = geolocate_grounding_defect(request, query, place, self.trusted_results,
+                        collecting_context=self.collecting_context)
             except ValueError as error:
                 defect = str(error)
             if defect:
@@ -760,7 +935,7 @@ class SourceBroker:
         async def invoke() -> str:
             if hasattr(self.effect_dispatch, "validate_transport"):
                 self.effect_dispatch.validate_transport(self.transport)
-            return result_envelope(await self._execute(policy, request, query))
+            return result_envelope(await self._execute(policy, request, query, trusted_anchor=trusted_anchor))
 
         receipt = await self.effect_dispatch(request, "source_lookup", query.model_dump(mode="json"), invoke)
         if receipt.scope != request.scope or receipt.source_id != query.source_id or receipt.field_keys != (query.field_key,):
@@ -874,18 +1049,16 @@ class SourceBroker:
                 coverage_limit="At most three captured responses and bounded returned candidates; names require modern validation",
                 reason=f"{status}: {reason}"))
 
-    async def _execute(self, policy, request, query):
+    async def _execute(self, policy, request, query, *, trusted_anchor=False):
         if query.source_id == "field_museum_ipt":
             return await self._museum(policy, query)
         if query.source_id in {"tgn", "wikidata", "nga"}:
             return await self._historical_gazetteer(policy, query)
         try:
             if query.source_id == "gbif":
+                from .taxonomy import gbif_query_params
                 parsed = scientific_name(query.query_text)
-                if parsed is None or not parsed.genus:
-                    raise ValueError("Scientific name cannot be parsed at stated rank")
-                params = {"scientificName": parsed.query, "taxonRank": parsed.rank,
-                          "kingdom": "Animalia", "class": "Insecta", "checklistKey": COL_XR, "verbose": "true"}
+                params = gbif_query_params(request, query)
                 url = "https://api.gbif.org/v2/species/match?" + urlencode(params)
             elif query.source_id == "global_names_verifier":
                 from urllib.parse import quote
@@ -907,7 +1080,8 @@ class SourceBroker:
                 return self._failure(policy, query, _status(code), raw)
             payload = _source_json(raw)
             if query.source_id == "geolocate":
-                status, candidates, count, reason = geolocate_verdict(policy, query, payload)
+                status, candidates, count, reason = geolocate_verdict(
+                    policy, query, payload, trusted_placement=trusted_anchor)
                 # The reason leads with the typed outcome, as every other source's reason is the status.
                 return self._result(policy, query, status, raw, url, candidates, count=count,
                                     reason=f"{status}: {reason}")
@@ -925,7 +1099,7 @@ class SourceBroker:
                 elif synonym or (diagnostics.get("matchType") == "EXACT" and row_one(parsed, usage, classification, alternatives)):
                     status = LookupStatus.SUCCESS
                 chosen = accepted if synonym else usage
-                if isinstance(chosen, dict):
+                if status != LookupStatus.NO_MATCH and isinstance(chosen, dict):
                     candidates.append({"field_key": str(query.field_key), "value": chosen.get("name"),
                                        "authority_id": f"{COL_XR}:{chosen.get('key')}", "rank": chosen.get("rank"),
                                        "authority_role": policy.authority_role, "input_literal": query.query_text,
@@ -1082,8 +1256,8 @@ class SourceBroker:
                             candidate_json=tuple(canonical_json(item) for item in candidates))
 
     async def invoke_utility(self, request: SpecialistRequest, tool_id: str, arguments: dict) -> SourceResult:
-        from .evidence import catalog_literal, parse_measurement, parse_temporal
-        if tool_id in {"settle_temporal", "settle_elevation"}:
+        from .evidence import catalog_literal, parse_measurement
+        if tool_id in {"settle_temporal", "settle_elevation", "settle_collectors", "settle_collection"}:
             return local_settlement_result(request, tool_id, arguments)
         allowed = {"parse_measurement": SpecialistRole.MEASUREMENT,
                    "parse_temporal": SpecialistRole.TEMPORAL,
@@ -1095,14 +1269,24 @@ class SourceBroker:
         field_key = _utility_field_key(arguments["field_key"])
         if field_key not in request.field_keys:
             raise UtilityInputError("Utility field exceeds scoped request")
-        if not any(arguments["text"] == assembly.interpreted_text for assembly in request.assemblies):
+        if tool_id == "catalog_number" and field_key != FieldKey.FMNH_INS_NUMBER:
+            raise UtilityInputError("Catalogue utility cannot supply collection code or another field")
+        matching = [assembly for assembly in request.assemblies
+            if (tool_id != "catalog_number" or assembly.field_key == field_key)
+            and arguments["text"] == assembly.interpreted_text]
+        if not matching:
             raise UtilityInputError("Utility text must come from an available evidenced assembly")
+        from .evidence import validate_assembly
+        if tool_id == "catalog_number":
+            for assembly in matching:
+                validate_assembly(request, assembly)
         if tool_id == "catalog_number":
             parsed = {"field_key": str(field_key), "value": catalog_literal(arguments["text"]),
                       "rule_version": "catalog-number-v1"}
         else:
+            from .temporal_context import parse_temporal_text
             parsed = (parse_measurement(arguments["text"]) if tool_id == "parse_measurement"
-                      else parse_temporal(arguments["text"])).model_dump(mode="json")
+                      else parse_temporal_text(request, arguments["text"], field_key)).model_dump(mode="json")
         return SourceResult(status=LookupStatus.SUCCESS,
                             coverage=SourceCoverageReceipt(source_id=tool_id, field_key=field_key,
                                 state=SourceCoverageState.SEARCHED, source_version="deterministic-domain-v1",

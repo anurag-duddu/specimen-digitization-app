@@ -192,13 +192,23 @@ def _acceptance_boundary() -> dict:
 
 
 def _toolset_digest() -> str:
-    # The two tools every specialist registers (SpecialistHarness._register_tools)
-    # and the deterministic utilities behind invoke_utility.
-    return digest({"contract_version": "research-toolset/v1",
-        "tools": ["lookup_source", "invoke_utility"],
+    # Common tools plus the geography-v9 deterministic progress view. Optional
+    # shared capabilities require their own explicitly composed job toolset pin.
+    from .collection import COLLECTION_RULE
+    from .capability_providers import provider_contract_digest
+    return digest({"contract_version": "research-toolset/v2",
+        "provider_contract_digest": provider_contract_digest(),
+        "tools": ["lookup_source", "invoke_utility", "browse_capture", "run_isolated_code",
+                  "read_verified_memory", "read_verified_procedure", "load_capability"],
+        "shared_capabilities": "free-research-providers/v1",
+        "role_tools": {"specimen_geography": ["geography_progress", "geography_hierarchy"]},
+        "geography_strategy_version": "geography-research-progress/v1",
         "utility_roles": {name: str(role) for name, role in sorted(UTILITY_ROLES.items())},
         "utility_version": UTILITY_VERSION,
         "settlement_utility_version": SETTLEMENT_UTILITY_VERSION,
+        "collection_qualification_version": COLLECTION_RULE,
+        "collection_qualification_digest": hashlib.sha256(
+            Path(__file__).with_name("collection.py").read_bytes()).hexdigest(),
         "source_query_schema": SourceQuery.model_json_schema(),
         "source_result_schema": SourceResult.model_json_schema()})
 
@@ -305,6 +315,8 @@ def build_committed_pins(profile, *, organization_id: str, collection_id: str) -
         "acceptance_boundary": _acceptance_boundary(),
         "model_prices": {str(role): price_row for role in roles},
         "model_request_bounds": {str(role): bound_row for role in roles}}
+    from .capability_providers import committed_role_policies
+    sources["role_capabilities"] = committed_role_policies(research_profile, registry, toolset)
     from specimen_digitization.application.human_field_carry import contract_pin
     sources["human_field_carry"] = contract_pin()
     # Normalised exactly as create_job stores them; input_digest is the job's own.

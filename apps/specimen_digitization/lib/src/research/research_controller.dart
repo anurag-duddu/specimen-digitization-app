@@ -110,12 +110,19 @@ class ResearchController extends ChangeNotifier {
   }
 
   /// Reads authoritative state without submitting another action.
-  Future<void> refresh() async {
-    if (_disposed || _accessDenied || _retryFieldKey != null) return;
+  Future<void> refresh({bool quiet = false}) async {
+    if (_disposed ||
+        _accessDenied ||
+        _retryFieldKey != null ||
+        (quiet && _networkState == ResearchNetworkState.loading)) {
+      return;
+    }
     final epoch = ++_epoch;
     final scope = _scope;
-    _thread = null;
-    _ack = null;
+    if (!quiet) {
+      _thread = null;
+      _ack = null;
+    }
     _message = null;
     _networkState = ResearchNetworkState.loading;
     notifyListeners();

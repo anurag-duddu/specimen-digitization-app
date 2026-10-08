@@ -25,6 +25,7 @@ from test_specialist_feedback import retry_parts, tool_agent
     ('Camp in mossy forest, 6,400 ft', '6,400 ft', '6400', '6400'),
     ('Camp in mossy forest,6,400 ft', '6,400 ft', '6400', '6400'),
     ('Camp between 6,400 to 6,500 ft', '6,400 to 6,500 ft', '6400', '6500'),
+    ('Camp at about 100 ft +/- 2 ft', 'about 100 ft +/- 2 ft', '100', '100'),
 ))
 def test_written_elevation_reaches_four_accepted_fields_without_human_command(line, literal, lower_ft, upper_ft):
     built = build(two_labels(a=line), [
@@ -71,6 +72,9 @@ def test_written_elevation_reaches_four_accepted_fields_without_human_command(li
         assert item.value.verbatim_by_observation
         assert line in item.value.verbatim_by_observation.values()
         assert item.value.evidence_ids and item.value.evidence_relations
+        if '+/-' in line:
+            assert item.measurement.uncertainty == '2'
+            assert item.measurement.qualifiers == ('about',)
         if item.value_layer == 'derived':
             assert item.derivation and item.dependencies
     proof = AcceptedOutputProofV1(

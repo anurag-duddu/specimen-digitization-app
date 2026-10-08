@@ -100,9 +100,10 @@ class Built:
     scope: ResearchScope
     graph: tuple = field(default=())
     first_reading: dict = field(default_factory=dict)   # region index -> decided observation
+    collection_recovery: bool = False  # this module preserves the historical v5 hand-over contract
 
 
-def build(regions=(RegionSpec(DECIDED),), fields=(), *, keyed=False):
+def build(regions=(RegionSpec(DECIDED),), fields=(), *, keyed=False, collection_recovery=False):
     asset = Asset(sha256="a" * 64, blob_ref="a" * 64 + ":1", media_type="image/jpeg", size_bytes=10, width=100,
         height=100, filename="fixture.jpeg", uploader="fixture", sensitive=False)
     run_regions, observations, transcripts, decided = [], [], [], {}
@@ -164,8 +165,8 @@ def build(regions=(RegionSpec(DECIDED),), fields=(), *, keyed=False):
         Workflow.parse(run, asset.id)
     scope = ResearchScope(organization_id="org", collection_id="collection", specimen_id=specimen.id,
         job_id="opaque-fixture-job", generation=1, input_digest="e" * 64, profile_digest="f" * 64, sensitive=False)
-    built = Built(specimen, scope, first_reading=decided)
-    built.graph = NativeGenerationRequestFactory._build_graph(specimen, scope)
+    built = Built(specimen, scope, first_reading=decided, collection_recovery=collection_recovery)
+    built.graph = NativeGenerationRequestFactory._build_graph(specimen, scope, collection_recovery=collection_recovery)
     return built
 
 
@@ -190,6 +191,13 @@ def request_for(built, role):
     keys = ROLE_FIELDS[role]
     prompt = resolve_prompt(role, profile_digest=built.scope.profile_digest, source_registry_digest="a" * 64,
         toolset_digest="b" * 64, model_route="harness-deepseek", output_schema_digest="c" * 64)
+    if role == SpecialistRole.COLLECTION and not built.collection_recovery:
+        from specimen_digitization.research_harness.prompts import HANDOVER_PROMPT_VERSION
+        root = Path(__file__).parents[2] / "src/specimen_digitization/research_harness/prompts"
+        text = (root / "common-v1.txt").read_text() + "\n" + (root / "specimen_collection-v5.txt").read_text()
+        text += "\nOwned fields: " + ", ".join(map(str, keys)) + ".\n"
+        prompt = prompt.model_copy(update={"version": HANDOVER_PROMPT_VERSION, "text": text,
+            "digest": hashlib.sha256(text.encode()).hexdigest()})
     return SpecialistRequest(scope=built.scope, role=role, field_keys=keys, prompt=prompt, fragments=fragments,
         events=events, assemblies=assemblies, evidence=evidence, accepted_decisions=decisions,
         organiser_candidates=tuple(item for item in found if item.field_key in keys),
@@ -351,7 +359,7 @@ def test_a_literal_that_occurs_more_than_once_is_not_placed_by_guesswork(shape):
 def test_a_region_with_no_decided_reading_gives_a_hint_and_never_an_assembly():
     built = build(fields=(FieldSpec("collectors", "Synthetic Collector"),))
     built.specimen.run.transcripts[0].resolved = False
-    fragments, events, assemblies, _, _, found = NativeGenerationRequestFactory._build_graph(built.specimen, built.scope)
+    fragments, events, assemblies, _, _, found = NativeGenerationRequestFactory._build_graph(built.specimen, built.scope, collection_recovery=False)
     assert events == () and assemblies == ()
     [item] = found
     assert item.status == "ungrounded" and item.reason == "no_decided_reading_for_the_region"
@@ -486,7 +494,7 @@ def test_a_native_evidence_row_with_non_ascii_text_has_the_identity_the_publicat
     assert (row.digest or digest(row)) == item.response_digest
     # With no digest of its own the fallback is the same function.
     row.digest = None
-    [item] = NativeGenerationRequestFactory._build_graph(built.specimen, built.scope)[3]
+    [item] = NativeGenerationRequestFactory._build_graph(built.specimen, built.scope, collection_recovery=False)[3]
     assert item.response_digest == digest(row) == item.publisher_assertion_id
 
 
@@ -598,7 +606,7 @@ def with_extractor_rows(built, *keys):
             digest="d" * 64)
         run.evidence.append(row)
         run.fields[key] = run.fields[key].model_copy(update={"evidence_ids": [row.id, *run.fields[key].evidence_ids]})
-    return NativeGenerationRequestFactory._build_graph(built.specimen, built.scope)
+    return NativeGenerationRequestFactory._build_graph(built.specimen, built.scope, collection_recovery=False)
 
 
 def test_a_keyed_label_keeps_its_assemblies_and_its_fields_name_them_as_they_always_did():
@@ -643,7 +651,7 @@ def test_a_keyed_field_the_extractor_gave_another_value_for_is_located_and_adds_
     run.evidence.append(quote)
     run.fields["collectors"] = FieldValue(state=ValueState.SUPPORTED, literal="Second Collector",
         parsed="Second Collector", evidence_ids=[quote.id])
-    graph = NativeGenerationRequestFactory._build_graph(built.specimen, built.scope)
+    graph = NativeGenerationRequestFactory._build_graph(built.specimen, built.scope, collection_recovery=False)
     [item] = [row for row in graph[5] if row.field_key == FieldKey.COLLECTORS]
     assert item.status == "located" and item.reason == "keyed_line_assembly_for_the_field_exists"
     assert [row.interpreted_text for row in graph[2] if row.field_key == FieldKey.COLLECTORS] == ["Synthetic Collector"]
@@ -753,7 +761,7 @@ def test_a_label_with_no_decided_reading_grounds_only_unanimous_raw_readers():
     built = build(fields=(FieldSpec("collectors", "Synthetic Collector", shape="reading", readers=(0, 1)),))
     run = built.specimen.run
     run.transcripts[0].resolved = False
-    graph = NativeGenerationRequestFactory._build_graph(built.specimen, built.scope)
+    graph = NativeGenerationRequestFactory._build_graph(built.specimen, built.scope, collection_recovery=False)
     assert [item.status for item in graph[5]] == ["grounded", "located"]
     assert len(graph[2]) == 1 and graph[2][0].interpreted_text == "Synthetic Collector"
 
@@ -787,7 +795,7 @@ def test_the_candidates_do_not_depend_on_the_order_of_run_fields():
     not change it. The pass reads fields in key order."""
     built = build(fields=STORED)
     built.specimen.run.fields = dict(reversed(list(built.specimen.run.fields.items())))
-    assert NativeGenerationRequestFactory._build_graph(built.specimen, built.scope) == built.graph
+    assert NativeGenerationRequestFactory._build_graph(built.specimen, built.scope, collection_recovery=False) == built.graph
 
 
 # ---------------------------------------------------------------------------- S1: certain refusals are not assembled
@@ -902,13 +910,15 @@ def test_the_output_schema_and_pinned_files_match_the_current_contract():
     """The organiser adds no domain fields; later derived review and candidate selection deliberately
     changed the output schema and projector, whose current pins must match exact source bytes."""
     from specimen_digitization.application import active_graph, projection, storage
-    from specimen_digitization.research_harness.accepted_output import VALIDATOR_SOURCE_SHA256
+    from specimen_digitization.research_harness.accepted_output import (
+        VALIDATOR_SOURCE_SHA256, installed_validator_source_sha256,
+    )
     from specimen_digitization.research_harness.native_canonical import CANONICAL_PROJECTOR_SHA256
     assert specialist_output_schema_digest() == (
         "f504ce2d07dd25476381a5fa220121e1dc77cc81a297a16e721c8e95d40770fc")  # pragma: allowlist secret
     assert SpecialistOutput.model_json_schema()["$defs"]["HumanQuestion"]["properties"]["reason"]["enum"] == [
         "evidence_conflict", "scoped_absence", "semantic_ambiguity", "derived_proposal"]
-    assert sha(evidence_module.__file__) == VALIDATOR_SOURCE_SHA256
+    assert installed_validator_source_sha256(Path(evidence_module.__file__).parent) == VALIDATOR_SOURCE_SHA256
     assert sha(projection.__file__) == CANONICAL_PROJECTOR_SHA256 == (
         "aecca227a5ff12948971852bc09b30cc85ec368a67f3a0d0f01195405a07571e")  # pragma: allowlist secret
     assert sha(domain.__file__) == "688b93cd47a8a7df577734c67bbb17f434dc492fc29e269c873d46901aa5c67f"  # pragma: allowlist secret

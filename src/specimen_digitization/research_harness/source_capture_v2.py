@@ -750,12 +750,12 @@ class CaptureSourceBrokerV2:
     """Concrete service composition; existing source policy/selection stays intact."""
     def __init__(self, registry: SourceRegistry, policies, effect_broker, scope, lease, *, transport,
                  execution_class="live", reservation_micro_usd=1, georeferencing_adapter=None,
-                 derivation_context=None):
+                 derivation_context=None, collecting_context=None):
         self.transport = CapturedSourceTransportV2(transport, effect_broker.blobs, execution_class=execution_class)
         self.effects = SourceCaptureEffectsV2(effect_broker, scope, lease, registry, policies, self.transport,
             reservation_micro_usd=reservation_micro_usd, derivation_context=derivation_context)
         self.broker = SourceBroker(registry, transport=self.transport, effect_dispatch=self.effects,
-            georeferencing_adapter=georeferencing_adapter)
+            georeferencing_adapter=georeferencing_adapter, collecting_context=collecting_context)
         # The worker supplies this private proof service. It is never part of
         # the role tool roster or a model-authored SourceQuery.
         self.derivation_context = derivation_context

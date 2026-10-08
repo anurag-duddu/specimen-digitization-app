@@ -1,0 +1,257 @@
+# An admitted retry makes one exact blocked record due. Its canonical snapshot,
+# run, generation, scientific values, prior receipts and allowance stay intact.
+mutation ScheduleResearchRetryV1($organizationId: UUID!, $collectionId: UUID!, $specimenId: UUID!, $actorUid: String!, $recordRevision: Int!, $canonicalRunId: UUID!, $snapshotSha256: String!, $programKey: String!, $jobKey: String!, $generation: Int!, $bindingDigest: String!, $commandId: String!, $stateRevision: Int!) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true && response.query.organizationMember.active == true && this.role in ['operator', 'reviewer', 'manager', 'admin']") { active role }
+  }
+  scheduled: _execute(sql: """
+    WITH locked_specimen AS MATERIALIZED (
+      SELECT s.* FROM public.specimen s
+      JOIN public.organization_member om ON om.organization_id=s.organization_id AND om.uid=$4 AND om.active
+      JOIN public.collection_member cm ON cm.organization_id=s.organization_id AND cm.collection_id=s.collection_id
+        AND cm.uid=$4 AND cm.active AND cm.role IN ('operator','reviewer','manager','admin')
+      WHERE s.organization_id=$1 AND s.collection_id=$2 AND s.id=$3
+        AND s.revision=$5 AND s.active_run_id=$6 AND NOT s.sensitive
+      FOR UPDATE OF s FOR SHARE OF om,cm
+    ), locked_state AS MATERIALIZED (
+      SELECT h.* FROM public.research_harness_state h
+      JOIN locked_specimen s ON s.organization_id=h.organization_id
+      WHERE h.program_key=$8 FOR UPDATE OF h
+    )
+    UPDATE public.specimen s SET state='retry_scheduled',work_available_at=COALESCE(s.work_available_at,statement_timestamp())
+    FROM public.canonical_research_binding_v2 b,locked_state h,public.specimen_snapshot snap
+    WHERE s.organization_id=$1 AND s.collection_id=$2 AND s.id=$3
+      AND s.revision=$5 AND s.active_run_id=$6 AND NOT s.sensitive
+      AND snap.organization_id=s.organization_id AND snap.collection_id=s.collection_id
+      AND snap.specimen_id=s.id AND snap.revision=s.revision AND snap.sha256=$7
+      AND snap.snapshot->'run'->>'stage'='processing_blocked'
+      AND COALESCE((snap.snapshot->'run'->>'human_approved')::boolean,false)=false
+      AND snap.snapshot->'run'->>'blocker' IS DISTINCT FROM 'external_outcome_unknown'
+      AND b.organization_id=s.organization_id AND b.collection_id=s.collection_id AND b.specimen_id=s.id
+      AND b.active AND b.publication_version='research-publication/v2'
+      AND b.current_canonical_revision=s.revision AND b.canonical_run_id=s.active_run_id
+      AND b.current_snapshot_sha256=snap.sha256 AND b.program_key=$8 AND b.job_key=$9
+      AND b.generation=$10 AND b.runtime_binding_digest=$11
+      AND h.organization_id=s.organization_id AND h.program_key=b.program_key
+      AND h.revision=$13 AND h.state_json::jsonb=h.state
+      AND h.state->'jobs'->$9->'identity'=jsonb_build_object('organization_id',$1::text,
+        'collection_id',$2::text,'specimen_id',$3::text,'job_id',b.job_id)
+      AND (h.state->'jobs'->$9->>'generation')::int=$10
+      AND h.state->'jobs'->$9->>'binding_digest'=$11
+      AND h.state->'outbox'->('retry/'||$12)->>'kind'='research_field_retry'
+      AND h.state->'outbox'->('retry/'||$12)->'delivered'='false'::jsonb
+      AND h.state->'outbox'->('retry/'||$12)->'command'->>'id'=$12
+      AND h.state->'outbox'->('retry/'||$12)->'command'->>'kind'='retry_field'
+      AND h.state->'outbox'->('retry/'||$12)->'command'->>'status'='queued'
+      AND h.state->'outbox'->('retry/'||$12)->'command'->>'execution_class'='live'
+      AND h.state->'outbox'->('retry/'||$12)->'command'->>'created_by'=$4
+      AND h.state->'outbox'->('retry/'||$12)->'command'->'scope'=jsonb_build_object(
+        'organization_id',$1::text,'collection_id',$2::text,'specimen_id',$3::text,'job_id',b.job_id,'generation',$10::int)
+      AND (h.state->'outbox'->('retry/'||$12)->'command'->>'expected_generation')::int=$10
+      AND h.state->'outbox'->('retry/'||$12)->'command'->>'binding_digest'=$11
+      AND h.state->'jobs'->$9->'fields'->(h.state->'outbox'->('retry/'||$12)->'command'->>'field_key')->>'retry_command_id'=$12
+      AND h.state->'jobs'->$9->'fields'->(h.state->'outbox'->('retry/'||$12)->'command'->>'field_key')->>'work_state'='retry_scheduled'
+      AND h.state->'jobs'->$9->'fields'->(h.state->'outbox'->('retry/'||$12)->'command'->>'field_key')->'locked'='false'::jsonb
+      AND h.state->'halted'='false'::jsonb AND h.state->'jobs'->$9->'paused'='false'::jsonb
+      AND h.state->'budget_policy'->'live_authorized'='true'::jsonb
+      AND h.state->'budget_policy'->'hold_reason'='null'::jsonb
+      AND (h.state->'budget_policy'->>'ceiling_micro_usd')::bigint
+        >(h.state->'budget_totals'->>'settled_micro_usd')::bigint+(h.state->'budget_totals'->>'held_micro_usd')::bigint
+      AND (h.state->'jobs'->$9->'lease'='null'::jsonb
+        OR (h.state->'jobs'->$9->'lease'->>'expires_at')::numeric<=extract(epoch FROM statement_timestamp()))
+      AND NOT EXISTS (SELECT 1 FROM jsonb_each(h.state->'effects') e WHERE e.value->>'job_key'=$9
+        AND (e.value->>'status' IN ('reserved','sending','held_unknown') OR e.value->'actual_micro_usd'='null'::jsonb))
+      AND NOT EXISTS (SELECT 1 FROM jsonb_each(h.state->'outbox') e
+        WHERE e.value->>'kind'='canonical_publication_required' AND e.value->'delivered'='false'::jsonb
+          AND e.value->'guard'->'scope'=jsonb_build_object('organization_id',$1::text,
+            'collection_id',$2::text,'specimen_id',$3::text,'job_id',b.job_id,'generation',$10::int))
+      AND EXISTS (SELECT 1 FROM public.organization_member om JOIN public.collection_member cm
+        ON cm.organization_id=om.organization_id AND cm.uid=om.uid
+        WHERE om.organization_id=$1 AND om.uid=$4 AND om.active AND cm.collection_id=$2 AND cm.active
+          AND cm.role IN ('operator','reviewer','manager','admin'))
+    """, params: [$organizationId,$collectionId,$specimenId,$actorUid,$recordRevision,$canonicalRunId,$snapshotSha256,$programKey,$jobKey,$generation,$bindingDigest,$commandId,$stateRevision])
+    @check(expr: "this == 1", message: "research retry scheduling proof changed")
+  read: query @check(expr: "response.scheduled == 1") { specimen(key: {organizationId: $organizationId, collectionId: $collectionId, id: $specimenId}) { revision state activeRunId workAvailableAt } }
+}
+
+# The retry outbox's terminal result is already durable. Retire due metadata
+# only at the current native whole20 progress head, after custody is released.
+mutation FinishResearchRetryV1($organizationId: UUID!, $collectionId: UUID!, $specimenId: UUID!, $actorUid: String!, $recordRevision: Int!, $canonicalRunId: UUID!, $snapshotSha256: String!, $programKey: String!, $jobKey: String!, $generation: Int!, $bindingDigest: String!, $commandId: String!, $stateRevision: Int!, $fieldWorkDigest: String!, $fieldMappingDigest: String!, $policyDigest: String!) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true && response.query.organizationMember.active == true && this.role in ['operator', 'reviewer', 'manager', 'admin']") { active role }
+  }
+  finished: _execute(sql: """
+    WITH locked_specimen AS MATERIALIZED (
+      SELECT s.* FROM public.specimen s
+      JOIN public.organization_member om ON om.organization_id=s.organization_id AND om.uid=$4 AND om.active
+      JOIN public.collection_member cm ON cm.organization_id=s.organization_id AND cm.collection_id=s.collection_id
+        AND cm.uid=$4 AND cm.active AND cm.role IN ('operator','reviewer','manager','admin')
+      WHERE s.organization_id=$1 AND s.collection_id=$2 AND s.id=$3
+        AND s.revision=$5 AND s.active_run_id=$6 AND NOT s.sensitive
+      FOR UPDATE OF s FOR SHARE OF om,cm
+    ), locked_state AS MATERIALIZED (
+      SELECT h.* FROM public.research_harness_state h
+      JOIN locked_specimen s ON s.organization_id=h.organization_id
+      WHERE h.program_key=$8 FOR UPDATE OF h
+    )
+    UPDATE public.specimen s SET
+      state=CASE WHEN EXISTS (SELECT 1 FROM jsonb_each(h.state->'outbox') e
+        WHERE e.value->>'kind'='research_field_retry' AND e.value->'delivered'='false'::jsonb
+          AND e.value->'command'->'scope'->>'job_id'=b.job_id
+          AND e.value->'command'->'scope'->>'organization_id'=$1::text
+          AND e.value->'command'->'scope'->>'collection_id'=$2::text
+          AND e.value->'command'->'scope'->>'specimen_id'=$3::text
+          AND (e.value->'command'->'scope'->>'generation')::int=b.generation
+          AND e.value->'command'->>'status' IN ('queued','running')) THEN 'retry_scheduled'
+        ELSE CASE WHEN snap.snapshot->'run'->>'stage'='finalized' THEN 'completed' ELSE 'processing_blocked' END END,
+      work_available_at=CASE WHEN EXISTS (SELECT 1 FROM jsonb_each(h.state->'outbox') e
+        WHERE e.value->>'kind'='research_field_retry' AND e.value->'delivered'='false'::jsonb
+          AND e.value->'command'->'scope'->>'job_id'=b.job_id
+          AND e.value->'command'->'scope'->>'organization_id'=$1::text
+          AND e.value->'command'->'scope'->>'collection_id'=$2::text
+          AND e.value->'command'->'scope'->>'specimen_id'=$3::text
+          AND (e.value->'command'->'scope'->>'generation')::int=b.generation
+          AND e.value->'command'->>'status' IN ('queued','running')) THEN statement_timestamp() ELSE NULL END
+    FROM public.canonical_research_binding_v2 b,locked_state h,
+      public.specimen_snapshot snap,public.research_publication_receipt_v2 p
+    WHERE s.organization_id=$1 AND s.collection_id=$2 AND s.id=$3
+      AND s.revision=$5 AND s.active_run_id=$6 AND NOT s.sensitive
+      AND snap.organization_id=s.organization_id AND snap.collection_id=s.collection_id
+      AND snap.specimen_id=s.id AND snap.revision=s.revision AND snap.sha256=$7
+      AND snap.snapshot->'run'->>'stage' IN ('finalized','processing_blocked')
+      AND b.organization_id=s.organization_id AND b.collection_id=s.collection_id AND b.specimen_id=s.id
+      AND b.active AND b.publication_version='research-publication/v2'
+      AND b.current_canonical_revision=s.revision AND b.current_snapshot_sha256=snap.sha256
+      AND b.canonical_run_id=s.active_run_id AND b.program_key=$8 AND b.job_key=$9
+      AND b.generation=$10 AND b.runtime_binding_digest=$11
+      AND h.organization_id=s.organization_id AND h.program_key=b.program_key
+      AND h.revision=$13 AND h.state_json::jsonb=h.state
+      AND h.state->'outbox'->('retry/'||$12)->>'kind'='research_field_retry'
+      AND h.state->'outbox'->('retry/'||$12)->'delivered'='true'::jsonb
+      AND h.state->'outbox'->('retry/'||$12)->'command'->>'id'=$12
+      AND h.state->'outbox'->('retry/'||$12)->'command'->>'status' IN ('completed','blocked')
+      AND h.state->'outbox'->('retry/'||$12)->'command'->'scope'=jsonb_build_object(
+        'organization_id',$1::text,'collection_id',$2::text,'specimen_id',$3::text,'job_id',b.job_id,'generation',$10::int)
+      AND h.state->'jobs'->$9->'lease'='null'::jsonb
+      AND h.state->'halted'='false'::jsonb AND h.state->'jobs'->$9->'paused'='false'::jsonb
+      AND NOT EXISTS (SELECT 1 FROM jsonb_each(h.state->'effects') e WHERE e.value->>'job_key'=$9
+        AND (e.value->>'status' IN ('reserved','sending','held_unknown') OR e.value->'actual_micro_usd'='null'::jsonb))
+      AND p.organization_id=b.organization_id AND p.collection_id=b.collection_id
+      AND p.id=b.current_receipt_id AND p.specimen_id=b.specimen_id AND p.binding_id=b.binding_id
+      AND p.resulting_canonical_revision=s.revision
+      AND p.causal_proof->'progress_receipt'->>'run_stage'=snap.snapshot->'run'->>'stage'
+      AND p.causal_proof->>'job_key'=$9 AND p.causal_proof->'scope_identity'=jsonb_build_object(
+        'organization_id',$1::text,'collection_id',$2::text,'specimen_id',$3::text,'job_id',b.job_id,'generation',$10::int)
+      AND p.causal_proof->'progress_receipt'->>'job_key'=$9
+      AND (p.causal_proof->'progress_receipt'->>'generation')::int=$10
+      AND p.causal_proof->'progress_receipt'->>'field_work_digest'=$14
+      AND $14=encode(sha256(convert_to((h.state_json::json->'jobs'->$9->'fields')::text,'UTF8')),'hex')
+      AND p.causal_proof->'progress_receipt'->>'field_mapping_digest'=$15
+      AND p.causal_proof->'progress_receipt'->>'policy_digest'=$16 AND b.policy_digest=$16
+      AND p.causal_proof->'progress_receipt'->'research_field_work'=(SELECT jsonb_object_agg(e.key,e.value->>'work_state')
+        FROM jsonb_each(h.state->'jobs'->$9->'fields') e)
+      AND (SELECT count(*) FROM jsonb_object_keys(h.state->'jobs'->$9->'fields'))=20
+      AND (SELECT count(*) FROM jsonb_object_keys(p.causal_proof->'progress_receipt'->'research_field_work'))=20
+      AND (SELECT count(*) FROM jsonb_object_keys(p.causal_proof->'progress_receipt'->'canonical_field_work'))=20
+      AND p.causal_proof->'progress_receipt'->'canonical_field_work'=(SELECT jsonb_object_agg(
+        b.semantic_mapping->'field_mapping'->>e.key,e.value->>'work_state') FROM jsonb_each(h.state->'jobs'->$9->'fields') e)
+      AND NOT EXISTS (SELECT 1 FROM jsonb_each(h.state->'outbox') e
+        WHERE e.value->>'kind'='canonical_publication_required' AND e.value->'delivered'='false'::jsonb
+          AND e.value->'guard'->'scope'=jsonb_build_object('organization_id',$1::text,
+            'collection_id',$2::text,'specimen_id',$3::text,'job_id',b.job_id,'generation',$10::int))
+      AND EXISTS (SELECT 1 FROM public.organization_member om JOIN public.collection_member cm
+        ON cm.organization_id=om.organization_id AND cm.uid=om.uid
+        WHERE om.organization_id=$1 AND om.uid=$4 AND om.active AND cm.collection_id=$2 AND cm.active
+          AND cm.role IN ('operator','reviewer','manager','admin'))
+    """, params: [$organizationId,$collectionId,$specimenId,$actorUid,$recordRevision,$canonicalRunId,$snapshotSha256,$programKey,$jobKey,$generation,$bindingDigest,$commandId,$stateRevision,$fieldWorkDigest,$fieldMappingDigest,$policyDigest])
+    @check(expr: "this == 1", message: "research retry completion proof changed")
+  read: query @check(expr: "response.finished == 1") { specimen(key: {organizationId: $organizationId, collectionId: $collectionId, id: $specimenId}) { revision state activeRunId workAvailableAt } }
+}
+
+# A completed retry can have another accepted source/policy wait, with no new
+# publishable checkpoint. Park its due metadata without replacing or certifying
+# the older canonical progress head. Unknown sends and costs remain held.
+mutation ParkResearchRetryV1($organizationId: UUID!, $collectionId: UUID!, $specimenId: UUID!, $actorUid: String!, $recordRevision: Int!, $canonicalRunId: UUID!, $snapshotSha256: String!, $programKey: String!, $jobKey: String!, $generation: Int!, $bindingDigest: String!, $commandId: String!, $stateRevision: Int!) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true && response.query.organizationMember.active == true && this.role in ['operator', 'reviewer', 'manager', 'admin']") { active role }
+  }
+  parked: _execute(sql: """
+    WITH locked_specimen AS MATERIALIZED (
+      SELECT s.* FROM public.specimen s
+      JOIN public.organization_member om ON om.organization_id=s.organization_id AND om.uid=$4 AND om.active
+      JOIN public.collection_member cm ON cm.organization_id=s.organization_id AND cm.collection_id=s.collection_id
+        AND cm.uid=$4 AND cm.active AND cm.role IN ('operator','reviewer','manager','admin')
+      WHERE s.organization_id=$1 AND s.collection_id=$2 AND s.id=$3
+        AND s.revision=$5 AND s.active_run_id=$6 AND NOT s.sensitive
+      FOR UPDATE OF s FOR SHARE OF om,cm
+    ), locked_state AS MATERIALIZED (
+      SELECT h.* FROM public.research_harness_state h
+      JOIN locked_specimen s ON s.organization_id=h.organization_id
+      WHERE h.program_key=$8 FOR UPDATE OF h
+    )
+    UPDATE public.specimen s SET state='processing_blocked',work_available_at=NULL
+    FROM public.canonical_research_binding_v2 b,locked_state h,public.specimen_snapshot snap
+    WHERE s.organization_id=$1 AND s.collection_id=$2 AND s.id=$3
+      AND s.revision=$5 AND s.active_run_id=$6 AND NOT s.sensitive
+      AND snap.organization_id=s.organization_id AND snap.collection_id=s.collection_id
+      AND snap.specimen_id=s.id AND snap.revision=s.revision AND snap.sha256=$7
+      AND snap.snapshot->'run'->>'stage'='processing_blocked'
+      AND b.organization_id=s.organization_id AND b.collection_id=s.collection_id AND b.specimen_id=s.id
+      AND b.active AND b.publication_version='research-publication/v2'
+      AND b.current_canonical_revision=s.revision AND b.current_snapshot_sha256=snap.sha256
+      AND b.canonical_run_id=s.active_run_id AND b.program_key=$8 AND b.job_key=$9
+      AND b.generation=$10 AND b.runtime_binding_digest=$11
+      AND h.organization_id=s.organization_id AND h.program_key=b.program_key
+      AND h.revision=$13 AND h.state_json::jsonb=h.state
+      AND h.state->'outbox'->('retry/'||$12)->>'kind'='research_field_retry'
+      AND h.state->'outbox'->('retry/'||$12)->'delivered'='true'::jsonb
+      AND h.state->'outbox'->('retry/'||$12)->'command'->>'id'=$12
+      AND h.state->'outbox'->('retry/'||$12)->'command'->>'binding_digest'=$11
+      AND h.state->'outbox'->('retry/'||$12)->'command'->'scope'=jsonb_build_object(
+        'organization_id',$1::text,'collection_id',$2::text,'specimen_id',$3::text,'job_id',b.job_id,'generation',$10::int)
+      AND ((h.state->'outbox'->('retry/'||$12)->'command'->>'status'='blocked'
+        AND h.state->'outbox'->('retry/'||$12)->'command'->>'blocked_reason' IN ('retry_worker_failed','retry_checkpoint_missing'))
+        OR (h.state->'outbox'->('retry/'||$12)->'command'->>'status'='completed'
+          AND h.state->'jobs'->$9->'fields'->(h.state->'outbox'->('retry/'||$12)->'command'->>'field_key')->'checkpoint'->>'id'
+            =h.state->'outbox'->('retry/'||$12)->'command'->>'result_checkpoint_id'
+          AND h.state->'jobs'->$9->'fields'->(h.state->'outbox'->('retry/'||$12)->'command'->>'field_key')->'checkpoint'->>'retry_command_id'=$12
+          AND ((h.state->'jobs'->$9->'fields'->(h.state->'outbox'->('retry/'||$12)->'command'->>'field_key')->'checkpoint'->'payload'->'resolution'->>'work_state'
+            IN ('waiting_source','waiting_policy')
+            AND h.state->'jobs'->$9->'fields'->(h.state->'outbox'->('retry/'||$12)->'command'->>'field_key')->'checkpoint'->'accepted_output_proof'->>'contract_version'='research-accepted-checkpoints/v1')
+            OR (h.state->'jobs'->$9->'fields'->(h.state->'outbox'->('retry/'||$12)->'command'->>'field_key')->'checkpoint'->'payload'->'resolution'->>'work_state'='operational_failed'
+              AND h.state->'jobs'->$9->'fields'->(h.state->'outbox'->('retry/'||$12)->'command'->>'field_key')->'checkpoint'->'payload'->'resolution'->>'reason'
+                IN ('specialist_operational_failure','research_output_validation_exhausted')
+              AND h.state->'jobs'->$9->'fields'->(h.state->'outbox'->('retry/'||$12)->'command'->>'field_key')->'checkpoint'->'payload'->'resolution'->'value'
+                =jsonb_build_object('authority_id',NULL,'authority_identity',NULL,'century_rule',NULL,'derived_from','[]'::jsonb,
+                  'evidence_ids','[]'::jsonb,'evidence_relations','{}'::jsonb,'input_source',NULL,
+                  'input_source_by_observation','{}'::jsonb,'layer',NULL,'literal',NULL,'normalized',NULL,'parsed',NULL,
+                  'precision',NULL,'reason','No supported source value','settled_observation_ids','[]'::jsonb,
+                  'source_observation_id',NULL,'source_region_id',NULL,'verbatim_by_observation','{}'::jsonb,
+                  'state',CASE WHEN h.state->'jobs'->$9->'fields'->(h.state->'outbox'->('retry/'||$12)->'command'->>'field_key')->'checkpoint'->'payload'->'resolution'->>'reason'='specialist_operational_failure'
+                    THEN 'unknown' ELSE 'unresolved' END)))))
+      AND h.state->'jobs'->$9->'lease'='null'::jsonb AND h.state->'jobs'->$9->'paused'='false'::jsonb
+      AND NOT EXISTS (SELECT 1 FROM jsonb_each(h.state->'effects') e WHERE e.value->>'job_key'=$9
+        AND (e.value->>'status' IN ('reserved','sending','held_unknown') OR e.value->'actual_micro_usd'='null'::jsonb))
+      AND NOT EXISTS (SELECT 1 FROM jsonb_each(h.state->'outbox') e
+        WHERE e.value->>'kind'='canonical_publication_required' AND e.value->'delivered'='false'::jsonb
+          AND e.value->'guard'->'scope'=jsonb_build_object('organization_id',$1::text,
+            'collection_id',$2::text,'specimen_id',$3::text,'job_id',b.job_id,'generation',$10::int))
+      AND NOT EXISTS (SELECT 1 FROM jsonb_each(h.state->'outbox') e
+        WHERE e.value->>'kind'='research_field_retry' AND e.value->'delivered'='false'::jsonb
+          AND e.value->'command'->'scope'->>'job_id'=b.job_id
+          AND e.value->'command'->'scope'->>'organization_id'=$1::text
+          AND e.value->'command'->'scope'->>'collection_id'=$2::text
+          AND e.value->'command'->'scope'->>'specimen_id'=$3::text
+          AND (e.value->'command'->'scope'->>'generation')::int=b.generation
+          AND e.value->'command'->>'status' IN ('queued','running'))
+      AND EXISTS (SELECT 1 FROM public.organization_member om JOIN public.collection_member cm
+        ON cm.organization_id=om.organization_id AND cm.uid=om.uid
+        WHERE om.organization_id=$1 AND om.uid=$4 AND om.active AND cm.collection_id=$2 AND cm.active
+          AND cm.role IN ('operator','reviewer','manager','admin'))
+    """, params: [$organizationId,$collectionId,$specimenId,$actorUid,$recordRevision,$canonicalRunId,$snapshotSha256,$programKey,$jobKey,$generation,$bindingDigest,$commandId,$stateRevision])
+    @check(expr: "this == 1", message: "research retry parking proof changed")
+  read: query @check(expr: "response.parked == 1") { specimen(key: {organizationId: $organizationId, collectionId: $collectionId, id: $specimenId}) { revision state activeRunId workAvailableAt } }
+}

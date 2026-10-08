@@ -13,7 +13,7 @@ from .accepted_output import (
 from collections.abc import Sequence
 
 from .contracts import ROLE_FIELDS, DependencyPin, FieldCheckpoint, FieldKey, FieldResolution, ResearchScope, SpecialistRequest, digest
-from .persistence import DurabilityScope, Lease, ResearchStore, StaleWork, ImmutableBlobs, BlobRef, canonical
+from .persistence import DurabilityScope, Lease, ResearchStore, StaleWork, HeldUnknown, BudgetExceeded, ImmutableBlobs, BlobRef, canonical
 from .telemetry import TraceParent, current_trace_parent
 
 
@@ -313,6 +313,20 @@ class DurableResearchJournal:
         job = self.store._job(document.state, self.scope)
         if job["paused"] or field_key not in job["fields"] or job["fields"][field_key]["locked"]:
             return False
+        value = job["fields"][field_key]
+        resolution = (value.get("checkpoint") or {}).get("payload", {}).get("resolution", {})
+        if resolution.get("work_state") == "waiting_source":
+            if not self.store._completed_source_failure(document.state, self.scope, job, str(field_key)):
+                return False
+            command = document.state["outbox"].get("retry/" + (value.get("retry_command_id") or ""), {}).get("command", {})
+            active_retry = (command.get("status") == "running" and command.get("lease") == asdict(self.lease)
+                and command.get("scope") == self.scope.identity() and command.get("field_key") == str(field_key)
+                and command.get("binding_digest") == job["binding_digest"])
+            try:
+                self.store._source_retry_safety(document.state, self.scope, job, document.server_time,
+                    active_retry=active_retry, execution_class=command.get("execution_class"))
+            except (StaleWork, HeldUnknown, BudgetExceeded, PermissionError):
+                return False
         # Without an exact dependency-attribution permit, an unknown outcome
         # blocks every new effect on this job. No clock/restart releases it.
         effects = [effect for effect in document.state["effects"].values() if effect["job_key"] == self.scope.key]

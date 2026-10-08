@@ -35,7 +35,7 @@ from .native_canonical import (
 from .publication import PreparedNativePublication, _native_checkpoint, _translate
 from .native_prepack_proof_v2 import make_prepack_proof_v2, verify_prepack_proof_v2
 from .publication_v2 import (
-    OPERATION_V2, Positive, CanonicalSourceBasisV2, CanonicalProgressReceiptV2, NativeCausalReceiptV2,
+    OPERATION_V2, Positive, CanonicalSourceBasisV2, CanonicalProgressReceiptV2, NativeCausalReceiptV2, CausalReceiptV2,
     PreparationV2, ScientificIntentV2, chain_digest, genesis_digest,
     operation_digest, outbox_completion, scientific_basis_digest,
     verify_admission, verify_chain,
@@ -55,7 +55,7 @@ class CanonicalBindingV2(FrozenRecord):
     import_proof_digest: Digest
     head_receipt_id: UUID | None
     head_chain_digest: Digest
-    causal_chain: tuple[NativeCausalReceiptV2,...]
+    causal_chain: tuple[CausalReceiptV2,...]
 
     @classmethod
     def from_native(cls,scope,specimen_id,row):
@@ -72,7 +72,7 @@ class CanonicalBindingV2(FrozenRecord):
         if (not isinstance(causal,dict) or set(causal)!={"contract_version","authority_digest","import_proof_id","import_proof_digest",
             "head_receipt_id","head_chain_digest","causal_chain","causal_count"}
             or causal["contract_version"]!=OPERATION_V2 or type(causal["causal_count"]) is not int
-            or not 0<=causal["causal_count"]<=20 or not isinstance(causal["causal_chain"],list)
+            or not 0<=causal["causal_count"]<=64 or not isinstance(causal["causal_chain"],list)
             or len(causal["causal_chain"])!=causal["causal_count"]):
             fail("native_v2_causal_inventory_unproved")
         reg=CanonicalRegistrationV1.model_validate(registrations[0])
@@ -115,7 +115,7 @@ class CanonicalBindingV2(FrozenRecord):
                 fail("native_v2_scoped_bundle_invalid")
         # Native ancestry is complete, ordered and causal. Never choose a latest
         # row or infer publication count from CAS subtraction.
-        previous=reg.base_canonical;parent=None;sha=genesis_digest(reg.binding_id,previous);seen=set();ids=set()
+        previous=reg.base_canonical;parent=None;sha=genesis_digest(reg.binding_id,previous);seen=set();ids=set();progresses=set()
         scoped={**identity,"generation":reg.generation}
         for receipt in result.causal_chain:
             if (receipt.used!=previous or receipt.parent_receipt_id!=parent or receipt.parent_chain_digest!=sha
@@ -124,9 +124,21 @@ class CanonicalBindingV2(FrozenRecord):
                 or receipt.authority_digest!=result.authority_digest or receipt.import_proof_id!=result.import_proof_id
                 or receipt.import_proof_digest!=result.import_proof_digest or receipt.input_digest!=reg.input_digest
                 or receipt.profile_digest!=reg.profile_digest or receipt.runtime_binding_digest!=reg.runtime_binding_digest
-                or receipt.changed_field in seen or receipt.receipt_id in ids):
+                or (isinstance(receipt, NativeCausalReceiptV2) and receipt.changed_field in seen) or receipt.receipt_id in ids):
                 fail("native_v2_full_chain_unproved")
-            seen.add(receipt.changed_field);ids.add(receipt.receipt_id)
+            from .progress_publication_v2 import NativeProgressCausalReceiptV2
+            if isinstance(receipt, NativeCausalReceiptV2):
+                seen.add(receipt.changed_field)
+            elif isinstance(receipt, NativeProgressCausalReceiptV2):
+                basis=receipt.progress_receipt.field_work_digest
+                if basis in progresses:
+                    fail("native_progress_duplicate_basis")
+                progresses.add(basis)
+            else:
+                fail("native_v2_causal_kind_unproved")
+            if len(seen)>20 or len(progresses)>44:
+                fail("native_v2_causal_inventory_unproved")
+            ids.add(receipt.receipt_id)
             previous=receipt.resulting;parent=receipt.receipt_id;sha=receipt.chain_digest
         if (previous!=result.canonical or parent!=result.head_receipt_id or sha!=result.head_chain_digest
             or reg.registration_revision!=(1 if not result.causal_chain else result.causal_chain[-1].after_registration_revision)):
@@ -272,7 +284,7 @@ class SqlConnectCanonicalResearchWriterV2(SqlConnectCanonicalResearchWriter):
             raise PermissionError("native_v2_locator_access_denied")
         inventory=response["inventory"]
         if (not isinstance(inventory,dict) or set(inventory)!={"locator_count","locators"}
-            or type(inventory["locator_count"]) is not int or not 0<=inventory["locator_count"]<=20
+            or type(inventory["locator_count"]) is not int or not 0<=inventory["locator_count"]<=64
             or not isinstance(inventory["locators"],list) or len(inventory["locators"])!=inventory["locator_count"]):
             fail("native_v2_locator_inventory_incomplete")
         result=[];ids=set();keys=set()
@@ -462,7 +474,9 @@ class SqlConnectCanonicalResearchWriterV2(SqlConnectCanonicalResearchWriter):
             or type(row["preparation_count"]) is not int or not 0<=row["preparation_count"]<=20
             or not isinstance(row["preparations"],list) or len(row["preparations"])!=row["preparation_count"]):
             fail("native_v2_intent_partial")
-        retained=RetainedIntentV2.model_validate({k:row[k] for k in ("original","preparations","attempt")})
+        from .progress_publication_v2 import RetainedProgressIntentV2
+        cls = RetainedProgressIntentV2 if row["original"].get("contract_version") == "research-progress-intent/v2" else RetainedIntentV2
+        retained=cls.model_validate({k:row[k] for k in ("original","preparations","attempt")})
         intent=retained.original;b=intent.original_prepared.basis;s=b.scope
         if (intent.actor_uid!=principal.user_id or s.organization_id!=principal.scope.organization_id
             or s.collection_id!=principal.scope.collection_id or s.specimen_id!=str(UUID(str(specimen_id)))
@@ -471,6 +485,10 @@ class SqlConnectCanonicalResearchWriterV2(SqlConnectCanonicalResearchWriter):
         return retained
 
     async def _read_receipt_v2(self,principal,intent,*,replayed):
+        from .progress_publication_v2 import ProgressIntentV2
+        if isinstance(intent, ProgressIntentV2):
+            from .native_progress_writer_v2 import read_progress_receipt
+            return await read_progress_receipt(self, principal, intent, replayed=replayed)
         # NO mutable binding/lease/budget/discovery on this path. Winning native
         # preparation is retained, not reconstructed from whichever job is live.
         variables={**self._variables(principal,intent.original_prepared.basis.scope.specimen_id),
@@ -563,6 +581,10 @@ class SqlConnectCanonicalResearchWriterV2(SqlConnectCanonicalResearchWriter):
             fail("native_v2_attempt_outcome_unknown")
         if not retained.preparations:
             fail("native_v2_preparation_unavailable")
+        from .progress_publication_v2 import ProgressIntentV2
+        if isinstance(retained.original, ProgressIntentV2):
+            from .native_progress_writer_v2 import publish_progress_preparation
+            return await publish_progress_preparation(self, principal, retained.original, retained.preparations[-1])
         return await self.publish_preparation(principal,retained.original,retained.preparations[-1])
 
     async def _current_science(self,principal,prepared):

@@ -123,6 +123,7 @@ def test_near_matches_need_full_names(philippines):
         (b"not a zip", LookupStatus.MALFORMED),
         (dump_bytes("GT")[:-5], LookupStatus.MALFORMED),
     ],
+    ids=["empty", "not-zip", "truncated-zip"],
 )
 def test_unreadable_dumps(data, outcome):
     assert read_dump("GT", data) == (outcome, None)

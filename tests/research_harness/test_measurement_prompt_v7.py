@@ -12,8 +12,10 @@ from specimen_digitization.research_harness.contracts import (
 from specimen_digitization.research_harness.prompts import (
     GEOGRAPHY_FINAL_RESULT_PROMPT_VERSION, HANDOVER_PROMPT_VERSION,
     QUALIFIED_PROMPT_VERSION, ROLE_PROMPTS,
-    TAXONOMY_QUERY_PROMPT_VERSION, TEMPORAL_CONTEXT_PROMPT_VERSION, resolve_prompt,
+    TAXONOMY_RECONCILIATION_PROMPT_VERSION, TEMPORAL_CONTEXT_PROMPT_VERSION, resolve_prompt,
 )
+
+from prompt_test_fixtures import ACTIVE_PROMPTS
 
 ROOT = Path(prompts.__file__).parent
 PIN = "0" * 64
@@ -72,12 +74,8 @@ def test_measurement_v7_requires_autonomous_stated_value_settlement_and_preserve
 
 def test_measurement_v7_change_is_scoped_to_its_role():
     assert {role: ROLE_PROMPTS[role] for role in SpecialistRole if role != SpecialistRole.MEASUREMENT} == {
-        SpecialistRole.TAXONOMY: ("specimen_taxonomy-v6.txt", TAXONOMY_QUERY_PROMPT_VERSION),
-        SpecialistRole.GEOGRAPHY: ("specimen_geography-v8.txt", GEOGRAPHY_FINAL_RESULT_PROMPT_VERSION),
-        SpecialistRole.TEMPORAL: ("specimen_temporal-v7.txt", TEMPORAL_CONTEXT_PROMPT_VERSION),
-        SpecialistRole.PARTIES: ("specimen_parties-v5.txt", HANDOVER_PROMPT_VERSION),
-        SpecialistRole.COLLECTION: ("specimen_collection-v5.txt", HANDOVER_PROMPT_VERSION),
-    }
+        role: row for role, row in ACTIVE_PROMPTS.items() if role != SpecialistRole.MEASUREMENT}
+
     for role in SpecialistRole:
         assert ("Evidence-grounded elevation resolution (v7" in pin(role).text) == (role == SpecialistRole.MEASUREMENT)
 

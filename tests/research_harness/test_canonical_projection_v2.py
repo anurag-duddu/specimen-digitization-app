@@ -22,7 +22,9 @@ from specimen_digitization.research_harness.canonical_projection_v2 import (
     CanonicalLineageContextV2, ConsumedCanonicalSourceV2, NativePriorSnapshotProofV2, project_canonical_value_v2,
     project_tool_input_lineage_v2,
     NativeRawSourceAssetProofV2, NativeTranscriptionDecisionProofV2, relation_unproved_fields, relations_unproved,
+    _literal_grounding,
 )
+from specimen_digitization.research_harness.collection import collection_resolution
 from specimen_digitization.research_harness.compatibility import PublicationUnavailable
 from specimen_digitization.research_harness.contracts import (
     EventHypothesis, EventKind, EvidenceItem, FieldCheckpoint, FieldKey, FieldResolution, FragmentRelation,
@@ -377,24 +379,28 @@ def complementary_case(materialization):
     """Genuine deterministic target assembly; native semantic acceptance is synthetic."""
     b = settled_case(materialization)
     words = ("wet", "forest")
-    for item, word in zip(b.prior.run.observations, words):
-        item.literal_text = word
-        item.raw_sha256 = digest("synthetic immutable reading " + word)
+    reading = "\n".join(words)
+    # Both independent readers cover the complete assertion, while its original
+    # complementary spans still require assembly to produce the joined literal.
+    for item in b.prior.run.observations:
+        item.literal_text = reading
+        item.raw_sha256 = digest("synthetic immutable habitat reading " + item.id)
     b.result = b.prior.model_copy(deep=True)
     b.result.version += 1
     old = b.context.original_request
-    fragments = tuple(item.model_copy(update={"observation_text": word,
-        "observation_digest": hashlib.sha256(word.encode()).hexdigest(),
-        "start": 0, "end": len(word), "literal": word}) for item, word in zip(old.fragments, words))
+    fragments = tuple(item.model_copy(update={"observation_text": reading,
+        "observation_digest": hashlib.sha256(reading.encode()).hexdigest(),
+        "start": reading.index(word), "end": reading.index(word) + len(word), "literal": word})
+        for item, word in zip(old.fragments, words))
     original_evidence = EvidenceItem(id="synthetic-habitat-label-evidence", kind="literal",
         source_id="synthetic-original-label", locator="fixture://label/habitat",
         response_digest=digest([item.observation_text for item in fragments]), source_version="fixture-v1",
-        publisher_assertion_id="synthetic-habitat-label", excerpt="wet forest", event_id="synthetic-collecting")
+        publisher_assertion_id="synthetic-habitat-label", excerpt=reading, event_id="synthetic-collecting")
     evidence = (original_evidence.id,)
     native_evidence_id = UUID(ident("synthetic-native-habitat-label-evidence"))
     native_evidence = Evidence(id=str(native_evidence_id), kind="literal", asset_id=b.prior.asset.id,
         region_id=b.prior.run.regions[0].id, observation_ids=[item.observation_id for item in fragments],
-        source="synthetic original label", locator="fixture://label/habitat", excerpt="wet forest")
+        source="synthetic original label", locator="fixture://label/habitat", excerpt=reading)
     b.prior.run.evidence.append(native_evidence)
     b.result.run.evidence.append(native_evidence.model_copy(deep=True))
     event = EventHypothesis(id="synthetic-collecting", scope=old.scope, kind=EventKind.COLLECTING,
@@ -412,17 +418,9 @@ def complementary_case(materialization):
     request = SpecialistRequest(scope=old.scope, role=SpecialistRole.COLLECTION, field_keys=(FieldKey.HABITAT,),
         prompt=prompt, fragments=fragments, events=(event,), relations=(relation,), assemblies=(assembly,),
         evidence=(original_evidence,))
-    value = FieldValue(state=ValueState.SUPPORTED, literal=assembly.interpreted_text,
-        parsed=assembly.interpreted_text, normalized=assembly.interpreted_text, layer="settled",
-        verbatim_by_observation={item.observation_id: item.literal for item in fragments},
-        settled_observation_ids=[item.observation_id for item in fragments],
-        input_source_by_observation={item.observation_id: "raw_reading" for item in fragments},
-        input_source="raw_reading", source_region_id=b.prior.run.regions[0].id,
-        evidence_ids=list(evidence), evidence_relations={eid: "supports" for eid in evidence},
-        reason="Synthetic complementary original habitat fragments")
-    resolution = FieldResolution(field_key=FieldKey.HABITAT, work_state=WorkState.RESOLVED,
-        value=value, value_layer="settled", evidence_ids=evidence, assembly_ids=(assembly.id,),
-        event_id=event.id, reason="Exact deterministic original assembly")
+    resolution = collection_resolution(request, FieldKey.HABITAT)
+    assert resolution.work_state == WorkState.RESOLVED
+    value = resolution.value
     b.checkpoint = b.checkpoint.model_copy(update={"field_key": FieldKey.HABITAT, "resolution": resolution,
         "prompt_digest": prompt.digest, "effect_receipt_ids": ()})
     b.context = replace(b.context, original_request=request, tool_results=(),
@@ -451,11 +449,18 @@ def test_complementary_literal_uses_exact_original_target_assembly_without_singl
 
 def test_correct_assembled_science_does_not_ground_a_different_candidate_literal(materialization):
     b, assembly = complementary_case(materialization)
-    replace_target_value(b, b.checkpoint.resolution.value.model_copy(update={"literal": "wet invented forest"}))
-    assert b.result.run.fields["habitat"].normalized == assembly.interpreted_text
     assert validate_resolution(b.context.original_request, b.checkpoint.resolution) == b.checkpoint.resolution
+    output = project(b)
+    lineage = next(row.variables for row in output.target_writes if row.operation == "AppendCanonicalValueLineageV2")
+    invented = b.checkpoint.resolution.value.model_copy(update={"literal": "wet invented forest"})
+    assert b.result.run.fields["habitat"].normalized == assembly.interpreted_text
+    # Collection validation now rejects this mismatch before projection. Keep
+    # the projection's literal guard covered with its genuine retained inputs.
+    with pytest.raises(EvidenceError, match="^Collection literal differs from exact original assembly$"):
+        validate_resolution(b.context.original_request,
+            b.checkpoint.resolution.model_copy(update={"value": invented}))
     with pytest.raises(PublicationUnavailable, match="^canonical_lineage_literal_unproved$"):
-        project(b)
+        _literal_grounding(invented, b.checkpoint.resolution, lineage["readingSources"], b.context.original_request)
 
 
 

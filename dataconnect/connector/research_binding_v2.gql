@@ -73,7 +73,7 @@ query GetCanonicalResearchBindingV2($organizationId: UUID!, $collectionId: UUID!
     jsonb_build_object('contract_version',b.publication_version,'authority_digest',b.authority_digest,
       'import_proof_id',b.import_proof_id,'import_proof_digest',b.import_proof_digest,
       'head_receipt_id',b.current_receipt_id,'head_chain_digest',b.current_chain_digest,
-      'causal_chain',(SELECT CASE WHEN count(*)<=20 THEN COALESCE(jsonb_agg(p.causal_proof ORDER BY p.used_canonical_revision),'[]'::jsonb) ELSE NULL END
+      'causal_chain',(SELECT CASE WHEN count(*)<=64 THEN COALESCE(jsonb_agg(p.causal_proof ORDER BY p.used_canonical_revision),'[]'::jsonb) ELSE NULL END
         FROM public.research_publication_receipt_v2 p WHERE p.organization_id=b.organization_id
           AND p.collection_id=b.collection_id AND p.specimen_id=b.specimen_id AND p.binding_id=b.binding_id),
       'causal_count',(SELECT count(*) FROM public.research_publication_receipt_v2 p

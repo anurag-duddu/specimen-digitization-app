@@ -399,8 +399,10 @@ def test_an_ordinary_chain_near_the_limit_leaves_no_room_for_one_request(rig_aft
     # 20,000 remain, less than one request's reservation: the roles are refused
     # before any call, so nothing is sent and nothing more is spent.
     rig = rig_after_980k
+    from test_final_progress_carrier import install_progress_sql_fixture
+    install_progress_sql_fixture(rig)
     workflow = e2e.compose(rig, geolocate=False)
-    e2e.to_plan(workflow, rig)
+    parsed = e2e.to_plan(workflow, rig)
     with e2e.supervised(), pytest.raises(OperationalBlock, match="native_research_operational_hold"):
         workflow.step(rig.principal, rig.specimen_id)
     assert rig.model_calls == []
@@ -410,3 +412,12 @@ def test_an_ordinary_chain_near_the_limit_leaves_no_room_for_one_request(rig_aft
     job = list(state["jobs"].values())[0]
     assert {field["work_state"] for field in job["fields"].values()} == {"operational_failed"}
     assert state["effects"] == {} and rig.source_urls == []
+    # All roles refused before send; the target-free native receipt now
+    # projects that current operational hold without inventing any science.
+    [receipt] = rig.fake.receipts.values()
+    assert receipt["causal_proof"]["contract_version"] == "native-canonical-progress/v2"
+    assert (receipt["used_canonical_revision"], receipt["resulting_canonical_revision"]) == (
+        parsed.version, parsed.version + 1)
+    current = rig.repository.get(rig.principal.scope, rig.specimen_id)
+    assert current.version == parsed.version + 1 and current.run.stage == "processing_blocked"
+    assert current.run.fields == parsed.run.fields and current.run.usage == parsed.run.usage

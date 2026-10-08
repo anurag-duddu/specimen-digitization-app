@@ -37,10 +37,48 @@ class SqlConnectNativeCanonicalServiceV2:
     async def publish_checkpoint(self, principal, prepared: PreparedNativePublication, *,
                                  server_request_identity_digest):
         prepared = PreparedNativePublication.model_validate(prepared.model_dump(mode="json"))
-        return await self.writer.publish_checkpoint(
-            principal, prepared,
-            server_request_identity_digest=server_request_identity_digest,
-        )
+        from .telemetry import ResearchTrace, TraceIdentity
+        scope = prepared.basis.scope
+        trace = ResearchTrace(TraceIdentity(scope.specimen_id, scope.job_id, scope.generation))
+        with trace.span("writer", field_key=str(prepared.basis.field_key),
+                checkpoint_id=prepared.basis.checkpoint_id, binding_digest=prepared.basis.binding_digest) as span:
+            result = await self.writer.publish_checkpoint(principal, prepared,
+                server_request_identity_digest=server_request_identity_digest)
+            try:
+                trace.annotate(span, terminal_state="replayed" if result.replayed else "published",
+                    publication_count=1, revision=result.published.record_revision,
+                    publication_digest=result.published.publication_digest)
+            except Exception:
+                pass  # Diagnostics cannot turn a committed result into a failure.
+        try:
+            with trace.span("finalization", terminal_state=result.causal.progress_receipt.wire_status,
+                    publication_count=1, revision=result.published.record_revision):
+                pass
+        except Exception:
+            pass
+        return result
+
+    async def publish_progress(self, principal, specimen_id, *, scope):
+        from .native_progress_writer_v2 import publish_progress
+        from .telemetry import ResearchTrace, TraceIdentity
+        trace = ResearchTrace(TraceIdentity(scope.specimen_id, scope.job_id, scope.generation))
+        with trace.span("writer", operation_kind="progress_only", scientific_publication_count=0,
+                binding_digest=self.writer.journal.store.job(self.writer.journal.scope)["binding_digest"]) as span:
+            result = await publish_progress(self.writer, principal, specimen_id, scope=scope)
+            try:
+                trace.annotate(span, terminal_state="replayed" if result.replayed else "published",
+                    progress_receipt_count=1, revision=result.published.record_revision,
+                    publication_digest=result.published.publication_digest)
+            except Exception:
+                pass
+        try:
+            with trace.span("finalization", operation_kind="progress_only", scientific_publication_count=0,
+                    progress_receipt_count=1, terminal_state=result.causal.progress_receipt.wire_status,
+                    revision=result.published.record_revision):
+                pass
+        except Exception:
+            pass
+        return result
 
     async def publish_preparation(self, principal, intent, preparation):
         return await self.writer.publish_preparation(principal, intent, preparation)

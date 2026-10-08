@@ -61,6 +61,14 @@ class NativeResearchWorkflow:
             # Retained historical commands cannot intercept that later work.
             if command.queued_revision == specimen.version and command.canonical_run_id == specimen.run.id:
                 return self._derivation_step(principal, specimen)
+        if (specimen.run.stage == "processing_blocked" and self.ordinary.next_step(specimen.run) == "plan"
+                and committed_harness_route(specimen.run.profile_snapshot) is not None):
+            try:
+                command = asyncio.run(self._retry_command_for_step(principal, specimen))
+            except (PermissionError, HeldUnknown, StaleWork):
+                raise OperationalBlock("research_retry_requires_reconciliation") from None
+            if command is not None:
+                return self._retry_step(principal, specimen, command["id"])
         if specimen.run.stage in {"finalized", "paused", "cancelled", "processing_blocked"}:
             return specimen
         if "evidence_pilot" in specimen.run.dependencies:
@@ -94,6 +102,50 @@ class NativeResearchWorkflow:
         # Each publication saves the specimen through the native writer; the
         # research layer never manufactures a second Specimen/save writer.
         return self.ordinary.repository.get(principal.scope, specimen_id)
+
+    async def _retry_command_for_step(self, principal, specimen):
+        from .retry_work_queue import queued_retry_command, START_RECEIPT_ATTEMPTS, START_RECEIPT_INTERVAL_SECONDS
+        from specimen_digitization.application.worker_deadline import current_deadline
+        # A fast worker may read before the API stores the actual start receipt.
+        # Wait only for that receipt; elapsed time never grants send authority.
+        for attempt in range(START_RECEIPT_ATTEMPTS):
+            binding = await self.native_worker.runtime_factory.discovery.binding(principal, specimen.id)
+            sending = any(event.get("kind") == "research_field_retry" and event.get("delivered") is False
+                and event.get("command", {}).get("scope") == binding.durability_scope(principal).identity()
+                and event["command"].get("dispatch_status") == "sending"
+                for event in binding.read_bundle.outbox.values())
+            deadline = current_deadline()
+            if sending and attempt < START_RECEIPT_ATTEMPTS - 1 and deadline is not None:
+                deadline.check()
+                await asyncio.sleep(START_RECEIPT_INTERVAL_SECONDS)
+                continue
+            return queued_retry_command(binding, principal, specimen, consuming=True)
+
+    def _retry_step(self, principal, specimen, command_id):
+        from specimen_digitization.application.worker_deadline import current_deadline
+        deadline = current_deadline()
+        if deadline is None:
+            raise OperationalBlock("native_research_worker_supervisor_required")
+        deadline.check()
+        try:
+            outcome = asyncio.run(self._research(principal, specimen, retry_command_id=command_id))
+            current = self.ordinary.repository.get(principal.scope, specimen.id)
+            if outcome.reason_code is not None:
+                binding = asyncio.run(self.native_worker.runtime_factory.discovery.binding(principal, specimen.id))
+                from .retry_work_queue import park_research_retry
+                current = park_research_retry(self.ordinary.repository, principal, binding, command_id, outcome)
+                self._completed_side_work = snapshot_digest(current.model_dump(mode="json"))
+            elif current.run.stage in {"finalized", "processing_blocked"}:
+                binding = asyncio.run(self.native_worker.runtime_factory.discovery.binding(principal, specimen.id))
+                from .retry_work_queue import finish_research_retry
+                current = finish_research_retry(self.ordinary.repository, principal, binding, command_id, outcome)
+                self._completed_side_work = snapshot_digest(current.model_dump(mode="json"))
+        except Exception:
+            # Retry custody, source cost and publication uncertainty cannot be
+            # erased by the drain's administrative lane_block snapshot writer.
+            raise OperationalBlock("research_retry_requires_reconciliation") from None
+        deadline.check()
+        return current
 
     async def _published_field_hold(self, principal, before, outcome):
         """Keep a proved native blocked save current, without an administrative save.
@@ -233,11 +285,12 @@ class NativeResearchWorkflow:
         await asyncio.to_thread(finish_derivation, repository, principal, current, command, scope, store.program_key)
         return current
 
-    async def _research(self, principal, specimen):
+    async def _research(self, principal, specimen, *, retry_command_id=None):
         if self.provision is not None:
             # Program state, job and canonical binding for this run; idempotent.
             await self.provision(principal, specimen)
-        return await self.native_worker.run_registered(principal, specimen.id, owner=self.owner)
+        return await self.native_worker.run_registered(principal, specimen.id, owner=self.owner,
+            **({"retry_command_id": retry_command_id} if retry_command_id is not None else {}))
 
 
 def membership_verifier(repository):

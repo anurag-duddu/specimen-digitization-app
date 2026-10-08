@@ -36,14 +36,15 @@ import json
 import re
 import time
 from collections import Counter
-from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
+from urllib.parse import unquote
 
 import pytest
 from pydantic_ai.messages import ModelResponse, RetryPromptPart, ToolCallPart
 from pydantic_ai.models.function import FunctionModel
 
 import production_e2e_support as support
+from prompt_test_fixtures import retained_text
 from specimen_digitization.application.domain import FieldValue, LookupStatus, ValueState
 from specimen_digitization.application.lookup import scientific_name
 from specimen_digitization.application.production import SqlConnectRepository, actor_uid
@@ -181,6 +182,8 @@ def instructed(request):
     text = " ".join(request.prompt.text.split())
     start = text.find("Producer and literal without an assembly (publication):")
     producer = text[start:text.find("Human question evidence (publication):")] if start >= 0 else ""
+    if not producer and "instead cite one original reading on value:" in text:
+        producer = text  # geography v9 preserves exact reader provenance with a new heading
     listed = re.search(rf'Missing policy \(unstructured labels\): .*? declares missing_policy "{POLICY}" for '
         r"(.+?)(?:, and no source|\.)", text)
     named = {FieldKey(name) for name in re.findall(r"[a-z_]+", listed[1]) if name != "and"} if listed else set()
@@ -199,6 +202,13 @@ def instructed(request):
             "pinned profile's missing_policy: work_state waiting_policy" in text
             and f'reason "missing_policy:{POLICY}"' in text)
     )
+    if "connected exact-join source, return waiting_policy" in text and (
+            "reason beginning missing_policy:" + POLICY) in text:
+        current_fallback = True  # parties v6 retains its declared unsupported-identity hold
+    if ("An unnamed city/county needs a qualified policy" in text
+        and "Missing label units and the declared unsupported county contract use waiting_policy" in text
+        and f"reason missing_policy:{POLICY}" in text):
+        named |= {FieldKey.CITY, FieldKey.COUNTY} & requested & declared
     if current_fallback:
         named |= requested & declared
     named &= requested & declared
@@ -296,6 +306,13 @@ def specialist_factory(log, *, abstain=None, taxon_lookup=False, after_failure=W
                 return ModelResponse(parts=[ToolCallPart("lookup_source", {"query": {
                     "source_id": "gbif", "field_key": "taxon", "query_text": query}},
                     tool_call_id="unkeyed-gbif")], usage=support.USAGE)
+            gbif = last_result(results, "gbif", FieldKey.TAXON)
+            if role == SpecialistRole.TAXONOMY and gbif is not None and gbif.status == LookupStatus.NO_MATCH:
+                for source in ("global_names_verifier", "catalogue_of_life"):
+                    if last_result(results, source, FieldKey.TAXON) is None:
+                        return ModelResponse(parts=[ToolCallPart("lookup_source", {"query": {
+                            "source_id": source, "field_key": "taxon", "query_text": query}},
+                            tool_call_id=f"unkeyed-taxon-support-{source}")], usage=support.USAGE)
             if role == SpecialistRole.GEOGRAPHY and turn <= len(geography_rounds):
                 return ModelResponse(parts=[ToolCallPart("lookup_source", {"query": {
                     "source_id": "geolocate", "field_key": str(key),
@@ -362,6 +379,12 @@ def transport(log, *, gbif_status=None, gbif_body=None, geolocate_fails_after=No
             if geolocate_fails_after is not None and len(served) > geolocate_fails_after:
                 return 503, b"{}"
             return 200, chicago
+        if policy.id == "global_names_verifier" and gbif_body:
+            # Preserve requested-name identity in a valid synthetic no-match.
+            name = unquote(url.rsplit("/", 1)[1])
+            return 200, json.dumps({"names": [{"name": name, "bestResult": None}]}).encode()
+        if policy.id == "catalogue_of_life" and gbif_body:
+            return 200, b'{"total":0,"result":[]}'
         assert policy.id == "gbif" and (gbif_status or gbif_body), f"unexpected request {policy.id} {url}"
         return (200, gbif_body) if gbif_body else (gbif_status, b"{}")
     return FixtureSourceTransport(read)
@@ -454,18 +477,16 @@ def test_an_unkeyed_label_lands_in_needs_human_review_on_the_declared_fields(unk
         *map(str, DECLARED - {FieldKey.COUNTY, FieldKey.CITY}), "verbatim_dts"}
 
 
-def test_parties_runs_last_so_the_always_terminal_irn_publishes_the_final_state(unkeyed):
-    """FAILS on origin/main: COLLECTION is last, nothing in it is terminal, and the last publication
-    (identified_by_irn) predates its result, so the record cannot finalize."""
-    assert list(SpecialistRole)[-2:] == [SpecialistRole.COLLECTION, SpecialistRole.PARTIES]
+def test_deferred_irn_publishes_final_state_after_collecting_context_first_windows(unkeyed):
+    """The genuine unsent terminal IRN carries final progress after all six roles."""
     parsed, specimen, hold = run_research(unkeyed, specialist_factory(unkeyed.model_calls), transport(unkeyed.source_urls))
     # The worker completes roster windows in order, while two independent
     # specialists inside each window may call their models in either order.
     roles = [role for role, _ in unkeyed.model_calls]
     assert len(roles) == 7
-    assert Counter(roles[:3]) == {"specimen_taxonomy": 1, "specimen_geography": 2}
-    assert Counter(roles[3:5]) == {"specimen_temporal": 1, "specimen_measurement": 1}
-    assert Counter(roles[5:]) == {"specimen_collection": 1, "specimen_parties": 1}
+    assert Counter(roles[:2]) == {"specimen_temporal": 1, "specimen_parties": 1}
+    assert Counter(roles[2:4]) == {"specimen_measurement": 1, "specimen_collection": 1}
+    assert Counter(roles[4:]) == {"specimen_taxonomy": 1, "specimen_geography": 2}
     assert [turn for role, turn in unkeyed.model_calls if role == "specimen_geography"] == [1, 2]
     receipts = sorted(unkeyed.fake.receipts.values(), key=lambda row: row["used_canonical_revision"])
     assert receipts[-1]["causal_proof"]["changed_field"] == "identified_by_irn"
@@ -559,8 +580,11 @@ def test_a_waiting_policy_after_a_genuine_gbif_no_match_still_goes_to_review(nam
     reasons = set(specimen.run.reasons)
     assert "mandatory_unresolved:taxon" in reasons
     assert not [reason for reason in reasons if reason.startswith("research_work:")]
-    # GBIF answered once; the specialist was not asked to correct itself.
-    assert [turn for role, turn in named_taxon.model_calls if role == "specimen_taxonomy"] == [1, 2]
+    # The complete deciding/supporting source window stops without correction.
+    assert [turn for role, turn in named_taxon.model_calls if role == "specimen_taxonomy"] == [1, 2, 3, 4]
+    assert sum("gbif" in url for url in named_taxon.source_urls) == 1
+    assert sum("verifier.globalnames.org" in url for url in named_taxon.source_urls) == 1
+    assert sum("api.checklistbank.org" in url for url in named_taxon.source_urls) == 1
 
 
 def test_a_waiting_policy_on_a_literal_after_a_refused_museum_source_probe_still_goes_to_review(unkeyed):
@@ -580,9 +604,8 @@ def pinned(role, filename=None):
     prompt = resolve_prompt(role, profile_digest="f" * 64, source_registry_digest="a" * 64, toolset_digest="b" * 64,
         model_route="harness-deepseek", output_schema_digest="c" * 64)
     if filename:
-        root = Path(prompts.__file__).parent
-        text = ((root / "common-v1.txt").read_text(encoding="utf-8") + "\n" + (root / filename).read_text(encoding="utf-8")
-                + "\nOwned fields: " + ", ".join(map(str, prompts.ROLE_FIELDS[role])) + ".\n")
+        version = int(filename.rsplit("-v", 1)[1].removesuffix(".txt"))
+        text = retained_text(role, version)
         prompt = prompt.model_copy(update={"text": text})
     return SimpleNamespace(prompt=prompt)
 
@@ -591,8 +614,10 @@ def test_the_specialist_reads_the_citation_fields_and_the_declared_fields_out_of
     named = set()
     for role in SpecialistRole:
         cites, fields = instructed(pinned(role))
-        assert set(cites) == (set(CITATION_FIELDS) if role in (SpecialistRole.TAXONOMY, SpecialistRole.GEOGRAPHY,
-            SpecialistRole.PARTIES, SpecialistRole.COLLECTION) else set())
+        # Current parties resolves through the typed collector utility, which
+        # returns its original lineage; its prose no longer lists value fields.
+        assert set(cites) == (set(CITATION_FIELDS) if role in (SpecialistRole.TAXONOMY,
+            SpecialistRole.GEOGRAPHY, SpecialistRole.COLLECTION) else set())
         assert fields <= set(prompts.ROLE_FIELDS[role])
         named |= fields
     assert named == DECLARED

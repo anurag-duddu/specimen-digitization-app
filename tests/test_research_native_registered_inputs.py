@@ -128,6 +128,16 @@ def test_literal_input_bound_rejects_missing_authority_oversize_and_multimodal()
             RegisteredTextRequestBoundV1.from_registered(binding,price,{**raw,**update})
 
 
+def test_previous_package_serialization_cannot_authorize_new_provider_requests():
+    binding = ModelBinding("harness-deepseek", "deepseek-ai/DeepSeek-V4.1-Flash",
+        "deepinfra", 128, 1_000, "fixture-price-v1")
+    pins = price_pins(binding)
+    pins["model_request_bounds"] = {"collection": {**request_bound(binding),
+        "serialization_version": "pydantic-ai-2.51.0+harness-0.36.0/v1"}}
+    with pytest.raises(HeldUnknown, match="bound_unqualified"):
+        registered_model_request_guards(pins, {"collection": binding})
+
+
 def parsed_specimen():
     asset = Asset(sha256="a"*64,blob_ref="a"*64+":1",media_type="image/jpeg",
         size_bytes=10,width=100,height=100,filename="fixture.jpeg",uploader="fixture",sensitive=False)
@@ -169,3 +179,29 @@ def test_absent_native_evidence_never_creates_label_authority():
     fragments,events,assemblies,evidence,_ = NativeGenerationRequestFactory._graph(specimen,scope)
     assert len(fragments) == 1
     assert not events and not assemblies and not evidence
+
+
+def test_official_tagged_memory_text_is_admitted_under_same_byte_liability_bound():
+    from pydantic_ai.messages import ModelMessagesTypeAdapter, ModelRequest, TextContent, UserPromptPart
+    binding = ModelBinding("harness-deepseek", "deepseek-ai/DeepSeek-V4.1-Flash", "deepinfra",128,1_000,"fixture-price-v1")
+    pins = price_pins(binding)
+    price = RegisteredModelPriceV1.from_registered(binding,pins["model_prices"]["collection"])
+    guard = RegisteredTextRequestBoundV1.from_registered(binding,price,request_bound(binding))
+    messages = ModelMessagesTypeAdapter.dump_python([ModelRequest([UserPromptPart([
+        TextContent("Reviewed procedure context", metadata="harness-memory-scope-marker")])])],mode="json")
+    assert guard.validate(messages,{}, {})["bound_digest"] == digest(guard.__dict__)
+    messages[0]["parts"][0]["content"][0]["metadata"] = "x" * 2_000
+    with pytest.raises(HeldUnknown,match="bound_exceeded"):
+        guard.validate(messages,{}, {})
+
+
+@pytest.mark.parametrize("chunk", [{"kind":"binary","content":"not text"},
+    {"kind":"text-content","content":"text","url":"https://example.invalid/image"},
+    {"kind":"text-content","content":{"text":"not a literal"}}])
+def test_tagged_text_does_not_admit_binary_url_or_forged_modalities(chunk):
+    binding = ModelBinding("harness-deepseek", "deepseek-ai/DeepSeek-V4.1-Flash", "deepinfra",128,1_000,"fixture-price-v1")
+    pins = price_pins(binding)
+    price = RegisteredModelPriceV1.from_registered(binding,pins["model_prices"]["collection"])
+    guard = RegisteredTextRequestBoundV1.from_registered(binding,price,request_bound(binding))
+    with pytest.raises(HeldUnknown,match="modality_unqualified"):
+        guard.validate([{"parts":[{"part_kind":"user-prompt","content":[chunk]}]}],{}, {})

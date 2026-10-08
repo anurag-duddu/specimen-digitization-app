@@ -41,7 +41,7 @@ def build_research_engine(
     *, profile: CollectionProfile, requests: Mapping[SpecialistRole, SpecialistRequest],
     store, scope, lease, blobs, tool_broker, bindings: Mapping, settings: Mapping,
     base_model_factory, actual_cost=None, request_guard=None, limits=None, max_concurrency: int = 1, source_pins=None,
-    effect_broker=None,
+    effect_broker=None, extra_capabilities_factory=None, collecting_contexts=None,
 ):
     """Wire the production interfaces without creating or resetting an allowance.
 
@@ -78,7 +78,8 @@ def build_research_engine(
         return SpecialistHarness(requests=selected, model_factory=model_factory,
             tool_broker=tool_broker,
             step_store_factory=lambda request:SqlConnectStepStore(store, scope, blobs,
-                agent_name=str(request.role)), limits=limits or HarnessLimits())
+                agent_name=str(request.role)), limits=limits or HarnessLimits(),
+            extra_capabilities_factory=extra_capabilities_factory, collecting_contexts=collecting_contexts)
 
     return ResearchEngine(profile=profile, requests=requests, journal=journal,
         harness_factory=harness_factory, model_settings_digest=digest(dict(settings)),

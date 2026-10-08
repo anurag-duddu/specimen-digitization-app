@@ -240,8 +240,11 @@ class NativeResearchRuntimeFactory:
             raise StaleWork("research_source_registry_pin_changed")
         capture_policies = registered_capture_policies(source_pins, registry)
         from .initial_requests import NativeGenerationRequestFactory
+        from .accepted_output import read_accepted_checkpoint_proof
         request_factory = self.request_factory or NativeGenerationRequestFactory(
-            self.repository, verify_access=self.verify_access, registry=registry)
+            self.repository, verify_access=self.verify_access, registry=registry,
+            checkpoint_proof_reader=lambda checkpoint_id:
+                read_accepted_checkpoint_proof(store, scope, self.blobs, checkpoint_id))
         if budget["remaining_micro_usd"] <= 0 or budget["halted"]:
             return await self._publication_runtime(principal, binding, store, scope, owner=owner,
                 ttl_seconds=ttl_seconds, registry=registry, request_factory=request_factory)
@@ -296,10 +299,17 @@ class NativeResearchRuntimeFactory:
         if derivation_context is not None:
             geo["derivation_context"] = derivation_context
         model_factory = None if derivation_context is not None else (self.model_factory or _gateway_models())
+        from .dependency_context import collecting_context_for_job
+        collecting_context = (await asyncio.to_thread(collecting_context_for_job,
+            requests[SpecialistRole.GEOGRAPHY], job,
+            checkpoint_proof_reader=lambda checkpoint_id:
+                read_accepted_checkpoint_proof(store, scope, self.blobs, checkpoint_id))
+            if SpecialistRole.GEOGRAPHY in requests else None)
         lease = await asyncio.to_thread(store.claim, scope, owner, ttl_seconds=ttl_seconds)
         tools, _ = build_captured_research_services_v2(repository=self.repository,
             effect_broker=effects, scope=scope, lease=lease, registry=registry,
-            policies=capture_policies, transport=transport, execution_class=execution_class, **geo)
+            policies=capture_policies, transport=transport, execution_class=execution_class,
+            collecting_context=collecting_context, **geo)
         if derivation_context is not None:
             journal = DurableResearchJournal(store, scope, lease, self.blobs)
             service = SqlConnectNativeCanonicalServiceV2(self.repository, journal, blobs=self.blobs,
@@ -310,12 +320,16 @@ class NativeResearchRuntimeFactory:
             return NativeResearchRuntime(principal, binding, store, scope, lease, journal,
                 PublicationOnlyEngine(journal, "research_derivation_model_dispatch_forbidden"),
                 service, self.blobs, 0, False, derivation)
+        from .capability_providers import build_capability_factory
+        capabilities = build_capability_factory(broker=effects, scope=scope, lease=lease,
+            registry=registry, source_pins=source_pins, transport=transport, execution_class=execution_class)
         engine = build_research_engine(profile=profile, requests=requests,
             store=store, scope=scope, lease=lease, blobs=self.blobs, tool_broker=tools,
             bindings=bindings, settings=job["pins"]["settings"], source_pins=source_pins,
             base_model_factory=lambda request:model_factory(request, bindings[request.role]),
             actual_cost=prices, request_guard=request_guards, limits=self.limits, max_concurrency=window,
-            effect_broker=effects)
+            effect_broker=effects, extra_capabilities_factory=capabilities,
+            collecting_contexts={SpecialistRole.GEOGRAPHY:collecting_context} if collecting_context else None)
         service = SqlConnectNativeCanonicalServiceV2(self.repository, engine.journal, blobs=self.blobs,
             materializer=services.materializer, evidence_provider=services.evidence_provider,
             projection_services=services.projection_services)

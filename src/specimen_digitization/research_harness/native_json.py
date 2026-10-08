@@ -40,10 +40,11 @@ def decode_native_json(operation, data):
     raw = row["exact_json"]
     if type(raw) is not str or not raw:
         refuse()
-    try:
-        raw.encode("utf-8")
-    except UnicodeEncodeError:
-        refuse()
+    if not raw.isascii():
+        try:
+            raw.encode("utf-8")
+        except UnicodeEncodeError:
+            refuse()
 
     # Existing readers bound each state/preimage and the receipt/row counts.
     # Their 32 MiB per-string bound is not a whole-response bound: this scoped

@@ -2739,7 +2739,7 @@ def create_app(
     if research_version == "v2":
         from ..research_harness.discovery_v2 import ResearchDiscoveryV2, ResearchDiscoveryResultV2
         discovery = ResearchDiscoveryV2(repository, verify_access=research_access,
-            worker_dispatcher=worker_dispatcher)
+            worker_dispatcher=worker_dispatcher, worker_readiness=research_derivation_ready)
         discovery_result_model = ResearchDiscoveryResultV2
     elif research_version == "v1":
         from ..research_harness.discovery import ResearchDiscoveryResult

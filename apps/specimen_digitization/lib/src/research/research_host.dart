@@ -25,6 +25,9 @@ class ResearchHost extends StatefulWidget {
     required this.specimen,
     this.readOnly = false,
     this.refreshRecord,
+    this.refreshEpoch = 0,
+    this.refreshEnabled = true,
+    this.onPollingPaused,
     this.builder,
   });
   final ApiSpecimenRepository repository;
@@ -34,6 +37,11 @@ class ResearchHost extends StatefulWidget {
 
   /// Reloads the open record after the queued canonical review save.
   final Future<void> Function()? refreshRecord;
+
+  /// Advances after a verified canonical read, even at the same version.
+  final int refreshEpoch;
+  final bool refreshEnabled;
+  final void Function(Object owner, bool paused)? onPollingPaused;
 
   /// Places research beside a field while retaining one record-bound controller.
   /// The supplied function creates only that field's lazy disclosure.
@@ -58,6 +66,10 @@ class _ResearchHostState extends State<ResearchHost> {
   int _epoch = 0;
   String? _message;
   bool _denied = false;
+  int? _discoveringEpoch;
+  bool _researchRevealed = false;
+  bool _derivationRevealed = false;
+  bool _pollingPaused = false;
 
   @override
   void initState() {
@@ -118,7 +130,18 @@ class _ResearchHostState extends State<ResearchHost> {
         oldWidget.specimen.recordVersionId != widget.specimen.recordVersionId ||
         oldWidget.readOnly != widget.readOnly;
     if (replaced || recordChanged) {
+      final sameRecord =
+          !replaced &&
+          oldWidget.collection.key == widget.collection.key &&
+          oldWidget.specimen.id == widget.specimen.id;
+      final loaded =
+          _researchRevealed ||
+          _controller != null &&
+              _controller!.networkState != ResearchNetworkState.idle;
+      _researchRevealed = sameRecord && loaded;
+      _derivationRevealed = sameRecord && _derivationRevealed;
       _epoch++;
+      _discoveringEpoch = null;
       _clear();
       _message = null;
       if (replaced) {
@@ -134,17 +157,81 @@ class _ResearchHostState extends State<ResearchHost> {
           readOnly: widget.readOnly,
         );
       }
-      if (!_denied) _discover();
+      _reportPollingPause();
+      if (!_denied && widget.refreshEnabled) {
+        unawaited(_discover(reloadLoaded: _researchRevealed));
+        unawaited(_refreshDerivation());
+      }
+    } else if (oldWidget.refreshEpoch != widget.refreshEpoch &&
+        widget.refreshEnabled) {
+      unawaited(_refreshOpened());
     }
   }
 
+  void _reportPollingPause() {
+    final research = _controller;
+    final derivation = _derivationController;
+    final paused =
+        research?.networkState == ResearchNetworkState.submitting ||
+        research?.queuedAck != null &&
+            research?.networkState == ResearchNetworkState.loading ||
+        derivation?.state == DerivationNetworkState.submitting ||
+        derivation?.accepted != null &&
+            derivation?.state == DerivationNetworkState.loading;
+    if (_pollingPaused == paused) return;
+    _pollingPaused = paused;
+    widget.onPollingPaused?.call(this, paused);
+  }
+
   void _changed() {
+    _reportPollingPause();
     if (mounted) setState(() {});
   }
 
-  Future<void> _discover() async {
-    if (_denied) return;
+  Future<void> _refreshDerivation() async {
+    if (!widget.refreshEnabled || !_derivationRevealed || _denied) return;
+    final controller = _derivationController;
+    if (controller == null ||
+        controller.state == DerivationNetworkState.loading ||
+        controller.state == DerivationNetworkState.submitting) {
+      return;
+    }
+    if (controller.hasCurrentResult &&
+        const {'completed', 'blocked'}.contains(controller.result?.status)) {
+      return;
+    }
+    if (controller.accepted != null) {
+      await controller.refreshResult(
+        refreshRecord: widget.refreshRecord ?? () async {},
+      );
+    } else {
+      await controller.loadCapability();
+    }
+  }
+
+  Future<void> _refreshOpened() async {
+    if (!widget.refreshEnabled ||
+        _denied ||
+        _pollingPaused ||
+        _discoveringEpoch != null ||
+        _controller?.networkState == ResearchNetworkState.loading) {
+      return;
+    }
+    _researchRevealed =
+        _researchRevealed ||
+        _controller != null &&
+            _controller!.networkState != ResearchNetworkState.idle;
+    await _discover(quiet: true, reloadLoaded: _researchRevealed);
+    if (mounted && widget.refreshEnabled) await _refreshDerivation();
+  }
+
+  Future<void> _discover({
+    bool quiet = false,
+    bool reloadLoaded = false,
+  }) async {
+    if (_denied || !widget.refreshEnabled || _discoveringEpoch != null) return;
     final epoch = ++_epoch;
+    _discoveringEpoch = epoch;
     final specimen = widget.specimen;
     final repository = ApiResearchRepository(
       request: widget.repository.request,
@@ -152,19 +239,33 @@ class _ResearchHostState extends State<ResearchHost> {
     try {
       final scope = await repository.discover(widget.collection, specimen);
       if (!mounted || _denied || epoch != _epoch) return;
-      final controller = ResearchController(
-        repository: repository,
-        scope: scope,
-        recordRevision: specimen.revision,
-        readOnly: widget.readOnly,
-        accessFailures: widget.repository.accessFailures,
-      );
-      controller.addListener(_changed);
+      final previous = _controller;
+      final reuse =
+          previous != null &&
+          previous.scope.matches(scope) &&
+          previous.recordRevision == specimen.revision &&
+          previous.readOnly == widget.readOnly;
+      final ResearchController controller;
+      if (previous != null && reuse) {
+        controller = previous;
+      } else {
+        _clear();
+        controller = ResearchController(
+          repository: repository,
+          scope: scope,
+          recordRevision: specimen.revision,
+          readOnly: widget.readOnly,
+          accessFailures: widget.repository.accessFailures,
+        )..addListener(_changed);
+      }
       if (_derivationController == null) _createDerivationController();
       setState(() {
         _controller = controller;
         _message = null;
       });
+      if (reloadLoaded && widget.refreshEnabled) {
+        await controller.refresh(quiet: quiet && reuse);
+      }
     } on ResearchFailure catch (failure) {
       if (!mounted || epoch != _epoch) return;
       setState(() {
@@ -173,11 +274,14 @@ class _ResearchHostState extends State<ResearchHost> {
             failure.kind == ResearchFailureKind.forbidden;
         _message = failure.message;
       });
+    } finally {
+      if (_discoveringEpoch == epoch) _discoveringEpoch = null;
     }
   }
 
   @override
   void dispose() {
+    if (_pollingPaused) widget.onPollingPaused?.call(this, false);
     _epoch++;
     _clear();
     _disposeDerivationController();
@@ -233,7 +337,9 @@ class _ResearchHostState extends State<ResearchHost> {
   }
 
   Future<void> _loadFieldResearch(String fieldKey) async {
+    _researchRevealed = true;
     if (fieldKey == 'country') {
+      _derivationRevealed = true;
       final derivation = _derivationController;
       if (derivation != null &&
           (derivation.capability == null ||

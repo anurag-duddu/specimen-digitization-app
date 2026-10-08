@@ -67,7 +67,7 @@ def forced_windows(monkeypatch, k):
 MODEL_DELAY_SECONDS = 0.4
 
 
-def scripted_with(rig, *, replace=None, delay=MODEL_DELAY_SECONDS):
+def scripted_with(rig, *, replace=None, delay=MODEL_DELAY_SECONDS, role_delays=None):
     """The e2e's scripted models, each answering after ``delay`` so that roles overlap in time.
 
     ``replace[role]`` answers in place of the script (a callable (messages, info))."""
@@ -78,7 +78,7 @@ def scripted_with(rig, *, replace=None, delay=MODEL_DELAY_SECONDS):
         role = str(request.role)
 
         async def respond(messages, info):
-            await asyncio.sleep(delay)
+            await asyncio.sleep((role_delays or {}).get(role, delay))
             if replace and role in replace:
                 return replace[role](messages, info)
             return function(messages, info)
@@ -109,7 +109,7 @@ def refusing_from(number):
     return install
 
 
-def tick(tmp_path, k, *, replace=None, ceiling=None, spent=0, before_step=None, key=None):
+def tick(tmp_path, k, *, replace=None, ceiling=None, spent=0, before_step=None, key=None, role_delays=None):
     """One plan tick of the synthetic specimen with k roles per window; the observed facts.
 
     k None: the production composer as shipped (the window size role_windows.ROLE_CONCURRENCY gives it).
@@ -197,7 +197,7 @@ def tick(tmp_path, k, *, replace=None, ceiling=None, spent=0, before_step=None, 
 
         workflow = compose_production_research_workflow(rig.ordinary, repository=rig.repository,
             environ=SWITCH_ON, actor_uid=support.WORKER, state_backend=rig.backend,
-            model_factory=scripted_with(rig, replace=replace),
+            model_factory=scripted_with(rig, replace=replace, role_delays=role_delays),
             source_transport=support.fixture_source_transport(rig.source_urls), blobs=rig.research_blobs)
         to_plan(workflow, rig)
         if before_step is not None:
@@ -262,20 +262,21 @@ def test_two_roles_per_window_publish_what_one_role_per_window_publishes(tmp_pat
         assert (facts["stage"], facts["disposition"], facts["outcome"]) == (
             "finalized", "needs_human_review", "no OperationalBlock")
         assert facts["lease_left_set"] is False and facts["duplicates"] == 0
-    # The same nineteen publications in the same order (a pass offers the specialists in roster order,
-    # then each one's fields in key order, as one role per window did), same field outcomes, same
-    # record, same reasons, same spend, nothing left held.
-    assert two["publications"] == one["publications"] and len(two["publications"]) == 19
+    # All nineteen genuine field publications survive. A one-role window may
+    # temporarily defer a different progress carrier, so source-safe ordering
+    # can differ while values, provenance, costs and final whole-20 progress agree.
+    assert set(two["publications"]) == set(one["publications"])
+    assert len(two["publications"]) == len(one["publications"]) == 19
     for key in ("work_states", "published_values", "reasons", "effects", "model_calls", "sources", "settled",
                 "specimen_state"):
         assert two[key] == one[key], key
     assert one["held_after"] == two["held_after"] == 0 and not one["refusals"] and not two["refusals"]
-    # The last publication carries the whole twenty fields' progress in both, and it is a field of
-    # the last window's roles: it comes after both of them committed (so it sees every role's work).
+    # The real deferred IRN checkpoint publishes after the final window, so its
+    # native receipt carries all twenty fields even if that window has no value.
     assert two["final_progress"]["human_reason_codes"] == one["final_progress"]["human_reason_codes"]
     assert not two["final_progress"]["operational_reason_codes"]
-    last_window = tuple(SpecialistRole)[-role_windows.ROLE_CONCURRENCY:]
-    assert two["publications"][-1] in {str(key) for role in last_window for key in ROLE_FIELDS[role]}
+    assert two["publications"][-1] == one["publications"][-1] == "identified_by_irn"
+    assert two["final_progress"]["wire_status"] == one["final_progress"]["wire_status"] == "completed"
     # The final queue retains only the held D/T/S mandatory field, not the
     # qualified date/elevation fields, and has no operational reason.
     unresolved = {"mandatory_unresolved:verbatim_dts"}
@@ -315,7 +316,7 @@ def test_two_roles_per_window_publish_what_one_role_per_window_publishes(tmp_pat
     # The shipped constant drives it: the worker asks the engine for two roles and the engine runs two.
     assert {(run["role_limit"], run["max_concurrency"]) for run in two["engine_runs"]} == {(2, 2)}
     assert [sorted(role.removeprefix("specimen_") for role in run["roles"]) for run in two["engine_runs"]] == [
-        ["geography", "taxonomy"], ["measurement", "temporal"], ["collection", "parties"]]
+        ["parties", "temporal"], ["collection", "measurement"], ["geography", "taxonomy"]]
 
 
 def test_overlapping_roles_keep_only_their_own_model_and_source_receipts(tmp_path):
@@ -348,7 +349,7 @@ def test_a_role_that_fails_alone_does_not_take_its_window_partner_down(tmp_path)
     geography = ("city", "country", "county", "precise_location", "province_state")
     assert {states[key] for key in geography} == {"operational_failed"} and states["taxon"] == "resolved"
     assert "taxon" in facts["publications"] and not set(geography) & set(facts["publications"])
-    # The roles after the failed window still published (the windows go on).
+    # Earlier independent roles publish; the deferred IRN carries the final hold.
     assert {"collectors", "collection_code", "habitat"} <= set(facts["publications"])
     assert facts["effects"].get(("model", "held_unknown"), 0) == 0 and facts["held_after"] == 0
     assert facts["outcome"] == "OperationalBlock(native_research_operational_hold)"
@@ -357,22 +358,23 @@ def test_a_role_that_fails_alone_does_not_take_its_window_partner_down(tmp_path)
 
 
 def test_a_held_unknown_model_effect_still_blocks_every_publication_of_the_run(tmp_path):
-    """The provider fails in the middle of taxonomy's request: the effect stays held_unknown (it is
-    not retried and its reservation stays held). Geography, its partner in the window, finished
+    """The provider fails in the middle of temporal's request: the effect stays held_unknown (it is
+    not retried and its reservation stays held). Parties, its partner in the window, finished
     and checkpointed its fields, but no publication of the run is allowed while a held effect
     exists: nothing is published, the lease stays set, the record is held. Unchanged by windows."""
-    two = tick(tmp_path / "two", None, replace={"specimen_taxonomy": provider_fails}, key="taxonomy_fails")
+    two = tick(tmp_path / "two", None, replace={"specimen_temporal": provider_fails}, key="temporal_fails")
     assert two["effects"][("model", "held_unknown")] == 1 and two["held_after"] == RESERVATION
     assert two["publications"] == [] and two["lease_left_set"] is True
-    assert two["work_states"]["taxon"] == "operational_failed"
-    assert [two["work_states"][key] for key in ("city", "country", "county", "province_state")] == ["resolved"] * 4
+    assert two["work_states"]["date_visited_from"] == "operational_failed"
+    assert two["work_states"]["collectors"] == "resolved"
+    assert two["work_states"]["identified_by_irn"] == "nonblocking_exception"
     assert two["outcome"] == "OperationalBlock(native_publication_requires_reconciliation)"
     assert two["stage"] == "plan" and two["disposition"] is None
     # With one role per window the same effect holds the run before any other role ran.
-    one = tick(tmp_path / "one", 1, replace={"specimen_taxonomy": provider_fails})
+    one = tick(tmp_path / "one", 1, replace={"specimen_temporal": provider_fails})
     assert one["effects"][("model", "held_unknown")] == 1 and one["publications"] == []
     assert one["outcome"] == "OperationalBlock(research_worker_custody_requires_reconciliation)"
-    assert one["work_states"]["city"] == "pending"
+    assert one["work_states"]["collectors"] == "pending"
 
 
 def test_a_window_never_runs_more_roles_than_the_run_can_reserve_for(tmp_path):
@@ -415,8 +417,9 @@ def test_a_refused_publication_leaves_the_earlier_roles_committed_fields_publish
     role per window had it. The publication whose outcome is in doubt keeps the lease."""
     one = tick(tmp_path / "one", 1, before_step=refusing_from(2))
     two = tick(tmp_path / "two", None, before_step=refusing_from(2))
+    assert one["publications"] == ["date_visited_from"]
+    assert two["publications"] == ["date_identified"]
     for facts in (one, two):
-        assert facts["publications"] == ["taxon"]
         assert facts["outcome"] == "OperationalBlock(native_publication_requires_reconciliation)"
         assert facts["lease_left_set"] is True
     assert [len(run["roles"]) for run in two["engine_runs"]] == [2]
@@ -461,13 +464,14 @@ def test_a_blocked_window_with_nothing_in_doubt_releases_its_lease_so_the_record
 
 
 def test_no_lease_is_released_before_both_roles_of_the_window_have_ended(tmp_path):
-    """Taxonomy's provider fails at once while geography, its partner, is still in flight (every scripted
-    response takes 0.4 s, geography needs two). The window's lease is given back (or kept) only after
+    """Temporal's provider fails at once while parties, its partner, is still in flight (every scripted
+    response takes 0.4 s). The window's lease is given back (or kept) only after
     the whole window: the release comes after the failing role's end and after its sibling's."""
-    facts = tick(tmp_path, None, replace={"specimen_taxonomy": provider_fails}, key="taxonomy_fails")
+    facts = tick(tmp_path, None, replace={"specimen_temporal": provider_fails},
+        key="lease_wait_temporal_fails", role_delays={"specimen_temporal":0.01, "specimen_parties":1.0})
     ends = dict(facts["specialist_ends"])
-    assert set(ends) == {"specimen_taxonomy", "specimen_geography"}
-    assert ends["specimen_taxonomy"] < ends["specimen_geography"]       # the failing role ended first
+    assert set(ends) == {"specimen_temporal", "specimen_parties"}
+    assert ends["specimen_temporal"] < ends["specimen_parties"]       # the failing role ended first
     assert facts["release_marks"] and min(facts["release_marks"]) > max(ends.values())
 
 

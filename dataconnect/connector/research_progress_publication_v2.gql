@@ -1,0 +1,685 @@
+# Target-free terminal progress. The historical generic intent digest column
+# stores a progress basis only under a disjoint immutable progress contract.
+# No scientific value/checkpoint/evidence projection is written. All metadata,
+# twenty copied field rows, native CAS and immutable receipt commit atomically.
+
+mutation RetainResearchProgressIntentV2($organizationId: UUID!, $collectionId: UUID!, $specimenId: UUID!, $actorUid: String!, $intentJson: String!) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true && response.query.organizationMember.active == true && this.role in ['operator','reviewer','manager','admin']") { active role canViewSensitive }
+  }
+  retainedIntent: _execute(sql: """
+    WITH args AS MATERIALIZED (SELECT $5::jsonb AS i), specimen_locked AS MATERIALIZED (
+      SELECT s.* FROM public.specimen s
+      JOIN public.organization_member om ON om.organization_id=s.organization_id AND om.uid=$4 AND om.active
+      JOIN public.collection_member cm ON cm.organization_id=s.organization_id AND cm.collection_id=s.collection_id
+        AND cm.uid=$4 AND cm.active AND cm.role IN ('operator','reviewer','manager','admin')
+      WHERE s.organization_id=$1 AND s.collection_id=$2 AND s.id=$3 AND NOT s.sensitive
+      FOR UPDATE OF s FOR SHARE OF om,cm
+    ), binding_locked AS MATERIALIZED (
+      SELECT b.* FROM public.canonical_research_binding_v2 b JOIN specimen_locked s
+        ON b.organization_id=s.organization_id AND b.collection_id=s.collection_id AND b.specimen_id=s.id
+      JOIN public.specimen_snapshot snap ON snap.organization_id=s.organization_id AND snap.collection_id=s.collection_id
+        AND snap.specimen_id=s.id AND snap.revision=s.revision AND snap.sha256=b.current_snapshot_sha256
+      JOIN public.record_version rv ON rv.organization_id=s.organization_id AND rv.collection_id=s.collection_id
+        AND rv.id=b.current_record_version_id AND rv.run_id=b.canonical_run_id
+      WHERE s.revision=b.current_canonical_revision AND s.active_run_id=b.canonical_run_id AND s.source_checksum=b.source_sha256
+        AND b.active AND b.publication_version='research-publication/v2'
+        AND (SELECT count(*) FROM public.canonical_research_binding_v2 x WHERE x.organization_id=$1
+          AND x.collection_id=$2 AND x.specimen_id=$3 AND x.active)=1
+      FOR UPDATE OF b
+    ), journal_locked AS MATERIALIZED (
+      SELECT h.* FROM public.research_harness_state h JOIN binding_locked b
+        ON h.organization_id=b.organization_id AND h.program_key=b.program_key FOR UPDATE OF h
+    ), admitted AS MATERIALIZED (
+      SELECT i FROM args JOIN specimen_locked s ON true JOIN binding_locked b ON true JOIN journal_locked h ON true
+      JOIN public.specimen_snapshot snap ON snap.organization_id=$1 AND snap.collection_id=$2
+        AND snap.specimen_id=$3 AND snap.revision=s.revision
+      WHERE i->>'contract_version'='research-progress-intent/v2' AND i->>'actor_uid'=$4
+        AND NOT i ? 'changed_field' AND NOT i ? 'scientific_intent_digest'
+        AND i->>'binding_id'=b.binding_id::text AND i->>'job_key'=b.job_key AND i->>'program_key'=b.program_key
+        AND i->>'authority_digest'=b.authority_digest AND i->>'import_proof_id'=b.import_proof_id::text
+        AND i->>'import_proof_digest'=b.import_proof_digest
+        AND i->'original_base'=jsonb_build_object('record_revision',b.base_canonical_revision,
+          'record_version_id',b.base_record_version_id,'canonical_run_id',b.canonical_run_id,
+          'host_record_version_id',b.base_host_record_version_id,'snapshot_sha256',b.base_snapshot_sha256)
+        AND i->'original_prepared'->>'contract_version'='prepared-native-progress/v2'
+        AND i->'original_prepared'->'publication'->>'contract_version'='research-progress-only/v2'
+        AND i->'original_prepared'->'publication'->'canonical_anchor'=jsonb_build_object(
+          'record_revision',b.current_canonical_revision,'record_version_id',b.current_record_version_id,
+          'canonical_run_id',b.canonical_run_id,'host_record_version_id',b.current_host_record_version_id,
+          'snapshot_sha256',b.current_snapshot_sha256)
+        AND i->'original_prepared'->'basis'->'scope'=jsonb_build_object('organization_id',$1::text,
+          'collection_id',$2::text,'specimen_id',$3::text,'job_id',b.job_id,'generation',b.generation,
+          'input_digest',b.input_digest,'profile_digest',b.profile_digest,'sensitive',false)
+        AND i->'original_prepared'->'publication'->'scope'=i->'original_prepared'->'basis'->'scope'
+        AND i->'original_prepared'->'basis'->>'actor_uid'=$4
+        AND i->'original_prepared'->'basis'->>'binding_digest'=b.runtime_binding_digest
+        AND i->'original_prepared'->'basis'->>'policy_digest'=b.policy_digest
+        AND i->'original_prepared'->'basis'->>'program_key'=b.program_key
+        AND i->'original_prepared'->'basis'->>'job_key'=b.job_key
+        AND h.revision=(i->'original_prepared'->'basis'->>'state_revision')::integer
+        AND i->'original_prepared'->'guard'->>'operation_kind'='progress_only'
+        AND i->'original_prepared'->'guard'->>'idempotency_key'=i->>'idempotency_key'
+        AND i->'original_prepared'->'guard'->>'request_identity_digest'=i->>'server_request_identity_digest'
+        AND h.state->'outbox'->(i->'original_prepared'->'basis'->>'publication_outbox_key')
+          =jsonb_build_object('kind','canonical_publication_required','guard',i->'original_prepared'->'guard','delivered',false)
+        AND h.state->'jobs'->b.job_key->'lease'=i->'original_prepared'->'basis'->'lease'
+        AND (h.state->'jobs'->b.job_key->'lease'->>'expires_at')::numeric>extract(epoch FROM statement_timestamp())
+        AND NOT COALESCE((snap.snapshot->'run'->>'human_approved')::boolean,true)
+        AND NOT COALESCE(snap.snapshot->'run'->'history_restore_human_locks'='true'::jsonb,false)
+        AND (SELECT jsonb_object_agg(b.semantic_mapping->'field_mapping'->>f.key,(f.value->>'locked')::boolean)
+          FROM jsonb_each(h.state->'jobs'->b.job_key->'fields') f)=i->'human_locks'
+        AND i->'human_locks'=i->'original_prepared'->'basis'->'human_locks'
+        AND s.revision=b.current_canonical_revision AND s.active_run_id=b.canonical_run_id
+        AND snap.sha256=b.current_snapshot_sha256
+    ) INSERT INTO public.research_publication_intent_v2(organization_id,collection_id,actor_uid,idempotency_key,id,specimen_id,
+      operation_digest,scientific_intent_digest,request_identity_digest,payload,payload_json,created_at)
+    SELECT $1,$2,$4,i->>'idempotency_key',(i->>'id')::uuid,$3,i->>'operation_digest',i->>'progress_basis_digest',
+      i->>'server_request_identity_digest',i,$5,statement_timestamp() FROM admitted
+    """, params: [$organizationId,$collectionId,$specimenId,$actorUid,$intentJson]) @check(expr: "this == 1", message: "native progress custody unavailable")
+}
+
+mutation RetainResearchProgressPreparationV2($organizationId: UUID!, $collectionId: UUID!, $specimenId: UUID!, $actorUid: String!, $preparationJson: String!) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true && response.query.organizationMember.active == true && this.role in ['operator','reviewer','manager','admin']") { active role canViewSensitive }
+  }
+  retainedPreparation: _execute(sql: """
+    WITH args AS MATERIALIZED (SELECT $5::jsonb AS p), specimen_locked AS MATERIALIZED (
+      SELECT s.* FROM public.specimen s
+      JOIN public.organization_member om ON om.organization_id=s.organization_id AND om.uid=$4 AND om.active
+      JOIN public.collection_member cm ON cm.organization_id=s.organization_id AND cm.collection_id=s.collection_id
+        AND cm.uid=$4 AND cm.active AND cm.role IN ('operator','reviewer','manager','admin')
+      WHERE s.organization_id=$1 AND s.collection_id=$2 AND s.id=$3 AND NOT s.sensitive
+      FOR UPDATE OF s FOR SHARE OF om,cm
+    ), binding_locked AS MATERIALIZED (
+      SELECT b.* FROM public.canonical_research_binding_v2 b JOIN specimen_locked s
+        ON b.organization_id=s.organization_id AND b.collection_id=s.collection_id AND b.specimen_id=s.id
+      JOIN public.specimen_snapshot snap ON snap.organization_id=s.organization_id AND snap.collection_id=s.collection_id
+        AND snap.specimen_id=s.id AND snap.revision=s.revision AND snap.sha256=b.current_snapshot_sha256
+      JOIN public.record_version rv ON rv.organization_id=s.organization_id AND rv.collection_id=s.collection_id
+        AND rv.id=b.current_record_version_id AND rv.run_id=b.canonical_run_id
+      WHERE s.revision=b.current_canonical_revision AND s.active_run_id=b.canonical_run_id AND s.source_checksum=b.source_sha256
+        AND b.active AND b.publication_version='research-publication/v2'
+        AND (SELECT count(*) FROM public.canonical_research_binding_v2 x WHERE x.organization_id=$1
+          AND x.collection_id=$2 AND x.specimen_id=$3 AND x.active)=1
+      FOR UPDATE OF b
+    ), journal_locked AS MATERIALIZED (
+      SELECT h.* FROM public.research_harness_state h JOIN binding_locked b
+        ON h.organization_id=b.organization_id AND h.program_key=b.program_key FOR UPDATE OF h
+    ), admitted AS MATERIALIZED (
+      SELECT p FROM args JOIN specimen_locked s ON true JOIN binding_locked b ON true JOIN journal_locked h ON true
+      JOIN public.research_publication_intent_v2 i ON i.organization_id=$1 AND i.collection_id=$2
+        AND i.specimen_id=$3 AND i.actor_uid=$4 AND i.id=(p->>'intent_id')::uuid
+      WHERE i.payload->>'contract_version'='research-progress-intent/v2'
+        AND p->>'contract_version'='research-progress-preparation/v2'
+        AND p->>'progress_basis_digest'=i.scientific_intent_digest AND p->>'authority_digest'=b.authority_digest
+        AND i.payload->>'binding_id'=b.binding_id::text AND p->'human_locks'=i.payload->'human_locks'
+        AND p->'prepared'=i.payload->'original_prepared'
+        AND h.revision=(p->>'state_revision')::integer AND h.state=p->'expected_state'
+        AND b.current_record_version_id=(p->'anchor'->>'record_version_id')::uuid
+        AND b.current_canonical_revision=(p->'anchor'->>'record_revision')::integer
+        AND b.current_snapshot_sha256=p->'anchor'->>'snapshot_sha256'
+        AND b.current_host_record_version_id=p->'anchor'->>'host_record_version_id'
+        AND b.canonical_run_id=(p->'anchor'->>'canonical_run_id')::uuid
+        AND b.current_chain_digest=p->>'anchor_chain_digest'
+        AND b.current_receipt_id IS NOT DISTINCT FROM (p->>'anchor_receipt_id')::uuid
+        AND b.registration_revision=(p->>'anchor_registration_revision')::integer
+        AND h.state->'jobs'->b.job_key->'lease'=p->'prepared'->'basis'->'lease'
+        AND (h.state->'jobs'->b.job_key->'lease'->>'expires_at')::numeric>extract(epoch FROM statement_timestamp())
+        AND NOT EXISTS (SELECT 1 FROM public.research_publication_attempt_v2 a WHERE a.organization_id=$1
+          AND a.collection_id=$2 AND a.intent_id=i.id)
+        AND (p->>'ordinal')::integer BETWEEN 1 AND 20
+        AND (p->>'ordinal')::integer=(SELECT COALESCE(max(ordinal),0)+1 FROM public.research_publication_preparation_v2 x
+          WHERE x.organization_id=$1 AND x.collection_id=$2 AND x.intent_id=i.id)
+        AND ((p->>'ordinal')::integer=1 AND p->'prior_preparation_id'='null'::jsonb AND p->'prior_preparation_digest'='null'::jsonb
+          OR EXISTS (SELECT 1 FROM public.research_publication_preparation_v2 x WHERE x.organization_id=$1 AND x.collection_id=$2
+            AND x.intent_id=i.id AND x.id=(p->>'prior_preparation_id')::uuid AND x.ordinal=(p->>'ordinal')::integer-1
+            AND x.preparation_digest=p->>'prior_preparation_digest'))
+      FOR UPDATE OF i
+    ) INSERT INTO public.research_publication_preparation_v2(organization_id,collection_id,id,intent_id,ordinal,
+      prior_preparation_id,preparation_digest,admission_digest,payload,payload_json,created_at)
+    SELECT $1,$2,(p->>'id')::uuid,(p->>'intent_id')::uuid,(p->>'ordinal')::integer,(p->>'prior_preparation_id')::uuid,
+      p->>'preparation_digest',p->>'admission_digest',p-'preparation_digest',$5,statement_timestamp() FROM admitted
+    """, params: [$organizationId,$collectionId,$specimenId,$actorUid,$preparationJson]) @check(expr: "this == 1", message: "native progress custody unavailable")
+}
+
+mutation MarkResearchProgressAttemptV2($organizationId: UUID!, $collectionId: UUID!, $specimenId: UUID!, $actorUid: String!, $admissionJson: String!) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true && response.query.organizationMember.active == true && this.role in ['operator','reviewer','manager','admin']") { active role canViewSensitive }
+  }
+  markedAttempt: _execute(sql: """
+    WITH args AS MATERIALIZED (SELECT $5::jsonb AS a), specimen_locked AS MATERIALIZED (
+      SELECT s.* FROM public.specimen s
+      JOIN public.organization_member om ON om.organization_id=s.organization_id AND om.uid=$4 AND om.active
+      JOIN public.collection_member cm ON cm.organization_id=s.organization_id AND cm.collection_id=s.collection_id
+        AND cm.uid=$4 AND cm.active AND cm.role IN ('operator','reviewer','manager','admin')
+      WHERE s.organization_id=$1 AND s.collection_id=$2 AND s.id=$3 AND NOT s.sensitive
+      FOR UPDATE OF s FOR SHARE OF om,cm
+    ), binding_locked AS MATERIALIZED (
+      SELECT b.* FROM public.canonical_research_binding_v2 b JOIN specimen_locked s
+        ON b.organization_id=s.organization_id AND b.collection_id=s.collection_id AND b.specimen_id=s.id
+      JOIN public.specimen_snapshot snap ON snap.organization_id=s.organization_id AND snap.collection_id=s.collection_id
+        AND snap.specimen_id=s.id AND snap.revision=s.revision AND snap.sha256=b.current_snapshot_sha256
+      JOIN public.record_version rv ON rv.organization_id=s.organization_id AND rv.collection_id=s.collection_id
+        AND rv.id=b.current_record_version_id AND rv.run_id=b.canonical_run_id
+      WHERE s.revision=b.current_canonical_revision AND s.active_run_id=b.canonical_run_id AND s.source_checksum=b.source_sha256
+        AND b.active AND b.publication_version='research-publication/v2'
+        AND (SELECT count(*) FROM public.canonical_research_binding_v2 x WHERE x.organization_id=$1
+          AND x.collection_id=$2 AND x.specimen_id=$3 AND x.active)=1
+      FOR UPDATE OF b
+    ), journal_locked AS MATERIALIZED (
+      SELECT h.* FROM public.research_harness_state h JOIN binding_locked b
+        ON h.organization_id=b.organization_id AND h.program_key=b.program_key FOR UPDATE OF h
+    ), admitted AS MATERIALIZED (
+      SELECT a FROM args JOIN specimen_locked s ON true JOIN binding_locked b ON true JOIN journal_locked h ON true
+      JOIN public.research_publication_intent_v2 i ON i.organization_id=$1 AND i.collection_id=$2
+        AND i.specimen_id=$3 AND i.actor_uid=$4 AND i.id=(a->>'intent_id')::uuid AND i.operation_digest=a->>'operation_digest'
+      JOIN public.research_publication_preparation_v2 p ON p.organization_id=$1 AND p.collection_id=$2
+        AND p.intent_id=i.id AND p.id=(a->>'preparation_id')::uuid AND p.preparation_digest=a->>'preparation_digest'
+        AND p.admission_digest=a->>'admission_digest'
+      WHERE i.payload->>'contract_version'='research-progress-intent/v2'
+        AND p.payload->>'contract_version'='research-progress-preparation/v2'
+        AND i.payload->>'binding_id'=b.binding_id::text
+        AND h.revision=(a->>'state_revision')::integer AND h.state=a->'expected_state'
+        AND p.payload->'expected_state'=h.state AND (p.payload->>'state_revision')::integer=h.revision
+        AND b.current_record_version_id=(a->>'used_record_version_id')::uuid
+        AND b.registration_revision=(a->>'registration_revision')::integer
+        AND b.current_receipt_id IS NOT DISTINCT FROM (p.payload->>'anchor_receipt_id')::uuid
+        AND b.current_chain_digest=p.payload->>'anchor_chain_digest'
+        AND h.state->'jobs'->b.job_key->'lease'=p.payload->'prepared'->'basis'->'lease'
+        AND (h.state->'jobs'->b.job_key->'lease'->>'expires_at')::numeric>extract(epoch FROM statement_timestamp())
+        AND NOT EXISTS (SELECT 1 FROM public.research_publication_attempt_v2 x WHERE x.organization_id=$1
+          AND x.collection_id=$2 AND x.intent_id=i.id)
+      FOR UPDATE OF i,p
+    ) INSERT INTO public.research_publication_attempt_v2(organization_id,collection_id,intent_id,id,preparation_id,
+      operation_digest,preparation_digest,admission_digest,created_at)
+    SELECT $1,$2,(a->>'intent_id')::uuid,(a->>'id')::uuid,(a->>'preparation_id')::uuid,a->>'operation_digest',
+      a->>'preparation_digest',a->>'admission_digest',statement_timestamp() FROM admitted
+    """, params: [$organizationId,$collectionId,$specimenId,$actorUid,$admissionJson]) @check(expr: "this == 1", message: "native progress custody unavailable")
+}
+
+mutation PublishCanonicalResearchProgressV2($organizationId: UUID!, $collectionId: UUID!, $specimenId: UUID!, $actorUid: String!, $commitJson: String!) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true && response.query.organizationMember.active == true && this.role in ['operator','reviewer','manager','admin']") { active role canViewSensitive }
+  }
+  committed: _execute(sql: """
+    WITH RECURSIVE args AS MATERIALIZED (SELECT $5::jsonb AS c), specimen_locked AS MATERIALIZED (
+      SELECT s.* FROM public.specimen s
+      JOIN public.organization_member om ON om.organization_id=s.organization_id AND om.uid=$4 AND om.active
+      JOIN public.collection_member cm ON cm.organization_id=s.organization_id AND cm.collection_id=s.collection_id
+        AND cm.uid=$4 AND cm.active AND cm.role IN ('operator','reviewer','manager','admin')
+      WHERE s.organization_id=$1 AND s.collection_id=$2 AND s.id=$3 AND NOT s.sensitive
+      FOR UPDATE OF s FOR SHARE OF om,cm
+    ), binding_locked AS MATERIALIZED (
+      SELECT b.* FROM public.canonical_research_binding_v2 b JOIN specimen_locked s
+        ON b.organization_id=s.organization_id AND b.collection_id=s.collection_id AND b.specimen_id=s.id
+      JOIN public.specimen_snapshot snap ON snap.organization_id=s.organization_id AND snap.collection_id=s.collection_id
+        AND snap.specimen_id=s.id AND snap.revision=s.revision AND snap.sha256=b.current_snapshot_sha256
+      JOIN public.record_version rv ON rv.organization_id=s.organization_id AND rv.collection_id=s.collection_id
+        AND rv.id=b.current_record_version_id AND rv.run_id=b.canonical_run_id
+      WHERE s.revision=b.current_canonical_revision AND s.active_run_id=b.canonical_run_id AND s.source_checksum=b.source_sha256
+        AND b.active AND b.publication_version='research-publication/v2'
+        AND (SELECT count(*) FROM public.canonical_research_binding_v2 x WHERE x.organization_id=$1
+          AND x.collection_id=$2 AND x.specimen_id=$3 AND x.active)=1
+      FOR UPDATE OF b
+    ), journal_locked AS MATERIALIZED (
+      SELECT h.* FROM public.research_harness_state h JOIN binding_locked b
+        ON h.organization_id=b.organization_id AND h.program_key=b.program_key FOR UPDATE OF h
+    ),
+    ancestors AS (
+      SELECT p.*,1 AS depth,ARRAY[p.id] AS visited FROM binding_locked b JOIN public.research_publication_receipt_v2 p
+        ON p.organization_id=$1 AND p.collection_id=$2 AND p.id=b.current_receipt_id
+      UNION ALL SELECT p.*,a.depth+1,a.visited||p.id FROM ancestors a JOIN public.research_publication_receipt_v2 p
+        ON p.organization_id=$1 AND p.collection_id=$2 AND p.id=(a.causal_proof->>'parent_receipt_id')::uuid
+      WHERE a.depth<65 AND NOT p.id=ANY(a.visited)
+    ), locked AS MATERIALIZED (
+      SELECT s.revision,b.*,h.revision AS state_revision,h.state AS old_state,snap.snapshot AS old_snapshot,
+        intent.payload AS intent_payload,prep.payload AS prep_payload,c
+      FROM args JOIN specimen_locked s ON true JOIN binding_locked b ON true JOIN journal_locked h ON true
+      JOIN public.specimen_snapshot snap ON snap.organization_id=$1 AND snap.collection_id=$2 AND snap.specimen_id=$3 AND snap.revision=s.revision
+      JOIN public.record_version rv ON rv.organization_id=$1 AND rv.collection_id=$2 AND rv.id=b.current_record_version_id AND rv.run_id=b.canonical_run_id
+      JOIN public.pipeline_run run ON run.organization_id=$1 AND run.collection_id=$2 AND run.id=b.canonical_run_id AND run.specimen_id=$3
+      JOIN public.profile_version profile ON profile.organization_id=$1 AND profile.collection_id=$2 AND profile.id=run.profile_version_id
+      JOIN public.research_publication_intent_v2 intent ON intent.organization_id=$1 AND intent.collection_id=$2
+        AND intent.specimen_id=$3 AND intent.actor_uid=$4 AND intent.id=(c->>'intent_id')::uuid
+        AND intent.idempotency_key=c->'receipt'->>'idempotencyKey' AND intent.operation_digest=c->'receipt'->>'operationDigest'
+        AND intent.scientific_intent_digest=c->'causal'->>'progress_basis_digest'
+      JOIN public.research_publication_preparation_v2 prep ON prep.organization_id=$1 AND prep.collection_id=$2
+        AND prep.intent_id=intent.id AND prep.id=(c->'causal'->>'winning_preparation_id')::uuid
+        AND prep.preparation_digest=c->'receipt'->>'preparedDigest' AND prep.payload=c->'preparation'
+        AND prep.payload->'prepared'=c->'prepared' AND prep.admission_digest=c->'causal'->>'admission_digest'
+      JOIN public.research_publication_attempt_v2 attempt ON attempt.organization_id=$1 AND attempt.collection_id=$2
+        AND attempt.intent_id=intent.id AND attempt.preparation_id=prep.id AND attempt.operation_digest=intent.operation_digest
+        AND attempt.preparation_digest=prep.preparation_digest AND attempt.admission_digest=prep.admission_digest
+      WHERE intent.payload->>'contract_version'='research-progress-intent/v2'
+        AND prep.payload->>'contract_version'='research-progress-preparation/v2'
+        AND c->'causal'->>'contract_version'='native-canonical-progress/v2'
+        AND c->'prepared'->>'contract_version'='prepared-native-progress/v2'
+        AND c->'prepared'->'publication'->>'contract_version'='research-progress-only/v2'
+        AND c->'policy_materialization'->>'contract_version'='canonical-progress-materialization/v2'
+        AND c->'policy_materialization'->'progress_receipt'->>'contract_version'='canonical-progress-only/v2'
+        AND NOT c ?| ARRAY['changed_field','checkpoint_outbox_key','delta','capture_scope','dependency_checkpoint_proofs']
+        AND NOT c->'prepared'->'basis' ?| ARRAY['field_key','checkpoint_id','checkpoint_outbox_key']
+        AND s.revision=b.current_canonical_revision AND s.active_run_id=b.canonical_run_id
+        AND s.source_checksum=b.source_sha256 AND run.input_sha256=b.source_sha256 AND profile.config_sha256=b.canonical_profile_digest
+        AND snap.sha256=b.current_snapshot_sha256 AND c->'receipt'->>'usedSnapshotSha256'=snap.sha256
+        AND b.registration_revision=(c->>'registration_revision')::integer AND b.binding_id=(c->'receipt'->>'bindingId')::uuid
+        AND b.authority_digest=intent.payload->>'authority_digest' AND b.import_proof_id=(intent.payload->>'import_proof_id')::uuid
+        AND b.import_proof_digest=intent.payload->>'import_proof_digest'
+        AND b.current_receipt_id IS NOT DISTINCT FROM (c->'causal'->>'parent_receipt_id')::uuid
+        AND b.current_chain_digest=c->'causal'->>'parent_chain_digest'
+        AND prep.payload->'anchor'=c->'causal'->'used'
+        AND prep.payload->'anchor'=c->'prepared'->'publication'->'canonical_anchor'
+        AND prep.payload->'anchor'=jsonb_build_object('record_revision',b.current_canonical_revision,
+          'record_version_id',b.current_record_version_id,'canonical_run_id',b.canonical_run_id,
+          'host_record_version_id',b.current_host_record_version_id,'snapshot_sha256',b.current_snapshot_sha256)
+        AND prep.payload->'anchor_receipt_id'=c->'causal'->'parent_receipt_id'
+        AND prep.payload->>'anchor_chain_digest'=b.current_chain_digest
+        AND (prep.payload->>'anchor_registration_revision')::integer=b.registration_revision
+        AND prep.payload->'expected_state'=h.state AND (prep.payload->>'state_revision')::integer=h.revision
+        AND h.revision=(c->>'state_revision')::integer AND h.state=c->'expected_state'
+        AND h.state_json::jsonb=h.state
+        AND NOT COALESCE((snap.snapshot->'run'->>'human_approved')::boolean,true)
+        AND NOT COALESCE(snap.snapshot->'run'->'history_restore_human_locks'='true'::jsonb,false)
+        AND snap.snapshot->'run'->>'stage' NOT IN ('paused','cancelled')
+        AND h.state->>'contract_version'='research-durability/v1' AND h.state->>'program_key'=b.program_key
+        AND h.state->'halted'='false'::jsonb AND h.state->'jobs'->b.job_key->'paused'='false'::jsonb
+        AND h.state->'jobs'->b.job_key->>'binding_digest'=b.runtime_binding_digest
+        AND h.state->'jobs'->b.job_key->'pins'->>'input_digest'=b.input_digest
+        AND h.state->'jobs'->b.job_key->'identity'=jsonb_build_object('organization_id',$1::text,
+          'collection_id',$2::text,'specimen_id',$3::text,'job_id',b.job_id)
+        AND (h.state->'jobs'->b.job_key->>'generation')::integer=b.generation
+        AND (h.state->'jobs'->b.job_key->>'record_revision')::integer=b.base_canonical_revision
+        AND h.state->'jobs'->b.job_key->'lease'=c->'prepared'->'basis'->'lease'
+        AND c->'native_guard'->'lease'=c->'prepared'->'basis'->'lease'
+        AND (h.state->'jobs'->b.job_key->'lease'->>'expires_at')::numeric>extract(epoch FROM statement_timestamp())
+        AND c->'native_guard'=c->'prepared'->'guard' AND c->'native_guard'->>'operation_kind'='progress_only'
+        AND c->'native_guard'->>'binding_digest'=b.runtime_binding_digest AND c->'native_guard'->>'policy_digest'=b.policy_digest
+        AND c->'native_guard'->'canonical_anchor'=prep.payload->'anchor'
+        AND c->'native_guard'->>'idempotency_key'=intent.idempotency_key
+        AND c->'native_guard'->>'request_identity_digest'=intent.request_identity_digest
+        AND c->'native_guard'->'scope'=jsonb_build_object('organization_id',$1::text,'collection_id',$2::text,
+          'specimen_id',$3::text,'job_id',b.job_id,'generation',b.generation)
+        AND h.state->'outbox'->(c->'prepared'->'basis'->>'publication_outbox_key')
+          =jsonb_build_object('kind','canonical_publication_required','guard',c->'native_guard','delivered',false)
+        AND NOT EXISTS (SELECT 1 FROM jsonb_each(h.state->'outbox') e WHERE e.key<>c->'prepared'->'basis'->>'publication_outbox_key'
+          AND e.value->>'kind'='canonical_publication_required' AND e.value->'delivered'='false'::jsonb
+          AND e.value->'guard'->'scope'=c->'native_guard'->'scope')
+        AND NOT EXISTS (SELECT 1 FROM jsonb_each(h.state->'effects') e WHERE e.value->>'job_key'=b.job_key
+          AND (e.value->>'status' IN ('reserved','sending','held_unknown') OR jsonb_typeof(e.value->'actual_micro_usd') IS DISTINCT FROM 'number'
+            OR (e.value->>'actual_micro_usd')::bigint<0 OR e.value->'held_micro_usd'<>'0'::jsonb))
+    ), native_facts AS MATERIALIZED (
+      SELECT l.*,jsonb_build_object('record_versions',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'runId',r.run_id,'predecessorId',r.predecessor_id,'disposition',r.disposition,'policyVersion',r.policy_version,'reasonCodes',r.reason_codes,'summary',r.summary,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.record_version r WHERE r.organization_id=$1 AND r.collection_id=$2 AND r.run_id=l.canonical_run_id ORDER BY r.id LIMIT 4097) r),
+        'resolved_fields',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'recordVersionId',r.record_version_id,'candidateId',r.candidate_id,'fieldKey',r.field_key,'state',r.state,'fieldGroup',r.field_group,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.resolved_field r WHERE r.organization_id=$1 AND r.collection_id=$2 AND r.record_version_id IN (SELECT v.id FROM public.record_version v WHERE v.organization_id=$1 AND v.collection_id=$2 AND v.run_id=l.canonical_run_id) ORDER BY r.id LIMIT 4097) r),
+        'candidates',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'runId',r.run_id,'fieldKey',r.field_key,'state',r.state,'literalValue',r.literal_value,'parsedValue',r.parsed_value,'normalizedValue',r.normalized_value,'authorityId',r.authority_id,'derivation',r.derivation,'inputSource',r.input_source,'sourceTranscriptionId',r.source_transcription_id,'sourceObservationId',r.source_observation_id,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.field_candidate r WHERE r.organization_id=$1 AND r.collection_id=$2 AND r.run_id=l.canonical_run_id ORDER BY r.id LIMIT 4097) r),
+        'candidate_evidence',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'candidateId',r.candidate_id,'evidenceId',r.evidence_id,'relation',r.relation,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.candidate_evidence r WHERE r.organization_id=$1 AND r.collection_id=$2 AND r.candidate_id IN (SELECT fc.id FROM public.field_candidate fc WHERE fc.organization_id=$1 AND fc.collection_id=$2 AND fc.run_id=l.canonical_run_id) ORDER BY r.id LIMIT 4097) r),
+        'evidence',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'runId',r.run_id,'source',r.source,'sourceVersion',r.source_version,'adapterVersion',r.adapter_version,'query',r.query,'outcome',r.outcome,'locator',r.locator,'responseSha256',r.response_sha256,'capturedAt',r.captured_at,'rawAssetId',r.raw_asset_id,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.evidence_item r WHERE r.organization_id=$1 AND r.collection_id=$2 AND r.run_id=l.canonical_run_id ORDER BY r.id LIMIT 4097) r),
+        'tool_calls',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'runId',r.run_id,'callKey',r.call_key,'phase',r.phase,'tool',r.tool,'toolVersion',r.tool_version,'source',r.source,'fieldKeys',r.field_keys,'inputSource',r.input_source,'transcriptionVersionId',r.transcription_version_id,'observationId',r.observation_id,'attempt',r.attempt,'arguments',r.arguments,'outcome',r.outcome,'result',r.result,'evidenceId',r.evidence_id,'startedAt',r.started_at,'completedAt',r.completed_at,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.tool_call r WHERE r.organization_id=$1 AND r.collection_id=$2 AND r.run_id=l.canonical_run_id ORDER BY r.id LIMIT 4097) r),
+        'findings',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'recordVersionId',r.record_version_id,'ruleId',r.rule_id,'ruleVersion',r.rule_version,'severity',r.severity,'outcome',r.outcome,'fieldKey',r.field_key,'reasonCode',r.reason_code,'evidenceIds',r.evidence_ids,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.validation_finding r WHERE r.organization_id=$1 AND r.collection_id=$2 AND r.record_version_id IN (SELECT v.id FROM public.record_version v WHERE v.organization_id=$1 AND v.collection_id=$2 AND v.run_id=l.canonical_run_id) ORDER BY r.id LIMIT 4097) r)) AS fresh_projection_rows,
+        jsonb_build_object('observations',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'runId',r.run_id,'regionId',r.region_id,'rawAssetId',r.raw_asset_id,'stepKey',r.step_key,'provider',r.provider,'modelVersion',r.model_version,'promptVersion',r.prompt_version,'inputSha256',r.input_sha256,'parameters',r.parameters,'literalText',r.literal_text,'outcome',r.outcome,'independent',r.independent,'routeId',r.route_id,'unreadableSpans',r.unreadable_spans,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.model_observation r WHERE r.organization_id=$1 AND r.collection_id=$2 AND r.run_id IN (SELECT pr.id FROM public.pipeline_run pr WHERE pr.organization_id=$1 AND pr.collection_id=$2 AND pr.specimen_id=$3) ORDER BY r.id LIMIT 4097) r),
+        'transcriptions',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'runId',r.run_id,'literalText',r.literal_text,'spans',r.spans,'alternatives',r.alternatives,'unresolved',r.unresolved,'regionId',r.region_id,'decisionKind',r.decision_kind,'selectedObservationId',r.selected_observation_id,'firstPassObservationId',r.first_pass_observation_id,'rationale',r.rationale,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.transcription_version r WHERE r.organization_id=$1 AND r.collection_id=$2 AND r.run_id IN (SELECT pr.id FROM public.pipeline_run pr WHERE pr.organization_id=$1 AND pr.collection_id=$2 AND pr.specimen_id=$3) ORDER BY r.id LIMIT 4097) r),
+        'handoffs',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'runId',r.run_id,'transcriptionVersionId',r.transcription_version_id,'observationId',r.observation_id,'role',r.role,'handedText',r.handed_text,'note',r.note,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.harness_input r WHERE r.organization_id=$1 AND r.collection_id=$2 AND r.run_id IN (SELECT pr.id FROM public.pipeline_run pr WHERE pr.organization_id=$1 AND pr.collection_id=$2 AND pr.specimen_id=$3) ORDER BY r.id LIMIT 4097) r),
+        'comparisons',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'runId',r.run_id,'regionId',r.region_id,'leftObservationId',r.left_observation_id,'rightObservationId',r.right_observation_id,'algorithm',r.algorithm,'ratio',r.ratio,'editDistance',r.edit_distance,'lengthBasis',r.length_basis,'status',r.status,'reasons',r.reasons,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.reading_comparison r WHERE r.organization_id=$1 AND r.collection_id=$2 AND r.run_id IN (SELECT pr.id FROM public.pipeline_run pr WHERE pr.organization_id=$1 AND pr.collection_id=$2 AND pr.specimen_id=$3) ORDER BY r.id LIMIT 4097) r),
+        'assets',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'specimenId',r.specimen_id,'kind',r.kind,'parentAssetId',r.parent_asset_id,'bucket',r.bucket,'objectName',r.object_name,'generation',r.generation,'sha256',r.sha256,'mimeType',r.mime_type,'byteSize',r.byte_size::text,'width',r.width,'height',r.height,'acquisitionMethod',r.acquisition_method,'uploaderUid',r.uploader_uid,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.source_asset r WHERE r.organization_id=$1 AND r.collection_id=$2 AND r.specimen_id=$3 ORDER BY r.id LIMIT 4097) r),
+        'regions',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'runId',r.run_id,'domainRegionId',r.domain_region_id,'sourceAssetId',r.source_asset_id,'cropAssetId',r.crop_asset_id,'geometry',r.geometry,'ordinal',r.ordinal,'regionType',r.region_type,'segmentationVersion',r.segmentation_version,'supersedesRegionId',r.supersedes_region_id,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.label_region r WHERE r.organization_id=$1 AND r.collection_id=$2 AND r.run_id IN (SELECT pr.id FROM public.pipeline_run pr WHERE pr.organization_id=$1 AND pr.collection_id=$2 AND pr.specimen_id=$3) ORDER BY r.id LIMIT 4097) r),
+        'runs',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'specimenId',r.specimen_id,'profileVersionId',r.profile_version_id,'supersedesRunId',r.supersedes_run_id,'pinnedVersions',r.pinned_versions,'inputSha256',r.input_sha256,'traceId',r.trace_id,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.pipeline_run r WHERE r.organization_id=$1 AND r.collection_id=$2 AND r.specimen_id=$3 ORDER BY r.id LIMIT 4097) r)) AS fresh_native_input_rows,
+        jsonb_build_object('value_lineages',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'contractVersion',r.contract_version,'specimenId',r.specimen_id,'runId',r.run_id,'candidateId',r.candidate_id,'recordVersionId',r.record_version_id,'predecessorId',r.predecessor_id,'priorRevision',r.prior_revision,'resultRevision',r.result_revision,'priorNativeSnapshotDigest',r.prior_native_snapshot_digest,'priorGraphSnapshotDigest',r.prior_graph_snapshot_digest,'priorActiveGraphDigest',r.prior_active_graph_digest,'fieldKey',r.field_key,'researchFieldKey',r.research_field_key,'layer',r.layer,'resolutionDigest',r.resolution_digest,'typedCheckpointDigest',r.typed_checkpoint_digest,'nativeCheckpointId',r.native_checkpoint_id,'nativeCheckpointDigest',r.native_checkpoint_digest,'originalRequestDigest',r.original_request_digest,'originalScope',r.original_scope,'derivation',r.derivation,'derivationDigest',r.derivation_digest,'scientificSourceDigest',r.scientific_source_digest,'precision',r.precision,'centuryRule',r.century_rule,'readingSources',r.reading_sources,'literalGrounding',r.literal_grounding,'selectedObservationId',r.selected_observation_id,'selectedTranscriptionId',r.selected_transcription_id,'settledObservationIds',r.settled_observation_ids,'evidenceIds',r.evidence_ids,'evidenceRelations',r.evidence_relations,'consumedDependencies',r.consumed_dependencies,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.canonical_value_lineage_v2 r WHERE r.organization_id=$1 AND r.collection_id=$2 AND r.specimen_id=$3 ORDER BY r.id LIMIT 4097) r),
+        'value_dependencies',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'lineageId',r.lineage_id,'ordinal',r.ordinal,'researchFieldKey',r.research_field_key,'canonicalFieldKey',r.canonical_field_key,'sourceRevision',r.source_revision,'dependencyResolutionDigest',r.dependency_resolution_digest,'sourceCheckpointId',r.source_checkpoint_id,'sourceCheckpointDigest',r.source_checkpoint_digest,'sourceTypedCheckpointDigest',r.source_typed_checkpoint_digest,'sourceRunId',r.source_run_id,'sourceCandidateId',r.source_candidate_id,'sourceRecordVersionId',r.source_record_version_id,'sourceCandidateDigest',r.source_candidate_digest,'sourceRecordDigest',r.source_record_digest,'sourcePublicationLineageDigest',r.source_publication_lineage_digest,'sourceRecordFieldsDigest',r.source_record_fields_digest,'sourceRecordFields',r.source_record_fields,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.canonical_value_dependency_v2 r WHERE r.organization_id=$1 AND r.collection_id=$2 AND r.lineage_id IN (SELECT cl.id FROM public.canonical_value_lineage_v2 cl WHERE cl.organization_id=$1 AND cl.collection_id=$2 AND cl.specimen_id=$3) ORDER BY r.id LIMIT 4097) r),
+        'value_evidence',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'lineageId',r.lineage_id,'evidenceId',r.evidence_id,'researchEvidenceId',r.research_evidence_id,'associationKind',r.association_kind,'originalRelation',r.original_relation,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.canonical_value_evidence_v2 r WHERE r.organization_id=$1 AND r.collection_id=$2 AND r.lineage_id IN (SELECT cl.id FROM public.canonical_value_lineage_v2 cl WHERE cl.organization_id=$1 AND cl.collection_id=$2 AND cl.specimen_id=$3) ORDER BY r.id LIMIT 4097) r),
+        'tool_input_lineage',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'contractVersion',r.contract_version,'specimenId',r.specimen_id,'runId',r.run_id,'evidenceId',r.evidence_id,'nativeCheckpointId',r.native_checkpoint_id,'nativeCheckpointDigest',r.native_checkpoint_digest,'originalRequestDigest',r.original_request_digest,'originalScope',r.original_scope,'originalRequest',r.original_request,'queryDigest',r.query_digest,'query',r.query,'effectId',r.effect_id,'attemptId',r.attempt_id,'receiptDigest',r.receipt_digest,'receiptBindingDigest',r.receipt_binding_digest,'sourcePolicyDigest',r.source_policy_digest,'capturePolicyDigest',r.capture_policy_digest,'sourceRegistryDigest',r.source_registry_digest,'canonicalMappingDigest',r.canonical_mapping_digest,'sourceCaptureProof',r.source_capture_proof,'fragments',r.fragments,'fragmentDigests',r.fragment_digests,'observationIds',r.observation_ids,'regionIds',r.region_ids,'inputSources',r.input_sources,'nativeInputs',r.native_inputs,'nativeTranscriptionProofs',r.native_transcription_proofs,'selectedObservationId',r.selected_observation_id,'legacyProducerDigest',r.legacy_producer_digest,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.tool_input_lineage_v2 r WHERE r.organization_id=$1 AND r.collection_id=$2 AND r.specimen_id=$3 ORDER BY r.id LIMIT 4097) r),
+        'captured_tool_executions',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'contractVersion',r.contract_version,'lineageId',r.lineage_id,'runId',r.run_id,'evidenceId',r.evidence_id,'execution',r.execution,'executionDigest',r.execution_digest,'effectId',r.effect_id,'attemptId',r.attempt_id,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.captured_tool_execution_v2 r WHERE r.organization_id=$1 AND r.collection_id=$2 AND r.run_id=l.canonical_run_id ORDER BY r.id LIMIT 4097) r)) AS fresh_lineage_rows
+      FROM locked l
+    ), prior_fields AS MATERIALIZED (
+      SELECT f.* FROM public.resolved_field f JOIN locked l ON f.organization_id=$1 AND f.collection_id=$2
+        AND f.record_version_id=l.current_record_version_id
+    ), graph_bodies AS MATERIALIZED (
+      SELECT l.*,(c->>'prior_graph_json')::jsonb AS prior_graph,
+        (c->'prepack_proof'->>'policy_graph_json')::jsonb AS policy_graph,
+        (c->'prepack_proof'->>'post_audit_graph_json')::jsonb AS post_graph,
+        c->'policy_materialization'->'progress_receipt' AS progress
+      FROM native_facts l
+    ), admissible AS MATERIALIZED (
+      SELECT l.* FROM graph_bodies l WHERE
+        c->'materialization_input_guard'->>'contract_version'='native-materialization-guard/v2'
+        AND c->'materialization_input_guard'->>'binding_id'=binding_id::text
+        AND (c->'materialization_input_guard'->>'registration_revision')::integer=registration_revision
+        AND (c->'materialization_input_guard'->>'state_revision')::integer=state_revision
+        AND c->'materialization_input_guard'->'projection_rows'=fresh_projection_rows
+        AND c->'materialization_input_guard'->'native_input_rows'=fresh_native_input_rows
+        AND c->'materialization_input_guard'->'lineage_rows'=fresh_lineage_rows
+        AND NOT EXISTS (SELECT 1 FROM jsonb_each(fresh_projection_rows) x WHERE jsonb_array_length(x.value)>4096)
+        AND NOT EXISTS (SELECT 1 FROM jsonb_each(fresh_native_input_rows) x WHERE jsonb_array_length(x.value)>4096)
+        AND NOT EXISTS (SELECT 1 FROM jsonb_each(fresh_lineage_rows) x WHERE jsonb_array_length(x.value)>4096)
+        AND (SELECT count(*) FROM prior_fields)=20 AND (SELECT count(DISTINCT field_key) FROM prior_fields)=20
+        AND (SELECT jsonb_agg(jsonb_build_object('id',f.id,'recordVersionId',f.record_version_id,'candidateId',f.candidate_id,
+          'fieldKey',f.field_key,'state',f.state,'fieldGroup',f.field_group) ORDER BY f.field_key) FROM prior_fields f)=c->'prior_fields'
+        AND jsonb_array_length(c->'fields')=20
+        AND (SELECT count(DISTINCT v->>'fieldKey') FROM jsonb_array_elements(c->'fields') v)=20
+        AND (SELECT count(DISTINCT v->>'id') FROM jsonb_array_elements(c->'fields') v)=20
+        AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(c->'fields') v LEFT JOIN prior_fields f
+          ON f.field_key=v->>'fieldKey' WHERE f.id IS NULL OR COALESCE((v-'id'-'recordVersionId')
+          <>jsonb_build_object('candidateId',f.candidate_id,'fieldKey',f.field_key,'state',f.state,'fieldGroup',f.field_group),true)
+          OR v->>'recordVersionId' IS DISTINCT FROM c->'record'->>'id')
+        AND c->'record'->>'id'=c->'receipt'->>'nativeRecordVersionId'
+        AND c->'record'->>'runId'=canonical_run_id::text AND c->'record'->>'predecessorId'=current_record_version_id::text
+        AND c->'record'->'reasonCodes'=(policy_graph->'run')->'reasons'
+        AND c->'record'->'disposition'=(policy_graph->'run')->'disposition'
+        AND c->'record'->>'policyVersion'=(prior_graph->'run')->'profile'->>'policy_version'
+        AND c->'policy_materialization'->'result'=policy_graph
+        AND c->'policy_materialization'->'progress_receipt'=c->'causal'->'progress_receipt'
+        AND c->'policy_materialization'->>'progress_receipt_digest'=c->'causal'->>'progress_receipt_digest'
+        AND c->'policy_materialization'->>'policy_digest'=policy_digest
+        AND c->'policy_materialization'->>'semantic_mapping_digest'=semantic_mapping_digest
+        AND c->'policy_materialization'->'policy_receipt'->>'status'='computed'
+        AND c->'policy_materialization'->'policy_receipt'->>'policy_contract_version'='research-canonical-policy/v2'
+        AND c->'policy_materialization'->'policy_receipt'->'reasons'=(policy_graph->'run')->'reasons'
+        AND c->'policy_materialization'->'policy_receipt'->'disposition'=c->'record'->'disposition'
+        AND c->'policy_materialization'->'policy_receipt'->>'publication_digest'=c->'receipt'->>'publicationDigest'
+        AND c->'policy_materialization'->'policy_receipt'->>'result_digest'=c->'policy_materialization'->>'result_digest'
+        AND c->'policy_materialization'->>'result_digest'=c->'prepack_proof'->>'policy_graph_digest'
+        AND c->'policy_materialization'->>'result_digest'=progress->>'result_digest'
+        AND c->'receipt'->>'policyReceiptDigest'=c->'policy_materialization'->>'policy_receipt_digest'
+        AND c->'receipt'->>'lineageDigest'=c->'policy_materialization'->>'lineage_digest'
+        AND progress->>'binding_id'=binding_id::text AND progress->>'job_key'=job_key
+        AND (progress->>'generation')::integer=generation AND progress->>'policy_digest'=policy_digest
+        AND progress->'prior_canonical'=prep_payload->'anchor'
+        AND c->'prepared'->'basis'->'scope'=jsonb_build_object('organization_id',$1::text,
+          'collection_id',$2::text,'specimen_id',$3::text,'job_id',job_id,'generation',generation,
+          'input_digest',input_digest,'profile_digest',profile_digest,'sensitive',false)
+        AND c->'prepared'->'basis'->>'actor_uid'=$4
+        AND c->'prepared'->'basis'->>'binding_digest'=runtime_binding_digest
+        AND c->'prepared'->'basis'->>'policy_digest'=policy_digest
+        AND c->'prepared'->'basis'->>'pins_digest'=runtime_binding_digest
+        AND c->'prepared'->'basis'->>'job_key'=job_key AND c->'prepared'->'basis'->>'program_key'=program_key
+        AND (c->'prepared'->'basis'->>'expected_record_revision')::integer=revision
+        AND c->'prepared'->'publication'->'scope'=c->'prepared'->'basis'->'scope'
+        AND c->'prepared'->'publication'->>'field_work_digest'=progress->>'field_work_digest'
+        AND c->'prepared'->'basis'->>'field_work_digest'=progress->>'field_work_digest'
+        AND c->'native_guard'->>'field_work_digest'=progress->>'field_work_digest'
+        AND c->'prepared'->'publication'->>'field_mapping_digest'=progress->>'field_mapping_digest'
+        AND c->'prepared'->'basis'->>'field_mapping_digest'=progress->>'field_mapping_digest'
+        AND c->'native_guard'->>'field_mapping_digest'=progress->>'field_mapping_digest'
+        AND (c->>'field_work_json')::jsonb=old_state->'jobs'->job_key->'fields'
+        AND encode(sha256(convert_to(c->>'field_work_json','UTF8')),'hex')=progress->>'field_work_digest'
+        AND (c->>'field_mapping_json')::jsonb=semantic_mapping->'field_mapping'
+        AND encode(sha256(convert_to(c->>'field_mapping_json','UTF8')),'hex')=progress->>'field_mapping_digest'
+        AND (c->>'pins_json')::jsonb=old_state->'jobs'->job_key->'pins'
+        AND encode(sha256(convert_to(c->>'pins_json','UTF8')),'hex')=c->'prepared'->'basis'->>'pins_digest'
+        AND (SELECT jsonb_object_agg(f.key,f.value->'work_state') FROM jsonb_each(old_state->'jobs'->job_key->'fields') f)=progress->'research_field_work'
+        AND (SELECT jsonb_object_agg(semantic_mapping->'field_mapping'->>f.key,f.value->'work_state')
+          FROM jsonb_each(old_state->'jobs'->job_key->'fields') f)=progress->'canonical_field_work'
+        AND (SELECT count(*) FROM jsonb_each(old_state->'jobs'->job_key->'fields'))=20
+        AND (SELECT count(*) FROM jsonb_each(semantic_mapping->'field_mapping'))=20
+        AND (SELECT count(DISTINCT value) FROM jsonb_each(semantic_mapping->'field_mapping'))=20
+        AND NOT EXISTS (SELECT 1 FROM jsonb_each(old_state->'jobs'->job_key->'fields') f
+          WHERE jsonb_typeof(f.value->'work_state') IS DISTINCT FROM 'string'
+          OR f.value->>'work_state' NOT IN ('resolved','waiting_source','waiting_policy','operational_failed','waiting_human','nonblocking_exception','cancelled')
+          OR jsonb_typeof(f.value->'locked') IS DISTINCT FROM 'boolean')
+        AND NOT EXISTS (SELECT 1 FROM jsonb_each(old_state->'jobs'->job_key->'fields') f
+          CROSS JOIN LATERAL jsonb_array_elements(COALESCE(f.value->'checkpoint'->'payload'->'resolution'->'dependencies','[]'::jsonb)) dep
+          WHERE (f.value->'checkpoint'->'accepted_output_proof' IS NULL OR f.value->'checkpoint'->'accepted_output_proof'='null'::jsonb)
+            AND (old_state->'jobs'->job_key->'fields'->(dep->>'field_key')->>'work_state' IS DISTINCT FROM 'resolved'
+              OR old_state->'jobs'->job_key->'fields'->(dep->>'field_key')->'locked' IS DISTINCT FROM 'false'::jsonb
+              OR (old_state->'jobs'->job_key->'fields'->(dep->>'field_key')->>'revision')::integer IS DISTINCT FROM (dep->>'revision')::integer
+              OR jsonb_typeof(old_state->'jobs'->job_key->'fields'->(dep->>'field_key')->'checkpoint'->'accepted_output_proof') IS DISTINCT FROM 'object'))
+        AND (SELECT jsonb_object_agg(semantic_mapping->'field_mapping'->>f.key,f.value->'locked')
+          FROM jsonb_each(old_state->'jobs'->job_key->'fields') f)=intent_payload->'human_locks'
+        AND intent_payload->'human_locks'=c->'causal'->'human_locks'
+        AND c->'causal'->'human_locks'=c->'prepared'->'basis'->'human_locks'
+        AND NOT EXISTS (SELECT 1 FROM jsonb_each(intent_payload->'human_locks') f WHERE f.value='true'::jsonb
+          AND NOT progress->'human_reason_codes' @> jsonb_build_array('preserved_human_decision:'||f.key))
+        AND NOT EXISTS (SELECT 1 FROM prior_fields f WHERE f.field_group='mandatory' AND f.state<>'supported'
+          AND NOT progress->'human_reason_codes' @> jsonb_build_array('mandatory_unresolved:'||f.field_key))
+        AND (CASE WHEN EXISTS (SELECT 1 FROM jsonb_each(progress->'canonical_field_work') f
+          WHERE f.value#>>'{}' IN ('waiting_source','operational_failed','cancelled')
+            OR f.value='"waiting_policy"'::jsonb AND NOT (progress->'human_reason_codes' @> jsonb_build_array('mandatory_unresolved:'||f.key)
+              AND EXISTS (SELECT 1 FROM jsonb_array_elements(old_state->'jobs'->job_key->'pins'->'profile'->'fields') p
+                WHERE semantic_mapping->'field_mapping'->>(p->>'field_key')=f.key AND jsonb_typeof(p->'missing_policy')='string')))
+          OR jsonb_array_length(progress->'operational_reason_codes')>0 THEN
+            c->>'state'='processing_blocked' AND c->'record'->'disposition'='null'::jsonb AND progress->>'run_stage'='processing_blocked'
+          ELSE c->>'state'='completed' AND progress->>'run_stage'='finalized'
+            AND (CASE WHEN EXISTS (SELECT 1 FROM jsonb_each(progress->'canonical_field_work') f WHERE f.value='"waiting_human"'::jsonb)
+              OR jsonb_array_length(progress->'human_reason_codes')>0 THEN c->'record'->>'disposition'='needs_human_review'
+              ELSE c->'record'->>'disposition' IN ('cleared','needs_human_review') END) END)
+        AND progress->>'wire_status'=c->>'state' AND progress->>'run_stage'=(policy_graph->'run')->>'stage'
+        AND progress->'disposition'=c->'record'->'disposition'
+        AND jsonb_typeof(progress->'exportable')='boolean'
+        AND progress->'exportable'=to_jsonb(COALESCE(c->'record'->>'disposition'='cleared',false))
+        AND (policy_graph->'run')->'reasons'=(progress->'operational_reason_codes')||(progress->'human_reason_codes')
+        AND prior_graph-'run'=old_snapshot-'run'
+        AND (c->>'prior_run_json')::jsonb=prior_graph->'run'
+        AND (CASE WHEN old_snapshot->'active_graph'='null'::jsonb THEN prior_graph=old_snapshot
+          ELSE encode(sha256(convert_to(c->>'prior_run_json','UTF8')),'hex')=old_snapshot->'active_graph'->>'run_sha256'
+            AND (SELECT jsonb_object_agg(k,CASE WHEN k=ANY(ARRAY['observations','first_pass_decisions','transcripts','fields','evidence',
+              'lookups','phase_results','reading_metadata','reading_declarations','label_language_handling','disagreements','authority_receipts',
+              'authority_results','dependencies','profile_snapshot','risk_policy_snapshot','profile_rules'])
+              THEN CASE WHEN jsonb_typeof(v)='array' THEN '[]'::jsonb ELSE '{}'::jsonb END ELSE v END)
+              FROM jsonb_each(prior_graph->'run') e(k,v))=old_snapshot->'run' END)
+        AND policy_graph-'version'-'run'=prior_graph-'version'-'run'
+        AND (policy_graph->'run')-'stage'-'disposition'-'reasons'=(prior_graph->'run')-'stage'-'disposition'-'reasons'
+        AND (policy_graph->>'version')::integer=revision+1
+        AND c->'prepack_proof'->>'contract_version'='research-prepack-proof/v2'
+        AND post_graph-'audit'=policy_graph-'audit'
+        AND jsonb_array_length(post_graph->'audit')=jsonb_array_length(policy_graph->'audit')+1
+        AND (post_graph->'audit')-(-1)=policy_graph->'audit'
+        AND (post_graph->'audit'->-1)-'created_at'=jsonb_build_object('id',c->>'audit_id','actor',$4,'action','research_publication',
+          'reason',c->'receipt'->>'operationDigest','before',jsonb_build_object('revision',revision),
+          'after',jsonb_build_object('revision',revision+1,'record_version_id',c->'record'->>'id'))
+        AND (c->'snapshot')-'run'-'active_graph'=post_graph-'run'-'active_graph'
+        AND c->'prepack_proof'->'packing_metadata'=(c->'snapshot')->'active_graph'
+        AND (c->>'post_run_json')::jsonb=post_graph->'run'
+        AND (CASE WHEN (c->'snapshot')->'active_graph'='null'::jsonb THEN (c->'snapshot')->'run'=post_graph->'run'
+          ELSE encode(sha256(convert_to(c->>'post_run_json','UTF8')),'hex')=(c->'snapshot')->'active_graph'->>'run_sha256'
+            AND (c->>'post_graph_envelope_json')::jsonb=jsonb_build_object('contract_version','active-run-v1',
+              'scope',post_graph->'scope','specimen_id',$3::text,'revision',revision+1,'run',post_graph->'run')
+            AND encode(sha256(convert_to(c->>'post_graph_envelope_json','UTF8')),'hex')=(c->'snapshot')->'active_graph'->>'sha256'
+            AND octet_length(c->>'post_graph_envelope_json')=((c->'snapshot')->'active_graph'->>'size_bytes')::integer
+            AND ((c->'snapshot')->'active_graph'->>'size_bytes')::integer BETWEEN 1 AND 16777216
+            AND (c->'snapshot')->'active_graph'->>'contract_version'='active-run-v1'
+            AND (c->'snapshot')->'active_graph'->'scope'=post_graph->'scope'
+            AND (c->'snapshot')->'active_graph'->>'specimen_id'=$3::text
+            AND ((c->'snapshot')->'active_graph'->>'revision')::integer=revision+1
+            AND (c->'snapshot')->'active_graph'->>'run_id'=canonical_run_id::text
+            AND (SELECT jsonb_object_agg(k,CASE WHEN k=ANY(ARRAY['observations','first_pass_decisions','transcripts','fields','evidence',
+              'lookups','phase_results','reading_metadata','reading_declarations','label_language_handling','disagreements','authority_receipts',
+              'authority_results','dependencies','profile_snapshot','risk_policy_snapshot','profile_rules'])
+              THEN CASE WHEN jsonb_typeof(v)='array' THEN '[]'::jsonb ELSE '{}'::jsonb END ELSE v END)
+              FROM jsonb_each(post_graph->'run') e(k,v))=(c->'snapshot')->'run' END)
+        AND (c->>'snapshot_json')::jsonb=c->'snapshot'
+        AND encode(sha256(convert_to(c->>'snapshot_json','UTF8')),'hex')=c->'receipt'->>'snapshotSha256'
+        AND c->'prepack_proof'->>'packed_snapshot_digest'=c->'receipt'->>'snapshotSha256'
+        AND c->'receipt'->>'prepackProofDigest'=c->'causal'->'native_commit'->>'prepackProofDigest'
+        AND c->'causal'->'native_commit'=c->'receipt'
+        AND c->'causal'->>'actor_uid'=$4 AND c->'receipt'->>'actorUid'=$4 AND c->'receipt'->>'specimenId'=$3::text
+        AND c->'causal'->>'receipt_id'=c->'receipt'->>'id' AND c->'causal'->>'intent_id'=c->>'intent_id'
+        AND c->'causal'->>'operation_digest'=c->'receipt'->>'operationDigest'
+        AND c->'causal'->>'binding_id'=binding_id::text AND c->'causal'->>'job_key'=job_key
+        AND c->'causal'->>'program_key'=program_key AND c->'causal'->'scope_identity'=c->'native_guard'->'scope'
+        AND c->'causal'->>'authority_digest'=authority_digest AND c->'causal'->>'import_proof_id'=import_proof_id::text
+        AND c->'causal'->>'import_proof_digest'=import_proof_digest
+        AND c->'causal'->'original_base'=intent_payload->'original_base'
+        AND c->'causal'->'resulting'=jsonb_build_object('record_revision',revision+1,'record_version_id',c->'record'->>'id',
+          'canonical_run_id',canonical_run_id,'host_record_version_id',canonical_run_id::text||':'||(revision+1)::text,
+          'snapshot_sha256',c->'receipt'->>'snapshotSha256')
+        AND c->'receipt'->>'hostRecordVersionId'=canonical_run_id::text||':'||(revision+1)::text
+        AND (c->'receipt'->>'usedCanonicalRevision')::integer=revision
+        AND (c->'receipt'->>'resultingCanonicalRevision')::integer=revision+1
+        AND c->'receipt'->>'usedRecordVersionId'=current_record_version_id::text
+        AND c->'receipt'->>'usedHostRecordVersionId'=current_host_record_version_id
+        AND c->'receipt'->>'canonicalRunId'=canonical_run_id::text AND c->'receipt'->>'jobId'=job_id
+        AND c->'receipt'->>'jobKey'=job_key AND (c->'receipt'->>'generation')::integer=generation
+        AND c->'receipt'->>'inputDigest'=input_digest AND c->'receipt'->>'profileDigest'=profile_digest
+        AND c->'receipt'->>'runtimeBindingDigest'=runtime_binding_digest AND c->'receipt'->'sensitive'='false'::jsonb
+        AND c->'causal'->>'input_digest'=input_digest AND c->'causal'->>'profile_digest'=profile_digest
+        AND c->'causal'->>'runtime_binding_digest'=runtime_binding_digest
+        AND (c->'causal'->>'before_state_revision')::integer=state_revision
+        AND (c->'causal'->>'after_state_revision')::integer=state_revision+1
+        AND (c->'causal'->>'before_registration_revision')::integer=registration_revision
+        AND (c->'causal'->>'after_registration_revision')::integer=registration_revision+1
+        AND c->'causal'->'before_state'=old_state AND c->'causal'->'after_state'=c->'next_state'
+        AND c->'causal'->>'publication_outbox_key'=c->'prepared'->'basis'->>'publication_outbox_key'
+        AND (c->>'next_state_json')::jsonb=c->'next_state'
+        AND c->'next_state'=jsonb_set(jsonb_set(old_state,ARRAY['outbox',c->'prepared'->'basis'->>'publication_outbox_key','delivered'],
+          'true'::jsonb),ARRAY['outbox',c->'prepared'->'basis'->>'publication_outbox_key','canonical_commit'],c->'receipt')
+        AND (old_state->'budget_policy'->>'ceiling_micro_usd')::bigint BETWEEN 1 AND 12000000
+        AND old_state->'budget_policy'->'hold_reason'='null'::jsonb
+        AND (old_state->'budget_totals'->>'held_micro_usd')::bigint=(old_state->'budget_policy'->>'external_held_micro_usd')::bigint
+          +COALESCE((SELECT sum((value->>'held_micro_usd')::bigint) FROM jsonb_each(old_state->'effects')),0)
+        AND (old_state->'budget_totals'->>'settled_micro_usd')::bigint=greatest((old_state->'budget_policy'->>'external_settled_micro_usd')::bigint,
+          COALESCE((old_state->>'ordinary_cost_micros')::bigint,0))+COALESCE((SELECT sum(COALESCE((value->>'actual_micro_usd')::bigint,0)) FROM jsonb_each(old_state->'effects')),0)
+        AND (old_state->'budget_totals'->>'held_micro_usd')::bigint+(old_state->'budget_totals'->>'settled_micro_usd')::bigint
+          <=(old_state->'budget_policy'->>'ceiling_micro_usd')::bigint
+        AND jsonb_array_length(c->'causal_chain')<64
+        AND (SELECT count(*) FROM ancestors)=jsonb_array_length(c->'causal_chain')
+        AND COALESCE((SELECT jsonb_agg(causal_proof ORDER BY used_canonical_revision) FROM ancestors),'[]'::jsonb)=c->'causal_chain'
+        AND (SELECT count(*) FROM ancestors WHERE causal_proof->>'contract_version'='native-canonical-publication/v2')<=20
+        AND (SELECT count(DISTINCT causal_proof->>'changed_field') FROM ancestors
+          WHERE causal_proof->>'contract_version'='native-canonical-publication/v2')=(SELECT count(*) FROM ancestors
+          WHERE causal_proof->>'contract_version'='native-canonical-publication/v2')
+        AND (SELECT count(*) FROM ancestors WHERE causal_proof->>'contract_version'='native-canonical-progress/v2')<44
+        AND (SELECT count(DISTINCT causal_proof->'progress_receipt'->>'field_work_digest') FROM ancestors
+          WHERE causal_proof->>'contract_version'='native-canonical-progress/v2')=(SELECT count(*) FROM ancestors
+          WHERE causal_proof->>'contract_version'='native-canonical-progress/v2')
+        AND NOT EXISTS (SELECT 1 FROM ancestors WHERE causal_proof->>'contract_version'='native-canonical-progress/v2'
+          AND causal_proof->'progress_receipt'->>'field_work_digest'=progress->>'field_work_digest')
+        AND NOT EXISTS (SELECT 1 FROM ancestors a
+          LEFT JOIN public.research_publication_intent_v2 i ON i.organization_id=$1 AND i.collection_id=$2 AND i.id=a.intent_id
+            AND i.specimen_id=$3 AND i.actor_uid=$4
+          LEFT JOIN public.research_publication_preparation_v2 p ON p.organization_id=$1 AND p.collection_id=$2
+            AND p.id=a.winning_preparation_id AND p.intent_id=i.id
+          LEFT JOIN public.research_publication_attempt_v2 t ON t.organization_id=$1 AND t.collection_id=$2
+            AND t.intent_id=i.id AND t.preparation_id=p.id
+          LEFT JOIN public.record_version r ON r.organization_id=$1 AND r.collection_id=$2 AND r.id=a.native_record_version_id
+          LEFT JOIN public.specimen_snapshot z ON z.organization_id=$1 AND z.collection_id=$2 AND z.specimen_id=$3 AND z.revision=a.resulting_canonical_revision
+          WHERE i.id IS NULL OR p.id IS NULL OR t.id IS NULL
+            OR a.operation_digest IS DISTINCT FROM i.operation_digest OR a.prepared_digest IS DISTINCT FROM p.preparation_digest
+            OR a.causal_proof->>'admission_digest' IS DISTINCT FROM p.admission_digest
+            OR t.operation_digest IS DISTINCT FROM i.operation_digest OR t.preparation_digest IS DISTINCT FROM p.preparation_digest
+            OR t.admission_digest IS DISTINCT FROM p.admission_digest
+            OR a.causal_proof->>'contract_version' IS NULL OR a.causal_proof->>'contract_version' NOT IN ('native-canonical-publication/v2','native-canonical-progress/v2')
+            OR (CASE WHEN a.causal_proof->>'contract_version'='native-canonical-progress/v2' THEN
+              i.payload->>'contract_version'<>'research-progress-intent/v2' OR a.causal_proof->>'progress_basis_digest' IS DISTINCT FROM i.scientific_intent_digest
+              ELSE i.payload->>'contract_version'<>'research-publication-intent/v2'
+                OR a.causal_proof->>'scientific_intent_digest' IS DISTINCT FROM i.scientific_intent_digest
+                OR a.causal_proof->>'changed_field' IS DISTINCT FROM i.payload->>'changed_field' END)
+            OR a.specimen_id<>$3 OR a.actor_uid<>$4 OR a.binding_id<>l.binding_id OR a.job_key<>l.job_key OR a.job_id<>l.job_id
+            OR a.generation<>l.generation OR a.input_digest<>l.input_digest OR a.profile_digest<>l.profile_digest OR a.runtime_binding_digest<>l.runtime_binding_digest
+            OR a.causal_proof->'original_base' IS DISTINCT FROM intent_payload->'original_base'
+            OR a.causal_proof->'human_locks' IS DISTINCT FROM i.payload->'human_locks'
+            OR a.chain_digest IS DISTINCT FROM a.causal_proof->>'chain_digest'
+            OR a.causal_proof->'original_base' IS DISTINCT FROM i.payload->'original_base'
+            OR a.causal_proof->>'authority_digest' IS DISTINCT FROM i.payload->>'authority_digest'
+            OR a.causal_proof->>'import_proof_id' IS DISTINCT FROM i.payload->>'import_proof_id'
+            OR a.causal_proof->>'import_proof_digest' IS DISTINCT FROM i.payload->>'import_proof_digest'
+            OR a.causal_proof->>'binding_id' IS DISTINCT FROM i.payload->>'binding_id'
+            OR a.causal_proof->>'job_key' IS DISTINCT FROM i.payload->>'job_key'
+            OR a.causal_proof->>'program_key' IS DISTINCT FROM i.payload->>'program_key'
+            OR i.payload_json::jsonb IS DISTINCT FROM i.payload
+            OR p.payload_json::jsonb-'preparation_digest' IS DISTINCT FROM p.payload
+            OR p.payload_json::jsonb->>'preparation_digest' IS DISTINCT FROM p.preparation_digest
+            OR a.causal_proof->>'authority_digest' IS DISTINCT FROM authority_digest
+            OR a.causal_proof->>'program_key' IS DISTINCT FROM program_key
+            OR a.causal_proof->>'import_proof_id' IS DISTINCT FROM import_proof_id::text
+            OR a.causal_proof->>'import_proof_digest' IS DISTINCT FROM import_proof_digest
+            OR a.resulting_canonical_revision<>a.used_canonical_revision+1 OR r.predecessor_id IS DISTINCT FROM a.used_record_version_id
+            OR r.run_id IS DISTINCT FROM l.canonical_run_id OR z.sha256 IS DISTINCT FROM a.snapshot_sha256)
+        AND (CASE WHEN current_receipt_id IS NULL THEN NOT EXISTS(SELECT 1 FROM ancestors)
+          AND current_record_version_id=base_record_version_id AND revision=base_canonical_revision
+          ELSE EXISTS (SELECT 1 FROM ancestors head WHERE head.id=l.current_receipt_id AND head.chain_digest=l.current_chain_digest
+            AND head.native_record_version_id=l.current_record_version_id AND head.resulting_canonical_revision=l.revision
+            AND head.snapshot_sha256=l.current_snapshot_sha256 AND head.host_record_version_id=l.current_host_record_version_id)
+          AND EXISTS (SELECT 1 FROM ancestors a WHERE a.causal_proof->>'parent_receipt_id' IS NULL
+            AND a.used_record_version_id=base_record_version_id AND a.used_canonical_revision=base_canonical_revision
+            AND a.used_snapshot_sha256=base_snapshot_sha256 AND a.used_host_record_version_id=base_host_record_version_id)
+          AND NOT EXISTS (SELECT 1 FROM ancestors a WHERE a.causal_proof->>'parent_receipt_id' IS NOT NULL
+            AND NOT EXISTS (SELECT 1 FROM ancestors p WHERE p.id=(a.causal_proof->>'parent_receipt_id')::uuid
+              AND p.native_record_version_id=a.used_record_version_id AND p.resulting_canonical_revision=a.used_canonical_revision
+              AND p.snapshot_sha256=a.used_snapshot_sha256 AND p.host_record_version_id=a.used_host_record_version_id
+              AND p.chain_digest=a.causal_proof->>'parent_chain_digest')) END)
+        AND jsonb_array_length(c->'findings')=jsonb_array_length(c->'record'->'reasonCodes')+jsonb_array_length(prior_graph->'run'->'findings')
+        AND (SELECT count(DISTINCT v->>'id') FROM jsonb_array_elements(c->'findings') v)=jsonb_array_length(c->'findings')
+        AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(c->'findings') v WHERE
+          v->>'recordVersionId' IS DISTINCT FROM c->'record'->>'id' OR v->>'runId' IS DISTINCT FROM canonical_run_id::text
+          OR v->'evidenceIds' IS DISTINCT FROM 'null'::jsonb OR v->>'outcome' IS DISTINCT FROM 'fail'
+          OR NOT ((v->>'ruleVersion'=c->'record'->>'policyVersion' AND v->>'severity'='hard'
+            AND c->'record'->'reasonCodes' @> jsonb_build_array(v->>'reasonCode')
+            AND v->>'ruleId'=split_part(v->>'reasonCode',':',1))
+            OR EXISTS (SELECT 1 FROM jsonb_array_elements(prior_graph->'run'->'findings') f
+              WHERE f->>'reason_code'=v->>'reasonCode' AND f->>'rule_id'=v->>'ruleId' AND f->>'rule_version'=v->>'ruleVersion'
+                AND f->>'severity'=v->>'severity' AND f->'field_key'=v->'fieldKey')))
+    ), record AS (
+      INSERT INTO public.record_version(organization_id,collection_id,id,run_id,predecessor_id,disposition,policy_version,reason_codes,summary,created_at)
+      SELECT $1,$2,(c->'record'->>'id')::uuid,canonical_run_id,current_record_version_id,c->'record'->>'disposition',
+        c->'record'->>'policyVersion',ARRAY(SELECT jsonb_array_elements_text(c->'record'->'reasonCodes')),
+        c->'record'->>'summary',statement_timestamp()
+      FROM admissible RETURNING id
+    ), fields AS (
+      INSERT INTO public.resolved_field(organization_id,collection_id,id,record_version_id,candidate_id,field_key,state,field_group,created_at)
+      SELECT $1,$2,(v->>'id')::uuid,(c->'record'->>'id')::uuid,
+        f.candidate_id,
+        f.field_key,f.state,
+        f.field_group,statement_timestamp()
+      FROM admissible l JOIN prior_fields f ON true
+      JOIN LATERAL jsonb_array_elements(c->'fields') v ON v->>'fieldKey'=f.field_key
+      WHERE (SELECT count(*) FROM record)=1 RETURNING id,field_key
+    ), findings AS (
+      INSERT INTO public.validation_finding(organization_id,collection_id,id,record_version_id,rule_id,rule_version,severity,outcome,field_key,reason_code,evidence_ids,created_at)
+      SELECT $1,$2,(v->>'id')::uuid,(c->'record'->>'id')::uuid,v->>'ruleId',v->>'ruleVersion',v->>'severity',v->>'outcome',
+        v->>'fieldKey',v->>'reasonCode',CASE WHEN v->'evidenceIds'='null'::jsonb THEN NULL ELSE
+        ARRAY(SELECT jsonb_array_elements_text(v->'evidenceIds'))::uuid[] END,statement_timestamp()
+      FROM admissible l CROSS JOIN LATERAL jsonb_array_elements(c->'findings') v
+      WHERE (SELECT count(*) FROM fields)=20 RETURNING id
+    ), specimen_commit AS (
+      UPDATE public.specimen s SET revision=l.revision+1,state=c->>'state',disposition=c->'record'->>'disposition',
+        active_run_id=canonical_run_id,work_available_at=CASE WHEN c->>'state'='running' THEN statement_timestamp() ELSE NULL END,
+        updated_at=statement_timestamp()
+      FROM admissible l WHERE s.organization_id=$1 AND s.collection_id=$2 AND s.id=$3 AND s.revision=l.revision
+        AND (SELECT count(*) FROM fields)=20 AND (SELECT count(DISTINCT field_key) FROM fields)=20
+        AND (SELECT count(*) FROM findings)=jsonb_array_length(c->'findings') RETURNING s.revision
+    ), snapshot AS (
+      INSERT INTO public.specimen_snapshot(organization_id,collection_id,specimen_id,revision,contract_version,snapshot,sha256,created_at)
+      SELECT $1,$2,$3,l.revision+1,c->>'snapshot_contract',c->'snapshot',c->'receipt'->>'snapshotSha256',statement_timestamp()
+      FROM admissible l WHERE (SELECT count(*) FROM specimen_commit)=1 RETURNING revision
+    ), request AS (
+      INSERT INTO public.request_receipt(organization_id,collection_id,actor_uid,operation,idempotency_key,request_sha256,specimen_id,revision,created_at)
+      SELECT $1,$2,$4,'research-progress-publication/v2',c->'receipt'->>'idempotencyKey',c->'receipt'->>'operationDigest',$3,l.revision+1,statement_timestamp()
+      FROM admissible l WHERE (SELECT count(*) FROM snapshot)=1 RETURNING revision
+    ), audit AS (
+      INSERT INTO public.audit_event(organization_id,collection_id,id,specimen_id,actor_uid,action,revision,request_sha256,created_at)
+      SELECT $1,$2,(c->>'audit_id')::uuid,$3,$4,'research_publication',l.revision+1,c->'receipt'->>'operationDigest',statement_timestamp()
+      FROM admissible l WHERE (SELECT count(*) FROM request)=1 RETURNING id
+    ), outbox AS (
+      INSERT INTO public.outbox_event(organization_id,collection_id,id,specimen_id,aggregate_revision,event_type,deduplication_key,payload_references,created_at)
+      SELECT $1,$2,(c->>'outbox_id')::uuid,$3,l.revision+1,'research_publication_committed',c->'receipt'->>'operationDigest',
+        jsonb_build_object('receipt_id',c->'receipt'->>'id','record_version_id',c->'record'->>'id'),statement_timestamp()
+      FROM admissible l WHERE (SELECT count(*) FROM audit)=1 RETURNING id
+    ), state_commit AS (
+      UPDATE public.research_harness_state h SET revision=h.revision+1,state=c->'next_state',state_json=c->>'next_state_json',updated_at=statement_timestamp()
+      FROM admissible l WHERE h.organization_id=$1 AND h.program_key=l.program_key AND h.revision=l.state_revision
+        AND (SELECT count(*) FROM outbox)=1 RETURNING h.revision
+    ), pointer AS (
+      UPDATE public.canonical_research_binding_v2 b SET registration_revision=b.registration_revision+1,
+        current_canonical_revision=l.revision+1,current_record_version_id=(c->'receipt'->>'nativeRecordVersionId')::uuid,
+        current_snapshot_sha256=c->'receipt'->>'snapshotSha256',current_host_record_version_id=c->'receipt'->>'hostRecordVersionId',
+        current_receipt_id=(c->'receipt'->>'id')::uuid,current_chain_digest=c->'causal'->>'chain_digest'
+      FROM admissible l WHERE b.organization_id=$1 AND b.collection_id=$2 AND b.specimen_id=$3
+        AND b.registration_revision=l.registration_revision AND (SELECT count(*) FROM state_commit)=1 RETURNING b.binding_id
+    )
+    INSERT INTO public.research_publication_receipt_v2(organization_id,collection_id,actor_uid,idempotency_key,id,specimen_id,
+      operation_digest,publication_digest,prepared_digest,intent_id,binding_id,job_id,job_key,generation,input_digest,profile_digest,runtime_binding_digest,
+      used_canonical_revision,used_record_version_id,used_host_record_version_id,used_snapshot_sha256,resulting_canonical_revision,
+      native_record_version_id,canonical_run_id,host_record_version_id,snapshot_sha256,projection_digest,projection_count,audit_id,outbox_id,policy_receipt_digest,lineage_digest,sensitive,winning_preparation_id,causal_proof,chain_digest,prepack_proof,prepack_proof_digest,created_at)
+    SELECT $1,$2,$4,c->'receipt'->>'idempotencyKey',(c->'receipt'->>'id')::uuid,$3,c->'receipt'->>'operationDigest',
+      c->'receipt'->>'publicationDigest',c->'receipt'->>'preparedDigest',(c->>'intent_id')::uuid,binding_id,job_id,job_key,generation,input_digest,profile_digest,runtime_binding_digest,
+      l.revision,current_record_version_id,current_host_record_version_id,current_snapshot_sha256,l.revision+1,
+      (c->'receipt'->>'nativeRecordVersionId')::uuid,canonical_run_id,c->'receipt'->>'hostRecordVersionId',c->'receipt'->>'snapshotSha256',
+      c->'receipt'->>'projectionDigest',20,(c->>'audit_id')::uuid,(c->>'outbox_id')::uuid,
+      c->'policy_materialization'->>'policy_receipt_digest',c->'policy_materialization'->>'lineage_digest',false,
+      (c->'causal'->>'winning_preparation_id')::uuid,c->'causal',c->'causal'->>'chain_digest',c->'prepack_proof',c->'receipt'->>'prepackProofDigest',statement_timestamp()
+    FROM admissible l WHERE (SELECT count(*) FROM pointer)=1
+    """, params: [$organizationId,$collectionId,$specimenId,$actorUid,$commitJson]) @check(expr: "this == 1", message: "native progress custody unavailable")
+}

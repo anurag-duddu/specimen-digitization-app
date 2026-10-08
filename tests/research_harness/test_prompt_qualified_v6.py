@@ -8,7 +8,7 @@ import pytest
 from specimen_digitization.research_harness import prompts
 from specimen_digitization.research_harness.contracts import SpecialistRole
 from specimen_digitization.research_harness.prompts import (
-    MEASUREMENT_EVIDENCE_PROMPT_VERSION, QUALIFIED_PROMPT_VERSION, TEMPORAL_CONTEXT_PROMPT_VERSION, ROLE_PROMPTS, resolve_prompt,
+    MEASUREMENT_EVIDENCE_PROMPT_VERSION, QUALIFIED_PROMPT_VERSION, TEMPORAL_EVENT_LINK_PROMPT_VERSION, ROLE_PROMPTS, resolve_prompt,
 )
 
 ROOT = Path(prompts.__file__).parent
@@ -24,8 +24,8 @@ CASES = (
 @pytest.mark.parametrize(("role", "sha", "utility", "field", "qualifier"), CASES)
 def test_immutable_v6_file_extends_v5_and_the_active_pin_retains_its_exact_qualification(role, sha, utility, field, qualifier):
     name, version = ROLE_PROMPTS[role]
-    expected_version = MEASUREMENT_EVIDENCE_PROMPT_VERSION if role == SpecialistRole.MEASUREMENT else TEMPORAL_CONTEXT_PROMPT_VERSION
-    assert name == f"{role.value}-v{9 if role == SpecialistRole.MEASUREMENT else 7}.txt"
+    expected_version = MEASUREMENT_EVIDENCE_PROMPT_VERSION if role == SpecialistRole.MEASUREMENT else TEMPORAL_EVENT_LINK_PROMPT_VERSION
+    assert name == f"{role.value}-v{10 if role == SpecialistRole.MEASUREMENT else 8}.txt"
     assert version == expected_version
     old = (ROOT / f"{role.value}-v5.txt").read_bytes()
     new = (ROOT / f"{role.value}-v6.txt").read_bytes()

@@ -46,6 +46,7 @@ from .evidence import (
     parse_measurement, parse_temporal,
 )
 from .persistence import StaleWork
+from .measurement import settled_elevation_dependencies
 
 # The proposer behind the hand-over today: the ordinary extraction step (application/harness.py).
 ORGANISER_SOURCE = "extractor"
@@ -72,6 +73,7 @@ _COLLECTING_DATE_LINE = re.compile(
 _DETERMINATION_DATE_LINE = re.compile(
     r"^\s*(?:determination date|date identified|date determined|identified on|determined on)\s*[:=]\s*",
     re.IGNORECASE)
+_ELEVATION_LINE = re.compile(r"^\s*(?:elev(?:ation)?|alt(?:itude)?)\.?(?:\s*[:=]\s*|\s+)", re.IGNORECASE)
 # Scan with the settlement parser's own grammar, without its whole-input anchors.
 # Number boundaries force complete numeric groups instead of a prefix such as
 # "1" from "1,300". Unit boundaries force full words rather than "m" from
@@ -95,8 +97,9 @@ MAX_CANDIDATES_PER_FIELD = 5
 
 
 class NativeGenerationRequestFactory:
-    def __init__(self, repository, *, verify_access, registry):
+    def __init__(self, repository, *, verify_access, registry, checkpoint_proof_reader=None):
         self.repository, self.verify_access, self.registry = repository, verify_access, registry
+        self.checkpoint_proof_reader = checkpoint_proof_reader
 
     async def __call__(self, principal, binding, job):
         await self.verify_access(principal, binding.canonical.sensitive)
@@ -122,9 +125,17 @@ class NativeGenerationRequestFactory:
             or job["pins"]["sources"].get("registry_digest") != self.registry.digest):
             raise StaleWork("research_original_source_profile_unproved")
         scope = binding.research_scope()
-        fragments, events, assemblies, evidence, decisions, candidates = self._build_graph(original, scope)
+        from .prompts import COLLECTION_EVIDENCE_PROMPT_VERSION
+        collection_pin = job["pins"]["prompts"].get(str(SpecialistRole.COLLECTION), {})
+        fragments, events, assemblies, evidence, decisions, candidates = self._build_graph(original, scope,
+            collection_recovery=collection_pin.get("version") == COLLECTION_EVIDENCE_PROMPT_VERSION)
         if not fragments:
             raise StaleWork("research_original_reading_graph_unavailable")
+        elevation_dependencies = await asyncio.to_thread(settled_elevation_dependencies, job, scope,
+            checkpoint_proof_reader=self.checkpoint_proof_reader)
+        from .dependency_context import accepted_native_context, role_context
+        contexts = await asyncio.to_thread(accepted_native_context, job, scope,
+            checkpoint_proof_reader=self.checkpoint_proof_reader)
         requests = {}
         for role, keys in ROLE_FIELDS.items():
             pin = job["pins"]["prompts"].get(str(role))
@@ -134,11 +145,19 @@ class NativeGenerationRequestFactory:
             if (prompt.role != role or prompt.profile_digest != digest(profile)
                 or prompt.source_registry_digest != self.registry.digest):
                 raise StaleWork("research_full_prompt_pin_changed")
+            consumed = role_context(role, contexts)
+            dependencies = tuple(item.pin for item in consumed)
+            if role == SpecialistRole.MEASUREMENT:
+                dependencies = tuple(dict.fromkeys((*elevation_dependencies, *dependencies)))
             requests[role] = SpecialistRequest(scope=scope, role=role, field_keys=keys,
                 prompt=prompt, fragments=fragments, events=events, assemblies=assemblies,
                 evidence=evidence, accepted_decisions=decisions,
                 organiser_candidates=tuple(item for item in candidates if item.field_key in keys),
+                dependencies=dependencies, settled_context=consumed,
                 field_revisions={key:job["fields"][str(key)]["revision"] for key in keys})
+            if role == SpecialistRole.TEMPORAL:
+                from .temporal_context import qualify_temporal_links
+                requests[role] = qualify_temporal_links(requests[role])
         if set(requests) != set(SpecialistRole):
             raise StaleWork("research_complete_specialist_inputs_required")
         return requests
@@ -152,7 +171,7 @@ class NativeGenerationRequestFactory:
         return NativeGenerationRequestFactory._build_graph(specimen, scope)[:5]
 
     @staticmethod
-    def _build_graph(specimen, scope):
+    def _build_graph(specimen, scope, *, collection_recovery=True):
         ref = specimen.asset.blob_ref
         if not re.fullmatch(r"[a-f0-9]{64}:[1-9][0-9]*", ref) or ref.partition(":")[0] != specimen.asset.sha256:
             raise StaleWork("research_original_asset_generation_unproved")
@@ -238,12 +257,16 @@ class NativeGenerationRequestFactory:
                     if not evidence_ids:
                         offset += len(line)
                         continue
+                    qualified = deciding and key is not None and not fragment.unreadable
+                    if qualified and key in ELEVATION_FIELDS:
+                        qualified = _qualified_keyed_elevation(specimen, fragment, reading_map)
+                    rule = "exact-elevation-field-key-line/v1" if key in ELEVATION_FIELDS else "exact-field-key-line/v1"
                     event = EventHypothesis(id="event:"+digest([fragment.id,str(kind)]), scope=scope,
                         kind=kind, fragment_ids=(fragment.id,), evidence_ids=evidence_ids,
                         reason="explicit_exact_field_key_line" if key is not None else "unstructured_label_event_unqualified",
-                        rule_version="exact-field-key-line/v1",
-                        status="accepted" if deciding and key is not None and not fragment.unreadable else "proposed",
-                        validator_version="exact-field-key-line/v1" if deciding and key is not None and not fragment.unreadable else None)
+                        rule_version=rule,
+                        status="accepted" if qualified else "proposed",
+                        validator_version=rule if qualified else None)
                     events.append(event)
                     if event.status == "accepted":
                         assemblies.append(assemble_field(assembly_id="assembly:"+digest([fragment.id,str(key)]),
@@ -253,6 +276,11 @@ class NativeGenerationRequestFactory:
             raise StaleWork("research_original_readings_not_fully_retained")
         candidates = NativeGenerationRequestFactory._organiser_pass(
             specimen, scope, ref, region_map, reading_map, fragments, events, assemblies)
+        from .people import recover_collectors
+        candidates = recover_collectors(specimen, scope, fragments, events, assemblies, candidates)
+        if collection_recovery:
+            from .collection import recover_collection_graph
+            recover_collection_graph(scope, fragments, events, assemblies, native_rows=specimen.run.evidence)
         return tuple(fragments),tuple(events),tuple(assemblies),tuple(evidence),tuple(decisions),candidates
 
     @staticmethod
@@ -413,6 +441,11 @@ class NativeGenerationRequestFactory:
         if _validator_refuses(key, literal):
             return _candidate(key, literal, "located", "validator_would_refuse_the_literal", **where,
                 evidence_ids=(row.id,))
+        if key == FieldKey.COLLECTORS:
+            from .people import collector_span_problem
+            if collector_span_problem(text, literal, start, end, check_name=False):
+                return _candidate(key, literal, "located", "collector_role_or_list_unqualified", **where,
+                    evidence_ids=(row.id,))
         fragment = SourceFragment(id="fragment:" + digest([observation.id, start, end, ORGANISER_RULE]),
             scope=scope, asset_id=specimen.asset.id, asset_generation=ref.partition(":")[2],
             asset_digest=specimen.asset.sha256, label_id=region.id, region_id=region.id,
@@ -640,6 +673,77 @@ def _qualified_elevation_line(text, literal):
     return True
 
 
+def _explicit_elevation_assertions(text):
+    for _, _, line in _lines(text):
+        name, separator, literal = line.partition(":")
+        if separator and name.strip() in {str(key) for key in ELEVATION_FIELDS}:
+            yield literal.strip()
+        elif _ELEVATION_LINE.match(line):
+            yield line.strip()
+
+
+def _explicit_elevation_regions(reading_map):
+    return {observation.region_id for observation in reading_map.values()
+            if any(True for _ in _explicit_elevation_assertions(observation.literal_text))}
+
+
+def _retained_elevations_agree(readers, identity):
+    for observation in readers:
+        # An explicitly headed but malformed assertion is not a silent reader.
+        for literal in _explicit_elevation_assertions(observation.literal_text):
+            try:
+                retained = parse_measurement(literal)
+            except EvidenceError:
+                # Preserve complete elevation spans followed by harmless
+                # narrative prose. The span must start at the heading/value,
+                # and the usual guard still refuses a dropped sign, range,
+                # qualifier or written uncertainty beside it.
+                retained = None
+                for match in _RETAINED_MEASUREMENT.finditer(literal):
+                    if match.start() != 0 or not _qualified_elevation_line(literal, match.group().strip()):
+                        continue
+                    try:
+                        retained = parse_measurement(match.group().strip())
+                    except EvidenceError:
+                        continue
+                    break
+                if retained is None:
+                    return False
+            if _measurement_identity(retained) != identity:
+                return False
+        for match in _RETAINED_MEASUREMENT.finditer(observation.literal_text):
+            try:
+                retained = parse_measurement(match.group().strip())
+            except EvidenceError:
+                continue
+            if _measurement_identity(retained) != identity:
+                return False
+    return True
+
+
+def _qualified_keyed_elevation(specimen, fragment, reading_map):
+    """Require label agreement; a field key cannot invent a cross-label event."""
+    if not _qualified_elevation_line(fragment.observation_text, fragment.literal):
+        return False
+    try:
+        measurement = parse_measurement(fragment.literal)
+    except EvidenceError:
+        return False
+    identity = _measurement_identity(measurement)
+    elevation_keys = {str(key) for key in ELEVATION_FIELDS}
+    # The ordinary snapshot has no accepted common-event membership spanning
+    # these labels. Do not let a per-span keyed event hide another label's
+    # retained elevation candidate, even when their physical quantities agree.
+    if any(item.field_key in elevation_keys and item.region_id != fragment.region_id
+           for item in stored_candidates(specimen.run.fields, specimen.run.evidence,
+                                         reading_texts_of(specimen.run))):
+        return False
+    if _explicit_elevation_regions(reading_map) - {fragment.region_id}:
+        return False
+    return _retained_elevations_agree(
+        (item for item in reading_map.values() if item.region_id == fragment.region_id), identity)
+
+
 def _qualified_elevation_assemblies(specimen, by_field, reading_map, decided, keyed):
     """Ground a complete elevation supported by all readers or a decided transcript.
 
@@ -651,7 +755,7 @@ def _qualified_elevation_assemblies(specimen, by_field, reading_map, decided, ke
     if any(item.field_key in ELEVATION_FIELDS for item in keyed):
         return {}
     claims = [claim for key in ELEVATION_FIELDS for claim in by_field.get(key, ())]
-    regions = {claim.row.region_id for claim in claims if claim.row is not None}
+    regions = {claim.row.region_id for claim in claims if claim.row is not None} | _explicit_elevation_regions(reading_map)
     if not claims or len(regions) != 1:
         return {}
     region_id = next(iter(regions))
@@ -691,14 +795,8 @@ def _qualified_elevation_assemblies(specimen, by_field, reading_map, decided, ke
     # of a decided transcript, before treating one proposed assertion as settled.
     # A silent reader remains allowed by the decided-transcript rule; a contrary
     # written unit assertion does not become silent just because extraction omitted it.
-    for observation in readers:
-        for match in _RETAINED_MEASUREMENT.finditer(observation.literal_text):
-            try:
-                retained = parse_measurement(match.group().strip())
-            except EvidenceError:
-                continue
-            if _measurement_identity(retained) != identity:
-                return {}
+    if not _retained_elevations_agree(readers, identity):
+        return {}
     eligible = [claim for claim in claims if selected is None or claim.observation.id == selected[1].id]
     if not eligible:
         return {}
@@ -881,8 +979,10 @@ def _validator_refuses(key, written):
             catalog_literal(written)
         except EvidenceError:
             return True
-    if key == FieldKey.COLLECTORS and (re.search(r"\d", written) or not re.search(r"[^\W\d_]{2}", written, re.UNICODE)):
-        return True
+    if key == FieldKey.COLLECTORS:
+        from .people import name_problem
+        if name_problem(written):
+            return True
     if key == FieldKey.COLLECTION_CODE and written.upper().replace(" ", "") in {"FMNHINS", "FMNH-INS"}:
         return True
     return key in {FieldKey.HABITAT, FieldKey.COLLECTION_METHOD} and (

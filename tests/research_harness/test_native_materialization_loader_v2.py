@@ -41,6 +41,16 @@ def test_actual_Int64_wire_preserves_full_precision_and_zero():
     assert not exact_types_equal({"generation": 1}, {"generation": 1.0})
 
 
+@pytest.mark.parametrize("right,expected", [
+    ({"nested": {"items": [15.0, False], "value": 1}}, True),
+    ({"nested": {"items": [15.0, False], "different": 1}}, False),
+    ({"nested": {"value": 1, "items": [15, False]}}, False),
+    ({"nested": {"value": 1, "items": [15.0, 0]}}, False),
+])
+def test_exact_nested_types_compare_unordered_keys_without_numeric_coercion(right, expected):
+    assert exact_types_equal({"nested": {"value": 1, "items": [15.0, False]}}, right) is expected
+
+
 @pytest.mark.parametrize("text", ['{"x":1,"x":2}', '{"x":NaN}', '{"x":Infinity}'])
 def test_private_state_json_cannot_erase_duplicate_or_nonfinite_identity(text):
     with pytest.raises(PublicationUnavailable):
@@ -267,6 +277,27 @@ def test_actual_full_native_envelope_decodes_same_original_and_current_target(ca
     assert loaded.state_document==c.state and loaded.state_revision==7
     assert loaded.native_inputs["private_state_integrity"]["state_digest"]==digest(c.state)
     assert "state" not in loaded.native_inputs["private_state_integrity"]
+
+
+def test_native_materialization_keeps_key_order_and_isolates_nested_inputs(causal):
+    from specimen_digitization.research_harness.native_materialization_inputs_v2 import NativeMaterializationInputsV2
+    c = causal
+    # The real transport decodes independent JSON trees, not shared fixture aliases.
+    response = json.loads(json.dumps(native_materialization_response(c)))
+    raw = response["binding"]["materialization_inputs"]
+    loaded = NativeMaterializationInputsV2.from_response(c.b.principal, c.intent, c.prep, response)
+    assert list(loaded.native_inputs) == list(raw)
+    assert loaded.guard["inputs_digest"] == digest(loaded.native_inputs)
+    assert loaded.native_inputs["private_state_integrity"]["state_digest"] == loaded.guard["state_digest"] == digest(c.state)
+    original_row = raw["projection_rows"]["resolved_fields"][0]
+    returned_row = loaded.native_inputs["projection_rows"]["resolved_fields"][0]
+    guard_row = loaded.guard["projection_rows"]["resolved_fields"][0]
+    field_key = original_row["fieldKey"]
+    original_row["fieldKey"] = "changed-original"
+    assert returned_row["fieldKey"] == guard_row["fieldKey"] == field_key
+    returned_row["fieldKey"] = "changed-returned"
+    assert original_row["fieldKey"] == "changed-original"
+    assert guard_row["fieldKey"] == field_key
 
 
 @pytest.mark.parametrize("tamper",["unknown_alias","ambiguous_registration","duplicate_field","foreign_row","state_float","changed_original","missing_source_record","changed_packed_body","changed_anchor_body","snapshot_float_revision"])

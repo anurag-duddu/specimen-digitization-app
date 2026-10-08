@@ -16,7 +16,7 @@ from specimen_digitization.application.workflow import OperationalBlock
 from specimen_digitization.application.worker_deadline import WorkerDeadline
 from specimen_digitization.research_harness.native_worker import NativeResearchWorkerOutcomeV2
 from specimen_digitization.research_harness.contracts import ResearchScope
-from specimen_digitization.research_harness.persistence import HeldUnknown
+from specimen_digitization.research_harness.persistence import HeldUnknown, StaleWork
 from specimen_digitization.research_harness.workflow_bridge import NativeResearchWorkflow
 
 ORG = "00000000-0000-4000-8000-000000000001"
@@ -77,7 +77,13 @@ def scenario(*, step="plan", profile=HARNESS, stage="plan", refusal=None, outcom
         calls.append("ordinary_step")
         return specimen
     ordinary.step = ordinary_step
+    class Discovery:
+        async def binding(self, caller, ident):
+            assert caller is principal and ident == SPECIMEN
+            calls.append("retry_binding")
+            raise StaleWork("offline_retry_binding_unavailable")
     class NativeWorker:
+        runtime_factory = SimpleNamespace(discovery=Discovery())
         async def run_registered(self, caller, ident, *, owner):
             assert caller is principal and ident == SPECIMEN
             calls.append("native_run")
@@ -131,9 +137,22 @@ def test_other_steps_and_runs_without_a_harness_route_stay_ordinary(step, profil
     assert calls == ["get", "ordinary_step"]
 
 
-@pytest.mark.parametrize("stage", ["finalized", "paused", "cancelled", "processing_blocked"])
+@pytest.mark.parametrize("stage", ["finalized", "paused", "cancelled"])
 def test_a_terminal_run_is_returned_untouched(stage):
     workflow, principal, specimen, calls = scenario(stage=stage)
+    assert workflow.step(principal, SPECIMEN) is specimen
+    assert calls == ["get"]
+
+
+def test_a_blocked_harness_run_requires_read_only_retry_binding():
+    workflow, principal, _, calls = scenario(stage="processing_blocked")
+    with pytest.raises(OperationalBlock, match="^research_retry_requires_reconciliation$"):
+        workflow.step(principal, SPECIMEN)
+    assert calls == ["get", "retry_binding"]
+
+
+def test_a_blocked_run_without_a_harness_route_is_returned_untouched():
+    workflow, principal, specimen, calls = scenario(stage="processing_blocked", profile={})
     assert workflow.step(principal, SPECIMEN) is specimen
     assert calls == ["get"]
 

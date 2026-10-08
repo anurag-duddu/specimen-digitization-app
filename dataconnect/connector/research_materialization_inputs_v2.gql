@@ -71,7 +71,7 @@ query GetCanonicalResearchMaterializationInputsV2($organizationId: UUID!, $colle
     jsonb_build_object('contract_version',b.publication_version,'authority_digest',b.authority_digest,
       'import_proof_id',b.import_proof_id,'import_proof_digest',b.import_proof_digest,
       'head_receipt_id',b.current_receipt_id,'head_chain_digest',b.current_chain_digest,
-      'causal_chain',(SELECT CASE WHEN count(*)<=20 THEN COALESCE(jsonb_agg(p.causal_proof ORDER BY p.used_canonical_revision),'[]'::jsonb) ELSE NULL END
+      'causal_chain',(SELECT CASE WHEN count(*)<=64 THEN COALESCE(jsonb_agg(p.causal_proof ORDER BY p.used_canonical_revision),'[]'::jsonb) ELSE NULL END
         FROM public.research_publication_receipt_v2 p WHERE p.organization_id=b.organization_id
           AND p.collection_id=b.collection_id AND p.specimen_id=b.specimen_id AND p.binding_id=b.binding_id),
       'causal_count',(SELECT count(*) FROM public.research_publication_receipt_v2 p
@@ -122,7 +122,7 @@ query GetCanonicalResearchMaterializationInputsV2($organizationId: UUID!, $colle
     )
     SELECT base.*,
       json_build_object(
-        'contract_version','research-native-materialization-inputs/v2',
+        'contract_version',CASE WHEN sel.intent->>'contract_version'='research-progress-intent/v2' THEN 'research-native-progress-inputs/v2' ELSE 'research-native-materialization-inputs/v2' END,
         'observed_at',to_char(statement_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
         'registration',base.registrations->0,
         'outer_intent',json_build_object('original',sel.intent,
@@ -152,12 +152,17 @@ query GetCanonicalResearchMaterializationInputsV2($organizationId: UUID!, $colle
         'evidence',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'runId',r.run_id,'source',r.source,'sourceVersion',r.source_version,'adapterVersion',r.adapter_version,'query',r.query,'outcome',r.outcome,'locator',r.locator,'responseSha256',r.response_sha256,'capturedAt',r.captured_at,'rawAssetId',r.raw_asset_id,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.evidence_item r WHERE r.organization_id=s.organization_id AND r.collection_id=s.collection_id AND r.run_id=b.canonical_run_id ORDER BY r.id LIMIT 4097) r),
         'tool_calls',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'runId',r.run_id,'callKey',r.call_key,'phase',r.phase,'tool',r.tool,'toolVersion',r.tool_version,'source',r.source,'fieldKeys',r.field_keys,'inputSource',r.input_source,'transcriptionVersionId',r.transcription_version_id,'observationId',r.observation_id,'attempt',r.attempt,'arguments',r.arguments,'outcome',r.outcome,'result',r.result,'evidenceId',r.evidence_id,'startedAt',r.started_at,'completedAt',r.completed_at,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.tool_call r WHERE r.organization_id=s.organization_id AND r.collection_id=s.collection_id AND r.run_id=b.canonical_run_id ORDER BY r.id LIMIT 4097) r),
         'findings',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'recordVersionId',r.record_version_id,'ruleId',r.rule_id,'ruleVersion',r.rule_version,'severity',r.severity,'outcome',r.outcome,'fieldKey',r.field_key,'reasonCode',r.reason_code,'evidenceIds',r.evidence_ids,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.validation_finding r WHERE r.organization_id=s.organization_id AND r.collection_id=s.collection_id AND r.record_version_id IN (SELECT v.id FROM public.record_version v WHERE v.organization_id=s.organization_id AND v.collection_id=s.collection_id AND v.run_id=b.canonical_run_id) ORDER BY r.id LIMIT 4097) r)),
-        'checkpoint_inputs',json_build_object(
+        'checkpoint_inputs',CASE WHEN sel.intent->>'contract_version'='research-progress-intent/v2' THEN
+          json_build_object('terminal_fields',(SELECT COALESCE(json_agg(f.value->'checkpoint'->'payload' ORDER BY f.key),'[]'::json)
+            FROM json_each(sel.state->'jobs'->sel.job_key->'fields') f
+            WHERE f.value->>'work_state' IN ('resolved','waiting_human','nonblocking_exception')
+              AND (f.value->'checkpoint')::jsonb IS DISTINCT FROM 'null'::jsonb))
+          ELSE json_build_object(
           'target',sel.state->'jobs'->sel.job_key->'fields'->(sel.intent->'original_prepared'->'basis'->>'field_key')->'checkpoint'->'payload',
           'terminal_siblings',(SELECT COALESCE(json_agg(f.value->'checkpoint'->'payload' ORDER BY f.key),'[]'::json)
             FROM json_each(sel.state->'jobs'->sel.job_key->'fields') f WHERE f.key<>sel.intent->'original_prepared'->'basis'->>'field_key'
               AND f.value->>'work_state' IN ('resolved','waiting_human','nonblocking_exception')
-              AND (f.value->'checkpoint')::jsonb IS DISTINCT FROM 'null'::jsonb)),
+              AND (f.value->'checkpoint')::jsonb IS DISTINCT FROM 'null'::jsonb)) END,
         'original_request_sources',(SELECT COALESCE(json_agg(json_build_object('run_id',jr.key,'entry',jr.value) ORDER BY jr.key),'[]'::json)
           FROM json_each(sel.state->'journal') jr WHERE jr.value->'scope'->>'organization_id'=$1::text
             AND jr.value->'scope'->>'collection_id'=$2::text AND jr.value->'scope'->>'specimen_id'=$3::text

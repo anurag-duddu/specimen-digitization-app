@@ -56,10 +56,12 @@ COLLECTION = "00000000-0000-4000-8000-000000000002"
 WORKER = "offline-e2e-worker"
 OPERATOR_ROLES = ("operator", "reviewer", "manager", "admin")
 TERMINAL_WORK = ("resolved", "waiting_human", "nonblocking_exception")
-# The public synthetic label (application.api.SYNTHETIC_VALUES) with a catalog
-# number of the catalog parser's 5 to 9 digits and an elevation with its
-# written unit, so those fields can settle too.
-LABEL_VALUES = {**SYNTHETIC_VALUES, "fmnh_ins_number": "FMNH-INS 0010001",
+# The public synthetic label states one complete native elevation range. The
+# other endpoints/units are G41 outputs, so do not fabricate naked rounded
+# endpoint numbers as additional written label assertions. All twenty requested
+# field slots remain; sixteen source lines support nineteen published fields.
+LABEL_VALUES = {**{key: value for key, value in SYNTHETIC_VALUES.items()
+    if key not in {"date_visited_to", "elevation_to_m", "elevation_from_ft", "elevation_to_ft"}}, "fmnh_ins_number": "FMNH-INS 0010001",
     "elevation_from_m": "180 to 181 m"}
 LABEL_TEXT = "\n".join(f"{key}: {value}" for key, value in LABEL_VALUES.items())
 
@@ -1049,11 +1051,12 @@ TAXONOMY_SOURCES = ("gbif", "global_names_verifier", "catalogue_of_life")
 # The geography fields the label names; GEOLocate validates each (the v2
 # historian prompt), one query per field, sent together.
 GEOGRAPHY_FIELDS = (FieldKey.COUNTRY, FieldKey.PROVINCE_STATE, FieldKey.COUNTY, FieldKey.CITY)
-# The historian's placement of the label's city, decimal degrees WGS84, and a
-# radius for a city. The place names are the label's own. The four queries send
-# one request; geolocate-glcwrap-chicago.json is GEOLocate's answer to it,
-# recorded live once on 2026-10-03 (sources.json, requested_at).
-PLACEMENT = {"latitude": 41.88, "longitude": -87.63, "radius_km": 15}
+# The place names are the label's own. The four coordinate-free queries send
+# the recorded request; geolocate-glcwrap-chicago.json is its provider answer,
+# recorded once on 2026-10-03 (sources.json, requested_at).
+# Model-origin research never supplies geometry. The captured provider point
+# remains in source evidence; worker-only locked-anchor fixtures own geometry.
+PLACEMENT = {}
 LITERAL_FIELDS = {FieldKey.COLLECTION_CODE, FieldKey.HABITAT, FieldKey.COLLECTION_METHOD,
     FieldKey.COLLECTORS, FieldKey.PRECISE_LOCATION, FieldKey.FMNH_INS_NUMBER}
 ELEVATIONS = (FieldKey.ELEVATION_FROM_M, FieldKey.ELEVATION_TO_M,
@@ -1170,7 +1173,7 @@ def _geolocated(key, results, rows):
             evidence_ids=evidence, assembly_ids=tuple(item.id for item in rows),
             event_id=rows[0].event_id if rows else None,
             reason=f"Label writes {candidate['value']}; GEOLocate confirms {candidate['match_name']} "
-                f"({candidate['match_admin']}) within the placement radius; high confidence")
+                f"({candidate['match_admin']}) in the captured qualified response; high confidence")
     return None
 
 
