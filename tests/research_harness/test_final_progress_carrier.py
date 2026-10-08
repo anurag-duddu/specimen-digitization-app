@@ -10,7 +10,6 @@ import asyncio
 import copy
 import hashlib
 import json
-from pathlib import Path
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
@@ -790,8 +789,9 @@ def test_no_genuine_carrier_publishes_honest_fresh_native_progress_without_scien
             "specimen": before["specimen"]}
         encoded = json.dumps(evidence, sort_keys=True).encode()
         evidence_sha = hashlib.sha256(encoded).hexdigest()
-        Path(f"/private/tmp/harness-progress-only-native-synthetic-{evidence_sha}.json").write_bytes(encoded)
-        rig.progress_evidence_path = f"/private/tmp/harness-progress-only-native-synthetic-{evidence_sha}.json"
+        evidence_path = tmp_path / f"harness-progress-only-native-synthetic-{evidence_sha}.json"
+        evidence_path.write_bytes(encoded)
+        rig.progress_evidence_path = str(evidence_path)
     # Fresh lease/canonical binding service replay and full registered worker
     # replay both read the winning operation; neither resends a specialist.
     baseline = (len(rig.fake.receipts), copy.deepcopy(rig.fake.tables), copy.deepcopy(rig.model_calls),
