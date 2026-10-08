@@ -254,6 +254,19 @@ class NativeResearchWorker:
             if queued:
                 retry_command_id = min(queued, key=lambda command:(command["created_at"],command["id"]))["id"]
         if retry_command_id is not None:
+            from .retry_work_queue import START_RECEIPT_ATTEMPTS, START_RECEIPT_INTERVAL_SECONDS
+            for attempt in range(START_RECEIPT_ATTEMPTS):
+                document = await asyncio.to_thread(runtime.store._read, runtime.scope)
+                command = document.state["outbox"].get("retry/" + retry_command_id, {}).get("command", {})
+                if command.get("dispatch_status") != "sending" or attempt == START_RECEIPT_ATTEMPTS - 1:
+                    break
+                self._deadline_check()
+                await asyncio.sleep(START_RECEIPT_INTERVAL_SECONDS)
+            # A queued command is not evidence that the infrastructure start
+            # completed. Unknown or in-flight starts grant no model/source send.
+            if (command.get("dispatch_status") in {"unknown", "sending"}
+                or command.get("execution_class") == "live" and command.get("dispatch_status") != "requested"):
+                raise HeldUnknown("research_retry_dispatch_custody_unavailable")
             consumer = ResearchRetryWorker(store=runtime.store,
                 engine_factory=lambda bound,lease,command:runtime.engine)
             retry = await consumer.consume(runtime.scope, runtime.lease, retry_command_id)
