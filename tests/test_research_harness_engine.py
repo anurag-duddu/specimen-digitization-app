@@ -188,18 +188,20 @@ def test_explicit_retry_investigates_only_requested_failure_keeps_other_pending_
 
 
 def test_retry_cannot_turn_source_prerequisite_into_new_investigation():
-    class RetryJournal(Journal):
-        async def retry_eligible(self, scope, field_key):
-            return True
-
+    # This unsent prerequisite has no captured completed source failure. The
+    # journal must refuse retry eligibility rather than grant a new investigation.
     profile, scope, requests = inputs()
-    journal, seen = RetryJournal(), []
+    journal, seen = Journal(), []
     prerequisite = FieldResolution(field_key=FieldKey.TAXON, work_state=WorkState.WAITING_SOURCE,
         value=FieldValue(), reason="qualified_source_prerequisite")
     asyncio.run(journal.commit(requests[SpecialistRole.TAXONOMY], (prerequisite,),
         receipt_ids=(), model_settings_digest="e"*64))
+    before = dict(journal.checkpoints)
+    def construct(selected):
+        seen.append("constructed")
+        return Harness(selected, seen)
     engine = ResearchEngine(profile=profile, requests=requests, journal=journal,
-        harness_factory=lambda selected:Harness(selected, seen), model_settings_digest="e"*64)
+        harness_factory=construct, model_settings_digest="e"*64)
     with pytest.raises(ValueError, match="field_retry_requires_safe_current_effect_state"):
         asyncio.run(engine.run(retry_fields=(FieldKey.TAXON,)))
-    assert seen == []
+    assert seen == [] and journal.checkpoints == before

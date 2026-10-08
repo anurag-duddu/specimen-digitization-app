@@ -94,7 +94,7 @@ def test_exact_temporal_validator_history_decodes_and_crossed_pairs_fail():
     from uuid import uuid4
     from pydantic import ValidationError
     from specimen_digitization.research_harness.accepted_output import (
-        AcceptedOutputProofV1, PRIOR_VALIDATOR_SOURCE_SHA256, TEMPORAL_LINK_VALIDATOR_SOURCE_SHA256,
+        AcceptedOutputProofV1, V3_VALIDATOR_SOURCE_SHA256, TEMPORAL_LINK_VALIDATOR_SOURCE_SHA256,
         VALIDATOR_SOURCE_SHA256, VALIDATOR_VERSION, validation_boundary_pins,
     )
     from specimen_digitization.research_harness.contracts import digest
@@ -105,7 +105,7 @@ def test_exact_temporal_validator_history_decodes_and_crossed_pairs_fail():
         conversation_id="offline-temporal-history", resolutions=policy_output(request).resolutions,
         source_results=(), effect_ids=(), model_settings_digest=digest("offline temporal history"),
         **validation_boundary_pins())
-    for version, sha in (("validate_resolution/v3", PRIOR_VALIDATOR_SOURCE_SHA256),
+    for version, sha in (("validate_resolution/v3", V3_VALIDATOR_SOURCE_SHA256),
         ("validate_resolution/v4", TEMPORAL_LINK_VALIDATOR_SOURCE_SHA256),
         (VALIDATOR_VERSION, VALIDATOR_SOURCE_SHA256)):
         decoded = AcceptedOutputProofV1.model_validate({**proof.model_dump(mode="json"),

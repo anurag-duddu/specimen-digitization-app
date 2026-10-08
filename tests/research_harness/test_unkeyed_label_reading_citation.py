@@ -1,39 +1,11 @@
-"""What a specialist must cite on a real-shaped label, through the production composer.
+"""Synthetic unkeyed reading lineage through the actual production composer.
 
-On the ten recorded production specimens no reading line carries a field key, so the
-request factory builds no event and no assembly (initial_requests._graph; Lane P E2).
-The v2 prompts told a specialist to name the assemblies a lookup read; with none, a
-resolved value that cites a lookup has no producer and publication refuses it
-(application/projection.py lookup_evidence_producer_invalid). A human question that
-also cites its evidence on the resolution or the value passes validate_resolution and
-then blocks publication of the record (canonical_lineage_evidence_mapping_missing). The
-v3 prompts say what to cite instead; this test runs the production composer
-(compose_production_research_workflow, with production_e2e_support imported, not edited)
-on a synthetic label of that shape and shows, with the real validators and producer logic:
-
-- a scripted specialist that does what the pinned prompt text instructs is accepted
-  (test_a_specialist_following_the_pinned_prompt_publishes_every_lookup_citing_value, and
-  test_a_human_question_follows_the_pinned_prompts_rule_for_where_its_evidence_goes for the
-  question rule alone). These two FAIL on origin/main, each for its own code, because their
-  specialist reads its behaviour out of the pinned prompt text and the v2 text instructs neither
-  the reading citation nor question-only evidence. The specialist also reads three sentences of the
-  block (instructed()): "Cite only that one reading" (absent: it lists both readers), "character for
-  character" (absent: it re-wraps the copy) and "leave literal null" (absent: a multi-line literal), so
-  deleting one of them from a taxonomy or geography v3 file fails the first test, not only the byte
-  freeze in test_prompt_reading_citation_v3.py. Parties and collection never cite a lookup in this
-  rig, so their copy of the block is guarded by the freeze alone;
-- the shapes the old prompts led to are refused, each for its own code, and the exact
-  fields the citation needs are the ones the v3 text names. These tests exercise code
-  the prompt change does not touch, so they pass on origin/main too: they pin the contract
-  the prompt text states.
-
-What none of this shows: that a real model follows the prompt. The scripted specialist is
-not a model. One real-model run on a pilot slide tests that.
-
-The label text is synthetic. Only its shape comes from the recorded snapshots (counts and
-lengths only, read-only): two regions with two readers each, a short code line in the
-first and, in the second, the locality, elevation, date and collector lines, each line 7
-to 21 characters. Both regions reuse the one synthetic image's pixels.
+Scripted specialists read the active pinned taxonomy and geography instructions.
+Valid coordinate-free source queries and captured synthetic absence/alternative
+answers exercise exact reading maps, question-only evidence, and literal custody.
+Deliberate lineage faults retain the native refusal; exhausted literal validation
+preserves independently valid siblings. Immutable historical prompt text has its
+own prompt audit tests. No real model, live source or native PostgreSQL claim.
 """
 from __future__ import annotations
 
@@ -42,6 +14,7 @@ import json
 import time
 from dataclasses import dataclass, replace
 from types import SimpleNamespace
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from pydantic_ai.messages import ModelResponse, ToolCallPart
@@ -53,14 +26,18 @@ from specimen_digitization.application.production import SqlConnectRepository, a
 from specimen_digitization.application.worker_deadline import WorkerDeadline
 from specimen_digitization.application.workflow import OperationalBlock, SyntheticAdapters, Workflow
 from specimen_digitization.research_harness import native_canonical_v2, native_worker
+from specimen_digitization.research_harness.accepted_output import AcceptedCheckpointProofV1
+from specimen_digitization.research_harness.output_admission import validation_failure
+from specimen_digitization.research_harness.publication_v2 import NativeCausalReceiptV2
 from specimen_digitization.research_harness.agents import SpecialistOutput
 from specimen_digitization.research_harness.contracts import (
     FieldKey, FieldResolution, HumanQuestion, ResearchScope, SpecialistRole, WorkState,
 )
 from specimen_digitization.research_harness.evidence import dts_policy_resolution, missing_irn_resolution
+from specimen_digitization.research_harness.sources import FixtureSourceTransport
 from specimen_digitization.research_harness.initial_requests import NativeGenerationRequestFactory
 from specimen_digitization.research_harness.persistence import (
-    DurabilityScope, ImmutableFileBlobs, SqliteStateBackend,
+    BlobRef, DurabilityScope, ImmutableFileBlobs, SqliteStateBackend,
 )
 from specimen_digitization.research_harness.workflow_bridge import compose_production_research_workflow
 
@@ -77,12 +54,11 @@ GENUS = "Danaus plexippus"
 LOCALITY = {"country": "United States", "state": "Illinois", "county": "Cook", "locality": "Chicago",
     "place": "Chicago", **support.PLACEMENT}
 VALUE = {FieldKey.COUNTRY: "United States", FieldKey.PROVINCE_STATE: "Illinois", FieldKey.COUNTY: "Cook",
-    FieldKey.CITY: "Chicago", FieldKey.PRECISE_LOCATION: "Chicago, Cook Co., Illinois"}
+    FieldKey.CITY: "Chicago", FieldKey.PRECISE_LOCATION: "Chicago"}
 GEOGRAPHY = tuple(VALUE)
-# The province_state query places Chicago on the far side of the world, so the match is no_match
-# and the specialist asks a person: the human question.
+# The province_state query researches the printed Illinois name through valid
+# synthetic no-match answers and a relevant captured historical alternative.
 HUMAN = (FieldKey.PROVINCE_STATE,)
-FAR = {"latitude": -33.0, "longitude": 151.0, "radius_km": 1}
 CITATION_FIELDS = ("source_observation_id", "verbatim_by_observation", "settled_observation_ids",
     "input_source", "source_region_id")
 # Publications, in the order the worker offers them (by field key), when every lookup-citing value is accepted.
@@ -210,19 +186,28 @@ def citation(request, behaviour, containing):
 
 
 def instructed(request):
-    """What the pinned prompt text tells a specialist to do on a label with no assembly.
+    """Read exact lineage, literal and question clauses from the active pin.
 
-    The fields the producer block names (the text from its heading to the human question block),
-    whether evidence is to go only on the question, and three sentences of the block. A specialist
-    does what a sentence says and, when the sentence is absent, what a plausible model does instead:
-    "Cite only that one reading" absent: it lists both readers (common-v1 says to preserve each
-    reader's verbatim); "character for character" absent: it re-wraps the copy; "leave literal null"
-    absent: it sets precise_location's literal to the whole multi-line locality (the geography text
-    says "as written"). The v2 text has none of them."""
+    Geography v9 uses Publication lineage; taxonomy retains the producer block.
+    Missing clauses produce deliberately ungrounded scripted outputs so the
+    real validators and writer still expose their specific refusals.
+    """
     text = " ".join(request.prompt.text.split())
-    start = text.find("Producer and literal without an assembly (publication):")
-    block = text[start:text.find("Human question evidence (publication):")] if start >= 0 else ""
+    current_geography = "Publication lineage:" in text
+    if current_geography:
+        start = text.index("Publication lineage:")
+        block = text[start:text.index("Shared extensions,", start)]
+    else:
+        start = text.find("Producer and literal without an assembly (publication):")
+        block = text[start:text.find("Human question evidence (publication):")] if start >= 0 else ""
     fields = tuple(name for name in CITATION_FIELDS if name in block)
+    if current_geography:
+        return Behaviour(fields=fields,
+            question_extra="value.evidence_ids empty on waiting_human" not in text,
+            human_cites_reading=bool(fields), human_literal="Chicago",
+            both_readers="instead cite one original reading on value:" not in block,
+            collapse_breaks="complete unchanged observation_text" not in block,
+            literal=None if "for multiline text leave literal null" in block else "Chicago\nCook Co., Illinois")
     # The geography prompt asks for the written text as value.literal on a human question; the v3 block
     # grounds a one-line literal on the cited reading, so the specialist cites it when the block says so.
     return Behaviour(fields=fields, question_extra="only in question.evidence_ids" not in text,
@@ -290,11 +275,18 @@ def specialist_factory(log, behaviour=None):
             if role == SpecialistRole.GEOGRAPHY and not attempted:
                 calls = []
                 for key in GEOGRAPHY:
-                    query = {**LOCALITY, "value": VALUE[key], **(FAR if key in HUMAN else {})}
+                    query = {**LOCALITY, "value": VALUE[key]}
+                    if key in HUMAN:
+                        query.update(place="Illinois", locality="Illinois")
                     calls.append(ToolCallPart("lookup_source", {"query": {"source_id": "geolocate",
                         "field_key": str(key), "query_text": json.dumps(query)}},
                         tool_call_id=f"unkeyed-geolocate-{key}"))
                 return ModelResponse(parts=calls, usage=support.USAGE)
+            if role == SpecialistRole.GEOGRAPHY and attempted == len(GEOGRAPHY):
+                return ModelResponse(parts=[ToolCallPart("lookup_source", {"query": {
+                    "source_id": "wikidata", "field_key": str(FieldKey.PROVINCE_STATE),
+                    "query_text": "Illinois"}}, tool_call_id="unkeyed-relevant-alternative")],
+                    usage=support.USAGE)
             resolutions = []
             for key in request.field_keys:
                 if key == FieldKey.IDENTIFIED_BY_IRN:
@@ -316,6 +308,30 @@ def specialist_factory(log, behaviour=None):
     return factory
 
 
+def unkeyed_source_transport(log):
+    """Real adapters capture explicit synthetic absence and alternative answers."""
+    ordinary = support.fixture_source_transport(log)
+    manifest = json.loads((support.FIXTURES / "sources.json").read_text())
+    empty = json.dumps({"engineVersion": "SYNTHETIC offline absence",
+        "numResults": 0, "executionTimems": 1,
+        "resultSet": {"type": "FeatureCollection", "features": []}}).encode()
+
+    async def read(url, policy):
+        if policy.id == "geolocate" and parse_qs(urlsplit(url).query).get("Locality") == ["Illinois"]:
+            expected = manifest["geolocate"]["url"].replace("Locality=Chicago", "Locality=Illinois")
+            assert support._url_key(url) == support._url_key(expected)
+            log.append(url)
+            return 200, empty
+        if policy.id == "wikidata":
+            query = parse_qs(urlsplit(url).query)
+            assert query["action"] == ["wbsearchentities"] and query["search"] == ["Illinois"]
+            log.append(url)
+            return 200, b'{"search":[],"success":1}'
+        return await ordinary.get(url, policy=policy)
+
+    return FixtureSourceTransport(read)
+
+
 # ---------------------------------------------------------------------------- driving the composer
 def supervised():
     return WorkerDeadline(time.monotonic() + 600).scope()
@@ -326,7 +342,7 @@ def run_research(rig, factory, source_transport=None):
     Returns (parsed specimen, specimen, hold, published fields in publication order)."""
     workflow = compose_production_research_workflow(rig.ordinary, repository=rig.repository,
         environ={"SPECIMEN_RESEARCH_HARNESS": "on"}, actor_uid=WORKER, state_backend=rig.backend,
-        model_factory=factory, source_transport=source_transport or support.fixture_source_transport(rig.source_urls),
+        model_factory=factory, source_transport=source_transport or unkeyed_source_transport(rig.source_urls),
         blobs=rig.research_blobs)
     with supervised():
         workflow.step(rig.principal, rig.specimen_id)
@@ -369,8 +385,7 @@ def test_the_label_gives_the_request_readings_of_both_input_sources_and_no_event
 
 # ---------------------------------------------------------------------------- the prompt-derived behaviour
 def test_a_specialist_following_the_pinned_prompt_publishes_every_lookup_citing_value(unkeyed, refusals):
-    """FAILS on origin/main: its v2 text names no citation, so the scripted specialist cites nothing
-    and the first publication is refused with lookup_evidence_producer_invalid."""
+    """The current pin supplies exact reading provenance to every lookup-citing value."""
     parsed, specimen, hold, published = run_research(unkeyed, specialist_factory(unkeyed.model_calls))
     assert refusals == [], f"a publication was refused: {refusals}"
     assert published == ALL_PUBLISHED
@@ -390,10 +405,7 @@ def test_a_specialist_following_the_pinned_prompt_publishes_every_lookup_citing_
 
 # ---------------------------------------------------------------------------- the shapes the old prompts led to
 def test_a_human_question_follows_the_pinned_prompts_rule_for_where_its_evidence_goes(unkeyed, refusals):
-    """FAILS on origin/main, for the second reason: this specialist always cites the reading (so the
-    lookups have producers) and takes only where a question's evidence goes from the prompt text. The
-    v2 text does not say, the specialist cites it on the resolution and the value too, and the record's
-    next publication after the question's field fails with canonical_lineage_evidence_mapping_missing."""
+    """The current pin keeps supporting evidence solely on the structured question."""
     fixed = Behaviour(fields=CITATION_FIELDS, human_cites_reading=True)
     parsed, specimen, hold, published = run_research(unkeyed, specialist_factory(unkeyed.model_calls,
         lambda request: replace(fixed, question_extra=instructed(request).question_extra)))
@@ -428,8 +440,7 @@ def test_each_of_these_fields_is_needed_when_the_reading_is_a_decided_transcript
     {"collapse_breaks": True},
 ], ids=["lists_the_other_reader", "copy_with_collapsed_line_breaks"])
 def test_a_second_reader_or_a_changed_copy_is_refused_at_publication_with_no_retry(unkeyed, refusals, breakage):
-    """The two sentences the v3 text adds after the review of #257. Validators do not look at the citation
-    before publication, so the specialist's run ends cleanly and the first publication is the first refusal."""
+    """The completed output reaches the writer, which refuses changed reading provenance."""
     parsed, specimen, hold, published = run_research(unkeyed,
         specialist_factory(unkeyed.model_calls, Behaviour(fields=CITATION_FIELDS, **breakage)))
     assert refusals == ["canonical_lineage_reading_unproved"]
@@ -462,19 +473,32 @@ def test_a_human_question_citing_evidence_off_the_question_blocks_the_record(unk
     assert "identified_by_irn" not in published and str(hold) == "native_publication_requires_reconciliation"
 
 
+def assert_accepted_literal_failure(rig, key):
+    """The canonical bare replacement is durably accepted with its siblings."""
+    state = support.research_state(rig.fake, rig.specimen_id)[1]
+    [job] = list(state["jobs"].values())
+    native = job["fields"][str(key)]["checkpoint"]
+    assert job["fields"][str(key)]["work_state"] == "operational_failed"
+    assert native["payload"]["resolution"] == validation_failure(key).model_dump(mode="json")
+    pointer = native["accepted_output_proof"]
+    accepted = AcceptedCheckpointProofV1.model_validate_json(rig.research_blobs.get(BlobRef(**pointer["capture"])))
+    assert len(accepted.checkpoints) == 5
+    [target] = [row for row in accepted.checkpoints if row.field_key == key]
+    assert target.resolution == validation_failure(key)
+    assert target.scope == accepted.acceptance.original_request.scope
+    assert len([row for row in accepted.checkpoints if row.resolution != validation_failure(row.field_key)]) == 4
+    return job
+
+
 def test_a_literal_over_several_lines_is_unproved_without_an_assembly(unkeyed, refusals):
     """An unassembled multi-line literal is rejected before a scientific checkpoint or publication."""
     behaviour = Behaviour(fields=CITATION_FIELDS, literal="Chicago\nCook Co., Illinois")
     parsed, specimen, hold, published = run_research(unkeyed, specialist_factory(unkeyed.model_calls, behaviour))
     assert refusals == [] and isinstance(hold, OperationalBlock)
     assert str(hold) == "native_research_operational_hold" and specimen.run.stage == "processing_blocked"
-    assert not set(GEOGRAPHY) & set(published)
-    job = list(support.research_state(unkeyed.fake, unkeyed.specimen_id)[1]["jobs"].values())[0]
-    target = job["fields"]["precise_location"]
-    assert target["work_state"] == "operational_failed"
-    assert target["checkpoint"]["payload"]["resolution"]["reason"] == "specialist_operational_failure"
-    assert target["checkpoint"]["payload"]["resolution"]["value"]["literal"] is None
-    assert not target["checkpoint"].get("accepted_output_proof")
+    assert set(published) == {"taxon", "city", "country", "county", "province_state", "identified_by_irn"}
+    assert "precise_location" not in published
+    assert_accepted_literal_failure(unkeyed, FieldKey.PRECISE_LOCATION)
 
 
 def test_a_literal_on_a_human_question_needs_the_reading_cited(unkeyed, refusals):
@@ -482,21 +506,18 @@ def test_a_literal_on_a_human_question_needs_the_reading_cited(unkeyed, refusals
     parsed, specimen, hold, published = run_research(unkeyed, specialist_factory(unkeyed.model_calls, behaviour))
     assert refusals == [] and isinstance(hold, OperationalBlock)
     assert str(hold) == "native_research_operational_hold" and specimen.run.stage == "processing_blocked"
-    assert not set(GEOGRAPHY) & set(published)
-    job = list(support.research_state(unkeyed.fake, unkeyed.specimen_id)[1]["jobs"].values())[0]
-    target = job["fields"]["province_state"]
-    assert target["work_state"] == "operational_failed"
-    assert target["checkpoint"]["payload"]["resolution"]["reason"] == "specialist_operational_failure"
-    assert target["checkpoint"]["payload"]["resolution"]["value"]["literal"] is None
-    assert not target["checkpoint"].get("accepted_output_proof")
+    assert set(published) == {"taxon", "city", "country", "county", "precise_location", "identified_by_irn"}
+    assert "province_state" not in published
+    assert_accepted_literal_failure(unkeyed, FieldKey.PROVINCE_STATE)
 
 
 # ---------------------------------------------------------------------------- a label with assemblies
 def test_where_assemblies_exist_naming_them_is_the_producer_and_a_reading_of_another_source_breaks_it(keyed, refusals):
-    """The keyed e2e label: the geography specialist names the assemblies (production_e2e_support), as
-    the v2 text and the v3 text both say. Also citing a raw reading, a different input source from the
-    assemblies' decided transcript, leaves two grounding sources and no producer: the v3 text says
-    'not both'. (test_production_e2e covers the assemblies-only success.)"""
+    """A raw reading mixed with the accepted assembly's decided source has no producer.
+
+    Earlier qualified date, collector, measurement, collection and taxonomy
+    publications remain in the actual native chain.
+    """
     base = support.scripted_model_factory(keyed.model_calls, geolocate=True)
 
     def factory(request, binding):
@@ -519,4 +540,16 @@ def test_where_assemblies_exist_naming_them_is_the_producer_and_a_reading_of_ano
 
     parsed, specimen, hold, published = run_research(keyed, factory)
     assert refusals == [PRODUCER_REFUSED]
-    assert published == ["taxon"] and str(hold) == "native_publication_requires_reconciliation"
+    expected = {"date_identified", "date_visited_from", "date_visited_to", "collectors",
+        *map(str, support.ELEVATIONS), "collection_code", "collection_method", "habitat",
+        "fmnh_ins_number", "taxon"}
+    assert set(published) == expected and published[-1] == "taxon"
+    assert not set(GEOGRAPHY) & set(published)
+    assert str(hold) == "native_publication_requires_reconciliation"
+    chain = [NativeCausalReceiptV2.model_validate(row["causal_proof"])
+        for row in sorted(keyed.fake.receipts.values(), key=lambda row: row["used_canonical_revision"])]
+    assert len(chain) == len(expected) and len({row.changed_field for row in chain}) == len(expected)
+    binding = keyed.fake.active_binding(keyed.specimen_id)
+    assert str(chain[-1].receipt_id) == binding["current_receipt_id"]
+    assert chain[-1].chain_digest == binding["current_chain_digest"]
+    assert chain[-1].resulting.record_revision == specimen.version

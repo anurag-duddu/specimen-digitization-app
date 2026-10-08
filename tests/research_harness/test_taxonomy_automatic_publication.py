@@ -131,8 +131,16 @@ def test_confirmed_raw_reader_and_captured_negative_publish_taxon_without_save(t
         taxon_receipts = [row for row in rig.fake.receipts.values()
             if row["causal_proof"]["changed_field"] == "taxon"]
         assert len(taxon_receipts) == 1
-        assert taxon_receipts[0]["used_canonical_revision"] == parsed.version
-        assert taxon_receipts[0]["resulting_canonical_revision"] == parsed.version + 1
+        [taxon_receipt] = taxon_receipts
+        # Earlier roster windows publish their fields before taxonomy. Its
+        # automatic publication must extend that actual retained predecessor.
+        before_taxon = next(row for row in rig.fake.receipts.values()
+            if row["resulting_canonical_revision"] == taxon_receipt["used_canonical_revision"])
+        assert taxon_receipt["used_canonical_revision"] > parsed.version
+        assert taxon_receipt["resulting_canonical_revision"] == taxon_receipt["used_canonical_revision"] + 1
+        taxon_record = rig.fake.tables["record_version"][taxon_receipt["native_record_version_id"]]
+        assert taxon_record["predecessorId"] == before_taxon["native_record_version_id"]
+        assert taxon_record["runId"] == parsed.run.id
         assert published.run.stage == "finalized"
         assert published.run.disposition == "needs_human_review"
         assert {reason for reason in published.run.reasons if reason.startswith("mandatory_unresolved:")} == {
