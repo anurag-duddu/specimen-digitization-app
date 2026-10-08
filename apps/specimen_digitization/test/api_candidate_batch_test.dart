@@ -1459,8 +1459,9 @@ void main() {
           }
           expect(posts, 1);
         } finally {
-          if (!deliverWidgetOutcome.isCompleted)
+          if (!deliverWidgetOutcome.isCompleted) {
             deliverWidgetOutcome.complete();
+          }
           await tester.pumpWidget(const SizedBox());
           controller.dispose();
           repo.close();
