@@ -677,9 +677,107 @@ def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, b
         options = [o for o in dict.fromkeys(answer.options) if o and o.strip()]
         reason = answer.explanation + (" Options: " + "; ".join(options) + "." if options else "")
         return _unsettled(task, ValueState.AMBIGUOUS, cited=cited, reason=reason)
-    # sources_cannot_resolve: the label's text stays when a reading writes it.
+    # sources_cannot_resolve: a taxon that names no genus clears as written,
+    # unmatched (owner decision B); otherwise the label's text stays when a
+    # reading writes it.
+    if task.key == "taxon":
+        unmatched = _unmatched_taxon(run, task, readings=readings, by_name=by_name, evidence=evidence,
+            asset_id=asset_id, blobs=blobs, sources=sources)
+        if unmatched is not None:
+            return unmatched
     literal = answer.literal if answer.literal and any(answer.literal in r.text for r in readings) else current.literal
     return _unsettled(task, ValueState.UNRESOLVED, literal=literal, cited=cited, reason=answer.explanation)
+
+
+# Owner decision B, 2026-10-09: a taxon whose label names no genus clears as
+# written, marked unmatched, with GBIF's no-match as its support.
+NO_GENUS_CHECK = "check:taxon_no_genus"
+UNMATCHED = "Unmatched: the label names no genus, so GBIF has nothing to match"
+
+
+def no_genus_excerpt(literal: str, lookup_id: str) -> str:
+    """The excerpt of an unmatched taxon's check row: its literal and the GBIF
+    no-name lookup the run keeps for it."""
+    return (f'taxon: "{literal}" names no genus, so GBIF has nothing to match '
+        f"(GBIF lookup {lookup_id}: no_match, no scientific name; nothing was sent)")
+
+
+def _no_name(lookup, literal: str) -> bool:
+    """Whether a run lookup is GBIF's no-name answer for this literal
+    (application.lookup.no_name_lookup): no_match, nothing asked or stored,
+    no candidates, the literal as its verbatim name."""
+    metadata = getattr(lookup, "metadata", None) or {}
+    return (isinstance(lookup, Lookup) and lookup.provider == "gbif" and lookup.status == LookupStatus.NO_MATCH
+        and not lookup.query and not lookup.candidates and not lookup.raw_ref
+        and metadata.get("verbatim_name") == literal and metadata.get("reason") == "no_scientific_name")
+
+
+def _unmatched_taxon(run, task, *, readings, by_name, evidence, asset_id, blobs,
+        sources: Sequence[SourceAnswer]) -> FieldValue | None:
+    """Owner decision B: the taxon as written, unmatched, when the expert
+    found that GBIF cannot resolve it and the label names no genus. All of:
+    - the organiser's literal names no genus (checks.names_no_genus: "sp. 30
+      <female sign>"; "Aus bus n. sp." and "Epipsocus sp. 1" do not qualify);
+    - every taxon candidate is the same morphocode, a text with no genus and
+      the same code (checks.morphocode: a reader's "Sp.30 <female sign>"
+      beside "sp. 30 <female sign>", but never "sp. 39");
+    - the readers settle on the literal by B1's rule (agreement.labels):
+      each label that writes the taxon settles on its own on that one text.
+      With no successful lookup that is a label's decided transcript (its
+      other readers are evidence only), or readers of a label with none that
+      each write exactly that text.
+    The value is built as a settled answer is (_settled: the label rows and
+    the lineage), with the literal as written, no authority and the layer
+    settled, and cites one check row naming GBIF's no-name lookup, which the
+    run keeps (lookup.no_name_lookup: no request is made; the step adds it
+    when the expert never asked GBIF that literal). None otherwise: a taxon
+    with a genus GBIF cannot decide still goes to review."""
+    from specimen_digitization.application.lookup import no_name_lookup
+
+    from .agreement import DECIDED, SOURCE_IDS, candidate_literal, labels, reader_literals
+    from .checks import collapse, morphocode
+
+    literal = task.current.literal
+    code = morphocode(literal)
+    if task.key != "taxon" or code is None:
+        return None
+    if not task.candidates or any(morphocode(c.literal) != code for c in task.candidates):
+        return None
+    want = collapse(literal)
+    tools = frozenset(task.tools) & SOURCE_IDS
+    found = labels(task, readings, [a for a in sources if a.source_id in tools])
+    if not found or any(label.settled != frozenset({want}) or label.by_source for label in found.values()):
+        return None
+    written = reader_literals(task, readings)
+    decided = {r.region_id for r in readings if r.input_source == DECIDED}
+    named = [r for r in readings if r.region_id in found and want in written.get(r.name, ())
+        and (r.input_source == DECIDED or r.region_id not in decided)]
+    whole = candidate_literal(task, readings, literal, named) if named else None
+    if whole is None:
+        return None
+    answer = FieldAnswer(outcome="resolved", literal=whole, reading_names=[r.name for r in named],
+        explanation=UNMATCHED)
+    value = _settled(run, task, FieldOutcome(task.key, answer), by_name=by_name, evidence=evidence,
+        asset_id=asset_id, blobs=blobs)
+    if value is None:
+        return None
+    lookup = next((item for item in run.lookups if _no_name(item, whole)), None)
+    if lookup is None:
+        # GBIF's answer for a name with no genus, made with no request. First,
+        # so the lookup a reviewer chooses a taxon from stays last.
+        lookup = no_name_lookup(whole)
+        run.lookups.insert(0, lookup)
+    record = json.dumps({"field_key": task.key, "literal": whole, "check": "names_no_genus",
+        "lookup_id": lookup.id, "readings": [r.name for r in named]}, sort_keys=True).encode()
+    row = Evidence(kind="derived", asset_id=asset_id, source=SOURCE, locator=NO_GENUS_CHECK,
+        excerpt=no_genus_excerpt(whole, lookup.id),
+        raw_ref=blobs.put(record) if blobs is not None else None,
+        digest=hashlib.sha256(record).hexdigest() if blobs is not None else None)
+    run.evidence.append(row)
+    evidence[row.id] = row
+    value.evidence_ids.append(row.id)
+    value.evidence_relations[row.id] = "supports"
+    return value
 
 
 def _tool_call(run, made: Sequence[SourceCall], item: Evidence, readings: Sequence[Reading]) -> ToolCallRecord:
@@ -805,9 +903,10 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     confirms), or whose place does not lie in the country and province
     settled for its reading (_misfit, after the places above it), is
     ambiguous or unresolved instead. label_lacks_value: not present;
-    sources_cannot_resolve: unresolved; several_possibilities: ambiguous, the
-    options in the reason; a failure: unresolved with a retryable reason. Then
-    the derived values; the keys derived are returned.
+    sources_cannot_resolve: unresolved, except a taxon that names no genus,
+    supported as written and unmatched (_unmatched_taxon); several_possibilities:
+    ambiguous, the options in the reason; a failure: unresolved with a
+    retryable reason. Then the derived values; the keys derived are returned.
     """
     from .agreement import PLACE_ORDER
 
@@ -929,6 +1028,27 @@ def taxon_chosen(taxon: FieldValue, settled: str, evidence: Mapping[str, Evidenc
     return False
 
 
+def taxon_unmatched(taxon: FieldValue, evidence: Mapping[str, Evidence], lookups: Sequence[Lookup] = ()) -> bool:
+    """Whether the taxon is owner decision B's unmatched name
+    (_unmatched_taxon), checked on the stored value: supported, its literal a
+    name with no genus (checks.names_no_genus), as written (parsed is the
+    literal or empty), with no normalized value or authority, in the settled
+    layer, citing as support the check row for that literal and the GBIF
+    no-name lookup of the run that the row names. A taxon with a genus never
+    is."""
+    from .checks import names_no_genus
+
+    literal = taxon.literal
+    if (taxon.state != ValueState.SUPPORTED or not literal or not names_no_genus(literal)
+            or taxon.layer != "settled" or taxon.parsed not in (None, literal)
+            or any((taxon.normalized, taxon.authority_id, taxon.authority_identity))):
+        return False
+    rows = [evidence[i] for i in taxon.evidence_ids if i in evidence and taxon.evidence_relations.get(i) == "supports"
+        and evidence[i].kind == "derived" and evidence[i].source == SOURCE and evidence[i].locator == NO_GENUS_CHECK]
+    return any(row.excerpt == no_genus_excerpt(literal, lookup.id)
+        for row in rows for lookup in lookups if _no_name(lookup, literal))
+
+
 def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterable[str],
         qualified: frozenset[str], today: date) -> list[str]:
     """canonical_materialization_v2._scientific_reasons (182-295), ported.
@@ -953,6 +1073,8 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
       lookup's candidates, as policy.py accepts (taxon_chosen).
     - ``qualified`` (the native lineage proof) is the derived values: their
       lineage is their derivation, and they have no literal by definition (G37).
+    - 254-260: a taxon that names no genus, cleared as written and unmatched
+      (taxon_unmatched), is not taxonomy_unresolved (owner decision B).
     """
     reasons: list[str] = []
     # 198-199
@@ -1025,7 +1147,8 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
             reasons.append("identified_by_irn_identity_unproved")
     # 254-260
     taxon = run.fields.get("taxon") or FieldValue()
-    if latest_work.get("taxon") in TERMINAL and not taxon_decided(taxon, run.tool_calls, evidence, run.lookups):
+    if latest_work.get("taxon") in TERMINAL and not (taxon_decided(taxon, run.tool_calls, evidence, run.lookups)
+            or taxon_unmatched(taxon, evidence, run.lookups)):
         reasons.append("taxonomy_unresolved")
     # 261-271
     # An empty elevation is mandatory_unresolved above; only a value that is

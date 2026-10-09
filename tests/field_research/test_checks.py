@@ -156,6 +156,61 @@ def test_a_label_with_no_genus_has_no_groundable_taxon_query():
         assert not taxon_query_grounded(query, "sp. 30 \u2640")
 
 
+@pytest.mark.parametrize(("literal", "no_genus"), [
+    # Morphocodes with no genus (owner decision B): 105526321, 105526326, 105526327.
+    ("sp. 30 \N{FEMALE SIGN}", True),
+    ("Sp. 22", True),
+    ("sp 22", True),
+    ("Sp 22", True),
+    ("sp aa", True),
+    ("sp #1", True),
+    ("sp. 3a", True),
+    ("sp. 1 \N{MALE SIGN}\N{FEMALE SIGN}", True),
+    ("sp.  30\n\N{FEMALE SIGN}", True),
+    # A genus, written or misread, anywhere on the line.
+    ("Epipsocus sp. 1", False),
+    ("epipsocus sp. 1", False),
+    ("Ep1psocus sp. 1", False),
+    ("sp. 30 \N{FEMALE SIGN} Epipsocus", False),
+    # A name read in part is a name, not a morphocode.
+    ("Aus bus n. sp.", False),
+    # Not a morphocode: no number or code, a new species, a plural, a longer code.
+    ("sp.", False),
+    ("sp. nov.", False),
+    ("spp. 2", False),
+    ("sp. ABC", False),
+    ("cf. sp. 1", False),
+    ("", False),
+    (None, False),
+])
+def test_names_no_genus(literal, no_genus):
+    from specimen_digitization.field_research import checks
+
+    assert checks.names_no_genus(literal) is no_genus
+
+
+@pytest.mark.parametrize(("literal", "code"), [
+    # Two readers of one label (105526321, 105526326, 105526329): the same code.
+    ("sp. 30 \N{FEMALE SIGN}", "30"),
+    ("Sp.30 \N{FEMALE SIGN}", "30"),
+    ("Sp. 22", "22"),
+    ("sp 22", "22"),
+    ("sp #1 \N{MALE SIGN}", "1"),
+    ("Sp.#1", "1"),
+    ("sp aa", "aa"),
+    ("sp. 3a", "3a"),
+    ("sp. 39", "39"),
+    # Not a name with no genus.
+    ("Epipsocus sp. 1", None),
+    ("sp. nov.", None),
+    (None, None),
+])
+def test_a_morphocode_is_its_number_or_code(literal, code):
+    from specimen_digitization.field_research import checks
+
+    assert checks.morphocode(literal) == code
+
+
 @pytest.mark.parametrize(("quote", "literal", "longer"), [
     # The third review's N3: an organiser candidate that cuts the subspecies off its line.
     ("Danaus plexippus megalippe", "Danaus plexippus", "Danaus plexippus megalippe"),

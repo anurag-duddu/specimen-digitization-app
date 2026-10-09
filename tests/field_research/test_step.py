@@ -1825,3 +1825,118 @@ def test_a_transcription_correction_researches_the_reparsed_fields_again(rig):
     # candidate, added after parse by the rig, is gone with the new parse).
     assert RESEARCHED <= set(second.calls) and done.attempts[FIELD_RESEARCH] == 2
     assert done.completed_steps[-1] == FIELD_RESEARCH
+
+
+# ---- a taxon that names no genus (owner decision B, 2026-10-09) -----------------
+
+MORPHOCODE = "sp. 30 \N{FEMALE SIGN}"
+
+
+class NoGenus(FakeSources):
+    """GBIF as the record's sources answer a name it cannot read
+    (sources.ApprovedSources._taxon, application.lookup.no_name_lookup): no
+    match, nothing sent, no stored response."""
+
+    def _answer(self, source_id, query):
+        from specimen_digitization.application.lookup import no_name_lookup
+        from specimen_digitization.research_harness.taxonomy import taxonomy_scientific_name
+
+        if source_id != "gbif" or taxonomy_scientific_name(query) is not None:
+            return super()._answer(source_id, query)
+        return SourceAnswer("gbif", query, LookupStatus.NO_MATCH, (), None,
+            note="The query writes no scientific name, so nothing was sent to GBIF",
+            taxonomy_lookup=no_name_lookup(query))
+
+
+def cannot_resolve(literal, *, asks=(), reading="1A"):
+    """A taxon expert: GBIF asked each of `asks`, then sources_cannot_resolve quoting `literal`."""
+    async def script(task, readings, tools):
+        found = [await tools.lookup("gbif", query, field_key=task.key) for query in asks]
+        return FieldOutcome(task.key, FieldAnswer(outcome="sources_cannot_resolve", literal=literal,
+            reading_names=[reading], source_evidence_ids=[a.evidence.id for a in found if a.evidence],
+            explanation="GBIF cannot resolve the name."), evidence=[a.evidence for a in found if a.evidence],
+            lookups=[a.taxonomy_lookup for a in found if a.taxonomy_lookup], model_calls=1)
+    return script
+
+
+def morphocoded(code):
+    return TEXT.replace("taxon: Danaus plexippus", "taxon: " + code)
+
+
+# 105526321's second label: the first pass decided 2A's "sp. 30 <female sign>"; 2B writes "Sp.30 <female sign>".
+VARIANT = "Sp.30 \N{FEMALE SIGN}"
+
+
+@pytest.mark.parametrize(("asked", "other"), [(True, None), (False, None), (True, VARIANT)],
+    ids=["expert-asked-gbif", "step-adds-the-lookup", "decided-reading-beside-a-variant"])
+def test_a_taxon_that_names_no_genus_clears_as_written_and_unmatched(tmp_path, asked, other):
+    rig = build_rig(tmp_path, morphocoded(MORPHOCODE), other and morphocoded(other), decided=bool(other),
+        candidates=[*COLLECTORS, *([("taxon", "1B", other, "taxon: " + other)] if other else [])])
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": cannot_resolve(MORPHOCODE, asks=[MORPHOCODE] if asked else [])}),
+        tools=NoGenus(rig.blobs))
+    if other:
+        # The other reader's text is evidence only (G19), kept as contradicting it.
+        assert cited_rows(run, "taxon")["taxon: " + other] == "contradicts"
+    taxon = run.fields["taxon"]
+    assert (taxon.state, taxon.literal, taxon.parsed, taxon.normalized, taxon.authority_id, taxon.layer) == (
+        ValueState.SUPPORTED, MORPHOCODE, MORPHOCODE, None, None, "settled")
+    assert taxon.reason == "Unmatched: the label names no genus, so GBIF has nothing to match"
+    assert (taxon.input_source, taxon.source_region_id) == ("decided_transcript", run.regions[0].id)
+    evidence = {item.id: item for item in run.evidence}
+    [row] = [evidence[i] for i in taxon.evidence_ids if evidence[i].locator == "check:taxon_no_genus"]
+    [lookup] = run.lookups
+    assert (lookup.provider, lookup.status, lookup.query, lookup.candidates) == ("gbif", LookupStatus.NO_MATCH, {}, [])
+    assert lookup.metadata["verbatim_name"] == MORPHOCODE and lookup.id in row.excerpt and MORPHOCODE in row.excerpt
+    assert (row.kind, taxon.evidence_relations[row.id]) == ("derived", "supports")
+    assert field_step.taxon_unmatched(taxon, evidence, run.lookups)
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+    verify_evidence(rig.specimen, rig.blobs)
+
+
+class Homonym(FakeSources):
+    """GBIF's answer for "Epipsocus" (105526328): two genera of that name, neither decided."""
+
+    def _answer(self, source_id, query):
+        answer = super()._answer(source_id, query)
+        if source_id != "gbif":
+            return answer
+        usages = {"1045361": "Epipsocus Hagen, 1866", "9999001": "Epipsocus Enderlein, 1903"}
+        candidates = tuple(SourceCandidate(name=name, authority_id=key, kind="GENUS") for key, name in usages.items())
+        evidence = answer.evidence.model_copy(update={"locator": None, "excerpt": "GBIF cannot settle the name\n"
+            + "\n".join(f"{c.name} | {c.authority_id} | GENUS | " for c in candidates)})
+        lookup = answer.taxonomy_lookup.model_copy(update={"status": LookupStatus.AMBIGUOUS,
+            "candidates": [{"key": key, "scientificName": name} for key, name in usages.items()]})
+        return SourceAnswer("gbif", query, LookupStatus.AMBIGUOUS, candidates, evidence, note="ambiguous",
+            taxonomy_lookup=lookup)
+
+
+def test_a_taxon_with_a_genus_gbif_cannot_decide_still_goes_to_review(tmp_path):
+    written = "Epipsocus sp. 1"
+    rig = build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", "taxon: " + written))
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": cannot_resolve(written, asks=["Epipsocus"])}), tools=Homonym(rig.blobs))
+    taxon = run.fields["taxon"]
+    assert (taxon.state, taxon.literal) == (ValueState.UNRESOLVED, written)
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["mandatory_unresolved:taxon", "taxonomy_unresolved"])
+    assert not field_step.taxon_unmatched(taxon, {item.id: item for item in run.evidence}, run.lookups)
+    assert not [item for item in run.evidence if item.locator == "check:taxon_no_genus"]
+
+
+@pytest.mark.parametrize(("other", "decided"), [("sp. 39", False), ("Sp.30", False), ("sp. 39", True)],
+    ids=["no-first-pass-pick", "no-pick-same-code", "decided-but-another-code"])
+def test_readers_that_write_different_morphocodes_stay_in_review(tmp_path, other, decided):
+    """1A writes "sp. 30" and 1B something else, and GBIF matches neither:
+    with no first-pass pick even the same code written differently stays,
+    and a decided reading never settles beside another reader's other code."""
+    taxa = [("taxon", "1A", "sp. 30", "taxon: sp. 30"), ("taxon", "1B", other, "taxon: " + other)]
+    # With a decided transcript the keyed-line parser gives 1A's candidates itself.
+    candidates = [*COLLECTORS, taxa[1]] if decided else every_field(*taxa)
+    rig = build_rig(tmp_path, morphocoded("sp. 30"), morphocoded(other), decided=decided, candidates=candidates)
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": cannot_resolve("sp. 30", asks=["sp. 30", other])}), tools=NoGenus(rig.blobs))
+    taxon = run.fields["taxon"]
+    assert taxon.state != ValueState.SUPPORTED
+    assert {"mandatory_unresolved:taxon", "taxonomy_unresolved"} <= set(run.reasons)
+    assert not field_step.taxon_unmatched(taxon, {item.id: item for item in run.evidence}, run.lookups)
+    assert not [item for item in run.evidence if item.locator == "check:taxon_no_genus"]

@@ -9,6 +9,7 @@ otherwise it is policy_blocked with the note literal_not_in_source.
 
 from __future__ import annotations
 
+import re
 import unicodedata
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, fields, replace
@@ -204,6 +205,38 @@ def taxon_queries(literal: str) -> frozenset[str]:
     if name.authorship:
         forms.add(replace(name, authorship=None).query)
     return frozenset(collapse(form) for form in forms)
+
+
+# A morphocode with no genus: "sp." (or "Sp", "sp #"), then a number with an
+# optional letter or a short lower-case code, then optional sex signs
+# ("sp. 30 <female sign>", "Sp. 22", "sp aa", "sp #1").
+NO_GENUS = re.compile(r"[Ss][Pp]\.?\s*#?\s*(?P<code>\d+[a-z]?|[a-z]{1,3})(?:\s*["
+    "\N{FEMALE SIGN}\N{MALE SIGN}])*")
+
+
+def names_no_genus(literal: str | None) -> bool:
+    """Whether a taxon literal is a morphocode that names no genus, the case
+    owner decision B clears as written and unmatched (2026-10-09): the
+    scientific-name parser reads no name in it ("Aus bus n. sp." is a name read
+    in part, not this), it has no whole-name GBIF query (taxon_queries), and
+    the whole literal, whitespace collapsed, is NO_GENUS. A genus anywhere
+    ("Epipsocus sp. 1", "sp. 30 <female sign> Epipsocus") or a misread one
+    ("Ep1psocus sp. 1") is not."""
+    if not literal or not literal.strip():
+        return False
+    return (taxonomy_scientific_name(literal) is None and not taxon_queries(literal)
+        and NO_GENUS.fullmatch(collapse(literal)) is not None)
+
+
+def morphocode(literal: str | None) -> str | None:
+    """The code a taxon literal that names no genus writes (names_no_genus),
+    case aside: "30" for "sp. 30 <female sign>" and for "Sp.30", "1" for
+    "sp #1". Two readers' texts are the same morphocode when their codes are
+    equal: spacing, punctuation, case and sex signs aside ("sp. 30" and
+    "sp. 39" are not). None for any other literal."""
+    if not names_no_genus(literal):
+        return None
+    return NO_GENUS.fullmatch(collapse(literal)).group("code").casefold()
 
 
 def taxon_query_grounded(query: str, literal: str) -> bool:
