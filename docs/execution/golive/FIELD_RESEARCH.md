@@ -142,10 +142,14 @@ handover runs field research instead of the six specialists:
      about it and no success or ambiguous one. An error, a timeout or a text
      never asked about is not a no-match. A success answer confirms a text as
      GBIF's decided candidate for the whole name it writes, or as a place
-     source's candidate of exactly that name; a place source was asked about a
-     text when the text is its whole query or the query's first
-     comma-separated part (the name it searches). The field settles when every
-     label settles on the same literal, which is then the answer's literal
+     source's candidate of that name; a place source was asked about a text
+     when the text is its whole query or the query's first comma-separated
+     part (the name it searches). A place query or candidate name is compared
+     with a reader's text after NFC, whitespace collapse and stripping the
+     punctuation a label writes after a name (". , ; :"), so "Yepocapa,"
+     was asked about by the query "Yepocapa"; the literal itself stays as
+     written, and a near spelling is never the same name. The field settles
+     when every label settles on the same literal, which is then the answer's literal
      (citing the confirming answer when a source settled a label), or, for
      labels that settle on different literals, when a source confirms each
      label's literal as the answer's authority_id (the same place ID or GBIF

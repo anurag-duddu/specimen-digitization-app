@@ -38,7 +38,10 @@ answer becomes a value (step._refusal). It enforces, in this order:
    literal as its whole query or as the query's first comma-separated part,
    the name a place source searches. A success answer confirms the literal
    as GBIF's decided candidate (its evidence's locator) or as a place
-   source's candidate of exactly that name.
+   source's candidate of that name. Place names, queries and literals are
+   compared after NFC, whitespace collapse and stripping the punctuation a
+   label writes after a name (". , ; :"; place_name): "Yepocapa," was asked
+   about by the query "Yepocapa". A near spelling is never the same name.
 4. A place (country, province or state, county, city): a cited success
    answer of a place source has a candidate named as the value (the literal
    when there is no value) with the answer's authority_id.
@@ -52,6 +55,7 @@ value: here two confirmed readers of one label go to review.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
@@ -167,21 +171,31 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
         "several_possibilities or sources_cannot_resolve."))
 
 
+def place_name(text: str) -> str:
+    """A place name as a place source's query or candidate is compared with a
+    literal: NFC and whitespace collapsed (checks.collapse), and the trailing
+    punctuation a label writes after it (". , ; :") stripped. The literal
+    itself stays exactly as written."""
+    return re.sub(r"[\s.,;:]+$", "", collapse(text))
+
+
 def about(answer: SourceAnswer, literal: str) -> bool:
     """Whether a source was asked about this (collapsed) literal: GBIF about
     the whole name it writes (checks.taxon_query_grounded), a place source
     about the literal itself, as its whole query or as the query's first
-    comma-separated part, the name a place source searches."""
+    comma-separated part, the name a place source searches, both compared as
+    place names (place_name)."""
     if answer.source_id == "gbif":
         return taxon_query_grounded(answer.query, literal)
-    return literal in {collapse(answer.query), collapse(answer.query.split(",", 1)[0])}
+    asked = {place_name(answer.query), place_name(answer.query.split(",", 1)[0])}
+    return place_name(literal) in asked
 
 
 def identities(answers: Iterable[SourceAnswer], literal: str) -> set[str]:
     """What captured success answers about this literal confirm it as: the
     authority_id of GBIF's decided candidate (the one its evidence's locator
-    names), or of a place source's candidate of exactly that name. Empty when
-    nothing confirms it."""
+    names), or of a place source's candidate of that name (compared as place
+    names). Empty when nothing confirms it."""
     found: set[str] = set()
     for answer in answers:
         if answer.status != LookupStatus.SUCCESS or answer.evidence is None or not about(answer, literal):
@@ -190,7 +204,7 @@ def identities(answers: Iterable[SourceAnswer], literal: str) -> set[str]:
             if not candidate.authority_id:
                 continue
             if (candidate.authority_id == answer.evidence.locator if answer.source_id == "gbif"
-                    else collapse(candidate.name) == literal):
+                    else place_name(candidate.name) == place_name(literal)):
                 found.add(candidate.authority_id)
     return found
 

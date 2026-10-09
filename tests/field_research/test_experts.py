@@ -31,6 +31,7 @@ from pydantic_ai.models.instrumented import InstrumentationSettings
 
 from specimen_digitization.application.domain import Evidence, FieldValue, LookupStatus, ValueState
 from specimen_digitization.field_research import agreement, experts
+from specimen_digitization.field_research.checks import collapse
 from specimen_digitization.field_research.budget import CostMeter
 from specimen_digitization.field_research.contracts import (
     FIELD_TOOLS,
@@ -806,6 +807,41 @@ def test_readers_that_differ_disagree_whatever_state_the_organiser_gave_the_fiel
     missing = nothing("San Pablo", "ev-none")
     made.calls.append(experts._Call("tgn", missing.query, missing.status, missing))
     assert made.validate(given).literal == "San Pedro"
+
+
+YEPOCAPA = SourceAnswer("geolocate", "Yepocapa, Chimaltenango, Guatemala", LookupStatus.SUCCESS,
+                        (SourceCandidate("Yepocapa", "geolocate:76853dedbc6ff5ce"),),
+                        Evidence(id="ev-yepocapa", kind="authority", source="geolocate",
+                                 locator="geolocate:76853dedbc6ff5ce", excerpt="Yepocapa"), note="match")
+
+
+def test_a_place_text_was_looked_up_whatever_punctuation_the_label_writes_after_it():
+    """The literal stays "Yepocapa," as written; the lookup of "Yepocapa" is
+    about it. A near spelling is not."""
+    literal = collapse("Yepocapa,")
+    assert agreement.about(YEPOCAPA, literal) and agreement.about(nothing("Yepocapa", "ev-n"), literal)
+    assert agreement.about(nothing("Yepocapa;", "ev-n"), collapse("Yepocapa"))
+    assert not agreement.about(nothing("Yepocapo", "ev-n"), literal)
+    assert not agreement.about(nothing("Yepocapa", "ev-n"), collapse("Yepocapa, Guat."))
+
+
+def test_readers_that_differ_on_a_town_written_with_a_comma_settle_on_its_lookup():
+    """1A writes "Yepocapa," and 1B "Yepocapo,": GEOLocate confirms Yepocapa
+    and Getty TGN finds nothing for Yepocapo (G20), so 1A's text settles,
+    with GEOLocate's name as the value."""
+    readings = (Reading("1A", "region-1", "obs-1a", "raw_reading", "Mun. Yepocapa, Chimaltenango"),
+                Reading("1B", "region-1", "obs-1b", "raw_reading", "Mun. Yepocapo, Chimaltenango"))
+    field = task("city", current=FieldValue(state=ValueState.AMBIGUOUS),
+                 candidates=offered(("1A", "Yepocapa,"), ("1B", "Yepocapo,")))
+    made = experts._Expert(field, readings, FakeTools(), PILOT_DATES)
+    for found in (YEPOCAPA, nothing("Yepocapo", "ev-none")):
+        made.calls.append(experts._Call(found.source_id, found.query, found.status, found))
+    given = answer(outcome="resolved", literal="Yepocapa,", reading_names=["1A"], value="Yepocapa",
+                   authority_id="geolocate:76853dedbc6ff5ce", source_evidence_ids=["ev-yepocapa"])
+
+    accepted = made.validate(given)
+
+    assert (accepted.literal, accepted.value) == ("Yepocapa,", "Yepocapa")
 
 
 SACATEPEQUEZ = "Sacatep" + chr(0xE9) + "quez"  # As GEOLocate writes it.
