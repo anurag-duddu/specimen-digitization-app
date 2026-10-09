@@ -287,6 +287,35 @@ def test_the_label_names_no_genus_when_no_word_beside_its_code_may_be_one(text, 
     assert checks.label_names_no_genus("1", [text]) is no_genus
 
 
+@pytest.mark.parametrize(("query", "genus"), [
+    # A name the parser reads, as written or with a capital and no emphasis marks.
+    ("Epipsocus", True),
+    ("Epipsocus sp. 1 " + FEMALE, True),
+    ("Epipsocus prob. sp. 1 " + FEMALE, True),
+    ("epipsocus", True),
+    ("*Epipsocus*", True),
+    ("_Epipsocus_ sp. 1", True),
+    ("epipsocus sp. 1 " + FEMALE, True),
+    # One word that may be a genus, case aside.
+    ("EPIPSOCUS", True),
+    ("Ep1psocus", True),
+    # The pilots' codes, as their readers write them, and nothing asked.
+    ("sp. 30 " + FEMALE, False),
+    ("Sp.30 " + FEMALE, False),
+    ("Sp. 22", False),
+    ("sp 22", False),
+    ("sp aa", False),
+    ("sp #1 " + MALE, False),
+    ("Sp.#1", False),
+    ("", False),
+    (None, False),
+])
+def test_a_gbif_query_names_a_genus_when_a_name_or_a_genus_shaped_word_is_asked(query, genus):
+    from specimen_digitization.field_research import checks
+
+    assert checks.query_names_a_genus(query) is genus
+
+
 @pytest.mark.parametrize(("quote", "literal", "longer"), [
     # The third review's N3: an organiser candidate that cuts the subspecies off its line.
     ("Danaus plexippus megalippe", "Danaus plexippus", "Danaus plexippus megalippe"),

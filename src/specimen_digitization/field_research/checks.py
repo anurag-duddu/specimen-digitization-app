@@ -330,6 +330,28 @@ def label_names_no_genus(code: str, reading_texts: Sequence[str]) -> bool:
     return found
 
 
+# Markdown emphasis a reader or an expert may write around a name ("*Epipsocus*").
+_EMPHASIS = str.maketrans("", "", "*_")
+
+
+def query_names_a_genus(query: str | None) -> bool:
+    """Whether a GBIF query names a genus (B1 of #289's second review): the
+    scientific-name parser reads a name in it as written ("Epipsocus",
+    "Epipsocus sp. 1", "Epipsocus prob. sp. 1"), or with emphasis marks dropped
+    and its first letter a capital ("epipsocus", "*Epipsocus*", "epipsocus sp.
+    1"); or it is one word that may be a genus, case aside (GENUS_SHAPED:
+    "EPIPSOCUS", "Ep1psocus"). A morphocode ("sp. 30 <female sign>", "Sp. 22",
+    "sp 22", "sp #1") names none."""
+    if not query or not query.strip():
+        return False
+    plain = query.translate(_EMPHASIS).strip()
+    capital = plain[:1].upper() + plain[1:]
+    if taxonomy_scientific_name(query) is not None or taxonomy_scientific_name(capital) is not None:
+        return True
+    words = _words(capital)
+    return len(words) == 1 and GENUS_SHAPED.fullmatch(words[0]) is not None
+
+
 def taxon_query_grounded(query: str, literal: str) -> bool:
     """Whether GBIF was asked about the whole name this taxon literal writes
     (taxon_queries). A query for part of it ("Danaus plexippus" for "Danaus

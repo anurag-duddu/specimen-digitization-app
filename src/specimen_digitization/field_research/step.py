@@ -716,21 +716,55 @@ def _no_name(lookup, literal: str) -> bool:
         and metadata.get("verbatim_name") == literal and metadata.get("reason") == "no_scientific_name")
 
 
+def _gbif_found_a_genus(status: LookupStatus, candidates, queries: Iterable[str | None]) -> bool:
+    """Whether a GBIF answer for the taxon shows that the label names a genus
+    (B1 of #289's second review): GBIF answered with candidates, a success or
+    an ambiguous answer (105526328's "Epipsocus" homonym), or what was asked
+    names a genus (checks.query_names_a_genus). The taxon brief has the expert
+    look up the genus a label writes ("Epipsocus" for "Epipsocus sp. 1", G25),
+    so such a lookup is the expert's own finding that the label writes one,
+    wherever on the label it stands. GBIF's no-name answer for a morphocode
+    (no match, no candidates, "sp. 30 <female sign>" asked) is not."""
+    from .checks import query_names_a_genus
+
+    return (bool(candidates) or status in (LookupStatus.SUCCESS, LookupStatus.AMBIGUOUS)
+        or any(query_names_a_genus(query) for query in queries))
+
+
+def _answer_found_a_genus(item: SourceAnswer) -> bool:
+    """_gbif_found_a_genus for a GBIF answer an expert received."""
+    return item.source_id == "gbif" and _gbif_found_a_genus(item.status, item.candidates, (item.query,))
+
+
+def _lookup_found_a_genus(lookup) -> bool:
+    """_gbif_found_a_genus for a GBIF lookup the run stores: its query, as
+    sent ("scientificName") or as asked ("name"), or the name it could not
+    read (its "verbatim_name")."""
+    if not isinstance(lookup, Lookup) or lookup.provider != "gbif":
+        return False
+    asked = (lookup.query.get("scientificName"), lookup.query.get("name"), (lookup.metadata or {}).get("verbatim_name"))
+    return _gbif_found_a_genus(lookup.status, lookup.candidates,
+        (text for text in asked if isinstance(text, str)))
+
+
 def _expert_found_no_genus(outcome: FieldOutcome, code: str, *, by_name, sources: Sequence[SourceAnswer]) -> bool:
     """Whether the taxon's expert itself answered sources_cannot_resolve, as
     rule A requires its expert's own answer (mark_not_on_label, item 1): no
     failure, a model's answer (the field was not finalized without a model
     call), and not the resolver's fallback (FieldOutcome.fallback: an expert
-    out of attempts, or whose answers could not be checked); and it answered
-    after a GBIF lookup attempt for the field (a GBIF answer among
-    `sources`, the field's lookups), or after its own check that the label
-    names no genus: its literal is a morphocode of this code (checks.morphocode)
-    that a reading it names writes."""
+    out of attempts, or whose answers could not be checked); no GBIF answer
+    it received for the field (`sources`, the field's lookups) shows a genus
+    (_answer_found_a_genus: candidates, or a query that names a genus); and
+    it answered after a GBIF lookup attempt for the field, or after its own
+    check that the label names no genus: its literal is a morphocode of this
+    code (checks.morphocode) that a reading it names writes."""
     from .checks import morphocode
 
     answer = outcome.answer
     if (outcome.failure is not None or answer is None or answer.outcome != "sources_cannot_resolve"
             or outcome.finalized_without_model or outcome.fallback):
+        return False
+    if any(_answer_found_a_genus(item) for item in sources):
         return False
     if any(item.source_id == "gbif" for item in sources):
         return True
@@ -745,7 +779,8 @@ def _unmatched_taxon(run, task, outcome: FieldOutcome, *, readings, by_name, evi
     - the expert answered sources_cannot_resolve itself, after a GBIF lookup
       attempt or quoting the code (_expert_found_no_genus); a failure, a
       field finalized without a model call and the resolver's fallback
-      never qualify;
+      never qualify, nor does an expert any of whose GBIF answers for the
+      field has candidates or asked a name that names a genus;
     - the organiser's literal names no genus (checks.names_no_genus: "sp. 30
       <female sign>"; "Aus bus n. sp." and "Epipsocus sp. 1" do not qualify);
     - every taxon candidate is the same morphocode, a text with no genus and
@@ -1303,13 +1338,16 @@ def taxon_unmatched(taxon: FieldValue, evidence: Mapping[str, Evidence], lookups
     `texts`, writes with no genus beside it (checks.label_names_no_genus), as
     written (parsed is the literal or empty), with no normalized value or
     authority, in the settled layer, citing as support the check row for that
-    literal and the GBIF no-name lookup of the run that the row names. A taxon
-    with a genus never is."""
+    literal and the GBIF no-name lookup of the run that the row names; and no
+    GBIF lookup the run stores shows a genus (_lookup_found_a_genus:
+    candidates, or a query that names a genus), so a value stored before
+    that rule does not clear either. A taxon with a genus never is."""
     from .checks import label_names_no_genus, morphocode
 
     literal = taxon.literal
     code = morphocode(literal)
     if (taxon.state != ValueState.SUPPORTED or code is None or not label_names_no_genus(code, texts)
+            or any(_lookup_found_a_genus(lookup) for lookup in lookups)
             or taxon.layer != "settled" or taxon.parsed not in (None, literal)
             or any((taxon.normalized, taxon.authority_id, taxon.authority_identity))):
         return False

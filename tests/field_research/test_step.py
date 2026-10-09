@@ -2201,16 +2201,21 @@ PILOT_CODES = {
 }
 
 
+@pytest.mark.parametrize("asked", [False, True], ids=["no-gbif-lookup", "gbif-no-match"])
 @pytest.mark.parametrize(("before", "code", "after"), PILOT_CODES.values(), ids=PILOT_CODES)
-def test_the_pilots_codes_with_no_genus_beside_them_still_clear_as_unmatched(tmp_path, before, code, after):
+def test_the_pilots_codes_with_no_genus_beside_them_still_clear_as_unmatched(tmp_path, before, code, after, asked):
+    """The expert quotes the code, with no GBIF lookup, or after GBIF's
+    no-name answer for the code (no match, no candidates)."""
     rest = TEXT.replace("taxon: Danaus plexippus\n", "")
     text = before + code + after + "\n" + rest if not before else rest + "\n" + before + code + after
     rig = build_rig(tmp_path, text, candidates=[*COLLECTORS, *(("taxon", name, code, code) for name in ("1A", "1B"))])
     run = rig.specimen.run
-    settle(rig, Scripted({"taxon": cannot_resolve(code)}), tools=NoGenus(rig.blobs))
+    settle(rig, Scripted({"taxon": cannot_resolve(code, asks=[code] if asked else [])}), tools=NoGenus(rig.blobs))
     taxon = run.fields["taxon"]
     assert (taxon.state, taxon.literal, taxon.reason) == (ValueState.SUPPORTED, code, field_step.UNMATCHED)
     assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+    assert field_step.taxon_unmatched(taxon, {item.id: item for item in run.evidence}, run.lookups,
+        texts=label_texts(run))
 
 
 def test_a_later_pass_judges_the_label_of_an_unmatched_taxon_again(tmp_path):
@@ -2226,6 +2231,98 @@ def test_a_later_pass_judges_the_label_of_an_unmatched_taxon_again(tmp_path):
         item.text = item.text.replace("taxon: ", "taxon: Epipsocus\n")
     field_step.refinalize(run, today=TODAY)
     assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["taxonomy_unresolved"])
+
+
+# B1 of #289's second review: the label writes the genus where the label check
+# does not look (neither immediately before the code nor first after it on its
+# line), and the expert asks GBIF that genus.
+GENUS_ELSEWHERE = {
+    # The genus on the line after the code.
+    "genus-on-the-next-line": ("VI-24-68-7.\n" + EPIPSOCUS_CODE + "\nEpipsocus", EPIPSOCUS_CODE),
+    # 105526328's label 2 with its lines in another order.
+    "genus-two-lines-above": ("Epipsocus\n\N{FEMALE SIGN} terminalia\n" + EPIPSOCUS_CODE, EPIPSOCUS_CODE),
+    # The genus and the slide number on one line, the code below.
+    "genus-then-slide-number-above": ("Epipsocus VI-24-68-7.\n" + EPIPSOCUS_CODE, EPIPSOCUS_CODE),
+    # A reader writes the genus without its capital.
+    "lower-case-genus": ("epipsocus " + EPIPSOCUS_CODE, "epipsocus " + EPIPSOCUS_CODE),
+    # A reader marks the genus as italic.
+    "markdown-italic-genus": ("*Epipsocus* " + EPIPSOCUS_CODE, "*Epipsocus* " + EPIPSOCUS_CODE),
+    # A qualifier the label check does not pass over.
+    "prob-qualifier": ("Epipsocus prob. " + EPIPSOCUS_CODE, "Epipsocus prob. " + EPIPSOCUS_CODE),
+}
+
+
+def genus_elsewhere(tmp_path, layout):
+    """A rig whose label writes GENUS_ELSEWHERE[layout], the organiser's
+    candidate only the code, quoted as the layout gives it."""
+    written, quote = GENUS_ELSEWHERE[layout]
+    return build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", written), candidates=[*COLLECTORS,
+        *(("taxon", name, EPIPSOCUS_CODE, quote) for name in ("1A", "1B"))])
+
+
+def in_review_with_a_genus(run):
+    taxon = run.fields["taxon"]
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["mandatory_unresolved:taxon", "taxonomy_unresolved"])
+    assert taxon.state == ValueState.UNRESOLVED and taxon.layer is None
+    assert not [item for item in run.evidence if item.locator == "check:taxon_no_genus"]
+    assert not field_step.taxon_unmatched(taxon, {item.id: item for item in run.evidence}, run.lookups,
+        texts=label_texts(run))
+
+
+@pytest.mark.parametrize("layout", GENUS_ELSEWHERE)
+@pytest.mark.parametrize("gbif", [Homonym, FakeSources], ids=["homonym", "success"])
+def test_a_genus_the_expert_asked_gbif_keeps_the_code_in_review_wherever_the_label_writes_it(tmp_path, layout, gbif):
+    """The expert asks GBIF "Epipsocus", which GBIF answers with candidates
+    (a homonym, or a success), then answers sources_cannot_resolve quoting the
+    code: its lookup found the genus the label writes."""
+    rig = genus_elsewhere(tmp_path, layout)
+    settle(rig, Scripted({"taxon": cannot_resolve(EPIPSOCUS_CODE, asks=["Epipsocus"])}), tools=gbif(rig.blobs))
+    in_review_with_a_genus(rig.specimen.run)
+
+
+class NoMatch(NoGenus):
+    """GBIF has no match for a name it reads: a request made, no candidates.
+    A query that writes no scientific name gets the no-name answer (NoGenus)."""
+
+    def _answer(self, source_id, query):
+        from specimen_digitization.research_harness.taxonomy import taxonomy_scientific_name
+
+        answer = super()._answer(source_id, query)
+        if source_id != "gbif" or taxonomy_scientific_name(query) is None:
+            return answer
+        evidence = answer.evidence.model_copy(update={"kind": "lookup", "locator": None,
+            "excerpt": f"GBIF has no match for {query!r}"})
+        lookup = answer.taxonomy_lookup.model_copy(update={"status": LookupStatus.NO_MATCH, "candidates": []})
+        return SourceAnswer("gbif", query, LookupStatus.NO_MATCH, (), evidence, note="no match",
+            taxonomy_lookup=lookup)
+
+
+@pytest.mark.parametrize("asked", ["Epipsocus", "epipsocus", "*Epipsocus*", "EPIPSOCUS",
+    "epipsocus sp. 1 \N{FEMALE SIGN}"])
+def test_a_genus_the_expert_asked_gbif_keeps_the_code_in_review_though_gbif_has_no_candidate(tmp_path, asked):
+    """GBIF finds no match for the genus, or reads no name in the query, yet
+    the query names a genus (checks.query_names_a_genus)."""
+    rig = genus_elsewhere(tmp_path, "genus-on-the-next-line")
+    settle(rig, Scripted({"taxon": cannot_resolve(EPIPSOCUS_CODE, asks=[asked])}), tools=NoMatch(rig.blobs))
+    in_review_with_a_genus(rig.specimen.run)
+
+
+@pytest.mark.parametrize("gbif", [Homonym, FakeSources, NoMatch], ids=["homonym", "success", "no-match"])
+def test_a_stored_unmatched_taxon_whose_run_holds_a_gbif_lookup_of_a_genus_never_clears(tmp_path, gbif):
+    """The clearance rules read the run's stored GBIF lookups too
+    (taxon_unmatched): an unmatched taxon whose run holds a lookup of the
+    genus (a record cleared before this rule, its expert having asked GBIF
+    "Epipsocus") goes to review on its next pass."""
+    rig = genus_elsewhere(tmp_path, "genus-on-the-next-line")
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": cannot_resolve(EPIPSOCUS_CODE)}), tools=NoGenus(rig.blobs))
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+    asked = asyncio.run(gbif(rig.blobs).lookup("gbif", "Epipsocus", field_key="taxon"))
+    run.lookups.append(asked.taxonomy_lookup)
+    field_step.refinalize(run, today=TODAY)
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["taxonomy_unresolved"])
+    assert not field_step.taxon_unmatched(run.fields["taxon"], {item.id: item for item in run.evidence},
+        run.lookups, texts=label_texts(run))
 
 
 @pytest.mark.parametrize(("other", "decided"), [("sp. 39", False), ("Sp.30", False), ("sp. 39", True)],
