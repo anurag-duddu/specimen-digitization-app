@@ -10,7 +10,10 @@ approved sources are stand-ins, injected at the composition seam
 
 from __future__ import annotations
 
+import hashlib
+import io
 import logging
+import random
 import sys
 import time
 from collections import Counter
@@ -20,8 +23,10 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from PIL import Image
 
 from specimen_digitization.application.domain import ExecutionPolicy
+from specimen_digitization.application.region_pixels import region_png
 from specimen_digitization.application.native_drain import (
     RegisteredNativeDrainWorkflow, compose_registered_native_drain,
 )
@@ -39,7 +44,7 @@ from production_e2e_support import (  # noqa: E402
     COLLECTION, LABEL_TEXT, LABEL_VALUES, ORG, WORKER, FakeDataConnect, GenerationBlobs,
     published_profile, specimen_before_adjudication, worker_principal,
 )
-from test_step import GBIF_NAME, FakeSources, Scripted, failing, resolved  # noqa: E402
+from test_step import GBIF_NAME, FakeSources, Scripted, default_script, failing, resolved  # noqa: E402
 
 FIELDS = {"SPECIMEN_RESEARCH_HARNESS": "fields"}
 CAP = 1_000_000
@@ -57,19 +62,58 @@ def no_network(monkeypatch):
     monkeypatch.setattr(httpx.Client, "send", refuse)
 
 
-@pytest.fixture
-def rig(tmp_path):
+class CloudBlobs(GenerationBlobs):
+    """GenerationBlobs with a Cloud Storage round trip on each read and write
+    while `delay` is set (seconds)."""
+
+    delay = 0.0
+    reads = writes = 0
+
+    def put(self, data: bytes) -> str:
+        self.writes += 1
+        time.sleep(self.delay)
+        return super().put(data)
+
+    def get_bounded(self, ref: str, max_bytes: int) -> bytes:
+        self.reads += 1
+        time.sleep(self.delay)
+        return super().get_bounded(ref, max_bytes)
+
+
+def slide_sized(specimen, blobs):
+    """The record's image as the pilot's slides are (1,780 x 590 px JPEG, about
+    300 KB), its one region the right-hand label, as segmentation leaves it."""
+    rng = random.Random(7)
+    small = Image.frombytes("RGB", (445, 148), rng.randbytes(445 * 148 * 3))
+    output = io.BytesIO()
+    small.resize((1780, 590), Image.Resampling.BICUBIC).save(output, format="JPEG", quality=85)
+    image = output.getvalue()
+    ref = blobs.put(image)
+    specimen.asset = specimen.asset.model_copy(update={"sha256": ref.partition(":")[0], "blob_ref": ref,
+        "size_bytes": len(image), "width": 1780, "height": 590})
+    [region] = specimen.run.regions
+    region.x, region.y, region.width, region.height = 890, 0, 890, 590
+    crop_png = region_png(Image.open(io.BytesIO(image)), region)
+    region.crop_ref = blobs.put(crop_png)
+    for observation in specimen.run.observations:
+        observation.input_sha256 = hashlib.sha256(crop_png).hexdigest()
+        observation.input_crop_ref = region.crop_ref
+    return len(image)
+
+
+def make_rig(tmp_path, *, slide=False):
     backend = SqliteStateBackend(tmp_path / "research-state.sqlite")
     backend.grant(DurabilityScope(ORG, COLLECTION, "membership", "membership", 1, WORKER, False))
     fake = FakeDataConnect(backend, members={WORKER: [{"organization_id": ORG, "collection_id": COLLECTION,
         "role": "operator", "can_view_sensitive": False}]})
-    blobs = GenerationBlobs(tmp_path / "blobs")
+    blobs = CloudBlobs(tmp_path / "blobs")
     repository = SqlConnectRepository(session=fake, graph_blobs=blobs)
     ordinary = Workflow(repository, blobs, SyntheticAdapters(blobs, LABEL_TEXT))
     token = actor_uid.set(WORKER)
     try:
         principal = worker_principal()
         specimen = specimen_before_adjudication(blobs)
+        image_bytes = slide_sized(specimen, blobs) if slide else None
         # As the lane queues a run: the profile's ceiling and prices (lane.py
         # 112-120), and the label coverage its automatic check confirms (G15).
         processing = published_profile().processing
@@ -78,9 +122,19 @@ def rig(tmp_path):
         specimen.run.coverage_confirmed = True
         created = repository.create(principal, specimen, "e2e-intake", "e2e-intake")
         yield SimpleNamespace(fake=fake, backend=backend, repository=repository, ordinary=ordinary,
-            principal=principal, specimen_id=created.id, blobs=blobs)
+            principal=principal, specimen_id=created.id, blobs=blobs, image_bytes=image_bytes)
     finally:
         actor_uid.reset(token)
+
+
+@pytest.fixture
+def rig(tmp_path):
+    yield from make_rig(tmp_path)
+
+
+@pytest.fixture
+def slide_rig(tmp_path):
+    yield from make_rig(tmp_path, slide=True)
 
 
 def supervised():
@@ -186,6 +240,88 @@ def test_field_research_reaches_the_final_queue_in_one_step(rig, caplog):
     assert (fields["elevation_from_ft"].parsed, fields["elevation_to_ft"].parsed) == ("590.55", "593.83")
     assert fields["date_visited_to"].parsed == LABEL_VALUES["date_visited_from"]
     assert fields["identified_by_irn"].state == "unknown"
+
+
+PLACES = ("country", "province_state", "county", "city", "precise_location")
+# A Cloud Storage read or write from the worker: tens of milliseconds each.
+LATENCY = 0.05
+
+
+async def asks_everything(task, readings, tools):
+    """test_step's expert, then every approved source of the field asked twice
+    more (the value and a variant), as a hard record's expert does."""
+    outcome = await default_script(task, readings, tools)
+    asked = LABEL_VALUES.get(task.key, task.key)
+    for source in task.tools:
+        for query in (asked, asked + " variant"):
+            answer = await tools.lookup(source, query, field_key=task.key)
+            if answer.evidence is not None:
+                outcome.evidence.append(answer.evidence)
+    return outcome
+
+
+def test_the_work_after_research_fits_well_inside_the_margin(slide_rig, monkeypatch, capsys):
+    """I5: what the step does after research (closing the sources, applying
+    the outcomes, the integrity check over the record, the clearance rules),
+    measured on a slide-sized record with a Cloud Storage round trip on every
+    blob read and write. Research stops field_step.MARGIN_SECONDS before the
+    step's deadline: at least three times this."""
+    rig = slide_rig
+    scripts = {key: _fixed(make) for key, make in SCRIPTS.items()}
+    resolver = Scripted({**scripts, **dict.fromkeys((*PLACES, "taxon"), asks_everything)})
+    workflow, step, _ = mount(rig, resolver)
+    with supervised():
+        workflow.step(rig.principal, rig.specimen_id)  # adjudicate
+        workflow.step(rig.principal, rig.specimen_id)  # parse
+    marks, checked = {}, []
+    research, verify = field_step.research_fields, field_step.verify_evidence
+
+    async def timed_research(*args, **kwargs):
+        marks["bound"] = kwargs["deadline_seconds"]
+        try:
+            return await research(*args, **kwargs)
+        finally:
+            marks["research"] = (time.monotonic(), rig.blobs.reads, rig.blobs.writes)
+            rig.blobs.delay = LATENCY  # From here on every blob operation is a round trip.
+
+    def timed_verify(*args, **kwargs):
+        began = time.monotonic()
+        try:
+            return verify(*args, **kwargs)
+        finally:
+            checked.append(time.monotonic() - began)
+
+    run_step = step.run
+
+    def timed_step(*args, **kwargs):
+        try:
+            return run_step(*args, **kwargs)
+        finally:
+            marks["step"] = (time.monotonic(), rig.blobs.reads, rig.blobs.writes)
+            rig.blobs.delay = 0.0
+
+    monkeypatch.setattr(field_step, "research_fields", timed_research)
+    monkeypatch.setattr(field_step, "verify_evidence", timed_verify)
+    step.run = timed_step
+    with supervised():
+        done = workflow.step(rig.principal, rig.specimen_id)
+    run = done.run
+    assert (run.stage, run.disposition, run.reasons) == ("finalized", "cleared", [])
+    seconds = marks["step"][0] - marks["research"][0]
+    reads, writes = (after - before for after, before in zip(marks["step"][1:], marks["research"][1:], strict=True))
+    with capsys.disabled():
+        print(f"\nfield research after research: {seconds:.2f} s ({checked[0]:.2f} s integrity check), "
+            f"{reads} blob reads, {writes} blob writes, {len(run.evidence)} evidence rows, "
+            f"{len(run.tool_calls)} tool calls, image {rig.image_bytes} bytes, "
+            f"{LATENCY * 1000:.0f} ms per blob operation")
+    assert len(run.evidence) >= 60 and rig.image_bytes > 150_000
+    # The margin is at least three times what was measured.
+    assert 3 * seconds <= field_step.MARGIN_SECONDS == step.margin_seconds
+    # This step's research was given at most its effect timeout less a minute
+    # or three times the work measured after it, whichever is longer.
+    effect = run.profile.execution.effect_timeout_for_step(FIELD_RESEARCH)
+    assert marks["bound"] <= effect - max(60.0, 3 * seconds)
+    assert field_step.MARGIN_SECONDS == max(60.0, 3 * field_step.POST_RESEARCH_SECONDS)
 
 
 def test_the_drain_mounts_field_research_with_fields(rig):

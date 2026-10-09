@@ -33,7 +33,9 @@ from specimen_digitization.application.policy import evaluate
 from specimen_digitization.application.profile_runtime import bind_profile_rules, published_risk_registry
 from specimen_digitization.application.region_pixels import region_png
 from specimen_digitization.application.storage import LocalBlobs, SQLiteRepository, digest
-from specimen_digitization.application.workflow import FIELD_RESEARCH, SyntheticAdapters, Workflow
+from specimen_digitization.application.workflow import (
+    FIELD_RESEARCH, OperationalBlock, SyntheticAdapters, Workflow,
+)
 from specimen_digitization.field_research import step as field_step
 from specimen_digitization.field_research.contracts import (
     FIELD_TOOLS, FieldAnswer, FieldOutcome, SourceAnswer, SourceCandidate,
@@ -43,7 +45,7 @@ from specimen_digitization.field_research.step import (
 )
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "research_harness"))
-from production_e2e_support import WORKER, worker_principal  # noqa: E402
+from production_e2e_support import COLLECTION, ORG, WORKER, worker_principal  # noqa: E402
 
 GBIF_NAME = "Danaus plexippus (Linnaeus, 1758)"
 GBIF_KEY = "5133088"
@@ -187,8 +189,8 @@ def resolved(literal, *, value=None, authority_id=None, cited=(), reading="1A"):
 class Scripted:
     """A resolver: each field's script, recording which fields it was asked for."""
 
-    def __init__(self, scripts=None, *, meter=None, delay=0.0):
-        self.scripts, self.meter, self.delay = dict(scripts or {}), meter, delay
+    def __init__(self, scripts=None, *, meter=None, delay=0.0, tokens=(100, 50)):
+        self.scripts, self.meter, self.delay, self.tokens = dict(scripts or {}), meter, delay, tokens
         self.calls, self.spans, self.active, self.peak = [], [], 0, 0
 
     async def __call__(self, task, readings, context, *, tools):
@@ -199,8 +201,8 @@ class Scripted:
         try:
             await asyncio.sleep(self.delay)
             if self.meter is not None:
-                ticket = await self.meter.reserve(100, 50)
-                self.meter.settle(ticket, 100, 50)
+                ticket = await self.meter.reserve(*self.tokens)
+                self.meter.settle(ticket, *self.tokens)
             script = self.scripts.get(task.key, default_script)
             return await script(task, readings, tools)
         finally:
@@ -324,6 +326,36 @@ def test_resolvers_run_concurrently_up_to_the_limit(rig):
     assert two.peak == 2 and sorted(two.calls) == sorted(RESEARCHED)
 
 
+def test_research_stops_a_minute_before_the_pilots_effect_timeout():
+    """The pilot's step has 270 s (its profile's external timeout): research
+    stops at 210 s, leaving at least three times the measured work after it."""
+    timeout = published_registry().profiles[0].processing.external_timeout_seconds
+    step = FieldResearchStep(resolver_factory=None, tools_factory=None)
+    assert (timeout, step._bound(timeout)) == (270.0, 210.0)
+    assert step.margin_seconds >= max(60.0, 3 * field_step.POST_RESEARCH_SECONDS)
+
+
+def test_a_step_stops_research_a_minute_before_its_deadline_and_keeps_what_settled(rig):
+    """Through the workflow, with a 62 s effect timeout: research stops 60 s
+    before it, at 2 s; the field still running is a timeout for the retry and
+    every settled field is kept."""
+    run = rig.specimen.run
+    run.profile.execution = run.profile.execution.model_copy(update={"external_timeout_seconds": 62.0})
+    rig.specimen = rig.repository.save(rig.principal, rig.specimen, rig.specimen.version, "timeout", "timeout")
+
+    async def stuck(task, readings, tools):
+        await asyncio.sleep(3600)
+
+    mounted(rig, Scripted({"taxon": stuck}))
+    began = time.monotonic()
+    blocked = rig.workflow.step(rig.principal, rig.specimen.id).run
+    assert 2.0 <= time.monotonic() - began < 20.0  # A 30 s margin would research for 32 s.
+    assert (blocked.stage, blocked.blocker) == ("retry_scheduled", "field_research_timeout")
+    assert blocked.fields["taxon"].reason == field_step.FIELD_REASONS["timeout"]
+    assert {key for key, value in blocked.fields.items() if value.layer == "settled"} == RESEARCHED - {
+        "taxon", "elevation_to_ft", "elevation_from_m", "elevation_to_m", "date_visited_to"}
+
+
 def test_a_field_still_running_at_the_deadline_is_a_timeout(rig):
     async def stuck(task, readings, tools):
         await asyncio.sleep(30)
@@ -426,6 +458,85 @@ def test_derived_values_fill_what_the_label_leaves_out(rig):
     assert run.fields["elevation_from_ft"].literal == "1500" and run.fields["elevation_from_ft"].layer == "settled"
 
 
+def test_several_possibilities_keep_the_readers_verbatim_and_its_lineage(rig):
+    run = rig.specimen.run
+    raw = run.observations[1]
+    run.fields["city"] = run.fields["city"].model_copy(update={"literal": None,
+        "verbatim_by_observation": {raw.id: "Chicago"}, "input_source_by_observation": {raw.id: "raw_reading"},
+        "settled_observation_ids": [raw.id], "input_source": "raw_reading", "source_observation_id": raw.id})
+    before = run.fields["city"]
+    settle(rig, Scripted({"city": answering(FieldAnswer(outcome="several_possibilities",
+        options=["Chicago", "Chicago Heights"], explanation="Both are possible."))}))
+    city = run.fields["city"]
+    assert city.state == ValueState.AMBIGUOUS and city.verbatim_by_observation == {raw.id: "Chicago"}
+    assert (city.input_source_by_observation, city.settled_observation_ids, city.input_source,
+        city.source_region_id, city.source_observation_id) == (before.input_source_by_observation,
+        before.settled_observation_ids, "raw_reading", before.source_region_id, raw.id)
+    # The reader's text is the record's candidate for a person to choose from.
+    from specimen_digitization.application.projection import _fields
+    rows = [w.variables for w in _fields(run, {}, set(), {}) if w.variables["fieldKey"] == "city"]
+    assert [(row["literalValue"], row["inputSource"]) for row in rows] == [("Chicago", "raw_reading")]
+
+
+def test_an_ambiguous_check_is_no_evidence_for_one_of_its_readings():
+    texts = ["Epipsocus sp. 1\n4-5-48 coll. F. G. Werner"]
+    rules = {"version": "date-rules-v1", "two_digit_year_century": 1900, "roman_numeral_months": True}
+    for value in ("1948-04-05", "1948-05-04"):
+        assert field_step._check_row("date_visited_from", ("date_parser",), "4-5-48", value, texts=texts,
+            date_rules=rules, asset_id=None, blobs=None) is None
+    row = field_step._check_row("fmnh_ins_number", ("catalog_number_validator",), "FMNH-INS 0010001",
+        "0010001", texts=[TEXT], date_rules=None, asset_id=None, blobs=None)
+    assert row is not None and "0010001" in row.excerpt
+
+
+class TwoTaxa(FakeSources):
+    """GBIF decides GBIF_NAME and lists a fuzzy alternative beside it."""
+
+    def _answer(self, source_id, query):
+        answer = super()._answer(source_id, query)
+        if source_id != "gbif":
+            return answer
+        other = SourceCandidate(name="Danaus erippus (Cramer, 1775)", authority_id="5133099", kind="SPECIES",
+            detail="alternative, fuzzy match")
+        evidence = answer.evidence.model_copy(update={"excerpt": answer.evidence.excerpt
+            + f"\n{other.name} | {other.authority_id} | SPECIES | alternative, fuzzy match"})
+        return SourceAnswer("gbif", query, LookupStatus.SUCCESS, (*answer.candidates, other), evidence,
+            note="exact", taxonomy_lookup=answer.taxonomy_lookup)
+
+
+def taxon_on(query, *, value=GBIF_NAME, authority_id=GBIF_KEY):
+    async def script(task, readings, tools):
+        answer = await tools.lookup("gbif", query, field_key=task.key)
+        return FieldOutcome(task.key, resolved(LABEL["taxon"], value=value, authority_id=authority_id,
+            cited=[answer.evidence.id]), evidence=[answer.evidence], lookups=[answer.taxonomy_lookup], model_calls=1)
+    return script
+
+
+@pytest.mark.parametrize(("script", "tools"), [
+    # GBIF asked about a name no reading writes.
+    (taxon_on("Bombus impatiens"), FakeSources),
+    # The alternative GBIF listed, not the candidate it decided.
+    (taxon_on(LABEL["taxon"], value="Danaus erippus (Cramer, 1775)", authority_id="5133099"), TwoTaxa),
+])
+def test_a_taxon_clears_only_on_the_candidate_gbif_decided_for_its_literal(rig, script, tools):
+    settle(rig, Scripted({"taxon": script}), tools=tools(rig.blobs))
+    run = rig.specimen.run
+    assert run.fields["taxon"].state == ValueState.SUPPORTED
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["taxonomy_unresolved"])
+
+
+def test_a_taxon_query_is_the_name_its_literal_writes_or_a_genus_level_identifications_genus():
+    from specimen_digitization.field_research.checks import taxon_query_grounded
+
+    assert taxon_query_grounded("Danaus plexippus", "Danaus plexippus")
+    assert taxon_query_grounded("Danaus plexippus", "Danaus plexippus (Linnaeus, 1758)")
+    assert taxon_query_grounded("Epipsocus", "Epipsocus sp. 1")  # G25
+    assert not taxon_query_grounded("Danaus", "Danaus plexippus")  # a species is not its genus
+    assert not taxon_query_grounded("Danau", "Danaus sp.")
+    assert not taxon_query_grounded("Bombus impatiens", "Danaus plexippus")
+    assert not taxon_query_grounded(" ", "Danaus plexippus")
+
+
 def test_no_elevation_is_derived_from_a_unit_the_readings_disagree_on(rig):
     run = rig.specimen.run
     settle(rig, Scripted({"elevation_to_ft": answering(FieldAnswer(outcome="several_possibilities",
@@ -473,7 +584,7 @@ def test_an_outage_blocks_the_run_and_keeps_every_settled_field(rig):
 
 # ---- through the workflow: one step, retry, cost -------------------------------
 
-def mounted(rig, resolver, tools_down=()):
+def mounted(rig, resolver, tools_down=(), sources=None):
     state = SimpleNamespace(meters=[], tools=[])
 
     def meter_factory(cap, price):
@@ -484,7 +595,7 @@ def mounted(rig, resolver, tools_down=()):
 
     @asynccontextmanager
     async def tools_factory(run, profile, blobs):
-        tools = FakeSources(blobs, down=tools_down)
+        tools = (sources or FakeSources)(blobs, down=tools_down)
         state.tools.append(tools)
         yield tools
 
@@ -541,3 +652,354 @@ def test_the_ceiling_left_is_the_meters_cap(rig):
     done = rig.workflow.step(rig.principal, rig.specimen.id)
     assert state.meters[0].cap_micros == 1_000
     assert done.run.usage.reserved_cost_micros <= 1_000_000
+
+
+@pytest.mark.parametrize(("broken", "blocker"), [
+    ("_route_price", "field_research_price_unavailable"),
+    ("build_tasks", "field_research_unconfigured"),
+])
+def test_a_setup_error_before_any_request_settles_to_nothing_and_blocks_with_its_reason(
+        rig, monkeypatch, broken, blocker):
+    def fail(*args, **kwargs):
+        if broken == "_route_price":
+            raise OperationalBlock(blocker)
+        raise ValueError("unreadable inputs")
+
+    monkeypatch.setattr(field_step, broken, fail)
+    resolver = Scripted()
+    state = mounted(rig, resolver)
+    run = rig.workflow.step(rig.principal, rig.specimen.id).run
+    assert (run.stage, run.blocker, run.disposition) == ("processing_blocked", blocker, None)
+    assert resolver.calls == [] and state.tools == []
+    [paid] = run.paid_calls
+    assert (paid["reserved_micros"], paid["cost_micros"], paid["cost_basis"], paid["outcome"]) == (
+        1_000_000, 0, "computed", "failed")
+    assert run.usage.reserved_cost_micros == 0
+
+
+def test_a_crash_after_research_settles_to_the_meters_exact_spend(rig):
+    resolver = Scripted()
+    state = mounted(rig, resolver)
+
+    @asynccontextmanager
+    async def closing_fails(run, profile, blobs):
+        yield FakeSources(blobs)
+        raise RuntimeError("client close failed")
+
+    rig.workflow.field_research.tools_factory = closing_fails
+    run = rig.workflow.step(rig.principal, rig.specimen.id).run
+    spent = state.meters[0].spent_micros
+    assert spent == 50 * len(RESEARCHED) and run.blocker == "external_outcome_unknown"
+    [paid] = run.paid_calls
+    assert (paid["cost_micros"], paid["cost_basis"], paid["outcome"]) == (spent, "computed", "failed")
+    assert run.usage.reserved_cost_micros == spent
+
+
+def test_an_overrun_step_keeps_its_settled_spend(rig):
+    state = mounted(rig, Scripted())
+    rig.workflow.monotonic = iter([0.0, 10_000.0]).__next__  # Far past the effect timeout.
+    run = rig.workflow.step(rig.principal, rig.specimen.id).run
+    # The intent copy comes back (nothing researched is kept), but not its whole reservation.
+    assert (run.blocker, run.reasons) == ("external_outcome_unknown", ["external_stage_deadline_exceeded"])
+    assert run.fields["taxon"].layer is None
+    spent = state.meters[0].spent_micros
+    [paid] = run.paid_calls
+    assert (paid["cost_micros"], paid["cost_basis"]) == (spent, "computed")
+    assert run.usage.reserved_cost_micros == spent
+
+
+def seed_program(rig, reserved_total, allowance=5_000_000):
+    """The run carries the program's allowance; its ledger already holds `reserved_total`."""
+    from specimen_digitization.application.domain import Scope
+    from specimen_digitization.application.lane_allowance import LEDGER_KIND, ProgramLedger
+
+    run = rig.specimen.run
+    run.profile.execution = run.profile.execution.model_copy(update={"program_allowance_micros": allowance,
+        "program_ledger_collection": COLLECTION})
+    ledger = ProgramLedger(rig.repository, Scope(organization_id=ORG, collection_id=COLLECTION))
+    rig.repository.put_document(ledger.scope, LEDGER_KIND, ledger.ident,
+        {"sensitive": False, "reserved_total_micros": reserved_total}, 0)
+    rig.specimen = rig.repository.save(rig.principal, rig.specimen, rig.specimen.version, "program", "program")
+    return ledger
+
+
+# One expert request's worst case at the harness route's prices (USD 0.20 and 0.60
+# per million): 48,000 input tokens and 512 of chat template, 2,048 output tokens.
+ONE_REQUEST = 10_932
+
+
+def test_a_low_program_allowance_caps_the_step_and_sends_what_does_not_fit_to_review(rig):
+    ledger = seed_program(rig, 5_000_000 - 25_000)
+    resolver = Scripted(tokens=(48_000, 2048))  # Each field's call settles at its worst case.
+    state = mounted(rig, resolver)
+    run = rig.workflow.step(rig.principal, rig.specimen.id).run
+    [meter] = state.meters
+    assert meter.cap_micros == 25_000 and ONE_REQUEST < 25_000
+    [paid] = run.paid_calls
+    assert paid["reserved_micros"] == 25_000 and paid["cost_micros"] == meter.spent_micros <= 25_000
+    assert (run.stage, run.disposition, run.blocker) == ("finalized", Disposition.REVIEW, None)
+    exhausted = [key for key, value in run.fields.items()
+        if value.reason == field_step.FIELD_REASONS["budget_exhausted"]]
+    assert exhausted and f"mandatory_unresolved:{exhausted[0]}" in run.reasons
+    assert ledger.read()["reserved_total_micros"] == 5_000_000 - 25_000 + meter.spent_micros
+
+
+def test_a_program_allowance_below_one_request_still_blocks_the_record(rig):
+    ledger = seed_program(rig, 5_000_000 - (ONE_REQUEST - 1))
+    resolver = Scripted()
+    state = mounted(rig, resolver)
+    run = rig.workflow.step(rig.principal, rig.specimen.id).run
+    assert (run.stage, run.blocker) == ("processing_blocked", "program_allowance_exhausted")
+    assert resolver.calls == [] and state.meters == []
+    assert ledger.read()["reserved_total_micros"] == 5_000_000 - (ONE_REQUEST - 1)
+
+
+def test_the_one_request_bound_is_the_meters_own_bound():
+    from specimen_digitization.field_research.budget import (
+        DEFAULT_MAX_INPUT_TOKENS, DEFAULT_MAX_TOKENS, TEMPLATE_TOKENS,
+    )
+
+    profile = published_registry().profiles[0]
+    price = profile.processing.price_list.models[profile.harness_route]
+    assert field_step.one_request_micros(price) == field_step.cost_meter(0, price).cost(
+        DEFAULT_MAX_INPUT_TOKENS + TEMPLATE_TOKENS, DEFAULT_MAX_TOKENS) == ONE_REQUEST
+
+
+# ---- a reviewer's decisions after field research --------------------------------
+
+def test_a_reviewers_correction_is_kept_and_the_run_is_never_researched_or_paid_again(rig):
+    mounted(rig, Scripted())
+    done = rig.workflow.step(rig.principal, rig.specimen.id)
+    assert (done.run.stage, done.run.disposition, done.run.attempts[FIELD_RESEARCH]) == (
+        "finalized", Disposition.CLEARED, 1)
+    # A "field" decision on taxon as api.apply_decision saved it before it knew
+    # field research (api.py 1940-1952): the run went back to "lookup", whose next
+    # ordinary step is "plan", the field research handover.
+    corrected = done.model_copy(deep=True)
+    run = corrected.run
+    run.fields["taxon"] = FieldValue(state=ValueState.SUPPORTED, literal="Danaus plexippus",
+        normalized="Reviewer Choice", authority_id="999", evidence_ids=list(run.fields["taxon"].evidence_ids))
+    run.human_approved, run.lookups, run.stage, run.disposition = False, [], "lookup", None
+    run.completed_steps = [step for step in run.completed_steps
+        if step not in {"lookup", "resolve", "normalize", "validate", "finalize"}]
+    saved = rig.repository.save(rig.principal, corrected, done.version, "review", "review")
+    second = Scripted()
+    state = mounted(rig, second)
+    again = rig.workflow.step(rig.principal, saved.id).run
+    # Nothing researched, reserved or paid for a second time.
+    assert second.calls == [] and state.meters == [] and state.tools == []
+    assert again.attempts[FIELD_RESEARCH] == 1 and again.paid_calls == done.run.paid_calls
+    assert again.usage.reserved_cost_micros == done.run.usage.reserved_cost_micros
+    # The reviewer's value exactly as made; the clearance rules recomputed on it.
+    assert again.fields == corrected.run.fields
+    assert (again.stage, again.disposition, again.blocker) == ("finalized", Disposition.REVIEW, None)
+    assert set(again.reasons) == {"unsupported_normalized:taxon", "unsupported_authority_id:taxon",
+        "taxonomy_unresolved"}
+    verify_evidence(rig.repository.get(rig.principal.scope, saved.id), rig.blobs)
+
+
+def test_a_retry_action_on_a_researched_run_only_applies_the_rules_again(rig):
+    mounted(rig, Scripted())
+    done = rig.workflow.step(rig.principal, rig.specimen.id)
+    # api.action "retry": the next ordinary step, "plan", becomes the stage.
+    retried = done.model_copy(deep=True)
+    retried.run.stage = rig.workflow.next_step(retried.run).split(":")[0]
+    assert retried.run.stage == "plan"
+    retried.run.disposition = None
+    saved = rig.repository.save(rig.principal, retried, done.version, "retry", "retry")
+    second = Scripted()
+    mounted(rig, second)
+    again = rig.workflow.step(rig.principal, saved.id).run
+    assert second.calls == [] and again.paid_calls == done.run.paid_calls
+    assert (again.stage, again.disposition, again.reasons) == ("finalized", Disposition.CLEARED, [])
+    assert again.completed_steps == done.run.completed_steps
+
+
+def review_client(rig):
+    from fastapi.testclient import TestClient
+
+    from specimen_digitization.application.api import create_app
+
+    member = {"organization_id": ORG, "collection_id": COLLECTION, "role": "reviewer",
+        "can_view_sensitive": False}
+    app = create_app(mode="emulator", repository=rig.repository, blobs=rig.blobs,
+        adapters=SyntheticAdapters(rig.blobs, TEXT), identity_verifier=lambda token, check: "reviewer-1",
+        memberships=lambda user: [member])
+    return TestClient(app, raise_server_exceptions=False)
+
+
+def decide(client, rig, key, kind, **body):
+    current = rig.repository.get(rig.principal.scope, rig.specimen.id)
+    request = {"expected_revision": current.version, "kind": kind, "reason": "Reviewed.",
+        "base_record_version_id": f"{current.run.id}:{current.version}", **body}
+    response = client.post(f"/v1/organizations/{ORG}/specimens/{current.id}/decisions",
+        headers={"Authorization": "Bearer reviewer", "Idempotency-Key": key}, json=request)
+    assert response.status_code == 200, response.text
+    return rig.repository.get(rig.principal.scope, current.id).run
+
+
+def test_a_correction_waits_for_approval_and_an_approval_clears_by_the_field_research_rules(rig):
+    state = mounted(rig, Scripted())
+    done = rig.workflow.step(rig.principal, rig.specimen.id)
+    assert done.run.disposition == Disposition.CLEARED
+    client = review_client(rig)
+    # Approving a record field research cleared keeps it cleared: the rules are
+    # field research's (derived values have no literal; the ordinary policy
+    # would refuse them), and the approval is the person's.
+    approved = decide(client, rig, "approve-1", "approve")
+    assert (approved.stage, approved.disposition, approved.reasons) == ("finalized", Disposition.CLEARED, [])
+    # A correction on taxon is kept exactly, never researched again, and waits
+    # for the reviewer's approval.
+    taxon = approved.fields["taxon"]
+    after = taxon.model_dump(mode="json", exclude={"evidence_ids"}) | {"reason": "Checked against GBIF."}
+    corrected = decide(client, rig, "field-1", "field", target_id="taxon", after=after,
+        evidence_ids=list(taxon.evidence_ids))
+    assert corrected.fields["taxon"].reason == "Checked against GBIF."
+    assert corrected.fields["taxon"].normalized == GBIF_NAME and corrected.lookups == approved.lookups
+    assert (corrected.stage, corrected.disposition, corrected.reasons) == (
+        "finalized", Disposition.REVIEW, ["human_approval_required"])
+    assert FIELD_RESEARCH in corrected.completed_steps and len(state.meters) == 1
+    cleared = decide(client, rig, "approve-2", "approve")
+    assert (cleared.stage, cleared.disposition, cleared.reasons) == ("finalized", Disposition.CLEARED, [])
+    assert cleared.fields == corrected.fields and cleared.paid_calls == done.run.paid_calls
+    # A correction the rules refuse stays in review after the approval.
+    county = cleared.fields["county"]
+    wrong = decide(client, rig, "field-2", "field", target_id="county",
+        after=county.model_dump(mode="json", exclude={"evidence_ids"}) | {"literal": "Lake"},
+        evidence_ids=list(county.evidence_ids))
+    assert wrong.reasons == ["evidence_does_not_support_value:county", "human_approval_required"]
+    held = decide(client, rig, "approve-3", "approve")
+    assert (held.disposition, held.reasons) == (Disposition.REVIEW, ["evidence_does_not_support_value:county"])
+
+
+# GBIF's other usage of the label's name, beside GBIF_NAME.
+HOMONYM_NAME, HOMONYM_KEY = "Danaus plexippus (Cramer, 1777)", "5133100"
+
+
+class UndecidedTaxon(FakeSources):
+    """GBIF cannot settle the taxon: two usages of its name, neither decided."""
+
+    def _answer(self, source_id, query):
+        answer = super()._answer(source_id, query)
+        if source_id != "gbif":
+            return answer
+        usages = {GBIF_KEY: GBIF_NAME, HOMONYM_KEY: HOMONYM_NAME}
+        candidates = tuple(SourceCandidate(name=name, authority_id=key, kind="SPECIES") for key, name in usages.items())
+        evidence = answer.evidence.model_copy(update={"locator": None, "excerpt": "GBIF cannot settle the name\n"
+            + "\n".join(f"{c.name} | {c.authority_id} | SPECIES | " for c in candidates)})
+        lookup = answer.taxonomy_lookup.model_copy(update={"status": LookupStatus.AMBIGUOUS,
+            "candidates": [{"key": key, "scientificName": name} for key, name in usages.items()]})
+        return SourceAnswer("gbif", query, LookupStatus.AMBIGUOUS, candidates, evidence, note="ambiguous",
+            taxonomy_lookup=lookup)
+
+
+async def undecided(task, readings, tools):
+    answer = await tools.lookup("gbif", LABEL["taxon"], field_key=task.key)
+    return FieldOutcome(task.key, FieldAnswer(outcome="several_possibilities",
+        options=[c.name for c in answer.candidates], source_evidence_ids=[answer.evidence.id],
+        explanation="GBIF cannot settle the name."), evidence=[answer.evidence],
+        lookups=[answer.taxonomy_lookup], model_calls=1)
+
+
+def written_undecided(rig):
+    """A researched run in review on its taxon alone, GBIF's answer ambiguous,
+    after the reviewer's field decision that the label writes the name."""
+    mounted(rig, Scripted({"taxon": undecided}), sources=UndecidedTaxon)
+    done = rig.workflow.step(rig.principal, rig.specimen.id).run
+    assert (done.disposition, done.fields["taxon"].state) == (Disposition.REVIEW, ValueState.AMBIGUOUS)
+    assert [lookup.status for lookup in done.lookups] == [LookupStatus.AMBIGUOUS]
+    client = review_client(rig)
+    taxon = done.fields["taxon"]
+    written = decide(client, rig, "field-taxon", "field", target_id="taxon",
+        after=taxon.model_dump(mode="json", exclude={"evidence_ids"})
+        | {"state": "supported", "literal": LABEL["taxon"], "reason": "The label writes this name."},
+        evidence_ids=list(taxon.evidence_ids))
+    assert written.reasons == ["taxonomy_unresolved", "human_approval_required"]
+    return client
+
+
+def test_a_reviewers_choice_of_one_of_gbifs_candidates_clears_the_taxon_on_approval(rig):
+    client = written_undecided(rig)
+    chosen = decide(client, rig, "choose-taxon", "taxonomy_resolution", after={"authority_id": HOMONYM_KEY})
+    taxon = chosen.fields["taxon"]
+    assert (taxon.literal, taxon.normalized, taxon.authority_id) == (LABEL["taxon"], HOMONYM_NAME, HOMONYM_KEY)
+    assert (chosen.disposition, chosen.reasons) == (Disposition.REVIEW, ["human_approval_required"])
+    approved = decide(client, rig, "approve-taxon", "approve")
+    assert (approved.stage, approved.disposition, approved.reasons) == ("finalized", Disposition.CLEARED, [])
+    # A later pass (an operator's retry) reaches the recheck: still cleared,
+    # nothing researched again.
+    retried = rig.repository.get(rig.principal.scope, rig.specimen.id).model_copy(deep=True)
+    retried.run.stage, retried.run.disposition = rig.workflow.next_step(retried.run).split(":")[0], None
+    saved = rig.repository.save(rig.principal, retried, retried.version, "retry", "retry")
+    again = rig.workflow.step(rig.principal, saved.id).run
+    assert (again.stage, again.disposition, again.reasons) == ("finalized", Disposition.CLEARED, [])
+    assert again.attempts[FIELD_RESEARCH] == 1 and again.paid_calls == approved.paid_calls
+
+
+def test_a_taxon_no_recorded_choice_of_gbifs_names_stays_in_review(rig):
+    client = written_undecided(rig)
+    current = rig.repository.get(rig.principal.scope, rig.specimen.id)
+    # A name GBIF never returned cannot be chosen.
+    response = client.post(f"/v1/organizations/{ORG}/specimens/{current.id}/decisions",
+        headers={"Authorization": "Bearer reviewer", "Idempotency-Key": "choose-unknown"},
+        json={"expected_revision": current.version, "base_record_version_id": f"{current.run.id}:{current.version}",
+            "kind": "taxonomy_resolution", "after": {"authority_id": "5133111"}, "reason": "Reviewed."})
+    assert response.status_code == 422
+    # GBIF's other usage typed in as a correction is no recorded choice.
+    taxon = current.run.fields["taxon"]
+    after = taxon.model_dump(mode="json", exclude={"evidence_ids"})
+    decide(client, rig, "field-usage", "field", target_id="taxon", evidence_ids=list(taxon.evidence_ids),
+        after=after | {"normalized": HOMONYM_NAME, "authority_id": HOMONYM_KEY})
+    held = decide(client, rig, "approve-usage", "approve")
+    assert (held.disposition, held.reasons) == (Disposition.REVIEW, ["taxonomy_unresolved"])
+    # Nor is a correction that keeps the recorded choice but names another usage.
+    chosen = decide(client, rig, "choose-taxon", "taxonomy_resolution", after={"authority_id": HOMONYM_KEY})
+    taxon = chosen.fields["taxon"]
+    decide(client, rig, "field-other", "field", target_id="taxon", evidence_ids=list(taxon.evidence_ids),
+        after=taxon.model_dump(mode="json", exclude={"evidence_ids"}) | {"normalized": GBIF_NAME,
+            "authority_id": GBIF_KEY})
+    held = decide(client, rig, "approve-other", "approve")
+    assert (held.disposition, held.reasons) == (Disposition.REVIEW, ["taxonomy_unresolved"])
+
+
+def test_only_a_recorded_choice_of_a_candidate_in_a_stored_lookup_decides_a_taxon():
+    lookup = Lookup(provider="gbif", adapter_version="test", query={"name": LABEL["taxon"]},
+        status=LookupStatus.AMBIGUOUS, candidates=[{"key": GBIF_KEY, "scientificName": GBIF_NAME},
+            {"usage": {"key": HOMONYM_KEY, "scientificName": HOMONYM_NAME}, "diagnostics": {"matchType": "EXACT"}}])
+
+    def choice(source=lookup.id, key=HOMONYM_KEY, kind="authority_selection"):
+        return Evidence(kind=kind, source=source, locator="candidate:" + key, excerpt="chosen")
+
+    def decided(row, *, value=HOMONYM_NAME, key=HOMONYM_KEY, cited=True, lookups=(lookup,)):
+        taxon = FieldValue(state=ValueState.SUPPORTED, literal=LABEL["taxon"], normalized=value, authority_id=key,
+            evidence_ids=[row.id] if cited else [])
+        return field_step.taxon_decided(taxon, (), {row.id: row}, lookups)
+
+    assert decided(choice())  # GBIF's alternative usage, as api.apply_decision records the choice
+    assert decided(choice(key=GBIF_KEY), value=GBIF_NAME, key=GBIF_KEY)
+    assert not decided(choice(), cited=False)
+    assert not decided(choice(), lookups=())
+    assert not decided(choice(), lookups=(lookup.model_copy(update={"status": LookupStatus.NO_MATCH}),))
+    assert not decided(choice(source="authority-result"))  # an authority_resolution's choice
+    assert not decided(choice(kind="authority"))
+    assert not decided(choice(key="5133111"), value="Danaus fictus", key="5133111")
+    assert not decided(choice(), value=GBIF_NAME)
+    assert not decided(choice(), key=GBIF_KEY)
+
+
+def test_a_transcription_correction_researches_the_reparsed_fields_again(rig):
+    mounted(rig, Scripted())
+    rig.workflow.step(rig.principal, rig.specimen.id)
+    client = review_client(rig)
+    region = rig.specimen.run.regions[0].id
+    corrected = decide(client, rig, "transcription-1", "transcription", target_id=region,
+        after={"text": TEXT, "state": "supported"})
+    assert corrected.stage == "parse" and FIELD_RESEARCH not in corrected.completed_steps
+    second = Scripted()
+    mounted(rig, second)
+    rig.workflow.step(rig.principal, rig.specimen.id)  # parse
+    done = rig.workflow.step(rig.principal, rig.specimen.id).run
+    # Every field with a source or a check again (the organiser's collectors
+    # candidate, added after parse by the rig, is gone with the new parse).
+    assert RESEARCHED <= set(second.calls) and done.attempts[FIELD_RESEARCH] == 2
+    assert done.completed_steps[-1] == FIELD_RESEARCH

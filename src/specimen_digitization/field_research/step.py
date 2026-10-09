@@ -19,6 +19,10 @@ the workflow saves the run once after it:
    with no blanket human approval (G1). A field that cannot be settled sends the
    record to Needs human review; an outage blocks the run with a retry, and
    every settled field is kept for it.
+
+Once the step has completed on a run it never runs there again: a later pass
+(a retry, or a reviewer's decision) applies the rules only (``refinalize``),
+on the fields exactly as they are.
 """
 
 from __future__ import annotations
@@ -121,6 +125,7 @@ FIELD_REASONS = {
     "model_error": "An error occurred while researching this field. The record will be retried.",
     "timeout": "Research on this field ran out of time. The record will be retried.",
     "budget_exhausted": "The run's cost limit was reached before this field could be checked.",
+    "input_too_large": "The readings and sources for this field were too long to send for checking.",
     None: "No answer was produced for this field.",
 }
 # The model gateway's own bound on one provider request.
@@ -359,9 +364,10 @@ def _literal_row(key: str, reading: Reading, literal: str, asset_id, blobs) -> E
 def _check_row(key: str, tools: Sequence[str], literal: str, value: str, *, texts: Sequence[str],
         date_rules, asset_id, blobs) -> Evidence | None:
     """The evidence of a parsed value that differs from its literal: the field's
-    deterministic check run again on the literal here, kept only when it gives
-    that value (a check stores no evidence of its own). None when it does not:
-    the value then stays unsupported and the rules send it to review."""
+    deterministic check run again on the literal here, kept only when it settles
+    the literal as that value (a check stores no evidence of its own). None when
+    it does not, an ambiguous check included: the value then stays unsupported
+    and the rules send it to review."""
     from . import checks
 
     runs = {
@@ -373,7 +379,7 @@ def _check_row(key: str, tools: Sequence[str], literal: str, value: str, *, text
         if tool not in runs:
             continue
         result = runs[tool]()
-        if result.status not in (LookupStatus.SUCCESS, LookupStatus.AMBIGUOUS) or value not in result.values:
+        if result.status != LookupStatus.SUCCESS or value not in result.values:
             continue
         found = json.dumps(result.as_dict(), sort_keys=True, ensure_ascii=False)
         record = json.dumps({"field_key": key, "value": value, "result": result.as_dict()},
@@ -450,13 +456,22 @@ def _settled(run, task, outcome, *, by_name, evidence, asset_id, blobs, date_rul
         **_lineage(named, literal))
 
 
+# Where the organiser's value came from (data contract 4.3, G27, G28).
+LINEAGE = ("input_source", "source_region_id", "source_observation_id", "verbatim_by_observation",
+    "input_source_by_observation", "settled_observation_ids")
+
+
 def _unsettled(task, state, *, literal=None, cited=(), reason) -> FieldValue:
     """A value research did not settle: the organiser's rows stay cited, with the
-    sources the expert cited beside them, and the reason says why."""
+    sources the expert cited beside them, and the reason says why. Its lineage
+    stays too, so each reader's verbatim is a candidate a person can choose
+    (projection._fields); a field the label lacks has none."""
     relations = dict.fromkeys(cited, "supports")
     ids = list(dict.fromkeys([*task.current.evidence_ids, *cited]))
+    lineage = {} if state == ValueState.NOT_PRESENT else {
+        name: getattr(task.current, name) for name in LINEAGE}
     return FieldValue(state=state, literal=literal, evidence_ids=ids, evidence_relations=relations,
-        reason=reason)
+        reason=reason, **lineage)
 
 
 def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, blobs, date_rules=None) -> FieldValue:
@@ -611,6 +626,59 @@ def _raw_grounded(value: FieldValue, run) -> bool:
         for identifier, text in verbatim.items())
 
 
+def taxon_decided(taxon: FieldValue, tool_calls, evidence: Mapping[str, Evidence],
+        lookups: Sequence[Lookup] = ()) -> bool:
+    """Whether the taxon is GBIF's decision for its literal, as the expert's check
+    requires (experts._Expert._validate_taxon): a successful GBIF call it cites
+    whose query is the name the literal writes (checks.taxon_query_grounded),
+    and whose evidence names, as its locator, the candidate the value and
+    authority_id are ("name | authority_id | ..." in sources.excerpt).
+
+    Or a reviewer chose it (taxon_chosen)."""
+    from .checks import taxon_query_grounded
+
+    settled = taxon.normalized or taxon.literal
+    if not taxon.authority_id or not taxon.literal or not settled:
+        return False
+    if taxon_chosen(taxon, settled, evidence, lookups):
+        return True
+    for call in tool_calls:
+        item = evidence.get(call.evidence_id)
+        if (item is None or "taxon" not in call.field_keys or call.evidence_id not in taxon.evidence_ids
+                or call.outcome.value != "success" or call.source not in FIELD_TOOLS["taxon"]):
+            continue
+        if (taxon_query_grounded(str(call.arguments.get("query", "")), taxon.literal)
+                and item.locator == taxon.authority_id
+                and f"{settled} | {taxon.authority_id} | " in item.excerpt):
+            return True
+    return False
+
+
+def taxon_chosen(taxon: FieldValue, settled: str, evidence: Mapping[str, Evidence],
+        lookups: Sequence[Lookup]) -> bool:
+    """Whether a reviewer chose the taxon from GBIF's candidates, as
+    policy.evaluate accepts an ambiguous lookup with a selection: the taxon
+    cites the authority_selection row that api.apply_decision's
+    taxonomy_resolution records (its source a stored success or ambiguous
+    lookup, the lookups the decision chooses from; its locator "candidate:"
+    and the authority_id), and that lookup returned the candidate, whose key
+    is the authority_id and whose scientificName is the value, as the decision
+    copies them. Nothing else is a person's choice of taxon."""
+    found = {lookup.id: lookup for lookup in lookups
+        if lookup.status in (LookupStatus.SUCCESS, LookupStatus.AMBIGUOUS)}
+    for evidence_id in taxon.evidence_ids:
+        item = evidence.get(evidence_id)
+        if (item is None or item.kind != "authority_selection" or item.source not in found
+                or item.locator != "candidate:" + taxon.authority_id):
+            continue
+        for candidate in found[item.source].candidates:
+            usage = candidate.get("usage", candidate) if isinstance(candidate, Mapping) else None
+            if (isinstance(usage, Mapping) and str(usage.get("key", "")) == taxon.authority_id
+                    and usage.get("scientificName") == settled):
+                return True
+    return False
+
+
 def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterable[str],
         qualified: frozenset[str], today: date) -> list[str]:
     """canonical_materialization_v2._scientific_reasons (182-295), ported.
@@ -628,7 +696,11 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
       exception (contracts.NO_APPROVED_AUTHORITY, the profile's configured
       treatment; evidence.emu_irn_exception).
     - 254-260: the taxon's settling call is the stored GBIF lookup's producing
-      ToolCallRecord, which field research records for every source answer.
+      ToolCallRecord, which field research records for every source answer;
+      its query is the name the literal writes and its decided candidate is
+      the value (taxon_decided), as research_harness/evidence.py 665-722 holds
+      the native deciding query; or a reviewer chose the value from a stored
+      lookup's candidates, as policy.py accepts (taxon_chosen).
     - ``qualified`` (the native lineage proof) is the derived values: their
       lineage is their derivation, and they have no literal by definition (G37).
     """
@@ -703,11 +775,7 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
             reasons.append("identified_by_irn_identity_unproved")
     # 254-260
     taxon = run.fields.get("taxon") or FieldValue()
-    if latest_work.get("taxon") in TERMINAL and (not taxon.authority_id or not any(
-        "taxon" in call.field_keys and call.evidence_id in taxon.evidence_ids
-        and call.outcome.value == "success" and call.source in FIELD_TOOLS["taxon"]
-        for call in run.tool_calls
-    )):
+    if latest_work.get("taxon") in TERMINAL and not taxon_decided(taxon, run.tool_calls, evidence, run.lookups):
         reasons.append("taxonomy_unresolved")
     # 261-271
     for unit in ("m", "ft"):
@@ -794,8 +862,11 @@ def finalize_fields(run, profile: CollectionProfile | None, outcomes: Sequence[F
     qualified = frozenset(key for key, value in run.fields.items()
         if value.state == ValueState.SUPPORTED and value.layer == "derived")
     human = scientific_reasons(run, work, mandatory=profile.mandatory_fields, qualified=qualified, today=today)
-    # canonical_materialization_v2 447-450: a person's carried decision is reviewed again.
-    human += [f"preserved_human_decision:{key}" for key in sorted(human_keys(run) & set(work))]
+    # canonical_materialization_v2 447-450: a person's carried decision is
+    # reviewed again, until a person approves the record (on the native path the
+    # approval's ordinary finalize no longer names it).
+    if not run.human_approved:
+        human += [f"preserved_human_decision:{key}" for key in sorted(human_keys(run) & set(work))]
     by_key = {outcome.key: outcome for outcome in outcomes}
     failures = [by_key[key].failure for key in work if work[key] == FAILED]
     if failures:
@@ -809,6 +880,31 @@ def finalize_fields(run, profile: CollectionProfile | None, outcomes: Sequence[F
     run.disposition = Disposition.REVIEW if run.reasons else Disposition.CLEARED
     run.stage = "finalized"
     return None
+
+
+APPROVAL = "human_approval_required"
+
+
+def refinalize(run, *, decided: bool = False, specimen=None, blobs=None, today: date | None = None) -> None:
+    """The clearance rules again, on a run field research has completed.
+
+    Nothing is researched or paid for and no field changes: a reviewer's value
+    stays exactly as the reviewer made it, and finalize_fields' rules decide
+    the record on the fields as they are. As on the native path, where every
+    review decision ends in the ordinary finalize: a run with a blocker (the
+    decision's integrity check) stays blocked with it, a person's decision
+    (``decided``) waits for their approval until they give it, and an approval
+    clears what the rules clear. A later pass keeps a pending approval.
+    """
+    if run.blocker:
+        # policy.finalize: a blocked run is not decided.
+        run.stage, run.disposition, run.reasons = "processing_blocked", None, [run.blocker]
+        return
+    pending = decided or APPROVAL in run.reasons
+    finalize_fields(run, None, (), specimen=specimen, blobs=blobs, today=today)
+    if pending and not run.human_approved:
+        run.reasons = [*run.reasons, APPROVAL]
+        run.disposition = Disposition.REVIEW
 
 
 # ---- the workflow step ----------------------------------------------------
@@ -856,6 +952,25 @@ def cost_meter(cap_micros: int, price):
         output_micros_per_million=price.output_micros_per_million)
 
 
+def one_request_micros(price) -> int:
+    """The worst case of one expert request at the route's price: the meter's
+    input bound and its chat template, and the output cap (budget.MeteredModel)."""
+    from .budget import DEFAULT_MAX_INPUT_TOKENS, DEFAULT_MAX_TOKENS, TEMPLATE_TOKENS
+
+    return cost_meter(0, price).cost(DEFAULT_MAX_INPUT_TOKENS + TEMPLATE_TOKENS, DEFAULT_MAX_TOKENS)
+
+
+# The step's work after research (closing the sources, applying the outcomes,
+# the integrity check, the clearance rules), measured by
+# test_field_research_e2e.test_the_work_after_research_fits_well_inside_the_margin
+# on 2026-10-08: a slide-sized record (1,780 x 590 px image, 63 evidence rows,
+# 42 source calls) with a 50 ms Cloud Storage round trip on every blob read and
+# write took 4.3 s, 4.0 s of it the integrity check's 73 reads. Research stops
+# max(60 s, three times that) before the step's deadline.
+POST_RESEARCH_SECONDS = 4.3
+MARGIN_SECONDS = max(60.0, 3 * POST_RESEARCH_SECONDS)
+
+
 @dataclass
 class FieldResearchStep:
     """The workflow's ``field_research`` step for one run, in memory.
@@ -871,9 +986,10 @@ class FieldResearchStep:
     meter_factory: Callable = cost_meter
     # Every field's expert at once (FIELD_RESEARCH.md, step 3).
     concurrency: int = len(FIELD_TOOLS)
-    # Research stops this long before the step's own deadline, so the step can
-    # apply what settled and the workflow can save it inside its effect timeout.
-    margin_seconds: float = 30.0
+    # Research stops this long before the step's own deadline: unfinished
+    # fields become timeouts, settled ones are kept, and the step applies them
+    # and the workflow saves them inside its effect timeout.
+    margin_seconds: float = MARGIN_SECONDS
 
     def handles(self, run) -> bool:
         from specimen_digitization.research_harness.committed_pins import (
@@ -882,19 +998,59 @@ class FieldResearchStep:
 
         return committed_harness_route(run.profile_snapshot) is not None
 
+    def reservation(self, workflow, principal, specimen, headroom: int) -> int:
+        """What the step reserves: the run's headroom under its ceiling, or what
+        the program's allowance has left when that is less (its ledger is read
+        here, never written; lane_allowance.reserve_step reserves). A program
+        allowance with less left than one expert request keeps the headroom, so
+        reserve_step blocks the record as it always has; otherwise the meter's
+        cap is what is left, and a field that does not fit goes to review."""
+        from specimen_digitization.application.domain import Scope
+        from specimen_digitization.application.lane_allowance import (
+            LegacyLedgerUnavailable,
+            ProgramLedger,
+        )
+
+        policy = specimen.run.profile.execution
+        if headroom <= 0 or policy.program_allowance_micros is None:
+            return headroom
+        try:
+            profile = profile_of(specimen.run)
+            price = _route_price(profile, profile.harness_route)
+            ledger = ProgramLedger(workflow.repository, Scope(organization_id=principal.scope.organization_id,
+                collection_id=policy.program_ledger_collection), clock=workflow.clock)
+            reserved = ledger.read()["reserved_total_micros"]
+        except (OperationalBlock, LegacyLedgerUnavailable, ValueError, TypeError, KeyError):
+            # The step and reserve_step report these with their own codes.
+            return headroom
+        left = max(0, policy.program_allowance_micros - reserved)
+        return headroom if left < one_request_micros(price) else min(headroom, left)
+
+    def recheck(self, workflow, principal, specimen) -> None:
+        """A run field research has completed reaches the handover again (a
+        retry or resume, or a correction saved before the API knew field
+        research): the clearance rules again, nothing researched or paid
+        (refinalize)."""
+        try:
+            refinalize(specimen.run, specimen=specimen, blobs=workflow.blobs, today=workflow.clock().date())
+        except EvidenceIntegrityError as error:
+            raise OperationalBlock(str(error)) from error
+
     def run(self, workflow, principal, specimen, *, cap_micros: int, deadline_seconds: float) -> None:
         run = specimen.run
-        profile = profile_of(run)
-        route = profile.harness_route
-        meter = self.meter_factory(max(0, cap_micros), _route_price(profile, route))
-        prepared = build_tasks(run, profile)
+        route = None
         try:
+            # Nothing is sent before the research below: an error here is the
+            # step's setup, never an unknown outcome, and costs nothing.
+            profile = profile_of(run)
+            route = profile.harness_route
+            meter = self.meter_factory(max(0, cap_micros), _route_price(profile, route))
+            prepared = build_tasks(run, profile)
             resolver = self.resolver_factory(run, profile, meter)
         except OperationalBlock:
             record_cost(run, route, reserved=cap_micros, spent=0, outcome="failed")
             raise
         except Exception as error:
-            # Nothing was sent: a configuration error, never an unknown outcome.
             record_cost(run, route, reserved=cap_micros, spent=0, outcome="failed")
             raise OperationalBlock("field_research_unconfigured") from error
         calls: list[SourceCall] = []
@@ -903,11 +1059,14 @@ class FieldResearchStep:
             outcomes = asyncio.run(self._research(run, profile, prepared, resolver, workflow.blobs,
                 calls, self._bound(deadline_seconds)))
         finally:
-            # A step that ended in an unexpected exception may have calls in
-            # flight: its spend is unknown and the reservation stays held.
+            # Research cut short by an error still settles to what the meter
+            # spent: once asyncio.run returns no request is in flight, and each
+            # one that ended early kept its worst case (MeteredModel). Only a
+            # reservation still outstanding leaves the spend unknown.
+            known = outcomes is not None or meter.outstanding_micros == 0
             record_cost(run, route, reserved=cap_micros,
-                spent=meter.spent_micros if outcomes is not None else None,
-                outcome="completed" if outcomes is not None else "unknown",
+                spent=meter.spent_micros if known else None,
+                outcome="completed" if outcomes is not None else "failed" if known else "unknown",
                 model_calls=sum(o.model_calls for o in outcomes or ()))
         try:
             apply_outcomes(run, profile, prepared[1], outcomes, blobs=workflow.blobs, calls=calls,
@@ -963,7 +1122,11 @@ async def _production_tools(run, profile, blobs):
 
     places = [run.fields[key].literal for key in PLACE_FIELDS if key in run.fields and run.fields[key].literal]
     async with httpx.AsyncClient() as client:
-        yield ApprovedSources(blobs=blobs, client=client, place_text=places)
+        sources = ApprovedSources(blobs=blobs, client=client, place_text=places)
+        try:
+            yield sources
+        finally:
+            sources.close()  # A GBIF verification still running ends now.
 
 
 def production_step() -> FieldResearchStep:

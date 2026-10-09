@@ -54,6 +54,9 @@ LOGGER = logging.getLogger(__name__)
 # replaces plan..finalize for a run whose profile names a harness route, when
 # SPECIMEN_RESEARCH_HARNESS=fields mounts it as `Workflow.field_research`.
 FIELD_RESEARCH = "field_research"
+# A run field research has completed reaches the handover again: the clearance
+# rules only, nothing researched, external or paid (FieldResearchStep.recheck).
+FIELD_RECHECK = "field_research_recheck"
 
 
 class OperationalBlock(RuntimeError):
@@ -237,7 +240,7 @@ class Workflow:
             and self.field_research is not None
             and self.field_research.handles(run)
         ):
-            step = FIELD_RESEARCH
+            step = FIELD_RECHECK if FIELD_RESEARCH in run.completed_steps else FIELD_RESEARCH
         # Persist intent before network/model work. Crash with intent but no result is
         # blocked for explicit replay: provider calls may not support deduplication.
         if run.blocker == "external_outcome_unknown":
@@ -307,6 +310,9 @@ class Workflow:
                 - run.usage.reserved_cost_micros
                 - retained_cost,
             )
+            # Never more than the program's allowance has left (when that fits
+            # one expert request): the step's meter has this as its cap.
+            cost = self.field_research.reservation(self, principal, specimen, cost)
         issue = None
         if run.usage.steps >= policy.max_steps:
             issue = "step_budget_exhausted"
@@ -623,6 +629,8 @@ class Workflow:
                     cap_micros=cost or 0,
                     deadline_seconds=effect_timeout,
                 )
+            elif step == FIELD_RECHECK:
+                self.field_research.recheck(self, principal, specimen)
             elif step == "plan":
                 run.authority_plan = plan_authorities(specimen)
             elif step.startswith("authority:"):
@@ -770,8 +778,9 @@ class Workflow:
             if run.stage != "processing_blocked":
                 run.blocker = None
             run.lease_until = None
-            run.completed_steps.append(step)
-            if step not in {"finalize", FIELD_RESEARCH}:
+            if step != FIELD_RECHECK:
+                run.completed_steps.append(step)
+            if step not in {"finalize", FIELD_RESEARCH, FIELD_RECHECK}:
                 run.stage = self.next_step(run).split(":")[0]
         except AdapterFailure as exc:
             circuit_failure = exc.status.value
@@ -856,8 +865,15 @@ class Workflow:
         elapsed = max(0, self.monotonic() - started)
         if external and elapsed > effect_timeout and not repeatable:
             circuit_failure = "timeout"
+            # Field research's meter knows what its calls cost even when the
+            # step overran: its paid call stays, so the settlement below frees
+            # the rest of its reservation.
+            researched = run if step == FIELD_RESEARCH else None
             specimen = reserved
             run = specimen.run
+            if researched is not None:
+                run.paid_calls.extend([call for call in researched.paid_calls if call not in run.paid_calls])
+                run.usage.actual_cost_micros = researched.usage.actual_cost_micros
             run.blocker = "external_outcome_unknown"
             run.stage = "processing_blocked"
             run.disposition = None
