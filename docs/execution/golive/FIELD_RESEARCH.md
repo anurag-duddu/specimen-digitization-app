@@ -106,13 +106,46 @@ handover runs field research instead of the six specialists:
 5. **Checked answers.** An expert's literal must appear exactly in the
    readings it names; a value that differs from the literal must be a source
    candidate it was given, or a deterministic check's settled parse of that
-   literal (an ambiguous check's readings are only options for a person). A
-   taxon is GBIF's decision for the name its literal writes (or its genus, for
-   a "sp." identification): the cited success answer's query is that name, and
-   the value and identifier are the candidate GBIF decided, never one of its
-   alternatives. The clearance rules check the taxon the same way. Otherwise the
-   answer is sent back for correction; an expert whose answer still fails the
-   checks after its retries sends the field to review, never to a retry.
+   literal (an ambiguous check's readings are only options for a person).
+   Readers that disagree, and places, follow `field_research/agreement.py`:
+   - A field's readers disagree when the organiser left it ambiguous, or when
+     its candidates across readers carry more than one literal. Literals are
+     compared after NFC and whitespace collapse only, so "E. slope" and
+     "E.slope" disagree.
+   - A label with a decided transcript takes its text from that reading
+     (G19): a resolved literal must be text the decided reading writes. The
+     other reader's different text is kept as contradicting evidence and does
+     not block.
+   - Otherwise readers that disagree settle only when a success answer of the
+     field's approved sources confirms exactly one reader's literal (G20):
+     GBIF asked about exactly that name, or a place source returned a
+     candidate of exactly that name. The answer must take that reader's
+     literal and cite that answer, and each other reader's candidate text stays
+     in the value's lineage, unsettled. A field whose only tools are deterministic
+     checks, or that has no approved source (collectors, habitat, collection
+     method, collection code, verbatim D/T/S), goes to review when its readers
+     disagree.
+   - A place field (country, province or state, county, city) settles only on
+     a cited success answer of a place source whose candidate is the value,
+     with that candidate's authority_id. Precise location stays the verbatim
+     text and follows the decided-transcript rule.
+   - A taxon is GBIF's decision for the whole name its literal writes: the
+     cited success answer's query is the scientific-name parser's query for
+     the literal (the genus, any subgenus, the species epithet and any
+     infraspecific epithet with its marker, as written, with or without the
+     author and year written), or the genus alone for a "sp." identification
+     (G25). A query for part of the name ("Danaus plexippus" for "Danaus
+     plexippus megalippe") or for another name on the line grounds nothing,
+     and a label with no genus ("sp. 30") has no groundable query. The value
+     and identifier are the candidate GBIF decided, never one of its
+     alternatives.
+
+   An answer that breaks a check is sent back for correction; an expert whose
+   answer still fails the checks after its retries sends the field to review,
+   never to a retry. The step applies the agreement rules again to every
+   resolved answer before it becomes a value, on the source answers its field
+   received, so an answer that breaks them is ambiguous (readers disagree) or
+   unresolved, never settled. The clearance rules check the taxon the same way.
 6. **Derived values** (G37, G41, G44) are filled deterministically afterwards
    from settled fields only: elevation copies and exact unit conversion, and
    the collection date's end from its start.
@@ -153,16 +186,27 @@ they are. As on the native path, a reviewer's correction is kept exactly as
 made and the record waits in review for that reviewer's approval; an approval
 clears the record when the rules clear it, and a correction the rules refuse
 stays in review. A taxon GBIF could not settle is cleared the way the ordinary
-policy clears one: the reviewer chooses one of the candidates a stored GBIF
-lookup of the run returned (the taxonomy resolution decision). Field research
-leaves such a taxon ambiguous or unresolved, so a correction first records
-the name the label writes. A name GBIF never returned cannot be chosen, and a value typed
+policy clears one: the reviewer chooses one of the candidates of the run's
+last stored lookup (the taxonomy resolution decision reads only that one).
+Field research therefore stores its GBIF lookups so that the last is the
+last success or ambiguous one with candidates whose query is the whole name
+the label writes, else the last such one with candidates; a lookup with none
+(a failure, no match) is never last while one with candidates exists. Field research leaves such a taxon
+ambiguous or unresolved, so a correction first records the name the label
+writes. A name that lookup never returned cannot be chosen, and a value typed
 in without that choice stays in review.
 A corrected transcription is the one exception: its fields
 are parsed again from the new text, and field research runs on them again.
 
 A field research run that failed (an outage, a model error, a timeout) is
 retried, and the retry researches only the fields that did not settle.
+
+If `SPECIMEN_RESEARCH_HARNESS` is rolled back to "on", a run field research
+left `retry_scheduled` (`field_research_timeout`, `field_research_model_error`,
+`lookup_operational_failure`) is refused by native provisioning when its retry
+comes due (`research_provision_run_unavailable`: native provisioning does
+not accept a run at that stage), and each such run needs a manual Resume
+(or Retry), which returns it to `plan`.
 
 The worker check behind G38 derivation and the per-field research retry
 (application.derivation_readiness) reports those native-only features as
