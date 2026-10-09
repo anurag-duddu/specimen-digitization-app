@@ -2,7 +2,9 @@
 
 `refusal` checks every resolved answer, in the expert's answer check
 (experts.py, so the model is sent back) and again in the step before the
-answer becomes a value (step._refusal). It enforces, in this order:
+answer becomes a value (step._refusal). It enforces points 1 to 4, in this
+order; the step alone adds point 5 (parents_refusal), which needs the other
+fields' outcomes:
 
 1. The decided transcript (G19): for each reading the answer names whose
    label has a decided transcript, the decided reading's text contains the
@@ -65,7 +67,7 @@ answer becomes a value (step._refusal). It enforces, in this order:
    field's level (PLACE_LEVELS: a nation, a first or a second level
    subdivision, an inhabited place, by the source's kinds; for a city, every
    GEOLocate candidate, and for any other field none, as GEOLocate's candidate
-   there is the query's own country, state or county part), and that
+   there is a part of the query itself), and that
    candidate is the value (the literal when there is no
    value), exactly, with the answer's authority_id. No candidate or several
    at the level: review. A gazetteer's answer is often ambiguous only
@@ -89,18 +91,26 @@ answer becomes a value (step._refusal). It enforces, in this order:
    (step._misfit), as the fields run at once and the country must be known.
    For each reading the answer names (its label's decided reading, on a
    label with one), the settling candidate's parents (SourceCandidate.parents,
-   as its source gives them) are compared, by record or by comparison key of
-   the field's texts and the notation table's expansion, with the reading's
-   other place fields:
-   - below the country, the candidate has parents, and they include the
-     country settled from that reading's text, and for a county or a city
-     the province settled from it too, when one is. No country settled for
-     the reading, no parents, or none that is the country: review. A
-     country needs no parent;
-   - a near spelling settles only when every other place field the reading
-     writes, all of them and at least one, names one of its parents (G34's
-     whole condition). A county or a city the reading writes is never a
-     province's parent, so a near-spelled province with one does not settle.
+   as its source gives them) are compared with that reading's other place
+   fields. Another field is written by the reading when the reading has
+   texts for it (candidate literals or verbatims), and settled for it when
+   its value is supported, the step has done with it in this attempt (or
+   settled it earlier) and the reading writes its literal (compared as place
+   names). A parent is that field when it is the field's settled record (its
+   authority_id), or when its name has the comparison key of one of the
+   field's texts, of the notation table's expansion of one, or of the value
+   the field settled on:
+   - below the country, the candidate has parents, one of them is the
+     country settled for the reading, and for a county or a city one is the
+     province settled for it too, when one is. No country settled for the
+     reading, no parents, or none that is that country or province: the
+     field goes to review with the reason. A country needs no parent;
+   - a near spelling, of any place field, settles only when every other
+     place field the reading writes, all of them and at least one, is one of
+     the candidate's parents (G34's whole condition). A county or a city the
+     reading writes is never a province's parent, nor any field a country's,
+     so a near-spelled province with one on its reading, or a near-spelled
+     country, does not settle.
 
 Point 3 follows research_harness/evidence.py's G20 and G32 rules (725-751:
 one confirmed reader beside the other's captured no-match; labels that
@@ -324,9 +334,10 @@ def at_level(key: str, answer: SourceAnswer) -> list[SourceCandidate]:
     """The answer's candidates at the place field `key`'s level (PLACE_LEVELS):
     a gazetteer's whose kinds name the level, and, for a city only, every
     GEOLocate candidate. For a country, a province or state or a county,
-    GEOLocate's candidate is the query's own country, state or county part
-    (sources.interpretation), which it only echoes: no confirmation of that
-    part (N2 of #284's third review)."""
+    GEOLocate's candidate is a part of the query itself (its country, its
+    state or county part, or else its place part; sources.interpretation),
+    which it only echoes: no confirmation of it (N2 of #284's third
+    review)."""
     if answer.source_id == "geolocate":
         return list(answer.candidates) if key == "city" else []
     levels = PLACE_LEVELS.get(answer.source_id, {}).get(key, ())

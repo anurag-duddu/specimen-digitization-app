@@ -936,6 +936,21 @@ def test_readers_that_differ_only_by_punctuation_settle_on_the_one_place_confirm
         made.validate(given)
 
 
+def test_a_taxons_readers_that_differ_settle_on_one_confirmed_reader_only():
+    """Only a place's readers settle on one source confirming each: two
+    readers of a taxon that GBIF both settle as one usage still disagree."""
+    readings = (Reading("1A", "region-1", "obs-1a", "raw_reading", "Danaus plexippus"),
+                Reading("1B", "region-1", "obs-1b", "raw_reading", "Danaus plexippus (Linnaeus, 1758)"))
+    field = task("taxon", current=FieldValue(state=ValueState.AMBIGUOUS), candidates=offered(
+        ("1A", "Danaus plexippus"), ("1B", "Danaus plexippus (Linnaeus, 1758)")))
+    with_author = SourceAnswer("gbif", "Danaus plexippus (Linnaeus, 1758)", LookupStatus.SUCCESS,
+                               DANAUS.candidates, DANAUS.evidence.model_copy(update={"id": "ev-author"}))
+    refused = agreement.refusal(field, readings, literal="Danaus plexippus", named=readings[:1],
+                                value="Danaus plexippus (Linnaeus, 1758)", authority_id="5133088",
+                                cited=[DANAUS], received=[DANAUS, with_author])
+    assert refused is not None and refused.reason == agreement.DIFFER
+
+
 SACATEPEQUEZ = "Sacatep" + chr(0xE9) + "quez"  # As GEOLocate writes it.
 TWO_LABELS = (
     Reading("1A", "region-1", "obs-1a", "raw_reading", "Chimaltenango, Guat."),

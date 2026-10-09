@@ -116,11 +116,20 @@ handover runs field research instead of the six specialists:
      decided transcript, the decided reading's): the organiser's candidates,
      and each keyed line the parser read ("taxon: Danaus plexippus") on each
      reading that writes the line. Literals are compared after NFC and
-     whitespace collapse only, so "E. slope" and "E.slope" differ. A piece of
-     a reading ("Danaus plexippus" from "Danaus plexippus megalippe",
-     "Sept. '46" from "3 Sept. '46", "San Pedro" from "San Pedro
-     Sacatepequez") is never a literal, and a field with no candidate is never
-     resolved: it goes to review.
+     whitespace collapse only, so "E. slope" and "E.slope" differ. An answer
+     that takes a piece of a reading's candidate ("Danaus plexippus" where
+     the candidate is "Danaus plexippus megalippe", "Sept. '46" where it is
+     "3 Sept. '46", "San Pedro" where it is "San Pedro Sacatepequez") is
+     refused, and a field with no candidate is never resolved: it goes to
+     review. A candidate can itself be a piece of its reading, since the
+     organiser's candidate need only lie inside its quote; for the taxon,
+     the scientific-name parser reads the candidate's quote from the literal
+     on (`checks.longer_name`), and a candidate whose quote writes a longer
+     name there ("Danaus plexippus" quoting "Danaus plexippus megalippe")
+     never settles the taxon: it goes to review ("The label writes a longer
+     scientific name than this value."). A keyed line's "taxon:", an author
+     and year, a sex sign or "sp. 1" are no longer name. Other fields'
+     candidates are not checked against their quotes.
    - A value that differs from the literal is a source candidate the expert
      was given, or a deterministic check's settled parse of that literal (an
      ambiguous check's readings are only options for a person). An elevation
@@ -140,14 +149,27 @@ handover runs field research instead of the six specialists:
      every distinct text its readers write, exactly one is confirmed by an
      answer about it, and every other has a captured no_match answer
      about it and no success or ambiguous one. An error, a timeout or a text
-     never asked about is not a no-match. An answer confirms a text as
+     never asked about is not a no-match. For a place field (country,
+     province or state, county, city) such a label also settles when every
+     text its readers write is confirmed and one authority_id confirms them
+     all: the readers name that place ("Yepocapa," and "Yepocapa", both
+     confirmed by one GEOLocate answer as the same town). That rests on the
+     source's evidence, never on the texts compared; readers confirmed as
+     different places, or not all confirmed, still go to review, and every
+     other field keeps the one-confirmed rule. The answer then gives one
+     reader's text as its literal with that authority_id and cites the
+     answer that confirms it, and each reader's text stays in the value's
+     lineage. An answer confirms a text as
      GBIF's decided candidate for the whole name it writes (a success
      answer), as the one candidate at a place field's level when it has that
      name (a success or ambiguous answer; see Places), or, for precise
      location, as a success answer's candidate of that name; a place source
-     was asked about a text
-     when the text is its whole query or the query's first comma-separated
-     part (the name it searches). A place query or candidate name is compared
+     was asked about a text when the text is the query's first
+     comma-separated part: the only name a gazetteer searches (the part
+     before the first comma) and the place GEOLocate looks for. The rest of
+     the query is larger units, so "San Pedro, Sacatepequez" asks about
+     "San Pedro", never about "San Pedro Sacatepequez". A place query or
+     candidate name is compared
      with a reader's text by the place tool's comparison key
      (`application/georef_locality.py` `comparison_key`: casefolded, accents
      and marks dropped, anything but letters and digits a single space, "Mt."
@@ -157,16 +179,18 @@ handover runs field research instead of the six specialists:
      a near spelling is never the same name here. The field settles
      when every label settles on the same literal, which is then the answer's literal
      (citing the confirming answer when a source settled a label), or, for
-     labels that settle on different literals, when a source confirms each
-     label's literal as the answer's authority_id (the same place ID or GBIF
-     usage). Anything else goes to review, with each reader's candidate row
-     still cited. So a field with no approved source (collectors,
+     labels (or a place's readers, above) that settle on different literals,
+     when a source confirms each of those literals as the answer's
+     authority_id (the same place ID or GBIF usage), the answer's literal is
+     one of them and it cites the answer confirming it. Anything else goes
+     to review, with each reader's candidate row still cited. So a field with no approved source (collectors,
      habitat, collection method, collection code, verbatim D/T/S), or only
      deterministic checks, goes to review when the readers of a label with no
      decided transcript differ. This follows the native harness's G20 and G32
      rules (`research_harness/evidence.py`); it is stricter than
      `application/field_resolution.py`, which clears readers that differ when
-     every success names one value.
+     every success names one value, unless they are a place's readers whose
+     texts one candidate confirms (above).
    - **Places.** A place field (country, province or state, county, city)
      settles only on a cited success or ambiguous answer of a place source
      with exactly one candidate at the field's level, and that candidate is
@@ -179,17 +203,24 @@ handover runs field research instead of the six specialists:
      "sovereign state"; "province", "former province", "department", "state";
      "county"; "city", "town", "village", "human settlement",
      "municipality", each also as "... of ..."), NGA's feature codes
-     ("A.PCL..."; "A.ADM1"; "A.ADM2"; "P...."); GEOLocate is asked for the
-     field's own level, so all its candidates are at it. So TGN's ambiguous
+     ("A.PCL..."; "A.ADM1"; "A.ADM2"; "P...."). GEOLocate settles only a
+     city, with all its candidates at a city's level: for a country, a
+     province or state, or a county its candidate is a part of the query
+     itself (its country, its state or county part, or else its place part),
+     which it only repeats, so it confirms nothing there (asked "Yepocapa,
+     Chimaltenango, Guatemala" for a province
+     "Yepocapa", its candidate is "Chimaltenango", a province inferred from a
+     locality). So TGN's ambiguous
      answer for "Philippines" (the nation, a Dutch village, a sea) settles
      the country "P.I." as Philippines, and its answer for "Chimaltenango"
      (the department and its town) settles the province as the department
      and a city only as the town. Precise location stays the verbatim text.
    - **The label's own text (P3).** The answer that decides a place value
-     was asked the label's own text: its query, or the query's first
-     comma-separated part, has the literal's comparison key (as above, case,
-     accents, punctuation and notations such as "Prov." aside). There are
-     two exceptions. A place notation (P4): when the literal is a notation
+     was asked the label's own text: the query's first comma-separated part,
+     the name the source searches, has the literal's comparison key (as
+     above, case, accents, punctuation and notations such as "Prov." aside).
+     For GEOLocate that part is the city it settles. There are two
+     exceptions. A place notation (P4): when the literal is a notation
      of the table in `field_research/notations.py` for this field (compared
      by the same key, so "P. I." is "P.I."), the query may be the expansion
      the table gives it; the step then writes one evidence row of kind
@@ -198,13 +229,14 @@ handover runs field research instead of the six specialists:
      support. The table holds G29's notations as the briefs state them:
      "P.I." (country) is looked up as "Philippine Islands", "Guat." (country)
      as "Guatemala"; the shared brief's notation line is rendered from the
-     same table. G34's near-spelling bound: the query is the chosen
-     candidate's own name, and that name is one letter from the literal
+     same table. A near spelling: the query is the chosen candidate's own
+     name, and that name is one letter from the literal
      (`georef_locality.one_letter_apart`: both full names, their comparison
-     keys one insertion, deletion or substitution apart); the value then
-     settles and the step records a `near_spelling:<field>` warning finding
-     beside the record, naming the deciding answer, which never routes it.
-     Any other lookup settles nothing, for decided and contested labels
+     keys one insertion, deletion or substitution apart). That is the
+     one-letter half of G34; the value settles only when the rest of G34
+     holds too (below), and the step then records a `near_spelling:<field>`
+     warning finding beside the record, naming the deciding answer, which
+     never routes it. Any other lookup settles nothing, for decided and contested labels
      alike, in the expert's check and in the step: "Escuintla" asked for a
      label's "Chimaltenago", "Philippines" for "P.I." (a lookup of the modern
      name is context only), a notation the table does not hold, or a name
@@ -212,12 +244,53 @@ handover runs field research instead of the six specialists:
      its country on Getty TGN's answer to "Philippine Islands", whose one
      nation is the Philippines; TGN and NGA have no match for "P.I." itself
      (the coordinator's lookup of 2026-10-09).
+   - **The label's other place fields (B3, N1).** A place must fit the
+     label's other place fields. Only the step checks this (the brief tells
+     the expert): it does so once every field's
+     outcome is in, the country first, then the province, county and city,
+     since the experts run at once and the country must be known
+     (`step._misfit`, `agreement.parents_refusal`). Each source names the
+     places a candidate lies in (`SourceCandidate.parents`): Getty TGN and
+     Wikidata name each parent by its own record, so TGN's "Pilipinas" is
+     the record tgn:1000135 it calls "Philippines" when searched; NGA names a
+     first-order unit and a two-letter country code ("GT"), which a
+     country's name does not match; a GEOLocate match lies in its admin unit (the
+     first-level unit outside the USA, the county inside it), the queried
+     state inside the USA, and the queried country, the only one GEOLocate
+     searches. For each reading the answer names (its label's decided
+     reading, on a label with one), another place field is written by the
+     reading when the reading has text for it, and settled for it when its
+     value is supported, the step has done with it, and the reading writes
+     its literal (compared as place names). A parent is that field when it
+     is the field's settled record (its authority_id), or when its name has
+     the comparison key of one of the field's texts, of the notation table's
+     expansion of one, or of the value the field settled on. Then:
+     - a province, county or city settles only when its candidate has
+       parents and one is the country settled for the reading, and, for a
+       county or a city, one is also the province settled for it when one
+       is. With no country settled for the reading, no parents, or none
+       that is that country or province, the field goes to review with the
+       reason ("The place found is not in the country the label gives.").
+       So a Philippine label (P.I. settled as the Philippines, Davao, Mati)
+       never settles its province on TGN's department of Guatemala, and
+       Wikidata's one department for "San Pedro", in Paraguay, never settles
+       a Guatemalan province. A country needs no parent. A place that waits
+       for a country whose research failed is researched again with it on
+       the retry;
+     - a near spelling, of any place field, settles only on G34's whole
+       condition: every other place field the reading writes, all of them
+       and at least one, is one of the candidate's parents. A county or a
+       city the reading writes is never a province's parent, nor any field a
+       country's, so a near-spelled province with a county or city on its
+       reading, or a near-spelled country, goes to review.
    - **105526330's province.** The decided reading writes "Chimaltenago" and
      Getty TGN knows only "Chimaltenango". An answer that takes the other
-     reader's "Chimaltenango" as its literal is refused (G19). The intended
-     answer keeps "Chimaltenago" as the literal, as written (G27), and
-     settles on TGN's department Chimaltenango, one letter from it, with the
-     near_spelling finding.
+     reader's "Chimaltenango" as its literal is refused (G19). An answer that
+     keeps "Chimaltenago" as the literal, as written (G27), and takes TGN's
+     department Chimaltenango, one letter from it, as the value, passes the
+     expert's check; but the reading also writes the city Yepocapa, which is
+     not one of the department's parents, so the step leaves the province
+     for review (G34's whole condition).
    - **The taxon.** A taxon is GBIF's decision for the whole name its
      candidate literal writes: the cited success answer's query is the
      scientific-name parser's query for that literal (the genus, any
@@ -292,7 +365,9 @@ corrected value has no raw reading behind it): the way out is a transcription
 decision, which reruns field research and pays for it again.
 
 A field research run that failed (an outage, a model error, a timeout) is
-retried, and the retry researches only the fields that did not settle.
+retried, and the retry researches only the fields that did not settle (a
+province, county or city that waited for a country that did not settle
+is among them).
 
 If `SPECIMEN_RESEARCH_HARNESS` is rolled back to "on", a run field research
 left `retry_scheduled` (`field_research_timeout`, `field_research_model_error`,
