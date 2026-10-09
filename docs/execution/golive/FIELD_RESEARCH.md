@@ -1,0 +1,111 @@
+# Field research: one expert per field (takeover, 2026-10-08)
+
+This note records why the six-specialist research harness could not finish a
+specimen, what replaces its runtime path, and how the replacement meets the
+owner's harness design of 2026-10-03. It is written for the owner first and
+for engineers second.
+
+## The owner's design (2026-10-03, the spec)
+
+1. The harness never invents what the label does not say. Several image
+   readers transcribe each label; one model (the organiser) reads every
+   transcription and arranges the text into field-value pairs.
+2. The harness receives those pairs together with every raw transcription,
+   because a model can make mistakes and evidence is always needed.
+3. It works field by field: one expert resolver per field, each with its own
+   instructions, visible as its own agent in Logfire.
+4. A field that is already an accurate read is simply finalized. A field with
+   confusion is checked against the approved sources, and the expert keeps
+   trying them until the field is settled or shown not to settle.
+5. Unrelated work runs in parallel. Each record starts with fresh context.
+6. What cannot be settled (the label lacks it, the sources cannot settle it,
+   or several possibilities remain) goes to Needs human review. A settled
+   field is cleared.
+7. USD 1 per run is a hard ceiling, configurable per institution, and each
+   run should cost as little as possible.
+8. Failures are graceful: "no data found", "an error occurred, retry".
+
+## What the code did on 2026-10-08 (main cb38a8be5)
+
+| Spec point | Today | Gap |
+|---|---|---|
+| 1, 2 Pairs plus raw text | Met. The organiser call reads every reading of every label and stores quoted candidates; each specialist receives every reading. | None. |
+| 3 One expert per field | Six topic specialists own the 20 fields (geography owns five, collection five, measurement four). | Real gap. |
+| 4 Keep trying sources | Each specialist has a 240-second limit that its own record keeping uses up. Only geography is pushed to try more sources. | Real gap. |
+| 5 Parallel | Two specialists at a time, in three windows one after another; tool calls one at a time. | Real gap. |
+| 6 Unresolved to review | Several unresolved states block the record instead of sending it to review. | Real gap. |
+| 7 USD 1 ceiling | Enforced per collection profile. Each request re-sends up to 500 KB. | Partly met. |
+| 8 Graceful failures | Several failure reasons show no message in the app. | Real gap. |
+
+## Why one specimen took so long and then failed
+
+Every step of every specialist was saved by rewriting the whole run record,
+which had grown to 873 KB against a 1.5 MB cap. Two specialists wrote that
+same record at once, so their writes collided and were retried (93 rejected
+writes in eight minutes of the live run). Counting the code paths, one
+specimen made roughly 4,000 sequential database and storage round trips:
+about 36 per model call, 9 per tool call, and about 140 to publish each field.
+The live run on 2026-10-08 (specimen 105526321) failed four ways, all
+confirmed from its recorded state, journal and worker log:
+
+1. Taxonomy asked for a procedure by a prompt's version name; the tool refused
+   it without a retry.
+2. Geography spent 132.9 s on five calls of a tool that makes no outside
+   request, almost all of it saving, and hit its 240 s limit.
+3. Collectors and catalogue number: a helper built the complete answer with
+   its lineage, the model dropped the lineage when retyping it, and the
+   validator refused the answer.
+4. Publishing `identified_by_irn` timed out twice reading the oversized record
+   (30 s each), before anything was written.
+
+## PR #282
+
+Not merged. It fixes cause 1 at its root but works around causes 2 and 3
+(one batched geography tool, longer prompts asking the model to copy text
+exactly), does not speed up the read behind cause 4, removes a check on which
+date reading is chosen, and makes one publication timeout stop the whole
+queue. The record keeping that causes the failures stays.
+
+## The replacement: field research
+
+For a run whose profile names a harness route, the workflow hands over at the
+`plan` step, as it does today. With `SPECIMEN_RESEARCH_HARNESS=fields` the
+handover runs field research instead of the six specialists:
+
+1. **Inputs.** Every reading of every label (named 1A, 1B, 2A as the organiser
+   names them), the organiser's candidates and settled value for each field,
+   and the profile's field list.
+2. **Accurate reads finalize.** A field with no approved source or check whose
+   organiser value is supported is finalized as written, with no model call.
+3. **One expert per field.** Every other field gets its own Pydantic AI agent
+   (`field_<key>`), its own instructions (shared rules plus the field's brief)
+   and only its approved tools. All experts run at once.
+4. **Sources.** GBIF (with Catalogue of Life and Global Names Verifier
+   alongside), GEOLocate, Getty TGN, Wikidata and NGA, plus deterministic date,
+   elevation and catalogue-number checks. One request per distinct query per
+   record (shared cache), retries with backoff, GEOLocate spacing kept. Each
+   source response is stored once as evidence.
+5. **Checked answers.** An expert's literal must appear exactly in the
+   readings it names; a value that differs from the literal must be a source
+   candidate it was given, or a deterministic parse. Otherwise the answer is
+   sent back once for correction.
+6. **Derived values** (G37, G41, G44) are filled deterministically afterwards
+   from settled fields only: elevation copies and exact unit conversion, and
+   the collection date's end from its start.
+7. **One save.** Field values, evidence and reasons are written in one save
+   at the end, through the existing record writer. Clearance uses the existing
+   scientific rules without blanket human approval (G1). Anything unresolved
+   sends the record to Needs human review with a plain reason; a source or
+   model outage leaves the record blocked with retry.
+8. **Budget.** Before every model call the step reserves that call's worst
+   case from what remains of the run's ceiling (the profile's
+   `run_cost_limit_micros`, USD 1 for the pilot), and settles to the real
+   usage after. A call that would cross the ceiling is not sent; that field
+   goes to review.
+
+At the harness route's prices (USD 0.20 per million input tokens, USD 0.60
+per million output), a typical record is expected to cost a few cents for
+field research. The ceiling cannot be crossed.
+
+The six-specialist code stays in the repository, unused by production, until
+field research is proven live; a later pull request deletes it with its tests.
