@@ -1,22 +1,53 @@
-"""When a field's readers disagree, and what may settle it (B1 of #284's review).
+"""When a resolved answer may settle its field (B1 and B2 of #284's reviews).
 
-The native rules this ports, where the native code is the stricter:
-- A label with a decided transcript takes that reading's literal, whatever the
-  other reader wrote (G19; harness.apply_candidates and field_resolution): a
-  resolved literal is text that reading writes, and another reader's
-  difference is evidence only.
-- Readers that disagree with no decided transcript to settle them settle only
-  when a success answer of the field's approved sources confirms exactly one
-  reader's literal (G20); otherwise the field goes to review
-  (research_harness/evidence.py 937-942, "literal assertions disagree without
-  source settlement"). A field with no approved source cannot settle them.
-- A place field settles only on a place source's success answer whose
-  candidate is the value (evidence.py 920-926 and _candidate_matches).
+`refusal` checks every resolved answer, in the expert's answer check
+(experts.py, so the model is sent back) and again in the step before the
+answer becomes a value (step._refusal). It enforces, in this order:
 
-A field disagrees when the organiser marked it ambiguous, or when its
-candidates across readers carry more than one literal. Literals are compared
-after NFC and whitespace collapse only (checks.collapse): "E. slope" and
-"E.slope" disagree; the owner has not ruled such differences equal.
+1. The decided transcript (G19): for each reading the answer names whose
+   label has a decided transcript, the decided reading's text contains the
+   literal.
+2. A whole candidate (B2): the literal is one of the field's candidate
+   literals (FieldTask.candidates: the organiser's, and each keyed line the
+   parser read) of each reading the answer names, or, on a label with a
+   decided transcript, of the decided reading. Literals are compared after
+   NFC and whitespace collapse only (checks.collapse): "E. slope" and
+   "E.slope" differ. A field with no such candidate is never resolved.
+3. Readers and labels that disagree (B1; G19, G20, G27, G32). From the
+   field's candidates and the organiser's per-reader verbatims, whatever
+   state the organiser gave the field, each label that writes the field
+   settles on its own (`labels`):
+   - a label with a decided transcript, on its decided reading's one
+     candidate literal; its other readers are evidence only, and a label
+     whose decided reading writes nothing for the field takes no part;
+   - a label with none whose readers each write the same one literal, on it;
+   - any other label (readers that differ, or one that writes nothing) only
+     through the field's approved sources: exactly one of its literals is
+     confirmed by a success answer about it, and every other has a captured
+     no_match answer about it and no success or ambiguous one. An error, a
+     timeout or a literal never asked about is neither. A field with no
+     approved source never settles such a label.
+   The field settles when every such label settles and all on the same
+   literal, which is then the answer's literal (and, when a source settled a
+   label, the answer cites a success answer confirming it); or, for labels
+   that settle on different literals, when a source confirms each of them as
+   the answer's authority_id (G32: the same place ID or GBIF usage) and the
+   answer cites the one for its literal. Anything else goes to review.
+   A source answer is about a literal when GBIF was asked the whole name it
+   writes (checks.taxon_query_grounded), or a place source was asked the
+   literal as its whole query or as the query's first comma-separated part,
+   the name a place source searches. A success answer confirms the literal
+   as GBIF's decided candidate (its evidence's locator) or as a place
+   source's candidate of exactly that name.
+4. A place (country, province or state, county, city): a cited success
+   answer of a place source has a candidate named as the value (the literal
+   when there is no value) with the answer's authority_id.
+
+Point 3 follows research_harness/evidence.py's G20 and G32 rules (725-751:
+one confirmed reader beside the other's captured no-match; a positive
+settlement for each label). It is stricter than field_resolution.py
+(178-215), which clears readers that differ when every success names one
+value: here two confirmed readers of one label go to review.
 """
 
 from __future__ import annotations
@@ -24,7 +55,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
-from specimen_digitization.application.domain import LookupStatus, ValueState
+from specimen_digitization.application.domain import LookupStatus
 
 from .checks import collapse, taxon_query_grounded
 from .contracts import PLACE_SOURCES, FieldTask, Reading, SourceAnswer
@@ -37,6 +68,7 @@ SOURCE_IDS = frozenset({"gbif", *PLACE_SOURCES})
 
 # The field's reason when a resolved answer cannot settle it (plain app text).
 DIFFER = "The readings differ, and no approved source confirms one of them."
+LABELS_DIFFER = "The labels differ, and no approved source confirms them as one value."
 NOT_DECIDED = "The reading chosen for this label does not write this value."
 NOT_CANDIDATE = "This value is not the text found for this field in the readings."
 NO_PLACE = "No approved place source confirms this value."
@@ -135,52 +167,142 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
         "several_possibilities or sources_cannot_resolve."))
 
 
-def contested(task: FieldTask, readings: Sequence[Reading]) -> frozenset[str] | None:
-    """The literals still in contention, or None when the readers do not
-    disagree or the decided transcripts settle it (G19).
-
-    The organiser keeps a value for readers that differ only where a decided
-    transcript decides (harness._settle), so a supported organiser value is
-    settled. Otherwise the other reader of a decided label is evidence only,
-    and what remains is contested; an ambiguous field with no literal left
-    contests nothing a source could confirm."""
-    literals = reader_literals(task, readings)
-    every = {literal for found in literals.values() for literal in found}
-    state = task.current.state
-    if state == ValueState.SUPPORTED or (state != ValueState.AMBIGUOUS and len(every) <= 1):
-        return None
-    by_name = {r.name: r for r in readings}
-    decided = {r.region_id: r.name for r in readings if r.input_source == DECIDED}
-    kept: set[str] = set()
-    for name, found in literals.items():
-        region = by_name[name].region_id
-        if region in decided and decided[region] != name:
-            continue
-        kept |= found
-    regions = {by_name[name].region_id for name in literals}
-    if state != ValueState.AMBIGUOUS and len(kept) == 1 and regions <= set(decided):
-        return None
-    return frozenset(kept)
+def about(answer: SourceAnswer, literal: str) -> bool:
+    """Whether a source was asked about this (collapsed) literal: GBIF about
+    the whole name it writes (checks.taxon_query_grounded), a place source
+    about the literal itself, as its whole query or as the query's first
+    comma-separated part, the name a place source searches."""
+    if answer.source_id == "gbif":
+        return taxon_query_grounded(answer.query, literal)
+    return literal in {collapse(answer.query), collapse(answer.query.split(",", 1)[0])}
 
 
-def confirmed(literals: Iterable[str], answers: Iterable[SourceAnswer],
-        sources: Iterable[str]) -> set[str]:
-    """The literals a success answer of `sources` confirms: GBIF asked about
-    exactly that name (checks.taxon_query_grounded), or a place source
-    returned a candidate of exactly that name."""
-    sources = frozenset(sources) & SOURCE_IDS
-    literals = set(literals)
+def identities(answers: Iterable[SourceAnswer], literal: str) -> set[str]:
+    """What captured success answers about this literal confirm it as: the
+    authority_id of GBIF's decided candidate (the one its evidence's locator
+    names), or of a place source's candidate of exactly that name. Empty when
+    nothing confirms it."""
     found: set[str] = set()
     for answer in answers:
-        if answer.status != LookupStatus.SUCCESS or answer.source_id not in sources:
+        if answer.status != LookupStatus.SUCCESS or answer.evidence is None or not about(answer, literal):
             continue
-        for literal in literals:
-            if answer.source_id == "gbif":
-                if taxon_query_grounded(answer.query, literal):
-                    found.add(literal)
-            elif any(collapse(c.name) == literal for c in answer.candidates):
-                found.add(literal)
+        for candidate in answer.candidates:
+            if not candidate.authority_id:
+                continue
+            if (candidate.authority_id == answer.evidence.locator if answer.source_id == "gbif"
+                    else collapse(candidate.name) == literal):
+                found.add(candidate.authority_id)
     return found
+
+
+def ruled_out(answers: Iterable[SourceAnswer], literal: str) -> bool:
+    """Whether the sources found nothing for this literal: a captured no_match
+    answer about it, and no success or ambiguous answer about it. An error, a
+    timeout or a literal never asked about is not ruled out."""
+    asked = [a for a in answers if a.evidence is not None and about(a, literal)]
+    return (any(a.status == LookupStatus.NO_MATCH for a in asked)
+        and not any(a.status in (LookupStatus.SUCCESS, LookupStatus.AMBIGUOUS) for a in asked))
+
+
+@dataclass(frozen=True)
+class Label:
+    """One label that writes the field: its readings' literals, and the
+    literal it settles to (None when it does not settle)."""
+
+    literals: frozenset[str]
+    settled: str | None
+    # A source settled readers that differ (G20), rather than a decided
+    # transcript or readers that agree.
+    by_source: bool = False
+
+
+def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[SourceAnswer]) -> dict[str, Label]:
+    """Each label that writes the field, by region, settled on its own
+    (G19, G20, G27, G32):
+    - a label with a decided transcript, on the one candidate literal its
+      decided reading has; its other readers are evidence only, and a label
+      whose decided reading writes nothing for the field takes no part;
+    - a label whose readers each write the same one literal, on that literal;
+    - a label whose readers differ (or where one writes nothing), only through
+      the field's approved sources (`answers`): exactly one of its literals
+      is confirmed (identities), and every other is ruled out (ruled_out)."""
+    literals = reader_literals(task, readings)
+    allowed = candidates_by_reading(task, readings)
+    sourced = bool(frozenset(task.tools) & SOURCE_IDS)
+    regions: dict[str, list[Reading]] = {}
+    for reading in readings:
+        regions.setdefault(reading.region_id, []).append(reading)
+    found: dict[str, Label] = {}
+    for region, group in regions.items():
+        decided = next((r for r in group if r.input_source == DECIDED), None)
+        if decided is not None:
+            texts = frozenset(literals.get(decided.name, ()))
+            if texts:
+                one = len(texts) == 1 and texts <= set(allowed.get(decided.name, {}))
+                found[region] = Label(texts, next(iter(texts)) if one else None)
+            continue
+        each = [frozenset(literals.get(r.name, ())) for r in group]
+        texts = frozenset().union(*each)
+        if not texts:
+            continue
+        if len(texts) == 1 and all(len(own) == 1 for own in each):
+            found[region] = Label(texts, next(iter(texts)))
+            continue
+        confirmed = {text for text in texts if identities(answers, text)} if sourced else set()
+        if len(confirmed) == 1 and all(ruled_out(answers, text) for text in texts - confirmed):
+            found[region] = Label(texts, next(iter(confirmed)), by_source=True)
+        else:
+            found[region] = Label(texts, None)
+    return found
+
+
+def _disagreement(task: FieldTask, readings: Sequence[Reading], *, literal: str,
+        authority_id: str | None, cited: Sequence[SourceAnswer],
+        received: Sequence[SourceAnswer]) -> Refusal | None:
+    """Why readers or labels that disagree do not settle the field on this
+    answer, or None (B1 of #284's reviews; G19, G20, G27, G32)."""
+    sources = frozenset(task.tools) & SOURCE_IDS
+    answers = [a for a in received if a.source_id in sources]
+    found = labels(task, readings, answers)
+    settled = {label.settled for label in found.values()}
+    if not found or (settled != {None} and len(settled) == 1
+            and not any(label.by_source for label in found.values())):
+        return None  # Every label settles on its own text, and they agree.
+    every = sorted(frozenset().union(*(label.literals for label in found.values())))
+    shown = "; ".join(repr(text) for text in every)
+    if None in settled:
+        return Refusal(DIFFER, (
+            f"The readers disagree on this field ({shown}). A label with no decided transcript "
+            "whose readers differ settles only when your approved sources were asked about each "
+            "reader's text: exactly one confirmed by a success answer, every other found by none "
+            "(a no_match answer, and no success or ambiguous one)"
+            + ("." if sources else "; this field has no such source.")
+            + " Ask about each reader's text, or answer several_possibilities with each reader's "
+            "text, or sources_cannot_resolve."), differ=True)
+    cited = [a for a in cited if a.source_id in sources]
+    want = collapse(literal)
+    if len(settled) == 1:
+        [one] = settled
+        if want != one:
+            return Refusal(DIFFER, (
+                f"The labels settle on the reader's text {one!r}: copy the literal from a reading "
+                "that writes it, or answer several_possibilities."), differ=True)
+        if not identities(cited, one):
+            return Refusal(DIFFER, (
+                f"Cite the evidence_id of the source answer that confirms {one!r}."), differ=True)
+        return None
+    # G32: labels that settle on different text agree only through a source
+    # that confirms each label's text as the same place or name.
+    common = None
+    for text in settled:
+        common = identities(answers, text) if common is None else common & identities(answers, text)
+    if want in settled and authority_id in (common or set()) and authority_id in identities(cited, want):
+        return None
+    return Refusal(LABELS_DIFFER, (
+        f"The labels write different text for this field ({shown}). They settle only when an "
+        "approved source confirms each label's text as the same place or name: ask about each, "
+        "give that authority_id and cite the answer for your literal, or answer "
+        "several_possibilities."), differ=True)
 
 
 def place_confirmed(task: FieldTask, settled: str, authority_id: str | None,
@@ -207,25 +329,10 @@ def refusal(task: FieldTask, readings: Sequence[Reading], *, literal: str,
     refused = literal_refusal(task, readings, literal=literal, named=named)
     if refused is not None:
         return refused
-    found = contested(task, readings)
-    if found is not None:
-        sources = frozenset(task.tools) & SOURCE_IDS
-        settled = confirmed(found, received, sources)
-        if len(settled) != 1:
-            shown = "; ".join(sorted(found)) or "no single text"
-            return Refusal(DIFFER, (
-                f"The readers disagree on this field ({shown}) and no approved source answer "
-                "confirms exactly one reader's text, so a person must choose: answer "
-                "several_possibilities with each reader's text, or sources_cannot_resolve."),
-                differ=True)
-        [one] = settled
-        if collapse(literal) != one:
-            return Refusal(DIFFER, (
-                f"A source confirms the reader's text {one!r}: copy the literal from the reading "
-                "that writes it, or answer several_possibilities."), differ=True)
-        if not confirmed([one], cited, sources):
-            return Refusal(DIFFER, (
-                f"Cite the evidence_id of the source answer that confirms {one!r}."), differ=True)
+    refused = _disagreement(task, readings, literal=literal, authority_id=authority_id, cited=cited,
+        received=received)
+    if refused is not None:
+        return refused
     if task.key in PLACE_VALUE_FIELDS:
         settled_value = value if value is not None else literal
         if not place_confirmed(task, settled_value, authority_id, cited):

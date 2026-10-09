@@ -746,16 +746,35 @@ def test_a_pick_between_readers_with_no_source_is_sent_back():
         made.validate(answer(outcome="resolved", literal="J. Smith", reading_names=["1A"]))
 
 
+def nothing(name: str, evidence_id: str, status=LookupStatus.NO_MATCH) -> SourceAnswer:
+    """Getty TGN asked about `name`: no match, captured (or, with another
+    status and no evidence, not captured)."""
+    stored = None if status != LookupStatus.NO_MATCH else Evidence(
+        id=evidence_id, kind="lookup", source="tgn", locator=None, excerpt="Getty TGN: no match")
+    return SourceAnswer("tgn", name, status, (), stored, note=str(status))
+
+
 @pytest.mark.parametrize(("answers", "cited", "says"), [
     # G27's example with no lookup at all.
     ((), [], "readers disagree on this field"),
-    # GEOLocate confirms 1B's text, and only it (G20).
-    ((place("Chimaltenango", "ev-b"),), ["ev-b"], None),
+    # GEOLocate confirms 1B's text, and TGN finds nothing for 1A's (G20).
+    ((place("Chimaltenango", "ev-b"), nothing("Chimaltenago", "ev-a")), ["ev-b"], None),
+    # 1A's text was never asked about: a missing lookup is not a no-match (the second review's B1).
+    ((place("Chimaltenango", "ev-b"),), ["ev-b"], "readers disagree on this field"),
+    # A timeout is not a no-match either.
+    ((place("Chimaltenango", "ev-b"), nothing("Chimaltenago", "ev-a", LookupStatus.TIMEOUT)), ["ev-b"],
+     "readers disagree on this field"),
+    # A success answer about 1A's text, whatever it names, is not "found nothing".
+    ((place("Chimaltenango", "ev-b"), nothing("Chimaltenago", "ev-a"),
+      SourceAnswer("geolocate", "Chimaltenago, Guatemala", LookupStatus.SUCCESS,
+                   (SourceCandidate("Chimaltenango", "geolocate:Chimaltenango"),),
+                   Evidence(id="ev-c", kind="authority", source="geolocate", locator="geolocate:Chimaltenango",
+                            excerpt="Chimaltenango"))), ["ev-b"], "readers disagree on this field"),
     # A source confirms each reader's text: nothing decides between them.
     ((place("Chimaltenango", "ev-b"), place("Chimaltenago", "ev-a")), ["ev-b"],
      "readers disagree on this field"),
     # The confirming answer must be cited.
-    ((place("Chimaltenango", "ev-b"),), [], "Cite the evidence_id"),
+    ((place("Chimaltenango", "ev-b"), nothing("Chimaltenago", "ev-a")), [], "Cite the evidence_id"),
 ])
 def test_a_place_the_readers_disagree_on_settles_only_on_a_source_confirming_one_reader(answers, cited, says):
     made = disagreeing("province_state", [("1A", "Chimaltenago"), ("1B", "Chimaltenango")], answers)
@@ -767,6 +786,85 @@ def test_a_place_the_readers_disagree_on_settles_only_on_a_source_confirming_one
         return
     with pytest.raises(ModelRetry, match=says):
         made.validate(given)
+
+
+def test_readers_that_differ_disagree_whatever_state_the_organiser_gave_the_field():
+    """The organiser left the city supported on 1A's text, yet 1B writes
+    another: only GEOLocate's answer for 1A's text is not enough (B1)."""
+    readings = (Reading("1A", "region-1", "obs-1a", "raw_reading", "San Pedro, Guat."),
+                Reading("1B", "region-1", "obs-1b", "raw_reading", "San Pablo, Guat."))
+    field = task("city", current=FieldValue(state=ValueState.SUPPORTED, literal="San Pedro"),
+                 candidates=offered(("1A", "San Pedro"), ("1B", "San Pablo")))
+    made = experts._Expert(field, readings, FakeTools(), PILOT_DATES)
+    made.calls.append(experts._Call("geolocate", SAN_PEDRO.query, SAN_PEDRO.status, SAN_PEDRO))
+    given = answer(outcome="resolved", literal="San Pedro", reading_names=["1A"], authority_id="geolocate:1",
+                   source_evidence_ids=["ev-town"])
+
+    with pytest.raises(ModelRetry, match="readers disagree on this field"):
+        made.validate(given)
+    # Once TGN finds nothing for 1B's text, GEOLocate's answer settles it (G20).
+    missing = nothing("San Pablo", "ev-none")
+    made.calls.append(experts._Call("tgn", missing.query, missing.status, missing))
+    assert made.validate(given).literal == "San Pedro"
+
+
+SACATEPEQUEZ = "Sacatep" + chr(0xE9) + "quez"  # As GEOLocate writes it.
+TWO_LABELS = (
+    Reading("1A", "region-1", "obs-1a", "raw_reading", "Chimaltenango, Guat."),
+    Reading("1B", "region-1", "obs-1b", "raw_reading", "Chimaltenango, Guat."),
+    Reading("2A", "region-2", "obs-2a", "raw_reading", "Sacatepequez"),
+    Reading("2B", "region-2", "obs-2b", "raw_reading", "Sacatepequez"),
+)
+
+
+@pytest.mark.parametrize("second", [
+    # Label 2 was never asked about.
+    None,
+    # Label 2 was asked about, and GEOLocate found only another spelling.
+    SourceAnswer("geolocate", "Sacatepequez, Guatemala", LookupStatus.SUCCESS,
+                 (SourceCandidate(SACATEPEQUEZ, "geolocate:" + SACATEPEQUEZ),),
+                 Evidence(id="ev-2", kind="authority", source="geolocate", locator="geolocate:" + SACATEPEQUEZ,
+                          excerpt=SACATEPEQUEZ), note="match"),
+    # Label 2's own text confirmed, as another place.
+    place("Sacatepequez", "ev-2"),
+])
+def test_a_field_on_two_labels_settles_only_when_both_settle_to_one_value(second):
+    """G32 with the second review's B1: label 1 writes Chimaltenango, label 2
+    Sacatepequez, each in both its readings."""
+    field = task("province_state", current=FieldValue(state=ValueState.AMBIGUOUS),
+                 candidates=offered(("1A", "Chimaltenango"), ("1B", "Chimaltenango"),
+                                    ("2A", "Sacatepequez"), ("2B", "Sacatepequez")))
+    first = place("Chimaltenango", "ev-1")
+    received = [first] if second is None else [first, second]
+    made = experts._Expert(field, TWO_LABELS, FakeTools(), PILOT_DATES)
+    for found in received:
+        made.calls.append(experts._Call(found.source_id, found.query, found.status, found))
+    given = answer(outcome="resolved", literal="Chimaltenango", reading_names=["1A", "1B"],
+                   authority_id="geolocate:Chimaltenango", source_evidence_ids=["ev-1"])
+
+    with pytest.raises(ModelRetry, match="labels write different text"):
+        made.validate(given)
+    refused = agreement.refusal(field, TWO_LABELS, literal="Chimaltenango", named=TWO_LABELS[:2], value=None,
+                                authority_id="geolocate:Chimaltenango", cited=[first], received=received)
+    assert refused is not None and refused.differ and refused.reason == agreement.LABELS_DIFFER
+
+
+def test_labels_that_write_one_name_differently_settle_on_one_gbif_usage():
+    """G32's "same GBIF usage": label 1 writes the name, label 2 the name with
+    its author; GBIF's decision for the name is the same usage for both."""
+    readings = (Reading("1A", "region-1", "obs-1a", "raw_reading", "Danaus plexippus"),
+                Reading("1B", "region-1", "obs-1b", "raw_reading", "Danaus plexippus"),
+                Reading("2A", "region-2", "obs-2a", "raw_reading", "Danaus plexippus (Linnaeus, 1758)"),
+                Reading("2B", "region-2", "obs-2b", "raw_reading", "Danaus plexippus (Linnaeus, 1758)"))
+    field = task("taxon", current=FieldValue(state=ValueState.AMBIGUOUS), candidates=offered(
+        ("1A", "Danaus plexippus"), ("1B", "Danaus plexippus"),
+        ("2A", "Danaus plexippus (Linnaeus, 1758)"), ("2B", "Danaus plexippus (Linnaeus, 1758)")))
+    settles = dict(literal="Danaus plexippus", named=readings[:2], value="Danaus plexippus (Linnaeus, 1758)",
+                   cited=[DANAUS], received=[DANAUS])
+
+    assert agreement.refusal(field, readings, authority_id="5133088", **settles) is None
+    # Another usage than GBIF's decision for both labels does not settle them.
+    assert agreement.refusal(field, readings, authority_id="5133099", **settles).differ
 
 
 def test_a_place_resolves_only_on_a_place_sources_candidate():

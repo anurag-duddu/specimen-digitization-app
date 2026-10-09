@@ -728,13 +728,15 @@ def test_a_place_the_readers_disagree_on_never_clears_without_a_lookup(tmp_path)
     assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:province_state" in run.reasons
 
 
-def confirming(query):
-    """The province expert: one GEOLocate lookup, then 1B's text with its candidate."""
+def confirming(query, literal="Chimaltenango", *, reading="1B", absent=()):
+    """A place expert: one GEOLocate lookup, a Getty TGN lookup (no match) for
+    each text in `absent`, then `literal` from `reading` with GEOLocate's candidate."""
     async def script(task, readings, tools):
         answer = await tools.lookup("geolocate", query, field_key=task.key)
-        return FieldOutcome(task.key, resolved("Chimaltenango", reading="1B",
+        missing = [await tools.lookup("tgn", text, field_key=task.key) for text in absent]
+        return FieldOutcome(task.key, resolved(literal, reading=reading,
             authority_id=answer.candidates[0].authority_id, cited=[answer.evidence.id]),
-            evidence=[answer.evidence], model_calls=1)
+            evidence=[answer.evidence, *(item.evidence for item in missing)], model_calls=1)
     return script
 
 
@@ -742,7 +744,7 @@ def test_a_lookup_that_confirms_exactly_one_readers_place_settles_it_and_keeps_b
     rig = build_rig(tmp_path, CHIMALTENAGO, CHIMALTENANGO, candidates=every_field(*PROVINCES))
     run = rig.specimen.run
     first, second = run.observations
-    settle(rig, Scripted({"province_state": confirming("Chimaltenango")}))
+    settle(rig, Scripted({"province_state": confirming("Chimaltenango", absent=["Chimaltenago"])}))
     province = run.fields["province_state"]
     assert (province.state, province.literal, province.layer) == (ValueState.SUPPORTED, "Chimaltenango", "settled")
     # G20 and G27: the confirmed reader settles it; the other's text is kept, unsettled.
@@ -752,6 +754,50 @@ def test_a_lookup_that_confirms_exactly_one_readers_place_settles_it_and_keeps_b
     assert rows["province_state: Chimaltenago"] == "contradicts"
     assert rows["province_state: Chimaltenango"] == "supports"
     assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+
+
+SAN_PEDRO, SAN_PABLO = (TEXT.replace("city: Chicago", "city: " + name) for name in ("San Pedro", "San Pablo"))
+CITIES = [("city", "1A", "San Pedro", "city: San Pedro"), ("city", "1B", "San Pablo", "city: San Pablo")]
+
+
+@pytest.mark.parametrize(("absent", "cleared"), [
+    # The second review's B1: GEOLocate was asked only about the reader it picked.
+    ((), False),
+    # Getty TGN finds nothing for the other reader's text: G20 settles it.
+    (("San Pablo",), True),
+])
+def test_readers_that_differ_settle_only_when_every_readers_text_was_looked_up(tmp_path, absent, cleared):
+    rig = build_rig(tmp_path, SAN_PEDRO, SAN_PABLO, candidates=every_field(*CITIES))
+    run = rig.specimen.run
+    settle(rig, Scripted({"city": confirming("San Pedro", "San Pedro", reading="1A", absent=absent)}))
+    city = run.fields["city"]
+    if cleared:
+        assert (city.state, city.literal) == (ValueState.SUPPORTED, "San Pedro")
+        assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+        return
+    assert (city.state, city.literal) == (ValueState.AMBIGUOUS, None)
+    assert city.reason == agreement.DIFFER + " Settled."
+    assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:city" in run.reasons
+
+
+def test_a_taxon_the_readers_write_differently_needs_every_readers_name_looked_up(tmp_path):
+    """The second review's B1: 1A writes the trinomial, 1B the binomial, and
+    GBIF was asked only the binomial, whose answer names 1B's text."""
+    trinomial = TEXT.replace("taxon: Danaus plexippus", "taxon: " + TRINOMIAL)
+    rig = build_rig(tmp_path, trinomial, TEXT, candidates=every_field(
+        ("taxon", "1A", TRINOMIAL, "taxon: " + TRINOMIAL),
+        ("taxon", "1B", "Danaus plexippus", "taxon: Danaus plexippus")))
+    run = rig.specimen.run
+
+    async def binomial_only(task, readings, tools):
+        answer = await tools.lookup("gbif", "Danaus plexippus", field_key=task.key)
+        return FieldOutcome(task.key, resolved("Danaus plexippus", value=GBIF_NAME, authority_id=GBIF_KEY,
+            cited=[answer.evidence.id], reading="1B"), evidence=[answer.evidence],
+            lookups=[answer.taxonomy_lookup], model_calls=1)
+    settle(rig, Scripted({"taxon": binomial_only}), tools=Subspecies(rig.blobs))
+    taxon = run.fields["taxon"]
+    assert (taxon.state, taxon.literal) == (ValueState.AMBIGUOUS, None)
+    assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:taxon" in run.reasons
 
 
 def test_a_place_never_clears_without_a_place_sources_candidate(rig):
