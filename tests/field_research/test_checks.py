@@ -402,6 +402,37 @@ def test_a_token_with_a_letter_and_no_digit_may_be_a_genus(token, genus):
     assert checks.may_be_genus(token) is genus
 
 
+# N2 of #289's fourth review: a genus misread with a digit.
+@pytest.mark.parametrize("token", ["Epipsocu5", "epipsocu5", "ep1psocus", "3pipsocus", "Epi5"])
+def test_a_token_with_three_letters_and_one_digit_at_most_may_be_a_misread_genus(token):
+    """In the label check, beside the code, and in the query check alike."""
+    from specimen_digitization.field_research import checks
+
+    assert checks.may_be_genus(token)
+    assert not checks.label_names_no_genus("1", [token + " sp. 1"])
+    assert not checks.label_names_no_genus("1", ["sp. 1 " + FEMALE + " " + token])
+    assert checks.query_names_a_genus(token)
+
+
+@pytest.mark.parametrize("token", ["V-4-67-1", "6400'", "IX-14-46", "Epipsocu55", "1a", "10-6-78-la"])
+def test_a_token_with_two_digits_or_fewer_than_three_letters_is_no_misread_genus(token):
+    """Codes, dates and numbers; the rule's bounds."""
+    from specimen_digitization.field_research import checks
+
+    assert not checks.may_be_genus(checks._token(token))
+    assert checks.label_names_no_genus("1", [token + " sp. 1"])
+    assert not checks.query_names_a_genus(token)
+
+
+@pytest.mark.parametrize("token", ["ep1psocus", "epipsoc1s", "ep1psocus?"])
+def test_the_label_check_and_the_query_check_normalise_case_alike(token):
+    """A lower-case token with a digit: the query check read it with a
+    capital, the label check as written (N2 of #289's fourth review)."""
+    from specimen_digitization.field_research import checks
+
+    assert checks.label_names_no_genus("1", [token + " sp. 1"]) is not checks.query_names_a_genus(token)
+
+
 @pytest.mark.parametrize(("query", "genus"), [
     # A name the parser reads, as written or with a capital and no emphasis marks.
     ("Epipsocus", True),

@@ -789,7 +789,8 @@ def _unmatched_taxon(run, task, outcome: FieldOutcome, *, readings, by_name, evi
     - the label names no genus for that code (checks.label_names_no_genus):
       wherever any reading writes it, no token that may be a genus
       (checks.may_be_genus: a letter and no digit, "Epipsocus?", "E.?",
-      "[unreadable]") is written immediately before it (on its line, or
+      "[unreadable]"; or three letters or more and one digit at most,
+      "Epipsocu5", "ep1psocus") is written immediately before it (on its line, or
       ending the nearest line above that has a token), or first after it on
       its line other than one of checks.NOT_GENERA. A candidate "sp. 1"
       taken from "Epipsocus sp. 1", or from "Epipsocus" with "sp. 1" on the

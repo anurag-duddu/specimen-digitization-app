@@ -338,12 +338,19 @@ def _tokens(text: str) -> list[str]:
 
 
 def may_be_genus(token: str) -> bool:
-    """Whether a token (_token) may be a genus: it holds a letter and no
-    digit, whatever its case ("Epipsocus", "epipsocus", "E.", "unreadable"
-    from the reader's "[unreadable]"), or it is GENUS_SHAPED (a misread
-    "Ep1psocus"). A code or a number ("V-4-67-1", "6400", "IX-14-46") is not."""
-    return GENUS_SHAPED.fullmatch(token) is not None or (
-        any(c.isalpha() for c in token) and not any(c.isdigit() for c in token))
+    """Whether a token (_token) may be a genus, judged with its first letter
+    a capital, so that the label check and the query check normalise case
+    alike (N2 of #289's fourth review): it holds a letter and no digit
+    ("Epipsocus", "epipsocus", "E.", "unreadable" from the reader's
+    "[unreadable]"); it is GENUS_SHAPED (a misread "Ep1psocus", or
+    "ep1psocus"); or it holds three letters or more and one digit at most,
+    a genus misread with a digit ("Epipsocu5", "3pipsocus"; with one digit,
+    no date or number punctuation stands between digits). A code, a date or
+    a number holds more digits or fewer letters ("V-4-67-1", "6400",
+    "IX-14-46"), and is none."""
+    token = _first_letter_capital(token)
+    letters, digits = sum(c.isalpha() for c in token), sum(c.isdigit() for c in token)
+    return GENUS_SHAPED.fullmatch(token) is not None or (letters > 0 and digits == 0) or (letters >= 3 and digits <= 1)
 
 
 def token_before(text: str, start: int) -> str | None:
@@ -491,17 +498,17 @@ def query_names_a_genus(query: str | None) -> bool:
     ("epipsocus", "*Epipsocus*", "epipsocus sp. 1"), or as its tokens
     (_tokens: what the label check sheds, shed) with the first letter a
     capital ("Epipsocus(?)"); or, its morphocodes (NO_GENUS) aside, a token
-    of it may be a genus once its first letter is a capital (may_be_genus:
-    "EPIPSOCUS", "ep1psocus", "(epipsocus)", "E." in "E. sp. 1", "E.?", an
-    "Epipsocus" with an accented capital). A morphocode alone ("sp. 30
-    <female sign>", "Sp. 22", "sp 22", "sp #1") names none."""
+    of it may be a genus, as the label check judges one (may_be_genus:
+    "EPIPSOCUS", "ep1psocus", "Epipsocu5", "(epipsocus)", "E." in "E. sp.
+    1", "E.?", an "Epipsocus" with an accented capital). A morphocode alone
+    ("sp. 30 <female sign>", "Sp. 22", "sp 22", "sp #1") names none."""
     if not query or not query.strip():
         return False
     capital = _first_letter_capital(query.translate(_EMPHASIS).strip())
     plain = _first_letter_capital(" ".join(_tokens(query)))
     if any(text and taxonomy_scientific_name(text) is not None for text in (query, capital, plain)):
         return True
-    return any(may_be_genus(_first_letter_capital(token)) for token in _tokens(NO_GENUS.sub(" ", plain)))
+    return any(may_be_genus(token) for token in _tokens(NO_GENUS.sub(" ", plain)))
 
 
 def taxon_query_grounded(query: str, literal: str) -> bool:

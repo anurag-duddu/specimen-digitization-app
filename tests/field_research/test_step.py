@@ -2533,6 +2533,35 @@ def test_a_placeholder_for_an_unread_genus_keeps_the_taxon_in_review(tmp_path, w
     taxon_held_back(rig.specimen.run)
 
 
+# N2 of #289's fourth review: a genus misread with a digit beside the code
+# (checks.may_be_genus: three letters or more, one digit at most).
+MISREAD_GENUS = {
+    "digit-last-before-the-code": ("Epipsocu5 " + SP1, "Epipsocu5 " + SP1),
+    "lower-case-digit-before-the-code": ("ep1psocus " + SP1, "ep1psocus " + SP1),
+    "digit-first-on-the-line-above": ("3pipsocus\n" + SP1, SP1),
+    "digit-last-after-the-code": ("V-4-67-1\n" + SP1 + " Epipsocu5", SP1 + " Epipsocu5"),
+}
+
+
+@pytest.mark.parametrize(("written", "quote"), MISREAD_GENUS.values(), ids=MISREAD_GENUS)
+def test_a_genus_misread_with_a_digit_beside_the_code_keeps_the_taxon_in_review(tmp_path, written, quote):
+    """The expert makes no lookup, quoting the code."""
+    rig = build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", written),
+        candidates=[*COLLECTORS, *(("taxon", name, SP1, quote) for name in ("1A", "1B"))])
+    settle(rig, Scripted({"taxon": cannot_resolve(SP1)}), tools=NoGenus(rig.blobs))
+    taxon_held_back(rig.specimen.run)
+
+
+@pytest.mark.parametrize("token", ["Epipsocu5", "epipsocu5", "3pipsocus"])
+def test_a_genus_misread_with_a_digit_that_the_expert_asked_gbif_keeps_the_taxon_in_review(tmp_path, token):
+    """The label writes it on the line after the code; the expert asks GBIF
+    it as written, and GBIF reads no name in it."""
+    rig = build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", "VI-24-68-7.\n" + SP1 + "\n" + token),
+        candidates=[*COLLECTORS, *(("taxon", name, SP1, SP1) for name in ("1A", "1B"))])
+    settle(rig, Scripted({"taxon": cannot_resolve(SP1, asks=[token])}), tools=NoGenus(rig.blobs))
+    taxon_held_back(rig.specimen.run)
+
+
 @pytest.mark.parametrize("line", ["Epipsocus?", "cf. Epipsocus"])
 def test_a_later_pass_holds_back_an_unmatched_taxon_whose_label_now_writes_a_doubtful_genus(tmp_path, line):
     """The re-check (taxon_unmatched) reads the doubt signs too, wherever the
