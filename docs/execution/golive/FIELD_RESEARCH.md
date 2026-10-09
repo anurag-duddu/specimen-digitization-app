@@ -156,7 +156,10 @@ handover runs field research instead of the six specialists:
      text its readers write is confirmed and one authority_id confirms them
      all: the readers name that place ("Yepocapa," and "Yepocapa", both
      confirmed by one GEOLocate answer as the same town). That rests on the
-     source's evidence, never on the texts compared; readers confirmed as
+     source's evidence, and each reader's text must match the candidate's
+     name by the place comparison key (case, accents, punctuation, unit
+     words), so texts that differ in those settle together ("Yepocapa," and
+     "Yepocapa", "Chimaltenango Dept." and "Chimaltenango"); readers confirmed as
      different places, or not all confirmed, still go to review, and every
      other field keeps the one-confirmed rule. The answer then gives one
      reader's text as its literal with that authority_id and cites the
@@ -246,8 +249,12 @@ handover runs field research instead of the six specialists:
      its country on Getty TGN's answer to "Philippine Islands", whose one
      nation is the Philippines; TGN and NGA have no match for "P.I." itself
      (the coordinator's lookup of 2026-10-09).
-   - **The label's other place fields (B3, N1).** A place must fit the
-     label's other place fields. Only the step checks this (the brief tells
+   - **The label's other place fields (B3, N1).** A place below the
+     country settles only when its source names, among the places it lies
+     in, the country (and province) settled from the reading the answer
+     names. This is a check by name and by record on those readings, not
+     proof that the place lies inside the label's country and province
+     (limits below). Only the step checks this (the brief tells
      the expert): it does so once every field's
      outcome is in, the country first, then the province, county and city,
      since the experts run at once and the country must be known
@@ -281,10 +288,25 @@ handover runs field research instead of the six specialists:
        the retry;
      - a near spelling, of any place field, settles only on G34's whole
        condition: every other place field the reading writes, all of them
-       and at least one, is one of the candidate's parents. A county or a
-       city the reading writes is never a province's parent, nor any field a
-       country's, so a near-spelled province with a county or city on its
-       reading, or a near-spelled country, goes to review.
+       and at least one, is one of the candidate's parents. In Getty TGN a
+       province's parents are its country, so a near-spelled province with
+       a county or a city on its reading goes to review, unless that county
+       or city has the country's name. A country can settle: `sources._place` adds a
+       place's country to its parents, so Getty TGN's nation lists itself,
+       and a near-spelled country settles when every other place field on
+       its reading has the nation's name or record ("Guatamala" beside the
+       province "Guatemala" alone). Beside a county, a city or a province of
+       another name it goes to review.
+
+     The check's limits (the fourth review's NB1): a parent counts by name
+     even when it is another place of that name. Getty TGN names a US
+     county without "County" (its live answers of 2026-10-09), so a
+     Graniteville in Nevada County, California, lies "in Nevada" and
+     settles on a label whose state is Nevada, and a town in the US state
+     of Georgia settles under the nation Georgia. Only the readings the
+     answer names are read, so a province that only another reader of the
+     label writes is not checked. A city is checked against the country and
+     the province, never the county.
    - **105526330's province.** The decided reading writes "Chimaltenago" and
      Getty TGN knows only "Chimaltenango". An answer that takes the other
      reader's "Chimaltenango" as its literal is refused (G19). An answer that

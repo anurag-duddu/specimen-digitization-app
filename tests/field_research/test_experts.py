@@ -912,7 +912,7 @@ def test_readers_that_differ_on_a_town_written_with_a_comma_settle_on_its_lookup
     # Only a place: the same lookup settles no collectors between readers that differ.
     ("collectors", None, "readers disagree on this field"),
 ])
-def test_readers_that_differ_only_by_punctuation_settle_on_the_one_place_confirming_both(key, authority, says):
+def test_readers_whose_texts_match_the_place_confirming_both_by_its_comparison_key_settle_on_it(key, authority, says):
     readings = (Reading("1A", "region-1", "obs-1a", "raw_reading", "Mun. Yepocapa, Chimaltenango"),
                 Reading("1B", "region-1", "obs-1b", "raw_reading", "Mun. Yepocapa Chimaltenango"))
     field = task(key, current=FieldValue(state=ValueState.AMBIGUOUS),

@@ -2180,3 +2180,49 @@ def test_readers_of_an_undecided_label_that_write_one_morphocode_settle_it(tmp_p
     assert set(taxon.verbatim_by_observation.values()) == {MORPHOCODE}
     assert field_step.taxon_unmatched(taxon, {item.id: item for item in run.evidence}, run.lookups)
     assert not [reason for reason in run.reasons if "taxon" in reason]
+
+
+# ---- the fourth review's NB4: what the place rules say -----------------------
+
+def test_readers_whose_place_texts_differ_by_a_unit_word_settle_on_the_place_confirming_both(tmp_path):
+    """Each reader's text matches the candidate's name by the place
+    comparison key, which drops unit words: "Chimaltenango Dept." and
+    "Chimaltenango", both confirmed by Getty TGN's one department."""
+    places = dict(country="Guatemala", county=None, city=None)
+    rig = build_rig(tmp_path, label_with(**places, province_state="Chimaltenango Dept."),
+        label_with(**places, province_state="Chimaltenango"), candidates=[*COLLECTORS,
+            *(("country", name, "Guatemala", "country: Guatemala") for name in ("1A", "1B")),
+            ("province_state", "1A", "Chimaltenango Dept.", "province_state: Chimaltenango Dept."),
+            ("province_state", "1B", "Chimaltenango", "province_state: Chimaltenango")])
+    run = rig.specimen.run
+
+    async def province(task, readings, tools):
+        found = await tools.lookup("tgn", "Chimaltenango", field_key=task.key)
+        return FieldOutcome(task.key, resolved("Chimaltenango", authority_id="tgn:1000565", cited=[found.evidence.id],
+            reading="1B"), evidence=[found.evidence], model_calls=1)
+    settle(rig, Scripted({"country": from_tgn("Guatemala", "Guatemala", None, "tgn:7005493"),
+        "province_state": province}), tools=Gazetteer(rig.blobs))
+    value = run.fields["province_state"]
+    assert (value.state, value.literal, value.authority_id) == (ValueState.SUPPORTED, "Chimaltenango", "tgn:1000565")
+    assert set(value.verbatim_by_observation.values()) == {"Chimaltenango", "Chimaltenango Dept."}
+    assert not reasons_for(run, "province_state")
+
+
+@pytest.mark.parametrize(("province", "authority_id", "settles"), [
+    # Getty TGN's nation lists itself as its parent: a province of the nation's own name.
+    ("Guatemala", "tgn:1000621", True),
+    ("Chimaltenango", "tgn:1000565", False),
+])
+def test_a_near_spelled_country_settles_beside_places_of_the_nations_own_name_only(
+        tmp_path, province, authority_id, settles):
+    rig = build_rig(tmp_path, label_with(country="Guatamala", province_state=province, county=None, city=None))
+    run = rig.specimen.run
+    settle(rig, Scripted({"country": from_tgn("Guatemala", "Guatamala", "Guatemala", "tgn:7005493"),
+        "province_state": from_tgn(province, province, None, authority_id),
+        **dict.fromkeys(("county", "city"), answering(LACKS))}), tools=Gazetteer(rig.blobs))
+    country = run.fields["country"]
+    if not settles:
+        assert (country.state, country.reason) == (ValueState.UNRESOLVED, agreement.NEAR_UNFIT + " Settled.")
+        return
+    assert (country.state, country.literal, country.normalized) == (ValueState.SUPPORTED, "Guatamala", "Guatemala")
+    assert "near_spelling:country" in [f.reason_code for f in run.findings] and not reasons_for(run, "country")

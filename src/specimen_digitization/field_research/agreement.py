@@ -37,9 +37,11 @@ fields' outcomes:
      (point 4) such a label also settles when every one of its literals is
      confirmed and one authority_id confirms them all: its readers name the
      same place ("Yepocapa," and "Yepocapa", N4 of the third review). That
-     rests on the source's evidence, never on the texts compared, and the
-     label settles on each of its literals; readers confirmed as different
-     places, or not all confirmed, still go to review.
+     rests on the source's evidence, and each literal must match the
+     candidate's name by the place comparison key (case, accents,
+     punctuation, unit words: "Chimaltenango Dept." and "Chimaltenango"
+     too); the label settles on each of its literals; readers confirmed as
+     different places, or not all confirmed, still go to review.
    The field settles when every such label settles and all on the same
    literal, which is then the answer's literal (and, when a source settled a
    label, the answer cites a success answer confirming it); or, for labels
@@ -107,10 +109,14 @@ fields' outcomes:
      field goes to review with the reason. A country needs no parent;
    - a near spelling, of any place field, settles only when every other
      place field the reading writes, all of them and at least one, is one of
-     the candidate's parents (G34's whole condition). A county or a city the
-     reading writes is never a province's parent, nor any field a country's,
-     so a near-spelled province with one on its reading, or a near-spelled
-     country, does not settle.
+     the candidate's parents (G34's whole condition). In Getty TGN a
+     province's parents are its country, so a near-spelled province with a
+     county or a city on its reading does not settle, unless that county or
+     city has the country's name. A nation lists itself as its parent
+     (sources._place adds a place's country to its parents), so a
+     near-spelled country settles when every other place field on its
+     reading has the nation's name or record ("Guatamala" beside the
+     province "Guatemala" alone), and not otherwise.
 
 Point 3 follows research_harness/evidence.py's G20 and G32 rules (725-751:
 one confirmed reader beside the other's captured no-match; labels that
@@ -414,8 +420,9 @@ def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[Sourc
       or, for a place value field, every one of its literals is confirmed and
       one authority_id confirms them all, so its readers name the same place
       ("Yepocapa," and "Yepocapa"; N4 of #284's third review). That settles
-      on the source's evidence, never on the readers' texts compared, and on
-      each of the literals: the answer gives one of them, with that
+      on the source's evidence, each literal matching the candidate's name
+      by the place comparison key (case, accents, punctuation, unit words),
+      and on each of the literals: the answer gives one of them, with that
       authority_id."""
     literals = reader_literals(task, readings)
     allowed = candidates_by_reading(task, readings)
@@ -610,9 +617,11 @@ def parents_refusal(key: str, candidate: SourceCandidate, basis: str, *,
       reading. A country needs no parent.
     - A near spelling (NEAR_SPELLING) settles only on G34's whole condition:
       every other place field the reading writes, all of them and at least
-      one, names a parent of the candidate (lies_in). A county or a city the
-      reading writes is never a parent of a province, so a near-spelled
-      province with one on its reading does not settle."""
+      one, names a parent of the candidate (lies_in). In Getty TGN a
+      province's parents are its country, so a near-spelled province with a
+      county or a city on its reading does not settle unless that county or
+      city has the country's name; a nation is its own parent, so a
+      near-spelled country settles beside places of its own name only."""
     if key != "country":
         if not candidate.parents:
             return Refusal(NO_PARENTS, NO_PARENTS)
