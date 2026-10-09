@@ -2307,6 +2307,42 @@ def test_a_genus_the_expert_asked_gbif_keeps_the_code_in_review_though_gbif_has_
     in_review_with_a_genus(rig.specimen.run)
 
 
+EPIPSOCUS_HOMONYM = SourceCandidate(name="Epipsocus Hagen, 1866", authority_id="1045361", kind="GENUS")
+
+
+@pytest.mark.parametrize(("status", "candidates", "asked", "genus"), [
+    # GBIF's no-name answer for a code, and a failed lookup of one.
+    (LookupStatus.NO_MATCH, (), MORPHOCODE, False),
+    (LookupStatus.TIMEOUT, (), MORPHOCODE, False),
+    (LookupStatus.PROVIDER, (), "Sp. 22", False),
+    # Candidates, or a success or an ambiguous answer (a name withheld unread).
+    (LookupStatus.AMBIGUOUS, (EPIPSOCUS_HOMONYM,), "Epipsocus", True),
+    (LookupStatus.SUCCESS, (EPIPSOCUS_HOMONYM,), MORPHOCODE, True),
+    (LookupStatus.AMBIGUOUS, (), MORPHOCODE, True),
+    (LookupStatus.SUCCESS, (), MORPHOCODE, True),
+    # A query that names a genus, whatever GBIF answered.
+    (LookupStatus.NO_MATCH, (), "Epipsocus", True),
+    (LookupStatus.TIMEOUT, (), "epipsocus sp. 1", True),
+    (LookupStatus.NO_MATCH, (), "EPIPSOCUS", True),
+], ids=["no-name", "timeout", "provider", "homonym", "success", "withheld", "success-no-candidate",
+    "no-match-genus", "timeout-lower-case-genus", "no-name-genus-in-capitals"])
+def test_a_gbif_answer_shows_a_genus_by_its_candidates_its_status_or_its_query(status, candidates, asked, genus):
+    """Rule B reads each GBIF answer an expert received (_answer_found_a_genus)
+    and each GBIF lookup the run stores (_lookup_found_a_genus) alike."""
+    from specimen_digitization.application.lookup import no_name_lookup
+
+    assert field_step._answer_found_a_genus(SourceAnswer("gbif", asked, status, candidates, None)) is genus
+    assert not field_step._answer_found_a_genus(SourceAnswer("tgn", asked, status, candidates, None))
+    stored = [{"key": c.authority_id, "scientificName": c.name} for c in candidates]
+    for query in ({"scientificName": asked}, {"name": asked}):
+        lookup = Lookup(provider="gbif", adapter_version="test", query=query, status=status, candidates=stored)
+        assert field_step._lookup_found_a_genus(lookup) is genus
+    # The run's record of a name GBIF could not read keeps it as verbatim_name.
+    unread = no_name_lookup(asked).model_copy(update={"status": status, "candidates": stored})
+    assert field_step._lookup_found_a_genus(unread) is genus
+    assert not field_step._lookup_found_a_genus(unread.model_copy(update={"provider": "geolocate"}))
+
+
 @pytest.mark.parametrize("gbif", [Homonym, FakeSources, NoMatch], ids=["homonym", "success", "no-match"])
 def test_a_stored_unmatched_taxon_whose_run_holds_a_gbif_lookup_of_a_genus_never_clears(tmp_path, gbif):
     """The clearance rules read the run's stored GBIF lookups too

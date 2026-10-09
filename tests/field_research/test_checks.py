@@ -296,9 +296,12 @@ def test_the_label_names_no_genus_when_no_word_beside_its_code_may_be_one(text, 
     ("*Epipsocus*", True),
     ("_Epipsocus_ sp. 1", True),
     ("epipsocus sp. 1 " + FEMALE, True),
-    # One word that may be a genus, case aside.
+    # One word that may be a genus, case and brackets aside.
     ("EPIPSOCUS", True),
     ("Ep1psocus", True),
+    ("ep1psocus", True),
+    ("(epipsocus)", True),
+    ('"Epipsocus"', True),
     # The pilots' codes, as their readers write them, and nothing asked.
     ("sp. 30 " + FEMALE, False),
     ("Sp.30 " + FEMALE, False),

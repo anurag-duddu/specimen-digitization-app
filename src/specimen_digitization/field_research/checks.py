@@ -334,22 +334,28 @@ def label_names_no_genus(code: str, reading_texts: Sequence[str]) -> bool:
 _EMPHASIS = str.maketrans("", "", "*_")
 
 
+def _first_letter_capital(text: str) -> str:
+    """The text with its first letter a capital."""
+    return re.sub(r"[^\W\d_]", lambda letter: letter.group().upper(), text, count=1)
+
+
 def query_names_a_genus(query: str | None) -> bool:
     """Whether a GBIF query names a genus (B1 of #289's second review): the
     scientific-name parser reads a name in it as written ("Epipsocus",
-    "Epipsocus sp. 1", "Epipsocus prob. sp. 1"), or with emphasis marks dropped
-    and its first letter a capital ("epipsocus", "*Epipsocus*", "epipsocus sp.
-    1"); or it is one word that may be a genus, case aside (GENUS_SHAPED:
-    "EPIPSOCUS", "Ep1psocus"). A morphocode ("sp. 30 <female sign>", "Sp. 22",
-    "sp 22", "sp #1") names none."""
+    "Epipsocus sp. 1", "Epipsocus prob. sp. 1"), or with the emphasis marks
+    "*" and "_" dropped and its first letter a capital ("epipsocus",
+    "*Epipsocus*", "epipsocus sp. 1"); or it is one word (_words: brackets,
+    quotes and punctuation around it aside) that may be a genus once its
+    first letter is a capital (GENUS_SHAPED: "EPIPSOCUS", "Ep1psocus",
+    "(epipsocus)"). A morphocode ("sp. 30 <female sign>", "Sp. 22", "sp 22",
+    "sp #1") names none."""
     if not query or not query.strip():
         return False
-    plain = query.translate(_EMPHASIS).strip()
-    capital = plain[:1].upper() + plain[1:]
+    capital = _first_letter_capital(query.translate(_EMPHASIS).strip())
     if taxonomy_scientific_name(query) is not None or taxonomy_scientific_name(capital) is not None:
         return True
     words = _words(capital)
-    return len(words) == 1 and GENUS_SHAPED.fullmatch(words[0]) is not None
+    return len(words) == 1 and GENUS_SHAPED.fullmatch(_first_letter_capital(words[0])) is not None
 
 
 def taxon_query_grounded(query: str, literal: str) -> bool:
