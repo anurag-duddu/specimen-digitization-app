@@ -30,7 +30,7 @@ from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.models.instrumented import InstrumentationSettings
 
 from specimen_digitization.application.domain import Evidence, FieldValue, LookupStatus, ValueState
-from specimen_digitization.field_research import experts
+from specimen_digitization.field_research import agreement, experts
 from specimen_digitization.field_research.budget import CostMeter
 from specimen_digitization.field_research.contracts import (
     FIELD_TOOLS,
@@ -73,9 +73,28 @@ GBIF_SUCCESS = SourceAnswer(
 )
 
 
-def task(key: str, *, current: FieldValue | None = None, candidates=()) -> FieldTask:
+# The organiser's candidates for READINGS: a resolved literal is one of them (B2).
+OFFERED = {
+    "taxon": [("1A", "Epipsocus sp. 1"), ("1B", "Epipsocus sp. 1")],
+    "country": [("1A", "P.I."), ("1B", "P.I.")],
+    "city": [("1A", "Davao"), ("1B", "Davao")],
+    "precise_location": [("1A", "Mindanao, Davao")],
+    "date_visited_from": [("1A", "4-5-48"), ("1B", "4-5-48")],
+    "elevation_from_ft": [("2A", "1500")],
+    "collectors": [("1A", "F. G. Werner"), ("1B", "F.G. Werner")],
+}
+
+
+def offered(*pairs) -> list[Candidate]:
+    """Organiser candidates ((reading, literal)), each quoting its literal."""
+    return [Candidate(name, literal, literal, f"ev-{name}-{literal}") for name, literal in pairs]
+
+
+def task(key: str, *, current: FieldValue | None = None, candidates=None) -> FieldTask:
+    """The field's task with `candidates`, by default the organiser's for READINGS."""
+    found = offered(*OFFERED.get(key, ())) if candidates is None else candidates
     return FieldTask(key=key, mandatory=True, current=current or FieldValue(),
-                     candidates=tuple(candidates), tools=FIELD_TOOLS[key])
+                     candidates=tuple(found), tools=FIELD_TOOLS[key])
 
 
 def meter(cap: int = 1_000_000) -> CostMeter:
@@ -286,14 +305,14 @@ GBIF_UNRELATED = SourceAnswer(
 
 @pytest.mark.parametrize(("received", "given", "says"), [
     # GBIF was asked about a name no reading writes (the reviewer's first probe).
-    (GBIF_UNRELATED, dict(literal="Epipsocus", value="Bombus impatiens Cresson, 1863",
+    (GBIF_UNRELATED, dict(literal="Epipsocus sp. 1", value="Bombus impatiens Cresson, 1863",
                           authority_id="gbif:999", source_evidence_ids=["ev-gbif-9"]),
-     "query must be the whole scientific name this literal writes"),
+     "query must be that whole scientific name"),
     # The alternative GBIF listed, not the candidate it decided (the second probe).
-    (GBIF_TWO, dict(literal="Epipsocus", value="Episcopus Other, 1900", authority_id="gbif:2",
+    (GBIF_TWO, dict(literal="Epipsocus sp. 1", value="Episcopus Other, 1900", authority_id="gbif:2",
                     source_evidence_ids=["ev-gbif-1"]), "the candidate GBIF decided"),
     # The decided candidate's id with another candidate's name.
-    (GBIF_TWO, dict(literal="Epipsocus", value="Episcopus Other, 1900", authority_id="gbif:1234",
+    (GBIF_TWO, dict(literal="Epipsocus sp. 1", value="Episcopus Other, 1900", authority_id="gbif:1234",
                     source_evidence_ids=["ev-gbif-1"]), "differs from the literal"),
     # G25: a genus-level identification is settled on its genus alone.
     (GBIF_SUCCESS, dict(literal="Epipsocus sp. 1", value="Epipsocus Hagen, 1866",
@@ -322,7 +341,7 @@ def test_a_taxon_resolves_only_on_gbifs_answer_for_the_whole_name_its_literal_wr
     found = SourceAnswer("gbif", query, LookupStatus.SUCCESS, (SourceCandidate("Decided name", "gbif:7"),),
                          Evidence(id="ev-gbif-7", kind="authority", source="gbif", locator="gbif:7",
                                   excerpt="Decided name"), note="success")
-    made = experts._Expert(task("taxon"), readings, FakeTools(), PILOT_DATES)
+    made = experts._Expert(task("taxon", candidates=offered(("1A", literal))), readings, FakeTools(), PILOT_DATES)
     made.calls.append(experts._Call("gbif", query, LookupStatus.SUCCESS, found))
     given = answer(outcome="resolved", literal=literal, reading_names=["1A"], value="Decided name",
                    authority_id="gbif:7", source_evidence_ids=["ev-gbif-7"])
@@ -334,11 +353,81 @@ def test_a_taxon_resolves_only_on_gbifs_answer_for_the_whole_name_its_literal_wr
         made.validate(given)
 
 
+# A resolved literal is a whole organiser candidate (the second review's B2).
+
+DANAUS = SourceAnswer("gbif", "Danaus plexippus", LookupStatus.SUCCESS,
+                      (SourceCandidate("Danaus plexippus (Linnaeus, 1758)", "5133088", "SPECIES"),),
+                      Evidence(id="ev-species", kind="authority", source="gbif", locator="5133088",
+                               excerpt="Danaus plexippus (Linnaeus, 1758) | 5133088 | SPECIES | "), note="exact")
+GENUS = SourceAnswer("gbif", "Danaus", LookupStatus.SUCCESS,
+                     (SourceCandidate("Danaus Kluk, 1780", "5133074", "GENUS"),),
+                     Evidence(id="ev-genus", kind="authority", source="gbif", locator="5133074",
+                              excerpt="Danaus Kluk, 1780 | 5133074 | GENUS | "), note="exact")
+SAN_PEDRO = SourceAnswer("geolocate", "San Pedro, Guatemala", LookupStatus.SUCCESS,
+                         (SourceCandidate("San Pedro", "geolocate:1"),),
+                         Evidence(id="ev-town", kind="authority", source="geolocate", locator="geolocate:1",
+                                  excerpt="San Pedro"), note="match")
+
+
+@pytest.mark.parametrize(("key", "written", "piece", "received", "rest"), [
+    # Both readers write the trinomial; the answer is the binomial GBIF was asked.
+    ("taxon", "Danaus plexippus megalippe", "Danaus plexippus", DANAUS,
+     dict(value="Danaus plexippus (Linnaeus, 1758)", authority_id="5133088", source_evidence_ids=["ev-species"])),
+    # A species label answered at its genus.
+    ("taxon", "Danaus plexippus", "Danaus", GENUS,
+     dict(value="Danaus Kluk, 1780", authority_id="5133074", source_evidence_ids=["ev-genus"])),
+    # The day dropped from a date, which then parses at month precision.
+    ("date_visited_from", "3 Sept. '46", "Sept. '46", None, dict(value="1946-09")),
+    # A town cut out of its whole name, which GEOLocate then finds.
+    ("city", "San Pedro Sacatepequez", "San Pedro", SAN_PEDRO,
+     dict(authority_id="geolocate:1", source_evidence_ids=["ev-town"])),
+])
+def test_a_resolved_literal_is_a_whole_candidate_never_a_piece_of_a_reading(key, written, piece, received, rest):
+    readings = tuple(Reading(name, "region-1", f"obs-{name}", "raw_reading", f"{written}\nleg. F. G. Werner")
+                     for name in ("1A", "1B"))
+    made = experts._Expert(task(key, candidates=offered(("1A", written), ("1B", written))), readings,
+                           FakeTools(), PILOT_DATES)
+    if received is not None:
+        made.calls.append(experts._Call(received.source_id, received.query, received.status, received))
+    if key == "date_visited_from":
+        assert asyncio.run(made.parse_date(piece))["status"] == "success"
+    given = answer(outcome="resolved", literal=piece, reading_names=["1A", "1B"], **rest)
+
+    with pytest.raises(ModelRetry, match="whole and exactly as the candidate gives it") as refused:
+        made.validate(given)
+    assert f"1A: {written!r}" in str(refused.value) and "Never shorten" in str(refused.value)
+    assert agreement.literal_refusal(made.task, readings, literal=written, named=readings) is None
+
+
+def test_an_expert_that_shortens_the_name_after_the_whole_name_retry_goes_to_review():
+    """The review's B2 at the real expert: GBIF was asked part of the name the
+    label writes; the retry asks for the whole name, and an answer that
+    shortens the literal to that part instead is sent back too."""
+    tri = "Danaus plexippus megalippe"
+    readings = (Reading("1A", "r1", "o1a", "decided_transcript", tri + "\nleg. F. G. Werner"),
+                Reading("1B", "r1", "o1b", "raw_reading", tri + "\nleg. F. G. Werner"))
+    field = task("taxon", current=FieldValue(state=ValueState.SUPPORTED, literal=tri),
+                 candidates=offered(("1A", tri), ("1B", tri)))
+    first = dict(outcome="resolved", literal=tri, reading_names=["1A"], value="Danaus plexippus (Linnaeus, 1758)",
+                 authority_id="5133088", source_evidence_ids=["ev-species"], explanation="GBIF")
+    shortened = dict(first, literal="Danaus plexippus")
+    script = Script(call("lookup", source="gbif", query="Danaus plexippus"), first, shortened, shortened)
+    resolver = make_resolver(model_factory=script.model, meter=meter(), date_rules=PILOT_DATES)
+
+    outcome = asyncio.run(resolver(field, readings, {}, tools=FakeTools({("gbif", "Danaus plexippus"): DANAUS})))
+
+    assert outcome.failure is None
+    assert outcome.answer == FieldAnswer(outcome="sources_cannot_resolve", explanation=experts.UNCHECKED)
+    whole, piece = retries(script.seen[-1][0])
+    assert f"the whole name {tri!r} writes" in whole and "Keep the literal whole" in whole
+    assert "whole and exactly as the candidate gives it" in piece
+
+
 def test_the_reviewers_taxon_probes_end_in_review_not_resolved():
     for received, value, authority in ((GBIF_UNRELATED, "Bombus impatiens Cresson, 1863", "gbif:999"),
                                        (GBIF_TWO, "Episcopus Other, 1900", "gbif:2")):
         tools = FakeTools({("gbif", received.query): received})
-        given = dict(outcome="resolved", literal="Epipsocus", reading_names=["1A"], value=value,
+        given = dict(outcome="resolved", literal="Epipsocus sp. 1", reading_names=["1A"], value=value,
                      authority_id=authority, source_evidence_ids=[received.evidence.id])
         script = Script(call("lookup", source="gbif", query=received.query), given, given, given)
 
@@ -399,7 +488,7 @@ def test_a_resolved_value_comes_from_a_check_that_settles_the_literal():
         dict(outcome="resolved", literal="1500 ft", reading_names=["2A"], value="1500"),
     )
 
-    outcome = resolve(script, task("elevation_from_ft"))
+    outcome = resolve(script, task("elevation_from_ft", candidates=offered(("2A", "1500 ft"))))
 
     assert tool_returns(script.seen[1][0])[0]["status"] == "success"
     assert outcome.failure is None and outcome.answer.value == "1500"

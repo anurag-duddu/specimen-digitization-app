@@ -4,12 +4,12 @@ Every call builds a fresh agent, `field_<key>`, with the shared rules, the field
 brief and only the tools that field may use, so each record and field starts
 with fresh context and shows in Logfire as its own agent. An answer is checked
 against the readings and against what this expert's own tools returned before
-it is accepted: the literal must occur in the readings it names, a value that
-differs from it must be a source candidate or a deterministic check's output,
-and the agreement rules hold (agreement.refusal: a label's decided transcript
-decides its literal, readers that disagree settle only on a source that
-confirms exactly one of them, a place only on a place source's candidate). A
-field-level problem never raises; it comes back as a failure.
+it is accepted: the literal must occur in the readings it names and be a whole
+organiser candidate literal of each (agreement.literal_refusal), a value that
+differs from it must be a source candidate or a deterministic check's output, a
+taxon is GBIF's decision for the whole name that candidate writes, and the
+agreement rules hold (agreement.refusal). A field-level problem never raises;
+it comes back as a failure.
 """
 
 from __future__ import annotations
@@ -404,6 +404,12 @@ class _Expert:
                     f"({refusal}). Check your brief and answer again."
                 )
             names.append(reading.name)
+        named = [self.by_label[_label(name)] for name in answer.reading_names]
+        # The literal is a whole organiser candidate of the readings it names
+        # (agreement.literal_refusal), never a piece of a reading.
+        refused = agreement.literal_refusal(self.task, self.readings, literal=literal, named=named)
+        if refused is not None:
+            raise ModelRetry(refused.retry)
         cited = [received[i] for i in answer.source_evidence_ids]
         candidates = [c for a in cited for c in a.candidates]
         if answer.authority_id and not any(
@@ -431,12 +437,14 @@ class _Expert:
                     "check you ran on exactly this literal. Leave value empty or correct it."
                 )
         if key == "taxon":
-            self._validate_taxon(answer, cited)
+            # The whole name the label writes is the candidate's, not the answer's.
+            self._validate_taxon(answer, cited,
+                agreement.candidate_literal(self.task, self.readings, literal, named) or "")
         refused = agreement.refusal(
             self.task,
             self.readings,
             literal=literal,
-            named=[self.by_label[_label(name)] for name in answer.reading_names],
+            named=named,
             value=value,
             authority_id=answer.authority_id,
             cited=cited,
@@ -447,11 +455,13 @@ class _Expert:
         return names
 
     @staticmethod
-    def _validate_taxon(answer: FieldAnswer, cited: Sequence[SourceAnswer]) -> None:
-        """A taxon is GBIF's decision for the name its literal writes: a cited
-        success whose query is that name (checks.taxon_query_grounded), and the
-        candidate GBIF decided, the one its evidence's locator names (sources.py
-        _evidence), as the value and authority_id."""
+    def _validate_taxon(answer: FieldAnswer, cited: Sequence[SourceAnswer], whole: str) -> None:
+        """A taxon is GBIF's decision for the whole name the label writes: a
+        cited success whose query is the name `whole`, the organiser's
+        candidate literal the answer's literal is, writes
+        (checks.taxon_query_grounded), and the candidate GBIF decided, the one
+        its evidence's locator names (sources.py _evidence), as the value and
+        authority_id."""
         decided = [
             a for a in cited
             if a.source_id == "gbif" and a.status == LookupStatus.SUCCESS
@@ -462,14 +472,14 @@ class _Expert:
                 "A taxon resolves only on a GBIF answer with status success: cite its "
                 "evidence_id. Otherwise answer several_possibilities or sources_cannot_resolve."
             )
-        grounded = [a for a in decided if checks.taxon_query_grounded(a.query, answer.literal or "")]
+        grounded = [a for a in decided if checks.taxon_query_grounded(a.query, whole)]
         if not grounded:
             raise ModelRetry(
-                "Cite the GBIF answer for this literal: its query must be the whole scientific "
-                "name this literal writes (genus, species and any subspecies or variety with "
+                f"Cite the GBIF answer for the whole name {whole!r} writes: its query must be "
+                "that whole scientific name (genus, species and any subspecies or variety with "
                 "its marker, as written; author and year may be left off), or the genus alone "
-                "for a genus-level identification such as 'sp.'. Look it up that way, or answer "
-                "sources_cannot_resolve."
+                "for a genus-level identification such as 'sp.'. Keep the literal whole and look "
+                "the name up that way, or answer several_possibilities or sources_cannot_resolve."
             )
         settled = answer.value or answer.literal
         for found in grounded:

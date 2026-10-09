@@ -21,7 +21,7 @@ after NFC and whitespace collapse only (checks.collapse): "E. slope" and
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 from specimen_digitization.application.domain import LookupStatus, ValueState
@@ -38,6 +38,7 @@ SOURCE_IDS = frozenset({"gbif", *PLACE_SOURCES})
 # The field's reason when a resolved answer cannot settle it (plain app text).
 DIFFER = "The readings differ, and no approved source confirms one of them."
 NOT_DECIDED = "The reading chosen for this label does not write this value."
+NOT_CANDIDATE = "This value is not the text found for this field in the readings."
 NO_PLACE = "No approved place source confirms this value."
 
 
@@ -70,6 +71,68 @@ def reader_literals(task: FieldTask, readings: Sequence[Reading]) -> dict[str, s
         if name is not None and text and text.strip():
             found.setdefault(name, set()).add(collapse(text))
     return found
+
+
+def candidates_by_reading(task: FieldTask, readings: Sequence[Reading]) -> dict[str, dict[str, str]]:
+    """Each reading's candidate literals for the field: collapsed, to the
+    literal exactly as its candidate gives it."""
+    names = {r.name for r in readings}
+    found: dict[str, dict[str, str]] = {}
+    for candidate in task.candidates:
+        if candidate.reading in names and candidate.literal.strip():
+            found.setdefault(candidate.reading, {}).setdefault(collapse(candidate.literal), candidate.literal)
+    return found
+
+
+def _deciding(reading: Reading, readings: Sequence[Reading]) -> Reading:
+    """The reading whose candidates decide a literal on this reading's label:
+    the label's decided transcript when it has one (G19), else the reading."""
+    return next((r for r in readings if r.region_id == reading.region_id and r.input_source == DECIDED),
+        reading)
+
+
+def candidate_literal(task: FieldTask, readings: Sequence[Reading], literal: str,
+        named: Sequence[Reading]) -> str | None:
+    """The whole candidate literal the answer's literal is, exactly as the
+    candidate gives it, or None when it is not a candidate literal of every
+    named reading (of the decided reading, on a label with a decided
+    transcript). Compared after NFC and whitespace collapse only."""
+    allowed = candidates_by_reading(task, readings)
+    want = collapse(literal)
+    whole = None
+    for reading in named:
+        found = allowed.get(_deciding(reading, readings).name, {})
+        if want not in found:
+            return None
+        whole = whole or found[want]
+    return whole
+
+
+def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: str,
+        named: Sequence[Reading]) -> Refusal | None:
+    """Why the answer's literal may not settle the field, or None: a label's
+    decided transcript must write it (G19), and it must be a whole candidate
+    literal of each reading it names (the decided reading's, on a label with
+    one), never a shorter or longer piece of a reading (B2)."""
+    for reading in named:
+        chosen = _deciding(reading, readings)
+        if chosen.input_source == DECIDED and literal not in chosen.text:
+            return Refusal(NOT_DECIDED, (
+                f"Reading {chosen.name} is the transcript decided for this label: its text decides "
+                f"this field (G19), and it does not contain {literal!r}. Copy the literal from "
+                f"{chosen.name}, or answer several_possibilities or sources_cannot_resolve."))
+    if candidate_literal(task, readings, literal, named) is not None:
+        return None
+    allowed = candidates_by_reading(task, readings)
+    offered = [f"{source.name}: {text!r}" for source in dict.fromkeys(_deciding(r, readings) for r in named)
+        for text in allowed.get(source.name, {}).values()]
+    shown = "; ".join(offered) or "none"
+    return Refusal(NOT_CANDIDATE, (
+        "A resolved literal is one of the organiser's candidate literals for every reading you "
+        "name (on a label with a decided transcript, that reading's), whole and exactly as the "
+        f"candidate gives it. Candidates for the readings you named: {shown}. Never shorten or "
+        "extend a candidate. Copy one and name only readings that have it, or answer "
+        "several_possibilities or sources_cannot_resolve."))
 
 
 def contested(task: FieldTask, readings: Sequence[Reading]) -> frozenset[str] | None:
@@ -141,14 +204,9 @@ def refusal(task: FieldTask, readings: Sequence[Reading], *, literal: str,
     `named` are the readings the answer names (each already writes the
     literal), `cited` the source answers it cites and `received` every source
     answer its field received."""
-    by_region: Mapping[str, Reading] = {r.region_id: r for r in readings if r.input_source == DECIDED}
-    for reading in named:
-        chosen = by_region.get(reading.region_id)
-        if chosen is not None and literal not in chosen.text:
-            return Refusal(NOT_DECIDED, (
-                f"Reading {chosen.name} is the transcript decided for this label: its text decides "
-                f"this field (G19), and it does not contain {literal!r}. Copy the literal from "
-                f"{chosen.name}, or answer several_possibilities or sources_cannot_resolve."))
+    refused = literal_refusal(task, readings, literal=literal, named=named)
+    if refused is not None:
+        return refused
     found = contested(task, readings)
     if found is not None:
         sources = frozenset(task.tools) & SOURCE_IDS

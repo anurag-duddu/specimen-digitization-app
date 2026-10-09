@@ -130,6 +130,17 @@ def make_specimen(blobs, text=TEXT, other=None):
 COLLECTORS = [("collectors", name, "J. Smith", "leg. J. Smith") for name in ("1A", "1B")]
 
 
+def every_field(*candidates):
+    """The organiser's candidates for every keyed line both readers write, as
+    the organiser gives them where no reading is decided (the keyed-line
+    parser reads only a decided transcript), with `candidates` in place of
+    those for their fields."""
+    given = {key for key, *_ in candidates}
+    keyed = [(key, name, value, f"{key}: {value}") for key, value in LABEL.items()
+        if key not in given and key != "identified_by_irn" for name in ("1A", "1B")]
+    return [*keyed, *(COLLECTORS if "collectors" not in given else ()), *candidates]
+
+
 def build_rig(tmp_path, text=TEXT, other=None, *, decided=False, candidates=COLLECTORS):
     """The run at the plan handover after adjudicate, parse and the organiser's
     `candidates` ((field, reading, literal, quote)). With `other` the second
@@ -247,7 +258,8 @@ async def default_script(task, readings, tools):
     elif key == "fmnh_ins_number":
         result = resolved(LABEL[key], value="0010001")
     elif key == "elevation_from_ft":
-        result = resolved("1500")  # As the experts write an elevation: the number alone.
+        # The organiser's candidate, whole; the check's number is its value.
+        result = resolved(LABEL[key], value="1500")
     elif key in LABEL:
         result = resolved(LABEL[key])
     else:
@@ -309,6 +321,9 @@ def test_build_tasks_names_readings_as_the_organiser_and_hands_each_field_its_ca
     assert by_key["taxon"].mandatory and not by_key["identified_by_irn"].mandatory
     assert all(task.tools == FIELD_TOOLS[task.key] for task in tasks)
     assert by_key["taxon"].current.literal == "Danaus plexippus"
+    # The keyed-line parser's value is a candidate of each reading that writes its line.
+    assert [(c.reading, c.quote, c.literal) for c in by_key["taxon"].candidates] == [
+        ("1A", "taxon: Danaus plexippus", "Danaus plexippus"), ("1B", "taxon: Danaus plexippus", "Danaus plexippus")]
     collectors = by_key["collectors"]
     assert collectors.current.state == ValueState.SUPPORTED and collectors.current.literal == "J. Smith"
     assert [(c.reading, c.quote, c.literal) for c in collectors.candidates] == [
@@ -474,11 +489,13 @@ def test_derived_values_fill_what_the_label_leaves_out(rig):
         field = run.fields[key]
         assert (field.state, field.parsed, field.literal, field.layer, field.derived_from) == (
             ValueState.SUPPORTED, value, None, "derived", sources), key
-        [derived] = [evidence[i] for i in field.evidence_ids if evidence[i].kind == "derived"]
+        [derived] = [evidence[i] for i in field.evidence_ids if evidence[i].kind == "derived"
+            and evidence[i].locator.startswith("derivation:")]
         assert value in derived.excerpt and field.evidence_relations[derived.id] == "decides"
         assert set(run.fields[sources[0]].evidence_ids) <= set(field.evidence_ids)
     # The stated value is never replaced.
-    assert run.fields["elevation_from_ft"].literal == "1500" and run.fields["elevation_from_ft"].layer == "settled"
+    stated = run.fields["elevation_from_ft"]
+    assert (stated.literal, stated.parsed, stated.layer) == ("1500 ft", "1500", "settled")
 
 
 def test_several_possibilities_keep_the_readers_verbatim_and_its_lineage(rig):
@@ -602,6 +619,71 @@ def test_a_taxon_clears_only_on_gbifs_decision_for_the_whole_name_the_label_writ
         assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["taxonomy_unresolved"])
 
 
+# ---- a resolved literal is a whole candidate (the second review's B2) ----------
+
+GENUS_NAME, GENUS_KEY = "Danaus Kluk, 1780", "5133074"
+
+
+class Genus(FakeSources):
+    """GBIF decides the genus Danaus when asked "Danaus"; the species otherwise."""
+
+    def _answer(self, source_id, query):
+        answer = super()._answer(source_id, query)
+        if source_id != "gbif" or query != "Danaus":
+            return answer
+        candidate = SourceCandidate(name=GENUS_NAME, authority_id=GENUS_KEY, kind="GENUS")
+        evidence = answer.evidence.model_copy(update={"locator": GENUS_KEY,
+            "excerpt": f"GBIF: exact accepted match\n{GENUS_NAME} | {GENUS_KEY} | GENUS | "})
+        lookup = answer.taxonomy_lookup.model_copy(update={
+            "candidates": [{"key": GENUS_KEY, "scientificName": GENUS_NAME}]})
+        return SourceAnswer("gbif", query, LookupStatus.SUCCESS, (candidate,), evidence, note="exact",
+            taxonomy_lookup=lookup)
+
+
+def place_on(query):
+    """A place expert: one GEOLocate lookup, then its candidate with the query as the literal."""
+    async def script(task, readings, tools):
+        answer = await tools.lookup("geolocate", query, field_key=task.key)
+        return FieldOutcome(task.key, resolved(query, authority_id=answer.candidates[0].authority_id,
+            cited=[answer.evidence.id]), evidence=[answer.evidence], model_calls=1)
+    return script
+
+
+@pytest.mark.parametrize(("key", "written", "script", "tools"), [
+    # Both readers write the trinomial; the expert asks GBIF the binomial and answers it.
+    ("taxon", TRINOMIAL, taxon_on("Danaus plexippus", literal="Danaus plexippus"), Subspecies),
+    # A species label answered at its genus (G25 covers only a genus-level label).
+    ("taxon", "Danaus plexippus", taxon_on("Danaus", value=GENUS_NAME, authority_id=GENUS_KEY, literal="Danaus"),
+        Genus),
+    # The day dropped from a date, which then parses at month precision.
+    ("date_visited_from", "3 Sept. '46", answering(resolved("Sept. '46", value="1946-09")), FakeSources),
+    # A town cut out of the whole name, which GEOLocate then finds.
+    ("city", "San Pedro Sacatepequez", place_on("San Pedro"), FakeSources),
+])
+def test_a_piece_of_the_text_the_label_writes_never_settles_its_field(tmp_path, key, written, script, tools):
+    rig = build_rig(tmp_path, TEXT.replace(f"{key}: {LABEL[key]}", f"{key}: {written}"))
+    run = rig.specimen.run
+    settle(rig, Scripted({key: script}), tools=tools(rig.blobs))
+    value = run.fields[key]
+    assert (value.state, value.literal) == (ValueState.UNRESOLVED, written)
+    assert value.reason == agreement.NOT_CANDIDATE + " Settled."
+    assert run.disposition == Disposition.REVIEW and f"mandatory_unresolved:{key}" in run.reasons
+
+
+def test_a_field_with_no_candidate_is_never_resolved(tmp_path):
+    """No reading is decided, so the keyed-line parser reads nothing, and the
+    organiser gave only the collectors: the taxon expert's answer, GBIF's
+    decision for the name both readers write, has no candidate to be."""
+    rig = build_rig(tmp_path, TEXT, TEXT.replace("Synthetic grassland", "Synthetic grassIand"))
+    run = rig.specimen.run
+    [task] = [task for task in build_tasks(run)[1] if task.key == "taxon"]
+    assert task.candidates == () and task.current.state == ValueState.UNKNOWN
+    settle(rig, Scripted())
+    taxon = run.fields["taxon"]
+    assert taxon.state == ValueState.UNRESOLVED and taxon.reason == agreement.NOT_CANDIDATE + " Settled."
+    assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:taxon" in run.reasons
+
+
 # ---- readers that disagree (G19, G20, G27; the review's B1) --------------------
 
 SMYTH = TEXT.replace("leg. J. Smith", "leg. J. Smyth")
@@ -657,7 +739,7 @@ def confirming(query):
 
 
 def test_a_lookup_that_confirms_exactly_one_readers_place_settles_it_and_keeps_both_readers(tmp_path):
-    rig = build_rig(tmp_path, CHIMALTENAGO, CHIMALTENANGO, candidates=PROVINCES)
+    rig = build_rig(tmp_path, CHIMALTENAGO, CHIMALTENANGO, candidates=every_field(*PROVINCES))
     run = rig.specimen.run
     first, second = run.observations
     settle(rig, Scripted({"province_state": confirming("Chimaltenango")}))

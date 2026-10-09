@@ -32,6 +32,9 @@ SOURCE = "field_research"
 ELEVATIONS = tuple(key for pair in UNITS.values() for key in pair)
 # A field the label leaves out: nothing stated, nothing settled.
 OPEN = frozenset({ValueState.UNKNOWN, ValueState.NOT_PRESENT})
+# The layers of a value field research settled from the label (step.RESEARCHED
+# less "derived").
+RESEARCHED = frozenset({"verbatim", "settled"})
 G44_DETAIL = "the label states one collecting date, so the collection ends on the day it began (G44)"
 
 
@@ -71,11 +74,22 @@ def fill(run, *, eligible: Iterable[str], asset_id: str | None, blobs=None) -> l
 def _elevations(fields):
     """G41's derivations, unless an elevation is neither settled nor open: an
     elevation the readings disagree on, or the sources could not settle, goes to
-    review before anything is derived from its unit's fields."""
+    review before anything is derived from its unit's fields.
+
+    The rules read a stated elevation's literal. A literal field research
+    settled through the elevation check keeps the organiser's whole candidate
+    ("180 to 181 m", "ca. 1200 m") and holds the check's number for its field
+    as its parsed value: the rules read that number, in the field's own unit."""
     present = [fields[key] for key in ELEVATIONS if key in fields]
     if any(value.state != ValueState.SUPPORTED and not is_open(value) for value in present):
         return []
-    return elevation_derivations(fields)
+    view = dict(fields)
+    for key in ELEVATIONS:
+        value = fields.get(key)
+        if (value is not None and value.state == ValueState.SUPPORTED and value.layer in RESEARCHED
+                and value.literal and value.parsed and value.parsed != value.literal):
+            view[key] = value.model_copy(update={"literal": value.parsed})
+    return elevation_derivations(view)
 
 
 def _derived(run, key, value, *, rule, detail, inputs, asset_id, blobs, precision=None, century_rule=None):

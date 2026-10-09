@@ -26,6 +26,7 @@ import pytest
 from PIL import Image
 
 from specimen_digitization.application.domain import ExecutionPolicy
+from specimen_digitization.application.harness import ExtractionCandidate, ExtractionOutput, apply_candidates
 from specimen_digitization.application.region_pixels import region_png
 from specimen_digitization.application.native_drain import (
     RegisteredNativeDrainWorkflow, compose_registered_native_drain,
@@ -101,6 +102,19 @@ def slide_sized(specimen, blobs):
     return len(image)
 
 
+def organised_parse(run, asset_id, blobs=None):
+    """Workflow.parse, then the organiser's one candidate the keyed lines do not
+    give: the upper end of "elevation_from_m: 180 to 181 m" in each reading, as
+    the production parse step's extraction call stores it (harness.apply_candidates).
+    Field research resolves a field only on such a candidate."""
+    Workflow.parse(run, asset_id, blobs)
+    line = "elevation_from_m: " + LABEL_VALUES["elevation_from_m"]
+    raw = b"organiser response"
+    apply_candidates(run, asset_id, ExtractionOutput(candidates=[
+        ExtractionCandidate(field_key="elevation_to_m", reading=name, literal="181", source_excerpt=line)
+        for name in ("1A", "1B")]), blobs.put(raw), hashlib.sha256(raw).hexdigest())
+
+
 def make_rig(tmp_path, *, slide=False):
     backend = SqliteStateBackend(tmp_path / "research-state.sqlite")
     backend.grant(DurabilityScope(ORG, COLLECTION, "membership", "membership", 1, WORKER, False))
@@ -109,6 +123,7 @@ def make_rig(tmp_path, *, slide=False):
     blobs = CloudBlobs(tmp_path / "blobs")
     repository = SqlConnectRepository(session=fake, graph_blobs=blobs)
     ordinary = Workflow(repository, blobs, SyntheticAdapters(blobs, LABEL_TEXT))
+    ordinary.parse = organised_parse
     token = actor_uid.set(WORKER)
     try:
         principal = worker_principal()
@@ -141,10 +156,12 @@ def supervised():
     return WorkerDeadline(time.monotonic() + 600).scope()
 
 
-# The synthetic label writes "elevation_from_m: 180 to 181 m": the experts name each
-# end's number alone; the feet and the collection's end date are left to derivation.
+# The synthetic label writes "elevation_from_m: 180 to 181 m": the experts take each
+# end's organiser candidate whole (the keyed line's range for the lower end, with the
+# check's number as its value; "181" for the upper end, organised); the feet and the
+# collection's end date are left to derivation.
 SCRIPTS = {
-    "elevation_from_m": lambda: resolved("180"),
+    "elevation_from_m": lambda: resolved(LABEL_VALUES["elevation_from_m"], value="180"),
     "elevation_to_m": lambda: resolved("181"),
     **{key: lambda: FieldAnswer(outcome="label_lacks_value", explanation="No reading states it.")
         for key in ("elevation_from_ft", "elevation_to_ft", "date_visited_to")},
@@ -209,9 +226,9 @@ def test_field_research_reaches_the_final_queue_in_one_step(rig, caplog):
     assert all(name.startswith("Append") for name in sequence[8:])
     assert dict(calls) == {"GetSpecimen": 1, "GetSnapshot": 3, "GetReceipt": 2, "SaveSpecimenV3": 2,
         "AppendSourceAssetV2": 14, "AppendEvidenceItemV2": 15, "AppendToolCallV1": 9,
-        "AppendFieldCandidateV2": 16, "AppendCandidateEvidenceV2": 22, "AppendRecordVersionV2": 1,
+        "AppendFieldCandidateV2": 16, "AppendCandidateEvidenceV2": 24, "AppendRecordVersionV2": 1,
         "AppendResolvedFieldV2": 20}
-    assert len(sequence) == 6 + 2 + 97
+    assert len(sequence) == 6 + 2 + 99
     assert not NATIVE_OPERATIONS & set(calls)
     assert not [r for r in caplog.records if "Projection" in r.getMessage()]
 

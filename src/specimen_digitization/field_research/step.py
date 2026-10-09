@@ -8,7 +8,9 @@ the workflow saves the run once after it:
 
 1. ``build_tasks``: every reading of every label, named as the organiser names
    them (1A, 1B, 2A), and one FieldTask per profile field with the organiser's
-   value after parse, its candidates and the tools its expert may call.
+   value after parse, its candidates (the organiser's, and each keyed line the
+   parser read, on each reading that writes the line) and the tools its expert
+   may call. A field is resolved only to one of its candidates' literals.
 2. ``research_fields``: a field that is already an accurate read is finalized
    with no model call; every other field's expert runs at once, inside one
    ``field_research`` span.
@@ -91,6 +93,8 @@ LOGGER = logging.getLogger(__name__)
 
 STEP = FIELD_RESEARCH
 SOURCE = "field_research"
+# The source of the keyed-line parser's label rows (Workflow.parse).
+PARSED = "label"
 TOOL_VERSION = "field-research-sources-v1"
 # The layers only field research writes on this path (the organiser and the
 # keyed-line parser leave the layer unset): a field in one of them was settled
@@ -175,6 +179,26 @@ def _candidates(run, readings: Sequence[Reading]) -> dict[str, list[Candidate]]:
             name = (decided or region)[0].name
         found.setdefault(item.field_key, []).append(
             Candidate(reading=name, quote=item.quote, literal=item.literal, evidence_id=item.evidence_id))
+    # A keyed line the parser read ("taxon: Danaus plexippus", Workflow.parse)
+    # quotes its value from a label's decided transcript: that value is a
+    # candidate of each reading of the label whose text has the line.
+    rows = {item.id: item for item in run.evidence}
+    for key, value in run.fields.items():
+        known = {(c.reading, c.literal) for c in found.get(key, ())}
+        for evidence_id in value.evidence_ids:
+            row = rows.get(evidence_id)
+            if row is None or row.source != PARSED or row.kind != "literal":
+                continue
+            name, sep, literal = row.excerpt.partition(":")
+            literal = literal.strip()
+            if not sep or name.strip() != key or not literal:
+                continue
+            for reading in regions.get(row.region_id, ()):
+                if (reading.observation_id in row.observation_ids and row.excerpt in reading.text
+                        and (reading.name, literal) not in known):
+                    known.add((reading.name, literal))
+                    found.setdefault(key, []).append(
+                        Candidate(reading=reading.name, quote=row.excerpt, literal=literal, evidence_id=row.id))
     return found
 
 
@@ -668,8 +692,9 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     evidence it cites (GBIF decides; other sources support); a deterministic
     check's parse gets a "derived" row when the check, run again on the
     literal, gives that value. A resolved answer the agreement rules refuse
-    (agreement.refusal: a pick between readers no source settles, a literal
-    the label's decided transcript does not write, a place no place source
+    (agreement.refusal: a literal that is not a whole candidate of the
+    readings it names, or that the label's decided transcript does not write,
+    a pick between readers no source settles, a place no place source
     confirms) is ambiguous or unresolved instead. label_lacks_value: not present;
     sources_cannot_resolve: unresolved; several_possibilities: ambiguous, the
     options in the reason; a failure: unresolved with a retryable reason. Then

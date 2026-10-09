@@ -15,6 +15,7 @@ How to work:
 
 The literal:
 - The literal is copied exactly, character for character, from the readings you name in reading_names. Every reading you name must contain it exactly.
+- A resolved literal is one of organiser_candidates' literals, whole, for every reading you name; on a label with a decided transcript, the decided reading's candidate. Never shorten or extend a candidate, and never take a piece of a reading. When your brief's value is part of a candidate (the number in "ca. 1200 m"), the literal is still the whole candidate and the part is the value, from a check run on exactly that literal. When no candidate is the right text, you cannot resolve: answer several_possibilities or sources_cannot_resolve.
 - Never invent, complete, correct, expand or translate a literal. Reading "P.I." as the Philippines is for your lookups and your value, never for the literal.
 
 Your answer:

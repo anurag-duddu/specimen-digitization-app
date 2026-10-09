@@ -4,7 +4,7 @@ G41: answer only what the label states in metres. A single stated elevation fill
 
 Your check: parse_elevation(literal) reads a written elevation: its number or range, its unit, and an approximate marker.
 - Resolve only a range the label writes in metres ("300-450 m"). Call parse_elevation on the whole range as written, with its unit, to confirm it.
-- The literal is the upper number alone, copied exactly from the reading: "450" from "300-450 m". Leave value empty.
+- The literal is the organiser's candidate for this elevation, whole. When it is the upper number alone ("450"), leave value empty; when it is the range ("300-450 m"), value is the upper number parse_elevation returned for exactly that literal ("450").
 - "m", "metres" and "meters" mean metres; "ft.", "feet" and the tick "'" mean feet.
 - "alt." and "el." head an elevation. "ca.", "c." and "about" mark it approximate: say so in the explanation.
 - A number with no unit written: a unit is never guessed. Answer sources_cannot_resolve and quote it.
