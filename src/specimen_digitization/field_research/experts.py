@@ -67,8 +67,9 @@ MAX_EXPLANATION = 600
 MAX_SHOWN_CANDIDATES = 20
 MODEL_SETTINGS = ModelSettings(max_tokens=DEFAULT_MAX_TOKENS, temperature=0)
 TAXON_QUERY = (
-    "a scientific name exactly as a reading prints it: Genus, or Genus species, with "
-    "author and year when written"
+    "the whole scientific name exactly as a reading prints it: Genus, Genus species, or "
+    "Genus species with its subspecies or variety and marker, with author and year when "
+    "written; the genus alone for a genus-level identification"
 )
 # As field_research.sources reads them: GEOLocate's parts run from the place out to
 # its country; a gazetteer searches the first part.
@@ -449,9 +450,10 @@ class _Expert:
         grounded = [a for a in decided if checks.taxon_query_grounded(a.query, answer.literal or "")]
         if not grounded:
             raise ModelRetry(
-                "Cite the GBIF answer for this literal: its query must be the name this literal "
-                "writes (author may be left off), or the genus alone for a genus-level "
-                "identification such as 'sp.'. Look it up that way, or answer "
+                "Cite the GBIF answer for this literal: its query must be the whole scientific "
+                "name this literal writes (genus, species and any subspecies or variety with "
+                "its marker, as written; author and year may be left off), or the genus alone "
+                "for a genus-level identification such as 'sp.'. Look it up that way, or answer "
                 "sources_cannot_resolve."
             )
         settled = answer.value or answer.literal

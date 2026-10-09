@@ -185,7 +185,7 @@ def test_the_expert_gets_its_brief_its_tools_and_every_reading_as_evidence():
     assert "Field: Country (country)" not in info.instructions
     assert [tool.name for tool in info.function_tools] == ["lookup"]
     lookup = info.function_tools[0]
-    assert "gbif: a scientific name" in lookup.description and "geolocate" not in lookup.description
+    assert "gbif: the whole scientific name" in lookup.description and "geolocate" not in lookup.description
     assert lookup.parameters_json_schema["properties"]["source"]["enum"] == ["gbif"]
     assert info.model_settings["max_tokens"] == 2048 and info.model_settings["temperature"] == 0
     [request] = messages
@@ -288,7 +288,7 @@ GBIF_UNRELATED = SourceAnswer(
     # GBIF was asked about a name no reading writes (the reviewer's first probe).
     (GBIF_UNRELATED, dict(literal="Epipsocus", value="Bombus impatiens Cresson, 1863",
                           authority_id="gbif:999", source_evidence_ids=["ev-gbif-9"]),
-     "query must be the name this literal writes"),
+     "query must be the whole scientific name this literal writes"),
     # The alternative GBIF listed, not the candidate it decided (the second probe).
     (GBIF_TWO, dict(literal="Epipsocus", value="Episcopus Other, 1900", authority_id="gbif:2",
                     source_evidence_ids=["ev-gbif-1"]), "the candidate GBIF decided"),
@@ -308,6 +308,30 @@ def test_a_taxon_resolves_only_on_the_candidate_gbif_decided_for_its_literal(rec
         return
     with pytest.raises(ModelRetry, match=says):
         made.validate(given_answer)
+
+
+@pytest.mark.parametrize(("literal", "query", "says"), [
+    # GBIF's answer for part of the name the label writes (the review's B2).
+    ("Danaus plexippus megalippe", "Danaus plexippus", "whole scientific name"),
+    ("Bombus impatiens on Solidago canadensis", "Solidago canadensis", "whole scientific name"),
+    ("Danaus plexippus megalippe", "Danaus plexippus megalippe", None),
+    ("Epipsocus sp.", "Epipsocus", None),  # G25: a genus-level identification, at genus rank
+])
+def test_a_taxon_resolves_only_on_gbifs_answer_for_the_whole_name_its_literal_writes(literal, query, says):
+    readings = (Reading("1A", "region-1", "obs-1a", "decided_transcript", literal + "\nleg. F. G. Werner"),)
+    found = SourceAnswer("gbif", query, LookupStatus.SUCCESS, (SourceCandidate("Decided name", "gbif:7"),),
+                         Evidence(id="ev-gbif-7", kind="authority", source="gbif", locator="gbif:7",
+                                  excerpt="Decided name"), note="success")
+    made = experts._Expert(task("taxon"), readings, FakeTools(), PILOT_DATES)
+    made.calls.append(experts._Call("gbif", query, LookupStatus.SUCCESS, found))
+    given = answer(outcome="resolved", literal=literal, reading_names=["1A"], value="Decided name",
+                   authority_id="gbif:7", source_evidence_ids=["ev-gbif-7"])
+
+    if says is None:
+        assert made.validate(given).value == "Decided name"
+        return
+    with pytest.raises(ModelRetry, match=says):
+        made.validate(given)
 
 
 def test_the_reviewers_taxon_probes_end_in_review_not_resolved():

@@ -9,9 +9,9 @@ otherwise it is policy_blocked with the note literal_not_in_source.
 
 from __future__ import annotations
 
-import re
+import unicodedata
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, replace
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
 from typing import Any, Literal
 
@@ -176,23 +176,41 @@ def parse_date(
     return DateCheck(literal, result.outcome, readings, tuple(result.warnings))
 
 
-def taxon_query_grounded(query: str, literal: str) -> bool:
-    """Whether GBIF was asked about the name this taxon literal writes.
+def collapse(text: str) -> str:
+    """Text as two readers' literals, or a query and a name, are compared: NFC
+    and whitespace collapsed, nothing else. Case, punctuation and the spacing
+    between words still differ ("E. slope" is not "E.slope")."""
+    return " ".join(unicodedata.normalize("NFC", text).split())
 
-    The query is a whole-word part of the literal (its author or a note may be
-    left off), and it names more than a genus unless the literal is itself a
-    genus-level identification (G25: "Epipsocus sp. 1" is asked as "Epipsocus"),
-    as the scientific-name parser reads it. The six-specialist harness holds
-    the deciding query to the same written assertion
-    (research_harness.evidence._validate_taxon_inputs).
+
+def taxon_queries(literal: str) -> frozenset[str]:
+    """The GBIF queries that ask about the whole name a taxon literal writes.
+
+    The scientific-name parser's query for the literal (the genus, any
+    subgenus, the species epithet and any infraspecific epithet with its
+    marker, as written, and the author and year when written), and the same
+    without the author and year. What is not part of the name the parser
+    leaves out (sex signs, counts, specimen numbers). For a genus-level
+    identification ("Epipsocus sp. 1", G25) its query is the genus alone. A
+    literal it reads only in part ("Aus bus n. sp."), or that writes no genus
+    ("sp. 30"), has none. This is the native rule: the deciding query is the
+    declared reading's complete name (research_harness.evidence
+    _validate_taxon_inputs, with _taxon_assertions' complete()).
     """
-    query = query.strip()
-    if not query or not re.search(r"(?<!\w)" + re.escape(query) + r"(?!\w)", literal):
-        return False
-    if len(query.split()) > 1:
-        return True
     name = taxonomy_scientific_name(literal)
-    return bool(name and name.genus and name.partly_read is None and name.query == query)
+    if name is None or not name.genus or name.partly_read is not None:
+        return frozenset()
+    forms = {name.query}
+    if name.authorship:
+        forms.add(replace(name, authorship=None).query)
+    return frozenset(collapse(form) for form in forms)
+
+
+def taxon_query_grounded(query: str, literal: str) -> bool:
+    """Whether GBIF was asked about the whole name this taxon literal writes
+    (taxon_queries). A query for part of it ("Danaus plexippus" for "Danaus
+    plexippus megalippe") or for another name on its line is not."""
+    return collapse(query) in taxon_queries(literal)
 
 
 def _evidence_error_note(message: str) -> str:

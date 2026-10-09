@@ -12,6 +12,8 @@ from specimen_digitization.field_research.checks import (
     metres_to_feet,
     parse_date,
     parse_elevation,
+    taxon_queries,
+    taxon_query_grounded,
 )
 
 # The pilot profile's rules (application/profiles/published.json).
@@ -124,6 +126,33 @@ def test_exact_conversions_to_hundredths():
     assert metres_to_feet("300") == "984.25"
     with pytest.raises(ValueError):
         feet_to_metres("about 3")
+
+
+def test_a_taxon_query_is_the_whole_name_the_label_writes():
+    # Genus, species and any infraspecific epithet with its marker, as written;
+    # the author and year may be left off.
+    trinomial = "Danaus plexippus megalippe"
+    assert taxon_query_grounded(trinomial, trinomial)
+    assert taxon_query_grounded(trinomial, trinomial + " (Hubner, 1819)")
+    assert taxon_query_grounded(trinomial + " (Hubner, 1819)", trinomial + " (Hubner, 1819)")
+    assert not taxon_query_grounded("Danaus plexippus", trinomial)
+    assert taxon_query_grounded("Aus bus var. cus", "Aus bus var. cus")
+    assert not taxon_query_grounded("Aus bus cus", "Aus bus var. cus")
+    # Another name on the literal's line is not its name.
+    assert taxon_query_grounded("Bombus impatiens", "Bombus impatiens on Solidago canadensis")
+    assert not taxon_query_grounded("Solidago canadensis", "Bombus impatiens on Solidago canadensis")
+    # A sex sign and a count are no part of the name.
+    assert taxon_query_grounded("Danaus plexippus", "Danaus plexippus \u2640 3")
+    # G25: a genus-level identification is asked as its genus.
+    assert taxon_query_grounded("Epipsocus", "Epipsocus sp.")
+    assert not taxon_query_grounded("Epipsocus", "Epipsocus pallidus")
+
+
+def test_a_label_with_no_genus_has_no_groundable_taxon_query():
+    # 105526321's taxon line: a morphocode and a sex sign, no genus.
+    assert taxon_queries("sp. 30 \u2640") == frozenset()
+    for query in ("sp. 30", "sp.", "sp. 30 \u2640"):
+        assert not taxon_query_grounded(query, "sp. 30 \u2640")
 
 
 def test_catalog_numbers():

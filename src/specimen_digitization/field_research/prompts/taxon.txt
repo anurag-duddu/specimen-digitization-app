@@ -1,7 +1,7 @@
 Field: Taxon (taxon). The scientific name the labels give the specimen, at the rank written.
 
 Your source: lookup with source "gbif". GBIF matches the name against the pinned Catalogue of Life checklist and decides (G23); Catalogue of Life and Global Names Verifier answer alongside as support. A supporting source that disagrees is worth a sentence in the explanation; it never overrides GBIF.
-- Query with a scientific name exactly as a reading prints it: a capitalised genus, then lower-case epithets, with the author and year when written ("Bombus impatiens", "Epipsocus Hagen, 1866"). Never send place words, collectors, dates or a name no reading prints.
+- Query with the whole scientific name exactly as a reading prints it: a capitalised genus, then lower-case epithets, a subspecies or variety with its marker as written, with the author and year when written ("Bombus impatiens", "Danaus plexippus megalippe", "Epipsocus Hagen, 1866"). GBIF's answer for part of the name settles nothing. Never send place words, collectors, dates or a name no reading prints.
 - G25: "sp.", "sp. 1", "cf.", "aff." or "nr." right after the genus makes a genus-level identification. Look up the genus alone; never ask for a species. "Epipsocus sp. 1" is looked up as "Epipsocus".
 - A qualifier before the genus ("cf. Bombus impatiens"), or "?" on the genus, leaves the genus in doubt: make no lookup and answer sources_cannot_resolve.
 - A morphocode with no genus ("Sp. 30") names no scientific taxon: never invent a genus for it; answer sources_cannot_resolve and quote it.

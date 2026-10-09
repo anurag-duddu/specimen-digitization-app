@@ -73,8 +73,9 @@ RESEARCHED = {key for key, tools in FIELD_TOOLS.items() if tools}
 TODAY = date(2026, 10, 8)
 
 
-def make_specimen(blobs, text=TEXT):
-    """A non-sensitive specimen at adjudicate: one label, two agreeing readers."""
+def make_specimen(blobs, text=TEXT, other=None):
+    """A non-sensitive specimen at adjudicate: one label, two readers, which agree
+    unless `other` is the second reader's text."""
     published = published_registry().profiles[0]
     output = io.BytesIO()
     Image.new("RGB", (100, 100), "white").save(output, format="JPEG", quality=95)
@@ -108,38 +109,59 @@ def make_specimen(blobs, text=TEXT):
     run.dependencies = {"adapter": "FieldResearchTest", "synthetic": False,
         "profile_snapshot_sha256": digest(run.profile_snapshot)}
     crop = hashlib.sha256(crop_png).hexdigest()
-    for route in run.profile.routes:
-        raw = ("SYNTHETIC FIXTURE " + route + "\n" + text).encode()
+    texts = [text] + [other or text] * (len(run.profile.routes) - 1)
+    for route, written in zip(run.profile.routes, texts, strict=True):
+        raw = ("SYNTHETIC FIXTURE " + route + "\n" + written).encode()
         run.observations.append(Observation(region_id=region.id, route_id=route, model_id="synthetic-" + route,
             provider="synthetic", prompt_version="prompt:" + route, input_sha256=crop, input_asset_id=asset.id,
-            input_crop_ref=region.crop_ref, literal_text=text, raw_ref=blobs.put(raw),
+            input_crop_ref=region.crop_ref, literal_text=written, raw_ref=blobs.put(raw),
             raw_sha256=hashlib.sha256(raw).hexdigest()))
     run.completed_steps = ["pin_dependencies", "classify", "quality_check", "segment"] + [
         f"transcribe:{region.id}:{route}" for route in run.profile.routes]
+    if len(set(texts)) > 1:
+        # The first pass picked no reading (its synthetic fixture never does).
+        run.completed_steps.append(f"first_pass:{region.id}")
     run.stage = "running"
     return specimen
 
 
-@pytest.fixture
-def rig(tmp_path):
+# The organiser's candidate for the unkeyed collectors line, in both readings.
+COLLECTORS = [("collectors", name, "J. Smith", "leg. J. Smith") for name in ("1A", "1B")]
+
+
+def build_rig(tmp_path, text=TEXT, other=None, *, decided=False, candidates=COLLECTORS):
+    """The run at the plan handover after adjudicate, parse and the organiser's
+    `candidates` ((field, reading, literal, quote)). With `other` the second
+    reader differs; `decided` then has the first pass pick reader 1A, whose
+    text becomes the label's transcript (G19); otherwise no reading is picked."""
     blobs = LocalBlobs(tmp_path / "blobs")
     repository = SQLiteRepository(tmp_path / "records.sqlite")
     clock = SimpleNamespace(now=datetime(2026, 10, 8, 12, tzinfo=timezone.utc))
     workflow = Workflow(repository, blobs, SyntheticAdapters(blobs, TEXT), clock=lambda: clock.now)
     principal = worker_principal()
-    created = repository.create(principal, make_specimen(blobs), "intake", "intake")
-    workflow.step(principal, created.id)  # adjudicate
+    created = repository.create(principal, make_specimen(blobs, text, other), "intake", "intake")
+    adjudicated = workflow.step(principal, created.id)  # adjudicate
+    if decided:
+        [transcript] = adjudicated.run.transcripts
+        first = adjudicated.run.observations[0]
+        transcript.text, transcript.resolved = first.literal_text, True
+        transcript.selected_observation_id = first.id
+        repository.save(principal, adjudicated, adjudicated.version, "first-pass", "first-pass")
     parsed = workflow.step(principal, created.id)  # parse
     assert workflow.next_step(parsed.run) == "plan"
-    # The organiser's candidate for the unkeyed collectors line, in both readings.
     run = parsed.run
     raw = b"organiser response"
     apply_candidates(run, parsed.asset.id, ExtractionOutput(candidates=[
-        ExtractionCandidate(field_key="collectors", reading=name, literal="J. Smith", source_excerpt="leg. J. Smith")
-        for name in ("1A", "1B")]), blobs.put(raw), hashlib.sha256(raw).hexdigest())
+        ExtractionCandidate(field_key=key, reading=name, literal=literal, source_excerpt=quote)
+        for key, name, literal, quote in candidates]), blobs.put(raw), hashlib.sha256(raw).hexdigest())
     parsed = repository.save(principal, parsed, parsed.version, "organiser", "organiser")
     return SimpleNamespace(blobs=blobs, repository=repository, workflow=workflow, principal=principal,
         specimen=parsed, clock=clock)
+
+
+@pytest.fixture
+def rig(tmp_path):
+    return build_rig(tmp_path)
 
 
 class FakeSources:
@@ -504,10 +526,10 @@ class TwoTaxa(FakeSources):
             note="exact", taxonomy_lookup=answer.taxonomy_lookup)
 
 
-def taxon_on(query, *, value=GBIF_NAME, authority_id=GBIF_KEY):
+def taxon_on(query, *, value=GBIF_NAME, authority_id=GBIF_KEY, literal=LABEL["taxon"]):
     async def script(task, readings, tools):
         answer = await tools.lookup("gbif", query, field_key=task.key)
-        return FieldOutcome(task.key, resolved(LABEL["taxon"], value=value, authority_id=authority_id,
+        return FieldOutcome(task.key, resolved(literal, value=value, authority_id=authority_id,
             cited=[answer.evidence.id]), evidence=[answer.evidence], lookups=[answer.taxonomy_lookup], model_calls=1)
     return script
 
@@ -535,6 +557,48 @@ def test_a_taxon_query_is_the_name_its_literal_writes_or_a_genus_level_identific
     assert not taxon_query_grounded("Danau", "Danaus sp.")
     assert not taxon_query_grounded("Bombus impatiens", "Danaus plexippus")
     assert not taxon_query_grounded(" ", "Danaus plexippus")
+    # Part of the name the label writes is not that name (the review's B2).
+    assert not taxon_query_grounded("Danaus plexippus", "Danaus plexippus megalippe")
+
+
+TRINOMIAL = "Danaus plexippus megalippe"
+SUBSPECIES_NAME, SUBSPECIES_KEY = "Danaus plexippus megalippe (Hubner, 1819)", "5133090"
+
+
+class Subspecies(FakeSources):
+    """GBIF decides the subspecies when asked the whole trinomial; the species
+    (GBIF_NAME) for any other name."""
+
+    def _answer(self, source_id, query):
+        answer = super()._answer(source_id, query)
+        if source_id != "gbif" or query != TRINOMIAL:
+            return answer
+        candidate = SourceCandidate(name=SUBSPECIES_NAME, authority_id=SUBSPECIES_KEY, kind="SUBSPECIES")
+        evidence = answer.evidence.model_copy(update={"locator": SUBSPECIES_KEY,
+            "excerpt": f"GBIF: exact accepted match\n{SUBSPECIES_NAME} | {SUBSPECIES_KEY} | SUBSPECIES | "})
+        lookup = answer.taxonomy_lookup.model_copy(update={
+            "candidates": [{"key": SUBSPECIES_KEY, "scientificName": SUBSPECIES_NAME}]})
+        return SourceAnswer("gbif", query, LookupStatus.SUCCESS, (candidate,), evidence, note="exact",
+            taxonomy_lookup=lookup)
+
+
+@pytest.mark.parametrize(("query", "value", "key", "cleared"), [
+    # GBIF's decision for "Danaus plexippus": the subspecies would be lost unreviewed.
+    ("Danaus plexippus", GBIF_NAME, GBIF_KEY, False),
+    (TRINOMIAL, SUBSPECIES_NAME, SUBSPECIES_KEY, True),
+])
+def test_a_taxon_clears_only_on_gbifs_decision_for_the_whole_name_the_label_writes(
+        tmp_path, query, value, key, cleared):
+    rig = build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", "taxon: " + TRINOMIAL))
+    settle(rig, Scripted({"taxon": taxon_on(query, value=value, authority_id=key, literal=TRINOMIAL)}),
+        tools=Subspecies(rig.blobs))
+    run = rig.specimen.run
+    taxon = run.fields["taxon"]
+    assert (taxon.state, taxon.literal, taxon.normalized) == (ValueState.SUPPORTED, TRINOMIAL, value)
+    if cleared:
+        assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+    else:
+        assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["taxonomy_unresolved"])
 
 
 def test_no_elevation_is_derived_from_a_unit_the_readings_disagree_on(rig):
