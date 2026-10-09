@@ -178,6 +178,15 @@ def test_a_label_with_no_genus_has_no_groundable_taxon_query():
     ("sp.", False),
     ("sp. nov.", False),
     ("spp. 2", False),
+    # A plural or a qualifier is no code (N3 of #289's review).
+    ("spp", False),
+    ("sp nov", False),
+    ("sp aff", False),
+    ("sp cf", False),
+    ("sp. n.", False),
+    ("sp n", False),
+    ("sp. nr.", False),
+    ("sp gr", False),
     ("sp. ABC", False),
     ("cf. sp. 1", False),
     ("", False),
@@ -204,6 +213,11 @@ def test_names_no_genus(literal, no_genus):
     ("Epipsocus sp. 1", None),
     ("sp. nov.", None),
     (None, None),
+    # A plural or a qualifier is no code (N3 of #289's review).
+    ("spp", None),
+    ("sp nov", None),
+    ("sp aff", None),
+    ("sp cf", None),
 ])
 def test_a_morphocode_is_its_number_or_code(literal, code):
     from specimen_digitization.field_research import checks

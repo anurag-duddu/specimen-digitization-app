@@ -207,11 +207,30 @@ def taxon_queries(literal: str) -> frozenset[str]:
     return frozenset(collapse(form) for form in forms)
 
 
-# A morphocode with no genus: "sp." (or "Sp", "sp #"), then a number with an
-# optional letter or a short lower-case code, then optional sex signs
-# ("sp. 30 <female sign>", "Sp. 22", "sp aa", "sp #1").
-NO_GENUS = re.compile(r"[Ss][Pp]\.?\s*#?\s*(?P<code>\d+[a-z]?|[a-z]{1,3})(?:\s*["
-    "\N{FEMALE SIGN}\N{MALE SIGN}])*")
+# The words after "sp." that qualify a name rather than code a morphospecies:
+# "sp. n." and "sp. nov." (a new species), "sp. aff." and "sp. cf." (close to a
+# species), "sp. nr." (near one), "sp. gr." and "sp. grp." (a species group),
+# "sp. ind." and "sp. inc." (undetermined).
+QUALIFIERS = ("n", "nov", "aff", "cf", "nr", "gr", "grp", "ind", "inc")
+# A space inside one line.
+_GAP = r"[^\S\n]"
+# A morphocode with no genus: "sp." (or "Sp", "sp #"), not the end of a longer
+# word ("wasp"), then a number with an optional letter, or a short lower-case
+# code after a space or a period that is no qualifier, then optional sex signs:
+# "sp. 30 <female sign>", "Sp. 22", "Sp.30", "sp aa", "sp #1", "Sp.#1". "spp",
+# "sp nov", "sp. nov.", "sp aff", "sp cf" and "sp. n." are none. Within one
+# line only, so that it can also be searched for in a reading's text.
+NO_GENUS = re.compile(
+    r"(?<![A-Za-z])[Ss][Pp]"
+    r"(?:\.?" + _GAP + r"*#?" + _GAP + r"*(?P<number>\d+[a-z]?)(?![A-Za-z0-9])"
+    r"|(?:\." + _GAP + r"*|" + _GAP + r"+)#?" + _GAP + r"*"
+    r"(?!(?:" + "|".join(QUALIFIERS) + r")(?![a-z]))(?P<letters>[a-z]{1,3})(?![A-Za-z0-9.]))"
+    r"(?:" + _GAP + "*[\N{FEMALE SIGN}\N{MALE SIGN}])*")
+
+
+def _code(match: re.Match) -> str:
+    """A NO_GENUS match's number or code, case aside."""
+    return (match["number"] or match["letters"]).casefold()
 
 
 def names_no_genus(literal: str | None) -> bool:
@@ -236,7 +255,7 @@ def morphocode(literal: str | None) -> str | None:
     "sp. 39" are not). None for any other literal."""
     if not names_no_genus(literal):
         return None
-    return NO_GENUS.fullmatch(collapse(literal)).group("code").casefold()
+    return _code(NO_GENUS.fullmatch(collapse(literal)))
 
 
 def taxon_query_grounded(query: str, literal: str) -> bool:
