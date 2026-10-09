@@ -17,6 +17,7 @@ store failure raises.
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import dataclasses
 import hashlib
 import json
@@ -42,6 +43,7 @@ from specimen_digitization.research_harness.contracts import FieldKey, SourceQue
 from specimen_digitization.research_harness.source_readiness import SOURCE_READINESS
 from specimen_digitization.research_harness.sources import (
     GEOLOCATE_ENDPOINT,
+    SOURCE_PACER,
     SOURCE_REQUEST_INTERVAL_SECONDS,
     RequestPacer,
     SourcePolicy,
@@ -131,9 +133,11 @@ def taxonomy_policies() -> tuple[SourcePolicy, ...]:
 
 
 def cache_key(source_id: str, query: str, field_key: str) -> str:
-    """A query as the cache compares it: NFC, whitespace collapsed, casefolded.
-    A GEOLocate query is its JSON object with sorted keys, and its field too,
-    because geolocate_verdict checks the claimed value against the field."""
+    """A query as the cache compares it: NFC, whitespace collapsed, casefolded
+    except for GBIF, where case is part of a scientific name ("apis" names no
+    genus, and verify_taxon reads them apart). A GEOLocate query is its JSON
+    object with sorted keys, and its field too, because geolocate_verdict
+    checks the claimed value against the field."""
     text = query
     if source_id == "geolocate":
         try:
@@ -143,7 +147,8 @@ def cache_key(source_id: str, query: str, field_key: str) -> str:
         if isinstance(parsed, dict):
             text = json.dumps(parsed, sort_keys=True, ensure_ascii=False)
         text = f"{field_key}\n{text}"
-    return " ".join(unicodedata.normalize("NFC", text).split()).casefold()
+    text = " ".join(unicodedata.normalize("NFC", text).split())
+    return text if source_id == "gbif" else text.casefold()
 
 
 def interpretation(query: str, field_key: FieldKey) -> str:
@@ -307,19 +312,29 @@ def _forget_failure(cache: dict, key, task: asyncio.Future, keep: tuple = ()) ->
 
 class _LoopTransport(httpx.BaseTransport):
     """verify_taxon's synchronous requests, sent by the record's AsyncClient on
-    its event loop, so they share its transport and connection pool."""
+    its event loop, so they share its transport and connection pool. Once the
+    record's sources are closed a request fails at once, as one in flight then
+    does: verify_taxon reads both as a request that could not be made."""
 
-    def __init__(self, send: Callable[[httpx.Request], Awaitable[httpx.Response]], loop):
-        self._send = send
+    def __init__(self, sources: ApprovedSources, loop):
+        self._sources = sources
         self._loop = loop
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
-        future = asyncio.run_coroutine_threadsafe(self._send(request), self._loop)
+        sources = self._sources
+        ended = httpx.RequestError("the record's lookups have ended", request=request)
+        if sources.closed:
+            raise ended
+        future = sources._on_loop(self._loop, sources._send_taxonomy(request))
         try:
             return future.result(timeout=REQUEST_TIMEOUT_SECONDS + 5)
         except TimeoutError as error:
             future.cancel()
             raise httpx.ReadTimeout("no answer in time", request=request) from error
+        except concurrent.futures.CancelledError:
+            raise ended from None
+        finally:
+            sources._running.discard(future)
 
 
 class ApprovedSources:
@@ -333,7 +348,11 @@ class ApprovedSources:
     `blobs` is the application's blob store (application.storage.BlobStore),
     `client` the AsyncClient every request goes through. `place_text` is the
     record's place-field literals and unassigned locality text, which a taxon
-    request never carries (verify_taxon, PLAN 4.8).
+    request never carries (verify_taxon, PLAN 4.8). GEOLocate's spacing is the
+    process's (research_harness.sources.SOURCE_PACER), so it holds across
+    records; a test's own clock and sleep get a pacer of their own.
+
+    `close()` ends the record's lookups when its research ends.
     """
 
     def __init__(
@@ -355,10 +374,34 @@ class ApprovedSources:
         self._clock = clock
         self._place_text = tuple(place_text)
         self._registry = approved_registry()
-        # GEOLocate's spacing between request starts, for this record's requests.
-        self._pacer = RequestPacer(SOURCE_REQUEST_INTERVAL_SECONDS, clock=clock, sleep=sleep)
+        self._pacer = (
+            SOURCE_PACER
+            if sleep is asyncio.sleep and clock is time.monotonic
+            else RequestPacer(SOURCE_REQUEST_INTERVAL_SECONDS, clock=clock, sleep=sleep)
+        )
         self._answers: dict[tuple[str, str], asyncio.Task[SourceAnswer]] = {}
         self._responses: dict[str, asyncio.Task[_Fetched]] = {}
+        # verify_taxon's requests and waits on the loop, from its worker threads.
+        self._running: set[concurrent.futures.Future] = set()
+        self.closed = False
+
+    def close(self) -> None:
+        """End this record's lookups: its research is over. A GBIF verification
+        still running in its worker thread gets no more requests or waits and
+        ends at once, instead of holding the step: asyncio.run waits for every
+        worker thread before it returns."""
+        self.closed = True
+        for future in list(self._running):
+            future.cancel()
+
+    def _on_loop(self, loop, coroutine) -> concurrent.futures.Future:
+        """Run a coroutine on the record's loop from a worker thread, cancelled
+        by close()."""
+        future = asyncio.run_coroutine_threadsafe(coroutine, loop)
+        self._running.add(future)
+        if self.closed:
+            future.cancel()
+        return future
 
     async def lookup(self, source_id: str, query: str, *, field_key: str) -> SourceAnswer:
         if source_id not in self.sources or source_id not in SOURCES:
@@ -436,10 +479,18 @@ class ApprovedSources:
 
     def _verify(self, query: str, loop: asyncio.AbstractEventLoop) -> Verification:
         def sleep(seconds: float) -> None:
-            asyncio.run_coroutine_threadsafe(self._sleep(seconds), loop).result()
+            if self.closed:
+                return
+            future = self._on_loop(loop, self._sleep(seconds))
+            try:
+                future.result()
+            except concurrent.futures.CancelledError:
+                pass  # Closed: the next request fails at once.
+            finally:
+                self._running.discard(future)
 
         with httpx.Client(
-            transport=_LoopTransport(self._send_taxonomy, loop),
+            transport=_LoopTransport(self, loop),
             headers=HEADERS,
             follow_redirects=False,
         ) as client:

@@ -9,6 +9,7 @@ import hashlib
 import io
 import json
 import re
+import time
 from pathlib import Path
 
 import httpx
@@ -36,9 +37,11 @@ from specimen_digitization.field_research.sources import (
     EXCERPT_LIMIT,
     ApprovedSources,
     approved_registry,
+    cache_key,
     excerpt,
 )
 from specimen_digitization.research_harness.committed_pins import _committed_registry
+from specimen_digitization.research_harness.sources import SOURCE_PACER
 
 TESTS = Path(__file__).parents[1]
 GEOREF = TESTS / "fixtures" / "georeferencing"
@@ -292,12 +295,49 @@ async def test_gbif_concurrent_duplicates_make_one_verification(tmp_path):
     tools, server, _, _ = make(tmp_path, taxonomy(gbif_match("EXACT", MELLIFERA)))
     first, second = await asyncio.gather(
         tools.lookup("gbif", "Apis mellifera Linnaeus, 1758", field_key="taxon"),
-        tools.lookup("gbif", "apis  mellifera linnaeus, 1758", field_key="taxon"),
+        tools.lookup("gbif", "Apis  mellifera\nLinnaeus, 1758", field_key="taxon"),
     )
     assert len(server.requests) == 4  # GBIF match and index, GNV, COL: once
     assert second.evidence is first.evidence
     assert second.taxonomy_lookup is first.taxonomy_lookup
-    assert second.query == "apis  mellifera linnaeus, 1758"
+    assert second.query == "Apis  mellifera\nLinnaeus, 1758"
+
+
+@pytest.mark.asyncio
+async def test_closing_ends_a_running_gbif_verification_at_once(tmp_path):
+    """Research ended with a GBIF request in flight: its worker thread must not
+    hold the step, since asyncio.run waits for every worker thread."""
+    asked = asyncio.Event()
+
+    async def hang(request):
+        asked.set()
+        await asyncio.sleep(3600)
+
+    tools = ApprovedSources(blobs=CountingBlobs(tmp_path / "blobs"),
+                            client=httpx.AsyncClient(transport=httpx.MockTransport(hang)))
+    field = asyncio.ensure_future(tools.lookup("gbif", "Apis mellifera", field_key="taxon"))
+    await asyncio.wait_for(asked.wait(), 5)
+    [shared] = tools._answers.values()
+    field.cancel()  # The research deadline cancels the field's expert,
+    tools.close()  # and the record's lookups end with the research.
+    began = time.monotonic()
+    answer = await asyncio.wait_for(shared, 5)
+    assert time.monotonic() - began < 2
+    assert answer.status is not LookupStatus.SUCCESS and answer.evidence is None
+    assert not tools._running
+
+
+@pytest.mark.asyncio
+async def test_gbif_queries_that_differ_in_case_are_different_questions(tmp_path):
+    # A scientific name's case is part of it: "apis" names no genus.
+    assert cache_key("gbif", "Apis mellifera", "taxon") != cache_key("gbif", "apis mellifera", "taxon")
+    assert cache_key("gbif", "Apis  mellifera", "taxon") == cache_key("gbif", "Apis mellifera", "taxon")
+    assert cache_key("tgn", "Davao", "city") == cache_key("tgn", "DAVAO", "city")
+    tools, server, _, _ = make(tmp_path, taxonomy(gbif_match("EXACT", MELLIFERA)))
+    upper = await tools.lookup("gbif", "Apis mellifera", field_key="taxon")
+    lower = await tools.lookup("gbif", "apis mellifera", field_key="taxon")
+    assert upper.status is LookupStatus.SUCCESS
+    assert lower.taxonomy_lookup is not upper.taxonomy_lookup and lower.evidence is not upper.evidence
 
 
 # --- GEOLocate ---
@@ -433,6 +473,15 @@ async def test_geolocate_requests_start_at_least_three_seconds_apart(tmp_path):
     starts = sorted(at for at, _ in server.requests)
     assert len(starts) == 3
     assert all(later - earlier >= 3 for earlier, later in zip(starts, starts[1:], strict=False))
+
+
+def test_geolocate_spacing_holds_across_records(tmp_path):
+    """Each record has its own sources; the spacing between GEOLocate requests is
+    the process's, as the six-specialist harness keeps it."""
+    blobs = LocalBlobs(tmp_path / "blobs")
+    client = httpx.AsyncClient(transport=httpx.MockTransport(nothing))
+    first, second = (ApprovedSources(blobs=blobs, client=client) for _ in range(2))
+    assert first._pacer is second._pacer is SOURCE_PACER
 
 
 # --- Retries and failures ---
