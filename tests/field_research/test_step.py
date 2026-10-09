@@ -2467,6 +2467,36 @@ def test_metres_above_sea_level_keep_the_elevations_in_review(tmp_path, written)
     assert cleared_as_not_on_label(run) == set(ABSENT) - set(ELEVATIONS)
 
 
+# N1 of #289's second review: units the place tool does not read, as Latin
+# American labels write them, and metres as "m" or "m.", which it does.
+SPANISH_AND_SHORT_UNITS = ["1200 mts.", "1200 mts", "1200 metros", "1200 msm", "6400 pies", "6400 p.s.n.m.",
+    "1200 m.", "1200 m"]
+
+
+@pytest.mark.parametrize("written", SPANISH_AND_SHORT_UNITS)
+def test_an_elevation_in_spanish_or_short_units_keeps_the_elevations_in_review(tmp_path, written):
+    """The organiser gives no elevation candidate and the elevation experts
+    say the label lacks one."""
+    rig = build_rig(tmp_path, SPARSE + "\n" + written)
+    run = rig.specimen.run
+    settle(rig, lacking(*ABSENT))
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, unresolved(*ELEVATIONS))
+    assert cleared_as_not_on_label(run) == set(ABSENT) - set(ELEVATIONS)
+
+
+@pytest.mark.parametrize(("text", "elevation"), [
+    *((written, True) for written in SPANISH_AND_SHORT_UNITS),
+    ("1,200 MTS", True), ("ca.1200 mts.", True), ("1200-1500 mts.", True), ("1200 a 1500 metros", True),
+    ("Yepocapa, 1200 msm\nGuatemala", True),
+    # No unit, another unit, or a number that ends a date or a code.
+    ("1200 mm", False), ("12 mi", False), ("1200", False), ("V-4-67-1\nsp 22\nlegs", False),
+    ("IX - 3 - 66 - 10", False), ("10-6-78-la", False), ("sp. 30 \N{FEMALE SIGN}", False),
+    ("lot #2 cut branch", False), ("1200\nmts.", False),
+])
+def test_a_number_and_a_unit_is_an_elevation_the_label_writes(text, elevation):
+    assert (field_step.NUMBER_AND_UNIT.search(text) is not None) is elevation
+
+
 def test_a_label_whose_coverage_is_not_confirmed_never_clears_a_field_as_not_on_the_label(tmp_path):
     rig = build_rig(tmp_path, SPARSE)
     run = rig.specimen.run

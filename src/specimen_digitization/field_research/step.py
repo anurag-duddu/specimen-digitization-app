@@ -1041,6 +1041,16 @@ ELEVATION_FIELDS = frozenset({"elevation_from_m", "elevation_to_m", "elevation_f
 # but not "msnm" or "masl" written as one word (georef_locality.ELEVATION).
 SEA_LEVEL_METRES = re.compile(
     r"\d[^\S\n]*m\.?[^\S\n]*(?:s\.?[^\S\n]*n\.?[^\S\n]*m|a\.?[^\S\n]*s\.?[^\S\n]*l)(?![A-Za-z])", re.I)
+# A number, then a unit of elevation the place tool does not read, as Latin
+# American labels write it: metres ("1200 mts.", "1200 mts", "1200 metros",
+# "1200 msm") and feet ("6400 pies", "6400 p.s.n.m."); or metres as "m" or
+# "m." ("1200 m", "1200 m."), which the place tool reads too. The number
+# stands on its own, never the end of a date or a code ("V-4-67-1"), with an
+# optional range end ("1200-1500 mts."); the unit is a whole word on the
+# number's line ("1200 mm" is none).
+NUMBER_AND_UNIT = re.compile(
+    r"(?<![A-Za-z0-9/-])\d+(?:[.,]\d+)*(?:[^\S\n]*-[^\S\n]*\d+(?:[.,]\d+)*)?[^\S\n]*"
+    r"(?:m|mts?|mtrs?|metros?|msm|pies|p\.?[^\S\n]*s\.?[^\S\n]*n\.?[^\S\n]*m)\.?(?![A-Za-z0-9])", re.I)
 UNREADABLE_TEXT = "[unreadable]"
 
 
@@ -1111,15 +1121,17 @@ def _inside_a_settled_place(run, key: str, text: str) -> bool:
 
 def _elevation_written(run, readings: Sequence[Reading]) -> bool:
     """Whether any reading writes an elevation: as the place tool reads one
-    (georef_locality.read_locality), in its whole text or in any one line,
-    or a number in metres above sea level (SEA_LEVEL_METRES: "2000 msnm",
+    (georef_locality.read_locality), in its whole text or in any one line;
+    a number in metres above sea level (SEA_LEVEL_METRES: "2000 msnm",
     "1200 masl", "1200 m.s.n.m.", "1200 m snm"), which the place tool does
-    not read when written as one word."""
+    not read when written as one word; or a number and a unit it does not
+    read (NUMBER_AND_UNIT: "1200 mts.", "1200 metros", "1200 msm", "6400
+    pies", "6400 p.s.n.m.", and "1200 m" or "1200 m." too)."""
     from specimen_digitization.application.georef_locality import read_locality
 
     texts = dict.fromkeys([*(r.text for r in readings), *(o.literal_text for o in run.observations)])
-    return any(SEA_LEVEL_METRES.search(text) for text in texts) or any(read_locality(part).elevations
-        for text in texts for part in (text, *text.splitlines()) if part.strip())
+    return any(SEA_LEVEL_METRES.search(text) or NUMBER_AND_UNIT.search(text) for text in texts) or any(
+        read_locality(part).elevations for text in texts for part in (text, *text.splitlines()) if part.strip())
 
 
 def _place_settled_below_province(run) -> bool:
