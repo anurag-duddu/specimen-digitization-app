@@ -434,6 +434,18 @@ def _qualifier(text: str) -> bool:
     return _DOUBT_QUALIFIER.search(text) is not None
 
 
+# What a reader may write in place of a word it cannot read: the reader
+# prompt's "[unreadable]", and the other placeholders a transcriber uses
+# (N1 of #289's fourth review), anywhere in a text, in any case.
+DOUBT_PLACEHOLDERS = ("[unreadable]", "[illegible]", "[?]", "???", "...", "[...]", "\N{HORIZONTAL ELLIPSIS}")
+
+
+def _placeholder(text: str) -> bool:
+    """One of DOUBT_PLACEHOLDERS ("..." also inside "....")."""
+    folded = text.casefold()
+    return any(placeholder in folded for placeholder in DOUBT_PLACEHOLDERS)
+
+
 # The signs that a name on a label is in doubt or that part of a label
 # cannot be read, the one list (B3 of #289's fourth review): each sign's
 # name and its test of a text. Owner decision B (step._unmatched_taxon, and
@@ -448,6 +460,7 @@ def _qualifier(text: str) -> bool:
 DOUBT_SIGNS: tuple[tuple[str, Callable[[str], bool] | None], ...] = (
     ("question_mark", _question_mark),
     ("qualifier", _qualifier),
+    ("placeholder", _placeholder),
     ("unreadable_span", None),
 )
 

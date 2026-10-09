@@ -2489,6 +2489,10 @@ SECOND_LABELS = {
     "qualified-genus": ("cf. Epipsocus", ()),
     "unreadable-genus-span-listed": ("[unreadable]", ("0:12",)),
     "partly-unreadable-genus-span-listed": ("[unreadable]psocus det.", ("0:12",)),
+    # The reader's marker with no span listed (N1 of #289's fourth review).
+    "unreadable-genus-no-span": ("[unreadable]", ()),
+    "partly-unreadable-genus-no-span": ("[unreadable]psocus det.", ()),
+    "illegible-genus-no-span": ("[illegible]", ()),
 }
 
 
@@ -2503,6 +2507,30 @@ def test_a_doubtful_or_unreadable_genus_on_another_label_keeps_the_taxon_in_revi
     assert {r.text for r in field_step.run_readings(run) if r.region_id == run.regions[1].id} == {label}
     settle(rig, Scripted({"taxon": cannot_resolve(SP1)}), tools=NoGenus(rig.blobs))
     taxon_held_back(run)
+
+
+# N1 of #289's fourth review: a genus written with a placeholder other than
+# the reader prompt's "[unreadable]", no unreadable span listed. The text,
+# the organiser's candidate, and its quote.
+PLACEHOLDER_GENUS = {
+    "bracketed-question-before-the-code": ("V-4-67-1\n[?] " + SP1, SP1, "[?] " + SP1),
+    "ellipsis-before-the-code": ("V-4-67-1\n... " + SP1, SP1, "... " + SP1),
+    # 105526328's label 2 with a placeholder as its genus line.
+    "328-bracketed-ellipsis": ("VI-24-68-7.\n[...]\nsp. 1\n\N{FEMALE SIGN} terminalia", "sp. 1", "sp. 1"),
+    "328-question-marks": ("VI-24-68-7.\n???\nsp. 1\n\N{FEMALE SIGN} terminalia", "sp. 1", "sp. 1"),
+    "328-ellipsis-character": ("VI-24-68-7.\n\N{HORIZONTAL ELLIPSIS}\nsp. 1\n\N{FEMALE SIGN} terminalia", "sp. 1",
+        "sp. 1"),
+    # Away from the code, where the label check does not read it.
+    "illegible-above-the-slide-number": ("[illegible]\nV-4-67-1\n" + SP1, SP1, SP1),
+}
+
+
+@pytest.mark.parametrize(("written", "code", "quote"), PLACEHOLDER_GENUS.values(), ids=PLACEHOLDER_GENUS)
+def test_a_placeholder_for_an_unread_genus_keeps_the_taxon_in_review(tmp_path, written, code, quote):
+    rig = build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", written),
+        candidates=[*COLLECTORS, *(("taxon", name, code, quote) for name in ("1A", "1B"))])
+    settle(rig, Scripted({"taxon": cannot_resolve(code)}), tools=NoGenus(rig.blobs))
+    taxon_held_back(rig.specimen.run)
 
 
 @pytest.mark.parametrize("line", ["Epipsocus?", "cf. Epipsocus"])

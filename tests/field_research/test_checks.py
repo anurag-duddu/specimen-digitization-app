@@ -453,8 +453,10 @@ def test_a_gbif_query_names_a_genus_when_a_name_or_a_genus_shaped_word_is_asked(
 def test_the_signs_of_a_doubtful_or_unreadable_name_are_one_list():
     from specimen_digitization.field_research import checks
 
-    assert [name for name, _ in checks.DOUBT_SIGNS] == ["question_mark", "qualifier", "unreadable_span"]
+    assert [name for name, _ in checks.DOUBT_SIGNS] == ["question_mark", "qualifier", "placeholder", "unreadable_span"]
     assert checks.DOUBT_QUALIFIERS == ("cf.", "aff.", "nr.", "near", "prob.")
+    assert checks.DOUBT_PLACEHOLDERS == ("[unreadable]", "[illegible]", "[?]", "???", "...", "[...]",
+        "\N{HORIZONTAL ELLIPSIS}")
     assert checks.doubt_signs(["Epipsocus?", "V-4-67-1", "cf. Epipsocus"]) == ("question_mark", "qualifier")
     assert checks.doubt_signs(["sp. 1 " + FEMALE], unreadable=True) == ("unreadable_span",)
     assert checks.doubt_signs([]) == ()
@@ -486,6 +488,17 @@ def test_a_doubt_sign_shows_wherever_a_text_writes_it(text, sign):
 
     assert checks.doubt_signs([text]) == (sign,)
     assert checks.doubt_signs(["V-4-67-1\nsp. 1 " + FEMALE, text]) == (sign,)
+
+
+# N1 of #289's fourth review: a placeholder for a word a reader could not
+# read, on a line of its own, in any case.
+@pytest.mark.parametrize("placeholder", ["[unreadable]", "[UNREADABLE]", "[illegible]", "[Illegible]", "[?]", "???",
+    "...", "....", "[...]", "\N{HORIZONTAL ELLIPSIS}"])
+def test_a_placeholder_for_an_unread_word_is_a_doubt_sign(placeholder):
+    from specimen_digitization.field_research import checks
+
+    assert checks.doubt_signs([placeholder]) == ("placeholder",)
+    assert "placeholder" in checks.doubt_signs(["VI-24-68-7.\n" + placeholder + "\nsp. 1\n" + FEMALE + " terminalia"])
 
 
 # The real readings of every label of the pilot's 105526321, 105526326 and
