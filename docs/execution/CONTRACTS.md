@@ -236,6 +236,19 @@ endpoints or converted elevations pending policy. Identified-by identity is
 `{source_system, tenant, environment, module: "eparties", irn}` with confirmed
 authority evidence. A catalogue IRN or person-name search snippet is insufficient.
 
+Planned, not yet in force (2026-10-08): field contract v2 replaces these 20
+keys with four groups (IDs, collection related, taxa related, date), and every
+value records how it was obtained (`label`, `derived` or `inferred`) with its
+support. The sentence above about not inventing missing dates, endpoints or
+converted elevations "pending policy" is the policy question v2 answers: a
+value supported by recorded evidence is derived or inferred and filled in;
+a value with no recorded support is still not invented. These 20 keys remain
+the contract for every record published under v1, and nothing in this section
+changes until the rollout reaches the harness. The structure, worked examples,
+rollout order and open items are in
+[`PRD.md`](../product-requirements/PRD.md), section "Field model v2: four
+groups".
+
 Clearance requires label coverage, two independent configured observations per
 required label, completed adjudication, resolved critical disagreements, all
 mandatory values, valid schema, full provenance, no unresolved hard findings,

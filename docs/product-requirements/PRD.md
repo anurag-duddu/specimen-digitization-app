@@ -568,6 +568,217 @@ the current pilot's requiredness and clearance policy. The policy for
 accepting qualitative temporal expressions, interpreting seasons and handling
 absent event dates still needs to be defined for the new schema version.
 
+#### Field model v2: four groups
+
+Status: the four groups were confirmed by the owner on 2026-10-08. Four working
+defaults in "Open items" still await the owner's reading. Nothing here is
+implemented, and nothing here changes the clearance rules of the current pilot.
+
+Sources of this decision:
+
+- The owner's message that opened the Codex thread "Create field cleanup branch"
+  (2026-10-07): the 20 pilot fields are EMu's own shape, for example elevation
+  stored as feet, metres, from and to. The application should own its schema.
+  A database adapter maps to EMu, or to any other database, later and is not
+  part of this work.
+- The owner's statements in the Claude Code session of 2026-10-08: "yes, those
+  four groups are the destination"; the harness derives and infers values, and
+  the schema records how; a person reviews only the field, or the part of a
+  field, that conflicts or is in doubt; location is a tree; the three labels
+  below for how a value was obtained; the rollout order below; published
+  pilot records stay as they are.
+
+The goal behind the schema: each specimen resolves itself from the raw
+transcription to final database records without a person in the pipeline, by
+the same searches, lookups and reasoning a person would use. The schema exists
+to receive those results and to say how each one was obtained.
+
+##### The four groups
+
+| Group | What it holds | Replaces these v1 keys |
+|---|---|---|
+| IDs (specimen identity) | Identifiers (catalogue number as text, with namespace and source) and the collection reference | `fmnh_ins_number`, `collection_code` |
+| Collection related (collecting event) | The place as a tree, elevation, collectors, habitat, collection method, and the event's date | `country`, `province_state`, `county`, `city`, `precise_location`, the four elevation keys, `collectors`, `habitat`, `collection_method` |
+| Taxa related (identification) | The name as written and as resolved, who identified it, and the identification's date | `taxon`, `identified_by_irn` |
+| Date | One reusable "when" value, used by the collecting event and by the identification. It also carries what Verbatim D/T/S held. | `date_visited_from`, `date_visited_to`, `date_identified`, `verbatim_dts` |
+
+##### How every value is recorded
+
+Each value, and each part of a value, carries:
+
+- the value, typed by its kind (see "Value kinds");
+- how it was obtained, one of three labels:
+  - `label`: read from the label as written;
+  - `derived`: it follows from what is stated plus a known fact or a lookup,
+    for example a unit conversion, a historical country name, a Roman-numeral
+    month;
+  - `inferred`: a reasoned conclusion that is probable but not certain;
+- its support: the wording as read, the readings that contain it, each lookup
+  (source, query and result) and any reasoning that led to it;
+- its state: the existing value states (`supported`, `unknown`, `unreadable`,
+  `not_present`, `not_applicable`, `ambiguous`, `unresolved`);
+- whether a person needs to look at it, and why (conflict, doubt, or nothing
+  supports it).
+
+The record the harness writes today already has a layer on each value
+(`verbatim`, `settled`, `derived`; owner ruling G38, 2026-09-24). The three
+labels map onto it: `label` is `verbatim`; `derived` is `settled` when a lookup
+or a known fact supplied it, or `derived` when other settled fields supplied it;
+`inferred` is the only new value. A value in the live v1 shape can therefore
+carry its basis today, and v2 does not need a second vocabulary.
+
+Rules:
+
+1. The harness does everything the evidence supports. A value that can be read,
+   derived or inferred with recorded support is filled in, with its label.
+   This is the policy that the earlier contract text ("do not invent missing
+   dates, endpoints or converted elevations pending policy") left open.
+   Inventing a value with no recorded support remains forbidden.
+2. A value is `unresolved` only when nothing supports even an inference.
+3. On a conflict or a doubt, the harness fills in the best-supported value and
+   marks that part for a person. A person sees the part that needs attention,
+   not the whole record.
+4. The original wording is always kept next to every interpreted value.
+5. A person's decision on a part is recorded as a person's decision. The
+   earlier label and support stay in the history.
+6. A derived or inferred value never silently becomes `label`.
+
+##### Value kinds
+
+- Elevation: one value of kind `point`, `range`, or a one-sided limit (`above`
+  or `below`). Numbers are exact decimals in metres, the canonical unit. The
+  reader chooses feet or metres for display, with the exact definition
+  1 ft = 0.3048 m. The original wording and unit stay in the support. A value
+  with no unit is kept, and the unit is itself a part with its own label.
+  A `range` keeps both bounds inside the one value. Approximation (for
+  example "ca.") is a flag, uncertainty is recorded only when the source states
+  it, the vertical datum defaults to unknown, and a terrain-model value keeps
+  its method and dependencies and is never shown as a collector's measurement.
+  Feet and metre statements that disagree remain competing assertions.
+- Place: a tree from the broadest level to the most specific. Each node has a
+  level, a name, and its own label, support and review state. The verbatim
+  locality stays at the root as read. The set of levels is not fixed, because
+  it differs by country: the pilot already spans island and province in the
+  Philippines and department and municipality in Guatemala. Coordinates are not
+  part of v2; under the owner's 2026-10-03 geography rulings, a matched point
+  is candidate metadata in the tool result and the trace, not a record field.
+- When: the original wording plus an optional date and an optional time,
+  independently. A date can be exact, partial (year, or year and month), an
+  interval, a bound, a season, or unresolved. A time can be a clock time, a
+  named part of the day, or am and pm. Examples: `Avril 1917` is month
+  precision with the French kept; `Summer 1914` is a season and a year with no
+  invented endpoints; `sunrise` is a named part of the day; a single date is
+  stored once, not copied into a second endpoint.
+- Person: the recorded name and role, an optional resolved identity, and
+  optional qualified external identities. An EMu IRN is one such identity, not
+  the person.
+- Taxon: the name as written plus its resolved taxonomy (accepted name, rank,
+  authorship, status), each with its own label and support.
+- Identifier: a namespace, the value as text with leading zeros kept, and the
+  source.
+
+##### Worked example: subject 105526321
+
+The label as a person read it (the S8 hand-read table of the ten pilot labels,
+2026-09-23, kept in the go-live coordination folder): locality "E. slope Mt.
+McKinley / Davao Prov. / Mindanao, P.I.", "Mossy forest 6400'", date "3 Sept.
+'46", collector "F.G. Werner".
+
+| Part | Value | Label | Support |
+|---|---|---|---|
+| Place: country | Philippines | derived | "P.I." is the pre-independence name of the country (Philippine Islands); Mindanao and Davao agree |
+| Place: island | Mindanao | label | as written |
+| Place: province | Davao | label | as written; which present-day province contains the named place is a lookup |
+| Place: named place | E. slope Mt. McKinley | label | as written; a place lookup confirms it lies in that province, or marks a conflict for a person |
+| Elevation | 6400 ft, stored as 1950.72 m, kind `point` | label, metre value derived | "6400'" as written; 6400 x 0.3048 = 1950.72 |
+| When (collecting) | 1946-09-03, day precision | derived | "3 Sept. '46": the two-digit year is read as 1946, as the same collection's other labels state |
+| Collectors | F.G. Werner | label | as written; one of the two readers wrote "Wermer", a conflict between readings. This part goes to a person unless a lookup settles it. |
+
+Four more cases from the same ten labels:
+
+- Subject 105526322: both readers dropped the foot mark and wrote "Elev. 6400".
+  Metres is implausible, because 6400 m exceeds the highest point in the
+  Philippines (Mt. Apo, about 2,954 m). The unit is recorded as feet with label
+  `inferred` and that reasoning as its support, never silently.
+- Subjects 105526324 to 105526326: "IX-14-46" is 14 September 1946, with a
+  Roman-numeral month, `derived`. Subject 105526327: "XI.'46" is November 1946
+  at month precision, with no invented day.
+- Top-edge codes such as "10-6-78-1a" and "IX-17-66-2" are slide-preparation
+  codes. They are not collection dates and are not read as dates.
+- Subjects 105526329 and 105526330: the label spells "Chimaltenago". One reader
+  silently corrected it to "Chimaltenango". The label's spelling is kept as
+  read, and the corrected department name is `derived` and says so.
+
+##### How a person resolves each group today
+
+A starting point from sources the repository already names. The harness
+proposal requested on 2026-10-08 refines it for each field's expert.
+
+| Group | Where a person looks | Named in this repository |
+|---|---|---|
+| IDs | The label and its barcode; the collection list | The FMNH-INS identifier is validated and canonicalized while its literal form is kept |
+| Collection related | The label; gazetteers and maps for places; a terrain model for elevation | GEOLocate checks the historian agent's reading of the locality (2026-10-03 rulings); Google Maps is not used; a terrain-model elevation exists in the georeferencing code |
+| Taxa related | Taxonomic name databases | Global Names Verifier, Catalogue of Life, GBIF; BugGuide for North American context under the browser policy. The identifier's identity waits for EMu Parties (G16) and stays recorded as not resolved |
+| Date | The label; calendar, season and Roman-numeral conventions | No external source; interpretation rules |
+
+##### Contract v2 and rollout order
+
+Contract v2 is the structure above. Contract v1, the 20 keys in the pilot table,
+stays valid for every record already published, and published pilot records are
+not rewritten. Every change to the field list costs a contract version, so the
+four groups are settled together. Whether v2 is released in one step or several
+is decided with the harness proposal.
+
+The order follows what the code enforces today:
+
+1. This documentation lands first. It changes no behaviour.
+2. The harness contract gains versioned key sets and the value record above.
+   Today `FieldKey` is both the vocabulary and the "all fields mandatory" set,
+   and the `CollectionProfile` validator requires a profile's fields to equal
+   it exactly, so v1 profile snapshots must stay valid.
+3. The app accepts both key sets before the server emits v2. The app's
+   `ResearchThread` reader rejects a thread unless its fields equal its
+   hard-coded vocabulary, and its embedded schemas are regenerated from the
+   server's `FieldKey` export.
+4. The new Data Connect publish operation ships together with its caller,
+   never alone. The data release's additive gate refuses to remove or rename
+   an existing operation, so any operation added is permanent. The existing
+   publish operation hard-codes the 20 v1 keys, and editing it is refused.
+5. The harness resolvers switch to v2 after the harness work now in flight has
+   landed. That work replaces the six topic specialists with one expert per
+   field. The answer record of those experts must carry how each value was
+   obtained, its support and part-level review from the start, because adding
+   inference after their first live pass would change that record a second
+   time. Changing prompt or profile pins holds in-flight jobs, so the switch
+   runs when the queue is drained. The harness proposal names the first field
+   group to switch; the place tree is the candidate, because it needs the
+   tree, inference and part-level review together.
+6. Part-level review needs a way to address a part of a field. Today a human
+   question is keyed to one whole field. That design belongs to the harness
+   proposal.
+7. Removing the v1 keys is a separate, later release. The data release never
+   drops, deletes or truncates, so that removal needs the owner.
+
+##### Open items
+
+Four working defaults, used until the owner says otherwise:
+
+1. "Date Visited" always means the collecting date.
+2. One collecting event per specimen. Any other case goes to a person.
+3. Clearance requirements stay as they are today, mapped onto the new fields.
+4. Identification history and a separate georeference are left out of v2, with
+   room to add them later.
+
+Not decided by this section:
+
+- Which information is required for clearance under a v2 profile. The data
+  model can represent missing information; the clearance policy is a separate
+  decision.
+- Final key names. The names in this section are descriptive.
+- The meaning of `verbatim_dts` for the kind check recorded in
+  `docs/execution/golive/PLAN.md`, which that plan saves for the owner.
+- The EMu adapter, which is deferred.
+
 #### Source registry and intended use
 
 | Domain | Source | Intended pilot use | Automation status |
