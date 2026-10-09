@@ -2119,3 +2119,64 @@ def test_the_not_on_label_list_is_the_published_profiles_and_reaches_a_pinned_sn
     assert field_step.not_on_label_keys(field_step.profile_of(run)) == listed
     other = dict(run.profile_snapshot, version="1.0.1")
     assert field_step.not_on_label_keys(field_step.profile_of(SimpleNamespace(profile_snapshot=other))) == frozenset()
+
+
+def test_a_retry_researches_a_field_marked_not_on_the_label_again_and_cites_only_its_new_row(tmp_path):
+    rig = build_rig(tmp_path, SPARSE)
+    mounted(rig, lacking(*ABSENT, country=failing("source_unavailable")))
+    run = rig.workflow.step(rig.principal, rig.specimen.id).run
+    assert (run.stage, run.blocker) == ("retry_scheduled", "lookup_operational_failure")
+    [first] = not_on_label_rows(run, "habitat")
+    second = lacking(*ABSENT)
+    mounted(rig, second)
+    rig.clock.now += timedelta(hours=1)
+    run = rig.workflow.step(rig.principal, rig.specimen.id).run
+    assert "habitat" in second.calls and (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+    [row] = not_on_label_rows(run, "habitat")
+    assert row.id != first.id and first.id in {item.id for item in run.evidence}
+    assert cleared_as_not_on_label(run) == set(ABSENT)
+
+
+MCKINLEY = "E. slope Mt. McKinley"
+
+
+@pytest.mark.parametrize(("city", "kept"), [("Mt. McKinley", ()), ("Mt. Apo", ("city",))],
+    ids=["inside-the-settled-locality", "a-place-of-its-own"])
+def test_a_city_the_organiser_took_from_the_settled_precise_location_counts_as_absent(tmp_path, city, kept):
+    """105526321's second label: the organiser offers "Mt. McKinley", part of
+    the precise location the record settles, as the city."""
+    text = label_with(**dict.fromkeys(set(ABSENT) - {"precise_location"}, None), city=None,
+        precise_location=MCKINLEY) + ("" if city in MCKINLEY else "\n" + city)
+    quote = "precise_location: " + MCKINLEY if city in MCKINLEY else city
+    rig = build_rig(tmp_path, text, candidates=[*COLLECTORS, *(("city", name, city, quote) for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    settle(rig, lacking(*(set(ABSENT) - {"precise_location"}), "city",
+        precise_location=answering(resolved(MCKINLEY))))
+    assert run.fields["precise_location"].state == ValueState.SUPPORTED
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW if kept else Disposition.CLEARED, unresolved(*kept))
+    assert ("city" in cleared_as_not_on_label(run)) is not kept
+
+
+def test_a_label_whose_coverage_is_not_confirmed_never_clears_a_field_as_not_on_the_label(tmp_path):
+    rig = build_rig(tmp_path, SPARSE)
+    run = rig.specimen.run
+    run.coverage_confirmed = False
+    settle(rig, lacking(*ABSENT))
+    assert run.reasons == ["label_coverage_unconfirmed", *unresolved(*ABSENT)]
+    assert not any(not_on_label_rows(run, key) for key in ABSENT)
+
+
+def test_readers_of_an_undecided_label_that_write_one_morphocode_settle_it(tmp_path):
+    """No first-pass pick (the readers differ on the habitat line), and both
+    write "sp. 30" with a female sign: B1 settles the taxon on that text."""
+    other = morphocoded(MORPHOCODE).replace("Synthetic grassland", "Synthetic grassIand")
+    rig = build_rig(tmp_path, morphocoded(MORPHOCODE), other, candidates=every_field(
+        *(("taxon", name, MORPHOCODE, "taxon: " + MORPHOCODE) for name in ("1A", "1B"))))
+    run = rig.specimen.run
+    assert {r.input_source for r in field_step.run_readings(run)} == {"raw_reading"}
+    settle(rig, Scripted({"taxon": cannot_resolve(MORPHOCODE, asks=[MORPHOCODE])}), tools=NoGenus(rig.blobs))
+    taxon = run.fields["taxon"]
+    assert (taxon.state, taxon.literal, taxon.input_source) == (ValueState.SUPPORTED, MORPHOCODE, "raw_reading")
+    assert set(taxon.verbatim_by_observation.values()) == {MORPHOCODE}
+    assert field_step.taxon_unmatched(taxon, {item.id: item for item in run.evidence}, run.lookups)
+    assert not [reason for reason in run.reasons if "taxon" in reason]
