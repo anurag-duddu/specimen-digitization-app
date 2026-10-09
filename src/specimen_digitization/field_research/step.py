@@ -1038,15 +1038,27 @@ def _organiser_texts(task: FieldTask) -> list[str]:
 
 
 def _inside_a_settled_place(run, key: str, text: str) -> bool:
-    """Whether the text, collapsed and case-folded, sits inside the literal of
-    another supported place field."""
-    from .checks import collapse
+    """Whether the text names part of another supported place field's
+    literal, word for word: its words, by the place comparison key
+    (agreement.place_name: case, accents and punctuation aside, "Mt." read as
+    "mount"), are a run of whole words of that literal's ("Mt. McKinley" in
+    "E. slope Mt. McKinley"; never "Lee" in "Leesburg"). A text that writes a
+    unit word of its own ("Cook County", "Davao Prov.", "Chimaltenango Dept.",
+    "Mun. Yepocapa"; georef_locality.UNIT_WORDS) names a place of its own
+    field and never counts."""
+    from specimen_digitization.application.georef_locality import UNIT_WORDS, fold
 
-    folded = collapse(text).casefold()
+    from .agreement import place_name
+
+    words = place_name(text).split()
+    if not words or any(word in UNIT_WORDS for word in fold(text).split()):
+        return False
     for other in PLACE_TEXT_FIELDS:
         value = run.fields.get(other)
-        if (other != key and value is not None and value.state == ValueState.SUPPORTED and value.literal
-                and folded and folded in collapse(value.literal).casefold()):
+        if other == key or value is None or value.state != ValueState.SUPPORTED or not value.literal:
+            continue
+        within = place_name(value.literal).split()
+        if any(within[start:start + len(words)] == words for start in range(len(within) - len(words) + 1)):
             return True
     return False
 
@@ -1089,8 +1101,10 @@ def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask
        every reading has text (_whole_label_read);
     4. no part of any label is unreadable (_whole_label_read);
     5. the organiser found no text for it (_organiser_texts); for a county,
-       a city or a precise location, a text counts as absent only when it
-       sits inside the literal of another supported place field;
+       a city or a precise location, a text counts as absent only when its
+       whole words, by the place comparison key, are a run of the words of
+       another supported place field's literal, and it writes no unit word
+       of its own (_inside_a_settled_place);
     6. for an elevation, no reading writes an elevation (_elevation_written);
     7. for a precise location, a city or a county is supported.
     The value then cites one check row (kind "derived", locator

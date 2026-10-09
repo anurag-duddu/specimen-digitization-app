@@ -2307,6 +2307,33 @@ def test_a_city_the_organiser_took_from_the_settled_precise_location_counts_as_a
     assert ("city" in cleared_as_not_on_label(run)) is not kept
 
 
+def test_a_county_with_its_own_unit_word_inside_the_settled_locality_stays_in_review(tmp_path):
+    """N1 of #289's review: the locality line names the county, and the
+    county's expert (wrongly) finds none. "Cook County" writes its own unit
+    word, so it is a county of its own, not part of the locality."""
+    place = "Cook County Forest Preserve"
+    text = label_with(**dict.fromkeys(set(ABSENT) - {"precise_location"}, None), precise_location=place)
+    rig = build_rig(tmp_path, text, candidates=[*COLLECTORS,
+        *(("county", name, "Cook County", "precise_location: " + place) for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    settle(rig, lacking(*(set(ABSENT) - {"precise_location"}), precise_location=answering(resolved(place))))
+    assert run.fields["precise_location"].state == ValueState.SUPPORTED
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, unresolved("county"))
+    assert "county" not in cleared_as_not_on_label(run) and not not_on_label_rows(run, "county")
+
+
+def test_a_county_that_is_only_part_of_a_word_of_the_settled_city_stays_in_review(tmp_path):
+    """N1 of #289's review: "Lee" on a line of its own is no part of the
+    settled city "Leesburg": places compare by whole words."""
+    text = label_with(**dict.fromkeys(ABSENT, None), city="Leesburg") + "\nLee"
+    rig = build_rig(tmp_path, text, candidates=[*COLLECTORS, *(("county", name, "Lee", "Lee") for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    settle(rig, lacking(*ABSENT, city=confirming("Leesburg", reading="1A")))
+    assert run.fields["city"].state == ValueState.SUPPORTED
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, unresolved("county"))
+    assert "county" not in cleared_as_not_on_label(run) and not not_on_label_rows(run, "county")
+
+
 def test_a_label_whose_coverage_is_not_confirmed_never_clears_a_field_as_not_on_the_label(tmp_path):
     rig = build_rig(tmp_path, SPARSE)
     run = rig.specimen.run
