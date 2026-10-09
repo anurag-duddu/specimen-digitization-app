@@ -2345,6 +2345,17 @@ def test_an_inline_unreadable_marker_with_no_span_listed_keeps_every_listed_fiel
     assert not cleared_as_not_on_label(run) and not any(not_on_label_rows(run, key) for key in ABSENT)
 
 
+@pytest.mark.parametrize("written", ["2000 msnm", "1200 m.s.n.m.", "1200 m snm", "1200 masl", "1,200 MSNM"])
+def test_metres_above_sea_level_keep_the_elevations_in_review(tmp_path, written):
+    """N2 of #289's review: an elevation in metres above sea level, as Latin
+    American labels write it, is an elevation the label states."""
+    rig = build_rig(tmp_path, SPARSE + "\n" + written)
+    run = rig.specimen.run
+    settle(rig, lacking(*ABSENT))
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, unresolved(*ELEVATIONS))
+    assert cleared_as_not_on_label(run) == set(ABSENT) - set(ELEVATIONS)
+
+
 def test_a_label_whose_coverage_is_not_confirmed_never_clears_a_field_as_not_on_the_label(tmp_path):
     rig = build_rig(tmp_path, SPARSE)
     run = rig.specimen.run

@@ -999,6 +999,12 @@ PLACE_TEXT_FIELDS = ("country", "province_state", "county", "city", "precise_loc
 # organiser's "Mt. McKinley" as a city, inside the settled precise location).
 INSIDE_A_PLACE = frozenset({"county", "city", "precise_location"})
 ELEVATION_FIELDS = frozenset({"elevation_from_m", "elevation_to_m", "elevation_from_ft", "elevation_to_ft"})
+# A number in metres above sea level, however its unit is spaced or dotted:
+# "msnm", "m snm", "m.s.n.m." (metros sobre el nivel del mar), "masl",
+# "m a.s.l.". The place tool reads "m" before a space or a period as metres,
+# but not "msnm" or "masl" written as one word (georef_locality.ELEVATION).
+SEA_LEVEL_METRES = re.compile(
+    r"\d[^\S\n]*m\.?[^\S\n]*(?:s\.?[^\S\n]*n\.?[^\S\n]*m|a\.?[^\S\n]*s\.?[^\S\n]*l)(?![A-Za-z])", re.I)
 UNREADABLE_TEXT = "[unreadable]"
 
 
@@ -1068,13 +1074,16 @@ def _inside_a_settled_place(run, key: str, text: str) -> bool:
 
 
 def _elevation_written(run, readings: Sequence[Reading]) -> bool:
-    """Whether any reading writes an elevation, as the place tool reads one
-    (georef_locality.read_locality), in its whole text or in any one line."""
+    """Whether any reading writes an elevation: as the place tool reads one
+    (georef_locality.read_locality), in its whole text or in any one line,
+    or a number in metres above sea level (SEA_LEVEL_METRES: "2000 msnm",
+    "1200 masl", "1200 m.s.n.m.", "1200 m snm"), which the place tool does
+    not read when written as one word."""
     from specimen_digitization.application.georef_locality import read_locality
 
     texts = dict.fromkeys([*(r.text for r in readings), *(o.literal_text for o in run.observations)])
-    return any(read_locality(part).elevations for text in texts for part in (text, *text.splitlines())
-        if part.strip())
+    return any(SEA_LEVEL_METRES.search(text) for text in texts) or any(read_locality(part).elevations
+        for text in texts for part in (text, *text.splitlines()) if part.strip())
 
 
 def _place_settled_below_province(run) -> bool:
