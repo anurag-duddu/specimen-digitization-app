@@ -1089,6 +1089,65 @@ class Workflow:
         raise OperationalBlock("step_budget_exhausted")
 
 
+# The steps an admin may reconcile by running them again: each makes exactly one
+# external effect, a model reading, which answers from inputs the run already
+# holds. No record is written twice, but the provider may bill a repeat again.
+RECONCILABLE_READ_PREFIXES = ("transcribe:", "first_pass:")
+# Stages in which an unknown outcome is never reconciled: a cancelled run must
+# stay stopped, since a reconcile queues paid work, and a finished run has none.
+RECONCILE_REFUSED_STAGES = frozenset({"cancelled", "finalized"})
+
+
+def reconcilable_step(run: Run) -> str | None:
+    """The step an unknown outcome blocks, when running it again is safe; else None.
+
+    The ``reconcile`` run action clears an ``external_outcome_unknown`` blocker by
+    letting the worker run the blocked step once more. That is only safe when a
+    second run cannot repeat an effect the first one may already have had:
+
+    - ``transcribe:<region>:<route>`` is one model reading of one label crop. Its
+      result joins the run (``run.observations``) only when the call returns, so no
+      reading is recorded twice. The isolated child writes content-addressed blobs
+      before the run is saved, and ending it does not cancel a request the provider
+      already accepted (bounded_effect.py), so a repeat may bill again.
+    - ``first_pass:<region>`` is one model comparison of readings the run holds.
+      Its decision replaces that region's earlier decision, so no decision is
+      recorded twice, and a repeat may bill again in the same way.
+
+    Everything else is refused: ``segment`` (a service call), ``lookup`` and
+    ``authority:`` (source requests), ``parse`` (the organiser rewrites the run's
+    fields and evidence in place and honours preserved human fields), field
+    research (several paid calls and a program ledger), ``finalize`` and every step
+    this function does not name. A step it cannot classify is a step it refuses.
+
+    A cancelled run, a finished run and a run with a disposition are refused too.
+    A paused run is allowed: the action clears its blocker and leaves it paused.
+
+    The blocked step is the one ``Workflow.next_step`` names, the same function the
+    worker used when it recorded the intent, and it must have been attempted: the
+    intent raised ``run.attempts[step]`` before the call. A reading the run already
+    holds for that label and route is never read a second time.
+    """
+    if run.blocker != "external_outcome_unknown":
+        return None
+    if run.stage in RECONCILE_REFUSED_STAGES or run.disposition is not None:
+        return None
+    step = Workflow.next_step(run)
+    if not step.startswith(RECONCILABLE_READ_PREFIXES):
+        return None
+    if run.attempts.get(step, 0) < 1:
+        return None
+    parts = step.split(":")
+    if parts[0] == "transcribe":
+        if len(parts) != 3 or not all(parts[1:]):
+            return None
+        if any(o.region_id == parts[1] and o.route_id == parts[2] for o in run.observations):
+            return None
+    elif len(parts) != 2 or not parts[1]:
+        return None
+    return step
+
+
 class SyntheticAdapters:
     """Explicit fixture generator. Never represents SAM 3 or live inference."""
 

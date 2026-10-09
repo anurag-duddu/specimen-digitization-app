@@ -147,6 +147,55 @@ void main() {
   );
 
   test(
+    'reconcile is a run action sent with its revision, reason and stable key',
+    () async {
+      final sent = <http.Request>[];
+      final repo = repository((r) async {
+        if (r.method == 'POST') {
+          sent.add(r);
+          return http.Response('{}', 200);
+        }
+        return http.Response(jsonEncode(fixture['workspace_response']), 200);
+      });
+      await repo.review(
+        scope,
+        const Specimen({
+          'specimen_id': 's1',
+          'revision': 7,
+          'active_run_id': 'run 1',
+        }),
+        {
+          'kind': 'run_action',
+          'action': 'reconcile',
+          'reason': 'Reader dropped; read again',
+        },
+        'reconcile-stable',
+      );
+      expect(sent, hasLength(1));
+      expect(sent.single.url.path, endsWith('/runs/run%201/actions'));
+      expect(sent.single.headers['Idempotency-Key'], 'reconcile-stable');
+      expect(jsonDecode(sent.single.body), <String, dynamic>{
+        'expected_revision': 7,
+        'action': 'reconcile',
+        'reason': 'Reader dropped; read again',
+      });
+      // An action this client does not know is still refused before any call.
+      await expectLater(
+        repo.review(
+          scope,
+          const Specimen({'specimen_id': 's1', 'active_run_id': 'run-1'}),
+          {'kind': 'run_action', 'action': 'delete', 'reason': 'x'},
+          'k',
+        ),
+        throwsA(
+          isA<ApiFailure>().having((e) => e.code, 'code', 'invalid_action'),
+        ),
+      );
+      expect(sent, hasLength(1));
+    },
+  );
+
+  test(
     'research candidate review submits only the opaque selection receipt',
     () async {
       Json? body;
