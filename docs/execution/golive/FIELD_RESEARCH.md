@@ -9,7 +9,16 @@ for engineers second.
 
 1. The harness never invents what the label does not say. Several image
    readers transcribe each label; one model (the organiser) reads every
-   transcription and arranges the text into field-value pairs.
+   transcription and arranges the text into field-value pairs. The owner's
+   correction in the schema session, 2026-10-08, refines this: deriving and
+   inferring are the point, so the rule is "never a value without recorded
+   support" (PRD.md section "Field model v2: four groups", its decision
+   record and rules 1 to 3; in progress). This first version settles what the label states, what an
+   approved source confirms (for example "P.I." settled as the Philippines
+   from a cited place lookup) and the arithmetic derivations below. Supported
+   inference beyond that is the next step: an engineering staging decision of
+   the harness session, not an owner decision
+   (`~/specimen-golive/status/harness-derivation-proposal.md`).
 2. The harness receives those pairs together with every raw transcription,
    because a model can make mistakes and evidence is always needed.
 3. It works field by field: one expert resolver per field, each with its own
@@ -45,6 +54,15 @@ same record at once, so their writes collided and were retried (93 rejected
 writes in eight minutes of the live run). Counting the code paths, one
 specimen made roughly 4,000 sequential database and storage round trips:
 about 36 per model call, 9 per tool call, and about 140 to publish each field.
+Offline, with an instant scripted model and an in-memory database, one
+specimen still took 59 s of pure record keeping (59% publication, 25% the
+whole-record store). The live traces (Logfire, 2026-10-08 22:08-22:20Z) add
+the model side: the six specialists ran in three pairs one after another,
+about 9 minutes before publication began; model calls, with the effect
+record keeping wrapped around each, were 56% of specialist time, and one
+taxonomy call took 99 s, because every request re-sent the whole research
+input (taxonomy's first message alone was about 118 KB).
+
 The live run on 2026-10-08 (specimen 105526321) failed four ways, all
 confirmed from its recorded state, journal and worker log:
 
@@ -87,8 +105,14 @@ handover runs field research instead of the six specialists:
    source response is stored once as evidence.
 5. **Checked answers.** An expert's literal must appear exactly in the
    readings it names; a value that differs from the literal must be a source
-   candidate it was given, or a deterministic parse. Otherwise the answer is
-   sent back once for correction.
+   candidate it was given, or a deterministic check's settled parse of that
+   literal (an ambiguous check's readings are only options for a person). A
+   taxon is GBIF's decision for the name its literal writes (or its genus, for
+   a "sp." identification): the cited success answer's query is that name, and
+   the value and identifier are the candidate GBIF decided, never one of its
+   alternatives. The clearance rules check the taxon the same way. Otherwise the
+   answer is sent back for correction; an expert whose answer still fails the
+   checks after its retries sends the field to review, never to a retry.
 6. **Derived values** (G37, G41, G44) are filled deterministically afterwards
    from settled fields only: elevation copies and exact unit conversion, and
    the collection date's end from its start.
@@ -98,14 +122,52 @@ handover runs field research instead of the six specialists:
    sends the record to Needs human review with a plain reason; a source or
    model outage leaves the record blocked with retry.
 8. **Budget.** Before every model call the step reserves that call's worst
-   case from what remains of the run's ceiling (the profile's
-   `run_cost_limit_micros`, USD 1 for the pilot), and settles to the real
-   usage after. A call that would cross the ceiling is not sent; that field
-   goes to review.
+   case (its input, the provider's chat template and the output cap) from
+   what remains of the run's ceiling (the profile's `run_cost_limit_micros`,
+   USD 1 for the pilot), and settles to the real usage after. A call that
+   would cross the ceiling is not sent; that field goes to review. The step
+   holds no more of the shared program allowance than it has left: when that
+   is less than the run's headroom, the meter's cap is what is left, and a
+   field that does not fit goes to review. Only when the program allowance
+   cannot pay for one expert request is the record blocked, as before. A setup
+   error before any request settles to nothing; research cut short by an
+   error, or a step that overran its deadline, settles to what the meter spent.
+9. **Time.** Research stops a minute before the step's deadline (210 s of the
+   pilot's 270 s): a field still being researched becomes a timeout for the
+   retry, and every settled field is kept. The work after research measured
+   4.3 s on a slide-sized record with a 50 ms storage round trip per blob, most
+   of it the integrity check, so the minute is more than three times it. The
+   record's sources close when research ends, so a GBIF check still running
+   cannot hold the step.
 
 At the harness route's prices (USD 0.20 per million input tokens, USD 0.60
 per million output), a typical record is expected to cost a few cents for
 field research. The ceiling cannot be crossed.
+
+## After field research: a reviewer's decisions
+
+Field research runs once per run. When it has completed, a later pass (an
+operator's retry or resume, or a reviewer's decision) researches nothing and
+pays nothing: the clearance rules are applied again to the fields exactly as
+they are. As on the native path, a reviewer's correction is kept exactly as
+made and the record waits in review for that reviewer's approval; an approval
+clears the record when the rules clear it, and a correction the rules refuse
+stays in review. A taxon GBIF could not settle is cleared the way the ordinary
+policy clears one: the reviewer chooses one of the candidates a stored GBIF
+lookup of the run returned (the taxonomy resolution decision). Field research
+leaves such a taxon ambiguous or unresolved, so a correction first records
+the name the label writes. A name GBIF never returned cannot be chosen, and a value typed
+in without that choice stays in review.
+A corrected transcription is the one exception: its fields
+are parsed again from the new text, and field research runs on them again.
+
+A field research run that failed (an outage, a model error, a timeout) is
+retried, and the retry researches only the fields that did not settle.
+
+The worker check behind G38 derivation and the per-field research retry
+(application.derivation_readiness) reports those native-only features as
+unavailable when the worker runs with `SPECIMEN_RESEARCH_HARNESS=fields`. That
+is intended: field research has neither.
 
 The six-specialist code stays in the repository, unused by production, until
 field research is proven live; a later pull request deletes it with its tests.
