@@ -197,8 +197,13 @@ infrastructure ceiling; it must not be silently called measured model spend.
 ## Amendment, 2026-10-09 (G30)
 
 The USD 5 production model allowance named in the 2026-10-05 correction above is
-USD 15 from 2026-10-09, by the owner's words recorded in
+USD 15 from 2026-10-09, on the owner's words recorded in
 [`golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator).
+The owner's words contain no "15": it is the schema session's reading of them.
 The USD 1 specimen-run ceiling and G9's USD 25 cumulative ceiling are
-unchanged; the code refuses any allowance above USD 25
-(`research_harness/program_budget.py`).
+unchanged. The envelope the owner agreed, as the coordinating session records
+it, is USD 30 in total (USD 25 plus USD 5), plus or minus USD 10; the
+coordinating session tracks the total and asks the owner before spending passes
+USD 30, and no code can enforce it. The research broker (`ProgramEffectBroker`
+in `research_harness/program_budget.py`) refuses an allowance above USD 25; no
+other code checks that cap.

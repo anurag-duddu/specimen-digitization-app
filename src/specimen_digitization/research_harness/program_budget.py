@@ -14,7 +14,8 @@ from specimen_digitization.application.lane_allowance import LegacyLedgerUnavail
 
 from .persistence import DurableEffectBroker, HeldUnknown
 
-# G9: the owner's USD 25 ceiling, cumulative. The code refuses any larger allowance.
+# G9: the owner's USD 25 ceiling, cumulative. The research broker below refuses a larger
+# allowance; lane.queue, ProgramLedger.reserve and ProgramAllowance do not check it.
 MAX_PROGRAM_ALLOWANCE_MICROS = 25_000_000
 
 
@@ -27,8 +28,8 @@ class ProgramEffectBroker(DurableEffectBroker):
         self.allowance = policy.program_allowance_micros
         self.ledger = None if self.allowance is None else ProgramLedger(repository, Scope(
             organization_id=scope.organization_id, collection_id=policy.program_ledger_collection))
-        # No allowance may exceed the owner's overall ceiling, G9's USD 25. The pilot's own
-        # allowance (G30, USD 15 in the published profile) sits inside it.
+        # This broker refuses an allowance above G9's USD 25. The pilot's own allowance
+        # (G30, USD 15 in the published profile) sits inside it.
         if self.allowance is not None and self.allowance > MAX_PROGRAM_ALLOWANCE_MICROS:
             raise HeldUnknown("program_allowance_ledger_unavailable")
 

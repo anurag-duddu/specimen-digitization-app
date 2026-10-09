@@ -191,20 +191,34 @@ force as `DATA_CONTRACT.md` rule 6, whose `google-maps-geocoding` source string
 has no production producer. The later mentions of Google geocoding in this plan
 (sections 2.2, 2.3, 4.1, 4.4, 4.5, 4.8 and 7.2) describe the retired design.
 
-2026-10-09 (owner, in the schema session): G30's allowance rises from USD 5 to
-USD 15 for the reruns of the ten pilot specimens. The owner's words, quoted
-exactly:
+2026-10-09 (owner, in the schema session): the owner allowed money for the
+reruns of the ten pilot specimens, and G30's allowance rises from USD 5 to
+USD 15 on that reading. The owner's words, quoted exactly:
 
 - "money is ok for the reruns of these 10 specimens."
 - "25+5 is alright. I highly doubt we need all that much but its fine +/- $10 is fine by me"
 
+The owner's words contain no "15": USD 15 is the schema session's reading of
+them. The envelope they agree, as the coordinating session records it, is USD 30
+in total (G9's USD 25 plus USD 5), the owner accepting plus or minus USD 10. The
+coordinating session tracks the total and asks the owner before spending passes
+USD 30. No code enforces that envelope.
+
 What holds now: the published profile `zoology_insects_slides` 1.0.0 carries
-`processing.program_allowance.allowance_micros` 15000000, and
-`research_harness/program_budget.py` refuses any allowance above G9's USD 25
-(25000000 micros). The per-run ceiling stays USD 1 (`run_cost_limit_micros`
-1000000). The new allowance reaches a run when the run is queued, so a run
-queued earlier keeps the USD 5 it was given; the ledger's reservations are
-unchanged. The reason, from a read-only ledger reading at 2026-10-09 03:36 UTC:
+`processing.program_allowance.allowance_micros` 15000000, and the research
+broker (the `ProgramEffectBroker` constructor in
+`research_harness/program_budget.py`) refuses an allowance above G9's USD 25
+(25000000 micros). `lane.queue`, `ProgramLedger.reserve` and the profile's
+`ProgramAllowance` field do not check that cap. The per-run ceiling stays USD 1
+(`run_cost_limit_micros` 1000000). `lane.queue` copies the allowance from the
+published profile into the run each time it queues the run: at intake and on the
+retry, resume and reprocess actions (`request_processing` in
+`application/api.py`). A run in flight at the deploy keeps USD 5 until one of
+those actions queues it again. If it then replays a step whose reservation was
+made under USD 5, `ProgramLedger.reserve` fails closed as
+`program_allowance_ledger_unavailable` and `ProgramLedger.settle` returns None,
+so the hold stays reserved and nothing is under-counted. The reason, from a
+read-only ledger reading at 2026-10-09 03:36 UTC:
 USD 2.04 of the USD 5 was taken, and a full rerun from the image keeps about
 USD 0.25 for good plus its real cost, so ten full reruns do not fit under USD 5.
 The other mentions of the USD 5 allowance in this plan and in the documents it
