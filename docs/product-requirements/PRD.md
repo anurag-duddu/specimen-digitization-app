@@ -646,21 +646,24 @@ each other:
   embedded schema, which refuses unknown values.
 
 So v2 adds an optional `basis` on each part and leaves `layer` alone. For
-records already written, a basis can be computed for display only, from the
-layer and from whether the parsed value differs from the literal: `verbatim`
-gives `label`; `settled` gives `label` when the parsed value is absent or equal
-to the literal and `derived` otherwise; `derived` gives `derived`. An old record
-is never shown as `inferred`.
+records already written, a basis can be computed for display only, and only
+approximately: `verbatim` gives `label`; `derived` gives `derived`; `settled`
+gives `label` when the literal, the parsed value and the normalized value agree
+once case, spacing and unit marks are ignored (a written "6400'" parsed as
+6400, or "Mindanao" confirmed by a lookup), and `derived` when they differ ("P.I."
+settled as Philippines, "Chimaltenago" settled as Chimaltenango). Where the
+stored values cannot tell the two apart, nothing is shown instead of a guess. An
+old record is never shown as `inferred`.
 
 Rules:
 
 1. The harness does everything the evidence supports. A value that can be read,
    derived or inferred with recorded support is filled in, with its basis.
-   The live v1 record already derives exact unit conversions, copies of
-   endpoints and values that follow from a place (owner rulings G41, G44 and
-   G37 in `docs/execution/golive/PLAN.md`); v2 adds `inferred` values and
-   review of a single part. Inventing a value with no recorded support remains
-   forbidden.
+   The live v1 record already derives exact unit conversions and copies of
+   endpoints (owner rulings G41 and G44 in `docs/execution/golive/PLAN.md`),
+   and it proposes geography from a place for a reviewer to accept; v2 adds
+   `inferred` values and review of a single part. Inventing a value with no
+   recorded support remains forbidden.
 2. A value is `unresolved` only when nothing supports even an inference.
 3. On a conflict or a doubt, the harness fills in the best-supported value and
    marks that part for a person. A person sees the part that needs attention,
@@ -750,13 +753,15 @@ Review, reasons and decisions all name a part of a value the same way:
 `location/country`, `location/island`, `location/place/2` (the second place
 node), `elevation/unit`, `collectors/1`, `when/start`, `taxon/resolved`. Until
 the stored record has a field for a part's state, the reason code on the run
-carries the part name.
+will carry the part name; that is planned, not live.
 
 ##### v1 keys from v2 parts, during the transition
 
 While v1 records and the existing publish operation stay in use, each v1 key
-is filled from the v2 parts below. The adapter and the app reuse the same table.
-The names are descriptive, as stated above.
+is meant to be filled from the v2 parts below. This is the intended projection,
+not live v1 behaviour: where the live code does something else, it is noted. The
+adapter and the app reuse the same table. The names are descriptive, as stated
+above.
 
 | v1 key | Filled from |
 |---|---|
@@ -764,16 +769,16 @@ The names are descriptive, as stated above.
 | `collection_code` | `ids/collection` |
 | `country` | `location/country` |
 | `province_state` | the first level below the country, chosen by role (province, state, department), not by name |
-| `county` | the second level below the country, chosen by role (county, district, municipality) |
+| `county` | the second administrative level below the country, by role (county, district), where the country has one and the evidence supports it; live v1 does not invent a county in Guatemala and treats the unsupported case as waiting for a policy |
 | `city` | the settlement level, when there is one |
-| `precise_location` | the named place and the descriptive locality below the settlement |
-| `elevation_from_m`, `elevation_to_m` | `elevation`: a point fills both with the same value (the v1 copy rule), a range fills its two bounds, an `above` or `below` limit fills only the bound it states |
+| `precise_location` | the verbatim locality at the root of the place tree, as written, as live v1 keeps it |
+| `elevation_from_m`, `elevation_to_m` | `elevation`: a point fills both with the same value (the v1 copy rule), a range fills its two bounds; an `above` or `below` limit has no v1 equivalent and fills only the bound it states |
 | `elevation_from_ft`, `elevation_to_ft` | the same elevation converted at 1 ft = 0.3048 m (G41), or the written feet value when the label gave feet |
 | `date_visited_from`, `date_visited_to` | `when/start` and `when/end` of the collecting event; a single date fills both (G44) |
 | `date_identified` | `when` of the identification |
 | `collectors` | the collectors' recorded names, joined in the v1 form |
 | `habitat`, `collection_method` | read as written; no lookup applies |
-| `verbatim_dts` | the verbatim wording of the collecting date and time |
+| `verbatim_dts` | stays waiting for a policy, as in live v1 (G45 in `docs/execution/golive/PLAN.md`); not filled from every date's wording |
 | `taxon` | `taxon` as resolved; the name as written stays in the support |
 | `identified_by_irn` | stays recorded as not resolved until EMu Parties exist (G16) |
 
@@ -822,13 +827,16 @@ The order follows what the code enforces today:
    adds the optional per-part basis, the reasoning row, the part name in reason
    codes and a hold for runs in flight, before any inferred value is written
    (the harness session's staging decision, which is engineering and not an
-   owner ruling). Changing prompt or profile pins holds in-flight jobs, so each
-   switch runs when the queue is drained. The harness proposal names the first field
+   owner ruling). The app reader ships first, because its embedded schema
+   refuses fields it does not know. Field research has no prompt pin today and a
+   run keeps the profile snapshot it started with; the hold for runs in flight
+   is part of the harness's proposed change. The harness proposal names the first field
    group to switch; the place tree is the candidate, because it needs the
    tree, inference and part-level review together.
 6. Part-level review needs a way to address a part of a field. Today a human
-   question is keyed to one whole field. That design belongs to the harness
-   proposal.
+   question is keyed to one whole field. "Naming a part" above defines the name;
+   the review screen and the question record that use it are designed with the
+   harness proposal.
 7. Removing the v1 keys is a separate, later release. The data release never
    drops, deletes or truncates, so that removal needs the owner.
 
