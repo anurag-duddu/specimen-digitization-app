@@ -138,7 +138,9 @@ void main() {
     'field previews name real states and layers without open detail',
     (tester) async {
       await showFields(tester);
-      expect(find.text('Location'), findsOneWidget);
+      // Place, elevation and the rest of the collecting event are one group.
+      expect(find.text('Collection'), findsOneWidget);
+      expect(find.text('Location'), findsNothing);
       expect(find.text('Required'), findsNothing);
       expect(find.text('Optional'), findsNothing);
       expect(find.text('Elevation from (m)'), findsOneWidget);

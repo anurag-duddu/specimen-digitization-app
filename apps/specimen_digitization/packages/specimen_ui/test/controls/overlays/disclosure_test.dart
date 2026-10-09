@@ -239,6 +239,73 @@ void main() {
     }
   });
 
+  testWidgets('a trailing sits before the caret and leaves the header alone', (
+    WidgetTester tester,
+  ) async {
+    final SemanticsHandle handle = tester.ensureSemantics();
+    await tester.pumpWidget(
+      uiHarness(
+        child: const SizedBox(
+          width: 360,
+          child: UiDisclosure(
+            title: _title,
+            summary: _summary,
+            trailing: UiChip(label: 'Derived'),
+            semanticsLabel: '$_label. Basis: derived',
+            child: Text(_body),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final Rect chip = tester.getRect(find.byType(UiChip));
+    final Rect caret = tester.getRect(find.byType(AnimatedRotation));
+    final Rect title = tester.getRect(find.text(_title));
+    expect(chip.right, lessThan(caret.left), reason: 'the chip is before it');
+    expect(title.right, lessThan(chip.left), reason: 'and after the text');
+    expect(
+      tester.getSize(find.byType(Pressable)).height,
+      greaterThanOrEqualTo(UiDensity.hitBox),
+    );
+    // The header publishes one node, so the chip is read as part of the label
+    // the caller gave, and a press on the chip toggles the row.
+    expect(find.bySemanticsLabel('$_label. Basis: derived'), findsOneWidget);
+    expect(find.bySemanticsLabel('Derived'), findsNothing);
+    await tester.tap(find.byType(UiChip));
+    await tester.pumpAndSettle();
+    expect(find.text(_body), findsOneWidget);
+    handle.dispose();
+  });
+
+  testWidgets('a trailing takes no more than its share of the header', (
+    WidgetTester tester,
+  ) async {
+    const double width = 300;
+    await tester.pumpWidget(
+      uiHarness(
+        child: const SizedBox(
+          width: width,
+          child: UiDisclosure(
+            title: _title,
+            summary: _summary,
+            trailing: UiChip(
+              label: 'A label far too long for the share it is given',
+            ),
+            child: Text(_body),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(
+      tester.getSize(find.byType(UiChip)).width,
+      lessThanOrEqualTo(width * UiDisclosureStyle.trailingShare),
+    );
+    expect(find.text(_title), findsOneWidget);
+  });
+
   testWidgets('it satisfies the control contract', (WidgetTester tester) async {
     await expectControlContract(
       tester,

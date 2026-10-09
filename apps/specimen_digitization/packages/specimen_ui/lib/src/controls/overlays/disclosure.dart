@@ -92,6 +92,13 @@ class UiDisclosureStyle {
   /// Two, the same as a list row's subtitle: the summary is the row's second
   /// line and is content rather than a label (11 section 3.3).
   static const int summaryMaxLines = 2;
+
+  /// The share of the header's width a `trailing` may take.
+  ///
+  /// A slot the control cannot measure is bounded rather than trusted
+  /// (11 section 3.3): the title and summary keep the rest of the line, and a
+  /// trailing wider than its share ellipsises through its own fit rules.
+  static const double trailingShare = 0.4;
 }
 
 /// A row that reveals a body.
@@ -106,6 +113,7 @@ class UiDisclosure extends StatefulWidget {
     required this.title,
     required this.child,
     this.summary,
+    this.trailing,
     this.hideSummaryWhenExpanded = false,
     this.initiallyExpanded = false,
     this.onExpansionChanged,
@@ -121,6 +129,14 @@ class UiDisclosure extends StatefulWidget {
 
   /// A second line under the title, saying what is behind the row.
   final String? summary;
+
+  /// A small static widget at the end of the header, before the caret: a chip
+  /// that qualifies the row, never a control.
+  ///
+  /// It sits inside the header's press target, so a press on it toggles the
+  /// row, and its own semantics are excluded with the rest of the header's.
+  /// What it says must therefore be in [semanticsLabel] as well.
+  final Widget? trailing;
 
   /// Hides the summary from the header and its default semantics while open.
   ///
@@ -162,6 +178,70 @@ class _UiDisclosureState extends State<UiDisclosure> {
     return summary == null ? widget.title : '${widget.title}. $summary';
   }
 
+  /// The title over its summary, which takes whatever the line has left.
+  Widget _text(UiDisclosureStyle style) => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: <Widget>[
+      UiLabel(
+        widget.title,
+        style: style.title.copyWith(color: style.titleColor),
+      ),
+      // The summary is content, not a label: it is the row's second line, the
+      // same object a list row's subtitle is, so it wraps to two lines before
+      // it is cut (11 section 3.3).
+      if (_visibleSummary != null)
+        Text(
+          _visibleSummary!,
+          style: style.summary.copyWith(color: style.summaryColor),
+          maxLines: UiDisclosureStyle.summaryMaxLines,
+          overflow: TextOverflow.ellipsis,
+        ),
+    ],
+  );
+
+  /// The header's line: text, the optional trailing, and the caret.
+  Widget _headerRow(UiThemeData ui, UiDisclosureStyle style) {
+    final Widget caret = AnimatedRotation(
+      turns: _open ? UiDisclosureStyle.caretTurns : 0,
+      duration: ui.motion.short,
+      curve: MotionTokens.standardCurve,
+      child: UiIcon(
+        UiIcons.expand,
+        size: UiIconSize.inline,
+        color: style.caretColor,
+      ),
+    );
+    final Widget? trailing = widget.trailing;
+    if (trailing == null) {
+      return Row(
+        children: <Widget>[
+          Expanded(child: _text(style)),
+          SizedBox(width: style.gap),
+          caret,
+        ],
+      );
+    }
+    // A trailing the control cannot measure is bounded to a share of the
+    // line, so the title and summary keep the rest of it.
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints box) => Row(
+        children: <Widget>[
+          Expanded(child: _text(style)),
+          SizedBox(width: style.gap),
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: box.maxWidth * UiDisclosureStyle.trailingShare,
+            ),
+            child: trailing,
+          ),
+          SizedBox(width: style.gap),
+          caret,
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
@@ -199,48 +279,7 @@ class _UiDisclosureState extends State<UiDisclosure> {
                   constraints: BoxConstraints(minHeight: style.minHeight),
                   child: Padding(
                     padding: style.padding,
-                    child: Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              UiLabel(
-                                widget.title,
-                                style: style.title.copyWith(
-                                  color: style.titleColor,
-                                ),
-                              ),
-                              // The summary is content, not a label: it is
-                              // the row's second line, the same object a
-                              // list row's subtitle is, so it wraps to two
-                              // lines before it is cut (11 section 3.3).
-                              if (_visibleSummary != null)
-                                Text(
-                                  _visibleSummary!,
-                                  style: style.summary.copyWith(
-                                    color: style.summaryColor,
-                                  ),
-                                  maxLines: UiDisclosureStyle.summaryMaxLines,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                            ],
-                          ),
-                        ),
-                        SizedBox(width: style.gap),
-                        AnimatedRotation(
-                          turns: _open ? UiDisclosureStyle.caretTurns : 0,
-                          duration: ui.motion.short,
-                          curve: MotionTokens.standardCurve,
-                          child: UiIcon(
-                            UiIcons.expand,
-                            size: UiIconSize.inline,
-                            color: style.caretColor,
-                          ),
-                        ),
-                      ],
-                    ),
+                    child: _headerRow(ui, style),
                   ),
                 ),
           ),

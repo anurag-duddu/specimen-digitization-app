@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `UiDisclosure` takes an optional `trailing` widget (`controls/overlays/disclosure.dart`): a small static widget at the end of the header, before the caret. The control cannot measure it, so it is bounded to `UiDisclosureStyle.trailingShare` of the header's width and the title and summary keep the rest. It sits inside the header's press target, and the header's single semantics node excludes it, so what it says must also be in `semanticsLabel`. A disclosure with no `trailing` builds the header it always did. Reason: the specimen data tab shows a basis chip ("As written", "Derived", "Inferred") on each field row without adding a line to every row.
+
 ## 0.3.0 (2026-09-17)
 
 The fit and scale release. `design/11-fit-and-scale.md` read three defects seen
