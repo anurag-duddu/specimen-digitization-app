@@ -1209,7 +1209,13 @@ class ApiSpecimenRepository
     final kind = change['kind'];
     if (kind == 'run_action') {
       final action = change['action'];
-      if (!['pause', 'resume', 'cancel', 'reprocess'].contains(action)) {
+      if (![
+        'pause',
+        'resume',
+        'cancel',
+        'reprocess',
+        'reconcile',
+      ].contains(action)) {
         throw const ApiFailure(
           'This run action is not supported.',
           code: 'invalid_action',

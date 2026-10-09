@@ -865,6 +865,23 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     }
   }
 
+  /// Sends a run action from the Processing panel.
+  ///
+  /// A failed save is reported once by the screen's own error band, so only
+  /// a save the server acknowledged is announced here, once, after the frame.
+  Future<void> _runAction(Json change) async {
+    // Read before the save: a paused run stays paused, and says so.
+    final bool paused = ProcessingDetail.isPaused(widget.specimen);
+    final bool saved = await _send(change);
+    if (saved && mounted && change['action'] == 'reconcile') {
+      _announce(
+        paused
+            ? ProcessingDetail.reconcileSavedPaused
+            : ProcessingDetail.reconcileSaved,
+      );
+    }
+  }
+
   Future<void> _savePending() async {
     final List<PendingFieldChange> batch = List<PendingFieldChange>.of(
       _pending,
@@ -1616,7 +1633,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                   specimen: widget.specimen,
                   canOperate: widget.canOperate,
                   busy: widget.busy,
-                  onAction: _send,
+                  onAction: _runAction,
                 ),
               ),
             ],
@@ -1910,7 +1927,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
           specimen: s,
           canOperate: widget.canOperate,
           busy: widget.busy,
-          onAction: _send,
+          onAction: _runAction,
         ),
         _history(ValueKey<String>('history:${s.id}:${s.revision}')),
       ],
