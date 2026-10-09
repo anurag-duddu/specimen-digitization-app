@@ -572,9 +572,11 @@ def _tool_call(run, made: Sequence[SourceCall], item: Evidence, readings: Sequen
         started_at=first.started_at, completed_at=first.completed_at)
 
 
-def _add_sources(run, outcomes: Sequence[FieldOutcome], calls: Sequence[SourceCall], readings) -> None:
+def _add_sources(run, outcomes: Sequence[FieldOutcome], calls: Sequence[SourceCall], readings,
+        taxon_literals: Sequence[str] = ()) -> None:
     """Every captured source response once as evidence, with its producing call,
-    and every taxonomy lookup once on the run."""
+    and every taxonomy lookup once on the run, the one a reviewer chooses a
+    taxon from last (_choosable_lookup_last)."""
     known = {item.id: item for item in run.evidence}
     produced = {record.evidence_id for record in run.tool_calls if record.evidence_id}
     by_evidence: dict[str, list[SourceCall]] = {}
@@ -607,6 +609,52 @@ def _add_sources(run, outcomes: Sequence[FieldOutcome], calls: Sequence[SourceCa
         if isinstance(lookup, Lookup) and lookup.id not in present:
             run.lookups.append(lookup)
             present.add(lookup.id)
+    _choosable_lookup_last(run, calls, taxon_literals)
+
+
+def _choosable_lookup_last(run, calls: Sequence[SourceCall], taxon_literals: Sequence[str]) -> None:
+    """Put last in run.lookups the lookup a reviewer chooses a taxon from: the
+    reviewer's taxonomy resolution offers only run.lookups[-1]'s candidates
+    (api.apply_decision). That is the last success or ambiguous lookup with
+    candidates whose query is the whole name the label writes
+    (checks.taxon_queries of the taxon's literals), else the last with
+    candidates. A lookup with none (a failure, no match) is never last while
+    one with candidates exists. Nothing moves when no lookup has candidates."""
+    from .checks import collapse, taxon_queries
+
+    asked = {}
+    for call in calls:
+        lookup = call.answer.taxonomy_lookup
+        if isinstance(lookup, Lookup):
+            asked.setdefault(lookup.id, call.query)
+    names = frozenset().union(*(taxon_queries(literal) for literal in taxon_literals if literal))
+    choosable = [lookup for lookup in run.lookups if lookup.candidates
+        and lookup.status in (LookupStatus.SUCCESS, LookupStatus.AMBIGUOUS)]
+
+    def query(lookup) -> str:
+        found = asked.get(lookup.id) or lookup.query.get("scientificName") or lookup.query.get("name")
+        return collapse(found) if isinstance(found, str) else ""
+
+    grounded = [lookup for lookup in choosable if query(lookup) in names]
+    preferred = (grounded or choosable or [None])[-1]
+    if preferred is not None and run.lookups[-1] is not preferred:
+        index = next(i for i, lookup in enumerate(run.lookups) if lookup is preferred)
+        run.lookups.append(run.lookups.pop(index))
+
+
+def _taxon_literals(run, tasks: Sequence[FieldTask], outcomes: Sequence[FieldOutcome]) -> list[str]:
+    """What the label writes as the taxon: the organiser's value, its
+    candidates and readers' verbatims, and the taxon expert's literal."""
+    found: list[str | None] = []
+    for task in tasks:
+        if task.key == "taxon":
+            found += [task.current.literal, *(c.literal for c in task.candidates),
+                *task.current.verbatim_by_observation.values()]
+    found += [o.answer.literal for o in outcomes if o.key == "taxon" and o.answer is not None]
+    current = run.fields.get("taxon")
+    if current is not None:
+        found += [current.literal, *current.verbatim_by_observation.values()]
+    return [literal for literal in dict.fromkeys(found) if literal]
 
 
 def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[FieldTask],
@@ -632,7 +680,7 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     by_name = {reading.name: reading for reading in readings}
     if asset_id is None:
         asset_id = run.regions[0].asset_id if run.regions else None
-    _add_sources(run, outcomes, calls, readings)
+    _add_sources(run, outcomes, calls, readings, _taxon_literals(run, tasks, outcomes))
     evidence = {item.id: item for item in run.evidence}
     tasks_by_key = {task.key: task for task in tasks}
     human = human_keys(run)

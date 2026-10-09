@@ -1069,13 +1069,36 @@ async def undecided(task, readings, tools):
         lookups=[answer.taxonomy_lookup], model_calls=1)
 
 
-def written_undecided(rig):
+class UnmatchedVariant(UndecidedTaxon):
+    """As UndecidedTaxon for the label's name; GBIF has no match for any other."""
+
+    def _answer(self, source_id, query):
+        answer = super()._answer(source_id, query)
+        if source_id != "gbif" or query == LABEL["taxon"]:
+            return answer
+        evidence = answer.evidence.model_copy(update={"kind": "lookup", "excerpt": "GBIF has no match"})
+        lookup = answer.taxonomy_lookup.model_copy(update={"status": LookupStatus.NO_MATCH, "candidates": []})
+        return SourceAnswer("gbif", query, LookupStatus.NO_MATCH, (), evidence, note="no match",
+            taxonomy_lookup=lookup)
+
+
+async def undecided_then_a_variant(task, readings, tools):
+    """The label's name (ambiguous), then a variant spelling (no match)."""
+    outcome = await undecided(task, readings, tools)
+    variant = await tools.lookup("gbif", "Danaus plexipus", field_key=task.key)
+    outcome.evidence.append(variant.evidence)
+    outcome.lookups.append(variant.taxonomy_lookup)
+    return outcome
+
+
+def written_undecided(rig, script=undecided, sources=UndecidedTaxon):
     """A researched run in review on its taxon alone, GBIF's answer ambiguous,
     after the reviewer's field decision that the label writes the name."""
-    mounted(rig, Scripted({"taxon": undecided}), sources=UndecidedTaxon)
+    mounted(rig, Scripted({"taxon": script}), sources=sources)
     done = rig.workflow.step(rig.principal, rig.specimen.id).run
     assert (done.disposition, done.fields["taxon"].state) == (Disposition.REVIEW, ValueState.AMBIGUOUS)
-    assert [lookup.status for lookup in done.lookups] == [LookupStatus.AMBIGUOUS]
+    # The lookup a reviewer chooses from is the run's last (api.apply_decision).
+    assert done.lookups[-1].status == LookupStatus.AMBIGUOUS
     client = review_client(rig)
     taxon = done.fields["taxon"]
     written = decide(client, rig, "field-taxon", "field", target_id="taxon",
@@ -1102,6 +1125,39 @@ def test_a_reviewers_choice_of_one_of_gbifs_candidates_clears_the_taxon_on_appro
     again = rig.workflow.step(rig.principal, saved.id).run
     assert (again.stage, again.disposition, again.reasons) == ("finalized", Disposition.CLEARED, [])
     assert again.attempts[FIELD_RESEARCH] == 1 and again.paid_calls == approved.paid_calls
+
+
+def test_a_lookup_with_no_candidates_is_never_the_one_a_reviewer_chooses_from(rig):
+    """The review's N1: the expert asks the label's name (ambiguous), then a
+    variant (no match). The reviewer still chooses from the name's candidates."""
+    client = written_undecided(rig, undecided_then_a_variant, UnmatchedVariant)
+    run = rig.repository.get(rig.principal.scope, rig.specimen.id).run
+    assert [lookup.status for lookup in run.lookups] == [LookupStatus.NO_MATCH, LookupStatus.AMBIGUOUS]
+    chosen = decide(client, rig, "choose-taxon", "taxonomy_resolution", after={"authority_id": HOMONYM_KEY})
+    assert (chosen.fields["taxon"].normalized, chosen.fields["taxon"].authority_id) == (HOMONYM_NAME, HOMONYM_KEY)
+    approved = decide(client, rig, "approve-taxon", "approve")
+    assert (approved.disposition, approved.reasons) == (Disposition.CLEARED, [])
+
+
+def test_the_lookup_for_the_labels_whole_name_is_last_among_those_with_candidates():
+    def lookup(name, status=LookupStatus.AMBIGUOUS, candidates=({"key": "1"},)):
+        return Lookup(provider="gbif", adapter_version="test", query={"name": name}, status=status,
+            candidates=list(candidates))
+
+    whole, variant, failed = lookup("Danaus plexippus"), lookup("Danaus plexipus"), lookup(
+        "Danaus", LookupStatus.PROVIDER, ())
+    run = SimpleNamespace(lookups=[whole, variant, failed])
+    field_step._choosable_lookup_last(run, (), ["Danaus plexippus (Linnaeus, 1758)"])
+    assert run.lookups == [variant, failed, whole]
+    # No grounded name: the last with candidates.
+    run = SimpleNamespace(lookups=[variant, failed])
+    field_step._choosable_lookup_last(run, (), ["sp. 30"])
+    assert run.lookups == [failed, variant]
+    # None with candidates: nothing moves.
+    run = SimpleNamespace(lookups=[failed, lookup("x", LookupStatus.NO_MATCH, ())])
+    before = list(run.lookups)
+    field_step._choosable_lookup_last(run, (), ["Danaus plexippus"])
+    assert run.lookups == before
 
 
 def test_a_taxon_no_recorded_choice_of_gbifs_names_stays_in_review(rig):
