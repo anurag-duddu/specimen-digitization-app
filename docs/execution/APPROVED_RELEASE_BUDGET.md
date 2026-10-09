@@ -193,3 +193,12 @@ ledger even when segmentation succeeds; request seconds remain diagnostic. Only
 an explicit authoritative billed total can settle that reservation. The optional
 processing workflow's warm idle time also remains part of the USD25 cumulative
 infrastructure ceiling; it must not be silently called measured model spend.
+
+## Amendment, 2026-10-09 (G30)
+
+The USD 5 production model allowance named in the 2026-10-05 correction above is
+USD 15 from 2026-10-09, by the owner's words recorded in
+[`golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator).
+The USD 1 specimen-run ceiling and G9's USD 25 cumulative ceiling are
+unchanged; the code refuses any allowance above USD 25
+(`research_harness/program_budget.py`).

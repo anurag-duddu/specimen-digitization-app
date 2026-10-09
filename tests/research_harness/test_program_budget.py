@@ -46,6 +46,23 @@ def request(rig, number=1, reservation=150_000, actual=10_000, calls=None, fail=
         reservation, dispatch, field_keys=("taxon",)))
 
 
+@pytest.mark.parametrize("allowance, refused", [
+    (15_000_000, False),  # The pilot profile's allowance (G30).
+    (25_000_000, False),  # G9's USD 25 ceiling is the largest the code admits.
+    (25_000_001, True)])
+def test_the_code_refuses_an_allowance_above_the_g9_ceiling(rig, tmp_path, allowance, refused):
+    run = SimpleNamespace(profile=SimpleNamespace(execution=SimpleNamespace(
+        program_allowance_micros=allowance, program_ledger_collection="collection")))
+    def build():
+        return ProgramEffectBroker(rig.store, ImmutableFileBlobs(tmp_path / "cap-blobs"),
+            repository=rig.repository, scope=rig.scope, run=run)
+    if refused:
+        with pytest.raises(HeldUnknown, match="program_allowance_ledger_unavailable"):
+            build()
+    else:
+        assert build().allowance == allowance
+
+
 def test_global_allowance_refuses_before_a_send_is_marked_or_provider_called(rig):
     calls = []
     with pytest.raises(HeldUnknown, match="program_allowance_exhausted"):

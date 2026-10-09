@@ -338,7 +338,8 @@ public image. Never use private specimen material for a smoke test.
 These optional smoke commands are distinct from the user-authorized first-ten
 application pilot. The pilot requires its privately frozen originals, pinned
 provider routes, verified identity/data/runtime prerequisites and the shared
-USD 5 reservation ledger. It is never run inside ordinary pull-request CI.
+reservation ledger (G30's allowance, USD 15 since 2026-10-09). It is never run
+inside ordinary pull-request CI.
 
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)

@@ -85,7 +85,7 @@ first pull request records that in each affected document with a dated entry.
 | G27 | Asked by the coordinator from S8's finding on 105526329 and 105526330: the label reads "Chimaltenago", one reader wrote that and the other silently wrote "Chimaltenango", and a place lookup matches the second exactly and the first only approximately. The owner chose neither offered option ("Exact match settles it", "Place yes, spelling to review") and answered: "raw transcript anyway will have exactly as written, for verbatim field it will be as written but final location will be exact actual as settled by harness. we are always capturing both so there isn't an issue if people want to change later". So the lookup settles the final value and the field clears; the verbatim is never replaced, neither by a lookup result nor by the spelling a lookup matched; when the first pass picked no reading and the readers' literals differ, each reader's reading is kept as captured and none is chosen; both are stored, linked to the specimen (the shape is in S5's data contract) | G20's "that literal is used" for the verbatim; S8's proposal D14 (#94) |
 | G28 | Chosen option "Yes, same as places": taxon names follow G27; the taxon field keeps the label's spelling as its verbatim text, GBIF's settled name is the final value, and both are stored | nothing |
 | G29 | Chosen option "Yes, read it as the month", with the owner's addition: "yes, read as month + this should be part of system prompt too, all permutations combinatinos. thats the whole point of the harness, we figure out all possible cases and try to get to final records that need to be ingested. this should be the prinnciple of th harness essentially. theres a broad range possible per collection/subcollection each subcollection will have its own harness, right now were on insects". So a Roman numeral I to XII in the month position is that month; the harness works through every reading a notation allows, for dates and for every other field, and settles the one the evidence supports; what it cannot settle goes to needs human review with the candidates (G1, G6); each subcollection's profile carries its own harness knowledge, and the pilot's is Insects | settles the Roman-numeral months of `PRD.md` 570; states `PRD.md` 44 and HAR-013 as the harness's principle |
-| G30 | Chosen option "USD 5" (the coordinator's recommendation): production model calls may spend USD 5 of G9's USD 25, across every paid step (readers, SAM 3, first pass, harness): each call reserves its worst-case cost before it starts, so no call can cross the allowance, and is settled to its cost once the provider reports its usage or returns a billed amount (SAM 3, priced by its measured seconds, settles as `computed`), while any other outcome stays reserved in full (coordinator ruling on the mechanism, section 4.3); the acceptance lab's USD 5 share is separate, and infrastructure takes the rest; when the allowance is spent, paid steps block as `program_allowance_exhausted`, an operational block (QUE-005), until the owner raises it | sets section 4.3's "configured model allowance" |
+| G30 | Chosen option "USD 5" (the coordinator's recommendation): production model calls may spend USD 5 of G9's USD 25, across every paid step (readers, SAM 3, first pass, harness): each call reserves its worst-case cost before it starts, so no call can cross the allowance, and is settled to its cost once the provider reports its usage or returns a billed amount (SAM 3, priced by its measured seconds, settles as `computed`), while any other outcome stays reserved in full (coordinator ruling on the mechanism, section 4.3); the acceptance lab's USD 5 share is separate, and infrastructure takes the rest; when the allowance is spent, paid steps block as `program_allowance_exhausted`, an operational block (QUE-005), until the owner raises it. Raised to USD 15 on 2026-10-09 (note after this table) | sets section 4.3's "configured model allowance" |
 | G31 | Chosen option "Not sensitive": the owner checked the ten pilot slides against `PRD.md` 724's criteria and classified them not sensitive on 2026-09-23, recorded in `~/specimen-golive/OWNER_ACTIONS.md`; their import declares them not sensitive on that verified classification | meets `CONTRACTS.md` 169-170 ("actual source classification must be verified") and closes `RELEASE_RUNTIME.md` 558-560's open item for these ten |
 | G32 | Chosen option "Same settled value" (asked by S4; answered 2026-09-24): "The harness settles each label separately and clears the field when both settle to the same value, for example two spellings of one place. Otherwise it goes to review." So a field found on two labels of one slide is settled per label on its own evidence and clears when every label settles to the same value: the same place ID or GBIF usage, or, for a field without a lookup, the same text; otherwise it goes to needs human review with each label's reading kept, and every verbatim stays as written (G27) | the specification is silent on a field found on two labels (G5) |
 | G33 | Chosen option "Every reading" (asked by S4; answered 2026-09-24): "Dates in every model's reading count, not only the chosen transcript. If they disagree on the order, the date goes to review. A misread can block a choice but never make one." So the numeric dates of every reading, the decided transcript's and the raw readings', are the evidence that fixes an all-numeric date's day and month order (a component over 12), and any disagreement among them fixes no order | settles what "the one the evidence supports" (G29) means for an all-numeric date |
@@ -190,6 +190,25 @@ a follow-up); no uncertainty radius is taken from GEOLocate (D13). G26 stays in
 force as `DATA_CONTRACT.md` rule 6, whose `google-maps-geocoding` source string
 has no production producer. The later mentions of Google geocoding in this plan
 (sections 2.2, 2.3, 4.1, 4.4, 4.5, 4.8 and 7.2) describe the retired design.
+
+2026-10-09 (owner, in the schema session): G30's allowance rises from USD 5 to
+USD 15 for the reruns of the ten pilot specimens. The owner's words, quoted
+exactly:
+
+- "money is ok for the reruns of these 10 specimens."
+- "25+5 is alright. I highly doubt we need all that much but its fine +/- $10 is fine by me"
+
+What holds now: the published profile `zoology_insects_slides` 1.0.0 carries
+`processing.program_allowance.allowance_micros` 15000000, and
+`research_harness/program_budget.py` refuses any allowance above G9's USD 25
+(25000000 micros). The per-run ceiling stays USD 1 (`run_cost_limit_micros`
+1000000). The new allowance reaches a run when the run is queued, so a run
+queued earlier keeps the USD 5 it was given; the ledger's reservations are
+unchanged. The reason, from a read-only ledger reading at 2026-10-09 03:36 UTC:
+USD 2.04 of the USD 5 was taken, and a full rerun from the image keeps about
+USD 0.25 for good plus its real cost, so ten full reruns do not fit under USD 5.
+The other mentions of the USD 5 allowance in this plan and in the documents it
+feeds record the 2026-09-23 decision and its quotations.
 
 ### 2.2 What the existing documents already fix
 
@@ -302,7 +321,8 @@ be extracted and shown.
 The USD 25 ceiling (G9) covers everything. The pipeline records every paid
 call's cost on the run and refuses a paid step whose worst-case reservation
 would cross the configured model allowance; a Cloud Billing budget alert
-watches the whole project. The production model allowance is USD 5 (G30). By
+watches the whole project. The production model allowance is USD 15 (G30,
+raised from USD 5 on 2026-10-09; section 2.1). By
 coordinator ruling on the mechanism:
 - Each paid call reserves its worst-case cost before it starts, in one atomic
   check-and-reserve on a shared ledger: S3's `worker_cursor` document, written

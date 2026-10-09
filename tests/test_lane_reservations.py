@@ -120,9 +120,10 @@ def test_the_price_list_needs_a_context_length_for_every_route_that_reads_crops(
 def test_a_reservation_that_does_not_fit_blocks_before_the_call(tmp_path):
     # Muse without a documented rule reserves 88,474; the allowance leaves less.
     registry = with_models(priced_registry(), **{"handwriting-muse": {"image_tokens": None}})
-    # Explicit synthetic history leaves SAM's lifecycle hold plus 80,000 of the shared cap.
+    # Explicit synthetic history leaves SAM's lifecycle hold plus 80,000 of the shared cap
+    # (the pilot profile's allowance, G30, USD 15, less 244,121).
     app, principal, row = lab(
-        tmp_path, registry=registry, ledger_total_micros=4_755_879
+        tmp_path, registry=registry, ledger_total_micros=15_000_000 - 244_121
     )
     run = app.state.workflow.drain(principal, row["specimen_id"]).run
     assert run.blocker == "program_allowance_exhausted"

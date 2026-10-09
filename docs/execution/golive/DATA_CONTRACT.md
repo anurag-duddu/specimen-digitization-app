@@ -631,7 +631,7 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
   the queue decides.
 - `run.allowance`, `run.paid_calls` and `run.actual_cost_micros` come from the
   snapshot's `Run.program_allowance`, `Run.paid_calls` and
-  `Run.usage.actual_cost_micros` (S3, G30: the program's USD 5 allowance and
+  `Run.usage.actual_cost_micros` (S3, G30: the program's model allowance, USD 15 since 2026-10-09, and
   what remains of it). Cost stays out of SQL. A run with no paid call yet has an
   empty `paid_calls`.
   - A paid call's `cost_basis` is `computed` (the provider's reported usage times
