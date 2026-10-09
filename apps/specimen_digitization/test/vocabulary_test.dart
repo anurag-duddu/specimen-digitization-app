@@ -39,12 +39,40 @@ void main() {
       expect(vocabularyLabel(''), '');
     });
 
+    test('names the field research blockers in plain words', () {
+      expect(
+        vocabularyLabel('field_research_model_error'),
+        'No usable model answer',
+      );
+      expect(
+        vocabularyLabel('field_research_timeout'),
+        'Field research ran out of time',
+      );
+      expect(
+        vocabularyLabel('field_research_price_unavailable'),
+        'Field research model has no price',
+      );
+      expect(
+        vocabularyLabel('field_research_unconfigured'),
+        'Field research not set up',
+      );
+      expect(
+        vocabularyLabel('identified_by_irn_identity_unproved'),
+        'Identifier not confirmed in EMu',
+      );
+    });
+
     test('never leaks a snake_case token to the screen', () {
       for (final value in <String>[
         'needs_human_review',
         'processing_blocked',
         'external_outcome_unknown',
         'memory_limit_unavailable',
+        'field_research_model_error',
+        'raw_reading_grounding_unproved',
+        'independent_observations_missing',
+        'raw_provenance_missing',
+        'preserved_human_decision',
       ]) {
         expect(vocabularyLabel(value), isNot(contains('_')));
       }

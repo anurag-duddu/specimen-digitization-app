@@ -124,12 +124,15 @@ def test_the_worker_hands_over_to_the_job_the_api_starts():
 
 def test_only_the_worker_job_turns_the_research_harness_on():
     """The drain reads the switch with enablement's own parser; the API and SAM 3 never carry it."""
-    from specimen_digitization.research_harness.enablement import SETTING, research_harness_enabled
+    from specimen_digitization.research_harness.enablement import (
+        SETTING, research_harness_enabled, research_harness_mode,
+    )
 
-    assert SETTING == "SPECIMEN_RESEARCH_HARNESS" and S.WORKER["env"][SETTING] == "on"
+    assert SETTING == "SPECIMEN_RESEARCH_HARNESS" and S.WORKER["env"][SETTING] == "fields"
     built = bodies("api", "worker", "sam")
     worker = plain_env(built["worker"]["template"]["template"]["containers"][0])
-    assert worker[SETTING] == "on" and research_harness_enabled(worker) is True
+    assert worker[SETTING] == "fields" and research_harness_enabled(worker) is True
+    assert research_harness_mode(worker) == "fields"
     for role in ("api", "sam"):
         names = {row["name"] for row in built[role]["template"]["containers"][0]["env"]}
         assert SETTING not in S.ROLES[role]["env"] and SETTING not in names

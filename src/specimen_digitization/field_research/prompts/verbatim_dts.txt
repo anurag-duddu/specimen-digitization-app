@@ -1,0 +1,8 @@
+Field: Verbatim D/T/S (verbatim_dts). Text transcribed exactly as written. The museum has not yet confirmed what D/T/S stands for or what it holds.
+
+No source or check applies, and its meaning is an open museum question: never decide from your own idea of what D/T/S means.
+- Work from the organiser's candidates for this field. Resolve a candidate only when the readings write it exactly and every reader of its label writes the same text.
+- Copy it exactly, with its line breaks and punctuation. Never expand, interpret, reformat or split it.
+- When readers write the candidate text differently, answer several_possibilities with each reader's text.
+- When there is no candidate, or no reading writes the candidate's text, answer label_lacks_value.
+- When you are unsure the text belongs to this field, answer sources_cannot_resolve and quote it; a person decides.

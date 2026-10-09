@@ -244,7 +244,7 @@ def test_bodies_are_built_only_from_the_committed_settings(ready):
     worker_env, worker_secrets = env_of(container)
     assert worker_env == {**tracing, "LOGFIRE_SERVICE_NAME": "specimen-worker", **sql, "SPECIMEN_GCS_BUCKET": bucket, "SPECIMEN_SAM3_ENDPOINT": SAM_URL,
                           "SPECIMEN_SAM3_REVISION": SAM3_MODEL.revision, "SPECIMEN_APPROVED_INFERENCE": "true",
-                          "SPECIMEN_RESEARCH_HARNESS": "on",
+                          "SPECIMEN_RESEARCH_HARNESS": "fields",
                           "SPECIMEN_WORKER_JOB": NAMES["worker"], "SPECIMEN_SAM3_CHECKPOINT_SHA256": S.SAM_CHECKPOINT_SHA256}
     assert worker_secrets == {"HF_TOKEN": ("huggingface-runtime-token", "2"), "LOGFIRE_TOKEN": ("specimen-worker-logfire", "1"),
                               "SPECIMEN_WORKER_ACTOR_UID": ("specimen-worker-actor-uid", "1"),

@@ -125,6 +125,36 @@ void main() {
     test('a record with none offers none', () {
       expect(recordReasonCodes(Specimen(const <String, dynamic>{})), isEmpty);
     });
+
+    test('field research reasons read as plain words', () {
+      expect(
+        recordReasonCodes(
+          Specimen(const <String, dynamic>{
+            'reason_codes': <String>[
+              'field_research_model_error:taxon',
+              'field_research_timeout:country',
+              'raw_reading_grounding_unproved:taxon',
+              'independent_observations_missing:'
+                  '7fb0fadb-9e9e-4941-92af-70fd1e197e9d',
+              'raw_provenance_missing:r1',
+              'identified_by_irn_identity_unproved',
+              'preserved_human_decision:habitat',
+              'mandatory_unresolved:country',
+            ],
+          }),
+        ),
+        <String>[
+          'No usable model answer: taxon',
+          'Field research ran out of time: country',
+          'Not traced to the label readings: taxon',
+          'Two independent readings needed',
+          'Reading evidence file missing: r1',
+          'Identifier not confirmed in EMu',
+          'Earlier review decision to confirm: habitat',
+          'Mandatory unresolved: country',
+        ],
+      );
+    });
   });
 
   group('recent reasons across sessions', () {

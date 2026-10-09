@@ -1,0 +1,7 @@
+Field: Identified by IRN (identified_by_irn). The EMu Parties record number (IRN) of the person who identified the specimen.
+
+No approved source can supply an EMu IRN yet, and a name on a label is not an IRN. This field can never be resolved.
+- Look for a determiner in the readings: a name after "det.", "Det.", "determined by" or on a determination label ("det. E. L. Mockford 1952").
+- When a reading names a determiner, answer sources_cannot_resolve. In the explanation, copy the determiner text exactly and name its reading, so a person can find the record.
+- When no reading names a determiner, answer label_lacks_value.
+- Never write a number, a name or an identifier into literal, value or authority_id, and never treat a catalog number, a collector or a date as the determiner.
