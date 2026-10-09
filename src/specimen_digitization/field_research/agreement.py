@@ -65,12 +65,30 @@ answer becomes a value (step._refusal). It enforces, in this order:
    about the expansion the table gives it ("Philippine Islands" for "P.I.",
    P4), for which the step cites one rule row naming the entry; or else
    about the candidate's own name when that name is one letter from the
-   literal (application.georef_locality.one_letter_apart, G34's bound as
-   the place tool reads it: both full names, comparison keys one insertion,
-   deletion or substitution apart), for which the step records a
-   near_spelling warning finding, which never routes the record
-   (place_basis). A lookup of any other name settles nothing ("Escuintla"
-   for "Chimaltenago", "Philippines" for "P.I.").
+   literal (application.georef_locality.one_letter_apart: both full names,
+   comparison keys one insertion, deletion or substitution apart), the
+   one-letter half of G34, which the step settles only on the rest of G34
+   (point 5) and then records a near_spelling warning finding, which never
+   routes the record (place_settling). A lookup of any other name settles
+   nothing ("Escuintla" for "Chimaltenago", "Philippines" for "P.I.").
+5. The place fits the label's other place fields (B3 and N1 of the third
+   review; parents_refusal). The step checks it once every field's outcome
+   is in, the country first and then the province, county and city
+   (step._misfit), as the fields run at once and the country must be known.
+   For each reading the answer names (its label's decided reading, on a
+   label with one), the settling candidate's parents (SourceCandidate.parents,
+   as its source gives them) are compared, by record or by comparison key of
+   the field's texts and the notation table's expansion, with the reading's
+   other place fields:
+   - below the country, the candidate has parents, and they include the
+     country settled from that reading's text, and for a county or a city
+     the province settled from it too, when one is. No country settled for
+     the reading, no parents, or none that is the country: review. A
+     country needs no parent;
+   - a near spelling settles only when every other place field the reading
+     writes, all of them and at least one, names one of its parents (G34's
+     whole condition). A county or a city the reading writes is never a
+     province's parent, so a near-spelled province with one does not settle.
 
 Point 3 follows research_harness/evidence.py's G20 and G32 rules (725-751:
 one confirmed reader beside the other's captured no-match; labels that
@@ -81,7 +99,7 @@ value: here two confirmed readers of one label go to review.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
 from specimen_digitization.application.domain import LookupStatus
@@ -423,36 +441,124 @@ def _disagreement(task: FieldTask, readings: Sequence[Reading], *, literal: str,
 ASKED, NOTATION, NEAR_SPELLING = "asked", "notation", "near_spelling"
 
 
-def place_basis(task: FieldTask, literal: str, settled: str, authority_id: str | None,
-        cited: Iterable[SourceAnswer]) -> str | None:
+def place_settling(task: FieldTask, literal: str, settled: str, authority_id: str | None,
+        cited: Iterable[SourceAnswer]) -> tuple[str, SourceCandidate] | None:
     """How a cited answer of the field's place sources settles the place value
-    (P1 and P3 of #284), or None when none does. The answer has exactly one
-    candidate at the field's level (placed), that candidate is the settled
-    value (its name exactly, after NFC and whitespace collapse) with the
-    answer's authority_id, and the answer was asked
+    (P1 and P3 of #284), and on which candidate; None when none does. The
+    answer has exactly one candidate at the field's level (placed), that
+    candidate is the settled value (its name exactly, after NFC and whitespace
+    collapse) with the answer's authority_id, and the answer was asked
     - about the label's own text (about): ASKED; or else
     - about the expansion the notation table gives the literal for this field
       (notations.expansion: "Philippine Islands" for "P.I."): NOTATION, for
       which the step cites a rule row naming the entry; or else
     - about that candidate's own name, when the name is one letter from the
-      label's text (application.georef_locality.one_letter_apart, G34's
-      bound as the place tool reads it: both full names, comparison keys one
-      single-letter edit apart): NEAR_SPELLING, which the step records as a
+      label's text (application.georef_locality.one_letter_apart: both full
+      names, comparison keys one single-letter edit apart): NEAR_SPELLING. It
+      is G34's one-letter half only; the step settles it only when the rest
+      of G34 holds too (parents_refusal), and then records a near_spelling
       warning finding that never routes the record."""
     sources = frozenset(task.tools) & frozenset(PLACE_SOURCES)
     entry = expansion(literal, task.key)
-    found = set()
+    found: dict[str, SourceCandidate] = {}
     for answer in cited:
         one = placed(task.key, answer) if answer.source_id in sources else None
         if one is None or collapse(one.name) != collapse(settled) or one.authority_id != authority_id:
             continue
         if about(answer, collapse(literal)):
-            found.add(ASKED)
+            found.setdefault(ASKED, one)
         elif entry is not None and about(answer, collapse(entry.expansion)):
-            found.add(NOTATION)
+            found.setdefault(NOTATION, one)
         elif about(answer, collapse(one.name)) and one_letter_apart(literal, one.name):
-            found.add(NEAR_SPELLING)
-    return next((basis for basis in (ASKED, NOTATION, NEAR_SPELLING) if basis in found), None)
+            found.setdefault(NEAR_SPELLING, one)
+    return next(((basis, found[basis]) for basis in (ASKED, NOTATION, NEAR_SPELLING) if basis in found), None)
+
+
+def place_basis(task: FieldTask, literal: str, settled: str, authority_id: str | None,
+        cited: Iterable[SourceAnswer]) -> str | None:
+    """The basis place_settling finds, or None."""
+    found = place_settling(task, literal, settled, authority_id, cited)
+    return found[0] if found is not None else None
+
+
+# Why a place value's candidate does not fit the label's other place fields
+# (B3 and N1 of #284's third review; the step's check, parents_refusal).
+NO_PARENTS = "The source does not say which country this place is in."
+NO_COUNTRY = "No country is settled for the reading that writes this place."
+NOT_IN_COUNTRY = "The place found is not in the country the label gives."
+NOT_IN_PROVINCE = "The place found is not in the province the label gives."
+NEAR_UNFIT = ("The place found is one letter from the label's spelling, and the label's other place "
+    "fields do not all name places it lies in.")
+PLACE_ORDER = ("country", "province_state", "county", "city")
+
+
+@dataclass(frozen=True)
+class PlaceField:
+    """Another place field as one reading writes it: the texts that reading
+    writes for it (its candidate literals and verbatims), with the value it
+    settled on when one is settled from that reading's text, and that value's
+    authority_id."""
+
+    texts: tuple[str, ...]
+    authority_id: str | None = None
+
+
+def place_keys(key: str, texts: Iterable[str]) -> frozenset[str]:
+    """The comparison keys (place_name) a place field's texts name a parent by:
+    each text, and the expansion the notation table gives it for the field
+    ("Philippine Islands" for the country "P.I."), the alias field research
+    reads a notation by."""
+    found = set()
+    for text in texts:
+        found.add(place_name(text))
+        entry = expansion(text, key)
+        if entry is not None:
+            found.add(place_name(entry.expansion))
+    return frozenset(found - {""})
+
+
+def lies_in(candidate: SourceCandidate, key: str, field: PlaceField) -> bool:
+    """Whether a parent of the candidate is this place field: the same record
+    (the field's authority_id), or a name with one of its comparison keys."""
+    names = place_keys(key, field.texts)
+    return any((field.authority_id is not None and parent.authority_id == field.authority_id)
+        or place_name(parent.name) in names for parent in candidate.parents)
+
+
+def parents_refusal(key: str, candidate: SourceCandidate, basis: str, *,
+        written: Mapping[str, PlaceField], settled: Mapping[str, PlaceField]) -> Refusal | None:
+    """Why the candidate a place value settles on does not fit the label's
+    other place fields of one reading (B3 and N1 of #284's third review), or
+    None. `written` is every other place field that reading writes; `settled`
+    those of them settled from that reading's text.
+    - Below the country, the candidate has parents (SourceCandidate.parents),
+      the country settled for the reading is one of them, and for a county or
+      a city, the province settled for the reading too when one is. A
+      candidate with no parents, or none of whose parents is that country,
+      does not settle; nor does any place when no country is settled for the
+      reading. A country needs no parent.
+    - A near spelling (NEAR_SPELLING) settles only on G34's whole condition:
+      every other place field the reading writes, all of them and at least
+      one, names a parent of the candidate (lies_in). A county or a city the
+      reading writes is never a parent of a province, so a near-spelled
+      province with one on its reading does not settle."""
+    if key != "country":
+        if not candidate.parents:
+            return Refusal(NO_PARENTS, NO_PARENTS)
+        country = settled.get("country")
+        if country is None:
+            return Refusal(NO_COUNTRY, NO_COUNTRY)
+        if not lies_in(candidate, "country", country):
+            return Refusal(NOT_IN_COUNTRY, NOT_IN_COUNTRY)
+        province = settled.get("province_state")
+        if key in ("county", "city") and province is not None and not lies_in(
+                candidate, "province_state", province):
+            return Refusal(NOT_IN_PROVINCE, NOT_IN_PROVINCE)
+    if basis == NEAR_SPELLING:
+        others = {other: field for other, field in written.items() if other != key}
+        if not others or not all(lies_in(candidate, other, field) for other, field in others.items()):
+            return Refusal(NEAR_UNFIT, NEAR_UNFIT)
+    return None
 
 
 def refusal(task: FieldTask, readings: Sequence[Reading], *, literal: str,

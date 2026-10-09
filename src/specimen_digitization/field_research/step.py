@@ -465,6 +465,66 @@ def _refusal(task, answer, *, readings, by_name, sources):
         authority_id=answer.authority_id, cited=cited, received=received)
 
 
+def _place_texts(run, tasks_by_key: Mapping[str, FieldTask], readings) -> dict[str, dict[str, frozenset[str]]]:
+    """Each place value field's texts by reading (agreement.reader_literals),
+    before this attempt changes any value: its task's candidates and
+    verbatims, or the run's for a field not researched in this attempt."""
+    from .agreement import PLACE_ORDER, reader_literals
+
+    stored = None
+    found = {}
+    for key in PLACE_ORDER:
+        task = tasks_by_key.get(key)
+        if task is None:
+            stored = _candidates(run, readings) if stored is None else stored
+            task = FieldTask(key=key, mandatory=False, current=run.fields.get(key) or FieldValue(),
+                candidates=tuple(stored.get(key, ())), tools=())
+        found[key] = {name: frozenset(texts) for name, texts in reader_literals(task, readings).items()}
+    return found
+
+
+def _misfit(run, task, answer, *, sources, readings, by_name, places, pending):
+    """Why a place value the agreement rules accept does not fit the label's
+    other place fields (agreement.parents_refusal), or None. It is checked
+    here, once every outcome is in: field research runs its fields at once,
+    and the country must be known. For each reading the answer names (the
+    label's decided reading, on a label with one), the other place fields are
+    those that reading writes (`places`), and one of them is settled for the
+    reading when its value is supported, this attempt has done with it (it is
+    not `pending`) and the reading writes its literal, compared as place
+    names."""
+    from .agreement import PLACE_ORDER, PLACE_VALUE_FIELDS, PlaceField, parents_refusal, place_name, place_settling
+
+    if task.key not in PLACE_VALUE_FIELDS:
+        return None
+    by_id = {item.evidence.id: item for item in sources if item.evidence is not None}
+    cited = [by_id[i] for i in dict.fromkeys(answer.source_evidence_ids) if i in by_id]
+    settled_value = answer.value if answer.value is not None else answer.literal
+    found = place_settling(task, answer.literal, settled_value, answer.authority_id, cited)
+    if found is None:
+        return None  # _refusal has refused it already.
+    basis, candidate = found
+    named = [by_name[n] for n in dict.fromkeys(answer.reading_names) if n in by_name and answer.literal in by_name[n].text]
+    decided = {r.region_id: r for r in readings if r.input_source == "decided_transcript"}
+    for reading in dict.fromkeys(decided.get(r.region_id, r) for r in named):
+        written, settled = {}, {}
+        for key in PLACE_ORDER:
+            texts = places[key].get(reading.name, frozenset())
+            if key == task.key or not texts:
+                continue
+            value = run.fields.get(key)
+            if (key not in pending and value is not None and value.state == ValueState.SUPPORTED and value.literal
+                    and place_name(value.literal) in {place_name(text) for text in texts}):
+                names = (*sorted(texts), *(text for text in (value.normalized, value.parsed) if text))
+                written[key] = settled[key] = PlaceField(tuple(dict.fromkeys(names)), value.authority_id)
+            else:
+                written[key] = PlaceField(tuple(sorted(texts)))
+        refused = parents_refusal(task.key, candidate, basis, written=written, settled=settled)
+        if refused is not None:
+            return refused
+    return None
+
+
 NEAR_SPELLING_RULES = "field-research-places-v1"
 
 
@@ -472,10 +532,10 @@ def _place_basis(run, task, answer, sources, value: FieldValue) -> None:
     """What a settled place value's basis adds (agreement.place_basis): for a
     lookup of a notation's expansion (P4), one rule row naming the table entry,
     cited by the value as support (no stored record, so it is never projected);
-    for a lookup of the candidate's own name one letter from the label's text
-    (G34's bound), a warning finding beside the record, naming the deciding
-    answers, which never routes it (RunFinding). The value keeps the label's
-    spelling as its literal (G27)."""
+    for a lookup of the candidate's own name one letter from the label's text,
+    which settled only on G34's whole condition (_misfit), a warning finding
+    beside the record, naming the deciding answers, which never routes it
+    (RunFinding). The value keeps the label's spelling as its literal (G27)."""
     from .agreement import NEAR_SPELLING, NOTATION, PLACE_VALUE_FIELDS, place_basis
     from .notations import expansion
 
@@ -577,7 +637,7 @@ def _unsettled(task, state, *, literal=None, cited=(), reason) -> FieldValue:
 
 
 def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, blobs, date_rules=None,
-        sources: Sequence[SourceAnswer] = ()) -> FieldValue:
+        sources: Sequence[SourceAnswer] = (), places, pending=frozenset()) -> FieldValue:
     answer = outcome.answer
     current = task.current
     if task.key in NO_APPROVED_AUTHORITY:
@@ -599,6 +659,11 @@ def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, b
                     reason=f"{refused.reason} {answer.explanation}")
             return _unsettled(task, ValueState.UNRESOLVED, literal=current.literal, cited=cited,
                 reason=f"{refused.reason} {answer.explanation}")
+        misfit = _misfit(run, task, answer, sources=sources, readings=readings, by_name=by_name,
+            places=places, pending=pending)
+        if misfit is not None:
+            return _unsettled(task, ValueState.UNRESOLVED, literal=current.literal, cited=cited,
+                reason=f"{misfit.reason} {answer.explanation}")
         settled = _settled(run, task, outcome, by_name=by_name, evidence=evidence, asset_id=asset_id,
             blobs=blobs, date_rules=date_rules)
         if settled is not None:
@@ -737,30 +802,40 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     (agreement.refusal: a literal that is not a whole candidate of the
     readings it names, or that the label's decided transcript does not write,
     a pick between readers no source settles, a place no place source
-    confirms) is ambiguous or unresolved instead. label_lacks_value: not present;
+    confirms), or whose place does not lie in the country and province
+    settled for its reading (_misfit, after the places above it), is
+    ambiguous or unresolved instead. label_lacks_value: not present;
     sources_cannot_resolve: unresolved; several_possibilities: ambiguous, the
     options in the reason; a failure: unresolved with a retryable reason. Then
     the derived values; the keys derived are returned.
     """
+    from .agreement import PLACE_ORDER
+
     profile = profile_of(run) if profile is None else profile
     readings = run_readings(run)
     by_name = {reading.name: reading for reading in readings}
     if asset_id is None:
         asset_id = run.regions[0].asset_id if run.regions else None
+    tasks_by_key = {task.key: task for task in tasks}
+    places = _place_texts(run, tasks_by_key, readings)
     _add_sources(run, outcomes, calls, readings, _taxon_literals(run, tasks, outcomes))
     evidence = {item.id: item for item in run.evidence}
-    tasks_by_key = {task.key: task for task in tasks}
     human = human_keys(run)
     received: dict[str, list[SourceAnswer]] = {}
     for call in calls:
         received.setdefault(call.field_key, []).append(call.answer)
-    for outcome in outcomes:
+    # The places first, from the country down: a place below it settles only
+    # inside the country (and province) settled before it (_misfit).
+    ordered = sorted(outcomes, key=lambda o: PLACE_ORDER.index(o.key) if o.key in PLACE_ORDER else len(PLACE_ORDER))
+    pending = {outcome.key for outcome in ordered}
+    for outcome in ordered:
         task = tasks_by_key.get(outcome.key)
+        pending.discard(outcome.key)
         if task is None or task.key in human:
             continue
         run.fields[task.key] = _field_value(run, task, outcome, readings=readings, by_name=by_name,
             evidence=evidence, asset_id=asset_id, blobs=blobs, date_rules=profile.date_rules,
-            sources=received.get(task.key, ()))
+            sources=received.get(task.key, ()), places=places, pending=frozenset(pending))
     eligible = [key for key in field_keys(profile) if key not in human]
     return derive.fill(run, eligible=eligible, asset_id=asset_id, blobs=blobs)
 

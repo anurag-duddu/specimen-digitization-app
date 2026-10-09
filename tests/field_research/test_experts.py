@@ -942,11 +942,15 @@ def test_labels_that_write_one_name_differently_settle_on_one_gbif_usage():
 # A place value settles on the one candidate at its field's level (P1). The
 # kinds are as the recorded pilot answers give them.
 
-def tgn(query: str, evidence_id: str, *places: tuple[str, str, str]) -> SourceAnswer:
-    """Getty TGN's answer: success for one place, ambiguous for several."""
+def tgn(query: str, evidence_id: str, *places: tuple) -> SourceAnswer:
+    """Getty TGN's answer: success for one place, ambiguous for several. Each
+    place is (name, authority_id, kind), and its parents as (name, authority_id)
+    pairs when the recording gives them."""
     status = LookupStatus.SUCCESS if len(places) == 1 else LookupStatus.AMBIGUOUS
     return SourceAnswer("tgn", query, status,
-                        tuple(SourceCandidate(name, authority, kind) for name, authority, kind in places),
+                        tuple(SourceCandidate(name, authority, kind, None,
+                                              tuple(PlaceRef(*parent) for parent in (rest[0] if rest else ())))
+                              for name, authority, kind, *rest in places),
                         Evidence(id=evidence_id, kind="authority", source="tgn", locator=None, excerpt=query),
                         note=str(status))
 
@@ -956,8 +960,10 @@ NATION, FIRST, TOWN = ("nations, commonwealths, controlled regions",
                        "(political entities)", "inhabited places, cities, department capitals")
 PHILIPPINES = tgn("P.I.", "ev-ph", ("Philippines", "tgn:1000135", NATION),
                   ("Philippine", "tgn:7268540", "inhabited places"), ("Philippine Sea", "tgn:7016773", "seas"))
-CHIMALTENANGO = tgn("Chimaltenango", "ev-chim", ("Chimaltenango", "tgn:1016636", TOWN),
-                    ("Chimaltenango", "tgn:1000565", FIRST))
+IN_GUATEMALA = (("Guatemala", "tgn:7005493"),)
+CHIMALTENANGO = tgn("Chimaltenango", "ev-chim",
+                    ("Chimaltenango", "tgn:1016636", TOWN, (("Chimaltenango", "tgn:1000565"), *IN_GUATEMALA)),
+                    ("Chimaltenango", "tgn:1000565", FIRST, IN_GUATEMALA))
 DAVAO = tgn("Davao", "ev-davao-tgn",
             ("Davao del Norte", "tgn:1001216", "provinces, first level subdivisions (political entities)"),
             ("Davao", "tgn:7668798", "special cities, first level subdivisions (political entities)"),
@@ -1037,7 +1043,7 @@ def test_readers_that_differ_settle_on_an_ambiguous_answer_with_one_candidate_at
     assert agreement.identities([CHIMALTENANGO], "Chimaltenango", "city") == {"tgn:1016636"}
 
 
-ESCUINTLA = tgn("Escuintla", "ev-esc", ("Escuintla", "tgn:1000566", FIRST))
+ESCUINTLA = tgn("Escuintla", "ev-esc", ("Escuintla", "tgn:1000566", FIRST, IN_GUATEMALA))
 PHILIPPINES_BY_NAME = tgn("Philippines", "ev-ph-name", ("Philippines", "tgn:1000135", NATION),
                           ("Philippine", "tgn:7268540", "inhabited places"))
 PHILIPPINE_ISLANDS = tgn("Philippine Islands", "ev-pi", ("Philippine Islands", "tgn:2578581", "ridges (landforms)"),
@@ -1048,7 +1054,9 @@ PHILIPPINE_ISLANDS = tgn("Philippine Islands", "ev-pi", ("Philippine Islands", "
     # The lookup was asked the label's text, case and punctuation aside.
     ("province_state", "chimaltenango,", CHIMALTENANGO, "Chimaltenango", "tgn:1000565", True),
     ("country", "P.I.", PHILIPPINES, "Philippines", "tgn:1000135", True),
-    # The candidate's own name, one letter from the label's text (G34's bound).
+    # The candidate's own name, one letter from the label's text: the one-letter half of
+    # G34, which the expert accepts; the step settles it only on the rest of G34
+    # (test_a_place_fits_the_other_place_fields_its_reading_writes).
     ("province_state", "Chimaltenago", CHIMALTENANGO, "Chimaltenango", "tgn:1000565", True),
     # Two letters from it.
     ("province_state", "Chimaltango", CHIMALTENANGO, "Chimaltenango", "tgn:1000565", False),
@@ -1064,8 +1072,10 @@ PHILIPPINE_ISLANDS = tgn("Philippine Islands", "ev-pi", ("Philippine Islands", "
 ])
 def test_a_place_settles_only_on_a_lookup_of_the_labels_own_text(key, literal, received, value, authority,
                                                                   settles):
-    readings = (Reading("1A", "region-1", "obs-1a", "decided_transcript", f"{literal}\nleg. J. Smith"),
-                Reading("1B", "region-1", "obs-1b", "raw_reading", f"{literal}\nleg. J. Smith"))
+    # A province is written beside its country, which its department lies in.
+    text = f"{literal}, Guatemala\nleg. J. Smith" if key == "province_state" else f"{literal}\nleg. J. Smith"
+    readings = (Reading("1A", "region-1", "obs-1a", "decided_transcript", text),
+                Reading("1B", "region-1", "obs-1b", "raw_reading", text))
     made = experts._Expert(task(key, candidates=offered(("1A", literal), ("1B", literal))), readings,
                            FakeTools(), PILOT_DATES)
     made.calls.append(experts._Call(received.source_id, received.query, received.status, received))
@@ -1077,6 +1087,49 @@ def test_a_place_settles_only_on_a_lookup_of_the_labels_own_text(key, literal, r
         return
     with pytest.raises(ModelRetry, match="asked the label's own text"):
         made.validate(given)
+
+
+GUATEMALA = agreement.PlaceField(("Guatemala",), "tgn:7005493")
+PHILIPPINES_SETTLED = agreement.PlaceField(("P.I.", "Philippines"), "tgn:1000135")
+
+
+@pytest.mark.parametrize(("key", "candidate", "basis", "written", "settled", "reason"), [
+    # The department, asked or one letter off, on a reading whose one other place field is
+    # its country (G34's whole condition).
+    ("province_state", CHIMALTENANGO.candidates[1], agreement.ASKED, {"country": GUATEMALA},
+     {"country": GUATEMALA}, None),
+    ("province_state", CHIMALTENANGO.candidates[1], agreement.NEAR_SPELLING, {"country": GUATEMALA},
+     {"country": GUATEMALA}, None),
+    # The reading also writes a city, which no province lies in.
+    ("province_state", CHIMALTENANGO.candidates[1], agreement.NEAR_SPELLING,
+     {"country": GUATEMALA, "city": agreement.PlaceField(("Yepocapa",))}, {"country": GUATEMALA},
+     agreement.NEAR_UNFIT),
+    # No other place field at all (this file's earlier case): no country settled for it.
+    ("province_state", CHIMALTENANGO.candidates[1], agreement.NEAR_SPELLING, {}, {}, agreement.NO_COUNTRY),
+    # A country one letter off needs another place field too, and none is its parent.
+    ("country", tgn("Guatemala", "ev-gt", ("Guatemala", "tgn:7005493", NATION, IN_GUATEMALA)).candidates[0],
+     agreement.NEAR_SPELLING, {}, {}, agreement.NEAR_UNFIT),
+    # A Philippine label's country.
+    ("province_state", CHIMALTENANGO.candidates[1], agreement.ASKED, {"country": PHILIPPINES_SETTLED},
+     {"country": PHILIPPINES_SETTLED}, agreement.NOT_IN_COUNTRY),
+    # TGN names a Philippine place's country "Pilipinas", by the record of the nation it
+    # calls "Philippines" when searched.
+    ("province_state", tgn("Davao", "ev-dv", ("Davao", "tgn:7668798", FIRST, (("Pilipinas", "tgn:1000135"),)))
+     .candidates[0], agreement.ASKED, {"country": PHILIPPINES_SETTLED}, {"country": PHILIPPINES_SETTLED}, None),
+    # The town lies in its department: a city settled inside the province settled for it.
+    ("city", CHIMALTENANGO.candidates[0], agreement.ASKED, {"country": GUATEMALA},
+     {"country": GUATEMALA, "province_state": agreement.PlaceField(("Chimaltenango",), "tgn:1000565")}, None),
+    ("city", CHIMALTENANGO.candidates[0], agreement.ASKED, {"country": GUATEMALA},
+     {"country": GUATEMALA, "province_state": agreement.PlaceField(("Escuintla",), "tgn:1000566")},
+     agreement.NOT_IN_PROVINCE),
+    # No parents, no settling.
+    ("city", SourceCandidate("Yepocapa", "geolocate:1"), agreement.ASKED, {"country": GUATEMALA},
+     {"country": GUATEMALA}, agreement.NO_PARENTS),
+], ids=["asked", "near-spelling", "near-spelling-with-a-city", "near-spelling-alone", "country-near-spelling",
+        "another-country", "by-record", "town-in-province", "town-in-another-province", "no-parents"])
+def test_a_place_fits_the_other_place_fields_its_reading_writes(key, candidate, basis, written, settled, reason):
+    refused = agreement.parents_refusal(key, candidate, basis, written=written, settled=settled)
+    assert (refused.reason if refused else None) == reason
 
 
 def test_readers_that_differ_in_lower_case_settle_on_the_lookup_of_their_name():

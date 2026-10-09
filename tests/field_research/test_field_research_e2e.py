@@ -376,6 +376,7 @@ def test_an_outage_saves_once_with_a_retry_and_the_retry_researches_only_what_fa
     rig.ordinary.clock = lambda: later.astimezone(timezone.utc)
     with supervised():
         done = workflow.step(rig.principal, rig.specimen_id)
-    assert second.calls == ["country"]
+    # The country, and the places below it, which wait for a settled country.
+    assert second.calls == ["country", "province_state", "county", "city"]
     assert (done.run.stage, done.run.disposition, done.run.reasons) == ("finalized", "cleared", [])
     assert done.run.usage.reserved_cost_micros == sum(call["cost_micros"] for call in done.run.paid_calls) <= CAP

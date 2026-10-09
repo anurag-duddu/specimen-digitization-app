@@ -183,6 +183,7 @@ TGN_PLACES = {
     "Illinois": ("states (political divisions), first level subdivisions (political entities)",
         ("United States",)),
     "Cook": ("counties, second level subdivisions (political entities)", ("Illinois", "United States")),
+    "Chicago": ("inhabited places", ("Cook", "Illinois", "United States")),
 }
 # The larger units each place field's text lies in, as a GEOLocate query names them.
 WITHIN = {"country": (), "province_state": ("United States",), "county": ("Illinois", "United States"),
@@ -738,7 +739,7 @@ class SearchesTheFirstName(FakeSources):
         if source_id != "tgn" or query.split(",")[0].strip() != "San Pedro":
             return answer
         candidates = (SourceCandidate("San Pedro", "tgn:1016278", "inhabited places", "in San Jose, Costa Rica",
-                (PlaceRef("San Jose", "tgn:7005214"), PlaceRef("Costa Rica", "tgn:1000140"))),
+                (PlaceRef("San Jose"), PlaceRef("Costa Rica"))),
             SourceCandidate("San Pedro", "tgn:2640741", "mines (extracting complexes)", "in Santa Fe"))
         evidence = answer.evidence.model_copy(update={"kind": "authority", "excerpt": "\n".join(
             f"{c.name} | {c.authority_id} | {c.kind} | {c.detail}" for c in candidates)})
@@ -904,45 +905,78 @@ def test_a_taxon_the_readers_write_differently_needs_every_readers_name_looked_u
 
 
 class Gazetteer(FakeSources):
-    """Getty TGN as the pilot's recordings answer: "P.I." the nation and
-    places that are none; "Chimaltenango" the department and its town;
-    "Escuintla" a department."""
+    """Getty TGN as the pilot's recordings answer, with each place's parents:
+    "P.I." the nation and places that are none; "Chimaltenango" the department
+    and its town; "Escuintla" a department and its town."""
 
     FIRST = "departments (political divisions), agricultural land, first level subdivisions (political entities)"
+    NATION = "nations, commonwealths, controlled regions"
+    GT = (("Guatemala", "tgn:7005493"),)
     PLACES = {
-        "P.I.": [("Philippines", "tgn:1000135", "nations, commonwealths, controlled regions"),
-            ("Philippine", "tgn:7268540", "inhabited places")],
-        "Chimaltenango": [("Chimaltenango", "tgn:1016636", "inhabited places, cities, department capitals"),
-            ("Chimaltenango", "tgn:1000565", FIRST)],
-        "Escuintla": [("Escuintla", "tgn:1000566", FIRST), ("Escuintla", "tgn:1016700", "inhabited places")],
+        "P.I.": [("Philippines", "tgn:1000135", NATION, (("Philippines", "tgn:1000135"),)),
+            ("Philippine", "tgn:7268540", "inhabited places", (("Zeeland", None), ("Nederland", None)))],
+        "Chimaltenango": [("Chimaltenango", "tgn:1016636", "inhabited places, cities, department capitals",
+                (("Chimaltenango", "tgn:1000565"), *GT)),
+            ("Chimaltenango", "tgn:1000565", FIRST, GT)],
+        "Escuintla": [("Escuintla", "tgn:1000566", FIRST, GT),
+            ("Escuintla", "tgn:1016700", "inhabited places", (("Escuintla", "tgn:1000566"), *GT))],
         # As TGN answered "Philippine Islands" and "Guatemala" on the pilot's records.
-        "Philippine Islands": [("Philippine Islands", "tgn:2578581", "ridges (landforms)"),
-            ("Philippines", "tgn:1000135", "nations, commonwealths, controlled regions"),
-            ("Philippine", "tgn:7268540", "inhabited places"), ("Philippine Sea", "tgn:7016773", "seas"),
-            ("Caroline Islands", "tgn:7005669", "island groups")],
-        "Philippines": [("Philippines", "tgn:1000135", "nations, commonwealths, controlled regions"),
-            ("Philippine", "tgn:7268540", "inhabited places")],
-        "Guatemala": [("Guatemala", "tgn:7422823", "inhabited places"),
-            ("Guatemala", "tgn:7005493", "nations, colonies, independent political entities"),
-            ("Guatemala", "tgn:1000621", FIRST)],
+        "Philippine Islands": [("Philippine Islands", "tgn:2578581", "ridges (landforms)",
+                (("Portage", None), ("Wisconsin", None), ("United States", None))),
+            ("Philippines", "tgn:1000135", NATION, (("Philippines", "tgn:1000135"),)),
+            ("Philippine", "tgn:7268540", "inhabited places", (("Zeeland", None), ("Nederland", None))),
+            ("Philippine Sea", "tgn:7016773", "seas", (("Oceans", None), ("World", None))),
+            ("Caroline Islands", "tgn:7005669", "island groups", (("Oceania", None), ("World", None)))],
+        "Philippines": [("Philippines", "tgn:1000135", NATION, (("Philippines", "tgn:1000135"),)),
+            ("Philippine", "tgn:7268540", "inhabited places", (("Zeeland", None), ("Nederland", None)))],
+        "Guatemala": [("Guatemala", "tgn:7422823", "inhabited places", (("Zacatecas", None), ("Mexico", None))),
+            ("Guatemala", "tgn:7005493", "nations, colonies, independent political entities", GT),
+            ("Guatemala", "tgn:1000621", FIRST, GT)],
     }
 
     def _answer(self, source_id, query):
         answer = super()._answer(source_id, query)
         if source_id != "tgn" or query not in self.PLACES:
             return answer
-        candidates = tuple(SourceCandidate(name, key, kind) for name, key, kind in self.PLACES[query])
+        candidates = tuple(SourceCandidate(name, key, kind, "in " + ", ".join(parent for parent, _ in parents),
+            tuple(PlaceRef(*parent) for parent in parents)) for name, key, kind, parents in self.PLACES[query])
         evidence = answer.evidence.model_copy(update={"kind": "authority", "excerpt": "\n".join(
-            f"{c.name} | {c.authority_id} | {c.kind} | " for c in candidates)})
+            f"{c.name} | {c.authority_id} | {c.kind} | {c.detail}" for c in candidates)})
         return SourceAnswer("tgn", query, LookupStatus.AMBIGUOUS, candidates, evidence, note="ambiguous")
 
 
-def from_tgn(query, literal, value, authority_id):
+def from_tgn(query, literal, value, authority_id, source="tgn"):
     async def script(task, readings, tools):
-        answer = await tools.lookup("tgn", query, field_key=task.key)
+        answer = await tools.lookup(source, query, field_key=task.key)
         return FieldOutcome(task.key, resolved(literal, value=value, authority_id=authority_id,
             cited=[answer.evidence.id]), evidence=[answer.evidence], model_calls=1)
     return script
+
+
+def label_with(**places):
+    """TEXT with these place lines instead; None leaves a line out."""
+    lines = []
+    for line in TEXT.splitlines():
+        key = line.partition(":")[0]
+        if key in places and places[key] is None:
+            continue
+        lines.append(f"{key}: {places[key]}" if key in places else line)
+    return "\n".join(lines)
+
+
+# A Guatemalan label: its country, which Getty TGN settles, and no county or city.
+GUATEMALAN = dict(country="Guatemala", county=None, city=None)
+IN_GUATEMALA = {"country": from_tgn("Guatemala", "Guatemala", None, "tgn:7005493"),
+    **dict.fromkeys(("county", "city"), answering(FieldAnswer(outcome="label_lacks_value",
+        explanation="Not on the label.")))}
+
+
+def guatemalan(**scripts):
+    return Scripted({**IN_GUATEMALA, **scripts})
+
+
+def reasons_for(run, key):
+    return [reason for reason in run.reasons if reason.endswith(":" + key)]
 
 
 @pytest.mark.parametrize(("key", "written", "query", "value", "authority_id", "settles"), [
@@ -954,13 +988,15 @@ def from_tgn(query, literal, value, authority_id):
 ])
 def test_an_ambiguous_place_answer_settles_on_its_one_candidate_at_the_fields_level(
         tmp_path, key, written, query, value, authority_id, settles):
-    rig = build_rig(tmp_path, TEXT.replace(f"{key}: {LABEL[key]}", f"{key}: {written}"))
+    rig = build_rig(tmp_path, label_with(**{**GUATEMALAN, key: written}) if key != "country"
+        else label_with(country=written))
     run = rig.specimen.run
-    settle(rig, Scripted({key: from_tgn(query, written, value, authority_id)}), tools=Gazetteer(rig.blobs))
+    scripts = {key: from_tgn(query, written, value, authority_id)}
+    settle(rig, guatemalan(**scripts) if key != "country" else Scripted(scripts), tools=Gazetteer(rig.blobs))
     place = run.fields[key]
     if settles:
         assert (place.state, place.literal, place.authority_id) == (ValueState.SUPPORTED, written, authority_id)
-        assert place.normalized == value and (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+        assert place.normalized == value and not reasons_for(run, key)
         return
     assert (place.state, place.reason) == (ValueState.UNRESOLVED, agreement.NO_PLACE + " Settled.")
     assert run.disposition == Disposition.REVIEW and f"mandatory_unresolved:{key}" in run.reasons
@@ -969,7 +1005,8 @@ def test_an_ambiguous_place_answer_settles_on_its_one_candidate_at_the_fields_le
 @pytest.mark.parametrize(("written", "query", "value", "authority_id", "outcome"), [
     # An unrelated lookup: Escuintla for what the label writes as Chimaltenago.
     ("Chimaltenago", "Escuintla", "Escuintla", "tgn:1000566", None),
-    # TGN's Chimaltenango, one letter from the label's "Chimaltenago" (G34's bound).
+    # TGN's Chimaltenango, one letter from the label's "Chimaltenago": the label's one
+    # other place field, its country Guatemala, is the department's parent (G34).
     ("Chimaltenago", "Chimaltenango", "Chimaltenango", "tgn:1000565", "near_spelling"),
     # The label's own text, case and punctuation aside.
     ("chimaltenango,", "Chimaltenango", "Chimaltenango", "tgn:1000565", "asked"),
@@ -978,10 +1015,9 @@ def test_an_ambiguous_place_answer_settles_on_its_one_candidate_at_the_fields_le
 ])
 def test_a_place_settles_only_on_a_lookup_of_the_labels_own_text_or_one_letter_from_it(
         tmp_path, written, query, value, authority_id, outcome):
-    rig = build_rig(tmp_path, TEXT.replace("province_state: Illinois", "province_state: " + written))
+    rig = build_rig(tmp_path, label_with(**GUATEMALAN, province_state=written))
     run = rig.specimen.run
-    settle(rig, Scripted({"province_state": from_tgn(query, written, value, authority_id)}),
-        tools=Gazetteer(rig.blobs))
+    settle(rig, guatemalan(province_state=from_tgn(query, written, value, authority_id)), tools=Gazetteer(rig.blobs))
     place = run.fields["province_state"]
     near = [f for f in run.findings if f.reason_code == "near_spelling:province_state"]
     if outcome is None:
@@ -991,13 +1027,94 @@ def test_a_place_settles_only_on_a_lookup_of_the_labels_own_text_or_one_letter_f
     # The label's spelling stays the literal (G27); the value is TGN's department.
     assert (place.state, place.literal, place.normalized, place.authority_id) == (
         ValueState.SUPPORTED, written, value, authority_id)
-    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+    # Only the county and city the label leaves out send it to review.
+    assert run.reasons == ["mandatory_unresolved:city", "mandatory_unresolved:county"]
     if outcome == "asked":
         assert not near
         return
     [finding] = near
     assert (finding.severity, finding.field_key, finding.rule_id) == ("warning", "province_state", "near_spelling")
     assert set(finding.evidence_ids) <= set(place.evidence_ids) and finding.evidence_ids
+
+
+class InParaguay(Gazetteer):
+    """Wikidata's live answer for "San Pedro" (2026-10-09, as the third review
+    read it): seven places, the only one at a province's level San Pedro
+    Department, in Paraguay (cut to two)."""
+
+    def _answer(self, source_id, query):
+        answer = super()._answer(source_id, query)
+        if source_id != "wikidata" or query != "San Pedro":
+            return answer
+        candidates = (SourceCandidate("San Pedro Department", "wikidata:San Pedro Department",
+                "department of Paraguay", "in Paraguay", (PlaceRef("Paraguay"),)),
+            SourceCandidate("San Pedro", "wikidata:San Pedro", "human settlement", "in Philippines",
+                (PlaceRef("Philippines"),)))
+        evidence = answer.evidence.model_copy(update={"locator": None, "excerpt": "\n".join(
+            f"{c.name} | {c.authority_id} | {c.kind} | {c.detail}" for c in candidates)})
+        return SourceAnswer("wikidata", query, LookupStatus.AMBIGUOUS, candidates, evidence, note="ambiguous")
+
+
+PHILIPPINE = label_with(country="P.I.", province_state="Chimaltenago", county="Davao", city="Mati")
+NOTATION_COUNTRY = {"country": from_tgn("Philippine Islands", "P.I.", "Philippines", "tgn:1000135")}
+
+
+@pytest.mark.parametrize(("text", "scripts", "key", "reason"), [
+    # This PR's own earlier case (the third review's B3): a US label's province, one letter
+    # from TGN's department of Guatemala.
+    (label_with(province_state="Chimaltenago"),
+     {"province_state": from_tgn("Chimaltenango", "Chimaltenago", "Chimaltenango", "tgn:1000565")},
+     "province_state", agreement.NOT_IN_COUNTRY),
+    # Its own text asked, the department still lies in another country.
+    (label_with(province_state="Chimaltenango"),
+     {"province_state": from_tgn("Chimaltenango", "Chimaltenango", None, "tgn:1000565")},
+     "province_state", agreement.NOT_IN_COUNTRY),
+    # The review's case of G34's own kind: a Philippine label (P.I. settled as the
+    # Philippines, Davao, Mati) whose province settles one letter away in Guatemala.
+    (PHILIPPINE, {**NOTATION_COUNTRY, "province_state": from_tgn(
+        "Chimaltenango", "Chimaltenago", "Chimaltenango", "tgn:1000565"), "county": place_on("Davao"),
+        "city": place_on("Mati")}, "province_state", agreement.NOT_IN_COUNTRY),
+    # P1's "one candidate at the level" of a capped list: Wikidata's only department for
+    # "San Pedro" is Paraguay's, on a Guatemalan label.
+    (label_with(**GUATEMALAN, province_state="San Pedro"), {**IN_GUATEMALA, "province_state": from_tgn(
+        "San Pedro", "San Pedro", "San Pedro Department", "wikidata:San Pedro Department", source="wikidata")},
+     "province_state", agreement.NOT_IN_COUNTRY),
+    # G34's whole condition: the reading also writes a city, which is no province's parent.
+    (label_with(**{**GUATEMALAN, "city": "Yepocapa"}, province_state="Chimaltenago"),
+     {**IN_GUATEMALA, "province_state": from_tgn("Chimaltenango", "Chimaltenago", "Chimaltenango", "tgn:1000565")},
+     "province_state", agreement.NEAR_UNFIT),
+    # A candidate whose source names no parent: GEOLocate asked the city alone.
+    (TEXT, {"city": place_on("Chicago")}, "city", agreement.NO_PARENTS),
+    # A city in the country, but not in the province the label gives.
+    (TEXT, {"city": from_tgn("Chicago, Cook, Wisconsin, United States", "Chicago", None,
+        "geolocate:Chicago, Cook, Wisconsin, United States", source="geolocate")}, "city",
+     agreement.NOT_IN_PROVINCE),
+    # No country is settled for the reading: none of the places below it settles.
+    (TEXT, {"country": answering(FieldAnswer(outcome="sources_cannot_resolve", explanation="No match."))},
+     "province_state", agreement.NO_COUNTRY),
+], ids=["us-label-near-spelling", "us-label-asked", "philippine-label", "capped-list-paraguay",
+        "near-spelling-with-a-city", "no-parents", "not-in-province", "no-country"])
+def test_a_place_settles_only_inside_the_labels_country_and_province(tmp_path, text, scripts, key, reason):
+    rig = build_rig(tmp_path, text)
+    run = rig.specimen.run
+    settle(rig, Scripted(scripts), tools=InParaguay(rig.blobs))
+    place = run.fields[key]
+    assert (place.state, place.reason) == (ValueState.UNRESOLVED, reason + " Settled.")
+    assert run.disposition == Disposition.REVIEW and f"mandatory_unresolved:{key}" in run.reasons
+    assert not [f for f in run.findings if f.reason_code == f"near_spelling:{key}"]
+
+
+def test_a_near_spelling_settles_when_every_other_place_field_is_among_its_parents(tmp_path):
+    """The full US label with its city one letter off: TGN's Chicago lies in
+    Cook, Illinois, United States, the label's county, state and country."""
+    rig = build_rig(tmp_path, label_with(city="Chicag"))
+    run = rig.specimen.run
+    settle(rig, Scripted({"city": from_tgn("Chicago", "Chicag", "Chicago", "tgn:Chicago")}))
+    city = run.fields["city"]
+    assert (city.state, city.literal, city.normalized, city.authority_id) == (
+        ValueState.SUPPORTED, "Chicag", "Chicago", "tgn:Chicago")
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+    assert [f.reason_code for f in run.findings] == ["near_spelling:city"]
 
 
 @pytest.mark.parametrize(("written", "query", "value", "authority_id", "settles"), [
@@ -1011,7 +1128,7 @@ def test_a_place_settles_only_on_a_lookup_of_the_labels_own_text_or_one_letter_f
 ])
 def test_a_place_notation_settles_on_a_lookup_of_the_name_the_table_gives_it(
         tmp_path, written, query, value, authority_id, settles):
-    rig = build_rig(tmp_path, TEXT.replace("country: United States", "country: " + written))
+    rig = build_rig(tmp_path, label_with(country=written))
     run = rig.specimen.run
     settle(rig, Scripted({"country": from_tgn(query, written, value, authority_id)}), tools=Gazetteer(rig.blobs))
     country = run.fields["country"]
@@ -1022,7 +1139,8 @@ def test_a_place_notation_settles_on_a_lookup_of_the_name_the_table_gives_it(
         return
     assert (country.state, country.literal, country.normalized, country.authority_id) == (
         ValueState.SUPPORTED, written, value, authority_id)
-    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+    # The synthetic label's US places do not lie in it; the country itself needs no parent.
+    assert not reasons_for(run, "country")
     # One rule row names the table entry; the value cites it as support. It has
     # no stored record, so it is never projected.
     [rule] = rules
@@ -1036,7 +1154,10 @@ def test_a_place_never_clears_without_a_place_sources_candidate(rig):
     country = run.fields["country"]
     assert (country.state, country.literal) == (ValueState.UNRESOLVED, LABEL["country"])
     assert country.reason == agreement.NO_PLACE + " Settled."
-    assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["mandatory_unresolved:country"])
+    # The places below it wait for a settled country.
+    assert run.fields["county"].reason == agreement.NO_COUNTRY + " Settled."
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, [f"mandatory_unresolved:{key}"
+        for key in ("city", "country", "county", "province_state")])
 
 
 SLOPE, SPACED = "E. slope Mt. McKinley", "E.slope Mt. McKinley"
@@ -1138,7 +1259,10 @@ def test_an_outage_blocks_the_run_and_keeps_every_settled_field(rig):
     assert (run.stage, run.disposition, run.blocker) == ("processing_blocked", None, blocker)
     assert run.reasons[0] == "lookup_operational_failure:country"
     assert run.fields["country"].state == ValueState.UNRESOLVED and run.fields["country"].literal == "United States"
-    assert run.fields["taxon"].normalized == GBIF_NAME and run.fields["county"].layer == "settled"
+    assert run.fields["taxon"].normalized == GBIF_NAME and run.fields["taxon"].layer == "settled"
+    # The places below the country wait for it: no country, no place inside it.
+    assert {run.fields[key].reason for key in ("province_state", "county", "city")} == {
+        agreement.NO_COUNTRY + " Settled."}
 
 
 # ---- through the workflow: one step, retry, cost -------------------------------
@@ -1182,13 +1306,14 @@ def test_a_blocked_run_retries_only_its_unsettled_fields_and_settles_its_cost(ri
     mounted(rig, second)
     rig.clock.now += timedelta(hours=1)
     done = rig.workflow.step(rig.principal, rig.specimen.id)
-    assert second.calls == ["country"]
+    # The country, and the places below it that waited for it.
+    assert second.calls == ["country", "province_state", "county", "city"]
     run = done.run
     assert (run.stage, run.disposition, run.blocker, run.reasons) == ("finalized", Disposition.CLEARED, None, [])
     assert run.completed_steps[-1] == FIELD_RESEARCH and run.attempts[FIELD_RESEARCH] == 2
     assert [call["attempt"] for call in run.paid_calls] == [1, 2]
     assert run.paid_calls[1]["reserved_micros"] == 1_000_000 - spent
-    assert run.usage.reserved_cost_micros == spent + 50 <= run.profile.execution.approved_cost_limit_micros
+    assert run.usage.reserved_cost_micros == spent + 50 * 4 <= run.profile.execution.approved_cost_limit_micros
     verify_evidence(done, rig.blobs)
 
 
