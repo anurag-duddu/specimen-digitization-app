@@ -823,15 +823,17 @@ def test_a_taxon_the_readers_write_differently_needs_every_readers_name_looked_u
 
 
 class Gazetteer(FakeSources):
-    """Getty TGN as the pilot's recordings answer: "Philippines" is the nation
-    and places that are none; "Chimaltenango" the department and its town."""
+    """Getty TGN as the pilot's recordings answer: "P.I." the nation and
+    places that are none; "Chimaltenango" the department and its town;
+    "Escuintla" a department."""
 
+    FIRST = "departments (political divisions), agricultural land, first level subdivisions (political entities)"
     PLACES = {
-        "Philippines": [("Philippines", "tgn:1000135", "nations, commonwealths, controlled regions"),
+        "P.I.": [("Philippines", "tgn:1000135", "nations, commonwealths, controlled regions"),
             ("Philippine", "tgn:7268540", "inhabited places")],
         "Chimaltenango": [("Chimaltenango", "tgn:1016636", "inhabited places, cities, department capitals"),
-            ("Chimaltenango", "tgn:1000565", "departments (political divisions), agricultural land, "
-                "first level subdivisions (political entities)")],
+            ("Chimaltenango", "tgn:1000565", FIRST)],
+        "Escuintla": [("Escuintla", "tgn:1000566", FIRST), ("Escuintla", "tgn:1016700", "inhabited places")],
     }
 
     def _answer(self, source_id, query):
@@ -853,8 +855,8 @@ def from_tgn(query, literal, value, authority_id):
 
 
 @pytest.mark.parametrize(("key", "written", "query", "value", "authority_id", "settles"), [
-    # Getty TGN is ambiguous only because "Philippines" also names places that are no nation.
-    ("country", "P.I.", "Philippines", "Philippines", "tgn:1000135", True),
+    # Getty TGN's answer is ambiguous only because it also holds places that are no nation.
+    ("country", "P.I.", "P.I.", "Philippines", "tgn:1000135", True),
     # The department is the province; as a city, the department never is.
     ("province_state", "Chimaltenango", "Chimaltenango", None, "tgn:1000565", True),
     ("city", "Chimaltenango", "Chimaltenango", None, "tgn:1000565", False),
@@ -871,6 +873,40 @@ def test_an_ambiguous_place_answer_settles_on_its_one_candidate_at_the_fields_le
         return
     assert (place.state, place.reason) == (ValueState.UNRESOLVED, agreement.NO_PLACE + " Settled.")
     assert run.disposition == Disposition.REVIEW and f"mandatory_unresolved:{key}" in run.reasons
+
+
+@pytest.mark.parametrize(("written", "query", "value", "authority_id", "outcome"), [
+    # An unrelated lookup: Escuintla for what the label writes as Chimaltenago.
+    ("Chimaltenago", "Escuintla", "Escuintla", "tgn:1000566", None),
+    # TGN's Chimaltenango, one letter from the label's "Chimaltenago" (G34's bound).
+    ("Chimaltenago", "Chimaltenango", "Chimaltenango", "tgn:1000565", "near_spelling"),
+    # The label's own text, case and punctuation aside.
+    ("chimaltenango,", "Chimaltenango", "Chimaltenango", "tgn:1000565", "asked"),
+    # Two letters from it.
+    ("Chimaltango", "Chimaltenango", "Chimaltenango", "tgn:1000565", None),
+])
+def test_a_place_settles_only_on_a_lookup_of_the_labels_own_text_or_one_letter_from_it(
+        tmp_path, written, query, value, authority_id, outcome):
+    rig = build_rig(tmp_path, TEXT.replace("province_state: Illinois", "province_state: " + written))
+    run = rig.specimen.run
+    settle(rig, Scripted({"province_state": from_tgn(query, written, value, authority_id)}),
+        tools=Gazetteer(rig.blobs))
+    place = run.fields["province_state"]
+    near = [f for f in run.findings if f.reason_code == "near_spelling:province_state"]
+    if outcome is None:
+        assert (place.state, place.reason) == (ValueState.UNRESOLVED, agreement.NO_PLACE + " Settled.")
+        assert run.disposition == Disposition.REVIEW and not near
+        return
+    # The label's spelling stays the literal (G27); the value is TGN's department.
+    assert (place.state, place.literal, place.normalized, place.authority_id) == (
+        ValueState.SUPPORTED, written, value, authority_id)
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+    if outcome == "asked":
+        assert not near
+        return
+    [finding] = near
+    assert (finding.severity, finding.field_key, finding.rule_id) == ("warning", "province_state", "near_spelling")
+    assert set(finding.evidence_ids) <= set(place.evidence_ids) and finding.evidence_ids
 
 
 def test_a_place_never_clears_without_a_place_sources_candidate(rig):

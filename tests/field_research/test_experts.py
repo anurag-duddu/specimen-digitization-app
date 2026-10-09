@@ -918,7 +918,7 @@ def tgn(query: str, evidence_id: str, *places: tuple[str, str, str]) -> SourceAn
 NATION, FIRST, TOWN = ("nations, commonwealths, controlled regions",
                        "departments (political divisions), agricultural land, first level subdivisions "
                        "(political entities)", "inhabited places, cities, department capitals")
-PHILIPPINES = tgn("Philippines", "ev-ph", ("Philippines", "tgn:1000135", NATION),
+PHILIPPINES = tgn("P.I.", "ev-ph", ("Philippines", "tgn:1000135", NATION),
                   ("Philippine", "tgn:7268540", "inhabited places"), ("Philippine Sea", "tgn:7016773", "seas"))
 CHIMALTENANGO = tgn("Chimaltenango", "ev-chim", ("Chimaltenango", "tgn:1016636", TOWN),
                     ("Chimaltenango", "tgn:1000565", FIRST))
@@ -929,7 +929,7 @@ DAVAO = tgn("Davao", "ev-davao-tgn",
 
 
 @pytest.mark.parametrize(("key", "literal", "received", "value", "authority", "settles"), [
-    # "P.I.": TGN is ambiguous only because the name also matches places that are no nation.
+    # "P.I.": TGN's answer is ambiguous only because it also holds places that are no nation.
     ("country", "P.I.", PHILIPPINES, "Philippines", "tgn:1000135", True),
     # The department, not the town of the same name, is the province.
     ("province_state", "Chimaltenango", CHIMALTENANGO, "Chimaltenango", "tgn:1000565", True),
@@ -1001,11 +1001,64 @@ def test_readers_that_differ_settle_on_an_ambiguous_answer_with_one_candidate_at
     assert agreement.identities([CHIMALTENANGO], "Chimaltenango", "city") == {"tgn:1016636"}
 
 
-def test_a_near_spelling_on_a_decided_label_is_never_compared():
-    """FIELD_RESEARCH.md's near spelling, as on 105526330: the decided reading
-    2A writes "Chimaltenago", its other reader "Chimaltenango", and TGN knows
-    only the second. The other reader's spelling as the literal is refused
-    (G19); 2A's spelling with TGN's department as the value passes."""
+ESCUINTLA = tgn("Escuintla", "ev-esc", ("Escuintla", "tgn:1000566", FIRST))
+PHILIPPINES_BY_NAME = tgn("Philippines", "ev-ph-name", ("Philippines", "tgn:1000135", NATION),
+                          ("Philippine", "tgn:7268540", "inhabited places"))
+
+
+@pytest.mark.parametrize(("key", "literal", "received", "value", "authority", "settles"), [
+    # The lookup was asked the label's text, case and punctuation aside.
+    ("province_state", "chimaltenango,", CHIMALTENANGO, "Chimaltenango", "tgn:1000565", True),
+    ("country", "P.I.", PHILIPPINES, "Philippines", "tgn:1000135", True),
+    # The candidate's own name, one letter from the label's text (G34's bound).
+    ("province_state", "Chimaltenago", CHIMALTENANGO, "Chimaltenango", "tgn:1000565", True),
+    # Two letters from it.
+    ("province_state", "Chimaltango", CHIMALTENANGO, "Chimaltenango", "tgn:1000565", False),
+    # A lookup that has nothing to do with what the label writes.
+    ("province_state", "Chimaltenago", ESCUINTLA, "Escuintla", "tgn:1000566", False),
+    # "P.I." read as the Philippines: the query is neither the label's text nor one letter from it.
+    ("country", "P.I.", PHILIPPINES_BY_NAME, "Philippines", "tgn:1000135", False),
+])
+def test_a_place_settles_only_on_a_lookup_of_the_labels_own_text(key, literal, received, value, authority,
+                                                                  settles):
+    readings = (Reading("1A", "region-1", "obs-1a", "decided_transcript", f"{literal}\nleg. J. Smith"),
+                Reading("1B", "region-1", "obs-1b", "raw_reading", f"{literal}\nleg. J. Smith"))
+    made = experts._Expert(task(key, candidates=offered(("1A", literal), ("1B", literal))), readings,
+                           FakeTools(), PILOT_DATES)
+    made.calls.append(experts._Call(received.source_id, received.query, received.status, received))
+    given = answer(outcome="resolved", literal=literal, reading_names=["1A"], value=value,
+                   authority_id=authority, source_evidence_ids=[received.evidence.id])
+
+    if settles:
+        assert made.validate(given).literal == literal
+        return
+    with pytest.raises(ModelRetry, match="asked the label's own text"):
+        made.validate(given)
+
+
+def test_readers_that_differ_in_lower_case_settle_on_the_lookup_of_their_name():
+    """105526328's province: 3A writes "chimaltenango,", 3B "chimaltenago,",
+    no reading decided. TGN, asked "Chimaltenango", has the department and its
+    town, and nothing for "Chimaltenago": 3A's text settles (G20), case and
+    the comma aside."""
+    readings = (Reading("3A", "region-3", "obs-3a", "raw_reading", "Mun. Yepocapa, chimaltenango,"),
+                Reading("3B", "region-3", "obs-3b", "raw_reading", "Mun. Yepocapa, chimaltenago,"))
+    field = task("province_state", current=FieldValue(state=ValueState.AMBIGUOUS),
+                 candidates=offered(("3A", "chimaltenango,"), ("3B", "chimaltenago,")))
+    made = experts._Expert(field, readings, FakeTools(), PILOT_DATES)
+    for found in (CHIMALTENANGO, nothing("Chimaltenago", "ev-none")):
+        made.calls.append(experts._Call(found.source_id, found.query, found.status, found))
+    given = answer(outcome="resolved", literal="chimaltenango,", reading_names=["3A"], value="Chimaltenango",
+                   authority_id="tgn:1000565", source_evidence_ids=["ev-chim"])
+
+    assert made.validate(given).value == "Chimaltenango"
+
+
+def test_a_near_spelling_on_a_decided_label_settles_on_the_one_letter_bound():
+    """105526330's province: the decided reading 2A writes "Chimaltenago", its
+    other reader "Chimaltenango", and TGN knows only the second. The other
+    reader's spelling as the literal is refused (G19); 2A's spelling, with
+    TGN's department, one letter from it, as the value, settles (G27, G34)."""
     readings = (Reading("2A", "region-2", "obs-2a", "decided_transcript", "Chimaltenago, Guatemala"),
                 Reading("2B", "region-2", "obs-2b", "raw_reading", "Chimaltenango, Guatemala"))
     field = task("province_state", current=FieldValue(state=ValueState.SUPPORTED, literal="Chimaltenago"),
@@ -1020,6 +1073,8 @@ def test_a_near_spelling_on_a_decided_label_is_never_compared():
     kept = made.validate(answer(outcome="resolved", literal="Chimaltenago", reading_names=["2A"],
                                 value="Chimaltenango", **sourced))
     assert (kept.literal, kept.value) == ("Chimaltenago", "Chimaltenango")
+    assert agreement.place_basis(field, "Chimaltenago", "Chimaltenango", "tgn:1000565",
+                                 [CHIMALTENANGO]) == agreement.NEAR_SPELLING
 
 
 def test_a_place_resolves_only_on_a_place_sources_candidate():

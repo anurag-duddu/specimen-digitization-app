@@ -148,10 +148,13 @@ handover runs field research instead of the six specialists:
      was asked about a text
      when the text is its whole query or the query's first comma-separated
      part (the name it searches). A place query or candidate name is compared
-     with a reader's text after NFC, whitespace collapse and stripping the
-     punctuation a label writes after a name (". , ; :"), so "Yepocapa,"
-     was asked about by the query "Yepocapa"; the literal itself stays as
-     written, and a near spelling is never the same name. The field settles
+     with a reader's text by the place tool's comparison key
+     (`application/georef_locality.py` `comparison_key`: casefolded, accents
+     and marks dropped, anything but letters and digits a single space, "Mt."
+     read as "mount", unit words such as "Prov." or "Dept." dropped), so
+     "Yepocapa," and "chimaltenango," were asked about by the queries
+     "Yepocapa" and "Chimaltenango"; the literal itself stays as written, and
+     a near spelling is never the same name here. The field settles
      when every label settles on the same literal, which is then the answer's literal
      (citing the confirming answer when a source settled a label), or, for
      labels that settle on different literals, when a source confirms each
@@ -182,14 +185,28 @@ handover runs field research instead of the six specialists:
      the country "P.I." as Philippines, and its answer for "Chimaltenango"
      (the department and its town) settles the province as the department
      and a city only as the town. Precise location stays the verbatim text.
-   - **A near spelling.** Nothing compares near spellings. On 105526330 the
-     decided reading writes "Chimaltenago" and Getty TGN knows only
-     "Chimaltenango": an answer that takes the other reader's
-     "Chimaltenango" as its literal is refused (G19), and the province goes
-     to review. An answer that keeps "Chimaltenago" as the literal and gives
-     TGN's department as the value passes these rules, since the place rule
-     checks the value against the source's candidate, not the label's
-     spelling against the query.
+   - **The label's own text (P3).** The answer that decides a place value
+     was asked the label's own text: its query, or the query's first
+     comma-separated part, has the literal's comparison key (as above, case,
+     accents, punctuation and notations such as "Prov." aside). Or, the one
+     exception, G34's near-spelling bound: the query is the chosen
+     candidate's own name, and that name is one letter from the literal
+     (`georef_locality.one_letter_apart`: both full names, their comparison
+     keys one insertion, deletion or substitution apart); the value then
+     settles and the step records a `near_spelling:<field>` warning finding
+     beside the record, naming the deciding answer, which never routes it.
+     Any other lookup settles nothing, for decided and contested labels
+     alike, in the expert's check and in the step: "Escuintla" asked for a
+     label's "Chimaltenago", or "Philippines" for "P.I." (a lookup of the
+     modern or expanded name is context only; the expert asks the label's
+     text too, and TGN's answer to "P.I." settles it), or a name two letters
+     away ("Chimaltenango" for "Chimaltango").
+   - **105526330's province.** The decided reading writes "Chimaltenago" and
+     Getty TGN knows only "Chimaltenango". An answer that takes the other
+     reader's "Chimaltenango" as its literal is refused (G19). The intended
+     answer keeps "Chimaltenago" as the literal, as written (G27), and
+     settles on TGN's department Chimaltenango, one letter from it, with the
+     near_spelling finding.
    - **The taxon.** A taxon is GBIF's decision for the whole name its
      candidate literal writes: the cited success answer's query is the
      scientific-name parser's query for that literal (the genus, any

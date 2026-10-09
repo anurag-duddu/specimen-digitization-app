@@ -51,6 +51,7 @@ from specimen_digitization.application.domain import (
     FieldValue,
     Lookup,
     LookupStatus,
+    RunFinding,
     ToolCallRecord,
     ValueState,
     now,
@@ -464,6 +465,30 @@ def _refusal(task, answer, *, readings, by_name, sources):
         authority_id=answer.authority_id, cited=cited, received=received)
 
 
+NEAR_SPELLING_RULES = "field-research-places-v1"
+
+
+def _near_spelling(run, task, answer, sources) -> None:
+    """A place value settled on a lookup of the candidate's own name, one letter
+    from the label's text (agreement.place_basis, G34's bound): a warning
+    finding beside the record, naming the deciding answers, which never routes
+    it (RunFinding). The value keeps the label's spelling as its literal (G27)."""
+    from .agreement import NEAR_SPELLING, PLACE_VALUE_FIELDS, place_basis
+
+    if task.key not in PLACE_VALUE_FIELDS:
+        return
+    by_id = {item.evidence.id: item for item in sources if item.evidence is not None}
+    cited = [by_id[i] for i in dict.fromkeys(answer.source_evidence_ids) if i in by_id]
+    settled = answer.value if answer.value is not None else answer.literal
+    if place_basis(task, answer.literal, settled, answer.authority_id, cited) != NEAR_SPELLING:
+        return
+    code = f"near_spelling:{task.key}"
+    if not any(f.reason_code == code for f in run.findings):
+        run.findings.append(RunFinding(rule_id="near_spelling", rule_version=NEAR_SPELLING_RULES,
+            severity="warning", field_key=task.key, reason_code=code,
+            evidence_ids=[item.evidence.id for item in cited]))
+
+
 def _settled(run, task, outcome, *, by_name, evidence, asset_id, blobs, date_rules=None) -> FieldValue | None:
     """A resolved answer as a supported value, or None when its literal is not in
     the readings it names (the experts' check, repeated here)."""
@@ -565,6 +590,7 @@ def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, b
         settled = _settled(run, task, outcome, by_name=by_name, evidence=evidence, asset_id=asset_id,
             blobs=blobs, date_rules=date_rules)
         if settled is not None:
+            _near_spelling(run, task, answer, sources)
             return settled
         return _unsettled(task, ValueState.UNRESOLVED, literal=current.literal, cited=cited,
             reason="The answer's literal is not in the readings it names. " + answer.explanation)

@@ -41,10 +41,12 @@ answer becomes a value (step._refusal). It enforces, in this order:
    for a place value field (point 4), as the one candidate at the field's
    level of a success or ambiguous answer, when that candidate has the
    literal's name; for precise location, as a success answer's candidate of
-   that name. Place names, queries and literals are
-   compared after NFC, whitespace collapse and stripping the punctuation a
-   label writes after a name (". , ; :"; place_name): "Yepocapa," was asked
-   about by the query "Yepocapa". A near spelling is never the same name.
+   that name. Place names, queries and literals compare by the place tool's
+   comparison key (place_name: application.georef_locality.comparison_key,
+   casefolded, accents and marks dropped, anything but letters and digits a
+   single space, "Mt." read as "mount", unit words such as "Prov." dropped):
+   "Yepocapa," and "chimaltenango," were asked about by the queries
+   "Yepocapa" and "Chimaltenango". A near spelling is never the same name.
 4. A place (country, province or state, county, city): a cited success or
    ambiguous answer of a place source has exactly one candidate at the
    field's level (PLACE_LEVELS: a nation, a first or a second level
@@ -54,7 +56,14 @@ answer becomes a value (step._refusal). It enforces, in this order:
    at the level: review. A gazetteer's answer is often ambiguous only
    because the name also matches places at other levels (TGN's answer for
    "Philippines" holds the nation, a village and a sea); the level settles
-   it.
+   it. And that answer was asked about the label's own text (point 3's
+   "about", P3), or else about the candidate's own name when that name is
+   one letter from the literal (application.georef_locality.one_letter_apart,
+   G34's bound as the place tool reads it: both full names, comparison keys
+   one insertion, deletion or substitution apart); the step then records a
+   near_spelling warning finding, which never routes the record
+   (place_basis). A lookup of any other name settles nothing ("Escuintla"
+   for "Chimaltenago", "Philippines" for "P.I.").
 
 Point 3 follows research_harness/evidence.py's G20 and G32 rules (725-751:
 one confirmed reader beside the other's captured no-match; labels that
@@ -65,11 +74,11 @@ value: here two confirmed readers of one label go to review.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 from specimen_digitization.application.domain import LookupStatus
+from specimen_digitization.application.georef_locality import comparison_key, one_letter_apart
 
 from .checks import collapse, taxon_query_grounded
 from .contracts import PLACE_SOURCES, FieldTask, Reading, SourceAnswer, SourceCandidate
@@ -214,22 +223,24 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
 
 def place_name(text: str) -> str:
     """A place name as a place source's query or candidate is compared with a
-    literal: NFC and whitespace collapsed (checks.collapse), and the trailing
-    punctuation a label writes after it (". , ; :") stripped. The literal
+    label's text: the native comparison key of the place tool
+    (application.georef_locality.comparison_key: casefolded, marks and
+    accents dropped, anything but letters and digits a single space, "Mt." read
+    as "mount", unit words such as "Prov." or "Dept." dropped). The literal
     itself stays exactly as written."""
-    return re.sub(r"[\s.,;:]+$", "", collapse(text))
+    return comparison_key(text)
 
 
 def about(answer: SourceAnswer, literal: str) -> bool:
     """Whether a source was asked about this (collapsed) literal: GBIF about
     the whole name it writes (checks.taxon_query_grounded), a place source
     about the literal itself, as its whole query or as the query's first
-    comma-separated part, the name a place source searches, both compared as
-    place names (place_name)."""
+    comma-separated part, the name a place source searches, compared as place
+    names (place_name). An empty name is never asked about."""
     if answer.source_id == "gbif":
         return taxon_query_grounded(answer.query, literal)
     asked = {place_name(answer.query), place_name(answer.query.split(",", 1)[0])}
-    return place_name(literal) in asked
+    return bool(place_name(literal)) and place_name(literal) in asked
 
 
 def _kind_matches(source_id: str, kind: str, level: str) -> bool:
@@ -396,18 +407,33 @@ def _disagreement(task: FieldTask, readings: Sequence[Reading], *, literal: str,
         "several_possibilities."), differ=True)
 
 
-def place_confirmed(task: FieldTask, settled: str, authority_id: str | None,
-        cited: Iterable[SourceAnswer]) -> bool:
-    """Whether a cited success or ambiguous answer of the field's place
-    sources has exactly one candidate at the field's level (placed), and that
-    candidate is the settled value (its name exactly, after NFC and
-    whitespace collapse) with the answer's authority_id."""
+ASKED, NEAR_SPELLING = "asked", "near_spelling"
+
+
+def place_basis(task: FieldTask, literal: str, settled: str, authority_id: str | None,
+        cited: Iterable[SourceAnswer]) -> str | None:
+    """How a cited answer of the field's place sources settles the place value
+    (P1 and P3 of #284), or None when none does. The answer has exactly one
+    candidate at the field's level (placed), that candidate is the settled
+    value (its name exactly, after NFC and whitespace collapse) with the
+    answer's authority_id, and the answer was asked
+    - about the label's own text (about): ASKED; or else
+    - about that candidate's own name, when the name is one letter from the
+      label's text (application.georef_locality.one_letter_apart, G34's
+      bound as the place tool reads it: both full names, comparison keys one
+      single-letter edit apart): NEAR_SPELLING, which the step records as a
+      warning finding that never routes the record."""
     sources = frozenset(task.tools) & frozenset(PLACE_SOURCES)
-    return any(
-        answer.source_id in sources and (one := placed(task.key, answer)) is not None
-        and collapse(one.name) == collapse(settled) and one.authority_id == authority_id
-        for answer in cited
-    )
+    basis = None
+    for answer in cited:
+        one = placed(task.key, answer) if answer.source_id in sources else None
+        if one is None or collapse(one.name) != collapse(settled) or one.authority_id != authority_id:
+            continue
+        if about(answer, collapse(literal)):
+            return ASKED
+        if about(answer, collapse(one.name)) and one_letter_apart(literal, one.name):
+            basis = NEAR_SPELLING
+    return basis
 
 
 def refusal(task: FieldTask, readings: Sequence[Reading], *, literal: str,
@@ -427,13 +453,16 @@ def refusal(task: FieldTask, readings: Sequence[Reading], *, literal: str,
         return refused
     if task.key in PLACE_VALUE_FIELDS:
         settled_value = value if value is not None else literal
-        if not place_confirmed(task, settled_value, authority_id, cited):
+        if place_basis(task, literal, settled_value, authority_id, cited) is None:
             return Refusal(NO_PLACE, (
-                "A place field settles only on a place source's success or ambiguous answer with "
-                "exactly one candidate at this field's level (by its kind: a nation for a country, "
-                "a first level subdivision for a province or state, a second level one for a "
-                "county, an inhabited place for a city), and that candidate is the value: cite its "
+                "A place field settles only on a place source's success or ambiguous answer that "
+                "was asked the label's own text (the literal, or the query's first comma-separated "
+                "part; case, accents, punctuation and notations such as Prov. aside), or the "
+                "candidate's own name when it is one letter from the literal, with exactly one "
+                "candidate at this field's level (by its kind: a nation for a country, a first "
+                "level subdivision for a province or state, a second level one for a county, an "
+                "inhabited place for a city), and that candidate is the value: cite its "
                 "evidence_id, give that candidate's name (as value, or as the literal when they "
-                "are the same) and its authority_id. When none or several are at this level, "
-                "answer several_possibilities or sources_cannot_resolve."))
+                "are the same) and its authority_id. Otherwise answer several_possibilities or "
+                "sources_cannot_resolve."))
     return None
