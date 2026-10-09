@@ -39,7 +39,7 @@ from specimen_digitization.application.workflow import (
 from specimen_digitization.field_research import agreement
 from specimen_digitization.field_research import step as field_step
 from specimen_digitization.field_research.contracts import (
-    FIELD_TOOLS, FieldAnswer, FieldOutcome, SourceAnswer, SourceCandidate,
+    FIELD_TOOLS, Candidate, FieldAnswer, FieldOutcome, FieldTask, Reading, SourceAnswer, SourceCandidate,
 )
 from specimen_digitization.field_research.step import (
     FieldResearchStep, apply_outcomes, build_tasks, finalize_fields, research_fields,
@@ -347,10 +347,32 @@ def test_accurate_reads_finalize_without_a_model_call(rig):
     by_key = {o.key: o for o in outcomes}
     assert NO_TOOLS <= set(by_key) and not NO_TOOLS & set(resolver.calls)
     assert all(by_key[key].finalized_without_model and by_key[key].model_calls == 0 for key in NO_TOOLS)
-    assert by_key["collectors"].answer.literal == "J. Smith" and by_key["collectors"].answer.reading_names == ["1A", "1B"]
+    # Label 1's decided transcript is 1A: its other reader is evidence only (G19).
+    assert by_key["collectors"].answer.literal == "J. Smith" and by_key["collectors"].answer.reading_names == ["1A"]
     # No approved authority: no model call, the nonblocking exception.
     assert "identified_by_irn" not in resolver.calls and by_key["identified_by_irn"].finalized_without_model
     assert sorted(resolver.calls) == sorted(RESEARCHED)
+
+
+def test_an_accurate_read_of_a_decided_label_uses_only_its_decided_reading():
+    """The second review's note: label 1's decided transcript writes no
+    collector, its other reader 1B writes "leg. J. Smith", and both readers of
+    label 2 write it. The organiser's supported value is an accurate read of
+    label 2 (1B is evidence only), and it finalizes."""
+    readings = (Reading("1A", "r1", "o1a", "decided_transcript", "Det. label\nno collector here"),
+        Reading("1B", "r1", "o1b", "raw_reading", "Det. label\nleg. J. Smith"),
+        Reading("2A", "r2", "o2a", "raw_reading", "Guatemala\nleg. J. Smith"),
+        Reading("2B", "r2", "o2b", "raw_reading", "Guatemala\nleg. J. Smith"))
+    task = FieldTask("collectors", True, FieldValue(state=ValueState.SUPPORTED, literal="J. Smith"),
+        tuple(Candidate(name, "leg. J. Smith", "J. Smith", "ev-" + name) for name in ("1B", "2A", "2B")),
+        FIELD_TOOLS["collectors"])
+    run = SimpleNamespace(evidence=[])
+    [outcome] = asyncio.run(research_fields(run, SimpleNamespace(), resolver=Scripted(), tools=FakeSources(None),
+        prepared=(readings, (task,), {})))
+    assert outcome.finalized_without_model and outcome.answer.outcome == "resolved"
+    by_name = {reading.name: reading for reading in readings}
+    assert field_step._refusal(task, outcome.answer, readings=readings, by_name=by_name, sources=()) is None
+    assert (outcome.answer.literal, outcome.answer.reading_names) == ("J. Smith", ["2A", "2B"])
 
 
 def test_resolvers_run_concurrently_up_to_the_limit(rig):

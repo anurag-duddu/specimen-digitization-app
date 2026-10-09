@@ -234,7 +234,9 @@ def accurate_read(task: FieldTask) -> bool:
 
 
 def _current_reading_names(task: FieldTask, readings: Sequence[Reading], evidence) -> list[str]:
-    """The readings that write the organiser's literal, by its candidates and rows."""
+    """The readings that write the organiser's literal, by its candidates and
+    rows; of a label with a decided transcript, only the decided reading (G19:
+    its other reader is evidence only)."""
     literal = task.current.literal
     names = [c.reading for c in task.candidates if c.literal == literal]
     for evidence_id in task.current.evidence_ids:
@@ -244,7 +246,9 @@ def _current_reading_names(task: FieldTask, readings: Sequence[Reading], evidenc
         names += [r.name for r in readings
             if r.region_id == row.region_id and r.observation_id in row.observation_ids]
     by_name = {r.name: r for r in readings}
-    return [n for n in dict.fromkeys(names) if n in by_name and literal in by_name[n].text]
+    decided = {r.region_id: r.name for r in readings if r.input_source == "decided_transcript"}
+    return [n for n in dict.fromkeys(names) if n in by_name and literal in by_name[n].text
+        and decided.get(by_name[n].region_id, n) == n]
 
 
 # ---- research -------------------------------------------------------------
