@@ -899,7 +899,8 @@ class Workflow:
 
             # The step recorded its own paid call (its meter's spend); settle the
             # run's budget and the program ledger to it. A deadline overrun
-            # restored the reserved copy, which records none: it stays held.
+            # restored the reserved copy with that paid call copied onto it
+            # (above), so it settles to the meter's spend as well.
             settle_step(self.repository, principal, specimen, step, cost, self.clock)
         elif billable and not run.profile.synthetic:
             from .lane_costs import record_step
