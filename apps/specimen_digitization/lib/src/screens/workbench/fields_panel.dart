@@ -20,7 +20,9 @@ import '../../vocabulary.dart';
 import '../../widgets/widgets.dart';
 import 'blockers.dart';
 import 'evidence_picker.dart';
+import 'field_parts.dart';
 import 'field_presentation.dart';
+import 'part_rows.dart';
 import 'pending_changes.dart';
 import 'value_basis.dart';
 import 'value_basis_chip.dart';
@@ -209,11 +211,23 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
     ).where((issue) => issue.fieldKey == key).toList();
   }
 
-  bool _needsReview(Json field) => fieldNeedsReview(
-    _pendingFor(field['field_key'].toString())?.state ??
-        field['state'] as String?,
-    hasIssues: _issuesFor(field['field_key'].toString()).isNotEmpty,
-  );
+  /// The parts to draw for [field]. A correction not yet saved is a person's
+  /// decision on the whole value, so the stored parts are not drawn over it.
+  FieldParts _partsFor(Json field, PendingFieldChange? pending) =>
+      pending == null ? FieldParts.of(field) : FieldParts.none;
+
+  bool _needsReview(Json field) =>
+      fieldNeedsReview(
+        _pendingFor(field['field_key'].toString())?.state ??
+            field['state'] as String?,
+        hasIssues: _issuesFor(field['field_key'].toString()).isNotEmpty,
+      ) ||
+      // A part a person is asked about puts the field in review, so the group
+      // counts and the order list it with the other fields that need a look.
+      _partsFor(
+        field,
+        _pendingFor(field['field_key'].toString()),
+      ).flagged.isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -360,10 +374,13 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
     final state = SpecimenStatus.fromWire(
       pending?.state ?? field['state'] as String?,
     );
-    final needsReview = fieldNeedsReview(
-      pending?.state ?? field['state'] as String?,
-      hasIssues: issues.isNotEmpty,
-    );
+    final FieldParts parts = _partsFor(field, pending);
+    final needsReview =
+        fieldNeedsReview(
+          pending?.state ?? field['state'] as String?,
+          hasIssues: issues.isNotEmpty,
+        ) ||
+        parts.flagged.isNotEmpty;
     final layers = <FieldLayer, String?>{
       for (final layer in FieldLayer.values)
         layer: _layerValue(field, pending, layer),
@@ -469,6 +486,19 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
                     ),
                   ),
                 ),
+              if (parts.isNotEmpty) ...<Widget>[
+                FieldPartRows(
+                  specimenId: widget.specimen.id,
+                  fieldKey: key,
+                  parts: parts,
+                  evidence: widget.specimen.evidence,
+                  // No decision on a part is sent from here. The control opens
+                  // the correction the field already has, for the whole field.
+                  onCorrect: () => _startEdit(field, FieldLayer.asWritten),
+                  correctBlockedReason: blocked,
+                ),
+                SizedBox(height: ui.space.s2),
+              ],
               Text(
                 _sourcesFor(field, pending),
                 style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),

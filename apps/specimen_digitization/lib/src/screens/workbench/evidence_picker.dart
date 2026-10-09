@@ -145,6 +145,33 @@ String? _evidenceSourceName(String source) => switch (source) {
   _ => null,
 };
 
+/// Sources a part's lookups name whose identifiers read badly as plain words.
+const Map<String, String> _lookupSourceNames = <String, String>{
+  'tgn': 'Getty TGN',
+  'geonames': 'GeoNames',
+};
+
+/// The name of the source a retained evidence row came from, in the words of
+/// the screen, or null when the row names none.
+///
+/// A source this table knows by name keeps its own spelling ("GEOLocate").
+/// Any other is the plain-English reading of its identifier, so a source added
+/// later still reaches the screen without underscores.
+String? evidenceSourceLabel(Json evidence) {
+  final String source = textOf(
+    evidence['source'],
+    textOf(evidence['source_id'], ''),
+  ).trim();
+  if (source.isEmpty || source == 'Not recorded') return null;
+  final String? named =
+      _evidenceSourceName(source) ?? _lookupSourceNames[source];
+  if (named != null) return named;
+  final String plain = vocabularyLabel(source).trim();
+  return plain.isEmpty
+      ? null
+      : '${plain[0].toUpperCase()}${plain.substring(1)}';
+}
+
 /// Only retained Evidence identifiers accepted by the field decision API.
 /// Observation and region IDs are source locators, not valid citations.
 List<EvidenceChoice> evidenceChoices(Specimen specimen) {

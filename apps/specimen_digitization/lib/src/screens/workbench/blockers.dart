@@ -11,6 +11,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../models.dart';
 import '../../review_context.dart';
+import 'part_reasons.dart';
 import 'workbench_layout.dart';
 
 /// Whether an issue belongs to a field, a label, or an operator's work.
@@ -269,6 +270,16 @@ ClearanceBlocker _issueFor(
       kind = ClearanceBlockerKind.field;
       message = _fieldReasonMessage(specimen, field, _fieldReasons[base]!);
       detail = 'Review the value and its supporting sources.';
+    }
+  } else if (partReasonBases.contains(base)) {
+    // A reason about one part of a value: the sentence and the field that
+    // carries the part. A subject this reader does not know falls through to
+    // the generic line, as any unknown code does.
+    final PartIssue? part = partIssueFor(specimen, base, suffix);
+    if (part != null) {
+      field ??= _matchingField(specimen, part.fieldKey ?? '');
+      message = part.message;
+      detail = part.detail;
     }
   } else if (base == 'unresolved_transcription') {
     region ??= _matchingRegion(specimen, suffix);
