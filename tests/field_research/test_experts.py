@@ -903,10 +903,129 @@ def test_labels_that_write_one_name_differently_settle_on_one_gbif_usage():
     assert agreement.refusal(field, readings, authority_id="5133099", **settles).differ
 
 
+# A place value settles on the one candidate at its field's level (P1). The
+# kinds are as the recorded pilot answers give them.
+
+def tgn(query: str, evidence_id: str, *places: tuple[str, str, str]) -> SourceAnswer:
+    """Getty TGN's answer: success for one place, ambiguous for several."""
+    status = LookupStatus.SUCCESS if len(places) == 1 else LookupStatus.AMBIGUOUS
+    return SourceAnswer("tgn", query, status,
+                        tuple(SourceCandidate(name, authority, kind) for name, authority, kind in places),
+                        Evidence(id=evidence_id, kind="authority", source="tgn", locator=None, excerpt=query),
+                        note=str(status))
+
+
+NATION, FIRST, TOWN = ("nations, commonwealths, controlled regions",
+                       "departments (political divisions), agricultural land, first level subdivisions "
+                       "(political entities)", "inhabited places, cities, department capitals")
+PHILIPPINES = tgn("Philippines", "ev-ph", ("Philippines", "tgn:1000135", NATION),
+                  ("Philippine", "tgn:7268540", "inhabited places"), ("Philippine Sea", "tgn:7016773", "seas"))
+CHIMALTENANGO = tgn("Chimaltenango", "ev-chim", ("Chimaltenango", "tgn:1016636", TOWN),
+                    ("Chimaltenango", "tgn:1000565", FIRST))
+DAVAO = tgn("Davao", "ev-davao-tgn",
+            ("Davao del Norte", "tgn:1001216", "provinces, first level subdivisions (political entities)"),
+            ("Davao", "tgn:7668798", "special cities, first level subdivisions (political entities)"),
+            ("Davao", "tgn:1084177", "inhabited places, administrative centers, cities"))
+
+
+@pytest.mark.parametrize(("key", "literal", "received", "value", "authority", "settles"), [
+    # "P.I.": TGN is ambiguous only because the name also matches places that are no nation.
+    ("country", "P.I.", PHILIPPINES, "Philippines", "tgn:1000135", True),
+    # The department, not the town of the same name, is the province.
+    ("province_state", "Chimaltenango", CHIMALTENANGO, "Chimaltenango", "tgn:1000565", True),
+    ("province_state", "Chimaltenango", CHIMALTENANGO, "Chimaltenango", "tgn:1016636", False),
+    # The town, never the department, is the city.
+    ("city", "Chimaltenango", CHIMALTENANGO, "Chimaltenango", "tgn:1000565", False),
+    ("city", "Chimaltenango", CHIMALTENANGO, "Chimaltenango", "tgn:1016636", True),
+    # Two first level subdivisions: nothing tells them apart.
+    ("province_state", "Davao", DAVAO, "Davao", "tgn:7668798", False),
+    ("province_state", "Davao", DAVAO, "Davao del Norte", "tgn:1001216", False),
+])
+def test_a_place_settles_on_the_one_candidate_at_its_fields_level(key, literal, received, value, authority,
+                                                                  settles):
+    readings = (Reading("1A", "region-1", "obs-1a", "raw_reading", f"{literal}\nleg. J. Smith"),
+                Reading("1B", "region-1", "obs-1b", "raw_reading", f"{literal}\nleg. J. Smith"))
+    made = experts._Expert(task(key, candidates=offered(("1A", literal), ("1B", literal))), readings,
+                           FakeTools(), PILOT_DATES)
+    made.calls.append(experts._Call(received.source_id, received.query, received.status, received))
+    given = answer(outcome="resolved", literal=literal, reading_names=["1A", "1B"],
+                   value=None if value == literal else value, authority_id=authority,
+                   source_evidence_ids=[received.evidence.id])
+
+    if settles:
+        assert made.validate(given).authority_id == authority
+        return
+    with pytest.raises(ModelRetry, match="exactly one candidate at this field's level"):
+        made.validate(given)
+
+
+@pytest.mark.parametrize(("source", "kind", "level"), [
+    ("tgn", "nations, colonies, independent political entities", "country"),
+    ("tgn", "provinces, first level subdivisions (political entities)", "province_state"),
+    ("tgn", "inhabited places", "city"),
+    ("tgn", "rivers", None),
+    ("wikidata", "sovereign state, archipelagic state, country", "country"),
+    ("wikidata", "former province of the Philippines, province of the Philippines", "province_state"),
+    ("wikidata", "municipality of Guatemala", "city"),
+    ("wikidata", "human settlement", "city"),
+    ("wikidata", "government agency, historical society", None),
+    ("nga", "A.PCLI", "country"),
+    ("nga", "A.ADM1", "province_state"),
+    ("nga", "A.ADM2", "county"),
+    ("nga", "P.PPLA", "city"),
+    ("nga", "H.STM", None),
+])
+def test_each_sources_kind_names_one_level(source, kind, level):
+    found = SourceAnswer(source, "x", LookupStatus.SUCCESS, (SourceCandidate("X", f"{source}:1", kind),),
+                         None)
+    assert [key for key in sorted(agreement.PLACE_VALUE_FIELDS) if agreement.at_level(key, found)] == (
+        [level] if level else [])
+
+
+def test_readers_that_differ_settle_on_an_ambiguous_answer_with_one_candidate_at_the_level():
+    """105526329's province: 2A writes Chimaltenango, 2B Chimaltenago. TGN's
+    answer for Chimaltenango is ambiguous between the department and its
+    town, and has nothing for Chimaltenago: the department settles it (G20)."""
+    readings = (Reading("2A", "region-2", "obs-2a", "raw_reading", "Chimaltenango, Guatemala"),
+                Reading("2B", "region-2", "obs-2b", "raw_reading", "Chimaltenago, Guatemala"))
+    field = task("province_state", current=FieldValue(state=ValueState.AMBIGUOUS),
+                 candidates=offered(("2A", "Chimaltenango"), ("2B", "Chimaltenago")))
+    made = experts._Expert(field, readings, FakeTools(), PILOT_DATES)
+    for found in (CHIMALTENANGO, nothing("Chimaltenago", "ev-none")):
+        made.calls.append(experts._Call(found.source_id, found.query, found.status, found))
+    given = answer(outcome="resolved", literal="Chimaltenango", reading_names=["2A"], authority_id="tgn:1000565",
+                   source_evidence_ids=["ev-chim"])
+
+    assert made.validate(given).authority_id == "tgn:1000565"
+    # As a city, the same answer's one inhabited place is the town.
+    assert agreement.identities([CHIMALTENANGO], "Chimaltenango", "city") == {"tgn:1016636"}
+
+
+def test_a_near_spelling_on_a_decided_label_is_never_compared():
+    """FIELD_RESEARCH.md's near spelling, as on 105526330: the decided reading
+    2A writes "Chimaltenago", its other reader "Chimaltenango", and TGN knows
+    only the second. The other reader's spelling as the literal is refused
+    (G19); 2A's spelling with TGN's department as the value passes."""
+    readings = (Reading("2A", "region-2", "obs-2a", "decided_transcript", "Chimaltenago, Guatemala"),
+                Reading("2B", "region-2", "obs-2b", "raw_reading", "Chimaltenango, Guatemala"))
+    field = task("province_state", current=FieldValue(state=ValueState.SUPPORTED, literal="Chimaltenago"),
+                 candidates=offered(("2A", "Chimaltenago"), ("2B", "Chimaltenango")))
+    made = experts._Expert(field, readings, FakeTools(), PILOT_DATES)
+    for found in (CHIMALTENANGO, nothing("Chimaltenago", "ev-none")):
+        made.calls.append(experts._Call(found.source_id, found.query, found.status, found))
+    sourced = dict(authority_id="tgn:1000565", source_evidence_ids=["ev-chim"])
+
+    with pytest.raises(ModelRetry, match="decided for this label"):
+        made.validate(answer(outcome="resolved", literal="Chimaltenango", reading_names=["2B"], **sourced))
+    kept = made.validate(answer(outcome="resolved", literal="Chimaltenago", reading_names=["2A"],
+                                value="Chimaltenango", **sourced))
+    assert (kept.literal, kept.value) == ("Chimaltenago", "Chimaltenango")
+
+
 def test_a_place_resolves_only_on_a_place_sources_candidate():
     made = expert("city", [place("Davao", "ev-davao")])
 
-    with pytest.raises(ModelRetry, match="place source's success answer"):
+    with pytest.raises(ModelRetry, match="place source's success or ambiguous answer"):
         made.validate(answer(outcome="resolved", literal="Davao", reading_names=["1A"]))
     accepted = made.validate(answer(outcome="resolved", literal="Davao", reading_names=["1A"],
                                     authority_id="geolocate:Davao", source_evidence_ids=["ev-davao"]))

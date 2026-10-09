@@ -137,12 +137,15 @@ handover runs field research instead of the six specialists:
      no part); a label whose readers each write the same one literal on that
      literal; any other label (readers that differ, or one that writes
      nothing) only when the expert asked the field's approved sources about
-     every distinct text its readers write, exactly one is confirmed by a
-     success answer about it, and every other has a captured no_match answer
+     every distinct text its readers write, exactly one is confirmed by an
+     answer about it, and every other has a captured no_match answer
      about it and no success or ambiguous one. An error, a timeout or a text
-     never asked about is not a no-match. A success answer confirms a text as
-     GBIF's decided candidate for the whole name it writes, or as a place
-     source's candidate of that name; a place source was asked about a text
+     never asked about is not a no-match. An answer confirms a text as
+     GBIF's decided candidate for the whole name it writes (a success
+     answer), as the one candidate at a place field's level when it has that
+     name (a success or ambiguous answer; see Places), or, for precise
+     location, as a success answer's candidate of that name; a place source
+     was asked about a text
      when the text is its whole query or the query's first comma-separated
      part (the name it searches). A place query or candidate name is compared
      with a reader's text after NFC, whitespace collapse and stripping the
@@ -162,9 +165,31 @@ handover runs field research instead of the six specialists:
      `application/field_resolution.py`, which clears readers that differ when
      every success names one value.
    - **Places.** A place field (country, province or state, county, city)
-     settles only on a cited success answer of a place source whose candidate
-     is the value, with that candidate's authority_id. Precise location stays
-     the verbatim text.
+     settles only on a cited success or ambiguous answer of a place source
+     with exactly one candidate at the field's level, and that candidate is
+     the value, with its authority_id; with none or several at the level the
+     field goes to review. The levels are by each source's kinds, kept in
+     `agreement.PLACE_LEVELS`: Getty TGN's place types ("nations"; "first
+     level subdivisions (political entities)"; "second level subdivisions
+     (political entities)" or "counties"; "inhabited places", "cities",
+     "towns" or "villages"), Wikidata's instance-of labels ("country",
+     "sovereign state"; "province", "former province", "department", "state";
+     "county"; "city", "town", "village", "human settlement",
+     "municipality", each also as "... of ..."), NGA's feature codes
+     ("A.PCL..."; "A.ADM1"; "A.ADM2"; "P...."); GEOLocate is asked for the
+     field's own level, so all its candidates are at it. So TGN's ambiguous
+     answer for "Philippines" (the nation, a Dutch village, a sea) settles
+     the country "P.I." as Philippines, and its answer for "Chimaltenango"
+     (the department and its town) settles the province as the department
+     and a city only as the town. Precise location stays the verbatim text.
+   - **A near spelling.** Nothing compares near spellings. On 105526330 the
+     decided reading writes "Chimaltenago" and Getty TGN knows only
+     "Chimaltenango": an answer that takes the other reader's
+     "Chimaltenango" as its literal is refused (G19), and the province goes
+     to review. An answer that keeps "Chimaltenago" as the literal and gives
+     TGN's department as the value passes these rules, since the place rule
+     checks the value against the source's candidate, not the label's
+     spelling against the query.
    - **The taxon.** A taxon is GBIF's decision for the whole name its
      candidate literal writes: the cited success answer's query is the
      scientific-name parser's query for that literal (the genus, any

@@ -23,7 +23,7 @@ answer becomes a value (step._refusal). It enforces, in this order:
    - a label with none whose readers each write the same one literal, on it;
    - any other label (readers that differ, or one that writes nothing) only
      through the field's approved sources: exactly one of its literals is
-     confirmed by a success answer about it, and every other has a captured
+     confirmed by an answer about it (below), and every other has a captured
      no_match answer about it and no success or ambiguous one. An error, a
      timeout or a literal never asked about is neither. A field with no
      approved source never settles such a label.
@@ -36,15 +36,25 @@ answer becomes a value (step._refusal). It enforces, in this order:
    A source answer is about a literal when GBIF was asked the whole name it
    writes (checks.taxon_query_grounded), or a place source was asked the
    literal as its whole query or as the query's first comma-separated part,
-   the name a place source searches. A success answer confirms the literal
-   as GBIF's decided candidate (its evidence's locator) or as a place
-   source's candidate of that name. Place names, queries and literals are
+   the name a place source searches. An answer about a literal confirms it
+   as GBIF's decided candidate (its evidence's locator) in a success answer;
+   for a place value field (point 4), as the one candidate at the field's
+   level of a success or ambiguous answer, when that candidate has the
+   literal's name; for precise location, as a success answer's candidate of
+   that name. Place names, queries and literals are
    compared after NFC, whitespace collapse and stripping the punctuation a
    label writes after a name (". , ; :"; place_name): "Yepocapa," was asked
    about by the query "Yepocapa". A near spelling is never the same name.
-4. A place (country, province or state, county, city): a cited success
-   answer of a place source has a candidate named as the value (the literal
-   when there is no value) with the answer's authority_id.
+4. A place (country, province or state, county, city): a cited success or
+   ambiguous answer of a place source has exactly one candidate at the
+   field's level (PLACE_LEVELS: a nation, a first or a second level
+   subdivision, an inhabited place, by the source's kinds; every GEOLocate
+   candidate), and that candidate is the value (the literal when there is no
+   value), exactly, with the answer's authority_id. No candidate or several
+   at the level: review. A gazetteer's answer is often ambiguous only
+   because the name also matches places at other levels (TGN's answer for
+   "Philippines" holds the nation, a village and a sea); the level settles
+   it.
 
 Point 3 follows research_harness/evidence.py's G20 and G32 rules (725-751:
 one confirmed reader beside the other's captured no-match; labels that
@@ -62,13 +72,44 @@ from dataclasses import dataclass
 from specimen_digitization.application.domain import LookupStatus
 
 from .checks import collapse, taxon_query_grounded
-from .contracts import PLACE_SOURCES, FieldTask, Reading, SourceAnswer
+from .contracts import PLACE_SOURCES, FieldTask, Reading, SourceAnswer, SourceCandidate
 
 DECIDED = "decided_transcript"
 # Place fields whose value a place source settles; precise_location is
 # verbatim text, checked against places and never replaced (PRD 515).
 PLACE_VALUE_FIELDS = frozenset({"country", "province_state", "county", "city"})
 SOURCE_IDS = frozenset({"gbif", *PLACE_SOURCES})
+# A place field's level, as each gazetteer names its candidates' kinds
+# (field_research.sources._place): Getty TGN's place types and Wikidata's
+# instance-of labels, comma separated; NGA's feature class and designation
+# ("A.ADM1"). A TGN type matches whole; a Wikidata label matches whole or
+# followed by " of " ("province of the Philippines"); an NGA code matches by
+# its start. GEOLocate is asked for the field's own level (Country, State,
+# County or Locality) and returns only matches of that place, so all its
+# candidates are at the level.
+PLACE_LEVELS = {
+    "tgn": {
+        "country": ("nations",),
+        "province_state": ("first level subdivisions (political entities)",),
+        "county": ("second level subdivisions (political entities)", "counties"),
+        "city": ("inhabited places", "cities", "towns", "villages"),
+    },
+    "wikidata": {
+        "country": ("country", "sovereign state"),
+        "province_state": ("province", "former province", "department", "state",
+            "first-level administrative country subdivision"),
+        "county": ("county", "second-level administrative country subdivision"),
+        "city": ("city", "town", "village", "human settlement", "municipality"),
+    },
+    "nga": {
+        "country": ("A.PCL",),
+        "province_state": ("A.ADM1",),
+        "county": ("A.ADM2",),
+        "city": ("P.",),
+    },
+}
+# The answers a place value may settle on (with one candidate at its level).
+PLACE_ANSWERED = frozenset({LookupStatus.SUCCESS, LookupStatus.AMBIGUOUS})
 
 # The field's reason when a resolved answer cannot settle it (plain app text).
 DIFFER = "The readings differ, and no approved source confirms one of them."
@@ -191,21 +232,56 @@ def about(answer: SourceAnswer, literal: str) -> bool:
     return place_name(literal) in asked
 
 
-def identities(answers: Iterable[SourceAnswer], literal: str) -> set[str]:
-    """What captured success answers about this literal confirm it as: the
-    authority_id of GBIF's decided candidate (the one its evidence's locator
-    names), or of a place source's candidate of that name (compared as place
-    names). Empty when nothing confirms it."""
+def _kind_matches(source_id: str, kind: str, level: str) -> bool:
+    kind, level = kind.strip().casefold(), level.casefold()
+    if source_id == "nga":
+        return kind.startswith(level)
+    if source_id == "wikidata":
+        return kind == level or kind.startswith(level + " of ")
+    return kind == level
+
+
+def at_level(key: str, answer: SourceAnswer) -> list[SourceCandidate]:
+    """The answer's candidates at the place field `key`'s level (PLACE_LEVELS):
+    every GEOLocate candidate, and a gazetteer's whose kinds name the level."""
+    if answer.source_id == "geolocate":
+        return list(answer.candidates)
+    levels = PLACE_LEVELS.get(answer.source_id, {}).get(key, ())
+    return [candidate for candidate in answer.candidates
+        if any(_kind_matches(answer.source_id, kind, level)
+            for kind in (candidate.kind or "").split(",") for level in levels)]
+
+
+def placed(key: str, answer: SourceAnswer) -> SourceCandidate | None:
+    """The one candidate a place source's answer settles the place field
+    `key` on: a success or ambiguous answer with exactly one candidate at the
+    field's level. None when it has none or several there (P1 of #284)."""
+    if answer.source_id not in PLACE_SOURCES or answer.status not in PLACE_ANSWERED:
+        return None
+    level = at_level(key, answer)
+    return level[0] if len(level) == 1 else None
+
+
+def identities(answers: Iterable[SourceAnswer], literal: str, key: str) -> set[str]:
+    """What captured answers about this literal confirm it as, for the field
+    `key`: the authority_id of GBIF's decided candidate (the one its
+    evidence's locator names) in a success answer; for a place value field,
+    of the one candidate at its level (placed) when it has the literal's name;
+    for another field a place source answers, of a success answer's candidate
+    of that name. Names compare as place names. Empty when nothing confirms it."""
     found: set[str] = set()
     for answer in answers:
-        if answer.status != LookupStatus.SUCCESS or answer.evidence is None or not about(answer, literal):
+        if answer.evidence is None or not about(answer, literal):
             continue
-        for candidate in answer.candidates:
-            if not candidate.authority_id:
+        if answer.source_id == "gbif" or key not in PLACE_VALUE_FIELDS:
+            if answer.status != LookupStatus.SUCCESS:
                 continue
-            if (candidate.authority_id == answer.evidence.locator if answer.source_id == "gbif"
-                    else place_name(candidate.name) == place_name(literal)):
-                found.add(candidate.authority_id)
+            found.update(candidate.authority_id for candidate in answer.candidates if candidate.authority_id
+                and (candidate.authority_id == answer.evidence.locator if answer.source_id == "gbif"
+                    else place_name(candidate.name) == place_name(literal)))
+        elif (one := placed(key, answer)) is not None and one.authority_id and (
+                place_name(one.name) == place_name(literal)):
+            found.add(one.authority_id)
     return found
 
 
@@ -262,7 +338,7 @@ def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[Sourc
         if len(texts) == 1 and all(len(own) == 1 for own in each):
             found[region] = Label(texts, next(iter(texts)))
             continue
-        confirmed = {text for text in texts if identities(answers, text)} if sourced else set()
+        confirmed = {text for text in texts if identities(answers, text, task.key)} if sourced else set()
         if len(confirmed) == 1 and all(ruled_out(answers, text) for text in texts - confirmed):
             found[region] = Label(texts, next(iter(confirmed)), by_source=True)
         else:
@@ -301,7 +377,7 @@ def _disagreement(task: FieldTask, readings: Sequence[Reading], *, literal: str,
             return Refusal(DIFFER, (
                 f"The labels settle on the reader's text {one!r}: copy the literal from a reading "
                 "that writes it, or answer several_possibilities."), differ=True)
-        if not identities(cited, one):
+        if not identities(cited, one, task.key):
             return Refusal(DIFFER, (
                 f"Cite the evidence_id of the source answer that confirms {one!r}."), differ=True)
         return None
@@ -309,8 +385,9 @@ def _disagreement(task: FieldTask, readings: Sequence[Reading], *, literal: str,
     # that confirms each label's text as the same place or name.
     common = None
     for text in settled:
-        common = identities(answers, text) if common is None else common & identities(answers, text)
-    if want in settled and authority_id in (common or set()) and authority_id in identities(cited, want):
+        found = identities(answers, text, task.key)
+        common = found if common is None else common & found
+    if want in settled and authority_id in (common or set()) and authority_id in identities(cited, want, task.key):
         return None
     return Refusal(LABELS_DIFFER, (
         f"The labels write different text for this field ({shown}). They settle only when an "
@@ -321,13 +398,14 @@ def _disagreement(task: FieldTask, readings: Sequence[Reading], *, literal: str,
 
 def place_confirmed(task: FieldTask, settled: str, authority_id: str | None,
         cited: Iterable[SourceAnswer]) -> bool:
-    """Whether a cited success answer of the field's place sources has the
-    settled value as a candidate, with the answer's authority_id."""
+    """Whether a cited success or ambiguous answer of the field's place
+    sources has exactly one candidate at the field's level (placed), and that
+    candidate is the settled value (its name exactly, after NFC and
+    whitespace collapse) with the answer's authority_id."""
     sources = frozenset(task.tools) & frozenset(PLACE_SOURCES)
     return any(
-        answer.source_id in sources and answer.status == LookupStatus.SUCCESS
-        and any(collapse(c.name) == collapse(settled) and c.authority_id == authority_id
-            for c in answer.candidates)
+        answer.source_id in sources and (one := placed(task.key, answer)) is not None
+        and collapse(one.name) == collapse(settled) and one.authority_id == authority_id
         for answer in cited
     )
 
@@ -351,8 +429,11 @@ def refusal(task: FieldTask, readings: Sequence[Reading], *, literal: str,
         settled_value = value if value is not None else literal
         if not place_confirmed(task, settled_value, authority_id, cited):
             return Refusal(NO_PLACE, (
-                "A place field settles only on a place source's success answer whose candidate "
-                "is the value: cite its evidence_id, give that candidate's name (as value, or as "
-                "the literal when they are the same) and its authority_id. Otherwise answer "
-                "several_possibilities or sources_cannot_resolve."))
+                "A place field settles only on a place source's success or ambiguous answer with "
+                "exactly one candidate at this field's level (by its kind: a nation for a country, "
+                "a first level subdivision for a province or state, a second level one for a "
+                "county, an inhabited place for a city), and that candidate is the value: cite its "
+                "evidence_id, give that candidate's name (as value, or as the literal when they "
+                "are the same) and its authority_id. When none or several are at this level, "
+                "answer several_possibilities or sources_cannot_resolve."))
     return None

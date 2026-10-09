@@ -822,6 +822,57 @@ def test_a_taxon_the_readers_write_differently_needs_every_readers_name_looked_u
     assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:taxon" in run.reasons
 
 
+class Gazetteer(FakeSources):
+    """Getty TGN as the pilot's recordings answer: "Philippines" is the nation
+    and places that are none; "Chimaltenango" the department and its town."""
+
+    PLACES = {
+        "Philippines": [("Philippines", "tgn:1000135", "nations, commonwealths, controlled regions"),
+            ("Philippine", "tgn:7268540", "inhabited places")],
+        "Chimaltenango": [("Chimaltenango", "tgn:1016636", "inhabited places, cities, department capitals"),
+            ("Chimaltenango", "tgn:1000565", "departments (political divisions), agricultural land, "
+                "first level subdivisions (political entities)")],
+    }
+
+    def _answer(self, source_id, query):
+        answer = super()._answer(source_id, query)
+        if source_id != "tgn" or query not in self.PLACES:
+            return answer
+        candidates = tuple(SourceCandidate(name, key, kind) for name, key, kind in self.PLACES[query])
+        evidence = answer.evidence.model_copy(update={"kind": "authority", "excerpt": "\n".join(
+            f"{c.name} | {c.authority_id} | {c.kind} | " for c in candidates)})
+        return SourceAnswer("tgn", query, LookupStatus.AMBIGUOUS, candidates, evidence, note="ambiguous")
+
+
+def from_tgn(query, literal, value, authority_id):
+    async def script(task, readings, tools):
+        answer = await tools.lookup("tgn", query, field_key=task.key)
+        return FieldOutcome(task.key, resolved(literal, value=value, authority_id=authority_id,
+            cited=[answer.evidence.id]), evidence=[answer.evidence], model_calls=1)
+    return script
+
+
+@pytest.mark.parametrize(("key", "written", "query", "value", "authority_id", "settles"), [
+    # Getty TGN is ambiguous only because "Philippines" also names places that are no nation.
+    ("country", "P.I.", "Philippines", "Philippines", "tgn:1000135", True),
+    # The department is the province; as a city, the department never is.
+    ("province_state", "Chimaltenango", "Chimaltenango", None, "tgn:1000565", True),
+    ("city", "Chimaltenango", "Chimaltenango", None, "tgn:1000565", False),
+])
+def test_an_ambiguous_place_answer_settles_on_its_one_candidate_at_the_fields_level(
+        tmp_path, key, written, query, value, authority_id, settles):
+    rig = build_rig(tmp_path, TEXT.replace(f"{key}: {LABEL[key]}", f"{key}: {written}"))
+    run = rig.specimen.run
+    settle(rig, Scripted({key: from_tgn(query, written, value, authority_id)}), tools=Gazetteer(rig.blobs))
+    place = run.fields[key]
+    if settles:
+        assert (place.state, place.literal, place.authority_id) == (ValueState.SUPPORTED, written, authority_id)
+        assert place.normalized == value and (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+        return
+    assert (place.state, place.reason) == (ValueState.UNRESOLVED, agreement.NO_PLACE + " Settled.")
+    assert run.disposition == Disposition.REVIEW and f"mandatory_unresolved:{key}" in run.reasons
+
+
 def test_a_place_never_clears_without_a_place_sources_candidate(rig):
     run = rig.specimen.run
     settle(rig, Scripted({"country": answering(resolved(LABEL["country"]))}))
