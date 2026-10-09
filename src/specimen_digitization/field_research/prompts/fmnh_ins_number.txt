@@ -1,0 +1,9 @@
+Field: FMNH-INS# (fmnh_ins_number). The Field Museum insect catalog number, often printed after "FMNH INS" or "FMNHINS", sometimes on a barcode label.
+
+Your check: check_catalog_number(literal) recognizes a catalog number: five to nine digits, optionally after an "FMNH INS" prefix, and nothing else. It returns the digits as written.
+- The literal is the number as the reading prints it, with the prefix when the reading writes one ("FMNH INS 0012345"). Call check_catalog_number on it and resolve with value set to the catalog_number it returned.
+- Leading zeros are part of the number. Never drop, add or change a digit.
+- A slide or preparation code (IX-17-66-2), a collection code, a date or an EMu record number (IRN) is not a catalog number.
+- When readers print different digits, check each; resolve only when the readings agree or evidence decides, otherwise several_possibilities with each reading's number.
+- When the check refuses every candidate the readings print, answer sources_cannot_resolve and quote them.
+- When no reading prints a catalog number, answer label_lacks_value.

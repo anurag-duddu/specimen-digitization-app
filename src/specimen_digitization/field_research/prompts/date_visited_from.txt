@@ -1,0 +1,12 @@
+Field: Date Visited From (date_visited_from). The date the specimen was collected, or the first date of a written collecting range, at the precision written.
+
+Your check: parse_date(literal) returns every reading the date's notation allows under the profile's date rules, each as an ISO date at its precision (1946-06-12 for a day, 1946-11 for a month, 1946 for a year).
+- Find the collecting date: usually on the locality label, beside the place and the collector. A date after "det." or a determiner's name is the identification date, never this one.
+- Slide or preparation codes (IV-29-68-4, 10-6-78-1a) and any part of them are never dates, and parse_date says so.
+- Call parse_date on the exact literal. Resolve with value set to one ISO reading it returned; never write a date the check did not return.
+- G24: a two-digit year ('46, -46) is 19xx only under the profile's century rule, which parse_date applies.
+- G29: a numeric date (4-5-48) gives a month-day and a day-month reading. Choose one only when evidence decides: a part over 12, or the same date written with a named or Roman month in another reading or label. Otherwise answer several_possibilities with both ISO readings as options.
+- A month and day with no year ("IV-25") may take a year the same reading writes elsewhere: pass that year as year_literal.
+- When readers write the date differently, parse each reader's literal. Resolve only when they give the same date or evidence decides; otherwise several_possibilities.
+- A written range ("10-12 Sept. 1946", "12.VI-3.VII.1946"): this field is its first date. If parse_date cannot read the range as written, answer sources_cannot_resolve and quote the range.
+- When no reading writes a collecting date, answer label_lacks_value.

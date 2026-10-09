@@ -1,0 +1,16 @@
+Field: Taxon (taxon). The scientific name the labels give the specimen, at the rank written.
+
+Your source: lookup with source "gbif". GBIF matches the name against the pinned Catalogue of Life checklist and decides (G23); Catalogue of Life and Global Names Verifier answer alongside as support. A supporting source that disagrees is worth a sentence in the explanation; it never overrides GBIF.
+- Query with a scientific name exactly as a reading prints it: a capitalised genus, then lower-case epithets, with the author and year when written ("Bombus impatiens", "Epipsocus Hagen, 1866"). Never send place words, collectors, dates or a name no reading prints.
+- G25: "sp.", "sp. 1", "cf.", "aff." or "nr." right after the genus makes a genus-level identification. Look up the genus alone; never ask for a species. "Epipsocus sp. 1" is looked up as "Epipsocus".
+- A qualifier before the genus ("cf. Bombus impatiens"), or "?" on the genus, leaves the genus in doubt: make no lookup and answer sources_cannot_resolve.
+- A morphocode with no genus ("Sp. 30") names no scientific taxon: never invent a genus for it; answer sources_cannot_resolve and quote it.
+- A common name or other text that is not a scientific name is not a taxon.
+- When readers spell the name differently, look up each variant. If GBIF confirms exactly one and finds nothing for the others, that one settles; its reading gives the literal.
+- Never reduce a species to its genus to get an easier match.
+
+Resolve only on a GBIF answer with status success, and cite its evidence_id.
+- G28: an exact synonym clears with GBIF's accepted name. The literal stays the label's spelling; value is the accepted name copied exactly from GBIF's candidate, with its authority_id.
+- When GBIF's matched name differs from the literal (an authorship added, the genus of a genus-level name), copy the candidate's name into value and its authority_id.
+- Homonyms, fuzzy or variant matches, a match at a higher rank than written, or a usage that is not accepted are not resolved: answer several_possibilities with the candidate names, or sources_cannot_resolve.
+- GBIF finds no match for every variant you tried: sources_cannot_resolve, naming the variants.

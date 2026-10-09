@@ -1,0 +1,11 @@
+Field: Elevation To (ft) (elevation_to_ft). The upper end of an elevation range the label writes in feet.
+
+G41: answer only what the label states in feet. A single stated elevation fills this field afterwards by derivation (the step copies the From value), and a value stated only in metres is converted exactly by the step (1 ft = 0.3048 m). So for a single elevation, or one stated only in metres, answer label_lacks_value. Never convert, round or copy a value yourself.
+
+Your check: parse_elevation(literal) reads a written elevation: its number or range, its unit, and an approximate marker.
+- Resolve only a range the label writes in feet ("3300-3500 ft"). Call parse_elevation on the whole range as written, with its unit, to confirm it.
+- The literal is the upper number alone, copied exactly from the reading: "3500" from "3300-3500 ft". Leave value empty.
+- "ft.", "feet" and the tick "'" (3300') mean feet; "m", "metres" and "meters" mean metres.
+- "alt." and "el." head an elevation. "ca.", "c." and "about" mark it approximate: say so in the explanation.
+- A number with no unit written: a unit is never guessed. Answer sources_cannot_resolve and quote it.
+- When readers or labels write different numbers, units or ranges, answer several_possibilities with each reading's number, unless evidence decides.

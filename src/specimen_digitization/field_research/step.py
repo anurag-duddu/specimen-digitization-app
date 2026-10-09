@@ -1,0 +1,970 @@
+"""Field research at the plan handover: one expert per field (FIELD_RESEARCH.md).
+
+With SPECIMEN_RESEARCH_HARNESS=fields the ordinary workflow runs this as one
+external, billable step, ``field_research`` (application.workflow.FIELD_RESEARCH),
+for a run whose profile names a harness route. The step reserves the run's
+remaining headroom under its cost ceiling, does everything below in memory, and
+the workflow saves the run once after it:
+
+1. ``build_tasks``: every reading of every label, named as the organiser names
+   them (1A, 1B, 2A), and one FieldTask per profile field with the organiser's
+   value after parse, its candidates and the tools its expert may call.
+2. ``research_fields``: a field that is already an accurate read is finalized
+   with no model call; every other field's expert runs at once, inside one
+   ``field_research`` span.
+3. ``apply_outcomes``: the outcomes become field values and evidence on the
+   run, then the derived values (derive.py; G37, G41, G44).
+4. ``finalize_fields``: the scientific rules the six-specialist harness applied
+   (research_harness/canonical_materialization_v2.py, ``_scientific_reasons``)
+   with no blanket human approval (G1). A field that cannot be settled sends the
+   record to Needs human review; an outage blocks the run with a retry, and
+   every settled field is kept for it.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import calendar
+import hashlib
+import json
+import logging
+import os
+import re
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
+from datetime import date, datetime, timezone
+from decimal import Decimal, InvalidOperation
+
+import logfire
+
+from specimen_digitization.application.collection_profiles import CollectionProfile
+from specimen_digitization.application.domain import (
+    Disposition,
+    Evidence,
+    FieldValue,
+    Lookup,
+    LookupStatus,
+    ToolCallRecord,
+    ValueState,
+    now,
+)
+from specimen_digitization.application.field_harness import labelled
+from specimen_digitization.application.field_validators import CATALOG
+from specimen_digitization.application.human_field_carry import KEY as CARRY_KEY
+from specimen_digitization.application.integrity import (
+    EvidenceIntegrityError,
+    verify_evidence,
+)
+from specimen_digitization.application.lookup import PLACE_FIELDS
+from specimen_digitization.application.organiser import (
+    CandidateLocation,
+    extraction_readings,
+    format_locator,
+    reading_texts_of,
+    stored_candidates,
+)
+from specimen_digitization.application.policy import PLACEHOLDERS
+from specimen_digitization.application.reliability import AdapterFailure
+from specimen_digitization.application.workflow import FIELD_RESEARCH, OperationalBlock
+
+from . import derive
+from .budget import BudgetExhausted
+from .contracts import (
+    FIELD_TOOLS,
+    NO_APPROVED_AUTHORITY,
+    Candidate,
+    FieldAnswer,
+    FieldOutcome,
+    FieldResolver,
+    FieldTask,
+    Reading,
+    SourceAnswer,
+    SourceTools,
+)
+
+LOGGER = logging.getLogger(__name__)
+
+STEP = FIELD_RESEARCH
+SOURCE = "field_research"
+TOOL_VERSION = "field-research-sources-v1"
+# The layers only field research writes on this path (the organiser and the
+# keyed-line parser leave the layer unset): a field in one of them was settled
+# by an earlier attempt, and a retry leaves it as it is.
+RESEARCHED = frozenset({"verbatim", "settled", "derived"})
+# Deterministic checks: a value one of them gives is the literal's parse.
+CHECKS = frozenset({"date_parser", "elevation_parser", "catalog_number_validator"})
+# GBIF decides a taxon; every other source supports the value it agrees with.
+DECIDING_SOURCES = frozenset({"gbif"})
+IRN = "identified_by_irn"
+# research_harness.evidence.missing_irn_resolution's value reason.
+IRN_REASON = "No qualified determiner Parties identity"
+IRN_EXPLANATION = (
+    "No approved source can supply a confirmed EMu parties IRN, and a name on the "
+    "label is not one."
+)
+ACCURATE = "Accurate read: the organiser's value, exactly as the named readings write it."
+# Work states, as canonical_materialization_v2 names them (37-39).
+RESOLVED, WAITING_HUMAN, NONBLOCKING, FAILED = (
+    "resolved", "waiting_human", "nonblocking_exception", "operational_failed")
+TERMINAL = frozenset({RESOLVED, WAITING_HUMAN, NONBLOCKING})
+# A failure that blocks the run with a retry: its blocker code (the run's and,
+# with ":<field>", each field's reason) and the status the workflow retries on.
+RETRYABLE = {
+    "source_unavailable": ("lookup_operational_failure", LookupStatus.PROVIDER),
+    "model_error": ("field_research_model_error", LookupStatus.PROVIDER),
+    "timeout": ("field_research_timeout", LookupStatus.TIMEOUT),
+}
+BLOCKER_STATUS = dict(RETRYABLE.values())
+FIELD_REASONS = {
+    "source_unavailable": "An approved source could not be reached. The record will be retried.",
+    "model_error": "An error occurred while researching this field. The record will be retried.",
+    "timeout": "Research on this field ran out of time. The record will be retried.",
+    "budget_exhausted": "The run's cost limit was reached before this field could be checked.",
+    None: "No answer was produced for this field.",
+}
+# The model gateway's own bound on one provider request.
+MODEL_TIMEOUT_SECONDS = 120
+
+
+# ---- inputs ---------------------------------------------------------------
+
+def profile_of(run) -> CollectionProfile:
+    """The run's published collection profile (its stored snapshot)."""
+    return CollectionProfile.model_validate(dict(run.profile_snapshot), context={"persisted_snapshot": True})
+
+
+def field_keys(profile: CollectionProfile) -> tuple[str, ...]:
+    return (*profile.mandatory_fields, *profile.optional_fields)
+
+
+def run_readings(run) -> tuple[Reading, ...]:
+    """Every reading of every label, named as the organiser names them."""
+    return tuple(
+        Reading(name=name, region_id=item.region_id, observation_id=item.observation_id,
+            input_source=item.role, text=item.text)
+        for name, item in labelled(extraction_readings(run)).items()
+    )
+
+
+def human_keys(run) -> frozenset[str]:
+    """Fields a person decided (human_field_carry): never researched or changed."""
+    carried = run.dependencies.get(CARRY_KEY) or {}
+    return frozenset(carried) if isinstance(carried, Mapping) else frozenset()
+
+
+def _candidates(run, readings: Sequence[Reading]) -> dict[str, list[Candidate]]:
+    regions: dict[str, list[Reading]] = {}
+    for reading in readings:
+        regions.setdefault(reading.region_id, []).append(reading)
+    found: dict[str, list[Candidate]] = {}
+    for item in stored_candidates(run.fields, run.evidence, reading_texts_of(run)):
+        name = item.label
+        if name is None:
+            # A row from before the organiser cites its whole region: name the
+            # region's decided transcript, else its first reading.
+            region = regions.get(item.region_id) or []
+            decided = [r for r in region if r.input_source == "decided_transcript"]
+            if not region:
+                continue
+            name = (decided or region)[0].name
+        found.setdefault(item.field_key, []).append(
+            Candidate(reading=name, quote=item.quote, literal=item.literal, evidence_id=item.evidence_id))
+    return found
+
+
+def build_tasks(run, profile: CollectionProfile | None = None):
+    """``(readings, tasks, context)`` for a run after parse.
+
+    One task per profile field, except a field a person decided and a field an
+    earlier attempt already settled (a retry researches only the rest).
+    ``context`` is every field's value as the organiser (or an earlier attempt)
+    left it.
+    """
+    profile = profile_of(run) if profile is None else profile
+    readings = run_readings(run)
+    candidates = _candidates(run, readings)
+    human = human_keys(run)
+    tasks = []
+    for key in field_keys(profile):
+        current = run.fields.get(key) or FieldValue()
+        if key in human or (current.state == ValueState.SUPPORTED and current.layer in RESEARCHED):
+            continue
+        tasks.append(FieldTask(key=key, mandatory=key in profile.mandatory_fields,
+            current=current.model_copy(deep=True), candidates=tuple(candidates.get(key, ())),
+            tools=tuple(FIELD_TOOLS.get(key, ()))))
+    context = {key: value.model_copy(deep=True) for key, value in run.fields.items()}
+    return readings, tuple(tasks), context
+
+
+def accurate_read(task: FieldTask) -> bool:
+    """A field with no source or check whose organiser value is supported."""
+    current = task.current
+    return (not task.tools and task.key not in NO_APPROVED_AUTHORITY
+        and current.state == ValueState.SUPPORTED and bool(current.literal and current.literal.strip()))
+
+
+def _current_reading_names(task: FieldTask, readings: Sequence[Reading], evidence) -> list[str]:
+    """The readings that write the organiser's literal, by its candidates and rows."""
+    literal = task.current.literal
+    names = [c.reading for c in task.candidates if c.literal == literal]
+    for evidence_id in task.current.evidence_ids:
+        row = evidence.get(evidence_id)
+        if row is None or row.kind != "literal" or literal not in row.excerpt:
+            continue
+        names += [r.name for r in readings
+            if r.region_id == row.region_id and r.observation_id in row.observation_ids]
+    by_name = {r.name: r for r in readings}
+    return [n for n in dict.fromkeys(names) if n in by_name and literal in by_name[n].text]
+
+
+# ---- research -------------------------------------------------------------
+
+@dataclass(frozen=True)
+class SourceCall:
+    """One lookup an expert made through the record's sources, in call order."""
+
+    field_key: str
+    source_id: str
+    query: str
+    answer: SourceAnswer
+    started_at: str
+    completed_at: str
+
+
+class _RecordedTools:
+    """The record's SourceTools, keeping each answer with the call that asked it:
+    a lookup row needs its producing call (projection._evidence)."""
+
+    def __init__(self, tools: SourceTools, calls: list[SourceCall]):
+        self.tools, self.calls = tools, calls
+        self.sources = tuple(tools.sources)
+
+    async def lookup(self, source_id: str, query: str, *, field_key: str) -> SourceAnswer:
+        started = now()
+        answer = await self.tools.lookup(source_id, query, field_key=field_key)
+        self.calls.append(SourceCall(field_key, source_id, query, answer, started, now()))
+        return answer
+
+
+async def _resolve(resolver: FieldResolver, task, readings, context, tools) -> FieldOutcome:
+    try:
+        outcome = await resolver(task, readings, context, tools=tools)
+    except BudgetExhausted:
+        return FieldOutcome(task.key, None, failure="budget_exhausted")
+    except Exception as error:  # noqa: BLE001 - one field's fault never stops the others
+        # A resolver returns field-level problems; this is a defect, logged by class only.
+        LOGGER.warning("field_research resolver raised: field=%s error=%s", task.key, type(error).__name__)
+        return FieldOutcome(task.key, None, failure="model_error")
+    if not isinstance(outcome, FieldOutcome) or outcome.key != task.key:
+        LOGGER.warning("field_research resolver answered another field: field=%s", task.key)
+        return FieldOutcome(task.key, None, failure="model_error")
+    return outcome
+
+
+def outcome_counts(outcomes: Iterable[FieldOutcome]) -> dict[str, int]:
+    """Operational counts only: no field value, label text or source content."""
+    outcomes = list(outcomes)
+    failed = [o for o in outcomes if o.failure in RETRYABLE]
+    review = [o for o in outcomes if o.failure not in RETRYABLE and o.key not in NO_APPROVED_AUTHORITY
+        and (o.failure is not None or o.answer is None or o.answer.outcome != "resolved")]
+    return {
+        "fields_total": len(outcomes),
+        "nonblocking_exceptions": sum(o.key in NO_APPROVED_AUTHORITY for o in outcomes),
+        "finalized_without_model": sum(o.finalized_without_model and o.key not in NO_APPROVED_AUTHORITY
+            for o in outcomes),
+        "resolved": sum(o.failure is None and o.answer is not None and o.answer.outcome == "resolved"
+            for o in outcomes),
+        "review": len(review),
+        "failed": len(failed),
+        "model_calls": sum(o.model_calls for o in outcomes),
+        "cost_micros": sum(o.cost_micros for o in outcomes),
+    }
+
+
+async def research_fields(run, profile: CollectionProfile | None = None, *, resolver: FieldResolver,
+        tools: SourceTools, concurrency: int = 10, deadline_seconds: float | None = None,
+        prepared=None, calls: list[SourceCall] | None = None) -> list[FieldOutcome]:
+    """One outcome per task, in task order.
+
+    An accurate read finalizes with no model call; a field with no approved
+    authority (identified_by_irn) gets none either and keeps its nonblocking
+    exception; every other field's resolver runs, up to ``concurrency`` at once.
+    A field still running at ``deadline_seconds`` is cancelled as a timeout.
+    ``prepared`` is build_tasks' result; ``calls`` collects every lookup made.
+    """
+    profile = profile_of(run) if profile is None else profile
+    readings, tasks, context = build_tasks(run, profile) if prepared is None else prepared
+    recorded = _RecordedTools(tools, [] if calls is None else calls)
+    evidence = {item.id: item for item in run.evidence}
+    outcomes: dict[str, FieldOutcome] = {}
+    pending: list[FieldTask] = []
+    for task in tasks:
+        if task.key in NO_APPROVED_AUTHORITY:
+            outcomes[task.key] = FieldOutcome(task.key, FieldAnswer(outcome="sources_cannot_resolve",
+                explanation=IRN_EXPLANATION), finalized_without_model=True)
+        elif accurate_read(task) and (names := _current_reading_names(task, readings, evidence)):
+            outcomes[task.key] = FieldOutcome(task.key, FieldAnswer(outcome="resolved",
+                literal=task.current.literal, reading_names=names, explanation=ACCURATE),
+                finalized_without_model=True)
+        else:
+            pending.append(task)
+    with logfire.span("field_research", fields_total=len(tasks), fields_researched=len(pending)) as span:
+        if pending:
+            semaphore = asyncio.Semaphore(max(1, concurrency))
+
+            async def one(task):
+                async with semaphore:
+                    outcomes[task.key] = await _resolve(resolver, task, readings, context, recorded)
+
+            jobs = [asyncio.create_task(one(task)) for task in pending]
+            _, late = await asyncio.wait(jobs, timeout=deadline_seconds)
+            for job in late:
+                job.cancel()
+            if late:
+                await asyncio.gather(*late, return_exceptions=True)
+        for task in pending:
+            outcomes.setdefault(task.key, FieldOutcome(task.key, None, failure="timeout"))
+        result = [outcomes[task.key] for task in tasks]
+        for name, count in outcome_counts(result).items():
+            span.set_attribute(name, count)
+    return result
+
+
+# ---- outcomes to field values ---------------------------------------------
+
+def _excerpt_span(text: str, literal: str) -> tuple[int, int, int, int]:
+    """The literal's first occurrence and the line(s) around it."""
+    start = text.index(literal)
+    end = start + len(literal)
+    line_start = text.rfind("\n", 0, start) + 1
+    line_end = text.find("\n", end)
+    return line_start, len(text) if line_end < 0 else line_end, start, end
+
+
+def _literal_row(key: str, reading: Reading, literal: str, asset_id, blobs) -> Evidence:
+    """A label row for a reading the expert named that no organiser row covers."""
+    quote_start, quote_end, start, end = _excerpt_span(reading.text, literal)
+    excerpt = reading.text[quote_start:quote_end]
+    record = json.dumps({"field_key": key, "reading": reading.name, "region_id": reading.region_id,
+        "observation_ids": [reading.observation_id], "excerpt": excerpt}, sort_keys=True).encode()
+    return Evidence(kind="literal", asset_id=asset_id, region_id=reading.region_id,
+        observation_ids=[reading.observation_id], source=SOURCE,
+        locator=format_locator(CandidateLocation(reading.name, reading.observation_id, quote_start,
+            quote_end, start, end)),
+        excerpt=excerpt, raw_ref=blobs.put(record) if blobs is not None else None,
+        digest=hashlib.sha256(record).hexdigest() if blobs is not None else None)
+
+
+def _check_row(key: str, tools: Sequence[str], literal: str, value: str, *, texts: Sequence[str],
+        date_rules, asset_id, blobs) -> Evidence | None:
+    """The evidence of a parsed value that differs from its literal: the field's
+    deterministic check run again on the literal here, kept only when it gives
+    that value (a check stores no evidence of its own). None when it does not:
+    the value then stays unsupported and the rules send it to review."""
+    from . import checks
+
+    runs = {
+        "date_parser": lambda: checks.parse_date(literal, reading_texts=texts, date_rules=date_rules),
+        "elevation_parser": lambda: checks.parse_elevation(literal, reading_texts=texts),
+        "catalog_number_validator": lambda: checks.check_catalog_number(literal, reading_texts=texts),
+    }
+    for tool in tools:
+        if tool not in runs:
+            continue
+        result = runs[tool]()
+        if result.status not in (LookupStatus.SUCCESS, LookupStatus.AMBIGUOUS) or value not in result.values:
+            continue
+        found = json.dumps(result.as_dict(), sort_keys=True, ensure_ascii=False)
+        record = json.dumps({"field_key": key, "value": value, "result": result.as_dict()},
+            sort_keys=True).encode()
+        return Evidence(kind="derived", asset_id=asset_id, source=SOURCE, locator=f"check:{tool}",
+            excerpt=f"{key}: {literal} reads as {value} ({tool}: {found})",
+            raw_ref=blobs.put(record) if blobs is not None else None,
+            digest=hashlib.sha256(record).hexdigest() if blobs is not None else None)
+    return None
+
+
+def _lineage(named: Sequence[Reading], literal: str) -> dict:
+    """Where the verbatim came from (data contract 4.3, G20, G27, G28).
+
+    A decided transcript among the named readings is the value's source, as the
+    workflow's own parse records it. Raw readings alone keep each reader's
+    verbatim, the readings that settled it and the first of them as confirmed.
+    """
+    decided = [r for r in named if r.input_source == "decided_transcript"]
+    if decided:
+        return {"input_source": "decided_transcript", "source_region_id": decided[0].region_id,
+            "source_observation_id": decided[0].observation_id}
+    regions = {r.region_id for r in named}
+    observations = list(dict.fromkeys(r.observation_id for r in named))
+    return {"input_source": "raw_reading",
+        "source_region_id": next(iter(regions)) if len(regions) == 1 else None,
+        "source_observation_id": observations[0],
+        "verbatim_by_observation": dict.fromkeys(observations, literal),
+        "input_source_by_observation": dict.fromkeys(observations, "raw_reading"),
+        "settled_observation_ids": observations}
+
+
+def _settled(run, task, outcome, *, by_name, evidence, asset_id, blobs, date_rules=None) -> FieldValue | None:
+    """A resolved answer as a supported value, or None when its literal is not in
+    the readings it names (the experts' check, repeated here)."""
+    answer = outcome.answer
+    literal = answer.literal
+    if not literal or not literal.strip():
+        return None
+    named = [by_name[n] for n in dict.fromkeys(answer.reading_names) if n in by_name and literal in by_name[n].text]
+    if not named:
+        return None
+    relations: dict[str, str] = {}
+    for reading in named:
+        own = [e for e in task.current.evidence_ids if e in evidence and evidence[e].kind == "literal"
+            and evidence[e].region_id == reading.region_id
+            and reading.observation_id in evidence[e].observation_ids and literal in evidence[e].excerpt]
+        if not own:
+            row = _literal_row(task.key, reading, literal, asset_id, blobs)
+            run.evidence.append(row)
+            evidence[row.id] = row
+            own = [row.id]
+        relations.update(dict.fromkeys((e for e in own if e not in relations), "supports"))
+    cited = [e for e in answer.source_evidence_ids if e in evidence and evidence[e].kind != "literal"]
+    for evidence_id in cited:
+        relations[evidence_id] = "decides" if evidence[evidence_id].source in DECIDING_SOURCES else "supports"
+    value = answer.value if answer.value not in (None, literal) else None
+    parsed, normalized = literal, None
+    if value is not None and set(task.tools) & CHECKS:
+        parsed = value
+        if not any(evidence[e].kind in {"authority", "authority_selection", "derived"}
+                and value in evidence[e].excerpt for e in cited):
+            row = _check_row(task.key, task.tools, literal, value, texts=[r.text for r in by_name.values()],
+                date_rules=date_rules, asset_id=asset_id, blobs=blobs)
+            if row is not None:
+                run.evidence.append(row)
+                evidence[row.id] = row
+                relations[row.id] = "supports"
+    elif value is not None:
+        normalized = value
+    return FieldValue(state=ValueState.SUPPORTED, literal=literal, parsed=parsed, normalized=normalized,
+        authority_id=answer.authority_id, evidence_ids=list(relations), evidence_relations=relations,
+        reason=answer.explanation, layer="verbatim" if outcome.finalized_without_model else "settled",
+        **_lineage(named, literal))
+
+
+def _unsettled(task, state, *, literal=None, cited=(), reason) -> FieldValue:
+    """A value research did not settle: the organiser's rows stay cited, with the
+    sources the expert cited beside them, and the reason says why."""
+    relations = dict.fromkeys(cited, "supports")
+    ids = list(dict.fromkeys([*task.current.evidence_ids, *cited]))
+    return FieldValue(state=state, literal=literal, evidence_ids=ids, evidence_relations=relations,
+        reason=reason)
+
+
+def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, blobs, date_rules=None) -> FieldValue:
+    answer = outcome.answer
+    current = task.current
+    if task.key in NO_APPROVED_AUTHORITY:
+        # research_harness.evidence.missing_irn_resolution: unresolved, no party.
+        return FieldValue(state=ValueState.UNKNOWN, evidence_ids=list(current.evidence_ids),
+            reason=IRN_REASON)
+    cited = [e for e in (answer.source_evidence_ids if answer else ()) if e in evidence
+        and evidence[e].kind != "literal"]
+    if outcome.failure is not None or answer is None:
+        reason = FIELD_REASONS.get(outcome.failure, FIELD_REASONS[None])
+        return _unsettled(task, ValueState.UNRESOLVED, literal=current.literal, cited=cited, reason=reason)
+    if answer.outcome == "resolved":
+        settled = _settled(run, task, outcome, by_name=by_name, evidence=evidence, asset_id=asset_id,
+            blobs=blobs, date_rules=date_rules)
+        if settled is not None:
+            return settled
+        return _unsettled(task, ValueState.UNRESOLVED, literal=current.literal, cited=cited,
+            reason="The answer's literal is not in the readings it names. " + answer.explanation)
+    if answer.outcome == "label_lacks_value":
+        return _unsettled(task, ValueState.NOT_PRESENT, cited=cited, reason=answer.explanation)
+    if answer.outcome == "several_possibilities":
+        options = [o for o in dict.fromkeys(answer.options) if o and o.strip()]
+        reason = answer.explanation + (" Options: " + "; ".join(options) + "." if options else "")
+        return _unsettled(task, ValueState.AMBIGUOUS, cited=cited, reason=reason)
+    # sources_cannot_resolve: the label's text stays when a reading writes it.
+    literal = answer.literal if answer.literal and any(answer.literal in r.text for r in readings) else current.literal
+    return _unsettled(task, ValueState.UNRESOLVED, literal=literal, cited=cited, reason=answer.explanation)
+
+
+def _tool_call(run, made: Sequence[SourceCall], item: Evidence, readings: Sequence[Reading]) -> ToolCallRecord:
+    """The call that produced a stored source answer, for every field that asked it.
+
+    The query is text a reading writes, but which reading an expert copied it
+    from is not recorded: the call names the first decided transcript, else the
+    first reading.
+    """
+    first = made[0]
+    anchor = next((r for r in readings if r.input_source == "decided_transcript"), readings[0] if readings else None)
+    attempt = run.attempts.get(STEP, 1)
+    return ToolCallRecord(call_key=f"{STEP}:{attempt}:{item.id}", phase="lookup", tool=first.source_id,
+        tool_version=TOOL_VERSION, source=first.source_id,
+        field_keys=list(dict.fromkeys(call.field_key for call in made)),
+        input_source=anchor.input_source if anchor else "raw_reading",
+        region_id=anchor.region_id if anchor else None,
+        observation_id=anchor.observation_id if anchor and anchor.input_source == "raw_reading" else None,
+        attempt=attempt, arguments={"query": first.query}, outcome=first.answer.status,
+        result={"candidate_count": len(first.answer.candidates)}, evidence_id=item.id,
+        started_at=first.started_at, completed_at=first.completed_at)
+
+
+def _add_sources(run, outcomes: Sequence[FieldOutcome], calls: Sequence[SourceCall], readings) -> None:
+    """Every captured source response once as evidence, with its producing call,
+    and every taxonomy lookup once on the run."""
+    known = {item.id: item for item in run.evidence}
+    produced = {record.evidence_id for record in run.tool_calls if record.evidence_id}
+    by_evidence: dict[str, list[SourceCall]] = {}
+    for call in calls:
+        if call.answer.evidence is not None:
+            by_evidence.setdefault(call.answer.evidence.id, []).append(call)
+    captured = [item for outcome in outcomes for item in outcome.evidence]
+    captured += [call.answer.evidence for call in calls if call.answer.evidence is not None]
+    for item in captured:
+        existing = known.get(item.id)
+        if existing is not None:
+            if existing != item:
+                raise EvidenceIntegrityError("evidence_integrity_failure")
+            continue
+        made = by_evidence.get(item.id, [])
+        if item.kind == "lookup" and not made:
+            # A lookup row projects only with its one producing call; an unrecorded
+            # one is left out rather than stop the record's projection.
+            LOGGER.warning("field_research source evidence without its call left out: source=%s", item.source)
+            continue
+        run.evidence.append(item)
+        known[item.id] = item
+        if made and item.id not in produced:
+            run.tool_calls.append(_tool_call(run, made, item, readings))
+            produced.add(item.id)
+    lookups = [lookup for outcome in outcomes for lookup in outcome.lookups]
+    lookups += [call.answer.taxonomy_lookup for call in calls if call.answer.taxonomy_lookup is not None]
+    present = {lookup.id for lookup in run.lookups}
+    for lookup in lookups:
+        if isinstance(lookup, Lookup) and lookup.id not in present:
+            run.lookups.append(lookup)
+            present.add(lookup.id)
+
+
+def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[FieldTask],
+        outcomes: Sequence[FieldOutcome], *, blobs=None, calls: Sequence[SourceCall] = (),
+        asset_id: str | None = None) -> list[str]:
+    """Turn the outcomes into the run's field values and evidence, in memory only.
+
+    resolved: supported, with the literal, its lineage, the label rows of the
+    readings it names (a new row where none covers a reading) and the source
+    evidence it cites (GBIF decides; other sources support); a deterministic
+    check's parse gets a "derived" row when the check, run again on the
+    literal, gives that value. label_lacks_value: not present;
+    sources_cannot_resolve: unresolved; several_possibilities: ambiguous, the
+    options in the reason; a failure: unresolved with a retryable reason. Then
+    the derived values; the keys derived are returned.
+    """
+    profile = profile_of(run) if profile is None else profile
+    readings = run_readings(run)
+    by_name = {reading.name: reading for reading in readings}
+    if asset_id is None:
+        asset_id = run.regions[0].asset_id if run.regions else None
+    _add_sources(run, outcomes, calls, readings)
+    evidence = {item.id: item for item in run.evidence}
+    tasks_by_key = {task.key: task for task in tasks}
+    human = human_keys(run)
+    for outcome in outcomes:
+        task = tasks_by_key.get(outcome.key)
+        if task is None or task.key in human:
+            continue
+        run.fields[task.key] = _field_value(run, task, outcome, readings=readings, by_name=by_name,
+            evidence=evidence, asset_id=asset_id, blobs=blobs, date_rules=profile.date_rules)
+    eligible = [key for key in field_keys(profile) if key not in human]
+    return derive.fill(run, eligible=eligible, asset_id=asset_id, blobs=blobs)
+
+
+# ---- the scientific rules -------------------------------------------------
+
+def _date_bounds(value: FieldValue) -> tuple[date, date]:
+    """research_harness/canonical_materialization.py 90-102, unchanged."""
+    text = value.normalized or value.parsed or value.literal or ""
+    if not re.fullmatch(r"\d{4}(?:-\d{2}(?:-\d{2})?)?", text):
+        raise ValueError("date_precision_unproved")
+    parts = [int(part) for part in text.split("-")]
+    precision = ("year", "month", "day")[len(parts) - 1]
+    if value.precision is not None and value.precision != precision:
+        raise ValueError("date_precision_mismatch")
+    year, month = parts[0], parts[1] if len(parts) > 1 else 1
+    lower = date(year, month, parts[2] if len(parts) > 2 else 1)
+    upper = (date(year, 12, 31) if len(parts) == 1 else
+             date(year, month, calendar.monthrange(year, month)[1]) if len(parts) == 2 else lower)
+    return lower, upper
+
+
+def _raw_grounded(value: FieldValue, run) -> bool:
+    """research_harness/canonical_materialization.py 105-114, unchanged."""
+    readings = {reading.id: reading for reading in run.observations}
+    verbatim = value.verbatim_by_observation
+    if not verbatim or not value.settled_observation_ids or not set(value.settled_observation_ids) <= set(verbatim):
+        return False
+    return all(identifier in readings and text and text in readings[identifier].literal_text
+        and readings[identifier].raw_ref and readings[identifier].raw_sha256
+        and (value.source_region_id is None or readings[identifier].region_id == value.source_region_id)
+        and value.input_source_by_observation.get(identifier, value.input_source) == "raw_reading"
+        for identifier, text in verbatim.items())
+
+
+def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterable[str],
+        qualified: frozenset[str], today: date) -> list[str]:
+    """canonical_materialization_v2._scientific_reasons (182-295), ported.
+
+    The same G1/G6/G42/G43 rules on the same run fields, evaluated on the
+    fields whose work is terminal; no blanket human approval (G1: 195-197 retire
+    policy.py 31-34 and 138-139). Where field research differs, it says so:
+    - 194: a field waiting on a person is not given research_human_question:
+      the app has no text for it, and mandatory_unresolved:{field} (233-235)
+      already names the field.
+    - 222-236: the published profile's optional fields (identified_by_irn) are
+      checked only when they hold a value, as policy.py checks only mandatory
+      fields; the research profile made all twenty mandatory.
+    - 227-231: a field with no approved authority keeps the nonblocking
+      exception (contracts.NO_APPROVED_AUTHORITY, the profile's configured
+      treatment; evidence.emu_irn_exception).
+    - 254-260: the taxon's settling call is the stored GBIF lookup's producing
+      ToolCallRecord, which field research records for every source answer.
+    - ``qualified`` (the native lineage proof) is the derived values: their
+      lineage is their derivation, and they have no literal by definition (G37).
+    """
+    reasons: list[str] = []
+    # 198-199
+    if not run.coverage_confirmed or not run.regions:
+        reasons.append("label_coverage_unconfirmed")
+    # 200-202
+    for label in run.label_language_handling.get("labels", []):
+        if label.get("review_required") and not run.human_approved:
+            reasons.extend(f"{reason}:{label['region_id']}" for reason in label["reasons"])
+    # 203-217
+    for region in run.regions:
+        readings = [item for item in run.observations if item.region_id == region.id]
+        if len({item.route_id for item in readings}) < 2 or len({item.model_id for item in readings}) < 2:
+            reasons.append(f"independent_observations_missing:{region.id}")
+        if any(not item.raw_ref or not item.raw_sha256 for item in readings):
+            reasons.append(f"raw_provenance_missing:{region.id}")
+        transcripts = [item for item in run.transcripts if item.region_id == region.id]
+        if not transcripts or any(not item.resolved or not item.text for item in transcripts):
+            ids = {reading.id for reading in readings}
+            drawn = [key for key, value in run.fields.items() if key != IRN and (
+                value.source_region_id == region.id or any(identifier in ids for identifier in value.verbatim_by_observation)
+                or any(item.id in value.evidence_ids and item.region_id == region.id for item in run.evidence))]
+            if not drawn or any(run.fields[key].state != ValueState.SUPPORTED
+                    or not _raw_grounded(run.fields[key], run) and key not in qualified
+                    for key in drawn if latest_work.get(key) in TERMINAL):
+                reasons.append(f"unresolved_transcription:{region.id}")
+    evidence = {item.id: item for item in run.evidence}
+    # 219-220: an identity collision is an integrity failure, never a review reason.
+    if len(evidence) != len(run.evidence):
+        raise EvidenceIntegrityError("evidence_integrity_failure")
+    mandatory = frozenset(mandatory)
+    for key in sorted(latest_work):
+        if latest_work[key] not in TERMINAL:
+            continue
+        value = run.fields.get(key) or FieldValue()
+        # 227-231
+        if (key in NO_APPROVED_AUTHORITY and value.state != ValueState.SUPPORTED
+                and not any((value.parsed, value.normalized, value.authority_id, value.authority_identity))):
+            continue
+        if key not in mandatory and value.state != ValueState.SUPPORTED:
+            continue
+        # 232-236
+        settled = value.normalized or value.parsed or value.literal
+        if (value.state != ValueState.SUPPORTED or not settled
+                or settled.strip().casefold() in PLACEHOLDERS
+                or (value.literal is None and key not in qualified and not _raw_grounded(value, run))):
+            reasons.append(f"mandatory_unresolved:{key}")
+            continue
+        # 237-239
+        if not value.evidence_ids or any(item not in evidence for item in value.evidence_ids):
+            reasons.append(f"evidence_missing:{key}")
+            continue
+        citations = [evidence[item] for item in value.evidence_ids]
+        # 241-242
+        if value.literal is not None and not any(value.literal in item.excerpt for item in citations):
+            reasons.append(f"evidence_does_not_support_value:{key}")
+        # 243-244
+        if value.verbatim_by_observation and key not in qualified and not _raw_grounded(value, run):
+            reasons.append(f"raw_reading_grounding_unproved:{key}")
+        # 245-251
+        for layer in ("parsed", "normalized", "authority_id"):
+            text = getattr(value, layer)
+            if key not in qualified and text and text != value.literal and not any(
+                item.kind in {"authority", "authority_selection", "derived", "lookup"}
+                and text in item.excerpt for item in citations
+            ):
+                reasons.append(f"unsupported_{layer}:{key}")
+        # 252-253
+        if key == IRN and (not value.authority_identity or value.authority_identity.get("module") != "eparties"):
+            reasons.append("identified_by_irn_identity_unproved")
+    # 254-260
+    taxon = run.fields.get("taxon") or FieldValue()
+    if latest_work.get("taxon") in TERMINAL and (not taxon.authority_id or not any(
+        "taxon" in call.field_keys and call.evidence_id in taxon.evidence_ids
+        and call.outcome.value == "success" and call.source in FIELD_TOOLS["taxon"]
+        for call in run.tool_calls
+    )):
+        reasons.append("taxonomy_unresolved")
+    # 261-271
+    for unit in ("m", "ft"):
+        if any(latest_work.get(f"elevation_{end}_{unit}") not in TERMINAL for end in ("from", "to")):
+            continue
+        try:
+            lower = run.fields[f"elevation_from_{unit}"]
+            upper = run.fields[f"elevation_to_{unit}"]
+            values = [Decimal(v.normalized or v.parsed or v.literal or "") for v in (lower, upper)]
+            if any(not v.is_finite() for v in values) or values[0] > values[1]:
+                reasons.append(f"elevation_range:{unit}")
+        except InvalidOperation:
+            reasons.append(f"elevation_invalid:{unit}")
+    # 272-281
+    for end in ("from", "to"):
+        if any(latest_work.get(f"elevation_{end}_{unit}") not in TERMINAL for unit in ("m", "ft")):
+            continue
+        try:
+            metric, imperial = (run.fields[f"elevation_{end}_{unit}"] for unit in ("m", "ft"))
+            metres, feet = (Decimal(v.normalized or v.parsed or v.literal or "") for v in (metric, imperial))
+            if metres.is_finite() and feet.is_finite() and abs(metres * Decimal("3.28084") - feet) > Decimal("1"):
+                reasons.append(f"elevation_units_conflict:{end}")
+        except InvalidOperation:
+            pass  # The mandatory/range checks above retain missing data.
+    # 282-291
+    if all(latest_work.get(key) in TERMINAL for key in ("date_visited_from", "date_visited_to", "date_identified")):
+        try:
+            start, _ = _date_bounds(run.fields["date_visited_from"])
+            _, end = _date_bounds(run.fields["date_visited_to"])
+            identified, _ = _date_bounds(run.fields["date_identified"])
+            if start > end or identified < start or identified > today:
+                reasons.append("date_order")
+        except (ValueError, OverflowError, OSError):
+            reasons.append("date_precision_requires_review")
+    # 292-294
+    identifier = run.fields.get("fmnh_ins_number") or FieldValue()
+    if latest_work.get("fmnh_ins_number") in TERMINAL and not CATALOG.fullmatch(
+            identifier.normalized or identifier.parsed or identifier.literal or ""):
+        reasons.append("identifier_format")
+    return list(dict.fromkeys(reasons))
+
+
+def work_states(run, profile: CollectionProfile, outcomes: Sequence[FieldOutcome]) -> dict[str, str]:
+    """Each profile field's work state after this attempt.
+
+    A field this attempt did not research (settled earlier, or a person's) and
+    a derived value are resolved; an outage or model failure is operational; a
+    field with no approved authority is its nonblocking exception; anything
+    else that did not settle waits on a person (a spent budget too: the
+    ceiling is a scientific stop, not an outage).
+    """
+    by_key = {outcome.key: outcome for outcome in outcomes}
+    states = {}
+    for key in field_keys(profile):
+        outcome, value = by_key.get(key), run.fields.get(key) or FieldValue()
+        if outcome is None or (value.state == ValueState.SUPPORTED and value.layer == "derived"):
+            states[key] = RESOLVED
+        elif outcome.failure in RETRYABLE:
+            states[key] = FAILED
+        elif key in NO_APPROVED_AUTHORITY:
+            states[key] = NONBLOCKING
+        elif value.state == ValueState.SUPPORTED and value.layer in RESEARCHED:
+            states[key] = RESOLVED
+        else:
+            states[key] = WAITING_HUMAN
+    return states
+
+
+def finalize_fields(run, profile: CollectionProfile | None, outcomes: Sequence[FieldOutcome], *,
+        specimen=None, blobs=None, today: date | None = None) -> str | None:
+    """Set the run's reasons, disposition and stage; the blocker when it is blocked.
+
+    The retained evidence is verified first, as the workflow's finalize does
+    (EvidenceIntegrityError propagates). All mandatory fields settled and the
+    rules satisfied: cleared. Anything for a person: needs human review, with a
+    reason per field. Any outage or model failure: processing_blocked with the
+    retryable blocker the workflow schedules a retry on, every settled field kept.
+    """
+    profile = profile_of(run) if profile is None else profile
+    if specimen is not None and blobs is not None:
+        verify_evidence(specimen, blobs)
+    today = datetime.now(timezone.utc).date() if today is None else today
+    work = work_states(run, profile, outcomes)
+    qualified = frozenset(key for key, value in run.fields.items()
+        if value.state == ValueState.SUPPORTED and value.layer == "derived")
+    human = scientific_reasons(run, work, mandatory=profile.mandatory_fields, qualified=qualified, today=today)
+    # canonical_materialization_v2 447-450: a person's carried decision is reviewed again.
+    human += [f"preserved_human_decision:{key}" for key in sorted(human_keys(run) & set(work))]
+    by_key = {outcome.key: outcome for outcome in outcomes}
+    failures = [by_key[key].failure for key in work if work[key] == FAILED]
+    if failures:
+        operational = [f"{RETRYABLE[by_key[key].failure][0]}:{key}" for key in work if work[key] == FAILED]
+        blocker = next(code for failure, (code, _) in RETRYABLE.items() if failure in failures)
+        run.stage, run.disposition, run.blocker = "processing_blocked", None, blocker
+        run.reasons = list(dict.fromkeys((*operational, *human)))
+        return blocker
+    run.blocker = None
+    run.reasons = list(dict.fromkeys(human))
+    run.disposition = Disposition.REVIEW if run.reasons else Disposition.CLEARED
+    run.stage = "finalized"
+    return None
+
+
+# ---- the workflow step ----------------------------------------------------
+
+def record_cost(run, route_id: str, *, reserved: int, spent: int | None, outcome: str, model_calls: int = 0) -> None:
+    """The step's one paid-call entry, in lane_costs' shape (LANE.md T2c).
+
+    ``spent`` is the meter's settled spend; None when the spend is unknown,
+    and then the whole reservation stays held (cost_basis "reserved").
+    """
+    prices = run.profile.execution.price_list
+    if prices is None:
+        return
+    known = spent is not None
+    run.paid_calls.append({
+        "step": STEP,
+        "attempt": run.attempts.get(STEP, 1),
+        "kind": "model",
+        "route_id": route_id,
+        "reserved_micros": reserved,
+        "usage": {"model_calls": model_calls} if known else None,
+        "outcome": outcome,
+        "cost_micros": spent if known else reserved,
+        "cost_basis": "computed" if known else "reserved",
+        "price_list": {"version": prices["version"], "as_of": prices["as_of"]},
+        "at": now(),
+    })
+    if any(call["cost_basis"] == "reserved" for call in run.paid_calls):
+        run.usage.actual_cost_micros = None
+    elif known:
+        run.usage.actual_cost_micros = (run.usage.actual_cost_micros or 0) + spent
+
+
+def _route_price(profile: CollectionProfile, route_id: str | None):
+    prices = profile.processing.price_list if profile.processing else None
+    if route_id is None or prices is None or route_id not in prices.models:
+        raise OperationalBlock("field_research_price_unavailable")
+    return prices.models[route_id]
+
+
+def cost_meter(cap_micros: int, price):
+    from .budget import CostMeter
+
+    return CostMeter(cap_micros, input_micros_per_million=price.input_micros_per_million,
+        output_micros_per_million=price.output_micros_per_million)
+
+
+@dataclass
+class FieldResearchStep:
+    """The workflow's ``field_research`` step for one run, in memory.
+
+    ``resolver_factory(run, profile, meter)`` returns the run's FieldResolver,
+    ``tools_factory(run, profile, blobs)`` an async context manager that yields
+    its SourceTools, and ``meter_factory(cap_micros, price)`` the meter every
+    expert's model call reserves from (budget.CostMeter).
+    """
+
+    resolver_factory: Callable
+    tools_factory: Callable
+    meter_factory: Callable = cost_meter
+    # Every field's expert at once (FIELD_RESEARCH.md, step 3).
+    concurrency: int = len(FIELD_TOOLS)
+    # Research stops this long before the step's own deadline, so the step can
+    # apply what settled and the workflow can save it inside its effect timeout.
+    margin_seconds: float = 30.0
+
+    def handles(self, run) -> bool:
+        from specimen_digitization.research_harness.committed_pins import (
+            committed_harness_route,
+        )
+
+        return committed_harness_route(run.profile_snapshot) is not None
+
+    def run(self, workflow, principal, specimen, *, cap_micros: int, deadline_seconds: float) -> None:
+        run = specimen.run
+        profile = profile_of(run)
+        route = profile.harness_route
+        meter = self.meter_factory(max(0, cap_micros), _route_price(profile, route))
+        prepared = build_tasks(run, profile)
+        try:
+            resolver = self.resolver_factory(run, profile, meter)
+        except OperationalBlock:
+            record_cost(run, route, reserved=cap_micros, spent=0, outcome="failed")
+            raise
+        except Exception as error:
+            # Nothing was sent: a configuration error, never an unknown outcome.
+            record_cost(run, route, reserved=cap_micros, spent=0, outcome="failed")
+            raise OperationalBlock("field_research_unconfigured") from error
+        calls: list[SourceCall] = []
+        outcomes = None
+        try:
+            outcomes = asyncio.run(self._research(run, profile, prepared, resolver, workflow.blobs,
+                calls, self._bound(deadline_seconds)))
+        finally:
+            # A step that ended in an unexpected exception may have calls in
+            # flight: its spend is unknown and the reservation stays held.
+            record_cost(run, route, reserved=cap_micros,
+                spent=meter.spent_micros if outcomes is not None else None,
+                outcome="completed" if outcomes is not None else "unknown",
+                model_calls=sum(o.model_calls for o in outcomes or ()))
+        try:
+            apply_outcomes(run, profile, prepared[1], outcomes, blobs=workflow.blobs, calls=calls,
+                asset_id=specimen.asset.id)
+            blocker = finalize_fields(run, profile, outcomes, specimen=specimen, blobs=workflow.blobs,
+                today=workflow.clock().date())
+        except EvidenceIntegrityError as error:
+            raise OperationalBlock(str(error)) from error
+        if blocker is not None:
+            if run.paid_calls and run.paid_calls[-1]["step"] == STEP:
+                run.paid_calls[-1]["outcome"] = "failed"
+            raise AdapterFailure(blocker, BLOCKER_STATUS[blocker])
+
+    def _bound(self, deadline_seconds: float) -> float:
+        from specimen_digitization.application.worker_deadline import current_deadline
+
+        bound = deadline_seconds - self.margin_seconds
+        deadline = current_deadline()
+        if deadline is not None:
+            bound = min(bound, deadline.remaining() - self.margin_seconds)
+        return max(1.0, bound)
+
+    async def _research(self, run, profile, prepared, resolver, blobs, calls, bound):
+        async with self.tools_factory(run, profile, blobs) as tools:
+            return await research_fields(run, profile, resolver=resolver, tools=tools,
+                concurrency=self.concurrency, deadline_seconds=bound, prepared=prepared, calls=calls)
+
+
+def _production_resolver(run, profile, meter):
+    """The harness route's model through the Hugging Face gateway, as the
+    ordinary extraction call builds its model (production.py _extract_direct)."""
+    if os.getenv("SPECIMEN_APPROVED_INFERENCE") != "true":
+        raise OperationalBlock("provider_data_policy_and_spending_approval_required")
+    from specimen_digitization.model_gateway import HuggingFaceModelGateway
+    from specimen_digitization.provider_privacy import PrivateProviderModel
+
+    from .experts import make_resolver
+
+    gateway = HuggingFaceModelGateway(timeout_seconds=MODEL_TIMEOUT_SECONDS)
+    route = profile.harness_route
+    gateway.route(route)  # An unknown route fails here, before any request.
+    return make_resolver(model_factory=lambda: PrivateProviderModel(gateway.model_for(route)),
+        meter=meter, date_rules=profile.date_rules)
+
+
+@asynccontextmanager
+async def _production_tools(run, profile, blobs):
+    """The record's approved sources over one HTTP client. A taxon request never
+    carries the record's place text (verify_taxon; workflow's lookup step)."""
+    import httpx
+
+    from .sources import ApprovedSources
+
+    places = [run.fields[key].literal for key in PLACE_FIELDS if key in run.fields and run.fields[key].literal]
+    async with httpx.AsyncClient() as client:
+        yield ApprovedSources(blobs=blobs, client=client, place_text=places)
+
+
+def production_step() -> FieldResearchStep:
+    return FieldResearchStep(resolver_factory=_production_resolver, tools_factory=_production_tools)

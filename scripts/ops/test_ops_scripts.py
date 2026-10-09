@@ -62,7 +62,7 @@ def test_worker_job_is_one_task_no_retries_with_the_drain_args_and_no_maps_key()
     assert "maps" not in output.lower()
     assert f"# env SPECIMEN_SAM3_ENDPOINT={S.SAM_URL}" in output
     assert f"# env SPECIMEN_WORKER_JOB={S.WORKER_JOB}" in output
-    assert "# env SPECIMEN_RESEARCH_HARNESS=on" in output  # The job's whole env is replaced; the switch is kept.
+    assert "# env SPECIMEN_RESEARCH_HARNESS=fields" in output  # The job's whole env is replaced; the switch is kept.
     assert f"# env SPECIMEN_SAM3_CHECKPOINT_SHA256={S.SAM_CHECKPOINT_SHA256}" in output
     assert find(commands, "gcloud", "run", "services", "describe", "specimen-sam")  # The SAM URL is looked up first.
 
