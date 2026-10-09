@@ -151,16 +151,37 @@ def verify_worker_construction(args, launch):
     Only external SQL/Storage constructors and telemetry are substituted. The
     launch/manifest readers, provenance map, adapters, admission, workflow and
     worker constructors execute unchanged inside the network-disabled container.
+    The worker is constructed once per research harness mount: "on" (the
+    six-specialist harness) and "fields" (field research), the value
+    production runs (scripts/ci/runtime_settings.py WORKER).
     """
+    for mode in ("on", "fields"):
+        construct_worker(args, launch, mode)
+
+
+def construct_worker(args, launch, mode):
+    """One constructor traversal with SPECIMEN_RESEARCH_HARNESS set to ``mode``."""
     from unittest.mock import patch
     from specimen_digitization.application import worker
+    from specimen_digitization.application.workflow import Workflow
+    from specimen_digitization.field_research import step as field_research
     from specimen_digitization.hub_models import SAM3_MODEL
 
     class Constructed(Exception):
         pass
 
     def stop_before_effect(instance, stop):
-        assert instance.workflow.native_worker.runtime_factory.blobs.bucket is blobs.bucket
+        if mode == "fields":
+            # compose_field_research_workflow: the ordinary workflow itself,
+            # carrying the production field research step.
+            assert type(instance.workflow) is Workflow
+            step = instance.workflow.field_research
+            assert isinstance(step, field_research.FieldResearchStep)
+            assert step.resolver_factory is field_research._production_resolver
+            assert step.tools_factory is field_research._production_tools
+            assert instance.workflow.retained_cost is not None
+        else:
+            assert instance.workflow.native_worker.runtime_factory.blobs.bucket is blobs.bucket
         expected = instance.workflow.adapters.sam3_expected
         assert len(expected) == 10
         assert all(row["manifest_sha256"] == launch.source_manifest_sha256 for row in expected.values())
@@ -174,9 +195,9 @@ def verify_worker_construction(args, launch):
         "SPECIMEN_SAM3_REVISION": SAM3_MODEL.revision,
         "SPECIMEN_SAM3_ENDPOINT": "https://synthetic-offline.run.app",
         "SPECIMEN_WORKER_ACTOR_UID": "synthetic-offline-actor",
-        # The research harness mounts only with its switch on; the smoke
+        # The research harness mounts only with its switch set; the smoke
         # traverses that mount too.
-        "SPECIMEN_RESEARCH_HARNESS": "on",
+        "SPECIMEN_RESEARCH_HARNESS": mode,
     }
     args.check_config = False
     args.once = True

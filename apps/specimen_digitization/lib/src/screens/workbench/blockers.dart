@@ -78,7 +78,9 @@ List<ClearanceBlocker> blockersFor(Specimen specimen) {
     final String suffix = separator < 0 ? '' : code.substring(separator + 1);
     final bool knownTarget =
         (_fieldReasons.containsKey(base) && suffix == issue.fieldKey) ||
-        (base == 'unresolved_transcription' && suffix == issue.regionId);
+        ((base == 'unresolved_transcription' ||
+                _labelReasons.containsKey(base)) &&
+            suffix == issue.regionId);
     final String identity = <String>[
       knownTarget ? base : code,
       issue.fieldKey ?? '',
@@ -189,6 +191,32 @@ const Map<String, String> _fieldReasons = <String, String>{
   'literal_not_in_source_excerpt': 'does not match its label source',
   'candidate_resolution_requires_review': 'has conflicting proposed values',
   'competing_mandatory_candidates': 'has conflicting proposed values',
+  'raw_reading_grounding_unproved': 'cannot be traced to the label readings',
+  'preserved_human_decision': 'has an earlier review decision to confirm',
+};
+
+/// Reasons about one label region (`<code>:<region id>`), worded after the
+/// label's name.
+const Map<String, String> _labelReasons = <String, String>{
+  'independent_observations_missing': 'needs two independent readings',
+  'raw_provenance_missing': 'has a reading with no saved evidence file',
+};
+
+/// What stopped one field's research, for the outages field research
+/// records per field (`<code>:<field>`). A retry checks the field again.
+const Map<String, String> _researchOutages = <String, String>{
+  'lookup_operational_failure': 'an approved source could not be reached',
+  'field_research_model_error': 'the model gave no usable answer',
+  'field_research_timeout': 'field research ran out of time',
+};
+
+/// The run's own blocker for the field research outages above that have no
+/// operator message. Settled fields are kept, so a retry checks the rest.
+const Map<String, String> _researchStops = <String, String>{
+  'field_research_model_error':
+      'Field research stopped because the model gave no usable answer',
+  'field_research_timeout':
+      'Field research ran out of time before every field was checked',
 };
 
 const Map<String, String> _operatorMessages = <String, String>{
@@ -211,6 +239,10 @@ const Map<String, String> _operatorMessages = <String, String>{
       'An operator must check the previous processing attempt',
   'evidence_integrity_failure':
       'An operator must check the retained evidence before processing continues',
+  'field_research_price_unavailable':
+      'An administrator must add a price for the field research model',
+  'field_research_unconfigured':
+      'An operator must finish setting up field research',
 };
 
 const Map<String, String> _recordMessages = <String, String>{
@@ -226,6 +258,8 @@ const Map<String, String> _recordMessages = <String, String>{
   'date_order': 'Check the order of the collection and identification dates',
   'identifier_format': 'Check the catalog number format',
   'pilot_risk_unmeasured': 'The review priority assessment is not available',
+  'identified_by_irn_identity_unproved':
+      'The identifier needs a confirmed EMu person record',
 };
 
 ClearanceBlocker _issueFor(
@@ -249,7 +283,31 @@ ClearanceBlocker _issueFor(
   ClearanceBlockerKind kind = ClearanceBlockerKind.record;
 
   final String? operatorMessage = _operatorMessages[base];
-  if (operatorMessage != null) {
+  final String? outage = _researchOutages[base];
+  final String? outageField = outage == null || suffix.isEmpty
+      ? null
+      : _namedField(specimen, suffix);
+  final String? stop = _researchStops[base];
+  if (outage != null && outageField != null) {
+    // An outage is the operator's or the clock's to clear, never a field
+    // edit, so it stays with processing; naming the field keeps one line per
+    // field that was not checked.
+    kind = ClearanceBlockerKind.processing;
+    message = _fieldReasonMessage(
+      specimen,
+      outageField,
+      'was not checked because $outage',
+    );
+    detail = 'Retry processing to check this field again.';
+    field = null;
+    region = null;
+  } else if (stop != null) {
+    kind = ClearanceBlockerKind.processing;
+    message = stop;
+    detail = 'Retry processing to check the remaining fields.';
+    field = null;
+    region = null;
+  } else if (operatorMessage != null) {
     kind = ClearanceBlockerKind.processing;
     message = operatorMessage;
     detail =
@@ -278,6 +336,13 @@ ClearanceBlocker _issueFor(
           'Transcription not resolved for ${_regionName(specimen, region)}';
       detail = 'Resolve the transcription, or record why it cannot be read';
     }
+  } else if (_labelReasons[base] case final String reason) {
+    region ??= _matchingRegion(specimen, suffix);
+    message =
+        '${region == null ? 'A label' : _regionName(specimen, region)} '
+        '$reason';
+    detail =
+        'Check the label against its readings before approving the specimen.';
   } else if (_recordMessages.containsKey(code)) {
     message = _recordMessages[code];
     if (code == 'identifier_format') {
@@ -285,6 +350,8 @@ ClearanceBlocker _issueFor(
     } else if (code == 'taxonomy_unresolved' ||
         code == 'taxonomy_lookup_missing') {
       field ??= _matchingField(specimen, 'taxon');
+    } else if (code == 'identified_by_irn_identity_unproved') {
+      field ??= _matchingField(specimen, 'identified_by_irn');
     }
   } else if ((base == 'elevation_invalid' || base == 'elevation_range') &&
       (suffix == 'm' || suffix == 'ft')) {
@@ -352,7 +419,10 @@ String? _matchingRegion(Specimen specimen, Object? id) =>
     ? id
     : null;
 
-String _fieldName(Specimen specimen, String key) {
+String _fieldName(Specimen specimen, String key) =>
+    _knownFieldName(specimen, key) ?? 'This field';
+
+String? _knownFieldName(Specimen specimen, String key) {
   final String? known = _fieldNames[key];
   if (known != null) return known;
   for (final Json field in specimen.fields) {
@@ -360,8 +430,12 @@ String _fieldName(Specimen specimen, String key) {
     final String? displayName = _humanMessage(field['display_name']);
     if (displayName != null) return displayName;
   }
-  return 'This field';
+  return null;
 }
+
+/// [key] when it names a field a reviewer would recognize, else null.
+String? _namedField(Specimen specimen, String key) =>
+    _knownFieldName(specimen, key) == null ? null : key;
 
 String _fieldReasonMessage(Specimen specimen, String field, String reason) {
   final String verb = field == 'collectors'
@@ -369,6 +443,7 @@ String _fieldReasonMessage(Specimen specimen, String field, String reason) {
             .replaceFirst(RegExp(r'^needs\b'), 'need')
             .replaceFirst(RegExp(r'^does\b'), 'do')
             .replaceFirst(RegExp(r'^has\b'), 'have')
+            .replaceFirst(RegExp(r'^was\b'), 'were')
       : reason;
   return '${_fieldName(specimen, field)} $verb';
 }
