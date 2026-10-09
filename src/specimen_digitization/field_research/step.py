@@ -1012,8 +1012,11 @@ def not_on_label_keys(profile: CollectionProfile) -> frozenset[str]:
 def _whole_label_read(run, readings: Sequence[Reading]) -> bool:
     """Every label was read whole: label coverage confirmed; each label has
     two or more readers, each with text, and two or more named readings; and
-    no part of any label is unreadable (no reader's unreadable span or
-    "[unreadable]" text, no transcript marked unreadable)."""
+    no part of any label is unreadable: no reader's unreadable span, no
+    transcript marked unreadable, and no "[unreadable]" marker anywhere in a
+    reader's, a reading's or a transcript's text (the marker the reader
+    prompt asks for in place of each unreadable span, prompts.py, whether or
+    not the reader also listed the span)."""
     if not run.coverage_confirmed or not run.regions:
         return False
     for region in run.regions:
@@ -1023,10 +1026,11 @@ def _whole_label_read(run, readings: Sequence[Reading]) -> bool:
             return False
     if any(not r.text.strip() for r in readings):
         return False
-    if any(o.unreadable_spans or o.literal_text.strip().casefold() == UNREADABLE_TEXT for o in run.observations):
+    texts = [*(o.literal_text for o in run.observations), *(r.text for r in readings),
+        *(t.text or "" for t in run.transcripts)]
+    if any(o.unreadable_spans for o in run.observations) or any(UNREADABLE_TEXT in t.casefold() for t in texts):
         return False
-    return not any(t.value_state == ValueState.UNREADABLE or (t.text or "").strip().casefold() == UNREADABLE_TEXT
-        for t in run.transcripts)
+    return not any(t.value_state == ValueState.UNREADABLE for t in run.transcripts)
 
 
 def _organiser_texts(task: FieldTask) -> list[str]:

@@ -2334,6 +2334,17 @@ def test_a_county_that_is_only_part_of_a_word_of_the_settled_city_stays_in_revie
     assert "county" not in cleared_as_not_on_label(run) and not not_on_label_rows(run, "county")
 
 
+def test_an_inline_unreadable_marker_with_no_span_listed_keeps_every_listed_field_in_review(tmp_path):
+    """N2 of #289's review: both readers write "Mossy [unreadable]", the
+    reader prompt's marker, and neither lists the span."""
+    rig = build_rig(tmp_path, SPARSE + "\nMossy [unreadable]")
+    run = rig.specimen.run
+    assert not any(item.unreadable_spans for item in run.observations)
+    settle(rig, lacking(*ABSENT))
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, unresolved(*ABSENT))
+    assert not cleared_as_not_on_label(run) and not any(not_on_label_rows(run, key) for key in ABSENT)
+
+
 def test_a_label_whose_coverage_is_not_confirmed_never_clears_a_field_as_not_on_the_label(tmp_path):
     rig = build_rig(tmp_path, SPARSE)
     run = rig.specimen.run
