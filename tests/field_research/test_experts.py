@@ -38,6 +38,7 @@ from specimen_digitization.field_research.contracts import (
     Candidate,
     FieldAnswer,
     FieldTask,
+    PlaceRef,
     Reading,
     SourceAnswer,
     SourceCandidate,
@@ -754,8 +755,20 @@ def disagreeing(key: str, literals, answers=()) -> experts._Expert:
 
 
 def place(name: str, evidence_id: str) -> SourceAnswer:
+    """Getty TGN's answer for `name`: one department of Guatemala of that name."""
+    department = "departments (political divisions), first level subdivisions (political entities)"
+    return SourceAnswer("tgn", name, LookupStatus.SUCCESS,
+                        (SourceCandidate(name, f"tgn:{name}", department, "in Guatemala",
+                                         (PlaceRef("Guatemala", "tgn:7005493"),)),),
+                        Evidence(id=evidence_id, kind="authority", source="tgn",
+                                 locator=f"tgn:{name}", excerpt=name), note="match")
+
+
+def town(name: str, evidence_id: str) -> SourceAnswer:
+    """GEOLocate's answer for a city `name` in Guatemala."""
     return SourceAnswer("geolocate", f"{name}, Guatemala", LookupStatus.SUCCESS,
-                        (SourceCandidate(name, f"geolocate:{name}"),),
+                        (SourceCandidate(name, f"geolocate:{name}", None, "GEOLocate matched in Guatemala",
+                                         (PlaceRef("Guatemala"),)),),
                         Evidence(id=evidence_id, kind="authority", source="geolocate",
                                  locator=f"geolocate:{name}", excerpt=name), note="match")
 
@@ -778,7 +791,7 @@ def nothing(name: str, evidence_id: str, status=LookupStatus.NO_MATCH) -> Source
 @pytest.mark.parametrize(("answers", "cited", "says"), [
     # G27's example with no lookup at all.
     ((), [], "readers disagree on this field"),
-    # GEOLocate confirms 1B's text, and TGN finds nothing for 1A's (G20).
+    # Getty TGN confirms 1B's text, and finds nothing for 1A's (G20).
     ((place("Chimaltenango", "ev-b"), nothing("Chimaltenago", "ev-a")), ["ev-b"], None),
     # 1A's text was never asked about: a missing lookup is not a no-match (the second review's B1).
     ((place("Chimaltenango", "ev-b"),), ["ev-b"], "readers disagree on this field"),
@@ -800,7 +813,7 @@ def nothing(name: str, evidence_id: str, status=LookupStatus.NO_MATCH) -> Source
 def test_a_place_the_readers_disagree_on_settles_only_on_a_source_confirming_one_reader(answers, cited, says):
     made = disagreeing("province_state", [("1A", "Chimaltenago"), ("1B", "Chimaltenango")], answers)
     given = answer(outcome="resolved", literal="Chimaltenango", reading_names=["1B"],
-                   source_evidence_ids=cited, authority_id="geolocate:Chimaltenango" if cited else None)
+                   source_evidence_ids=cited, authority_id="tgn:Chimaltenango" if cited else None)
 
     if says is None:
         assert made.validate(given).literal == "Chimaltenango"
@@ -843,6 +856,9 @@ def test_a_place_text_was_looked_up_whatever_punctuation_the_label_writes_after_
     assert agreement.about(nothing("Yepocapa;", "ev-n"), collapse("Yepocapa"))
     assert not agreement.about(nothing("Yepocapo", "ev-n"), literal)
     assert not agreement.about(nothing("Yepocapa", "ev-n"), collapse("Yepocapa, Guat."))
+    # Only the name before the first comma is searched (the third review's N2).
+    assert agreement.about(nothing("San Pedro, Sacatepequez", "ev-n"), "San Pedro")
+    assert not agreement.about(nothing("San Pedro, Sacatepequez", "ev-n"), "San Pedro Sacatepequez")
 
 
 def test_readers_that_differ_on_a_town_written_with_a_comma_settle_on_its_lookup():
@@ -896,12 +912,12 @@ def test_a_field_on_two_labels_settles_only_when_both_settle_to_one_value(second
     for found in received:
         made.calls.append(experts._Call(found.source_id, found.query, found.status, found))
     given = answer(outcome="resolved", literal="Chimaltenango", reading_names=["1A", "1B"],
-                   authority_id="geolocate:Chimaltenango", source_evidence_ids=["ev-1"])
+                   authority_id="tgn:Chimaltenango", source_evidence_ids=["ev-1"])
 
     with pytest.raises(ModelRetry, match="labels write different text"):
         made.validate(given)
     refused = agreement.refusal(field, TWO_LABELS, literal="Chimaltenango", named=TWO_LABELS[:2], value=None,
-                                authority_id="geolocate:Chimaltenango", cited=[first], received=received)
+                                authority_id="tgn:Chimaltenango", cited=[first], received=received)
     assert refused is not None and refused.differ and refused.reason == agreement.LABELS_DIFFER
 
 
@@ -1105,7 +1121,7 @@ def test_a_near_spelling_on_a_decided_label_settles_on_the_one_letter_bound():
 
 
 def test_a_place_resolves_only_on_a_place_sources_candidate():
-    made = expert("city", [place("Davao", "ev-davao")])
+    made = expert("city", [town("Davao", "ev-davao")])
 
     with pytest.raises(ModelRetry, match="place source's success or ambiguous answer"):
         made.validate(answer(outcome="resolved", literal="Davao", reading_names=["1A"]))

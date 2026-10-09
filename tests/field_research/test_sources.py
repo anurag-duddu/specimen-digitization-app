@@ -420,6 +420,40 @@ async def test_geolocate_ambiguous_lists_agreeing_matches_far_apart(tmp_path):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(("key", "literal", "query", "settles"), [
+    # The third review's N2: a province literal "Yepocapa" in the place slot. GEOLocate's
+    # candidate is the query's state part, which it only repeats: a province inferred
+    # from a locality (province_state.txt), never a confirmation of it.
+    ("province_state", "Yepocapa", YEPOCAPA, False),
+    ("country", "Yepocapa", YEPOCAPA, False),
+    # A city is GEOLocate's to confirm, when the literal is the query's first part.
+    ("city", "Yepocapa", YEPOCAPA, True),
+    ("city", "Chimaltenango", YEPOCAPA, False),
+])
+async def test_geolocate_settles_only_a_city_never_a_part_it_was_given(tmp_path, key, literal, query, settles):
+    from specimen_digitization.application.domain import FieldValue, ValueState
+    from specimen_digitization.field_research import agreement
+    from specimen_digitization.field_research.contracts import FIELD_TOOLS, Candidate, FieldTask, Reading
+
+    tools, _, _, _ = make(tmp_path, recorded_geolocate("yepocapa-modern.json"))
+    answer = await tools.lookup("geolocate", query, field_key=key)
+    assert answer.status is LookupStatus.SUCCESS
+    [one] = answer.candidates
+    text = f"Guatemala\n{key}: {literal}\nleg. J. Smith"
+    readings = (Reading("1A", "r1", "o1a", "decided_transcript", text),
+                Reading("1B", "r1", "o1b", "raw_reading", text))
+    task = FieldTask(key, True, FieldValue(state=ValueState.SUPPORTED, literal=literal),
+                     (Candidate("1A", f"{key}: {literal}", literal, "ev-1a"),), FIELD_TOOLS[key])
+    refused = agreement.refusal(task, readings, literal=literal, named=[readings[0]], value=one.name,
+                                authority_id=one.authority_id, cited=[answer], received=[answer])
+    basis = agreement.place_basis(task, literal, one.name, one.authority_id, [answer])
+    if settles:
+        assert (refused, basis) == (None, agreement.ASKED)
+        return
+    assert refused.reason == agreement.NO_PLACE and basis is None
+
+
+@pytest.mark.asyncio
 async def test_two_fields_on_one_locality_share_one_request_and_one_stored_body(tmp_path):
     tools, server, _, blobs = make(tmp_path, recorded_geolocate("yepocapa-modern.json"))
     city, province, written = await asyncio.gather(

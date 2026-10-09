@@ -175,7 +175,8 @@ def _fixed(make):
 
 
 def scripted():
-    """test_step's experts (GBIF for the taxon, GEOLocate for the places), with SCRIPTS."""
+    """test_step's experts (GBIF for the taxon, Getty TGN for the country, state and county,
+    GEOLocate for the city), with SCRIPTS."""
     return Scripted({key: _fixed(make) for key, make in SCRIPTS.items()})
 
 
@@ -225,10 +226,10 @@ def test_field_research_reaches_the_final_queue_in_one_step(rig, caplog):
         "GetReceipt", "GetSnapshot", "SaveSpecimenV3"]
     assert all(name.startswith("Append") for name in sequence[8:])
     assert dict(calls) == {"GetSpecimen": 1, "GetSnapshot": 3, "GetReceipt": 2, "SaveSpecimenV3": 2,
-        "AppendSourceAssetV2": 14, "AppendEvidenceItemV2": 15, "AppendToolCallV1": 9,
+        "AppendSourceAssetV2": 10, "AppendEvidenceItemV2": 11, "AppendToolCallV1": 5,
         "AppendFieldCandidateV2": 16, "AppendCandidateEvidenceV2": 24, "AppendRecordVersionV2": 1,
         "AppendResolvedFieldV2": 20}
-    assert len(sequence) == 6 + 2 + 99
+    assert len(sequence) == 6 + 2 + 87
     assert not NATIVE_OPERATIONS & set(calls)
     assert not [r for r in caplog.records if "Projection" in r.getMessage()]
 

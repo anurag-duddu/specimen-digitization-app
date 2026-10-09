@@ -35,8 +35,9 @@ answer becomes a value (step._refusal). It enforces, in this order:
    answer cites the one for its literal. Anything else goes to review.
    A source answer is about a literal when GBIF was asked the whole name it
    writes (checks.taxon_query_grounded), or a place source was asked the
-   literal as its whole query or as the query's first comma-separated part,
-   the name a place source searches. An answer about a literal confirms it
+   literal as the query's first comma-separated part, the only name a
+   gazetteer searches and the place GEOLocate looks for ("San Pedro,
+   Sacatepequez" asks about "San Pedro"). An answer about a literal confirms it
    as GBIF's decided candidate (its evidence's locator) in a success answer;
    for a place value field (point 4), as the one candidate at the field's
    level of a success or ambiguous answer, when that candidate has the
@@ -50,8 +51,10 @@ answer becomes a value (step._refusal). It enforces, in this order:
 4. A place (country, province or state, county, city): a cited success or
    ambiguous answer of a place source has exactly one candidate at the
    field's level (PLACE_LEVELS: a nation, a first or a second level
-   subdivision, an inhabited place, by the source's kinds; every GEOLocate
-   candidate), and that candidate is the value (the literal when there is no
+   subdivision, an inhabited place, by the source's kinds; for a city, every
+   GEOLocate candidate, and for any other field none, as GEOLocate's candidate
+   there is the query's own country, state or county part), and that
+   candidate is the value (the literal when there is no
    value), exactly, with the answer's authority_id. No candidate or several
    at the level: review. A gazetteer's answer is often ambiguous only
    because the name also matches places at other levels (TGN's answer for
@@ -98,9 +101,7 @@ SOURCE_IDS = frozenset({"gbif", *PLACE_SOURCES})
 # instance-of labels, comma separated; NGA's feature class and designation
 # ("A.ADM1"). A TGN type matches whole; a Wikidata label matches whole or
 # followed by " of " ("province of the Philippines"); an NGA code matches by
-# its start. GEOLocate is asked for the field's own level (Country, State,
-# County or Locality) and returns only matches of that place, so all its
-# candidates are at the level.
+# its start. GEOLocate's candidates are at a city's level only (at_level).
 PLACE_LEVELS = {
     "tgn": {
         "country": ("nations",),
@@ -238,14 +239,17 @@ def place_name(text: str) -> str:
 
 def about(answer: SourceAnswer, literal: str) -> bool:
     """Whether a source was asked about this (collapsed) literal: GBIF about
-    the whole name it writes (checks.taxon_query_grounded), a place source
-    about the literal itself, as its whole query or as the query's first
-    comma-separated part, the name a place source searches, compared as place
-    names (place_name). An empty name is never asked about."""
+    the whole name it writes (checks.taxon_query_grounded); a place source
+    about the literal as the query's first comma-separated part, compared as
+    place names (place_name). That part is the only name a gazetteer searches
+    (sources.place_name) and the place GEOLocate looks for; the parts after it
+    are larger units, so "San Pedro, Sacatepequez" asks about "San Pedro",
+    never "San Pedro Sacatepequez" (N2 of #284's third review). An empty name
+    is never asked about."""
     if answer.source_id == "gbif":
         return taxon_query_grounded(answer.query, literal)
-    asked = {place_name(answer.query), place_name(answer.query.split(",", 1)[0])}
-    return bool(place_name(literal)) and place_name(literal) in asked
+    asked = place_name(answer.query.split(",", 1)[0])
+    return bool(asked) and place_name(literal) == asked
 
 
 def _kind_matches(source_id: str, kind: str, level: str) -> bool:
@@ -259,9 +263,13 @@ def _kind_matches(source_id: str, kind: str, level: str) -> bool:
 
 def at_level(key: str, answer: SourceAnswer) -> list[SourceCandidate]:
     """The answer's candidates at the place field `key`'s level (PLACE_LEVELS):
-    every GEOLocate candidate, and a gazetteer's whose kinds name the level."""
+    a gazetteer's whose kinds name the level, and, for a city only, every
+    GEOLocate candidate. For a country, a province or state or a county,
+    GEOLocate's candidate is the query's own country, state or county part
+    (sources.interpretation), which it only echoes: no confirmation of that
+    part (N2 of #284's third review)."""
     if answer.source_id == "geolocate":
-        return list(answer.candidates)
+        return list(answer.candidates) if key == "city" else []
     levels = PLACE_LEVELS.get(answer.source_id, {}).get(key, ())
     return [candidate for candidate in answer.candidates
         if any(_kind_matches(answer.source_id, kind, level)
@@ -467,12 +475,15 @@ def refusal(task: FieldTask, readings: Sequence[Reading], *, literal: str,
         if place_basis(task, literal, settled_value, authority_id, cited) is None:
             return Refusal(NO_PLACE, (
                 "A place field settles only on a place source's success or ambiguous answer that "
-                "was asked the label's own text (the literal, or the query's first comma-separated "
-                "part; case, accents, punctuation and notations such as Prov. aside), or the "
-                "candidate's own name when it is one letter from the literal, with exactly one "
-                "candidate at this field's level (by its kind: a nation for a country, a first "
-                "level subdivision for a province or state, a second level one for a county, an "
-                "inhabited place for a city), and that candidate is the value: cite its "
+                "was asked the label's own text: the literal as the query's first comma-separated "
+                "part, the name it searches (case, accents, punctuation and notations such as Prov. "
+                "aside), or the name the label notations give it, or the candidate's own name when "
+                "it is one letter from the literal; with exactly one candidate at this field's "
+                "level (by its kind: a "
+                "nation for a country, a first level subdivision for a province or state, a second "
+                "level one for a county, an inhabited place for a city; GEOLocate's candidate "
+                "only for a city, as for the other fields it repeats a part of your query), and "
+                "that candidate is the value: cite its "
                 "evidence_id, give that candidate's name (as value, or as the literal when they "
                 "are the same) and its authority_id. Otherwise answer several_possibilities or "
                 "sources_cannot_resolve."))

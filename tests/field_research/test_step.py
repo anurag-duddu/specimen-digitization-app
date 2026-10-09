@@ -39,7 +39,7 @@ from specimen_digitization.application.workflow import (
 from specimen_digitization.field_research import agreement
 from specimen_digitization.field_research import step as field_step
 from specimen_digitization.field_research.contracts import (
-    FIELD_TOOLS, Candidate, FieldAnswer, FieldOutcome, FieldTask, Reading, SourceAnswer, SourceCandidate,
+    FIELD_TOOLS, Candidate, FieldAnswer, FieldOutcome, FieldTask, PlaceRef, Reading, SourceAnswer, SourceCandidate,
 )
 from specimen_digitization.field_research.step import (
     FieldResearchStep, apply_outcomes, build_tasks, finalize_fields, research_fields,
@@ -176,9 +176,30 @@ def rig(tmp_path):
     return build_rig(tmp_path)
 
 
+# The synthetic label's places as Getty TGN gives them (sources._place): each
+# with its kind and the places it lies in, nearest first, named by their records.
+TGN_PLACES = {
+    "United States": ("nations", ()),
+    "Illinois": ("states (political divisions), first level subdivisions (political entities)",
+        ("United States",)),
+    "Cook": ("counties, second level subdivisions (political entities)", ("Illinois", "United States")),
+}
+# The larger units each place field's text lies in, as a GEOLocate query names them.
+WITHIN = {"country": (), "province_state": ("United States",), "county": ("Illinois", "United States"),
+    "city": ("Cook", "Illinois", "United States")}
+
+
+def geolocate_query(text, key="city"):
+    """A GEOLocate query for a place on the synthetic label: the text, then its larger units."""
+    return ", ".join((text, *WITHIN[key]))
+
+
 class FakeSources:
-    """Approved sources: GBIF matches the taxon, GEOLocate the places, TGN nothing.
-    Each distinct query is answered once and from the cache after, as sources.py does."""
+    """Approved sources: GBIF matches the taxon; Getty TGN the synthetic label's
+    country, state and county (TGN_PLACES) and nothing else; GEOLocate any
+    place, which lies in the larger units its query names; Wikidata and NGA a
+    place at no level. Each distinct query is answered once and from the cache
+    after, as sources.py does."""
 
     sources = ("gbif", "geolocate", "tgn", "wikidata", "nga")
 
@@ -196,6 +217,14 @@ class FakeSources:
             return SourceAnswer(source_id, query, LookupStatus.PROVIDER, (), None, note="unreachable")
         raw = json.dumps({"source": source_id, "query": query}).encode()
         ref, sha = self.blobs.put(raw), hashlib.sha256(raw).hexdigest()
+        if source_id == "tgn" and query in TGN_PLACES:
+            kind, within = TGN_PLACES[query]
+            candidate = SourceCandidate(query, f"tgn:{query}", kind, detail="in " + ", ".join(within) if within
+                else None, parents=tuple(PlaceRef(name, f"tgn:{name}") for name in within))
+            evidence = Evidence(kind="authority", source="tgn", locator=candidate.authority_id,
+                excerpt=f"match\n{query} | {candidate.authority_id} | {kind} | {candidate.detail or ''}",
+                raw_ref=ref, digest=sha)
+            return SourceAnswer("tgn", query, LookupStatus.SUCCESS, (candidate,), evidence, note="match")
         if source_id == "tgn":
             evidence = Evidence(kind="lookup", source="tgn", locator=None, excerpt="Getty TGN: no match",
                 raw_ref=ref, digest=sha)
@@ -209,9 +238,12 @@ class FakeSources:
                 raw_ref=ref, digest=sha)
             return SourceAnswer("gbif", query, LookupStatus.SUCCESS, (candidate,), evidence,
                 note="exact", taxonomy_lookup=lookup)
-        candidate = SourceCandidate(name=query, authority_id=f"{source_id}:{query}", kind="place")
+        place, *within = [part.strip() for part in query.split(",")]
+        candidate = SourceCandidate(name=place, authority_id=f"{source_id}:{query}", kind="place",
+            detail="in " + ", ".join(within) if within else None, parents=tuple(map(PlaceRef, within)))
         evidence = Evidence(kind="authority", source=source_id, locator=candidate.authority_id,
-            excerpt=f"match\n{query} | {candidate.authority_id} | place | ", raw_ref=ref, digest=sha)
+            excerpt=f"match\n{place} | {candidate.authority_id} | place | {candidate.detail or ''}",
+            raw_ref=ref, digest=sha)
         return SourceAnswer(source_id, query, LookupStatus.SUCCESS, (candidate,), evidence, note="match")
 
 
@@ -251,9 +283,10 @@ async def default_script(task, readings, tools):
         evidence, lookups = [answer.evidence], [answer.taxonomy_lookup]
         result = resolved(LABEL["taxon"], value=GBIF_NAME, authority_id=GBIF_KEY, cited=[answer.evidence.id])
     elif key in {"country", "province_state", "county", "city"}:
-        answer = await tools.lookup("geolocate", LABEL[key], field_key=key)
-        missing = await tools.lookup("tgn", LABEL[key], field_key=key)
-        evidence = [answer.evidence, missing.evidence]
+        # Getty TGN settles the country, state and county; GEOLocate only a city.
+        source, query = ("geolocate", geolocate_query(LABEL[key])) if key == "city" else ("tgn", LABEL[key])
+        answer = await tools.lookup(source, query, field_key=key)
+        evidence = [answer.evidence]
         result = resolved(LABEL[key], authority_id=answer.candidates[0].authority_id, cited=[answer.evidence.id])
     elif key == "fmnh_ins_number":
         result = resolved(LABEL[key], value="0010001")
@@ -457,12 +490,15 @@ def test_settled_values_and_their_evidence_pass_the_field_checks_and_integrity(r
     assert not taxon.verbatim_by_observation and not taxon.settled_observation_ids
     sources = {evidence[i].source: relation for i, relation in taxon.evidence_relations.items()}
     assert sources == {"label": "supports", "gbif": "decides"}
-    # GEOLocate supports a place; the lookup row TGN returned is kept with its one producing call.
-    county = run.fields["county"]
+    # A place source supports a place; each stored answer is kept with its one producing call.
+    county, city = run.fields["county"], run.fields["city"]
     assert {evidence[i].source: r for i, r in county.evidence_relations.items()} == {
+        "label": "supports", "tgn": "supports"}
+    assert {evidence[i].source: r for i, r in city.evidence_relations.items()} == {
         "label": "supports", "geolocate": "supports"}
-    tgn = [item for item in run.evidence if item.source == "tgn"]
-    assert len(tgn) == 4 and all(sum(call.evidence_id == item.id for call in run.tool_calls) == 1 for item in tgn)
+    places = [item for item in run.evidence if item.source in ("tgn", "geolocate")]
+    assert sorted(item.source for item in places) == ["geolocate", "tgn", "tgn", "tgn"]
+    assert all(sum(call.evidence_id == item.id for call in run.tool_calls) == 1 for item in places)
     gbif = [call for call in run.tool_calls if call.source == "gbif"]
     assert [(call.field_keys, call.outcome) for call in gbif] == [(["taxon"], LookupStatus.SUCCESS)]
     assert [lookup.provider for lookup in run.lookups] == ["gbif"]
@@ -692,6 +728,41 @@ def test_a_piece_of_the_text_the_label_writes_never_settles_its_field(tmp_path, 
     assert run.disposition == Disposition.REVIEW and f"mandatory_unresolved:{key}" in run.reasons
 
 
+class SearchesTheFirstName(FakeSources):
+    """Getty TGN as sources._gazetteer asks it: only the query's first name is
+    searched. For "San Pedro" it has one inhabited place, in Costa Rica, beside
+    a mine, as in its live answer of 2026-10-09 (cut to two)."""
+
+    def _answer(self, source_id, query):
+        answer = super()._answer(source_id, query)
+        if source_id != "tgn" or query.split(",")[0].strip() != "San Pedro":
+            return answer
+        candidates = (SourceCandidate("San Pedro", "tgn:1016278", "inhabited places", "in San Jose, Costa Rica",
+                (PlaceRef("San Jose", "tgn:7005214"), PlaceRef("Costa Rica", "tgn:1000140"))),
+            SourceCandidate("San Pedro", "tgn:2640741", "mines (extracting complexes)", "in Santa Fe"))
+        evidence = answer.evidence.model_copy(update={"kind": "authority", "excerpt": "\n".join(
+            f"{c.name} | {c.authority_id} | {c.kind} | {c.detail}" for c in candidates)})
+        return SourceAnswer("tgn", query, LookupStatus.AMBIGUOUS, candidates, evidence, note="ambiguous")
+
+
+def test_a_gazetteer_is_asked_only_the_name_before_the_first_comma(tmp_path):
+    """The third review's N2: "San Pedro, Sacatepequez" asks a gazetteer about
+    "San Pedro" alone, never about the label's "San Pedro Sacatepequez"."""
+    written = "San Pedro Sacatepequez"
+    rig = build_rig(tmp_path, TEXT.replace("city: Chicago", "city: " + written))
+    run = rig.specimen.run
+
+    async def script(task, readings, tools):
+        found = await tools.lookup("tgn", "San Pedro, Sacatepequez", field_key=task.key)
+        return FieldOutcome(task.key, resolved(written, value="San Pedro", authority_id="tgn:1016278",
+            cited=[found.evidence.id]), evidence=[found.evidence], model_calls=1)
+    settle(rig, Scripted({"city": script}), tools=SearchesTheFirstName(rig.blobs))
+    city = run.fields["city"]
+    assert (city.state, city.literal, city.reason) == (ValueState.UNRESOLVED, written,
+        agreement.NO_PLACE + " Settled.")
+    assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:city" in run.reasons
+
+
 def test_a_field_with_no_candidate_is_never_resolved(tmp_path):
     """No reading is decided, so the keyed-line parser reads nothing, and the
     organiser gave only the collectors: the taxon expert's answer, GBIF's
@@ -750,31 +821,41 @@ def test_a_place_the_readers_disagree_on_never_clears_without_a_lookup(tmp_path)
     assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:province_state" in run.reasons
 
 
-def confirming(query, literal="Chimaltenango", *, reading="1B", absent=()):
-    """A place expert: one GEOLocate lookup, a Getty TGN lookup (no match) for
-    each text in `absent`, then `literal` from `reading` with GEOLocate's candidate."""
+def confirming(text, literal=None, *, reading="1B", absent=(), source="geolocate"):
+    """A place expert: one lookup of `text` (with GEOLocate, followed by the
+    synthetic label's larger units), a Getty TGN lookup (no match) for each
+    text in `absent`, then `literal` (`text` by default) from `reading` with
+    the answer's candidate."""
     async def script(task, readings, tools):
-        answer = await tools.lookup("geolocate", query, field_key=task.key)
-        missing = [await tools.lookup("tgn", text, field_key=task.key) for text in absent]
-        return FieldOutcome(task.key, resolved(literal, reading=reading,
+        query = geolocate_query(text, task.key) if source == "geolocate" else text
+        answer = await tools.lookup(source, query, field_key=task.key)
+        missing = [await tools.lookup("tgn", item, field_key=task.key) for item in absent]
+        return FieldOutcome(task.key, resolved(literal or text, reading=reading,
             authority_id=answer.candidates[0].authority_id, cited=[answer.evidence.id]),
             evidence=[answer.evidence, *(item.evidence for item in missing)], model_calls=1)
     return script
 
 
+ILINOIS = TEXT.replace("Illinois", "Ilinois")
+STATES = [("province_state", "1A", "Ilinois", "province_state: Ilinois"),
+    ("province_state", "1B", "Illinois", "province_state: Illinois")]
+
+
 def test_a_lookup_that_confirms_exactly_one_readers_place_settles_it_and_keeps_both_readers(tmp_path):
-    rig = build_rig(tmp_path, CHIMALTENAGO, CHIMALTENANGO, candidates=every_field(*PROVINCES))
+    """1A writes "Ilinois", 1B "Illinois": Getty TGN has the state for 1B's
+    text and nothing for 1A's."""
+    rig = build_rig(tmp_path, ILINOIS, TEXT, candidates=every_field(*STATES))
     run = rig.specimen.run
     first, second = run.observations
-    settle(rig, Scripted({"province_state": confirming("Chimaltenango", absent=["Chimaltenago"])}))
+    settle(rig, Scripted({"province_state": confirming("Illinois", source="tgn", absent=["Ilinois"])}))
     province = run.fields["province_state"]
-    assert (province.state, province.literal, province.layer) == (ValueState.SUPPORTED, "Chimaltenango", "settled")
+    assert (province.state, province.literal, province.layer) == (ValueState.SUPPORTED, "Illinois", "settled")
     # G20 and G27: the confirmed reader settles it; the other's text is kept, unsettled.
-    assert province.verbatim_by_observation == {second.id: "Chimaltenango", first.id: "Chimaltenago"}
+    assert province.verbatim_by_observation == {second.id: "Illinois", first.id: "Ilinois"}
     assert (province.settled_observation_ids, province.source_observation_id) == ([second.id], second.id)
     rows = cited_rows(run, "province_state")
-    assert rows["province_state: Chimaltenago"] == "contradicts"
-    assert rows["province_state: Chimaltenango"] == "supports"
+    assert rows["province_state: Ilinois"] == "contradicts"
+    assert rows["province_state: Illinois"] == "supports"
     assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
 
 
@@ -791,7 +872,7 @@ CITIES = [("city", "1A", "San Pedro", "city: San Pedro"), ("city", "1B", "San Pa
 def test_readers_that_differ_settle_only_when_every_readers_text_was_looked_up(tmp_path, absent, cleared):
     rig = build_rig(tmp_path, SAN_PEDRO, SAN_PABLO, candidates=every_field(*CITIES))
     run = rig.specimen.run
-    settle(rig, Scripted({"city": confirming("San Pedro", "San Pedro", reading="1A", absent=absent)}))
+    settle(rig, Scripted({"city": confirming("San Pedro", reading="1A", absent=absent)}))
     city = run.fields["city"]
     if cleared:
         assert (city.state, city.literal) == (ValueState.SUPPORTED, "San Pedro")
