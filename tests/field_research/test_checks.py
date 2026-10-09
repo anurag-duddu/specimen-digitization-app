@@ -535,6 +535,9 @@ def test_the_signs_of_a_doubtful_or_unreadable_name_are_one_list():
     ("near Epipsocus", "qualifier"),
     ("Epipsocus NEAR", "qualifier"),
     ("Near Epipsocus", "qualifier"),
+    ("Epipsocus nr", "qualifier"),
+    # A locality's qualifier is one too.
+    ("5 km nr. Davao", "qualifier"),
 ])
 def test_a_doubt_sign_shows_wherever_a_text_writes_it(text, sign):
     from specimen_digitization.field_research import checks

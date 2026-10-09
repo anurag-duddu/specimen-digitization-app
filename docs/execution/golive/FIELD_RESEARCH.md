@@ -480,14 +480,23 @@ all of these hold:
   ("epipsocus", "*Epipsocus*", "epipsocus sp. 1"), or as its tokens (the
   label check's tokens, below) with the first letter a capital
   ("Epipsocus(?)"); or when, its morphocodes aside, any of its tokens may
-  be a genus by the label check's test below once its first letter is a
-  capital ("EPIPSOCUS", "ep1psocus", "(epipsocus)", "E. sp. 1", "E.?", an
-  "Epipsocus" with an accented capital). The taxon brief has the
+  be a genus by the label check's test below ("EPIPSOCUS", "ep1psocus",
+  "Epipsocu5", "(epipsocus)", "E. sp. 1", "E.?", an "Epipsocus" with an
+  accented capital). The taxon brief has the
   expert look up the genus a label writes, so such a lookup is its own
   finding that the label writes one, wherever on the label the genus
   stands. GBIF's no-name answer for a morphocode (no match, no candidates,
   "sp. 30" asked) shows none, so the pilots' codes still clear with no
   GBIF lookup or after that answer;
+- the expert asked GBIF, for the field, no query but the code itself
+  (`step._gbif_asked_another_name`, `checks.query_is_the_code`): each
+  query is compared with the organiser's literal once case, spaces,
+  punctuation and sex signs are stripped from both. So "Sp.30" or "SP 30"
+  asked for "sp. 30" qualifies, and any other query holds the taxon back:
+  a misread genus the test above does not count ("Epipsocu55"), a slide
+  number, another code, or an empty query. The taxon brief never has the
+  expert send GBIF a name no reading prints. GBIF's no-name lookup that the
+  step adds itself is no query;
 - the organiser's literal is a morphocode (`checks.names_no_genus`: the
   scientific-name parser reads no name in it, it has no whole-name GBIF
   query, and it is "sp.", then a number with an optional letter, or a
@@ -514,12 +523,16 @@ all of these hold:
   written immediately before the code (the last before it on its line or,
   when its line has none there, the last of the nearest line above that
   has one), and the first after the code on its line. Either may be a
-  genus (`checks.may_be_genus`) when it holds a letter and no digit,
-  whatever its case ("Epipsocus", "epipsocus?", "E.?", "cf.Epipsocus",
-  "R.D.mitchell", "legs", the reader's "[unreadable]"), or when it is a
+  genus (`checks.may_be_genus`), judged with its first letter made a
+  capital, as the query check above judges a token: when it holds a letter
+  and no digit ("Epipsocus", "epipsocus?", "E.?", "cf.Epipsocus",
+  "R.D.mitchell", "legs", the reader's "[unreadable]"); when it is then a
   capital followed by letters and digits ending in a letter, with an
-  optional final period ("Ep1psocus"); a token with a digit ("V-4-67-1",
-  "6400'", "IX-14-46") is not. The token after the code is passed over
+  optional final period ("Ep1psocus", "ep1psocus"); or when it holds three
+  letters or more and one digit at most, a genus misread with a digit
+  ("Epipsocu5", "3pipsocus"; with one digit, no date or number
+  punctuation stands between digits). Any other token is none: "V-4-67-1",
+  "6400'", "IX-14-46", "Epipsocu55". The token after the code is passed over
   when it is, as written, one of `checks.NOT_GENERA`, the one list of
   such words: legs, leg, wings, wing, head, terminalia, genitalia, slide,
   mount and the two sex signs. On the taxon's keyed line ("taxon: sp.
@@ -528,18 +541,45 @@ all of these hold:
   ("verbatim_dts: ..."), it is another field's, and no token before the
   code is read. So "Epipsocus sp. 1", "Epipsocus", "Epipsocus?" or
   "[unreadable]" with "sp. 1" on the next line (as on 105526328), "E.?
-  sp. 1" and "legs sp. 1" never clear as unmatched, whatever the
-  organiser's candidate is; the pilot's 105526321 ("Mossy forest 6400'"
-  above "sp. 30"), 105526326 ("Sp. 22" on a label of its own) and
-  105526327 ("V-4-67-1" above "sp 22", "legs" on the line below) clear;
+  sp. 1", "Epipsocu5 sp. 1" and "legs sp. 1" never clear as unmatched,
+  whatever the organiser's candidate is; the pilot's 105526321 ("Mossy
+  forest 6400'" above "sp. 30"), 105526326 ("Sp. 22" on a label of its
+  own) and 105526327 ("V-4-67-1" above "sp 22", "legs" on the line below)
+  clear;
 - no part of a label that writes the code is unreadable
   (`step._code_label_unreadable`): rule A's test (no reader's unreadable
   span, no transcript marked unreadable, no "[unreadable]" marker in a
   reader's, a reading's or a transcript's text), applied to each label any
   of whose texts writes the code. An unreadable word there may be the
-  genus. A label that does not write the code is not read, so 105526324's
-  unreadable label does not hold back the "sp 22" another of its labels
-  writes;
+  genus;
+- no sign of a doubtful or unreadable name shows anywhere on the specimen
+  (`step._doubt_on_the_labels`): none in any reading's, reader's or
+  transcript's text of any label, whether or not that label writes the
+  code. The signs are one list, `checks.DOUBT_SIGNS`:
+  - a "?" in a whitespace-separated part that holds a letter
+    ("Epipsocus?", "?Epipsocus", "Epipsocus(?)", "E.?"), or in the part
+    just before or just after one, across a line break too ("Epipsocus
+    ?", "(?) Epipsocus", "Epipsocus" with "?" on the next line);
+  - a qualifier, "cf.", "aff.", "nr.", "near" or "prob."
+    (`checks.DOUBT_QUALIFIERS`), in any case and with or without its
+    period, with no letter right before or after it: apart or against a
+    word ("cf. Epipsocus", "CF.Epipsocus", "(cf) Epipsocus", "Epipsocus
+    nr"), never inside a longer word ("Nearctic", "Staff");
+  - a placeholder, "[unreadable]", "[illegible]", "[?]", "???", "...",
+    "[...]" or the ellipsis character (`checks.DOUBT_PLACEHOLDERS`),
+    anywhere in a text, in any case;
+  - a reader's unreadable span, or a transcript marked unreadable, on any
+    label.
+
+  These sit on top of the label check, which reads only the two tokens
+  beside the code: the taxon brief has the expert make no GBIF lookup for
+  a genus marked doubtful, so the GBIF guard never sees one. So
+  "Epipsocus?" above "V-4-67-1" above the code, on the line after the
+  code or on another label, and "cf. Epipsocus" anywhere, keep the taxon
+  in review, as does a locality's "near" or "nr." and a "?" beside any
+  word. No reading of 105526321, 105526326 or 105526327 shows a sign.
+  105526324's unreadable label, whose readers list the span, holds back
+  the "sp 22" another of its labels writes;
 - the readers settle on the literal by the rule for readers that disagree
   (step 5 above): with no successful lookup, that is a label's decided
   transcript, its other readers evidence only, or readers of a label with
@@ -557,19 +597,24 @@ request made; the step adds it when the expert never asked GBIF that
 literal). The clearance rules do not give such a taxon taxonomy_unresolved
 (`step.taxon_unmatched`) while it cites that row, the run's readings still
 name no genus beside its code, no part of a label that writes the code is
-unreadable, and no GBIF lookup the run stores shows a genus
+unreadable, no sign of a doubtful or unreadable name shows on any label,
+and no GBIF lookup the run stores shows a genus
 (`step._lookup_found_a_genus`: the same test, on the query sent or asked
-and the name GBIF could not read). A taxon with a genus that GBIF cannot
+and the name GBIF could not read) or asked anything but the code itself
+(`step._lookup_asked_another_name`, on the same texts; the step's own
+no-name lookup aside). A taxon with a genus that GBIF cannot
 decide, such as 105526328's "Epipsocus", still goes to review, whether the
 organiser's candidate is "Epipsocus sp. 1" or only "sp. 1": when the label
 writes the genus, or any word that may be one, as a token beside the code,
 by the label check; when a label that writes the code has an unreadable
-part; and, wherever the label writes the genus, when the expert asked GBIF
-the genus. Where the label writes the genus out of the label check's sight
-(on a line after the code's, or behind a nearer token that holds a digit,
-such as "Epipsocus" above "V-4-67-1" above the code), the taxon goes to
-review when the expert asked GBIF a name that names a genus or received
-candidates, and can clear as unmatched only when it did neither.
+part; when any label shows a sign of a doubtful or unreadable name; and,
+wherever the label writes the genus, when the expert asked GBIF anything
+but the code. One case remains: a genus written with no such sign where
+the label check does not count it (away from the code, as "Epipsocus"
+above "V-4-67-1" above the code, on the line after the code's or on
+another label; or misread beside it into a token the label check's test
+does not count, as "Epipsocu55") still clears as unmatched when the
+expert, against its brief, makes no GBIF lookup but of the code itself.
 
 **Known limitation.** The canonical projection skips a field with no literal
 (`application/projection.py`, `_fields`), so the record in Data Connect does
@@ -608,8 +653,9 @@ pass checks a not-on-the-label value again: it clears only while it cites
 its check row and that row names the run's current readings. An unmatched
 taxon is checked again too: it clears only while it cites its check row,
 the run's readings name no genus beside its code, no part of a label that
-writes the code is unreadable, and no GBIF lookup the run stores shows a
-genus. A not-present
+writes the code is unreadable, no label shows a sign of a doubtful or
+unreadable name, and no GBIF lookup the run stores shows a genus or asked
+anything but the code. A not-present
 value with no such row, as every record researched before 2026-10-09 has,
 never clears on a re-check; only new research writes the row.
 

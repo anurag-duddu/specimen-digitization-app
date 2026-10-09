@@ -2562,13 +2562,13 @@ def test_a_genus_misread_with_a_digit_that_the_expert_asked_gbif_keeps_the_taxon
     taxon_held_back(rig.specimen.run)
 
 
-@pytest.mark.parametrize("asked", ["Epipsocu55", "VI-24-68-7.", "Epipsocu55 sp. 1", "sp. 2"])
+@pytest.mark.parametrize("asked", ["Epipsocu55", "VI-24-68-7.", "Epipsocu55 sp. 1", "sp. 2", ""])
 def test_any_gbif_query_but_the_code_itself_keeps_the_taxon_in_review(tmp_path, asked):
     """N2 of #289's fourth review: the label writes a genus misread with two
     digits on the line after the code, which neither the label check nor the
     query check counts; the expert asks GBIF something other than the code
-    (the misread genus, the slide number, another code), and GBIF reads no
-    name in it."""
+    (the misread genus, the slide number, another code, nothing), and GBIF
+    reads no name in it."""
     rig = build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", "VI-24-68-7.\n" + SP1 + "\nEpipsocu55"),
         candidates=[*COLLECTORS, *(("taxon", name, SP1, SP1) for name in ("1A", "1B"))])
     settle(rig, Scripted({"taxon": cannot_resolve(SP1, asks=[asked])}), tools=NoGenus(rig.blobs))
