@@ -1080,8 +1080,11 @@ def test_a_place_settles_only_on_a_lookup_of_the_labels_own_text_or_one_letter_f
     # The label's spelling stays the literal (G27); the value is TGN's department.
     assert (place.state, place.literal, place.normalized, place.authority_id) == (
         ValueState.SUPPORTED, written, value, authority_id)
-    # Only the county and city the label leaves out send it to review.
-    assert run.reasons == ["mandatory_unresolved:city", "mandatory_unresolved:county"]
+    # The county and city the label leaves out clear as not on the label (owner decision A).
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+    assert {key for key in ("county", "city") if field_step.not_on_label(key, run.fields[key], run,
+        {item.id: item for item in run.evidence}, field_step.not_on_label_keys(field_step.profile_of(run)))} == {
+        "county", "city"}
     if outcome == "asked":
         assert not near
         return
@@ -1827,6 +1830,159 @@ def test_a_transcription_correction_researches_the_reparsed_fields_again(rig):
     assert done.completed_steps[-1] == FIELD_RESEARCH
 
 
+# ---- fields the label does not state (owner decision A, 2026-10-09) ------------
+
+# The pilot profile's "not on the label" list (contracts.NOT_ON_LABEL) but the city.
+ABSENT = ("county", "collection_code", "collection_method", "date_identified", "habitat", "elevation_from_m",
+    "elevation_to_m", "elevation_from_ft", "elevation_to_ft", "precise_location")
+ELEVATIONS = ("elevation_from_m", "elevation_to_m", "elevation_from_ft", "elevation_to_ft")
+# The synthetic label without them: its country, state and city, catalogue number,
+# collecting date, collectors, D/T/S line and taxon.
+SPARSE = label_with(**dict.fromkeys(ABSENT, None))
+
+
+def lacking(*keys, **scripts):
+    """Every field's expert as default_script, and these fields' experts find
+    nothing on the label."""
+    return Scripted({**{key: answering(LACKS) for key in keys}, **scripts})
+
+
+def not_on_label_rows(run, key):
+    evidence = {item.id: item for item in run.evidence}
+    return [evidence[i] for i in run.fields[key].evidence_ids if evidence[i].locator == field_step.NOT_ON_LABEL_CHECK]
+
+
+def cleared_as_not_on_label(run):
+    """The fields the clearance rules take as not on the label (step.not_on_label)."""
+    allowed = field_step.not_on_label_keys(field_step.profile_of(run))
+    evidence = {item.id: item for item in run.evidence}
+    return {key for key, value in run.fields.items() if field_step.not_on_label(key, value, run, evidence, allowed)}
+
+
+def unresolved(*keys):
+    return [f"mandatory_unresolved:{key}" for key in sorted(keys)]
+
+
+def test_the_listed_fields_a_label_does_not_state_clear_as_not_on_the_label(tmp_path):
+    """The label states none of ten listed fields and their experts find
+    none: each clears as not on the label, citing one check row that names
+    every reading. Its city is on the label: a precise location counts as not
+    on the label only beside a settled city or county, so on a label that
+    lacks the city too it alone stays for a person."""
+    rig = build_rig(tmp_path, SPARSE)
+    run = rig.specimen.run
+    settle(rig, lacking(*ABSENT))
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+    assert cleared_as_not_on_label(run) == set(ABSENT)
+    readings = field_step.run_readings(run)
+    for key in ABSENT:
+        value = run.fields[key]
+        [row] = not_on_label_rows(run, key)
+        assert (value.state, value.literal, value.parsed, value.authority_id) == (
+            ValueState.NOT_PRESENT, None, None, None)
+        assert value.reason.startswith("Not on the label:") and value.evidence_relations[row.id] == "supports"
+        assert (row.kind, row.source, row.locator) == ("derived", "field_research", "check:not_on_label")
+        assert row.excerpt == field_step.not_on_label_excerpt(key, readings)
+        assert all(r.name in row.excerpt and r.observation_id in row.excerpt for r in readings)
+        assert row.raw_ref and row.digest
+    verify_evidence(rig.specimen, rig.blobs)
+
+    (tmp_path / "no-city").mkdir()
+    rig = build_rig(tmp_path / "no-city", label_with(**dict.fromkeys((*ABSENT, "city"), None)))
+    run = rig.specimen.run
+    settle(rig, lacking(*ABSENT, "city"))
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, unresolved("precise_location"))
+    assert cleared_as_not_on_label(run) == set(ABSENT) - {"precise_location"} | {"city"}
+
+
+def test_collectors_the_label_does_not_state_still_go_to_review(tmp_path):
+    rig = build_rig(tmp_path, SPARSE.replace("\nleg. J. Smith", ""), candidates=[])
+    run = rig.specimen.run
+    settle(rig, lacking(*ABSENT))
+    assert run.fields["collectors"].state == ValueState.NOT_PRESENT
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, unresolved("collectors"))
+    assert cleared_as_not_on_label(run) == set(ABSENT) and not not_on_label_rows(run, "collectors")
+
+
+def test_a_field_whose_line_the_label_writes_never_clears_as_not_on_the_label(tmp_path):
+    """The county line is on the label, and its expert says it is not."""
+    rig = build_rig(tmp_path, label_with(**dict.fromkeys(set(ABSENT) - {"county"}, None)))
+    run = rig.specimen.run
+    settle(rig, lacking(*ABSENT))
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, unresolved("county"))
+    assert not not_on_label_rows(run, "county") and "county" not in cleared_as_not_on_label(run)
+
+
+def add_a_reader(run):
+    """A third reader of the label, after research."""
+    run.observations.append(run.observations[1].model_copy(update={"id": "third-reader",
+        "route_id": "third-route", "model_id": "synthetic-third"}))
+
+
+def forget_the_row(run):
+    """The county as a record from before the rule stored it: not present, no row."""
+    run.fields["county"] = FieldValue(state=ValueState.NOT_PRESENT, reason="Not on the label.")
+
+
+@pytest.mark.parametrize(("case", "other", "change", "kept"), [
+    # A reader marked part of the label unreadable.
+    ("unreadable span", None, None, ABSENT),
+    # The raw reader (not the decided one) writes an elevation: no elevation clears.
+    ("elevation in a reading", SPARSE + "\n1500 ft", None, ELEVATIONS),
+    # The rows name the readings research saw; a reader added since makes them stale.
+    ("stale row", None, add_a_reader, ABSENT),
+    # A not-present value with no row never clears on a re-check.
+    ("old value", None, forget_the_row, ("county",)),
+], ids=["unreadable-span", "elevation-in-a-reading", "stale-row", "old-value-under-refinalize"])
+def test_a_listed_field_stays_in_review_when_the_label_or_its_record_is_in_doubt(tmp_path, case, other, change, kept):
+    rig = build_rig(tmp_path, SPARSE, other, decided=other is not None)
+    run = rig.specimen.run
+    if case == "unreadable span":
+        run.observations[1].unreadable_spans = ["0:3"]
+    settle(rig, lacking(*ABSENT))
+    if change is not None:
+        assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+        change(run)
+        field_step.refinalize(run, today=TODAY)
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, unresolved(*kept))
+    allowed = field_step.not_on_label_keys(field_step.profile_of(run))
+    evidence = {item.id: item for item in run.evidence}
+    assert not any(field_step.not_on_label(key, run.fields[key], run, evidence, allowed) for key in kept)
+    assert cleared_as_not_on_label(run) == set(ABSENT) - set(kept)
+
+
+GUATEMALAN_TOWN = label_with(**dict.fromkeys(ABSENT, None), country="Guatemala",
+    province_state="Chimaltenango", city="Yepocapa")
+IN_YEPOCAPA = {"country": from_tgn("Guatemala", "Guatemala", None, "tgn:7005493"),
+    "province_state": from_tgn("Chimaltenango", "Chimaltenango", None, "tgn:1000565"),
+    "city": confirming("Yepocapa", reading="1A", within=("Chimaltenango", "Guatemala"))}
+NO_TOWN = answering(FieldAnswer(outcome="sources_cannot_resolve", explanation="No match."))
+
+
+@pytest.mark.parametrize(("place", "city", "kept"), [
+    # The organiser's precise location is the town, the settled city's own text.
+    ("Yepocapa", None, ()),
+    # A precise location finer than the town.
+    ("nr. Yepocapa", None, ("precise_location",)),
+    # The town is not settled.
+    ("Yepocapa", NO_TOWN, ("city", "precise_location")),
+], ids=["the-city-itself", "finer-than-the-city", "city-unresolved"])
+def test_a_precise_location_is_not_on_the_label_only_beside_a_settled_city_holding_its_text(
+        tmp_path, place, city, kept):
+    """A town-only label (105526328 to 105526330): the organiser gives the
+    town's line, or a finer one, as the precise location too."""
+    text = GUATEMALAN_TOWN + ("" if place == "Yepocapa" else "\n" + place)
+    quote = "city: Yepocapa" if place == "Yepocapa" else place
+    rig = build_rig(tmp_path, text, candidates=[*COLLECTORS,
+        *(("precise_location", name, place, quote) for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    scripts = {**IN_YEPOCAPA, **({"city": city} if city else {})}
+    settle(rig, lacking(*ABSENT, **scripts), tools=Gazetteer(rig.blobs))
+    assert run.fields["precise_location"].state == ValueState.NOT_PRESENT
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW if kept else Disposition.CLEARED, unresolved(*kept))
+    assert ("precise_location" in cleared_as_not_on_label(run)) is not kept
+
+
 # ---- a taxon that names no genus (owner decision B, 2026-10-09) -----------------
 
 MORPHOCODE = "sp. 30 \N{FEMALE SIGN}"
@@ -1940,3 +2096,26 @@ def test_readers_that_write_different_morphocodes_stay_in_review(tmp_path, other
     assert {"mandatory_unresolved:taxon", "taxonomy_unresolved"} <= set(run.reasons)
     assert not field_step.taxon_unmatched(taxon, {item.id: item for item in run.evidence}, run.lookups)
     assert not [item for item in run.evidence if item.locator == "check:taxon_no_genus"]
+
+
+def test_the_not_on_label_list_is_the_published_profiles_and_reaches_a_pinned_snapshot(rig):
+    from specimen_digitization.field_research import contracts
+
+    published = published_registry().profiles[0]
+    [key] = contracts.NOT_ON_LABEL
+    assert key == (published.id, published.version) == ("zoology_insects_slides", "1.0.0")
+    listed = contracts.NOT_ON_LABEL[key]
+    assert listed == {*ABSENT, "city"} and listed <= set(published.mandatory_fields)
+    assert not listed & contracts.NEVER_NOT_ON_LABEL
+    assert contracts.NEVER_NOT_ON_LABEL == {"fmnh_ins_number", "country", "date_visited_from", "date_visited_to",
+        "collectors", "taxon"}
+    # Keep today's behaviour.
+    assert not {"province_state", "verbatim_dts", "identified_by_irn"} & listed
+    # A run's pinned snapshot, as stored before this list existed (unchanged since
+    # it was pinned), reaches the list through its id and version.
+    run = rig.specimen.run
+    assert digest(run.profile_snapshot) == run.dependencies["profile_snapshot_sha256"]
+    assert "not_on_label" not in json.dumps(run.profile_snapshot)
+    assert field_step.not_on_label_keys(field_step.profile_of(run)) == listed
+    other = dict(run.profile_snapshot, version="1.0.1")
+    assert field_step.not_on_label_keys(field_step.profile_of(SimpleNamespace(profile_snapshot=other))) == frozenset()

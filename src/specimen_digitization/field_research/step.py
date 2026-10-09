@@ -15,7 +15,10 @@ the workflow saves the run once after it:
    with no model call; every other field's expert runs at once, inside one
    ``field_research`` span.
 3. ``apply_outcomes``: the outcomes become field values and evidence on the
-   run, then the derived values (derive.py; G37, G41, G44).
+   run, then the derived values (derive.py; G37, G41, G44), then the listed
+   fields no reading states are marked "not on the label" (owner decision A;
+   ``mark_not_on_label``). A taxon with no genus clears as written, unmatched
+   (owner decision B; ``_unmatched_taxon``).
 4. ``finalize_fields``: the scientific rules the six-specialist harness applied
    (research_harness/canonical_materialization_v2.py, ``_scientific_reasons``)
    with no blanket human approval (G1). A field that cannot be settled sends the
@@ -88,6 +91,7 @@ from .contracts import (
     Reading,
     SourceAnswer,
     SourceTools,
+    not_on_label_fields,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -906,7 +910,8 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     sources_cannot_resolve: unresolved, except a taxon that names no genus,
     supported as written and unmatched (_unmatched_taxon); several_possibilities:
     ambiguous, the options in the reason; a failure: unresolved with a
-    retryable reason. Then the derived values; the keys derived are returned.
+    retryable reason. Then the derived values, then the listed fields the
+    label does not state (mark_not_on_label); the keys derived are returned.
     """
     from .agreement import PLACE_ORDER
 
@@ -936,7 +941,199 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
             evidence=evidence, asset_id=asset_id, blobs=blobs, date_rules=profile.date_rules,
             sources=received.get(task.key, ()), places=places, pending=frozenset(pending))
     eligible = [key for key in field_keys(profile) if key not in human]
-    return derive.fill(run, eligible=eligible, asset_id=asset_id, blobs=blobs)
+    derived = derive.fill(run, eligible=eligible, asset_id=asset_id, blobs=blobs)
+    # Last, so that a value derived above is never marked absent.
+    mark_not_on_label(run, profile, tasks, outcomes, readings=readings, asset_id=asset_id, blobs=blobs)
+    return derived
+
+
+# ---- fields the label does not state (owner decision A) -------------------
+
+NOT_ON_LABEL_CHECK = "check:not_on_label"
+NOT_ON_LABEL_REASON = "Not on the label: no reading states it, and its expert found none."
+# The place fields whose literal can hold another place field's text.
+PLACE_TEXT_FIELDS = ("country", "province_state", "county", "city", "precise_location")
+# The fields whose organiser text may sit inside another settled place (the
+# organiser's "Mt. McKinley" as a city, inside the settled precise location).
+INSIDE_A_PLACE = frozenset({"county", "city", "precise_location"})
+ELEVATION_FIELDS = frozenset({"elevation_from_m", "elevation_to_m", "elevation_from_ft", "elevation_to_ft"})
+UNREADABLE_TEXT = "[unreadable]"
+
+
+def not_on_label_keys(profile: CollectionProfile) -> frozenset[str]:
+    """The profile's fields that may clear as "not on the label", by its id
+    and version (contracts.NOT_ON_LABEL): a run's pinned profile, so a Retry
+    sees the same list."""
+    return not_on_label_fields(profile.id, profile.version)
+
+
+def _whole_label_read(run, readings: Sequence[Reading]) -> bool:
+    """Every label was read whole: label coverage confirmed; each label has
+    two or more readers, each with text, and two or more named readings; and
+    no part of any label is unreadable (no reader's unreadable span or
+    "[unreadable]" text, no transcript marked unreadable)."""
+    if not run.coverage_confirmed or not run.regions:
+        return False
+    for region in run.regions:
+        observed = [o for o in run.observations if o.region_id == region.id]
+        named = [r for r in readings if r.region_id == region.id]
+        if len(observed) < 2 or len(named) < 2 or any(not o.literal_text.strip() for o in observed):
+            return False
+    if any(not r.text.strip() for r in readings):
+        return False
+    if any(o.unreadable_spans or o.literal_text.strip().casefold() == UNREADABLE_TEXT for o in run.observations):
+        return False
+    return not any(t.value_state == ValueState.UNREADABLE or (t.text or "").strip().casefold() == UNREADABLE_TEXT
+        for t in run.transcripts)
+
+
+def _organiser_texts(task: FieldTask) -> list[str]:
+    """What the organiser found for the field: its candidates' literals, and
+    its value's literal and readers' verbatims."""
+    texts = [c.literal for c in task.candidates]
+    texts += [task.current.literal, *task.current.verbatim_by_observation.values()]
+    return [text for text in texts if text and text.strip()]
+
+
+def _inside_a_settled_place(run, key: str, text: str) -> bool:
+    """Whether the text, collapsed and case-folded, sits inside the literal of
+    another supported place field."""
+    from .checks import collapse
+
+    folded = collapse(text).casefold()
+    for other in PLACE_TEXT_FIELDS:
+        value = run.fields.get(other)
+        if (other != key and value is not None and value.state == ValueState.SUPPORTED and value.literal
+                and folded and folded in collapse(value.literal).casefold()):
+            return True
+    return False
+
+
+def _elevation_written(run, readings: Sequence[Reading]) -> bool:
+    """Whether any reading writes an elevation, as the place tool reads one
+    (georef_locality.read_locality), in its whole text or in any one line."""
+    from specimen_digitization.application.georef_locality import read_locality
+
+    texts = dict.fromkeys([*(r.text for r in readings), *(o.literal_text for o in run.observations)])
+    return any(read_locality(part).elevations for text in texts for part in (text, *text.splitlines())
+        if part.strip())
+
+
+def _place_settled_below_province(run) -> bool:
+    """A city or county is supported: a precise location the label does not
+    state then adds nothing finer than the places settled."""
+    return any((run.fields.get(key) or FieldValue()).state == ValueState.SUPPORTED for key in ("city", "county"))
+
+
+def not_on_label_excerpt(key: str, readings: Sequence[Reading]) -> str:
+    """The excerpt of a field's not-on-the-label check row: the readings it
+    names, by name and observation."""
+    names = ", ".join(r.name for r in readings)
+    return (f"{key}: not on the label; none of the readings {names} states it and its expert found none\n"
+        + "readings: " + "; ".join(f"{r.name} {r.observation_id}" for r in readings))
+
+
+def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask],
+        outcomes: Sequence[FieldOutcome], *, readings: Sequence[Reading] | None = None,
+        asset_id: str | None = None, blobs=None) -> list[str]:
+    """Owner decision A (2026-10-09): a field on the profile's list
+    (not_on_label_keys) that a person has not decided, researched in this
+    attempt, is marked "not on the label" when all of these hold:
+    1. its expert answered label_lacks_value, with no failure, and the field
+       was not finalized without a model call (a fallback answer is
+       sources_cannot_resolve, so it never qualifies);
+    2. its value is still not present (a value derive.fill derived is kept);
+    3. label coverage is confirmed, every label has two or more readings and
+       every reading has text (_whole_label_read);
+    4. no part of any label is unreadable (_whole_label_read);
+    5. the organiser found no text for it (_organiser_texts); for a county,
+       a city or a precise location, a text counts as absent only when it
+       sits inside the literal of another supported place field;
+    6. for an elevation, no reading writes an elevation (_elevation_written);
+    7. for a precise location, a city or a county is supported.
+    The value then cites one check row (kind "derived", locator
+    "check:not_on_label") naming every reading of the run, and its reason
+    starts "Not on the label:". The row has no observation_ids: one row may
+    not cite readings of several labels (integrity.verify_evidence), so its
+    excerpt and stored record name them (not_on_label_excerpt). A row an
+    earlier attempt wrote is dropped from a field researched again. Returns
+    the keys marked."""
+    readings = run_readings(run) if readings is None else readings
+    tasks_by_key = {task.key: task for task in tasks}
+    by_key = {o.key: o for o in outcomes if o.key in tasks_by_key}
+    human = human_keys(run)
+    rows = {item.id: item for item in run.evidence}
+    for key in by_key:
+        value = run.fields.get(key)
+        if key in human or value is None:
+            continue
+        for stale in [i for i in value.evidence_ids if i in rows and rows[i].locator == NOT_ON_LABEL_CHECK]:
+            value.evidence_ids.remove(stale)
+            value.evidence_relations.pop(stale, None)
+    allowed = not_on_label_keys(profile)
+    if not allowed or not _whole_label_read(run, readings):
+        return []
+    elevation = None
+    marked = []
+    for key in field_keys(profile):
+        outcome, value = by_key.get(key), run.fields.get(key)
+        if key not in allowed or key in human or outcome is None or value is None:
+            continue
+        answer = outcome.answer
+        if (outcome.failure is not None or answer is None or answer.outcome != "label_lacks_value"
+                or outcome.finalized_without_model):
+            continue
+        if value.state != ValueState.NOT_PRESENT or any((value.literal, value.parsed, value.normalized,
+                value.authority_id, value.authority_identity, value.verbatim_by_observation)):
+            continue
+        if any(not (key in INSIDE_A_PLACE and _inside_a_settled_place(run, key, text))
+                for text in _organiser_texts(tasks_by_key[key])):
+            continue
+        if key in ELEVATION_FIELDS:
+            elevation = _elevation_written(run, readings) if elevation is None else elevation
+            if elevation:
+                continue
+        if key == "precise_location" and not _place_settled_below_province(run):
+            continue
+        record = json.dumps({"field_key": key, "check": "not_on_label", "readings": [
+            {"name": r.name, "region_id": r.region_id, "observation_id": r.observation_id,
+             "input_source": r.input_source} for r in readings]}, sort_keys=True).encode()
+        row = Evidence(kind="derived", asset_id=asset_id, source=SOURCE, locator=NOT_ON_LABEL_CHECK,
+            excerpt=not_on_label_excerpt(key, readings),
+            raw_ref=blobs.put(record) if blobs is not None else None,
+            digest=hashlib.sha256(record).hexdigest() if blobs is not None else None)
+        run.evidence.append(row)
+        value.evidence_ids.append(row.id)
+        value.evidence_relations[row.id] = "supports"
+        value.reason = f"{NOT_ON_LABEL_REASON} {answer.explanation}".strip()
+        marked.append(key)
+    return marked
+
+
+def not_on_label(key: str, value: FieldValue, run, evidence: Mapping[str, Evidence],
+        allowed: frozenset[str]) -> bool:
+    """Whether a field clears as "not on the label" (mark_not_on_label),
+    checked on the stored value: the key is on the profile's list
+    (`allowed`); the value is not present, with no literal, parsed,
+    normalized or authority value and no reader's text; it cites as support
+    a not-on-the-label check row whose readings are the run's current
+    readings (not_on_label_excerpt); and, for a precise location, a city or a
+    county is still supported. An older not-present value, with no such row,
+    never clears."""
+    if key not in allowed or value.state != ValueState.NOT_PRESENT:
+        return False
+    if any((value.literal, value.parsed, value.normalized, value.authority_id, value.authority_identity,
+            value.verbatim_by_observation)):
+        return False
+    if key == "precise_location" and not _place_settled_below_province(run):
+        return False
+    expected = not_on_label_excerpt(key, run_readings(run))
+    for evidence_id in value.evidence_ids:
+        row = evidence.get(evidence_id)
+        if (row is not None and value.evidence_relations.get(evidence_id) == "supports" and row.kind == "derived"
+                and row.source == SOURCE and row.locator == NOT_ON_LABEL_CHECK and row.excerpt == expected):
+            return True
+    return False
 
 
 # ---- the scientific rules -------------------------------------------------
@@ -1050,7 +1247,7 @@ def taxon_unmatched(taxon: FieldValue, evidence: Mapping[str, Evidence], lookups
 
 
 def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterable[str],
-        qualified: frozenset[str], today: date) -> list[str]:
+        qualified: frozenset[str], today: date, allowed: frozenset[str] = frozenset()) -> list[str]:
     """canonical_materialization_v2._scientific_reasons (182-295), ported.
 
     The same G1/G6/G42/G43 rules on the same run fields, evaluated on the
@@ -1073,6 +1270,9 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
       lookup's candidates, as policy.py accepts (taxon_chosen).
     - ``qualified`` (the native lineage proof) is the derived values: their
       lineage is their derivation, and they have no literal by definition (G37).
+    - 232-236: a field on the profile's "not on the label" list (``allowed``,
+      not_on_label_keys) that research marked so (not_on_label) is not
+      mandatory_unresolved (owner decision A, 2026-10-09).
     - 254-260: a taxon that names no genus, cleared as written and unmatched
       (taxon_unmatched), is not taxonomy_unresolved (owner decision B).
     """
@@ -1115,6 +1315,9 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
                 and not any((value.parsed, value.normalized, value.authority_id, value.authority_identity))):
             continue
         if key not in mandatory and value.state != ValueState.SUPPORTED:
+            continue
+        # Owner decision A: a listed field no reading states, with its check row.
+        if not_on_label(key, value, run, evidence, allowed):
             continue
         # 232-236
         settled = value.normalized or value.parsed or value.literal
@@ -1246,7 +1449,8 @@ def finalize_fields(run, profile: CollectionProfile | None, outcomes: Sequence[F
     work = work_states(run, profile, outcomes)
     qualified = frozenset(key for key, value in run.fields.items()
         if value.state == ValueState.SUPPORTED and value.layer == "derived")
-    human = scientific_reasons(run, work, mandatory=profile.mandatory_fields, qualified=qualified, today=today)
+    human = scientific_reasons(run, work, mandatory=profile.mandatory_fields, qualified=qualified, today=today,
+        allowed=not_on_label_keys(profile))
     # canonical_materialization_v2 447-450: a person's carried decision is
     # reviewed again, until a person approves the record (on the native path the
     # approval's ordinary finalize no longer names it).
