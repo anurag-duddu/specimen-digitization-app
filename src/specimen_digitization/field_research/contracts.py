@@ -16,6 +16,41 @@ from pydantic import BaseModel, ConfigDict, Field
 from specimen_digitization.application.domain import Evidence, FieldValue, LookupStatus
 
 
+PLACE_SOURCES = ("geolocate", "tgn", "wikidata", "nga")
+
+# The approved sources and deterministic checks each field's expert may call.
+# "gbif" is GBIF's decision with Catalogue of Life and Global Names Verifier
+# alongside (application.taxonomy_tool.verify_taxon).
+FIELD_TOOLS: Mapping[str, tuple[str, ...]] = {
+    "taxon": ("gbif",),
+    "country": PLACE_SOURCES,
+    "province_state": PLACE_SOURCES,
+    "county": PLACE_SOURCES,
+    "city": PLACE_SOURCES,
+    # Verbatim locality text: checked against places, never replaced (PRD 515).
+    "precise_location": PLACE_SOURCES,
+    "date_visited_from": ("date_parser",),
+    "date_visited_to": ("date_parser",),
+    "date_identified": ("date_parser",),
+    "elevation_from_m": ("elevation_parser",),
+    "elevation_to_m": ("elevation_parser",),
+    "elevation_from_ft": ("elevation_parser",),
+    "elevation_to_ft": ("elevation_parser",),
+    "fmnh_ins_number": ("catalog_number_validator",),
+    "collectors": (),
+    "collection_code": (),
+    "habitat": (),
+    "collection_method": (),
+    "verbatim_dts": (),
+    # Needs a confirmed EMu parties IRN; no approved source can supply one yet,
+    # and a name on the label is not an IRN (CONTRACTS.md). Never finalized
+    # from the label.
+    "identified_by_irn": (),
+}
+
+NO_APPROVED_AUTHORITY = frozenset({"identified_by_irn"})
+
+
 @dataclass(frozen=True)
 class Reading:
     """One reader's text of one label, named as the organiser names it (1A, 1B, 2A)."""
