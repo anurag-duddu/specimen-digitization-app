@@ -32,7 +32,7 @@ from urllib.parse import urlencode, urlsplit
 import httpx
 
 from specimen_digitization.application.domain import Evidence, Lookup, LookupStatus
-from specimen_digitization.application.georef_places import Place
+from specimen_digitization.application.georef_places import Place, Ref
 from specimen_digitization.application.harness_tools import SourceCall
 from specimen_digitization.application.lookup import parse_json
 from specimen_digitization.application.reliability import retry_after, retry_delay
@@ -42,19 +42,22 @@ from specimen_digitization.research_harness import historical_gazetteers
 from specimen_digitization.research_harness.contracts import FieldKey, SourceQuery
 from specimen_digitization.research_harness.source_readiness import SOURCE_READINESS
 from specimen_digitization.research_harness.sources import (
+    _USA,
     GEOLOCATE_ENDPOINT,
     SOURCE_PACER,
     SOURCE_REQUEST_INTERVAL_SECONDS,
+    GeolocateInterpretation,
     RequestPacer,
     SourcePolicy,
     SourceRegistry,
+    _fold_words,
     geolocate_interpretation,
     geolocate_verdict,
     insects_registry,
     validate_destination,
 )
 
-from .contracts import PLACE_SOURCES, SourceAnswer, SourceCandidate
+from .contracts import PLACE_SOURCES, PlaceRef, SourceAnswer, SourceCandidate
 
 SOURCES = ("gbif", *PLACE_SOURCES)
 NAMES = {
@@ -190,6 +193,17 @@ def interpretation(query: str, field_key: FieldKey) -> str:
         },
         ensure_ascii=False,
     )
+
+
+def geolocate_parents(place: GeolocateInterpretation, admin: str) -> tuple[PlaceRef, ...]:
+    """Where a GEOLocate match lies, as the request and the match give it: the
+    match's admin unit (the county inside the USA, the first-level unit outside
+    it), the queried state inside the USA, where GEOLocate confines its search
+    to that state, and the queried country, the only one GEOLocate searches
+    (research_harness.sources: _geolocate_agrees, SourceBroker's request)."""
+    usa = _fold_words(place.country) in _USA
+    names = [admin, place.state if usa else "", place.country]
+    return tuple(PlaceRef(name) for name in dict.fromkeys(name for name in names if name))
 
 
 def place_name(query: str) -> str:
@@ -604,9 +618,11 @@ class ApprovedSources:
             SourceCandidate(
                 name=item["value"],
                 authority_id=item["authority_id"],
-                detail=f"GEOLocate matched {item['match_name']} in {item['match_admin'] or 'no unit'}; "
-                f"precision {item['match_precision']}, score {item['match_score']}; "
+                detail=f"GEOLocate matched {item['match_name']} in "
+                + ", ".join(parent.name for parent in geolocate_parents(place, item["match_admin"]))
+                + f"; precision {item['match_precision']}, score {item['match_score']}; "
                 f"{item['decimal_latitude']:.6f}, {item['decimal_longitude']:.6f}",
+                parents=geolocate_parents(place, item["match_admin"]),
             )
             for item in found
         )
@@ -871,13 +887,21 @@ def _taxon_failure(status: LookupStatus, asked: Sequence[SourceCall]) -> str:
     return f"GBIF {what} ({count} attempt{'s' if count != 1 else ''})"
 
 
+def _parent(source_id: str, ref: Ref) -> PlaceRef:
+    """A parent place as the gazetteer names it. Getty TGN and Wikidata name a
+    parent by its own record (a TGN subject, a Wikidata item), so it carries
+    that record's authority_id; NGA names a first-order unit code and a
+    country code, which are no NGA record."""
+    record = f"{source_id}:{ref.id}" if source_id in ("tgn", "wikidata") and ref.id else None
+    return PlaceRef(ref.name or ref.id, record)
+
+
 def _place(source_id: str, place: Place) -> SourceCandidate:
     kinds = [kind.name or kind.id for kind in place.kinds if kind.name or kind.id]
-    parents = [parent.name or parent.id for parent in place.parents]
-    country = place.country.name or place.country.id if place.country else None
-    if country and country not in parents:
-        parents.append(country)
-    detail = "in " + ", ".join(parents) if parents else ""
+    parents = [_parent(source_id, parent) for parent in place.parents]
+    if place.country and (place.country.name or place.country.id) not in [p.name for p in parents]:
+        parents.append(_parent(source_id, place.country))
+    detail = "in " + ", ".join(parent.name for parent in parents) if parents else ""
     valid = " ".join(
         part
         for part in (
@@ -893,6 +917,7 @@ def _place(source_id: str, place: Place) -> SourceCandidate:
         authority_id=f"{source_id}:{place.record_id}",
         kind=", ".join(kinds[:MAX_KINDS]) or None,
         detail=detail or None,
+        parents=tuple(parents),
     )
 
 

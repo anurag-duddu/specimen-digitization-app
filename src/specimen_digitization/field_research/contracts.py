@@ -85,6 +85,16 @@ class FieldTask:
 
 
 @dataclass(frozen=True)
+class PlaceRef:
+    """A place a source puts a candidate in: the name the source gives it and,
+    when the source names it by one of its own records, that record's
+    authority_id, in the form the source's candidates carry ("tgn:1000135")."""
+
+    name: str
+    authority_id: str | None = None
+
+
+@dataclass(frozen=True)
 class SourceCandidate:
     """One match a source returned, in the source's own words."""
 
@@ -92,6 +102,10 @@ class SourceCandidate:
     authority_id: str | None
     kind: str | None = None  # rank for a taxon, place type for a place
     detail: str | None = None  # short context: classification, parent places
+    # A place's parent places as its source gives them, nearest first, its
+    # country last (sources._place, sources._geolocate); () when the source
+    # names none.
+    parents: tuple[PlaceRef, ...] = ()
 
 
 @dataclass(frozen=True)

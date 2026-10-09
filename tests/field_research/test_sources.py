@@ -32,7 +32,7 @@ from specimen_digitization.application.integrity import (
     verify_evidence,
 )
 from specimen_digitization.application.storage import LocalBlobs
-from specimen_digitization.field_research.contracts import SourceCandidate
+from specimen_digitization.field_research.contracts import PlaceRef, SourceCandidate
 from specimen_digitization.field_research.sources import (
     EXCERPT_LIMIT,
     ApprovedSources,
@@ -681,9 +681,60 @@ async def test_a_gazetteer_place_reads_with_its_type_and_parents(tmp_path):
             authority_id="tgn:1016636",
             kind="inhabited places, cities, department capitals",
             detail="in Chimaltenango, Guatemala",
+            parents=(
+                PlaceRef("Chimaltenango", "tgn:1000565"),
+                PlaceRef("Guatemala", "tgn:7005493"),
+            ),
         ),
     )
     assert answer.note == "Getty TGN has one place for 'Chimaltenango': Chimaltenango"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("source", "query", "parents"),
+    [
+        # TGN and Wikidata name each parent by its own record.
+        ("tgn", "Chimaltenango", [
+            (PlaceRef("Chimaltenango", "tgn:1000565"), PlaceRef("Guatemala", "tgn:7005493")),
+            (PlaceRef("Guatemala", "tgn:7005493"),),
+        ]),
+        ("wikidata", "Davao Province", [(PlaceRef("Philippines", "wikidata:Q928"),)]),
+        # NGA names a first-order unit and a country code, no record of its own.
+        ("nga", "Yepocapa", [(PlaceRef("Chimaltenango"), PlaceRef("GT"))] * 2),
+    ],
+)
+async def test_a_gazetteer_place_names_the_places_it_lies_in(tmp_path, source, query, parents):
+    tools, _, _, _ = make(tmp_path, gazetteers())
+    answer = await tools.lookup(source, query, field_key="city")
+    assert [item.parents for item in answer.candidates] == parents
+    assert [item.detail.split(";")[0] for item in answer.candidates] == [
+        "in " + ", ".join(parent.name for parent in found) for found in parents
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("fixture", "query", "parents"),
+    [
+        # Outside the USA: the match's first-level unit, then the queried country.
+        ("yepocapa-modern.json", YEPOCAPA, (PlaceRef("CHIMALTENANGO"), PlaceRef("Guatemala"))),
+        # Inside it: the match's county, the queried state GEOLocate searched, the country.
+        ("evanston-control.json", "Evanston, Cook, Illinois, USA",
+         (PlaceRef("COOK"), PlaceRef("Illinois"), PlaceRef("USA"))),
+    ],
+)
+async def test_a_geolocate_match_lies_in_its_unit_and_the_country_it_was_asked_in(
+    tmp_path, fixture, query, parents
+):
+    tools, _, _, _ = make(tmp_path, recorded_geolocate(fixture))
+    answer = await tools.lookup("geolocate", query, field_key="city")
+    candidate = answer.candidates[0]
+    assert candidate.parents == parents
+    assert candidate.detail.startswith(
+        f"GEOLocate matched {query.split(',')[0].upper()} in "
+        + ", ".join(parent.name for parent in parents) + ";"
+    )
 
 
 @pytest.mark.asyncio
