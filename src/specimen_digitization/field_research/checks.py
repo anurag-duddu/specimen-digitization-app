@@ -213,6 +213,30 @@ def taxon_query_grounded(query: str, literal: str) -> bool:
     return collapse(query) in taxon_queries(literal)
 
 
+def _name_parts(text: str) -> tuple | None:
+    name = taxonomy_scientific_name(text)
+    if name is None or not name.genus:
+        return None
+    return name.genus, name.subgenus, tuple(name.epithets), name.marker
+
+
+def longer_name(quote: str, literal: str) -> str | None:
+    """The name a taxon candidate's quote writes from its literal on, when the
+    scientific-name parser reads more of the name there than in the literal
+    alone: a subspecies after a species ("Danaus plexippus megalippe" quoted
+    for the literal "Danaus plexippus", N3 of #284's third review), an epithet
+    after a genus. None when both name the same genus, subgenus, epithets and
+    marker (an author, a year, a sex sign or a keyed line's "taxon:" aside),
+    or the quote names nothing. The quote is the reading's own text, so its
+    name, not the literal's, is the whole name the label writes there."""
+    start = quote.find(literal)
+    written = quote[start:] if start >= 0 else quote
+    whole = taxonomy_scientific_name(written)
+    if whole is None or not whole.genus or _name_parts(written) == _name_parts(literal):
+        return None
+    return replace(whole, authorship=None).query
+
+
 def _evidence_error_note(message: str) -> str:
     text = message.casefold()
     if "unit" in text and "required" in text:

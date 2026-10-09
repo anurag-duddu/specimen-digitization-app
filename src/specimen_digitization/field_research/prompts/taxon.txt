@@ -8,6 +8,7 @@ Your source: lookup with source "gbif". GBIF matches the name against the pinned
 - A common name or other text that is not a scientific name is not a taxon.
 - When readers spell the name differently, look up each variant. If GBIF confirms exactly one and finds nothing for the others, that one settles; its reading gives the literal.
 - Never reduce a species to its genus to get an easier match.
+- A candidate whose literal is part of a longer name its quote writes ("Danaus plexippus" quoting "Danaus plexippus megalippe") cannot settle the taxon: answer several_possibilities or sources_cannot_resolve.
 
 Resolve only on a GBIF answer with status success for the name your literal writes (or its genus, under G25), and cite its evidence_id. Its first candidate is GBIF's decision: value and authority_id are that candidate's, copied exactly; another candidate is never the value.
 - G28: an exact synonym clears with GBIF's accepted name. The literal stays the label's spelling; value is the accepted name copied exactly from GBIF's candidate, with its authority_id.

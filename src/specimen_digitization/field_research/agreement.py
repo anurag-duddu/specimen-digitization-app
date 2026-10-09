@@ -12,7 +12,12 @@ answer becomes a value (step._refusal). It enforces, in this order:
    parser read) of each reading the answer names, or, on a label with a
    decided transcript, of the decided reading. Literals are compared after
    NFC and whitespace collapse only (checks.collapse): "E. slope" and
-   "E.slope" differ. A field with no such candidate is never resolved.
+   "E.slope" differ. A field with no such candidate is never resolved. For a
+   taxon, the candidate's quote, the reading's text it was taken from, must
+   write no longer name from the literal on (checks.longer_name): a candidate
+   "Danaus plexippus" quoting "Danaus plexippus megalippe" is a piece of the
+   name the label writes, and never settles the taxon (N3 of the third
+   review).
 3. Readers and labels that disagree (B1; G19, G20, G27, G32). From the
    field's candidates and the organiser's per-reader verbatims, whatever
    state the organiser gave the field, each label that writes the field
@@ -105,7 +110,7 @@ from dataclasses import dataclass
 from specimen_digitization.application.domain import LookupStatus
 from specimen_digitization.application.georef_locality import comparison_key, one_letter_apart
 
-from .checks import collapse, taxon_query_grounded
+from .checks import collapse, longer_name, taxon_query_grounded
 from .contracts import PLACE_SOURCES, FieldTask, Reading, SourceAnswer, SourceCandidate
 from .notations import expansion
 
@@ -149,6 +154,7 @@ DIFFER = "The readings differ, and no approved source confirms one of them."
 LABELS_DIFFER = "The labels differ, and no approved source confirms them as one value."
 NOT_DECIDED = "The reading chosen for this label does not write this value."
 NOT_CANDIDATE = "This value is not the text found for this field in the readings."
+PART_OF_NAME = "The label writes a longer scientific name than this value."
 NO_PLACE = "No approved place source confirms this value."
 
 
@@ -223,7 +229,9 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
     """Why the answer's literal may not settle the field, or None: a label's
     decided transcript must write it (G19), and it must be a whole candidate
     literal of each reading it names (the decided reading's, on a label with
-    one), never a shorter or longer piece of a reading (B2)."""
+    one), never a shorter or longer piece of a reading (B2); for a taxon, a
+    candidate whose quote writes a longer name from it on is such a piece too
+    (_part_of_name)."""
     for reading in named:
         chosen = _deciding(reading, readings)
         if chosen.input_source == DECIDED and literal not in chosen.text:
@@ -232,7 +240,7 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
                 f"this field (G19), and it does not contain {literal!r}. Copy the literal from "
                 f"{chosen.name}, or answer several_possibilities or sources_cannot_resolve."))
     if candidate_literal(task, readings, literal, named) is not None:
-        return None
+        return _part_of_name(task, readings, literal, named)
     allowed = candidates_by_reading(task, readings)
     offered = [f"{source.name}: {text!r}" for source in dict.fromkeys(_deciding(r, readings) for r in named)
         for text in allowed.get(source.name, {}).values()]
@@ -243,6 +251,31 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
         f"candidate gives it. Candidates for the readings you named: {shown}. Never shorten or "
         "extend a candidate. Copy one and name only readings that have it, or answer "
         "several_possibilities or sources_cannot_resolve."))
+
+
+def _part_of_name(task: FieldTask, readings: Sequence[Reading], literal: str,
+        named: Sequence[Reading]) -> Refusal | None:
+    """For a taxon, why the candidate the literal is cannot settle it: its
+    quote, the reading's text it was taken from, writes a longer name from the
+    literal on (checks.longer_name; N3 of #284's third review), so the literal
+    is a piece of the name the label writes. Every candidate of that literal
+    of the readings named (the decided reading's, on a label with one) is
+    checked. None otherwise, and for any other field."""
+    if task.key != "taxon":
+        return None
+    want = collapse(literal)
+    deciding = {_deciding(reading, readings).name for reading in named}
+    for candidate in task.candidates:
+        if candidate.reading not in deciding or collapse(candidate.literal) != want:
+            continue
+        longer = longer_name(candidate.quote, candidate.literal)
+        if longer is not None:
+            return Refusal(PART_OF_NAME, (
+                f"The candidate {candidate.literal!r} of reading {candidate.reading} quotes "
+                f"{candidate.quote!r}, which writes the longer name {longer!r}. A taxon settles only "
+                "on the whole name its reading writes, so this candidate cannot settle it: answer "
+                "several_possibilities or sources_cannot_resolve."))
+    return None
 
 
 def place_name(text: str) -> str:

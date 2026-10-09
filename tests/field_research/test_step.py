@@ -764,6 +764,20 @@ def test_a_gazetteer_is_asked_only_the_name_before_the_first_comma(tmp_path):
     assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:city" in run.reasons
 
 
+def test_an_organiser_candidate_that_cuts_the_name_on_its_line_never_settles_the_taxon(tmp_path):
+    """The third review's N3: the line writes "Danaus plexippus megalippe" with
+    no key, and the organiser's candidate in both readings is "Danaus
+    plexippus", quoting the whole line. GBIF settles the binomial it was asked."""
+    rig = build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", TRINOMIAL), candidates=[*COLLECTORS,
+        ("taxon", "1A", "Danaus plexippus", TRINOMIAL), ("taxon", "1B", "Danaus plexippus", TRINOMIAL)])
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": taxon_on("Danaus plexippus", literal="Danaus plexippus")}),
+        tools=Subspecies(rig.blobs))
+    taxon = run.fields["taxon"]
+    assert (taxon.state, taxon.reason) == (ValueState.UNRESOLVED, agreement.PART_OF_NAME + " Settled.")
+    assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:taxon" in run.reasons
+
+
 def test_a_field_with_no_candidate_is_never_resolved(tmp_path):
     """No reading is decided, so the keyed-line parser reads nothing, and the
     organiser gave only the collectors: the taxon expert's answer, GBIF's

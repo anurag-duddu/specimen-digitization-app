@@ -425,6 +425,30 @@ def test_an_expert_that_shortens_the_name_after_the_whole_name_retry_goes_to_rev
     assert "whole and exactly as the candidate gives it" in piece
 
 
+def test_a_taxon_candidate_whose_quote_writes_a_longer_name_is_sent_back():
+    """The third review's N3 at the expert: both readers' candidate is the
+    binomial, quoting the trinomial line, and GBIF was asked the binomial."""
+    tri = "Danaus plexippus megalippe"
+    readings = tuple(Reading(name, "r1", f"o{name}", "raw_reading", tri + "\nleg. F. G. Werner")
+                     for name in ("1A", "1B"))
+    cut = task("taxon", candidates=[Candidate(name, tri, "Danaus plexippus", f"ev-{name}") for name in ("1A", "1B")])
+    made = experts._Expert(cut, readings, FakeTools(), PILOT_DATES)
+    made.calls.append(experts._Call("gbif", DANAUS.query, DANAUS.status, DANAUS))
+    given = answer(outcome="resolved", literal="Danaus plexippus", reading_names=["1A", "1B"],
+                   value="Danaus plexippus (Linnaeus, 1758)", authority_id="5133088",
+                   source_evidence_ids=["ev-species"])
+
+    with pytest.raises(ModelRetry, match="writes the longer name 'Danaus plexippus megalippe'"):
+        made.validate(given)
+    refused = agreement.literal_refusal(cut, readings, literal="Danaus plexippus", named=readings)
+    assert refused.reason == agreement.PART_OF_NAME
+    # A keyed line's candidate quotes its key and the same name: it settles.
+    keyed = task("taxon", candidates=[Candidate(name, "taxon: Danaus plexippus", "Danaus plexippus", f"ev-{name}")
+                                      for name in ("1A", "1B")])
+    plain = tuple(Reading(name, "r1", f"o{name}", "raw_reading", "taxon: Danaus plexippus") for name in ("1A", "1B"))
+    assert agreement.literal_refusal(keyed, plain, literal="Danaus plexippus", named=plain) is None
+
+
 def test_the_reviewers_taxon_probes_end_in_review_not_resolved():
     for received, value, authority in ((GBIF_UNRELATED, "Bombus impatiens Cresson, 1863", "gbif:999"),
                                        (GBIF_TWO, "Episcopus Other, 1900", "gbif:2")):

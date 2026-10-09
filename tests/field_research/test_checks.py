@@ -9,6 +9,7 @@ from specimen_digitization.application.domain import LookupStatus
 from specimen_digitization.field_research.checks import (
     check_catalog_number,
     feet_to_metres,
+    longer_name,
     metres_to_feet,
     parse_date,
     parse_elevation,
@@ -153,6 +154,24 @@ def test_a_label_with_no_genus_has_no_groundable_taxon_query():
     assert taxon_queries("sp. 30 \u2640") == frozenset()
     for query in ("sp. 30", "sp.", "sp. 30 \u2640"):
         assert not taxon_query_grounded(query, "sp. 30 \u2640")
+
+
+@pytest.mark.parametrize(("quote", "literal", "longer"), [
+    # The third review's N3: an organiser candidate that cuts the subspecies off its line.
+    ("Danaus plexippus megalippe", "Danaus plexippus", "Danaus plexippus megalippe"),
+    ("Danaus plexippus megalippe \u2640 3 Sept. '46", "Danaus plexippus", "Danaus plexippus megalippe"),
+    ("Danaus plexippus", "Danaus", "Danaus plexippus"),
+    ("Aus bus var. cus", "Aus bus", "Aus bus var. cus"),
+    # The same name: a keyed line's key, an author and year, a sex sign, a genus-level "sp. 1".
+    ("taxon: Danaus plexippus", "Danaus plexippus", None),
+    ("Danaus plexippus (Linnaeus, 1758)", "Danaus plexippus", None),
+    ("Danaus plexippus \u2640", "Danaus plexippus", None),
+    ("Epipsocus sp. 1 \u2640", "Epipsocus sp. 1", None),
+    # No name on the quote at all.
+    ("sp. 30 \u2640", "sp. 30", None),
+])
+def test_a_taxon_candidates_quote_may_write_a_longer_name_than_its_literal(quote, literal, longer):
+    assert longer_name(quote, literal) == longer
 
 
 def test_catalog_numbers():
