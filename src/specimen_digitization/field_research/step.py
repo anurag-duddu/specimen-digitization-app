@@ -735,7 +735,10 @@ def _unmatched_taxon(run, task, *, readings, by_name, evidence, asset_id, blobs,
       With no successful lookup that is a label's decided transcript (its
       other readers are evidence only), or readers of a label with none that
       each write exactly that text.
-    The value is built as a settled answer is (_settled: the label rows and
+    The value meets the agreement rules any resolved answer meets
+    (agreement.refusal through _refusal: G19's decided transcript, a whole
+    candidate whose quote writes no longer name around it, readers that
+    agree). It is built as a settled answer is (_settled: the label rows and
     the lineage), with the literal as written, no authority and the layer
     settled, and cites one check row naming GBIF's no-name lookup, which the
     run keeps (lookup.no_name_lookup: no request is made; the step adds it
@@ -768,6 +771,10 @@ def _unmatched_taxon(run, task, *, readings, by_name, evidence, asset_id, blobs,
         return None
     answer = FieldAnswer(outcome="resolved", literal=whole, reading_names=[r.name for r in named],
         explanation=UNMATCHED)
+    # The agreement rules every resolved answer meets (agreement.refusal),
+    # #284's guard against a candidate that cuts its quoted name among them.
+    if _refusal(task, answer, readings=readings, by_name=by_name, sources=sources) is not None:
+        return None
     value = _settled(run, task, FieldOutcome(task.key, answer), by_name=by_name, evidence=evidence,
         asset_id=asset_id, blobs=blobs)
     if value is None:

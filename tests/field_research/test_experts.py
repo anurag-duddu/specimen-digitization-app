@@ -449,6 +449,23 @@ def test_a_taxon_candidate_whose_quote_writes_a_longer_name_is_sent_back():
     assert agreement.literal_refusal(keyed, plain, literal="Danaus plexippus", named=plain) is None
 
 
+def test_a_code_candidate_whose_quote_writes_a_genus_before_it_is_a_piece_of_the_name():
+    """B1 of #289's review: a candidate "sp. 1" quoting "Epipsocus sp. 1", or
+    "Epipsocus" with "sp. 1" on the next line, cuts the genus off its name."""
+    code = "sp. 1 \N{FEMALE SIGN}"
+    for written in ("Epipsocus " + code, "Epipsocus\n" + code):
+        readings = tuple(Reading(name, "r1", f"o{name}", "raw_reading", written) for name in ("1A", "1B"))
+        cut = task("taxon", candidates=[Candidate(name, written, code, f"ev-{name}") for name in ("1A", "1B")])
+        refused = agreement.literal_refusal(cut, readings, literal=code, named=readings)
+        assert refused is not None and refused.reason == agreement.PART_OF_NAME
+        assert "writes the longer name 'Epipsocus'" in refused.retry
+    # The code on a line of its own, below a line with no genus at its end, settles.
+    alone = "Mossy forest 6400'\n" + code
+    readings = tuple(Reading(name, "r1", f"o{name}", "raw_reading", alone) for name in ("1A", "1B"))
+    own = task("taxon", candidates=[Candidate(name, alone, code, f"ev-{name}") for name in ("1A", "1B")])
+    assert agreement.literal_refusal(own, readings, literal=code, named=readings) is None
+
+
 def test_the_reviewers_taxon_probes_end_in_review_not_resolved():
     for received, value, authority in ((GBIF_UNRELATED, "Bombus impatiens Cresson, 1863", "gbif:999"),
                                        (GBIF_TWO, "Episcopus Other, 1900", "gbif:2")):

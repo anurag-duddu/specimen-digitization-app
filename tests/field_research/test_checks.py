@@ -298,6 +298,15 @@ def test_the_label_names_no_genus_when_no_word_beside_its_code_may_be_one(text, 
     ("Epipsocus sp. 1 \u2640", "Epipsocus sp. 1", None),
     # No name on the quote at all.
     ("sp. 30 \u2640", "sp. 30", None),
+    # A genus before a literal that has none (B1 of #289's review), on its line or the line above.
+    ("Epipsocus sp. 1 " + FEMALE, "sp. 1 " + FEMALE, "Epipsocus"),
+    ("VI-24-68-7.\nEpipsocus\nsp. 1 " + FEMALE, "sp. 1 " + FEMALE, "Epipsocus"),
+    ("Danaus plexippus megalippe", "plexippus megalippe", "Danaus plexippus megalippe"),
+    # No genus before it: the habitat line above 105526321's code.
+    ("Mossy forest 6400'\nsp. 30 " + FEMALE, "sp. 30 " + FEMALE, None),
+    # A word before a literal that names its own genus is no part of its name.
+    ("Det. F. G. Werner\nDanaus plexippus", "Danaus plexippus", None),
+    ("Mindanao Danaus plexippus", "Danaus plexippus", None),
 ])
 def test_a_taxon_candidates_quote_may_write_a_longer_name_than_its_literal(quote, literal, longer):
     assert longer_name(quote, literal) == longer

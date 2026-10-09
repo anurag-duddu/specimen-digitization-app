@@ -2113,6 +2113,23 @@ def test_a_code_the_label_writes_beside_a_genus_goes_to_review(tmp_path, written
         texts=label_texts(run))
 
 
+def test_an_unmatched_taxon_meets_the_agreement_rules_any_answer_meets(tmp_path, monkeypatch):
+    """The unmatched value goes through agreement.refusal: were the label
+    check to miss the genus, #284's guard against a candidate that cuts its
+    quoted name ("sp. 1" quoting "Epipsocus sp. 1") still refuses it."""
+    from specimen_digitization.field_research import checks
+
+    monkeypatch.setattr(checks, "label_names_no_genus", lambda code, texts: True, raising=False)
+    written, quote = GENUS_BESIDE["genus-earlier-on-the-line"]
+    rig = build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", written), candidates=[*COLLECTORS,
+        *(("taxon", name, EPIPSOCUS_CODE, quote) for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": cannot_resolve(EPIPSOCUS_CODE, asks=["Epipsocus"])}), tools=Homonym(rig.blobs))
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["mandatory_unresolved:taxon", "taxonomy_unresolved"])
+    assert run.fields["taxon"].state == ValueState.UNRESOLVED
+    assert not [item for item in run.evidence if item.locator == "check:taxon_no_genus"]
+
+
 # The pilot's morphocodes that clear as unmatched, as their labels write them
 # (the text before the code, the code, the text after it).
 PILOT_CODES = {

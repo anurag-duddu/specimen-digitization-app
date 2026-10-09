@@ -16,10 +16,11 @@ fields' outcomes:
    NFC and whitespace collapse only (checks.collapse): "E. slope" and
    "E.slope" differ. A field with no such candidate is never resolved. For a
    taxon, the candidate's quote, the reading's text it was taken from, must
-   write no longer name from the literal on (checks.longer_name): a candidate
-   "Danaus plexippus" quoting "Danaus plexippus megalippe" is a piece of the
-   name the label writes, and never settles the taxon (N3 of the third
-   review).
+   write no longer name around the literal (checks.longer_name): a candidate
+   "Danaus plexippus" quoting "Danaus plexippus megalippe" (N3 of the third
+   review), or "sp. 1" quoting "Epipsocus sp. 1" (B1 of #289's review), is a
+   piece of the name the label writes, and never settles the taxon. The
+   step's unmatched taxon (owner decision B) meets these rules too.
 3. Readers and labels that disagree (B1; G19, G20, G27, G32). From the
    field's candidates and the organiser's per-reader verbatims, whatever
    state the organiser gave the field, each label that writes the field
@@ -280,11 +281,12 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
 def _part_of_name(task: FieldTask, readings: Sequence[Reading], literal: str,
         named: Sequence[Reading]) -> Refusal | None:
     """For a taxon, why the candidate the literal is cannot settle it: its
-    quote, the reading's text it was taken from, writes a longer name from the
-    literal on (checks.longer_name; N3 of #284's third review), so the literal
-    is a piece of the name the label writes. Every candidate of that literal
-    of the readings named (the decided reading's, on a label with one) is
-    checked. None otherwise, and for any other field."""
+    quote, the reading's text it was taken from, writes a longer name around
+    the literal (checks.longer_name; N3 of #284's third review, B1 of #289's
+    review), so the literal is a piece of the name the label writes. Every
+    candidate of that literal of the readings named (the decided reading's,
+    on a label with one) is checked. None otherwise, and for any other
+    field."""
     if task.key != "taxon":
         return None
     want = collapse(literal)
