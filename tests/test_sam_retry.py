@@ -197,6 +197,38 @@ class LateReader(DisagreeingReaders):
         return super().first_pass(specimen, region, readings)
 
 
+class LateAnswer(DisagreeingReaders):
+    """Readers whose provider call ran past its budget and then answered."""
+
+    def __init__(self, blobs):
+        super().__init__(blobs)
+        self.elapsed = [0.0]
+
+    def transcribe(self, specimen, region, route):
+        step = f"transcribe:{region.id}:{route}"
+        self.elapsed[0] += specimen.run.profile.execution.effect_timeout_for_step(step) + 1
+        return super().transcribe(specimen, region, route)
+
+
+def test_a_reader_that_answers_past_its_budget_keeps_its_observation(tmp_path):
+    # The deadline override stamped the unknown outcome on a late answer too and
+    # dropped its observation; a reading is a pure read, so a late answer stands.
+    adapters = LateAnswer(LocalBlobs(tmp_path / "blobs"))
+    workflow, principal, ident = start(tmp_path, adapters)
+    workflow.monotonic = lambda: adapters.elapsed[0]
+    run = workflow.drain(principal, ident).run
+    steps = [
+        f"transcribe:{region.id}:{route}"
+        for region in run.regions
+        for route in run.profile.routes
+    ]
+    assert run.blocker != "external_outcome_unknown", run.reasons
+    assert "external_stage_deadline_exceeded" not in run.reasons
+    assert set(steps) <= set(run.completed_steps)
+    assert sorted(o.route_id for o in run.observations) == sorted(run.profile.routes)
+    assert run.lease_until is None
+
+
 def test_a_first_pass_past_its_budget_still_waits_for_reconciliation(tmp_path):
     # A reader past its budget does not (below): only a reading is a pure read.
     adapters = LateReader(LocalBlobs(tmp_path / "blobs"), "first_pass")

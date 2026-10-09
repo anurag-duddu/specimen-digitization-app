@@ -31,6 +31,7 @@ from specimen_digitization.application.api import (
 from specimen_digitization.application.domain import (
     Disposition,
     ExecutionPolicy,
+    LookupStatus,
     Principal,
     Scope,
 )
@@ -111,12 +112,8 @@ def failing_reader_child(payload):
                 )
 
             def fail(kind):
-                if kind == "http_429":
-                    raise ModelHTTPError(429, "reader", body="rate limited")
-                if kind == "http_503":
-                    raise ModelHTTPError(503, "reader", body="bad gateway")
-                if kind == "http_401":
-                    raise ModelHTTPError(401, "reader", body="unauthorized")
+                if kind.startswith("http_"):
+                    raise ModelHTTPError(int(kind[5:]), "reader", body="a body")
                 if kind == "provider_timeout":
                     raise TimeoutError
                 if kind == "transport":
@@ -239,6 +236,7 @@ def ended_without_its_reading(run, tmp_path, attempts, requests=1):
     [
         "http_429",
         "http_503",
+        "http_402",
         "provider_timeout",
         "transport",
         "unmapped",
@@ -287,13 +285,70 @@ def test_a_reader_whose_deadline_passes_is_retried_not_blocked(tmp_path, monkeyp
     ended_without_its_reading(run, tmp_path, attempts=3)
 
 
-def test_a_credential_failure_still_blocks_and_names_its_cause(tmp_path, monkeypatch):
-    # Asking again repeats a 401, so it is not retried and the run is not sent
-    # to review as though the reader had found nothing.
-    app, specimen_id, first = start(tmp_path, monkeypatch, "http_401", fails=99)
+@pytest.mark.parametrize(
+    ("failure", "blocker"),
+    [
+        ("http_401", "model_authentication_error"),
+        ("http_403", "model_authorization_error"),
+        # A request the provider refuses as invalid is refused every time.
+        ("http_400", "model_request_rejected"),
+        ("http_404", "model_request_rejected"),
+        ("http_413", "model_request_rejected"),
+        ("http_422", "model_request_rejected"),
+    ],
+)
+def test_a_failure_that_asking_again_repeats_still_blocks_and_names_its_cause(
+    tmp_path, monkeypatch, failure, blocker
+):
+    # It is not retried, and the run is not sent to review as though the reader
+    # had found nothing, which would give up on it in silence.
+    app, specimen_id, first = start(tmp_path, monkeypatch, failure, fails=99)
     assert first["stage"] == "processing_blocked"
-    assert first["blocker"] == "model_authentication_error"
-    assert calls(tmp_path, stored(app, specimen_id)) == 1
+    assert first["blocker"] == blocker
+    assert first["next_retry_at"] is None and not first["dead_letter"]
+    assert first["lease_until"] is None
+    run = stored(app, specimen_id)
+    assert run.attempts[step_of(run)] == 1 and calls(tmp_path, run) == 1
+    # No reading was recorded for it as a completed one.
+    assert step_of(run) not in run.completed_steps
+
+
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [
+        (400, ("model_request_rejected", LookupStatus.POLICY, False)),
+        (404, ("model_request_rejected", LookupStatus.POLICY, False)),
+        (413, ("model_request_rejected", LookupStatus.POLICY, False)),
+        (422, ("model_request_rejected", LookupStatus.POLICY, False)),
+        # 402 is transient (HARNESS.md section 3); the rest are as before.
+        (402, ("model_provider_error", LookupStatus.PROVIDER, False)),
+        (401, ("model_authentication_error", LookupStatus.AUTHENTICATION, False)),
+        (403, ("model_authorization_error", LookupStatus.AUTHORIZATION, False)),
+        (429, ("model_rate_limited", LookupStatus.RATE_LIMITED, False)),
+        (503, ("model_provider_error", LookupStatus.PROVIDER, True)),
+    ],
+)
+def test_the_http_statuses_a_model_call_ends_with(code, expected):
+    from pydantic_ai import Agent
+    from pydantic_ai.exceptions import ModelHTTPError
+    from pydantic_ai.models.function import FunctionModel
+    from pydantic_ai.usage import UsageLimits
+
+    from specimen_digitization.application.reliability import (
+        AdapterFailure,
+        run_agent_bounded,
+    )
+
+    def refuse(messages, info):
+        raise ModelHTTPError(code, "model", body="a body")
+
+    agent = Agent(FunctionModel(refuse, model_name="local"), output_type=str)
+    with pytest.raises(AdapterFailure) as failure:
+        run_agent_bounded(
+            agent, "x", timeout_seconds=10, usage_limits=UsageLimits(request_limit=2)
+        )
+    error = failure.value
+    assert (error.code, error.status, error.outcome_unknown) == expected
 
 
 def test_both_readers_failing_still_ends_in_review(tmp_path, monkeypatch):
@@ -317,6 +372,50 @@ def test_both_readers_failing_still_ends_in_review(tmp_path, monkeypatch):
         False,
         [],
     )
+
+
+def test_a_reviewer_cannot_record_text_for_a_region_no_reader_read(
+    tmp_path, monkeypatch
+):
+    # Text with no reading to trace to is refused by evidence verification, and
+    # would have blocked the next run after answering 200: it is refused now,
+    # with the record unchanged. An abstention can still be recorded.
+    app, specimen_id, _ = start(
+        tmp_path, monkeypatch, "unmapped", fails=99, failing="01"
+    )
+    run = drain_through_retries(app, specimen_id)
+    region = run.regions[0].id
+    revision = stored_specimen(app, specimen_id).version
+
+    with TestClient(app) as http:
+
+        def decide(after, key):
+            return http.post(
+                PREFIX + "/specimens/" + specimen_id + "/decisions",
+                headers=dict(HEADERS, **{"Idempotency-Key": key}),
+                json={
+                    "kind": "transcription",
+                    "target_id": region,
+                    "after": after,
+                    "reason": "typed from the image",
+                    "expected_revision": revision,
+                    "base_record_version_id": f"{run.id}:{revision}",
+                },
+            )
+
+        refused = decide({"state": "supported", "text": "X"}, "typed-text")
+        assert refused.status_code == 422, refused.text
+        assert "No reader read this region" in refused.text
+        retained = stored_specimen(app, specimen_id)
+        assert retained.version == revision
+        [transcript] = retained.run.transcripts
+        assert (transcript.text, transcript.resolved) == (None, False)
+        assert retained.run.blocker is None and retained.run.stage == "finalized"
+
+        accepted = decide({"state": "unresolved"}, "abstained")
+        assert accepted.status_code == 200, accepted.text
+        [transcript] = stored_specimen(app, specimen_id).run.transcripts
+        assert (transcript.text, transcript.value_state.value) == (None, "unresolved")
 
 
 def test_a_transcript_with_text_must_still_trace_to_a_reading(tmp_path, monkeypatch):
@@ -377,36 +476,49 @@ def test_only_a_reader_child_that_dies_is_a_known_failure(
             invoke_model(adapters, specimen, operation, **arguments)
 
 
-def test_each_retry_of_a_reader_reserves_again_and_an_unknown_spend_stays_held(
-    tmp_path, monkeypatch
-):
-    # A priced run (PLAN 4.3, G30): every attempt reserves its worst case
-    # before the call, and nothing is given back for an attempt whose outcome
-    # is unknown. The failure is the shape run_agent_bounded gives a provider
-    # timeout: the provider may have billed.
-    from specimen_digitization.application.lane_reservations import step_reservation
-    from specimen_digitization.application.reliability import AdapterFailure
-    from test_lane_costs import TokenAdapters, lab, ledger_total
+def priced_reader_lab(tmp_path, monkeypatch, failure):
+    """A priced run (PLAN 4.3, G30) whose `handwriting-muse` reader raises `failure`."""
+    from test_lane_costs import TokenAdapters, lab
 
     kept = TokenAdapters.transcribe
 
     def transcribe(self, specimen, region, route):
         if route == "handwriting-muse":
-            raise AdapterFailure(
-                "provider_deadline_outcome_unknown", outcome_unknown=True
-            )
+            raise failure
         return kept(self, specimen, region, route)
 
     monkeypatch.setattr(TokenAdapters, "transcribe", transcribe)
-    app, principal, row = lab(tmp_path)
+    return lab(tmp_path)
+
+
+def drain_priced(app, principal, specimen_id):
+    """Step a priced run to its end, a day later each time a retry is scheduled."""
     workflow = app.state.workflow
     now = datetime.now(timezone.utc)
     for day in range(1, 8):
-        run = workflow.drain(principal, row["specimen_id"]).run
+        run = workflow.drain(principal, specimen_id).run
         if run.stage != "retry_scheduled":
-            break
-        assert run.blocker == "provider_deadline_outcome_unknown"
+            return run
         workflow.clock = lambda later=now + timedelta(days=day): later
+    raise AssertionError("the run kept scheduling retries: " + run.blocker)
+
+
+def test_each_retry_of_a_reader_reserves_again_and_an_unknown_spend_stays_held(
+    tmp_path, monkeypatch
+):
+    # Every attempt reserves its worst case before the call, and nothing is
+    # given back for an attempt whose outcome is unknown. The failure is the
+    # shape run_agent_bounded gives a provider timeout: the provider may have
+    # billed.
+    from specimen_digitization.application.lane_reservations import step_reservation
+    from specimen_digitization.application.reliability import AdapterFailure
+    from test_lane_costs import ledger_total
+
+    code = "provider_deadline_outcome_unknown"
+    app, principal, row = priced_reader_lab(
+        tmp_path, monkeypatch, AdapterFailure(code, outcome_unknown=True)
+    )
+    run = drain_priced(app, principal, row["specimen_id"])
     step = step_of(run, 1)
     assert run.blocker is None and run.stage == "finalized", run.blocker
     assert run.attempts[step] == 3 and step in run.completed_steps
@@ -414,14 +526,142 @@ def test_each_retry_of_a_reader_reserves_again_and_an_unknown_spend_stays_held(
 
     failed = [c for c in run.paid_calls if c["step"] == step]
     reserved = step_reservation(run, step)
-    assert [(c["attempt"], c["cost_basis"], c["usage"]) for c in failed] == [
-        (1, "reserved", None),
-        (2, "reserved", None),
-        (3, "reserved", None),
-    ]
+    # Each is a failed reading with the code it failed with, the last one too,
+    # though its step then completed (it was given up on): never "completed".
+    assert [
+        (c["attempt"], c["outcome"], c["failure_code"], c["cost_basis"], c["usage"])
+        for c in failed
+    ] == [(n, "failed", code, "reserved", None) for n in (1, 2, 3)]
     assert all(c["cost_micros"] == c["reserved_micros"] == reserved for c in failed)
     # The run's budget and the program's ledger both hold all three, in full,
     # beside the segmentation and the reading that answered (settled to 550).
     assert run.usage.reserved_cost_micros == 164_121 + 550 + 3 * reserved
     assert ledger_total(app) == run.usage.reserved_cost_micros
     assert run.usage.actual_cost_micros is None
+
+
+def test_a_reading_stopped_by_its_limits_is_recorded_failed_and_stays_reserved(
+    tmp_path, monkeypatch
+):
+    from specimen_digitization.application.lane_reservations import step_reservation
+    from specimen_digitization.application.reliability import ReadingStopped
+    from test_lane_costs import ledger_total
+
+    app, principal, row = priced_reader_lab(
+        tmp_path, monkeypatch, ReadingStopped("model_usage_limit")
+    )
+    run = drain_priced(app, principal, row["specimen_id"])
+    step = step_of(run, 1)
+    assert run.blocker is None and run.stage == "finalized", run.blocker
+    # Not asked again: its limits would hit again.
+    assert run.attempts[step] == 1 and step in run.completed_steps
+    [call] = [c for c in run.paid_calls if c["step"] == step]
+    assert (call["outcome"], call["failure_code"], call["cost_basis"]) == (
+        "failed",
+        "model_usage_limit",
+        "reserved",
+    )
+    assert call["cost_micros"] == step_reservation(run, step)
+    assert ledger_total(app) == run.usage.reserved_cost_micros
+
+
+def first_failure(tmp_path, monkeypatch):
+    """A priced run whose reader failed once and waits for its retry."""
+    from specimen_digitization.application.reliability import AdapterFailure
+
+    app, principal, row = priced_reader_lab(
+        tmp_path,
+        monkeypatch,
+        AdapterFailure("model_provider_error", LookupStatus.PROVIDER),
+    )
+    workflow = app.state.workflow
+    run = workflow.drain(principal, row["specimen_id"]).run
+    assert run.stage == "retry_scheduled", run.blocker
+    workflow.clock = lambda: datetime.now(timezone.utc) + timedelta(days=1)
+    return app, principal, row["specimen_id"], run
+
+
+def test_a_retry_the_runs_budget_cannot_cover_blocks_and_names_its_cause(
+    tmp_path, monkeypatch
+):
+    from specimen_digitization.application.storage import digest
+
+    app, principal, specimen_id, run = first_failure(tmp_path, monkeypatch)
+    repository = app.state.workflow.repository
+    held = run.usage.reserved_cost_micros
+    specimen = repository.get(principal.scope, specimen_id)
+    specimen.run.profile.execution = specimen.run.profile.execution.model_copy(
+        update={"approved_cost_limit_micros": held + 1}
+    )
+    repository.save(principal, specimen, specimen.version, "tight", digest("tight"))
+
+    run = app.state.workflow.drain(principal, specimen_id).run
+
+    step = step_of(run, 1)
+    assert (run.stage, run.blocker) == ("processing_blocked", "cost_budget_exhausted")
+    # No second attempt was sent, and nothing more was reserved.
+    assert run.attempts[step] == 1 and run.usage.reserved_cost_micros == held
+    assert step not in run.completed_steps
+
+
+def test_a_retry_the_program_allowance_cannot_cover_blocks_and_names_its_cause(
+    tmp_path, monkeypatch
+):
+    from specimen_digitization.application.lane_allowance import (
+        LEDGER_KIND,
+        ProgramLedger,
+    )
+    from test_lane_costs import SCOPE, ledger_total
+
+    app, principal, specimen_id, run = first_failure(tmp_path, monkeypatch)
+    repository = app.state.workflow.repository
+    ledger = ProgramLedger(repository, SCOPE)
+    current = ledger.read()
+    # Less than one more reservation is left of the program's allowance.
+    repository.put_document(
+        SCOPE,
+        LEDGER_KIND,
+        ledger.ident,
+        {**current, "reserved_total_micros": 5_000_000 - 1},
+        current["revision"],
+    )
+
+    run = app.state.workflow.drain(principal, specimen_id).run
+
+    step = step_of(run, 1)
+    assert (run.stage, run.blocker) == (
+        "processing_blocked",
+        "program_allowance_exhausted",
+    )
+    assert run.attempts[step] == 1 and step not in run.completed_steps
+    assert ledger_total(app) == 5_000_000 - 1
+
+
+def test_a_pilot_reader_stopped_by_its_limits_keeps_its_unknown_outcome(
+    tmp_path, monkeypatch
+):
+    # The evidence pilot's readers are unchanged: an unknown reader never
+    # replays a paid call (test_stage_cost_reservations).
+    from specimen_digitization.application.reliability import ReadingStopped
+    from specimen_digitization.application.storage import SQLiteRepository
+    from specimen_digitization.application.worker_launch import PilotAdmission
+    from test_evidence_pilot import prepare_other_specimens
+    from test_stage_cost_reservations import mapped_pilot, run_to_block
+
+    repo, principal, specimen, launch, workflow, _ = mapped_pilot(tmp_path, monkeypatch)
+    prepare_other_specimens(principal, specimen.id, workflow)
+    seen = []
+
+    def stopped(*args):
+        seen.append(True)
+        raise ReadingStopped("model_usage_limit")
+
+    workflow.adapters.production.transcribe = stopped
+    result = run_to_block(workflow, principal, specimen.id)
+    assert result.run.blocker == "external_outcome_unknown"
+    assert result.run.lease_until
+    workflow.repository = SQLiteRepository(repo.path)
+    workflow.admission = PilotAdmission(workflow.repository, launch)
+    result = run_to_block(workflow, principal, specimen.id)
+    assert seen == [True]
+    assert not result.run.observations

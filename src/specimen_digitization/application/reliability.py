@@ -80,6 +80,11 @@ def failure_is_retryable(run, step: str, status: LookupStatus) -> bool:
     )
 
 
+# HTTP statuses of a request the provider refuses as invalid: a bad request, an
+# unknown model or route, an input too large, an unprocessable one.
+REJECTED_HTTP_STATUSES = frozenset({400, 404, 413, 422})
+
+
 def retry_after(value: str | None, current: datetime | None = None) -> int | None:
     if not value:
         return None
@@ -173,6 +178,11 @@ def run_agent_bounded(agent, prompt, *, timeout_seconds: float, usage_limits):
             "provider_deadline_outcome_unknown", outcome_unknown=True
         ) from exc
     except ModelHTTPError as exc:
+        if exc.status_code in REJECTED_HTTP_STATUSES:
+            # The provider refused the request itself, and refuses it the same
+            # way every time: a known block that names its cause, never retried
+            # and never given up on in silence. 402 is not here: it is transient.
+            raise AdapterFailure("model_request_rejected", LookupStatus.POLICY) from exc
         status = {
             401: LookupStatus.AUTHENTICATION,
             403: LookupStatus.AUTHORIZATION,
