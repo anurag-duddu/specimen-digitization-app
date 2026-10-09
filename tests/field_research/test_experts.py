@@ -904,6 +904,38 @@ def test_readers_that_differ_on_a_town_written_with_a_comma_settle_on_its_lookup
     assert (accepted.literal, accepted.value) == ("Yepocapa,", "Yepocapa")
 
 
+@pytest.mark.parametrize(("key", "authority", "says"), [
+    # The third review's N4: one GEOLocate answer confirms both readers' texts as one town.
+    ("city", "geolocate:76853dedbc6ff5ce", None),
+    # Another candidate than the town both texts are confirmed as: a municipality TGN gives.
+    ("city", "tgn:yepocapa-municipality", "which a source confirms as the same place"),
+    # Only a place: the same lookup settles no collectors between readers that differ.
+    ("collectors", None, "readers disagree on this field"),
+])
+def test_readers_that_differ_only_by_punctuation_settle_on_the_one_place_confirming_both(key, authority, says):
+    readings = (Reading("1A", "region-1", "obs-1a", "raw_reading", "Mun. Yepocapa, Chimaltenango"),
+                Reading("1B", "region-1", "obs-1b", "raw_reading", "Mun. Yepocapa Chimaltenango"))
+    field = task(key, current=FieldValue(state=ValueState.AMBIGUOUS),
+                 candidates=offered(("1A", "Yepocapa,"), ("1B", "Yepocapa")))
+    made = experts._Expert(field, readings, FakeTools(), PILOT_DATES)
+    municipality = tgn("Yepocapa", "ev-municipality", ("Yepocapa", "tgn:yepocapa-municipality",
+                                                       "second level subdivisions (political entities)"))
+    if key == "city":
+        for found in (YEPOCAPA, municipality):
+            made.calls.append(experts._Call(found.source_id, found.query, found.status, found))
+    cited = {"geolocate:76853dedbc6ff5ce": ["ev-yepocapa"], "tgn:yepocapa-municipality": ["ev-municipality"]}
+    given = answer(outcome="resolved", literal="Yepocapa", reading_names=["1B"], authority_id=authority,
+                   source_evidence_ids=cited.get(authority, []))
+
+    if says is None:
+        assert made.validate(given).literal == "Yepocapa"
+        found = agreement.labels(field, readings, [YEPOCAPA])
+        assert [label.settled for label in found.values()] == [frozenset({"Yepocapa,", "Yepocapa"})]
+        return
+    with pytest.raises(ModelRetry, match=says):
+        made.validate(given)
+
+
 SACATEPEQUEZ = "Sacatep" + chr(0xE9) + "quez"  # As GEOLocate writes it.
 TWO_LABELS = (
     Reading("1A", "region-1", "obs-1a", "raw_reading", "Chimaltenango, Guat."),

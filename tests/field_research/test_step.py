@@ -836,13 +836,14 @@ def test_a_place_the_readers_disagree_on_never_clears_without_a_lookup(tmp_path)
     assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:province_state" in run.reasons
 
 
-def confirming(text, literal=None, *, reading="1B", absent=(), source="geolocate"):
-    """A place expert: one lookup of `text` (with GEOLocate, followed by the
-    synthetic label's larger units), a Getty TGN lookup (no match) for each
-    text in `absent`, then `literal` (`text` by default) from `reading` with
-    the answer's candidate."""
+def confirming(text, literal=None, *, reading="1B", absent=(), source="geolocate", within=None):
+    """A place expert: one lookup of `text` (with GEOLocate, followed by its
+    larger units: `within`, by default the synthetic label's), a Getty TGN
+    lookup (no match) for each text in `absent`, then `literal` (`text` by
+    default) from `reading` with the answer's candidate."""
     async def script(task, readings, tools):
-        query = geolocate_query(text, task.key) if source == "geolocate" else text
+        query = (", ".join((text, *(WITHIN[task.key] if within is None else within)))
+            if source == "geolocate" else text)
         answer = await tools.lookup(source, query, field_key=task.key)
         missing = [await tools.lookup("tgn", item, field_key=task.key) for item in absent]
         return FieldOutcome(task.key, resolved(literal or text, reading=reading,
@@ -896,6 +897,44 @@ def test_readers_that_differ_settle_only_when_every_readers_text_was_looked_up(t
     assert (city.state, city.literal) == (ValueState.AMBIGUOUS, None)
     assert city.reason == agreement.DIFFER + " Settled."
     assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:city" in run.reasons
+
+
+def test_readers_whose_texts_one_source_confirms_as_one_place_name_that_place(tmp_path):
+    """The third review's N4: 1A writes "Yepocapa,", 1B "Yepocapa", and one
+    GEOLocate answer confirms both as the same town; on a label whose country
+    and department Getty TGN settles, the city settles on that evidence."""
+    places = dict(country="Guatemala", province_state="Chimaltenango", county=None)
+    rig = build_rig(tmp_path, label_with(**places, city="Yepocapa,"), label_with(**places, city="Yepocapa"),
+        candidates=[*COLLECTORS, *((key, name, value, f"{key}: {value}") for key, value in places.items()
+            if value for name in ("1A", "1B")),
+            ("city", "1A", "Yepocapa,", "city: Yepocapa,"), ("city", "1B", "Yepocapa", "city: Yepocapa")])
+    run = rig.specimen.run
+    first, second = run.observations
+    settle(rig, Scripted({"country": from_tgn("Guatemala", "Guatemala", None, "tgn:7005493"),
+        "province_state": from_tgn("Chimaltenango", "Chimaltenango", None, "tgn:1000565"),
+        "city": confirming("Yepocapa", reading="1B", within=("Chimaltenango", "Guatemala"))}),
+        tools=Gazetteer(rig.blobs))
+    city = run.fields["city"]
+    assert (city.state, city.literal, city.authority_id) == (
+        ValueState.SUPPORTED, "Yepocapa", "geolocate:Yepocapa, Chimaltenango, Guatemala")
+    # Each reader's text is kept, unfolded (G27); the confirmed reading settles it.
+    assert city.verbatim_by_observation == {second.id: "Yepocapa", first.id: "Yepocapa,"}
+    assert not reasons_for(run, "city")
+
+
+def test_readers_whose_texts_name_two_places_never_settle(tmp_path):
+    """San Pedro and San Pablo, each confirmed by GEOLocate as its own town."""
+    rig = build_rig(tmp_path, SAN_PEDRO, SAN_PABLO, candidates=every_field(*CITIES))
+    run = rig.specimen.run
+
+    async def both(task, readings, tools):
+        found = [await tools.lookup("geolocate", geolocate_query(text), field_key=task.key)
+            for text in ("San Pedro", "San Pablo")]
+        return FieldOutcome(task.key, resolved("San Pedro", authority_id=found[0].candidates[0].authority_id,
+            cited=[found[0].evidence.id]), evidence=[item.evidence for item in found], model_calls=1)
+    settle(rig, Scripted({"city": both}))
+    assert (run.fields["city"].state, run.fields["city"].reason) == (ValueState.AMBIGUOUS,
+        agreement.DIFFER + " Settled.")
 
 
 def test_a_taxon_the_readers_write_differently_needs_every_readers_name_looked_up(tmp_path):

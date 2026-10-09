@@ -31,13 +31,20 @@ answer becomes a value (step._refusal). It enforces, in this order:
      confirmed by an answer about it (below), and every other has a captured
      no_match answer about it and no success or ambiguous one. An error, a
      timeout or a literal never asked about is neither. A field with no
-     approved source never settles such a label.
+     approved source never settles such a label. For a place value field
+     (point 4) such a label also settles when every one of its literals is
+     confirmed and one authority_id confirms them all: its readers name the
+     same place ("Yepocapa," and "Yepocapa", N4 of the third review). That
+     rests on the source's evidence, never on the texts compared, and the
+     label settles on each of its literals; readers confirmed as different
+     places, or not all confirmed, still go to review.
    The field settles when every such label settles and all on the same
    literal, which is then the answer's literal (and, when a source settled a
    label, the answer cites a success answer confirming it); or, for labels
-   that settle on different literals, when a source confirms each of them as
-   the answer's authority_id (G32: the same place ID or GBIF usage) and the
-   answer cites the one for its literal. Anything else goes to review.
+   (or a place's readers) that settle on different literals, when a source
+   confirms each of them as the answer's authority_id (G32: the same place ID
+   or GBIF usage), the answer's literal is one of them and the answer cites
+   the answer confirming it. Anything else goes to review.
    A source answer is about a literal when GBIF was asked the whole name it
    writes (checks.taxon_query_grounded), or a place source was asked the
    literal as the query's first comma-separated part, the only name a
@@ -99,7 +106,8 @@ Point 3 follows research_harness/evidence.py's G20 and G32 rules (725-751:
 one confirmed reader beside the other's captured no-match; labels that
 differ each settled by a source). It is stricter than field_resolution.py
 (178-215), which clears readers that differ when every success names one
-value: here two confirmed readers of one label go to review.
+value: here two confirmed readers of one label go to review, unless they are
+a place's readers whose texts one candidate at the field's level confirms.
 """
 
 from __future__ import annotations
@@ -372,11 +380,12 @@ def ruled_out(answers: Iterable[SourceAnswer], literal: str) -> bool:
 @dataclass(frozen=True)
 class Label:
     """One label that writes the field: its readings' literals, and the
-    literal it settles to (None when it does not settle)."""
+    literals it settles to: one, or, for readers a source confirms as one
+    place, each of theirs (N4); none when it does not settle."""
 
     literals: frozenset[str]
-    settled: str | None
-    # A source settled readers that differ (G20), rather than a decided
+    settled: frozenset[str] = frozenset()
+    # A source settled readers that differ (G20, N4), rather than a decided
     # transcript or readers that agree.
     by_source: bool = False
 
@@ -390,7 +399,13 @@ def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[Sourc
     - a label whose readers each write the same one literal, on that literal;
     - a label whose readers differ (or where one writes nothing), only through
       the field's approved sources (`answers`): exactly one of its literals
-      is confirmed (identities), and every other is ruled out (ruled_out)."""
+      is confirmed (identities), and every other is ruled out (ruled_out);
+      or, for a place value field, every one of its literals is confirmed and
+      one authority_id confirms them all, so its readers name the same place
+      ("Yepocapa," and "Yepocapa"; N4 of #284's third review). That settles
+      on the source's evidence, never on the readers' texts compared, and on
+      each of the literals: the answer gives one of them, with that
+      authority_id."""
     literals = reader_literals(task, readings)
     allowed = candidates_by_reading(task, readings)
     sourced = bool(frozenset(task.tools) & SOURCE_IDS)
@@ -404,20 +419,24 @@ def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[Sourc
             texts = frozenset(literals.get(decided.name, ()))
             if texts:
                 one = len(texts) == 1 and texts <= set(allowed.get(decided.name, {}))
-                found[region] = Label(texts, next(iter(texts)) if one else None)
+                found[region] = Label(texts, texts if one else frozenset())
             continue
         each = [frozenset(literals.get(r.name, ())) for r in group]
         texts = frozenset().union(*each)
         if not texts:
             continue
         if len(texts) == 1 and all(len(own) == 1 for own in each):
-            found[region] = Label(texts, next(iter(texts)))
+            found[region] = Label(texts, texts)
             continue
-        confirmed = {text for text in texts if identities(answers, text, task.key)} if sourced else set()
-        if len(confirmed) == 1 and all(ruled_out(answers, text) for text in texts - confirmed):
-            found[region] = Label(texts, next(iter(confirmed)), by_source=True)
+        confirmed = {text: identities(answers, text, task.key) for text in texts} if sourced else {}
+        ones = frozenset(text for text, ids in confirmed.items() if ids)
+        if len(ones) == 1 and all(ruled_out(answers, text) for text in texts - ones):
+            found[region] = Label(texts, ones, by_source=True)
+        elif (task.key in PLACE_VALUE_FIELDS and ones == texts
+                and frozenset.intersection(*(frozenset(confirmed[text]) for text in texts))):
+            found[region] = Label(texts, texts, by_source=True)
         else:
-            found[region] = Label(texts, None)
+            found[region] = Label(texts)
     return found
 
 
@@ -425,23 +444,25 @@ def _disagreement(task: FieldTask, readings: Sequence[Reading], *, literal: str,
         authority_id: str | None, cited: Sequence[SourceAnswer],
         received: Sequence[SourceAnswer]) -> Refusal | None:
     """Why readers or labels that disagree do not settle the field on this
-    answer, or None (B1 of #284's reviews; G19, G20, G27, G32)."""
+    answer, or None (B1 of #284's reviews; G19, G20, G27, G32, N4)."""
     sources = frozenset(task.tools) & SOURCE_IDS
     answers = [a for a in received if a.source_id in sources]
     found = labels(task, readings, answers)
-    settled = {label.settled for label in found.values()}
-    if not found or (settled != {None} and len(settled) == 1
+    settled = frozenset().union(*(label.settled for label in found.values())) if found else frozenset()
+    if not found or (all(label.settled for label in found.values()) and len(settled) == 1
             and not any(label.by_source for label in found.values())):
         return None  # Every label settles on its own text, and they agree.
     every = sorted(frozenset().union(*(label.literals for label in found.values())))
     shown = "; ".join(repr(text) for text in every)
-    if None in settled:
+    if not all(label.settled for label in found.values()):
         return Refusal(DIFFER, (
             f"The readers disagree on this field ({shown}). A label with no decided transcript "
             "whose readers differ settles only when your approved sources were asked about each "
             "reader's text: exactly one confirmed by a success answer, every other found by none "
             "(a no_match answer, and no success or ambiguous one)"
-            + ("." if sources else "; this field has no such source.")
+            + ("; or, for a place, each reader's text confirmed as the same place (one candidate "
+               "at this field's level, with one authority_id)." if task.key in PLACE_VALUE_FIELDS
+               else "." if sources else "; this field has no such source.")
             + " Ask about each reader's text, or answer several_possibilities with each reader's "
             "text, or sources_cannot_resolve."), differ=True)
     cited = [a for a in cited if a.source_id in sources]
@@ -456,14 +477,20 @@ def _disagreement(task: FieldTask, readings: Sequence[Reading], *, literal: str,
             return Refusal(DIFFER, (
                 f"Cite the evidence_id of the source answer that confirms {one!r}."), differ=True)
         return None
-    # G32: labels that settle on different text agree only through a source
-    # that confirms each label's text as the same place or name.
+    # G32 and N4: labels, or readers of one label, that settle on different
+    # text agree only through a source that confirms each text as the same
+    # place or name.
     common = None
     for text in settled:
-        found = identities(answers, text, task.key)
-        common = found if common is None else common & found
+        ids = identities(answers, text, task.key)
+        common = ids if common is None else common & ids
     if want in settled and authority_id in (common or set()) and authority_id in identities(cited, want, task.key):
         return None
+    if len(found) == 1:
+        return Refusal(DIFFER, (
+            f"The readers write {shown}, which a source confirms as the same place: give one "
+            "reader's text as the literal, that place's authority_id, and cite the answer that "
+            "confirms your literal."), differ=True)
     return Refusal(LABELS_DIFFER, (
         f"The labels write different text for this field ({shown}). They settle only when an "
         "approved source confirms each label's text as the same place or name: ask about each, "
