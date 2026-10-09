@@ -28,10 +28,17 @@ DEFAULT_MAX_TOKENS = 2048
 # Far above what one field's expert needs (instructions, every reading, a few
 # source answers); a request over it means something grew without bound.
 DEFAULT_MAX_INPUT_TOKENS = 48_000
+# The provider's chat template around what is sent: role markers and the tool
+# and output schemas as it renders them (lane_reservations.PROMPT_FRAMING_TOKENS).
+TEMPLATE_TOKENS = 512
 
 
 class BudgetExhausted(Exception):
     """A model call was refused before it was sent: it could cross the run's ceiling."""
+
+
+class InputTooLarge(BudgetExhausted):
+    """A model call was refused before it was sent: what it would send is over the input bound."""
 
 
 class CostMeter:
@@ -139,9 +146,11 @@ def input_token_bound(
 class MeteredModel(WrapperModel):
     """A model whose every request is reserved against a CostMeter before it is sent.
 
-    Settled from the provider's reported usage; a request that reports none, or
-    that fails or is cancelled after it may have been sent, keeps its worst case
-    as spent. `model_calls` and `cost_micros` count this instance's own requests.
+    The reservation is the request's input bound plus the chat template's
+    TEMPLATE_TOKENS, so the usage a provider reports cannot exceed it. Settled
+    from the provider's reported usage; a request that reports none, or that
+    fails or is cancelled after it may have been sent, keeps its worst case as
+    spent. `model_calls` and `cost_micros` count this instance's own requests.
     """
 
     def __init__(
@@ -173,8 +182,8 @@ class MeteredModel(WrapperModel):
             max_tokens = settings["max_tokens"] = self.default_max_tokens
         input_bound = input_token_bound(messages, prepared)
         if input_bound > self.max_input_tokens:
-            raise BudgetExhausted("model_input_over_bound")
-        return settings, input_bound, max_tokens
+            raise InputTooLarge("model_input_over_bound")
+        return settings, input_bound + TEMPLATE_TOKENS, max_tokens
 
     def _settle(self, ticket: int, input_tokens: int, output_tokens: int) -> None:
         self.model_calls += 1

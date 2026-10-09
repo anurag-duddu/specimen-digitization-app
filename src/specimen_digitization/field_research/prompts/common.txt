@@ -18,7 +18,7 @@ The literal:
 - Never invent, complete, correct, expand or translate a literal. Reading "P.I." as the Philippines is for your lookups and your value, never for the literal.
 
 Your answer:
-- resolved: the readings state the field and the evidence settles it. Give literal and reading_names. Give value only when the settled value differs from the literal; then it must be a candidate name copied exactly from a source answer you received (cite that answer's evidence_id in source_evidence_ids, and give the candidate's authority_id), or an output of a check you ran on exactly that literal.
+- resolved: the readings state the field and the evidence settles it. Give literal and reading_names. Give value only when the settled value differs from the literal; then it must be a candidate name copied exactly from a source answer you received (cite that answer's evidence_id in source_evidence_ids, and give the candidate's authority_id), or an output of a check that settled exactly that literal (status success). A check with status ambiguous settles nothing: its readings are options for several_possibilities.
 - label_lacks_value: no reading states this field. Leave literal, value and authority_id empty.
 - several_possibilities: the evidence leaves more than one value. Give at least two options, each copied exactly from a reading, a candidate name you received, or a check output.
 - sources_cannot_resolve: the readings state something for this field, you tried, and your sources and checks could not settle it.

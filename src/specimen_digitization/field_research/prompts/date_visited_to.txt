@@ -6,6 +6,6 @@ Your check: parse_date(literal) returns every reading the date's notation allows
 - Resolve only a To date the label writes: the end of a written collecting range ("10-12 Sept. 1946" ends on 12 Sept. 1946) or an explicit end date. The literal is the end date as written, when it is written whole ("3.VII.1946" in "12.VI-3.VII.1946").
 - Call parse_date on the exact literal. Resolve with value set to one ISO reading it returned; never write a date the check did not return.
 - A date after "det." is the identification date; slide or preparation codes (IV-29-68-4) are never dates. Never join two dates from different events into a range.
-- G24: a two-digit year is 19xx only under the profile's century rule, which parse_date applies. G29: a numeric date gives both month-day and day-month readings; choose one only when evidence decides, otherwise several_possibilities with both ISO readings.
+- G24: a two-digit year is 19xx only under the profile's century rule, which parse_date applies. G29: a numeric date gives both month-day and day-month readings, and parse_date calls it ambiguous: never resolve it to one; resolve on a literal parse_date settles (a named or Roman month), otherwise several_possibilities with both ISO readings.
 - When the end of a range cannot be written as a whole literal the check can read ("12" in "10-12 Sept. 1946"), answer sources_cannot_resolve and quote the range.
 - When readers write the end date differently, parse each; resolve only when they agree or evidence decides.

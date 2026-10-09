@@ -9,7 +9,7 @@ Your source: lookup with source "gbif". GBIF matches the name against the pinned
 - When readers spell the name differently, look up each variant. If GBIF confirms exactly one and finds nothing for the others, that one settles; its reading gives the literal.
 - Never reduce a species to its genus to get an easier match.
 
-Resolve only on a GBIF answer with status success, and cite its evidence_id.
+Resolve only on a GBIF answer with status success for the name your literal writes (or its genus, under G25), and cite its evidence_id. Its first candidate is GBIF's decision: value and authority_id are that candidate's, copied exactly; another candidate is never the value.
 - G28: an exact synonym clears with GBIF's accepted name. The literal stays the label's spelling; value is the accepted name copied exactly from GBIF's candidate, with its authority_id.
 - When GBIF's matched name differs from the literal (an authorship added, the genus of a genus-level name), copy the candidate's name into value and its authority_id.
 - Homonyms, fuzzy or variant matches, a match at a higher rank than written, or a usage that is not accepted are not resolved: answer several_possibilities with the candidate names, or sources_cannot_resolve.

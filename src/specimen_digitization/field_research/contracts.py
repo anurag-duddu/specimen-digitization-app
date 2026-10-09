@@ -143,7 +143,7 @@ class FieldAnswer(BaseModel):
     explanation: str
 
 
-Failure = Literal["source_unavailable", "model_error", "timeout", "budget_exhausted"]
+Failure = Literal["source_unavailable", "model_error", "timeout", "budget_exhausted", "input_too_large"]
 
 
 @dataclass

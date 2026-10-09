@@ -1,4 +1,5 @@
-"""Deterministic checks a field's expert may call: dates, elevations, catalog numbers.
+"""Deterministic checks a field's expert may call: dates, elevations, catalog numbers;
+and the rule tying a taxon's GBIF question to its literal.
 
 Each wraps the repository's pinned parser unchanged (HARNESS.md sections 8 and 13),
 calls no provider and never changes the literal. Like the validators it wraps,
@@ -8,6 +9,7 @@ otherwise it is policy_blocked with the note literal_not_in_source.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, fields
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
@@ -20,9 +22,10 @@ from specimen_digitization.application.field_validators import (
     date_parser,
 )
 
-# The elevation parser lives with the six-specialist harness; it moves with this
-# import when that harness is deleted.
+# The elevation parser and the taxon marker projection live with the
+# six-specialist harness; they move with these imports when that harness is deleted.
 from specimen_digitization.research_harness.evidence import EvidenceError, parse_measurement
+from specimen_digitization.research_harness.taxonomy import taxonomy_scientific_name
 
 NOT_IN_SOURCE = "literal_not_in_source"
 # The date parser's notes for a literal that is (part of) a hyphen-joined code.
@@ -171,6 +174,25 @@ def parse_date(
         for r in (result.parsed or {}).get("readings", ())
     )
     return DateCheck(literal, result.outcome, readings, tuple(result.warnings))
+
+
+def taxon_query_grounded(query: str, literal: str) -> bool:
+    """Whether GBIF was asked about the name this taxon literal writes.
+
+    The query is a whole-word part of the literal (its author or a note may be
+    left off), and it names more than a genus unless the literal is itself a
+    genus-level identification (G25: "Epipsocus sp. 1" is asked as "Epipsocus"),
+    as the scientific-name parser reads it. The six-specialist harness holds
+    the deciding query to the same written assertion
+    (research_harness.evidence._validate_taxon_inputs).
+    """
+    query = query.strip()
+    if not query or not re.search(r"(?<!\w)" + re.escape(query) + r"(?!\w)", literal):
+        return False
+    if len(query.split()) > 1:
+        return True
+    name = taxonomy_scientific_name(literal)
+    return bool(name and name.genus and name.partly_read is None and name.query == query)
 
 
 def _evidence_error_note(message: str) -> str:

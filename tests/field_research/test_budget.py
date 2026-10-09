@@ -16,6 +16,7 @@ from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.usage import RequestUsage
 
+from specimen_digitization.field_research import budget
 from specimen_digitization.field_research.budget import (
     DEFAULT_MAX_TOKENS,
     BudgetExhausted,
@@ -150,6 +151,26 @@ def test_a_smaller_max_tokens_bounds_the_reservation():
     assert held[0] < m.cost(0, DEFAULT_MAX_TOKENS)
 
 
+def test_the_reservation_covers_the_chat_template_around_what_is_sent(monkeypatch):
+    m = meter()
+    template = budget.TEMPLATE_TOKENS
+    held: list[int] = []
+    monkeypatch.setattr(budget, "input_token_bound", lambda messages, parameters: 1000)
+
+    def script(messages, info):
+        held.append(m.outstanding_micros)
+        # The provider counts its chat template's tokens around the messages too.
+        return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, {"text": "x"})],
+                             usage=RequestUsage(input_tokens=1000 + template, output_tokens=10))
+
+    model = MeteredModel(FunctionModel(script), m)
+    asyncio.run(Agent(model, output_type=Answer).run("hi"))
+
+    assert template == 512
+    assert held == [m.cost(1000 + template, DEFAULT_MAX_TOKENS)]
+    assert m.spent_micros == m.cost(1000 + template, 10) <= held[0]
+
+
 def test_a_request_over_the_input_bound_is_refused_before_it_is_sent():
     m = meter()
     sent: list[object] = []
@@ -161,7 +182,7 @@ def test_a_request_over_the_input_bound_is_refused_before_it_is_sent():
     model = MeteredModel(FunctionModel(script), m, max_input_tokens=2000)
     agent = Agent(model, output_type=Answer, instructions="Rules. " * 50)
 
-    with pytest.raises(BudgetExhausted):
+    with pytest.raises(budget.InputTooLarge):
         asyncio.run(agent.run("label text " * 200))
 
     assert sent == []

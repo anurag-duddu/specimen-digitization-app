@@ -59,7 +59,8 @@ CONTEXT = {
                        verbatim_by_observation={"obs-1a": "Davao", "obs-1b": "Davao"}),
     "habitat": FieldValue(),
 }
-GBIF_EVIDENCE = Evidence(id="ev-gbif-1", kind="lookup", source="gbif", locator="gbif:1",
+# As sources.py stores a success: the locator is the candidate GBIF decided.
+GBIF_EVIDENCE = Evidence(id="ev-gbif-1", kind="authority", source="gbif", locator="gbif:1234",
                          excerpt="Epipsocus Hagen, 1866")
 GBIF_SUCCESS = SourceAnswer(
     source_id="gbif",
@@ -253,15 +254,73 @@ def test_a_value_from_no_received_candidate_is_refused():
     assert "'Epipsocus Banks, 1920' differs from the literal" in message
 
 
-def test_an_expert_that_keeps_inventing_a_value_fails_as_a_model_error():
+def test_an_expert_that_keeps_inventing_a_value_goes_to_review():
     tools = FakeTools({("gbif", "Epipsocus"): GBIF_SUCCESS})
     invented = {**GBIF_ANSWER, "value": "Epipsocus Banks, 1920", "authority_id": None}
     script = Script(call("lookup", source="gbif", query="Epipsocus"), invented, invented, invented)
 
     outcome = resolve(script, task("taxon"), tools)
 
-    assert (outcome.answer, outcome.failure) == (None, "model_error")
+    # Not an outage, so never a retry: a person reads the field.
+    assert outcome.failure is None
+    assert outcome.answer == FieldAnswer(outcome="sources_cannot_resolve", explanation=experts.UNCHECKED)
+    assert experts.UNCHECKED == "The expert's answer could not be checked against the readings and sources."
     assert outcome.evidence == [GBIF_EVIDENCE]  # what it gathered is still reported
+    assert outcome.model_calls == 4
+
+
+GBIF_TWO = SourceAnswer(
+    source_id="gbif", query="Epipsocus", status=LookupStatus.SUCCESS,
+    candidates=(SourceCandidate("Epipsocus Hagen, 1866", "gbif:1234", "GENUS"),
+                SourceCandidate("Episcopus Other, 1900", "gbif:2", "GENUS", "alternative, fuzzy match")),
+    evidence=GBIF_EVIDENCE, note="success",
+)
+GBIF_UNRELATED = SourceAnswer(
+    source_id="gbif", query="Bombus impatiens", status=LookupStatus.SUCCESS,
+    candidates=(SourceCandidate("Bombus impatiens Cresson, 1863", "gbif:999", "SPECIES"),),
+    evidence=Evidence(id="ev-gbif-9", kind="authority", source="gbif", locator="gbif:999",
+                      excerpt="Bombus impatiens Cresson, 1863"),
+    note="success",
+)
+
+
+@pytest.mark.parametrize(("received", "given", "says"), [
+    # GBIF was asked about a name no reading writes (the reviewer's first probe).
+    (GBIF_UNRELATED, dict(literal="Epipsocus", value="Bombus impatiens Cresson, 1863",
+                          authority_id="gbif:999", source_evidence_ids=["ev-gbif-9"]),
+     "query must be the name this literal writes"),
+    # The alternative GBIF listed, not the candidate it decided (the second probe).
+    (GBIF_TWO, dict(literal="Epipsocus", value="Episcopus Other, 1900", authority_id="gbif:2",
+                    source_evidence_ids=["ev-gbif-1"]), "the candidate GBIF decided"),
+    # The decided candidate's id with another candidate's name.
+    (GBIF_TWO, dict(literal="Epipsocus", value="Episcopus Other, 1900", authority_id="gbif:1234",
+                    source_evidence_ids=["ev-gbif-1"]), "differs from the literal"),
+    # G25: a genus-level identification is settled on its genus alone.
+    (GBIF_SUCCESS, dict(literal="Epipsocus sp. 1", value="Epipsocus Hagen, 1866",
+                        authority_id="gbif:1234", source_evidence_ids=["ev-gbif-1"]), None),
+])
+def test_a_taxon_resolves_only_on_the_candidate_gbif_decided_for_its_literal(received, given, says):
+    made = expert("taxon", [received])
+    given_answer = answer(outcome="resolved", reading_names=["1A"], **given)
+
+    if says is None:
+        assert made.validate(given_answer).value == given["value"]
+        return
+    with pytest.raises(ModelRetry, match=says):
+        made.validate(given_answer)
+
+
+def test_the_reviewers_taxon_probes_end_in_review_not_resolved():
+    for received, value, authority in ((GBIF_UNRELATED, "Bombus impatiens Cresson, 1863", "gbif:999"),
+                                       (GBIF_TWO, "Episcopus Other, 1900", "gbif:2")):
+        tools = FakeTools({("gbif", received.query): received})
+        given = dict(outcome="resolved", literal="Epipsocus", reading_names=["1A"], value=value,
+                     authority_id=authority, source_evidence_ids=[received.evidence.id])
+        script = Script(call("lookup", source="gbif", query=received.query), given, given, given)
+
+        outcome = resolve(script, task("taxon"), tools)
+
+        assert outcome.answer.outcome == "sources_cannot_resolve" and outcome.failure is None
 
 
 def test_label_lacks_value_carries_no_value():
@@ -293,16 +352,33 @@ def test_several_possibilities_from_a_date_check():
     assert "'1948-06-04' is not text a reading contains" in retries(script.seen[2][0])[0]
 
 
-def test_a_resolved_date_takes_its_value_from_the_check():
+def test_one_reading_of_an_ambiguous_date_is_sent_back_and_both_go_to_review():
     script = Script(
         call("parse_date", literal="4-5-48"),
         dict(outcome="resolved", literal="4-5-48", reading_names=["1A"], value="1948-04-05",
              explanation="Another label writes the month by name."),
+        dict(outcome="several_possibilities", options=["1948-04-05", "1948-05-04"],
+             literal="4-5-48", reading_names=["1A"], explanation="Day and month can be read either way."),
     )
 
     outcome = resolve(script, task("date_visited_from"))
 
-    assert outcome.failure is None and outcome.answer.value == "1948-04-05"
+    assert tool_returns(script.seen[1][0])[0]["status"] == "ambiguous"
+    assert "'1948-04-05' differs from the literal" in retries(script.seen[2][0])[0]
+    assert outcome.failure is None and outcome.answer.outcome == "several_possibilities"
+    assert outcome.answer.options == ["1948-04-05", "1948-05-04"]
+
+
+def test_a_resolved_value_comes_from_a_check_that_settles_the_literal():
+    script = Script(
+        call("parse_elevation", literal="1500 ft"),
+        dict(outcome="resolved", literal="1500 ft", reading_names=["2A"], value="1500"),
+    )
+
+    outcome = resolve(script, task("elevation_from_ft"))
+
+    assert tool_returns(script.seen[1][0])[0]["status"] == "success"
+    assert outcome.failure is None and outcome.answer.value == "1500"
 
 
 @pytest.mark.parametrize("failure", [
@@ -362,6 +438,45 @@ def test_a_budget_that_cannot_fit_a_call_fails_the_field():
 
     assert outcome.failure == "budget_exhausted" and outcome.answer is None
     assert script.seen == [] and outcome.model_calls == 0
+
+
+def test_a_request_over_the_input_bound_fails_the_field_as_too_large_not_as_the_cost_limit():
+    script = Script(dict(outcome="label_lacks_value"))
+    huge = (Reading("9A", "region-9", "obs-9a", "raw_reading", "x" * 200_000),)
+    resolver = make_resolver(model_factory=script.model, meter=meter(), date_rules=PILOT_DATES)
+
+    outcome = asyncio.run(resolver(task("habitat"), READINGS + huge, CONTEXT, tools=FakeTools()))
+
+    assert (outcome.answer, outcome.failure) == (None, "input_too_large")
+    assert script.seen == [] and outcome.model_calls == 0
+
+
+class _Client:
+    def __init__(self):
+        self.closed = 0
+
+    async def close(self):
+        self.closed += 1
+
+
+def test_each_experts_inference_client_is_closed():
+    clients = []
+
+    def factory():
+        model = Script(dict(outcome="label_lacks_value")).model()
+        model.client = _Client()  # As model_gateway.model_for's AsyncInferenceClient.
+        clients.append(model.client)
+        return model
+
+    resolver = make_resolver(model_factory=factory, meter=meter())
+
+    async def two():
+        await resolver(task("habitat"), READINGS, CONTEXT, tools=FakeTools())
+        await resolver(task("collectors"), READINGS, CONTEXT, tools=FakeTools())
+
+    asyncio.run(two())
+
+    assert [client.closed for client in clients] == [1, 1]
 
 
 def test_the_field_deadline_is_a_timeout():
