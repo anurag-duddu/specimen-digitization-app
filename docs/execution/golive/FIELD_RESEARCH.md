@@ -475,12 +475,14 @@ all of these hold:
   (a name the GBIF tool withholds unsent is ambiguous), and no query the
   expert asked GBIF names a genus (`checks.query_names_a_genus`). A query
   names a genus when the scientific-name parser reads a name in it as
-  written ("Epipsocus", "Epipsocus sp. 1", "Epipsocus prob. sp. 1"), or
-  with the emphasis marks "*" and "_" dropped and its first letter a
-  capital ("epipsocus", "*Epipsocus*", "epipsocus sp. 1"), or when it is
-  one word (brackets, quotes and punctuation around it aside) that may be
-  a genus once its first letter is a capital (the label check's shape
-  below: "EPIPSOCUS", "Ep1psocus", "(epipsocus)"). The taxon brief has the
+  written ("Epipsocus", "Epipsocus sp. 1", "Epipsocus prob. sp. 1"), with
+  the emphasis marks "*" and "_" dropped and its first letter a capital
+  ("epipsocus", "*Epipsocus*", "epipsocus sp. 1"), or as its tokens (the
+  label check's tokens, below) with the first letter a capital
+  ("Epipsocus(?)"); or when, its morphocodes aside, any of its tokens may
+  be a genus by the label check's test below once its first letter is a
+  capital ("EPIPSOCUS", "ep1psocus", "(epipsocus)", "E. sp. 1", "E.?", an
+  "Epipsocus" with an accented capital). The taxon brief has the
   expert look up the genus a label writes, so such a lookup is its own
   finding that the label writes one, wherever on the label the genus
   stands. GBIF's no-name answer for a morphocode (no match, no candidates,
@@ -502,18 +504,42 @@ all of these hold:
   decides every field on a decided label (#284);
 - the label names no genus for that code (`checks.label_names_no_genus`):
   this is judged on every reading's text, not on the organiser's literal.
-  Wherever any reading writes the code, the word written immediately
-  before it (on its line, or, when only sex signs or punctuation precede
-  it there, the last word of the nearest line above that has one; "cf.",
-  "aff." and "nr." passed over) and the first word after it on its line
-  may not be a word that may be a genus: a capital, alone or followed by
-  letters and digits ending in a letter, with an optional final period
-  ("Epipsocus", "Ep1psocus", "EPIPSOCUS", "E."). So "Epipsocus sp. 1",
-  and "Epipsocus" with "sp. 1" on the next line (as on 105526328), never
-  clear as unmatched, whatever the organiser's candidate is; the
-  pilot's 105526321 ("Mossy forest 6400'" above "sp. 30"), 105526326
-  ("Sp. 22" on a label of its own) and 105526327 ("V-4-67-1" above
-  "sp 22") clear;
+  Wherever any reading writes the code, no token beside it may be a genus
+  (`checks.genus_beside`). A token is a whitespace-separated word with
+  "?", "*", "_", straight and curly quotes, backticks, brackets, ",", ";"
+  and ":" shed at either end, and a "cf.", "aff." or "prob." shed at
+  either end, written against the word or as a word of its own
+  (`checks._token`); what then holds no letter or digit (a sex sign, a
+  "+", a lone "?" or "cf.") is no token. Two tokens are read: the one
+  written immediately before the code (the last before it on its line or,
+  when its line has none there, the last of the nearest line above that
+  has one), and the first after the code on its line. Either may be a
+  genus (`checks.may_be_genus`) when it holds a letter and no digit,
+  whatever its case ("Epipsocus", "epipsocus?", "E.?", "cf.Epipsocus",
+  "R.D.mitchell", "legs", the reader's "[unreadable]"), or when it is a
+  capital followed by letters and digits ending in a letter, with an
+  optional final period ("Ep1psocus"); a token with a digit ("V-4-67-1",
+  "6400'", "IX-14-46") is not. The token after the code is passed over
+  when it is, as written, one of `checks.NOT_GENERA`, the one list of
+  such words: legs, leg, wings, wing, head, terminalia, genitalia, slide,
+  mount and the two sex signs. On the taxon's keyed line ("taxon: sp.
+  30", as `Workflow.parse` reads key: value text) the key is no token;
+  when the nearest line above with a token is itself a keyed line
+  ("verbatim_dts: ..."), it is another field's, and no token before the
+  code is read. So "Epipsocus sp. 1", "Epipsocus", "Epipsocus?" or
+  "[unreadable]" with "sp. 1" on the next line (as on 105526328), "E.?
+  sp. 1" and "legs sp. 1" never clear as unmatched, whatever the
+  organiser's candidate is; the pilot's 105526321 ("Mossy forest 6400'"
+  above "sp. 30"), 105526326 ("Sp. 22" on a label of its own) and
+  105526327 ("V-4-67-1" above "sp 22", "legs" on the line below) clear;
+- no part of a label that writes the code is unreadable
+  (`step._code_label_unreadable`): rule A's test (no reader's unreadable
+  span, no transcript marked unreadable, no "[unreadable]" marker in a
+  reader's, a reading's or a transcript's text), applied to each label any
+  of whose texts writes the code. An unreadable word there may be the
+  genus. A label that does not write the code is not read, so 105526324's
+  unreadable label does not hold back the "sp 22" another of its labels
+  writes;
 - the readers settle on the literal by the rule for readers that disagree
   (step 5 above): with no successful lookup, that is a label's decided
   transcript, its other readers evidence only, or readers of a label with
@@ -530,17 +556,19 @@ run keeps among its lookups (`lookup.no_name_lookup`: no match, and no
 request made; the step adds it when the expert never asked GBIF that
 literal). The clearance rules do not give such a taxon taxonomy_unresolved
 (`step.taxon_unmatched`) while it cites that row, the run's readings still
-name no genus beside its code, and no GBIF lookup the run stores shows a
-genus (`step._lookup_found_a_genus`: the same test, on the query sent or
-asked and the name GBIF could not read). A taxon with a genus that GBIF
-cannot decide, such as 105526328's "Epipsocus", still goes to review,
-whether the organiser's candidate is "Epipsocus sp. 1" or only "sp. 1": when
-the label writes the genus beside the code, by the label check; and,
-wherever the label writes it, when the expert asked GBIF the genus. Where
-the label writes the genus out of the label check's sight (on the line
-after the code, two lines above it, before another word on the line above,
-in lower case, between emphasis marks, or before "prob."), the taxon goes
-to review when the expert asked GBIF a name that names a genus or received
+name no genus beside its code, no part of a label that writes the code is
+unreadable, and no GBIF lookup the run stores shows a genus
+(`step._lookup_found_a_genus`: the same test, on the query sent or asked
+and the name GBIF could not read). A taxon with a genus that GBIF cannot
+decide, such as 105526328's "Epipsocus", still goes to review, whether the
+organiser's candidate is "Epipsocus sp. 1" or only "sp. 1": when the label
+writes the genus, or any word that may be one, as a token beside the code,
+by the label check; when a label that writes the code has an unreadable
+part; and, wherever the label writes the genus, when the expert asked GBIF
+the genus. Where the label writes the genus out of the label check's sight
+(on a line after the code's, or behind a nearer token that holds a digit,
+such as "Epipsocus" above "V-4-67-1" above the code), the taxon goes to
+review when the expert asked GBIF a name that names a genus or received
 candidates, and can clear as unmatched only when it did neither.
 
 **Known limitation.** The canonical projection skips a field with no literal
@@ -579,8 +607,9 @@ kept as made and the record waits for that reviewer's approval. Every later
 pass checks a not-on-the-label value again: it clears only while it cites
 its check row and that row names the run's current readings. An unmatched
 taxon is checked again too: it clears only while it cites its check row,
-the run's readings name no genus beside its code, and no GBIF lookup the
-run stores shows a genus. A not-present
+the run's readings name no genus beside its code, no part of a label that
+writes the code is unreadable, and no GBIF lookup the run stores shows a
+genus. A not-present
 value with no such row, as every record researched before 2026-10-09 has,
 never clears on a re-check; only new research writes the row.
 

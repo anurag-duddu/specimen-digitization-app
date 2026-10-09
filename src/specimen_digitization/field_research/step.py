@@ -787,11 +787,13 @@ def _unmatched_taxon(run, task, outcome: FieldOutcome, *, readings, by_name, evi
       the same code (checks.morphocode: a reader's "Sp.30 <female sign>"
       beside "sp. 30 <female sign>", but never "sp. 39");
     - the label names no genus for that code (checks.label_names_no_genus):
-      wherever any reading writes it, no word that may be a genus is written
-      immediately before it (on its line, or ending the nearest line above
-      that has a word), or first after it on its line. A candidate "sp. 1"
-      taken from "Epipsocus sp. 1", or
-      from "Epipsocus" with "sp. 1" on the next line, does not qualify;
+      wherever any reading writes it, no token that may be a genus
+      (checks.may_be_genus: a letter and no digit, "Epipsocus?", "E.?",
+      "[unreadable]") is written immediately before it (on its line, or
+      ending the nearest line above that has a token), or first after it on
+      its line other than one of checks.NOT_GENERA. A candidate "sp. 1"
+      taken from "Epipsocus sp. 1", or from "Epipsocus" with "sp. 1" on the
+      next line, does not qualify;
     - no part of a label that writes the code is unreadable
       (_code_label_unreadable, rule A's test on that label);
     - the readers settle on the literal by B1's rule (agreement.labels):
