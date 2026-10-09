@@ -313,8 +313,21 @@ def test_the_basis_vocabulary():
         # A mark that is not a unit still differs.
         ("settled", "6400'", "6401", None, Basis.DERIVED),
         ("settled", "6400 ft", "1950.72", None, Basis.DERIVED),
-        # A trailing zero is not a unit mark: it errs toward derived, never toward label.
-        ("settled", "6400'", "6400", "6400.00", Basis.DERIVED),
+        # A plain number is compared by value: live display_decimal writes "6400.00"
+        # for a written "6400'", and a trailing zero after the point is no difference.
+        ("settled", "6400'", "6400", "6400.00", Basis.LABEL),
+        ("settled", "1950.7 m", "1950.7", "1950.70", Basis.LABEL),
+        ("settled", "6400'", None, "6400.00", Basis.LABEL),
+        ("settled", "6400.0", "6400", "6400.00", Basis.LABEL),
+        ("settled", "1950.72 m", "1950.72", "1950.720", Basis.LABEL),
+        ("settled", "0.50 m", "0.5", None, Basis.LABEL),
+        ("settled", "-0", "0", None, Basis.LABEL),
+        # ...but a different value still differs, and leading zeros are not trailing zeros.
+        ("settled", "1950.72 m", "1950.7248", "1950.72", Basis.DERIVED),
+        ("settled", "6400'", "6400", "6400.50", Basis.DERIVED),
+        ("settled", "6400'", "640", "6400.00", Basis.DERIVED),
+        ("settled", "0012345", "12345", None, Basis.DERIVED),
+        ("settled", "0012345", "0012345", None, Basis.LABEL),
         # A Roman-numeral date settled as an ISO date.
         ("settled", "IX-14-46", "1946-09-14", "1946-09-14", Basis.DERIVED),
         ("settled", "3 Sept. '46", "1946-09-03", None, Basis.DERIVED),
@@ -360,6 +373,31 @@ def test_display_basis_is_never_inferred():
 def test_display_basis_returns_basis_members_not_text():
     result = display_basis("verbatim", "x", None, None)
     assert isinstance(result, Basis)
+
+
+def test_display_basis_agrees_with_what_live_display_decimal_writes():
+    # parse_measurement("6400'") gives parsed "6400"; display_decimal always
+    # writes two decimals, so the stored normalized text is "6400.00".
+    from specimen_digitization.research_harness.evidence import display_decimal
+
+    for written, number in (("6400'", "6400"), ("1950.7 m", "1950.7"), ("3300 ft", "3300")):
+        normalized = display_decimal(Decimal(number))
+        assert normalized != number  # the stored texts really do differ
+        assert display_basis("settled", written, number, normalized) is Basis.LABEL
+    # A rounded conversion is a different value from the stated one.
+    assert display_basis("settled", "1950.7248 m", "1950.7248", display_decimal(Decimal("1950.7248"))) is (
+        Basis.DERIVED
+    )
+
+
+def test_display_basis_does_not_depend_on_the_ambient_decimal_context():
+    long_number = "1" * 39 + ".5"
+    with localcontext() as context:
+        context.prec = 3
+        context.rounding = ROUND_DOWN
+        assert display_basis("settled", "6400'", "6400", "6400.00") is Basis.LABEL
+        assert display_basis("settled", long_number, None, long_number + "0") is Basis.LABEL
+        assert display_basis("settled", long_number, None, "1" * 39 + ".6") is Basis.DERIVED
 
 
 @pytest.mark.parametrize("bad", [3, 1.5, b"x", ["x"], Decimal("1")])
@@ -451,6 +489,15 @@ def test_the_catalogue_number_is_text_with_leading_zeros_kept():
     for number in (4486784, Decimal("4486784"), 4486784.0):
         with pytest.raises(FieldModelError):
             v1_mirror({"ids/catalog_number": number})
+
+
+def test_the_catalogue_number_is_copied_unvalidated():
+    # Live `catalog_literal` would return "4486784" for this literal; the adapter does
+    # not apply it, so the caller must pass the digits.
+    assert v1_mirror({"ids/catalog_number": "FMNH-INS 4486784"}) == {
+        "fmnh_ins_number": "FMNH-INS 4486784"
+    }
+    assert v1_mirror({"ids/catalog_number": "4486784"}) == {"fmnh_ins_number": "4486784"}
 
 
 def test_copied_parts():
@@ -684,6 +731,52 @@ def test_elevation_numbers_with_no_unit_fill_nothing():
     ) == {"country": "Peru"}
 
 
+POINT_IN_FEET = {
+    "location/country": "Philippines",
+    "elevation/kind": "point",
+    "elevation/from": "1950.72",
+    "elevation/unit": "ft",
+}
+
+
+def test_an_inferred_unit_withholds_the_whole_elevation():
+    as_given = v1_mirror(POINT_IN_FEET)
+    assert as_given["elevation_from_m"] == "1950.72"
+    for bases in ({"elevation/unit": "inferred"}, {"elevation/unit": Basis.INFERRED}):
+        assert v1_mirror(POINT_IN_FEET, bases=bases) == {"country": "Philippines"}
+
+
+def test_other_bases_are_ignored():
+    as_given = v1_mirror(POINT_IN_FEET)
+    for basis in ("label", "derived"):
+        assert v1_mirror(POINT_IN_FEET, bases={"elevation/unit": basis}) == as_given
+    assert v1_mirror(POINT_IN_FEET, bases={"elevation/from": "inferred"}) == as_given
+    assert v1_mirror(POINT_IN_FEET, bases={"location/country": "inferred"}) == as_given
+    assert v1_mirror(POINT_IN_FEET, bases={}) == v1_mirror(POINT_IN_FEET, bases=None) == as_given
+
+
+@pytest.mark.parametrize(
+    "bases",
+    [
+        {"elevation/unit": "guess"},
+        {"elevation/unit": None},
+        {"elevation/unit": "Inferred"},
+        {"habitat/text": "label"},  # not among the parts
+        {"elevation/uncertainty": "label"},  # not a part at all
+        {"elevation": "label"},
+    ],
+)
+def test_bases_must_name_parts_and_bases_exactly(bases):
+    with pytest.raises(FieldModelError):
+        v1_mirror(POINT_IN_FEET, bases=bases)
+
+
+def test_an_inferred_unit_still_validates_the_elevation():
+    bad = {**POINT_IN_FEET, "elevation/kind": "box"}
+    with pytest.raises(FieldModelError):
+        v1_mirror(bad, bases={"elevation/unit": "inferred"})
+
+
 def test_a_unit_alone_fills_nothing():
     assert v1_mirror({"elevation/unit": "ft"}) == {}
 
@@ -795,6 +888,21 @@ def test_the_conversions_agree_with_exact_decimal_arithmetic():
         assert result["elevation_from_ft"] == feet
         quantized = (Decimal(feet) * Decimal("0.3048")).quantize(Decimal("0.01"))
         assert result["elevation_from_m"] == str(quantized).rstrip("0").rstrip(".")
+
+
+def test_elevation_text_differs_from_display_decimal_only_in_trailing_zeros():
+    from specimen_digitization.research_harness.evidence import display_decimal
+
+    # 1000 ft is 304.8 m: derivations.py _text writes "304.8", display_decimal "304.80".
+    result = elevation("point", "ft", "304.8")
+    live = display_decimal(Decimal("304.8"))
+    assert result["elevation_from_m"] == "304.8"
+    assert live == "304.80" != result["elevation_from_m"]
+    assert Decimal(live) == Decimal(result["elevation_from_m"])
+    for feet in ("1", "10", "1000", "3300", "4800", "6400", "6400.5", "29031.7"):
+        metres = Decimal(feet) * Decimal("0.3048")
+        mirrored = elevation("point", "ft", str(metres))["elevation_from_m"]
+        assert Decimal(mirrored) == Decimal(display_decimal(metres))
 
 
 def test_no_float_drift():
@@ -921,6 +1029,16 @@ def test_a_date_is_text(value):
         ("1946-09-14", "1946-09-03"),
         ("1946-10", "1946-09"),
         ("1947", "1946"),
+    ],
+)
+def test_a_reversed_range_is_refused(start, end):
+    with pytest.raises(FieldModelError, match="end is before when/collected/start"):
+        dates(collected__start=start, collected__end=end)
+
+
+@pytest.mark.parametrize(
+    ("start", "end"),
+    [
         # Different precision follows the live G44 endpoint check: the latest day of
         # the start must not pass the earliest day of the end.
         ("1946-09", "1946-09-14"),
@@ -929,9 +1047,12 @@ def test_a_date_is_text(value):
         ("1946-12-31", "1946"),
     ],
 )
-def test_a_reversed_or_unordered_range_is_refused(start, end):
-    with pytest.raises(FieldModelError, match="before"):
+def test_a_precision_conflict_between_the_ends_is_named_as_one(start, end):
+    with pytest.raises(FieldModelError, match="conflict in precision") as refused:
         dates(collected__start=start, collected__end=end)
+    assert start in str(refused.value)
+    assert end in str(refused.value)
+    assert "before" not in str(refused.value)
 
 
 # --- the v1 mirror: collectors ----------------------------------------------------
@@ -1011,10 +1132,23 @@ def test_105526321_philippines_point_elevation_in_feet():
     assert result["fmnh_ins_number"] == "4486784"
 
 
+@pytest.mark.parametrize("subject", sorted(s for s, row in ROWS.items() if "bases" in row))
+def test_a_pilot_row_with_an_inferred_unit_withholds_its_elevation(subject):
+    row = ROWS[subject]
+    withheld = v1_mirror(row["parts"], bases=row["bases"])
+    assert withheld == row["expected_with_bases"]
+    assert not any(key.startswith("elevation_") for key in withheld)
+    # Everything else is the same as without the basis.
+    assert withheld == {k: v for k, v in row["expected"].items() if not k.startswith("elevation_")}
+
+
 def test_105526322_the_unit_inferred_as_feet_gives_the_same_exact_metres():
     # "Elev. 6400" read with the foot mark lost; feet inferred, 6400 ft stored as 1950.72 m.
+    # Passed with no bases the adapter maps the values as given; passed with the unit's
+    # basis (see the test above) it withholds the elevation.
     parts = ROWS["105526322"]["parts"]
     assert parts["elevation/unit"] == "ft"
+    assert ROWS["105526322"]["bases"] == {"elevation/unit": "inferred"}
     result = v1_mirror(parts)
     assert result["elevation_from_m"] == result["elevation_to_m"] == "1950.72"
     assert result["elevation_from_ft"] == result["elevation_to_ft"] == "6400"

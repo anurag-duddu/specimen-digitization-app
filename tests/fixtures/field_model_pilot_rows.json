@@ -46,7 +46,19 @@
         "elevation": "Elev. 6400'",
         "collector": "H. Hoogstraal leg."
       },
-      "note": "Both readers dropped the foot mark and wrote 'Elev. 6400'; the unit is recorded as feet with basis inferred (Mt. Apo, about 2,954 m, is the highest point), so 6400 is stored as 1950.72 m.",
+      "note": "Both readers dropped the foot mark and wrote 'Elev. 6400'; the unit is recorded as feet with basis inferred (Mt. Apo, about 2,954 m, is the highest point), so 6400 is stored as 1950.72 m. Live v1 fills no elevation without a written unit, so when the basis of the unit is passed to the adapter (bases) the elevation mirror is withheld; without bases the adapter maps the values as given (expected).",
+      "bases": {
+        "elevation/unit": "inferred"
+      },
+      "expected_with_bases": {
+        "fmnh_ins_number": "4486783",
+        "country": "Philippines",
+        "province_state": "Davao",
+        "precise_location": "CNHM. E Slope Mt.\nMcKinley, Davao Prov.\nMindanao, P.I.",
+        "date_visited_from": "1946-09-06",
+        "date_visited_to": "1946-09-06",
+        "collectors": "H. Hoogstraal"
+      },
       "parts": {
         "ids/catalog_number": "4486783",
         "location/verbatim": "CNHM. E Slope Mt.\nMcKinley, Davao Prov.\nMindanao, P.I.",
@@ -119,7 +131,7 @@
         "elevation": "3300'",
         "collector": "H. Hoogstraal; CNHM"
       },
-      "note": "IX-14-46 is 14 September 1946 with a Roman-numeral month. The top-edge code IX-17-66-2 is a slide-preparation code, not a date. CNHM is the museum's old name, not a collector.",
+      "note": "IX-14-46 is 14 September 1946 with a Roman-numeral month. The top-edge code IX-17-66-2 is a slide-preparation code, not a date. The author of this fixture, not S8, reads CNHM as the museum's old name rather than a collector, so only H. Hoogstraal is recorded as the collector; S8's table lists 'H. Hoogstraal; CNHM' in its collector column (rows 105526324 and 105526325).",
       "parts": {
         "ids/catalog_number": "4486781",
         "location/verbatim": "E. slope Mt. McKinley\n3300', Davao Prov.\nMindanao,\nPhilippine Islands",

@@ -18,27 +18,46 @@ It provides:
 - `v1_mirror`, the adapter from v2 parts to the twenty v1 "mirror" keys that
   stay mandatory while v1 records and the publish operation remain in use.
 
-Every number is a `Decimal`; a `float` is refused. Where the live code does
-something other than the PRD table "v1 keys from v2 parts", this module follows
-the live code, and the difference is named at the rule that has it.
+Every number is a `Decimal`; a `float` is refused.
 
-Live behaviour the adapter reproduces, by source:
+What the adapter reproduces from live code (each checked against the source
+named):
 
-- `application/derivations.py`: `METRES_PER_FOOT`, `_text` (a copied value as
-  stated, a converted one to 0.01 with round-half-even, trailing zeros
-  dropped), `elevation_derivations` (the label's own number fills both ends of
-  its unit, the other unit is converted), and the G41 and G44 rule texts;
-- `research_harness/evidence.py`: `_convert` (80 digits for feet to metres, 34
-  for metres to feet, round-half-even) and `display_decimal` (0.01), the G44
-  copy of a single collecting date to the same precision, `dts_policy_resolution`
-  and `missing_irn_resolution` (`verbatim_dts` and `identified_by_irn` are never
-  filled), and `catalog_literal` (the catalogue number is the digits as text);
+- `application/derivations.py`: `METRES_PER_FOOT`; `_text` (a value copied as
+  stated keeps its digits, a converted one is rounded to 0.01 with
+  round-half-even, and trailing zeros are dropped); `elevation_derivations`
+  (the label's own number fills both ends of its unit and the other unit is
+  converted).
+- `research_harness/evidence.py`: `_convert` (metres to feet at 34 digits,
+  round-half-even); the 0.01 rounding of `display_decimal` but not its text
+  form; the G44 copy of a single collecting date to the same precision and the
+  range-order check; `dts_policy_resolution` and `missing_irn_resolution`
+  (`verbatim_dts` and `identified_by_irn` stay unfilled).
 - `research_harness/prompts/specimen_geography-v9.txt`: an island is not a
-  province, a municipality is not a county, county is not invented in
-  Guatemala, and the verbatim locality is kept as `precise_location`;
-- `research_harness/people.py` (a collector list splits on `&`, `;` and `and`)
-  and the field-research collectors prompt of PR #284 (the names as written,
-  for example "Werner & Mockford").
+  province, a municipality is not a county, no county is invented, and the
+  verbatim locality is kept as `precise_location`.
+
+Where two live paths disagree, this module follows `derivations.py`:
+`_text` drops trailing zeros ("1950.7") and `display_decimal` keeps them
+("1950.70"). The field-research path of PR #284 calls `elevation_derivations`,
+which is why. Compare elevation text from either path as `Decimal`, never as
+a string.
+
+New here, not live behaviour (choices for a reviewer to confirm):
+
+- `elevation/kind` is required, and an above or below limit fills one bound
+  (live v1 has no one-sided elevation);
+- `taxon` fills only from `taxon/accepted`; the part names, the place-tree
+  levels and the role each level plays are this module's own;
+- feet are recovered exactly from the stored metres as `metres / 0.3048`;
+- `collectors/1..n` are joined with " & ", a joiner `research_harness/people.py`
+  accepts; live code has no join of separate names, and the label's own joiner
+  is lost;
+- `ids/catalog_number` is copied as given and not validated. Live
+  `catalog_literal` (an optional "FMNH INS" prefix, then 5 to 9 digits, and the
+  digits come back) is not applied, so a caller passes the digits: an input
+  such as "FMNH-INS 4486784" passes through unchanged;
+- the optional `bases` argument of `v1_mirror` (see there).
 """
 
 from __future__ import annotations
@@ -352,10 +371,23 @@ _UNIT_MARK = re.compile(
 )
 
 
+# A plain number with no leading zeros to lose (an identifier such as "0012345"
+# is not a quantity), comparable by value.
+_PLAIN_NUMBER = re.compile(r"[+-]?(?:0|[1-9][0-9]{0,39})(?:\.[0-9]{1,20})?")
+
+
 def _comparable(text: str) -> str:
-    """The text with case, spacing and unit marks ignored."""
+    """The text with case, spacing and unit marks ignored, and a plain number
+    in its canonical form, so that 6400 and 6400.00, or 1950.7 and 1950.70,
+    agree while 1950.7248 and 1950.72 do not."""
     squeezed = "".join(unicodedata.normalize("NFKC", text).casefold().split())
-    return _UNIT_MARK.sub("", squeezed)
+    stripped = _UNIT_MARK.sub("", squeezed)
+    if _PLAIN_NUMBER.fullmatch(stripped) is None:
+        return stripped
+    with localcontext() as context:
+        context.prec = 80  # wide enough that normalize never rounds
+        number = Decimal(stripped).normalize()
+    return "0" if number == 0 else format(number, "f")
 
 
 def _present(label: str, text: str | None) -> str | None:
@@ -388,8 +420,10 @@ def display_basis(
       the wording);
     - an old record is never `inferred`.
 
-    Trailing zeros are not a unit mark: "6400" and "6400.00" differ, which errs
-    toward `derived`, never toward `label`.
+    A plain number is compared by value, so "6400" and "6400.00" agree (live
+    `display_decimal` writes the second form for a written "6400'"), and
+    "1950.7248" and "1950.72" differ. Leading zeros are not dropped: an
+    identifier "0012345" and "12345" differ.
     """
     if layer == "verbatim":
         return Basis.LABEL
@@ -572,7 +606,7 @@ def _feet(metres: Decimal) -> tuple[Decimal, bool]:
         return feet, feet * METRES_PER_FOOT == metres
 
 
-def _elevation(found: dict[str, object]) -> dict[str, str]:
+def _elevation(found: dict[str, object], *, unit_inferred: bool = False) -> dict[str, str]:
     """The four elevation mirrors from `elevation/from`, `/to`, `/unit`, `/kind`.
 
     Numbers are exact metres. The kind says which bounds exist: a point fills
@@ -580,8 +614,9 @@ def _elevation(found: dict[str, object]) -> dict[str, str]:
     above limit only from and a below limit only to. The unit is what the label
     stated: its own bound is written as stated and the other unit is converted
     at 1 ft = 0.3048 m, to 0.01 with round-half-even, as the live rules do.
-    Numbers with no unit fill nothing: live v1 waits for a policy when the
-    label gives no unit, and with no unit the metres are not known to be metres.
+    Numbers with no unit fill nothing, and neither do numbers whose unit was
+    inferred (`unit_inferred`): live v1 waits for a policy when the label gives
+    no unit, and until the unit is known the metres are not known to be metres.
     """
     low = found.get("elevation/from")
     high = found.get("elevation/to")
@@ -606,7 +641,7 @@ def _elevation(found: dict[str, object]) -> dict[str, str]:
         )
     if kind == ElevationKind.RANGE and low > high:
         raise FieldModelError("elevation/from is above elevation/to")
-    if unit is None:
+    if unit is None or unit_inferred:
         return {}
     unit = _enum("elevation/unit", unit, ElevationUnit)
     filled = {
@@ -639,11 +674,13 @@ def _collected_dates(found: dict[str, object]) -> dict[str, str]:
         result["date_visited_to"] = end
     if start is not None and end is not None:
         if len(start) == len(end):
-            reversed_ = end < start
-        else:
-            reversed_ = _bounds(start)[1] > _bounds(end)[0]
-        if reversed_:
-            raise FieldModelError("when/collected/end is before when/collected/start")
+            if end < start:
+                raise FieldModelError("when/collected/end is before when/collected/start")
+        elif _bounds(start)[1] > _bounds(end)[0]:
+            raise FieldModelError(
+                f"when/collected/start ({start}) and when/collected/end ({end}) conflict "
+                "in precision: the order of the endpoints is not established"
+            )
     return result
 
 
@@ -661,7 +698,20 @@ def _ordered(kind: str, entries: dict[int, str]) -> list[str]:
     return [entries[number] for number in sorted(entries)]
 
 
-def v1_mirror(parts: Mapping[str, object]) -> dict[str, str]:
+def _checked_bases(
+    parts: Mapping[str, object], bases: Mapping[str, object] | None
+) -> dict[str, Basis]:
+    checked: dict[str, Basis] = {}
+    for path, basis in (bases or {}).items():
+        if parse_part_path(path).path not in parts:
+            raise FieldModelError(f"bases names {path!r}, which is not among the parts")
+        checked[path] = _enum(f"bases[{path}]", basis, Basis)
+    return checked
+
+
+def v1_mirror(
+    parts: Mapping[str, object], *, bases: Mapping[str, object] | None = None
+) -> dict[str, str]:
     """The v1 mirror keys that the v2 `parts` fill, keyed by the exact native
     key strings. `parts` maps part paths to plain values: text, dates as
     `YYYY`, `YYYY-MM` or `YYYY-MM-DD`, elevation numbers as `Decimal`, `int` or
@@ -671,14 +721,34 @@ def v1_mirror(parts: Mapping[str, object]) -> dict[str, str]:
     The result is in native key order. Anything malformed raises
     `FieldModelError`; nothing is repaired or guessed.
 
-    Differences from the PRD table "v1 keys from v2 parts", all following the
-    live code: `elevation/kind` is required (the table's point, range, above
-    and below need it to be told apart); a bare elevation number with no
-    `elevation/unit` fills nothing (live v1 waits for a policy when the label
-    gives no unit); the converted unit is rounded to 0.01 with
-    round-half-even while the stated unit is written exactly as stated; and
-    `taxon` fills only from `taxon/accepted`.
+    The adapter reads values, not bases. `bases` is optional: it maps part
+    paths among `parts` to `label`, `derived` or `inferred`, and the one thing
+    the adapter does with it is withhold the whole elevation when
+    `elevation/unit` is `inferred` (the pilot's 105526322, where the foot mark
+    was lost): live v1 fills no elevation without a written unit and waits for
+    a policy. Every other basis is ignored, and a caller that passes no `bases`
+    gets the mirror of the values as given, so it must withhold an inferred
+    unit itself. Whether any other inferred or derived value belongs in the v1
+    mirror is the caller's decision.
+
+    Elevation text follows `application/derivations.py` `_text`: a converted
+    value is rounded to 0.01 with round-half-even and trailing zeros are
+    dropped ("1950.7"), where `research_harness/evidence.py` `display_decimal`
+    keeps them ("1950.70"). Compare such values as `Decimal`, not as strings.
+
+    Differences from the PRD table "v1 keys from v2 parts". Following live code:
+    the stated unit is written as stated and the other is converted and rounded
+    as above; a point fills both bounds alike; a single collecting date fills
+    both ends at the written precision (G44); a municipality is not a county;
+    `verbatim_dts` and `identified_by_irn` are never filled. New in this module
+    and not live behaviour: `elevation/kind` is required (the PRD table's point,
+    range, above and below need it to be told apart) and an above or below
+    limit fills one bound; a bare elevation number with no `elevation/unit`
+    fills nothing; `taxon` fills only from `taxon/accepted`; collectors join
+    with " & "; `ids/catalog_number` is copied unvalidated. See the module
+    docstring.
     """
+    basis_of = _checked_bases(parts, bases)
     found: dict[str, object] = {}
     nodes: list[PartPath] = []
     names: dict[ValueName, dict[int, str]] = {ValueName.COLLECTORS: {}, ValueName.IDENTIFIED_BY: {}}
@@ -708,7 +778,9 @@ def v1_mirror(parts: Mapping[str, object]) -> dict[str, str]:
     ):
         if (source := _role(nodes, levels, role)) is not None:
             mirror[key] = found[source]
-    mirror.update(_elevation(found))
+    mirror.update(
+        _elevation(found, unit_inferred=basis_of.get("elevation/unit") == Basis.INFERRED)
+    )
     mirror.update(_collected_dates(found))
     if "when/identified/start" in found:
         mirror["date_identified"] = found["when/identified/start"]
