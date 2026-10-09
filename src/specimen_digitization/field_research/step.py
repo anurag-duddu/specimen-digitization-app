@@ -725,6 +725,11 @@ def _unmatched_taxon(run, task, *, readings, by_name, evidence, asset_id, blobs,
     - every taxon candidate is the same morphocode, a text with no genus and
       the same code (checks.morphocode: a reader's "Sp.30 <female sign>"
       beside "sp. 30 <female sign>", but never "sp. 39");
+    - the label names no genus for that code (checks.label_names_no_genus):
+      wherever any reading writes it, no word that may be a genus is written
+      immediately before it, on its line or ending the line above, or after
+      it on its line. A candidate "sp. 1" taken from "Epipsocus sp. 1", or
+      from "Epipsocus" with "sp. 1" on the next line, does not qualify;
     - the readers settle on the literal by B1's rule (agreement.labels):
       each label that writes the taxon settles on its own on that one text.
       With no successful lookup that is a label's decided transcript (its
@@ -739,13 +744,15 @@ def _unmatched_taxon(run, task, *, readings, by_name, evidence, asset_id, blobs,
     from specimen_digitization.application.lookup import no_name_lookup
 
     from .agreement import DECIDED, SOURCE_IDS, candidate_literal, labels, reader_literals
-    from .checks import collapse, morphocode
+    from .checks import collapse, label_names_no_genus, morphocode
 
     literal = task.current.literal
     code = morphocode(literal)
     if task.key != "taxon" or code is None:
         return None
     if not task.candidates or any(morphocode(c.literal) != code for c in task.candidates):
+        return None
+    if not label_names_no_genus(code, [r.text for r in readings]):
         return None
     want = collapse(literal)
     tools = frozenset(task.tools) & SOURCE_IDS
@@ -1225,18 +1232,21 @@ def taxon_chosen(taxon: FieldValue, settled: str, evidence: Mapping[str, Evidenc
     return False
 
 
-def taxon_unmatched(taxon: FieldValue, evidence: Mapping[str, Evidence], lookups: Sequence[Lookup] = ()) -> bool:
+def taxon_unmatched(taxon: FieldValue, evidence: Mapping[str, Evidence], lookups: Sequence[Lookup] = (), *,
+        texts: Sequence[str]) -> bool:
     """Whether the taxon is owner decision B's unmatched name
     (_unmatched_taxon), checked on the stored value: supported, its literal a
-    name with no genus (checks.names_no_genus), as written (parsed is the
-    literal or empty), with no normalized value or authority, in the settled
-    layer, citing as support the check row for that literal and the GBIF
-    no-name lookup of the run that the row names. A taxon with a genus never
-    is."""
-    from .checks import names_no_genus
+    name with no genus (checks.names_no_genus) that the label, the readings'
+    `texts`, writes with no genus beside it (checks.label_names_no_genus), as
+    written (parsed is the literal or empty), with no normalized value or
+    authority, in the settled layer, citing as support the check row for that
+    literal and the GBIF no-name lookup of the run that the row names. A taxon
+    with a genus never is."""
+    from .checks import label_names_no_genus, morphocode
 
     literal = taxon.literal
-    if (taxon.state != ValueState.SUPPORTED or not literal or not names_no_genus(literal)
+    code = morphocode(literal)
+    if (taxon.state != ValueState.SUPPORTED or code is None or not label_names_no_genus(code, texts)
             or taxon.layer != "settled" or taxon.parsed not in (None, literal)
             or any((taxon.normalized, taxon.authority_id, taxon.authority_identity))):
         return False
@@ -1351,7 +1361,7 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
     # 254-260
     taxon = run.fields.get("taxon") or FieldValue()
     if latest_work.get("taxon") in TERMINAL and not (taxon_decided(taxon, run.tool_calls, evidence, run.lookups)
-            or taxon_unmatched(taxon, evidence, run.lookups)):
+            or taxon_unmatched(taxon, evidence, run.lookups, texts=[r.text for r in run_readings(run)])):
         reasons.append("taxonomy_unresolved")
     # 261-271
     # An empty elevation is mandatory_unresolved above; only a value that is

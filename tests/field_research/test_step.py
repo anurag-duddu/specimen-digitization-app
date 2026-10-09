@@ -2019,6 +2019,11 @@ def morphocoded(code):
     return TEXT.replace("taxon: Danaus plexippus", "taxon: " + code)
 
 
+def label_texts(run):
+    """Every reading's text, as the clearance rules read the label."""
+    return [reading.text for reading in field_step.run_readings(run)]
+
+
 # 105526321's second label: the first pass decided 2A's "sp. 30 <female sign>"; 2B writes "Sp.30 <female sign>".
 VARIANT = "Sp.30 \N{FEMALE SIGN}"
 
@@ -2045,7 +2050,7 @@ def test_a_taxon_that_names_no_genus_clears_as_written_and_unmatched(tmp_path, a
     assert (lookup.provider, lookup.status, lookup.query, lookup.candidates) == ("gbif", LookupStatus.NO_MATCH, {}, [])
     assert lookup.metadata["verbatim_name"] == MORPHOCODE and lookup.id in row.excerpt and MORPHOCODE in row.excerpt
     assert (row.kind, taxon.evidence_relations[row.id]) == ("derived", "supports")
-    assert field_step.taxon_unmatched(taxon, evidence, run.lookups)
+    assert field_step.taxon_unmatched(taxon, evidence, run.lookups, texts=label_texts(run))
     assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
     verify_evidence(rig.specimen, rig.blobs)
 
@@ -2075,8 +2080,76 @@ def test_a_taxon_with_a_genus_gbif_cannot_decide_still_goes_to_review(tmp_path):
     taxon = run.fields["taxon"]
     assert (taxon.state, taxon.literal) == (ValueState.UNRESOLVED, written)
     assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["mandatory_unresolved:taxon", "taxonomy_unresolved"])
-    assert not field_step.taxon_unmatched(taxon, {item.id: item for item in run.evidence}, run.lookups)
+    assert not field_step.taxon_unmatched(taxon, {item.id: item for item in run.evidence}, run.lookups,
+        texts=label_texts(run))
     assert not [item for item in run.evidence if item.locator == "check:taxon_no_genus"]
+
+
+# The blocking finding (B1) of #289's review: the organiser's candidate is only
+# the code, and the label writes the genus beside it.
+EPIPSOCUS_CODE = "sp. 1 \N{FEMALE SIGN}"
+GENUS_BESIDE = {
+    # 105526328's label 2: "Epipsocus", then "sp. 1" on the next line.
+    "genus-on-the-line-above": ("Epipsocus\n" + EPIPSOCUS_CODE, EPIPSOCUS_CODE),
+    # The quote is the whole line.
+    "genus-earlier-on-the-line": ("Epipsocus " + EPIPSOCUS_CODE, "Epipsocus " + EPIPSOCUS_CODE),
+}
+
+
+@pytest.mark.parametrize(("written", "quote"), GENUS_BESIDE.values(), ids=GENUS_BESIDE)
+def test_a_code_the_label_writes_beside_a_genus_goes_to_review(tmp_path, written, quote):
+    """GBIF cannot decide "Epipsocus" (a homonym), and the expert says so,
+    quoting the organiser's candidate "sp. 1": the label names a genus, so
+    the taxon is not cleared as unmatched."""
+    rig = build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", written), candidates=[*COLLECTORS,
+        *(("taxon", name, EPIPSOCUS_CODE, quote) for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": cannot_resolve(EPIPSOCUS_CODE, asks=["Epipsocus"])}), tools=Homonym(rig.blobs))
+    taxon = run.fields["taxon"]
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["mandatory_unresolved:taxon", "taxonomy_unresolved"])
+    assert taxon.state == ValueState.UNRESOLVED and taxon.layer is None
+    assert not [item for item in run.evidence if item.locator == "check:taxon_no_genus"]
+    assert not field_step.taxon_unmatched(taxon, {item.id: item for item in run.evidence}, run.lookups,
+        texts=label_texts(run))
+
+
+# The pilot's morphocodes that clear as unmatched, as their labels write them
+# (the text before the code, the code, the text after it).
+PILOT_CODES = {
+    # 105526321's second label: its habitat line, then the code.
+    "105526321": ("10-6-78-la\nMossy forest 6400'\n", "sp. 30 \N{FEMALE SIGN}", ""),
+    # 105526326's third label: the code on a label of its own.
+    "105526326": ("", "Sp. 22", "\n\N{FEMALE SIGN} wings"),
+    # 105526327's third label: a slide code, the code, then "legs".
+    "105526327": ("V-4-67-1\n", "sp 22", "\nlegs"),
+}
+
+
+@pytest.mark.parametrize(("before", "code", "after"), PILOT_CODES.values(), ids=PILOT_CODES)
+def test_the_pilots_codes_with_no_genus_beside_them_still_clear_as_unmatched(tmp_path, before, code, after):
+    rest = TEXT.replace("taxon: Danaus plexippus\n", "")
+    text = before + code + after + "\n" + rest if not before else rest + "\n" + before + code + after
+    rig = build_rig(tmp_path, text, candidates=[*COLLECTORS, *(("taxon", name, code, code) for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": cannot_resolve(code)}), tools=NoGenus(rig.blobs))
+    taxon = run.fields["taxon"]
+    assert (taxon.state, taxon.literal, taxon.reason) == (ValueState.SUPPORTED, code, field_step.UNMATCHED)
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+
+
+def test_a_later_pass_judges_the_label_of_an_unmatched_taxon_again(tmp_path):
+    """The clearance rules read the stored value's label too: text that now
+    writes a genus before the code takes the clearance back."""
+    rig = build_rig(tmp_path, morphocoded(MORPHOCODE))
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": cannot_resolve(MORPHOCODE)}), tools=NoGenus(rig.blobs))
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+    for item in run.observations:
+        item.literal_text = item.literal_text.replace("taxon: ", "taxon: Epipsocus\n")
+    for item in run.transcripts:
+        item.text = item.text.replace("taxon: ", "taxon: Epipsocus\n")
+    field_step.refinalize(run, today=TODAY)
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["taxonomy_unresolved"])
 
 
 @pytest.mark.parametrize(("other", "decided"), [("sp. 39", False), ("Sp.30", False), ("sp. 39", True)],
@@ -2094,7 +2167,8 @@ def test_readers_that_write_different_morphocodes_stay_in_review(tmp_path, other
     taxon = run.fields["taxon"]
     assert taxon.state != ValueState.SUPPORTED
     assert {"mandatory_unresolved:taxon", "taxonomy_unresolved"} <= set(run.reasons)
-    assert not field_step.taxon_unmatched(taxon, {item.id: item for item in run.evidence}, run.lookups)
+    assert not field_step.taxon_unmatched(taxon, {item.id: item for item in run.evidence}, run.lookups,
+        texts=label_texts(run))
     assert not [item for item in run.evidence if item.locator == "check:taxon_no_genus"]
 
 
@@ -2178,7 +2252,8 @@ def test_readers_of_an_undecided_label_that_write_one_morphocode_settle_it(tmp_p
     taxon = run.fields["taxon"]
     assert (taxon.state, taxon.literal, taxon.input_source) == (ValueState.SUPPORTED, MORPHOCODE, "raw_reading")
     assert set(taxon.verbatim_by_observation.values()) == {MORPHOCODE}
-    assert field_step.taxon_unmatched(taxon, {item.id: item for item in run.evidence}, run.lookups)
+    assert field_step.taxon_unmatched(taxon, {item.id: item for item in run.evidence}, run.lookups,
+        texts=label_texts(run))
     assert not [reason for reason in run.reasons if "taxon" in reason]
 
 

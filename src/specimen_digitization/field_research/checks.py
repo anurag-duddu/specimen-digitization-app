@@ -258,6 +258,78 @@ def morphocode(literal: str | None) -> str | None:
     return _code(NO_GENUS.fullmatch(collapse(literal)))
 
 
+# A word that may be a genus: a capital, then letters or digits ("Epipsocus",
+# a misread "Ep1psocus", "EPIPSOCUS"), or a capital's abbreviation ("E.").
+GENUS_SHAPED = re.compile(r"[A-Z](?:[A-Za-z0-9]*[A-Za-z])?\.?")
+# Words that may stand between a genus and its morphocode ("Epipsocus cf. sp. 1").
+BETWEEN_WORDS = frozenset({"cf", "cf.", "aff", "aff.", "nr", "nr.", "near"})
+# Brackets, quotes and punctuation around a word.
+_AROUND = "()[]{}\"'`,;:"
+
+
+def _words(text: str) -> list[str]:
+    """The text's words: its whitespace-separated parts that hold a letter or
+    a digit, brackets, quotes and punctuation around them dropped. A sex sign,
+    a "+" or a "?" is none."""
+    found = []
+    for part in text.split():
+        part = part.strip(_AROUND)
+        if any(c.isalnum() for c in part):
+            found.append(part)
+    return found
+
+
+def word_before(text: str, start: int) -> str | None:
+    """The word written immediately before text[start:]: the last word before
+    it on its line, or, when nothing but sex signs and punctuation precedes it
+    there, the last word of the nearest line above that has one. A qualifier
+    ("cf.", "aff.", "nr.") is passed over. None when there is none."""
+    line_start = text.rfind("\n", 0, start) + 1
+    for part in (text[line_start:start], *reversed(text[:line_start].splitlines())):
+        words = [w for w in _words(part) if w.casefold() not in BETWEEN_WORDS]
+        if words:
+            return words[-1]
+    return None
+
+
+def word_after(text: str, end: int) -> str | None:
+    """The first word after text[:end] on the same line, or None."""
+    line_end = text.find("\n", end)
+    words = _words(text[end:] if line_end < 0 else text[end:line_end])
+    return words[0] if words else None
+
+
+def genus_beside(text: str, start: int, end: int) -> str | None:
+    """The word beside text[start:end] that may be a genus (GENUS_SHAPED): the
+    word written immediately before it (word_before: "Epipsocus" in "Epipsocus
+    sp. 1", and in "Epipsocus" with "sp. 1" on the next line), else the first
+    word after it on its line ("sp. 1 Epipsocus"). None when neither is."""
+    for word in (word_before(text, start), word_after(text, end)):
+        if word is not None and GENUS_SHAPED.fullmatch(word):
+            return word
+    return None
+
+
+def label_names_no_genus(code: str, reading_texts: Sequence[str]) -> bool:
+    """Whether the label writes the morphocode `code` (morphocode) with no
+    genus beside it: some reading writes it, and wherever any reading writes a
+    morphocode of that code (NO_GENUS, searched in its text), no word beside it
+    may be a genus (genus_beside). This judges the label, not the organiser's
+    literal: a candidate "sp. 1" taken from "Epipsocus sp. 1", or from
+    "Epipsocus" with "sp. 1" on the next line (105526328's label), names a
+    genus. "Mossy forest 6400'" above "sp. 30" (105526321), "V-4-67-1" above
+    "sp 22" (105526327) and "Sp. 22" on a label of its own (105526326) do not."""
+    found = False
+    for text in reading_texts:
+        for match in NO_GENUS.finditer(text):
+            if _code(match) != code:
+                continue
+            found = True
+            if genus_beside(text, match.start(), match.end()) is not None:
+                return False
+    return found
+
+
 def taxon_query_grounded(query: str, literal: str) -> bool:
     """Whether GBIF was asked about the whole name this taxon literal writes
     (taxon_queries). A query for part of it ("Danaus plexippus" for "Danaus

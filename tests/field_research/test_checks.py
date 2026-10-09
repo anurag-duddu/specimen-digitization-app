@@ -225,6 +225,66 @@ def test_a_morphocode_is_its_number_or_code(literal, code):
     assert checks.morphocode(literal) == code
 
 
+FEMALE, MALE = "\N{FEMALE SIGN}", "\N{MALE SIGN}"
+# The pilot's labels that write a morphocode, each reader's text as read
+# (owner decision B; B1 of #289's review): the code, the readers' texts, and
+# whether the label names no genus for it.
+PILOT_CODE_LABELS = {
+    "105526321": ("30", [
+        "10-6-78-la\nE. slope Mt. McKinley\nDavao Prov.\nMindanao, P.I.\nF.G. Werner\n3 sept. '46\n"
+        "Mossy forest 6400'\nsp. 30 " + FEMALE,
+        "10-6-78-1a\nE.slope Mt. McKinley\nDavao Prov.\nMindanao, P.I.\nF.G. Wermer\n3 Sept. '46\n"
+        "Mossy forest 6400'\nSp.30 " + FEMALE], True),
+    "105526322": ("30", ["wings + head\nsp. 30 " + FEMALE, "Wings 4 head\nSp.30 " + FEMALE + "\np-95-81-16"], True),
+    "105526323": ("30", ["genitalia + legs\nSp 30 " + FEMALE, "genitalia " + FEMALE + " legs\nSp 30 " + FEMALE], True),
+    "105526326": ("22", ["sp. 22\n" + FEMALE + " wings", "Sp. 22\n" + FEMALE + " wings"], True),
+    "105526327": ("22", ["V-4-67-1\nsp 22\nlegs", "V-4-67-1\nsp 22\nlegs"], True),
+    "105526329": ("1", ["R.D.mitchell\nsp #1 " + MALE + "\nhead & legs", "R.D.mitchell\nSp #1 " + MALE + "\nhead & legs"],
+        True),
+    "105526330": ("1", ["Guatemala, IV-25\n1948, R.D. Mitchell\n" + FEMALE + " legs Sp.#1"], True),
+    # The genus on the line above the code, as each reader reads it.
+    "105526328": ("1", ["VI-24-68-7.\nEpipocus\nsp. 1\n" + FEMALE + " terminalia\nVII-18-66-1",
+        "VI-24-68-7.\nEpipsocus\nsp. 1\n" + FEMALE + " terminalia\nVII-18-66-1"], False),
+}
+
+
+@pytest.mark.parametrize(("code", "texts", "no_genus"), PILOT_CODE_LABELS.values(), ids=PILOT_CODE_LABELS)
+def test_a_pilot_label_names_no_genus_only_when_no_genus_is_written_beside_its_code(code, texts, no_genus):
+    from specimen_digitization.field_research import checks
+
+    assert checks.label_names_no_genus(code, texts) is no_genus
+
+
+@pytest.mark.parametrize(("text", "no_genus"), [
+    # A genus, written, misread, abbreviated or in capitals, right before the code.
+    ("Epipsocus sp. 1", False),
+    ("Epipsocus\nsp. 1", False),
+    ("Epipsocus,\n" + FEMALE + "\nsp. 1", False),
+    ("Epipsocus cf.\nsp. 1", False),
+    ("(Epipsocus) sp. 1", False),
+    ("Ep1psocus sp. 1", False),
+    ("E. sp. 1", False),
+    ("EPIPSOCUS sp. 1", False),
+    # Or after it on its line.
+    ("sp. 1 " + FEMALE + " Epipsocus", False),
+    # One reader's genus is enough, and another place the label writes the code.
+    ("sp. 1\nEpipsocus sp. 1", False),
+    # A word that is no genus right before it, or the genus further away.
+    ("legs sp. 1", True),
+    ("Mossy forest 6400'\nsp. 1", True),
+    ("Epipsocus\nwings + head\nsp. 1", True),
+    # Another code beside the genus.
+    ("Epipsocus sp. 2\nsp. 1", True),
+    # The code is not written at all.
+    ("sp. 2", False),
+    ("wasp 1", False),
+])
+def test_the_label_names_no_genus_when_no_word_beside_its_code_may_be_one(text, no_genus):
+    from specimen_digitization.field_research import checks
+
+    assert checks.label_names_no_genus("1", [text]) is no_genus
+
+
 @pytest.mark.parametrize(("quote", "literal", "longer"), [
     # The third review's N3: an organiser candidate that cuts the subspecies off its line.
     ("Danaus plexippus megalippe", "Danaus plexippus", "Danaus plexippus megalippe"),
