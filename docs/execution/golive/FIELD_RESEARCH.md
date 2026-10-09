@@ -422,12 +422,25 @@ elevation is derived first, and only for a field a person has not decided):
    settled city "Yepocapa". "Lee" beside the city "Leesburg", or "Cook
    County" inside the precise location "Cook County Forest Preserve", does
    not count.
-6. For an elevation, no reading writes an elevation, as the place tool
-   reads one (`georef_locality.read_locality`, on each reading's whole text
-   and on each of its lines), nor a number in metres above sea level
-   ("2000 msnm", "1200 masl", "1200 m.s.n.m.", "1200 m snm",
-   `step.SEA_LEVEL_METRES`), which the place tool does not read when its
-   unit is written as one word.
+6. For an elevation, no reading writes an elevation
+   (`step._elevation_written`, on every reading's and every reader's text).
+   That is, none of:
+   - an elevation as the place tool reads one
+     (`georef_locality.read_locality`, on each whole text and on each of its
+     lines; the tool is unchanged);
+   - a number in metres above sea level, however the unit is spaced or
+     dotted: "msnm", "m snm", "m.s.n.m.", "masl", "m a.s.l." ("2000 msnm",
+     "1200 masl", `step.SEA_LEVEL_METRES`);
+   - a number, then one of the units "m", "mt", "mts", "mtr", "mtrs",
+     "metro", "metros", "msm", "pies" or "p.s.n.m." (its letters dotted or
+     not, spaced or not: "psnm", "p s n m"), with an optional final period
+     and in any case ("1200 mts.", "1200 mts", "1200 metros", "1200 msm",
+     "6400 pies", "6400 p.s.n.m.", "1200 m.", "1200 m",
+     `step.NUMBER_AND_UNIT`). The number never follows a letter, a digit, a
+     "-" or a "/", so it is never the end of a date or a code
+     ("V-4-67-1"), and it may be a range ("1200-1500 mts."); the unit is a
+     whole word on the number's line ("1200 mm" is none). "1200 m" and
+     "1200 m." are read by the place tool too.
 7. For a precise location, a city or a county is settled: the readings
    then carry nothing finer than the places settled (the town-only labels
    of 105526328 to 105526330).
@@ -456,6 +469,23 @@ all of these hold:
   attempts, or whose answers kept failing their checks); and it answered
   after a GBIF lookup attempt for the field, or quoting as its literal the
   morphocode a reading it names writes (`step._expert_found_no_genus`);
+- no GBIF answer the expert received for the field shows a genus
+  (`step._answer_found_a_genus`): none has candidates (105526328's
+  "Epipsocus" homonym has two), none has the status success or ambiguous
+  (a name the GBIF tool withholds unsent is ambiguous), and no query the
+  expert asked GBIF names a genus (`checks.query_names_a_genus`). A query
+  names a genus when the scientific-name parser reads a name in it as
+  written ("Epipsocus", "Epipsocus sp. 1", "Epipsocus prob. sp. 1"), or
+  with the emphasis marks "*" and "_" dropped and its first letter a
+  capital ("epipsocus", "*Epipsocus*", "epipsocus sp. 1"), or when it is
+  one word (brackets, quotes and punctuation around it aside) that may be
+  a genus once its first letter is a capital (the label check's shape
+  below: "EPIPSOCUS", "Ep1psocus", "(epipsocus)"). The taxon brief has the
+  expert look up the genus a label writes, so such a lookup is its own
+  finding that the label writes one, wherever on the label the genus
+  stands. GBIF's no-name answer for a morphocode (no match, no candidates,
+  "sp. 30" asked) shows none, so the pilots' codes still clear with no
+  GBIF lookup or after that answer;
 - the organiser's literal is a morphocode (`checks.names_no_genus`: the
   scientific-name parser reads no name in it, it has no whole-name GBIF
   query, and it is "sp.", then a number with an optional letter, or a
@@ -499,10 +529,19 @@ has nothing to match". It cites one check row (locator
 run keeps among its lookups (`lookup.no_name_lookup`: no match, and no
 request made; the step adds it when the expert never asked GBIF that
 literal). The clearance rules do not give such a taxon taxonomy_unresolved
-(`step.taxon_unmatched`) while it cites that row and the run's readings
-still name no genus beside its code. A taxon with a genus that GBIF cannot
-decide, such as 105526328's "Epipsocus", still goes to review, whether the
-organiser's candidate is "Epipsocus sp. 1" or only "sp. 1".
+(`step.taxon_unmatched`) while it cites that row, the run's readings still
+name no genus beside its code, and no GBIF lookup the run stores shows a
+genus (`step._lookup_found_a_genus`: the same test, on the query sent or
+asked and the name GBIF could not read). A taxon with a genus that GBIF
+cannot decide, such as 105526328's "Epipsocus", still goes to review,
+whether the organiser's candidate is "Epipsocus sp. 1" or only "sp. 1": when
+the label writes the genus beside the code, by the label check; and,
+wherever the label writes it, when the expert asked GBIF the genus. Where
+the label writes the genus out of the label check's sight (on the line
+after the code, two lines above it, before another word on the line above,
+in lower case, between emphasis marks, or before "prob."), the taxon goes
+to review when the expert asked GBIF a name that names a genus or received
+candidates, and can clear as unmatched only when it did neither.
 
 **Known limitation.** The canonical projection skips a field with no literal
 (`application/projection.py`, `_fields`), so the record in Data Connect does
@@ -539,8 +578,9 @@ reopened like any other field with Correct value: the reviewer's value is
 kept as made and the record waits for that reviewer's approval. Every later
 pass checks a not-on-the-label value again: it clears only while it cites
 its check row and that row names the run's current readings. An unmatched
-taxon is checked again too: it clears only while it cites its check row
-and the run's readings name no genus beside its code. A not-present
+taxon is checked again too: it clears only while it cites its check row,
+the run's readings name no genus beside its code, and no GBIF lookup the
+run stores shows a genus. A not-present
 value with no such row, as every record researched before 2026-10-09 has,
 never clears on a re-check; only new research writes the row.
 

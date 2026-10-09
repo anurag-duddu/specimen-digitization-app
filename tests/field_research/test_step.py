@@ -2523,9 +2523,10 @@ def test_an_elevation_in_spanish_or_short_units_keeps_the_elevations_in_review(t
 @pytest.mark.parametrize(("text", "elevation"), [
     *((written, True) for written in SPANISH_AND_SHORT_UNITS),
     ("1,200 MTS", True), ("ca.1200 mts.", True), ("1200-1500 mts.", True), ("1200 a 1500 metros", True),
-    ("Yepocapa, 1200 msm\nGuatemala", True),
+    ("Yepocapa, 1200 msm\nGuatemala", True), ("1200 mt", True), ("1200 mtr", True), ("1200 Mtrs.", True),
+    ("1200 metro", True), ("6400 psnm", True), ("6400 p s n m", True),
     # No unit, another unit, or a number that ends a date or a code.
-    ("1200 mm", False), ("12 mi", False), ("1200", False), ("V-4-67-1\nsp 22\nlegs", False),
+    ("1200 mm", False), ("12 mi", False), ("1200", False), ("V-4-67-1\nsp 22\nlegs", False), ("3/9/46 m", False),
     ("IX - 3 - 66 - 10", False), ("10-6-78-la", False), ("sp. 30 \N{FEMALE SIGN}", False),
     ("lot #2 cut branch", False), ("1200\nmts.", False),
 ])
