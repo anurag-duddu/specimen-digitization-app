@@ -8,6 +8,7 @@ import traceback
 from pathlib import Path
 from typing import Literal
 from pydantic import Field
+from requests.exceptions import ReadTimeout
 
 from .accepted_output import read_accepted_checkpoint_proof
 from .canonical_projection_v2 import relation_unproved_fields
@@ -295,6 +296,24 @@ class NativeResearchWorker:
             await runtime.engine.run(role_limit=runtime.role_window)
         return await self._publish_committed(runtime, principal, specimen_id)
 
+    async def _publish_checkpoint(self, runtime, principal, specimen_id, prepared, identity):
+        """A transport timeout permits only an exact retained winner read.
+
+        The SQL transport already bounds retries of semantic reads. Do not
+        repeat publication, preparation or mutable continuation here: absence
+        and an unknown attempt both retain the original reconciliation hold.
+        """
+        try:
+            return await runtime.canonical_service.publish_checkpoint(principal, prepared,
+                server_request_identity_digest=identity)
+        except ReadTimeout:
+            self._deadline_check()
+            winner = await runtime.canonical_service.winning_receipt(principal, specimen_id,
+                idempotency_key=prepared.basis.idempotency_key, request_identity_digest=identity)
+            if winner is None:
+                raise
+            return winner
+
     async def _publish_committed(self, runtime, principal, specimen_id, *, publication_progress=None):
         scope = runtime.binding.research_scope()
         # Only committed current checkpoints are eligible. A legacy/historical
@@ -363,8 +382,7 @@ class NativeResearchWorker:
             try:
                 prepared = await prepare_native_publication(runtime.journal, scope, checkpoint.field_key,
                     principal=principal, expected_record_revision=job["record_revision"], blobs=runtime.blobs)
-                published = await runtime.canonical_service.publish_checkpoint(principal, prepared,
-                    server_request_identity_digest=identity)
+                published = await self._publish_checkpoint(runtime, principal, specimen_id, prepared, identity)
             except asyncio.CancelledError:
                 raise
             except Exception as error:

@@ -170,3 +170,37 @@ def test_failed_second_worker_start_cleans_first_worker(tmp_path, monkeypatch):
     with pytest.raises(OSError, match="second launch"):
         python_shards.main()
     assert child.terminated and child.reaped
+
+
+def test_measured_cost_balancing_spreads_slow_small_modules(monkeypatch):
+    nodes = [f"test_{module}.py::test_case[{case}]"
+             for module in "abcdef" for case in range(10)]
+    monkeypatch.setattr(python_shards, "MODULE_COST_MS", {})
+    old = partition(nodes, 3)
+    costs = {"test_a.py": 10000, "test_d.py": 10000}
+    monkeypatch.setattr(python_shards, "MODULE_COST_MS", costs)
+    balanced = partition(nodes, 3)
+
+    def load(shard):
+        modules = {node.split("::", 1)[0] for node in shard}
+        return sum(costs.get(module, 1000) for module in modules)
+
+    assert max(map(load, balanced)) < max(map(load, old))
+    assert sorted(node for shard in balanced for node in shard) == sorted(nodes)
+    for module in "abcdef":
+        expected = [node for node in nodes if node.startswith(f"test_{module}.py::")]
+        owners = [shard for shard in balanced if expected[0] in shard]
+        assert len(owners) == 1
+        assert [node for node in owners[0] if node in expected] == expected
+    assert partition(nodes, 3) == balanced
+
+
+def test_weighted_aggregate_still_refuses_wrong_whole_module_owner(monkeypatch):
+    monkeypatch.setattr(python_shards, "MODULE_COST_MS", {"tests/test_a.py": 10000})
+    results = complete_results()
+    assert verify(results, 3, identity()) == 10
+    # Coverage and all phases still look complete; ownership is nevertheless wrong.
+    results[0]["selected"], results[1]["selected"] = results[1]["selected"], results[0]["selected"]
+    results[0]["reports"], results[1]["reports"] = results[1]["reports"], results[0]["reports"]
+    with pytest.raises(ValueError, match="assignment"):
+        verify(results, 3, identity())

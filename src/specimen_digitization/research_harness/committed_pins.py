@@ -192,16 +192,16 @@ def _acceptance_boundary() -> dict:
 
 
 def _toolset_digest() -> str:
-    # Common tools plus the geography-v9 deterministic progress view. Optional
+    # Common tools plus the geography-v10 batched deterministic progress view. Optional
     # shared capabilities require their own explicitly composed job toolset pin.
     from .collection import COLLECTION_RULE
     from .capability_providers import provider_contract_digest
-    return digest({"contract_version": "research-toolset/v2",
+    return digest({"contract_version": "research-toolset/v3",
         "provider_contract_digest": provider_contract_digest(),
         "tools": ["lookup_source", "invoke_utility", "browse_capture", "run_isolated_code",
                   "read_verified_memory", "read_verified_procedure", "load_capability"],
         "shared_capabilities": "free-research-providers/v1",
-        "role_tools": {"specimen_geography": ["geography_progress", "geography_hierarchy"]},
+        "role_tools": {"specimen_geography": ["geography_progress_all", "geography_hierarchy"]},
         "geography_strategy_version": "geography-research-progress/v1",
         "utility_roles": {name: str(role) for name, role in sorted(UTILITY_ROLES.items())},
         "utility_version": UTILITY_VERSION,

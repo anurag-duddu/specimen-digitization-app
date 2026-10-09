@@ -487,7 +487,7 @@ class NoFence:
         pass
 
 
-def refuse_publications_from(rig, number, states):
+def refuse_publications_from(rig, number, states, *, retained=None):
     """The connector refuses the ``number``-th publication and every later one.
 
     ``states`` collects the specimen's routing state each publication finds."""
@@ -498,6 +498,12 @@ def refuse_publications_from(rig, number, states):
         calls.append(variables["specimenId"])
         states.append(rig.fake.specimens[rig.specimen_id]["state"])
         if len(calls) >= number:
+            if retained is not None:
+                retained["snapshot"] = rig.repository.get(
+                    rig.principal.scope, rig.specimen_id).model_dump(mode="json")
+                _, state = research_state(rig.fake, rig.specimen_id)
+                retained["research"] = json.loads(json.dumps(state))
+                retained["intent_id"] = json.loads(variables["commitJson"])["intent_id"]
             raise ConnectorRefusal("publication refused")
         return publish(variables)
     rig.fake.op_PublishCanonicalResearchV2 = refusing
@@ -507,42 +513,47 @@ def native_worker_lines(caplog):
     return [record.getMessage() for record in caplog.records if record.name.endswith(".native_worker")]
 
 
-def test_a_refused_publication_logs_its_cause_and_the_drain_records_the_hold(rig, caplog):
+def test_a_refused_publication_logs_its_cause_and_preserves_the_native_snapshot(rig, caplog):
     """The first temporal window publishes two fields before the connector
     refuses the third. The log retains the sanitized cause and the drain
-    records the native-publication hold on that current running snapshot."""
+    stops without changing that authoritative snapshot or the pending operation."""
     workflow = compose(rig, geolocate=False)
     states = []
-    refuse_publications_from(rig, 3, states)
+    retained = {}
+    refuse_publications_from(rig, 3, states, retained=retained)
     drain = DrainWorker(rig.repository, RegisteredNativeDrainWorkflow(workflow), WORKER, lambda user: [],
         execution_id="e2e-drain")
-    with caplog.at_level(logging.WARNING), supervised():
-        run, progressed = drain._step_until_stopped(rig.principal, NoFence(), rig.specimen_id, None)
+    code = "native_publication_requires_reconciliation"
+    with caplog.at_level(logging.WARNING), supervised(), pytest.raises(OperationalBlock, match=f"^{code}$"):
+        drain._step_until_stopped(rig.principal, NoFence(), rig.specimen_id, None)
 
     receipts = sorted(rig.fake.receipts.values(), key=lambda row: row["used_canonical_revision"])
     assert [row["causal_proof"]["changed_field"] for row in receipts] == ["date_identified", "date_visited_from"]
     assert states == ["running"] * 3
-    code = "native_publication_requires_reconciliation"
     held = rig.repository.get(rig.principal.scope, rig.specimen_id)
-    # Earlier temporal publications retained a running record; the drain
-    # now records the operational hold on the exact current native snapshot.
-    assert (run.stage, run.blocker, run.disposition) == ("processing_blocked", code, None)
-    assert (held.run.stage, held.run.blocker) == ("processing_blocked", code)
-    assert (held.audit[-1].action, held.audit[-1].reason) == ("lane_block", code)
-    assert rig.fake.specimens[rig.specimen_id]["state"] == "processing_blocked"
+    # An extra administrative save would invalidate the native receipt head.
+    assert held.model_dump(mode="json") == retained["snapshot"]
+    assert held.version == 5 and held.run.blocker is None
+    assert "lane_block" not in [event.action for event in held.audit]
+    assert rig.fake.specimens[rig.specimen_id]["state"] == "running"
+    _, state = research_state(rig.fake, rig.specimen_id)
+    for key in ("budget_totals", "effects", "outbox"):
+        assert state[key] == retained["research"][key]
+    assert retained["intent_id"] in rig.fake.attempts
+    assert any(event.get("delivered") is False and event.get("canonical_commit") is None
+        for event in state["outbox"].values())
 
     # The cause is in the log: the class, the code, the file and line that raised
     # it, the field, and the record's last six characters. The connector's own
     # refusal text, the specimen id and the label are not.
     warnings = [record for record in caplog.records if record.levelno == logging.WARNING]
     lines = {record.name.rpartition(".")[2]: record.getMessage() for record in warnings}
-    assert len(warnings) == 3 and set(lines) == {"persistence", "native_worker", "lane_worker"}
+    assert len(warnings) == 2 and set(lines) == {"persistence", "native_worker"}
     assert lines["persistence"] == ("SQL Connect transport operation=PublishCanonicalResearchV2 "
         "phase=response_validation attempt=1")
     short = rig.specimen_id[-6:]
     assert lines["native_worker"] == ("native publication failed: PublicationUnavailable "
         f"code=native_v2_commit_outcome_unknown field=date_visited_to (record ...{short})")
-    assert lines["lane_worker"] == f"record held by the drain: {code} (record ...{short})"
     assert rig.specimen_id not in caplog.text and "publication refused" not in caplog.text
     assert not any(value in caplog.text for value in LABEL_VALUES.values())
 

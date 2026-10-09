@@ -122,7 +122,8 @@ token and cannot deploy.
 
 Python tests run in six isolated runner jobs. Each runner performs the same
 complete pytest discovery, then keeps whole test files assigned deterministically
-by collection size. Module fixtures and the original order within each file are
+by observed module costs, with a per-test floor for unmeasured work. Module
+fixtures and the original order within each file are
 preserved. The required `Python tests` aggregate checks matching collections,
 source/run/attempt identity, successful test phases and complete execution with
 no missing, duplicate or extra tests. A failed or missing shard fails the gate.

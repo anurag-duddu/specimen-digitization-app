@@ -66,7 +66,7 @@ CURRENT_DATA_SOURCE_FILES = {'dataconnect/connector/artifacts.gql': '4d4da17483f
  'dataconnect/connector/research_binding_v2.gql': '263cadf0b6bf7e0cd92980e02e9a68cfdcf1b360f29fc1539f9adc3df3933dba',  # pragma: allowlist secret (connector file digest)
  'dataconnect/connector/research_derivation_work.gql': 'caeaa3bdfb239392ab34518c1a502edd88d863a9b077afcacb0f3f351be79569',  # pragma: allowlist secret (connector file digest)
  'dataconnect/connector/research_harness.gql': '080d87f0b8c31635f9255d3424f5610553571b678a6f736af924ada4a0261081',  # pragma: allowlist secret (connector file digest)
- 'dataconnect/connector/research_materialization_inputs_v2.gql': '45f03a5b670d7107aa4f0026900dec0104a1910167804e1b1e5ac8d793b8ba54',  # pragma: allowlist secret (connector file digest)
+ 'dataconnect/connector/research_materialization_inputs_v2.gql': 'd4ee012bcc0e5a180e164eb37ff5d417eaf6204f73f27e4fbb174cfb0333c9fd',  # pragma: allowlist secret (connector file digest)
  'dataconnect/connector/research_progress_publication_v2.gql': '498e7e1d4e646e6c8869ce664cae1ea7be0bedaea663b141c3bf9578898984f8',  # pragma: allowlist secret (connector file digest)
  'dataconnect/connector/research_publication_v2.gql': 'ab63af7f52fcd136572487e7789c796a8a828e44f41e7e5777cc7e0a59031569',  # pragma: allowlist secret (connector file digest)
  'dataconnect/connector/research_retry_work.gql': '23c3964fca86d4e2d35f0ec9ab1a3752852c8b818515eaa9d223ee9ca172d807', 'dataconnect/connector/scheduling.gql': 'c12e53ae48fa342deaa2479c4aeca0298b1caf7e2288550d81ec9796f38c51ef',  # pragma: allowlist secret (public connector source digests)

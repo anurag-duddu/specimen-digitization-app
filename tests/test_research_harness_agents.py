@@ -157,7 +157,7 @@ def test_six_specialists_execute_registered_tool_and_typed_output(tmp_path, role
     assert len(calls[role]) == 2
     expected_tools = {"lookup_source", "invoke_utility", "delegate_task"}
     if role == SpecialistRole.GEOGRAPHY:
-        expected_tools |= {"geography_progress", "geography_hierarchy"}
+        expected_tools |= {"geography_progress_all", "geography_hierarchy"}
     for _, info in calls[role]:
         assert {tool.name for tool in info.function_tools} == expected_tools
     assert tools.calls[0][0] == role

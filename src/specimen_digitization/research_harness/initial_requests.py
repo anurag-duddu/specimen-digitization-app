@@ -26,7 +26,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 
 from specimen_digitization.application.active_graph import unpack
@@ -52,8 +52,8 @@ from .measurement import settled_elevation_dependencies
 ORGANISER_SOURCE = "extractor"
 # What an organiser event's "accepted" status means: extractor-proposed, verbatim in its named
 # reading, and qualified by the field's trusted settlement rule. Existing proof objects keep
-# their original version; this adapter creates new v6 events and fragments only.
-ORGANISER_RULE = "organiser-verbatim-span/v6"
+# their original version; this adapter creates new v7 events and fragments only.
+ORGANISER_RULE = "organiser-verbatim-span/v7"
 # The fields an extractor literal becomes an accepted assembly for: the five literal fields that
 # no source this deployment offers can ground and that the validator resolves from a complete
 # literal assembly alone (evidence.py literal_fields). Date/elevation fields require the
@@ -125,10 +125,12 @@ class NativeGenerationRequestFactory:
             or job["pins"]["sources"].get("registry_digest") != self.registry.digest):
             raise StaleWork("research_original_source_profile_unproved")
         scope = binding.research_scope()
-        from .prompts import COLLECTION_EVIDENCE_PROMPT_VERSION
+        from .prompts import COLLECTION_EVIDENCE_PROMPT_VERSION, COLLECTION_PROVENANCE_PROMPT_VERSION
         collection_pin = job["pins"]["prompts"].get(str(SpecialistRole.COLLECTION), {})
         fragments, events, assemblies, evidence, decisions, candidates = self._build_graph(original, scope,
-            collection_recovery=collection_pin.get("version") == COLLECTION_EVIDENCE_PROMPT_VERSION)
+            collection_recovery=collection_pin.get("version") in {
+                COLLECTION_EVIDENCE_PROMPT_VERSION, COLLECTION_PROVENANCE_PROMPT_VERSION},
+            collection_original_reading=collection_pin.get("version") == COLLECTION_PROVENANCE_PROMPT_VERSION)
         if not fragments:
             raise StaleWork("research_original_reading_graph_unavailable")
         elevation_dependencies = await asyncio.to_thread(settled_elevation_dependencies, job, scope,
@@ -171,7 +173,7 @@ class NativeGenerationRequestFactory:
         return NativeGenerationRequestFactory._build_graph(specimen, scope)[:5]
 
     @staticmethod
-    def _build_graph(specimen, scope, *, collection_recovery=True):
+    def _build_graph(specimen, scope, *, collection_recovery=True, collection_original_reading=False):
         ref = specimen.asset.blob_ref
         if not re.fullmatch(r"[a-f0-9]{64}:[1-9][0-9]*", ref) or ref.partition(":")[0] != specimen.asset.sha256:
             raise StaleWork("research_original_asset_generation_unproved")
@@ -280,7 +282,8 @@ class NativeGenerationRequestFactory:
         candidates = recover_collectors(specimen, scope, fragments, events, assemblies, candidates)
         if collection_recovery:
             from .collection import recover_collection_graph
-            recover_collection_graph(scope, fragments, events, assemblies, native_rows=specimen.run.evidence)
+            recover_collection_graph(scope, fragments, events, assemblies, native_rows=specimen.run.evidence,
+                original_reading=collection_original_reading)
         return tuple(fragments),tuple(events),tuple(assemblies),tuple(evidence),tuple(decisions),candidates
 
     @staticmethod
@@ -307,7 +310,9 @@ class NativeGenerationRequestFactory:
         by_field = {}
         for claim in _claims(specimen, reading_map, decided):
             by_field.setdefault(claim.key, []).append(claim)
-        qualified = _qualified_special_assemblies(specimen, by_field, reading_map, decided, keyed)
+        complete_claims = {key: [_complete_elevation_footmark(claim) for claim in claims]
+            for key, claims in by_field.items()}
+        qualified = _qualified_special_assemblies(specimen, complete_claims, reading_map, decided, keyed)
         candidates, seen = [], set()
         for key, claims in by_field.items():     # in field-key order
             consensus = _claims_settle_field(specimen, key, claims, reading_map, decided)
@@ -320,8 +325,12 @@ class NativeGenerationRequestFactory:
             if len(claims) > MAX_CANDIDATES_PER_FIELD:
                 claims, dropped = claims[:MAX_CANDIDATES_PER_FIELD - 1], claims[MAX_CANDIDATES_PER_FIELD - 1:]
             built = []
-            for claim in claims:
-                special_evidence = qualified.get((key, claim.row.id)) if claim.row is not None else None
+            expanded_claims = []
+            for original in claims:
+                complete = _complete_elevation_footmark(original)
+                expanded_claims.extend((original,) if complete == original else (original, complete))
+            for claim in expanded_claims:
+                special_evidence = qualified.get((key, claim.row.id, claim.literal.strip())) if claim.row is not None else None
                 context_fragments = ()
                 if (special_evidence and key in COLLECTING_DATE_FIELDS and claim.observation is not None
                     and not _qualified_line(claim.observation.literal_text, claim.literal, _COLLECTING_DATE_LINE)):
@@ -345,6 +354,12 @@ class NativeGenerationRequestFactory:
                 built.append(_candidate(key, dropped[0].literal.strip()[:MAX_ORGANISER_LITERAL], "ungrounded",
                     "more_candidates_for_the_field_than_are_handed_over",
                     region_id=dropped[0].row.region_id if dropped[0].row is not None else None))
+            built = [item for item in built if item is not None]
+            if len(built) > MAX_CANDIDATES_PER_FIELD:
+                hidden = built[MAX_CANDIDATES_PER_FIELD - 1]
+                built = [*built[:MAX_CANDIDATES_PER_FIELD - 1], _candidate(
+                    key, hidden.literal, "ungrounded", "more_candidates_for_the_field_than_are_handed_over",
+                    region_id=hidden.region_id)]
             for item in built:
                 if item is not None and item.id not in seen:
                     seen.add(item.id)
@@ -484,7 +499,7 @@ class NativeGenerationRequestFactory:
 def _qualified_special_assemblies(specimen, by_field, reading_map, decided, keyed):
     """Qualify event-specific dates and complete written elevation assertions.
 
-    Dates require every retained reader to quote the same complete literal on an
+    Dates require every retained reader to quote the same parsed complete date on an
     explicit event line or an independently evidenced collecting/locality label.
     Determination dates always require their explicit event. Elevations use parser-supported
     complete unit assertions, ranges/qualifiers and harmless formatting agreement,
@@ -501,24 +516,25 @@ def _qualified_special_assemblies(specimen, by_field, reading_map, decided, keye
         claims = [claim for key in fields for claim in by_field.get(key, ())]
         if not claims or any(item.field_key in fields for item in keyed):
             continue
-        literals = {claim.literal.strip() for claim in claims}
         regions = {claim.row.region_id for claim in claims if claim.row is not None}
-        if len(literals) != 1 or not next(iter(literals)) or len(regions) != 1:
+        if len(regions) != 1 or any(not claim.literal.strip() for claim in claims):
             continue
-        literal = next(iter(literals))
         region_id = next(iter(regions))
         readers = [item for item in reading_map.values() if item.region_id == region_id]
         if (len(readers) < 2 or len({item.id for item in readers}) != len(readers)
             or any(not item.literal_text.strip() or item.unreadable_spans for item in readers)):
             continue
         try:
-            parse_temporal(literal)
+            parsed = [parse_temporal(claim.literal.strip()) for claim in claims]
         except EvidenceError:
+            continue
+        if len({(item.canonical, item.precision, item.century_rule) for item in parsed}) != 1:
             continue
         citing = set()
         sound = True
         for claim in claims:
             row, observation = claim.row, claim.observation
+            literal = claim.literal.strip()
             if (claim.legacy or row is None or observation is None
                 or row.asset_id != specimen.asset.id or row.region_id != region_id
                 or observation.region_id != region_id or tuple(row.observation_ids) != (observation.id,)
@@ -537,10 +553,6 @@ def _qualified_special_assemblies(specimen, by_field, reading_map, decided, keye
         chosen = None
         for key in preferred:
             for claim in by_field.get(key, ()):
-                field = specimen.run.fields.get(str(key))
-                if (not claim.primary or field is None or field.state != ValueState.SUPPORTED
-                    or field.literal != literal):
-                    continue
                 selected = decided.get(region_id)
                 if selected is not None and (claim.observation is None
                                              or claim.observation.id != selected[1].id):
@@ -553,8 +565,9 @@ def _qualified_special_assemblies(specimen, by_field, reading_map, decided, keye
             continue
         # This evidence is the extractor's independently verified quote from
         # every reader; the one assembly uses a single exact source span.
-        evidence_ids = tuple(dict.fromkeys(claim.row.id for claim in claims))
-        qualified[(chosen.key, chosen.row.id)] = evidence_ids
+        evidence_ids = tuple(dict.fromkeys(claim.row.id for claim in claims
+            if claim.literal.strip() == chosen.literal.strip()))
+        qualified[(chosen.key, chosen.row.id, chosen.literal.strip())] = evidence_ids
     return qualified
 
 
@@ -647,6 +660,29 @@ def _measurement_identity(measurement):
         measurement.from_unit, measurement.to_unit, measurement.single,
         tuple(item.casefold() for item in measurement.qualifiers),
         Decimal(measurement.uncertainty) if measurement.uncertainty is not None else None)
+
+
+def _complete_elevation_footmark(claim):
+    """Retain a numeric hint and separately recover its exact quoted foot mark."""
+    literal, row, observation = claim.literal.strip(), claim.row, claim.observation
+    if (claim.key not in ELEVATION_FIELDS or not str(claim.key).endswith("_ft")
+        or claim.legacy or row is None or observation is None
+        or re.fullmatch(_MEASUREMENT_NUMBER, literal) is None
+        or observation.literal_text.count(literal) != 1):
+        return claim
+    for _, _, line in _lines(observation.literal_text):
+        at = line.find(literal)
+        complete = literal + "'"
+        if (at < 0 or line[at:].rstrip() != complete or complete not in row.excerpt
+            or row.excerpt not in observation.literal_text
+            or not _qualified_elevation_line(observation.literal_text, complete)):
+            continue
+        try:
+            parse_measurement(complete)
+        except EvidenceError:
+            continue
+        return replace(claim, literal=complete, primary=False)
+    return claim
 
 
 def _qualified_elevation_line(text, literal):
@@ -809,7 +845,7 @@ def _qualified_elevation_assemblies(specimen, by_field, reading_map, decided, ke
     # candidates and evidence; all were checked above, none is rewritten.
     evidence_ids = tuple(dict.fromkeys(claim.row.id for claim in claims
         if claim.literal.strip() == chosen.literal.strip()))
-    return {(chosen.key, chosen.row.id): evidence_ids}
+    return {(chosen.key, chosen.row.id, chosen.literal.strip()): evidence_ids}
 
 
 def _qualified_line(text, literal, marker, *, allow_full_line=False):

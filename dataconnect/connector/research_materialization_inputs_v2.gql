@@ -7,7 +7,7 @@ query GetCanonicalResearchMaterializationInputsV2($organizationId: UUID!, $colle
   binding: _selectFirst(sql: """
     SELECT row_to_json(native_exact)::text AS exact_json FROM (
 
-    WITH base AS (
+    WITH base AS MATERIALIZED (
     SELECT jsonb_build_object(
       'organization_id', s.organization_id, 'collection_id', s.collection_id,
       'specimen_id', s.id, 'record_revision', s.revision,
@@ -100,7 +100,7 @@ query GetCanonicalResearchMaterializationInputsV2($organizationId: UUID!, $colle
       AND (b.binding_id IS NULL OR (h.state_json IS NOT NULL AND h.state_json::jsonb=h.state
         AND rv.id IS NOT NULL AND run.id IS NOT NULL
         AND b.current_canonical_revision=s.revision AND b.current_snapshot_sha256=snap.sha256))
-    ), selected AS (
+    ), selected AS MATERIALIZED (
       SELECT i.id AS intent_id,
         CASE WHEN i.payload_json::jsonb=i.payload THEN i.payload_json::json END AS intent,
         CASE WHEN (SELECT count(*) FROM json_each(prep.payload_json::json) e WHERE e.key='preparation_digest')=1
