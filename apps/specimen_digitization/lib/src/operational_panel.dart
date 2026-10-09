@@ -111,6 +111,38 @@ class ProcessingDetail extends StatelessWidget {
   final bool busy;
   final Future<void> Function(Json) onAction;
 
+  /// The administrator's way out of an unknown outcome, and the words around
+  /// it, fixed so the panel, its dialog and their tests agree. The server
+  /// offers the action only to an administrator and only for a step that
+  /// reads, so it never repeats an effect that writes.
+  static const String reconcileAction = 'Reconcile request';
+  static const String reconcileTitle = 'Reconcile this request?';
+  static const String reconcileConsequence =
+      'The last request may have run, and its result is unknown. '
+      'Reconciling runs that step again for a few cents.';
+  static const String reconcileRetained =
+      'It is offered only for steps that read, so nothing is written twice.';
+
+  /// What a screen reader hears once the server has saved the action.
+  static const String reconcileSaved =
+      'Request reconciled. The step is queued to run again.';
+
+  Future<void> _reconcile(BuildContext context) async {
+    final String? reason = await showReasonSheet(
+      context,
+      title: reconcileTitle,
+      action: reconcileAction,
+      consequence: reconcileConsequence,
+      retained: reconcileRetained,
+    );
+    if (reason == null || !context.mounted) return;
+    await onAction(<String, dynamic>{
+      'kind': 'run_action',
+      'action': 'reconcile',
+      'reason': reason,
+    });
+  }
+
   Future<void> _confirm(
     BuildContext context,
     String action,
@@ -182,6 +214,10 @@ class ProcessingDetail extends StatelessWidget {
                 'retries.',
             why: 'This app never repeats the request automatically.',
           ),
+          // Only an action the server offers is drawn: an administrator, for a
+          // step that reads. Every other reader sees the explanation alone.
+          if (canOperate && actions.contains('reconcile'))
+            _reconcileButton(context, run, activeLease: activeLease),
         ],
         if (blocker.contains('budget') || blocker.contains('cost')) ...<Widget>[
           Text('Processing stopped at a cost limit.', style: ui.type.body),
@@ -211,7 +247,9 @@ class ProcessingDetail extends StatelessWidget {
             value: relativeInstant(run['lease_until']),
           ),
           Text(
-            'Retry, resume and new run are unavailable until then.',
+            actions.contains('reconcile')
+                ? 'Reconcile, resume and new run are unavailable until then.'
+                : 'Retry, resume and new run are unavailable until then.',
             style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
           ),
         ],
@@ -290,6 +328,31 @@ class ProcessingDetail extends StatelessWidget {
     );
   }
 
+  /// The Reconcile action, disabled with its reason while a save is in flight
+  /// or the processing service still holds the run.
+  Widget _reconcileButton(
+    BuildContext context,
+    Json run, {
+    required bool activeLease,
+  }) {
+    final String? blocked = _blockedReason(
+      'reconcile',
+      busy: busy,
+      activeLease: activeLease,
+      leaseUntil: run['lease_until'],
+    );
+    return Padding(
+      padding: EdgeInsetsDirectional.only(top: context.ui.space.s2),
+      child: UiButtonRow(
+        primary: UiButton(
+          label: reconcileAction,
+          disabledReason: blocked,
+          onPressed: blocked == null ? () => _reconcile(context) : null,
+        ),
+      ),
+    );
+  }
+
   /// The permitted run actions, arranged by `UiButtonRow`.
   ///
   /// Only the actions the server permits are rendered at all. A permitted
@@ -347,7 +410,8 @@ class ProcessingDetail extends StatelessWidget {
     required Object? leaseUntil,
   }) {
     if (busy) return 'Wait for the save that is in flight to finish';
-    if (activeLease && <String>['resume', 'reprocess'].contains(action)) {
+    if (activeLease &&
+        <String>['resume', 'reprocess', 'reconcile'].contains(action)) {
       return 'The processing service holds this run until '
           '${relativeInstant(leaseUntil)}';
     }

@@ -67,7 +67,13 @@ from .storage import (
     digest,
     work_available_at,
 )
-from .workflow import FIELD_RESEARCH, OperationalBlock, SyntheticAdapters, Workflow
+from .workflow import (
+    FIELD_RESEARCH,
+    OperationalBlock,
+    SyntheticAdapters,
+    Workflow,
+    reconcilable_step,
+)
 
 SYNTHETIC_ORG = "00000000-0000-4000-8000-000000000001"
 SYNTHETIC_COLLECTION = "00000000-0000-4000-8000-000000000002"
@@ -179,6 +185,11 @@ class ClassificationInput(RevisionInput):
 
 class ActionInput(RevisionInput):
     action: str
+
+
+# The one role that may reconcile an unknown external outcome. It is the role the
+# pilot administrator holds; no other membership role is stricter.
+RECONCILE_ROLE = "admin"
 
 
 def pilot_corrections_allowed(run):
@@ -361,6 +372,10 @@ def summary(specimen: Specimen, role: str = "viewer") -> dict:
             action for action in result["available_actions"]
             if action not in {"retry", "resume", "reprocess", "restore_version"}
         ]
+        # Only an administrator, and only where running the blocked step again
+        # cannot repeat an effect (workflow.reconcilable_step).
+        if role == RECONCILE_ROLE and reconcilable_step(run) is not None:
+            result["available_actions"].append("reconcile")
     if run.dependencies.get("human_review_field_locks"):
         result["available_actions"] = [action for action in result["available_actions"] if action != "reprocess"]
     if has_active_lease(run):
@@ -2568,13 +2583,15 @@ def create_app(
                 if s.run.id != run_id:
                     continue
                 s = s.model_copy(deep=True)
+                if body.action == "reconcile" and p.role != RECONCILE_ROLE:
+                    raise PermissionError("Reconciling an unknown outcome needs an administrator")
                 if "evidence_pilot" in s.run.dependencies:
                     raise Conflict("Evidence pilot permits retained-evidence corrections only")
                 if s.run.blocker == "external_outcome_unknown" and body.action in {"retry", "resume", "reprocess"}:
                     raise Conflict("Unknown external outcome requires operator reconciliation")
                 if not body.reason.strip():
                     raise ValueError("Action reason required")
-                if body.action in {"retry", "resume", "reprocess"} and has_active_lease(
+                if body.action in {"retry", "resume", "reprocess", "reconcile"} and has_active_lease(
                     s.run
                 ):
                     raise Conflict(
@@ -2594,6 +2611,36 @@ def create_app(
                 elif body.action in {"pause", "cancel"}:
                     s.run.stage = "paused" if body.action == "pause" else "cancelled"
                     s.run.disposition = None
+                elif body.action == "reconcile":
+                    # An unknown outcome of a model reading is settled by reading
+                    # again. The earlier reservation, the attempt count and the
+                    # circuit are untouched: the unknown spend stays counted in
+                    # full, and the next run of the step reserves its own.
+                    if s.run.blocker != "external_outcome_unknown":
+                        raise Conflict("Only a run blocked by an unknown external outcome can be reconciled")
+                    step = reconcilable_step(s.run)
+                    if step is None:
+                        raise Conflict(
+                            "Reconcile is refused: the blocked step is not a model reading "
+                            "that is safe to run again, so it could repeat an effect"
+                        )
+                    action_event = AuditEvent(
+                        actor=user,
+                        action=body.action,
+                        reason=body.reason,
+                        before={
+                            "blocker": s.run.blocker,
+                            "stage": s.run.stage,
+                            "step": step,
+                            "attempt": s.run.attempts.get(step, 0),
+                            "lease_until": s.run.lease_until,
+                        },
+                        after={"blocker": None, "lease_until": None, "step": step},
+                    )
+                    s.run.blocker = None
+                    s.run.lease_until = None
+                    s.run.disposition = None
+                    s.run.stage = step.split(":")[0]
                 elif body.action == "reprocess":
                     if s.run.dependencies.get("human_review_field_locks"):
                         raise Conflict("Reprocessing cannot discard retained human field selections")
@@ -2607,9 +2654,9 @@ def create_app(
                     install(s, carries, blobs)
                 else:
                     raise ValueError("Unsupported action")
-                if body.action in {"retry", "resume", "reprocess"}:
+                if body.action in {"retry", "resume", "reprocess", "reconcile"}:
                     request_processing(s, user)
-                s.audit.append(action_event if body.action == "reprocess" else
+                s.audit.append(action_event if body.action in {"reprocess", "reconcile"} else
                     AuditEvent(actor=user, action=body.action, reason=body.reason))
                 saved = repository.save(
                     p,

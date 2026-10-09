@@ -1089,6 +1089,55 @@ class Workflow:
         raise OperationalBlock("step_budget_exhausted")
 
 
+# The steps an admin may reconcile by running them again: each makes exactly one
+# external effect, a model reading, which answers from inputs the run already
+# holds and writes nothing outside the run until the step succeeds.
+RECONCILABLE_READ_PREFIXES = ("transcribe:", "first_pass:")
+
+
+def reconcilable_step(run: Run) -> str | None:
+    """The step an unknown outcome blocks, when running it again is safe; else None.
+
+    The ``reconcile`` run action clears an ``external_outcome_unknown`` blocker by
+    letting the worker run the blocked step once more. That is only safe when a
+    second run cannot repeat an effect the first one may already have had:
+
+    - ``transcribe:<region>:<route>`` is one model reading of one label crop. Its
+      result joins the run (``run.observations``) only when the call returns, so a
+      repeat can cost a few cents and cannot change anything outside the run.
+    - ``first_pass:<region>`` is one model comparison of readings the run holds.
+      Its decision replaces that region's earlier decision, so a repeat cannot
+      duplicate one.
+
+    Everything else is refused: ``segment`` (a service call), ``lookup`` and
+    ``authority:`` (source requests), ``parse`` (the organiser rewrites the run's
+    fields and evidence in place and honours preserved human fields), field
+    research (several paid calls and a program ledger), ``finalize`` and every step
+    this function does not name. A step it cannot classify is a step it refuses.
+
+    The blocked step is the one ``Workflow.next_step`` names, the same function the
+    worker used when it recorded the intent, and it must have been attempted: the
+    intent raised ``run.attempts[step]`` before the call. A reading the run already
+    holds for that label and route is never read a second time.
+    """
+    if run.blocker != "external_outcome_unknown":
+        return None
+    step = Workflow.next_step(run)
+    if not step.startswith(RECONCILABLE_READ_PREFIXES):
+        return None
+    if run.attempts.get(step, 0) < 1:
+        return None
+    parts = step.split(":")
+    if parts[0] == "transcribe":
+        if len(parts) != 3 or not all(parts[1:]):
+            return None
+        if any(o.region_id == parts[1] and o.route_id == parts[2] for o in run.observations):
+            return None
+    elif len(parts) != 2 or not parts[1]:
+        return None
+    return step
+
+
 class SyntheticAdapters:
     """Explicit fixture generator. Never represents SAM 3 or live inference."""
 

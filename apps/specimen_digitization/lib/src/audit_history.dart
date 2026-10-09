@@ -36,6 +36,7 @@ String auditActionLabel(Json event) {
     'process' => 'Requested processing',
     'retry' => 'Requested processing retry',
     'reprocess' => 'Requested reprocessing',
+    'reconcile' => 'Reconciled an unknown request',
     'pause' => 'Paused processing',
     'resume' => 'Resumed processing',
     _ => vocabularyLabel(action),
