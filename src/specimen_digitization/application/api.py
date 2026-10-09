@@ -2618,11 +2618,13 @@ def create_app(
                     # full, and the next run of the step reserves its own.
                     if s.run.blocker != "external_outcome_unknown":
                         raise Conflict("Only a run blocked by an unknown external outcome can be reconciled")
+                    if s.run.stage == "cancelled":
+                        raise Conflict("A cancelled run stays stopped; reconciling would queue paid work")
                     step = reconcilable_step(s.run)
                     if step is None:
                         raise Conflict(
                             "Reconcile is refused: the blocked step is not a model reading "
-                            "that is safe to run again, so it could repeat an effect"
+                            "that is safe to run again, so a repeat could write a record twice"
                         )
                     action_event = AuditEvent(
                         actor=user,
@@ -2637,10 +2639,13 @@ def create_app(
                         },
                         after={"blocker": None, "lease_until": None, "step": step},
                     )
+                    # A paused run stays paused: the blocker and the lease are
+                    # cleared and nothing is queued, so a person resumes it later.
+                    keep_paused = s.run.stage == "paused"
                     s.run.blocker = None
                     s.run.lease_until = None
                     s.run.disposition = None
-                    s.run.stage = step.split(":")[0]
+                    s.run.stage = "paused" if keep_paused else step.split(":")[0]
                 elif body.action == "reprocess":
                     if s.run.dependencies.get("human_review_field_locks"):
                         raise Conflict("Reprocessing cannot discard retained human field selections")
@@ -2654,7 +2659,9 @@ def create_app(
                     install(s, carries, blobs)
                 else:
                     raise ValueError("Unsupported action")
-                if body.action in {"retry", "resume", "reprocess", "reconcile"}:
+                if body.action in {"retry", "resume", "reprocess"} or (
+                    body.action == "reconcile" and s.run.stage != "paused"
+                ):
                     request_processing(s, user)
                 s.audit.append(action_event if body.action in {"reprocess", "reconcile"} else
                     AuditEvent(actor=user, action=body.action, reason=body.reason))

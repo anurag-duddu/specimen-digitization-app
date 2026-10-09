@@ -23,9 +23,13 @@ import 'workbench_harness.dart';
 const String unknown = 'external_outcome_unknown';
 const String reconcile = ProcessingDetail.reconcileAction;
 
+/// A run as the server reports one blocked as unknown: the steps it attempted
+/// (the blocked one included, with its full identifier), what it reserved and
+/// the policy limits, because a real run always carries all three.
 Specimen specimenWith({
   List<String> actions = const <String>['pause', 'cancel', 'reconcile'],
   String blocker = unknown,
+  String stage = 'processing_blocked',
   DateTime? lease,
 }) => Specimen(<String, dynamic>{
   'specimen_id': 'reconcile-001',
@@ -33,7 +37,30 @@ Specimen specimenWith({
   'available_actions': actions,
   'run': <String, dynamic>{
     'blocker': blocker,
+    'stage': stage,
     'lease_until': lease?.toUtc().toIso8601String(),
+    'attempts': <String, dynamic>{
+      'segment': 1,
+      'transcribe:cf72bf96-4d3a-4b1e-9f0a-5c2f6a7b8c9d:handwriting-qwen': 1,
+      'transcribe:cf72bf96-4d3a-4b1e-9f0a-5c2f6a7b8c9d:handwriting-muse': 1,
+    },
+    'usage': <String, dynamic>{
+      'steps': 3,
+      'external_calls': 5,
+      'tokens': 1500,
+      'reserved_tokens': 48000,
+      'active_seconds': 12.5,
+      'reserved_active_seconds': 360.0,
+      'actual_cost_micros': null,
+      'reserved_cost_micros': 170721,
+    },
+    'profile': <String, dynamic>{
+      'execution': <String, dynamic>{
+        'max_steps': 200,
+        'max_external_calls': 96,
+        'max_tokens': 480000,
+      },
+    },
   },
 });
 
@@ -225,15 +252,35 @@ void main() {
       expect(find.text(ProcessingDetail.reconcileRetained), findsOneWidget);
       expect(
         ProcessingDetail.reconcileConsequence,
-        allOf(
-          contains('may have run'),
-          contains('runs that step again'),
-          contains('few cents'),
-        ),
+        'The last request may have run, and its result is unknown. '
+        'Reconciling sends that step again, for a few cents.',
       );
+      // No record is written twice, but a repeat can bill again.
       expect(
         ProcessingDetail.reconcileRetained,
-        contains('nothing is written twice'),
+        allOf(
+          contains('no record is written twice'),
+          contains('may be billed'),
+        ),
+      );
+    });
+
+    testWidgets('says a paused run stays paused until it is resumed', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        scrollingHost(panel(specimenWith(stage: 'paused'))),
+      );
+      await tester.tap(uiButton(reconcile));
+      await tester.pumpAndSettle();
+      expect(
+        find.text(ProcessingDetail.reconcilePausedConsequence),
+        findsOneWidget,
+      );
+      expect(find.text(ProcessingDetail.reconcileConsequence), findsNothing);
+      expect(
+        ProcessingDetail.reconcilePausedConsequence,
+        allOf(contains('clears the block'), contains('when you resume')),
       );
     });
 
@@ -286,22 +333,20 @@ void main() {
   });
 
   group('the result is announced once', () {
-    Specimen record() => Specimen(<String, dynamic>{
+    Specimen record(String stage) => Specimen(<String, dynamic>{
       'specimen_id': 'reconcile-001',
       'display_name': 'Synthetic reconcile record',
       'revision': 7,
       'disposition': 'needs_human_review',
       'available_actions': const <String>['pause', 'cancel', 'reconcile'],
-      'run': const <String, dynamic>{
-        'blocker': unknown,
-        'stage': 'processing_blocked',
-      },
+      'run': <String, dynamic>{'blocker': unknown, 'stage': stage},
     });
 
     Future<List<String>> reconcileThroughTheWorkbench(
       WidgetTester tester, {
       required bool saved,
       required List<Json> sent,
+      String stage = 'processing_blocked',
     }) async {
       useWindow(tester, largeWindow);
       final SemanticsHandle semantics = tester.ensureSemantics();
@@ -325,7 +370,7 @@ void main() {
       await tester.pumpWidget(
         workbenchHost(
           ReviewWorkbench(
-            specimen: record(),
+            specimen: record(stage),
             onChange: (Json change) async {
               sent.add(change);
               return saved;
@@ -377,6 +422,26 @@ void main() {
       );
     });
 
+    testWidgets('a paused run is told to resume it, once', (
+      WidgetTester tester,
+    ) async {
+      final List<Json> sent = <Json>[];
+      final List<String> announced = await reconcileThroughTheWorkbench(
+        tester,
+        saved: true,
+        sent: sent,
+        stage: 'paused',
+      );
+      expect(sent.single['action'], 'reconcile');
+      expect(
+        announced.where(
+          (String m) => m == ProcessingDetail.reconcileSavedPaused,
+        ),
+        hasLength(1),
+      );
+      expect(announced, isNot(contains(ProcessingDetail.reconcileSaved)));
+    });
+
     testWidgets('a reconcile the server refused is not announced as saved', (
       WidgetTester tester,
     ) async {
@@ -398,6 +463,12 @@ void main() {
       ) async {
         await pumpScaled(tester, panel(specimenWith()), width: width);
         expect(uiButton(reconcile), findsOneWidget);
+        // The run's attempts, usage and drawer are on screen too, as on a real
+        // blocked run, and they fit as well.
+        expect(find.text('Attempts'), findsOneWidget);
+        expect(find.text('External requests'), findsOneWidget);
+        expect(find.text('Reserved active time'), findsOneWidget);
+        expect(uiButton(EvidenceDrawer.defaultTitle), findsOneWidget);
         expectNothingCutOff(tester, find.byType(OperationalPanel), width);
         expect(tester.takeException(), isNull);
         // The control keeps the 48 dp target at any text size.
@@ -407,21 +478,31 @@ void main() {
         );
       });
 
-      testWidgets('the reason sheet fits $width wide', (
-        WidgetTester tester,
-      ) async {
-        await pumpScaled(tester, panel(specimenWith()), width: width);
-        await tester.tap(uiButton(reconcile));
-        await tester.pumpAndSettle();
-        final Finder form = find.byType(ReasonForm);
-        expect(form, findsOneWidget);
-        expect(
-          find.text(ProcessingDetail.reconcileConsequence),
-          findsOneWidget,
-        );
-        expectNothingCutOff(tester, form, width);
-        expect(tester.takeException(), isNull);
-      });
+      for (final String stage in <String>['processing_blocked', 'paused']) {
+        testWidgets('the reason sheet fits $width wide, $stage', (
+          WidgetTester tester,
+        ) async {
+          await pumpScaled(
+            tester,
+            panel(specimenWith(stage: stage)),
+            width: width,
+          );
+          await tester.tap(uiButton(reconcile));
+          await tester.pumpAndSettle();
+          final Finder form = find.byType(ReasonForm);
+          expect(form, findsOneWidget);
+          expect(
+            find.text(
+              stage == 'paused'
+                  ? ProcessingDetail.reconcilePausedConsequence
+                  : ProcessingDetail.reconcileConsequence,
+            ),
+            findsOneWidget,
+          );
+          expectNothingCutOff(tester, form, width);
+          expect(tester.takeException(), isNull);
+        });
+      }
     }
 
     testWidgets('the action has a name a screen reader can read', (

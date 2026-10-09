@@ -114,25 +114,45 @@ class ProcessingDetail extends StatelessWidget {
   /// The administrator's way out of an unknown outcome, and the words around
   /// it, fixed so the panel, its dialog and their tests agree. The server
   /// offers the action only to an administrator and only for a step that
-  /// reads, so it never repeats an effect that writes.
+  /// reads, so no record is written twice. The provider may still bill a
+  /// repeat, which the sheet says.
   static const String reconcileAction = 'Reconcile request';
   static const String reconcileTitle = 'Reconcile this request?';
   static const String reconcileConsequence =
       'The last request may have run, and its result is unknown. '
-      'Reconciling runs that step again for a few cents.';
+      'Reconciling sends that step again, for a few cents.';
+
+  /// A paused run stays paused: reconciling clears the block and the step is
+  /// sent only once someone resumes the run.
+  static const String reconcilePausedConsequence =
+      'The last request may have run, and its result is unknown. '
+      'Reconciling clears the block, and the step is sent again when you resume.';
   static const String reconcileRetained =
-      'It is offered only for steps that read, so nothing is written twice.';
+      'It is offered only for steps that read, so no record is written twice. '
+      'Both requests may be billed.';
 
   /// What a screen reader hears once the server has saved the action.
   static const String reconcileSaved =
-      'Request reconciled. The step is queued to run again.';
+      'Request reconciled. The step is queued to be sent again.';
+  static const String reconcileSavedPaused =
+      'Request reconciled. Resume processing to send the step again.';
+
+  /// Whether the run is paused, which reconciling leaves it.
+  static bool isPaused(Specimen specimen) =>
+      textOf(
+        objectOf(specimen.data['run'])['stage'],
+        textOf(specimen.data['stage'], ''),
+      ) ==
+      'paused';
 
   Future<void> _reconcile(BuildContext context) async {
     final String? reason = await showReasonSheet(
       context,
       title: reconcileTitle,
       action: reconcileAction,
-      consequence: reconcileConsequence,
+      consequence: isPaused(specimen)
+          ? reconcilePausedConsequence
+          : reconcileConsequence,
       retained: reconcileRetained,
     );
     if (reason == null || !context.mounted) return;
@@ -312,8 +332,11 @@ class ProcessingDetail extends StatelessWidget {
                   'client does not convert one. A cost the server did not '
                   'record is shown as not recorded, never as zero.',
             ),
+          // The trigger keeps the one visible word every drawer has, which fits
+          // at any text size; the section names what it holds for a screen
+          // reader (EvidenceDrawer.section).
           EvidenceDrawer(
-            title: 'Execution policy, usage and attempts',
+            section: 'execution policy, usage and attempts',
             payload: <String, dynamic>{
               'policy': policy,
               'usage': usage,
@@ -455,7 +478,11 @@ class _Measurement extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
+            // The label and the value share the row in the ratio 3 to 2 and
+            // both wrap: they are content, and at large text on a phone a
+            // value that kept its own width pushed the row past the window.
             Expanded(
+              flex: 3,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
@@ -477,7 +504,10 @@ class _Measurement extends StatelessWidget {
               ),
             ),
             SizedBox(width: ui.space.s2),
-            Text(value, style: ui.type.body),
+            Flexible(
+              flex: 2,
+              child: Text(value, style: ui.type.body, textAlign: TextAlign.end),
+            ),
           ],
         ),
       ),

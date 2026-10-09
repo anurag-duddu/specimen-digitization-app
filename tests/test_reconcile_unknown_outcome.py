@@ -3,7 +3,8 @@
 A run blocked as `external_outcome_unknown` had no way out: retry, resume and
 reprocess are refused for it, and pause and cancel leave the blocker in place.
 The `reconcile` run action runs the blocked step once more, and only where that
-cannot repeat an effect: a model reading (`transcribe:`, `first_pass:`).
+writes no record twice: a model reading (`transcribe:`, `first_pass:`). A cancelled
+run stays stopped, and a paused run stays paused.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -383,6 +384,119 @@ def test_a_second_reconcile_changes_nothing(tmp_path):
     assert [e.action for e in twice.audit].count("reconcile") == 1
 
 
+def test_a_replay_after_the_step_blocks_again_returns_the_old_snapshot(tmp_path):
+    repo, blobs, blocked = blocked_run(tmp_path, "transcribe:" + ROUTES[0])
+    c = admin(tmp_path, RecordingDispatcher())
+    first = reconcile(c, blocked.run, blocked.version)
+    assert first.status_code == 200, first.text
+    # The step is sent again, drops its connection again and its lease expires.
+    again = Workflow(
+        repo,
+        blobs,
+        Readers(blobs, drop="transcribe:" + ROUTES[0]),
+        clock=lambda: datetime.now(timezone.utc) - timedelta(hours=1),
+    ).step(operator(), blocked.id)
+    assert again.run.blocker == UNKNOWN
+    assert set(again.run.attempts.values()) == {2}
+    assert again.version > blocked.version + 1
+
+    # The same key and body now finds its receipt: the stored answer comes back
+    # as a 200 for the old revision, and the record is not changed.
+    replay = reconcile(c, blocked.run, blocked.version)
+
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["revision"] == blocked.version + 1
+    assert replay.json()["blocker"] is None
+    stored = repo.get(SCOPE, blocked.id)
+    assert stored.version == again.version
+    assert stored.run.blocker == UNKNOWN
+    assert [e.action for e in stored.audit].count("reconcile") == 1
+
+
+def act(client, specimen_id, action, key):
+    detail = client.get(PREFIX + f"/specimens/{specimen_id}", headers=HEADERS).json()
+    return client.post(
+        PREFIX + f"/runs/{detail['active_run_id']}/actions",
+        headers=dict(HEADERS, **{"Idempotency-Key": key}),
+        json={
+            "action": action,
+            "expected_revision": detail["revision"],
+            "reason": "Stage test " + action,
+        },
+    )
+
+
+def test_a_cancelled_run_stays_stopped(tmp_path):
+    repo, blobs, blocked = blocked_run(tmp_path, "transcribe:" + ROUTES[0])
+    dispatcher = RecordingDispatcher()
+    c = admin(tmp_path, dispatcher)
+    assert "reconcile" in actions_of(c, blocked.id)
+    assert act(c, blocked.id, "cancel", "cancel-1").status_code == 200
+    cancelled = repo.get(SCOPE, blocked.id)
+    assert (cancelled.run.stage, cancelled.run.blocker) == ("cancelled", UNKNOWN)
+    # A cancelled run is not offered the action, and it is refused if asked.
+    assert "reconcile" not in actions_of(c, blocked.id)
+
+    response = reconcile(c, cancelled.run, cancelled.version)
+
+    assert response.status_code == 409, response.text
+    assert "cancelled" in response.json()["error"]["message"]
+    after = repo.get(SCOPE, blocked.id)
+    assert after.version == cancelled.version
+    assert (after.run.stage, after.run.blocker) == ("cancelled", UNKNOWN)
+    # Cancel still stops paid work: nothing is queued and no reader is called.
+    assert work_available_at(after) is None
+    assert due_ids(tmp_path) == []
+    readers = Readers(blobs)
+    Workflow(repo, blobs, readers).step(operator(), blocked.id)
+    assert readers.calls == []
+
+
+def test_a_paused_run_stays_paused_until_a_person_resumes_it(tmp_path):
+    repo, blobs, blocked = blocked_run(tmp_path, "transcribe:" + ROUTES[0])
+    dispatcher = RecordingDispatcher()
+    c = admin(tmp_path, dispatcher)
+    assert act(c, blocked.id, "pause", "pause-1").status_code == 200
+    paused = repo.get(SCOPE, blocked.id)
+    assert (paused.run.stage, paused.run.blocker) == ("paused", UNKNOWN)
+    assert "reconcile" in actions_of(c, blocked.id)
+    started = dispatcher.calls
+
+    response = reconcile(c, paused.run, paused.version)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "paused"
+    assert response.json()["blocker"] is None
+    saved = repo.get(SCOPE, blocked.id)
+    assert (saved.run.stage, saved.run.blocker, saved.run.lease_until) == (
+        "paused",
+        None,
+        None,
+    )
+    event = saved.audit[-1]
+    assert (event.action, event.before["stage"], event.before["blocker"]) == (
+        "reconcile",
+        "paused",
+        UNKNOWN,
+    )
+    # Nothing is queued and no worker is started: it waits to be resumed.
+    assert dispatcher.calls == started
+    assert work_available_at(saved) is None
+    assert due_ids(tmp_path) == []
+    readers = Readers(blobs)
+    Workflow(repo, blobs, readers).step(operator(), blocked.id)
+    assert readers.calls == []
+
+    resumed = act(c, blocked.id, "resume", "resume-1")
+
+    assert resumed.status_code == 200, resumed.text
+    assert resumed.json()["status"] == "pending"
+    assert dispatcher.calls == started + 1
+    assert due_ids(tmp_path) == [blocked.id]
+    Workflow(repo, blobs, readers).step(operator(), blocked.id)
+    assert readers.calls == ["transcribe:" + ROUTES[0]]
+
+
 def test_a_stale_revision_is_a_conflict(tmp_path):
     repo, _, blocked = blocked_run(tmp_path, "transcribe:" + ROUTES[0])
     c = admin(tmp_path)
@@ -462,6 +576,30 @@ def test_every_other_step_is_refused_by_default(monkeypatch, step):
 
     monkeypatch.setattr(Workflow, "next_step", staticmethod(lambda run: step))
     assert reconcilable_step(stored_run(step or "x")) is None
+
+
+@pytest.mark.parametrize(
+    "stage, disposition, allowed",
+    [
+        ("processing_blocked", None, True),
+        ("paused", None, True),
+        ("pending", None, True),
+        ("transcribe", None, True),
+        ("cancelled", None, False),
+        ("finalized", None, False),
+        ("processing_blocked", "needs_human_review", False),
+    ],
+)
+def test_a_cancelled_or_finished_run_is_not_reconciled(
+    monkeypatch, stage, disposition, allowed
+):
+    from specimen_digitization.application.workflow import reconcilable_step
+
+    step = "transcribe:r1:handwriting-muse"
+    monkeypatch.setattr(Workflow, "next_step", staticmethod(lambda run: step))
+    run = stored_run(step)
+    run.stage, run.disposition = stage, disposition
+    assert reconcilable_step(run) == (step if allowed else None)
 
 
 def test_a_reconcilable_step_needs_the_unknown_blocker_and_an_attempt(monkeypatch):
