@@ -29,7 +29,9 @@ for engineers second.
 5. Unrelated work runs in parallel. Each record starts with fresh context.
 6. What cannot be settled (the label lacks it, the sources cannot settle it,
    or several possibilities remain) goes to Needs human review. A settled
-   field is cleared.
+   field is cleared. The owner's decisions of 2026-10-09 clear two such
+   cases: listed fields the label does not state, and a taxon with no genus
+   (see "Fields the label does not state" below).
 7. USD 1 per run is a hard ceiling, configurable per institution, and each
    run should cost as little as possible.
 8. Failures are graceful: "no data found", "an error occurred, retry".
@@ -298,7 +300,9 @@ handover runs field research instead of the six specialists:
      marker, as written, with or without the author and year written), or the
      genus alone for a "sp." identification (G25). A query for part of the
      name or for another name on the line grounds nothing, and a label with no
-     genus ("sp. 30") has no groundable query. The value and identifier are
+     genus ("sp. 30") has no groundable query: such a taxon clears as
+     written, unmatched, on the owner's decision B (see "Fields the label
+     does not state" below). The value and identifier are
      the candidate GBIF decided, never one of its alternatives. The clearance
      rules check the stored taxon the same way.
 
@@ -310,7 +314,8 @@ handover runs field research instead of the six specialists:
    from settled fields only: elevation copies and exact unit conversion, and
    the collection date's end from its start. An elevation settled on a
    candidate that writes more than its number is read as its parsed value,
-   the check's number.
+   the check's number. Then the listed fields the label does not state are
+   marked so (see "Fields the label does not state" below).
 7. **One save.** Field values, evidence and reasons are written in one save
    at the end, through the existing record writer. Clearance uses the existing
    scientific rules without blanket human approval (G1). Anything unresolved
@@ -339,6 +344,99 @@ At the harness route's prices (USD 0.20 per million input tokens, USD 0.60
 per million output), a typical record is expected to cost a few cents for
 field research. The ceiling cannot be crossed.
 
+## Fields the label does not state (owner, 2026-10-09)
+
+The owner decided two cases in the schema session on 2026-10-09. On whether
+a required field the label doesn't state should keep going to review or
+clear as "not on the label": "clearing as not on the label is fine" (A). On
+whether a taxon with no genus should clear as written, marked "unmatched":
+"ok" (B). The list below is the schema session's engineering reading of A
+(`~/specimen-golive/status/schema-harness-plan.md`, H6 item 5); the owner
+may narrow it.
+
+**The list (A).** It is kept in `field_research/contracts.py`
+(`NOT_ON_LABEL`), keyed by the collection profile's id and version
+(`zoology_insects_slides` 1.0.0), and the step reads it through the run's
+own pinned profile. A Retry keeps the run's profile snapshot, so a key added
+to the published profile would never reach it; the published profile, its
+digest and its byte pins are unchanged. Another profile, or a new version of
+this one, gets its own entry.
+- On the list: county, city, collection code, collection method, date
+  identified, habitat, the four elevations and precise location.
+- Never on it, whatever a profile lists, because their absence usually
+  means a reading failed: catalogue number, country, the two collecting
+  dates and collectors; and the taxon, which follows B. Province or state,
+  verbatim D/T/S and identified-by IRN keep today's behaviour.
+
+**When a listed field clears as not on the label.** Only when all of these
+hold (`step.mark_not_on_label`, after the derived values, so a derivable
+elevation is derived first, and only for a field a person has not decided):
+1. Its expert searched and answered that no reading states it
+   (label_lacks_value), with no failure. A field finalized without a model
+   call, or a fallback answer (sources_cannot_resolve), never qualifies.
+2. Its value is still not present.
+3. Label coverage is confirmed, every label has two or more readings, and
+   every reading has text.
+4. No part of any label is unreadable: no reader's unreadable span or
+   "[unreadable]" text, and no transcript marked unreadable.
+5. The organiser found no text for it: no candidate, no literal, no
+   reader's verbatim. For a county, a city or a precise location, a text
+   counts as absent only when it sits inside the literal of another settled
+   place field (both case folded, whitespace collapsed): the organiser's
+   "Mt. McKinley" as a city, inside the settled precise location "E. slope
+   Mt. McKinley", or the town "Yepocapa" as a precise location beside the
+   settled city "Yepocapa".
+6. For an elevation, no reading writes an elevation, as the place tool
+   reads one (`georef_locality.read_locality`, on each reading's whole text
+   and on each of its lines).
+7. For a precise location, a city or a county is settled: the readings
+   then carry nothing finer than the places settled (the town-only labels
+   of 105526328 to 105526330).
+
+The value keeps the state "not present", which the app shows as "This field
+is not present on the label", and its reason starts "Not on the label:". It
+cites one check row (kind "derived", locator `check:not_on_label`) whose
+excerpt and stored record name every reading of the run, by name and
+observation. The row lists no observation ids itself: one evidence row may
+cite readings of one label only (`integrity.verify_evidence`). The clearance
+rules (`step.not_on_label`) then skip mandatory_unresolved for the field,
+only while the value cites that row, the row names the run's current
+readings, and, for a precise location, a city or county is still settled.
+So catalogue number, country, the collecting dates and collectors still go
+to review when the label lacks them, as does any listed field a reading
+writes, a label with an unreadable part, and a label whose coverage is not
+confirmed.
+
+**A taxon with no genus (B).** A taxon whose label writes only a morphocode
+with no genus ("sp. 30" with a sex sign) clears as written, marked
+unmatched (`step._unmatched_taxon`), when its expert found that GBIF cannot
+resolve it (sources_cannot_resolve) and:
+- the organiser's literal names no genus (`checks.names_no_genus`: the
+  scientific-name parser reads no name in it, it has no whole-name GBIF
+  query, and it is "sp.", a number or a short code, and optional sex signs);
+- every taxon candidate is the same morphocode (`checks.morphocode`: the
+  same number or code, case, spacing, punctuation and sex signs aside, so a
+  reader's "Sp.30" beside "sp. 30", never "sp. 39");
+- the readers settle on the literal by the rule for readers that disagree
+  (step 5 above): with no successful lookup, that is a label's decided
+  transcript, its other readers evidence only, or readers of a label with
+  none that each write exactly that text.
+
+The value is supported, with the literal as written, no authority, the
+settled layer and the reason "Unmatched: the label names no genus, so GBIF
+has nothing to match". It cites one check row (locator
+`check:taxon_no_genus`) naming the literal and GBIF's no-match, which the
+run keeps among its lookups (`lookup.no_name_lookup`: no match, and no
+request made; the step adds it when the expert never asked GBIF that
+literal). The clearance rules do not give such a taxon taxonomy_unresolved
+(`step.taxon_unmatched`). A taxon with a genus that GBIF cannot decide, such
+as 105526328's "Epipsocus", still goes to review.
+
+**Known limitation.** The canonical projection skips a field with no literal
+(`application/projection.py`, `_fields`), so the record in Data Connect does
+not link a not-on-the-label value to its check row; the row itself is kept
+with the run's evidence.
+
 ## After field research: a reviewer's decisions
 
 Field research runs once per run. When it has completed, a later pass (an
@@ -364,10 +462,19 @@ On a label with no decided transcript, a reviewer's field correction leaves
 corrected value has no raw reading behind it): the way out is a transcription
 decision, which reruns field research and pays for it again.
 
+A field cleared as not on the label, or a taxon cleared as unmatched, is
+reopened like any other field with Correct value: the reviewer's value is
+kept as made and the record waits for that reviewer's approval. Every later
+pass checks a not-on-the-label value again: it clears only while it cites
+its check row and that row names the run's current readings. A not-present
+value with no such row, as every record researched before 2026-10-09 has,
+never clears on a re-check; only new research writes the row.
+
 A field research run that failed (an outage, a model error, a timeout) is
 retried, and the retry researches only the fields that did not settle (a
 province, county or city that waited for a country that did not settle
-is among them).
+is among them). A field marked not on the label is not settled, so the
+retry researches it again, and it then cites only the row the retry writes.
 
 If `SPECIMEN_RESEARCH_HARNESS` is rolled back to "on", a run field research
 left `retry_scheduled` (`field_research_timeout`, `field_research_model_error`,
