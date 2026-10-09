@@ -685,7 +685,7 @@ def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, b
     # unmatched (owner decision B); otherwise the label's text stays when a
     # reading writes it.
     if task.key == "taxon":
-        unmatched = _unmatched_taxon(run, task, readings=readings, by_name=by_name, evidence=evidence,
+        unmatched = _unmatched_taxon(run, task, outcome, readings=readings, by_name=by_name, evidence=evidence,
             asset_id=asset_id, blobs=blobs, sources=sources)
         if unmatched is not None:
             return unmatched
@@ -716,10 +716,36 @@ def _no_name(lookup, literal: str) -> bool:
         and metadata.get("verbatim_name") == literal and metadata.get("reason") == "no_scientific_name")
 
 
-def _unmatched_taxon(run, task, *, readings, by_name, evidence, asset_id, blobs,
+def _expert_found_no_genus(outcome: FieldOutcome, code: str, *, by_name, sources: Sequence[SourceAnswer]) -> bool:
+    """Whether the taxon's expert itself answered sources_cannot_resolve, as
+    rule A requires its expert's own answer (mark_not_on_label, item 1): no
+    failure, a model's answer (the field was not finalized without a model
+    call), and not the resolver's fallback (FieldOutcome.fallback: an expert
+    out of attempts, or whose answers could not be checked); and it answered
+    after a GBIF lookup attempt for the field (a GBIF answer among
+    `sources`, the field's lookups), or after its own check that the label
+    names no genus: its literal is a morphocode of this code (checks.morphocode)
+    that a reading it names writes."""
+    from .checks import morphocode
+
+    answer = outcome.answer
+    if (outcome.failure is not None or answer is None or answer.outcome != "sources_cannot_resolve"
+            or outcome.finalized_without_model or outcome.fallback):
+        return False
+    if any(item.source_id == "gbif" for item in sources):
+        return True
+    return morphocode(answer.literal) == code and any(
+        answer.literal in by_name[name].text for name in answer.reading_names if name in by_name)
+
+
+def _unmatched_taxon(run, task, outcome: FieldOutcome, *, readings, by_name, evidence, asset_id, blobs,
         sources: Sequence[SourceAnswer]) -> FieldValue | None:
     """Owner decision B: the taxon as written, unmatched, when the expert
     found that GBIF cannot resolve it and the label names no genus. All of:
+    - the expert answered sources_cannot_resolve itself, after a GBIF lookup
+      attempt or quoting the code (_expert_found_no_genus); a failure, a
+      field finalized without a model call and the resolver's fallback
+      never qualify;
     - the organiser's literal names no genus (checks.names_no_genus: "sp. 30
       <female sign>"; "Aus bus n. sp." and "Epipsocus sp. 1" do not qualify);
     - every taxon candidate is the same morphocode, a text with no genus and
@@ -752,6 +778,8 @@ def _unmatched_taxon(run, task, *, readings, by_name, evidence, asset_id, blobs,
     literal = task.current.literal
     code = morphocode(literal)
     if task.key != "taxon" or code is None:
+        return None
+    if not _expert_found_no_genus(outcome, code, by_name=by_name, sources=sources):
         return None
     if not task.candidates or any(morphocode(c.literal) != code for c in task.candidates):
         return None

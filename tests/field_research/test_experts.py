@@ -288,6 +288,8 @@ def test_an_expert_that_keeps_inventing_a_value_goes_to_review():
     assert experts.UNCHECKED == "The expert's answer could not be checked against the readings and sources."
     assert outcome.evidence == [GBIF_EVIDENCE]  # what it gathered is still reported
     assert outcome.model_calls == 4
+    # The resolver's answer, not the expert's (owner decision B never clears on it).
+    assert outcome.fallback
 
 
 GBIF_TWO = SourceAnswer(
@@ -661,6 +663,17 @@ def test_running_out_of_requests_is_sources_cannot_resolve():
     assert outcome.failure is None
     assert outcome.answer == FieldAnswer(outcome="sources_cannot_resolve", explanation=EXHAUSTED)
     assert outcome.model_calls == 2
+    assert outcome.fallback
+
+
+def test_an_experts_own_sources_cannot_resolve_is_no_fallback():
+    script = Script(dict(outcome="sources_cannot_resolve", literal="Epipsocus sp. 1", reading_names=["1A"],
+                         explanation="GBIF cannot settle the genus."))
+
+    outcome = resolve(script, task("taxon"))
+
+    assert outcome.answer.outcome == "sources_cannot_resolve" and outcome.answer.literal == "Epipsocus sp. 1"
+    assert not outcome.fallback
 
 
 def test_a_provider_error_is_a_model_error_logged_by_class_only(caplog):

@@ -201,6 +201,11 @@ class FieldOutcome:
     finalized_without_model: bool = False
     cost_micros: int = 0
     model_calls: int = 0
+    # The resolver's own sources_cannot_resolve in place of an answer its
+    # expert never gave: the expert ran out of requests or tool calls
+    # (experts.EXHAUSTED), or kept breaking its answer's checks
+    # (experts.UNCHECKED). Never an answer the expert gave itself.
+    fallback: bool = False
 
 
 class FieldResolver(Protocol):

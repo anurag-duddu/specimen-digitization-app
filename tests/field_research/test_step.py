@@ -2055,6 +2055,65 @@ def test_a_taxon_that_names_no_genus_clears_as_written_and_unmatched(tmp_path, a
     verify_evidence(rig.specimen, rig.blobs)
 
 
+def gbif_again(messages, info):
+    """A taxon expert's model that asks GBIF the code again and again."""
+    from pydantic_ai.messages import ModelResponse, ToolCallPart
+
+    return ModelResponse(parts=[ToolCallPart("lookup", {"source": "gbif", "query": MORPHOCODE})])
+
+
+def a_piece_again(messages, info):
+    """A taxon expert's model that asks GBIF the code, then keeps resolving a
+    piece of it, which its answer's checks refuse."""
+    from pydantic_ai.messages import ModelRequest, ModelResponse, ToolCallPart, ToolReturnPart
+
+    if not any(isinstance(part, ToolReturnPart) for m in messages if isinstance(m, ModelRequest) for part in m.parts):
+        return gbif_again(messages, info)
+    return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, {"outcome": "resolved", "literal": "sp. 30",
+        "reading_names": ["1A"], "explanation": "A piece."})])
+
+
+@pytest.mark.parametrize(("model", "fallback"), [(gbif_again, "EXHAUSTED"), (a_piece_again, "UNCHECKED")],
+    ids=["out-of-requests", "answers-it-cannot-check"])
+def test_an_experts_fallback_never_clears_a_taxon_as_unmatched(tmp_path, model, fallback):
+    """The resolver's own sources_cannot_resolve (experts.EXHAUSTED,
+    experts.UNCHECKED) is no answer of the expert's, even after GBIF was asked."""
+    from pydantic_ai.models.function import FunctionModel
+
+    from specimen_digitization.field_research import experts
+    from specimen_digitization.field_research.budget import CostMeter
+
+    resolver = experts.make_resolver(model_factory=lambda: FunctionModel(model),
+        meter=CostMeter(1_000_000, input_micros_per_million=200_000, output_micros_per_million=600_000))
+
+    async def expert(task, readings, tools):
+        return await resolver(task, readings, {}, tools=tools)
+
+    rig = build_rig(tmp_path, morphocoded(MORPHOCODE))
+    run = rig.specimen.run
+    prepared, outcomes, calls = research(rig, Scripted({"taxon": expert}), tools=NoGenus(rig.blobs))
+    [outcome] = [item for item in outcomes if item.key == "taxon"]
+    assert (outcome.answer.outcome, outcome.answer.explanation, outcome.failure) == (
+        "sources_cannot_resolve", getattr(experts, fallback), None)
+    assert [call.source_id for call in calls if call.field_key == "taxon"][:1] == ["gbif"]
+    apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls)
+    finalize_fields(run, None, outcomes, specimen=rig.specimen, blobs=rig.blobs, today=TODAY)
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["mandatory_unresolved:taxon", "taxonomy_unresolved"])
+    assert run.fields["taxon"].state == ValueState.UNRESOLVED
+    assert not [item for item in run.evidence if item.locator == "check:taxon_no_genus"]
+
+
+def test_an_answer_that_neither_asked_gbif_nor_quoted_the_code_never_clears_a_taxon(tmp_path):
+    """Owner decision B needs the expert's own finding: a lookup that GBIF
+    cannot settle, or the code it quotes from a reading."""
+    rig = build_rig(tmp_path, morphocoded(MORPHOCODE))
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": answering(FieldAnswer(outcome="sources_cannot_resolve",
+        explanation="Nothing to look up."))}), tools=NoGenus(rig.blobs))
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["mandatory_unresolved:taxon", "taxonomy_unresolved"])
+    assert not [item for item in run.evidence if item.locator == "check:taxon_no_genus"]
+
+
 class Homonym(FakeSources):
     """GBIF's answer for "Epipsocus" (105526328): two genera of that name, neither decided."""
 

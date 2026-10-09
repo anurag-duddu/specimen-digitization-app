@@ -525,6 +525,8 @@ class _Expert:
         answer: FieldAnswer | None,
         failure: Failure | None,
         model: MeteredModel | None,
+        *,
+        fallback: bool = False,
     ) -> FieldOutcome:
         evidence: list[Evidence] = []
         lookups: list[object] = []
@@ -545,6 +547,7 @@ class _Expert:
             lookups=lookups,
             cost_micros=model.cost_micros if model is not None else 0,
             model_calls=model.model_calls if model is not None else 0,
+            fallback=fallback,
         )
 
 
@@ -598,6 +601,8 @@ def make_resolver(
         model: MeteredModel | None = None
         answer: FieldAnswer | None = None
         failure: Failure | None = None
+        # The answer below is the resolver's, not the expert's (FieldOutcome.fallback).
+        fallback = False
         deadline = asyncio.timeout(field_timeout_seconds)
         try:
             async with deadline:
@@ -612,6 +617,7 @@ def make_resolver(
             failure = "budget_exhausted"
         except UsageLimitExceeded:
             answer = FieldAnswer(outcome="sources_cannot_resolve", explanation=EXHAUSTED)
+            fallback = True
         except UnexpectedModelBehavior as error:
             # The model kept breaking its answer's checks (or its tools') after
             # its retries. Asking again would not help: a person reads the field.
@@ -622,6 +628,7 @@ def make_resolver(
                 task.key, type(error).__name__,
             )
             answer = FieldAnswer(outcome="sources_cannot_resolve", explanation=UNCHECKED)
+            fallback = True
         except TimeoutError as error:
             # Only the field's own deadline is a timeout; a provider's is a model error.
             failure = "timeout" if deadline.expired() else "model_error"
@@ -643,6 +650,6 @@ def make_resolver(
                 await _close_client(model)
         if answer is not None and answer.outcome != "resolved" and expert.outage:
             failure = "source_unavailable"
-        return expert.outcome(answer, failure, model)
+        return expert.outcome(answer, failure, model, fallback=fallback)
 
     return resolve
