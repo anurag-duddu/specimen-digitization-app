@@ -2305,7 +2305,9 @@ def test_a_later_pass_holds_back_an_unmatched_taxon_whose_label_is_now_unreadabl
 
 def test_only_a_label_that_writes_the_code_is_read_for_an_unreadable_part():
     """105526324: its fourth label is unreadable, its third writes "sp 22"
-    alone. Rule B reads the label that writes the code."""
+    alone. _code_label_unreadable reads the label that writes the code; rule
+    B also refuses on an unreadable span on any label (_doubt_on_the_labels,
+    B3 of #289's fourth review)."""
     code_label, other = "f553f195", "9fccff86"
     texts = {code_label: "sp 22\n\N{MALE SIGN} genitalia", other: "[unreadable]"}
     readings = [Reading(name=f"{number}{reader}", region_id=region, observation_id=f"{region}-{reader}",
@@ -2387,6 +2389,138 @@ def test_the_real_resolver_following_its_brief_for_an_unclear_genus_line_keeps_t
     run = rig.specimen.run
     settle(rig, Scripted({"taxon": expert}), tools=NoGenus(rig.blobs))
     taxon_held_back(run)
+
+
+# B3 of #289's fourth review: a genus marked doubtful where the label check
+# does not look (on another line or label, or behind a nearer token that
+# holds a digit). The taxon brief has the expert make no lookup for it, so
+# the GBIF guard never sees it; a sign of doubt anywhere on the specimen
+# (checks.DOUBT_SIGNS) holds rule B back. The text, and the quote of the
+# organiser's candidate SP1.
+DOUBTFUL_ELSEWHERE = {
+    # 105526327's code label with a doubtful genus line above its slide number.
+    "question-genus-above-the-slide-number": ("Epipsocus?\nV-4-67-1\n" + SP1, SP1),
+    "question-genus-and-slide-number-on-one-line": ("Epipsocus? VI-24-68-7.\n" + SP1, SP1),
+    "question-genus-on-the-line-after": ("V-4-67-1\n" + SP1 + "\nEpipsocus?", SP1),
+    "cf-genus-above-the-slide-number": ("cf. Epipsocus\nV-4-67-1\n" + SP1, SP1),
+    "question-genus-after-a-body-part": ("V-4-67-1\n" + SP1 + " terminalia Epipsocus?",
+        SP1 + " terminalia Epipsocus?"),
+    "spaced-question-above-the-slide-number": ("Epipsocus ?\nV-4-67-1\n" + SP1, SP1),
+    "aff-against-the-genus": ("AFF.Epipsocus\nV-4-67-1\n" + SP1, SP1),
+    "nr-after-the-genus": ("Epipsocus nr.\nV-4-67-1\n" + SP1, SP1),
+    "near-before-the-genus": ("near Epipsocus\nV-4-67-1\n" + SP1, SP1),
+    "prob-before-the-genus": ("Prob. Epipsocus\nV-4-67-1\n" + SP1, SP1),
+}
+
+
+@pytest.mark.parametrize(("written", "quote"), DOUBTFUL_ELSEWHERE.values(), ids=DOUBTFUL_ELSEWHERE)
+def test_a_doubtful_genus_anywhere_on_the_label_keeps_the_taxon_in_review(tmp_path, written, quote):
+    """The expert follows its brief: no lookup, sources_cannot_resolve
+    quoting the code."""
+    rig = build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", written),
+        candidates=[*COLLECTORS, *(("taxon", name, SP1, quote) for name in ("1A", "1B"))])
+    settle(rig, Scripted({"taxon": cannot_resolve(SP1)}), tools=NoGenus(rig.blobs))
+    taxon_held_back(rig.specimen.run)
+
+
+def following_the_brief(literal, explanation):
+    """A taxon expert: the real experts.make_resolver, its model answering
+    sources_cannot_resolve quoting `literal` from 1A with no lookup."""
+    from pydantic_ai.messages import ModelResponse, ToolCallPart
+    from pydantic_ai.models.function import FunctionModel
+
+    from specimen_digitization.field_research import experts
+    from specimen_digitization.field_research.budget import CostMeter
+
+    def model(messages, info):
+        return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, {
+            "outcome": "sources_cannot_resolve", "literal": literal, "reading_names": ["1A"],
+            "explanation": explanation})])
+
+    resolver = experts.make_resolver(model_factory=lambda: FunctionModel(model),
+        meter=CostMeter(1_000_000, input_micros_per_million=200_000, output_micros_per_million=600_000))
+
+    async def expert(task, readings, tools):
+        return await resolver(task, readings, {}, tools=tools)
+    return expert
+
+
+@pytest.mark.parametrize(("written", "quote"), DOUBTFUL_ELSEWHERE.values(), ids=DOUBTFUL_ELSEWHERE)
+def test_the_real_resolver_following_its_brief_for_a_doubtful_genus_away_from_the_code_keeps_the_taxon_in_review(
+        tmp_path, written, quote):
+    rig = build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", written),
+        candidates=[*COLLECTORS, *(("taxon", name, SP1, quote) for name in ("1A", "1B"))])
+    settle(rig, Scripted({"taxon": following_the_brief(SP1, "The genus is marked doubtful, so no lookup is made; "
+        "sp. 1 is a morphocode.")}), tools=NoGenus(rig.blobs))
+    taxon_held_back(rig.specimen.run)
+
+
+def a_second_label(monkeypatch, text, spans=()):
+    """build_rig's specimen with a second label, which both readers read as
+    `text`, each listing `spans` as unreadable."""
+    original = make_specimen
+
+    def make(blobs, first=TEXT, other=None):
+        specimen = original(blobs, first, other)
+        run = specimen.run
+        output = io.BytesIO()
+        Image.new("RGB", (100, 100), "white").save(output, format="JPEG", quality=95)
+        region = Region(asset_id=specimen.asset.id, x=0, y=50, width=100, height=50, order=1,
+            method="synthetic_fixture_region", version="1")
+        crop_png = region_png(Image.open(io.BytesIO(output.getvalue())), region)
+        region.crop_ref = blobs.put(crop_png)
+        run.regions.append(region)
+        crop = hashlib.sha256(crop_png).hexdigest()
+        for route in run.profile.routes:
+            raw = ("SYNTHETIC FIXTURE " + route + "\n" + text).encode()
+            run.observations.append(Observation(region_id=region.id, route_id=route, model_id="synthetic-" + route,
+                provider="synthetic", prompt_version="prompt:" + route, input_sha256=crop,
+                input_asset_id=specimen.asset.id, input_crop_ref=region.crop_ref, literal_text=text,
+                unreadable_spans=list(spans), raw_ref=blobs.put(raw), raw_sha256=hashlib.sha256(raw).hexdigest()))
+            run.completed_steps.append(f"transcribe:{region.id}:{route}")
+        return specimen
+    monkeypatch.setattr(sys.modules[__name__], "make_specimen", make)
+
+
+# A second label of the specimen, which does not write the code, and the
+# unreadable spans its readers list.
+SECOND_LABELS = {
+    "doubtful-genus": ("Epipsocus?", ()),
+    "qualified-genus": ("cf. Epipsocus", ()),
+    "unreadable-genus-span-listed": ("[unreadable]", ("0:12",)),
+    "partly-unreadable-genus-span-listed": ("[unreadable]psocus det.", ("0:12",)),
+}
+
+
+@pytest.mark.parametrize(("label", "spans"), SECOND_LABELS.values(), ids=SECOND_LABELS)
+def test_a_doubtful_or_unreadable_genus_on_another_label_keeps_the_taxon_in_review(tmp_path, monkeypatch, label, spans):
+    """The code's label writes "V-4-67-1" above "sp. 1" with a female sign;
+    the genus is on a label of its own."""
+    a_second_label(monkeypatch, label, spans)
+    rig = build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", "V-4-67-1\n" + SP1),
+        candidates=[*COLLECTORS, *(("taxon", name, SP1, SP1) for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    assert {r.text for r in field_step.run_readings(run) if r.region_id == run.regions[1].id} == {label}
+    settle(rig, Scripted({"taxon": cannot_resolve(SP1)}), tools=NoGenus(rig.blobs))
+    taxon_held_back(run)
+
+
+@pytest.mark.parametrize("line", ["Epipsocus?", "cf. Epipsocus"])
+def test_a_later_pass_holds_back_an_unmatched_taxon_whose_label_now_writes_a_doubtful_genus(tmp_path, line):
+    """The re-check (taxon_unmatched) reads the doubt signs too, wherever the
+    label now writes one."""
+    rig = build_rig(tmp_path, morphocoded(MORPHOCODE))
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": cannot_resolve(MORPHOCODE)}), tools=NoGenus(rig.blobs))
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+    for item in run.observations:
+        item.literal_text += "\n" + line
+    for item in run.transcripts:
+        item.text += "\n" + line
+    field_step.refinalize(run, today=TODAY)
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["taxonomy_unresolved"])
+    assert not field_step.taxon_unmatched(run.fields["taxon"], {item.id: item for item in run.evidence},
+        run.lookups, run=run)
 
 
 # B1 of #289's second review: the label writes the genus where the label check

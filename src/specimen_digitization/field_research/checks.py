@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, fields, replace
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
 from typing import Any, Literal
@@ -406,6 +406,59 @@ def label_names_no_genus(code: str, reading_texts: Sequence[str]) -> bool:
             if genus_beside(text, match.start(), match.end()) is not None:
                 return False
     return found
+
+
+# The qualifiers that put a name in doubt, attached to a word or apart, in
+# any case, with or without a period ("cf.Epipsocus", "CF. Epipsocus",
+# "Epipsocus nr.", "near Epipsocus").
+DOUBT_QUALIFIERS = ("cf.", "aff.", "nr.", "near", "prob.")
+_DOUBT_QUALIFIER = re.compile(r"(?<![^\W\d_])(?:" + "|".join(q.rstrip(".") for q in DOUBT_QUALIFIERS)
+    + r")(?![^\W\d_])", re.I)
+
+
+def _has_a_letter(part: str) -> bool:
+    return any(c.isalpha() for c in part)
+
+
+def _question_mark(text: str) -> bool:
+    """A "?" attached to a letter-token, a whitespace-separated part that
+    holds a letter ("Epipsocus?", "?Epipsocus", "E.?", "Epipsocus(?)"), or
+    standing beside one, as the part just before or after it ("Epipsocus ?",
+    "(?) Epipsocus", or "Epipsocus" with "?" on the next line)."""
+    parts = text.split()
+    return any("?" in part and any(map(_has_a_letter, parts[max(i - 1, 0):i + 2])) for i, part in enumerate(parts))
+
+
+def _qualifier(text: str) -> bool:
+    """One of DOUBT_QUALIFIERS, a whole word or against a word."""
+    return _DOUBT_QUALIFIER.search(text) is not None
+
+
+# The signs that a name on a label is in doubt or that part of a label
+# cannot be read, the one list (B3 of #289's fourth review): each sign's
+# name and its test of a text. Owner decision B (step._unmatched_taxon, and
+# step.taxon_unmatched on a stored value) refuses when any of them shows in
+# any reading of any label of the specimen, beside the code or not. They sit
+# on top of the label check (label_names_no_genus), which reads only the
+# tokens beside the code: the taxon brief has the expert make no GBIF lookup
+# for a genus marked doubtful, so "Epipsocus?" on a line or a label the
+# label check does not read would otherwise clear as "the label names no
+# genus". "unreadable_span" is a reader's listed unreadable span, or a
+# transcript marked unreadable, on any label; no text shows it.
+DOUBT_SIGNS: tuple[tuple[str, Callable[[str], bool] | None], ...] = (
+    ("question_mark", _question_mark),
+    ("qualifier", _qualifier),
+    ("unreadable_span", None),
+)
+
+
+def doubt_signs(texts: Iterable[str], *, unreadable: bool = False) -> tuple[str, ...]:
+    """The names of the DOUBT_SIGNS that show, in the list's order: a sign
+    whose test any of the texts meets, and "unreadable_span" when
+    `unreadable`. Empty when none shows."""
+    texts = list(texts)
+    return tuple(name for name, shows in DOUBT_SIGNS
+        if (unreadable if shows is None else any(shows(text) for text in texts)))
 
 
 # Markdown emphasis a reader or an expert may write around a name ("*Epipsocus*").

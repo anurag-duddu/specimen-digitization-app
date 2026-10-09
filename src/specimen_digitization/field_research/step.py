@@ -796,6 +796,11 @@ def _unmatched_taxon(run, task, outcome: FieldOutcome, *, readings, by_name, evi
       next line, does not qualify;
     - no part of a label that writes the code is unreadable
       (_code_label_unreadable, rule A's test on that label);
+    - no sign of a doubtful or unreadable name shows anywhere on the
+      specimen (_doubt_on_the_labels: checks.DOUBT_SIGNS in any reading of
+      any label, or an unreadable span on any label). The taxon brief has
+      the expert make no lookup for a genus marked doubtful, so the GBIF
+      guard never sees one the label check does not read;
     - the readers settle on the literal by B1's rule (agreement.labels):
       each label that writes the taxon settles on its own on that one text.
       With no successful lookup that is a label's decided transcript (its
@@ -823,7 +828,8 @@ def _unmatched_taxon(run, task, outcome: FieldOutcome, *, readings, by_name, evi
         return None
     if not task.candidates or any(morphocode(c.literal) != code for c in task.candidates):
         return None
-    if not label_names_no_genus(code, [r.text for r in readings]) or _code_label_unreadable(run, readings, code):
+    if (not label_names_no_genus(code, [r.text for r in readings]) or _code_label_unreadable(run, readings, code)
+            or _doubt_on_the_labels(run, readings)):
         return None
     want = collapse(literal)
     tools = frozenset(task.tools) & SOURCE_IDS
@@ -1108,6 +1114,21 @@ def _code_label_unreadable(run, readings: Sequence[Reading], code: str) -> bool:
         or any(UNREADABLE_TEXT in text.casefold() for region, text in texts if region in regions))
 
 
+def _doubt_on_the_labels(run, readings: Sequence[Reading]) -> tuple[str, ...]:
+    """The signs of a doubtful or unreadable name (checks.DOUBT_SIGNS) that
+    show anywhere on the specimen (B3 of #289's fourth review): in a
+    reading's, a reader's or a transcript's text of any label, whether or
+    not it writes the code; or a reader's unreadable span, or a transcript
+    marked unreadable, on any label. Rule B refuses when any shows."""
+    from .checks import doubt_signs
+
+    texts = [*(r.text for r in readings), *(o.literal_text for o in run.observations),
+        *(t.text or "" for t in run.transcripts)]
+    unreadable = (any(o.unreadable_spans for o in run.observations)
+        or any(t.value_state == ValueState.UNREADABLE for t in run.transcripts))
+    return doubt_signs(texts, unreadable=unreadable)
+
+
 def _organiser_texts(task: FieldTask) -> list[str]:
     """What the organiser found for the field: its candidates' literals, and
     its value's literal and readers' verbatims."""
@@ -1371,9 +1392,11 @@ def taxon_unmatched(taxon: FieldValue, evidence: Mapping[str, Evidence], lookups
     (_unmatched_taxon), checked on the stored value: supported, its literal a
     name with no genus (checks.names_no_genus) that the label, the `run`'s
     readings (run_readings), writes with no genus beside it
-    (checks.label_names_no_genus) and with no part of a label that writes it
-    unreadable (_code_label_unreadable), as written (parsed is the literal or
-    empty), with no normalized value or authority, in the settled layer,
+    (checks.label_names_no_genus), with no part of a label that writes it
+    unreadable (_code_label_unreadable) and no sign of a doubtful or
+    unreadable name anywhere on the specimen (_doubt_on_the_labels), as
+    written (parsed is the literal or empty), with no normalized value or
+    authority, in the settled layer,
     citing as support the check row for that literal and the GBIF no-name
     lookup of the run that the row names; and no GBIF lookup the run stores
     shows a genus (_lookup_found_a_genus: candidates, or a query that names
@@ -1386,6 +1409,7 @@ def taxon_unmatched(taxon: FieldValue, evidence: Mapping[str, Evidence], lookups
     readings = run_readings(run)
     if (taxon.state != ValueState.SUPPORTED or code is None
             or not label_names_no_genus(code, [r.text for r in readings]) or _code_label_unreadable(run, readings, code)
+            or _doubt_on_the_labels(run, readings)
             or any(_lookup_found_a_genus(lookup) for lookup in lookups)
             or taxon.layer != "settled" or taxon.parsed not in (None, literal)
             or any((taxon.normalized, taxon.authority_id, taxon.authority_identity))):

@@ -448,6 +448,72 @@ def test_a_gbif_query_names_a_genus_when_a_name_or_a_genus_shaped_word_is_asked(
     assert checks.query_names_a_genus(query) is genus
 
 
+# B3 of #289's fourth review: the signs of a doubtful or unreadable name that
+# hold rule B back wherever on the specimen they show.
+def test_the_signs_of_a_doubtful_or_unreadable_name_are_one_list():
+    from specimen_digitization.field_research import checks
+
+    assert [name for name, _ in checks.DOUBT_SIGNS] == ["question_mark", "qualifier", "unreadable_span"]
+    assert checks.DOUBT_QUALIFIERS == ("cf.", "aff.", "nr.", "near", "prob.")
+    assert checks.doubt_signs(["Epipsocus?", "V-4-67-1", "cf. Epipsocus"]) == ("question_mark", "qualifier")
+    assert checks.doubt_signs(["sp. 1 " + FEMALE], unreadable=True) == ("unreadable_span",)
+    assert checks.doubt_signs([]) == ()
+
+
+@pytest.mark.parametrize(("text", "sign"), [
+    # A "?" attached to a word that holds a letter, or standing beside one.
+    ("Epipsocus?", "question_mark"),
+    ("?Epipsocus", "question_mark"),
+    ("Epipsocus(?)", "question_mark"),
+    ("E.?", "question_mark"),
+    ("Epipsocus ?", "question_mark"),
+    ("(?) Epipsocus", "question_mark"),
+    ("Epipsocus\n?", "question_mark"),
+    ("Epipsocus? VI-24-68-7.", "question_mark"),
+    ("V-4-67-1\nsp. 1 " + FEMALE + " terminalia Epipsocus?", "question_mark"),
+    # Whatever the label check reads beside the code: it reads no genus here.
+    ("6400' ? sp. 1", "question_mark"),
+    # A qualifier, against a word or apart, in any case, with or without its period.
+    *((form, "qualifier") for word in ("cf", "aff", "nr", "prob")
+        for form in (word + ". Epipsocus", word.upper() + ".Epipsocus", "Epipsocus " + word.capitalize() + ".",
+            "(" + word + ") Epipsocus")),
+    ("near Epipsocus", "qualifier"),
+    ("Epipsocus NEAR", "qualifier"),
+    ("Near Epipsocus", "qualifier"),
+])
+def test_a_doubt_sign_shows_wherever_a_text_writes_it(text, sign):
+    from specimen_digitization.field_research import checks
+
+    assert checks.doubt_signs([text]) == (sign,)
+    assert checks.doubt_signs(["V-4-67-1\nsp. 1 " + FEMALE, text]) == (sign,)
+
+
+# The real readings of every label of the pilot's 105526321, 105526326 and
+# 105526327, as both readers wrote them (the ten-pilot simulation's data).
+PILOT_READINGS = {
+    "105526321": ["FMNHINS\n4486784", PILOT_CODE_LABELS["105526321"][1][0], PILOT_CODE_LABELS["105526321"][1][1]],
+    "105526326": ["FMNHINS\n4486779",
+        "IX-3-66-10\nE. slope Mt. McKinley\nDavao, Prov. 3300'\nMindanao, P.I.\nIX-14-46\nH. Hoogstraal",
+        "IX - 3 - 66 - 10\nE. slope Mt. McKinley\nDavao, Prov. 3300'\nMindanao, P.I.\nIX - 14 - 46\nH. Hoogstraal",
+        "sp. 22\n" + FEMALE + " wings", "Sp. 22\n" + FEMALE + " wings"],
+    "105526327": ["FMNHINS\n4486778", "E. slope Mt. Apo,\nDavao Prov.\nMindanao, P.I.\nH. Hoogstraal\nXI .46",
+        "E. slope Mt. Apo,\nDavao Prov.,\nMindanao, P.I.\nH. Hoogstraal\nXI .46", "V-4-67-1\nsp 22\nlegs"],
+}
+
+
+@pytest.mark.parametrize("texts", [
+    *PILOT_READINGS.values(),
+    # A "?" with no word that holds a letter beside it.
+    ["6400 ?", "1946?", "? 3300'"],
+    # Words that hold a qualifier's letters.
+    ["Nearctic", "Staff", "probably", "Cfx", "nrs", "affinis"],
+], ids=[*PILOT_READINGS, "question-mark-beside-numbers", "qualifier-letters-inside-words"])
+def test_no_doubt_sign_shows_where_none_is_written(texts):
+    from specimen_digitization.field_research import checks
+
+    assert checks.doubt_signs(texts) == ()
+
+
 @pytest.mark.parametrize(("quote", "literal", "longer"), [
     # The third review's N3: an organiser candidate that cuts the subspecies off its line.
     ("Danaus plexippus megalippe", "Danaus plexippus", "Danaus plexippus megalippe"),
