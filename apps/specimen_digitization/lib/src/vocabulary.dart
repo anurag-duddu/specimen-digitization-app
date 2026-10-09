@@ -58,6 +58,17 @@ const Map<String, String> userFacingTerms = <String, String>{
   'classification_correction': 'Correct classification',
   // Environments (section 3, "synthetic").
   'synthetic': 'Test data',
+  // Field research reasons and blockers. A reason with a subject
+  // (`<code>:<field>`) keeps it after a colon in the reason sheet.
+  'field_research_model_error': 'No usable model answer',
+  'field_research_timeout': 'Field research ran out of time',
+  'field_research_price_unavailable': 'Field research model has no price',
+  'field_research_unconfigured': 'Field research not set up',
+  'raw_reading_grounding_unproved': 'Not traced to the label readings',
+  'independent_observations_missing': 'Two independent readings needed',
+  'raw_provenance_missing': 'Reading evidence file missing',
+  'identified_by_irn_identity_unproved': 'Identifier not confirmed in EMu',
+  'preserved_human_decision': 'Earlier review decision to confirm',
 };
 
 /// Single retired words, applied to any value the table above does not name.

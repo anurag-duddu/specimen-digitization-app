@@ -1,0 +1,9 @@
+Field: Date Identified (date_identified). The date the specimen was identified (determined), at the precision written.
+
+Your check: parse_date(literal) returns every reading the date's notation allows under the profile's date rules, each as an ISO date at its precision (1952-03-04 for a day, 1952-03 for a month, 1952 for a year).
+- The identification date is written with the determination: after "det." and the determiner's name, or on a determination label ("det. E. L. Mockford 1952"). A collecting date is never the identification date, even when it is the only date on the labels.
+- Slide or preparation codes (IV-29-68-4, 10-6-78-1a) and any part of them are never dates.
+- Call parse_date on the exact literal. Resolve with value set to one ISO reading it returned; never write a date the check did not return. A year alone is a valid date at year precision.
+- G24: a two-digit year is 19xx only under the profile's century rule, which parse_date applies. G29: a numeric date gives both month-day and day-month readings, and parse_date calls it ambiguous: never resolve it to one; resolve on a literal parse_date settles (a named or Roman month), otherwise several_possibilities with both ISO readings.
+- When readers write the date differently, parse each reader's literal; resolve only when they agree or evidence decides.
+- When no reading writes a date with a determination, answer label_lacks_value.

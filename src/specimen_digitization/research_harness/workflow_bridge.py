@@ -4,6 +4,10 @@ SPECIMEN_RESEARCH_HARNESS=on mounts the research harness over the ordinary
 chain. A run whose pinned profile names a harness route then replaces the
 ordinary plan/lookup chain with the six research roles; any other run, and every
 run while the switch is off, keeps the ordinary chain.
+
+SPECIMEN_RESEARCH_HARNESS=fields hands over at the same point to field research
+instead (compose_field_research_workflow; field_research/step.py): one expert
+per field, run as the ordinary workflow's own external, billable step.
 """
 from __future__ import annotations
 
@@ -15,7 +19,7 @@ from uuid import uuid4
 from specimen_digitization.application.workflow import OperationalBlock
 from specimen_digitization.application.storage import ReviewDecisionProof, digest as snapshot_digest
 from .committed_pins import committed_harness_route
-from .enablement import research_harness_enabled
+from .enablement import research_harness_enabled, research_harness_mode
 from .native_worker import NativeResearchWorker
 from .persistence import HeldUnknown, LiveResearchAuthority, StaleWork
 from .production_runtime import NativeResearchRuntimeFactory
@@ -319,7 +323,9 @@ def worker_actor(actor_uid=None):
 async def authorize_live_research(principal, specimen, binding, *, actor_uid, environ,
                                   verify_access) -> LiveResearchAuthority:
     """The only builder of a live research authority, rechecked at every open."""
-    if not research_harness_enabled(environ):
+    # The six-specialist harness runs only with the switch "on"; "fields"
+    # mounts field research, which needs no native research authority.
+    if research_harness_mode(environ) != "on":
         raise PermissionError("research_harness_switch_off")
     if principal.user_id != worker_actor(actor_uid):
         raise PermissionError("research_worker_actor_required")
@@ -335,17 +341,49 @@ async def authorize_live_research(principal, specimen, binding, *, actor_uid, en
         specimen.id, principal.user_id, route, switch_on=True)
 
 
+def compose_field_research_workflow(ordinary, *, repository, state_backend=None, field_research=None):
+    """SPECIMEN_RESEARCH_HARNESS=fields: field research at the plan handover.
+
+    The ordinary workflow runs it as its own external, billable step
+    (workflow.FIELD_RESEARCH) for a run whose profile names a harness route:
+    the step reserves the run's remaining headroom, researches every field in
+    memory and is saved once. ``field_research`` replaces the production
+    step (field_research.step.production_step) in tests.
+
+    A run researched earlier by the six-specialist harness may still hold
+    liabilities in its research state; they count against the headroom, as
+    they do for every ordinary paid step under "on". Nothing is written there.
+    """
+    from specimen_digitization.field_research.step import production_step
+    from .program_budget import research_liability_micros
+
+    def retained_cost(principal, specimen):
+        if committed_harness_route(specimen.run.profile_snapshot) is None:
+            return 0
+        return research_liability_micros(repository, principal, specimen,
+            state_backend=state_backend)
+
+    ordinary.retained_cost = retained_cost
+    ordinary.field_research = production_step() if field_research is None else field_research
+    return ordinary
+
+
 def compose_production_research_workflow(ordinary, *, repository, environ, actor_uid=None,
         provision=None, state_backend=None, model_factory=None, source_transport=None,
-        blobs=None, request_factory=None, registry=None, limits=None):
+        blobs=None, request_factory=None, registry=None, limits=None, field_research=None):
     """Mount the research harness over the ordinary workflow.
 
-    The switch must be on. The actor is ``actor_uid``, else the verified actor
-    context the worker sets. ``provision`` defaults to the production
-    provisioner; the remaining keywords replace production services in tests.
+    The switch must be on, or "fields" for field research
+    (compose_field_research_workflow, which takes ``field_research``). The
+    actor is ``actor_uid``, else the verified actor context the worker sets.
+    ``provision`` defaults to the production provisioner; the remaining
+    keywords replace production services in tests.
     """
     if not research_harness_enabled(environ):
         raise ValueError("research_harness_switch_off")
+    if research_harness_mode(environ) == "fields":
+        return compose_field_research_workflow(ordinary, repository=repository,
+            state_backend=state_backend, field_research=field_research)
     if limits is None:
         from .agents import HarnessLimits
         # The observed geography role reached its third model turn 87.7s in,

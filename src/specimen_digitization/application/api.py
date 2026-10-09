@@ -67,7 +67,7 @@ from .storage import (
     digest,
     work_available_at,
 )
-from .workflow import OperationalBlock, SyntheticAdapters, Workflow
+from .workflow import FIELD_RESEARCH, OperationalBlock, SyntheticAdapters, Workflow
 
 SYNTHETIC_ORG = "00000000-0000-4000-8000-000000000001"
 SYNTHETIC_COLLECTION = "00000000-0000-4000-8000-000000000002"
@@ -1937,9 +1937,11 @@ def create_app(
                 audit_after["superseded_research_selection_id"] = superseded["selection_id"]
             invalidate_authorities(s.run, body.target_id)
             s.run.human_approved = False
-            if body.target_id == "taxon" or any(
+            # Field research never runs again on its run: the decision is decided
+            # below by its rules, not by a new lookup.
+            if FIELD_RESEARCH not in s.run.completed_steps and (body.target_id == "taxon" or any(
                 t["field_key"] == body.target_id for t in s.run.authority_plan
-            ):
+            )):
                 if body.target_id == "taxon":
                     s.run.lookups = []
                 s.run.completed_steps = [
@@ -1989,6 +1991,7 @@ def create_app(
                 not in {
                     "parse",
                     "plan",
+                    FIELD_RESEARCH,  # The new transcript's fields are researched.
                     "lookup",
                     "resolve",
                     "normalize",
@@ -2163,12 +2166,18 @@ def create_app(
             except EvidenceIntegrityError:
                 s.run.blocker = "evidence_integrity_failure"
             phase_result = None
-            if (
-                s.run.blocker != "evidence_integrity_failure"
-                and body.kind != "reading_metadata"
-            ):
-                phase_result = refresh_review_evidence(s, blobs)
-            finalize(s.run)
+            if FIELD_RESEARCH in s.run.completed_steps and body.kind != "capability_defer":
+                # Field research's own clearance rules decide its run; a person's
+                # decision waits for their approval (field_research.step.refinalize).
+                from ..field_research.step import refinalize
+                refinalize(s.run, decided=True)
+            else:
+                if (
+                    s.run.blocker != "evidence_integrity_failure"
+                    and body.kind != "reading_metadata"
+                ):
+                    phase_result = refresh_review_evidence(s, blobs)
+                finalize(s.run)
             if phase_result is not None:
                 apply_phase_gate(s.run, phase_result)
         s.audit.append(

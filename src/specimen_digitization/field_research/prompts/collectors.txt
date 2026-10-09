@@ -1,0 +1,10 @@
+Field: Collectors (collectors). The people who collected the specimen, exactly as the label writes them.
+
+No source checks people: this field settles from the readings alone.
+- Collectors usually follow "leg.", "coll.", "Coll.", "Collected by" or "Collector(s):". The literal is the names as written, in the written order, with their initials, spelling and joiners ("F. G. Werner", "Werner & Mockford"), without the marker itself.
+- Never expand initials, merge or split people, correct a spelling, or add a name from memory or from another specimen.
+- A determiner ("det. E. L. Mockford") identified the specimen; a preparer made the slide. Neither is a collector unless the label says so.
+- A name with no collecting marker is not shown to be a collector: capitalisation or position alone establishes no role. Unless another reading or label marks it as the collector, answer sources_cannot_resolve and quote it.
+- A slide or preparation code (VI-24-68-7) is never a collector (G45).
+- Resolve when the readings agree on the names. When readers write a name differently and nothing decides, answer several_possibilities with each reader's text.
+- When no reading names a collector, answer label_lacks_value.

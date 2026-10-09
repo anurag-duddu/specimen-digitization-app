@@ -1,0 +1,11 @@
+Field: Date Visited To (date_visited_to). The last date of collecting, only when the label writes a range or an end date, at the precision written.
+
+G44: when the label writes a single collecting date, the step copies it into this field afterwards, as a recorded derivation from Date Visited From. Do not copy it yourself: for a single collecting date answer label_lacks_value.
+
+Your check: parse_date(literal) returns every reading the date's notation allows under the profile's date rules, each as an ISO date at its precision (1946-06-12 for a day, 1946-11 for a month).
+- Resolve only a To date the label writes: the end of a written collecting range ("10-12 Sept. 1946" ends on 12 Sept. 1946) or an explicit end date. The literal is the end date as written, when it is written whole ("3.VII.1946" in "12.VI-3.VII.1946").
+- Call parse_date on the exact literal. Resolve with value set to one ISO reading it returned; never write a date the check did not return.
+- A date after "det." is the identification date; slide or preparation codes (IV-29-68-4) are never dates. Never join two dates from different events into a range.
+- G24: a two-digit year is 19xx only under the profile's century rule, which parse_date applies. G29: a numeric date gives both month-day and day-month readings, and parse_date calls it ambiguous: never resolve it to one; resolve on a literal parse_date settles (a named or Roman month), otherwise several_possibilities with both ISO readings.
+- When the end of a range cannot be written as a whole literal the check can read ("12" in "10-12 Sept. 1946"), answer sources_cannot_resolve and quote the range.
+- When readers write the end date differently, parse each; resolve only when they agree or evidence decides.

@@ -50,6 +50,14 @@ from .reliability import AdapterFailure, retry_delay
 
 LOGGER = logging.getLogger(__name__)
 
+# Field research (field_research/step.py): one external, billable step that
+# replaces plan..finalize for a run whose profile names a harness route, when
+# SPECIMEN_RESEARCH_HARNESS=fields mounts it as `Workflow.field_research`.
+FIELD_RESEARCH = "field_research"
+# A run field research has completed reaches the handover again: the clearance
+# rules only, nothing researched, external or paid (FieldResearchStep.recheck).
+FIELD_RECHECK = "field_research_recheck"
+
 
 class OperationalBlock(RuntimeError):
     """Sanitized actionable code, never an exception containing provider credentials."""
@@ -117,6 +125,10 @@ class PipelineAdapters(Protocol):
 
 
 class Workflow:
+    # The field research step's runner (field_research.step.FieldResearchStep),
+    # mounted by research_harness.workflow_bridge; None keeps the ordinary chain.
+    field_research = None
+
     def __init__(
         self,
         repository: Repository,
@@ -223,6 +235,12 @@ class Workflow:
                 run.blocker = None
                 run.next_retry_at = None
         step = self.next_step(run)
+        if (
+            step == "plan"
+            and self.field_research is not None
+            and self.field_research.handles(run)
+        ):
+            step = FIELD_RECHECK if FIELD_RESEARCH in run.completed_steps else FIELD_RESEARCH
         # Persist intent before network/model work. Crash with intent but no result is
         # blocked for explicit replay: provider calls may not support deduplication.
         if run.blocker == "external_outcome_unknown":
@@ -241,7 +259,7 @@ class Workflow:
             )
         external = (
             step.startswith(("transcribe:", "first_pass:"))
-            or step in {"segment", "lookup"}
+            or step in {"segment", "lookup", FIELD_RESEARCH}
             or step.startswith("authority:")
             or (step == "parse" and hasattr(self.adapters, "extract"))
             or (
@@ -260,7 +278,7 @@ class Workflow:
         )
         billable = external and (
             step.startswith(("transcribe:", "first_pass:"))
-            or step in {"parse", "segment", "classify"}
+            or step in {"parse", "segment", "classify", FIELD_RESEARCH}
         )
         reservation_tokens = 16000 if billable and not run.profile.synthetic else 0
         from .lane_reservations import step_reservation
@@ -277,6 +295,24 @@ class Workflow:
                 # A missing research state returns zero; an unreadable or malformed
                 # state cannot establish headroom for another paid call.
                 retained_cost_issue = "research_budget_state_unavailable"
+        if (
+            step == FIELD_RESEARCH
+            and billable
+            and not run.profile.synthetic
+            and policy.approved_cost_limit_micros is not None
+        ):
+            # Field research reserves the run's whole remaining headroom: its
+            # meter never lets the experts' calls together cross it, and the
+            # step settles to what they spent (FIELD_RESEARCH.md, Budget).
+            cost = max(
+                0,
+                policy.approved_cost_limit_micros
+                - run.usage.reserved_cost_micros
+                - retained_cost,
+            )
+            # Never more than the program's allowance has left (when that fits
+            # one expert request): the step's meter has this as its cap.
+            cost = self.field_research.reservation(self, principal, specimen, cost)
         issue = None
         if run.usage.steps >= policy.max_steps:
             issue = "step_budget_exhausted"
@@ -328,7 +364,10 @@ class Workflow:
         circuit = permit = None
         circuit_failure = None
         circuit_retry_after = None
-        if external:
+        # Field research calls several providers and sources, each with its own
+        # retries; no one provider circuit describes it. Its outages block the
+        # run with a scheduled retry instead (schedule_retry below).
+        if external and step != FIELD_RESEARCH:
             from .circuit_runtime import circuit_for
 
             circuit, circuit_key = circuit_for(self, principal, run, step)
@@ -579,6 +618,19 @@ class Workflow:
                     verified = verify_carries(self.repository, base, self.blobs)
                     if any(run.fields[k] != v.value for k, v in verified.outcomes.items()):
                         raise OperationalBlock("preserved_human_field_provenance_unavailable")
+            elif step == FIELD_RESEARCH:
+                # Researches, applies and finalizes in memory; the save below is
+                # the step's only one. An outage raises AdapterFailure after the
+                # settled fields are applied, so they are kept and retried around.
+                self.field_research.run(
+                    self,
+                    principal,
+                    specimen,
+                    cap_micros=cost or 0,
+                    deadline_seconds=effect_timeout,
+                )
+            elif step == FIELD_RECHECK:
+                self.field_research.recheck(self, principal, specimen)
             elif step == "plan":
                 run.authority_plan = plan_authorities(specimen)
             elif step.startswith("authority:"):
@@ -726,8 +778,9 @@ class Workflow:
             if run.stage != "processing_blocked":
                 run.blocker = None
             run.lease_until = None
-            run.completed_steps.append(step)
-            if step != "finalize":
+            if step != FIELD_RECHECK:
+                run.completed_steps.append(step)
+            if step not in {"finalize", FIELD_RESEARCH, FIELD_RECHECK}:
                 run.stage = self.next_step(run).split(":")[0]
         except AdapterFailure as exc:
             circuit_failure = exc.status.value
@@ -812,8 +865,15 @@ class Workflow:
         elapsed = max(0, self.monotonic() - started)
         if external and elapsed > effect_timeout and not repeatable:
             circuit_failure = "timeout"
+            # Field research's meter knows what its calls cost even when the
+            # step overran: its paid call stays, so the settlement below frees
+            # the rest of its reservation.
+            researched = run if step == FIELD_RESEARCH else None
             specimen = reserved
             run = specimen.run
+            if researched is not None:
+                run.paid_calls.extend([call for call in researched.paid_calls if call not in run.paid_calls])
+                run.usage.actual_cost_micros = researched.usage.actual_cost_micros
             run.blocker = "external_outcome_unknown"
             run.stage = "processing_blocked"
             run.disposition = None
@@ -834,7 +894,15 @@ class Workflow:
             sum(o.input_tokens + o.output_tokens for o in run.observations)
             - previous_tokens,
         )
-        if billable and not run.profile.synthetic:
+        if billable and not run.profile.synthetic and step == FIELD_RESEARCH:
+            from .lane_costs import settle_step
+
+            # The step recorded its own paid call (its meter's spend); settle the
+            # run's budget and the program ledger to it. A deadline overrun
+            # restored the reserved copy with that paid call copied onto it
+            # (above), so it settles to the meter's spend as well.
+            settle_step(self.repository, principal, specimen, step, cost, self.clock)
+        elif billable and not run.profile.synthetic:
             from .lane_costs import record_step
 
             # Each paid call's cost, and the program ledger settled (LANE.md T2c).
@@ -848,6 +916,7 @@ class Workflow:
                 cost,
                 self.clock,
             )
+        if billable and not run.profile.synthetic:
             if self.settle_retained_cost is not None:
                 self.settle_retained_cost(principal, specimen, step)
         if external and run.blocker != "external_outcome_unknown":

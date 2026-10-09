@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/models.dart';
+import 'package:specimen_digitization/src/operational_panel.dart';
 import 'package:specimen_digitization/src/screens/workbench/blockers.dart';
 import 'package:specimen_digitization/src/screens/workbench/pending_changes.dart';
 import 'package:specimen_digitization/src/screens/workbench/status_strip.dart';
@@ -315,6 +316,239 @@ void main() {
     expect(issues[0].message, 'Country needs review');
     expect(issues[1].message, 'A specimen check needs review before approval');
     expect(issues[0].diagnosticRuleId, 'future_validation');
+  });
+
+  group('field research', () {
+    const Set<String> genericMessages = <String>{
+      'A specimen check needs review before approval',
+      'Processing needs an operator check before it can continue',
+      'This field needs review',
+    };
+
+    test('an outage names each field that was not checked, with a retry', () {
+      final List<ClearanceBlocker> issues = blockersFor(
+        record(
+          reasons: const <String>[
+            'lookup_operational_failure:country',
+            'field_research_model_error:taxon',
+            'field_research_timeout:collectors',
+          ],
+          processingBlocker: 'lookup_operational_failure',
+        ),
+      );
+
+      expect(issues.map((ClearanceBlocker issue) => issue.message), <String>[
+        'Country was not checked because an approved source could not be '
+            'reached',
+        'Taxon was not checked because the model gave no usable answer',
+        'Collectors were not checked because field research ran out of time',
+        'An operator must restore the source lookup service',
+      ]);
+      expect(
+        issues.take(3).map((ClearanceBlocker issue) => issue.detail),
+        everyElement('Retry processing to check this field again.'),
+      );
+      expect(
+        issues.every((ClearanceBlocker issue) => issue.isOperational),
+        isTrue,
+      );
+      expect(
+        issues.every((ClearanceBlocker issue) => !issue.isTargeted),
+        isTrue,
+      );
+      expect(issues.first.rawCode, 'lookup_operational_failure:country');
+    });
+
+    test('a stopped run says what stopped it and offers a retry', () {
+      for (final (String code, String message) in <(String, String)>[
+        (
+          'field_research_model_error',
+          'Field research stopped because the model gave no usable answer',
+        ),
+        (
+          'field_research_timeout',
+          'Field research ran out of time before every field was checked',
+        ),
+      ]) {
+        final ClearanceBlocker issue = blockersFor(
+          record(processingBlocker: code),
+        ).single;
+        expect(issue.message, message, reason: code);
+        expect(
+          issue.detail,
+          'Retry processing to check the remaining fields.',
+          reason: code,
+        );
+        expect(issue.isOperational, isTrue, reason: code);
+      }
+    });
+
+    test('an outage on a field this record does not name stays run-wide', () {
+      final ClearanceBlocker issue = blockersFor(
+        record(reasons: const <String>['field_research_timeout:future_field']),
+      ).single;
+      expect(
+        issue.message,
+        'Field research ran out of time before every field was checked',
+      );
+      expect(issue.message, isNot(contains('This field')));
+      expect(issue.isOperational, isTrue);
+    });
+
+    test('a configuration stop names who can clear it', () {
+      for (final (String code, String message) in <(String, String)>[
+        (
+          'field_research_price_unavailable',
+          'An administrator must add a price for the field research model',
+        ),
+        (
+          'field_research_unconfigured',
+          'An operator must finish setting up field research',
+        ),
+      ]) {
+        final ClearanceBlocker issue = blockersFor(
+          record(processingBlocker: code),
+        ).single;
+        expect(issue.message, message, reason: code);
+        expect(issue.isOperational, isTrue, reason: code);
+      }
+    });
+
+    test('review reasons go to the field or label they are about', () {
+      final List<ClearanceBlocker> issues = blockersFor(
+        record(
+          reasons: const <String>[
+            'raw_reading_grounding_unproved:taxon',
+            'preserved_human_decision:collectors',
+            'independent_observations_missing:$firstLabel',
+            'raw_provenance_missing:$secondLabel',
+          ],
+        ),
+      );
+
+      expect(issues.map((ClearanceBlocker issue) => issue.message), <String>[
+        'Taxon cannot be traced to the label readings',
+        'Collectors have an earlier review decision to confirm',
+        'Label 1 needs two independent readings',
+        'Label 2 has a reading with no saved evidence file',
+      ]);
+      expect(issues.map((ClearanceBlocker issue) => issue.fieldKey), <String?>[
+        'taxon',
+        'collectors',
+        null,
+        null,
+      ]);
+      expect(issues.map((ClearanceBlocker issue) => issue.regionId), <String?>[
+        null,
+        null,
+        firstLabel,
+        secondLabel,
+      ]);
+      expect(issues.map((ClearanceBlocker issue) => issue.kind), <Object>[
+        ClearanceBlockerKind.field,
+        ClearanceBlockerKind.field,
+        ClearanceBlockerKind.label,
+        ClearanceBlockerKind.label,
+      ]);
+      expect(issues[2].segment, WorkbenchSegment.readings);
+      expect(
+        issues[2].detail,
+        'Check the label against its readings before approving the specimen.',
+      );
+      expect(
+        issues.any((ClearanceBlocker issue) => issue.isOperational),
+        isFalse,
+      );
+    });
+
+    test('a label reason for a label this record lacks is not routed', () {
+      final ClearanceBlocker issue = blockersFor(
+        record(
+          reasons: const <String>[
+            'independent_observations_missing:missing-label',
+          ],
+        ),
+      ).single;
+      expect(issue.message, 'A label needs two independent readings');
+      expect(issue.isTargeted, isFalse);
+    });
+
+    test('an unconfirmed identifier goes to the identifier field', () {
+      final Specimen specimen = Specimen(<String, dynamic>{
+        ...record(
+          reasons: const <String>['identified_by_irn_identity_unproved'],
+        ).data,
+        'fields': const <Json>[
+          <String, dynamic>{
+            'field_key': 'identified_by_irn',
+            'state': 'unknown',
+          },
+        ],
+      });
+      final ClearanceBlocker issue = blockersFor(specimen).single;
+      expect(
+        issue.message,
+        'The identifier needs a confirmed EMu person record',
+      );
+      expect(issue.fieldKey, 'identified_by_irn');
+      expect(issue.kind, ClearanceBlockerKind.field);
+    });
+
+    test('no field research code falls back to a generic sentence', () {
+      // The run blockers field research raises, and every reason it records.
+      const List<String> blockerCodes = <String>[
+        'field_research_model_error',
+        'field_research_timeout',
+        'field_research_price_unavailable',
+        'field_research_unconfigured',
+      ];
+      const List<String> reasonCodes = <String>[
+        ...blockerCodes,
+        'field_research_model_error:taxon',
+        'field_research_timeout:country',
+        'raw_reading_grounding_unproved:taxon',
+        'independent_observations_missing:$firstLabel',
+        'raw_provenance_missing:$firstLabel',
+        'identified_by_irn_identity_unproved',
+        'preserved_human_decision:country',
+      ];
+      for (final (String code, List<ClearanceBlocker> issues)
+          in <(String, List<ClearanceBlocker>)>[
+            for (final String code in reasonCodes)
+              (code, blockersFor(record(reasons: <String>[code]))),
+            for (final String code in blockerCodes)
+              (code, blockersFor(record(processingBlocker: code))),
+          ]) {
+        expect(issues, hasLength(1), reason: code);
+        for (final ClearanceBlocker issue in issues) {
+          expect(issue.message, isNot(isIn(genericMessages)), reason: code);
+          expect(issue.message, isNot(contains('_')), reason: code);
+          expect(issue.message, isNot(contains(firstLabel)), reason: code);
+          expect(issue.detail, isNotNull, reason: code);
+        }
+      }
+    });
+
+    testWidgets('processing details name the stop in plain words', (
+      WidgetTester tester,
+    ) async {
+      await pumpComponent(
+        tester,
+        ProcessingDetail(
+          specimen: record(processingBlocker: 'field_research_timeout'),
+          canOperate: false,
+          busy: false,
+          onAction: (_) async {},
+        ),
+      );
+
+      expect(
+        find.text('Blocked: Field research ran out of time'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('field_research'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
   });
 
   testWidgets(
