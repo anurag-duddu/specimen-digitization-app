@@ -732,6 +732,39 @@ def test_an_unresolved_mandatory_field_sends_the_record_to_review_with_its_reaso
     assert run.fields["county"].reason == "GEOLocate found no Cook County in Illinois."
 
 
+LACKS = FieldAnswer(outcome="label_lacks_value", explanation="Not on the label.")
+
+
+def test_an_empty_date_is_unresolved_not_a_date_precision_question(rig):
+    run = rig.specimen.run
+    settle(rig, Scripted({"date_identified": answering(LACKS)}))
+    assert run.fields["date_identified"].state == ValueState.NOT_PRESENT
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["mandatory_unresolved:date_identified"])
+
+
+def test_a_date_with_a_value_is_still_checked_for_precision_and_order(rig):
+    run = rig.specimen.run
+    settle(rig, Scripted())
+    run.fields["date_identified"] = run.fields["date_identified"].model_copy(update={"parsed": "June 1946"})
+    assert "date_precision_requires_review" in field_step.scientific_reasons(run, {
+        key: field_step.RESOLVED for key in run.fields}, mandatory=(), qualified=frozenset(), today=TODAY)
+    run.fields["date_identified"] = run.fields["date_identified"].model_copy(update={"parsed": "2020-05-01"})
+    assert "date_order" in field_step.scientific_reasons(run, {
+        key: field_step.RESOLVED for key in run.fields}, mandatory=(), qualified=frozenset(), today=TODAY)
+
+
+def test_an_empty_elevation_is_unresolved_not_an_invalid_elevation(rig):
+    run = rig.specimen.run
+    settle(rig, Scripted({"elevation_from_ft": answering(LACKS)}))
+    # Nothing is derived from an elevation the label lacks: all four are empty.
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, [f"mandatory_unresolved:elevation_{end}_{unit}"
+        for end, unit in (("from", "ft"), ("from", "m"), ("to", "ft"), ("to", "m"))])
+    # A value that is no number is still invalid.
+    run.fields["elevation_to_ft"] = FieldValue(state=ValueState.SUPPORTED, literal="about 1500")
+    assert "elevation_invalid:ft" in field_step.scientific_reasons(run, {
+        key: field_step.RESOLVED for key in run.fields}, mandatory=(), qualified=frozenset(), today=TODAY)
+
+
 def test_a_spent_budget_sends_its_field_to_review_not_to_a_retry(rig):
     run = rig.specimen.run
     assert settle(rig, Scripted({"taxon": failing("budget_exhausted")})) is None

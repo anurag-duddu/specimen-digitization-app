@@ -700,6 +700,11 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
 
 # ---- the scientific rules -------------------------------------------------
 
+def _text(value: FieldValue | None) -> str:
+    """A field's value as the range and order rules read it; "" when it has none."""
+    return "" if value is None else (value.normalized or value.parsed or value.literal or "")
+
+
 def _date_bounds(value: FieldValue) -> tuple[date, date]:
     """research_harness/canonical_materialization.py 90-102, unchanged."""
     text = value.normalized or value.parsed or value.literal or ""
@@ -881,17 +886,19 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
     if latest_work.get("taxon") in TERMINAL and not taxon_decided(taxon, run.tool_calls, evidence, run.lookups):
         reasons.append("taxonomy_unresolved")
     # 261-271
+    # An empty elevation is mandatory_unresolved above; only a value that is
+    # no number is invalid, and the range needs both ends.
     for unit in ("m", "ft"):
         if any(latest_work.get(f"elevation_{end}_{unit}") not in TERMINAL for end in ("from", "to")):
             continue
+        texts = [_text(run.fields.get(f"elevation_{end}_{unit}")) for end in ("from", "to")]
         try:
-            lower = run.fields[f"elevation_from_{unit}"]
-            upper = run.fields[f"elevation_to_{unit}"]
-            values = [Decimal(v.normalized or v.parsed or v.literal or "") for v in (lower, upper)]
-            if any(not v.is_finite() for v in values) or values[0] > values[1]:
-                reasons.append(f"elevation_range:{unit}")
+            values = [Decimal(text) for text in texts if text]
         except InvalidOperation:
             reasons.append(f"elevation_invalid:{unit}")
+            continue
+        if any(not v.is_finite() for v in values) or (len(values) == 2 and values[0] > values[1]):
+            reasons.append(f"elevation_range:{unit}")
     # 272-281
     for end in ("from", "to"):
         if any(latest_work.get(f"elevation_{end}_{unit}") not in TERMINAL for unit in ("m", "ft")):
@@ -904,15 +911,25 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
         except InvalidOperation:
             pass  # The mandatory/range checks above retain missing data.
     # 282-291
-    if all(latest_work.get(key) in TERMINAL for key in ("date_visited_from", "date_visited_to", "date_identified")):
+    # An empty date is mandatory_unresolved above: precision is reviewed only
+    # for a date that has a value, and the order only between dates that do.
+    dates = ("date_visited_from", "date_visited_to", "date_identified")
+    if all(latest_work.get(key) in TERMINAL for key in dates):
+        bounds = {}
         try:
-            start, _ = _date_bounds(run.fields["date_visited_from"])
-            _, end = _date_bounds(run.fields["date_visited_to"])
-            identified, _ = _date_bounds(run.fields["date_identified"])
-            if start > end or identified < start or identified > today:
-                reasons.append("date_order")
+            for key in dates:
+                value = run.fields.get(key)
+                if _text(value):
+                    bounds[key] = _date_bounds(value)
         except (ValueError, OverflowError, OSError):
             reasons.append("date_precision_requires_review")
+        else:
+            start = bounds.get("date_visited_from", (None,))[0]
+            end = bounds.get("date_visited_to", (None, None))[1]
+            identified = bounds.get("date_identified", (None,))[0]
+            if ((start and end and start > end) or (identified and start and identified < start)
+                    or (identified and identified > today)):
+                reasons.append("date_order")
     # 292-294
     identifier = run.fields.get("fmnh_ins_number") or FieldValue()
     if latest_work.get("fmnh_ins_number") in TERMINAL and not CATALOG.fullmatch(
