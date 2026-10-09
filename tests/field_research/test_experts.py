@@ -624,6 +624,82 @@ def test_answers_that_break_a_rule_are_sent_back(key, given, says):
         made.validate(answer(**given))
 
 
+# Readers that disagree (G19, G20, G27; the review's B1).
+
+DISAGREEING = (
+    Reading("1A", "region-1", "obs-1a", "raw_reading", "Chimaltenago, Guat.\nleg. J. Smith"),
+    Reading("1B", "region-1", "obs-1b", "raw_reading", "Chimaltenango, Guat.\nleg. J. Smyth"),
+)
+
+
+def disagreeing(key: str, literals, answers=()) -> experts._Expert:
+    """An expert whose organiser left the field ambiguous between two raw readers."""
+    field = FieldTask(key=key, mandatory=True, current=FieldValue(state=ValueState.AMBIGUOUS),
+                      candidates=tuple(Candidate(name, literal, literal, f"ev-{name}")
+                                       for name, literal in literals), tools=FIELD_TOOLS[key])
+    made = experts._Expert(field, DISAGREEING, FakeTools(), PILOT_DATES)
+    for found in answers:
+        made.calls.append(experts._Call(found.source_id, found.query, found.status, found))
+    return made
+
+
+def place(name: str, evidence_id: str) -> SourceAnswer:
+    return SourceAnswer("geolocate", f"{name}, Guatemala", LookupStatus.SUCCESS,
+                        (SourceCandidate(name, f"geolocate:{name}"),),
+                        Evidence(id=evidence_id, kind="authority", source="geolocate",
+                                 locator=f"geolocate:{name}", excerpt=name), note="match")
+
+
+def test_a_pick_between_readers_with_no_source_is_sent_back():
+    made = disagreeing("collectors", [("1A", "J. Smith"), ("1B", "J. Smyth")])
+
+    with pytest.raises(ModelRetry, match="readers disagree on this field"):
+        made.validate(answer(outcome="resolved", literal="J. Smith", reading_names=["1A"]))
+
+
+@pytest.mark.parametrize(("answers", "cited", "says"), [
+    # G27's example with no lookup at all.
+    ((), [], "readers disagree on this field"),
+    # GEOLocate confirms 1B's text, and only it (G20).
+    ((place("Chimaltenango", "ev-b"),), ["ev-b"], None),
+    # A source confirms each reader's text: nothing decides between them.
+    ((place("Chimaltenango", "ev-b"), place("Chimaltenago", "ev-a")), ["ev-b"],
+     "readers disagree on this field"),
+    # The confirming answer must be cited.
+    ((place("Chimaltenango", "ev-b"),), [], "Cite the evidence_id"),
+])
+def test_a_place_the_readers_disagree_on_settles_only_on_a_source_confirming_one_reader(answers, cited, says):
+    made = disagreeing("province_state", [("1A", "Chimaltenago"), ("1B", "Chimaltenango")], answers)
+    given = answer(outcome="resolved", literal="Chimaltenango", reading_names=["1B"],
+                   source_evidence_ids=cited, authority_id="geolocate:Chimaltenango" if cited else None)
+
+    if says is None:
+        assert made.validate(given).literal == "Chimaltenango"
+        return
+    with pytest.raises(ModelRetry, match=says):
+        made.validate(given)
+
+
+def test_a_place_resolves_only_on_a_place_sources_candidate():
+    made = expert("city", [place("Davao", "ev-davao")])
+
+    with pytest.raises(ModelRetry, match="place source's success answer"):
+        made.validate(answer(outcome="resolved", literal="Davao", reading_names=["1A"]))
+    accepted = made.validate(answer(outcome="resolved", literal="Davao", reading_names=["1A"],
+                                    authority_id="geolocate:Davao", source_evidence_ids=["ev-davao"]))
+    assert accepted.authority_id == "geolocate:Davao"
+
+
+def test_a_label_with_a_decided_transcript_takes_its_text_from_it():
+    """1A is label 1's decided transcript ("F. G. Werner"); reader 1B writes "F.G. Werner"."""
+    made = expert("collectors")
+
+    with pytest.raises(ModelRetry, match="decided for this label"):
+        made.validate(answer(outcome="resolved", literal="F.G. Werner", reading_names=["1B"]))
+    assert made.validate(answer(outcome="resolved", literal="F. G. Werner",
+                                reading_names=["1A"])).literal == "F. G. Werner"
+
+
 def test_a_resolved_elevation_in_its_own_unit_is_accepted():
     made = expert("elevation_from_ft")
 

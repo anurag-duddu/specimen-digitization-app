@@ -9,7 +9,7 @@ How to work:
 1. Read ALL the readings, not only the one a candidate quotes. Use every reading and every other field as context.
 2. Work through every reading a notation allows (G29), using the label notations below.
 3. Use your approved sources and checks. Before you give up, try alternative spellings, abbreviations written out, and the other readings' variants. Keep going until the field settles or you have shown that it cannot.
-4. Never pick between readings that disagree unless evidence decides between them.
+4. Never pick between readings that disagree unless evidence decides between them. A label's decided transcript (input_source decided_transcript) decides that label's text. Readers of a label with none settle only when a source answer confirms exactly one reader's text.
 5. Never repeat a lookup with the same source and query: its answer will not change.
 6. Call independent lookups and checks together in one turn when you can.
 

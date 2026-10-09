@@ -391,12 +391,14 @@ def _check_row(key: str, tools: Sequence[str], literal: str, value: str, *, text
     return None
 
 
-def _lineage(named: Sequence[Reading], literal: str) -> dict:
+def _lineage(named: Sequence[Reading], literal: str, others: Sequence[tuple[Reading, str]] = ()) -> dict:
     """Where the verbatim came from (data contract 4.3, G20, G27, G28).
 
     A decided transcript among the named readings is the value's source, as the
     workflow's own parse records it. Raw readings alone keep each reader's
-    verbatim, the readings that settled it and the first of them as confirmed.
+    verbatim, the readings that settled it and the first of them as confirmed;
+    ``others`` (another raw reader of those labels, with the different text it
+    writes) are kept beside them, unsettled, as G27 keeps every reader's text.
     """
     decided = [r for r in named if r.input_source == "decided_transcript"]
     if decided:
@@ -404,17 +406,41 @@ def _lineage(named: Sequence[Reading], literal: str) -> dict:
             "source_observation_id": decided[0].observation_id}
     regions = {r.region_id for r in named}
     observations = list(dict.fromkeys(r.observation_id for r in named))
+    verbatim = dict.fromkeys(observations, literal)
+    for reading, text in others:
+        verbatim.setdefault(reading.observation_id, text)
     return {"input_source": "raw_reading",
         "source_region_id": next(iter(regions)) if len(regions) == 1 else None,
         "source_observation_id": observations[0],
-        "verbatim_by_observation": dict.fromkeys(observations, literal),
-        "input_source_by_observation": dict.fromkeys(observations, "raw_reading"),
+        "verbatim_by_observation": verbatim,
+        "input_source_by_observation": dict.fromkeys(verbatim, "raw_reading"),
         "settled_observation_ids": observations}
+
+
+def _refusal(task, answer, *, readings, by_name, sources):
+    """Why a resolved answer may not settle its field (agreement.refusal, the
+    experts' check repeated here on what the field's lookups returned), or
+    None. ``sources`` are the source answers the field received."""
+    from .agreement import refusal
+
+    literal = answer.literal
+    if not literal or not literal.strip():
+        return None
+    named = [by_name[n] for n in dict.fromkeys(answer.reading_names) if n in by_name and literal in by_name[n].text]
+    if not named:
+        return None  # _settled refuses it.
+    received = list(sources)
+    by_id = {item.evidence.id: item for item in received if item.evidence is not None}
+    cited = [by_id[i] for i in dict.fromkeys(answer.source_evidence_ids) if i in by_id]
+    return refusal(task, readings, literal=literal, named=named, value=answer.value,
+        authority_id=answer.authority_id, cited=cited, received=received)
 
 
 def _settled(run, task, outcome, *, by_name, evidence, asset_id, blobs, date_rules=None) -> FieldValue | None:
     """A resolved answer as a supported value, or None when its literal is not in
     the readings it names (the experts' check, repeated here)."""
+    from .checks import collapse
+
     answer = outcome.answer
     literal = answer.literal
     if not literal or not literal.strip():
@@ -433,6 +459,17 @@ def _settled(run, task, outcome, *, by_name, evidence, asset_id, blobs, date_rul
             evidence[row.id] = row
             own = [row.id]
         relations.update(dict.fromkeys((e for e in own if e not in relations), "supports"))
+    # Every other reader's organiser row stays cited: the same text supports the
+    # value, a different text contradicts it and is kept as evidence (G19, G20).
+    for candidate in task.candidates:
+        if candidate.evidence_id in evidence and candidate.evidence_id not in relations:
+            same = collapse(candidate.literal) == collapse(literal)
+            relations[candidate.evidence_id] = "supports" if same else "contradicts"
+    regions = {r.region_id for r in named}
+    settled_by = {r.observation_id for r in named}
+    others = [(by_name[c.reading], c.literal) for c in task.candidates if c.reading in by_name
+        and by_name[c.reading].input_source == "raw_reading" and by_name[c.reading].region_id in regions
+        and by_name[c.reading].observation_id not in settled_by and collapse(c.literal) != collapse(literal)]
     cited = [e for e in answer.source_evidence_ids if e in evidence and evidence[e].kind != "literal"]
     for evidence_id in cited:
         relations[evidence_id] = "decides" if evidence[evidence_id].source in DECIDING_SOURCES else "supports"
@@ -453,7 +490,7 @@ def _settled(run, task, outcome, *, by_name, evidence, asset_id, blobs, date_rul
     return FieldValue(state=ValueState.SUPPORTED, literal=literal, parsed=parsed, normalized=normalized,
         authority_id=answer.authority_id, evidence_ids=list(relations), evidence_relations=relations,
         reason=answer.explanation, layer="verbatim" if outcome.finalized_without_model else "settled",
-        **_lineage(named, literal))
+        **_lineage(named, literal, others))
 
 
 # Where the organiser's value came from (data contract 4.3, G27, G28).
@@ -474,7 +511,8 @@ def _unsettled(task, state, *, literal=None, cited=(), reason) -> FieldValue:
         reason=reason, **lineage)
 
 
-def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, blobs, date_rules=None) -> FieldValue:
+def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, blobs, date_rules=None,
+        sources: Sequence[SourceAnswer] = ()) -> FieldValue:
     answer = outcome.answer
     current = task.current
     if task.key in NO_APPROVED_AUTHORITY:
@@ -487,6 +525,15 @@ def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, b
         reason = FIELD_REASONS.get(outcome.failure, FIELD_REASONS[None])
         return _unsettled(task, ValueState.UNRESOLVED, literal=current.literal, cited=cited, reason=reason)
     if answer.outcome == "resolved":
+        refused = _refusal(task, answer, readings=readings, by_name=by_name, sources=sources)
+        if refused is not None:
+            # A pick between readers no source settles is ambiguous; a value no
+            # decided transcript or place source supports is unresolved.
+            if refused.differ:
+                return _unsettled(task, ValueState.AMBIGUOUS, cited=cited,
+                    reason=f"{refused.reason} {answer.explanation}")
+            return _unsettled(task, ValueState.UNRESOLVED, literal=current.literal, cited=cited,
+                reason=f"{refused.reason} {answer.explanation}")
         settled = _settled(run, task, outcome, by_name=by_name, evidence=evidence, asset_id=asset_id,
             blobs=blobs, date_rules=date_rules)
         if settled is not None:
@@ -568,10 +615,14 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     """Turn the outcomes into the run's field values and evidence, in memory only.
 
     resolved: supported, with the literal, its lineage, the label rows of the
-    readings it names (a new row where none covers a reading) and the source
+    readings it names (a new row where none covers a reading), every other
+    reader's organiser row (supporting or contradicting it) and the source
     evidence it cites (GBIF decides; other sources support); a deterministic
     check's parse gets a "derived" row when the check, run again on the
-    literal, gives that value. label_lacks_value: not present;
+    literal, gives that value. A resolved answer the agreement rules refuse
+    (agreement.refusal: a pick between readers no source settles, a literal
+    the label's decided transcript does not write, a place no place source
+    confirms) is ambiguous or unresolved instead. label_lacks_value: not present;
     sources_cannot_resolve: unresolved; several_possibilities: ambiguous, the
     options in the reason; a failure: unresolved with a retryable reason. Then
     the derived values; the keys derived are returned.
@@ -585,12 +636,16 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     evidence = {item.id: item for item in run.evidence}
     tasks_by_key = {task.key: task for task in tasks}
     human = human_keys(run)
+    received: dict[str, list[SourceAnswer]] = {}
+    for call in calls:
+        received.setdefault(call.field_key, []).append(call.answer)
     for outcome in outcomes:
         task = tasks_by_key.get(outcome.key)
         if task is None or task.key in human:
             continue
         run.fields[task.key] = _field_value(run, task, outcome, readings=readings, by_name=by_name,
-            evidence=evidence, asset_id=asset_id, blobs=blobs, date_rules=profile.date_rules)
+            evidence=evidence, asset_id=asset_id, blobs=blobs, date_rules=profile.date_rules,
+            sources=received.get(task.key, ()))
     eligible = [key for key in field_keys(profile) if key not in human]
     return derive.fill(run, eligible=eligible, asset_id=asset_id, blobs=blobs)
 

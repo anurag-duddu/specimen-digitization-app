@@ -36,6 +36,7 @@ from specimen_digitization.application.storage import LocalBlobs, SQLiteReposito
 from specimen_digitization.application.workflow import (
     FIELD_RESEARCH, OperationalBlock, SyntheticAdapters, Workflow,
 )
+from specimen_digitization.field_research import agreement
 from specimen_digitization.field_research import step as field_step
 from specimen_digitization.field_research.contracts import (
     FIELD_TOOLS, FieldAnswer, FieldOutcome, SourceAnswer, SourceCandidate,
@@ -599,6 +600,109 @@ def test_a_taxon_clears_only_on_gbifs_decision_for_the_whole_name_the_label_writ
         assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
     else:
         assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["taxonomy_unresolved"])
+
+
+# ---- readers that disagree (G19, G20, G27; the review's B1) --------------------
+
+SMYTH = TEXT.replace("leg. J. Smith", "leg. J. Smyth")
+SMITH_OR_SMYTH = [("collectors", "1A", "J. Smith", "leg. J. Smith"),
+    ("collectors", "1B", "J. Smyth", "leg. J. Smyth")]
+CHIMALTENAGO, CHIMALTENANGO = (TEXT.replace("Illinois", name) for name in ("Chimaltenago", "Chimaltenango"))
+PROVINCES = [*COLLECTORS, ("province_state", "1A", "Chimaltenago", "province_state: Chimaltenago"),
+    ("province_state", "1B", "Chimaltenango", "province_state: Chimaltenango")]
+
+
+def cited_rows(run, key):
+    evidence = {item.id: item for item in run.evidence}
+    value = run.fields[key]
+    return {evidence[i].excerpt: value.evidence_relations.get(i) for i in value.evidence_ids}
+
+
+def test_a_pick_between_readers_no_source_settles_never_clears(tmp_path):
+    """The review's first probe: no decided transcript, reader 1A writes
+    "leg. J. Smith" and 1B "leg. J. Smyth", the organiser leaves collectors
+    ambiguous, and the expert answers with 1A's text."""
+    rig = build_rig(tmp_path, TEXT, SMYTH, candidates=SMITH_OR_SMYTH)
+    run = rig.specimen.run
+    assert {r.input_source for r in field_step.run_readings(run)} == {"raw_reading"}
+    assert run.fields["collectors"].state == ValueState.AMBIGUOUS
+    settle(rig, Scripted({"collectors": answering(resolved("J. Smith", reading="1A"))}))
+    collectors = run.fields["collectors"]
+    assert (collectors.state, collectors.literal) == (ValueState.AMBIGUOUS, None)
+    assert collectors.reason == agreement.DIFFER + " Settled."
+    # Both readers' rows stay cited, for the person who chooses.
+    assert {"leg. J. Smith", "leg. J. Smyth"} <= set(cited_rows(run, "collectors"))
+    assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:collectors" in run.reasons
+
+
+def test_a_place_the_readers_disagree_on_never_clears_without_a_lookup(tmp_path):
+    """G27's own example with no lookup at all: 1A writes "Chimaltenago", 1B
+    "Chimaltenango", and the expert answers with 1B's text."""
+    rig = build_rig(tmp_path, CHIMALTENAGO, CHIMALTENANGO, candidates=PROVINCES)
+    run = rig.specimen.run
+    settle(rig, Scripted({"province_state": answering(resolved("Chimaltenango", reading="1B"))}))
+    province = run.fields["province_state"]
+    assert (province.state, province.reason) == (ValueState.AMBIGUOUS, agreement.DIFFER + " Settled.")
+    assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:province_state" in run.reasons
+
+
+def confirming(query):
+    """The province expert: one GEOLocate lookup, then 1B's text with its candidate."""
+    async def script(task, readings, tools):
+        answer = await tools.lookup("geolocate", query, field_key=task.key)
+        return FieldOutcome(task.key, resolved("Chimaltenango", reading="1B",
+            authority_id=answer.candidates[0].authority_id, cited=[answer.evidence.id]),
+            evidence=[answer.evidence], model_calls=1)
+    return script
+
+
+def test_a_lookup_that_confirms_exactly_one_readers_place_settles_it_and_keeps_both_readers(tmp_path):
+    rig = build_rig(tmp_path, CHIMALTENAGO, CHIMALTENANGO, candidates=PROVINCES)
+    run = rig.specimen.run
+    first, second = run.observations
+    settle(rig, Scripted({"province_state": confirming("Chimaltenango")}))
+    province = run.fields["province_state"]
+    assert (province.state, province.literal, province.layer) == (ValueState.SUPPORTED, "Chimaltenango", "settled")
+    # G20 and G27: the confirmed reader settles it; the other's text is kept, unsettled.
+    assert province.verbatim_by_observation == {second.id: "Chimaltenango", first.id: "Chimaltenago"}
+    assert (province.settled_observation_ids, province.source_observation_id) == ([second.id], second.id)
+    rows = cited_rows(run, "province_state")
+    assert rows["province_state: Chimaltenago"] == "contradicts"
+    assert rows["province_state: Chimaltenango"] == "supports"
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+
+
+def test_a_place_never_clears_without_a_place_sources_candidate(rig):
+    run = rig.specimen.run
+    settle(rig, Scripted({"country": answering(resolved(LABEL["country"]))}))
+    country = run.fields["country"]
+    assert (country.state, country.literal) == (ValueState.UNRESOLVED, LABEL["country"])
+    assert country.reason == agreement.NO_PLACE + " Settled."
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["mandatory_unresolved:country"])
+
+
+SLOPE, SPACED = "E. slope Mt. McKinley", "E.slope Mt. McKinley"
+
+
+@pytest.mark.parametrize(("literal", "reading"), [(SLOPE, "1A"), (SPACED, "1B")])
+def test_a_labels_decided_transcript_decides_its_text_and_the_other_reader_is_evidence(tmp_path, literal, reading):
+    """As on 105526321's second label: the first pass decided the reading that
+    writes "E. slope Mt. McKinley"; the other reader writes "E.slope"."""
+    garden = LABEL["precise_location"]
+    rig = build_rig(tmp_path, TEXT.replace(garden, SLOPE), TEXT.replace(garden, SPACED), decided=True,
+        candidates=[*COLLECTORS, ("precise_location", "1B", SPACED, "precise_location: " + SPACED)])
+    run = rig.specimen.run
+    assert [r.input_source for r in field_step.run_readings(run)] == ["decided_transcript", "raw_reading"]
+    settle(rig, Scripted({"precise_location": answering(resolved(literal, reading=reading))}))
+    place = run.fields["precise_location"]
+    if reading == "1B":
+        assert (place.state, place.literal) == (ValueState.UNRESOLVED, SLOPE)
+        assert place.reason == agreement.NOT_DECIDED + " Settled."
+        assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["mandatory_unresolved:precise_location"])
+        return
+    assert (place.state, place.literal, place.input_source) == (ValueState.SUPPORTED, SLOPE, "decided_transcript")
+    assert cited_rows(run, "precise_location")["precise_location: " + SPACED] == "contradicts"
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
 
 
 def test_no_elevation_is_derived_from_a_unit_the_readings_disagree_on(rig):

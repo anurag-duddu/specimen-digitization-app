@@ -4,9 +4,12 @@ Every call builds a fresh agent, `field_<key>`, with the shared rules, the field
 brief and only the tools that field may use, so each record and field starts
 with fresh context and shows in Logfire as its own agent. An answer is checked
 against the readings and against what this expert's own tools returned before
-it is accepted: the literal must occur in the readings it names, and a value
-that differs from it must be a source candidate or a deterministic check's
-output. A field-level problem never raises; it comes back as a failure.
+it is accepted: the literal must occur in the readings it names, a value that
+differs from it must be a source candidate or a deterministic check's output,
+and the agreement rules hold (agreement.refusal: a label's decided transcript
+decides its literal, readers that disagree settle only on a source that
+confirms exactly one of them, a place only on a place source's candidate). A
+field-level problem never raises; it comes back as a failure.
 """
 
 from __future__ import annotations
@@ -38,7 +41,7 @@ from specimen_digitization.application.domain import (
 from specimen_digitization.application.extraction_guard import extraction_refusal
 from specimen_digitization.provider_privacy import agent_instrumentation
 
-from . import checks
+from . import agreement, checks
 from .budget import DEFAULT_MAX_TOKENS, BudgetExhausted, CostMeter, InputTooLarge, MeteredModel
 from .contracts import (
     FIELD_TOOLS,
@@ -429,6 +432,18 @@ class _Expert:
                 )
         if key == "taxon":
             self._validate_taxon(answer, cited)
+        refused = agreement.refusal(
+            self.task,
+            self.readings,
+            literal=literal,
+            named=[self.by_label[_label(name)] for name in answer.reading_names],
+            value=value,
+            authority_id=answer.authority_id,
+            cited=cited,
+            received=self.received,
+        )
+        if refused is not None:
+            raise ModelRetry(refused.retry)
         return names
 
     @staticmethod
