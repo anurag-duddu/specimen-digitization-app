@@ -2328,6 +2328,67 @@ def test_only_a_label_that_writes_the_code_is_read_for_an_unreadable_part():
     assert unreadable(run_with(), readings, "30")
 
 
+# B2 of #289's third review: a genus marked doubtful or qualified beside the
+# code (the text, the organiser's candidate, its quote). The taxon brief has
+# the expert make no lookup for "?" on the genus, and answer
+# sources_cannot_resolve, quoting the code.
+DOUBTFUL_BESIDE = {
+    "question-mark-after": ("Epipsocus? " + SP1, SP1, "Epipsocus? " + SP1),
+    "question-mark-before": ("?Epipsocus " + SP1, SP1, "?Epipsocus " + SP1),
+    "bracketed-question-attached": ("Epipsocus(?) " + SP1, SP1, "Epipsocus(?) " + SP1),
+    "abbreviated-genus-question": ("E.? " + SP1, SP1, "E.? " + SP1),
+    "cf-against-the-genus": ("cf.Epipsocus sp. 1", "sp. 1", "cf.Epipsocus sp. 1"),
+    "lower-case-genus-question": ("epipsocus? sp. 1", "sp. 1", "epipsocus? sp. 1"),
+    "question-on-the-line-above": ("Epipsocus?\n" + SP1, SP1, SP1),
+    # 105526328's label 2 with its genus line doubtful.
+    "328-genus-question": ("VI-24-68-7.\nEpipsocus?\nsp. 1\n\N{FEMALE SIGN} terminalia", "sp. 1", "sp. 1"),
+    "328-question-genus": ("VI-24-68-7.\n?Epipsocus\nsp. 1\n\N{FEMALE SIGN} terminalia", "sp. 1", "sp. 1"),
+}
+
+
+@pytest.mark.parametrize("decided", [False, True], ids=["readers-agree", "decided-transcript"])
+@pytest.mark.parametrize(("written", "code", "quote"), DOUBTFUL_BESIDE.values(), ids=DOUBTFUL_BESIDE)
+def test_a_doubtful_genus_beside_the_code_keeps_the_taxon_in_review(tmp_path, written, code, quote, decided):
+    """The label check counts the word beside the code as a possible genus
+    (checks.genus_beside), "?", brackets and "cf." aside."""
+    text = TEXT.replace("taxon: Danaus plexippus", written)
+    rig = build_rig(tmp_path, text, text if decided else None, decided=decided,
+        candidates=[*COLLECTORS, *(("taxon", name, code, quote) for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": cannot_resolve(code)}), tools=NoGenus(rig.blobs))
+    taxon_held_back(run)
+
+
+@pytest.mark.parametrize("line", ["Epipsocus?", "?Epipsocus", "[unreadable]"])
+def test_the_real_resolver_following_its_brief_for_an_unclear_genus_line_keeps_the_taxon_in_review(tmp_path, line):
+    """105526328's label 2 with its genus line doubtful or unreadable: the real
+    experts.make_resolver, its model answering as the taxon brief says (no
+    lookup, sources_cannot_resolve, quoting the code line it read)."""
+    from pydantic_ai.messages import ModelResponse, ToolCallPart
+    from pydantic_ai.models.function import FunctionModel
+
+    from specimen_digitization.field_research import experts
+    from specimen_digitization.field_research.budget import CostMeter
+
+    def model(messages, info):
+        return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, {
+            "outcome": "sources_cannot_resolve", "literal": "sp. 1", "reading_names": ["1A"],
+            "explanation": f"The genus line reads {line!r}, so no lookup is made; sp. 1 is a morphocode."})])
+
+    resolver = experts.make_resolver(model_factory=lambda: FunctionModel(model),
+        meter=CostMeter(1_000_000, input_micros_per_million=200_000, output_micros_per_million=600_000))
+
+    async def expert(task, readings, tools):
+        return await resolver(task, readings, {}, tools=tools)
+
+    written = "VI-24-68-7.\n" + line + "\nsp. 1\n\N{FEMALE SIGN} terminalia"
+    rig = build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", written),
+        candidates=[*COLLECTORS, *(("taxon", name, "sp. 1", "sp. 1") for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": expert}), tools=NoGenus(rig.blobs))
+    taxon_held_back(run)
+
+
 # B1 of #289's second review: the label writes the genus where the label check
 # does not look (neither immediately before the code nor first after it on its
 # line), and the expert asks GBIF that genus.
@@ -2393,7 +2454,9 @@ class NoMatch(NoGenus):
 
 
 @pytest.mark.parametrize("asked", ["Epipsocus", "epipsocus", "*Epipsocus*", "EPIPSOCUS",
-    "epipsocus sp. 1 \N{FEMALE SIGN}"])
+    "epipsocus sp. 1 \N{FEMALE SIGN}",
+    # A genus marked doubtful, abbreviated, or with an accented capital (B2 of #289's third review).
+    "Epipsocus(?)", "E.?", "E. sp. 1 \N{FEMALE SIGN}", "\N{LATIN CAPITAL LETTER E WITH ACUTE}pipsocus"])
 def test_a_genus_the_expert_asked_gbif_keeps_the_code_in_review_though_gbif_has_no_candidate(tmp_path, asked):
     """GBIF finds no match for the genus, or reads no name in the query, yet
     the query names a genus (checks.query_names_a_genus)."""

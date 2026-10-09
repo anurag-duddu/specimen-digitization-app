@@ -237,13 +237,15 @@ PILOT_CODE_LABELS = {
         "Mossy forest 6400'\nsp. 30 " + FEMALE,
         "10-6-78-1a\nE.slope Mt. McKinley\nDavao Prov.\nMindanao, P.I.\nF.G. Wermer\n3 Sept. '46\n"
         "Mossy forest 6400'\nSp.30 " + FEMALE], True),
-    "105526322": ("30", ["wings + head\nsp. 30 " + FEMALE, "Wings 4 head\nSp.30 " + FEMALE + "\np-95-81-16"], True),
-    "105526323": ("30", ["genitalia + legs\nSp 30 " + FEMALE, "genitalia " + FEMALE + " legs\nSp 30 " + FEMALE], True),
     "105526326": ("22", ["sp. 22\n" + FEMALE + " wings", "Sp. 22\n" + FEMALE + " wings"], True),
     "105526327": ("22", ["V-4-67-1\nsp 22\nlegs", "V-4-67-1\nsp 22\nlegs"], True),
+    # A word with a letter and no digit right before the code may be a genus
+    # (B2 of #289's third review): "head", "legs", "R.D.mitchell".
+    "105526322": ("30", ["wings + head\nsp. 30 " + FEMALE, "Wings 4 head\nSp.30 " + FEMALE + "\np-95-81-16"], False),
+    "105526323": ("30", ["genitalia + legs\nSp 30 " + FEMALE, "genitalia " + FEMALE + " legs\nSp 30 " + FEMALE], False),
     "105526329": ("1", ["R.D.mitchell\nsp #1 " + MALE + "\nhead & legs", "R.D.mitchell\nSp #1 " + MALE + "\nhead & legs"],
-        True),
-    "105526330": ("1", ["Guatemala, IV-25\n1948, R.D. Mitchell\n" + FEMALE + " legs Sp.#1"], True),
+        False),
+    "105526330": ("1", ["Guatemala, IV-25\n1948, R.D. Mitchell\n" + FEMALE + " legs Sp.#1"], False),
     # The genus on the line above the code, as each reader reads it.
     "105526328": ("1", ["VI-24-68-7.\nEpipocus\nsp. 1\n" + FEMALE + " terminalia\nVII-18-66-1",
         "VI-24-68-7.\nEpipsocus\nsp. 1\n" + FEMALE + " terminalia\nVII-18-66-1"], False),
@@ -271,10 +273,12 @@ def test_a_pilot_label_names_no_genus_only_when_no_genus_is_written_beside_its_c
     ("sp. 1 " + FEMALE + " Epipsocus", False),
     # One reader's genus is enough, and another place the label writes the code.
     ("sp. 1\nEpipsocus sp. 1", False),
-    # A word that is no genus right before it, or the genus further away.
-    ("legs sp. 1", True),
+    # Any word with a letter and no digit right before it (B2 of #289's third review).
+    ("legs sp. 1", False),
+    ("Epipsocus\nwings + head\nsp. 1", False),
+    # A word with a digit right before it, or the genus further away.
     ("Mossy forest 6400'\nsp. 1", True),
-    ("Epipsocus\nwings + head\nsp. 1", True),
+    ("Epipsocus\nV-4-67-1\nsp. 1", True),
     # Another code beside the genus.
     ("Epipsocus sp. 2\nsp. 1", True),
     # The code is not written at all.
@@ -285,6 +289,117 @@ def test_the_label_names_no_genus_when_no_word_beside_its_code_may_be_one(text, 
     from specimen_digitization.field_research import checks
 
     assert checks.label_names_no_genus("1", [text]) is no_genus
+
+
+# B2 of #289's third review: an unclear word beside the code may be its genus.
+UNCLEAR_BESIDE = [
+    # The reader's marker, and a genus marked doubtful, qualified or abbreviated.
+    "[unreadable] sp. 1 " + FEMALE,
+    "Epipsocus? sp. 1 " + FEMALE,
+    "?Epipsocus sp. 1 " + FEMALE,
+    "Epipsocus(?) sp. 1 " + FEMALE,
+    "E.? sp. 1 " + FEMALE,
+    "cf.Epipsocus sp. 1",
+    "epipsocus? sp. 1",
+    # 105526328's label 2 with its genus line unreadable or doubtful.
+    "VI-24-68-7.\n[unreadable]\nsp. 1\n" + FEMALE + " terminalia",
+    "VI-24-68-7.\nEpipsocus?\nsp. 1\n" + FEMALE + " terminalia",
+    "VI-24-68-7.\n?Epipsocus\nsp. 1\n" + FEMALE + " terminalia",
+    # Other qualifiers, curly quotes, emphasis, an accented capital.
+    "AFF.Epipsocus sp. 1",
+    "Epipsocus prob. sp. 1",
+    "Epipsocus nr. sp. 1",
+    "\N{LEFT DOUBLE QUOTATION MARK}Epipsocus\N{RIGHT DOUBLE QUOTATION MARK} sp. 1",
+    "_Epipsocus_ sp. 1",
+    "\N{LATIN CAPITAL LETTER E WITH ACUTE}pipsocus sp. 1",
+    # After the code on its line, a word that is not one of NOT_GENERA.
+    "sp. 1 [unreadable]",
+    "sp. 1 " + FEMALE + " cf. Epipsocus",
+    "sp. 1 Legs",
+    # Above a keyed "taxon:" line, a line that is not keyed.
+    "Epipsocus\ntaxon: sp. 1",
+]
+
+
+@pytest.mark.parametrize("text", UNCLEAR_BESIDE)
+def test_an_unclear_word_beside_the_code_may_be_its_genus(text):
+    from specimen_digitization.field_research import checks
+
+    assert not checks.label_names_no_genus("1", [text])
+
+
+@pytest.mark.parametrize("text", [
+    # 105526321, 105526326 and 105526327 as their readers write them.
+    "Mossy forest 6400'\nsp. 1 " + FEMALE,
+    "Sp. 1\n" + FEMALE + " wings",
+    "V-4-67-1\nsp 1\nlegs",
+    # A token with a digit right before the code, after "?" or a qualifier alone.
+    "V-4-67-1 sp. 1\nlegs",
+    "IX-14-46 sp. 1",
+    "6400' ? sp. 1",
+    "6400' cf. sp. 1",
+    # The taxon's keyed line, another field's keyed line above it.
+    "verbatim_dts: Synthetic D/T/S\ntaxon: sp. 1 " + FEMALE,
+])
+def test_a_code_with_no_word_beside_it_that_may_be_a_genus_names_no_genus(text):
+    from specimen_digitization.field_research import checks
+
+    assert checks.label_names_no_genus("1", [text])
+
+
+def test_the_words_after_a_code_that_are_no_genus_are_one_short_list():
+    """NOT_GENERA, as written; before the code the same word may be a genus."""
+    from specimen_digitization.field_research import checks
+
+    assert checks.NOT_GENERA == {"legs", "leg", "wings", "wing", "head", "terminalia", "genitalia", "slide",
+        "mount", FEMALE, MALE}
+    for word in checks.NOT_GENERA - {FEMALE, MALE}:
+        assert checks.label_names_no_genus("1", ["sp. 1 " + word, "sp. 1 " + FEMALE + " " + word + ","]), word
+        assert not checks.label_names_no_genus("1", [word + " sp. 1"]), word
+    assert checks.label_names_no_genus("1", ["sp. 1 " + FEMALE + MALE])
+
+
+@pytest.mark.parametrize(("part", "token"), [
+    ("[unreadable]", "unreadable"),
+    ("Epipsocus?", "Epipsocus"),
+    ("?Epipsocus", "Epipsocus"),
+    ("Epipsocus(?)", "Epipsocus"),
+    ("E.?", "E."),
+    ("cf.Epipsocus", "Epipsocus"),
+    ("(Prob.Epipsocus?)", "Epipsocus"),
+    ("Epipsocus,aff.", "Epipsocus"),
+    ("*Epipsocus*", "Epipsocus"),
+    ("\N{LEFT SINGLE QUOTATION MARK}Epipsocus\N{RIGHT SINGLE QUOTATION MARK}", "Epipsocus"),
+    ("6400'", "6400"),
+    ("legs,", "legs"),
+    ("cf.", ""),
+    ("aff.", ""),
+    ("?", ""),
+    ("(?)", ""),
+])
+def test_a_token_sheds_marks_quotes_brackets_and_qualifiers_at_either_end(part, token):
+    from specimen_digitization.field_research import checks
+
+    assert checks._token(part) == token
+
+
+@pytest.mark.parametrize(("token", "genus"), [
+    ("Epipsocus", True),
+    ("epipsocus", True),
+    ("E.", True),
+    ("unreadable", True),
+    ("R.D.mitchell", True),
+    ("Ep1psocus", True),
+    ("V-4-67-1", False),
+    ("6400", False),
+    ("IX-14-46", False),
+    ("10-6-78-la", False),
+    ("p-95-81-16", False),
+])
+def test_a_token_with_a_letter_and_no_digit_may_be_a_genus(token, genus):
+    from specimen_digitization.field_research import checks
+
+    assert checks.may_be_genus(token) is genus
 
 
 @pytest.mark.parametrize(("query", "genus"), [
@@ -302,6 +417,20 @@ def test_the_label_names_no_genus_when_no_word_beside_its_code_may_be_one(text, 
     ("ep1psocus", True),
     ("(epipsocus)", True),
     ('"Epipsocus"', True),
+    # A genus marked doubtful, qualified, abbreviated or with an accented
+    # capital, and the reader's marker (B2 of #289's third review).
+    ("Epipsocus(?)", True),
+    ("Epipsocus?", True),
+    ("?Epipsocus", True),
+    ("E.?", True),
+    ("E. sp. 1", True),
+    ("cf.Epipsocus", True),
+    ("\N{LATIN CAPITAL LETTER E WITH ACUTE}pipsocus", True),
+    ("[unreadable] sp. 1", True),
+    # A code with only "?" or a qualifier beside it.
+    ("sp. 1?", False),
+    ("cf. sp. 1", False),
+    ("?", False),
     # The pilots' codes, as their readers write them, and nothing asked.
     ("sp. 30 " + FEMALE, False),
     ("Sp.30 " + FEMALE, False),

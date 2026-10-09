@@ -298,33 +298,105 @@ def word_before(text: str, start: int) -> str | None:
     return None
 
 
-def word_after(text: str, end: int) -> str | None:
-    """The first word after text[:end] on the same line, or None."""
+# What a token sheds at either end before the label check judges it (B2 of
+# #289's third review): "?", "*" and "_", straight and curly quotes,
+# brackets, and the punctuation _AROUND drops.
+_SHED = _AROUND + "?*_\N{LEFT SINGLE QUOTATION MARK}\N{RIGHT SINGLE QUOTATION MARK}" + (
+    "\N{LEFT DOUBLE QUOTATION MARK}\N{RIGHT DOUBLE QUOTATION MARK}")
+# A qualifier a token sheds when it starts or ends it, written against the
+# word ("cf.Epipsocus") or as a word of its own ("cf. Epipsocus").
+_QUALIFIER_FIRST = re.compile(r"^(?:cf|aff|prob)\.", re.I)
+_QUALIFIER_LAST = re.compile(r"(?:cf|aff|prob)\.$", re.I)
+# The label words that may follow a morphocode on its line and are no genus,
+# as written: the parts a slide mounts, and the sex signs. The one list the
+# label check passes over (genus_beside).
+NOT_GENERA = frozenset({"legs", "leg", "wings", "wing", "head", "terminalia", "genitalia", "slide", "mount",
+    "\N{FEMALE SIGN}", "\N{MALE SIGN}"})
+# A keyed line, as Workflow.parse reads "key: value" lines: a field key and a
+# colon at the line's start; and the taxon's key alone.
+_KEYED_LINE = re.compile(r"[^\S\n]*[a-z][a-z_]*[^\S\n]*:")
+_TAXON_KEY = re.compile(r"[^\S\n]*taxon[^\S\n]*:[^\S\n]*")
+
+
+def _token(part: str) -> str:
+    """A whitespace-separated part of a text as the label check reads it:
+    _SHED's characters and a qualifier (_QUALIFIER_FIRST, _QUALIFIER_LAST)
+    shed at either end, again until nothing more is ("[unreadable]" is
+    "unreadable", "Epipsocus(?)" and "cf.Epipsocus" are "Epipsocus", "E.?" is
+    "E.", "6400'" is "6400", a lone "?" or "cf." is empty)."""
+    while True:
+        shed = _QUALIFIER_LAST.sub("", _QUALIFIER_FIRST.sub("", part.strip(_SHED)))
+        if shed == part:
+            return part
+        part = shed
+
+
+def _tokens(text: str) -> list[str]:
+    """The text's tokens (_token) that hold a letter or a digit. A sex sign,
+    a "+", a "?" or a qualifier alone is none."""
+    return [token for token in map(_token, text.split()) if any(c.isalnum() for c in token)]
+
+
+def may_be_genus(token: str) -> bool:
+    """Whether a token (_token) may be a genus: it holds a letter and no
+    digit, whatever its case ("Epipsocus", "epipsocus", "E.", "unreadable"
+    from the reader's "[unreadable]"), or it is GENUS_SHAPED (a misread
+    "Ep1psocus"). A code or a number ("V-4-67-1", "6400", "IX-14-46") is not."""
+    return GENUS_SHAPED.fullmatch(token) is not None or (
+        any(c.isalpha() for c in token) and not any(c.isdigit() for c in token))
+
+
+def token_before(text: str, start: int) -> str | None:
+    """The token (_tokens) written immediately before text[start:]: the last
+    one before it on its line, or, when its line has none there, the last
+    one of the nearest line above that has one. None when there is none.
+    When its line writes only the taxon's key before it ("taxon: sp. 30", a
+    keyed line Workflow.parse reads), the key is no token, and a keyed line
+    above (_KEYED_LINE: "habitat: Mossy forest") is another field's: None."""
+    line_start = text.rfind("\n", 0, start) + 1
+    own, above = text[line_start:start], list(reversed(text[:line_start].splitlines()))
+    keyed = _TAXON_KEY.fullmatch(own) is not None
+    for part in above if keyed else [own, *above]:
+        tokens = _tokens(part)
+        if tokens:
+            return None if keyed and _KEYED_LINE.match(part) else tokens[-1]
+    return None
+
+
+def token_after(text: str, end: int) -> str | None:
+    """The first token (_tokens) after text[:end] on its line, or None."""
     line_end = text.find("\n", end)
-    words = _words(text[end:] if line_end < 0 else text[end:line_end])
-    return words[0] if words else None
+    tokens = _tokens(text[end:] if line_end < 0 else text[end:line_end])
+    return tokens[0] if tokens else None
 
 
 def genus_beside(text: str, start: int, end: int) -> str | None:
-    """The word beside text[start:end] that may be a genus (GENUS_SHAPED): the
-    word written immediately before it (word_before: "Epipsocus" in "Epipsocus
-    sp. 1", and in "Epipsocus" with "sp. 1" on the next line), else the first
-    word after it on its line ("sp. 1 Epipsocus"). None when neither is."""
-    for word in (word_before(text, start), word_after(text, end)):
-        if word is not None and GENUS_SHAPED.fullmatch(word):
-            return word
+    """The token beside text[start:end] that may be a genus (may_be_genus):
+    the token written immediately before it (token_before: "Epipsocus" in
+    "Epipsocus sp. 1", in "Epipsocus?" with "sp. 1" on the next line, and
+    "unreadable" in "[unreadable] sp. 1"), else the first token after it on
+    its line unless it is one of NOT_GENERA ("Epipsocus" in "sp. 1
+    Epipsocus", never "legs" in "sp. 1 legs"). None when neither is."""
+    before = token_before(text, start)
+    if before is not None and may_be_genus(before):
+        return before
+    after = token_after(text, end)
+    if after is not None and after not in NOT_GENERA and may_be_genus(after):
+        return after
     return None
 
 
 def label_names_no_genus(code: str, reading_texts: Sequence[str]) -> bool:
     """Whether the label writes the morphocode `code` (morphocode) with no
     genus beside it: some reading writes it, and wherever any reading writes a
-    morphocode of that code (NO_GENUS, searched in its text), no word beside it
-    may be a genus (genus_beside). This judges the label, not the organiser's
-    literal: a candidate "sp. 1" taken from "Epipsocus sp. 1", or from
-    "Epipsocus" with "sp. 1" on the next line (105526328's label), names a
-    genus. "Mossy forest 6400'" above "sp. 30" (105526321), "V-4-67-1" above
-    "sp 22" (105526327) and "Sp. 22" on a label of its own (105526326) do not."""
+    morphocode of that code (NO_GENUS, searched in its text), no token beside
+    it may be a genus (genus_beside). This judges the label, not the
+    organiser's literal: a candidate "sp. 1" taken from "Epipsocus sp. 1", or
+    from "Epipsocus" with "sp. 1" on the next line (105526328's label), names
+    a genus, and so does one beside an unclear word ("Epipsocus?", "E.?",
+    "[unreadable]", "legs" before it). "Mossy forest 6400'" above "sp. 30"
+    (105526321), "V-4-67-1" above "sp 22" (105526327) and "Sp. 22" on a
+    label of its own (105526326) do not."""
     found = False
     for text in reading_texts:
         for match in NO_GENUS.finditer(text):
@@ -346,22 +418,24 @@ def _first_letter_capital(text: str) -> str:
 
 
 def query_names_a_genus(query: str | None) -> bool:
-    """Whether a GBIF query names a genus (B1 of #289's second review): the
-    scientific-name parser reads a name in it as written ("Epipsocus",
-    "Epipsocus sp. 1", "Epipsocus prob. sp. 1"), or with the emphasis marks
-    "*" and "_" dropped and its first letter a capital ("epipsocus",
-    "*Epipsocus*", "epipsocus sp. 1"); or it is one word (_words: brackets,
-    quotes and punctuation around it aside) that may be a genus once its
-    first letter is a capital (GENUS_SHAPED: "EPIPSOCUS", "Ep1psocus",
-    "(epipsocus)"). A morphocode ("sp. 30 <female sign>", "Sp. 22", "sp 22",
-    "sp #1") names none."""
+    """Whether a GBIF query names a genus (B1 of #289's second review, B2 of
+    its third): the scientific-name parser reads a name in it as written
+    ("Epipsocus", "Epipsocus sp. 1", "Epipsocus prob. sp. 1"), with the
+    emphasis marks "*" and "_" dropped and its first letter a capital
+    ("epipsocus", "*Epipsocus*", "epipsocus sp. 1"), or as its tokens
+    (_tokens: what the label check sheds, shed) with the first letter a
+    capital ("Epipsocus(?)"); or, its morphocodes (NO_GENUS) aside, a token
+    of it may be a genus once its first letter is a capital (may_be_genus:
+    "EPIPSOCUS", "ep1psocus", "(epipsocus)", "E." in "E. sp. 1", "E.?", an
+    "Epipsocus" with an accented capital). A morphocode alone ("sp. 30
+    <female sign>", "Sp. 22", "sp 22", "sp #1") names none."""
     if not query or not query.strip():
         return False
     capital = _first_letter_capital(query.translate(_EMPHASIS).strip())
-    if taxonomy_scientific_name(query) is not None or taxonomy_scientific_name(capital) is not None:
+    plain = _first_letter_capital(" ".join(_tokens(query)))
+    if any(text and taxonomy_scientific_name(text) is not None for text in (query, capital, plain)):
         return True
-    words = _words(capital)
-    return len(words) == 1 and GENUS_SHAPED.fullmatch(_first_letter_capital(words[0])) is not None
+    return any(may_be_genus(_first_letter_capital(token)) for token in _tokens(NO_GENUS.sub(" ", plain)))
 
 
 def taxon_query_grounded(query: str, literal: str) -> bool:
