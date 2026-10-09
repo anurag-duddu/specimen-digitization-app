@@ -655,6 +655,26 @@ def test_logfire_shows_each_expert_as_its_own_agent(monkeypatch):
         "Expert for Taxon. Settles it from the label readings and its approved sources.")
 
 
+def test_the_briefs_place_notations_are_the_tables():
+    """The shared brief's notation line is rendered from the table the place
+    rule reads (notations.NOTATIONS): every entry, and no other."""
+    import re
+
+    from specimen_digitization.field_research import notations
+    from specimen_digitization.field_research.prompts import _ROOT, instructions
+
+    assert (_ROOT / "common.txt").read_text(encoding="utf-8").count(notations.MARKER) == 1
+    for key in FIELD_TOOLS:
+        text = instructions(key)
+        [line] = [line for line in text.splitlines() if line.startswith('- "') and "look it up as" in line]
+        assert line == notations.brief_line() and notations.MARKER not in text
+        listed = re.findall(r'"([^"]+)": [^(]+\((\w+); look it up as "([^"]+)"\)', line)
+        assert listed == [(entry.notation, entry.field, entry.expansion) for entry in notations.NOTATIONS]
+    # A notation is matched by the place comparison key, for its own field only.
+    assert notations.expansion("P. I.", "country").expansion == "Philippine Islands"
+    assert notations.expansion("P.I.", "province_state") is None and notations.expansion("Phil.", "country") is None
+
+
 def test_every_field_has_a_brief():
     from specimen_digitization.field_research.prompts import FIELD_LABELS, instructions
 
@@ -1004,6 +1024,8 @@ def test_readers_that_differ_settle_on_an_ambiguous_answer_with_one_candidate_at
 ESCUINTLA = tgn("Escuintla", "ev-esc", ("Escuintla", "tgn:1000566", FIRST))
 PHILIPPINES_BY_NAME = tgn("Philippines", "ev-ph-name", ("Philippines", "tgn:1000135", NATION),
                           ("Philippine", "tgn:7268540", "inhabited places"))
+PHILIPPINE_ISLANDS = tgn("Philippine Islands", "ev-pi", ("Philippine Islands", "tgn:2578581", "ridges (landforms)"),
+                         ("Philippines", "tgn:1000135", NATION), ("Philippine Sea", "tgn:7016773", "seas"))
 
 
 @pytest.mark.parametrize(("key", "literal", "received", "value", "authority", "settles"), [
@@ -1016,8 +1038,13 @@ PHILIPPINES_BY_NAME = tgn("Philippines", "ev-ph-name", ("Philippines", "tgn:1000
     ("province_state", "Chimaltango", CHIMALTENANGO, "Chimaltenango", "tgn:1000565", False),
     # A lookup that has nothing to do with what the label writes.
     ("province_state", "Chimaltenago", ESCUINTLA, "Escuintla", "tgn:1000566", False),
-    # "P.I." read as the Philippines: the query is neither the label's text nor one letter from it.
+    # "P.I." read as the Philippines: the query is neither the label's text, nor the name the
+    # notation table gives it, nor one letter from it.
     ("country", "P.I.", PHILIPPINES_BY_NAME, "Philippines", "tgn:1000135", False),
+    # The notation table's name for "P.I." (P4).
+    ("country", "P.I.", PHILIPPINE_ISLANDS, "Philippines", "tgn:1000135", True),
+    # A notation the table does not hold.
+    ("country", "Phil. Is.", PHILIPPINE_ISLANDS, "Philippines", "tgn:1000135", False),
 ])
 def test_a_place_settles_only_on_a_lookup_of_the_labels_own_text(key, literal, received, value, authority,
                                                                   settles):

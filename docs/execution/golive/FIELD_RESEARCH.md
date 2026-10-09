@@ -188,8 +188,17 @@ handover runs field research instead of the six specialists:
    - **The label's own text (P3).** The answer that decides a place value
      was asked the label's own text: its query, or the query's first
      comma-separated part, has the literal's comparison key (as above, case,
-     accents, punctuation and notations such as "Prov." aside). Or, the one
-     exception, G34's near-spelling bound: the query is the chosen
+     accents, punctuation and notations such as "Prov." aside). There are
+     two exceptions. A place notation (P4): when the literal is a notation
+     of the table in `field_research/notations.py` for this field (compared
+     by the same key, so "P. I." is "P.I."), the query may be the expansion
+     the table gives it; the step then writes one evidence row of kind
+     "rule" naming the table entry (locator `notation:<field>:<notation>`, no
+     stored record, so it is never projected), and the value cites it as
+     support. The table holds G29's notations as the briefs state them:
+     "P.I." (country) is looked up as "Philippine Islands", "Guat." (country)
+     as "Guatemala"; the shared brief's notation line is rendered from the
+     same table. G34's near-spelling bound: the query is the chosen
      candidate's own name, and that name is one letter from the literal
      (`georef_locality.one_letter_apart`: both full names, their comparison
      keys one insertion, deletion or substitution apart); the value then
@@ -197,10 +206,12 @@ handover runs field research instead of the six specialists:
      beside the record, naming the deciding answer, which never routes it.
      Any other lookup settles nothing, for decided and contested labels
      alike, in the expert's check and in the step: "Escuintla" asked for a
-     label's "Chimaltenago", or "Philippines" for "P.I." (a lookup of the
-     modern or expanded name is context only; the expert asks the label's
-     text too, and TGN's answer to "P.I." settles it), or a name two letters
-     away ("Chimaltenango" for "Chimaltango").
+     label's "Chimaltenago", "Philippines" for "P.I." (a lookup of the modern
+     name is context only), a notation the table does not hold, or a name
+     two letters away ("Chimaltenango" for "Chimaltango"). So "P.I." settles
+     its country on Getty TGN's answer to "Philippine Islands", whose one
+     nation is the Philippines; TGN and NGA have no match for "P.I." itself
+     (the coordinator's lookup of 2026-10-09).
    - **105526330's province.** The decided reading writes "Chimaltenago" and
      Getty TGN knows only "Chimaltenango". An answer that takes the other
      reader's "Chimaltenango" as its literal is refused (G19). The intended

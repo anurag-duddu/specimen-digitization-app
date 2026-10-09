@@ -834,6 +834,16 @@ class Gazetteer(FakeSources):
         "Chimaltenango": [("Chimaltenango", "tgn:1016636", "inhabited places, cities, department capitals"),
             ("Chimaltenango", "tgn:1000565", FIRST)],
         "Escuintla": [("Escuintla", "tgn:1000566", FIRST), ("Escuintla", "tgn:1016700", "inhabited places")],
+        # As TGN answered "Philippine Islands" and "Guatemala" on the pilot's records.
+        "Philippine Islands": [("Philippine Islands", "tgn:2578581", "ridges (landforms)"),
+            ("Philippines", "tgn:1000135", "nations, commonwealths, controlled regions"),
+            ("Philippine", "tgn:7268540", "inhabited places"), ("Philippine Sea", "tgn:7016773", "seas"),
+            ("Caroline Islands", "tgn:7005669", "island groups")],
+        "Philippines": [("Philippines", "tgn:1000135", "nations, commonwealths, controlled regions"),
+            ("Philippine", "tgn:7268540", "inhabited places")],
+        "Guatemala": [("Guatemala", "tgn:7422823", "inhabited places"),
+            ("Guatemala", "tgn:7005493", "nations, colonies, independent political entities"),
+            ("Guatemala", "tgn:1000621", FIRST)],
     }
 
     def _answer(self, source_id, query):
@@ -907,6 +917,36 @@ def test_a_place_settles_only_on_a_lookup_of_the_labels_own_text_or_one_letter_f
     [finding] = near
     assert (finding.severity, finding.field_key, finding.rule_id) == ("warning", "province_state", "near_spelling")
     assert set(finding.evidence_ids) <= set(place.evidence_ids) and finding.evidence_ids
+
+
+@pytest.mark.parametrize(("written", "query", "value", "authority_id", "settles"), [
+    # The table's expansion of "P.I.", with TGN's real ambiguous answer: one nation.
+    ("P.I.", "Philippine Islands", "Philippines", "tgn:1000135", True),
+    ("Guat.", "Guatemala", "Guatemala", "tgn:7005493", True),
+    # Another name for the place is context only.
+    ("P.I.", "Philippines", "Philippines", "tgn:1000135", False),
+    # A notation the table does not hold.
+    ("Guate.", "Guatemala", "Guatemala", "tgn:7005493", False),
+])
+def test_a_place_notation_settles_on_a_lookup_of_the_name_the_table_gives_it(
+        tmp_path, written, query, value, authority_id, settles):
+    rig = build_rig(tmp_path, TEXT.replace("country: United States", "country: " + written))
+    run = rig.specimen.run
+    settle(rig, Scripted({"country": from_tgn(query, written, value, authority_id)}), tools=Gazetteer(rig.blobs))
+    country = run.fields["country"]
+    rules = [item for item in run.evidence if item.kind == "rule"]
+    if not settles:
+        assert (country.state, country.reason) == (ValueState.UNRESOLVED, agreement.NO_PLACE + " Settled.")
+        assert run.disposition == Disposition.REVIEW and not rules
+        return
+    assert (country.state, country.literal, country.normalized, country.authority_id) == (
+        ValueState.SUPPORTED, written, value, authority_id)
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+    # One rule row names the table entry; the value cites it as support. It has
+    # no stored record, so it is never projected.
+    [rule] = rules
+    assert rule.locator == f"notation:country:{written}" and query in rule.excerpt
+    assert (rule.raw_ref, rule.digest) == (None, None) and country.evidence_relations[rule.id] == "supports"
 
 
 def test_a_place_never_clears_without_a_place_sources_candidate(rig):

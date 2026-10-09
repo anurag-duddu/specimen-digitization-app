@@ -57,10 +57,14 @@ answer becomes a value (step._refusal). It enforces, in this order:
    because the name also matches places at other levels (TGN's answer for
    "Philippines" holds the nation, a village and a sea); the level settles
    it. And that answer was asked about the label's own text (point 3's
-   "about", P3), or else about the candidate's own name when that name is
-   one letter from the literal (application.georef_locality.one_letter_apart,
-   G34's bound as the place tool reads it: both full names, comparison keys
-   one insertion, deletion or substitution apart); the step then records a
+   "about", P3); or else, when the literal is a place notation of the
+   table in field_research.notations for this field (by comparison key),
+   about the expansion the table gives it ("Philippine Islands" for "P.I.",
+   P4), for which the step cites one rule row naming the entry; or else
+   about the candidate's own name when that name is one letter from the
+   literal (application.georef_locality.one_letter_apart, G34's bound as
+   the place tool reads it: both full names, comparison keys one insertion,
+   deletion or substitution apart), for which the step records a
    near_spelling warning finding, which never routes the record
    (place_basis). A lookup of any other name settles nothing ("Escuintla"
    for "Chimaltenago", "Philippines" for "P.I.").
@@ -82,6 +86,7 @@ from specimen_digitization.application.georef_locality import comparison_key, on
 
 from .checks import collapse, taxon_query_grounded
 from .contracts import PLACE_SOURCES, FieldTask, Reading, SourceAnswer, SourceCandidate
+from .notations import expansion
 
 DECIDED = "decided_transcript"
 # Place fields whose value a place source settles; precise_location is
@@ -407,7 +412,7 @@ def _disagreement(task: FieldTask, readings: Sequence[Reading], *, literal: str,
         "several_possibilities."), differ=True)
 
 
-ASKED, NEAR_SPELLING = "asked", "near_spelling"
+ASKED, NOTATION, NEAR_SPELLING = "asked", "notation", "near_spelling"
 
 
 def place_basis(task: FieldTask, literal: str, settled: str, authority_id: str | None,
@@ -418,22 +423,28 @@ def place_basis(task: FieldTask, literal: str, settled: str, authority_id: str |
     value (its name exactly, after NFC and whitespace collapse) with the
     answer's authority_id, and the answer was asked
     - about the label's own text (about): ASKED; or else
+    - about the expansion the notation table gives the literal for this field
+      (notations.expansion: "Philippine Islands" for "P.I."): NOTATION, for
+      which the step cites a rule row naming the entry; or else
     - about that candidate's own name, when the name is one letter from the
       label's text (application.georef_locality.one_letter_apart, G34's
       bound as the place tool reads it: both full names, comparison keys one
       single-letter edit apart): NEAR_SPELLING, which the step records as a
       warning finding that never routes the record."""
     sources = frozenset(task.tools) & frozenset(PLACE_SOURCES)
-    basis = None
+    entry = expansion(literal, task.key)
+    found = set()
     for answer in cited:
         one = placed(task.key, answer) if answer.source_id in sources else None
         if one is None or collapse(one.name) != collapse(settled) or one.authority_id != authority_id:
             continue
         if about(answer, collapse(literal)):
-            return ASKED
-        if about(answer, collapse(one.name)) and one_letter_apart(literal, one.name):
-            basis = NEAR_SPELLING
-    return basis
+            found.add(ASKED)
+        elif entry is not None and about(answer, collapse(entry.expansion)):
+            found.add(NOTATION)
+        elif about(answer, collapse(one.name)) and one_letter_apart(literal, one.name):
+            found.add(NEAR_SPELLING)
+    return next((basis for basis in (ASKED, NOTATION, NEAR_SPELLING) if basis in found), None)
 
 
 def refusal(task: FieldTask, readings: Sequence[Reading], *, literal: str,
