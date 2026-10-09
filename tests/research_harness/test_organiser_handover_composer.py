@@ -1,5 +1,5 @@
 """The hand-over through the production composer: a real-shaped UNKEYED label, an ordinary extractor
-that stored field values, and a specialist that follows the pinned v5 text.
+that stored field values, and scripted specialists that follow the retained hand-over and current role contracts.
 
 Before the hand-over (the stack head, #252's v4 prompts) the specialists saw every reading line and not
 the values the ordinary extractor had stored, the request held no assembly on an unkeyed label, and so
@@ -77,7 +77,7 @@ STORED = (
     ("collection_code", "1200 ft\nlight trap", 1),
 )
 GROUNDED = ("fmnh_ins_number", "collectors", "collection_method", "habitat")
-RESOLVED_FROM_ASSEMBLY = ("fmnh_ins_number", "collectors", "collection_method")  # habitat: the readers disagree
+RESOLVED_FROM_ASSEMBLY = GROUNDED  # the first pass qualified the decided habitat reading
 ELIGIBLE = {"fmnh_ins_number", "collection_code", "habitat", "collection_method", "collectors"}
 
 
@@ -255,6 +255,14 @@ CURRENT_VERIFICATION = {
         "An extractor candidate is a proposal, never evidence by itself.",
         "Verify its exact literal, source span, surrounding lines and competing readings.",
     ),
+    SpecialistRole.PARTIES: (
+        "The organiser's candidates propose field interpretations; they are not evidence.",
+        "For an accepted collector assembly invoke the existing scoped utility:",
+    ),
+    SpecialistRole.GEOGRAPHY: (
+        "Organiser candidates are hints; verify their exact span and surrounding lines in fragments[].",
+        "An ungrounded candidate or another model's earlier answer is never evidence.",
+    ),
     SpecialistRole.MEASUREMENT: (
         "Read every retained candidate and the exact source span it names, the surrounding lines and the other readers.",
         "organiser_candidates are extractor proposals to verify, never independent evidence.",
@@ -268,6 +276,13 @@ def followed(request):
     current = CURRENT_VERIFICATION.get(request.prompt.role)
     if current is not None:
         rules["verifies"] |= all(clause in text for clause in current)
+    if request.prompt.role == SpecialistRole.PARTIES and rules["verifies"]:
+        # The active v6 text names one exact deterministic collector utility
+        # result instead of spelling the v5 construction fields separately.
+        copies = "Copy its exact collector resolution." in text
+        for name in rules:
+            if name != "verifies":
+                rules[name] |= copies
     return rules
 
 
@@ -278,13 +293,32 @@ def candidates_of(request):
 def supported(request, candidate):
     """The scripted verification: every reader's reading of the region prints the literal."""
     readings = {row.observation_id: row.observation_text for row in request.fragments
-        if row.region_id == candidate.region_id}
-    return all(candidate.literal in text for text in readings.values())
+        if row.region_id == candidate.region_id and row.input_source == "decided_transcript"}
+    if not readings:
+        readings = {row.observation_id: row.observation_text for row in request.fragments
+            if row.region_id == candidate.region_id}
+    # A decided label has a retained first-pass selection; unresolved labels
+    # still require every raw reader to state the same literal.
+    return bool(readings) and all(candidate.literal in text for text in readings.values())
 
 
 def from_assembly(request, candidate, rules, *, omit=()):
     assembly = next(item for item in request.assemblies if item.id == candidate.assembly_id)
     fragment = next(item for item in request.fragments if item.id == candidate.fragment_id)
+    if request.role == SpecialistRole.PARTIES and "Copy its exact collector resolution." in request.prompt.text:
+        from specimen_digitization.research_harness.people import collector_resolution
+        # Scripted output copies the deterministic settlement the v6 utility
+        # supplies; the production validator still checks the complete result.
+        resolution = collector_resolution(request, assembly_id=assembly.id)
+        value = resolution.value.model_copy(update={
+            "verbatim_by_observation": resolution.value.verbatim_by_observation
+                if rules["verbatim"] and "verbatim" not in omit else {},
+            "settled_observation_ids": resolution.value.settled_observation_ids
+                if rules["settled"] and "settled" not in omit else [],
+        })
+        return resolution.model_copy(update={"value": value,
+            "assembly_ids": resolution.assembly_ids if rules["assembly"] else (),
+            "event_id": resolution.event_id if rules["assembly"] else None})
     written = assembly.interpreted_text
     settled = catalog_literal(written) if candidate.field_key == FieldKey.FMNH_INS_NUMBER else written
     value = dict(state=ValueState.SUPPORTED)
@@ -378,6 +412,25 @@ def run(rig, factory, source_transport=None):
         return parsed, rig.repository.get(rig.principal.scope, rig.specimen_id), hold
 
 
+
+def assert_validation_failure_proof(rig, checkpoint, key):
+    """Controller failures retain exact acceptance provenance, never science."""
+    from specimen_digitization.research_harness.accepted_output import AcceptedCheckpointProofV1
+    from specimen_digitization.research_harness.output_admission import validation_failure
+    from specimen_digitization.research_harness.persistence import BlobRef, canonical
+
+    binding = checkpoint["accepted_output_proof"]
+    reference = BlobRef(**binding["capture"])
+    raw = rig.research_blobs.get(reference)
+    assert hashlib.sha256(raw).hexdigest() == binding["proof_digest"]
+    proof = AcceptedCheckpointProofV1.model_validate_json(raw)
+    assert canonical(proof.model_dump(mode="json")) == raw
+    accepted = next(row for row in proof.acceptance.resolutions if row.field_key == FieldKey(key))
+    assert accepted == validation_failure(FieldKey(key))
+    assert checkpoint["payload"]["resolution"]["evidence_ids"] == []
+    assert checkpoint["payload"]["resolution"]["assembly_ids"] == []
+
+
 def reasons_of(specimen):
     return set(specimen.run.reasons)
 
@@ -413,19 +466,19 @@ def test_a_specialist_following_the_v5_text_resolves_the_grounded_candidates_wit
     assert hold is None, hold
     assert (specimen.run.stage, specimen.run.disposition) == ("finalized", "needs_human_review")
     # The scripted specialist verified each candidate against both readers: the catalog number, the collector
-    # and the method are printed by both; the habitat line is not (reader 2 misread it), so it is rejected.
+    # and the method are printed by both; the retained first pass qualifies the habitat reading.
     assert sorted(decisions) == [("collection_method", "resolved"), ("collectors", "resolved"),
-        ("fmnh_ins_number", "resolved"), ("habitat", "rejected")]
+        ("fmnh_ins_number", "resolved"), ("habitat", "resolved")]
     reasons = reasons_of(specimen)
     held = {reason.split(":", 1)[1] for reason in reasons if reason.startswith("mandatory_unresolved:")}
     assert held == {"date_visited_from", "date_visited_to", "date_identified", "elevation_from_m", "elevation_to_m",
-        "elevation_from_ft", "elevation_to_ft", "collection_code", "habitat", "taxon", "verbatim_dts"}
+        "elevation_from_ft", "elevation_to_ft", "collection_code", "taxon", "verbatim_dts"}
     assert not [reason for reason in reasons if reason.startswith(("research_work:", "canonical_"))]
-    # The three published values are the extractor's literals, now with research evidence behind them.
+    # The grounded published values retain the extractor's literals and research evidence.
     receipts = sorted(rig.fake.receipts.values(), key=lambda row: row["used_canonical_revision"])
     published = [row["causal_proof"]["changed_field"] for row in receipts]
     assert {"fmnh_ins_number", "collectors", "collection_method"} <= set(published)
-    assert "habitat" not in published and "collection_code" not in published
+    assert "habitat" in published and "collection_code" not in published
     assert published[-1] == "identified_by_irn"
     fields = specimen.run.fields
     assert (fields["fmnh_ins_number"].literal, fields["fmnh_ins_number"].normalized) == ("0010001", "0010001")
@@ -436,7 +489,7 @@ def test_a_specialist_following_the_v5_text_resolves_the_grounded_candidates_wit
     job = list(state["jobs"].values())[0]
     assert {key: job["fields"][key]["work_state"] for key in (*GROUNDED, "collection_code", "date_visited_from",
         "elevation_from_ft")} == {"fmnh_ins_number": "resolved", "collectors": "resolved",
-        "collection_method": "resolved", "habitat": "waiting_policy", "collection_code": "waiting_policy",
+        "collection_method": "resolved", "habitat": "resolved", "collection_code": "waiting_policy",
         "date_visited_from": "waiting_policy", "elevation_from_ft": "waiting_policy"}
     # The lineage of each published value names the decided transcript it was read from.
     sources = {row["researchFieldKey"]: row["readingSources"]
@@ -497,16 +550,18 @@ def test_a_specialist_reading_the_v4_text_ignores_the_candidates_and_the_fields_
 
 
 def test_the_sentences_the_specialist_acts_on_are_in_the_v5_text_of_the_two_roles_that_resolve_and_not_in_v4():
-    pins = {role: review.pinned(role) for role in SpecialistRole}
+    # Preserve the historical v5 versus v4 audit without resolving an active
+    # mutable role label to its superseded text.
     for role in (SpecialistRole.PARTIES, SpecialistRole.COLLECTION):
-        assert all(followed(pins[role]).values()), role
-        old = review.pinned(role, f"{role.value}-v4.txt")
-        assert not any(followed(old).values()), role
-    for role in (SpecialistRole.TAXONOMY, SpecialistRole.GEOGRAPHY, SpecialistRole.TEMPORAL, SpecialistRole.MEASUREMENT):
-        assert followed(pins[role])["verifies"] and not followed(pins[role])["assembly"], role
+        historical = review.pinned(role, f"{role.value}-v5.txt")
+        assert all(followed(historical).values()), role
+        assert not any(followed(review.pinned(role, f"{role.value}-v4.txt")).values()), role
+    pins = {role: review.pinned(role) for role in SpecialistRole}
+    assert all(followed(pins[SpecialistRole.COLLECTION]).values())
+    assert all(followed(pins[SpecialistRole.PARTIES]).values())
+    assert followed(pins[SpecialistRole.TAXONOMY])["verifies"]
     for role, clauses in CURRENT_VERIFICATION.items():
-        assert followed(review.pinned(role, f"{role.value}-v5.txt"))["verifies"]
-        assert not followed(review.pinned(role, f"{role.value}-v4.txt"))["verifies"]
+        assert followed(pins[role])["verifies"]
         for clause in clauses:
             pin = pins[role].prompt
             normalized = " ".join(pin.text.split())
@@ -522,8 +577,8 @@ def test_a_specialist_that_leaves_out_what_the_v5_text_asks_is_refused(rig, refu
     drop = ("verbatim", "settled") if sentence == "reading" else (sentence,)
     parsed, specimen, hold = run(rig, hand_over(review.specialist_factory(rig.model_calls), drop=drop))
     if sentence == "assembly":
-        # The validator refuses a resolved literal with no assembly: the whole collection role fails (the
-        # engine commits operational_failed for each of its fields) and the record holds.
+        # The validator refuses the invalid resolved literal; the controller
+        # records an operational failure and the record retains the hold.
         assert refusals == [] and isinstance(hold, OperationalBlock) and str(hold) == "native_research_operational_hold"
         _, state = research_state(rig.fake, rig.specimen_id)
         fields = list(state["jobs"].values())[0]["fields"]
@@ -538,9 +593,9 @@ def test_a_specialist_that_leaves_out_what_the_v5_text_asks_is_refused(rig, refu
         for key in RESOLVED_FROM_ASSEMBLY:
             assert fields[key]["work_state"] == "operational_failed"
             checkpoint = fields[key]["checkpoint"]
-            assert checkpoint["payload"]["resolution"]["reason"] == "specialist_operational_failure"
+            assert checkpoint["payload"]["resolution"]["reason"] == "research_output_validation_exhausted"
             assert checkpoint["payload"]["resolution"]["value"]["literal"] is None
-            assert not checkpoint.get("accepted_output_proof")
+            assert_validation_failure_proof(rig, checkpoint, key)
         assert not set(RESOLVED_FROM_ASSEMBLY) & {
             row["causal_proof"]["changed_field"] for row in rig.fake.receipts.values()}
 

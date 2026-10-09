@@ -188,6 +188,7 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
             .toList(),
         regionId: _regionFor(field),
         baseLiteral: field['literal_value'] as String?,
+        baseFieldBasis: fieldBasis(field),
         candidateSelectionId: selectionId,
         candidateLabel: candidate.label,
         candidateValue: selectionValue,
@@ -708,6 +709,19 @@ class _FieldEditor extends StatefulWidget {
 }
 
 class _FieldEditorState extends State<_FieldEditor> {
+  late final String? _baseLiteral;
+  late final String _baseFieldBasis;
+
+  @override
+  void initState() {
+    super.initState();
+    _baseLiteral = widget.pending != null
+        ? widget.pending!.baseLiteral
+        : widget.field['literal_value'] as String?;
+    _baseFieldBasis =
+        widget.pending?.baseFieldBasis ?? fieldBasis(widget.field);
+  }
+
   late final TextEditingController _literal = TextEditingController(
     text: widget.pending?.literal ?? textOf(widget.field['literal_value'], ''),
   );
@@ -761,7 +775,8 @@ class _FieldEditorState extends State<_FieldEditor> {
         authorityId: _authority.text,
         evidenceIds: _evidence.toList(),
         regionId: widget.regionId,
-        baseLiteral: widget.field['literal_value'] as String?,
+        baseLiteral: _baseLiteral,
+        baseFieldBasis: _baseFieldBasis,
       ),
     );
   }

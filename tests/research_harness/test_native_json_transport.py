@@ -76,6 +76,15 @@ def test_http_text_preserves_exact_number_kinds_and_pin_digest(http_read, adapte
 
 
 @pytest.mark.parametrize('adapter', ['native', 'repository'])
+def test_http_preserves_valid_literal_non_ascii_text(http_read, adapter):
+    original = {'label': 'Dávao — 日本', 'number': 15.0, 'nested': {'μήκος': '🦋'}}
+    raw = json.dumps(original, ensure_ascii=False, allow_nan=False)
+    assert not raw.isascii()
+    decoded = http_read('GetCanonicalResearchBindingV2', {'binding': {'exact_json': raw}}, adapter)['binding']
+    assert decoded == original and digest(decoded) == digest(original)
+
+
+@pytest.mark.parametrize('adapter', ['native', 'repository'])
 @pytest.mark.parametrize('row', [
     {'pins': {}}, {'exact_json': {}}, {'exact_json': ''}, {'exact_json': '{"pins":'},
     {'exact_json': '{"pins":{},"pins":{}}'}, {'exact_json': '{"pins":{"n":NaN}}'},

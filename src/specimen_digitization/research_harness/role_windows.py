@@ -9,8 +9,11 @@ time of the slowest one instead of the sum.
 
 # K, the committed window size: how many specialists run at once under one lease.
 #
-# 2 runs the six roles as three windows in roster order: taxonomy and geography,
-# temporal and measurement, parties and collection. Within a window the roles have
+# 2 runs the six roles as three windows in engine.RESEARCH_ROLE_ORDER:
+# temporal and parties, measurement and collection, taxonomy and geography.
+# Each next production window rebuilds host-verified settled context, so geography
+# can use accepted collecting date/person context after those roles finish.
+# Within a window the roles have
 # disjoint fields (contracts.ROLE_FIELDS is a partition) and disjoint sources
 # (taxonomy's three APIs, geography's GEOLocate; no other role has a ready source),
 # so the per-source request spacing, the field-level source-capture gate and the

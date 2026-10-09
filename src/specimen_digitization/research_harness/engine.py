@@ -26,6 +26,11 @@ _BLOCKING_STATES = frozenset({
 })
 
 
+RESEARCH_ROLE_ORDER = (SpecialistRole.TEMPORAL, SpecialistRole.PARTIES,
+    SpecialistRole.MEASUREMENT, SpecialistRole.COLLECTION,
+    SpecialistRole.TAXONOMY, SpecialistRole.GEOGRAPHY)
+
+
 class ResearchJournal(Protocol):
     async def validate_request(self, request: SpecialistRequest, *, model_settings_digest: str) -> None: ...
 
@@ -172,7 +177,7 @@ class ResearchEngine:
             for role, request in selected.items()
         }
         while dependencies:
-            ready = tuple(role for role in SpecialistRole if role in dependencies and not dependencies[role])
+            ready = tuple(role for role in RESEARCH_ROLE_ORDER if role in dependencies and not dependencies[role])
             if not ready:
                 raise ValueError("research_dependency_cycle")
             yield ready
@@ -210,7 +215,7 @@ class ResearchEngine:
         if not retry <= set(ALL_FIELDS):
             raise ValueError("unknown_retry_field")
         for key in retry:
-            if (fields[key].work_state not in {WorkState.OPERATIONAL_FAILED, WorkState.RETRY_SCHEDULED}
+            if (fields[key].work_state not in {WorkState.OPERATIONAL_FAILED, WorkState.RETRY_SCHEDULED, WorkState.WAITING_SOURCE}
                 or not await self.journal.retry_eligible(self.scope, key)):
                 raise ValueError("field_retry_requires_safe_current_effect_state")
 
@@ -219,10 +224,12 @@ class ResearchEngine:
             keys = tuple(key for key in request.field_keys if key not in protected
                 and (key in retry if retry else fields[key].work_state == WorkState.PENDING))
             if keys:
+                from .temporal_context import temporal_dependency_pins
                 selected[role] = SpecialistRequest.model_validate({
                     **request.model_dump(mode="json"), "field_keys":keys,
                     "field_revisions":{key:revisions[key] for key in keys},
                     "retry_command_id":retry_command_id,
+                    "dependencies":temporal_dependency_pins(request, keys, checkpoints, preserved),
                 })
         batches = tuple(self._batches(selected))  # Reject a cycle before any effect.
         if role_limit is not None:
@@ -239,7 +246,7 @@ class ResearchEngine:
         async def investigate(role):
             request = selected[role]
             async with semaphore:
-                with self.trace.span("specialist", role=str(role), prompt_digest=request.prompt.digest):
+                with self.trace.span("specialist", role=str(role), prompt_digest=request.prompt.digest) as specialist_span:
                     receipt_ids: tuple[str, ...] = ()
                     accepted_output = None
                     try:
@@ -281,12 +288,22 @@ class ResearchEngine:
                         # Only a fixed application code crosses the boundary;
                         # provider/validator strings remain private.
                         accepted = tuple(_failure(key) for key in request.field_keys)
-                    with self.trace.span("checkpoint", role=str(role)):
+                    from .telemetry import resolution_outcome
+                    try:
+                        self.trace.annotate(specialist_span, **resolution_outcome(accepted))
+                    except Exception:
+                        pass  # Diagnostics cannot prevent durable completed work.
+                    with self.trace.span("checkpoint", role=str(role)) as checkpoint_span:
                         persisted = await self.journal.commit(
                             request, accepted, receipt_ids=receipt_ids,
                             model_settings_digest=self.model_settings_digest,
                             **({"accepted_output": accepted_output} if accepted_output is not None else {}),
                         )
+                        try:
+                            self.trace.annotate(checkpoint_span,
+                                **resolution_outcome(tuple(item.resolution for item in persisted), durable=True))
+                        except Exception:
+                            pass
                     for checkpoint in persisted:
                         self._checkpoint_valid(checkpoint)
                         checkpoints[checkpoint.field_key] = checkpoint

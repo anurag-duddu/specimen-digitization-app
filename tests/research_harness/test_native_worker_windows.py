@@ -58,7 +58,17 @@ class CountingRuntime(PublishingRuntime):
         async def winning_receipt(principal, specimen_id, *, idempotency_key, request_identity_digest):
             self.probes.append(idempotency_key)
             return winners.get(idempotency_key)
-        self.canonical_service = SimpleNamespace(publish_checkpoint=self._publish, winning_receipt=winning_receipt)
+        async def read_current_binding(principal, specimen_id):
+            self.reads["binding"] += 1
+            return SimpleNamespace(causal_chain=())
+
+        async def publish_progress(principal, specimen_id, *, scope):
+            # This recording fixture has no native causal proof. It must hold
+            # terminal completion instead of manufacturing a progress receipt.
+            raise StaleWork("synthetic_native_progress_unproved")
+
+        self.canonical_service = SimpleNamespace(publish_checkpoint=self._publish, winning_receipt=winning_receipt,
+            read_current_binding=read_current_binding, publish_progress=publish_progress)
 
 
 def publish(monkeypatch, runtime, view):
@@ -159,7 +169,9 @@ def delivered(key, *, commit=True, flag=True):
 def test_a_pass_over_delivered_checkpoints_reads_no_proof_and_asks_for_no_receipt(monkeypatch):
     """Every later window walks every earlier checkpoint. The state document records each delivered
     publication (the receipt and the flag are written in one SQL transaction): twenty of them cost
-    no proof read, no receipt probe and no publication, only the one read of the state."""
+    no checkpoint proof read, receipt probe or value publication. Terminal
+    completion also requires one current causal-head read; this fixture has no
+    such proof and therefore preserves the native progress hold."""
     typed = tuple(resolved(key) for key in FieldKey)
     outbox = {}
     for item in typed:
@@ -167,12 +179,13 @@ def test_a_pass_over_delivered_checkpoints_reads_no_proof_and_asks_for_no_receip
     runtime = CountingRuntime(typed, outbox=outbox)
     outcome = publish(monkeypatch, runtime, thread(*typed))
     assert runtime.proofs == [] and runtime.probes == [] and runtime.prepared == []
-    assert runtime.reads == {"state": 1}
-    # The outcome is the one a replay gives: every checkpoint, every receipt, in journal order.
+    assert runtime.reads == {"state": 1, "binding": 1}
+    # Replay still returns every delivered checkpoint and receipt in roster order.
     in_order = sorted(typed, key=lambda item: roster_index(item.field_key))
     assert outcome.checkpoint_ids == tuple(f"native-{item.field_key}" for item in in_order)
     assert outcome.publication_receipt_ids == tuple(f"receipt-of-{item.field_key}" for item in in_order)
-    assert outcome.reason_code is None
+    assert outcome.status == "blocked"
+    assert outcome.reason_code == "native_progress_publication_requires_reconciliation"
 
 
 def test_a_pass_publishes_the_new_checkpoints_and_skips_the_delivered_ones(monkeypatch):
@@ -180,10 +193,12 @@ def test_a_pass_publishes_the_new_checkpoints_and_skips_the_delivered_ones(monke
     outbox = {**delivered(FieldKey.COUNTRY), **delivered(FieldKey.HABITAT)}
     runtime = CountingRuntime(typed, outbox=outbox)
     outcome = publish(monkeypatch, runtime, thread(*typed))
-    assert [field for field, _ in runtime.prepared] == [FieldKey.TAXON, FieldKey.CITY]
-    assert runtime.proofs == ["native-taxon", "native-city"] and runtime.probes == []
-    assert outcome.publication_receipt_ids == ("receipt-taxon", "receipt-city", "receipt-of-country",
-        "receipt-of-habitat")
+    # Delivered values stay in roster order; the genuine unsent Taxon carrier
+    # follows them to record current terminal progress.
+    assert [field for field, _ in runtime.prepared] == [FieldKey.CITY, FieldKey.TAXON]
+    assert runtime.proofs == ["native-city", "native-taxon"] and runtime.probes == []
+    assert outcome.publication_receipt_ids == ("receipt-city", "receipt-of-country",
+        "receipt-of-habitat", "receipt-taxon")
 
 
 @pytest.mark.parametrize("flag", [False, None])

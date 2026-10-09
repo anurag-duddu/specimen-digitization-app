@@ -619,9 +619,18 @@ def test_unqualified_history_cannot_create_exhaustion_or_human_review(tmp_path, 
 def _with_literals(ctx, role, written):
     from specimen_digitization.research_harness.contracts import EventHypothesis, FieldKey
     from specimen_digitization.research_harness.evidence import assemble_field
+    from specimen_digitization.research_harness.collection import COLLECTION_FIELDS
     fragments, events, assemblies = [], [], []
     for index, (key, (text, kind)) in enumerate(written.items(), 100):
-        fragment = _fragment(ctx.scope, index, text)
+        if FieldKey(key) in COLLECTION_FIELDS:
+            # This synthetic label states the field explicitly, and its only
+            # handed reading is the already decided transcript. The current
+            # collection procedure cannot infer a kind from an organiser hint.
+            prefix = key + ": "
+            fragment = _fragment(ctx.scope, index, prefix + text).model_copy(update={
+                "start": len(prefix), "literal": text, "input_source": "decided_transcript"})
+        else:
+            fragment = _fragment(ctx.scope, index, text)
         event = EventHypothesis(id=f"event-{index}", scope=ctx.scope, kind=kind,
             fragment_ids=(fragment.id,), evidence_ids=(f"label-evidence-{index}",),
             reason="Independent fixture event annotation.", status="accepted",

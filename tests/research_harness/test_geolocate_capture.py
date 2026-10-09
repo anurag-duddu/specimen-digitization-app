@@ -18,6 +18,7 @@ import pytest
 from specimen_digitization.research_harness.contracts import (
     ALL_FIELDS, ROLE_FIELDS, CollectionProfile, FieldKey, FieldProfile, LookupStatus, ResearchScope,
     SourceCoverageState, SourceQuery, SpecialistRequest, SpecialistRole, digest,
+    SourceFragment,
 )
 from specimen_digitization.research_harness.persistence import (
     BlobRef, BudgetPolicy, DurabilityScope, DurableEffectBroker, ImmutableFileBlobs, PinnedRuntime,
@@ -38,7 +39,7 @@ RECORDED_URL = MANIFEST[FIXTURE]["url"]
 RECORDED_BODY = (FIXTURES / FIXTURE).read_bytes()
 PIN = "0" * 64
 YEPOCAPA = {"country": "Guatemala", "state": "Chimaltenango", "locality": "Yepocapa", "place": "Yepocapa",
-            "latitude": 14.5, "longitude": -90.95, "radius_km": 15, "value": "Yepocapa"}
+            "value": "Yepocapa"}
 
 
 def geography_request(registry, *, profile_digest=PIN):
@@ -47,11 +48,19 @@ def geography_request(registry, *, profile_digest=PIN):
                           job_id="job", generation=1, input_digest=PIN, profile_digest=profile_digest, sensitive=False)
     prompt = resolve_prompt(SpecialistRole.GEOGRAPHY, profile_digest=profile_digest, source_registry_digest=registry.digest,
                             toolset_digest=PIN, model_route="harness-deepseek", output_schema_digest=PIN)
+    # Explicit immutable synthetic label context: a source query cannot invent
+    # its country or admin unit even when the offline transport would answer it.
+    literal = "Yepocapa\nChimaltenango\nGuatemala"
+    fragment = SourceFragment(id="fixture-place-reading", scope=scope, asset_id="asset", asset_generation="1",
+        asset_digest=PIN, label_id="label", region_id="region", observation_id="fixture-observation",
+        reader="offline-fixture", model_id="offline", prompt_digest=PIN, observation_text=literal,
+        observation_digest=hashlib.sha256(literal.encode()).hexdigest(), start=0, end=len(literal),
+        literal=literal, order=0)
     return SpecialistRequest(scope=scope, role=SpecialistRole.GEOGRAPHY,
-                             field_keys=ROLE_FIELDS[SpecialistRole.GEOGRAPHY], prompt=prompt)
+                             field_keys=ROLE_FIELDS[SpecialistRole.GEOGRAPHY], prompt=prompt, fragments=(fragment,))
 
 
-def make_rig(tmp_path, bodies):
+def make_rig(tmp_path, bodies, *, expected_url=RECORDED_URL):
     registry = insects_registry(qualification_overrides={"geolocate": GEOLOCATE_QUALIFICATION})
     source = registry.get("geolocate")
     policy = RegisteredCapturePolicyV2(source_id="geolocate", source_policy_digest=digest(source),
@@ -74,17 +83,19 @@ def make_rig(tmp_path, bodies):
     store.create_job(durable_scope, pins, [str(key) for key in ALL_FIELDS], record_revision=1)
     lease = store.claim(durable_scope, "fixture-worker", ttl_seconds=300)
     blobs = ImmutableFileBlobs(tmp_path / "research-blobs")
-    calls, served = [], list(bodies)
+    calls, served, control = [], list(bodies), {}
 
     async def read(url, policy):
         calls.append(url)
-        assert url == RECORDED_URL, "the adapter must send exactly the recorded request"
+        assert url == expected_url, "the adapter must send exactly the recorded request"
+        if control.get("cancel"):
+            raise asyncio.CancelledError()
         return 200, served.pop(0)
 
     broker = CaptureSourceBrokerV2(registry, {source.id: policy}, DurableEffectBroker(store, blobs), durable_scope,
         lease, transport=FixtureSourceTransport(read), execution_class="offline")
     return SimpleNamespace(request=request, durable_scope=durable_scope, store=store, blobs=blobs,
-                           broker=broker, calls=calls)
+                           broker=broker, calls=calls, control=control)
 
 
 def lookup(rig, interpretation, field_key=FieldKey.CITY):
@@ -169,7 +180,7 @@ def test_malformed_body_is_a_typed_failure_that_holds_no_effect(tmp_path, mutate
     assert rig.blobs.get(BlobRef(**envelope.responses[0].body.model_dump())) == malformed
     assert [effect["status"] for effect in effects(rig)] == ["completed"]
     # No held_unknown effect blocks the field: a different query for it still reaches the source.
-    later = lookup(rig, {**YEPOCAPA, "radius_km": 20})
+    later = lookup(rig, {**YEPOCAPA, "value": "Chimaltenango"}, field_key=FieldKey.PROVINCE_STATE)
     assert later.status == LookupStatus.SUCCESS and later.receipt.effect_status == "completed"
     assert rig.calls == [RECORDED_URL, RECORDED_URL]
     assert [effect["status"] for effect in effects(rig)] == ["completed", "completed"]

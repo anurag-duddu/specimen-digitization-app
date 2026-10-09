@@ -31,6 +31,8 @@ from specimen_digitization.research_harness.prompts import (
     MEASUREMENT_EVIDENCE_PROMPT_VERSION, TEMPORAL_CONTEXT_PROMPT_VERSION, READING_CITATION_PROMPT_VERSION, RELATIONS_PROMPT_VERSION, ROLE_PROMPTS, resolve_prompt,
 )
 
+from prompt_test_fixtures import ACTIVE_PROMPTS, retained_text
+
 ROOT = Path(prompts.__file__).parent
 PIN = "0" * 64
 HEADER = "Missing policy (unstructured labels): the pinned profile declares missing_policy\n"
@@ -100,17 +102,11 @@ def test_each_role_has_its_v4_file_at_the_missing_policy_version_and_the_live_ta
     assert MISSING_POLICY_PROMPT_VERSION == "specialists-missing-policy-v4-2026-10-03"
     assert MISSING_POLICY_PROMPT_VERSION not in {RELATIONS_PROMPT_VERSION, GEOGRAPHY_PROMPT_VERSION,
         READING_CITATION_PROMPT_VERSION}
-    # The live table is the v5 files (test_prompt_handover_v5.py); the v4 pin is audited from the file.
-    qualified = role in {SpecialistRole.TEMPORAL, SpecialistRole.MEASUREMENT, SpecialistRole.GEOGRAPHY}
-    assert ROLE_PROMPTS[role] == (f"{role.value}-v{8 if role == SpecialistRole.GEOGRAPHY else 9 if role == SpecialistRole.MEASUREMENT else 7 if qualified else 6 if role == SpecialistRole.TAXONOMY else 5}.txt",
-        GEOGRAPHY_FINAL_RESULT_PROMPT_VERSION if role == SpecialistRole.GEOGRAPHY else
-        MEASUREMENT_EVIDENCE_PROMPT_VERSION if role == SpecialistRole.MEASUREMENT else
-        TEMPORAL_CONTEXT_PROMPT_VERSION if role == SpecialistRole.TEMPORAL else
-        TAXONOMY_QUERY_PROMPT_VERSION if role == SpecialistRole.TAXONOMY else
-        QUALIFIED_PROMPT_VERSION if qualified else HANDOVER_PROMPT_VERSION)
+    # Current role pins are explicit; audit the historical v4 pin from unchanged files.
+    assert ROLE_PROMPTS[role] == ACTIVE_PROMPTS[role]
     text = v4_text(role)
     assert hashlib.sha256(text.encode()).hexdigest() == V4_ROLE_DIGESTS[role]
-    # The v4 text begins with the audited v3 text, which begins with the v2 text; the live text begins with it.
+    # The retained v4 text begins with the audited v3 text, which begins with v2.
     common = (ROOT / "common-v1.txt").read_text(encoding="utf-8") + "\n"
     v2 = (ROOT / f"{role.value}-v2.txt").read_text(encoding="utf-8")
     v3 = (ROOT / f"{role.value}-v3.txt").read_text(encoding="utf-8")
@@ -121,6 +117,8 @@ def test_each_role_has_its_v4_file_at_the_missing_policy_version_and_the_live_ta
         assert "no rule yet qualifies" not in " ".join(pin(role).text.split()).casefold()
     elif role == SpecialistRole.TEMPORAL:
         assert UNQUALIFIED_LABEL_POLICY in pin(role).text
+    elif role in {SpecialistRole.GEOGRAPHY, SpecialistRole.PARTIES, SpecialistRole.COLLECTION}:
+        assert retained_text(role, 5).startswith(common + v4)
     else:
         assert pin(role).text.startswith(common + v4)
 
@@ -307,16 +305,16 @@ def test_the_irn_and_verbatim_dts_texts_are_unchanged_in_the_roles_that_own_them
 
 # ---- the v3 reading-citation text and this block do not contradict each other ---------------------
 @pytest.mark.parametrize("role", CITING_ROLES)
-def test_the_v3_producer_block_and_the_v4_block_are_both_in_the_live_text_and_in_that_order(role):
+def test_the_retained_v3_producer_and_v4_policy_blocks_keep_their_order(role):
     """#257's producer block is in all four lookup roles; the v4 block follows it and is the last text of the v4 pin
     (the live v5 text appends the hand-over block after it)."""
-    live = flat(pin(role).text)
+    live = flat(v4_text(role))
     assert "Where the request has no assembly for the field that your interpretation read" in live
     assert "source_observation_id = its observation_id" in live
     text = v4_text(role)
     assert text.index("Producer and literal without an assembly") < text.index("Missing policy (unstructured labels)")
     assert text.endswith(block(role) + "\nOwned fields: " + ", ".join(map(str, ROLE_FIELDS[role])) + ".\n")
-    assert pin(role).text.index(block(role)) > pin(role).text.index("Producer and literal without an assembly")
+    assert text.index(block(role)) > text.index("Producer and literal without an assembly")
     assert "a waiting_policy value cites no reading" in flat(block(role)) or role in NO_LOOKUP_ROLES
 
 

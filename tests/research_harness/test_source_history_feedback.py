@@ -10,7 +10,7 @@ from pydantic_ai.messages import ModelResponse, ToolCallPart
 from specimen_digitization.application.domain import FieldValue, LookupStatus, ValueState
 from specimen_digitization.research_harness.agents import SpecialistOutput
 from specimen_digitization.research_harness.contracts import (
-    FieldKey, FieldResolution, SourceCoverageState, WorkState,
+    FieldKey, FieldResolution, PromptPin, SourceCoverageState, WorkState,
 )
 from specimen_digitization.research_harness.evidence import EvidenceError, validate_resolution
 from specimen_digitization.research_harness.sources import (
@@ -26,6 +26,12 @@ KEY = FieldKey.PRECISE_LOCATION
 
 def history():
     request = assembled_request(MCKINLEY_LABEL).model_copy(update={"field_keys": (KEY,)})
+    # These regressions audit the frozen v8 refusal-feedback contract; v9
+    # strategy progress is exercised through real queries in test_geography_strategy.
+    from test_geography_prompt_v8 import prompt_text, V8_PIN_SHA256
+    request = request.model_copy(update={"prompt": PromptPin.model_validate({
+        **request.prompt.model_dump(mode="json"), "text": prompt_text("specimen_geography-v8.txt"),
+        "digest": V8_PIN_SHA256, "version": "geography-final-result-v8-2026-10-07"})})
 
     async def no_effect(*_):
         raise AssertionError("A refused argument cannot dispatch or send a provider request")

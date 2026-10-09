@@ -1,0 +1,284 @@
+{
+  "generated_with": {
+    "pydantic-ai-slim": "2.51.0",
+    "pydantic-ai-harness": "0.36.0",
+    "pydantic-evals": "2.51.0",
+    "pydantic-graph": "2.51.0"
+  },
+  "kind": "offline scripted model; no external effects",
+  "run": {
+    "run_id": "sp-MTk6c3BlY2ltZW5fY29sbGVjdGlvbjAxYTExODY2LTIwNzItNzVjZC1hYWRlLWQxN2RiN2E0NDUwNg",
+    "conversation_id": "01a11866-2072-75cd-aade-d17e7d402e37",
+    "parent_run_id": null,
+    "agent_name": "specimen_collection",
+    "metadata": {
+      "serialization_version": "pydantic-ai-2.51.0+harness-0.36.0/v1"
+    },
+    "started_at": "2026-10-07T22:05:08.625997Z",
+    "registration_id": "465cb2c7-4723-45e3-a019-64cef9f62c24"
+  },
+  "events": [
+    {
+      "run_id": "sp-MTk6c3BlY2ltZW5fY29sbGVjdGlvbjAxYTExODY2LTIwNzItNzVjZC1hYWRlLWQxN2RiN2E0NDUwNg",
+      "kind": "run_started",
+      "step_index": 0,
+      "timestamp": "2026-10-07T22:05:08.626032Z",
+      "conversation_id": "01a11866-2072-75cd-aade-d17e7d402e37",
+      "parent_run_id": null,
+      "agent_name": "specimen_collection",
+      "tool_call_id": null,
+      "tool_name": null,
+      "error": null,
+      "metadata": {
+        "serialization_version": "pydantic-ai-2.51.0+harness-0.36.0/v1"
+      },
+      "idempotency_key": "0:0:run_started:"
+    },
+    {
+      "run_id": "sp-MTk6c3BlY2ltZW5fY29sbGVjdGlvbjAxYTExODY2LTIwNzItNzVjZC1hYWRlLWQxN2RiN2E0NDUwNg",
+      "kind": "model_request_started",
+      "step_index": 1,
+      "timestamp": "2026-10-07T22:05:08.628877Z",
+      "conversation_id": "01a11866-2072-75cd-aade-d17e7d402e37",
+      "parent_run_id": null,
+      "agent_name": "specimen_collection",
+      "tool_call_id": null,
+      "tool_name": null,
+      "error": null,
+      "metadata": {
+        "serialization_version": "pydantic-ai-2.51.0+harness-0.36.0/v1"
+      },
+      "idempotency_key": "1:1:model_request_started:"
+    },
+    {
+      "run_id": "sp-MTk6c3BlY2ltZW5fY29sbGVjdGlvbjAxYTExODY2LTIwNzItNzVjZC1hYWRlLWQxN2RiN2E0NDUwNg",
+      "kind": "model_request_completed",
+      "step_index": 1,
+      "timestamp": "2026-10-07T22:05:08.630129Z",
+      "conversation_id": "01a11866-2072-75cd-aade-d17e7d402e37",
+      "parent_run_id": null,
+      "agent_name": "specimen_collection",
+      "tool_call_id": null,
+      "tool_name": null,
+      "error": null,
+      "metadata": {
+        "serialization_version": "pydantic-ai-2.51.0+harness-0.36.0/v1"
+      },
+      "idempotency_key": "2:1:model_request_completed:"
+    },
+    {
+      "run_id": "sp-MTk6c3BlY2ltZW5fY29sbGVjdGlvbjAxYTExODY2LTIwNzItNzVjZC1hYWRlLWQxN2RiN2E0NDUwNg",
+      "kind": "tool_call_started",
+      "step_index": 1,
+      "timestamp": "2026-10-07T22:05:08.631806Z",
+      "conversation_id": "01a11866-2072-75cd-aade-d17e7d402e37",
+      "parent_run_id": null,
+      "agent_name": "specimen_collection",
+      "tool_call_id": "historical-tool",
+      "tool_name": "lookup",
+      "error": null,
+      "metadata": {
+        "serialization_version": "pydantic-ai-2.51.0+harness-0.36.0/v1"
+      },
+      "idempotency_key": "3:1:tool_call_started:historical-tool"
+    },
+    {
+      "run_id": "sp-MTk6c3BlY2ltZW5fY29sbGVjdGlvbjAxYTExODY2LTIwNzItNzVjZC1hYWRlLWQxN2RiN2E0NDUwNg",
+      "kind": "tool_call_completed",
+      "step_index": 1,
+      "timestamp": "2026-10-07T22:05:08.632465Z",
+      "conversation_id": "01a11866-2072-75cd-aade-d17e7d402e37",
+      "parent_run_id": null,
+      "agent_name": "specimen_collection",
+      "tool_call_id": "historical-tool",
+      "tool_name": "lookup",
+      "error": null,
+      "metadata": {
+        "serialization_version": "pydantic-ai-2.51.0+harness-0.36.0/v1"
+      },
+      "idempotency_key": "4:1:tool_call_completed:historical-tool"
+    },
+    {
+      "run_id": "sp-MTk6c3BlY2ltZW5fY29sbGVjdGlvbjAxYTExODY2LTIwNzItNzVjZC1hYWRlLWQxN2RiN2E0NDUwNg",
+      "kind": "model_request_started",
+      "step_index": 2,
+      "timestamp": "2026-10-07T22:05:08.633728Z",
+      "conversation_id": "01a11866-2072-75cd-aade-d17e7d402e37",
+      "parent_run_id": null,
+      "agent_name": "specimen_collection",
+      "tool_call_id": null,
+      "tool_name": null,
+      "error": null,
+      "metadata": {
+        "serialization_version": "pydantic-ai-2.51.0+harness-0.36.0/v1"
+      },
+      "idempotency_key": "5:2:model_request_started:"
+    },
+    {
+      "run_id": "sp-MTk6c3BlY2ltZW5fY29sbGVjdGlvbjAxYTExODY2LTIwNzItNzVjZC1hYWRlLWQxN2RiN2E0NDUwNg",
+      "kind": "model_request_completed",
+      "step_index": 2,
+      "timestamp": "2026-10-07T22:05:08.634104Z",
+      "conversation_id": "01a11866-2072-75cd-aade-d17e7d402e37",
+      "parent_run_id": null,
+      "agent_name": "specimen_collection",
+      "tool_call_id": null,
+      "tool_name": null,
+      "error": null,
+      "metadata": {
+        "serialization_version": "pydantic-ai-2.51.0+harness-0.36.0/v1"
+      },
+      "idempotency_key": "6:2:model_request_completed:"
+    },
+    {
+      "run_id": "sp-MTk6c3BlY2ltZW5fY29sbGVjdGlvbjAxYTExODY2LTIwNzItNzVjZC1hYWRlLWQxN2RiN2E0NDUwNg",
+      "kind": "run_completed",
+      "step_index": 0,
+      "timestamp": "2026-10-07T22:05:08.635329Z",
+      "conversation_id": "01a11866-2072-75cd-aade-d17e7d402e37",
+      "parent_run_id": null,
+      "agent_name": "specimen_collection",
+      "tool_call_id": null,
+      "tool_name": null,
+      "error": null,
+      "metadata": {
+        "serialization_version": "pydantic-ai-2.51.0+harness-0.36.0/v1"
+      },
+      "idempotency_key": "7:0:run_completed:"
+    }
+  ],
+  "snapshot": {
+    "run_id": "sp-MTk6c3BlY2ltZW5fY29sbGVjdGlvbjAxYTExODY2LTIwNzItNzVjZC1hYWRlLWQxN2RiN2E0NDUwNg",
+    "step_index": 2,
+    "messages": [
+      {
+        "parts": [
+          {
+            "content": "Historical synthetic input",
+            "timestamp": "2026-10-07T22:05:08.626726Z",
+            "part_kind": "user-prompt"
+          }
+        ],
+        "timestamp": "2026-10-07T22:05:08.627471Z",
+        "instructions": null,
+        "kind": "request",
+        "run_id": "01a11866-2072-75cd-aade-d17db7a44506",
+        "conversation_id": "01a11866-2072-75cd-aade-d17e7d402e37",
+        "metadata": null,
+        "state": "complete"
+      },
+      {
+        "parts": [
+          {
+            "tool_name": "lookup",
+            "args": {
+              "key": "synthetic"
+            },
+            "tool_call_id": "historical-tool",
+            "tool_kind": null,
+            "id": null,
+            "provider_name": null,
+            "provider_details": null,
+            "part_kind": "tool-call"
+          }
+        ],
+        "usage": {
+          "input_tokens": 3,
+          "cache_write_tokens": 0,
+          "cache_read_tokens": 0,
+          "output_tokens": 2,
+          "input_audio_tokens": 0,
+          "cache_audio_read_tokens": 0,
+          "output_audio_tokens": 0,
+          "audio_seconds": 0.0,
+          "details": {},
+          "cost": null
+        },
+        "model_name": "function:respond:",
+        "timestamp": "2026-10-07T22:05:08.629739Z",
+        "kind": "response",
+        "provider_name": null,
+        "provider_url": null,
+        "provider_details": null,
+        "provider_response_id": null,
+        "finish_reason": null,
+        "run_id": "01a11866-2072-75cd-aade-d17db7a44506",
+        "conversation_id": "01a11866-2072-75cd-aade-d17e7d402e37",
+        "metadata": null,
+        "state": "complete"
+      },
+      {
+        "parts": [
+          {
+            "tool_name": "lookup",
+            "content": "offline synthetic result for synthetic",
+            "tool_call_id": "historical-tool",
+            "tool_kind": null,
+            "metadata": null,
+            "timestamp": "2026-10-07T22:05:08.632625Z",
+            "outcome": "success",
+            "part_kind": "tool-return"
+          }
+        ],
+        "timestamp": "2026-10-07T22:05:08.633317Z",
+        "instructions": null,
+        "kind": "request",
+        "run_id": "01a11866-2072-75cd-aade-d17db7a44506",
+        "conversation_id": "01a11866-2072-75cd-aade-d17e7d402e37",
+        "metadata": null,
+        "state": "complete"
+      },
+      {
+        "parts": [
+          {
+            "content": "Historical synthetic result",
+            "id": null,
+            "provider_name": null,
+            "provider_details": null,
+            "part_kind": "text"
+          }
+        ],
+        "usage": {
+          "input_tokens": 3,
+          "cache_write_tokens": 0,
+          "cache_read_tokens": 0,
+          "output_tokens": 2,
+          "input_audio_tokens": 0,
+          "cache_audio_read_tokens": 0,
+          "output_audio_tokens": 0,
+          "audio_seconds": 0.0,
+          "details": {},
+          "cost": null
+        },
+        "model_name": "function:respond:",
+        "timestamp": "2026-10-07T22:05:08.633934Z",
+        "kind": "response",
+        "provider_name": null,
+        "provider_url": null,
+        "provider_details": null,
+        "provider_response_id": null,
+        "finish_reason": null,
+        "run_id": "01a11866-2072-75cd-aade-d17db7a44506",
+        "conversation_id": "01a11866-2072-75cd-aade-d17e7d402e37",
+        "metadata": null,
+        "state": "complete"
+      }
+    ],
+    "conversation_id": "01a11866-2072-75cd-aade-d17e7d402e37",
+    "parent_run_id": null,
+    "agent_name": "specimen_collection",
+    "timestamp": "2026-10-07T22:05:08.635025Z",
+    "state": "complete",
+    "idempotency_key": "5:2:complete"
+  },
+  "tool_effect": {
+    "tool_call_id": "historical-tool",
+    "tool_name": "lookup",
+    "run_id": "sp-MTk6c3BlY2ltZW5fY29sbGVjdGlvbjAxYTExODY2LTIwNzItNzVjZC1hYWRlLWQxN2RiN2E0NDUwNg",
+    "status": "completed",
+    "started_at": "2026-10-07T22:05:08.631778Z",
+    "ended_at": "2026-10-07T22:05:08.632431Z",
+    "idempotency_key": null,
+    "effect_summary": null
+  }
+}

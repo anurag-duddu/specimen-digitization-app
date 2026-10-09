@@ -475,7 +475,7 @@ class ResearchThreadReader:
                         break
             actions = []
             if not job["paused"] and not stored.get("locked"):
-                if command_id is None and not blocked_retry and work_state in {WorkState.OPERATIONAL_FAILED, WorkState.RETRY_SCHEDULED}:
+                if command_id is None and not blocked_retry and work_state in {WorkState.OPERATIONAL_FAILED, WorkState.RETRY_SCHEDULED, WorkState.WAITING_SOURCE}:
                     if await self.journal.retry_eligible(scope, key):
                         actions.append("retry_field")
                 if checkpoint and work_state == WorkState.WAITING_HUMAN and checkpoint.resolution.question:

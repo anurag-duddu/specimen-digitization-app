@@ -265,9 +265,9 @@ def test_the_assembly_does_not_trust_the_stored_field_state_alone(answers):
 def test_the_decided_labels_own_rows_must_state_the_literal_alone_even_if_the_stored_state_says_supported():
     """Two different literals in the ONE decided reading are no value (the organiser rule); with a stale SUPPORTED state the
     re-derivation still finds the decided reading does not state one literal alone, so no assembly is built."""
-    text = "Synthetic Collector\nlight trap"
+    text = "Synthetic Collector\nAnother Collector"
     built = build((Label(text, decided="a"),), [("collectors", "1A", "Synthetic Collector", "Synthetic Collector"),
-                                                ("collectors", "1A", "light trap", "light trap")])
+                                                ("collectors", "1A", "Another Collector", "Another Collector")])
     run = built.specimen.run
     assert run.fields["collectors"].state == "ambiguous"
     run.fields["collectors"] = FieldValue(state=ValueState.SUPPORTED, literal="Synthetic Collector",
@@ -351,7 +351,11 @@ def test_only_the_other_reader_stating_a_value_is_a_lead_with_a_span_and_no_asse
     assert built.specimen.run.fields["habitat"].state == "unknown"
     [item] = candidates(built, "habitat")
     assert item.status == "located" and item.reason == "only_the_other_reader_states_it"
-    assert built.graph[1] == () and built.graph[2] == ()
+    assert not [row for row in built.graph[2] if row.field_key == FieldKey.HABITAT]
+    assert item.event_id is None and item.assembly_id is None
+    # The agreed method line can independently be recovered under the current
+    # collection rule; it cannot authorize the extractor's habitat assignment.
+    assert {row.field_key for row in built.graph[2]} == {FieldKey.COLLECTION_METHOD}
 
 
 # ---------------------------------------------------------------------------- the span is the row's reading, never another
@@ -544,11 +548,12 @@ def test_the_graph_is_the_same_twice_and_each_candidate_identity_is_unique():
 
 
 def test_the_validator_source_still_matches_its_committed_pin():
-    import hashlib
     from pathlib import Path
     from specimen_digitization.research_harness import evidence
-    from specimen_digitization.research_harness.accepted_output import VALIDATOR_SOURCE_SHA256
-    assert hashlib.sha256(Path(evidence.__file__).read_bytes()).hexdigest() == VALIDATOR_SOURCE_SHA256
+    from specimen_digitization.research_harness.accepted_output import (
+        VALIDATOR_SOURCE_SHA256, installed_validator_source_sha256,
+    )
+    assert installed_validator_source_sha256(Path(evidence.__file__).parent) == VALIDATOR_SOURCE_SHA256
 
 
 def test_explicit_collecting_date_in_both_raw_readers_has_a_publishable_g44_settlement():

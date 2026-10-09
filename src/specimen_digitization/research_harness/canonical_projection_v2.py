@@ -8,7 +8,7 @@ Ordinary PR168 projection and the current V1 HOLD guards remain unchanged.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 import json
 from typing import Literal
@@ -51,6 +51,8 @@ class ConsumedCanonicalSourceV2(FrozenRecord):
     candidate_digest: Digest
     record_digest: Digest
     source_publication_lineage_digest: Digest
+    source_lineage: dict | None = None
+    source_evidence_rows: tuple[dict, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -229,6 +231,59 @@ def _parsed(value, *, ordinary=False):
     return value.parsed
 
 
+
+def _consumed_source_value(context, proof, native, original):
+    """Use the consumed field's native evidence associations, never target IDs."""
+    line, rows = proof.source_lineage, proof.source_evidence_rows
+    if line is None and not rows:
+        return _value(original.resolution, context)  # historical same-evidence proof
+    required = set(original.resolution.evidence_ids) | set(original.resolution.value.evidence_ids)
+    scope = {"organizationId": context.scope.organization_id, "collectionId": context.scope.collection_id}
+    if (type(line) is not dict or not rows or digest(line) != proof.source_publication_lineage_digest
+            or line.get("contractVersion") != CONTRACT
+            or line.get("candidateId") != str(proof.canonical_candidate_id)
+            or line.get("id") != derived_id(CONTRACT, "lineage", str(proof.canonical_candidate_id), line.get("recordVersionId"))
+            or line.get("runId") != str(proof.canonical_run_id)
+            or line.get("specimenId") != context.scope.specimen_id
+            or line.get("originalScope") != original.scope.model_dump(mode="json")
+            or line.get("researchFieldKey") != str(original.field_key)
+            or line.get("nativeCheckpointId") != native["id"]
+            or line.get("nativeCheckpointDigest") != digest(native)
+            or line.get("typedCheckpointDigest") != digest(original)
+            or line.get("resolutionDigest") != digest(original.resolution)
+            or any(line.get(key) != value for key,value in scope.items())):
+        unavailable("canonical_lineage_consumed_source_evidence_unproved")
+    try:
+        if str(UUID(line["recordVersionId"])) != line["recordVersionId"]:
+            unavailable("canonical_lineage_consumed_source_evidence_unproved")
+    except (ValueError, TypeError, KeyError, AttributeError):
+        unavailable("canonical_lineage_consumed_source_evidence_unproved")
+    # The immutable lineage names the record which originally published the
+    # candidate. Later whole-record projections carry the same candidate into
+    # another record; _source_lineage proves its current complete membership.
+    derived = set(original.resolution.derivation.evidence_ids) if original.resolution.derivation else set()
+    mapping = {}
+    for row in rows:
+        if (type(row) is not dict or row.get("lineageId") != line.get("id")
+                or any(row.get(key) != value for key,value in scope.items())
+                or row.get("researchEvidenceId") not in required
+                or row["researchEvidenceId"] in mapping
+                or row.get("associationKind") != ("original_derivation_record"
+                    if row.get("researchEvidenceId") in derived else "original_value_evidence")
+                or row.get("originalRelation") != original.resolution.value.evidence_relations.get(row.get("researchEvidenceId"))
+                or row.get("id") != derived_id(CONTRACT, "evidence", line["id"], row.get("evidenceId"))):
+            unavailable("canonical_lineage_consumed_source_evidence_unproved")
+        try:
+            mapping[row["researchEvidenceId"]] = UUID(row["evidenceId"])
+        except (ValueError, TypeError, KeyError, AttributeError):
+            unavailable("canonical_lineage_consumed_source_evidence_unproved")
+    if set(mapping) != required or len(set(mapping.values())) != len(mapping):
+        unavailable("canonical_lineage_consumed_source_evidence_unproved")
+    value = _value(original.resolution, replace(context, evidence_id_mapping=mapping))
+    if line.get("evidenceIds") != value.evidence_ids or line.get("evidenceRelations") != value.evidence_relations:
+        unavailable("canonical_lineage_consumed_source_evidence_unproved")
+    return value
+
 def _source_lineage(context, prior, target, sources):
     pins = target.resolution.dependencies
     if len(pins) != len(sources) or len({pin.field_key for pin in pins}) != len(pins):
@@ -240,7 +295,7 @@ def _source_lineage(context, prior, target, sources):
         expected_basis = NativeDependencyBasis(field_key=cp.field_key, revision=cp.revision,
             resolution_digest=digest(cp.resolution), checkpoint_id=native["id"], checkpoint_digest=digest(native))
         field = context.field_mapping[str(pin.field_key)]
-        value = _value(original.resolution, context)
+        value = _consumed_source_value(context, proof, native, original)
         current_rows = [row for row in context.prior_projection if row["fieldKey"] == field]
         candidate, record, resolved = proof.candidate, proof.record, proof.resolved_field
         scope = {"organizationId": context.scope.organization_id, "collectionId": context.scope.collection_id}

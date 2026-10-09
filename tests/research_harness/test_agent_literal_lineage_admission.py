@@ -7,6 +7,7 @@ same P.I. / NO_MATCH / unselected-reader case without importing that capture.
 from __future__ import annotations
 
 import hashlib
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -20,12 +21,13 @@ from specimen_digitization.research_harness.agents import (
 from specimen_digitization.research_harness.contracts import (
     EventHypothesis, EventKind, FieldKey, FieldResolution, FragmentRelation, HumanQuestion,
     OrganiserCandidate, RelationKind, ResearchScope, SourceCoverageReceipt, SourceCoverageState,
-    SourceFragment, SourceResult, SpecialistRequest, SpecialistRole, ToolReceipt, WorkState,
+    SourceFragment, SourceQuery, SourceResult, SpecialistRequest, SpecialistRole, ToolReceipt, WorkState, digest,
 )
 from specimen_digitization.research_harness.evidence import (
     assemble_field, dts_policy_resolution, temporal_resolutions,
 )
 from specimen_digitization.research_harness.prompts import resolve_prompt
+from specimen_digitization.research_harness.geography_strategy import SourceAttempt
 from specimen_digitization.research_harness.sources import result_envelope
 
 
@@ -71,10 +73,16 @@ def _request():
         fragments=fragments, organiser_candidates=candidates)
 
 
+def _no_match_query():
+    return SourceQuery(source_id="geolocate", field_key=FieldKey.COUNTRY,
+        query_text=json.dumps({"country": "Philippines", "state": "", "county": "",
+            "locality": "Mindanao, P.I.", "place": "Mindanao", "value": "Philippines"}))
+
+
 def _no_match(request):
     coverage = SourceCoverageReceipt(source_id="geolocate", field_key=FieldKey.COUNTRY,
         state=SourceCoverageState.SEARCHED, source_version="synthetic-geolocate-v2",
-        qualification_digest="1" * 64, query_digest="2" * 64,
+        qualification_digest="1" * 64, query_digest=digest(_no_match_query()),
         candidate_count=9, receipt_ids=("source:synthetic-no-match",),
         coverage_limit="bounded synthetic source", reason="no_match: nine matches, no named place")
     bare = SourceResult(status=LookupStatus.NO_MATCH, coverage=coverage)
@@ -100,9 +108,17 @@ def _country(request, result, *, literal="P.I.", **value_updates):
 def _validate(request, result, *resolutions):
     agent = _ValidatorAgent()
     SpecialistHarness._register_output_validation(agent)
-    deps = ResearchDeps({request.role: request}, None,
+    # This synthetic source profile admits GEOLocate only; no alternative
+    # historical strategy is left unattempted before scoped-absence review.
+    broker = SimpleNamespace(available_sources=lambda request: ("geolocate",))
+    deps = ResearchDeps({request.role: request}, broker,
         {request.role: [result] if result is not None else []})
-    context = SimpleNamespace(deps=deps, agent=SimpleNamespace(name=request.role.value))
+    if request.role == SpecialistRole.GEOGRAPHY and result is not None:
+        # Retain the completed synthetic source attempt required by the current
+        # Geography stop contract before checking the original literal lineage.
+        deps.source_attempts[request.role] = [SourceAttempt(_no_match_query(), result)]
+    context = SimpleNamespace(deps=deps, agent=SimpleNamespace(name=request.role.value),
+        retry=0, max_retries=1, partial_output=False)
     output = SpecialistOutput(role=request.role, resolutions=resolutions)
     return agent.validate(context, output)
 
@@ -237,8 +253,17 @@ def test_original_fragment_identity_and_exact_span_are_required(fault):
     resolution = _country(damaged, result, verbatim_by_observation=value,
         input_source_by_observation={source.observation_id: "raw_reading"})
     assert not literal_has_original_request_lineage(damaged, resolution)
-    with pytest.raises(ModelRetry, match="specialist_output_literal_lacks_original_reading"):
-        _validate(damaged, result, resolution)
+    typed_refusals = {"wrong_scope": "Evidence graph cannot cross scoped",
+        "wrong_digest": "Immutable reading digest mismatch",
+        "wrong_offset": "Fragment must preserve exact reading substring"}
+    if fault in typed_refusals:
+        # The current Geography stop gate first revalidates its immutable input.
+        # Invalid scope/bytes/offsets refuse there before output-lineage admission.
+        with pytest.raises(ValueError, match=typed_refusals[fault]):
+            _validate(damaged, result, resolution)
+    else:
+        with pytest.raises(ModelRetry, match="specialist_output_literal_lacks_original_reading"):
+            _validate(damaged, result, resolution)
 
 
 def test_joined_literal_requires_exact_target_assembly_and_all_reader_fragments():

@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 from typing import Any, Protocol
@@ -48,10 +48,13 @@ SOURCE_OUTAGES = OPERATIONAL - {LookupStatus.POLICY}
 def masked_outages(resolutions: Sequence[FieldResolution], results: Sequence[SourceResult]) -> tuple[FieldKey, ...]:
     """Guarded fields answered waiting_policy though a source's last lookup of the field failed.
 
-    A later completed answer (success, no_match, ambiguous) from the same source clears its failure.
+    Taxonomy completion clears only the same query's failure. Other domains
+    retain their existing source/field retry semantics.
     It cannot see a model that never called the source."""
-    last = {(item.coverage.source_id, item.coverage.field_key): item.status for item in results}
-    failed = {key for (_, key), status in last.items() if status in SOURCE_OUTAGES}
+    last = {(item.coverage.source_id, item.coverage.field_key,
+             item.coverage.query_digest if item.coverage.field_key == FieldKey.TAXON else None): item.status
+            for item in results}
+    failed = {key for (_, key, _), status in last.items() if status in SOURCE_OUTAGES}
     return tuple(item.field_key for item in resolutions if item.work_state == WorkState.WAITING_POLICY
                  and item.field_key in OUTAGE_GUARDED_FIELDS and item.field_key in failed)
 
@@ -143,7 +146,7 @@ class SpecialistOutput(BaseModel):
 
 def utility_model_view(result: SourceResult) -> SourceResult:
     """Compact presentation only; the broker's exact result remains proof authority."""
-    if (result.coverage.source_id not in {"settle_temporal", "settle_elevation"}
+    if (result.coverage.source_id not in {"settle_temporal", "settle_elevation", "settle_collectors", "settle_collection"}
         or result.status != LookupStatus.SUCCESS):
         return result
     if len(result.candidate_json) != 1:
@@ -215,6 +218,8 @@ class ResearchDeps:
     requests: Mapping[SpecialistRole, SpecialistRequest]
     tool_broker: SpecialistToolBroker
     tool_results: dict[SpecialistRole, list[SourceResult]] = field(default_factory=dict)
+    source_attempts: dict[SpecialistRole, list] = field(default_factory=dict)
+    collecting_context: Any = None
 
     def for_agent(self, name: str | None) -> SpecialistRequest:
         if name is None:
@@ -224,6 +229,19 @@ class ResearchDeps:
     def trace(self, request):
         return ResearchTrace(TraceIdentity(request.scope.specimen_id, request.scope.job_id,
                                            request.scope.generation))
+
+
+def _geography_progress(deps: ResearchDeps, request: SpecialistRequest, field_key: FieldKey):
+    from .geography_strategy import geography_progress
+
+    narrowed = SpecialistRequest.model_validate({**request.model_dump(mode="json"),
+        "field_keys": [field_key], "field_revisions": {
+            field_key: request.field_revisions[field_key]} if field_key in request.field_revisions else {},
+        "retry_command_id": request.retry_command_id})
+    provider = getattr(deps.tool_broker, "available_sources", None)
+    available = () if provider is None else provider(narrowed)
+    return geography_progress(request, field_key, deps.source_attempts.get(request.role, ()), available,
+        collecting_context=deps.collecting_context)
 
 
 @dataclass(frozen=True)
@@ -376,7 +394,10 @@ class SpecialistHarness:
                  model_factory: Callable[[SpecialistRequest], EffectModel],
                  tool_broker: SpecialistToolBroker,
                  step_store_factory: Callable[[SpecialistRequest], StepStore],
-                 limits: HarnessLimits = HarnessLimits()):
+                 limits: HarnessLimits = HarnessLimits(),
+                 extra_capabilities_factory: Callable[[SpecialistRequest], Sequence[AbstractCapability]] | None = None,
+                 collecting_contexts: Mapping[SpecialistRole, Any] | None = None,
+                 recovery_source_verifier: Callable[[SpecialistRequest, SourceResult], Awaitable[SourceResult]] | None = None):
         qualify_packages()
         if not requests or not set(requests) <= set(SpecialistRole):
             raise ValueError("A nonempty subset of the reviewed specialist roster is required")
@@ -385,6 +406,12 @@ class SpecialistHarness:
             raise ValueError("A roster must share one immutable job generation")
         self.requests = MappingProxyType(dict(requests))
         self.tool_broker, self.limits = tool_broker, limits
+        self.extra_capabilities_factory = extra_capabilities_factory
+        self.collecting_contexts = dict(collecting_contexts or {})
+        self.recovery_source_verifier = recovery_source_verifier
+        if set(self.collecting_contexts) - {SpecialistRole.GEOGRAPHY}:
+            raise ValueError("collecting_context_requires_geography_role")
+        self.step_stores: dict[SpecialistRole, StepStore] = {}
         self.models: dict[SpecialistRole, EffectModel] = {}
         self.agents: dict[SpecialistRole, Agent[ResearchDeps, SpecialistOutput]] = {}
         self.helpers: dict[SpecialistRole, Agent[ResearchDeps, SpecialistOutput]] = {}
@@ -403,7 +430,9 @@ class SpecialistHarness:
                    for key in ("organization_id", "collection_id", "specimen_id", "job_id", "generation")):
                 raise ModelGatewayBlocked("model_scope_differs_from_specialist_request")
             self.models[role] = model
-            self.helpers[role] = self._make_agent(request, step_store_factory(request))
+            store = step_store_factory(request)
+            self.step_stores[role] = store
+            self.helpers[role] = self._make_agent(request, store)
 
         # Helpers use fresh histories and their own scoped tools, with no
         # recursive delegation. Main agents have exactly one delegation level.
@@ -421,7 +450,9 @@ class SpecialistHarness:
                 agent_folders=None, inherit_tools=False, forward_usage=True,
                 contain_errors=True, max_depth=2, tool_retries=0,
             )
-            self.agents[role] = self._make_agent(request, step_store_factory(request), delegation)
+            store = step_store_factory(request)
+            self.step_stores[role] = store
+            self.agents[role] = self._make_agent(request, store, delegation)
             self.delegation[role] = delegation
 
     def _make_agent(self, request, store, delegation=None):
@@ -445,6 +476,11 @@ class SpecialistHarness:
             ]
             if delegation is not None:
                 capabilities.append(delegation)
+            if self.extra_capabilities_factory is not None:
+                extra = tuple(self.extra_capabilities_factory(request))
+                if any(getattr(item, "toolset_digest", None) != request.prompt.toolset_digest for item in extra):
+                    raise ModelGatewayBlocked("extra_capability_toolset_differs_from_prompt_pin")
+                capabilities.extend(extra)
             agent = Agent(
                 model, name=role.value, description=specialist_description(role),
                 output_type=SpecialistOutput, deps_type=ResearchDeps,
@@ -452,12 +488,12 @@ class SpecialistHarness:
                 tool_timeout=self.limits.delegate_timeout_seconds + 1,
                 capabilities=capabilities,
             )
-            self._register_tools(agent)
+            self._register_tools(agent, request)
             self._register_output_validation(agent)
             return agent
 
     @staticmethod
-    def _register_tools(agent):
+    def _register_tools(agent, pinned_request=None):
         # Both tools are sequential barriers: pydantic-ai runs the tool calls of one
         # model response concurrently otherwise, and the durable effect broker holds
         # concurrent source-capture effects on one field as held_unknown (the
@@ -473,6 +509,8 @@ class SpecialistHarness:
                 except Exception:
                     raise RuntimeError("research_source_tool_failed") from None
             ctx.deps.tool_results.setdefault(request.role, []).append(result)
+            from .geography_strategy import SourceAttempt
+            ctx.deps.source_attempts.setdefault(request.role, []).append(SourceAttempt(query, result))
             return result
 
         @agent.tool(sequential=True)
@@ -486,7 +524,16 @@ class SpecialistHarness:
                 try:
                     result = await ctx.deps.tool_broker.invoke_utility(request, tool_id, arguments)
                     view = utility_model_view(result)
-                except (UtilityInputError, EvidenceError):
+                except (UtilityInputError, EvidenceError) as error:
+                    if (request.role == SpecialistRole.MEASUREMENT
+                        and str(error) == "G32 independent complete elevations disagree"):
+                        raise ModelRetry("research_measurement_assertions_disagree: accepted same-event "
+                            "elevation assertions disagree in exact endpoints, single/range meaning, "
+                            "approximation or written uncertainty. Retain every reading and investigate "
+                            "the conflict; never discard one assertion or invent a tolerance. If it "
+                            "cannot be settled, return the requested fields as waiting_policy with "
+                            "value.state unresolved under missing_policy:unstructured_label_event_unqualified, "
+                            "explain the specific retained conflict, and provide no value or human question") from None
                     # Correct a model argument within the existing one-retry
                     # budget; a missing assertion never becomes a settled value.
                     raise ModelRetry("research_utility_invalid_input: use only an accepted assembly for the requested field and its event; "
@@ -496,17 +543,50 @@ class SpecialistHarness:
             ctx.deps.tool_results.setdefault(request.role, []).append(result)
             return view
 
+        # This deterministic view consumes no provider effect. Frozen older
+        # prompts keep their exact tool roster; only the reviewed v9 pin adds it.
+        from .prompts import GEOGRAPHY_RESEARCH_PROMPT_VERSION
+        if pinned_request is not None and pinned_request.role == SpecialistRole.GEOGRAPHY:
+            if pinned_request.prompt.version == GEOGRAPHY_RESEARCH_PROMPT_VERSION:
+                @agent.tool(sequential=True)
+                async def geography_progress(ctx: RunContext[ResearchDeps], field_key: FieldKey) -> dict[str, Any]:
+                    """List retained strategies and legitimate stops; never make a provider call."""
+                    request = ctx.deps.for_agent(ctx.agent.name)
+                    return _geography_progress(ctx.deps, request, field_key).as_dict()
+
+                @agent.tool(sequential=True)
+                async def geography_hierarchy(ctx: RunContext[ResearchDeps]) -> dict[str, Any]:
+                    """Propose place-only validation queries from captured typed authority hierarchy."""
+                    from dataclasses import asdict
+                    from .geography_context import hierarchy_research
+                    from .sources import _captured_geography_results
+                    request = ctx.deps.for_agent(ctx.agent.name)
+                    context = getattr(ctx.deps, "collecting_context", None)
+                    try:
+                        return asdict(hierarchy_research(request,
+                            [item for item in _captured_geography_results(request,
+                                ctx.deps.tool_results.get(request.role, ()))
+                             if item.coverage.source_id in {"tgn", "wikidata", "nga"}], context=context))
+                    except ValueError:
+                        return {"state": "waiting_source", "reason": "captured_hierarchy_or_dependency_proof_unavailable",
+                                "next_queries": [], "proposals": []}
+
     @staticmethod
     def _register_output_validation(agent):
-        @agent.output_validator
-        def validate(ctx: RunContext[ResearchDeps], output: SpecialistOutput):
+        def strict(ctx: RunContext[ResearchDeps], output: SpecialistOutput, *, controller_fields=frozenset()):
             from .evidence import validate_resolution
+            from .output_admission import FAILURE_REASON, is_validation_failure
 
             request = ctx.deps.for_agent(ctx.agent.name)
             fields = tuple(result.field_key for result in output.resolutions)
             if output.role != request.role or len(set(fields)) != len(fields) or set(fields) != set(request.field_keys):
                 raise ModelRetry("specialist_output_does_not_cover_exact_requested_fields")
-            if request.role == SpecialistRole.MEASUREMENT:
+            for resolution in output.resolutions:
+                if resolution.reason == FAILURE_REASON and (resolution.field_key not in controller_fields
+                    or not is_validation_failure(resolution)):
+                    raise ModelRetry(f"specialist_output_failure_requires_controller_admission: field={resolution.field_key}; "
+                        "return the original field investigation; the controller records exhausted validation")
+            if request.role in {SpecialistRole.MEASUREMENT, SpecialistRole.TEMPORAL}:
                 # Match the journal/checkpoint fence before accepting an output.
                 # Utility context may include a protected source field that the
                 # scoped output cannot turn into a new native checkpoint.
@@ -530,6 +610,17 @@ class SpecialistHarness:
                                 "no value, evidence IDs, derivation or human question. Do not manufacture "
                                 "a source checkpoint or change the preserved human outcome")
             results = tuple(ctx.deps.tool_results.get(request.role, ()))
+            from .prompts import GEOGRAPHY_RESEARCH_PROMPT_VERSION
+            if request.role == SpecialistRole.GEOGRAPHY and request.prompt.version == GEOGRAPHY_RESEARCH_PROMPT_VERSION:
+                for resolution in output.resolutions:
+                    if resolution.work_state == WorkState.WAITING_HUMAN and (
+                        resolution.question is None or resolution.question.reason != "derived_proposal"):
+                        progress = _geography_progress(ctx.deps, request, resolution.field_key)
+                        if not progress.review_eligible:
+                            raise ModelRetry(f"geography_research_incomplete: field={resolution.field_key}; "
+                                f"reason={progress.stop_reason}; permitted_next_sources={','.join(progress.next_sources)}; "
+                                "continue a distinct permitted strategy within remaining limits, or return "
+                                "waiting_source and the exact prerequisite; never repeat an unchanged query")
             try:
                 for resolution in output.resolutions:
                     validate_resolution(request, resolution, results)
@@ -568,17 +659,56 @@ class SpecialistHarness:
                         "for an unresolved value. Preserve the human question, reason and captured source coverage")
             masked = masked_outages(output.resolutions, results)
             if masked:
-                raise ModelRetry("specialist_output_hides_a_failed_lookup_behind_waiting_policy: a lookup for "
+                raise ModelRetry(f"specialist_output_hides_a_failed_lookup_behind_waiting_policy: field={masked[0]}; a lookup for "
                                  + ", ".join(key.value for key in masked)
                                  + " failed; return waiting_source for it, which blocks the record")
+            if request.role == SpecialistRole.TAXONOMY and any(
+                item.work_state == WorkState.WAITING_POLICY for item in output.resolutions
+            ):
+                from .taxonomy import taxonomy_stop_defect
+                defect = taxonomy_stop_defect(request, results)
+                if defect:
+                    raise ModelRetry(defect)
             return output
+
+        @agent.output_validator
+        def validate(ctx: RunContext[ResearchDeps], output: SpecialistOutput):
+            from .output_admission import admit_output
+            return admit_output(ctx, output, strict)
 
     async def run_specialist(self, role: SpecialistRole, *,
                              message_history: Sequence[ModelMessage] | None = None,
                              conversation_id: str | None = None) -> SpecialistRun:
         request = self.requests[role]
         deps = ResearchDeps(self.requests, self.tool_broker)
-        conversation_id = conversation_id or f"{request.scope.job_id}:{request.scope.generation}:{role.value}"
+        deps.collecting_context = self.collecting_contexts.get(SpecialistRole.GEOGRAPHY)
+        conversation_id = conversation_id or (f"{request.scope.job_id}:{request.scope.generation}:{role.value}"
+            + (f":retry:{request.retry_command_id}" if request.retry_command_id is not None else ""))
+        usage = None
+        recovery_capabilities = []
+        from .prompts import GEOGRAPHY_RESEARCH_PROMPT_VERSION
+        if message_history is None:
+            from .recovery import load_specialist_recovery
+            recovered = await load_specialist_recovery(self.step_stores[role], request,
+                input_text=_research_input(request), serialization_version=SERIALIZATION_VERSION,
+                request_limit=self.limits.request_limit, tool_calls_limit=self.limits.tool_calls_limit,
+                conversation_id=conversation_id, verify_source_result=self.recovery_source_verifier)
+            if recovered is not None:
+                from .geography_strategy import SourceAttempt
+                from .recovery import ResumeDelegationBudget
+                recovery_capabilities.append(ResumeDelegationBudget(request,
+                    delegate_counts=recovered.delegate_counts, max_calls=self.limits.max_delegate_calls))
+                message_history = recovered.messages
+                usage = recovered.usage
+                deps.tool_results[role] = list(recovered.source_results)
+                deps.source_attempts[role] = [SourceAttempt(item.query, item.result) for item in recovered.source_attempts]
+                # The broker needs the same captured authority context when
+                # admitting a renamed/hierarchy query after interruption.
+                retained = getattr(self.tool_broker, "trusted_results", None)
+                if isinstance(retained, list):
+                    for source_result in recovered.source_results:
+                        if source_result not in retained:
+                            retained.append(source_result)
         trace = deps.trace(request)
         with capture_model_run_effects(request.scope) as collected:
             with trace.span("specialist", role=role.value, prompt_digest=request.prompt.digest,
@@ -586,7 +716,7 @@ class SpecialistHarness:
                 result = await asyncio.wait_for(
                     self.agents[role].run(
                         _research_input(request), deps=deps, message_history=message_history,
-                        conversation_id=conversation_id,
+                        conversation_id=conversation_id, usage=usage, capabilities=recovery_capabilities,
                         usage_limits=UsageLimits(request_limit=self.limits.request_limit,
                                                  tool_calls_limit=self.limits.tool_calls_limit),
                     ), timeout=self.limits.run_timeout_seconds,

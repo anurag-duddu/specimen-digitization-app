@@ -78,7 +78,7 @@ def exact_types_equal(left, right):
     if type(left) is not type(right):
         return False
     if type(left) is dict:
-        return set(left) == set(right) and all(exact_types_equal(left[k], right[k]) for k in left)
+        return left.keys() == right.keys() and all(exact_types_equal(left[k], right[k]) for k in left)
     if type(left) is list:
         return len(left) == len(right) and all(exact_types_equal(a, b) for a, b in zip(left, right))
     return left == right
@@ -183,6 +183,8 @@ class NativeMaterializationInputsV2:
     @classmethod
     def from_response(cls, principal, intent, preparation, response):
         from .native_canonical_v2 import CanonicalBindingV2, RetainedIntentV2
+        from .progress_publication_v2 import ProgressIntentV2, RetainedProgressIntentV2
+        progress_only = isinstance(intent, ProgressIntentV2)
         outer = exact_object(response, OUTER, 'native_materialization_outer_shape')
         org = exact_object(outer['organizationMember'], {'active'}, 'native_materialization_access_unavailable')
         member = exact_object(outer['collectionMember'], {'active', 'role', 'canViewSensitive'}, 'native_materialization_access_unavailable')
@@ -197,7 +199,7 @@ class NativeMaterializationInputsV2:
         legacy = {k: copy.deepcopy(row[k]) for k in OLD_BINDING}
         binding = CanonicalBindingV2.from_native(principal.scope, intent.original_prepared.basis.scope.specimen_id, legacy)
         raw = exact_object(row['materialization_inputs'], INPUT_KEYS, 'native_materialization_inputs_shape')
-        if raw['contract_version'] != INPUT_VERSION or specimen['sensitive'] is not binding.sensitive:
+        if raw['contract_version'] != ('research-native-progress-inputs/v2' if progress_only else INPUT_VERSION) or specimen['sensitive'] is not binding.sensitive:
             fail('native_materialization_version_or_sensitivity')
         try:
             observed = datetime.fromisoformat(raw['observed_at'].replace('Z', '+00:00'))
@@ -213,7 +215,7 @@ class NativeMaterializationInputsV2:
         retained_row = exact_object(raw['outer_intent'], {'original', 'preparations', 'preparation_count', 'attempt'}, 'native_materialization_intent_shape')
         if strict_int(retained_row['preparation_count'], maximum=20) != len(retained_row['preparations']):
             fail('native_materialization_preparation_count')
-        retained = RetainedIntentV2.model_validate({k: retained_row[k] for k in ('original', 'preparations', 'attempt')})
+        retained = (RetainedProgressIntentV2 if progress_only else RetainedIntentV2).model_validate({k: retained_row[k] for k in ('original', 'preparations', 'attempt')})
         if retained.original != intent or preparation not in retained.preparations or retained.attempt is not None:
             fail('native_materialization_retained_intent_conflict')
         if preparation != retained.preparations[-1]:
@@ -265,7 +267,7 @@ class NativeMaterializationInputsV2:
         projection = exact_object(raw['projection_rows'], {'record_versions', 'resolved_fields', 'candidates', 'candidate_evidence', 'evidence', 'tool_calls', 'findings'}, 'native_materialization_projection_shape')
         indexes = {name: _rows(values, principal.scope) for name, values in projection.items()}
         required_versions = {str(binding.canonical.record_version_id), str(preparation.anchor.record_version_id)}
-        required_versions.update(str(d.source_record_version_id) for d in intent.dependency_sources)
+        required_versions.update(str(d.source_record_version_id) for d in getattr(intent, "dependency_sources", ()))
         if not required_versions <= set(indexes['record_versions']):
             fail('native_materialization_source_record_missing')
         for record_id in required_versions:
@@ -304,15 +306,20 @@ class NativeMaterializationInputsV2:
             checkpoint, pair = _current_checkpoint(job, field_key, scope)
             if checkpoint is not None:
                 pairs[field_key] = pair; current[field_key] = checkpoint
-        target = str(intent.original_prepared.basis.field_key)
-        if target not in current or current[target] != preparation.prepared.publication.checkpoints[0]:
-            fail('native_materialization_target_checkpoint_split')
-        expected_cp = {'target': current[target].model_dump(mode='json'),
-            'terminal_siblings': [current[k].model_dump(mode='json') for k in sorted(current) if k != target
-                and job['fields'][k]['work_state'] in {'resolved', 'waiting_human', 'nonblocking_exception'}]}
-        expected_original = {'target': pairs[target]['original']['payload'],
-            'terminal_siblings': [pairs[k]['original']['payload'] for k in sorted(current) if k != target
-                and job['fields'][k]['work_state'] in {'resolved', 'waiting_human', 'nonblocking_exception'}]}
+        if progress_only:
+            eligible = [k for k in sorted(current) if job['fields'][k]['work_state'] in {'resolved', 'waiting_human', 'nonblocking_exception'}]
+            expected_cp = {'terminal_fields': [current[k].model_dump(mode='json') for k in eligible]}
+            expected_original = {'terminal_fields': [pairs[k]['original']['payload'] for k in eligible]}
+        else:
+            target = str(intent.original_prepared.basis.field_key)
+            if target not in current or current[target] != preparation.prepared.publication.checkpoints[0]:
+                fail('native_materialization_target_checkpoint_split')
+            expected_cp = {'target': current[target].model_dump(mode='json'),
+                'terminal_siblings': [current[k].model_dump(mode='json') for k in sorted(current) if k != target
+                    and job['fields'][k]['work_state'] in {'resolved', 'waiting_human', 'nonblocking_exception'}]}
+            expected_original = {'target': pairs[target]['original']['payload'],
+                'terminal_siblings': [pairs[k]['original']['payload'] for k in sorted(current) if k != target
+                    and job['fields'][k]['work_state'] in {'resolved', 'waiting_human', 'nonblocking_exception'}]}
         if raw['checkpoint_inputs'] != expected_original:
             fail('native_materialization_checkpoint_inventory_split')
         journal = raw['original_request_sources']
@@ -333,15 +340,21 @@ class NativeMaterializationInputsV2:
             effect = state.get('effects', {}).get(item['effect_id'])
             if effect != item['effect'] or effect.get('job_key') != reg.job_key:
                 fail('native_materialization_effect_scope')
-        inputs = copy.deepcopy(raw)
+        # Both aliases are validated above and replaced below. Keep their
+        # slots so copying the retained branches preserves the input key order.
+        inputs = copy.deepcopy({
+            key: None if key in {'checkpoint_inputs', 'private_state_integrity'} else value
+            for key, value in raw.items()
+        })
         inputs['checkpoint_inputs'] = expected_cp
         # Hide the fresh raw program state in this producer integrity alias.
         # Retained immutable preparation CAS proofs remain server-private;
         # neither this DTO nor its intent/preparation is an HTTP response.
-        inputs['private_state_integrity'] = {'revision': revision, 'contract_version': integrity['contract_version'], 'state_digest': digest(state)}
+        state_digest = digest(state)
+        inputs['private_state_integrity'] = {'revision': revision, 'contract_version': integrity['contract_version'], 'state_digest': state_digest}
         guard = {'contract_version': 'native-materialization-guard/v2', 'binding_id': str(reg.binding_id),
             'registration_revision': reg.registration_revision, 'state_revision': revision,
-            'state_digest': digest(state), 'preparation_id': str(preparation.id),
+            'state_digest': state_digest, 'preparation_id': str(preparation.id),
             'preparation_digest': digest(preparation), 'current_canonical': binding.canonical.model_dump(mode='json'),
             'inputs_digest': digest(inputs), 'record_version_ids': sorted(required_versions),
             'projection_rows': copy.deepcopy(projection), 'native_input_rows': copy.deepcopy(native_rows),

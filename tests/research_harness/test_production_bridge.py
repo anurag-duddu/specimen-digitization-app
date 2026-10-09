@@ -512,7 +512,9 @@ class PublishingRuntime:
         self.binding = SimpleNamespace(research_scope=lambda: RESEARCH_SCOPE)
         self.journal = SimpleNamespace(load=self._load)
         job = {"record_revision": 4, "pins": {"profile": RESEARCH_PROFILE.model_dump(mode="json")},
-            "fields": {str(key): {"checkpoint": {"id": f"native-{key}", "scope": RESEARCH_SCOPE.model_dump(mode="json"),
+            "fields": {str(key): {"work_state": next((str(cp.resolution.work_state)
+                for cp in typed if cp.field_key == key), "waiting_policy"), "locked": False,
+                "checkpoint": {"id": f"native-{key}", "scope": RESEARCH_SCOPE.model_dump(mode="json"),
                 "payload": {"field_key": str(key)}}} for key in FieldKey}}
         self.store = SimpleNamespace(job=lambda scope: job,
             _read=lambda scope: SimpleNamespace(state={"outbox": {}}), _job=lambda state, scope: job)

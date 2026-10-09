@@ -258,7 +258,12 @@ def test_the_run_id_is_on_every_app_agent_and_chat_span_and_matches_the_job_id(t
     # Six roles now run in three two-role windows; each window opens one
     # research control span. Every specialist, model and effect span remains.
     assert len(named(tick, "research_harness.research")) == 3
-    assert len(harness) == 48 and len(pydantic) == 16
+    publications = [event for event in tick.state["outbox"].values()
+        if event.get("kind") == "canonical_publication_required" and event.get("delivered") is True]
+    assert len(publications) == 19  # The twentieth field is the preserved D/T/S policy hold.
+    assert len(named(tick, "research_harness.writer")) == len(publications)
+    assert len(named(tick, "research_harness.finalization")) == len(publications)
+    assert len(harness) == 48 + 2 * len(publications) and len(pydantic) == 16
     for span in harness + pydantic:
         assert span.attrs["specimen.run.id"] == tick.run_id, span.name
     assert {span.attrs["research.job_id"] for span in harness} == {tick.job_id}
@@ -300,8 +305,14 @@ def test_tool_calls_and_results_in_a_capped_request_are_whole(tick):
     chats = chats_of(tick, SpecialistRole.TAXONOMY)
     assert len(chats) == 4
     history = [messages(chat) for chat in chats]
+    def tool_parts(history):
+        return [part for message in history for part in message["parts"]
+            if part["type"] in {"tool_call", "tool_call_response"}]
     for earlier, later in zip(history[1:], history[2:]):
-        assert later[1:len(earlier)] == earlier[1:]
+        # Official Memory may regroup its user context with a tool return.
+        # Every earlier call and result must remain whole and in the same order.
+        retained = tool_parts(earlier)
+        assert tool_parts(later)[:len(retained)] == retained
     calls = [part for message in history[3][1:] for part in message["parts"] if part["type"] == "tool_call"]
     results = [part for message in history[3][1:] for part in message["parts"]
                if part["type"] == "tool_call_response"]

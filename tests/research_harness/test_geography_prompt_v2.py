@@ -26,7 +26,7 @@ import pytest
 from specimen_digitization.research_harness import prompts
 from specimen_digitization.research_harness.contracts import FieldKey, ROLE_FIELDS, SpecialistRole
 from specimen_digitization.research_harness.prompts import (
-    GEOGRAPHY_PROMPT_VERSION, GEOGRAPHY_FINAL_RESULT_PROMPT_VERSION, MISSING_POLICY_PROMPT_VERSION, PROMPT_VERSION,
+    GEOGRAPHY_PROMPT_VERSION, GEOGRAPHY_RESEARCH_PROMPT_VERSION, MISSING_POLICY_PROMPT_VERSION, PROMPT_VERSION,
     READING_CITATION_PROMPT_VERSION, RELATIONS_PROMPT_VERSION, ROLE_PROMPTS, resolve_prompt,
 )
 from specimen_digitization.research_harness.sources import insects_registry
@@ -96,7 +96,7 @@ def test_v2_prompt_files_stay_byte_identical(name, sha256):
 def test_the_table_names_every_role_and_an_existing_file():
     assert set(ROLE_PROMPTS) == set(SpecialistRole)
     assert all((ROOT / name).is_file() for name, _ in ROLE_PROMPTS.values())
-    assert ROLE_PROMPTS[SpecialistRole.GEOGRAPHY] == ("specimen_geography-v8.txt", GEOGRAPHY_FINAL_RESULT_PROMPT_VERSION)
+    assert ROLE_PROMPTS[SpecialistRole.GEOGRAPHY] == ("specimen_geography-v9.txt", GEOGRAPHY_RESEARCH_PROMPT_VERSION)
 
 
 def test_geography_v2_stays_the_audited_historian_prompt_with_its_owned_fields():
@@ -107,13 +107,13 @@ def test_geography_v2_stays_the_audited_historian_prompt_with_its_owned_fields()
     assert all(str(key) in expected for key in ROLE_FIELDS[SpecialistRole.GEOGRAPHY])
 
 
-def test_geography_resolves_to_its_v8_file_with_its_owned_fields():
+def test_geography_resolves_to_its_v9_file_with_its_owned_fields():
     prompt = pin(SpecialistRole.GEOGRAPHY)
     expected = ((ROOT / "common-v1.txt").read_text(encoding="utf-8") + "\n" + LIVE.read_text(encoding="utf-8")
                 + "\nOwned fields: country, province_state, county, city, precise_location.\n")
-    assert LIVE.name == "specimen_geography-v8.txt"
+    assert LIVE.name == "specimen_geography-v9.txt"
     assert prompt.text == expected
-    assert prompt.version == GEOGRAPHY_FINAL_RESULT_PROMPT_VERSION == "geography-final-result-v8-2026-10-07"
+    assert prompt.version == GEOGRAPHY_RESEARCH_PROMPT_VERSION == "geography-research-loop-v9-2026-10-07"
     assert MISSING_POLICY_PROMPT_VERSION == "specialists-missing-policy-v4-2026-10-03" != prompt.version
     assert prompt.digest == hashlib.sha256(expected.encode()).hexdigest()
     assert prompt.digest not in {GEOGRAPHY_V1_DIGEST, GEOGRAPHY_V2_DIGEST}
@@ -122,7 +122,8 @@ def test_geography_resolves_to_its_v8_file_with_its_owned_fields():
     # file extends.
     v3 = (ROOT / "specimen_geography-v3.txt").read_text(encoding="utf-8")
     v4 = (ROOT / "specimen_geography-v4.txt").read_text(encoding="utf-8")
-    assert LIVE.read_text(encoding="utf-8").startswith(v4) and v4.startswith(v3)
+    assert v4.startswith(v3)
+    assert (ROOT / "specimen_geography-v8.txt").read_text(encoding="utf-8").startswith(v4)
     assert READING_CITATION_PROMPT_VERSION != prompt.version
 
 
@@ -159,7 +160,7 @@ def test_v2_is_ascii_and_names_no_other_geocoder():
 
 
 def test_v2_teaches_every_geolocate_query_key_and_a_valid_example():
-    text = LIVE.read_text(encoding="utf-8")
+    text = V2.read_text(encoding="utf-8")
     assert 'source_id "geolocate"' in text and "lookup_source" in text
     # The keys are taught in the query_text description, not merely elsewhere (value.state, ...).
     contract = text[text.index("query_text"):text.index("Example, field province_state")]
@@ -194,8 +195,8 @@ LOOKUP_PRODUCER_RULE = (
 
 
 @pytest.mark.parametrize("role", (SpecialistRole.TAXONOMY, SpecialistRole.PARTIES, SpecialistRole.COLLECTION))
-def test_lookup_citing_resolutions_name_the_assemblies_they_read(role):
+def test_retained_v2_lookup_resolutions_name_the_assemblies_they_read(role):
     # Without assembly_ids and event_id a cited lookup has no producer
     # (lookup_evidence_producer_invalid), so these roles state it explicitly.
-    text = " ".join(pin(role).text.split())
+    text = " ".join((ROOT / f"{role.value}-v2.txt").read_text().split())
     assert LOOKUP_PRODUCER_RULE in text

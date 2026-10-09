@@ -68,4 +68,15 @@ if [[ "$target" != "api" ]]; then
     --mount "type=volume,src=$smoke_volume,dst=/inputs,readonly" \
     --entrypoint python "$image" /verify.py --target "$target"
 fi
+# Informational only, after every existing image qualification. Docker .Size
+# measures uncompressed image bytes, not compressed registry storage or transfer.
+# Missing/malformed inspect metadata must not change the build check's outcome.
+if image_dimensions="$(docker image inspect "$image" --format '{{.Size}} {{len .RootFS.Layers}}' 2>/dev/null)" &&
+  [[ "$image_dimensions" =~ ^(0|[1-9][0-9]*)[[:space:]](0|[1-9][0-9]*)$ ]]; then
+  printf 'runtime_image_size {"status":"measured","target":"%s","image":"%s","source_sha":"%s","size_kind":"docker_uncompressed","uncompressed_bytes":%s,"rootfs_layer_count":%s,"registry_compressed_bytes":null}\n' \
+    "$target" "$image" "$source_sha" "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+else
+  printf 'runtime_image_size {"status":"unavailable","target":"%s","image":"%s","source_sha":"%s","size_kind":"docker_uncompressed","uncompressed_bytes":null,"rootfs_layer_count":null,"registry_compressed_bytes":null}\n' \
+    "$target" "$image" "$source_sha"
+fi
 printf 'Built and CLI-smoked %s at %s; no cloud release or inference.\n' "$target" "$source_sha"

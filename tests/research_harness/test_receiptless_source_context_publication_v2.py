@@ -5,6 +5,7 @@ existing fake connector. No live source, model or native SQL proof is claimed.
 """
 import json
 from dataclasses import replace
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from pydantic_ai.messages import ModelResponse, ToolCallPart
@@ -15,7 +16,7 @@ from test_canonical_materialization import materialization, native_basis
 from test_canonical_materialization_v2 import v2_case
 from test_native_canonical_contract import ident
 from test_unkeyed_label_reading_citation import (
-    FAR, LOCALITY, VALUE, geography, instructed, no_network, refusals,
+    LOCALITY, VALUE, geography, instructed, no_network, refusals,
     run_research, specialist_factory, unkeyed,
 )
 from specimen_digitization.application.domain import FieldValue, ValueState
@@ -30,6 +31,7 @@ from specimen_digitization.research_harness.contracts import (
 )
 from specimen_digitization.research_harness.local_utility_proof_v2 import local_utility_replays_v2
 from specimen_digitization.research_harness.persistence import BlobRef
+from specimen_digitization.research_harness.sources import FixtureSourceTransport
 
 
 def refused_then_corrected_geography(log):
@@ -42,14 +44,14 @@ def refused_then_corrected_geography(log):
         async def respond(messages, info):
             results, attempted = support._results(messages)
             if attempted < 4:
-                # Two genuine scoped no-matches, an unsendable query, then a
-                # corrected precise-location search. This is the failure shape
-                # retained from the original321 geography acceptance proof.
+                # Two scoped synthetic no-matches, an unsendable query, then a
+                # corrected precise-location search. Model-origin lookup text
+                # carries no worker-only placement coordinates.
                 keys = (FieldKey.COUNTRY, FieldKey.PROVINCE_STATE,
                     FieldKey.PRECISE_LOCATION) if not attempted else (FieldKey.PRECISE_LOCATION,)
                 calls = []
                 for key in keys:
-                    query = {**LOCALITY, **FAR, "value": VALUE[key]}
+                    query = {**LOCALITY, "value": "Chicago" if key == FieldKey.PRECISE_LOCATION else VALUE[key]}
                     if key == FieldKey.PRECISE_LOCATION and not attempted:
                         query["locality"] = "Chicago 600 ft. 12 VI 1948"
                     calls.append(ToolCallPart("lookup_source", {"query": {
@@ -57,7 +59,14 @@ def refused_then_corrected_geography(log):
                         "query_text": json.dumps(query)}},
                         tool_call_id=f"refusal-context-{attempted}-{key}"))
                 return ModelResponse(parts=calls, usage=support.USAGE)
-            assert len(results) == 4
+            if attempted == 4:
+                # The current strategy gate requires one relevant captured
+                # place-name alternative before a genuine absence question.
+                return ModelResponse(parts=[ToolCallPart("lookup_source", {"query": {
+                    "source_id": "wikidata", "field_key": str(FieldKey.COUNTRY),
+                    "query_text": "Chicago"}}, tool_call_id="refusal-context-alternative")],
+                    usage=support.USAGE)
+            assert len(results) == 5
             assert [item.status for item in results].count(LookupStatus.POLICY) == 1
             chosen = replace(instructed(request), human_literal=None)
             resolutions = tuple(
@@ -76,9 +85,39 @@ def refused_then_corrected_geography(log):
     return factory
 
 
+def refusal_context_transport(log):
+    """Valid synthetic absences pass the real adapters and durable capture.
+
+    The ordinary fixture's Chicago matches cannot become absences by supplying
+    prohibited model geometry. This fixture retains an explicit empty provider
+    answer, including the one relevant alternative required by GeoStrategy.
+    """
+    ordinary = support.fixture_source_transport(log)
+    manifest = json.loads((support.FIXTURES / "sources.json").read_text())
+    geolocate_url = manifest["geolocate"]["url"]
+    empty_geolocate = json.dumps({"engineVersion": "SYNTHETIC offline absence",
+        "numResults": 0, "executionTimems": 1,
+        "resultSet": {"type": "FeatureCollection", "features": []}}).encode()
+
+    async def read(url, policy):
+        if policy.id == "geolocate":
+            assert support._url_key(url) == support._url_key(geolocate_url)
+            log.append(url)
+            return 200, empty_geolocate
+        if policy.id == "wikidata":
+            query = parse_qs(urlsplit(url).query)
+            assert query["action"] == ["wbsearchentities"] and query["search"] == ["Chicago"]
+            log.append(url)
+            return 200, b'{"search":[],"success":1}'
+        return await ordinary.get(url, policy=policy)
+
+    return FixtureSourceTransport(read)
+
+
 def test_unsent_sibling_refusal_does_not_block_genuine_human_question_publication(unkeyed, refusals):
     _, specimen, hold, published = run_research(unkeyed,
-        refused_then_corrected_geography(unkeyed.model_calls))
+        refused_then_corrected_geography(unkeyed.model_calls),
+        source_transport=refusal_context_transport(unkeyed.source_urls))
     assert refusals == [], f"publication was refused: {refusals}"
     assert published == ["taxon", "country", "province_state", "identified_by_irn"]
     assert hold is None or str(hold) == "native_research_operational_hold"
@@ -95,15 +134,19 @@ def test_unsent_sibling_refusal_does_not_block_genuine_human_question_publicatio
     native = job["fields"]["country"]["checkpoint"]
     proof = AcceptedCheckpointProofV1.model_validate_json(unkeyed.research_blobs.get(
         BlobRef(**native["accepted_output_proof"]["capture"])))
-    assert len(proof.checkpoints) == 5 and len(proof.acceptance.source_results) == 4
+    assert len(proof.checkpoints) == 5 and len(proof.acceptance.source_results) == 5
     [refused] = [item for item in proof.acceptance.source_results if item.receipt is None]
     assert refused.status == LookupStatus.POLICY
     assert refused.coverage.state == SourceCoverageState.UNQUALIFIED
     assert refused.coverage.field_key == FieldKey.PRECISE_LOCATION
     assert not refused.evidence and not refused.candidate_json and not refused.coverage.receipt_ids
-    # Neither the preflight refusal nor the repair fabricates a fourth source
-    # effect or a local utility replay. The accepted negative context survives.
-    assert len([item for item in proof.acceptance.source_results if item.receipt]) == 3
+    # The three completed GEOLocate calls and the relevant alternative retain
+    # real synthetic receipts. The unsent refusal fabricates no source effect
+    # or local utility replay; its accepted negative context survives.
+    assert len([item for item in proof.acceptance.source_results if item.receipt]) == 4
+    [alternative] = [item for item in proof.acceptance.source_results
+        if item.coverage.source_id == "wikidata"]
+    assert alternative.status == LookupStatus.NO_MATCH and alternative.receipt is not None
     assert local_utility_replays_v2(proof.acceptance.original_request,
         proof.acceptance.source_results, accepted_checkpoint_proof=proof) == ()
 

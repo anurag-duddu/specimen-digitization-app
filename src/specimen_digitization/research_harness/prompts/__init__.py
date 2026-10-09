@@ -52,28 +52,40 @@ GEOGRAPHY_HISTORY_PROMPT_VERSION = "geography-source-history-v7-2026-10-06"
 # makes the final typed response check explicit after the live role timed out
 # before output feedback. Frozen v7 requests retain their original bytes/pin.
 GEOGRAPHY_FINAL_RESULT_PROMPT_VERSION = "geography-final-result-v8-2026-10-07"
+# Coordinate-free source queries and bounded alternative-strategy progress.
+# Frozen v1-v8 instructions remain byte-identical for their existing jobs.
+GEOGRAPHY_RESEARCH_PROMPT_VERSION = "geography-research-loop-v9-2026-10-07"
 # Taxonomy v6 excludes genus-free morphocodes from the lookup-first instruction;
 # the declared missing-policy path and historical v5 bytes stay intact.
 TAXONOMY_QUERY_PROMPT_VERSION = "taxonomy-scientific-name-v6-2026-10-06"
+# Taxonomy v7 preserves v6 bytes and adds captured negative reconciliation,
+# source breadth and exact-query recovery. Frozen v6 jobs retain their pin.
+TAXONOMY_RECONCILIATION_PROMPT_VERSION = "taxonomy-reader-reconciliation-v7-2026-10-07"
 # Stated elevation is parser-qualified from exact transcript spans, including
 # ordinary prose, ranges and grouped numbers. v9 requires genuine native
-# dependencies for narrowed requests; frozen v6/v7/v8 jobs retain their exact pins.
-MEASUREMENT_EVIDENCE_PROMPT_VERSION = "measurement-evidence-v9-2026-10-07"
+# dependencies for narrowed requests. v10 adds complete scientific agreement and
+# exact omitted-source repairs; frozen v6/v7/v8/v9 jobs retain their exact pins.
+MEASUREMENT_EVIDENCE_PROMPT_VERSION = "measurement-evidence-v10-2026-10-07"
 # Complete collecting dates may be grounded by same-label locality and collector
 # evidence. The coherent v7 instructions replace only the active temporal pin.
 TEMPORAL_CONTEXT_PROMPT_VERSION = "temporal-collecting-context-v7-2026-10-07"
+PARTIES_EVIDENCE_PROMPT_VERSION = "parties-role-evidence-v6-2026-10-07"
+COLLECTION_EVIDENCE_PROMPT_VERSION = "collection-qualified-evidence-v6-2026-10-07"
+
+# Explicit event links and native To-only dependencies; historical v7 bytes remain immutable.
+TEMPORAL_EVENT_LINK_PROMPT_VERSION = "temporal-event-links-v8-2026-10-07"
 
 # Role -> (role file, pin version). Each role's text is common-v1.txt, the role
 # file and its owned-fields line. A role moves to a new file and version without
 # changing any other role's text, digest or pin. Superseded files stay on disk
 # for audit.
 ROLE_PROMPTS = MappingProxyType({
-    SpecialistRole.TAXONOMY: ("specimen_taxonomy-v6.txt", TAXONOMY_QUERY_PROMPT_VERSION),
-    SpecialistRole.GEOGRAPHY: ("specimen_geography-v8.txt", GEOGRAPHY_FINAL_RESULT_PROMPT_VERSION),
-    SpecialistRole.TEMPORAL: ("specimen_temporal-v7.txt", TEMPORAL_CONTEXT_PROMPT_VERSION),
-    SpecialistRole.MEASUREMENT: ("specimen_measurement-v9.txt", MEASUREMENT_EVIDENCE_PROMPT_VERSION),
-    SpecialistRole.PARTIES: ("specimen_parties-v5.txt", HANDOVER_PROMPT_VERSION),
-    SpecialistRole.COLLECTION: ("specimen_collection-v5.txt", HANDOVER_PROMPT_VERSION),
+    SpecialistRole.TAXONOMY: ("specimen_taxonomy-v7.txt", TAXONOMY_RECONCILIATION_PROMPT_VERSION),
+    SpecialistRole.GEOGRAPHY: ("specimen_geography-v9.txt", GEOGRAPHY_RESEARCH_PROMPT_VERSION),
+    SpecialistRole.TEMPORAL: ("specimen_temporal-v8.txt", TEMPORAL_EVENT_LINK_PROMPT_VERSION),
+    SpecialistRole.MEASUREMENT: ("specimen_measurement-v10.txt", MEASUREMENT_EVIDENCE_PROMPT_VERSION),
+    SpecialistRole.PARTIES: ("specimen_parties-v6.txt", PARTIES_EVIDENCE_PROMPT_VERSION),
+    SpecialistRole.COLLECTION: ("specimen_collection-v6.txt", COLLECTION_EVIDENCE_PROMPT_VERSION),
 })
 
 

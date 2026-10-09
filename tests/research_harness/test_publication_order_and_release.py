@@ -41,7 +41,11 @@ def test_a_pass_offers_the_specialists_in_roster_order_then_their_fields_in_key_
     publish(monkeypatch, runtime, thread(*typed))
     offered = [field for field, _ in runtime.prepared]
     assert set(offered) == {item.field_key for item in typed}
-    assert [roster_index(field) for field in offered] == sorted(roster_index(field) for field in offered)
+    # Earlier checkpoints keep roster order. The genuine Habitat carrier is
+    # reserved for last to bind terminal whole-record progress in its receipt.
+    assert offered[-1] == FieldKey.HABITAT
+    earlier = offered[:-1]
+    assert [roster_index(field) for field in earlier] == sorted(roster_index(field) for field in earlier)
     assert offered[0] == FieldKey.TAXON
     geography = [field for field in offered if roster_index(field) == roster_index(FieldKey.CITY)]
     assert geography == [FieldKey.CITY, FieldKey.COUNTRY, FieldKey.PRECISE_LOCATION]   # key order within the role

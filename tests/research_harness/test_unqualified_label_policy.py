@@ -4,9 +4,9 @@ Fifteen fields (the twelve literals, county, city and taxon) carry the missing
 policy "unstructured_label_event_unqualified", as verbatim_dts carries its own.
 A specialist's waiting_policy on one of them is then the existing
 needs_human_review path (reason mandatory_unresolved:{field}); a waiting_source
-on it, a failed or unconfigured source, is still an operational block. Nothing
-in evidence.py (the validator and its VALIDATOR_SOURCE_SHA256 pin), the
-projector or the connector SQL names a field, so none of them changes.
+on it, a failed or unconfigured source, is still an operational block. The
+temporal v4 validator pin includes explicit event-context and native endpoint
+qualification. The declared missing-policy roster still belongs to the profile.
 """
 import hashlib
 import inspect
@@ -18,7 +18,9 @@ import pytest
 from specimen_digitization.application.collection_profiles import published_registry
 from specimen_digitization.research_harness import committed_pins, evidence, initial_requests
 from specimen_digitization.research_harness.agents import OUTAGE_GUARDED_FIELDS, SOURCE_OUTAGES, masked_outages
-from specimen_digitization.research_harness.accepted_output import VALIDATOR_SOURCE_SHA256
+from specimen_digitization.research_harness.accepted_output import (
+    VALIDATOR_SOURCE_SHA256, installed_validator_source_sha256,
+)
 from specimen_digitization.research_harness.canonical_materialization_v2 import BLOCKED, TERMINAL, _policy_held
 from specimen_digitization.research_harness.committed_pins import build_committed_pins
 from specimen_digitization.research_harness.contracts import (
@@ -42,7 +44,7 @@ LOOKUPS = {FieldKey.COUNTY, FieldKey.CITY, FieldKey.TAXON}
 DECLARED = LITERALS | LOOKUPS
 NOT_DECLARED = {FieldKey.COUNTRY, FieldKey.PROVINCE_STATE, FieldKey.PRECISE_LOCATION,
     FieldKey.IDENTIFIED_BY_IRN}
-EVIDENCE_PY_SHA256 = "68e60ffdd8d840933df6f52c50f190f9febc2a72ece05810aa4aa08a32e7caa4"  # pragma: allowlist secret
+EVIDENCE_PY_SHA256 = "c55f0222eed9f4e0dcba038b24b978dda755a6d86e416b137dae86f68464e699"  # pragma: allowlist secret
 
 
 def pins():
@@ -78,8 +80,9 @@ def test_evidence_py_declares_verbatim_dts_alone_and_its_current_validator_pin_i
     default = insects_profile(ORG, COLLECTION)
     assert declared(default) == {FieldKey.VERBATIM_DTS: "verbatim_dts_definition_examples"}
     source = Path(evidence.__file__).read_bytes()
-    assert hashlib.sha256(source).hexdigest() == VALIDATOR_SOURCE_SHA256 == EVIDENCE_PY_SHA256
-    assert pins()["sources"]["acceptance_boundary"]["validator_source_sha256"] == EVIDENCE_PY_SHA256
+    assert hashlib.sha256(source).hexdigest() == EVIDENCE_PY_SHA256
+    assert installed_validator_source_sha256(Path(evidence.__file__).parent) == VALIDATOR_SOURCE_SHA256
+    assert pins()["sources"]["acceptance_boundary"]["validator_source_sha256"] == VALIDATOR_SOURCE_SHA256
 
 
 def test_the_job_pins_carry_the_profile_and_every_prompt_pin_its_digest():
