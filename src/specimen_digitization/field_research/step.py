@@ -792,6 +792,8 @@ def _unmatched_taxon(run, task, outcome: FieldOutcome, *, readings, by_name, evi
       that has a word), or first after it on its line. A candidate "sp. 1"
       taken from "Epipsocus sp. 1", or
       from "Epipsocus" with "sp. 1" on the next line, does not qualify;
+    - no part of a label that writes the code is unreadable
+      (_code_label_unreadable, rule A's test on that label);
     - the readers settle on the literal by B1's rule (agreement.labels):
       each label that writes the taxon settles on its own on that one text.
       With no successful lookup that is a label's decided transcript (its
@@ -819,7 +821,7 @@ def _unmatched_taxon(run, task, outcome: FieldOutcome, *, readings, by_name, evi
         return None
     if not task.candidates or any(morphocode(c.literal) != code for c in task.candidates):
         return None
-    if not label_names_no_genus(code, [r.text for r in readings]):
+    if not label_names_no_genus(code, [r.text for r in readings]) or _code_label_unreadable(run, readings, code):
         return None
     want = collapse(literal)
     tools = frozenset(task.tools) & SOURCE_IDS
@@ -1085,6 +1087,25 @@ def _whole_label_read(run, readings: Sequence[Reading]) -> bool:
     return not any(t.value_state == ValueState.UNREADABLE for t in run.transcripts)
 
 
+def _code_label_unreadable(run, readings: Sequence[Reading], code: str) -> bool:
+    """Whether part of a label that writes the morphocode `code` is
+    unreadable, by rule A's test (_whole_label_read) on that label (B2 of
+    #289's third review): a label any of whose readings, readers' texts or
+    transcripts writes the code (checks.writes_code) has a reader's
+    unreadable span, a transcript marked unreadable, or the "[unreadable]"
+    marker in a reader's, a reading's or a transcript's text. An unreadable
+    word on the label may be the code's genus. True also when no text of
+    the run writes the code."""
+    from .checks import writes_code
+
+    texts = [*((r.region_id, r.text) for r in readings), *((o.region_id, o.literal_text) for o in run.observations),
+        *((t.region_id, t.text or "") for t in run.transcripts)]
+    regions = {region for region, text in texts if writes_code(text, code)}
+    return (not regions or any(o.unreadable_spans for o in run.observations if o.region_id in regions)
+        or any(t.value_state == ValueState.UNREADABLE for t in run.transcripts if t.region_id in regions)
+        or any(UNREADABLE_TEXT in text.casefold() for region, text in texts if region in regions))
+
+
 def _organiser_texts(task: FieldTask) -> list[str]:
     """What the organiser found for the field: its candidates' literals, and
     its value's literal and readers' verbatims."""
@@ -1343,22 +1364,26 @@ def taxon_chosen(taxon: FieldValue, settled: str, evidence: Mapping[str, Evidenc
 
 
 def taxon_unmatched(taxon: FieldValue, evidence: Mapping[str, Evidence], lookups: Sequence[Lookup] = (), *,
-        texts: Sequence[str]) -> bool:
+        run) -> bool:
     """Whether the taxon is owner decision B's unmatched name
     (_unmatched_taxon), checked on the stored value: supported, its literal a
-    name with no genus (checks.names_no_genus) that the label, the readings'
-    `texts`, writes with no genus beside it (checks.label_names_no_genus), as
-    written (parsed is the literal or empty), with no normalized value or
-    authority, in the settled layer, citing as support the check row for that
-    literal and the GBIF no-name lookup of the run that the row names; and no
-    GBIF lookup the run stores shows a genus (_lookup_found_a_genus:
-    candidates, or a query that names a genus), so a value stored before
-    that rule does not clear either. A taxon with a genus never is."""
+    name with no genus (checks.names_no_genus) that the label, the `run`'s
+    readings (run_readings), writes with no genus beside it
+    (checks.label_names_no_genus) and with no part of a label that writes it
+    unreadable (_code_label_unreadable), as written (parsed is the literal or
+    empty), with no normalized value or authority, in the settled layer,
+    citing as support the check row for that literal and the GBIF no-name
+    lookup of the run that the row names; and no GBIF lookup the run stores
+    shows a genus (_lookup_found_a_genus: candidates, or a query that names
+    a genus), so a value stored before those rules does not clear either. A
+    taxon with a genus never is."""
     from .checks import label_names_no_genus, morphocode
 
     literal = taxon.literal
     code = morphocode(literal)
-    if (taxon.state != ValueState.SUPPORTED or code is None or not label_names_no_genus(code, texts)
+    readings = run_readings(run)
+    if (taxon.state != ValueState.SUPPORTED or code is None
+            or not label_names_no_genus(code, [r.text for r in readings]) or _code_label_unreadable(run, readings, code)
             or any(_lookup_found_a_genus(lookup) for lookup in lookups)
             or taxon.layer != "settled" or taxon.parsed not in (None, literal)
             or any((taxon.normalized, taxon.authority_id, taxon.authority_identity))):
@@ -1474,7 +1499,7 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
     # 254-260
     taxon = run.fields.get("taxon") or FieldValue()
     if latest_work.get("taxon") in TERMINAL and not (taxon_decided(taxon, run.tool_calls, evidence, run.lookups)
-            or taxon_unmatched(taxon, evidence, run.lookups, texts=[r.text for r in run_readings(run)])):
+            or taxon_unmatched(taxon, evidence, run.lookups, run=run)):
         reasons.append("taxonomy_unresolved")
     # 261-271
     # An empty elevation is mandatory_unresolved above; only a value that is

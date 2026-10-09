@@ -258,6 +258,12 @@ def morphocode(literal: str | None) -> str | None:
     return _code(NO_GENUS.fullmatch(collapse(literal)))
 
 
+def writes_code(text: str, code: str) -> bool:
+    """Whether the text writes a morphocode (NO_GENUS, searched in it) whose
+    code is `code` (morphocode)."""
+    return any(_code(match) == code for match in NO_GENUS.finditer(text))
+
+
 # A word that may be a genus: a capital, then letters or digits ("Epipsocus",
 # a misread "Ep1psocus", "EPIPSOCUS"), or a capital's abbreviation ("E.").
 GENUS_SHAPED = re.compile(r"[A-Z](?:[A-Za-z0-9]*[A-Za-z])?\.?")

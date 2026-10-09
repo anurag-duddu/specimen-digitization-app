@@ -2019,11 +2019,6 @@ def morphocoded(code):
     return TEXT.replace("taxon: Danaus plexippus", "taxon: " + code)
 
 
-def label_texts(run):
-    """Every reading's text, as the clearance rules read the label."""
-    return [reading.text for reading in field_step.run_readings(run)]
-
-
 # 105526321's second label: the first pass decided 2A's "sp. 30 <female sign>"; 2B writes "Sp.30 <female sign>".
 VARIANT = "Sp.30 \N{FEMALE SIGN}"
 
@@ -2050,7 +2045,7 @@ def test_a_taxon_that_names_no_genus_clears_as_written_and_unmatched(tmp_path, a
     assert (lookup.provider, lookup.status, lookup.query, lookup.candidates) == ("gbif", LookupStatus.NO_MATCH, {}, [])
     assert lookup.metadata["verbatim_name"] == MORPHOCODE and lookup.id in row.excerpt and MORPHOCODE in row.excerpt
     assert (row.kind, taxon.evidence_relations[row.id]) == ("derived", "supports")
-    assert field_step.taxon_unmatched(taxon, evidence, run.lookups, texts=label_texts(run))
+    assert field_step.taxon_unmatched(taxon, evidence, run.lookups, run=run)
     assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
     verify_evidence(rig.specimen, rig.blobs)
 
@@ -2140,7 +2135,7 @@ def test_a_taxon_with_a_genus_gbif_cannot_decide_still_goes_to_review(tmp_path):
     assert (taxon.state, taxon.literal) == (ValueState.UNRESOLVED, written)
     assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["mandatory_unresolved:taxon", "taxonomy_unresolved"])
     assert not field_step.taxon_unmatched(taxon, {item.id: item for item in run.evidence}, run.lookups,
-        texts=label_texts(run))
+        run=run)
     assert not [item for item in run.evidence if item.locator == "check:taxon_no_genus"]
 
 
@@ -2169,7 +2164,7 @@ def test_a_code_the_label_writes_beside_a_genus_goes_to_review(tmp_path, written
     assert taxon.state == ValueState.UNRESOLVED and taxon.layer is None
     assert not [item for item in run.evidence if item.locator == "check:taxon_no_genus"]
     assert not field_step.taxon_unmatched(taxon, {item.id: item for item in run.evidence}, run.lookups,
-        texts=label_texts(run))
+        run=run)
 
 
 def test_an_unmatched_taxon_meets_the_agreement_rules_any_answer_meets(tmp_path, monkeypatch):
@@ -2215,7 +2210,7 @@ def test_the_pilots_codes_with_no_genus_beside_them_still_clear_as_unmatched(tmp
     assert (taxon.state, taxon.literal, taxon.reason) == (ValueState.SUPPORTED, code, field_step.UNMATCHED)
     assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
     assert field_step.taxon_unmatched(taxon, {item.id: item for item in run.evidence}, run.lookups,
-        texts=label_texts(run))
+        run=run)
 
 
 def test_a_later_pass_judges_the_label_of_an_unmatched_taxon_again(tmp_path):
@@ -2231,6 +2226,106 @@ def test_a_later_pass_judges_the_label_of_an_unmatched_taxon_again(tmp_path):
         item.text = item.text.replace("taxon: ", "taxon: Epipsocus\n")
     field_step.refinalize(run, today=TODAY)
     assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["taxonomy_unresolved"])
+
+
+def taxon_held_back(run):
+    """The taxon is not cleared as unmatched, in this pass or a later one."""
+    taxon = run.fields["taxon"]
+    assert taxon.state == ValueState.UNRESOLVED and taxon.layer is None
+    assert {"mandatory_unresolved:taxon", "taxonomy_unresolved"} <= set(run.reasons)
+    assert not [item for item in run.evidence if item.locator == "check:taxon_no_genus"]
+    assert not field_step.taxon_unmatched(taxon, {item.id: item for item in run.evidence}, run.lookups, run=run)
+
+
+# B2 of #289's third review: an unreadable word on the label that writes the
+# code may be its genus (the text, the organiser's candidate, its quote).
+SP1 = "sp. 1 \N{FEMALE SIGN}"
+UNREADABLE_BESIDE = {
+    # The reader prompt's marker right before the code, and as 105526328's genus line.
+    "marker-before-the-code": ("[unreadable] " + SP1, SP1, "[unreadable] " + SP1),
+    "marker-as-the-genus-line": ("VI-24-68-7.\n[unreadable]\nsp. 1\n\N{FEMALE SIGN} terminalia", "sp. 1", "sp. 1"),
+    # Elsewhere on the label that writes the code.
+    "marker-elsewhere-on-the-label": ("Mossy [unreadable]\ntaxon: " + SP1, SP1, "taxon: " + SP1),
+}
+
+
+@pytest.mark.parametrize("spans", [False, True], ids=["marker-only", "marker-and-span"])
+@pytest.mark.parametrize(("written", "code", "quote"), UNREADABLE_BESIDE.values(), ids=UNREADABLE_BESIDE)
+def test_an_unreadable_part_of_the_label_that_writes_the_code_keeps_the_taxon_in_review(
+        tmp_path, written, code, quote, spans):
+    """The expert quotes the code with no GBIF lookup, as its brief has it do
+    where it reads no genus: rule A's unreadable test on the code's label
+    (step._code_label_unreadable) holds rule B back, whether or not the
+    readers also list the span."""
+    text = TEXT.replace("taxon: Danaus plexippus", written)
+    rig = build_rig(tmp_path, text, candidates=[*COLLECTORS, *(("taxon", name, code, quote) for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    if spans:
+        start = text.index("[unreadable]")
+        for item in run.observations:
+            item.unreadable_spans = [f"{start}:{start + len('[unreadable]')}"]
+    settle(rig, Scripted({"taxon": cannot_resolve(code)}), tools=NoGenus(rig.blobs))
+    taxon_held_back(run)
+
+
+@pytest.mark.parametrize("unreadable", ["readers-list-a-span", "transcript-marked-unreadable"])
+def test_a_morphocode_label_with_an_unreadable_part_keeps_the_taxon_in_review(tmp_path, unreadable):
+    """Both readers write the code with no genus beside it, and list an
+    unreadable span (as 105526324's readers do on another of its labels), or
+    the label's transcript is marked unreadable."""
+    rig = build_rig(tmp_path, morphocoded(MORPHOCODE))
+    run = rig.specimen.run
+    for item in run.observations if unreadable == "readers-list-a-span" else ():
+        item.unreadable_spans = ["0:3"]
+    for item in run.transcripts if unreadable == "transcript-marked-unreadable" else ():
+        item.value_state = ValueState.UNREADABLE
+    settle(rig, Scripted({"taxon": cannot_resolve(MORPHOCODE)}), tools=NoGenus(rig.blobs))
+    taxon_held_back(run)
+
+
+@pytest.mark.parametrize("unreadable", ["readers-list-a-span", "marker"])
+def test_a_later_pass_holds_back_an_unmatched_taxon_whose_label_is_now_unreadable_in_part(tmp_path, unreadable):
+    """The re-check (taxon_unmatched) applies the same test to the stored value."""
+    rig = build_rig(tmp_path, morphocoded(MORPHOCODE))
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": cannot_resolve(MORPHOCODE)}), tools=NoGenus(rig.blobs))
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+    for item in run.observations:
+        if unreadable == "marker":
+            item.literal_text += "\nMossy [unreadable]"
+        else:
+            item.unreadable_spans = ["0:3"]
+    for item in run.transcripts if unreadable == "marker" else ():
+        item.text += "\nMossy [unreadable]"
+    field_step.refinalize(run, today=TODAY)
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["taxonomy_unresolved"])
+    assert not field_step.taxon_unmatched(run.fields["taxon"], {item.id: item for item in run.evidence},
+        run.lookups, run=run)
+
+
+def test_only_a_label_that_writes_the_code_is_read_for_an_unreadable_part():
+    """105526324: its fourth label is unreadable, its third writes "sp 22"
+    alone. Rule B reads the label that writes the code."""
+    code_label, other = "f553f195", "9fccff86"
+    texts = {code_label: "sp 22\n\N{MALE SIGN} genitalia", other: "[unreadable]"}
+    readings = [Reading(name=f"{number}{reader}", region_id=region, observation_id=f"{region}-{reader}",
+        input_source="raw_reading", text=text) for number, (region, text) in enumerate(texts.items(), 1)
+        for reader in "AB"]
+
+    def run_with(spans=None, state=None, marked=""):
+        return SimpleNamespace(
+            observations=[SimpleNamespace(region_id=region, literal_text=text + (marked if region == code_label else ""),
+                unreadable_spans=list((spans or {}).get(region, ()))) for region, text in texts.items() for _ in "AB"],
+            transcripts=[SimpleNamespace(region_id=region, text=text if region == code_label else None,
+                value_state=state if region == code_label else None) for region, text in texts.items()])
+
+    unreadable = field_step._code_label_unreadable
+    assert not unreadable(run_with({other: ["[unreadable]"]}), readings, "22")
+    assert unreadable(run_with({code_label: ["0:2"]}), readings, "22")
+    assert unreadable(run_with(state=ValueState.UNREADABLE), readings, "22")
+    assert unreadable(run_with(marked="\n[UNREADABLE]"), readings, "22")
+    # No text of the run writes the code.
+    assert unreadable(run_with(), readings, "30")
 
 
 # B1 of #289's second review: the label writes the genus where the label check
@@ -2266,7 +2361,7 @@ def in_review_with_a_genus(run):
     assert taxon.state == ValueState.UNRESOLVED and taxon.layer is None
     assert not [item for item in run.evidence if item.locator == "check:taxon_no_genus"]
     assert not field_step.taxon_unmatched(taxon, {item.id: item for item in run.evidence}, run.lookups,
-        texts=label_texts(run))
+        run=run)
 
 
 @pytest.mark.parametrize("layout", GENUS_ELSEWHERE)
@@ -2358,7 +2453,7 @@ def test_a_stored_unmatched_taxon_whose_run_holds_a_gbif_lookup_of_a_genus_never
     field_step.refinalize(run, today=TODAY)
     assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["taxonomy_unresolved"])
     assert not field_step.taxon_unmatched(run.fields["taxon"], {item.id: item for item in run.evidence},
-        run.lookups, texts=label_texts(run))
+        run.lookups, run=run)
 
 
 @pytest.mark.parametrize(("other", "decided"), [("sp. 39", False), ("Sp.30", False), ("sp. 39", True)],
@@ -2378,7 +2473,7 @@ def test_readers_that_write_different_morphocodes_stay_in_review(tmp_path, other
     assert taxon.state != ValueState.SUPPORTED
     assert {"mandatory_unresolved:taxon", "taxonomy_unresolved"} <= set(run.reasons)
     assert not field_step.taxon_unmatched(taxon, {item.id: item for item in run.evidence}, run.lookups,
-        texts=label_texts(run))
+        run=run)
     assert not [item for item in run.evidence if item.locator == "check:taxon_no_genus"]
 
 
@@ -2556,7 +2651,7 @@ def test_readers_of_an_undecided_label_that_write_one_morphocode_settle_it(tmp_p
     assert (taxon.state, taxon.literal, taxon.input_source) == (ValueState.SUPPORTED, MORPHOCODE, "raw_reading")
     assert set(taxon.verbatim_by_observation.values()) == {MORPHOCODE}
     assert field_step.taxon_unmatched(taxon, {item.id: item for item in run.evidence}, run.lookups,
-        texts=label_texts(run))
+        run=run)
     assert not [reason for reason in run.reasons if "taxon" in reason]
 
 
