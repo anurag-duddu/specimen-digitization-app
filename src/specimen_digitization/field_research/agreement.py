@@ -44,8 +44,8 @@ answer becomes a value (step._refusal). It enforces, in this order:
    when there is no value) with the answer's authority_id.
 
 Point 3 follows research_harness/evidence.py's G20 and G32 rules (725-751:
-one confirmed reader beside the other's captured no-match; a positive
-settlement for each label). It is stricter than field_resolution.py
+one confirmed reader beside the other's captured no-match; labels that
+differ each settled by a source). It is stricter than field_resolution.py
 (178-215), which clears readers that differ when every success names one
 value: here two confirmed readers of one label go to review.
 """

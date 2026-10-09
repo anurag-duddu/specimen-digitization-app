@@ -1394,6 +1394,35 @@ def test_only_a_recorded_choice_of_a_candidate_in_a_stored_lookup_decides_a_taxo
     assert not decided(choice(), key=GBIF_KEY)
 
 
+def test_on_a_label_with_no_decided_transcript_the_way_out_is_a_transcription_decision(tmp_path):
+    """FIELD_RESEARCH.md, after field research: readers that differ go to
+    review; a reviewer's correction of the field, approved, leaves
+    unresolved_transcription (the corrected value has no raw reading behind
+    it); a transcription decision researches the label again, paid again."""
+    rig = build_rig(tmp_path, TEXT, SMYTH, candidates=every_field(*SMITH_OR_SMYTH))
+    mounted(rig, Scripted({"collectors": answering(resolved("J. Smith", reading="1A"))}))
+    done = rig.workflow.step(rig.principal, rig.specimen.id).run
+    region = done.regions[0].id
+    assert (done.disposition, done.reasons) == (Disposition.REVIEW,
+        [f"unresolved_transcription:{region}", "mandatory_unresolved:collectors"])
+    client = review_client(rig)
+    collectors = done.fields["collectors"]
+    after = collectors.model_dump(mode="json", exclude={"evidence_ids"}) | {"state": "supported",
+        "literal": "J. Smith", "reason": "The label reads Smith."}
+    decide(client, rig, "field-1", "field", target_id="collectors", after=after,
+        evidence_ids=list(collectors.evidence_ids))
+    approved = decide(client, rig, "approve-1", "approve")
+    assert (approved.disposition, approved.reasons) == (Disposition.REVIEW, [f"unresolved_transcription:{region}"])
+    corrected = decide(client, rig, "transcription-1", "transcription", target_id=region,
+        after={"text": TEXT, "state": "supported"})
+    assert corrected.stage == "parse" and FIELD_RESEARCH not in corrected.completed_steps
+    mounted(rig, Scripted())
+    rig.workflow.step(rig.principal, rig.specimen.id)  # parse
+    again = rig.workflow.step(rig.principal, rig.specimen.id).run
+    assert again.attempts[FIELD_RESEARCH] == 2 and f"unresolved_transcription:{region}" not in again.reasons
+    assert [call["attempt"] for call in again.paid_calls if call["step"] == FIELD_RESEARCH] == [1, 2]
+
+
 def test_a_transcription_correction_researches_the_reparsed_fields_again(rig):
     mounted(rig, Scripted())
     rig.workflow.step(rig.principal, rig.specimen.id)

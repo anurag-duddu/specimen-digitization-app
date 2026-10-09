@@ -91,10 +91,13 @@ For a run whose profile names a harness route, the workflow hands over at the
 handover runs field research instead of the six specialists:
 
 1. **Inputs.** Every reading of every label (named 1A, 1B, 2A as the organiser
-   names them), the organiser's candidates and settled value for each field,
-   and the profile's field list.
+   names them), the organiser's candidates and settled value for each field
+   (a keyed line the parser read is a candidate of each reading that writes
+   it), and the profile's field list.
 2. **Accurate reads finalize.** A field with no approved source or check whose
-   organiser value is supported is finalized as written, with no model call.
+   organiser value is supported is finalized as written, with no model call,
+   on the readings that write it (of a label with a decided transcript, only
+   the decided reading). The rules of step 5 apply to it.
 3. **One expert per field.** Every other field gets its own Pydantic AI agent
    (`field_<key>`), its own instructions (shared rules plus the field's brief)
    and only its approved tools. All experts run at once.
@@ -103,52 +106,81 @@ handover runs field research instead of the six specialists:
    elevation and catalogue-number checks. One request per distinct query per
    record (shared cache), retries with backoff, GEOLocate spacing kept. Each
    source response is stored once as evidence.
-5. **Checked answers.** An expert's literal must appear exactly in the
-   readings it names; a value that differs from the literal must be a source
-   candidate it was given, or a deterministic check's settled parse of that
-   literal (an ambiguous check's readings are only options for a person).
-   Readers that disagree, and places, follow `field_research/agreement.py`:
-   - A field's readers disagree when the organiser left it ambiguous, or when
-     its candidates across readers carry more than one literal. Literals are
-     compared after NFC and whitespace collapse only, so "E. slope" and
-     "E.slope" disagree.
-   - A label with a decided transcript takes its text from that reading
-     (G19): a resolved literal must be text the decided reading writes. The
-     other reader's different text is kept as contradicting evidence and does
-     not block.
-   - Otherwise readers that disagree settle only when a success answer of the
-     field's approved sources confirms exactly one reader's literal (G20):
-     GBIF asked about exactly that name, or a place source returned a
-     candidate of exactly that name. The answer must take that reader's
-     literal and cite that answer, and each other reader's candidate text stays
-     in the value's lineage, unsettled. A field whose only tools are deterministic
-     checks, or that has no approved source (collectors, habitat, collection
-     method, collection code, verbatim D/T/S), goes to review when its readers
-     disagree.
-   - A place field (country, province or state, county, city) settles only on
-     a cited success answer of a place source whose candidate is the value,
-     with that candidate's authority_id. Precise location stays the verbatim
-     text and follows the decided-transcript rule.
-   - A taxon is GBIF's decision for the whole name its literal writes: the
-     cited success answer's query is the scientific-name parser's query for
-     the literal (the genus, any subgenus, the species epithet and any
-     infraspecific epithet with its marker, as written, with or without the
-     author and year written), or the genus alone for a "sp." identification
-     (G25). A query for part of the name ("Danaus plexippus" for "Danaus
-     plexippus megalippe") or for another name on the line grounds nothing,
-     and a label with no genus ("sp. 30") has no groundable query. The value
-     and identifier are the candidate GBIF decided, never one of its
-     alternatives.
+5. **Checked answers.** The expert's answer check (an answer that breaks it
+   is sent back for correction) and, again, the step before a resolved answer
+   becomes a value apply these rules (`field_research/agreement.py`, on the
+   source answers the field received):
+   - The literal appears exactly in each reading the answer names.
+   - **A whole candidate.** The literal is one of the field's candidate
+     literals, whole, for each reading the answer names (on a label with a
+     decided transcript, the decided reading's): the organiser's candidates,
+     and each keyed line the parser read ("taxon: Danaus plexippus") on each
+     reading that writes the line. Literals are compared after NFC and
+     whitespace collapse only, so "E. slope" and "E.slope" differ. A piece of
+     a reading ("Danaus plexippus" from "Danaus plexippus megalippe",
+     "Sept. '46" from "3 Sept. '46", "San Pedro" from "San Pedro
+     Sacatepequez") is never a literal, and a field with no candidate is never
+     resolved: it goes to review.
+   - A value that differs from the literal is a source candidate the expert
+     was given, or a deterministic check's settled parse of that literal (an
+     ambiguous check's readings are only options for a person). An elevation
+     candidate that writes more than its number ("ca. 1200 m", "300-450 m")
+     is the literal, and a number the elevation check returned for exactly
+     that literal is the value (the briefs name which end).
+   - **The decided transcript (G19).** On a label with a decided transcript,
+     the decided reading's text contains the literal. The other reader's
+     different text is kept as contradicting evidence and does not block.
+   - **Readers and labels that disagree (G20, G27, G32).** Whatever state the
+     organiser gave the field, each label that writes it settles on its own:
+     a label with a decided transcript on its decided reading's one candidate
+     literal (a label whose decided reading writes nothing for the field takes
+     no part); a label whose readers each write the same one literal on that
+     literal; any other label (readers that differ, or one that writes
+     nothing) only when the expert asked the field's approved sources about
+     every distinct text its readers write, exactly one is confirmed by a
+     success answer about it, and every other has a captured no_match answer
+     about it and no success or ambiguous one. An error, a timeout or a text
+     never asked about is not a no-match. A success answer confirms a text as
+     GBIF's decided candidate for the whole name it writes, or as a place
+     source's candidate of exactly that name; a place source was asked about a
+     text when the text is its whole query or the query's first
+     comma-separated part (the name it searches). The field settles when every
+     label settles on the same literal, which is then the answer's literal
+     (citing the confirming answer when a source settled a label), or, for
+     labels that settle on different literals, when a source confirms each
+     label's literal as the answer's authority_id (the same place ID or GBIF
+     usage). Anything else goes to review, with each reader's candidate row
+     still cited. So a field with no approved source (collectors,
+     habitat, collection method, collection code, verbatim D/T/S), or only
+     deterministic checks, goes to review when the readers of a label with no
+     decided transcript differ. This follows the native harness's G20 and G32
+     rules (`research_harness/evidence.py`); it is stricter than
+     `application/field_resolution.py`, which clears readers that differ when
+     every success names one value.
+   - **Places.** A place field (country, province or state, county, city)
+     settles only on a cited success answer of a place source whose candidate
+     is the value, with that candidate's authority_id. Precise location stays
+     the verbatim text.
+   - **The taxon.** A taxon is GBIF's decision for the whole name its
+     candidate literal writes: the cited success answer's query is the
+     scientific-name parser's query for that literal (the genus, any
+     subgenus, the species epithet and any infraspecific epithet with its
+     marker, as written, with or without the author and year written), or the
+     genus alone for a "sp." identification (G25). A query for part of the
+     name or for another name on the line grounds nothing, and a label with no
+     genus ("sp. 30") has no groundable query. The value and identifier are
+     the candidate GBIF decided, never one of its alternatives. The clearance
+     rules check the stored taxon the same way.
 
-   An answer that breaks a check is sent back for correction; an expert whose
-   answer still fails the checks after its retries sends the field to review,
-   never to a retry. The step applies the agreement rules again to every
-   resolved answer before it becomes a value, on the source answers its field
-   received, so an answer that breaks them is ambiguous (readers disagree) or
-   unresolved, never settled. The clearance rules check the taxon the same way.
+   An expert whose answer still fails the checks after its retries sends the
+   field to review, never to a retry. At the step, an answer that breaks the
+   rules is ambiguous (readers or labels disagree) or unresolved, never
+   settled.
 6. **Derived values** (G37, G41, G44) are filled deterministically afterwards
    from settled fields only: elevation copies and exact unit conversion, and
-   the collection date's end from its start.
+   the collection date's end from its start. An elevation settled on a
+   candidate that writes more than its number is read as its parsed value,
+   the check's number.
 7. **One save.** Field values, evidence and reasons are written in one save
    at the end, through the existing record writer. Clearance uses the existing
    scientific rules without blanket human approval (G1). Anything unresolved
@@ -197,6 +229,10 @@ writes. A name that lookup never returned cannot be chosen, and a value typed
 in without that choice stays in review.
 A corrected transcription is the one exception: its fields
 are parsed again from the new text, and field research runs on them again.
+On a label with no decided transcript, a reviewer's field correction leaves
+`unresolved_transcription:<region>` in place, even after approval (the
+corrected value has no raw reading behind it): the way out is a transcription
+decision, which reruns field research and pays for it again.
 
 A field research run that failed (an outage, a model error, a timeout) is
 retried, and the retry researches only the fields that did not settle.
