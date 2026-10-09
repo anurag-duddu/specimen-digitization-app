@@ -747,6 +747,29 @@ def _lookup_found_a_genus(lookup) -> bool:
         (text for text in asked if isinstance(text, str)))
 
 
+def _gbif_asked_another_name(queries: Iterable[str], literal: str) -> bool:
+    """Whether GBIF was asked, for the taxon, any query that is not the
+    morphocode `literal` itself (checks.query_is_the_code: case, spaces,
+    punctuation and sex signs aside; N2 of #289's fourth review). The taxon
+    brief never has the expert send GBIF a name no reading prints, so any
+    other query is its own finding that a reading prints a name, read or
+    misread ("Epipsocu55")."""
+    from .checks import query_is_the_code
+
+    return any(not query_is_the_code(query, literal) for query in queries)
+
+
+def _lookup_asked_another_name(lookup, literal: str) -> bool:
+    """_gbif_asked_another_name for a GBIF lookup the run stores: its query,
+    as sent ("scientificName") or as asked ("name"), or the name it could
+    not read (its "verbatim_name"). The step's own no-name lookup for the
+    literal (_no_name) does not count."""
+    if not isinstance(lookup, Lookup) or lookup.provider != "gbif" or _no_name(lookup, literal):
+        return False
+    asked = (lookup.query.get("scientificName"), lookup.query.get("name"), (lookup.metadata or {}).get("verbatim_name"))
+    return _gbif_asked_another_name((text for text in asked if isinstance(text, str)), literal)
+
+
 def _expert_found_no_genus(outcome: FieldOutcome, code: str, *, by_name, sources: Sequence[SourceAnswer]) -> bool:
     """Whether the taxon's expert itself answered sources_cannot_resolve, as
     rule A requires its expert's own answer (mark_not_on_label, item 1): no
@@ -781,6 +804,9 @@ def _unmatched_taxon(run, task, outcome: FieldOutcome, *, readings, by_name, evi
       field finalized without a model call and the resolver's fallback
       never qualify, nor does an expert any of whose GBIF answers for the
       field has candidates or asked a name that names a genus;
+    - the expert asked GBIF, for the field, no query but the code itself
+      (_gbif_asked_another_name: case, spaces, punctuation and sex signs
+      aside), so a misread genus it asked ("Epipsocu55") holds it back;
     - the organiser's literal names no genus (checks.names_no_genus: "sp. 30
       <female sign>"; "Aus bus n. sp." and "Epipsocus sp. 1" do not qualify);
     - every taxon candidate is the same morphocode, a text with no genus and
@@ -826,6 +852,8 @@ def _unmatched_taxon(run, task, outcome: FieldOutcome, *, readings, by_name, evi
     if task.key != "taxon" or code is None:
         return None
     if not _expert_found_no_genus(outcome, code, by_name=by_name, sources=sources):
+        return None
+    if _gbif_asked_another_name((item.query for item in sources if item.source_id == "gbif"), literal):
         return None
     if not task.candidates or any(morphocode(c.literal) != code for c in task.candidates):
         return None
@@ -1401,8 +1429,10 @@ def taxon_unmatched(taxon: FieldValue, evidence: Mapping[str, Evidence], lookups
     citing as support the check row for that literal and the GBIF no-name
     lookup of the run that the row names; and no GBIF lookup the run stores
     shows a genus (_lookup_found_a_genus: candidates, or a query that names
-    a genus), so a value stored before those rules does not clear either. A
-    taxon with a genus never is."""
+    a genus) or asked anything but the code itself
+    (_lookup_asked_another_name; the step's own no-name lookup aside), so a
+    value stored before those rules does not clear either. A taxon with a
+    genus never is."""
     from .checks import label_names_no_genus, morphocode
 
     literal = taxon.literal
@@ -1411,7 +1441,7 @@ def taxon_unmatched(taxon: FieldValue, evidence: Mapping[str, Evidence], lookups
     if (taxon.state != ValueState.SUPPORTED or code is None
             or not label_names_no_genus(code, [r.text for r in readings]) or _code_label_unreadable(run, readings, code)
             or _doubt_on_the_labels(run, readings)
-            or any(_lookup_found_a_genus(lookup) for lookup in lookups)
+            or any(_lookup_found_a_genus(lookup) or _lookup_asked_another_name(lookup, literal) for lookup in lookups)
             or taxon.layer != "settled" or taxon.parsed not in (None, literal)
             or any((taxon.normalized, taxon.authority_id, taxon.authority_identity))):
         return False

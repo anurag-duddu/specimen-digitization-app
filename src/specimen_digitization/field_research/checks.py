@@ -511,6 +511,21 @@ def query_names_a_genus(query: str | None) -> bool:
     return any(may_be_genus(token) for token in _tokens(NO_GENUS.sub(" ", plain)))
 
 
+def _bare(text: str) -> str:
+    """The text's letters and digits, case folded: case, spaces,
+    punctuation and sex signs stripped."""
+    return "".join(c for c in text.casefold() if c.isalnum())
+
+
+def query_is_the_code(query: str, literal: str) -> bool:
+    """Whether a GBIF query asks the morphocode `literal` itself, case,
+    spaces, punctuation and sex signs aside ("Sp.30" and "SP 30" for "sp. 30
+    <female sign>"; N2 of #289's fourth review). Any other query is not: a
+    genus, a misread one ("Epipsocu55", which query_names_a_genus does not
+    count), a slide number, another code, or nothing at all."""
+    return _bare(query) == _bare(literal)
+
+
 def taxon_query_grounded(query: str, literal: str) -> bool:
     """Whether GBIF was asked about the whole name this taxon literal writes
     (taxon_queries). A query for part of it ("Danaus plexippus" for "Danaus

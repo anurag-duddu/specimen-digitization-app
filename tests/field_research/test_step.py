@@ -2562,6 +2562,46 @@ def test_a_genus_misread_with_a_digit_that_the_expert_asked_gbif_keeps_the_taxon
     taxon_held_back(rig.specimen.run)
 
 
+@pytest.mark.parametrize("asked", ["Epipsocu55", "VI-24-68-7.", "Epipsocu55 sp. 1", "sp. 2"])
+def test_any_gbif_query_but_the_code_itself_keeps_the_taxon_in_review(tmp_path, asked):
+    """N2 of #289's fourth review: the label writes a genus misread with two
+    digits on the line after the code, which neither the label check nor the
+    query check counts; the expert asks GBIF something other than the code
+    (the misread genus, the slide number, another code), and GBIF reads no
+    name in it."""
+    rig = build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", "VI-24-68-7.\n" + SP1 + "\nEpipsocu55"),
+        candidates=[*COLLECTORS, *(("taxon", name, SP1, SP1) for name in ("1A", "1B"))])
+    settle(rig, Scripted({"taxon": cannot_resolve(SP1, asks=[asked])}), tools=NoGenus(rig.blobs))
+    taxon_held_back(rig.specimen.run)
+
+
+@pytest.mark.parametrize("asked", ["Sp.30 \N{FEMALE SIGN}", "SP 30", "sp #30"])
+def test_a_gbif_query_of_the_code_in_another_form_still_clears_it_as_unmatched(tmp_path, asked):
+    """The control: case, spaces, punctuation and sex signs aside, the query
+    is the code itself."""
+    rig = build_rig(tmp_path, morphocoded(MORPHOCODE))
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": cannot_resolve(MORPHOCODE, asks=[asked])}), tools=NoGenus(rig.blobs))
+    assert (run.fields["taxon"].state, run.disposition, run.reasons) == (ValueState.SUPPORTED, Disposition.CLEARED, [])
+    assert field_step.taxon_unmatched(run.fields["taxon"], {item.id: item for item in run.evidence}, run.lookups,
+        run=run)
+
+
+def test_a_stored_unmatched_taxon_whose_run_holds_a_gbif_lookup_of_another_name_never_clears(tmp_path):
+    """The re-check reads the run's stored GBIF lookups alike: a lookup of a
+    misread genus GBIF could not read ("Epipsocu55") takes the clearance back."""
+    rig = build_rig(tmp_path, morphocoded(MORPHOCODE))
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": cannot_resolve(MORPHOCODE)}), tools=NoGenus(rig.blobs))
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+    asked = asyncio.run(NoGenus(rig.blobs).lookup("gbif", "Epipsocu55", field_key="taxon"))
+    run.lookups.append(asked.taxonomy_lookup)
+    field_step.refinalize(run, today=TODAY)
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["taxonomy_unresolved"])
+    assert not field_step.taxon_unmatched(run.fields["taxon"], {item.id: item for item in run.evidence},
+        run.lookups, run=run)
+
+
 @pytest.mark.parametrize("line", ["Epipsocus?", "cf. Epipsocus"])
 def test_a_later_pass_holds_back_an_unmatched_taxon_whose_label_now_writes_a_doubtful_genus(tmp_path, line):
     """The re-check (taxon_unmatched) reads the doubt signs too, wherever the

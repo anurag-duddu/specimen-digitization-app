@@ -433,6 +433,28 @@ def test_the_label_check_and_the_query_check_normalise_case_alike(token):
     assert checks.label_names_no_genus("1", [token + " sp. 1"]) is not checks.query_names_a_genus(token)
 
 
+@pytest.mark.parametrize(("query", "is_the_code"), [
+    # The code itself, case, spaces, punctuation and sex signs aside.
+    ("sp. 30 " + FEMALE, True),
+    ("Sp.30 " + FEMALE, True),
+    ("SP 30", True),
+    ("sp #30 " + MALE, True),
+    ("sp-30", True),
+    # Anything else: a misread genus, a slide number, another code, a name, nothing.
+    ("Epipsocu55", False),
+    ("Epipsocu5", False),
+    ("V-4-67-1", False),
+    ("sp. 39 " + FEMALE, False),
+    ("Epipsocus sp. 30", False),
+    ("30", False),
+    ("", False),
+])
+def test_a_gbif_query_is_the_code_itself_only_case_spaces_punctuation_and_sex_signs_aside(query, is_the_code):
+    from specimen_digitization.field_research import checks
+
+    assert checks.query_is_the_code(query, "sp. 30 " + FEMALE) is is_the_code
+
+
 @pytest.mark.parametrize(("query", "genus"), [
     # A name the parser reads, as written or with a capital and no emphasis marks.
     ("Epipsocus", True),
