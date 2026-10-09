@@ -637,8 +637,8 @@ each other:
   `settled`, and a value a lookup confirmed has layer `settled` even when it
   equals what the label says, as with "Mindanao" confirmed by a lookup. Its
   basis is `label`;
-- layer `derived` today requires a derivation record whose operation is only a
-  copy of an endpoint, a multiplication or a division, so it cannot hold a
+- layer `derived` today, in the research thread, requires a derivation record
+  whose operation is only a copy of an endpoint, a multiplication or a division, so it cannot hold a
   Roman-numeral month or "P.I." read as the Philippines;
 - one value can have a layer of `derived` and a basis of `inferred`, as in a
   conversion from a unit that was itself inferred;
@@ -648,8 +648,8 @@ each other:
 So v2 adds an optional `basis` on each part and leaves `layer` alone. For
 records already written, a basis can be computed for display only, and only
 approximately: `verbatim` gives `label`; `derived` gives `derived`; `settled`
-gives `label` when the literal, the parsed value and the normalized value agree
-once case, spacing and unit marks are ignored (a written "6400'" parsed as
+gives `label` when the values that are present (the literal, the parsed value,
+the normalized value) agree once case, spacing and unit marks are ignored (a written "6400'" parsed as
 6400, or "Mindanao" confirmed by a lookup), and `derived` when they differ ("P.I."
 settled as Philippines, "Chimaltenago" settled as Chimaltenango). Where the
 stored values cannot tell the two apart, nothing is shown instead of a guess. An
@@ -778,7 +778,7 @@ above.
 | `date_identified` | `when` of the identification |
 | `collectors` | the collectors' recorded names, joined in the v1 form |
 | `habitat`, `collection_method` | read as written; no lookup applies |
-| `verbatim_dts` | stays waiting for a policy, as in live v1 (G45 in `docs/execution/golive/PLAN.md`); not filled from every date's wording |
+| `verbatim_dts` | stays waiting for a policy, as in live v1 (the verbatim D/T/S item in `docs/execution/golive/PLAN.md` that the owner has not ruled on); not filled from every date's wording |
 | `taxon` | `taxon` as resolved; the name as written stays in the support |
 | `identified_by_irn` | stays recorded as not resolved until EMu Parties exist (G16) |
 
