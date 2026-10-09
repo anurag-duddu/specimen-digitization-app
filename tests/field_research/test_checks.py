@@ -187,6 +187,8 @@ def test_a_label_with_no_genus_has_no_groundable_taxon_query():
     ("sp n", False),
     ("sp. nr.", False),
     ("sp gr", False),
+    ("sp. aff.", False),
+    ("sp. cf.", False),
     ("sp. ABC", False),
     ("cf. sp. 1", False),
     ("", False),

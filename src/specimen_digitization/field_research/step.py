@@ -753,8 +753,9 @@ def _unmatched_taxon(run, task, outcome: FieldOutcome, *, readings, by_name, evi
       beside "sp. 30 <female sign>", but never "sp. 39");
     - the label names no genus for that code (checks.label_names_no_genus):
       wherever any reading writes it, no word that may be a genus is written
-      immediately before it, on its line or ending the line above, or after
-      it on its line. A candidate "sp. 1" taken from "Epipsocus sp. 1", or
+      immediately before it (on its line, or ending the nearest line above
+      that has a word), or first after it on its line. A candidate "sp. 1"
+      taken from "Epipsocus sp. 1", or
       from "Epipsocus" with "sp. 1" on the next line, does not qualify;
     - the readers settle on the literal by B1's rule (agreement.labels):
       each label that writes the taxon settles on its own on that one text.

@@ -2233,7 +2233,8 @@ def test_a_later_pass_judges_the_label_of_an_unmatched_taxon_again(tmp_path):
 def test_readers_that_write_different_morphocodes_stay_in_review(tmp_path, other, decided):
     """1A writes "sp. 30" and 1B something else, and GBIF matches neither:
     with no first-pass pick even the same code written differently stays,
-    and a decided reading never settles beside another reader's other code."""
+    and a decided reading never settles beside another reader's other code
+    that the organiser gives as a candidate."""
     taxa = [("taxon", "1A", "sp. 30", "taxon: sp. 30"), ("taxon", "1B", other, "taxon: " + other)]
     # With a decided transcript the keyed-line parser gives 1A's candidates itself.
     candidates = [*COLLECTORS, taxa[1]] if decided else every_field(*taxa)
@@ -2246,6 +2247,19 @@ def test_readers_that_write_different_morphocodes_stay_in_review(tmp_path, other
     assert not field_step.taxon_unmatched(taxon, {item.id: item for item in run.evidence}, run.lookups,
         texts=label_texts(run))
     assert not [item for item in run.evidence if item.locator == "check:taxon_no_genus"]
+
+
+def test_a_decided_readings_code_clears_alone_when_the_organiser_gives_no_other_readers_code(tmp_path):
+    """G19 as #284 applies it to every field (N4 of #289's review): 1A is the
+    decided transcript, 1B writes "sp. 39", and the organiser gives no
+    taxon candidate, so the keyed-line parser's "sp. 30" of the decided
+    reading is the only one, and the other reader's text is evidence only."""
+    rig = build_rig(tmp_path, morphocoded("sp. 30"), morphocoded("sp. 39"), decided=True)
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": cannot_resolve("sp. 30", asks=["sp. 30"])}), tools=NoGenus(rig.blobs))
+    taxon = run.fields["taxon"]
+    assert (taxon.state, taxon.literal, taxon.input_source) == (ValueState.SUPPORTED, "sp. 30", "decided_transcript")
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
 
 
 def test_the_not_on_label_list_is_the_published_profiles_and_reaches_a_pinned_snapshot(rig):

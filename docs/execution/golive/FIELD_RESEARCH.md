@@ -126,12 +126,15 @@ handover runs field research instead of the six specialists:
      review. A candidate can itself be a piece of its reading, since the
      organiser's candidate need only lie inside its quote; for the taxon,
      the scientific-name parser reads the candidate's quote from the literal
-     on (`checks.longer_name`), and a candidate whose quote writes a longer
-     name there ("Danaus plexippus" quoting "Danaus plexippus megalippe")
-     never settles the taxon: it goes to review ("The label writes a longer
-     scientific name than this value."). A keyed line's "taxon:", an author
-     and year, a sex sign or "sp. 1" are no longer name. Other fields'
-     candidates are not checked against their quotes.
+     on, and, for a literal in which it reads no genus, with the word the
+     quote writes immediately before the literal when that word may be a
+     genus (`checks.longer_name`). A candidate whose quote writes a longer
+     name there ("Danaus plexippus" quoting "Danaus plexippus megalippe",
+     "sp. 1" quoting "Epipsocus sp. 1") never settles the taxon: it goes to
+     review ("The label writes a longer scientific name than this value.").
+     A keyed line's "taxon:", an author and year, a sex sign or "sp. 1" are
+     no longer name. Other fields' candidates are not checked against their
+     quotes.
    - A value that differs from the literal is a source candidate the expert
      was given, or a deterministic check's settled parse of that literal (an
      ambiguous check's readings are only options for a person). An elevation
@@ -393,24 +396,38 @@ this one, gets its own entry.
 **When a listed field clears as not on the label.** Only when all of these
 hold (`step.mark_not_on_label`, after the derived values, so a derivable
 elevation is derived first, and only for a field a person has not decided):
-1. Its expert searched and answered that no reading states it
-   (label_lacks_value), with no failure. A field finalized without a model
-   call, or a fallback answer (sources_cannot_resolve), never qualifies.
+1. Its expert itself answered that no reading states it
+   (label_lacks_value), with no failure, in this attempt. The field was not
+   finalized without a model call, so the answer is the model's; no lookup
+   is required, since a field such as the habitat has no source to search.
+   The resolver's fallback, put in place of an answer the expert never gave
+   (out of attempts, or answers that failed their checks), is
+   sources_cannot_resolve, so it never qualifies.
 2. Its value is still not present.
 3. Label coverage is confirmed, every label has two or more readings, and
    every reading has text.
-4. No part of any label is unreadable: no reader's unreadable span or
-   "[unreadable]" text, and no transcript marked unreadable.
+4. No part of any label is unreadable: no reader's unreadable span, no
+   transcript marked unreadable, and no "[unreadable]" marker (the one the
+   reader prompt asks for in place of each unreadable span) anywhere in a
+   reader's, a reading's or a transcript's text.
 5. The organiser found no text for it: no candidate, no literal, no
    reader's verbatim. For a county, a city or a precise location, a text
-   counts as absent only when it sits inside the literal of another settled
-   place field (both case folded, whitespace collapsed): the organiser's
+   counts as absent only when its whole words, compared by the place
+   comparison key (case, accents and punctuation aside, "Mt." read as
+   "mount"), are a run of the words of another settled place field's
+   literal, and it writes no unit word of its own (County, Co., Prov.,
+   Dept., Mun. and the others the place tool knows): the organiser's
    "Mt. McKinley" as a city, inside the settled precise location "E. slope
    Mt. McKinley", or the town "Yepocapa" as a precise location beside the
-   settled city "Yepocapa".
+   settled city "Yepocapa". "Lee" beside the city "Leesburg", or "Cook
+   County" inside the precise location "Cook County Forest Preserve", does
+   not count.
 6. For an elevation, no reading writes an elevation, as the place tool
    reads one (`georef_locality.read_locality`, on each reading's whole text
-   and on each of its lines).
+   and on each of its lines), nor a number in metres above sea level
+   ("2000 msnm", "1200 masl", "1200 m.s.n.m.", "1200 m snm",
+   `step.SEA_LEVEL_METRES`), which the place tool does not read when its
+   unit is written as one word.
 7. For a precise location, a city or a county is settled: the readings
    then carry nothing finer than the places settled (the town-only labels
    of 105526328 to 105526330).
@@ -429,20 +446,51 @@ to review when the label lacks them, as does any listed field a reading
 writes, a label with an unreadable part, and a label whose coverage is not
 confirmed.
 
-**A taxon with no genus (B).** A taxon whose label writes only a morphocode
-with no genus ("sp. 30" with a sex sign) clears as written, marked
-unmatched (`step._unmatched_taxon`), when its expert found that GBIF cannot
-resolve it (sources_cannot_resolve) and:
-- the organiser's literal names no genus (`checks.names_no_genus`: the
+**A taxon with no genus (B).** A taxon whose label names no genus for its
+morphocode ("sp. 30" with a sex sign, and no genus written beside it)
+clears as written, marked unmatched (`step._unmatched_taxon`), only when
+all of these hold:
+- its expert itself answered that GBIF cannot resolve it
+  (sources_cannot_resolve), with no failure, not finalized without a model
+  call, and not as the resolver's fallback (`FieldOutcome.fallback`: an expert out of
+  attempts, or whose answers kept failing their checks); and it answered
+  after a GBIF lookup attempt for the field, or quoting as its literal the
+  morphocode a reading it names writes (`step._expert_found_no_genus`);
+- the organiser's literal is a morphocode (`checks.names_no_genus`: the
   scientific-name parser reads no name in it, it has no whole-name GBIF
-  query, and it is "sp.", a number or a short code, and optional sex signs);
+  query, and it is "sp.", then a number with an optional letter, or a
+  short lower-case code after a space or a period, then optional sex
+  signs; "spp", "sp. nov.", "sp. n.", "sp. aff." and "sp. cf." are none);
 - every taxon candidate is the same morphocode (`checks.morphocode`: the
   same number or code, case, spacing, punctuation and sex signs aside, so a
-  reader's "Sp.30" beside "sp. 30", never "sp. 39");
+  reader's "Sp.30" beside "sp. 30", never "sp. 39"). This compares the
+  organiser's candidates. Readers of a label with no decided transcript
+  whose codes differ never settle (the readers' rule below). On a label
+  with a decided transcript, the rule refuses another reader's different
+  code only when the organiser gives that reader's text as a candidate;
+  where it gives none, the decided transcript's code clears alone, as G19
+  decides every field on a decided label (#284);
+- the label names no genus for that code (`checks.label_names_no_genus`):
+  this is judged on every reading's text, not on the organiser's literal.
+  Wherever any reading writes the code, the word written immediately
+  before it (on its line, or, when only sex signs or punctuation precede
+  it there, the last word of the nearest line above that has one; "cf.",
+  "aff." and "nr." passed over) and the first word after it on its line
+  may not be a word that may be a genus: a capital, alone or followed by
+  letters and digits ending in a letter, with an optional final period
+  ("Epipsocus", "Ep1psocus", "EPIPSOCUS", "E."). So "Epipsocus sp. 1",
+  and "Epipsocus" with "sp. 1" on the next line (as on 105526328), never
+  clear as unmatched, whatever the organiser's candidate is; the
+  pilot's 105526321 ("Mossy forest 6400'" above "sp. 30"), 105526326
+  ("Sp. 22" on a label of its own) and 105526327 ("V-4-67-1" above
+  "sp 22") clear;
 - the readers settle on the literal by the rule for readers that disagree
   (step 5 above): with no successful lookup, that is a label's decided
   transcript, its other readers evidence only, or readers of a label with
-  none that each write exactly that text.
+  none that each write exactly that text;
+- the value meets the agreement rules every resolved answer meets
+  (`agreement.refusal`): among them, no candidate of it may quote a longer
+  name around it.
 
 The value is supported, with the literal as written, no authority, the
 settled layer and the reason "Unmatched: the label names no genus, so GBIF
@@ -451,8 +499,10 @@ has nothing to match". It cites one check row (locator
 run keeps among its lookups (`lookup.no_name_lookup`: no match, and no
 request made; the step adds it when the expert never asked GBIF that
 literal). The clearance rules do not give such a taxon taxonomy_unresolved
-(`step.taxon_unmatched`). A taxon with a genus that GBIF cannot decide, such
-as 105526328's "Epipsocus", still goes to review.
+(`step.taxon_unmatched`) while it cites that row and the run's readings
+still name no genus beside its code. A taxon with a genus that GBIF cannot
+decide, such as 105526328's "Epipsocus", still goes to review, whether the
+organiser's candidate is "Epipsocus sp. 1" or only "sp. 1".
 
 **Known limitation.** The canonical projection skips a field with no literal
 (`application/projection.py`, `_fields`), so the record in Data Connect does
@@ -488,7 +538,9 @@ A field cleared as not on the label, or a taxon cleared as unmatched, is
 reopened like any other field with Correct value: the reviewer's value is
 kept as made and the record waits for that reviewer's approval. Every later
 pass checks a not-on-the-label value again: it clears only while it cites
-its check row and that row names the run's current readings. A not-present
+its check row and that row names the run's current readings. An unmatched
+taxon is checked again too: it clears only while it cites its check row
+and the run's readings name no genus beside its code. A not-present
 value with no such row, as every record researched before 2026-10-09 has,
 never clears on a re-check; only new research writes the row.
 
