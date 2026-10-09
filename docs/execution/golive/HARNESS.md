@@ -99,11 +99,12 @@ model's pick stays in the call's raw response and its rationale.
 error, HTTP 402 included, is retried with backoff through the workflow's
 existing retry, then blocks as operational; an authentication or authorization
 error blocks at once. A timeout or a server error may follow an accepted,
-billable call, so, as for the readers, it is `external_outcome_unknown` and
-waits for the operator. A response that still fails validation after Pydantic
-AI's one output retry is `model_malformed_response`, a known operational block
-that accepts retry; this applies to the readers' calls and to the legacy
-extraction call in `parse` (`harness.py`) too. A missing pinned route or prompt
+billable call, so for the first pass it is `external_outcome_unknown` and
+waits for the operator; a reader's is not (**A reader's failures**, below). A
+response that still fails validation after Pydantic AI's one output retry is
+`model_malformed_response`, a known operational block that accepts retry; this
+applies to the legacy extraction call in `parse` (`harness.py`) and the first
+pass too, and a reader's is retried first (below). A missing pinned route or prompt
 blocks as `pinned_model_route_unavailable` or `pinned_prompt_unavailable`. None
 of these blocks produces a queue disposition.
 
@@ -112,9 +113,30 @@ incomplete tool call, or a last response whose finish reason is `length`, raises
 Pydantic AI's own `UsageLimitExceeded`, as the run's token and request limits do
 (agreed with S3, 2026-09-25). The readers' calls and the legacy extraction call
 share this split. PLAN 4.3 makes a reader stopped by its token cap a failed
-reading, which S3's #153 builds; the legacy extraction call has no cap handler,
-so a cap hit there, a length stop included, blocks as
+reading: its step completes with no observation (`ReadingStopped`, from #153's
+re-cut #232) and is not asked again; the legacy extraction call has no cap
+handler, so a cap hit there, a length stop included, blocks as
 `external_outcome_unknown`.
+
+**A reader's failures** (G6, 2026-10-09). A reading is a pure read: the parent
+saves its observation only after the call returns, so asking again cannot corrupt
+data or duplicate an observation, and costs one more reservation. A reader whose
+child ends as anything but an answer (a deadline, a kill, a transport error, an
+exception the child does not map), or whose provider answers 429, a server error,
+a timeout or a malformed answer, is therefore a known failure and never
+`external_outcome_unknown`. The workflow retries the step through its existing
+retry (`max_attempts`, backing off); each attempt reserves its cost again, and an
+attempt whose outcome is unknown keeps its reservation in full (PLAN 4.3). When
+the attempts are used up, the step completes with no observation, as for a cap
+hit, and the queue decision sends the record to review with
+`independent_observations_missing:{region}` (a region no reader could read keeps
+a transcript with no text and no readings). An authentication or authorization
+error still blocks at once and names its cause, since asking again repeats it.
+The rule is `reliability.reader_failure_is_recoverable`; the first pass, the
+organiser, field research and every effectful step keep their unknown outcome as
+a block, and so does a reader of the evidence pilot, whose exact cohort
+reservations and zero retries never replay a paid call. A run that was already
+blocked as `external_outcome_unknown` stays so.
 
 **Tracing.** The agent carries no instrumentation override; it inherits the
 lane's global setting (content on, binary off in approved-content mode, S3 T5).

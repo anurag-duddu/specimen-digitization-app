@@ -22,6 +22,64 @@ class AdapterFailure(RuntimeError):
         self.outcome_unknown = outcome_unknown
 
 
+class ReadingStopped(RuntimeError):
+    """A reading stopped by its token limits (#153).
+
+    It is a failed reading with a known outcome: its step completes with no
+    observation, and the run goes on.
+    """
+
+    def __init__(self, code: str):
+        super().__init__(code)
+        self.code = code
+
+
+def reader_failure_is_recoverable(run, step: str) -> bool:
+    """Whether a failed model call of this step is a known, retryable failure.
+
+    A reader (``transcribe``) is a pure read. It writes nothing of its own: the
+    parent saves its observation only after the call returns, so asking again
+    cannot corrupt data or duplicate an observation, and costs one more
+    reservation at most (a retry reserves again, and an attempt whose outcome is
+    unknown keeps its reservation in full). A reader's failure is therefore known
+    even where the provider may have billed (a timeout, a 5xx, a child that
+    ended without an answer): the workflow retries it within ``max_attempts``,
+    then completes the reading with no observation so the record goes to review
+    (G6). It never blocks the run as ``external_outcome_unknown``.
+
+    ``step`` is a workflow step (``transcribe:<region>:<route>``) or a model
+    operation (``transcribe``). Every other step keeps its unknown outcome as a
+    block: a first pass, the organiser, field research and every effectful step
+    may have changed something that a repeat would change again. So does a
+    reader of the evidence pilot, whose exact cohort reservations and zero
+    retries never replay a paid call. This is the one place that rule lives;
+    widening or narrowing it is this line.
+    """
+    return (
+        step.split(":", 1)[0] == "transcribe"
+        and "evidence_pilot" not in run.dependencies
+    )
+
+
+def failure_is_retryable(run, step: str, status: LookupStatus) -> bool:
+    """Whether a known failure of this step is scheduled for another attempt.
+
+    A provider that rate-limited, timed out or failed is asked again. A reader's
+    malformed answer is too: it is a pure read and the next answer may be valid.
+    A credential or permission failure is not (asking again repeats it), so it
+    stays a block that names its cause.
+    """
+    if status in {
+        LookupStatus.RATE_LIMITED,
+        LookupStatus.TIMEOUT,
+        LookupStatus.PROVIDER,
+    }:
+        return True
+    return status == LookupStatus.MALFORMED and reader_failure_is_recoverable(
+        run, step
+    )
+
+
 def retry_after(value: str | None, current: datetime | None = None) -> int | None:
     if not value:
         return None

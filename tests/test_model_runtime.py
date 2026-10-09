@@ -239,6 +239,9 @@ def test_hard_model_factories_independent_observations_extraction_and_restart(
 def test_whole_model_deadline_kills_child_preserves_unknown_and_no_replay(
     tmp_path, monkeypatch, phase, operation
 ):
+    # The organiser's deadline preserves an unknown outcome. A reader is a pure
+    # read: its deadline is a known failure that is retried, never replayed at
+    # once and never an unknown outcome (reliability.reader_failure_is_recoverable).
     monkeypatch.setenv("SPECIMEN_APPROVED_INFERENCE", "true")
     monkeypatch.setenv("SPECIMEN_TEST_MODEL_SLOW_PHASE", phase)
     monkeypatch.setenv("SPECIMEN_TEST_MODEL_SLOW_OPERATION", operation)
@@ -254,8 +257,14 @@ def test_whole_model_deadline_kills_child_preserves_unknown_and_no_replay(
         row = intake(http)
         path = PREFIX + "/specimens/" + row["specimen_id"]
         work = http.get(path + "/workspace", headers=HEADERS).json()
-        assert work["blocker"] == "external_outcome_unknown"
-        assert work["run"]["lease_until"] and work["disposition"] is None
+        if operation == "transcribe":
+            assert work["blocker"] == "reader_deadline_exceeded"
+            assert work["run"]["stage"] == "retry_scheduled"
+            assert work["run"]["lease_until"] is None
+        else:
+            assert work["blocker"] == "external_outcome_unknown"
+            assert work["run"]["lease_until"]
+        assert work["disposition"] is None
         pid = int((tmp_path / "child-pid").read_text())
         with pytest.raises(ProcessLookupError):
             os.kill(pid, 0)

@@ -197,19 +197,58 @@ class LateReader(DisagreeingReaders):
         return super().first_pass(specimen, region, readings)
 
 
-@pytest.mark.parametrize("late", ["transcribe", "first_pass"])
-def test_any_other_paid_call_past_its_budget_still_waits_for_reconciliation(
-    tmp_path, late
-):
-    adapters = LateReader(LocalBlobs(tmp_path / "blobs"), late)
+def test_a_first_pass_past_its_budget_still_waits_for_reconciliation(tmp_path):
+    # A reader past its budget does not (below): only a reading is a pure read.
+    adapters = LateReader(LocalBlobs(tmp_path / "blobs"), "first_pass")
     workflow, principal, ident = start(tmp_path, adapters)
     workflow.monotonic = lambda: adapters.elapsed[0]
     run = workflow.drain(principal, ident).run
-    before = "transcribe:" if late == "first_pass" else "segment"
-    assert run.completed_steps[-1].startswith(before)
+    assert run.completed_steps[-1].startswith("transcribe:")
     assert (run.stage, run.blocker) == ("processing_blocked", "external_outcome_unknown")
     assert run.reasons == ["external_stage_deadline_exceeded"]
     assert run.next_retry_at is None and run.lease_until is not None
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        AdapterFailure("provider_timeout", LookupStatus.TIMEOUT),
+        # What run_agent_bounded raises for a provider timeout: it may have billed.
+        AdapterFailure("provider_deadline_outcome_unknown", outcome_unknown=True),
+    ],
+    ids=["known-timeout", "outcome-unknown"],
+)
+def test_a_reader_past_its_budget_is_retried_and_never_waits_for_reconciliation(
+    tmp_path, failure
+):
+    adapters = LateReader(LocalBlobs(tmp_path / "blobs"), "transcribe", failure)
+    workflow, principal, ident = start(tmp_path, adapters)
+    workflow.monotonic = lambda: adapters.elapsed[0]
+    run = workflow.drain(principal, ident).run
+    assert run.completed_steps[-1] == "segment"
+    # The deadline override would stamp the unknown outcome and keep the lease.
+    assert (run.stage, run.blocker) == ("retry_scheduled", failure.code)
+    assert run.reasons == [] and run.next_retry_at and run.lease_until is None
+    steps = [
+        f"transcribe:{region.id}:{route}"
+        for region in run.regions
+        for route in run.profile.routes
+    ]
+    now = datetime.now(timezone.utc)
+    for day in range(1, 12):
+        workflow.clock = lambda later=now + timedelta(days=day): later
+        run = workflow.drain(principal, ident).run
+        assert run.blocker != "external_outcome_unknown", run.reasons
+        if run.stage != "retry_scheduled":
+            break
+    # Every attempt failed, so both readings ended with no observation and the
+    # run went on past them; it never waited for an operator. (This fixture's
+    # clock jumps a deadline per attempt, which a later stage's own elapsed
+    # budget then refuses, as a known block.)
+    assert [run.attempts[step] for step in steps] == [3, 3]
+    assert run.observations == [] and set(steps) <= set(run.completed_steps)
+    assert "adjudicate" in run.completed_steps
+    assert run.blocker != "external_outcome_unknown" and run.lease_until is None
 
 
 @pytest.mark.parametrize(
@@ -222,15 +261,16 @@ def test_any_other_paid_call_past_its_budget_still_waits_for_reconciliation(
             "segment",
             AdapterFailure("sam3_timeout", LookupStatus.TIMEOUT, outcome_unknown=True),
         ),
-        # and a SAM 3 code on another paid step.
+        # and a SAM 3 code on another paid step (a first pass; a reader's
+        # known failure keeps its retry whatever its code, test below).
         (
-            "transcribe",
+            "first_pass",
             AdapterFailure(
                 "sam3_timeout", LookupStatus.TIMEOUT, retry_after_seconds=SAM3_RETRY_SECONDS
             ),
         ),
     ],
-    ids=["segment-other-code", "segment-outcome-unknown", "transcribe-sam3-code"],
+    ids=["segment-other-code", "segment-outcome-unknown", "first-pass-sam3-code"],
 )
 def test_only_a_known_sam3_failure_on_segment_keeps_its_retry_past_the_budget(
     tmp_path, late, failure
