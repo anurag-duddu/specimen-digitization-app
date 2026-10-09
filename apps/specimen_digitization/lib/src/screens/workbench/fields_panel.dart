@@ -406,7 +406,7 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
           key: ValueKey<String>('field-row:${widget.specimen.id}:$key'),
           title: name,
           summary: summary,
-          trailing: basis == null ? null : ValueBasisChip(basis: basis),
+          trailing: basis == null ? null : valueBasisChip(basis),
           semanticsLabel:
               '$name${field['required'] == true ? ', required' : ', optional'}. $summary'
               '${basis == null ? '' : '. ${basis.semanticsLabel}'}',

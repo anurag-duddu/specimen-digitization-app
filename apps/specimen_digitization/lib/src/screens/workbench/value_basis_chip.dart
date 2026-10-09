@@ -5,19 +5,13 @@
 /// the meaning, so colour is never the only carrier.
 library;
 
-import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import 'value_basis.dart';
 
 /// One small chip reading "As written", "Derived" or "Inferred".
-class ValueBasisChip extends StatelessWidget {
-  const ValueBasisChip({super.key, required this.basis});
-
-  /// The basis to name.
-  final ValueBasis basis;
-
-  @override
-  Widget build(BuildContext context) =>
-      UiChip(label: basis.label, semanticsLabel: basis.semanticsLabel);
-}
+///
+/// A [UiChip] itself, not a wrapper, because `UiDisclosure.trailing` measures
+/// the chip it is given to decide whether it fits beside the title.
+UiChip valueBasisChip(ValueBasis basis) =>
+    UiChip(label: basis.label, semanticsLabel: basis.semanticsLabel);

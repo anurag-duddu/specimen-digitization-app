@@ -6,8 +6,10 @@ import 'package:flutter/widgets.dart';
 import '../../foundation/icons.dart';
 import '../../foundation/motion.dart';
 import '../../foundation/theme.dart';
+import '../../primitives/fit.dart';
 import '../../primitives/label.dart';
 import '../../primitives/pressable.dart';
+import '../actions/chip.dart';
 
 /// The resolved paint of one disclosure.
 @immutable
@@ -92,13 +94,6 @@ class UiDisclosureStyle {
   /// Two, the same as a list row's subtitle: the summary is the row's second
   /// line and is content rather than a label (11 section 3.3).
   static const int summaryMaxLines = 2;
-
-  /// The share of the header's width a `trailing` may take.
-  ///
-  /// A slot the control cannot measure is bounded rather than trusted
-  /// (11 section 3.3): the title and summary keep the rest of the line, and a
-  /// trailing wider than its share ellipsises through its own fit rules.
-  static const double trailingShare = 0.4;
 }
 
 /// A row that reveals a body.
@@ -130,13 +125,17 @@ class UiDisclosure extends StatefulWidget {
   /// A second line under the title, saying what is behind the row.
   final String? summary;
 
-  /// A small static widget at the end of the header, before the caret: a chip
-  /// that qualifies the row, never a control.
+  /// A chip that qualifies the row: at the end of the header, before the
+  /// caret, while the title fits beside it, and on a line of its own under the
+  /// title and summary when it does not (11 section 3.3).
   ///
-  /// It sits inside the header's press target, so a press on it toggles the
-  /// row, and its own semantics are excluded with the rest of the header's.
-  /// What it says must therefore be in [semanticsLabel] as well.
-  final Widget? trailing;
+  /// A chip and never a control: it sits inside the header's press target, so
+  /// a press on it toggles the row, and its own semantics are excluded with
+  /// the rest of the header's. What it says must therefore be in
+  /// [semanticsLabel] as well. It is a [UiChip] rather than any widget
+  /// because the header measures it, through [UiChip.intrinsicWidthIn], to
+  /// decide where it goes.
+  final UiChip? trailing;
 
   /// Hides the summary from the header and its default semantics while open.
   ///
@@ -178,29 +177,64 @@ class _UiDisclosureState extends State<UiDisclosure> {
     return summary == null ? widget.title : '${widget.title}. $summary';
   }
 
-  /// The title over its summary, which takes whatever the line has left.
-  Widget _text(UiDisclosureStyle style) => Column(
-    mainAxisSize: MainAxisSize.min,
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: <Widget>[
-      UiLabel(
-        widget.title,
-        style: style.title.copyWith(color: style.titleColor),
+  /// The title over its summary, which takes whatever the line has left, and
+  /// [under] beneath both where the header has moved its trailing there.
+  Widget _text(UiDisclosureStyle style, TextStyle title, {Widget? under}) =>
+      Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          UiLabel(widget.title, style: title),
+          // The summary is content, not a label: it is the row's second line,
+          // the same object a list row's subtitle is, so it wraps to two
+          // lines before it is cut (11 section 3.3).
+          if (_visibleSummary != null)
+            Text(
+              _visibleSummary!,
+              style: style.summary.copyWith(color: style.summaryColor),
+              maxLines: UiDisclosureStyle.summaryMaxLines,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ?under,
+        ],
+      );
+
+  /// True when the summary would run past its last line in [width].
+  ///
+  /// The summary is content and wraps, but only to
+  /// [UiDisclosureStyle.summaryMaxLines]: a chip
+  /// that took the width the summary needed would cut its last words off
+  /// ("Required"), and the cut words are the review state.
+  bool _summaryCut(
+    BuildContext context,
+    UiDisclosureStyle style,
+    double width,
+  ) {
+    final String? summary = _visibleSummary;
+    if (summary == null) return false;
+    final TextPainter painter = TextPainter(
+      text: TextSpan(
+        text: summary,
+        style: DefaultTextStyle.of(context).style.merge(style.summary),
       ),
-      // The summary is content, not a label: it is the row's second line, the
-      // same object a list row's subtitle is, so it wraps to two lines before
-      // it is cut (11 section 3.3).
-      if (_visibleSummary != null)
-        Text(
-          _visibleSummary!,
-          style: style.summary.copyWith(color: style.summaryColor),
-          maxLines: UiDisclosureStyle.summaryMaxLines,
-          overflow: TextOverflow.ellipsis,
-        ),
-    ],
-  );
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: UiDisclosureStyle.summaryMaxLines,
+    )..layout(maxWidth: width);
+    final bool cut = painter.didExceedMaxLines;
+    painter.dispose();
+    return cut;
+  }
 
   /// The header's line: text, the optional trailing, and the caret.
+  ///
+  /// The trailing keeps the line while the whole of the title and the whole
+  /// of the summary still fit beside it. A title is a label, which never
+  /// wraps and never loses a word to a neighbour (11 section 3.3, rules 1 and
+  /// 2), and a summary is content that wraps to two lines before it is cut,
+  /// so when either would not fit beside the chip the chip moves under the
+  /// text, at the start of its own line, rather than squeezing the words into
+  /// an ellipsis.
   Widget _headerRow(UiThemeData ui, UiDisclosureStyle style) {
     final Widget caret = AnimatedRotation(
       turns: _open ? UiDisclosureStyle.caretTurns : 0,
@@ -212,33 +246,63 @@ class _UiDisclosureState extends State<UiDisclosure> {
         color: style.caretColor,
       ),
     );
-    final Widget? trailing = widget.trailing;
+    final TextStyle title = style.title.copyWith(color: style.titleColor);
+    final UiChip? trailing = widget.trailing;
     if (trailing == null) {
       return Row(
         children: <Widget>[
-          Expanded(child: _text(style)),
+          Expanded(child: _text(style, title)),
           SizedBox(width: style.gap),
           caret,
         ],
       );
     }
-    // A trailing the control cannot measure is bounded to a share of the
-    // line, so the title and summary keep the rest of it.
     return LayoutBuilder(
-      builder: (BuildContext context, BoxConstraints box) => Row(
-        children: <Widget>[
-          Expanded(child: _text(style)),
-          SizedBox(width: style.gap),
-          ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: box.maxWidth * UiDisclosureStyle.trailingShare,
+      builder: (BuildContext context, BoxConstraints box) {
+        final double titleWidth = measureLabel(
+          context,
+          widget.title,
+          DefaultTextStyle.of(context).style.merge(title),
+        ).width;
+        // What the line owes to everything but the text: the gap before the
+        // chip, the chip, the gap before the caret and the caret.
+        final double beside =
+            style.gap +
+            trailing.intrinsicWidthIn(context) +
+            style.gap +
+            UiIconSize.inline.dimension;
+        final double room = box.maxWidth - beside;
+        if (titleWidth <= room && !_summaryCut(context, style, room)) {
+          return Row(
+            children: <Widget>[
+              Expanded(child: _text(style, title)),
+              SizedBox(width: style.gap),
+              trailing,
+              SizedBox(width: style.gap),
+              caret,
+            ],
+          );
+        }
+        return Row(
+          children: <Widget>[
+            Expanded(
+              child: _text(
+                style,
+                title,
+                under: Padding(
+                  padding: EdgeInsetsDirectional.only(top: ui.space.s1),
+                  child: Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: trailing,
+                  ),
+                ),
+              ),
             ),
-            child: trailing,
-          ),
-          SizedBox(width: style.gap),
-          caret,
-        ],
-      ),
+            SizedBox(width: style.gap),
+            caret,
+          ],
+        );
+      },
     );
   }
 
