@@ -380,7 +380,11 @@ def test_the_words_after_a_code_that_are_no_genus_are_one_short_list():
     ("Conf.Epipsocus", "Epipsocus"),
     ("Epipsocus,poss.", "Epipsocus"),
     ("vic.", ""),
-    ("C.F.", ""),
+    ("c.f.", ""),
+    # Capitals each followed by a period are initials, never a qualifier.
+    ("C.F.", "C.F."),
+    ("C.F.Baker", "C.F.Baker"),
+    ("Baker,N.R.", "Baker,N.R."),
     # A qualifier's letters ending a longer word are no qualifier.
     ("Staff.", "Staff."),
     ("?", ""),
@@ -565,7 +569,7 @@ QUALIFIER_SPELLINGS = [
     *(form for word in ("cfr", "affin", "affinis", "probably", "poss", "possibly", "conf", "vic", "prope")
         for form in (word + ". Epipsocus", word.upper() + " Epipsocus", word.capitalize() + ".Epipsocus",
             "Epipsocus " + word)),
-    "c.f. Epipsocus", "C.F. Epipsocus", "c.f.Epipsocus", "(c.f.) Epipsocus", "n.r. Epipsocus", "N.R.Epipsocus",
+    "c.f. Epipsocus", "C.f. Epipsocus", "c.f.Epipsocus", "(c.f.) Epipsocus", "n.r. Epipsocus", "C.F Epipsocus",
     "a.f.f. Epipsocus", "c.f.r. Epipsocus", "Epipsocus c.f.",
 ]
 
@@ -625,7 +629,9 @@ PILOT_READINGS = {
     # Words that hold a qualifier's letters.
     ["Nearctic", "Staff", "Cfx", "nrs", "Affine", "Probability", "Possum", "Conform", "Victoria", "Proper",
         "Cfrs"],
-], ids=[*PILOT_READINGS, "question-mark-beside-numbers", "qualifier-letters-inside-words"])
+    # A person's initials, capitals each followed by a period.
+    ["leg. C.F. Baker", "C.F.Baker", "Baker, C.F.", "N.R. Smith", "det. A.F.F. Jones", "C.F. Epipsocus"],
+], ids=[*PILOT_READINGS, "question-mark-beside-numbers", "qualifier-letters-inside-words", "initials"])
 def test_no_doubt_sign_shows_where_none_is_written(texts):
     from specimen_digitization.field_research import checks
 
@@ -638,7 +644,7 @@ def test_no_doubt_sign_shows_where_none_is_written(texts):
 @pytest.mark.parametrize(("text", "literal", "doubtful"), [
     ("cfr. Epipsocus", "Epipsocus", True),
     ("conf. Epipsocus", "Epipsocus", True),
-    ("C.F. Epipsocus", "Epipsocus", True),
+    ("c.f. Epipsocus", "Epipsocus", True),
     ("cfr.Epipsocus", "Epipsocus", True),
     ("Possibly Epipsocus sp. 1", "Epipsocus sp. 1", True),
     ("Epipsocus?", "Epipsocus", True),
@@ -657,6 +663,9 @@ def test_no_doubt_sign_shows_where_none_is_written(texts):
     ("taxon: Danaus plexippus", "Danaus plexippus", False),
     ("Mossy forest 6400'\nsp. 30 " + FEMALE, "sp. 30 " + FEMALE, False),
     ("cfr. Epipsocus", "Danaus plexippus", False),
+    # A person's initials before the genus are no qualifier.
+    ("C.F. Epipsocus", "Epipsocus", False),
+    ("Baker, C.F.\nEpipsocus sp. 1", "Epipsocus sp. 1", False),
 ])
 def test_a_genus_the_text_marks_as_doubtful(text, literal, doubtful):
     from specimen_digitization.field_research import checks

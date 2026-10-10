@@ -304,19 +304,43 @@ def word_before(text: str, start: int) -> str | None:
 _SHED = _AROUND + "?*_\N{LEFT SINGLE QUOTATION MARK}\N{RIGHT SINGLE QUOTATION MARK}" + (
     "\N{LEFT DOUBLE QUOTATION MARK}\N{RIGHT DOUBLE QUOTATION MARK}")
 # The qualifiers that put a name in doubt (B4 of #289's fifth review): each a
-# whole word, in any case, its periods aside ("cf", "cf.", "c.f." and "C.F."
-# are "cf"; "n.r." is "nr").
+# whole word, in any case, its periods aside ("cf", "cf.", "Cf.", "CF" and
+# "c.f." are "cf"; "n.r." is "nr"). Capitals each followed by a period are
+# a person's initials, never a qualifier ("C.F." in "C.F. Baker", "N.R.";
+# _initials).
 DOUBT_QUALIFIERS = ("cf", "cfr", "aff", "affin", "affinis", "nr", "near", "prob", "probably", "poss", "possibly",
     "conf", "vic", "prope")
 # One of them as a text writes it: its letters, each with an optional period
 # after it ("c.f", "cf", "C.F").
 _QUALIFIER_WORD = "(?:" + "|".join(r"\.?".join(word) for word in DOUBT_QUALIFIERS) + ")"
+# Two or more capitals, each followed by a period: initials ("C.F.", "N.R.", "A.F.F.").
+_INITIALS = re.compile(r"(?:[A-Z]\.){2,}")
+
+
+def _initials(written: str) -> bool:
+    """Whether a qualifier as written, with the period after it, is a
+    person's initials instead (_INITIALS: "C.F.", never "c.f.", "Cf." or
+    "CF.")."""
+    return _INITIALS.fullmatch(written) is not None
+
+
 # A qualifier a token sheds when it starts it, or ends it with no letter
 # right before it, with its final period, written against the word
 # ("cf.Epipsocus", "c.f.Epipsocus", "Epipsocus,aff.") or as a word of its own
-# ("cfr." in "cfr. Epipsocus"): DOUBT_QUALIFIERS, the doubt signs' own list.
+# ("cfr." in "cfr. Epipsocus"): DOUBT_QUALIFIERS, the doubt signs' own list,
+# initials aside ("C.F." and "C.F.Baker" keep their letters).
 _QUALIFIER_FIRST = re.compile(r"^" + _QUALIFIER_WORD + r"\.", re.I)
 _QUALIFIER_LAST = re.compile(r"(?<![^\W\d_])" + _QUALIFIER_WORD + r"\.$", re.I)
+
+
+def _shed_qualifier(part: str) -> str:
+    """The part with a qualifier that starts it, then one that ends it
+    (_QUALIFIER_FIRST, _QUALIFIER_LAST), shed, unless it is initials."""
+    for pattern in (_QUALIFIER_FIRST, _QUALIFIER_LAST):
+        found = pattern.search(part)
+        if found is not None and not _initials(found.group()):
+            part = part[:found.start()] + part[found.end():]
+    return part
 # The label words that may follow a morphocode on its line and are no genus,
 # as written: the parts a slide mounts, and the sex signs. The one list the
 # label check passes over (genus_beside).
@@ -335,7 +359,7 @@ def _token(part: str) -> str:
     "unreadable", "Epipsocus(?)" and "cf.Epipsocus" are "Epipsocus", "E.?" is
     "E.", "6400'" is "6400", a lone "?" or "cf." is empty)."""
     while True:
-        shed = _QUALIFIER_LAST.sub("", _QUALIFIER_FIRST.sub("", part.strip(_SHED)))
+        shed = _shed_qualifier(part.strip(_SHED))
         if shed == part:
             return part
         part = shed
@@ -474,8 +498,11 @@ def _question_mark(text: str) -> bool:
 
 
 def _qualifier(text: str) -> bool:
-    """One of DOUBT_QUALIFIERS, a whole word or against a word."""
-    return _DOUBT_QUALIFIER.search(text) is not None
+    """One of DOUBT_QUALIFIERS, a whole word or against a word, unless it
+    is written as initials with the period after it (_initials: "C.F." in
+    "C.F. Baker")."""
+    return any(not _initials(found.group() + text[found.end():found.end() + 1])
+        for found in _DOUBT_QUALIFIER.finditer(text))
 
 
 # What a reader may write in place of a word it cannot read: the reader

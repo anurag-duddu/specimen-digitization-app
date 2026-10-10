@@ -2570,7 +2570,7 @@ def test_a_doubtful_or_unreadable_genus_on_another_label_keeps_the_taxon_in_revi
 # doubt signs did not list before, above 105526327's slide number (the
 # DOUBTFUL_ELSEWHERE layout).
 QUALIFIER_VARIANTS = {name: line + "\nV-4-67-1\n" + SP1 for name, line in {
-    "cfr": "cfr. Epipsocus", "c.f.": "c.f. Epipsocus", "C.F.": "C.F. Epipsocus", "n.r.": "n.r. Epipsocus",
+    "cfr": "cfr. Epipsocus", "c.f.": "c.f. Epipsocus", "Cf.": "Cf. Epipsocus", "n.r.": "n.r. Epipsocus",
     "conf": "conf. Epipsocus", "poss": "poss. Epipsocus", "possibly": "possibly Epipsocus",
     "probably": "probably Epipsocus", "vic": "vic. Epipsocus", "affin": "affin. Epipsocus",
     "affinis": "affinis Epipsocus", "prope": "prope Epipsocus", "cfr-after": "Epipsocus CFR."}.items()}
@@ -2606,6 +2606,19 @@ def test_a_qualified_genus_on_a_determination_label_of_its_own_keeps_the_taxon_i
         candidates=[*COLLECTORS, *(("taxon", name, SP1, SP1) for name in ("1A", "1B"))])
     settle(rig, Scripted({"taxon": cannot_resolve(SP1)}), tools=NoGenus(rig.blobs))
     taxon_held_back(rig.specimen.run)
+
+
+@pytest.mark.parametrize("collector", ["C.F. Baker", "Baker, C.F.", "N.R. Smith"])
+def test_a_collectors_initials_are_no_qualifier_and_the_code_still_clears(tmp_path, collector):
+    """A person's initials, capitals each followed by a period, are no doubt
+    sign: the morphocode label clears as unmatched under rule B."""
+    text = morphocoded(MORPHOCODE).replace("leg. J. Smith", "leg. " + collector)
+    rig = build_rig(tmp_path, text,
+        candidates=[("collectors", name, collector, "leg. " + collector) for name in ("1A", "1B")])
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": cannot_resolve(MORPHOCODE)}), tools=NoGenus(rig.blobs))
+    assert (run.fields["taxon"].state, run.fields["taxon"].reason) == (ValueState.SUPPORTED, field_step.UNMATCHED)
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
 
 
 # N1 of #289's fourth review: a genus written with a placeholder other than
@@ -2882,6 +2895,29 @@ def test_an_answer_that_resolves_a_genus_written_with_no_doubt_still_settles_the
     taxon = run.fields["taxon"]
     assert (taxon.state, taxon.normalized, taxon.authority_id) == (
         ValueState.SUPPORTED, EPIPSOCUS_GENUS, EPIPSOCUS_GENUS_KEY)
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+
+
+# A label that writes text right before the genus that is no doubt about it
+# (the text above "Epipsocus sp. 1"): GBIF's genus still settles the taxon.
+UNDOUBTED_GENUS = {
+    # A determiner's or collector's initials, capitals each followed by a period.
+    "initials-ending-the-line-above": "Baker, C.F.\nEpipsocus sp. 1",
+    "initials-before-the-genus": "det. C.F. Epipsocus sp. 1",
+}
+
+
+@pytest.mark.parametrize("written", UNDOUBTED_GENUS.values(), ids=UNDOUBTED_GENUS)
+def test_a_genus_with_no_doubt_written_on_it_still_settles_the_taxon(tmp_path, written):
+    literal = "Epipsocus sp. 1"
+    rig = build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", written),
+        candidates=[*COLLECTORS, *(("taxon", name, literal, written.split("\n")[-1]) for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": taxon_on("Epipsocus", value=EPIPSOCUS_GENUS, authority_id=EPIPSOCUS_GENUS_KEY,
+        literal=literal)}), tools=EpipsocusGenus(rig.blobs))
+    taxon = run.fields["taxon"]
+    assert (taxon.state, taxon.literal, taxon.normalized, taxon.authority_id) == (
+        ValueState.SUPPORTED, literal, EPIPSOCUS_GENUS, EPIPSOCUS_GENUS_KEY)
     assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
 
 
