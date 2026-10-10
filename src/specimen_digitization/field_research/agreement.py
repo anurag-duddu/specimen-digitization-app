@@ -113,16 +113,14 @@ fields' outcomes:
      province settled for it too, when one is. No country settled for the
      reading, no parents, or none that is that country or province: the
      field goes to review with the reason. A country needs no parent;
-   - a near spelling, of any place field, settles only when every other
-     place field the reading writes, all of them and at least one, is one of
-     the candidate's parents (G34's whole condition). In Getty TGN a
-     province's parents are its country, so a near-spelled province with a
-     county or a city on its reading does not settle, unless that county or
-     city has the country's name. A nation lists itself as its parent
-     (sources._place adds a place's country to its parents), so a
-     near-spelled country settles when every other place field on its
-     reading has the nation's name or record ("Guatamala" beside the
-     province "Guatemala" alone), and not otherwise.
+   - a near spelling, of any place field, settles only when every place
+     field the reading writes above it (PLACE_ORDER: a province's country; a
+     county's province and country; a city's county, province and country),
+     all of them and at least one, is one of the candidate's parents (G34's
+     whole condition). Parents are only larger places, so a county or a city
+     the reading writes below a near-spelled province is never checked as
+     its parent (105526330's province beside its city Yepocapa). A country
+     has no place field above it, so a near-spelled country never settles.
 
 Point 3 follows research_harness/evidence.py's G20 and G32 rules (725-751:
 one confirmed reader beside the other's captured no-match; labels that
@@ -601,8 +599,8 @@ NO_PARENTS = "The source does not say which country this place is in."
 NO_COUNTRY = "No country is settled for the reading that writes this place."
 NOT_IN_COUNTRY = "The place found is not in the country the label gives."
 NOT_IN_PROVINCE = "The place found is not in the province the label gives."
-NEAR_UNFIT = ("The place found is one letter from the label's spelling, and the label's other place "
-    "fields do not all name places it lies in.")
+NEAR_UNFIT = ("The place found is one letter from the label's spelling, and the larger places the label "
+    "gives do not confirm it.")
 PLACE_ORDER = ("country", "province_state", "county", "city")
 
 
@@ -651,13 +649,12 @@ def parents_refusal(key: str, candidate: SourceCandidate, basis: str, *,
       candidate with no parents, or none of whose parents is that country,
       does not settle; nor does any place when no country is settled for the
       reading. A country needs no parent.
-    - A near spelling (NEAR_SPELLING) settles only on G34's whole condition:
-      every other place field the reading writes, all of them and at least
-      one, names a parent of the candidate (lies_in). In Getty TGN a
-      province's parents are its country, so a near-spelled province with a
-      county or a city on its reading does not settle unless that county or
-      city has the country's name; a nation is its own parent, so a
-      near-spelled country settles beside places of its own name only."""
+    - A near spelling (NEAR_SPELLING) settles only on G34's whole condition,
+      on the larger places: every place field the reading writes above the
+      field's own (PLACE_ORDER), all of them and at least one, names a
+      parent of the candidate (lies_in). A county or a city below a
+      near-spelled province is no parent of it and is not checked; a country
+      has nothing above it, so a near-spelled country never settles."""
     if key != "country":
         if not candidate.parents:
             return Refusal(NO_PARENTS, NO_PARENTS)
@@ -671,8 +668,11 @@ def parents_refusal(key: str, candidate: SourceCandidate, basis: str, *,
                 candidate, "province_state", province):
             return Refusal(NOT_IN_PROVINCE, NOT_IN_PROVINCE)
     if basis == NEAR_SPELLING:
-        others = {other: field for other, field in written.items() if other != key}
-        if not others or not all(lies_in(candidate, other, field) for other, field in others.items()):
+        # Parents are only larger places: a county or a city the reading
+        # writes below the field is never one of its parents.
+        above = {other: field for other, field in written.items()
+            if other in PLACE_ORDER and PLACE_ORDER.index(other) < PLACE_ORDER.index(key)}
+        if not above or not all(lies_in(candidate, other, field) for other, field in above.items()):
             return Refusal(NEAR_UNFIT, NEAR_UNFIT)
     return None
 

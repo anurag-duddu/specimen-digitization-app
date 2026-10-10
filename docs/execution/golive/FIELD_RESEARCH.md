@@ -315,16 +315,18 @@ handover runs field research instead of the six specialists:
        for a country whose research failed is researched again with it on
        the retry;
      - a near spelling, of any place field, settles only on G34's whole
-       condition: every other place field the reading writes, all of them
-       and at least one, is one of the candidate's parents. In Getty TGN a
-       province's parents are its country, so a near-spelled province with
-       a county or a city on its reading goes to review, unless that county
-       or city has the country's name. A country can settle: `sources._place` adds a
-       place's country to its parents, so Getty TGN's nation lists itself,
-       and a near-spelled country settles when every other place field on
-       its reading has the nation's name or record ("Guatamala" beside the
-       province "Guatemala" alone). Beside a county, a city or a province of
-       another name it goes to review.
+       condition, read on the larger places (the coordinator's ruling of
+       2026-10-09): every place field the reading writes above the field
+       (`agreement.PLACE_ORDER`: a province's country; a county's province
+       and country; a city's county, province and country), all of them and
+       at least one, is one of the candidate's parents. A place's parents
+       are only larger places, so a county or a city the reading writes
+       below a near-spelled province is never checked as its parent
+       (105526330's province, below). A country has no place field above
+       it, so a near-spelled country always goes to review, even beside a
+       province or a city of the nation's own name ("Guatamala" beside the
+       province "Guatemala", "Mexco" beside the city "Mexico"), which
+       settled it before.
 
      The check's limits (the fourth review's NB1): a parent counts by name
      even when it is another place of that name. Getty TGN names a US
@@ -340,9 +342,12 @@ handover runs field research instead of the six specialists:
      reader's "Chimaltenango" as its literal is refused (G19). An answer that
      keeps "Chimaltenago" as the literal, as written (G27), and takes TGN's
      department Chimaltenango, one letter from it, as the value, passes the
-     expert's check; but the reading also writes the city Yepocapa, which is
-     not one of the department's parents, so the step leaves the province
-     for review (G34's whole condition).
+     expert's check, and the step settles it with a `near_spelling`
+     warning: the one field the reading writes above the province, its
+     country Guatemala, is the department's parent (G34's whole condition).
+     The city Yepocapa the reading also writes lies below the province and
+     is not checked as its parent. Until 2026-10-09 it was, and the real run
+     of that day left the province for review.
    - **The taxon.** A taxon is GBIF's decision for the whole name its
      candidate literal writes: the cited success answer's query is the
      scientific-name parser's query for that literal (the genus, any
