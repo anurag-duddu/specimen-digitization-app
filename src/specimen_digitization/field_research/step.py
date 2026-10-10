@@ -826,8 +826,8 @@ def _unmatched_taxon(run, task, outcome: FieldOutcome, *, readings, by_name, evi
     - no sign of a doubtful or unreadable name shows anywhere on the
       specimen (_doubt_on_the_labels: checks.DOUBT_SIGNS in any reading of
       any label, or an unreadable span on any label). The taxon brief has
-      the expert make no lookup for a genus marked doubtful, so the GBIF
-      guard never sees one the label check does not read;
+      the expert look a doubtful genus up alone, a query the GBIF guard
+      above refuses; these signs hold the taxon back when it does not;
     - the readers settle on the literal by B1's rule (agreement.labels):
       each label that writes the taxon settles on its own on that one text.
       With no successful lookup that is a label's decided transcript (its

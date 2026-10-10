@@ -2331,9 +2331,9 @@ def test_only_a_label_that_writes_the_code_is_read_for_an_unreadable_part():
 
 
 # B2 of #289's third review: a genus marked doubtful or qualified beside the
-# code (the text, the organiser's candidate, its quote). The taxon brief has
-# the expert make no lookup for "?" on the genus, and answer
-# sources_cannot_resolve, quoting the code.
+# code (the text, the organiser's candidate, its quote). The expert makes no
+# lookup, as the taxon brief had it do for "?" on the genus until B4 of
+# #289's fifth review, and answers sources_cannot_resolve, quoting the code.
 DOUBTFUL_BESIDE = {
     "question-mark-after": ("Epipsocus? " + SP1, SP1, "Epipsocus? " + SP1),
     "question-mark-before": ("?Epipsocus " + SP1, SP1, "?Epipsocus " + SP1),
@@ -2364,8 +2364,9 @@ def test_a_doubtful_genus_beside_the_code_keeps_the_taxon_in_review(tmp_path, wr
 @pytest.mark.parametrize("line", ["Epipsocus?", "?Epipsocus", "[unreadable]"])
 def test_the_real_resolver_following_its_brief_for_an_unclear_genus_line_keeps_the_taxon_in_review(tmp_path, line):
     """105526328's label 2 with its genus line doubtful or unreadable: the real
-    experts.make_resolver, its model answering as the taxon brief says (no
-    lookup, sources_cannot_resolve, quoting the code line it read)."""
+    experts.make_resolver, its model answering as the taxon brief said until
+    B4 of #289's fifth review (no lookup, sources_cannot_resolve, quoting the
+    code line it read)."""
     from pydantic_ai.messages import ModelResponse, ToolCallPart
     from pydantic_ai.models.function import FunctionModel
 
@@ -2393,10 +2394,10 @@ def test_the_real_resolver_following_its_brief_for_an_unclear_genus_line_keeps_t
 
 # B3 of #289's fourth review: a genus marked doubtful where the label check
 # does not look (on another line or label, or behind a nearer token that
-# holds a digit). The taxon brief has the expert make no lookup for it, so
-# the GBIF guard never sees it; a sign of doubt anywhere on the specimen
-# (checks.DOUBT_SIGNS) holds rule B back. The text, and the quote of the
-# organiser's candidate SP1.
+# holds a digit). With no lookup for it, as the taxon brief had the expert
+# make until B4 of #289's fifth review, the GBIF guard never sees it; a sign
+# of doubt anywhere on the specimen (checks.DOUBT_SIGNS) holds rule B back.
+# The text, and the quote of the organiser's candidate SP1.
 DOUBTFUL_ELSEWHERE = {
     # 105526327's code label with a doubtful genus line above its slide number.
     "question-genus-above-the-slide-number": ("Epipsocus?\nV-4-67-1\n" + SP1, SP1),
@@ -2415,8 +2416,8 @@ DOUBTFUL_ELSEWHERE = {
 
 @pytest.mark.parametrize(("written", "quote"), DOUBTFUL_ELSEWHERE.values(), ids=DOUBTFUL_ELSEWHERE)
 def test_a_doubtful_genus_anywhere_on_the_label_keeps_the_taxon_in_review(tmp_path, written, quote):
-    """The expert follows its brief: no lookup, sources_cannot_resolve
-    quoting the code."""
+    """The expert follows the brief as it was until B4 of #289's fifth
+    review: no lookup, sources_cannot_resolve quoting the code."""
     rig = build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", written),
         candidates=[*COLLECTORS, *(("taxon", name, SP1, quote) for name in ("1A", "1B"))])
     settle(rig, Scripted({"taxon": cannot_resolve(SP1)}), tools=NoGenus(rig.blobs))
@@ -2425,7 +2426,9 @@ def test_a_doubtful_genus_anywhere_on_the_label_keeps_the_taxon_in_review(tmp_pa
 
 def following_the_brief(literal, explanation):
     """A taxon expert: the real experts.make_resolver, its model answering
-    sources_cannot_resolve quoting `literal` from 1A with no lookup."""
+    sources_cannot_resolve quoting `literal` from 1A with no lookup, as the
+    taxon brief had it do for a doubtful genus until B4 of #289's fifth
+    review (and as an expert that skips the lookup still does)."""
     from pydantic_ai.messages import ModelResponse, ToolCallPart
     from pydantic_ai.models.function import FunctionModel
 
@@ -2453,6 +2456,60 @@ def test_the_real_resolver_following_its_brief_for_a_doubtful_genus_away_from_th
     settle(rig, Scripted({"taxon": following_the_brief(SP1, "The genus is marked doubtful, so no lookup is made; "
         "sp. 1 is a morphocode.")}), tools=NoGenus(rig.blobs))
     taxon_held_back(rig.specimen.run)
+
+
+def looking_the_genus_up_first(genus, literal):
+    """A taxon expert as the taxon brief has it since B4 of #289's fifth
+    review: the real experts.make_resolver, its model asking GBIF the genus
+    a label writes alone, then answering sources_cannot_resolve quoting
+    `literal` from 1A."""
+    from pydantic_ai.messages import ModelRequest, ModelResponse, ToolCallPart, ToolReturnPart
+    from pydantic_ai.models.function import FunctionModel
+
+    from specimen_digitization.field_research import experts
+    from specimen_digitization.field_research.budget import CostMeter
+
+    def model(messages, info):
+        if not any(isinstance(part, ToolReturnPart) for m in messages if isinstance(m, ModelRequest)
+                for part in m.parts):
+            return ModelResponse(parts=[ToolCallPart("lookup", {"source": "gbif", "query": genus})])
+        return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, {
+            "outcome": "sources_cannot_resolve", "literal": literal, "reading_names": ["1A"],
+            "explanation": f"The label writes {genus!r} in doubt or away from the code; GBIF settles nothing."})])
+
+    resolver = experts.make_resolver(model_factory=lambda: FunctionModel(model),
+        meter=CostMeter(1_000_000, input_micros_per_million=200_000, output_micros_per_million=600_000))
+
+    async def expert(task, readings, tools):
+        return await resolver(task, readings, {}, tools=tools)
+    return expert
+
+
+# A genus behind a doubt word the doubt signs do not list ("sim."), one with
+# no doubt sign away from the code (the label check does not read it), and
+# one behind a listed qualifier; the doubt signs each label shows.
+LOOKED_UP_GENUS = {
+    "unlisted-doubt-word": ("sim. Epipsocus\nV-4-67-1\n" + SP1, ()),
+    "plain-genus-above-the-slide-number": ("Epipsocus\nV-4-67-1\n" + SP1, ()),
+    "listed-qualifier": ("cfr. Epipsocus\nV-4-67-1\n" + SP1, ("qualifier",)),
+}
+
+
+@pytest.mark.parametrize(("written", "signs"), LOOKED_UP_GENUS.values(), ids=LOOKED_UP_GENUS)
+def test_the_real_resolver_looking_the_genus_up_as_its_brief_says_keeps_the_taxon_in_review(tmp_path, written, signs):
+    """The expert asks GBIF the genus alone, GBIF has no match for it
+    (NoMatch), and the expert answers sources_cannot_resolve quoting the
+    code: the query names a genus and is not the code, so rule B never
+    clears the taxon, whether or not a doubt sign shows."""
+    from specimen_digitization.field_research import checks
+
+    assert checks.doubt_signs([written]) == signs and checks.label_names_no_genus("1", [written])
+    rig = build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", written),
+        candidates=[*COLLECTORS, *(("taxon", name, SP1, SP1) for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": looking_the_genus_up_first("Epipsocus", SP1)}), tools=NoMatch(rig.blobs))
+    taxon_held_back(run)
+    assert [lookup.query.get("name") for lookup in run.lookups if lookup.provider == "gbif"] == ["Epipsocus"]
 
 
 def a_second_label(monkeypatch, text, spans=()):

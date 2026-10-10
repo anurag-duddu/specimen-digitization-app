@@ -730,6 +730,26 @@ def test_the_briefs_place_notations_are_the_tables():
     assert notations.expansion("P.I.", "province_state") is None and notations.expansion("Phil.", "country") is None
 
 
+def test_the_taxon_brief_has_a_doubtful_or_distant_genus_looked_up_alone():
+    """B4 of #289's fifth review: the brief no longer withholds the lookup
+    for a genus in doubt, whatever its qualifier's spelling, and has every
+    genus a label writes looked up before a morphocode stands alone, so that
+    the GBIF guard (step._gbif_asked_another_name) sees it."""
+    from specimen_digitization.field_research.prompts import instructions
+
+    lines = instructions("taxon").splitlines()
+    assert not [line for line in lines if "make no lookup" in line]
+    [doubt] = [line for line in lines if "is in doubt" in line]
+    assert "any spelling" in doubt and '"?"' in doubt
+    assert all(f'"{qualifier}"' in doubt for qualifier in ("cf.", "cfr.", "c.f.", "aff.", "nr.", "conf.", "poss."))
+    [alone] = [line for line in lines if line.startswith("- Still look up a doubtful genus alone")]
+    assert "no qualifier and no epithet" in alone and "sources_cannot_resolve, whatever GBIF says" in alone
+    [morphocode] = [line for line in lines if line.startswith("- Before you answer for a morphocode")]
+    assert "look up alone any genus that any label writes anywhere" in morphocode
+    assert "another label, with a qualifier or without" in morphocode
+    assert "Only when no label writes a genus does the morphocode stand alone" in morphocode
+
+
 def test_every_field_has_a_brief():
     from specimen_digitization.field_research.prompts import FIELD_LABELS, instructions
 

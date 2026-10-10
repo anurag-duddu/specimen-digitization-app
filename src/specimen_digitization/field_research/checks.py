@@ -468,11 +468,14 @@ def _placeholder(text: str) -> bool:
 # step.taxon_unmatched on a stored value) refuses when any of them shows in
 # any reading of any label of the specimen, beside the code or not. They sit
 # on top of the label check (label_names_no_genus), which reads only the
-# tokens beside the code: the taxon brief has the expert make no GBIF lookup
-# for a genus marked doubtful, so "Epipsocus?" on a line or a label the
-# label check does not read would otherwise clear as "the label names no
-# genus". "unreadable_span" is a reader's listed unreadable span, or a
-# transcript marked unreadable, on any label; no text shows it.
+# tokens beside the code: "Epipsocus?" on a line or a label the label check
+# does not read would otherwise clear as "the label names no genus" when the
+# expert makes no GBIF lookup for it. The taxon brief has the expert look a
+# doubtful genus up alone (B4 of #289's fifth review), which the GBIF guard
+# (step._gbif_asked_another_name) refuses; these signs hold the taxon back
+# when the expert does not. "unreadable_span" is a reader's listed
+# unreadable span, or a transcript marked unreadable, on any label; no text
+# shows it.
 DOUBT_SIGNS: tuple[tuple[str, Callable[[str], bool] | None], ...] = (
     ("question_mark", _question_mark),
     ("qualifier", _qualifier),
