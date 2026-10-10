@@ -22,7 +22,9 @@ fields' outcomes:
    on its reading (_longer_written), and a date or an elevation so read is
    never one end of a range its clause writes, joined in any of the
    languages and with any of the dashes field_research.written lists
-   (_part_of_range). Points 1, 3
+   (_part_of_range). An elevation, a candidate or so read, settles only a
+   field of the unit its reading writes it in, and a number with no unit
+   settles none (_unit_refusal). Points 1, 3
    and 4 hold for it as for a candidate, its readers per point 3 as
    agreeing_runs reads them, and on a label with no decided transcript the
    clauses holding it agree in every reader (holding_clauses). For a
@@ -152,6 +154,7 @@ import unicodedata
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
+from specimen_digitization.application.derivations import UNITS
 from specimen_digitization.application.domain import LookupStatus
 from specimen_digitization.application.georef_locality import comparison_key, one_letter_apart
 
@@ -207,6 +210,12 @@ DOUBTFUL_GENUS = "The label marks this name's genus as doubtful."
 NO_PLACE = "No approved place source confirms this value."
 NOT_EVERY_READER = "Not every reader of the label writes this text."
 PART_OF_RANGE = "The label writes this value as one end of a range."
+UNIT_DIFFERS = "The label writes this elevation in the other unit."
+NO_UNIT = "The label writes no elevation unit with this number."
+# The unit each elevation field holds (application.derivations.UNITS), and
+# its name in the experts' retry.
+FIELD_UNITS = {key: unit for unit, keys in UNITS.items() for key in keys}
+UNIT_NAMES = {"m": "metres", "ft": "feet"}
 
 
 @dataclass(frozen=True)
@@ -449,7 +458,11 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
     candidate whose quote writes a longer name from it on is such a piece too
     (_part_of_name), as is text read from a reading that writes a longer
     name around it (_longer_written), and a literal whose genus the label
-    marks as doubtful never settles (_genus_in_doubt)."""
+    marks as doubtful never settles (_genus_in_doubt). An elevation, by
+    candidate or read from the transcript, settles only a field of the unit
+    the reading writes it in (_unit_refusal). Text read from the transcript
+    is never one end of a range for a date or an elevation
+    (_part_of_range)."""
     for reading in named:
         chosen = _deciding(reading, readings)
         if chosen.input_source == DECIDED and literal not in chosen.text:
@@ -459,10 +472,11 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
                 f"{chosen.name}, or answer several_possibilities or sources_cannot_resolve."))
     basis = literal_basis(task, readings, literal, named)
     if basis == CANDIDATE:
-        return _part_of_name(task, readings, literal, named) or _genus_in_doubt(task, readings, literal, named)
-    if basis == TRANSCRIPT:
-        return (_part_of_range(task, readings, literal, named) or _longer_written(task, readings, literal, named)
+        return (_unit_refusal(task, readings, literal, named) or _part_of_name(task, readings, literal, named)
             or _genus_in_doubt(task, readings, literal, named))
+    if basis == TRANSCRIPT:
+        return (_part_of_range(task, readings, literal, named) or _unit_refusal(task, readings, literal, named)
+            or _longer_written(task, readings, literal, named) or _genus_in_doubt(task, readings, literal, named))
     allowed = candidates_by_reading(task, readings)
     offered = [f"{source.name}: {text!r}" for source in dict.fromkeys(_deciding(r, readings) for r in named)
         for text in allowed.get(source.name, {}).values()]
@@ -498,6 +512,40 @@ def _part_of_range(task: FieldTask, readings: Sequence[Reading], literal: str,
                     "read from the readings is never one end of a range: copy the whole range as the "
                     "literal and take the end your brief names from a check run on exactly it, or answer "
                     "several_possibilities or sources_cannot_resolve."))
+    return None
+
+
+def _unit_refusal(task: FieldTask, readings: Sequence[Reading], literal: str,
+        named: Sequence[Reading]) -> Refusal | None:
+    """For an elevation field, why the literal cannot settle it, by candidate
+    or read from the transcript (PR #300's review, finding 5): a reading it
+    names (its label's decided reading, on a label with one) writes its
+    numbers in the other unit anywhere it writes it (written.units_of: the
+    unit after a number, glued or after spaces, or a range's trailing unit,
+    in any spelling of written.ELEVATION_UNITS: "1500 m" or "1500" of "alt.
+    1500 m", "2000 msnm" or "6400 pies" in the wrong field); or with no unit
+    anywhere (a bare number: a unit is never guessed, G41). Each field holds
+    the unit application.derivations.UNITS gives it; the other unit's field
+    is filled by its exact conversion afterwards (derive). None otherwise,
+    and for any other field."""
+    unit = FIELD_UNITS.get(task.key)
+    if unit is None:
+        return None
+    for reading in dict.fromkeys(_deciding(r, readings) for r in named):
+        found = written.units_of(reading.text, literal)
+        other = sorted(frozenset().union(*found) - {unit})
+        if other:
+            return Refusal(UNIT_DIFFERS, (
+                f"Reading {reading.name} writes {literal!r} in {UNIT_NAMES[other[0]]}, and this field holds "
+                f"{UNIT_NAMES[unit]}. An elevation settles only the fields of the unit the label writes it "
+                "in: never convert it yourself. When the label states this elevation only in the other "
+                "unit, answer label_lacks_value (the step converts it exactly); otherwise copy the "
+                f"elevation the label writes in {UNIT_NAMES[unit]}."))
+        if not any(found):
+            return Refusal(NO_UNIT, (
+                f"Reading {reading.name} writes {literal!r} with no unit ({', '.join(UNIT_NAMES.values())}"
+                " in any spelling). A unit is never guessed from the magnitude, the place or a map: answer "
+                "sources_cannot_resolve and quote it."))
     return None
 
 

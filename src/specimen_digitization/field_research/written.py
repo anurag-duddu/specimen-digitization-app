@@ -1,5 +1,5 @@
 """How a label writes a range and an elevation's unit, in any language (the
-review of PR #300 at 6fd595b3b, finding 1).
+review of PR #300 at 6fd595b3b, findings 1 and 5).
 
 The tables here are the data the guards in agreement.py read:
 
@@ -367,6 +367,24 @@ def numbers(line: str, spans: Sequence[tuple[int, int]] | None = None) -> list[N
         elif other.unit is None and one.unit is not None and one.whole is not None:
             by_start[right] = Number(other.start, other.end, one.unit, (one.whole[0], other.end), one.distance)
     return [by_start[number.start] for number in found]
+
+
+def units_of(text: str, literal: str) -> list[frozenset[str]]:
+    """The units the text writes the literal's numbers in, one set for each
+    place it writes the literal as whole numbers (never the tail of "11500"
+    or the head of "1500.5"): the units `numbers` reads on that line for
+    the numbers that start inside the literal ("1500 m" and "1500" of "alt.
+    1500 m" are metres, "1200" of "1200 to 1500 m" too, "6400" of "6400'"
+    feet). An empty set where it writes none of them with a unit."""
+    found = []
+    pattern = re.compile(r"(?<!\d)(?<!\d[.,])" + re.escape(literal) + r"(?!\d|[.,]\d)")
+    for hit in pattern.finditer(text) if literal else ():
+        line_start = text.rfind("\n", 0, hit.start()) + 1
+        line_end = text.find("\n", hit.end())
+        line = text[line_start:len(text) if line_end < 0 else line_end]
+        start, end = hit.start() - line_start, hit.end() - line_start
+        found.append(frozenset(n.unit for n in numbers(line) if start <= n.start < end and n.unit))
+    return found
 
 
 @dataclass(frozen=True)

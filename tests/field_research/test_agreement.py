@@ -972,3 +972,117 @@ def test_text_beside_a_joiner_that_joins_no_range_settles(key, line, literal):
     readings = label(line + "\nleg. J. Smith")
     assert agreement.refusal(uncandidated(key), readings, literal=literal, named=list(readings), value=None,
         authority_id=None, cited=[], received=[]) is None
+
+# PR #300's review of 6fd595b3b, finding 5 (pre-existing on main): "1500 m"
+# from "alt. 1500 m" settled elevation_from_ft as 1500. An elevation settles
+# only the fields of the unit the label writes it in (written.ELEVATION_UNITS),
+# and a number with no unit settles none: a unit is never guessed (G41).
+
+OTHER_UNIT = {
+    # The review's case: metres as the feet field, the unit in the literal or after it.
+    "metres-as-feet": ("elevation_from_ft", "alt. 1500 m", "1500 m"),
+    "metres-after-the-number": ("elevation_from_ft", "alt. 1500 m", "1500"),
+    # Spanish and Latin American metres above sea level.
+    "msnm": ("elevation_from_ft", "Volc\N{LATIN SMALL LETTER A WITH ACUTE}n Barva, 2000 msnm", "2000 msnm"),
+    "m-s-n-m": ("elevation_to_ft", "1500 m.s.n.m.", "1500 m.s.n.m."),
+    "metros": ("elevation_from_ft", "1200 metros", "1200 metros"),
+    # English, German and Italian metres above sea level, and a heading after the unit.
+    "m-a-s-l": ("elevation_from_ft", "Mt. Kinabalu, 1500 m a.s.l.", "1500 m a.s.l."),
+    "german-m-ue-M": ("elevation_from_ft", "800 m \N{LATIN SMALL LETTER U WITH DIAERESIS}. M.", "800 m \N{LATIN SMALL LETTER U WITH DIAERESIS}. M."),
+    "italian-unit-first": ("elevation_from_ft", "Alpi Apuane, m 1200", "m 1200"),
+    "m-alt": ("elevation_from_ft", "1500 m alt.", "1500 m alt."),
+    # Feet as the metres field: a foot mark, "ft.", Spanish "pies", Portuguese "pes", German "Fuss".
+    "foot-mark-as-metres": ("elevation_from_m", "Mossy forest 6400'", "6400'"),
+    "ft-as-metres": ("elevation_from_m", "Elev. 4800 ft.", "4800 ft."),
+    "pies": ("elevation_from_m", "6400 pies", "6400 pies"),
+    "pes": ("elevation_to_m", "1500 p\N{LATIN SMALL LETTER E WITH ACUTE}s", "1500 p\N{LATIN SMALL LETTER E WITH ACUTE}s"),
+    "fuss": ("elevation_from_m", "H\N{LATIN SMALL LETTER O WITH DIAERESIS}he 1500 Fu\N{LATIN SMALL LETTER SHARP S}",
+        "1500 Fu\N{LATIN SMALL LETTER SHARP S}"),
+    # Both units in one literal: never one field's.
+    "both-units": ("elevation_from_ft", "4800 ft. (1463 m)", "4800 ft. (1463 m)"),
+}
+
+
+@pytest.mark.parametrize(("key", "line", "literal"), OTHER_UNIT.values(), ids=OTHER_UNIT)
+def test_an_elevation_never_settles_a_field_of_the_other_unit(key, line, literal):
+    """On 6fd595b3b each is accepted by the agreement rules."""
+    readings = label(line + "\nleg. J. Smith")
+    refused = agreement.refusal(uncandidated(key), readings, literal=literal, named=list(readings), value=None,
+        authority_id=None, cited=[], received=[])
+    assert refused is not None and refused.reason == agreement.UNIT_DIFFERS
+
+
+NO_UNIT = {
+    "bare-number": ("elevation_from_m", "Elev. 1500", "1500"),
+    "heading-and-number": ("elevation_from_ft", "Alt. 4800", "Alt. 4800"),
+    # "mt" may be Mount, never read as metres.
+    "mt": ("elevation_from_m", "1200 mt", "1200 mt"),
+    # "mm" is no metre.
+    "millimetres": ("elevation_from_m", "1200 mm", "1200 mm"),
+}
+
+
+@pytest.mark.parametrize(("key", "line", "literal"), NO_UNIT.values(), ids=NO_UNIT)
+def test_a_number_with_no_unit_never_settles_an_elevation(key, line, literal):
+    """On 6fd595b3b each is accepted by the agreement rules."""
+    readings = label(line + "\nleg. J. Smith")
+    refused = agreement.refusal(uncandidated(key), readings, literal=literal, named=list(readings), value=None,
+        authority_id=None, cited=[], received=[])
+    assert refused is not None and refused.reason == agreement.NO_UNIT
+
+
+@pytest.mark.parametrize("basis", ["candidate", "transcript"])
+def test_the_experts_check_sends_metres_back_from_the_feet_field(basis):
+    """The review's probe: "1500 m" as elevation_from_ft, value 1500 from
+    parse_elevation, by candidate and from the transcript. On 6fd595b3b both
+    are kept."""
+    readings = label("alt. 1500 m\nleg. J. Smith")
+    task = uncandidated("elevation_from_ft", *((("3A", "1500 m"), ("3B", "1500 m")) if basis == "candidate" else ()))
+    with pytest.raises(ModelRetry, match="in metres, and this field holds feet"):
+        checked(task, readings, dict(outcome="resolved", literal="1500 m", value="1500", reading_names=["3A", "3B"]),
+            checks=[("parse_elevation", "1500 m")])
+
+
+@pytest.mark.parametrize("basis", ["candidate", "transcript"])
+def test_the_step_never_settles_metres_as_feet(tmp_path, basis):
+    """Through the step: on 6fd595b3b the feet field is supported as 1500 by
+    candidate, and from the transcript too. The metres field settles, and
+    the feet are left to review."""
+    text = "Mindanao, alt. 1500 m\nleg. J. Smith"
+    candidates = [("elevation_from_ft", name, "1500 m", "alt. 1500 m") for name in ("1A", "1B")] if (
+        basis == "candidate") else []
+    rig = label_3(tmp_path, text, text, candidates)
+    run = rig.specimen.run
+    settle(rig, Scripted({
+        "elevation_from_ft": answering(FieldAnswer(outcome="resolved", literal="1500 m", value="1500",
+            reading_names=["1A", "1B"], explanation="Read.")),
+        "elevation_from_m": answering(FieldAnswer(outcome="resolved", literal="1500 m", value="1500",
+            reading_names=["1A", "1B"], explanation="Read."))}))
+    feet = run.fields["elevation_from_ft"]
+    assert feet.state == ValueState.UNRESOLVED
+    assert feet.reason == agreement.UNIT_DIFFERS + " Read."
+    assert run.fields["elevation_from_m"].state == ValueState.SUPPORTED
+
+
+@pytest.mark.parametrize(("key", "line", "literal"), [
+    # The written unit, in any spelling, settles its own unit's field.
+    ("elevation_from_ft", "Elev. 4800 ft.", "4800 ft."),
+    ("elevation_from_ft", "Mossy forest 6400'", "6400'"),
+    ("elevation_from_ft", "Mossy forest 6400'", "6400"),
+    ("elevation_from_m", "alt. 1500 m", "1500 m"),
+    ("elevation_from_m", "alt. 1500 m", "1500"),
+    ("elevation_from_m", "Volc\N{LATIN SMALL LETTER A WITH ACUTE}n Barva, 2000 msnm", "2000 msnm"),
+    ("elevation_from_m", "Alpi Apuane, m 1200", "m 1200"),
+    ("elevation_from_ft", "6400 pies", "6400 pies"),
+    ("elevation_from_ft", "1500 Fu\N{LATIN SMALL LETTER SHARP S}", "1500 Fu\N{LATIN SMALL LETTER SHARP S}"),
+    # A range's trailing unit is both ends' unit; one elevation in both units settles each field.
+    ("elevation_from_m", "1200 to 1500 m", "1200 to 1500 m"),
+    ("elevation_from_m", "4800 ft. / 1463 m", "1463 m"),
+    ("elevation_from_ft", "4800 ft. / 1463 m", "4800 ft."),
+], ids=["feet", "foot-mark", "foot-mark-left-off", "metres", "metres-after-the-number", "msnm", "italian-unit-first",
+    "pies", "fuss", "range-with-a-trailing-unit", "metres-beside-feet", "feet-beside-metres"])
+def test_an_elevation_in_its_own_unit_still_settles(key, line, literal):
+    """The control: each settles, as on 6fd595b3b."""
+    readings = label(line + "\nleg. J. Smith")
+    assert agreement.refusal(uncandidated(key), readings, literal=literal, named=list(readings), value=None,
+        authority_id=None, cited=[], received=[]) is None

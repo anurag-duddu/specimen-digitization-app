@@ -253,6 +253,41 @@ handover runs field research instead of the six specialists:
      "2000 msnm" settles. An organiser's candidate is never refused here,
      and two fields that both read the text from the transcript both go to
      review.
+   - **The elevation's unit** (the answer check and the step,
+     `agreement._unit_refusal`, for an organiser's candidate and for text
+     read from the transcript alike; finding 5 of the review of 6fd595b3b,
+     pre-existing on main: "1500 m" from "alt. 1500 m" settled
+     elevation_from_ft as 1500). Each elevation field holds the unit
+     `application.derivations.UNITS` gives it (metres for elevation_from_m
+     and elevation_to_m, feet for elevation_from_ft and elevation_to_ft).
+     Wherever a reading the answer names (its label's decided reading, on a
+     label with one) writes the literal as whole numbers, the unit of each
+     of the literal's numbers is read on that line (`written.units_of`,
+     `written.numbers`): the unit written right after the number, glued or
+     after spaces, in any spelling of `written.ELEVATION_UNITS` (metres "m",
+     "mts", "metres", "meters", "metros", "metri", "msnm", "msm", "m.s.n.m.",
+     "m a.s.l.", "masl", "msl", "m s.l.m.", "m u. M." with its umlaut, "m
+     NN", "m alt."; feet "ft", "feet", "foot", a foot mark straight, curly
+     or a prime, "pies", "p.s.n.m.", "pes" with its accent, "Fuss" with or
+     without its sharp s, "pieds", "piedi", "voet"; letter case, accents,
+     periods and the spaces inside a unit aside), or right before it as
+     Italian labels write it ("m 1200"); or, for an end of a range that
+     writes none, the other end's unit ("1200" of "1200 to 1500 m" or of
+     "1200-1500 m"). "mt" may be Mount and is no unit, nor is "mm", and a
+     foot mark after a degree sign is a minute of arc. When any of those
+     units is the other unit the answer is refused ("The label writes this
+     elevation in the other unit.": "1500 m" or "1500" of "alt. 1500 m" as
+     feet, "6400'" or "6400 pies" as metres, "4800 ft. (1463 m)" as either);
+     when the reading writes none of its numbers with a unit, it is refused
+     too ("The label writes no elevation unit with this number.": "1500" of
+     "Elev. 1500", "1200 mt"), as a unit is never guessed (G41). Sent back,
+     the expert's brief has it answer label_lacks_value when the label
+     states the elevation only in the other unit, and the derivations
+     below then convert the settled one; refused at the step, the
+     field goes to review, and no elevation is derived while one is
+     unresolved (`derive._elevations`). The answer check's written rule
+     (`extraction_refusal`, a unit after a bare number) still applies
+     before this one.
    - **A doubtful genus (taxon only).** The literal never settles the taxon
      when the label marks its genus as doubtful (`checks.genus_in_doubt`,
      through `agreement._genus_in_doubt`): wherever the quote of a candidate
