@@ -949,11 +949,25 @@ def test_the_briefs_answer_label_lacks_value_for_a_value_the_label_does_not_writ
     assert "answer label_lacks_value, even when the labels write a collecting date" in date
 
 
+@pytest.mark.parametrize("key", ["collectors", "collection_code", "habitat", "collection_method", "verbatim_dts"])
+def test_the_briefs_of_fields_no_source_checks_let_a_decided_transcript_decide(key):
+    """Every field now gets its expert. In this branch's real run of
+    105526321, its verbatim D/T/S expert answered several_possibilities between
+    the decided reading 2A ("3 sept. '46") and 2B ("3 Sept. '46"), as its
+    brief then told it to; a decided transcript decides its label's text (G19)."""
+    from specimen_digitization.field_research.prompts import FIELD_LABELS, instructions
+
+    brief = instructions(key).split(f"Field: {FIELD_LABELS[key]} ({key})", 1)[1]
+    [line] = [line for line in brief.splitlines() if "decided transcript (input_source decided_transcript)" in line]
+    assert "another reader's different text is evidence only" in line
+
+
 def test_the_shared_brief_has_the_expert_stop_when_the_sources_have_answered():
     from specimen_digitization.field_research.prompts import instructions
 
     text = instructions("city")
     assert "Keep going until" not in text
+    assert 'try its abbreviations written out ("Davao Province" for "Davao Prov.")' in text
     assert "Then stop and answer: when the sources have answered what they can" in text
     assert "the same name with other larger units after it is the same lookup" in text
     assert "when a tool result says to answer now, answer" in text

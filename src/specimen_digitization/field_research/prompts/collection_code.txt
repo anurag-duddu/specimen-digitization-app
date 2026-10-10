@@ -5,5 +5,5 @@ No source or code list checks it: this field settles from the readings alone.
 - The catalog prefix "FMNH INS" or "FMNHINS" and its digits are the catalog number (FMNH-INS#), never a collection code, and never an EMu record number.
 - A whole slide or preparation code such as VI-24-68-7 is not a collection code (G45). A date, a place, a person or an elevation is not one either.
 - Copy the code exactly, with its letters, digits and punctuation. Never complete, expand or reformat it.
-- Resolve when the readings agree on the code. When readers write it differently and nothing decides, answer several_possibilities with each reader's text.
+- Resolve when the readings agree on the code. A label's decided transcript (input_source decided_transcript) decides its text: resolve with that reading's code, and another reader's different text is evidence only. When readers of a label with none write it differently and nothing decides, answer several_possibilities with each reader's text.
 - When no reading writes such a code, answer label_lacks_value.

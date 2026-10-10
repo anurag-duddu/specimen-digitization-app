@@ -422,6 +422,19 @@ def test_the_organisers_supported_value_settles_only_on_its_experts_answer(tmp_p
     assert habitat.state == ValueState.NOT_PRESENT and habitat.literal is None
 
 
+def test_a_decided_transcript_settles_a_field_no_source_checks_beside_a_reader_that_differs():
+    """105526321's verbatim D/T/S: its decided reading 2A writes "3 sept. '46",
+    2B "3 Sept. '46". The decided reading's text settles (G19)."""
+    readings = (Reading("2A", "r2", "o2a", "decided_transcript", "F.G. Werner\n3 sept. '46"),
+        Reading("2B", "r2", "o2b", "raw_reading", "F.G. Wermer\n3 Sept. '46"))
+    task = FieldTask("verbatim_dts", False, FieldValue(state=ValueState.SUPPORTED, literal="3 sept. '46"),
+        (Candidate("2A", "3 sept. '46", "3 sept. '46", "ev-2a"),), FIELD_TOOLS["verbatim_dts"])
+    answer = FieldAnswer(outcome="resolved", literal="3 sept. '46", reading_names=["2A"],
+        explanation="The decided transcript decides.")
+    by_name = {reading.name: reading for reading in readings}
+    assert field_step._refusal(task, answer, readings=readings, by_name=by_name, sources=()) is None
+
+
 def test_a_collectors_answer_on_a_decided_label_names_the_readings_that_settle_it():
     """The second review's note: label 1's decided transcript writes no
     collector, its other reader 1B writes "leg. J. Smith", and both readers of

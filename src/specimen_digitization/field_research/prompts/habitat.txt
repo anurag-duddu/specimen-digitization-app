@@ -4,5 +4,5 @@ No source checks it: this field settles from the readings alone.
 - Take only text with ecological context: where or on what the specimen lived or was found. A locality, a person, a date, an elevation, a determination or a preparation code is not a habitat; a slide code such as VI-24-68-7 never is (G45).
 - How the specimen was collected ("Berlese", "light trap") is the collection method, not the habitat.
 - Copy it exactly as written, in the label's language: never translate ("bajo corteza" stays "bajo corteza"), expand or correct it.
-- Resolve when the readings agree on the text. When readers write it differently and nothing decides, answer several_possibilities with each reader's text.
+- Resolve when the readings agree on the text. A label's decided transcript (input_source decided_transcript) decides its text: resolve with that reading's text, and another reader's different text is evidence only. When readers of a label with none write it differently and nothing decides, answer several_possibilities with each reader's text.
 - When no reading writes a habitat, answer label_lacks_value.

@@ -108,7 +108,14 @@ handover runs field research instead of the six specialists:
    source supplies, gets no expert (its nonblocking exception). A value
    settled for a field with no source or check is the verbatim layer, any
    other the settled layer. In that run the expert of a field with no source
-   or check made one request (once two), of about USD 0.0007 each.
+   or check made one request (once two), of about USD 0.0007 each. The
+   briefs of those fields (collectors, collection code, habitat, collection
+   method, verbatim D/T/S) say that a label's decided transcript decides
+   its text and another reader's different text is evidence only (G19), as
+   the agreement rules of step 5 already let it: in this change's first real
+   run 105526321's verbatim D/T/S expert, following its brief's older
+   wording, answered several_possibilities between its decided reading's "3
+   sept. '46" and the other reader's "3 Sept. '46".
 3. **One expert per field.** Every field gets its own Pydantic AI agent
    (`field_<key>`), its own instructions (shared rules plus the field's brief)
    and only its approved tools. All experts run at once. After the step has
