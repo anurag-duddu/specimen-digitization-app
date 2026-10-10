@@ -375,13 +375,14 @@ def test_an_unknown_outcome_stays_fully_reserved(tmp_path):
 def test_a_call_that_would_cross_the_cap_is_refused_however_little_was_spent(
     tmp_path,
 ):
-    # Earlier runs settled at 4,980,000: 20,000 of the allowance is left, less
-    # than SAM 3's 45,000 reservation.
-    app, principal, row = lab(tmp_path, ledger_total_micros=4_980_000)
+    # Earlier runs settled 20,000 short of the pilot profile's allowance (G30,
+    # USD 15): less than SAM 3's 45,000 reservation is left.
+    settled = 15_000_000 - 20_000
+    app, principal, row = lab(tmp_path, ledger_total_micros=settled)
     run = app.state.workflow.drain(principal, row["specimen_id"]).run
     assert (run.stage, run.blocker) == ("processing_blocked", "program_allowance_exhausted")
     assert run.paid_calls == []
-    assert ledger_total(app) == 4_980_000
+    assert ledger_total(app) == settled
 
 
 def test_a_step_without_recorded_calls_stays_reserved(tmp_path):

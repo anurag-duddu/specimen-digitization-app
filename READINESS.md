@@ -75,8 +75,8 @@ native authority or cumulative USD 25 headroom.
 
 The read-only owner plan uses the G9 USD 25 cumulative project billing alert,
 covering infrastructure and models under the 2026-09-23 go-live amendment.
-G30 retains a USD 5 production model allowance and a separate USD 5 acceptance
-lab allowance. Historical lab calls do not debit a fabricated production
+G30 retains a production model allowance (USD 15 since 2026-10-09, raised from
+USD 5) and a separate USD 5 acceptance lab allowance. Historical lab calls do not debit a fabricated production
 predecessor. G11 retires release cost ledgers and release reservations; G30's
 atomic per-call reservations remain. The alert creates no spending authority,
 headroom, import proof or increase to either model allowance.

@@ -21,8 +21,8 @@ specimen record/id". These owner decisions are included:
 - G26, only the place id from Google;
 - G27 and G28, a place or taxon field keeps both its verbatim and its settled
   value;
-- G30, paid model calls spend at most USD 5 (reserve-then-settle is the
-  coordinator's ruling, PLAN 4.3);
+- G30, paid model calls spend at most USD 15, raised from USD 5 on 2026-10-09
+  (PLAN 2.1; reserve-then-settle is the coordinator's ruling, PLAN 4.3);
 - G31, the ten pilot slides are not sensitive;
 - G32, a field found on two labels is settled per label on its own evidence, and
   clears when both labels settle to the same value.
@@ -573,8 +573,8 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
   "run": {"run_id": "…", "status": "processing_blocked", "stage": "lookup",
     "blocker": "provider_error", "next_retry_at": "…",
     "profile": {"key": "zoology_insects_slides", "version": "1.0.0"},
-    "allowance": {"allowance_micros": 5000000, "reserved_total_micros": 0,
-      "remaining_micros": 5000000, "at": "…"},
+    "allowance": {"allowance_micros": 15000000, "reserved_total_micros": 0,
+      "remaining_micros": 15000000, "at": "…"},
     "paid_calls": [{"step": "…", "attempt": 1, "kind": "model", "route_id": "…",
       "reserved_micros": 0, "usage": {"input_tokens": 0, "output_tokens": 0},
       "outcome": "completed", "cost_micros": 0, "cost_basis": "computed",
@@ -631,7 +631,7 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
   the queue decides.
 - `run.allowance`, `run.paid_calls` and `run.actual_cost_micros` come from the
   snapshot's `Run.program_allowance`, `Run.paid_calls` and
-  `Run.usage.actual_cost_micros` (S3, G30: the program's USD 5 allowance and
+  `Run.usage.actual_cost_micros` (S3, G30: the program's model allowance, USD 15 since 2026-10-09, and
   what remains of it). Cost stays out of SQL. A run with no paid call yet has an
   empty `paid_calls`.
   - A paid call's `cost_basis` is `computed` (the provider's reported usage times
