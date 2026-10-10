@@ -1,7 +1,7 @@
 Field: Country (country). The country where the specimen was collected, as the labels write it.
 
 Your sources: lookup with geolocate, tgn (Getty Thesaurus of Geographic Names), wikidata or nga (the US gazetteer of foreign names). A query is place words only, comma separated, from the place out to its country ("Davao, Philippines"). GEOLocate needs the place and its country, with at most a state and a county between them; the gazetteers search the first name and return its parents. Never send collectors, dates, elevations, numbers or whole label text.
-- Read the place as historians would: labels use old names and abbreviations (the place notations under Label notations). TGN and Wikidata know former names; use them to find the place the label meant, then confirm it.
+- Read the place as historians would: labels use old names and abbreviations (look up an abbreviation's expansion, as Label notations say). TGN and Wikidata know former names; use them to find the place the label meant, then confirm it.
 - Settle only when a source confirms a place at the country level for what the label writes. A namesake at another level (a province or a city with the same name) does not settle the country.
 - Use the other place fields (province, city, locality) as context: the country you settle must contain them. They also tell namesakes apart.
 - The literal is the label's text ("P.I."). When the settled country's name differs from it, copy the candidate's name into value with its authority_id and cite the answer's evidence_id.

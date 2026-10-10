@@ -507,9 +507,10 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending):
     found = place_settling(task, answer.literal, settled_value, answer.authority_id, cited)
     if found is None:
         return None  # _refusal has refused it already.
-    basis, candidate = found
+    basis, candidate = found.basis, found.candidate
     named = [by_name[n] for n in dict.fromkeys(answer.reading_names) if n in by_name and answer.literal in by_name[n].text]
     decided = {r.region_id: r for r in readings if r.input_source == "decided_transcript"}
+    rows = {item.id: item for item in run.evidence}
     for reading in dict.fromkeys(decided.get(r.region_id, r) for r in named):
         written, settled = {}, {}
         for key in PLACE_ORDER:
@@ -519,7 +520,8 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending):
             value = run.fields.get(key)
             if (key not in pending and value is not None and value.state == ValueState.SUPPORTED and value.literal
                     and place_name(value.literal) in {place_name(text) for text in texts}):
-                names = (*sorted(texts), *(text for text in (value.normalized, value.parsed) if text))
+                names = (*sorted(texts), *(text for text in (value.normalized, value.parsed) if text),
+                    *_expansions(key, value, rows))
                 written[key] = settled[key] = PlaceField(tuple(dict.fromkeys(names)), value.authority_id)
             else:
                 written[key] = PlaceField(tuple(sorted(texts)))
@@ -530,30 +532,48 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending):
 
 
 NEAR_SPELLING_RULES = "field-research-places-v1"
+# The locator of a settled place value's abbreviation row: the field, then
+# the expansion its source was asked (_place_basis).
+ABBREVIATION_LOCATOR = "abbreviation:{key}:{expansion}"
+
+
+def _expansions(key: str, value: FieldValue, rows: Mapping[str, Evidence]) -> list[str]:
+    """The expansions a settled place value settled through: those its
+    abbreviation rows name (_place_basis), which a parent may name it by
+    (agreement.lies_in)."""
+    prefix = ABBREVIATION_LOCATOR.format(key=key, expansion="")
+    return [row.locator.removeprefix(prefix) for row in (rows.get(i) for i in value.evidence_ids)
+        if row is not None and row.kind == "rule" and row.locator and row.locator.startswith(prefix)]
 
 
 def _place_basis(run, task, answer, sources, value: FieldValue) -> None:
-    """What a settled place value's basis adds (agreement.place_basis): for a
-    lookup of a notation's expansion (P4), one rule row naming the table entry,
-    cited by the value as support (no stored record, so it is never projected);
-    for a lookup of the candidate's own name one letter from the label's text,
-    which settled only on G34's whole condition (_misfit), a warning finding
-    beside the record, naming the deciding answers, which never routes it
-    (RunFinding). The value keeps the label's spelling as its literal (G27)."""
-    from .agreement import NEAR_SPELLING, NOTATION, PLACE_VALUE_FIELDS, place_basis
-    from .notations import expansion
+    """What a settled place value's basis adds (agreement.place_settling): for
+    a lookup of an expansion the literal abbreviates (the letter rule,
+    abbreviations.fit), one rule row naming the abbreviation, the expansion
+    and how its letters fit, cited by the value as support (no stored record,
+    so it is never projected); for a lookup of the candidate's own name one
+    letter from the label's text, which settled only on G34's whole condition
+    (_misfit), a warning finding beside the record, naming the deciding
+    answers, which never routes it (RunFinding). The value keeps the label's
+    spelling as its literal (G27)."""
+    from .abbreviations import fit, shown
+    from .agreement import ABBREVIATION, NEAR_SPELLING, PLACE_VALUE_FIELDS, asked_name, place_settling
 
     if task.key not in PLACE_VALUE_FIELDS:
         return
     by_id = {item.evidence.id: item for item in sources if item.evidence is not None}
     cited = [by_id[i] for i in dict.fromkeys(answer.source_evidence_ids) if i in by_id]
     settled = answer.value if answer.value is not None else answer.literal
-    basis = place_basis(task, answer.literal, settled, answer.authority_id, cited)
-    if basis == NOTATION:
-        entry = expansion(answer.literal, task.key)
-        row = Evidence(kind="rule", source=SOURCE, locator=f"notation:{entry.field}:{entry.notation}",
-            excerpt=(f'{task.key}: "{answer.literal}" is the notation "{entry.notation}", looked up as '
-                f'"{entry.expansion}" (G29; field_research.notations)'))
+    found = place_settling(task, answer.literal, settled, answer.authority_id, cited)
+    basis = found.basis if found is not None else None
+    if basis == ABBREVIATION:
+        expansion = asked_name(found.answer)
+        pairs = fit(answer.literal, expansion)
+        row = Evidence(kind="rule", source=SOURCE,
+            locator=ABBREVIATION_LOCATOR.format(key=task.key, expansion=expansion),
+            excerpt=(f'{task.key}: "{answer.literal}" abbreviates "{expansion}", the name '
+                f'{found.answer.source_id} was asked: its letters fit the words in order '
+                f'({shown(pairs)}; field_research.abbreviations)'))
         run.evidence.append(row)
         value.evidence_ids.append(row.id)
         value.evidence_relations[row.id] = "supports"

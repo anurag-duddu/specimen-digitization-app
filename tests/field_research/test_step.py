@@ -985,6 +985,15 @@ class Gazetteer(FakeSources):
         "Guatemala": [("Guatemala", "tgn:7422823", "inhabited places", (("Zacatecas", None), ("Mexico", None))),
             ("Guatemala", "tgn:7005493", "nations, colonies, independent political entities", GT),
             ("Guatemala", "tgn:1000621", FIRST, GT)],
+        # Constructed for the abbreviation rule, with made-up records: nations and a
+        # state that "S.A." or "P.I." spells, and a nation that neither spells.
+        "South Africa": [("South Africa", "tgn:south-africa", NATION, (("South Africa", "tgn:south-africa"),))],
+        "Saudi Arabia": [("Saudi Arabia", "tgn:saudi-arabia", NATION, (("Saudi Arabia", "tgn:saudi-arabia"),))],
+        "South Australia": [("South Australia", "tgn:south-australia", "states (political divisions), "
+            "first level subdivisions (political entities)", (("Australia", "tgn:australia"),))],
+        "Pacific Islands": [("Pacific Islands", "tgn:pacific-islands", NATION,
+            (("Pacific Islands", "tgn:pacific-islands"),))],
+        "Peru": [("Peru", "tgn:peru", NATION, (("Peru", "tgn:peru"),))],
     }
 
     def _answer(self, source_id, query):
@@ -1112,7 +1121,7 @@ class InParaguay(Gazetteer):
 
 
 PHILIPPINE = label_with(country="P.I.", province_state="Chimaltenago", county="Davao", city="Mati")
-NOTATION_COUNTRY = {"country": from_tgn("Philippine Islands", "P.I.", "Philippines", "tgn:1000135")}
+ABBREVIATED_COUNTRY = {"country": from_tgn("Philippine Islands", "P.I.", "Philippines", "tgn:1000135")}
 
 
 @pytest.mark.parametrize(("text", "scripts", "key", "reason"), [
@@ -1127,7 +1136,7 @@ NOTATION_COUNTRY = {"country": from_tgn("Philippine Islands", "P.I.", "Philippin
      "province_state", agreement.NOT_IN_COUNTRY),
     # The review's case of G34's own kind: a Philippine label (P.I. settled as the
     # Philippines, Davao, Mati) whose province settles one letter away in Guatemala.
-    (PHILIPPINE, {**NOTATION_COUNTRY, "province_state": from_tgn(
+    (PHILIPPINE, {**ABBREVIATED_COUNTRY, "province_state": from_tgn(
         "Chimaltenango", "Chimaltenago", "Chimaltenango", "tgn:1000565"), "county": place_on("Davao"),
         "city": place_on("Mati")}, "province_state", agreement.NOT_IN_COUNTRY),
     # P1's "one candidate at the level" of a capped list: Wikidata's only department for
@@ -1173,23 +1182,34 @@ def test_a_near_spelling_settles_when_every_other_place_field_is_among_its_paren
     assert [f.reason_code for f in run.findings] == ["near_spelling:city"]
 
 
-@pytest.mark.parametrize(("written", "query", "value", "authority_id", "settles"), [
-    # The table's expansion of "P.I.", with TGN's real ambiguous answer: one nation.
-    ("P.I.", "Philippine Islands", "Philippines", "tgn:1000135", True),
-    ("Guat.", "Guatemala", "Guatemala", "tgn:7005493", True),
+@pytest.mark.parametrize(("written", "query", "value", "authority_id", "fit"), [
+    # 105526321's "P.I.", with TGN's real ambiguous answer for its expansion: one nation.
+    ("P.I.", "Philippine Islands", "Philippines", "tgn:1000135", "P = Philippine, I = Islands"),
+    ("Guat.", "Guatemala", "Guatemala", "tgn:7005493", "Guat = Guatemala"),
+    # Abbreviations the fixed table never held.
+    ("Guate.", "Guatemala", "Guatemala", "tgn:7005493", "Guate = Guatemala"),
+    ("Phil. Is.", "Philippine Islands", "Philippines", "tgn:1000135", "Phil = Philippine, Is = Islands"),
+    # "S.A." also spells South Australia, a state: no rival at the country's level.
+    ("S.A.", "South Africa", "South Africa", "tgn:south-africa", "S = South, A = Africa"),
     # Another name for the place is context only.
-    ("P.I.", "Philippines", "Philippines", "tgn:1000135", False),
-    # A notation the table does not hold.
-    ("Guate.", "Guatemala", "Guatemala", "tgn:7005493", False),
+    ("P.I.", "Philippines", "Philippines", "tgn:1000135", None),
+    # A name the letters do not spell.
+    ("P.I.", "Peru", "Peru", "tgn:peru", None),
 ])
-def test_a_place_notation_settles_on_a_lookup_of_the_name_the_table_gives_it(
-        tmp_path, written, query, value, authority_id, settles):
+def test_a_place_abbreviation_settles_on_a_lookup_of_an_expansion_its_letters_fit(
+        tmp_path, written, query, value, authority_id, fit):
     rig = build_rig(tmp_path, label_with(country=written))
     run = rig.specimen.run
-    settle(rig, Scripted({"country": from_tgn(query, written, value, authority_id)}), tools=Gazetteer(rig.blobs))
+
+    async def script(task, readings, tools):
+        # South Australia, a state, is looked up too: "S.A." spells it.
+        found = [await tools.lookup("tgn", name, field_key=task.key) for name in (query, "South Australia")]
+        return FieldOutcome(task.key, resolved(written, value=value, authority_id=authority_id,
+            cited=[found[0].evidence.id]), evidence=[item.evidence for item in found], model_calls=1)
+    settle(rig, Scripted({"country": script}), tools=Gazetteer(rig.blobs))
     country = run.fields["country"]
     rules = [item for item in run.evidence if item.kind == "rule"]
-    if not settles:
+    if fit is None:
         assert (country.state, country.reason) == (ValueState.UNRESOLVED, agreement.NO_PLACE + " Settled.")
         assert run.disposition == Disposition.REVIEW and not rules
         return
@@ -1197,11 +1217,72 @@ def test_a_place_notation_settles_on_a_lookup_of_the_name_the_table_gives_it(
         ValueState.SUPPORTED, written, value, authority_id)
     # The synthetic label's US places do not lie in it; the country itself needs no parent.
     assert not reasons_for(run, "country")
-    # One rule row names the table entry; the value cites it as support. It has
-    # no stored record, so it is never projected.
+    # One rule row names the abbreviation, the expansion asked and how its letters
+    # fit; the value cites it as support. It has no stored record, so it is never
+    # projected.
     [rule] = rules
-    assert rule.locator == f"notation:country:{written}" and query in rule.excerpt
+    assert rule.locator == f"abbreviation:country:{query}"
+    assert rule.excerpt == (f'country: "{written}" abbreviates "{query}", the name tgn was asked: its letters '
+        f"fit the words in order ({fit}; field_research.abbreviations)")
     assert (rule.raw_ref, rule.digest) == (None, None) and country.evidence_relations[rule.id] == "supports"
+
+
+def test_mindanao_p_i_settles_its_country_as_the_philippines_by_the_letter_rule(tmp_path):
+    """105526321's label writes "Mindanao, P.I."; the organiser's country
+    candidate is "P.I.". Getty TGN, asked its expansion "Philippine Islands",
+    has one nation: the Philippines, with no table naming "P.I."."""
+    text = label_with(country=None) + "\nMindanao, P.I."
+    rig = build_rig(tmp_path, text, candidates=[*COLLECTORS,
+        *(("country", name, "P.I.", "Mindanao, P.I.") for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    settle(rig, Scripted(ABBREVIATED_COUNTRY), tools=Gazetteer(rig.blobs))
+    country = run.fields["country"]
+    assert (country.state, country.literal, country.normalized, country.authority_id) == (
+        ValueState.SUPPORTED, "P.I.", "Philippines", "tgn:1000135")
+    assert not reasons_for(run, "country")
+    [rule] = [item for item in run.evidence if item.kind == "rule"]
+    assert rule.locator == "abbreviation:country:Philippine Islands" and "P = Philippine, I = Islands" in rule.excerpt
+
+
+@pytest.mark.parametrize(("written", "settled_by", "value", "authority_id", "rival"), [
+    ("S.A.", "South Africa", "South Africa", "tgn:south-africa", "Saudi Arabia"),
+    # The table's own "P.I.", which settled on origin/main whatever else was found.
+    ("P.I.", "Philippine Islands", "Philippines", "tgn:1000135", "Pacific Islands"),
+])
+def test_an_abbreviation_two_of_whose_expansions_are_found_as_different_places_stays_ambiguous(
+        tmp_path, written, settled_by, value, authority_id, rival):
+    rig = build_rig(tmp_path, label_with(country=written))
+    run = rig.specimen.run
+
+    async def both(task, readings, tools):
+        found = [await tools.lookup("tgn", name, field_key=task.key) for name in (settled_by, rival)]
+        return FieldOutcome(task.key, resolved(written, value=value, authority_id=authority_id,
+            cited=[found[0].evidence.id]), evidence=[item.evidence for item in found], model_calls=1)
+    settle(rig, Scripted({"country": both}), tools=Gazetteer(rig.blobs))
+    country = run.fields["country"]
+    assert (country.state, country.literal, country.authority_id) == (ValueState.AMBIGUOUS, None, None)
+    assert country.reason == agreement.EXPANSIONS_DIFFER + " Settled."
+    assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:country" in run.reasons
+    assert not [item for item in run.evidence if item.kind == "rule"]
+
+
+def test_a_place_lies_in_a_country_named_by_the_expansion_it_settled_through(tmp_path):
+    """The country "Phil. Is." settles as the Philippines through "Philippine
+    Islands". GEOLocate, asked for the city with that country, puts Mati in
+    "Philippine Islands" by name only, with no record: the country's
+    abbreviation row names that expansion, so the city lies in the country."""
+    rig = build_rig(tmp_path, label_with(country="Phil. Is.", province_state=None, county=None, city="Mati"))
+    run = rig.specimen.run
+    lacks = answering(FieldAnswer(outcome="label_lacks_value", explanation="Not on the label."))
+    settle(rig, Scripted({
+        "country": from_tgn("Philippine Islands", "Phil. Is.", "Philippines", "tgn:1000135"),
+        "city": from_tgn("Mati, Philippine Islands", "Mati", None, "geolocate:Mati, Philippine Islands",
+            source="geolocate"),
+        "province_state": lacks, "county": lacks}), tools=Gazetteer(rig.blobs))
+    city = run.fields["city"]
+    assert (city.state, city.literal, city.authority_id) == (
+        ValueState.SUPPORTED, "Mati", "geolocate:Mati, Philippine Islands")
+    assert not reasons_for(run, "city")
 
 
 def test_a_place_never_clears_without_a_place_sources_candidate(rig):

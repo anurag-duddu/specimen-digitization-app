@@ -710,24 +710,28 @@ def test_logfire_shows_each_expert_as_its_own_agent(monkeypatch):
         "Expert for Taxon. Settles it from the label readings and its approved sources.")
 
 
-def test_the_briefs_place_notations_are_the_tables():
-    """The shared brief's notation line is rendered from the table the place
-    rule reads (notations.NOTATIONS): every entry, and no other."""
+def test_the_briefs_have_a_place_abbreviation_looked_up_by_its_expansion():
+    """No table of notations: every brief has a place abbreviation the label
+    writes looked up by its expansion and named in the explanation, and the
+    place rule's examples are what the letter rule decides: the expansions it
+    names fit their abbreviations, the names it calls context only do not."""
     import re
 
-    from specimen_digitization.field_research import notations
+    from specimen_digitization.field_research.abbreviations import fits
     from specimen_digitization.field_research.prompts import _ROOT, instructions
 
-    assert (_ROOT / "common.txt").read_text(encoding="utf-8").count(notations.MARKER) == 1
+    assert "PLACE_NOTATIONS" not in (_ROOT / "common.txt").read_text(encoding="utf-8")
     for key in FIELD_TOOLS:
-        text = instructions(key)
-        [line] = [line for line in text.splitlines() if line.startswith('- "') and "look it up as" in line]
-        assert line == notations.brief_line() and notations.MARKER not in text
-        listed = re.findall(r'"([^"]+)": [^(]+\((\w+); look it up as "([^"]+)"\)', line)
-        assert listed == [(entry.notation, entry.field, entry.expansion) for entry in notations.NOTATIONS]
-    # A notation is matched by the place comparison key, for its own field only.
-    assert notations.expansion("P. I.", "country").expansion == "Philippine Islands"
-    assert notations.expansion("P.I.", "province_state") is None and notations.expansion("Phil.", "country") is None
+        [line] = [line for line in instructions(key).splitlines() if line.startswith("- A place abbreviation")]
+        assert "look up its expansion" in line and "name in your explanation the abbreviation you expanded" in line
+    [rule] = [line for line in instructions("country").splitlines() if "whose words its letters fit in order" in line]
+    accepted, context = rule.split("when the literal is an abbreviation", 1)[1].split("A lookup of any other name", 1)
+    expansions = re.findall(r'"([^"]+)" for "([^"]+)"', accepted)
+    assert expansions == [("Philippine Islands", "P.I."), ("New South Wales", "N.S.W.")]
+    assert all(fits(abbreviation, expansion) for expansion, abbreviation in expansions)
+    others = re.findall(r'"([^"]+)" for "([^"]+)"', context)
+    assert ("Philippines", "P.I.") in others
+    assert not any(fits(written, name) for name, written in others)
 
 
 def test_the_taxon_brief_has_a_doubtful_or_distant_genus_looked_up_alone():
@@ -1183,13 +1187,15 @@ PHILIPPINE_ISLANDS = tgn("Philippine Islands", "ev-pi", ("Philippine Islands", "
     ("province_state", "Chimaltango", CHIMALTENANGO, "Chimaltenango", "tgn:1000565", False),
     # A lookup that has nothing to do with what the label writes.
     ("province_state", "Chimaltenago", ESCUINTLA, "Escuintla", "tgn:1000566", False),
-    # "P.I." read as the Philippines: the query is neither the label's text, nor the name the
-    # notation table gives it, nor one letter from it.
+    # "P.I." read as the Philippines: the query is neither the label's text, nor a name its
+    # letters spell ("P" and "I" are two groups, "Philippines" one word), nor one letter from it.
     ("country", "P.I.", PHILIPPINES_BY_NAME, "Philippines", "tgn:1000135", False),
-    # The notation table's name for "P.I." (P4).
+    # An expansion of "P.I." by the letter rule (P4): "P" Philippine, "I" Islands.
     ("country", "P.I.", PHILIPPINE_ISLANDS, "Philippines", "tgn:1000135", True),
-    # A notation the table does not hold.
-    ("country", "Phil. Is.", PHILIPPINE_ISLANDS, "Philippines", "tgn:1000135", False),
+    # Another abbreviation of it, which the fixed table never held.
+    ("country", "Phil. Is.", PHILIPPINE_ISLANDS, "Philippines", "tgn:1000135", True),
+    # Not written as an abbreviation: "Philippine" is a word, not "P.I." shortened.
+    ("country", "Philippine", PHILIPPINE_ISLANDS, "Philippines", "tgn:1000135", False),
 ])
 def test_a_place_settles_only_on_a_lookup_of_the_labels_own_text(key, literal, received, value, authority,
                                                                   settles):
@@ -1208,6 +1214,98 @@ def test_a_place_settles_only_on_a_lookup_of_the_labels_own_text(key, literal, r
         return
     with pytest.raises(ModelRetry, match="asked the label's own text"):
         made.validate(given)
+
+
+# Abbreviations from anywhere, looked up by an expansion (P4). The answers are
+# constructed in the sources' shapes (sources._place, sources._geolocate); the
+# authority ids are made up.
+STATE = "states (political divisions), first level subdivisions (political entities)"
+
+
+def answered(source: str, query: str, evidence_id: str, name: str, kind: str | None) -> SourceAnswer:
+    """`source`'s success answer for `query`: one place, `name`, of that kind."""
+    authority = f"{source}:{name.casefold().replace(' ', '-')}"
+    return SourceAnswer(source, query, LookupStatus.SUCCESS, (SourceCandidate(name, authority, kind),),
+                        Evidence(id=evidence_id, kind="authority", source=source, locator=authority,
+                                 excerpt=name), note="match")
+
+
+@pytest.mark.parametrize(("key", "literal", "received", "settles"), [
+    ("country", "Guat.", answered("tgn", "Guatemala", "ev-1", "Guatemala", NATION), True),
+    ("province_state", "N.S.W.", answered("tgn", "New South Wales", "ev-1", "New South Wales", STATE), True),
+    ("province_state", "Qld.", answered("tgn", "Queensland", "ev-1", "Queensland", STATE), True),
+    ("province_state", "Edo. M\u00e9x.", answered("wikidata", "Estado de M\u00e9xico", "ev-1", "State of Mexico",
+                                                  "state of Mexico"), True),
+    ("province_state", "B.C.", answered("nga", "British Columbia", "ev-1", "British Columbia", "A.ADM1"), True),
+    ("city", "Ft. Lauderdale", answered("geolocate", "Fort Lauderdale, Florida, United States", "ev-1",
+                                        "Fort Lauderdale", None), True),
+    ("city", "Sta. Cruz", answered("geolocate", "Santa Cruz, Bolivia", "ev-1", "Santa Cruz", None), True),
+    # Names the letters do not spell: two groups never fit one word, and Iowa has no "l".
+    ("country", "P.I.", answered("tgn", "Peru", "ev-1", "Peru", NATION), False),
+    ("province_state", "Ill.", answered("tgn", "Iowa", "ev-1", "Iowa", STATE), False),
+    # Not written as an abbreviation.
+    ("city", "Lima", answered("geolocate", "Limassol, Cyprus", "ev-1", "Limassol", None), False),
+])
+def test_a_place_abbreviation_settles_on_a_lookup_of_an_expansion_its_letters_fit(key, literal, received, settles):
+    readings = (Reading("1A", "region-1", "obs-1a", "raw_reading", f"{literal}\nleg. J. Smith"),
+                Reading("1B", "region-1", "obs-1b", "raw_reading", f"{literal}\nleg. J. Smith"))
+    made = experts._Expert(task(key, candidates=offered(("1A", literal), ("1B", literal))), readings,
+                           FakeTools(), PILOT_DATES)
+    made.calls.append(experts._Call(received.source_id, received.query, received.status, received))
+    [place] = received.candidates
+    given = answer(outcome="resolved", literal=literal, reading_names=["1A", "1B"], value=place.name,
+                   authority_id=place.authority_id, source_evidence_ids=["ev-1"])
+
+    if settles:
+        assert made.validate(given).value == place.name
+        assert agreement.place_basis(made.task, literal, place.name, place.authority_id,
+                                     [received]) == agreement.ABBREVIATION
+        return
+    with pytest.raises(ModelRetry, match="asked the label's own text"):
+        made.validate(given)
+
+
+SOUTH_AFRICA = answered("tgn", "South Africa", "ev-za", "South Africa", NATION)
+# Constructed: another nation whose name "P.I." spells.
+PACIFIC_ISLANDS = answered("tgn", "Pacific Islands", "ev-pac", "Pacific Islands", NATION)
+
+
+@pytest.mark.parametrize(("literal", "settling", "other", "rival"), [
+    # "S.A." spells both; Getty TGN finds each as a nation.
+    ("S.A.", SOUTH_AFRICA, answered("tgn", "Saudi Arabia", "ev-sa", "Saudi Arabia", NATION), "Saudi Arabia"),
+    # The fixed table's own "P.I.", beside another nation its letters spell.
+    ("P.I.", PHILIPPINE_ISLANDS, PACIFIC_ISLANDS, "Pacific Islands"),
+    # South Australia is a state: at the country's level only South Africa is found.
+    ("S.A.", SOUTH_AFRICA, answered("tgn", "South Australia", "ev-sau", "South Australia", STATE), None),
+    # Two expansions that find the same nation agree.
+    ("P.I.", PHILIPPINE_ISLANDS, tgn("Philippine Is", "ev-pis", ("Philippines", "tgn:1000135", NATION)), None),
+    # A name the letters do not spell is no expansion of it.
+    ("P.I.", PHILIPPINE_ISLANDS, answered("tgn", "Peru", "ev-pe", "Peru", NATION), None),
+    # Nor is a lookup with nothing at the country's level, or nothing stored.
+    ("P.I.", PHILIPPINE_ISLANDS, nothing("Pacific Islands", "ev-none"), None),
+    ("P.I.", PHILIPPINE_ISLANDS, nothing("Pacific Islands", "", LookupStatus.PROVIDER), None),
+])
+def test_an_abbreviation_two_of_whose_expansions_are_found_as_different_places_settles_nothing(
+        literal, settling, other, rival):
+    readings = (Reading("1A", "region-1", "obs-1a", "raw_reading", f"{literal}\nleg. J. Smith"),
+                Reading("1B", "region-1", "obs-1b", "raw_reading", f"{literal}\nleg. J. Smith"))
+    made = experts._Expert(task("country", candidates=offered(("1A", literal), ("1B", literal))), readings,
+                           FakeTools(), PILOT_DATES)
+    for found in (settling, other):
+        made.calls.append(experts._Call(found.source_id, found.query, found.status, found))
+    place = agreement.placed("country", settling)
+    given = answer(outcome="resolved", literal=literal, reading_names=["1A"], value=place.name,
+                   authority_id=place.authority_id, source_evidence_ids=[settling.evidence.id])
+
+    if rival is None:
+        assert made.validate(given).authority_id == place.authority_id
+        return
+    with pytest.raises(ModelRetry, match=f"fits both '{settling.query}' and '{rival}'"):
+        made.validate(given)
+    # The step's check is the same: the field is ambiguous, for a person to choose.
+    refused = agreement.refusal(made.task, readings, literal=literal, named=readings[:1], value=place.name,
+                                authority_id=place.authority_id, cited=[settling], received=made.received)
+    assert (refused.reason, refused.differ) == (agreement.EXPANSIONS_DIFFER, True)
 
 
 GUATEMALA = agreement.PlaceField(("Guatemala",), "tgn:7005493")
