@@ -1511,12 +1511,63 @@ def test_a_source_still_unreachable_on_the_last_attempt_goes_to_review_and_the_r
     assert last.fields["taxon"].layer == "settled" and last.paid_calls[-1]["outcome"] == "completed"
 
 
-def test_a_model_error_on_the_last_attempt_still_stops_the_retries(rig):
-    """Only a source lookup's outage is graceful on the last attempt; a model
-    or provider failure keeps its block."""
-    *_, last = until_the_last_attempt(rig, Scripted({"country": failing("model_error")}))
+@pytest.mark.parametrize("others", [{}, {"taxon": failing("timeout")}])
+def test_a_model_error_on_the_last_attempt_still_stops_the_retries(rig, others):
+    """A source lookup's outage and a field's timeout are graceful on the last
+    attempt; a model or provider failure keeps its block, beside another
+    field's timeout too."""
+    *_, last = until_the_last_attempt(rig, Scripted({"country": failing("model_error"), **others}))
     assert (last.stage, last.dead_letter, last.blocker) == (
         "processing_blocked", True, "retry_budget_exhausted:field_research_model_error")
+
+
+def settled_fields(run):
+    """The fields research settled, with everything they hold."""
+    return {key: value.model_dump() for key, value in run.fields.items()
+        if value.state == ValueState.SUPPORTED and value.layer in ("verbatim", "settled")}
+
+
+def test_a_field_that_runs_out_of_time_on_the_last_attempt_goes_to_review_and_the_run_finalizes(rig, capfire):
+    """The country's expert runs out of time on every attempt. Earlier
+    attempts retry as before; the last sends the country to review, saying
+    so, and finalizes the record with every field the attempts settled."""
+    *early, last = until_the_last_attempt(rig, Scripted({"country": failing("timeout")}))
+    for attempt, run in enumerate(early, 1):
+        assert (run.stage, run.blocker, run.attempts[FIELD_RESEARCH]) == (
+            "retry_scheduled", "field_research_timeout", attempt)
+        assert run.fields["country"].reason == field_step.FIELD_REASONS["timeout"]
+    assert (last.stage, last.blocker, last.dead_letter, last.disposition) == (
+        "finalized", None, False, Disposition.REVIEW)
+    assert last.attempts[FIELD_RESEARCH] == 3 and last.completed_steps[-1] == FIELD_RESEARCH
+    assert (last.fields["country"].state, last.fields["country"].reason) == (
+        ValueState.UNRESOLVED, "Research on this field ran out of time after 3 attempts.")
+    assert "mandatory_unresolved:country" in last.reasons
+    assert not [reason for reason in last.reasons if reason.startswith("field_research_timeout")]
+    # Every field the first attempt settled is kept, exactly as it was.
+    kept = settled_fields(early[0])
+    assert "taxon" in kept and {key: settled_fields(last)[key] for key in kept} == kept
+    assert last.paid_calls[-1]["outcome"] == "completed"
+    # The last attempt's span for the country names the rule that decided it.
+    [*_, country] = [span["attributes"] for span in capfire.exporter.exported_spans_as_dict()
+        if span["name"] == "field_research.field" and span["attributes"]["field_key"] == "country"]
+    assert (country["failure"], country["state"], country["rule"]) == (
+        "timeout", "unresolved", "timed_out_on_last_attempt")
+
+
+def test_a_field_still_running_at_the_last_attempts_deadline_goes_to_review(rig):
+    """The step's own deadline cancels the taxon's expert on the last attempt:
+    the taxon goes to review and the record finalizes with the rest."""
+    async def stuck(task, readings, tools):
+        await asyncio.sleep(30)
+
+    run = rig.specimen.run
+    run.attempts[FIELD_RESEARCH] = run.profile.execution.max_attempts
+    blocker = settle(rig, Scripted({"taxon": stuck}), deadline_seconds=0.2)
+    assert blocker is None and (run.stage, run.disposition, run.blocker) == ("finalized", Disposition.REVIEW, None)
+    assert (run.fields["taxon"].state, run.fields["taxon"].reason) == (
+        ValueState.UNRESOLVED, f"Research on this field ran out of time after {run.attempts[FIELD_RESEARCH]} attempts.")
+    assert run.fields["county"].layer == "settled"
+    assert not [reason for reason in run.reasons if reason.startswith("field_research_timeout")]
 
 
 def field_spans(capfire):

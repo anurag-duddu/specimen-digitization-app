@@ -25,7 +25,8 @@ the workflow saves the run once after it:
    with no blanket human approval (G1). A field that cannot be settled sends the
    record to Needs human review; an outage blocks the run with a retry, and
    every settled field is kept for it. On the step's last attempt a source
-   still unreachable sends its field to review instead (``last_attempt``).
+   still unreachable, or a field that ran out of time, sends its field to
+   review instead (``last_attempt``).
 
 Once the step has completed on a run it never runs there again: a later pass
 (a retry, or a reviewer's decision) applies the rules only (``refinalize``),
@@ -134,6 +135,11 @@ RETRYABLE = {
     "timeout": ("field_research_timeout", LookupStatus.TIMEOUT),
 }
 BLOCKER_STATUS = dict(RETRYABLE.values())
+# The failures that, on the step's last attempt (last_attempt), send their
+# field to review instead of blocking: no retry follows that attempt. A
+# model error blocks on every attempt; a provider's outage is for a later
+# retry, never a finalized record.
+REVIEW_ON_LAST_ATTEMPT = frozenset({"source_unavailable", "timeout"})
 FIELD_REASONS = {
     "source_unavailable": "An approved source could not be reached. The record will be retried.",
     "model_error": "An error occurred while researching this field. The record will be retried.",
@@ -153,12 +159,23 @@ def last_attempt(run) -> bool:
     return run.attempts.get(STEP, 0) >= run.profile.execution.max_attempts
 
 
+def _attempts(run) -> str:
+    """The step's attempts so far, in words: "3 attempts"."""
+    attempts = run.attempts.get(STEP, 0)
+    return f"{attempts} attempt{'s' if attempts != 1 else ''}"
+
+
 def _unreachable_reason(run, outcome: FieldOutcome) -> str:
     """The reason of a field whose sources still could not be reached on the
     step's last attempt: it goes to review, naming them."""
-    attempts = run.attempts.get(STEP, 0)
     names = _source_names(outcome.unreachable) if outcome.unreachable else "An approved source"
-    return f"{names} could not be reached after {attempts} attempt{'s' if attempts != 1 else ''}."
+    return f"{names} could not be reached after {_attempts(run)}."
+
+
+def _timeout_reason(run) -> str:
+    """The reason of a field that ran out of time on the step's last attempt:
+    it goes to review."""
+    return f"Research on this field ran out of time after {_attempts(run)}."
 
 
 # ---- inputs ---------------------------------------------------------------
@@ -685,6 +702,9 @@ def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, b
         if final and outcome.failure == "source_unavailable":
             decision["rule"] = "unreachable_on_last_attempt"
             reason = _unreachable_reason(run, outcome)
+        elif final and outcome.failure == "timeout":
+            decision["rule"] = "timed_out_on_last_attempt"
+            reason = _timeout_reason(run)
         return _unsettled(task, ValueState.UNRESOLVED, literal=current.literal, cited=cited, reason=reason)
     if answer.outcome == "resolved":
         refused = _refusal(task, answer, readings=readings, by_name=by_name, sources=sources)
@@ -1087,9 +1107,10 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     sources_cannot_resolve: unresolved, except a taxon that names no genus,
     supported as written and unmatched (_unmatched_taxon); several_possibilities:
     ambiguous, the options in the reason; a failure: unresolved with a
-    retryable reason, except a source still unreachable on the step's last
-    attempt (last_attempt), whose reason names the sources not reached
-    (_unreachable_reason). Then the derived values, then the listed fields the
+    retryable reason, except on the step's last attempt (last_attempt) a
+    source still unreachable, whose reason names the sources not reached
+    (_unreachable_reason), and a field that ran out of time, whose reason
+    says so (_timeout_reason). Then the derived values, then the listed fields the
     label does not state (mark_not_on_label); the keys derived are returned.
     Last, a field whose expert's answer stood although a source it asked
     could not be reached (FieldOutcome.unreachable) ends its reason with a
@@ -1814,12 +1835,13 @@ def work_states(run, profile: CollectionProfile, outcomes: Sequence[FieldOutcome
     """Each profile field's work state after this attempt.
 
     A field this attempt did not research (settled earlier, or a person's) and
-    a derived value are resolved; an outage or model failure is operational,
-    except a source still unreachable on the step's last attempt
-    (last_attempt), which no retry would follow; a field with no approved
-    authority is its nonblocking exception; anything else that did not settle
-    waits on a person (a spent budget and that last unreachable source too:
-    failures are graceful).
+    a derived value are resolved; an outage, a model failure or a timeout is
+    operational, except on the step's last attempt (last_attempt), which no
+    retry would follow, a source still unreachable and a field that ran out
+    of time (REVIEW_ON_LAST_ATTEMPT); a model failure is operational on every
+    attempt. A field with no approved authority is its nonblocking exception;
+    anything else that did not settle waits on a person (a spent budget, and
+    that last unreachable source or timeout too: failures are graceful).
     """
     by_key = {outcome.key: outcome for outcome in outcomes}
     final = last_attempt(run)
@@ -1828,7 +1850,7 @@ def work_states(run, profile: CollectionProfile, outcomes: Sequence[FieldOutcome
         outcome, value = by_key.get(key), run.fields.get(key) or FieldValue()
         if outcome is None or (value.state == ValueState.SUPPORTED and value.layer == "derived"):
             states[key] = RESOLVED
-        elif outcome.failure in RETRYABLE and not (final and outcome.failure == "source_unavailable"):
+        elif outcome.failure in RETRYABLE and not (final and outcome.failure in REVIEW_ON_LAST_ATTEMPT):
             states[key] = FAILED
         elif key in NO_APPROVED_AUTHORITY:
             states[key] = NONBLOCKING
@@ -1848,8 +1870,9 @@ def finalize_fields(run, profile: CollectionProfile | None, outcomes: Sequence[F
     rules satisfied: cleared. Anything for a person: needs human review, with a
     reason per field. Any outage or model failure: processing_blocked with the
     retryable blocker the workflow schedules a retry on, every settled field
-    kept; on the step's last attempt a source still unreachable is for a person
-    instead (work_states), and only a model failure or timeout blocks.
+    kept; on the step's last attempt a source still unreachable and a field
+    that ran out of time are for a person instead (work_states), and only a
+    model failure blocks.
     """
     profile = profile_of(run) if profile is None else profile
     if specimen is not None and blobs is not None:
