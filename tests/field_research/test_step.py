@@ -2879,6 +2879,9 @@ RESOLVED_DOUBTFUL_GENUS = {
     # The full-width and the inverted question marks.
     "full-width-question-quote": ("Epipsocus\N{FULLWIDTH QUESTION MARK}", "Epipsocus\N{FULLWIDTH QUESTION MARK}"),
     "inverted-question-line-bare-quote": ("\N{INVERTED QUESTION MARK}Epipsocus", "Epipsocus"),
+    # A "?" standing alone right after the genus on its line.
+    "spaced-question-quote": ("Epipsocus ?", "Epipsocus ?"),
+    "spaced-question-before-a-code-bare-quote": ("Epipsocus ? sp. 1", "Epipsocus"),
 }
 
 

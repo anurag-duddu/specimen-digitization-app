@@ -474,6 +474,12 @@ def _has_question_mark(part: str) -> bool:
     return any(mark in part for mark in QUESTION_MARKS)
 
 
+def _alone_a_question_mark(part: str) -> bool:
+    """A part that is a question mark standing alone: one of QUESTION_MARKS
+    and no letter or digit ("?", "(?)")."""
+    return _has_question_mark(part) and not any(c.isalnum() for c in part)
+
+
 def genus_in_doubt(text: str, literal: str) -> bool:
     """Whether the text, wherever it writes the taxon literal, marks the
     literal's first word, its genus, as doubtful (1c of #289's fifth review):
@@ -483,12 +489,12 @@ def genus_in_doubt(text: str, literal: str) -> bool:
       too ("cfr. Epipsocus", "cf." ending the line above);
     - a "?" on that word, in its own part ("Epipsocus?", "?Epipsocus",
       "Epipsocus(?)"), or a "?" standing alone, a part with no letter or
-      digit, just before it on its line ("? Epipsocus", "(?) Epipsocus").
+      digit, just before or just after it on its line ("? Epipsocus",
+      "(?) Epipsocus", "Epipsocus ?", "Epipsocus ? sp. 1").
     A "?" is any of QUESTION_MARKS. A "?" on another word ("Davao?
     Epipsocus"), any "?" on the line above ("1946?" above "Epipsocus sp.
-    1"), one after the genus ("Epipsocus ?") and a qualifier after the genus
-    ("Epipsocus cf. sp. 1", G25) are none. False when the text does not
-    write the literal."""
+    1") or below, and a qualifier after the genus ("Epipsocus cf. sp. 1",
+    G25) are none. False when the text does not write the literal."""
     literal = literal.strip()
     if not literal:
         return False
@@ -502,8 +508,11 @@ def genus_in_doubt(text: str, literal: str) -> bool:
         if at > 0:
             before = parts[at - 1]
             on_its_line = "\n" not in text[before.end():parts[at].start()]
-            if _qualifier(before.group()) or (on_its_line and _has_question_mark(before.group())
-                    and not any(c.isalnum() for c in before.group())):
+            if _qualifier(before.group()) or (on_its_line and _alone_a_question_mark(before.group())):
+                return True
+        if at + 1 < len(parts):
+            after = parts[at + 1]
+            if "\n" not in text[parts[at].end():after.start()] and _alone_a_question_mark(after.group()):
                 return True
         start = text.find(literal, start + 1)
     return False

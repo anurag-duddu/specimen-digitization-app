@@ -148,13 +148,14 @@ handover runs field research instead of the six specialists:
      - a question mark ("?", the full-width one, U+FF1F, or the inverted
        one, U+00BF: `checks.QUESTION_MARKS`) is on that word itself ("Epipsocus?",
        "?Epipsocus", "Epipsocus(?)"), or stands alone, a part with no letter
-       or digit, just before it on its line ("? Epipsocus", "(?)
-       Epipsocus").
+       or digit, just before or just after it on its line ("? Epipsocus",
+       "(?) Epipsocus", "Epipsocus ?", "Epipsocus ? sp. 1", "Epipsocus
+       (?)").
 
-     A question mark on another word ("Davao? Epipsocus"), any on the line
-     above ("1946?" above "Epipsocus sp. 1"), one after the genus
-     ("Epipsocus ?") and a qualifier after the genus ("Epipsocus cf. sp.
-     1", G25) are none. The value goes to review ("The label marks this
+     A question mark on or beside another word ("Davao? Epipsocus",
+     "Epipsocus sp. 1 ?"), any on the line above ("1946?" above "Epipsocus
+     sp. 1") or below ("?" under "Epipsocus"), and a qualifier after the
+     genus ("Epipsocus cf. sp. 1", G25) are none. The value goes to review ("The label marks this
      name's genus as doubtful."): GBIF may decide the bare genus the taxon
      brief has the expert look up, and an expert that then resolves the
      taxon as that genus ("Epipsocus" quoting "cfr. Epipsocus", or quoting

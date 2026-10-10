@@ -706,7 +706,13 @@ def test_no_doubt_sign_shows_where_none_is_written(texts):
     ("1946?\nEpipsocus sp. 1", "Epipsocus sp. 1", False),
     ("?\nEpipsocus", "Epipsocus", False),
     ("(?)\nEpipsocus sp. 1", "Epipsocus sp. 1", False),
-    ("Epipsocus ?", "Epipsocus", False),
+    ("Epipsocus\n?", "Epipsocus", False),
+    ("Epipsocus sp. 1 ?", "Epipsocus", False),
+    # A "?" standing alone right after the genus on its line is on the genus.
+    ("Epipsocus ?", "Epipsocus", True),
+    ("Epipsocus ? sp. 1", "Epipsocus", True),
+    ("Epipsocus (?)", "Epipsocus", True),
+    ("Epipsocus \N{FULLWIDTH QUESTION MARK}", "Epipsocus", True),
 ])
 def test_a_genus_the_text_marks_as_doubtful(text, literal, doubtful):
     from specimen_digitization.field_research import checks
