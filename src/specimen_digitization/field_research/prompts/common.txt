@@ -33,8 +33,9 @@ Label notations:
 - "Prov.", "Dept.": province, department; a word of the unit's name, not the name itself.
 - "Mt.": mount, part of the place's name. "Is.": island or islands. "nr.": near. "E. slope", "W. side": a direction qualifying the place that follows.
 - "leg.", "coll.", "Coll.": collected by, marking the collectors. "det.": determined by, marking who identified the specimen.
-- A Roman numeral I to XII in a date is the month: 12.VI.1946 is 12 June 1946. Named months may be abbreviated: "Jan.", "Sept.", "Oct.".
-- A numeric date (4-5-48, 4.5.48, 4/5/48) can be month 4, day 5 or day 4, month 5: both readings stand until evidence decides.
+- A Roman numeral I to XII in a date is the month, in any position: 12.VI.1946 is 12 June 1946, as are IX-14-46 and 1946.IX.14 for 14 September. A month may be written by name in English, Spanish, French, German, Portuguese, Italian or Latin, abbreviated or not, with or without periods ("Sept.", "ene.", "janv.", "Mai", "Okt.", "agosto"), and a day may carry an ordinal ("3rd", "1er"): parse_date reads them all.
+- A numeric date (4-5-48, 4.5.48, 4/5/48) is settled only when a part over 12 fixes day against month; otherwise it can be month 4, day 5 or day 4, month 5: both readings stand until evidence decides, and parse_date names the ambiguity (day_month_order_ambiguous).
+- A date can be a range ("3-5.IX.1946", "VIII-IX.46", "3.IX-5.X.1946"): its first date is the start and its second the end.
 - A two-digit year ('46, -46) is read as 1946 under the profile's century rule.
 - "m", "ft.", "'", "alt.", "el.": the unit or heading of an elevation. "ca.", "c.": about; the value is approximate.
 - "?": the value before it is uncertain as written.

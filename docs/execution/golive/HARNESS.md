@@ -736,10 +736,21 @@ harness settles which one the evidence supports (G29):
   name, day, year (`Sept. 3, 1946`); month name and year; a year alone; and a
   numeric date, which gives both the month-day and the day-month reading unless
   a component over 12 fixes the order.
+  Added 2026-10-09 (tool version `date-parser-v2`; the rules are in
+  FIELD_RESEARCH.md, "How dates are read"): month words of English, Spanish,
+  French, German, Portuguese, Italian and Latin (`application/date_months.py`),
+  ordinals (`3rd`, `1er`), a year written first (`1946.IX.14`, `1946-04-05`), a
+  day and month with no year (`14.IX`), and ranges (`3-5.IX.1946`,
+  `VIII-IX.46`, `3.IX-5.X.1946`), whose reading has the start in `iso` and the
+  end in `end`. A reading's `order` names the notation rule that matched.
 - A two-digit year becomes 19xx only under the profile's
   `date_rules.two_digit_year_century` (G24; `century_rule` records it); without
   the rule the year is missing. A bare number after a month is its day, or under
-  the century rule also its year (`IV-25`: April 25, or April 1925).
+  the century rule also its year (`IV-25`: April 25, or April 1925). A year
+  literal leaves both readings, which the six-specialist harness's pinned
+  explicit-event rules (`research_harness/temporal_context.py`) still read, unless
+  the caller passes `year_literal_decides` (field research does): `IV-25` beside
+  `1948` is then April 25, 1948 only.
 - Readings outside the calendar or outside 1750 to the current year are
   dropped (`invalid_calendar_date`, `implausible_year`); identical readings are
   one.
@@ -752,8 +763,9 @@ harness settles which one the evidence supports (G29):
 - Outcome: `success` for exactly one reading with a year, at the precision
   written (day, month or year; month and year is enough, G24); `ambiguous` for
   several readings (`several_readings`) or one without a year (`year_missing`,
-  `century_unresolved`); `no_match` otherwise. Each reading records the profile
-  rules it used.
+  `century_unresolved`); `no_match` otherwise. A numeric date that leaves day
+  against month open also says so (`day_month_order_ambiguous`, after
+  `several_readings`). Each reading records the profile rules it used.
 
 **`catalog_number_validator`**: an optional `FMNH INS` prefix (any spacing,
 `-` or `#`, including a line break) and five to nine digits, nothing else; the

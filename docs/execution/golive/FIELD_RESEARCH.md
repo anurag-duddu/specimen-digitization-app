@@ -362,7 +362,9 @@ handover runs field research instead of the six specialists:
    settled.
 6. **Derived values** (G37, G41, G44) are filled deterministically afterwards
    from settled fields only: elevation copies and exact unit conversion, and
-   the collection date's end from its start. An elevation settled on a
+   the collection date's end from its start (G44: only for a single date; the
+   start of a written range is never copied, `derive.fill` through
+   `field_validators.written_range`, see "How dates are read" below). An elevation settled on a
    candidate that writes more than its number is read as its parsed value,
    the check's number. Then the listed fields the label does not state are
    marked so (see "Fields the label does not state" below).
@@ -393,6 +395,105 @@ handover runs field research instead of the six specialists:
 At the harness route's prices (USD 0.20 per million input tokens, USD 0.60
 per million output), a typical record is expected to cost a few cents for
 field research. The ceiling cannot be crossed.
+
+## How dates are read (G24, G29, G44; 2026-10-09)
+
+The experts' `parse_date` is `field_research/checks.parse_date`, which wraps
+`application/field_validators.date_parser` (tool version `date-parser-v2`;
+the notations are `application/date_notations.py`, the month words
+`application/date_months.py`). It is deterministic and reads only by the
+named rules below. It never guesses beyond them: a form no rule reads is
+`no_match`, and a date a rule leaves open is `ambiguous` and goes to review.
+Each reading records the rule that matched (`order`), how a missing year was
+found (`via`) and the century rule it used (`century_rule`), so the check
+row the settled value cites shows them.
+
+- **Months.** A Roman numeral I to XII, when the profile enables Roman
+  months (G29), in any position: month first (`IX-14-46`, `IV-24-48`),
+  between day and year (`14.IX.1946`, `14 IX 1946`, `3.iv.1948`), year first
+  (`1946.IX.14`, `1946-IX-14`), month and year (`IX.1946`, `XI .46`), and
+  day and month with no year (`14.IX`). A lowercase numeral is read only
+  when `.` or `-` joins it to the day or the four-digit year beside it
+  (`3.iv.1948`, `1946.ix.14`), so `12 x 46` is no date. A month written by name in English, Spanish, French,
+  German, Portuguese, Italian or Latin, in full or abbreviated, with or
+  without its period and accents (`sept.`, `Sept`, `ene.`, `janv.`, `Mai`,
+  `mars`, `Okt.`, `agosto`, `Septembris`). A word two languages share means
+  the same month in both, and the table refuses to load otherwise
+  (`date_months`). A day may carry an ordinal (`3rd`, `1er`, `1o`), and `de`,
+  `del`, `of`, `di`, `da` or `do` may stand between a day and its month and
+  between a month and its year (`14 de septiembre de 1946`).
+- **Years.** Four digits, or two digits after an apostrophe (`'46`) or bare
+  after a month or inside a date (`Sept. 46`, `14.IX.46`, `4-5-48`). The profile's
+  century rule reads a two-digit year as 19xx and the reading records it as
+  its `century_rule` (`date-rules-v1:two_digit_year_century=1900`); without
+  the rule the year stays open (`century_unresolved`) and the date goes to
+  review. The record's own mark of an inferred century is
+  `FieldValue.century_rule` (with `precision`), which field research does not
+  set today: the century rule is kept in the reading of the check row the
+  value cites (locator `check:date_parser`), as it was before this change.
+  A year alone is a date at year precision, four digits or `'46`.
+- **Numeric dates** (`4-5-48`, `3.9.1946`, `5/13/1948`, and with the year
+  written first `1946-04-05`). They are settled only when a part over 12 fixes
+  which number is the day (`13-5-48` is 13 May 1948); a written four-digit
+  year fixes the year. Otherwise both readings are returned and the check
+  names the ambiguity (the note `day_month_order_ambiguous`, after
+  `several_readings`), so the review reason can say that the label does not
+  say which number is the month. A year written first is not read as the ISO
+  order: `1946-04-05` is April 5 or May 4 until a part over 12 decides.
+- **A year literal.** A month and day alone take a year the same reading
+  writes elsewhere, when the expert passes it as `year_literal`. They are then
+  that date only: `IV-25` beside `1948` is 25 April 1948, no longer also April
+  1925 (the reading a bare two-digit number after a month would otherwise
+  take under the century rule). The reading's `via` is `year_literal`. Field
+  research asks the parser for this (`date_parser(..., year_literal_decides=True)`);
+  the parser's default still leaves both readings, because the six-specialist
+  harness's hash-pinned explicit-event rules (`research_harness/temporal_context.py`)
+  read the second one to refuse a year that "alone chooses" between a day and a
+  short year (`test_temporal_event_links.py`).
+- **A date split over two lines of one label** (`date_lines`; pilot
+  105526330: "Guatemala, IV-25" above "1948, R.D. Mitchell"). The date and the
+  year are one date only when the two lines are adjacent, with nothing between
+  them but the line break (the date ends its line and the year starts the
+  next, or the year ends a line and the date starts the next); the year is a
+  token of its own, four digits in the plausible years or two after an
+  apostrophe (a bare two-digit number, or an elevation such as `4800`, is
+  none); nothing else on either line could be a date (no other year, numeric
+  date, Roman numeral beside a number, or month word of any language: a wide
+  test, `date_lines.could_be_a_date`); the date states no year of its own; and
+  the lines above and below do not give two different years. Two forms:
+  - the literal is both lines, as the organiser quotes it (`"IV-25\n1948"`, or
+    the year first): `parse_date` reads it as one date (`via` `split_lines`);
+    another date on the lines is `no_match` with the note
+    `split_lines_hold_another_date`, and a date that already states a year is
+    `no_match` with `split_lines_state_two_years`;
+  - the literal is the day and month alone (`IV-25`) and the year stands on the
+    adjacent line: the date takes it (`via` `year_on_next_line` or
+    `year_on_previous_line`). When any rule fails the date stays open
+    (`year_missing`) and goes to review.
+- **Ranges** (`3-5.IX.1946`, `VIII-IX.46`, `3.IX-5.X.1946`, `10-12 Sept.
+  1946`, `Sept. 3-5, 1946`, `3 Sept.-5 Oct. 1946`, `Sept.-Oct. 1946`,
+  `3.IX.1946-5.X.1946`). The text is split at a dash (hyphen, en dash or em
+  dash) into two ends; each end must read as a date by itself, and the first
+  borrows only what it leaves out (the month, the year) from the second. The
+  reading has the start as `iso` and `precision` and the end as `end` and
+  `end_precision`; the rule is `range:<start kind>..<end kind>`. An end
+  before its start is no range (`range_end_before_start`), and a numeric
+  range is not read. Date Visited From takes the start; Date Visited To takes
+  the end (`checks.DATE_PART`: the check returns the end as that field's
+  value, and a single date is its own end, so an explicit end date written
+  whole still works). The literal for both fields is the whole range, one of
+  the organiser's candidates. The G44 copy never fills Date Visited To from a
+  range's start (`derive.fill`).
+
+Not read at all, each left for a person: a numeric range (`3.9-5.10.1946`), a
+year range (`1946-48`), a bare two-digit year alone (`46`), and a lowercase
+Roman numeral beside spaces (`12 vi 1946`). The tests
+are `tests/test_date_forms.py` (a table of more than 60 forms in seven
+languages, with start, end, precision and rule, and every date and code the ten
+pilot labels write), `tests/test_date_months.py`,
+`tests/field_research/test_date_split_lines.py`,
+`tests/field_research/test_date_lines.py` and the three date tests at the end
+of `tests/field_research/test_experts.py`.
 
 ## Fields the label does not state (owner, 2026-10-09)
 
