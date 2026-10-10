@@ -86,7 +86,7 @@ INVALID_PATHS = [
     "ids/",
     "ids/unknown",
     "ids/catalog_number/2",
-    "ids/catalogue_number",  # the PRD table spells it the British way; the key is catalog_number
+    "ids/catalogue_number",  # the British spelling is not a part; the part is catalog_number
     "country/name",  # a v1 key, not a value
     "collection/ids",  # a group, not a value: the first segment is the value
     "Location/country",
@@ -123,13 +123,13 @@ INVALID_PATHS = [
     "elevation/",
     "habitat/habitat",
     "habitat",
-    "when/start",  # the PRD's short example; the parts are when/collected/... and when/identified/...
+    "when/start",  # a short form that is not a part; the parts are when/collected/... and when/identified/...
     "when/collected",
     "when/collected/",
     "when/collected/start/2",
     "when/collected/duration",
     "when/identified/end",
-    "taxon/resolved",  # the PRD's short example; the parts are accepted, rank, authorship, status
+    "taxon/resolved",  # not a part; the parts are accepted, rank, authorship, status
     "taxon/accepted/2",
 ]
 
