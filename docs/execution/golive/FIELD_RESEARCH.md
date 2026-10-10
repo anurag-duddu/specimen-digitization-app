@@ -159,7 +159,13 @@ handover runs field research instead of the six specialists:
    fallback replaced their experts' answers. In this change's real runs of
    105526321, 105526326 and 105526327, live and with Getty TGN down, no
    expert ran out: eight tool results told an expert to answer now, and no
-   answer-now request was needed.)
+   answer-now request was needed.) The briefs' examples are patterns
+   ("<Genus> sp. 1", "<Name> Prov.", "<n> ft"), never a real taxon, place,
+   person, year or slide code, and the shared brief says examples are never
+   text to look up or copy: in one of those runs 105526321's taxon expert
+   looked up "Epipsocus", the taxon brief's example genus, which no label
+   of that specimen writes. The notation table's line (step 5, P4) is a
+   rule, not an example, and keeps its names.
 4. **Sources.** GBIF (with Catalogue of Life and Global Names Verifier
    alongside), GEOLocate, Getty TGN, Wikidata and NGA, plus deterministic date,
    elevation and catalogue-number checks. One request per distinct query per

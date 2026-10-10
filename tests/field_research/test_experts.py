@@ -943,7 +943,7 @@ def test_the_briefs_answer_label_lacks_value_for_a_value_the_label_does_not_writ
     assert "A value you could only infer or look up is not on the label" in lacks
     [cannot] = [line for line in common.splitlines() if line.startswith("- sources_cannot_resolve:")]
     assert cannot.endswith("A value the labels do not write is label_lacks_value, never sources_cannot_resolve.")
-    assert '"Davao Prov." names the province, never Davao City' in instructions("city")
+    assert '"<Name> Prov." names the province, never the town <Name>' in instructions("city")
     date = instructions("date_identified")
     assert 'with no "det." are the collector and the collecting date' in date
     assert "answer label_lacks_value, even when the labels write a collecting date" in date
@@ -963,13 +963,46 @@ def test_the_briefs_of_fields_no_source_checks_let_a_decided_transcript_decide(k
     assert "never a reason for several_possibilities" in line
 
 
+# Real names and words the briefs once gave as examples. In this branch's
+# third real run of 105526321, its taxon expert looked up "Epipsocus", the
+# taxon brief's example genus, which no label of that specimen writes.
+REAL_EXAMPLES = (
+    "Epipsocus", "Bombus", "Danaus", "plexippus", "impatiens", "megalippe", "Hagen", "Davao", "Mindanao",
+    "Philippine", "Philippines", "Guatemala", "Chimaltenango", "Yepocapa", "San Pedro", "Sacatepequez",
+    "Cook", "Illinois", "Evanston", "McKinley", "Apo", "Werner", "Mockford", "Mitchell",
+)
+
+
+def test_no_brief_gives_an_example_a_model_could_take_for_label_text():
+    """Examples are patterns (<Genus>, <Place>, <n>): no real taxon, place,
+    person, year or slide code, in any brief or in the lookup tool's
+    description. The notation table's line is the rule G29 states, not an
+    example, and stays."""
+    import re
+
+    from specimen_digitization.field_research import notations
+    from specimen_digitization.field_research.prompts import instructions
+
+    for key in FIELD_TOOLS:
+        text = instructions(key).replace(notations.brief_line(), "")
+        assert [name for name in REAL_EXAMPLES if re.search(rf"\b{name}\b", text)] == [], key
+        assert not re.search(r"\b(18|19|20)\d\d\b", text), key  # a year
+        assert not re.search(r"\b[IVX]+-\d+-\d+-\d+", text), key  # a slide code
+    assert ("Examples in these instructions are patterns, never text to look up or copy"
+            in instructions("taxon"))
+    script = Script(dict(outcome="label_lacks_value"))
+    resolve(script, task("city"))
+    description = script.seen[0][1].function_tools[0].description
+    assert [name for name in REAL_EXAMPLES if name in description] == []
+
+
 def test_the_shared_brief_has_the_expert_stop_when_the_sources_have_answered():
     from specimen_digitization.field_research.prompts import instructions
 
     text = instructions("city")
     assert "Keep going until" not in text
-    assert 'try its abbreviations written out ("Davao Province" for "Davao Prov.")' in text
-    assert 'about the unit written out ("Davao Province, Philippines")' in instructions("province_state")
+    assert 'try its abbreviations written out ("<Name> Province" for "<Name> Prov.")' in text
+    assert 'about the unit written out ("<Name> Province, <Country>")' in instructions("province_state")
     assert "Then stop and answer: when the sources have answered what they can" in text
     assert "the same name with other larger units after it is the same lookup" in text
     assert "when a tool result says to answer now, answer" in text

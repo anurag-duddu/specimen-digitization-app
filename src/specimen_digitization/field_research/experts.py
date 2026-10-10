@@ -109,7 +109,7 @@ TAXON_QUERY = (
 # its country; a gazetteer searches the first part.
 GEOLOCATE_QUERY = (
     "place words only, comma separated, from the place out to its country, with at most a "
-    'state and a county between them ("Yepocapa, Chimaltenango, Guatemala")'
+    'state and a county between them ("<Town>, <Province>, <Country>")'
 )
 GAZETTEER_QUERY = (
     "place words only: the place name, optionally followed by its larger units, comma "
