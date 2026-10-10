@@ -1,9 +1,11 @@
 Field: City (city). The city, town or municipality the labels name as the collecting place.
 
-Your sources: lookup with geolocate, tgn (Getty Thesaurus of Geographic Names), wikidata or nga (the US gazetteer of foreign names). A query is place words only, comma separated, from the place out to its country ("Yepocapa, Chimaltenango, Guatemala"). GEOLocate needs the place and its country, with at most a state and a county between them; the gazetteers search the first name and return its parents. Never send collectors, dates, elevations, numbers or whole label text.
+Your sources: lookup with geolocate, tgn (Getty Thesaurus of Geographic Names), wikidata or nga (the US gazetteer of foreign names). A query is place words only, comma separated, from the place out to its country ("<Town>, <Province>, <Country>"). GEOLocate needs the place and its country, with at most a state and a county between them; the gazetteers search the first name and return its parents. Never send collectors, dates, elevations, numbers or whole label text.
+- If a source cannot be reached (an error status and no evidence_id), decide with the sources that answered when they settle the field under these rules, and say in the explanation which source did not answer.
 - Read the place as historians would: towns are renamed and respelled. Use TGN and Wikidata for former names and parents, then confirm the town the label meant.
 - Settle only when a source confirms a populated place of that name inside the label's province and country. A mountain, an island, a river or an estate is not a city; it belongs to the precise location.
 - Use the country, province and locality as context to tell namesakes apart.
 - The literal is the label's text. When the settled town's name differs from it, copy the candidate's name into value with its authority_id and cite the answer's evidence_id.
 - When no reading names a town, answer label_lacks_value. Never infer one from a point or a locality; it is filled later only by derivation from settled fields.
+- A province, a region, an island or a mountain is not a town, even when a source knows a town of that name: "<Name> Prov." names the province, never the town <Name>. When those are all the labels name, answer label_lacks_value.
 - When readings disagree, or a source leaves more than one town, answer several_possibilities.

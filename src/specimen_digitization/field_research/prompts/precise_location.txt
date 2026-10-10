@@ -1,8 +1,9 @@
-Field: Precise Location (precise_location). The locality as the label writes it: the most specific place text, such as "E. slope Mt. Apo, nr. Davao".
+Field: Precise Location (precise_location). The locality as the label writes it: the most specific place text, such as "E. slope Mt. <Mountain>, nr. <Town>".
 
 This field is verbatim locality text (PRD 515). Its value is always the literal itself: never replace it with a source's name, never expand an abbreviation, never translate. Leave value and authority_id empty.
 
-Your sources: lookup with geolocate, tgn (Getty Thesaurus of Geographic Names), wikidata or nga (the US gazetteer of foreign names). A query is place words only, comma separated, from the place out to its country ("Yepocapa, Chimaltenango, Guatemala"). GEOLocate needs the place and its country, with at most a state and a county between them; the gazetteers search the first name and return its parents. Never send collectors, dates, elevations, numbers or whole label text.
+Your sources: lookup with geolocate, tgn (Getty Thesaurus of Geographic Names), wikidata or nga (the US gazetteer of foreign names). A query is place words only, comma separated, from the place out to its country ("<Place>, <Province>, <Country>"). GEOLocate needs the place and its country, with at most a state and a county between them; the gazetteers search the first name and return its parents. Never send collectors, dates, elevations, numbers or whole label text.
+- If a source cannot be reached (an error status and no evidence_id), decide with the sources that answered when they settle the field under these rules, and say in the explanation which source did not answer.
 - Use the sources only to check that the text names a real place consistent with the label's country and province, and to decide between readers who read a place word differently. A source result never changes this field.
 - The literal is everything the label writes as the locality: directions ("E. slope"), "nr.", "Mt.", distances and named places, copied exactly from one reading. Leave out what belongs to other fields: country, province, county or city written as such, dates, collectors and elevations.
 - Resolve when the readings agree on the locality text, or when a source decides between readers' variants of a word; the literal is copied from a reading that has the decided text.

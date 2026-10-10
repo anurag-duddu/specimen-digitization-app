@@ -2,9 +2,10 @@
 
 Before every model call the run reserves that call's worst case from what is
 left of its ceiling, and settles to the real usage after (FIELD_RESEARCH.md,
-Budget). A call whose worst case does not fit is never sent, so the ceiling
-cannot be crossed however many experts share the meter. Money is integer
-micro-dollars, always rounded up.
+Budget). A call whose worst case does not fit is never sent: it waits while
+other calls' reservations are held, since each settles to far less, and is
+refused only when none is held. So the ceiling cannot be crossed however many
+experts share the meter. Money is integer micro-dollars, always rounded up.
 """
 
 from __future__ import annotations
@@ -42,7 +43,13 @@ class InputTooLarge(BudgetExhausted):
 
 
 class CostMeter:
-    """One run's ceiling, shared by every expert of the run."""
+    """One run's ceiling, shared by every expert of the run.
+
+    A reservation that does not fit while others are held waits for them to
+    settle (each settles to its real cost, ten times or more below its worst
+    case, and so frees room) and is tried again. It is refused only when no
+    other reservation is held and it still does not fit: then no settling can
+    make room. The ceiling is never crossed and never raised."""
 
     def __init__(
         self,
@@ -62,6 +69,8 @@ class CostMeter:
         self._next_ticket = 0
         self._spent = 0
         self._outstanding = 0
+        # Reservations waiting for a held one to settle (reserve).
+        self._waiters: list[asyncio.Future[None]] = []
 
     def cost(self, input_tokens: int, output_tokens: int) -> int:
         """Micro-dollars for this many tokens, rounded up (as lane_reservations prices)."""
@@ -72,19 +81,31 @@ class CostMeter:
         return -(-total // MILLION)
 
     async def reserve(self, input_tokens: int, output_tokens: int) -> int:
-        """Hold a call's worst case; raise BudgetExhausted when it does not fit."""
+        """Hold a call's worst case. While it does not fit and other
+        reservations are held, wait for one to settle and try again; raise
+        BudgetExhausted when it does not fit and none is held."""
         worst = self.cost(input_tokens, output_tokens)
-        async with self._lock:
-            if self._spent + self._outstanding + worst > self.cap_micros:
-                raise BudgetExhausted("run_cost_ceiling")
-            ticket = self._next_ticket
-            self._next_ticket += 1
-            self._tickets[ticket] = worst
-            self._outstanding += worst
-            return ticket
+        while True:
+            async with self._lock:
+                if self._spent + self._outstanding + worst <= self.cap_micros:
+                    ticket = self._next_ticket
+                    self._next_ticket += 1
+                    self._tickets[ticket] = worst
+                    self._outstanding += worst
+                    return ticket
+                if not self._tickets:
+                    raise BudgetExhausted("run_cost_ceiling")
+                waiter = asyncio.get_running_loop().create_future()
+                self._waiters.append(waiter)
+            try:
+                await waiter
+            finally:
+                if waiter in self._waiters:
+                    self._waiters.remove(waiter)
 
     def settle(self, ticket: int, input_tokens: int, output_tokens: int) -> int:
-        """Replace a reservation with the call's actual cost; return that cost."""
+        """Replace a reservation with the call's actual cost; return that cost.
+        Every waiting reservation is then tried again."""
         # No await between the lookup and the update, so no lock is needed here.
         reserved = self._tickets.pop(ticket, None)
         if reserved is None:
@@ -92,6 +113,10 @@ class CostMeter:
         actual = self.cost(input_tokens, output_tokens)
         self._outstanding -= reserved
         self._spent += actual
+        waiters, self._waiters = self._waiters, []
+        for waiter in waiters:
+            if not waiter.done():
+                waiter.set_result(None)
         return actual
 
     @property

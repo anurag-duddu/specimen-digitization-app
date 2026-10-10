@@ -3,15 +3,17 @@
 One instance serves one record and starts empty. Each distinct query is sent
 once and answered from the cache after, so experts asking the same thing at the
 same time share one request. Every request is bounded (15 s, three attempts
-with backoff and jitter, a Retry-After of at most 10 s honoured) and GEOLocate
-keeps its 3 s spacing. Every response that comes back is stored once and
+with backoff and jitter, a Retry-After of at most 10 s honoured), GEOLocate
+keeps its 3 s spacing, and the process sends at most two requests at a time to
+each of Getty TGN, Wikidata and NGA (SOURCE_SLOTS). Every response that comes back is stored once and
 becomes one Evidence.
 
 The rules that decide an answer stay where they are: GBIF's in
 application.taxonomy_tool.verify_taxon, GEOLocate's in research_harness.sources
 and the historical gazetteers' in research_harness.historical_gazetteers. A
 source problem is an answer with a plain note, never an exception; only a blob
-store failure raises.
+store failure raises. Each request a source leaves unanswered is logged in one
+WARNING line with its source, host and HTTP status or error, never its query.
 """
 
 from __future__ import annotations
@@ -21,11 +23,15 @@ import concurrent.futures
 import dataclasses
 import hashlib
 import json
+import logging
 import re
+import threading
 import time
 import unicodedata
-from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass
+from collections import deque
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
+from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
 from functools import cache
 from urllib.parse import urlencode, urlsplit
 
@@ -59,6 +65,7 @@ from specimen_digitization.research_harness.sources import (
 
 from .contracts import PLACE_SOURCES, PlaceRef, SourceAnswer, SourceCandidate
 
+LOGGER = logging.getLogger(__name__)
 SOURCES = ("gbif", *PLACE_SOURCES)
 NAMES = {
     "gbif": "GBIF",
@@ -68,6 +75,8 @@ NAMES = {
     "nga": "NGA GEOnet Names Server",
 }
 SUPPORT = {"col": "Catalogue of Life", "gnv": "Global Names Verifier"}
+# Where verify_taxon asks GBIF (application.lookup.GbifTaxonomy), for its log line.
+GBIF_MATCH_URL = "https://api.gbif.org/v2/species/match"
 REQUEST_TIMEOUT_SECONDS = 15.0
 ATTEMPTS = 3
 RETRY_AFTER_LIMIT_SECONDS = 10
@@ -294,6 +303,65 @@ def _evidence(
     )
 
 
+def _log_unanswered(
+    source_id: str,
+    url: str,
+    *,
+    attempt: int,
+    http_status: int | None = None,
+    error: str | None = None,
+    retry_after: bool = False,
+) -> None:
+    """One WARNING line for a lookup a source left unanswered, as the worker
+    logs a failed step (workflow._log_step_failure: key=value pairs): the
+    source id, the host, the HTTP status or the error's class, whether the
+    source sent a Retry-After, and the attempt the request ended on. Never
+    the query, a parameter or a body, so no specimen text."""
+    values = {
+        "step": "field_research",
+        "source": source_id,
+        "host": urlsplit(url).hostname,
+        "http_status": http_status,
+        "error": error,
+        "retry_after": "present" if retry_after else "absent",
+        "attempt": attempt,
+    }
+    LOGGER.warning(
+        "Field research lookup unanswered: %s",
+        " ".join(f"{key}={'-' if value is None else value}" for key, value in values.items()),
+    )
+
+
+def _geolocate_found_nothing(payload) -> bool:
+    """Whether a GEOLocate answer says it found nothing: its count of results
+    is the integer 0 and it carries no result set, or one with no features."""
+    if not isinstance(payload, dict):
+        return False
+    count = payload.get("numResults")
+    if type(count) is not int or count != 0:
+        return False
+    result_set = payload.get("resultSet")
+    return result_set is None or (isinstance(result_set, dict) and result_set.get("features") in (None, []))
+
+
+def _log_unreadable(source_id: str, url: str, *, status: LookupStatus, error: str) -> None:
+    """One WARNING line for a 200 answer that could not be read, in
+    _log_unanswered's form: the source id, the host, the status it was read
+    as and the error's class. Never the query, a parameter or a body."""
+    values = {
+        "step": "field_research",
+        "source": source_id,
+        "host": urlsplit(url).hostname,
+        "http_status": 200,
+        "read_as": status.value,
+        "error": error,
+    }
+    LOGGER.warning(
+        "Field research lookup unreadable: %s",
+        " ".join(f"{key}={value}" for key, value in values.items()),
+    )
+
+
 class _Unanswered(Exception):
     """No usable answer came back: the status to return and its plain note."""
 
@@ -322,6 +390,102 @@ def _forget_failure(cache: dict, key, task: asyncio.Future, keep: tuple = ()) ->
     ):
         if cache.get(key) is task:
             del cache[key]
+
+
+@dataclass(eq=False)
+class _Waiter:
+    """A request waiting for a slot, on its own event loop."""
+
+    loop: asyncio.AbstractEventLoop
+    future: asyncio.Future = field(init=False)
+    granted: bool = False  # It was given a slot.
+    gone: bool = False  # It stopped waiting without using one.
+
+    def __post_init__(self):
+        self.future = self.loop.create_future()
+
+    def wake(self) -> None:
+        if not self.future.done():
+            self.future.set_result(None)
+
+
+class SourceSlots:
+    """At most `limits[source_id]` requests in flight to each source at once;
+    a source with no limit is not held.
+
+    The process's (SOURCE_SLOTS) is shared by every record's sources, as
+    SOURCE_PACER's spacing is. Each record researches on an event loop of its
+    own (FieldResearchStep.run's asyncio.run), maybe in a thread of its own,
+    and an asyncio.Semaphore belongs to one loop, so the count is kept under a
+    threading lock and a waiting request is woken on its own loop, first come
+    first served. A request cancelled while it waits takes no slot, or passes
+    on the one it was just given."""
+
+    def __init__(self, limits: Mapping[str, int]):
+        self.limits = dict(limits)
+        self._lock = threading.Lock()
+        self._busy: dict[str, int] = {}
+        self._waiting: dict[str, deque[_Waiter]] = {}
+
+    def in_flight(self, source_id: str) -> int:
+        with self._lock:
+            return self._busy.get(source_id, 0)
+
+    @asynccontextmanager
+    async def slot(self, source_id: str) -> AsyncIterator[None]:
+        limit = self.limits.get(source_id)
+        if not limit:
+            yield
+            return
+        await self._acquire(source_id, limit)
+        try:
+            yield
+        finally:
+            self._release(source_id)
+
+    async def _acquire(self, source_id: str, limit: int) -> None:
+        with self._lock:
+            waiting = self._waiting.setdefault(source_id, deque())
+            if self._busy.get(source_id, 0) < limit and not waiting:
+                self._busy[source_id] = self._busy.get(source_id, 0) + 1
+                return
+            waiter = _Waiter(asyncio.get_running_loop())
+            waiting.append(waiter)
+        try:
+            await waiter.future
+        except BaseException:
+            with self._lock:
+                granted, waiter.gone = waiter.granted, True
+                if not granted:
+                    waiting.remove(waiter)
+            if granted:
+                self._release(source_id)
+            raise
+
+    def _release(self, source_id: str) -> None:
+        with self._lock:
+            waiting = self._waiting.get(source_id)
+            if not waiting:
+                self._busy[source_id] -= 1
+                return
+            # The slot passes to the first waiter; the count stays.
+            waiter = waiting.popleft()
+            waiter.granted = True
+        try:
+            waiter.loop.call_soon_threadsafe(waiter.wake)
+        except RuntimeError:
+            # Its loop has closed: unless its task passed the slot on as it
+            # was cancelled, the slot passes on from here.
+            with self._lock:
+                orphaned, waiter.gone = not waiter.gone, True
+            if orphaned:
+                self._release(source_id)
+
+
+# Getty TGN, Wikidata and NGA each answer at most two of the process's
+# requests at a time. GEOLocate keeps its 3 s spacing instead (SOURCE_PACER).
+SOURCE_CONCURRENCY = {"tgn": 2, "wikidata": 2, "nga": 2}
+SOURCE_SLOTS = SourceSlots(SOURCE_CONCURRENCY)
 
 
 class _LoopTransport(httpx.BaseTransport):
@@ -364,7 +528,9 @@ class ApprovedSources:
     record's place-field literals and unassigned locality text, which a taxon
     request never carries (verify_taxon, PLAN 4.8). GEOLocate's spacing is the
     process's (research_harness.sources.SOURCE_PACER), so it holds across
-    records; a test's own clock and sleep get a pacer of their own.
+    records; a test's own clock and sleep get a pacer of their own. At most two
+    requests are in flight to Getty TGN, Wikidata and NGA each across the
+    process (SOURCE_SLOTS, unless `slots` gives others).
 
     `close()` ends the record's lookups when its research ends.
     """
@@ -378,6 +544,7 @@ class ApprovedSources:
         clock: Callable[[], float] = time.monotonic,
         sources: Sequence[str] = SOURCES,
         place_text: Sequence[str] = (),
+        slots: SourceSlots | None = None,
     ):
         if isinstance(place_text, str):
             raise TypeError("place_text is a sequence of texts, not one string")
@@ -393,6 +560,7 @@ class ApprovedSources:
             if sleep is asyncio.sleep and clock is time.monotonic
             else RequestPacer(SOURCE_REQUEST_INTERVAL_SECONDS, clock=clock, sleep=sleep)
         )
+        self._slots = SOURCE_SLOTS if slots is None else slots
         self._answers: dict[tuple[str, str], asyncio.Task[SourceAnswer]] = {}
         self._responses: dict[str, asyncio.Task[_Fetched]] = {}
         # verify_taxon's requests and waits on the loop, from its worker threads.
@@ -472,6 +640,16 @@ class ApprovedSources:
         asked = [call for call in result.sub_calls if call.source == "gbif"]
         status = decided.status
         if status not in ANSWERED:
+            # verify_taxon made and retried GBIF's requests: its last call says
+            # how it ended, as a status (no HTTP code reaches this far).
+            last = asked[-1] if asked else None
+            _log_unanswered(
+                "gbif",
+                GBIF_MATCH_URL,
+                attempt=last.attempt if last else 0,
+                error=status.value,
+                retry_after=last is not None and last.retry_after_seconds is not None,
+            )
             return _answer(
                 "gbif", query, status, _taxon_failure(status, asked), taxonomy_lookup=decided
             )
@@ -607,13 +785,30 @@ class ApprovedSources:
         if fetched.status_code != 200:
             return _refused("geolocate", query, fetched.status_code)
         try:
+            payload = parse_json(fetched.body)
+        except (ValueError, RecursionError):
+            payload = None
+        try:
             status, found, _count, note = geolocate_verdict(
                 policy,
                 SourceQuery(source_id="geolocate", field_key=key, query_text=text),
-                parse_json(fetched.body),
+                payload,
             )
-        except (ValueError, TypeError, KeyError, AttributeError, ArithmeticError, RecursionError):
-            status, found, note = LookupStatus.MALFORMED, [], "GEOLocate's answer could not be read"
+        except (ValueError, TypeError, KeyError, AttributeError, ArithmeticError, RecursionError) as error:
+            # GEOLocate's answer that it found nothing is no match, not an
+            # outage: asked about a country it does not know ("Central
+            # America"), it answers {"numResults": 0} with no result set. Any
+            # other answer that cannot be read stays unreadable, an outage, as
+            # for every other source: a body that is not GEOLocate's answer (an
+            # HTML page, a cut body), and an answer that reports a match the
+            # parser cannot read, so a reader's text GEOLocate found is never
+            # ruled out as no match (G20, G32).
+            nothing = _geolocate_found_nothing(payload)
+            status = LookupStatus.NO_MATCH if nothing else LookupStatus.MALFORMED
+            found = []
+            note = ("GEOLocate found no match (it answered no results)" if nothing
+                    else "GEOLocate's answer could not be read")
+            _log_unreadable("geolocate", fetched.url, status=status, error=type(error).__name__)
         candidates = tuple(
             SourceCandidate(
                 name=item["value"],
@@ -721,22 +916,34 @@ class ApprovedSources:
         """One GET with retries: a rate limit, a server error, a timeout or a
         transport error is tried again, ATTEMPTS times in all, with backoff and
         jitter and never sooner than the provider's Retry-After. A Retry-After
-        over RETRY_AFTER_LIMIT_SECONDS ends the retries; any other answer is final."""
+        over RETRY_AFTER_LIMIT_SECONDS ends the retries; any other answer is final.
+        A final answer other than 200 (a refusal, a redirect, which is never
+        followed) and a request that got none are logged (_log_unanswered)."""
         name = NAMES[policy.id]
         for attempt in range(1, ATTEMPTS + 1):
             await self._pacer.wait(policy.id)
-            wait = None
+            wait, retry, code, error = None, "", None, None
             try:
-                code, body, retry = await self._read(url, policy.max_response_bytes, name)
-            except (httpx.TimeoutException, TimeoutError):
+                async with self._slots.slot(policy.id):
+                    code, body, retry = await self._read(url, policy.max_response_bytes, name)
+            except _Unanswered:
+                _log_unanswered(policy.id, url, attempt=attempt, error="response_too_large")
+                raise
+            except (httpx.TimeoutException, TimeoutError) as failure:
                 status, note = LookupStatus.TIMEOUT, f"{name} did not answer after {ATTEMPTS} attempts"
-            except httpx.HTTPError:
+                error = type(failure).__name__
+            except httpx.HTTPError as failure:
                 status, note = (
                     LookupStatus.PROVIDER,
                     f"{name} could not be reached after {ATTEMPTS} attempts",
                 )
+                error = type(failure).__name__
             else:
                 if code != 429 and code < 500:
+                    if code != 200:
+                        _log_unanswered(
+                            policy.id, url, attempt=attempt, http_status=code, retry_after=bool(retry)
+                        )
                     return _Fetched(url, code, body)
                 status = LookupStatus.RATE_LIMITED if code == 429 else LookupStatus.PROVIDER
                 note = (
@@ -746,6 +953,7 @@ class ApprovedSources:
                 )
                 wait = retry_after(retry)
                 if wait is not None and wait > RETRY_AFTER_LIMIT_SECONDS:
+                    _log_unanswered(policy.id, url, attempt=attempt, http_status=code, retry_after=True)
                     raise _Unanswered(
                         status,
                         f"{name} asked to wait {wait} s before another request, "
@@ -753,6 +961,9 @@ class ApprovedSources:
                     )
             if attempt < ATTEMPTS:
                 await self._sleep(retry_delay(attempt, wait))
+        _log_unanswered(
+            policy.id, url, attempt=ATTEMPTS, http_status=code, error=error, retry_after=bool(retry)
+        )
         raise _Unanswered(status, note)
 
     async def _read(self, url: str, limit: int, name: str) -> tuple[int, bytes, str]:

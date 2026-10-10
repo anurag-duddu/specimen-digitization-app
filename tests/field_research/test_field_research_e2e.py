@@ -239,7 +239,8 @@ def test_field_research_reaches_the_final_queue_in_one_step(rig, caplog):
     assert meter.cap_micros == CAP == paid["reserved_micros"]
     assert paid["cost_micros"] == meter.spent_micros == 50 * len(resolver.calls) <= CAP
     assert run.usage.reserved_cost_micros == meter.spent_micros <= run.profile.execution.approved_cost_limit_micros
-    assert sorted(resolver.calls) == sorted(key for key, tools in field_step.FIELD_TOOLS.items() if tools)
+    # Every field's expert ran, the identified-by IRN's aside (no source supplies one).
+    assert sorted(resolver.calls) == sorted(set(field_step.FIELD_TOOLS) - {"identified_by_irn"})
 
     # The record as the connector holds it: one record version for the final queue.
     saved = rig.repository.get(rig.principal.scope, rig.specimen_id)

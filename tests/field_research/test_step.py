@@ -1,4 +1,4 @@
-"""Field research's step: tasks, the accurate-read fast path, concurrency,
+"""Field research's step: tasks, one expert for every field, concurrency,
 field values and evidence, derived values, the scientific rules and retry.
 
 The resolver and the sources are scripted stand-ins for experts.make_resolver
@@ -21,6 +21,8 @@ from types import SimpleNamespace
 
 import pytest
 from PIL import Image
+from pydantic_ai.messages import ModelRequest, ModelResponse, ToolCallPart, ToolReturnPart, UserPromptPart
+from pydantic_ai.models.function import FunctionModel
 
 from specimen_digitization.application.collection_profiles import published_registry
 from specimen_digitization.application.domain import (
@@ -38,9 +40,11 @@ from specimen_digitization.application.workflow import (
 )
 from specimen_digitization.field_research import agreement
 from specimen_digitization.field_research import step as field_step
+from specimen_digitization.field_research.budget import CostMeter
 from specimen_digitization.field_research.contracts import (
     FIELD_TOOLS, Candidate, FieldAnswer, FieldOutcome, FieldTask, PlaceRef, Reading, SourceAnswer, SourceCandidate,
 )
+from specimen_digitization.field_research.experts import INPUT_PREFIX, make_resolver
 from specimen_digitization.field_research.step import (
     FieldResearchStep, apply_outcomes, build_tasks, finalize_fields, research_fields,
 )
@@ -71,6 +75,8 @@ LABEL = {
 TEXT = "\n".join(f"{key}: {value}" for key, value in LABEL.items()) + "\nleg. J. Smith"
 NO_TOOLS = {key for key, tools in FIELD_TOOLS.items() if not tools} - {"identified_by_irn"}
 RESEARCHED = {key for key, tools in FIELD_TOOLS.items() if tools}
+# Every field gets its expert but the identified-by IRN, which no source supplies.
+EXPERTS = NO_TOOLS | RESEARCHED
 TODAY = date(2026, 10, 8)
 
 
@@ -296,6 +302,9 @@ async def default_script(task, readings, tools):
         result = resolved(LABEL[key], value="1500")
     elif key in LABEL:
         result = resolved(LABEL[key])
+    elif not task.tools and task.current.state == ValueState.SUPPORTED and task.current.literal:
+        # The expert confirms the organiser's value (the unkeyed collectors line, COLLECTORS).
+        result = resolved(task.current.literal)
     else:
         result = FieldAnswer(outcome="label_lacks_value", explanation="No reading states it.")
     return FieldOutcome(key, result, evidence=evidence, lookups=lookups, model_calls=1)
@@ -375,24 +384,62 @@ def test_a_settled_field_and_a_persons_decision_are_not_researched_again(rig):
 
 # ---- research_fields --------------------------------------------------------
 
-def test_accurate_reads_finalize_without_a_model_call(rig):
+def test_every_field_gets_its_expert_whatever_the_organisers_value(rig):
+    """The organiser's supported value of a field no source checks (the
+    collectors line here) is no longer finalized as written: its expert runs
+    and may confirm it. Only the identified-by IRN gets no expert."""
     resolver = Scripted()
     _, outcomes, _ = research(rig, resolver)
     by_key = {o.key: o for o in outcomes}
-    assert NO_TOOLS <= set(by_key) and not NO_TOOLS & set(resolver.calls)
-    assert all(by_key[key].finalized_without_model and by_key[key].model_calls == 0 for key in NO_TOOLS)
-    # Label 1's decided transcript is 1A: its other reader is evidence only (G19).
-    assert by_key["collectors"].answer.literal == "J. Smith" and by_key["collectors"].answer.reading_names == ["1A"]
+    assert rig.specimen.run.fields["collectors"].state == ValueState.SUPPORTED
+    assert sorted(resolver.calls) == sorted(EXPERTS)
+    assert not any(by_key[key].finalized_without_model for key in EXPERTS)
+    assert all(by_key[key].model_calls == 1 for key in NO_TOOLS)
     # No approved authority: no model call, the nonblocking exception.
     assert "identified_by_irn" not in resolver.calls and by_key["identified_by_irn"].finalized_without_model
-    assert sorted(resolver.calls) == sorted(RESEARCHED)
 
 
-def test_an_accurate_read_of_a_decided_label_uses_only_its_decided_reading():
+# 105526328's label 3 in the real run of 2026-10-09: the organiser took "trap",
+# the end of the collecting-method line, as the habitat.
+TRAP = TEXT.replace("habitat: Synthetic grassland\n", "lot #2 cut branch\ntrap\n")
+
+
+def test_the_organisers_supported_value_settles_only_on_its_experts_answer(tmp_path):
+    """On the base the organiser's habitat "trap" (both readers agree) was
+    finalized without a model call and cleared; its expert now reads the line
+    as a collecting method and answers that the label states no habitat."""
+    rig = build_rig(tmp_path, TRAP, candidates=[*COLLECTORS, *(("habitat", name, "trap", "trap")
+        for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    assert (run.fields["habitat"].state, run.fields["habitat"].literal) == (ValueState.SUPPORTED, "trap")
+    resolver = Scripted({"habitat": answering(FieldAnswer(outcome="label_lacks_value",
+        explanation='"lot #2 cut branch / trap" is how the specimen was collected, not where it lived.'))})
+
+    settle(rig, resolver)
+
+    assert "habitat" in resolver.calls
+    habitat = run.fields["habitat"]
+    assert habitat.state == ValueState.NOT_PRESENT and habitat.literal is None
+
+
+def test_a_decided_transcript_settles_a_field_no_source_checks_beside_a_reader_that_differs():
+    """105526321's verbatim D/T/S: its decided reading 2A writes "3 sept. '46",
+    2B "3 Sept. '46". The decided reading's text settles (G19)."""
+    readings = (Reading("2A", "r2", "o2a", "decided_transcript", "F.G. Werner\n3 sept. '46"),
+        Reading("2B", "r2", "o2b", "raw_reading", "F.G. Wermer\n3 Sept. '46"))
+    task = FieldTask("verbatim_dts", False, FieldValue(state=ValueState.SUPPORTED, literal="3 sept. '46"),
+        (Candidate("2A", "3 sept. '46", "3 sept. '46", "ev-2a"),), FIELD_TOOLS["verbatim_dts"])
+    answer = FieldAnswer(outcome="resolved", literal="3 sept. '46", reading_names=["2A"],
+        explanation="The decided transcript decides.")
+    by_name = {reading.name: reading for reading in readings}
+    assert field_step._refusal(task, answer, readings=readings, by_name=by_name, sources=()) is None
+
+
+def test_a_collectors_answer_on_a_decided_label_names_the_readings_that_settle_it():
     """The second review's note: label 1's decided transcript writes no
     collector, its other reader 1B writes "leg. J. Smith", and both readers of
-    label 2 write it. The organiser's supported value is an accurate read of
-    label 2 (1B is evidence only), and it finalizes."""
+    label 2 write it. The expert's answer naming label 2 settles; naming 1B,
+    the decided label's other reader, it does not (G19)."""
     readings = (Reading("1A", "r1", "o1a", "decided_transcript", "Det. label\nno collector here"),
         Reading("1B", "r1", "o1b", "raw_reading", "Det. label\nleg. J. Smith"),
         Reading("2A", "r2", "o2a", "raw_reading", "Guatemala\nleg. J. Smith"),
@@ -400,24 +447,28 @@ def test_an_accurate_read_of_a_decided_label_uses_only_its_decided_reading():
     task = FieldTask("collectors", True, FieldValue(state=ValueState.SUPPORTED, literal="J. Smith"),
         tuple(Candidate(name, "leg. J. Smith", "J. Smith", "ev-" + name) for name in ("1B", "2A", "2B")),
         FIELD_TOOLS["collectors"])
+    answer = FieldAnswer(outcome="resolved", literal="J. Smith", reading_names=["2A", "2B"],
+        explanation="Label 2 writes the collector.")
+    resolver = Scripted({"collectors": answering(answer)})
     run = SimpleNamespace(evidence=[])
-    [outcome] = asyncio.run(research_fields(run, SimpleNamespace(), resolver=Scripted(), tools=FakeSources(None),
+    [outcome] = asyncio.run(research_fields(run, SimpleNamespace(), resolver=resolver, tools=FakeSources(None),
         prepared=(readings, (task,), {})))
-    assert outcome.finalized_without_model and outcome.answer.outcome == "resolved"
+    assert resolver.calls == ["collectors"] and not outcome.finalized_without_model
     by_name = {reading.name: reading for reading in readings}
     assert field_step._refusal(task, outcome.answer, readings=readings, by_name=by_name, sources=()) is None
-    assert (outcome.answer.literal, outcome.answer.reading_names) == ("J. Smith", ["2A", "2B"])
+    on_1b = answer.model_copy(update={"reading_names": ["1B"]})
+    assert field_step._refusal(task, on_1b, readings=readings, by_name=by_name, sources=()) is not None
 
 
 def test_resolvers_run_concurrently_up_to_the_limit(rig):
     every = Scripted(delay=0.05)
     research(rig, every, concurrency=20)
-    assert every.peak == len(RESEARCHED)
+    assert every.peak == len(EXPERTS)
     starts, ends = [s for _, s, _ in every.spans], [e for _, _, e in every.spans]
     assert max(starts) < min(ends)  # Every field had started before any finished.
     two = Scripted(delay=0.01)
     research(rig, two, concurrency=2)
-    assert two.peak == 2 and sorted(two.calls) == sorted(RESEARCHED)
+    assert two.peak == 2 and sorted(two.calls) == sorted(EXPERTS)
 
 
 def test_research_stops_a_minute_before_the_pilots_effect_timeout():
@@ -465,10 +516,10 @@ def test_one_field_research_span_carries_operational_counts_only(rig, capfire):
     [span] = [item for item in capfire.exporter.exported_spans_as_dict() if item["name"] == "field_research"]
     counts = {key: span["attributes"][key] for key in ("fields_total", "finalized_without_model", "resolved",
         "review", "failed", "nonblocking_exceptions", "model_calls", "cost_micros")}
-    assert counts == {"fields_total": 20, "finalized_without_model": len(NO_TOOLS),
+    assert counts == {"fields_total": 20, "finalized_without_model": 0,
         # Review: county, and the three elevations and the end date the label leaves out.
-        "resolved": len(NO_TOOLS) + len(RESEARCHED) - 6, "review": 5, "failed": 1, "nonblocking_exceptions": 1,
-        "model_calls": len(RESEARCHED), "cost_micros": 0}
+        "resolved": len(EXPERTS) - 6, "review": 5, "failed": 1, "nonblocking_exceptions": 1,
+        "model_calls": len(EXPERTS), "cost_micros": 0}
     text = json.dumps(span["attributes"])
     assert not any(value in text for value in (*LABEL.values(), GBIF_NAME))
 
@@ -1321,6 +1372,92 @@ def test_an_outage_blocks_the_run_and_keeps_every_settled_field(rig):
         agreement.NO_COUNTRY + " Settled."}
 
 
+class TgnDown(FakeSources):
+    """Getty TGN cannot be reached (refused, as from Cloud Run on 2026-10-09);
+    Wikidata knows the synthetic label's country, state and county at their
+    levels, each in the places above it."""
+
+    WIKIDATA = {"United States": ("country", ()), "Illinois": ("state", ("United States",)),
+        "Cook": ("county", ("Illinois", "United States"))}
+
+    def __init__(self, blobs, down=()):
+        super().__init__(blobs)
+
+    def _answer(self, source_id, query):
+        if source_id == "tgn":
+            return SourceAnswer("tgn", query, LookupStatus.AUTHORIZATION, (), None,
+                note="Getty TGN refused the request with HTTP 403")
+        if source_id != "wikidata" or query not in self.WIKIDATA:
+            return super()._answer(source_id, query)
+        kind, within = self.WIKIDATA[query]
+        raw = json.dumps({"source": source_id, "query": query}).encode()
+        candidate = SourceCandidate(query, f"wikidata:{query}", kind, "in " + ", ".join(within) if within else None,
+            tuple(PlaceRef(name, f"wikidata:{name}") for name in within))
+        evidence = Evidence(kind="authority", source="wikidata", locator=candidate.authority_id,
+            excerpt=f"match\n{query} | {candidate.authority_id} | {kind} | {candidate.detail or ''}",
+            raw_ref=self.blobs.put(raw), digest=hashlib.sha256(raw).hexdigest())
+        return SourceAnswer("wikidata", query, LookupStatus.SUCCESS, (candidate,), evidence, note="match")
+
+
+def place_experts(county, scripts=None):
+    """The real experts (experts.make_resolver) for the country, state and
+    county, each asking Getty TGN and Wikidata about the label's text at once
+    and then resolving on Wikidata's candidate, the county answering `county`
+    instead when given; `scripts`, else test_step's, for every other field."""
+
+    def play(messages, info):
+        prompt = next(part.content for m in messages if isinstance(m, ModelRequest) for part in m.parts
+            if isinstance(part, UserPromptPart))
+        key = json.loads(prompt[len(INPUT_PREFIX):])["field"]["key"]
+        returns = [part.content for m in messages if isinstance(m, ModelRequest) for part in m.parts
+            if isinstance(part, ToolReturnPart)]
+        if not returns:
+            return ModelResponse(parts=[ToolCallPart("lookup", {"source": source, "query": LABEL[key]})
+                for source in ("tgn", "wikidata")])
+        [found] = [item for item in returns if item["source"] == "wikidata"]
+        answer = {"outcome": "resolved", "literal": LABEL[key], "reading_names": ["1A"],
+            "authority_id": found["candidates"][0]["authority_id"], "source_evidence_ids": [found["evidence_id"]],
+            "explanation": "Wikidata has the place at the field's level."}
+        if key == "county" and county is not None:
+            answer = county
+        return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, answer)])
+
+    expert = make_resolver(model_factory=lambda: FunctionModel(play),
+        meter=CostMeter(1_000_000, input_micros_per_million=1, output_micros_per_million=1))
+    scripted = Scripted(scripts)
+
+    async def resolver(task, readings, context, *, tools):
+        if task.key in ("country", "province_state", "county"):
+            return await expert(task, readings, context, tools=tools)
+        return await scripted(task, readings, context, tools=tools)
+    return resolver
+
+
+UNSETTLED_COUNTY = {"outcome": "sources_cannot_resolve", "literal": "Cook", "reading_names": ["1A"],
+    "explanation": "Getty TGN did not answer and Wikidata's Cook was not checked."}
+
+
+@pytest.mark.parametrize("county", [None, UNSETTLED_COUNTY])
+def test_one_source_down_among_several_settles_from_the_others_and_names_it(rig, county):
+    """Getty TGN never answers; Wikidata does. The places settle on Wikidata
+    under the same rules, each reason naming TGN, and an unresolved county goes
+    to review with its reason instead of blocking the record."""
+    run = rig.specimen.run
+    blocker = settle(rig, place_experts(county), tools=TgnDown(rig.blobs))
+    assert blocker is None and (run.stage, run.blocker) == ("finalized", None)
+    for key in ("country", "province_state") + (("county",) if county is None else ()):
+        value = run.fields[key]
+        assert (value.state, value.authority_id) == (ValueState.SUPPORTED, f"wikidata:{LABEL[key]}")
+        assert value.reason == ("Wikidata has the place at the field's level. "
+            "Getty TGN could not be reached; settled from Wikidata.")
+    if county is None:
+        assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+        return
+    assert run.fields["county"].state == ValueState.UNRESOLVED
+    assert run.fields["county"].reason == UNSETTLED_COUNTY["explanation"] + " Getty TGN could not be reached."
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["mandatory_unresolved:county"])
+
+
 # ---- through the workflow: one step, retry, cost -------------------------------
 
 def mounted(rig, resolver, tools_down=(), sources=None):
@@ -1354,7 +1491,7 @@ def test_a_blocked_run_retries_only_its_unsettled_fields_and_settles_its_cost(ri
     # One reservation of the whole headroom, settled to what the meter spent.
     [paid] = run.paid_calls
     spent = state.meters[0].spent_micros
-    assert spent == 50 * len(RESEARCHED) and paid["reserved_micros"] == 1_000_000
+    assert spent == 50 * len(EXPERTS) and paid["reserved_micros"] == 1_000_000
     assert (paid["cost_micros"], paid["cost_basis"], paid["outcome"]) == (spent, "computed", "failed")
     assert run.usage.reserved_cost_micros == spent and run.usage.actual_cost_micros == spent
 
@@ -1371,6 +1508,122 @@ def test_a_blocked_run_retries_only_its_unsettled_fields_and_settles_its_cost(ri
     assert run.paid_calls[1]["reserved_micros"] == 1_000_000 - spent
     assert run.usage.reserved_cost_micros == spent + 50 * 4 <= run.profile.execution.approved_cost_limit_micros
     verify_evidence(done, rig.blobs)
+
+
+class TgnDownForTheCountry(FakeSources):
+    """Getty TGN never answers the country's lookup."""
+
+    def _answer(self, source_id, query):
+        if (source_id, query) == ("tgn", LABEL["country"]):
+            return SourceAnswer("tgn", query, LookupStatus.PROVIDER, (), None, note="unreachable")
+        return super()._answer(source_id, query)
+
+
+async def tgn_never_answers(task, readings, tools):
+    """An expert none of whose lookups answered: Getty TGN is down."""
+    answer = await tools.lookup("tgn", LABEL[task.key], field_key=task.key)
+    assert answer.status == LookupStatus.PROVIDER
+    outcome = FieldOutcome(task.key, FieldAnswer(outcome="sources_cannot_resolve", explanation="TGN is down."),
+        failure="source_unavailable", model_calls=1)
+    outcome.unreachable = ("tgn",)
+    return outcome
+
+
+def until_the_last_attempt(rig, resolver):
+    """The field research step, retried as the workflow schedules it, to its
+    last allowed attempt; each attempt's run."""
+    mounted(rig, resolver, sources=TgnDownForTheCountry)
+    runs = []
+    for _ in range(rig.specimen.run.profile.execution.max_attempts):
+        runs.append(rig.workflow.step(rig.principal, rig.specimen.id).run)
+        rig.clock.now += timedelta(hours=1)
+    return runs
+
+
+def test_a_source_still_unreachable_on_the_last_attempt_goes_to_review_and_the_run_finalizes(rig):
+    *early, last = until_the_last_attempt(rig, Scripted({"country": tgn_never_answers}))
+    # Earlier attempts retry: the outage may clear.
+    for attempt, run in enumerate(early, 1):
+        assert (run.stage, run.blocker, run.attempts[FIELD_RESEARCH]) == (
+            "retry_scheduled", "lookup_operational_failure", attempt)
+        assert run.fields["country"].reason == field_step.FIELD_REASONS["source_unavailable"]
+    # The last one sends the country to review, naming the source, and finalizes the rest.
+    assert (last.stage, last.blocker, last.dead_letter, last.disposition) == (
+        "finalized", None, False, Disposition.REVIEW)
+    assert last.attempts[FIELD_RESEARCH] == 3 and last.completed_steps[-1] == FIELD_RESEARCH
+    assert (last.fields["country"].state, last.fields["country"].reason) == (
+        ValueState.UNRESOLVED, "Getty TGN could not be reached after 3 attempts.")
+    assert "mandatory_unresolved:country" in last.reasons
+    assert not [reason for reason in last.reasons if reason.startswith("lookup_operational_failure")]
+    assert last.fields["taxon"].layer == "settled" and last.paid_calls[-1]["outcome"] == "completed"
+
+
+def test_a_model_error_on_the_last_attempt_still_stops_the_retries(rig):
+    """Only a source lookup's outage is graceful on the last attempt; a model
+    or provider failure keeps its block."""
+    *_, last = until_the_last_attempt(rig, Scripted({"country": failing("model_error")}))
+    assert (last.stage, last.dead_letter, last.blocker) == (
+        "processing_blocked", True, "retry_budget_exhausted:field_research_model_error")
+
+
+def field_spans(capfire):
+    """The step's field_research span and its field spans, by field key."""
+    spans = capfire.exporter.exported_spans_as_dict()
+    [step] = [span for span in spans if span["name"] == "field_research"]
+    fields = {span["attributes"]["field_key"]: span for span in spans if span["name"] == "field_research.field"}
+    return step, fields
+
+
+@pytest.mark.parametrize("content", [False, True])
+def test_each_fields_decision_is_its_own_span_inside_the_steps(rig, capfire, monkeypatch, content):
+    """A settled field (the taxon, on GBIF), a refused one (a city no place
+    source confirms) and one settled although a source could not be reached
+    (the state, on Wikidata with Getty TGN down): what the step decided after
+    each expert, as codes; the field's text only under approved content."""
+    from specimen_digitization import provider_privacy
+
+    monkeypatch.setattr(provider_privacy, "approved_content_configured", lambda: content)
+    mounted(rig, place_experts(None, {"city": answering(resolved(LABEL["city"]))}), sources=TgnDown)
+    run = rig.workflow.step(rig.principal, rig.specimen.id).run
+    assert (run.stage, run.disposition) == ("finalized", Disposition.REVIEW)
+    step, fields = field_spans(capfire)
+    assert set(fields) == set(field_step.field_keys(field_step.profile_of(run)))
+    assert all(span["parent"]["span_id"] == step["context"]["span_id"] for span in fields.values())
+    codes = ("expert_outcome", "failure", "fallback", "finalized_without_model", "state", "layer",
+        "reason_codes", "refusal", "rule", "lookups", "sources_answered", "sources_unreachable")
+    # Logfire exports a list attribute as its JSON text.
+    lists = {"reason_codes", "lookups", "sources_answered", "sources_unreachable"}
+    shown = {key: {name: json.loads(span["attributes"][name]) if name in lists else span["attributes"][name]
+        for name in codes} for key, span in fields.items()}
+    assert shown["taxon"] == {"expert_outcome": "resolved", "failure": "none", "fallback": False,
+        "finalized_without_model": False, "state": "supported", "layer": "settled", "reason_codes": [],
+        "refusal": "none", "rule": "none", "lookups": ["gbif:success"], "sources_answered": ["gbif"],
+        "sources_unreachable": []}
+    assert shown["city"] == {"expert_outcome": "resolved", "failure": "none", "fallback": False,
+        "finalized_without_model": False, "state": "unresolved", "layer": "none",
+        "reason_codes": ["mandatory_unresolved:city"], "refusal": "no_place", "rule": "none", "lookups": [],
+        "sources_answered": [], "sources_unreachable": []}
+    assert shown["province_state"] == {"expert_outcome": "resolved", "failure": "none", "fallback": False,
+        "finalized_without_model": False, "state": "supported", "layer": "settled", "reason_codes": [],
+        "refusal": "none", "rule": "none", "lookups": ["tgn:access_refused", "wikidata:success"],
+        "sources_answered": ["wikidata"], "sources_unreachable": ["tgn"]}
+    assert shown["collectors"]["finalized_without_model"] is False and shown["collectors"]["layer"] == "verbatim"
+    assert shown["collectors"]["expert_outcome"] == "resolved"
+    assert shown["identified_by_irn"]["rule"] == "irn_nonblocking_exception"
+    # The label states one date; the step derives its end (G44).
+    assert (shown["date_visited_to"]["expert_outcome"], shown["date_visited_to"]["rule"]) == (
+        "label_lacks_value", "derived")
+    assert "Scrubbed" not in json.dumps([span["attributes"] for span in fields.values()])
+    text = json.dumps([span["attributes"] for span in fields.values()])
+    if not content:
+        assert not any(name in span["attributes"] for span in fields.values()
+            for name in ("literal", "value", "source_record", "reason"))
+        assert not any(value in text for value in (*LABEL.values(), GBIF_NAME, "J. Smith"))
+        return
+    taxon = fields["taxon"]["attributes"]
+    assert (taxon["literal"], taxon["value"], taxon["source_record"]) == (LABEL["taxon"], GBIF_NAME, GBIF_KEY)
+    assert fields["province_state"]["attributes"]["reason"].endswith(
+        "Getty TGN could not be reached; settled from Wikidata.")
 
 
 def test_a_run_without_a_harness_route_keeps_the_ordinary_plan_step(rig):
@@ -1429,7 +1682,7 @@ def test_a_crash_after_research_settles_to_the_meters_exact_spend(rig):
     rig.workflow.field_research.tools_factory = closing_fails
     run = rig.workflow.step(rig.principal, rig.specimen.id).run
     spent = state.meters[0].spent_micros
-    assert spent == 50 * len(RESEARCHED) and run.blocker == "external_outcome_unknown"
+    assert spent == 50 * len(EXPERTS) and run.blocker == "external_outcome_unknown"
     [paid] = run.paid_calls
     assert (paid["cost_micros"], paid["cost_basis"], paid["outcome"]) == (spent, "computed", "failed")
     assert run.usage.reserved_cost_micros == spent

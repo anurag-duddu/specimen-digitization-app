@@ -97,6 +97,65 @@ def test_the_ceiling_is_never_exceeded_under_fifty_concurrent_reservations():
     asyncio.run(scenario())
 
 
+def test_a_reservation_that_does_not_fit_waits_for_held_ones_to_settle():
+    """Ten experts at once under a ceiling of two worst cases: each settles to
+    a tenth of its reservation, so every one is granted in turn and the
+    ceiling is never crossed."""
+    async def scenario():
+        worst = meter().cost(10_000, 2048)
+        m = meter(2 * worst)
+        peaks: list[int] = []
+
+        async def expert() -> None:
+            ticket = await m.reserve(10_000, 2048)
+            peaks.append(m.spent_micros + m.outstanding_micros)
+            await asyncio.sleep(0.001)
+            m.settle(ticket, 1000, 200)
+
+        await asyncio.gather(*(expert() for _ in range(10)))
+
+        assert max(peaks) <= 2 * worst and m.outstanding_micros == 0
+        assert m.spent_micros == 10 * m.cost(1000, 200) <= 2 * worst
+
+    asyncio.run(scenario())
+
+
+def test_a_reservation_is_refused_when_none_is_held_and_it_still_does_not_fit():
+    """A true overrun: the held reservation settles to its whole worst case,
+    so the waiting one still does not fit and nothing else can free room."""
+    async def scenario():
+        worst = meter().cost(10_000, 2048)
+        m = meter(worst + worst // 2)
+        held = await m.reserve(10_000, 2048)
+        waiting = asyncio.ensure_future(m.reserve(10_000, 2048))
+        await asyncio.sleep(0.001)
+        assert not waiting.done()  # it waits while one is held
+        m.settle(held, 10_000, 2048)
+        with pytest.raises(BudgetExhausted):
+            await waiting
+        assert (m.spent_micros, m.outstanding_micros) == (worst, 0)
+        with pytest.raises(BudgetExhausted):
+            await m.reserve(10_000, 2048)
+
+    asyncio.run(scenario())
+
+
+def test_a_waiting_reservation_that_is_cancelled_holds_nothing():
+    async def scenario():
+        worst = meter().cost(10_000, 2048)
+        m = meter(worst)
+        held = await m.reserve(10_000, 2048)
+        waiting = asyncio.ensure_future(m.reserve(10_000, 2048))
+        await asyncio.sleep(0.001)
+        waiting.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiting
+        m.settle(held, 100, 10)
+        assert m.outstanding_micros == 0 and m._waiters == []
+
+    asyncio.run(scenario())
+
+
 def _final(info: AgentInfo, **args) -> ModelResponse:
     return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, args)])
 

@@ -165,7 +165,10 @@ async def test_provider_failure_on_second_call_stops_chain():
 @pytest.mark.parametrize(
     ("source", "search"),
     [
-        ("tgn", {"q0": {"result": [{"id": f"tgn/{index}"} for index in range(11)]}}),
+        (
+            "tgn",
+            {"q0": {"result": [{"id": f"tgn/{index}", "name": "Apo"} for index in range(11)]}},
+        ),
         ("wikidata", {"search": [{"id": f"Q{index}"} for index in range(1, 9)]}),
         (
             "nga",
@@ -200,7 +203,7 @@ async def test_unrequested_record_id_is_rejected_before_third_call(source):
         calls.append((url, params))
         if len(calls) == 1:
             if source == "tgn":
-                return 200, body({"q0": {"result": [{"id": "tgn/1"}]}})
+                return 200, body({"q0": {"result": [{"id": "tgn/1", "name": "One"}]}})
             if source == "wikidata":
                 return 200, body({"search": [{"id": "Q1"}]})
             return 200, body({"features": [{"attributes": {"ufi": 1, "term_dt_f": None}}]})
@@ -232,7 +235,7 @@ async def test_unrequested_auxiliary_id_is_rejected_after_third_call(source):
         stage = len(calls)
         if source == "tgn":
             if stage == 1:
-                return 200, body({"q0": {"result": [{"id": "tgn/1"}]}})
+                return 200, body({"q0": {"result": [{"id": "tgn/1", "name": "One"}]}})
             row = {"place": {"value": tgn.TGN + ("1" if stage == 2 else "2")}}
             row["name"] = {"value": "One" if stage == 2 else "Wrong"}
             return 200, body({"results": {"bindings": [row]}})

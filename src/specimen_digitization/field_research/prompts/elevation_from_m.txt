@@ -3,8 +3,8 @@ Field: Elevation From (m) (elevation_from_m). The lower, or only, elevation the 
 G41: answer only what the label states in metres. When the label states the elevation only in feet, answer label_lacks_value: the step converts it exactly afterwards (1 ft = 0.3048 m). Never convert, round or copy a value yourself.
 
 Your check: parse_elevation(literal) reads a written elevation: its number or range, its unit, and an approximate marker.
-- Call parse_elevation on the whole elevation as written, with its unit and any heading or marker ("1200 m", "alt. 1200 m", "ca. 1200 m", "300-450 m"), to confirm its unit and whether it is one number or a range.
-- The literal is the organiser's candidate for this elevation, whole. When it is the number alone ("1200"), leave value empty; when it writes more ("ca. 1200 m", "300-450 m"), value is the lower or only number parse_elevation returned for exactly that literal ("1200", "300").
+- Call parse_elevation on the whole elevation as written, with its unit and any heading or marker ("<n> m", "alt. <n> m", "ca. <n> m", "<n1>-<n2> m"), to confirm its unit and whether it is one number or a range.
+- The literal is the organiser's candidate for this elevation, whole. When it is the number alone ("<n>"), leave value empty; when it writes more ("ca. <n> m", "<n1>-<n2> m"), value is the lower or only number parse_elevation returned for exactly that literal ("<n>", "<n1>").
 - "m", "metres" and "meters" mean metres; "ft.", "feet" and the tick "'" mean feet.
 - "alt." and "el." head an elevation. "ca.", "c." and "about" mark it approximate: say so in the explanation.
 - A number with no unit written: a unit is never guessed from the magnitude, the place or a map. Answer sources_cannot_resolve and quote it.

@@ -200,7 +200,6 @@ def test_reconciliation_keeps_tgn_ids_only():
                     {"id": "aat/300008795", "name": "mountains", "score": 9},
                     {"id": "ulan/500115493", "name": "Dürer, Albrecht", "score": 8},
                     {"id": "tgn/1103742", "name": "Apo, Mount", "score": 33.8},
-                    "not a result",
                 ]
             }
         }
@@ -209,6 +208,43 @@ def test_reconciliation_keeps_tgn_ids_only():
         LookupStatus.SUCCESS,
         (Hit("1103742", "Apo, Mount", 33.8),),
     )
+
+
+def test_a_reply_of_other_getty_vocabularies_only_is_no_match():
+    """A concept or a person is no place: TGN found none."""
+    for others in (
+        [{"id": "aat/300008795", "name": "mountains", "score": 9}],
+        [
+            {"id": "ulan/500115493", "name": "Dürer, Albrecht", "score": 8},
+            {"id": "aat/300008795", "name": "mountains", "score": 9},
+        ],
+    ):
+        body = json.dumps({"q0": {"result": others}}).encode()
+        assert parse_reconcile(200, body) == (LookupStatus.NO_MATCH, ())
+
+
+UNREADABLE_HITS = {
+    "a string item": "tgn/7005560",
+    "a null item": None,
+    "an integer id": {"id": 7005560, "name": "Yepocapo", "score": 83},
+    "a URI id": {"id": "http://vocab.getty.edu/tgn/7005560", "name": "Yepocapo", "score": 83},
+    "an id of no Getty vocabulary": {"id": "place/7005560", "name": "Yepocapo", "score": 83},
+    "a TGN id that is not digits": {"id": "tgn/7005560a", "name": "Yepocapo", "score": 83},
+    "no name": {"id": "tgn/7005560", "score": 83},
+    "a blank name": {"id": "tgn/7005560", "name": " ", "score": 83},
+    "a name that is not text": {"id": "tgn/7005560", "name": 7005560, "score": 83},
+}
+
+
+@pytest.mark.parametrize("unreadable", list(UNREADABLE_HITS))
+def test_a_hit_that_cannot_be_read_makes_the_whole_reply_malformed(unreadable):
+    """The service reported something it may have found: that is no answer
+    that it found nothing (NO_MATCH), alone or beside a hit that can be read
+    (the review of #299)."""
+    readable = {"id": "tgn/1103742", "name": "Apo, Mount", "score": 33.8}
+    for results in ([UNREADABLE_HITS[unreadable]], [readable, UNREADABLE_HITS[unreadable]]):
+        body = json.dumps({"q0": {"result": results}}).encode()
+        assert parse_reconcile(200, body) == (LookupStatus.MALFORMED, ())
 
 
 def test_an_id_tgn_does_not_hold_is_skipped_and_a_bad_point_is_not_read():
@@ -241,14 +277,14 @@ def test_nonfinite_points_and_scores_do_not_enter_places_or_hits():
     answer = {
         "q0": {
             "result": [
-                {"id": "tgn/1", "score": float("nan")},
-                {"id": "tgn/2", "score": True},
+                {"id": "tgn/1", "name": "One", "score": float("nan")},
+                {"id": "tgn/2", "name": "Two", "score": True},
             ]
         }
     }
     assert parse_reconcile(200, json.dumps(answer).encode()) == (
         LookupStatus.SUCCESS,
-        (Hit("1"), Hit("2")),
+        (Hit("1", "One"), Hit("2", "Two")),
     )
 
 
