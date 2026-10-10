@@ -87,11 +87,13 @@ fields' outcomes:
    "Philippine Islands" for "P.I.", "New South Wales" for "N.S.W.", "Davao
    Province" for "Davao, Prov."), for which the step cites one rule row
    naming the abbreviation, the expansion and how its letters fit, and which
-   settles nothing when another fitting expansion was answered as another
-   place at the field's level (rival_expansion: the field is ambiguous). A
-   query that fits is taken as an expansion even when it also has the
-   literal's comparison key, as one that writes out a unit word does; or
-   else about the candidate's
+   settles nothing when another fitting expansion, or the label's own text,
+   was answered as another place at the field's level (rival_expansion: the
+   field is ambiguous). A query that fits is taken as an expansion even when
+   it also has the literal's comparison key, as one that writes out a unit
+   word does. Initials ("P.I.", "UK": abbreviations.initialism) settle only
+   when the step finds another place of the label inside them
+   (step._corroborate); or else about the candidate's
    own name when that name is one letter from the literal
    (application.georef_locality.one_letter_apart: both full names,
    comparison keys one insertion, deletion or substitution apart), the
@@ -145,9 +147,9 @@ from dataclasses import dataclass
 from typing import NamedTuple
 
 from specimen_digitization.application.domain import LookupStatus
-from specimen_digitization.application.georef_locality import comparison_key, one_letter_apart
+from specimen_digitization.application.georef_locality import comparison_key, fold, one_letter_apart
 
-from .abbreviations import fits
+from .abbreviations import fit, fits, initialism
 from .checks import collapse, genus_in_doubt, longer_name, taxon_query_grounded
 from .contracts import PLACE_SOURCES, FieldTask, Reading, SourceAnswer, SourceCandidate
 
@@ -194,7 +196,7 @@ NOT_CANDIDATE = "This value is not the text found for this field in the readings
 PART_OF_NAME = "The label writes a longer scientific name than this value."
 DOUBTFUL_GENUS = "The label marks this name's genus as doubtful."
 NO_PLACE = "No approved place source confirms this value."
-EXPANSIONS_DIFFER = "The label's abbreviation fits names of different places the sources found."
+EXPANSIONS_DIFFER = "The sources found different places for the label's abbreviation."
 
 
 @dataclass(frozen=True)
@@ -624,31 +626,72 @@ def place_basis(task: FieldTask, literal: str, settled: str, authority_id: str |
     return found.basis if found is not None else None
 
 
+def another_place(candidate: SourceCandidate, settled: SourceCandidate) -> bool:
+    """Whether a candidate is another place than the settled one: another
+    record (another authority_id, or none) and another name (place_name).
+    The same nation in two gazetteers has two records and one name."""
+    return ((candidate.authority_id is None or candidate.authority_id != settled.authority_id)
+        and place_name(candidate.name) != place_name(settled.name))
+
+
+class Rival(NamedTuple):
+    """Another name the sources found the label's abbreviation as (rival_expansion)."""
+
+    name: str
+    # The label's own text, rather than another expansion of it.
+    own: bool
+
+
 def rival_expansion(task: FieldTask, literal: str, settling: Settling,
-        received: Iterable[SourceAnswer]) -> str | None:
+        received: Iterable[SourceAnswer]) -> Rival | None:
     """For a place value settled on an expansion of its literal (ABBREVIATION),
-    another expansion the literal fits by the letter rule that a place source
-    of the field answered (success or ambiguous, with its evidence stored)
-    with a candidate at the field's level that is not the settled record
-    (another authority_id, or none); None when there is none. "S.A." fits
-    both "South Africa" and "South Australia": when the sources find each as
-    a place at the field's level, the letters cannot tell which the label
-    means. Expansions compare as place names, and the literal's own text is
-    no expansion."""
-    used, own = place_name(asked_name(settling.answer)), place_name(literal)
-    settled_id = settling.candidate.authority_id
+    another name a place source of the field answered (success or ambiguous,
+    with its evidence stored) as another place (another_place) at the field's
+    level; None when there is none. The name is another query than the
+    settling expansion (compared by georef_locality.fold: case, accents and
+    punctuation aside, unit words kept) and either
+    - another expansion the literal fits by the letter rule, with any
+      candidate at the field's level that is another place: "S.A." looked up
+      as "South Africa" and as "Saudi Arabia"; or
+    - the label's own text (about: "Davao" for "Davao, Prov."), with exactly
+      one candidate at the field's level, another place: the source found
+      the text itself as a place, and the expansion names another."""
+    used = fold(asked_name(settling.answer))
     sources = frozenset(task.tools) & frozenset(PLACE_SOURCES)
     for answer in received:
         if (answer.source_id not in sources or answer.status not in PLACE_ANSWERED
                 or answer.evidence is None):
             continue
         name = asked_name(answer)
-        if place_name(name) in (used, own, "") or not fits(literal, name):
+        if fold(name) in (used, ""):
             continue
-        if any(candidate.authority_id is None or candidate.authority_id != settled_id
-                for candidate in at_level(task.key, answer)):
-            return name
+        level = at_level(task.key, answer)
+        if fits(literal, name):
+            own = False
+        elif about(answer, collapse(literal)) and len(level) == 1:
+            own = True
+        else:
+            continue
+        if any(another_place(candidate, settling.candidate) for candidate in level):
+            return Rival(name, own)
     return None
+
+
+def initialism_of(literal: str, settling: Settling) -> str | None:
+    """The expansion of a place value settled on initials
+    (abbreviations.initialism: "Philippine Islands" for "P.I."), or None.
+    Only the step can corroborate such a value (step._corroborate)."""
+    if settling.basis != ABBREVIATION:
+        return None
+    expansion = asked_name(settling.answer)
+    pairs = fit(literal, expansion)
+    return expansion if pairs is not None and initialism(pairs) else None
+
+
+def initialism_alone(literal: str, expansion: str) -> str:
+    """The reason of a place value whose initials no other place confirms."""
+    return (f'The initials "{literal}" fit "{expansion}", but no other place on the label was found '
+        "inside it, so the initials alone do not decide.")
 
 
 # Why a place value's candidate does not fit the label's other place fields
@@ -761,8 +804,11 @@ def refusal(task: FieldTask, readings: Sequence[Reading], *, literal: str,
                 "sources_cannot_resolve."))
         if found.basis == ABBREVIATION and (
                 rival := rival_expansion(task, literal, found, received)) is not None:
+            told = (f"your sources found the label's own text {rival.name!r} as another place at this "
+                f"field's level than {asked_name(found.answer)!r}" if rival.own else
+                f"{literal!r} fits both {asked_name(found.answer)!r} and {rival.name!r}, and your sources "
+                "found each at this field's level as different places")
             return Refusal(EXPANSIONS_DIFFER, (
-                f"{literal!r} fits both {asked_name(found.answer)!r} and {rival!r}, and your sources "
-                "found each at this field's level as different places. The letters do not decide "
-                "between them: answer several_possibilities, or sources_cannot_resolve."), differ=True)
+                f"{told[0].upper()}{told[1:]}. The letters do not decide between them: answer "
+                "several_possibilities, or sources_cannot_resolve."), differ=True)
     return None

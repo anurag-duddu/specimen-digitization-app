@@ -1261,6 +1261,13 @@ def answered(source: str, query: str, evidence_id: str, name: str, kind: str | N
     ("province_state", "Ill.", answered("tgn", "Iowa", "ev-1", "Iowa", STATE), False),
     # Not written as an abbreviation.
     ("city", "Lima", answered("geolocate", "Limassol, Cyprus", "ev-1", "Limassol", None), False),
+    # Capitals with no period are initials only (the review of #295's LIMIT cases): "UK" is
+    # "United Kingdom" (the step still needs another place inside it), never "Ukraine";
+    # "MALI" and "IRAN" spell no country.
+    ("country", "UK", answered("tgn", "United Kingdom", "ev-1", "United Kingdom", NATION), True),
+    ("country", "UK", answered("tgn", "Ukraine", "ev-1", "Ukraine", NATION), False),
+    ("country", "MALI", answered("tgn", "Malawi", "ev-1", "Malawi", NATION), False),
+    ("country", "IRAN", answered("tgn", "Ireland", "ev-1", "Ireland", NATION), False),
 ])
 def test_a_place_abbreviation_settles_on_a_lookup_of_an_expansion_its_letters_fit(key, literal, received, settles):
     readings = (Reading("1A", "region-1", "obs-1a", "raw_reading", f"{literal}\nleg. J. Smith"),
@@ -1279,6 +1286,21 @@ def test_a_place_abbreviation_settles_on_a_lookup_of_an_expansion_its_letters_fi
         return
     with pytest.raises(ModelRetry, match="asked the label's own text"):
         made.validate(given)
+
+
+@pytest.mark.parametrize(("literal", "query", "name", "kind", "basis"), [
+    # A letter dropped, a period after: a near spelling (G34's one-letter half), never
+    # an abbreviation (the review of #295, H1 and H3).
+    ("Chimaltenago.", "Chimaltenango", "Chimaltenango", FIRST, "near_spelling"),
+    ("Guatmala.", "Guatemala", "Guatemala", NATION, "near_spelling"),
+    # Two letters dropped: nothing (H2).
+    ("Chimaltango.", "Chimaltenango", "Chimaltenango", FIRST, None),
+])
+def test_a_name_with_letters_dropped_is_no_abbreviation(literal, query, name, kind, basis):
+    found = answered("tgn", query, "ev-1", name, kind)
+    key = "country" if kind == NATION else "province_state"
+    field = task(key, candidates=offered(("1A", literal)))
+    assert agreement.place_basis(field, literal, name, found.candidates[0].authority_id, [found]) == basis
 
 
 @pytest.mark.parametrize(("query", "basis"), [
@@ -1308,8 +1330,10 @@ PACIFIC_ISLANDS = answered("tgn", "Pacific Islands", "ev-pac", "Pacific Islands"
     ("P.I.", PHILIPPINE_ISLANDS, PACIFIC_ISLANDS, "Pacific Islands"),
     # South Australia is a state: at the country's level only South Africa is found.
     ("S.A.", SOUTH_AFRICA, answered("tgn", "South Australia", "ev-sau", "South Australia", STATE), None),
-    # Two expansions that find the same nation agree.
+    # Two expansions that find the same nation agree: the same record, or the same
+    # name under another source's record (Wikidata's Philippines beside TGN's).
     ("P.I.", PHILIPPINE_ISLANDS, tgn("Philippine Is", "ev-pis", ("Philippines", "tgn:1000135", NATION)), None),
+    ("P.I.", PHILIPPINE_ISLANDS, answered("wikidata", "Philippine Is.", "ev-wd", "Philippines", "country"), None),
     # A name the letters do not spell is no expansion of it.
     ("P.I.", PHILIPPINE_ISLANDS, answered("tgn", "Peru", "ev-pe", "Peru", NATION), None),
     # Nor is a lookup with nothing at the country's level, or nothing stored.
@@ -1336,6 +1360,41 @@ def test_an_abbreviation_two_of_whose_expansions_are_found_as_different_places_s
     # The step's check is the same: the field is ambiguous, for a person to choose.
     refused = agreement.refusal(made.task, readings, literal=literal, named=readings[:1], value=place.name,
                                 authority_id=place.authority_id, cited=[settling], received=made.received)
+    assert (refused.reason, refused.differ) == (agreement.EXPANSIONS_DIFFER, True)
+
+
+GEORGIA = answered("tgn", "Georgia", "ev-ge", "Georgia", NATION)
+
+
+@pytest.mark.parametrize(("own", "rival"), [
+    # Constructed: the source finds the label's own text "Ga." as one nation, Gabon,
+    # while its expansion "Georgia" names another: the letters do not decide.
+    (answered("tgn", "Ga.", "ev-ga", "Gabon", NATION), "Ga."),
+    # The own text found as the same nation (by name, under another record) agrees.
+    (answered("wikidata", "Ga.", "ev-ga", "Georgia", "sovereign state"), None),
+    # Several nations, or none, at the level for the own text: it named no one place.
+    (tgn("Ga.", "ev-ga", ("Gabon", "tgn:gabon", NATION), ("Gambia", "tgn:gambia", NATION)), None),
+    (answered("tgn", "Ga.", "ev-ga", "Ga River", "rivers"), None),
+])
+def test_the_labels_own_text_found_as_another_place_is_a_rival(own, rival):
+    """The review of #295: rival_expansion no longer leaves the label's own
+    text out. Its answer counts when it has exactly one candidate at the
+    field's level, another place than the expansion's."""
+    readings = (Reading("1A", "region-1", "obs-1a", "raw_reading", "Ga.\nleg. J. Smith"),)
+    made = experts._Expert(task("country", candidates=offered(("1A", "Ga."))), readings, FakeTools(), PILOT_DATES)
+    for found in (GEORGIA, own):
+        made.calls.append(experts._Call(found.source_id, found.query, found.status, found))
+    [place] = GEORGIA.candidates
+    given = answer(outcome="resolved", literal="Ga.", reading_names=["1A"], value=place.name,
+                   authority_id=place.authority_id, source_evidence_ids=["ev-ge"])
+
+    if rival is None:
+        assert made.validate(given).authority_id == place.authority_id
+        return
+    with pytest.raises(ModelRetry, match="found the label's own text 'Ga.' as another place"):
+        made.validate(given)
+    refused = agreement.refusal(made.task, readings, literal="Ga.", named=readings, value=place.name,
+                                authority_id=place.authority_id, cited=[GEORGIA], received=made.received)
     assert (refused.reason, refused.differ) == (agreement.EXPANSIONS_DIFFER, True)
 
 

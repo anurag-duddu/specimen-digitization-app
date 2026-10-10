@@ -5,31 +5,45 @@ from __future__ import annotations
 
 import pytest
 
-from specimen_digitization.field_research.abbreviations import abbreviated, fit, fits, shown
+from specimen_digitization.field_research.abbreviations import abbreviated, fit, fits, initialism, shown
 
 
 @pytest.mark.parametrize(("abbreviation", "expansion"), [
-    # Countries, states and provinces on labels from anywhere.
+    # Initials: countries, states and provinces on labels from anywhere. "P.I."
+    # spells several island groups alike.
     ("P.I.", "Philippine Islands"),
+    ("P.I.", "Pacific Islands"),
+    ("P.I.", "Pitcairn Islands"),
     ("P. I.", "Philippine Islands"),
-    ("Phil. Is.", "Philippine Islands"),
     ("N.S.W.", "New South Wales"),
-    ("Qld.", "Queensland"),
+    ("B.C.", "British Columbia"),
+    ("B.C.S.", "Baja California Sur"),
+    ("U.S.A.", "United States of America"),
+    # Truncations: the word's first letters, at most 60% of them.
+    ("Phil. Is.", "Philippine Islands"),
     ("Guat.", "Guatemala"),
     ("GUAT.", "Guatemala"),
     ("Guate.", "Guatemala"),
     ("Mex.", "Mexico"),
-    ("B.C.", "British Columbia"),
-    ("B.C.S.", "Baja California Sur"),
     ("Ill.", "Illinois"),
-    # Spanish and Portuguese unit words and names.
-    ("Edo.", "Estado"),
-    ("Dpto.", "Departamento"),
+    ("Prov.", "Province"),
+    ("Co.", "County"),
+    ("Is.", "Island"),
+    ("Is.", "Islands"),
+    ("Is. of Man", "Isle of Man"),
+    ("R. de Jan.", "Rio de Janeiro"),
+    # Contractions: the word's first and last letters, letters between them in order.
     ("Sta.", "Santa"),
     ("Sta. Cruz", "Santa Cruz"),
+    ("Ft.", "Fort"),
+    ("Ft. Lauderdale", "Fort Lauderdale"),
+    ("Mts.", "Mountains"),
+    ("Dpto.", "Departamento"),
+    ("Qld.", "Queensland"),
+    ("Edo.", "Estado"),
     ("Pto.", "Puerto"),
+    ("Gtmla.", "Guatemala"),
     ("Edo. Mex.", "Estado de Mexico"),
-    ("R. de Jan.", "Rio de Janeiro"),
     # Accents aside, either way.
     ("M\u00e9x.", "Mexico"),
     ("Mex.", "M\u00e9xico"),
@@ -41,33 +55,23 @@ from specimen_digitization.field_research.abbreviations import abbreviated, fit,
     ("Cook Co.", "Cook County"),
     ("Edo. de Mexico", "Estado de Mexico"),
     ("Dpto. Cusco", "Departamento Cusco"),
-    # Feature and unit words.
-    ("Co.", "County"),
-    ("Mts.", "Mountains"),
-    ("Ft.", "Fort"),
-    ("Ft. Lauderdale", "Fort Lauderdale"),
-    ("Prov.", "Province"),
-    ("Is.", "Island"),
-    ("Is.", "Islands"),
-    ("Is. of Man", "Isle of Man"),
     # Written without a period.
     ("Mt Apo", "Mount Apo"),
     ("St Helena", "Saint Helena"),
     ("Falkland Is", "Falkland Islands"),
-    # Capitals only, read whole or one letter a word.
-    ("GUAT", "Guatemala"),
+    # Capitals with no period: initials only, one letter a word.
     ("NSW", "New South Wales"),
     ("USA", "United States of America"),
-    ("U.S.A.", "United States of America"),
+    ("UK", "United Kingdom"),
     # A hyphen splits groups as a period does.
     ("S.-Afr.", "South Africa"),
-    # One abbreviation, two expansions: the letters alone do not decide.
+    # One set of initials, three expansions: the letters alone do not decide.
     ("S.A.", "South Australia"),
     ("S.A.", "South Africa"),
     ("S.A.", "Saudi Arabia"),
-    # The rule's limit: a whole word with a trailing period reads as an
-    # abbreviation, so the letters allow this too. The gazetteer's level, the
-    # parent check and a rival expansion are what stand behind it.
+    # The rule's limit: a whole word with a trailing period reads as a
+    # truncation when it is short enough. The gazetteer's level, the parent
+    # check and a rival are what stand behind it.
     ("Lima.", "Limassol"),
 ])
 def test_an_abbreviation_fits_the_expansion_its_letters_spell_in_order(abbreviation, expansion):
@@ -95,6 +99,28 @@ def test_an_abbreviation_fits_the_expansion_its_letters_spell_in_order(abbreviat
     # A word between the groups is skipped only when it is minor.
     ("N.W.", "New South Wales"),
     ("Edo. Mex.", "Estado Norte Mexico"),
+    # A name with a letter or two dropped is no abbreviation, period or not
+    # (the review of #295, H1 to H3): it is a near spelling (G34) or nothing.
+    ("Chimaltenago.", "Chimaltenango"),
+    ("Chimaltango.", "Chimaltenango"),
+    ("Guatmala.", "Guatemala"),
+    ("Mindano.", "Mindanao"),
+    ("Philipines.", "Philippines"),
+    ("Yepocpa.", "Yepocapa"),
+    # Neither a truncation nor a contraction, or more than 60% of the word.
+    ("Chmltngo.", "Chimaltenango"),
+    ("Guatem.", "Guatemala"),
+    ("Gtml.", "Guatemala"),
+    # Every group written in full: nothing is abbreviated.
+    ("Rio Janeiro.", "Rio de Janeiro"),
+    # Capitals with no period are initials only, of two words or more.
+    ("GUAT", "Guatemala"),
+    ("UK", "Ukraine"),
+    ("MALI", "Malawi"),
+    ("IRAN", "Ireland"),
+    ("SA", "Samoa"),
+    ("PERU", "Peruvian Republic"),
+    ("S", "South"),
     # Not written as an abbreviation: no period, more than four letters or not
     # all capitals, and no form written without one.
     ("Lima", "Limassol"),
@@ -123,6 +149,24 @@ def test_an_abbreviation_is_written_as_one(text, written_as_one):
     """A period, four capitals or fewer and nothing else lower case, or a form
     written without a period ("Mt", "St", "Co")."""
     assert abbreviated(text) is written_as_one
+
+
+@pytest.mark.parametrize(("abbreviation", "expansion", "initials"), [
+    ("P.I.", "Philippine Islands", True),
+    ("S.A.", "Saudi Arabia", True),
+    ("N.S.W.", "New South Wales", True),
+    ("UK", "United Kingdom", True),
+    ("R. de J.", "Rio de Janeiro", True),
+    ("Guat.", "Guatemala", False),
+    ("Phil. Is.", "Philippine Islands", False),
+    ("R. de Jan.", "Rio de Janeiro", False),
+    ("S.-Afr.", "South Africa", False),
+    ("Davao, Prov.", "Davao Province", False),
+])
+def test_initials_are_a_fit_of_single_letters(abbreviation, expansion, initials):
+    """Every group one letter, or a minor word written in full: such a fit
+    settles a place only when another place on the label confirms it."""
+    assert initialism(fit(abbreviation, expansion)) is initials
 
 
 def test_the_fit_names_the_word_each_group_stands_for():
