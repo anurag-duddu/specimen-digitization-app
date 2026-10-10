@@ -381,6 +381,8 @@ def test_the_words_after_a_code_that_are_no_genus_are_one_short_list():
     ("Epipsocus,poss.", "Epipsocus"),
     ("vic.", ""),
     ("C.F.", ""),
+    # A qualifier's letters ending a longer word are no qualifier.
+    ("Staff.", "Staff."),
     ("?", ""),
     ("(?)", ""),
 ])

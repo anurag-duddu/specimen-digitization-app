@@ -443,10 +443,10 @@ def genus_in_doubt(text: str, literal: str) -> bool:
     in the whitespace-separated part of the text that holds that word
     ("cfr.Epipsocus", "Epipsocus?", "?Epipsocus", "Epipsocus(?)"), or in the
     part just before it, across a line break too ("cfr. Epipsocus", "C.F.
-    Epipsocus", "(?) Epipsocus", "cf." ending the line above); or a part of
-    "?" and brackets alone just after it ("Epipsocus ?"). A qualifier after
-    the genus ("Epipsocus cf. sp. 1", G25) is none. False when the text does
-    not write the literal."""
+    Epipsocus", "(?) Epipsocus", "cf." ending the line above); or a part
+    with a "?" and no letter or digit just after it ("Epipsocus ?"). A
+    qualifier after the genus ("Epipsocus cf. sp. 1", G25) is none. False
+    when the text does not write the literal."""
     literal = literal.strip()
     if not literal:
         return False
