@@ -751,7 +751,8 @@ Review, reasons and decisions all name a part of a value the same way:
 `<value>/<part>[/n]`. The first segment is the value, not its group, so
 `elevation/unit` and `collectors/1` are valid names. Examples:
 `location/country`, `location/island`, `location/place/2` (the second place
-node), `elevation/unit`, `collectors/1`, `when/start`, `taxon/resolved`. Until
+node), `elevation/unit`, `collectors/1`, `when/collected/start`, `when/identified/start`,
+`taxon/accepted`. Until
 the stored record has a field for a part's state, the reason code on the run
 will carry the part name; that is planned, not live.
 
@@ -765,7 +766,7 @@ above.
 
 | v1 key | Filled from |
 |---|---|
-| `fmnh_ins_number` | `ids/catalogue_number`, as text with leading zeros kept |
+| `fmnh_ins_number` | `ids/catalog_number`, as text with leading zeros kept |
 | `collection_code` | `ids/collection` |
 | `country` | `location/country` |
 | `province_state` | the first level below the country, chosen by role (province, state, department), not by name |
@@ -774,7 +775,7 @@ above.
 | `precise_location` | the verbatim locality at the root of the place tree, as written, as live v1 keeps it |
 | `elevation_from_m`, `elevation_to_m` | `elevation`: a point fills both with the same value (the v1 copy rule), a range fills its two bounds; an `above` or `below` limit has no v1 equivalent and fills only the bound it states |
 | `elevation_from_ft`, `elevation_to_ft` | the same elevation converted at 1 ft = 0.3048 m (G41), or the written feet value when the label gave feet |
-| `date_visited_from`, `date_visited_to` | `when/start` and `when/end` of the collecting event; a single date fills both (G44) |
+| `date_visited_from`, `date_visited_to` | `when/collected/start` and `when/collected/end`; a single date fills both (G44) |
 | `date_identified` | `when` of the identification |
 | `collectors` | the collectors' recorded names, joined in the v1 form |
 | `habitat`, `collection_method` | read as written; no lookup applies |
