@@ -127,6 +127,9 @@ def names_params(ids: Iterable[str]) -> dict[str, str]:
 
 
 def parse_reconcile(status: int, body: bytes) -> tuple[LookupStatus, tuple[Hit, ...]]:
+    """The TGN places a reconciliation found. A hit of another Getty vocabulary
+    (a concept, a person) is skipped; any other hit that cannot be read makes the
+    whole answer MALFORMED, never NO_MATCH: the service reported something there."""
     outcome, data = _answer(status, body)
     answer = data.get("q0") if isinstance(data.get("q0"), dict) else {}
     results = answer.get("result")
@@ -134,8 +137,15 @@ def parse_reconcile(status: int, body: bytes) -> tuple[LookupStatus, tuple[Hit, 
         outcome = LookupStatus.MALFORMED
     if outcome is not None:
         return outcome, ()
-    hits = tuple(hit for item in results if (hit := _hit(item)) is not None)
-    return (LookupStatus.SUCCESS if hits else LookupStatus.NO_MATCH), hits
+    hits = []
+    for item in results:
+        if _other_vocabulary(item):
+            continue
+        hit = _hit(item)
+        if hit is None:
+            return LookupStatus.MALFORMED, ()
+        hits.append(hit)
+    return (LookupStatus.SUCCESS if hits else LookupStatus.NO_MATCH), tuple(hits)
 
 
 def parse_records(status: int, body: bytes) -> tuple[LookupStatus, tuple[Place, ...]]:
@@ -240,14 +250,24 @@ def _bindings(status: int, body: bytes) -> tuple[LookupStatus | None, list[dict[
     return None, rows
 
 
+def _other_vocabulary(item: object) -> bool:
+    """A reconciliation hit of another Getty vocabulary (AAT, ULAN, CONA or IA):
+    a concept, a person, a work or a subject, not a place."""
+    identifier = item.get("id") if isinstance(item, dict) else None
+    return isinstance(identifier, str) and (
+        re.fullmatch(r"(?:aat|ulan|cona|ia)/[0-9]{1,10}", identifier) is not None
+    )
+
+
 def _hit(item: object) -> Hit | None:
+    """A TGN hit: an id `tgn/<digits>` and a name. None when the item is not one."""
     if not isinstance(item, dict):
         return None
     identifier = item.get("id")
     match = re.fullmatch(r"tgn/([0-9]{1,10})", identifier) if isinstance(identifier, str) else None
-    if match is None:
+    name = item.get("name")
+    if match is None or not isinstance(name, str) or not name.strip():
         return None
-    name = item.get("name") if isinstance(item.get("name"), str) else None
     score = item.get("score")
     numeric_score = None
     if isinstance(score, int | float) and not isinstance(score, bool):

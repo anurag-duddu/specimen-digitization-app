@@ -885,11 +885,10 @@ def by_locality(request):
     return httpx.Response(200, json=reported_match(locality, breaking="score"))
 
 
-@pytest.mark.asyncio
-async def test_readers_that_differ_never_settle_on_a_geolocate_answer_it_could_not_read(tmp_path):
-    """GEOLocate confirms 1A's "Yepocapa" and reports a match for 1B's
-    "Yepocapo" that cannot be read. That is no no-match: the readers' rule
-    (G20, G32) does not rule "Yepocapo" out, and the expert's pick of
+async def readers_go_to_review(tmp_path, reply, unread_source):
+    """GEOLocate confirms 1A's "Yepocapa"; `unread_source` reports something
+    for 1B's "Yepocapo" that cannot be read. That is no no-match: the readers'
+    rule (G20, G32) does not rule "Yepocapo" out, and the expert's pick of
     "Yepocapa" never settles the city: it goes to review."""
     from pydantic_ai.messages import ModelRequest, ModelResponse, ToolCallPart, ToolReturnPart
     from pydantic_ai.models.function import FunctionModel
@@ -903,9 +902,9 @@ async def test_readers_that_differ_never_settle_on_a_geolocate_answer_it_could_n
     city = FieldTask("city", True, FieldValue(state=ValueState.AMBIGUOUS),
                      tuple(Candidate(name, text, text, f"ev-{name}") for name, text in
                            (("1A", "Yepocapa"), ("1B", "Yepocapo"))), FIELD_TOOLS["city"])
-    tools, _, _, _ = make(tmp_path, by_locality)
+    tools, _, _, _ = make(tmp_path, reply)
     found = await tools.lookup("geolocate", "Yepocapa, Chimaltenango, Guatemala", field_key="city")
-    unread = await tools.lookup("geolocate", "Yepocapo, Chimaltenango, Guatemala", field_key="city")
+    unread = await tools.lookup(unread_source, "Yepocapo, Chimaltenango, Guatemala", field_key="city")
     assert (found.status, unread.status) == (LookupStatus.SUCCESS, LookupStatus.MALFORMED)
     assert not agreement.ruled_out([found, unread], "Yepocapo")
     assert agreement.refusal(city, YEPOCAPO, literal="Yepocapa", named=[YEPOCAPO[0]], value=None,
@@ -916,7 +915,7 @@ async def test_readers_that_differ_never_settle_on_a_geolocate_answer_it_could_n
         if not any(isinstance(m, ModelResponse) for m in messages):
             return ModelResponse(parts=[
                 ToolCallPart("lookup", {"source": "geolocate", "query": "Yepocapa, Chimaltenango, Guatemala"}),
-                ToolCallPart("lookup", {"source": "geolocate", "query": "Yepocapo, Chimaltenango, Guatemala"})])
+                ToolCallPart("lookup", {"source": unread_source, "query": "Yepocapo, Chimaltenango, Guatemala"})])
         returns = [part.content for m in messages if isinstance(m, ModelRequest) for part in m.parts
                    if isinstance(part, ToolReturnPart)]
         success = next(r for r in returns if r.get("status") == "success")
@@ -927,11 +926,77 @@ async def test_readers_that_differ_never_settle_on_a_geolocate_answer_it_could_n
 
     meter = CostMeter(1_000_000, input_micros_per_million=200_000, output_micros_per_million=600_000)
     resolver = make_resolver(model_factory=lambda: FunctionModel(expert), meter=meter)
-    tools, _, _, _ = make(tmp_path, by_locality)
+    tools, _, _, _ = make(tmp_path, reply)
     context = {"country": FieldValue(state=ValueState.SUPPORTED, literal="Guatemala"),
                "province_state": FieldValue(state=ValueState.SUPPORTED, literal="Chimaltenango")}
     outcome = await resolver(city, YEPOCAPO, context, tools=tools)
     assert outcome.answer.outcome != "resolved" and outcome.fallback  # its pick was sent back, then review
+
+
+@pytest.mark.asyncio
+async def test_readers_that_differ_never_settle_on_a_geolocate_answer_it_could_not_read(tmp_path):
+    await readers_go_to_review(tmp_path, by_locality, "geolocate")
+
+
+def geolocate_and_tgn(request):
+    """GEOLocate confirms "Yepocapa"; Getty TGN reports one hit it cannot read
+    (an id that is a URI, not "tgn/<digits>"), the second review of #299."""
+    if request.url.host == "geo-locate.org":
+        assert dict(request.url.params)["Locality"] == "Yepocapa"
+        return httpx.Response(200, content=(GEOLOCATE / "yepocapa-modern.json").read_bytes())
+    assert f"https://{request.url.host}{request.url.path}" == tgn.RECONCILE
+    return {"q0": {"result": [{"id": tgn.TGN + "7005560", "name": "Yepocapo", "score": 83}]}}
+
+
+@pytest.mark.asyncio
+async def test_readers_that_differ_never_settle_on_a_tgn_answer_it_could_not_read(tmp_path):
+    await readers_go_to_review(tmp_path, geolocate_and_tgn, "tgn")
+
+
+YEPOCAPO_HIT = {"id": "tgn/7005560", "name": "Yepocapo", "score": 83}
+YEPOCAPO_ROW = {"full_name": "Yepocapo", "nt": "N", "term_dt_f": None}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("source", "reply"),
+    [
+        ("tgn", {"q0": {"result": [{**YEPOCAPO_HIT, "id": tgn.TGN + "7005560"}]}}),
+        ("tgn", {"q0": {"result": [None]}}),
+        ("tgn", {"q0": {"result": [{"id": "tgn/7005560", "score": 83}]}}),
+        ("tgn", {"q0": {"result": [YEPOCAPO_HIT, "tgn/7005561"]}}),
+        ("nga", {"features": [{"attributes": {**YEPOCAPO_ROW, "ufi": "-2445615"}}]}),
+        ("nga", {"features": [{"attributes": YEPOCAPO_ROW}]}),
+    ],
+)
+async def test_a_gazetteer_answer_reporting_a_hit_it_cannot_read_is_an_outage(
+    tmp_path, source, reply
+):
+    """The second review of #299: such an answer of Getty TGN or NGA was
+    no_match, captured, and the readers' rule ruled "Yepocapo" out on it. It
+    is malformed_response, an outage, as Wikidata's is; nothing more is asked."""
+    from specimen_digitization.field_research import agreement
+    from specimen_digitization.field_research.experts import SOURCE_OUTAGES
+
+    tools, server, _, _ = make(tmp_path, lambda request: reply)
+    answer = await tools.lookup(source, "Yepocapo, Chimaltenango, Guatemala", field_key="city")
+    assert answer.status is LookupStatus.MALFORMED and answer.status in SOURCE_OUTAGES
+    name = {"tgn": "Getty TGN", "nga": "NGA GEOnet Names Server"}[source]
+    assert (answer.note, len(server.requests)) == (f"{name}'s answer could not be read", 1)
+    assert not agreement.ruled_out([answer], "Yepocapo")
+
+
+@pytest.mark.asyncio
+async def test_a_tgn_answer_of_other_getty_vocabularies_only_is_no_match(tmp_path):
+    """A concept is no place: Getty TGN found none, and that rules the text out."""
+    from specimen_digitization.field_research import agreement
+
+    reply = {"q0": {"result": [{"id": "aat/300008795", "name": "mountains", "score": 9}]}}
+    tools, _, _, _ = make(tmp_path, lambda request: reply)
+    answer = await tools.lookup("tgn", "Yepocapo, Chimaltenango, Guatemala", field_key="city")
+    assert answer.status is LookupStatus.NO_MATCH
+    assert answer.note == "Getty TGN has no place for 'Yepocapo'"
+    assert agreement.ruled_out([answer], "Yepocapo")
 
 
 @pytest.mark.asyncio
