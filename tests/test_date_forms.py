@@ -243,6 +243,16 @@ REFUSED = [
     ("Sept.\n1946", "literal_spans_a_line_break"),
     ("1946\nIX-3", "literal_spans_a_line_break"),
     ("3 Sept.\r\n1946", "literal_spans_a_line_break"),
+    # Every break str.splitlines() splits at, as the checks and the step split lines.
+    ("3 Sept.\x0b1946", "literal_spans_a_line_break"),
+    ("3 Sept.\x0c1946", "literal_spans_a_line_break"),
+    ("3 Sept.\x1c1946", "literal_spans_a_line_break"),
+    ("3 Sept.\x1d1946", "literal_spans_a_line_break"),
+    ("3 Sept.\x1e1946", "literal_spans_a_line_break"),
+    ("3 Sept.\x851946", "literal_spans_a_line_break"),
+    ("3 Sept.\N{LINE SEPARATOR}1946", "literal_spans_a_line_break"),
+    ("3 Sept.\N{PARAGRAPH SEPARATOR}1946", "literal_spans_a_line_break"),
+    ("14.IX\N{LINE SEPARATOR}1946", "literal_spans_a_line_break"),
     # Ranges and years the parser does not read.
     ("3.9-5.10.1946", None),
     ("1946-48", None),

@@ -366,6 +366,41 @@ def test_a_year_line_with_the_mark_a_sentence_leaves_is_read_under_every_rule(li
     assert row is not None and '"split_lines"' in row.excerpt
 
 
+# Every line break str.splitlines() splits at is a line break to the date check, as it is
+# to the checks and the step (review 297, round 3): the parser's \s used to join
+# "3 Sept." and "1946" across U+2028, NEL, VT and FF with no split-line rule applied.
+BREAKS = {
+    "LF": "\n", "CRLF": "\r\n", "CR": "\r", "VT": "\x0b", "FF": "\x0c", "FS": "\x1c", "GS": "\x1d",
+    "RS": "\x1e", "NEL": "\x85", "LS": "\N{LINE SEPARATOR}", "PS": "\N{PARAGRAPH SEPARATOR}",
+}
+
+
+@pytest.mark.parametrize("name", list(BREAKS))
+def test_every_line_break_splitlines_knows_is_judged_by_the_split_line_rules(name):
+    br = BREAKS[name]
+    another_date, word_after = f"3.VI.1947, 3 Sept.{br}1946", f"Guatemala, 3 Sept.{br}1946 leg. Smith"
+
+    assert date(f"3 Sept.{br}1946", [another_date]).notes == ("split_lines_hold_another_date",)
+    assert date(f"3 Sept.{br}1946", [word_after]).notes == ("split_lines_year_not_alone",)
+    for text in (another_date, word_after):
+        row = field_step._check_row("date_visited_from", ("date_parser",), f"3 Sept.{br}1946", "1946-09-03",
+            texts=[text], date_rules=PILOT, asset_id=None, blobs=None)
+        assert row is None, text
+
+
+@pytest.mark.parametrize("name", list(BREAKS))
+def test_every_line_break_splitlines_knows_joins_a_date_and_its_year_under_the_rules(name):
+    br = BREAKS[name]
+
+    split = date(f"IV-25{br}1948", [f"Guatemala, IV-25{br}1948, R.D. Mitchell"])
+    below = date("IV-25", [f"Guatemala, IV-25{br}1948{br}R.D. Mitchell"])
+    above = date("IV-25", [f"Guatemala{br}1948{br}IV-25 Yepocapa"])
+
+    assert split.values == ("1948-04-25",) and split.readings[0].via == ("split_lines",)
+    assert below.values == ("1948-04-25",) and below.readings[0].via == ("year_on_next_line",)
+    assert above.values == ("1948-04-25",) and above.readings[0].via == ("year_on_previous_line",)
+
+
 def test_a_reading_that_cannot_be_named_is_refused_not_dropped():
     with pytest.raises(ValueError):
         date("IV-25", ["Guatemala, IV-25\n1948", "Guatemala, IV-25\n1949"], reading_names=["1A"])

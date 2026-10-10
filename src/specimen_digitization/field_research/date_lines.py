@@ -70,8 +70,27 @@ def _plausible(year: str) -> bool:
     return year[0] in APOSTROPHES or EARLIEST_YEAR <= int(year) <= datetime.now(UTC).year
 
 
+# The line breaks str.splitlines() splits at: one definition of a line for the date
+# parser (`literal_spans_a_line_break`), these rules, the checks and the step.
+_BREAK = re.compile("\r\n|[\n\r\v\f\x1c\x1d\x1e\x85\N{LINE SEPARATOR}\N{PARAGRAPH SEPARATOR}]")
+
+
 def _lines(literal: str) -> list[str]:
-    return [line.strip() for line in literal.strip().replace("\r\n", "\n").replace("\r", "\n").split("\n")]
+    return [line.strip() for line in literal.strip().splitlines()]
+
+
+def _spans(text: str) -> list[tuple[int, int]]:
+    """Where each line of the text starts and ends: the lines str.splitlines() gives."""
+    spans, start = [], 0
+    for hit in _BREAK.finditer(text):
+        spans.append((start, hit.start()))
+        start = hit.end()
+    return [*spans, (start, len(text))]
+
+
+def _line_of(spans: list[tuple[int, int]], position: int) -> int:
+    """The line a position of the text is on (inside a line break: the line before it)."""
+    return max(index for index, (start, _) in enumerate(spans) if start <= position)
 
 
 def _unmarked(line: str) -> str:
@@ -97,10 +116,11 @@ def split_literal(literal: str) -> tuple[str, str] | None:
     return None
 
 
-def _line_around(text: str, start: int, end: int) -> tuple[int, int]:
-    line_start = text.rfind("\n", 0, start) + 1
-    line_end = text.find("\n", end)
-    return line_start, len(text) if line_end < 0 else line_end
+def _around(spans: list[tuple[int, int]], start: int, end: int) -> tuple[int, int, int, int]:
+    """The lines a span of the text starts and ends on, and where the first
+    starts and the last ends."""
+    first, last = _line_of(spans, start), _line_of(spans, end)
+    return first, last, spans[first][0], spans[last][1]
 
 
 OTHER_DATE = "split_lines_hold_another_date"
@@ -127,8 +147,9 @@ def split_problem(literal: str, text: str) -> str | None:
     # The mark the literal quotes after a year that ends it ("1948." in "3 Sept.\n1948.").
     tail = lines[1][len(_unmarked(lines[1])) :] if not year_first else ""
     problem = OTHER_DATE
+    spans = _spans(text)
     for hit in re.finditer(re.escape(literal), text):
-        line_start, line_end = _line_around(text, hit.start(), hit.end())
+        _, _, line_start, line_end = _around(spans, hit.start(), hit.end())
         before, after = text[line_start : hit.start()], tail + text[hit.end() : line_end]
         if year_first:
             # The year ends its line: it stands alone there; the date's line is after.
@@ -166,18 +187,16 @@ def year_beside(literal: str, text: str) -> tuple[str, str] | None:
     the line above hold nothing else; the rest of the date's own line must hold
     nothing that could be a date."""
     found: dict[str, str] = {}
+    spans = _spans(text)
     for hit in re.finditer(re.escape(literal), text):
-        line_start, line_end = _line_around(text, hit.start(), hit.end())
+        first, last, line_start, line_end = _around(spans, hit.start(), hit.end())
         before, after = text[line_start : hit.start()], text[hit.end() : line_end]
-        if not after.strip() and line_end < len(text) and not could_be_a_date(before):
-            below_start = line_end + 1
-            below_end = text.find("\n", below_start)
-            year = _bare_year(text[below_start : len(text) if below_end < 0 else below_end])
+        if not after.strip() and last + 1 < len(spans) and not could_be_a_date(before):
+            year = _bare_year(text[slice(*spans[last + 1])])
             if year:
                 found.setdefault(year, "next_line")
-        if not before.strip() and line_start > 0 and not could_be_a_date(after):
-            above_end = line_start - 1
-            year = _bare_year(text[text.rfind("\n", 0, above_end) + 1 : above_end])
+        if not before.strip() and first > 0 and not could_be_a_date(after):
+            year = _bare_year(text[slice(*spans[first - 1])])
             if year:
                 found.setdefault(year, "previous_line")
     if len(found) != 1:
