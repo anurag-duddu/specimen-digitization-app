@@ -1,17 +1,26 @@
 """A date written over two lines of one label.
 
 A label sometimes breaks a date at the end of a line: the day and month on one
-line and the year alone on the next ("Guatemala, IV-25" above "1948, R.D.
-Mitchell"), or the reverse. A person reads that as one date, and so does the
-date check, but only under all of these rules, none of them a guess:
+line and the year alone on the next ("Guatemala, IV-25" above "1948"), or the
+reverse. A person reads that as one date, and so does the date check, but only
+under all of these rules, none of them a guess:
 
 - the date and the year are on adjacent lines, with nothing between them but
   the line break (the date ends its line and the year starts the next, or the
   year ends a line and the date starts the next);
-- the year is a token of its own, four digits or two after an apostrophe (a
-  bare two-digit number alone could be anything);
-- nothing else on either line could be a date: no other year, no Roman or
-  written month, no numeric date (`could_be_a_date`);
+- the year is bare, and never a measurement or a determination's year:
+  - a day and month written alone take a year from the line beside them only
+    when that line holds nothing but a four-digit year, optionally followed by a
+    period or a comma (`year_beside`): "1948" yes; "1948 m", "1948'", "1948 ft.",
+    "1948-49", "El. 1948", "det. J. Smith 1950", "1948, R.D. Mitchell" no;
+  - a literal of two lines is the organiser's own quote of the date and its
+    year, so the year may be followed by a comma, semicolon or period and
+    then other text ("1948, R.D. Mitchell"), but not by a unit, an apostrophe,
+    a dash and a number, a second number or a word without such a mark ("1948
+    m", "1948'", "1948-49", "1948 det."), and a year that ends the line above
+    the date must stand alone on its line (`split_problem`);
+- nothing else on either line could be a date: no other year, Roman or written
+  month, or numeric date (`could_be_a_date`);
 - the date states no year of its own (the date parser says so);
 - the lines above and below do not each give a different year.
 
@@ -31,8 +40,8 @@ from specimen_digitization.application.field_validators import EARLIEST_YEAR
 # A year standing as a token of its own: 1948 or '48.
 YEAR_TOKEN = rf"(?:[{APOSTROPHES}][0-9]{{2}}|[0-9]{{4}})"
 _ALONE = re.compile(YEAR_TOKEN)
-_YEAR_AT_START = re.compile(rf"\s*(?P<y>{YEAR_TOKEN})(?![0-9A-Za-z])")
-_YEAR_AT_END = re.compile(rf"(?<![0-9A-Za-z])(?P<y>{YEAR_TOKEN})\s*$")
+# A line that holds nothing but a year, with at most a period or comma after it.
+_BARE_YEAR = re.compile(r"\s*(?P<y>[0-9]{4})[.,]?\s*")
 _ANY_YEAR = re.compile(rf"(?<![0-9A-Za-z])(?P<y>{YEAR_TOKEN})(?![0-9A-Za-z])")
 _NUMERIC = re.compile(r"(?<![0-9])[0-9]{1,2}\s*[-./]\s*[0-9]{1,2}(?![0-9])")
 _NUMERALS = "|".join(reversed(ROMAN))
@@ -61,11 +70,15 @@ def _plausible(year: str) -> bool:
     return year[0] in APOSTROPHES or EARLIEST_YEAR <= int(year) <= datetime.now(UTC).year
 
 
+def _lines(literal: str) -> list[str]:
+    return [line.strip() for line in literal.strip().replace("\r\n", "\n").replace("\r", "\n").split("\n")]
+
+
 def split_literal(literal: str) -> tuple[str, str] | None:
     """A literal of exactly two lines, one of them a year alone: the other line
     (the date that states no year, if it is one) and the year. None for any
     other literal."""
-    lines = [line.strip() for line in literal.strip().replace("\r\n", "\n").replace("\r", "\n").split("\n")]
+    lines = _lines(literal)
     if len(lines) != 2 or not all(lines):
         return None
     first, second = lines
@@ -83,16 +96,49 @@ def _line_around(text: str, start: int, end: int) -> tuple[int, int]:
     return line_start, len(text) if line_end < 0 else line_end
 
 
-def lines_hold_no_other_date(literal: str, text: str) -> bool:
-    """Whether, where the (two-line) literal stands in the text, the rest of its
-    two lines could be no date: the text before it on its first line and after it
-    on its second."""
+OTHER_DATE = "split_lines_hold_another_date"
+YEAR_NOT_ALONE = "split_lines_year_not_alone"
+
+
+def split_problem(literal: str, text: str) -> str | None:
+    """Why the (two-line) literal, where it stands in the text, is not a date and
+    its year (a note: `split_lines_hold_another_date` or
+    `split_lines_year_not_alone`), or None when some place of it is clear.
+
+    The date's own line holds nothing else that could be a date. A year that
+    ends the line above the date must stand alone on its line; one that starts
+    the line below it may be followed by a comma, semicolon or period (and then
+    other text), never by a unit, an apostrophe, a dash and a number, a second
+    number, or a word."""
+    year_first = bool(_ALONE.fullmatch(_lines(literal)[0]))
+    problem = OTHER_DATE
     for hit in re.finditer(re.escape(literal), text):
         line_start, line_end = _line_around(text, hit.start(), hit.end())
-        if not (could_be_a_date(text[line_start : hit.start()])
-                or could_be_a_date(text[hit.end() : line_end])):
-            return True
-    return False
+        before, after = text[line_start : hit.start()], text[hit.end() : line_end]
+        if year_first:
+            # The year ends its line: it stands alone there; the date's line is after.
+            if could_be_a_date(before) or could_be_a_date(after):
+                continue
+            if before.strip():
+                problem = YEAR_NOT_ALONE
+                continue
+            return None
+        if could_be_a_date(before):
+            continue
+        rest = after.strip()
+        if not rest or (after[0] in ",;." and not after[1:2].isdigit()):
+            if not could_be_a_date(after[1:]):
+                return None
+            continue
+        if could_be_a_date(after):
+            continue
+        problem = YEAR_NOT_ALONE
+    return problem
+
+
+def _bare_year(line: str) -> str | None:
+    hit = _BARE_YEAR.fullmatch(line)
+    return hit["y"] if hit and _plausible(hit["y"]) else None
 
 
 def year_beside(literal: str, text: str) -> tuple[str, str] | None:
@@ -100,28 +146,25 @@ def year_beside(literal: str, text: str) -> tuple[str, str] | None:
     where it stands ("next_line" or "previous_line"); None when no line does, or
     when they give two different years.
 
-    The date must end its line and the year start the next, or the date start
-    its line and the year end the line above; the rest of both lines, and the
-    year's own, must hold nothing that could be a date."""
+    The date must end its line and the line below hold nothing but a four-digit
+    year (and at most a period or comma), or the date must start its line and
+    the line above hold nothing else; the rest of the date's own line must hold
+    nothing that could be a date."""
     found: dict[str, str] = {}
     for hit in re.finditer(re.escape(literal), text):
         line_start, line_end = _line_around(text, hit.start(), hit.end())
         before, after = text[line_start : hit.start()], text[hit.end() : line_end]
-        if not after.strip() and line_end < len(text):
+        if not after.strip() and line_end < len(text) and not could_be_a_date(before):
             below_start = line_end + 1
             below_end = text.find("\n", below_start)
-            below = text[below_start : len(text) if below_end < 0 else below_end]
-            year = _YEAR_AT_START.match(below)
-            if (year and _plausible(year["y"]) and not could_be_a_date(before)
-                    and not could_be_a_date(below[year.end() :])):
-                found.setdefault(year["y"], "next_line")
-        if not before.strip() and line_start > 0:
+            year = _bare_year(text[below_start : len(text) if below_end < 0 else below_end])
+            if year:
+                found.setdefault(year, "next_line")
+        if not before.strip() and line_start > 0 and not could_be_a_date(after):
             above_end = line_start - 1
-            above = text[text.rfind("\n", 0, above_end) + 1 : above_end]
-            year = _YEAR_AT_END.search(above)
-            if (year and _plausible(year["y"]) and not could_be_a_date(above[: year.start()])
-                    and not could_be_a_date(after)):
-                found.setdefault(year["y"], "previous_line")
+            year = _bare_year(text[text.rfind("\n", 0, above_end) + 1 : above_end])
+            if year:
+                found.setdefault(year, "previous_line")
     if len(found) != 1:
         return None
     year, where = next(iter(found.items()))

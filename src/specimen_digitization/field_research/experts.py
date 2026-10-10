@@ -286,6 +286,7 @@ class _Expert:
         result = checks.parse_date(
             literal, reading_texts=self.texts, date_rules=self.date_rules,
             year_literal=year_literal, part=checks.DATE_PART.get(self.task.key),
+            reading_names=[r.name for r in self.readings],
         )
         self.checks.append(result)
         return result.as_dict()

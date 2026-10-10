@@ -72,7 +72,7 @@ _NOTATIONS = (
     ("year-numeric", _YEAR4 + _SEP + "(?P<a>[0-9]{1,2})" + _AGAIN + "(?P<b>[0-9]{1,2})"),
     ("day-monthname-year", _DAY_ORDINAL + _GAP + _OF + _NAME + _COMMA + _OF + _YEAR),
     ("monthname-day-year", _NAME + _GAP + _DAY_ORDINAL + _COMMA + _YEAR),
-    ("monthname-year", _NAME + _GAP + _OF + _MARKED_YEAR),
+    ("monthname-year", _NAME + _COMMA + _OF + _MARKED_YEAR),
     ("monthname-day", _NAME + _GAP + _NUMBER),
     ("day-monthname", _DAY_ORDINAL + _GAP + _OF + _NAME),
     ("year-monthname-day", _YEAR4 + _GAP + _NAME + _GAP + _DAY_ORDINAL),
@@ -100,7 +100,7 @@ _PARTS = {
     ),
     "month": (_UPPER_ROMAN, _NAME),
     # Next to a month alone, a bare two-digit number is the year.
-    "month-year": (_UPPER_ROMAN + _MONTH_SEP + _YEAR, _NAME + _GAP + _OF + _YEAR),
+    "month-year": (_UPPER_ROMAN + _MONTH_SEP + _YEAR, _NAME + _COMMA + _OF + _YEAR),
     "month-day": (_NAME + _GAP + _DAY_ORDINAL,),
     "day-year": (_DAY_ORDINAL + _COMMA + _YEAR,),
 }

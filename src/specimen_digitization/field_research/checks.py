@@ -153,6 +153,20 @@ def _date_rules(date_rules: Any) -> dict | None:
     return date_rules.model_dump()
 
 
+@dataclass(frozen=True)
+class _Run:
+    """One reading's result for a date literal."""
+
+    name: str
+    outcome: LookupStatus
+    readings: tuple[DateReading, ...]
+    notes: tuple[str, ...]
+
+    @property
+    def signature(self) -> tuple:
+        return self.outcome, tuple((r.iso, r.end, r.precision) for r in self.readings)
+
+
 def parse_date(
     literal: str,
     *,
@@ -160,76 +174,44 @@ def parse_date(
     date_rules: Any = None,
     year_literal: str | None = None,
     part: Literal["start", "end"] | None = None,
+    reading_names: Sequence[str] | None = None,
 ) -> DateCheck:
     """Every reading a date literal's notation allows (G24, G29; HARNESS.md section 8).
 
     `date_rules` is the profile's (century rule, Roman months); without it a
     two-digit year stays partial and a Roman month is not read. `year_literal`
     is a year the same reading states elsewhere, the only year a month and day
-    alone can take. A month and day with no year also take the year of the line
-    just above or below (`date_lines`), and a literal of two lines (the date, then
-    its year alone, or the reverse) is read as one date, under the rules of that
-    module. A literal that is part of a slide-preparation code, or of any other
-    hyphen-joined token, in any reading is no date. `part` is "end" for the field
-    that takes a range's last date.
+    alone can take. A month and day with no year also take the year of a line
+    just above or below that holds nothing but the year (`date_lines`), and a
+    literal of two lines (the date, then its year, or the reverse) is read as one
+    date, under the rules of that module. A literal that is part of a
+    slide-preparation code, or of any other hyphen-joined token, in any reading is
+    no date. Each reading that holds the literal is read by its own text, and
+    readings that give different results leave the date ambiguous, naming them
+    (`reading_names` names them, in the order of `reading_texts`; the default is
+    their numbers). `part` is "end" for the field that takes a range's last date.
     """
-    texts = _sources(literal, reading_texts)
+    if not literal or not literal.strip():
+        return DateCheck(literal, LookupStatus.POLICY, notes=(NOT_IN_SOURCE,), part=part)
+    names = list(reading_names) if reading_names is not None else [
+        str(number) for number in range(1, len(reading_texts) + 1)]
+    texts = [(name, text) for name, text in zip(names, reading_texts) if literal in text]
     if not texts:
         return DateCheck(literal, LookupStatus.POLICY, notes=(NOT_IN_SOURCE,), part=part)
     rules = _date_rules(date_rules)
     split = date_lines.split_literal(literal)
     if split is not None:
-        return _split_date(literal, split, texts, rules, part)
-    runs = [_date_run(literal, t, year_literal, rules) for t in texts]
-    # A year literal must be in the same reading as the date it completes.
-    runs = [(r, via) for r, via in runs if r.outcome != LookupStatus.POLICY]
+        runs = [_split_run(literal, split, name, text, rules) for name, text in texts]
+    else:
+        runs = [_date_run(literal, name, text, year_literal, rules) for name, text in texts]
+        # A year literal must be in the same reading as the date it completes.
+        runs = [run for run in runs if run.outcome != LookupStatus.POLICY]
     if not runs:
         return DateCheck(literal, LookupStatus.POLICY, notes=("year_literal_not_in_reading",), part=part)
     return _date_check(literal, runs, part)
 
 
-def _date_run(literal: str, text: str, year_literal: str | None,
-        rules: dict | None) -> tuple[Any, tuple[str, ...]]:
-    """The date parser on one reading's text, with the year the line beside the
-    literal gives when the literal itself and the expert give none."""
-    result = date_parser(literal, source_text=text, year_literal=year_literal, date_rules=rules,
-        year_literal_decides=True)
-    via = ("year_literal",) if year_literal and result.parsed and result.parsed["year_literal"] else ()
-    if year_literal is None and "year_missing" in result.warnings:
-        beside = date_lines.year_beside(literal, text)
-        if beside is not None:
-            year, where = beside
-            again = date_parser(literal, source_text=text, year_literal=year, date_rules=rules,
-                year_literal_decides=True)
-            if again.parsed and again.parsed["year_literal"]:
-                return again, (f"year_on_{where}",)
-    return result, via
-
-
-def _split_date(literal: str, split: tuple[str, str], texts: Sequence[str], rules: dict | None,
-        part: Literal["start", "end"] | None) -> DateCheck:
-    """A literal of two lines, the date and its year, as one date."""
-    date_part, year = split
-    runs = []
-    for text in texts:
-        if date_lines.lines_hold_no_other_date(literal, text):
-            result = date_parser(date_part, source_text=text, year_literal=year, date_rules=rules,
-                year_literal_decides=True)
-            runs.append((result, ("split_lines",)))
-    if not runs:
-        return DateCheck(literal, LookupStatus.NO_MATCH, notes=("split_lines_hold_another_date",), part=part)
-    # A date that states a year of its own is not a date split from its year.
-    splits = [run for run in runs if run[0].parsed and run[0].parsed["year_literal"]]
-    if not splits:
-        notes = ("split_lines_state_two_years",) if any(r.parsed for r, _ in runs) else ()
-        return DateCheck(literal, LookupStatus.NO_MATCH, notes=notes, part=part)
-    return _date_check(literal, splits, part)
-
-
-def _date_check(literal: str, runs: Sequence[tuple[Any, tuple[str, ...]]],
-        part: Literal["start", "end"] | None) -> DateCheck:
-    # Where one reader shows the literal inside a code, it is not a date at all.
-    result, via = next((run for run in runs if _CODE_NOTES & set(run[0].warnings)), runs[0])
+def _run(name: str, result: Any, via: tuple[str, ...]) -> _Run:
     readings = tuple(
         DateReading(
             iso=r["iso"],
@@ -242,7 +224,63 @@ def _date_check(literal: str, runs: Sequence[tuple[Any, tuple[str, ...]]],
         )
         for r in (result.parsed or {}).get("readings", ())
     )
-    return DateCheck(literal, result.outcome, readings, tuple(result.warnings), part=part)
+    return _Run(name, result.outcome, readings, tuple(result.warnings))
+
+
+def _date_run(literal: str, name: str, text: str, year_literal: str | None,
+        rules: dict | None) -> _Run:
+    """The date parser on one reading's text, with the year the line beside the
+    literal gives when the literal itself and the expert give none."""
+    result = date_parser(literal, source_text=text, year_literal=year_literal, date_rules=rules,
+        year_literal_decides=True)
+    via = ("year_literal",) if year_literal and result.parsed and result.parsed["year_literal"] else ()
+    if year_literal is None and "year_missing" in result.warnings:
+        beside = date_lines.year_beside(literal, text)
+        if beside is not None:
+            year, where = beside
+            again = date_parser(literal, source_text=text, year_literal=year, date_rules=rules,
+                year_literal_decides=True)
+            if again.parsed and again.parsed["year_literal"]:
+                return _run(name, again, (f"year_on_{where}",))
+    return _run(name, result, via)
+
+
+def _split_run(literal: str, split: tuple[str, str], name: str, text: str, rules: dict | None) -> _Run:
+    """A literal of two lines, the date and its year, as one date in one reading."""
+    date_part, year = split
+    if (problem := date_lines.split_problem(literal, text)) is not None:
+        return _Run(name, LookupStatus.NO_MATCH, (), (problem,))
+    result = date_parser(date_part, source_text=text, year_literal=year, date_rules=rules,
+        year_literal_decides=True)
+    # A date that states a year of its own is not a date split from its year.
+    if not (result.parsed and result.parsed["year_literal"]):
+        notes = ("split_lines_state_two_years",) if result.parsed else ()
+        return _Run(name, LookupStatus.NO_MATCH, (), notes)
+    return _run(name, result, ("split_lines",))
+
+
+def _date_check(literal: str, runs: Sequence[_Run], part: Literal["start", "end"] | None) -> DateCheck:
+    # Where one reader shows the literal inside a code, it is not a date at all.
+    chosen = next((run for run in runs if _CODE_NOTES & set(run.notes)), None)
+    if chosen is None:
+        chosen = runs[0]
+        if any(run.signature != chosen.signature for run in runs):
+            return _readers_disagree(literal, runs, part)
+    return DateCheck(literal, chosen.outcome, chosen.readings, chosen.notes, part=part)
+
+
+def _readers_disagree(literal: str, runs: Sequence[_Run], part: Literal["start", "end"] | None) -> DateCheck:
+    """Readings of one label that give different dates (or one a date and another
+    none) leave the date open: no reading's result is taken for the others. The
+    note names each reading and what it gives."""
+    given = []
+    for run in runs:
+        said = "/".join(r.iso or "no year" for r in run.readings) if run.readings else (
+            "not a date" + (f" ({run.notes[0]})" if run.notes else ""))
+        given.append(f"{run.name}: {said}")
+    readings = tuple(dict.fromkeys(r for run in runs for r in run.readings))
+    return DateCheck(literal, LookupStatus.AMBIGUOUS, readings,
+        ("readers_disagree_on_date", "; ".join(given)), part=part)
 
 
 def collapse(text: str) -> str:

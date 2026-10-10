@@ -1360,13 +1360,23 @@ def test_the_pilots_split_date_resolves_on_the_whole_literal_the_check_read():
     assert outcome.answer.value == "1948-04-25"
 
 
-def test_a_day_and_month_alone_resolve_with_the_year_on_the_next_line():
+BARE_YEAR_READINGS = (
+    Reading("1A", "region-1", "obs-1a", "decided_transcript", "Yepocapa,4800 ft.\nGuatemala,IV-25\n1948\nR.D. Mitchell"),
+    Reading("1B", "region-1", "obs-1b", "raw_reading", "Yepocapa, 4800 ft.\nGuatemala, IV-25\n1948\nR.D. Mitchell"),
+)
+DISAGREEING_READINGS = (
+    Reading("1A", "region-1", "obs-1a", "decided_transcript", "Guatemala,IV-25\n1948\nR.D. Mitchell"),
+    Reading("1B", "region-1", "obs-1b", "raw_reading", "Guatemala, IV-25\n1949\nR.D. Mitchell"),
+)
+
+
+def test_a_day_and_month_alone_resolve_with_a_year_alone_on_the_next_line():
     script = Script(
         call("parse_date", literal="IV-25"),
         dict(outcome="resolved", literal="IV-25", reading_names=["1A", "1B"], value="1948-04-25"),
     )
 
-    outcome = resolve_on(SPLIT_READINGS, script, "date_visited_from", "IV-25")
+    outcome = resolve_on(BARE_YEAR_READINGS, script, "date_visited_from", "IV-25")
 
     assert tool_returns(script.seen[1][0])[0]["status"] == "success"
     assert outcome.failure is None and outcome.answer.value == "1948-04-25"
@@ -1395,3 +1405,21 @@ def test_a_range_is_two_dates_the_from_field_takes_its_start_and_the_to_field_it
     assert (end.failure, end.answer.value) == (None, "1946-09-05")
     shown = tool_returns(to_script.seen[1][0])[0]["readings"][0]
     assert (shown["iso"], shown["end"], shown["order"]) == ("1946-09-03", "1946-09-05", "range:day..date")
+
+
+def test_readers_with_different_years_are_named_to_the_expert_and_settle_nothing():
+    # Review 297: the first reader's year used to settle "IV-25" for both.
+    script = Script(
+        call("parse_date", literal="IV-25"),
+        dict(outcome="resolved", literal="IV-25", reading_names=["1A", "1B"], value="1948-04-25"),
+        dict(outcome="several_possibilities", literal="IV-25", reading_names=["1A", "1B"],
+             options=["1948-04-25", "1949-04-25"], explanation="The readers give different years."),
+    )
+
+    outcome = resolve_on(DISAGREEING_READINGS, script, "date_visited_from", "IV-25")
+
+    shown = tool_returns(script.seen[1][0])[0]
+    assert shown["status"] == "ambiguous"
+    assert shown["notes"] == ["readers_disagree_on_date", "1A: 1948-04-25; 1B: 1949-04-25"]
+    assert "differs from the literal" in retries(script.seen[2][0])[0]
+    assert outcome.failure is None and outcome.answer.outcome == "several_possibilities"

@@ -39,13 +39,29 @@ def test_the_pilots_split_date_reads_as_one_date():
     assert result.notes == ()
 
 
-def test_the_pilots_day_and_month_alone_take_the_year_on_the_next_line():
-    result = date("IV-25", PILOT_READINGS)
+def test_a_day_and_month_alone_take_a_year_that_is_alone_on_the_next_line():
+    result = date("IV-25", ["Guatemala, IV-25\n1948\nR.D. Mitchell"])
 
     assert result.status == LookupStatus.SUCCESS
     assert result.values == ("1948-04-25",)
     assert result.readings[0].via == ("year_on_next_line",)
     assert "1925-04" not in result.values
+
+
+@pytest.mark.parametrize("year_line", ["1948", "1948.", "1948,", "  1948 ", "1948,  "])
+def test_the_borrowed_year_may_carry_a_period_or_a_comma_and_nothing_else(year_line):
+    result = date("IV-25", [f"Guatemala, IV-25\n{year_line}\nR.D. Mitchell"])
+
+    assert result.status == LookupStatus.SUCCESS and result.values == ("1948-04-25",)
+
+
+def test_the_pilots_day_and_month_alone_do_not_take_a_year_that_shares_its_line():
+    # "1948, R.D. Mitchell": the line holds a name too, so a bare IV-25 stays open.
+    # The organiser's two-line literal "IV-25\n1948" is what reads (the first test).
+    result = date("IV-25", PILOT_READINGS)
+
+    assert result.status == LookupStatus.AMBIGUOUS and "year_missing" in result.notes
+    assert result.values == ("1925-04",) and all(r.via == () for r in result.readings)
 
 
 def test_the_check_shows_the_rule_that_matched_to_the_expert():
@@ -60,10 +76,10 @@ def test_the_check_shows_the_rule_that_matched_to_the_expert():
     ("text", "literal", "iso", "via"),
     [
         # The year ends the line above, the date starts the next.
-        ("Guatemala\nR.D. Mitchell 1948\nIV-25 Yepocapa", "IV-25", "1948-04-25", "year_on_previous_line"),
-        ("Guatemala\nR.D. Mitchell 1948\nIV-25 Yepocapa", "1948\nIV-25", "1948-04-25", "split_lines"),
+        ("Guatemala\n1948\nIV-25 Yepocapa", "IV-25", "1948-04-25", "year_on_previous_line"),
+        ("Guatemala\n1948\nIV-25 Yepocapa", "1948\nIV-25", "1948-04-25", "split_lines"),
         # The day and month by name, in another language.
-        ("Cali\n14 sept.\n1946 leg. X", "14 sept.", "1946-09-14", "year_on_next_line"),
+        ("Cali\n14 sept.\n1946", "14 sept.", "1946-09-14", "year_on_next_line"),
         ("Cali\n14 de septiembre\n1946", "14 de septiembre\n1946", "1946-09-14", "split_lines"),
         ("Cali\n3.IX\n1946", "3.IX", "1946-09-03", "year_on_next_line"),
         # A year after an apostrophe: the century is inferred and recorded.
@@ -105,6 +121,24 @@ def test_an_apostrophe_year_on_the_next_line_records_the_century_rule():
         ("1947\nIV-25\n1948", "two different years"),
         # The date is not the end of its line.
         ("IV-25 Guatemala\n1948", "text after the date on its line"),
+        # The line holds more than the year (review 297): an elevation, a unit, a
+        # determination, a range, a second number or a name.
+        ("Guatemala, IV-25\n1900 m, R.D. Mitchell", "an elevation in metres"),
+        ("Guatemala, IV-25\n1948', R.D. Mitchell", "feet written with a tick"),
+        ("Guatemala, IV-25\n1948 m", "a metre mark"),
+        ("Guatemala, IV-25\n1948 ft.", "a foot mark"),
+        ("Guatemala, IV-25\n1948 msnm", "metres above sea level"),
+        ("Guatemala, IV-25\n1948-49", "a year range"),
+        ("Guatemala, IV-25\n1948-2", "a number after a dash"),
+        ("Guatemala, IV-25\n1948 5", "a second number"),
+        ("Guatemala, IV-25\n1950 det. J. Smith", "a determination below"),
+        ("Guatemala, IV-25\n1948, R.D. Mitchell", "a name on the year's line"),
+        ("det. J. Smith 1950\nIV-25 Guatemala", "a determination above"),
+        ("El. 1948\nIV-25 Guatemala", "an elevation label above"),
+        ("alt. 1948\nIV-25 Guatemala", "an altitude label above"),
+        ("R.D. Mitchell 1948\nIV-25 Guatemala", "a name on the year's line above"),
+        ("1948 m\nIV-25 Guatemala", "a unit above"),
+        ("1948'\nIV-25 Guatemala", "a tick above"),
     ],
 )
 def test_lines_that_are_not_clearly_one_date_stay_apart(text, why):
@@ -129,6 +163,52 @@ def test_a_two_line_literal_with_another_date_on_its_lines_is_no_date(text):
 
     assert result.status == LookupStatus.NO_MATCH
     assert result.notes == ("split_lines_hold_another_date",)
+
+
+@pytest.mark.parametrize(
+    ("text", "literal"),
+    [
+        # The year the organiser quoted is a measurement or a mark (review 297).
+        ("Guatemala, IV-25\n1900 m, R.D. Mitchell", "IV-25\n1900"),
+        ("Guatemala, IV-25\n1948', R.D. Mitchell", "IV-25\n1948"),
+        ("Guatemala, IV-25\n1948 m, R.D. Mitchell", "IV-25\n1948"),
+        ("Guatemala, IV-25\n1948 ft.", "IV-25\n1948"),
+        ("Guatemala, IV-25\n1948 msnm", "IV-25\n1948"),
+        ("Guatemala, IV-25\n1948.5", "IV-25\n1948"),
+        ("Guatemala, IV-25\n1948-49", "IV-25\n1948"),
+        ("Guatemala, IV-25\n1948-2", "IV-25\n1948"),
+        ("Guatemala, IV-25\n1948 5", "IV-25\n1948"),
+        ("Guatemala, IV-25\n1950 det. J. Smith", "IV-25\n1950"),
+        # The year ends the line above the date and does not stand alone there.
+        ("det. J. Smith 1950\nIV-25 Guatemala", "1950\nIV-25"),
+        ("El. 1948\nIV-25 Guatemala", "1948\nIV-25"),
+        ("alt. 1948\nIV-25 Guatemala", "1948\nIV-25"),
+    ],
+)
+def test_a_two_line_literal_whose_year_is_marked_or_not_alone_is_no_date(text, literal):
+    result = date(literal, [text])
+
+    assert result.status == LookupStatus.NO_MATCH, result.as_dict()
+    assert result.notes == ("split_lines_year_not_alone",)
+    assert result.values == ()
+
+
+@pytest.mark.parametrize(
+    ("text", "literal"),
+    [
+        ("Guatemala, IV-25\n1948, R.D. Mitchell", "IV-25\n1948"),
+        ("Guatemala, IV-25\n1948; R.D. Mitchell", "IV-25\n1948"),
+        ("Guatemala, IV-25\n1948. R.D. Mitchell", "IV-25\n1948"),
+        ("Guatemala, IV-25\n1948", "IV-25\n1948"),
+        ("Guatemala\n1948\nIV-25 Yepocapa", "1948\nIV-25"),
+        ("  1948  \nIV-25 Yepocapa", "1948  \nIV-25"),
+    ],
+)
+def test_a_two_line_literal_whose_year_stands_alone_or_ends_at_a_comma_reads(text, literal):
+    result = date(literal, [text])
+
+    assert result.status == LookupStatus.SUCCESS, result.as_dict()
+    assert result.values == ("1948-04-25",)
 
 
 def test_a_date_that_states_its_own_year_is_not_joined_to_a_year_beside_it():
@@ -156,13 +236,73 @@ def test_an_expert_s_year_literal_is_the_year_wherever_the_reading_writes_it():
     assert named.readings[0].via == ("year_literal",)
 
 
-def test_two_readers_that_differ_are_each_read_by_their_own_text():
-    # Reader B drops the year line: the date alone stays open there.
-    texts = ["Guatemala, IV-25\n1948, R.D. Mitchell", "Guatemala, IV-25\nR.D. Mitchell"]
+READER_1948 = "Guatemala, IV-25\n1948\nR.D. Mitchell"
+READER_1949 = "Guatemala, IV-25\n1949\nR.D. Mitchell"
+
+
+@pytest.mark.parametrize("order", [(READER_1948, READER_1949), (READER_1949, READER_1948)])
+def test_readers_that_give_different_years_leave_the_date_ambiguous_in_either_order(order):
+    # Review 297: the first reader's year used to settle the date, so [A, B] gave
+    # 1948 and [B, A] gave 1949, with nothing said.
+    first, second = order
+    result = date("IV-25", [first, second], reading_names=["1A", "1B"])
+
+    assert result.status == LookupStatus.AMBIGUOUS
+    assert result.notes[0] == "readers_disagree_on_date"
+    assert set(result.values) == {"1948-04-25", "1949-04-25"}
+    years = {"1A": first[first.index("\n") + 1 :][:4], "1B": second[second.index("\n") + 1 :][:4]}
+    assert result.notes[1] == f"1A: {years['1A']}-04-25; 1B: {years['1B']}-04-25"
+
+
+def test_the_readers_are_named_by_number_when_no_names_are_given():
+    result = date("IV-25", [READER_1948, READER_1949])
+
+    assert result.notes == ("readers_disagree_on_date", "1: 1948-04-25; 2: 1949-04-25")
+
+
+@pytest.mark.parametrize("value", ["1948-04-25", "1949-04-25"])
+@pytest.mark.parametrize("order", [(READER_1948, READER_1949), (READER_1949, READER_1948)])
+def test_the_step_keeps_no_check_row_for_a_date_the_readers_disagree_on(value, order):
+    row = field_step._check_row("date_visited_from", ("date_parser",), "IV-25", value,
+        texts=list(order), date_rules=PILOT, asset_id=None, blobs=None)
+
+    assert row is None
+
+
+def test_readers_that_agree_on_the_date_settle_it_whichever_is_first():
+    other = "Guatemala, IV-25\n1948.\nlot 2"
+
+    for texts in ([READER_1948, other], [other, READER_1948]):
+        result = date("IV-25", texts)
+        assert result.status == LookupStatus.SUCCESS and result.values == ("1948-04-25",)
+
+
+def test_a_reader_that_drops_the_year_line_disagrees_with_one_that_keeps_it():
+    texts = [READER_1948, "Guatemala, IV-25\nR.D. Mitchell"]
+
+    result = date("IV-25", texts, reading_names=["2A", "2B"])
+
+    assert result.status == LookupStatus.AMBIGUOUS
+    assert result.notes[0] == "readers_disagree_on_date"
+    assert result.notes[1] == "2A: 1948-04-25; 2B: no year/1925-04"
+
+
+def test_a_reader_whose_year_is_marked_disagrees_with_one_whose_year_stands_alone():
+    texts = ["Guatemala, IV-25\n1948, R.D. Mitchell", "Guatemala, IV-25\n1948 m, R.D. Mitchell"]
+
+    result = date(SPLIT, texts, reading_names=["1A", "1B"])
+
+    assert result.status == LookupStatus.AMBIGUOUS
+    assert result.notes == ("readers_disagree_on_date",
+        "1A: 1948-04-25; 1B: not a date (split_lines_year_not_alone)")
+
+
+def test_a_reader_that_shows_the_literal_inside_a_code_still_decides_it_is_no_date():
+    texts = [READER_1948, "Guatemala, IV-25-4\n1948"]
 
     result = date("IV-25", texts)
 
-    assert result.status == LookupStatus.SUCCESS and result.values == ("1948-04-25",)
+    assert result.status == LookupStatus.NO_MATCH and "part_of_hyphenated_token" in result.notes
 
 
 # -- ranges and the field that takes their end ---------------------------------------------------

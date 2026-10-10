@@ -31,12 +31,15 @@ def emitted() -> dict[str, checks.DateCheck]:
         "day_month_order_ambiguous": run("4-5-48", "4-5-48"),
         "year_missing": run("14.IX", "14.IX"),
         "split_lines": run("IV-25\n1948"),
-        "year_on_next_line": run("IV-25"),
+        "year_on_next_line": run("IV-25", "Guatemala, IV-25\n1948\nR.D. Mitchell"),
         "year_on_previous_line": run("IV-25", "1948\nIV-25 Guatemala"),
         "year_literal": run("IV-25", LABEL, year_literal="1948"),
         "split_lines_hold_another_date": run("IV-25\n1948", "Cali 3.VI, IV-25\n1948"),
         "split_lines_state_two_years": run("IV-25-48\n1948", "IV-25-48\n1948"),
         "range_end_before_start": run("5-3.IX.1946", "5-3.IX.1946"),
+        "readers_disagree_on_date": checks.parse_date("IV-25", reading_texts=[
+            "Guatemala, IV-25\n1948", "Guatemala, IV-25\n1949"], date_rules=PILOT),
+        "split_lines_year_not_alone": run("IV-25\n1948", "Guatemala, IV-25\n1948 m"),
     }
 
 
@@ -55,7 +58,8 @@ def test_the_check_returns_each_word_the_briefs_and_the_document_name():
 def test_each_date_brief_names_how_the_check_reads_a_split_date_and_an_ambiguous_numeric_one(key):
     brief = instructions(key)
 
-    for word in ("day_month_order_ambiguous", "split_lines", "year_on_next_line", "year_on_previous_line"):
+    for word in ("day_month_order_ambiguous", "split_lines", "year_on_next_line", "year_on_previous_line",
+                 "readers_disagree_on_date"):
         assert word in brief, (key, word)
 
 
@@ -65,6 +69,24 @@ def test_the_range_briefs_say_which_end_each_field_takes():
     assert "Resolve with the start" in start
     assert "the value you may resolve to is the end" in end
     assert "never the range's start" in end
+
+
+LOWERCASE_READ = ["3.iv.1948", "3.ix.46", "3-ix-46", "1946.ix.14", "3.iv"]
+LOWERCASE_NOT_READ = ["iv-23-48", "iv.1948", "1946.ix", "12 vi 1946", "12 x 46"]
+
+
+def test_the_document_says_exactly_which_lowercase_numerals_are_read():
+    from specimen_digitization.application.field_validators import date_parser
+
+    for literal in LOWERCASE_READ:
+        assert f"`{literal}`" in DOCUMENT, literal
+        assert date_parser(literal, source_text=literal, date_rules=PILOT).parsed is not None, literal
+    for literal in LOWERCASE_NOT_READ:
+        assert f"`{literal}`" in DOCUMENT, literal
+        assert date_parser(literal, source_text=literal, date_rules=PILOT).parsed is None, literal
+    # The sentence that said "the day or the four-digit year beside it" was wrong:
+    # a two-digit year is read after a lowercase numeral too.
+    assert "to the day or the four-digit year beside it" not in DOCUMENT
 
 
 def test_the_document_names_every_word_the_check_returns():

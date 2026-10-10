@@ -41,6 +41,10 @@ SINGLE_DATES = [
     ("14.IX.1946", "1946-09-14", None, "day", "day-month-year"),
     ("IX-14-46", "1946-09-14", None, "day", "month-day-year"),
     ("3.iv.1948", "1948-04-03", None, "day", "day-month-year"),
+    # A lowercase numeral with the day before it and the year after it, joined by "." or "-".
+    ("3.ix.46", "1946-09-03", None, "day", "day-month-year"),
+    ("3-ix-46", "1946-09-03", None, "day", "day-month-year"),
+    ("3 . ix . 1946", "1946-09-03", None, "day", "day-month-year"),
     ("14 IX 1946", "1946-09-14", None, "day", "day-month-year"),
     ("IV-24-48", "1948-04-24", None, "day", "month-day-year"),
     ("IX - 14 - 46", "1946-09-14", None, "day", "month-day-year"),
@@ -61,6 +65,9 @@ SINGLE_DATES = [
     ("Sept. 3, 1946", "1946-09-03", None, "day", "monthname-day-year"),
     ("September 1946", "1946-09", None, "month", "monthname-year"),
     ("Sept '46", "1946-09", None, "month", "monthname-year"),
+    ("September, 1946", "1946-09", None, "month", "monthname-year"),
+    ("Sept., 1946", "1946-09", None, "month", "monthname-year"),
+    ("septiembre, 1946", "1946-09", None, "month", "monthname-year"),
     ("3rd Sept. 1946", "1946-09-03", None, "day", "day-monthname-year"),
     ("Sept. 3rd, 1946", "1946-09-03", None, "day", "monthname-day-year"),
     ("3rd of May 1946", "1946-05-03", None, "day", "day-monthname-year"),
@@ -124,6 +131,7 @@ SINGLE_DATES = [
     ("Sept. 3-5, 1946", "1946-09-03", "1946-09-05", "day", "range:month-day..day-year"),
     ("3 Sept.-5 Oct. 1946", "1946-09-03", "1946-10-05", "day", "range:day-month..date"),
     ("Sept.-Oct. 1946", "1946-09", "1946-10", "month", "range:month..month-year"),
+    ("Sept.-Oct., 1946", "1946-09", "1946-10", "month", "range:month..month-year"),
     (f"3{EN_DASH}5 ao{U_CIRCUMFLEX}t 1946", "1946-08-03", "1946-08-05", "day", "range:day..date"),
     ("12-14 de septiembre de 1946", "1946-09-12", "1946-09-14", "day", "range:day..date"),
     ("IV-23-48 - IV-25-48", "1948-04-23", "1948-04-25", "day", "range:date..date"),
@@ -164,6 +172,7 @@ AMBIGUOUS = [
     ("14 IX", ["year_missing"], [None]),
     ("3 Sept.", ["year_missing"], [None]),
     ("14 de septiembre", ["year_missing"], [None]),
+    ("3.iv", ["year_missing"], [None]),
 ]
 
 
@@ -228,6 +237,11 @@ REFUSED = [
     ("3.9-5.10.1946", None),
     ("1946-48", None),
     ("12 vi 1946", None),
+    # A lowercase numeral is never month-first, month and year, or joined by spaces alone.
+    ("iv-23-48", None),
+    ("iv.1948", None),
+    ("1946.ix", None),
+    ("3 ix 46", None),
     # A range that ends before it starts, and one the months make impossible.
     ("5-3.IX.1946", "range_end_before_start"),
     ("IX-VIII.46", "range_end_before_start"),

@@ -41,10 +41,40 @@ def test_could_be_a_date(text, expected):
     assert date_lines.could_be_a_date(text) is expected
 
 
-def test_year_beside_needs_the_date_to_end_or_start_its_line():
-    assert date_lines.year_beside("IV-25", "x, IV-25\n1948, y") == ("1948", "next_line")
-    assert date_lines.year_beside("IV-25", "x 1948\nIV-25 y") == ("1948", "previous_line")
+def test_year_beside_needs_the_date_to_end_or_start_its_line_and_the_year_alone():
+    assert date_lines.year_beside("IV-25", "x, IV-25\n1948\ny") == ("1948", "next_line")
+    assert date_lines.year_beside("IV-25", "x, IV-25\n1948,\ny") == ("1948", "next_line")
+    assert date_lines.year_beside("IV-25", "x\n1948.\nIV-25 y") == ("1948", "previous_line")
     assert date_lines.year_beside("IV-25", "IV-25 x\n1948") is None
     assert date_lines.year_beside("IV-25", "1948\nx IV-25") is None
     assert date_lines.year_beside("IV-25", "x IV-25\n1948 5.IX") is None
     assert date_lines.year_beside("IV-25", "IV-25") is None
+    # Anything else on the year's line, either side (review 297), lends no year.
+    for line in ("1948, R.D. Mitchell", "1948 m", "1948'", "1948 ft.", "1948-49", "1948-2", "1948 5",
+                 "El. 1948", "alt. 1948", "det. J. Smith 1950", "R.D. Mitchell 1948", "'48", "48", "4800"):
+        assert date_lines.year_beside("IV-25", f"x, IV-25\n{line}") is None, line
+        assert date_lines.year_beside("IV-25", f"{line}\nIV-25 x") is None, line
+
+
+@pytest.mark.parametrize(
+    ("literal", "text", "problem"),
+    [
+        ("IV-25\n1948", "x, IV-25\n1948", None),
+        ("IV-25\n1948", "x, IV-25\n1948, R.D. Mitchell", None),
+        ("IV-25\n1948", "x, IV-25\n1948; y", None),
+        ("IV-25\n1948", "x, IV-25\n1948. y", None),
+        ("IV-25\n1948", "x, IV-25\n1948 m", date_lines.YEAR_NOT_ALONE),
+        ("IV-25\n1948", "x, IV-25\n1948' y", date_lines.YEAR_NOT_ALONE),
+        ("IV-25\n1948", "x, IV-25\n1948-49", date_lines.YEAR_NOT_ALONE),
+        ("IV-25\n1948", "x, IV-25\n1948.5", date_lines.YEAR_NOT_ALONE),
+        ("IV-25\n1948", "x, IV-25\n1948 det. y", date_lines.YEAR_NOT_ALONE),
+        ("IV-25\n1948", "3.VI IV-25\n1948", date_lines.OTHER_DATE),
+        ("IV-25\n1948", "IV-25\n1948, 3.VI", date_lines.OTHER_DATE),
+        ("IV-25\n1948", "IV-25\n1948 3.VI", date_lines.OTHER_DATE),
+        ("1948\nIV-25", "1948\nIV-25 x", None),
+        ("1948\nIV-25", "det. x 1948\nIV-25 x", date_lines.YEAR_NOT_ALONE),
+        ("1948\nIV-25", "1948\nIV-25 3.VI", date_lines.OTHER_DATE),
+    ],
+)
+def test_split_problem(literal, text, problem):
+    assert date_lines.split_problem(literal, text) == problem

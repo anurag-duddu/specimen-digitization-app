@@ -413,15 +413,20 @@ row the settled value cites shows them.
   between day and year (`14.IX.1946`, `14 IX 1946`, `3.iv.1948`), year first
   (`1946.IX.14`, `1946-IX-14`), month and year (`IX.1946`, `XI .46`), and
   day and month with no year (`14.IX`). A lowercase numeral is read only
-  when `.` or `-` joins it to the day or the four-digit year beside it
-  (`3.iv.1948`, `1946.ix.14`), so `12 x 46` is no date. A month written by name in English, Spanish, French,
-  German, Portuguese, Italian or Latin, in full or abbreviated, with or
+  in three shapes, each joined by `.` or `-` (spaces around them allowed): after
+  a day and before a year of two or four digits (`3.iv.1948`, `3.ix.46`,
+  `3-ix-46`), after a four-digit year and before a day (`1946.ix.14`), and
+  after a day with no year (`3.iv`). It is never read month-first (`iv-23-48`),
+  as a month and year (`iv.1948`, `1946.ix`) or joined by spaces alone
+  (`12 vi 1946`, `12 x 46`). A month written by name in English, Spanish,
+  French, German, Portuguese, Italian or Latin, in full or abbreviated, with or
   without its period and accents (`sept.`, `Sept`, `ene.`, `janv.`, `Mai`,
   `mars`, `Okt.`, `agosto`, `Septembris`). A word two languages share means
   the same month in both, and the table refuses to load otherwise
   (`date_months`). A day may carry an ordinal (`3rd`, `1er`, `1o`), and `de`,
   `del`, `of`, `di`, `da` or `do` may stand between a day and its month and
-  between a month and its year (`14 de septiembre de 1946`).
+  between a month and its year (`14 de septiembre de 1946`); a month name and
+  its year may be joined by a comma (`September, 1946` is September 1946).
 - **Years.** Four digits, or two digits after an apostrophe (`'46`) or bare
   after a month or inside a date (`Sept. 46`, `14.IX.46`, `4-5-48`). The profile's
   century rule reads a two-digit year as 19xx and the reading records it as
@@ -452,24 +457,44 @@ row the settled value cites shows them.
   short year (`test_temporal_event_links.py`).
 - **A date split over two lines of one label** (`date_lines`; pilot
   105526330: "Guatemala, IV-25" above "1948, R.D. Mitchell"). The date and the
-  year are one date only when the two lines are adjacent, with nothing between
-  them but the line break (the date ends its line and the year starts the
-  next, or the year ends a line and the date starts the next); the year is a
-  token of its own, four digits in the plausible years or two after an
-  apostrophe (a bare two-digit number, or an elevation such as `4800`, is
-  none); nothing else on either line could be a date (no other year, numeric
-  date, Roman numeral beside a number, or month word of any language: a wide
-  test, `date_lines.could_be_a_date`); the date states no year of its own; and
-  the lines above and below do not give two different years. Two forms:
+  year are one date only under all of these rules, none a guess: the two lines
+  are adjacent, with nothing between them but the line break (the date ends its
+  line and the year starts the next, or the year ends a line and the date
+  starts the next); nothing else on either line could be a date (no other year,
+  numeric date, Roman numeral beside a number, or month word of any language: a
+  wide test, `date_lines.could_be_a_date`); the date states no year of its own;
+  and the year is bare, never a measurement or a determination's year. Two
+  forms, with a different bareness rule because they have different authors:
   - the literal is both lines, as the organiser quotes it (`"IV-25\n1948"`, or
-    the year first): `parse_date` reads it as one date (`via` `split_lines`);
-    another date on the lines is `no_match` with the note
-    `split_lines_hold_another_date`, and a date that already states a year is
-    `no_match` with `split_lines_state_two_years`;
-  - the literal is the day and month alone (`IV-25`) and the year stands on the
-    adjacent line: the date takes it (`via` `year_on_next_line` or
-    `year_on_previous_line`). When any rule fails the date stays open
-    (`year_missing`) and goes to review.
+    the year first): the organiser has named the year, so it may be followed by
+    a comma, semicolon or period and then other text (`1948, R.D. Mitchell`),
+    but never by a unit (`1948 m`, `1948 ft.`, `1948 msnm`), an apostrophe
+    (`1948'`), a dash and a number (`1948-49`), a decimal or second number
+    (`1948.5`, `1948 5`) or a word (`1948 det. J. Smith`); a year that ends the
+    line above the date must stand alone on its line (`det. J. Smith 1950`
+    and `El. 1948` do not). `parse_date` then reads one date (`via`
+    `split_lines`). Another date on the lines is `no_match` with the note
+    `split_lines_hold_another_date`; a year that is marked or does not stand
+    alone is `no_match` with `split_lines_year_not_alone`; a date that already
+    states a year is `no_match` with `split_lines_state_two_years`;
+  - the literal is the day and month alone (`IV-25`): nobody has named a year,
+    so it takes one only from a line that holds nothing but a four-digit year,
+    optionally followed by a period or a comma, directly below it or directly
+    above it (`via` `year_on_next_line` or `year_on_previous_line`). A year with
+    any other text on its line (`1948, R.D. Mitchell`, `1948 m`, `1948'`,
+    `1948-49`, `1948-2`, `El. 1948`, `alt. 1948`, `det. J. Smith 1950`) is not
+    borrowed, nor is `'48`, a bare two-digit number or `4800`; and when the lines
+    above and below give two different years, neither is. In every such case the
+    date stays open (`year_missing`) and goes to review.
+- **Readings of one label that disagree.** The check reads the literal in each
+  reading's own text. When those results are not all the same (one reader's
+  adjacent year is 1948 and the other's 1949; one has the year line and one has
+  dropped it; one year is marked and the other bare), the check is `ambiguous`
+  with the notes `readers_disagree_on_date` and one naming each reading and
+  its result (`1A: 1948-04-25; 1B: 1949-04-25`), whichever reading is listed
+  first. The first reading's result is never taken for the others, and
+  `step._check_row` keeps no row for it. A reading that shows the literal inside
+  a slide code or a hyphen-joined token still makes it no date, as before.
 - **Ranges** (`3-5.IX.1946`, `VIII-IX.46`, `3.IX-5.X.1946`, `10-12 Sept.
   1946`, `Sept. 3-5, 1946`, `3 Sept.-5 Oct. 1946`, `Sept.-Oct. 1946`,
   `3.IX.1946-5.X.1946`). The text is split at a dash (hyphen, en dash or em
