@@ -617,12 +617,14 @@ def test_a_retry_the_program_allowance_cannot_cover_blocks_and_names_its_cause(
     repository = app.state.workflow.repository
     ledger = ProgramLedger(repository, SCOPE)
     current = ledger.read()
-    # Less than one more reservation is left of the program's allowance.
+    # Less than one more reservation is left of the program's allowance (the
+    # pilot profile's USD 15, G30; the same literal tests/test_lane_costs.py uses).
+    settled = 15_000_000 - 1
     repository.put_document(
         SCOPE,
         LEDGER_KIND,
         ledger.ident,
-        {**current, "reserved_total_micros": 5_000_000 - 1},
+        {**current, "reserved_total_micros": settled},
         current["revision"],
     )
 
@@ -634,7 +636,7 @@ def test_a_retry_the_program_allowance_cannot_cover_blocks_and_names_its_cause(
         "program_allowance_exhausted",
     )
     assert run.attempts[step] == 1 and step not in run.completed_steps
-    assert ledger_total(app) == 5_000_000 - 1
+    assert ledger_total(app) == settled
 
 
 def test_a_pilot_reader_stopped_by_its_limits_keeps_its_unknown_outcome(
