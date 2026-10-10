@@ -12,8 +12,11 @@ The rules that decide an answer stay where they are: GBIF's in
 application.taxonomy_tool.verify_taxon, GEOLocate's in research_harness.sources
 and the historical gazetteers' in research_harness.historical_gazetteers. A
 source problem is an answer with a plain note, never an exception; only a blob
-store failure raises. Each request a source leaves unanswered is logged in one
-WARNING line with its source, host and HTTP status or error, never its query.
+store failure raises. When Getty TGN's reconciliation service refuses a request
+or cannot be reached, TGN is searched through Getty's SPARQL endpoint instead
+(historical_gazetteers), and the note says so. Each request a source leaves
+unanswered is logged in one WARNING line with its source, host and HTTP status
+or error, never its query.
 """
 
 from __future__ import annotations
@@ -37,6 +40,7 @@ from urllib.parse import urlencode, urlsplit
 
 import httpx
 
+from specimen_digitization.application import georef_tgn
 from specimen_digitization.application.domain import Evidence, Lookup, LookupStatus
 from specimen_digitization.application.georef_places import Place, Ref
 from specimen_digitization.application.harness_tools import SourceCall
@@ -109,6 +113,10 @@ REFUSED = {
     403: LookupStatus.AUTHORIZATION,
     429: LookupStatus.RATE_LIMITED,
 }
+# A request that ended with no usable response: no answer in time, the host
+# could not be reached, or it kept failing (HTTP 5xx). For Getty TGN's
+# reconciliation request, the search then goes through the SPARQL endpoint.
+SEARCH_UNREACHED = frozenset({LookupStatus.TIMEOUT, LookupStatus.PROVIDER})
 
 
 @cache
@@ -785,16 +793,31 @@ class ApprovedSources:
         source_id, name = policy.id, NAMES[policy.id]
         searched = place_name(query)
         fetched: list[_Fetched] = []
+        # Why Getty TGN's search went through its SPARQL endpoint, if it did.
+        fallback: list[str] = []
 
         async def fetch(url: str, params: dict[str, str]) -> tuple[int, bytes]:
-            response = await self._response(policy, url + "?" + urlencode(params))
+            try:
+                response = await self._response(policy, url + "?" + urlencode(params))
+            except _Unanswered as failure:
+                if url == georef_tgn.RECONCILE and failure.status in SEARCH_UNREACHED:
+                    reason = failure.note.removeprefix(f"{name} ")
+                    fallback.append(reason)
+                    raise historical_gazetteers.SearchUnanswered(reason) from failure
+                raise
             fetched.append(response)
+            if (
+                url == georef_tgn.RECONCILE
+                and response.status_code in historical_gazetteers.SEARCH_REFUSALS
+            ):
+                fallback.append(f"refused the request (HTTP {response.status_code})")
             return response.status_code, response.body
 
         try:
             outcome = await historical_gazetteers.lookup(source_id, searched, fetch)
         except _Unanswered as failure:
-            return _answer(source_id, query, failure.status, failure.note)
+            note = _searched_instead(name, fallback[0] if fallback else None, failure.note)
+            return _answer(source_id, query, failure.status, note)
         status, places = outcome.status, outcome.places
         if status == LookupStatus.SUCCESS:
             status = (
@@ -805,7 +828,9 @@ class ApprovedSources:
                 else LookupStatus.AMBIGUOUS
             )
         candidates = tuple(_place(source_id, place) for place in places)
-        note = _gazetteer_note(name, searched, status, outcome, fetched)
+        note = _searched_instead(
+            name, outcome.fallback, _gazetteer_note(name, searched, status, outcome, fetched)
+        )
         if status not in ANSWERED or not fetched:
             return _answer(source_id, query, status, note)
         # Up to three responses answer one query: one record names each stored
@@ -1083,6 +1108,15 @@ def _place(source_id: str, place: Place) -> SourceCandidate:
         detail=detail or None,
         parents=tuple(parents),
     )
+
+
+def _searched_instead(name: str, fallback: str | None, note: str) -> str:
+    """The note of a Getty TGN search that went through the SPARQL endpoint
+    because the reconciliation service refused the request or got no answer
+    (`fallback`): that comes first, then what the search found."""
+    if fallback is None:
+        return note
+    return f"{name}'s search {fallback}; searched Getty's SPARQL endpoint instead. {note}"
 
 
 def _gazetteer_note(

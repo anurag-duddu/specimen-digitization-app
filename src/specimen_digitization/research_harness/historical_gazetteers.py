@@ -9,6 +9,7 @@ not turn a historical candidate into a settled modern location.
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -24,12 +25,26 @@ Fetch = Callable[[str, dict[str, str]], Awaitable[tuple[int, bytes]]]
 MAX_CALLS = 3
 MAX_BODY_BYTES = 2_000_000
 SOURCES = frozenset({tgn.SOURCE, wikidata.SOURCE, nga.SOURCE})
+# Getty TGN reconciliation answers that send its search to the SPARQL endpoint.
+SEARCH_REFUSALS = frozenset({401, 403})
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
 
 
 class _MalformedSource(Exception):
     """A local source parser or request builder rejected provider data."""
+
+
+class SearchUnanswered(Exception):
+    """Raised by a caller's fetch for Getty TGN's reconciliation request only,
+    when that request got no response at all, so nothing came back to capture.
+    The TGN search then goes through the SPARQL endpoint instead. Every other
+    fetch exception still reaches the owning broker unchanged. `reason` says
+    what happened in a few plain words ("did not answer after 3 attempts")."""
+
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
 
 
 def _source_value(operation: Callable[_P, _R], *args: _P.args, **kwargs: _P.kwargs) -> _R:
@@ -59,6 +74,9 @@ class HistoricalLookup:
     places: tuple[Place, ...]
     exchanges: tuple[Exchange, ...]
     reason: str | None = None
+    # Why Getty TGN's search went through the SPARQL endpoint, when it did:
+    # "refused the request (HTTP 403)", or a SearchUnanswered's reason.
+    fallback: str | None = None
 
 
 async def lookup(source_id: str, filtered_name: str, fetch: Fetch) -> HistoricalLookup:
@@ -69,6 +87,9 @@ async def lookup(source_id: str, filtered_name: str, fetch: Fetch) -> Historical
     retries and the decision about whether a returned place is qualified.
     Fetch, capture, and receipt exceptions propagate to that owner; this
     parser cannot declare an uncertain effect settled or refund its cost.
+    One exception is the fetch's own signal: when Getty TGN's reconciliation
+    request is refused (SEARCH_REFUSALS) or the fetch raises SearchUnanswered
+    for it, TGN is searched through its SPARQL endpoint instead (`_tgn_search`).
     """
     if source_id not in SOURCES:
         raise ValueError("unknown historical gazetteer source")
@@ -121,11 +142,18 @@ async def _request(
 
 
 async def _tgn(filtered_name: str, fetch: Fetch, calls: list[Exchange]) -> HistoricalLookup:
-    failure, status, body = await _request(
-        tgn.RECONCILE, tgn.reconcile_params(filtered_name), fetch, calls
-    )
+    try:
+        failure, status, body = await _request(
+            tgn.RECONCILE, tgn.reconcile_params(filtered_name), fetch, calls
+        )
+    except SearchUnanswered as unanswered:
+        return await _tgn_search(filtered_name, fetch, calls, unanswered.reason)
     if failure is not None:
         return _result(failure, calls)
+    if status in SEARCH_REFUSALS:
+        return await _tgn_search(
+            filtered_name, fetch, calls, f"refused the request (HTTP {status})"
+        )
     outcome, hits = _source_value(tgn.parse_reconcile, status, body)
     if outcome != LookupStatus.SUCCESS:
         return _result(outcome, calls)
@@ -156,6 +184,53 @@ async def _tgn(filtered_name: str, fetch: Fetch, calls: list[Exchange]) -> Histo
         return _result(outcome, calls)
     if set(names) - set(place_ids):
         return _result(LookupStatus.MALFORMED, calls, reason="names exceeded requested TGN ids")
+    return _result(LookupStatus.SUCCESS, calls, _source_value(tgn.with_names, places, names))
+
+
+async def _tgn_search(
+    filtered_name: str, fetch: Fetch, calls: list[Exchange], fallback: str
+) -> HistoricalLookup:
+    """Getty TGN's search through the SPARQL endpoint, once the reconciliation
+    service refused the request or got no answer (`fallback` says which). The
+    places come back as the reconciliation path returns them, in two more
+    requests, so the chain stays within MAX_CALLS: one name search
+    (tgn.SEARCH), which also returns every term of each place it finds, then
+    the records of at most ten of those places (tgn.search_ids)."""
+    try:
+        result = await _tgn_sparql(filtered_name, fetch, calls)
+    except _MalformedSource:
+        result = _result(
+            LookupStatus.MALFORMED, calls, reason="invalid source identifier or response"
+        )
+    return dataclasses.replace(result, fallback=fallback)
+
+
+async def _tgn_sparql(
+    filtered_name: str, fetch: Fetch, calls: list[Exchange]
+) -> HistoricalLookup:
+    failure, status, body = await _request(
+        tgn.SPARQL, _source_value(tgn.search_params, filtered_name), fetch, calls
+    )
+    if failure is not None:
+        return _result(failure, calls)
+    outcome, found = _source_value(tgn.parse_search, status, body)
+    if outcome != LookupStatus.SUCCESS:
+        return _result(outcome, calls)
+    ids = tgn.search_ids(filtered_name, found)
+    failure, status, body = await _request(
+        tgn.SPARQL, _source_value(tgn.records_params, ids), fetch, calls
+    )
+    if failure is not None:
+        return _result(failure, calls)
+    outcome, places = _source_value(tgn.parse_records, status, body)
+    if outcome != LookupStatus.SUCCESS:
+        return _result(outcome, calls)
+    returned = {place.record_id for place in places}
+    if len(places) > tgn.LIMIT or returned - set(ids):
+        return _result(LookupStatus.MALFORMED, calls, reason="records exceeded requested TGN ids")
+    if returned != set(ids):
+        return _result(LookupStatus.AMBIGUOUS, calls, reason="requested TGN records were incomplete")
+    names = {record: found[record] for record in ids}
     return _result(LookupStatus.SUCCESS, calls, _source_value(tgn.with_names, places, names))
 
 
