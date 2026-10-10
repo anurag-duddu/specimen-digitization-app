@@ -13,7 +13,8 @@ the workflow saves the run once after it:
    may call. A field is resolved only to one of its candidates' literals.
 2. ``research_fields``: a field that is already an accurate read is finalized
    with no model call; every other field's expert runs at once, inside one
-   ``field_research`` span.
+   ``field_research`` span. After step 4, each field's decision is its own
+   ``field_research.field`` span inside it (``trace_fields``).
 3. ``apply_outcomes``: the outcomes become field values and evidence on the
    run, then the derived values (derive.py; G37, G41, G44), then the listed
    fields no reading states are marked "not on the label" (owner decision A;
@@ -41,7 +42,7 @@ import logging
 import os
 import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -99,6 +100,9 @@ LOGGER = logging.getLogger(__name__)
 
 STEP = FIELD_RESEARCH
 SOURCE = "field_research"
+# The step's Logfire span, and one span per field inside it (trace_fields).
+SPAN = "field_research"
+FIELD_SPAN = "field_research.field"
 # The source of the keyed-line parser's label rows (Workflow.parse).
 PARSED = "label"
 TOOL_VERSION = "field-research-sources-v1"
@@ -338,7 +342,7 @@ def outcome_counts(outcomes: Iterable[FieldOutcome]) -> dict[str, int]:
 
 async def research_fields(run, profile: CollectionProfile | None = None, *, resolver: FieldResolver,
         tools: SourceTools, concurrency: int = 10, deadline_seconds: float | None = None,
-        prepared=None, calls: list[SourceCall] | None = None) -> list[FieldOutcome]:
+        prepared=None, calls: list[SourceCall] | None = None, span=None) -> list[FieldOutcome]:
     """One outcome per task, in task order.
 
     An accurate read finalizes with no model call; a field with no approved
@@ -346,6 +350,8 @@ async def research_fields(run, profile: CollectionProfile | None = None, *, reso
     exception; every other field's resolver runs, up to ``concurrency`` at once.
     A field still running at ``deadline_seconds`` is cancelled as a timeout.
     ``prepared`` is build_tasks' result; ``calls`` collects every lookup made.
+    Its counts go on ``span``, the step's ``field_research`` span, or on a
+    span of that name of its own when none is given.
     """
     profile = profile_of(run) if profile is None else profile
     readings, tasks, context = build_tasks(run, profile) if prepared is None else prepared
@@ -363,7 +369,9 @@ async def research_fields(run, profile: CollectionProfile | None = None, *, reso
                 finalized_without_model=True)
         else:
             pending.append(task)
-    with logfire.span("field_research", fields_total=len(tasks), fields_researched=len(pending)) as span:
+    with (logfire.span(SPAN) if span is None else nullcontext(span)) as span:
+        span.set_attribute("fields_total", len(tasks))
+        span.set_attribute("fields_researched", len(pending))
         if pending:
             semaphore = asyncio.Semaphore(max(1, concurrency))
 
@@ -657,11 +665,17 @@ def _unsettled(task, state, *, literal=None, cited=(), reason) -> FieldValue:
 
 
 def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, blobs, date_rules=None,
-        sources: Sequence[SourceAnswer] = (), places, pending=frozenset(), final=False) -> FieldValue:
+        sources: Sequence[SourceAnswer] = (), places, pending=frozenset(), final=False,
+        decision: dict | None = None) -> FieldValue:
+    """The field's value from its outcome. ``decision`` collects, as codes,
+    which of the step's checks refused a resolved answer ("refusal") and which
+    rule decided it ("rule"), for the field's trace (trace_fields)."""
+    decision = {} if decision is None else decision
     answer = outcome.answer
     current = task.current
     if task.key in NO_APPROVED_AUTHORITY:
         # research_harness.evidence.missing_irn_resolution: unresolved, no party.
+        decision["rule"] = "irn_nonblocking_exception"
         return FieldValue(state=ValueState.UNKNOWN, evidence_ids=list(current.evidence_ids),
             reason=IRN_REASON)
     cited = [e for e in (answer.source_evidence_ids if answer else ()) if e in evidence
@@ -669,11 +683,13 @@ def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, b
     if outcome.failure is not None or answer is None:
         reason = FIELD_REASONS.get(outcome.failure, FIELD_REASONS[None])
         if final and outcome.failure == "source_unavailable":
+            decision["rule"] = "unreachable_on_last_attempt"
             reason = _unreachable_reason(run, outcome)
         return _unsettled(task, ValueState.UNRESOLVED, literal=current.literal, cited=cited, reason=reason)
     if answer.outcome == "resolved":
         refused = _refusal(task, answer, readings=readings, by_name=by_name, sources=sources)
         if refused is not None:
+            decision["refusal"] = refusal_code(refused.reason)
             # A pick between readers no source settles is ambiguous; a value no
             # decided transcript or place source supports is unresolved.
             if refused.differ:
@@ -684,6 +700,7 @@ def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, b
         misfit = _misfit(run, task, answer, sources=sources, readings=readings, by_name=by_name,
             places=places, pending=pending)
         if misfit is not None:
+            decision["refusal"] = refusal_code(misfit.reason)
             return _unsettled(task, ValueState.UNRESOLVED, literal=current.literal, cited=cited,
                 reason=f"{misfit.reason} {answer.explanation}")
         settled = _settled(run, task, outcome, by_name=by_name, evidence=evidence, asset_id=asset_id,
@@ -691,6 +708,7 @@ def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, b
         if settled is not None:
             _place_basis(run, task, answer, sources, settled)
             return settled
+        decision["refusal"] = "literal_not_in_readings"
         return _unsettled(task, ValueState.UNRESOLVED, literal=current.literal, cited=cited,
             reason="The answer's literal is not in the readings it names. " + answer.explanation)
     if answer.outcome == "label_lacks_value":
@@ -703,8 +721,11 @@ def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, b
     # unmatched (owner decision B); otherwise the label's text stays when a
     # reading writes it.
     if task.key == "taxon":
+        why: list[str] = []
         unmatched = _unmatched_taxon(run, task, outcome, readings=readings, by_name=by_name, evidence=evidence,
-            asset_id=asset_id, blobs=blobs, sources=sources)
+            asset_id=asset_id, blobs=blobs, sources=sources, why=why)
+        decision["rule"] = ("B_unmatched_taxon" if unmatched is not None
+            else "B_declined:" + (why[0] if why else "unknown"))
         if unmatched is not None:
             return unmatched
     literal = answer.literal if answer.literal and any(answer.literal in r.text for r in readings) else current.literal
@@ -820,8 +841,16 @@ def _expert_found_no_genus(outcome: FieldOutcome, literal: str, *, by_name,
         answer.literal in by_name[name].text for name in answer.reading_names if name in by_name)
 
 
+def _declined(why: list[str] | None, code: str) -> None:
+    """A rule that does not apply: its code joins `why` (the field's trace,
+    trace_fields), and the rule gives nothing."""
+    if why is not None:
+        why.append(code)
+    return None
+
+
 def _unmatched_taxon(run, task, outcome: FieldOutcome, *, readings, by_name, evidence, asset_id, blobs,
-        sources: Sequence[SourceAnswer]) -> FieldValue | None:
+        sources: Sequence[SourceAnswer], why: list[str] | None = None) -> FieldValue | None:
     """Owner decision B: the taxon as written, unmatched, when the expert
     found that GBIF cannot resolve it and the label names no genus. All of:
     - the expert answered sources_cannot_resolve itself, quoting the code
@@ -878,38 +907,41 @@ def _unmatched_taxon(run, task, outcome: FieldOutcome, *, readings, by_name, evi
     literal = task.current.literal
     code = morphocode(literal)
     if task.key != "taxon" or code is None:
-        return None
+        return _declined(why, "organiser_value_not_a_morphocode")
     if not _expert_found_no_genus(outcome, literal, by_name=by_name, sources=sources):
-        return None
+        return _declined(why, "expert_did_not_find_no_genus")
     if _gbif_asked_another_name((item.query for item in sources if item.source_id == "gbif"), literal):
-        return None
+        return _declined(why, "gbif_asked_another_name")
     if not task.candidates or any(morphocode(c.literal) != code for c in task.candidates):
-        return None
-    if (not label_names_no_genus(code, [r.text for r in readings]) or _code_label_unreadable(run, readings, code)
-            or _doubt_on_the_labels(run, readings)):
-        return None
+        return _declined(why, "candidates_not_one_morphocode")
+    if not label_names_no_genus(code, [r.text for r in readings]):
+        return _declined(why, "label_names_a_genus")
+    if _code_label_unreadable(run, readings, code):
+        return _declined(why, "code_label_unreadable")
+    if _doubt_on_the_labels(run, readings):
+        return _declined(why, "doubt_on_the_labels")
     want = collapse(literal)
     tools = frozenset(task.tools) & SOURCE_IDS
     found = labels(task, readings, [a for a in sources if a.source_id in tools])
     if not found or any(label.settled != frozenset({want}) or label.by_source for label in found.values()):
-        return None
+        return _declined(why, "readers_do_not_settle")
     written = reader_literals(task, readings)
     decided = {r.region_id for r in readings if r.input_source == DECIDED}
     named = [r for r in readings if r.region_id in found and want in written.get(r.name, ())
         and (r.input_source == DECIDED or r.region_id not in decided)]
     whole = candidate_literal(task, readings, literal, named) if named else None
     if whole is None:
-        return None
+        return _declined(why, "no_whole_candidate")
     answer = FieldAnswer(outcome="resolved", literal=whole, reading_names=[r.name for r in named],
         explanation=UNMATCHED)
     # The agreement rules every resolved answer meets (agreement.refusal),
     # #284's guard against a candidate that cuts its quoted name among them.
     if _refusal(task, answer, readings=readings, by_name=by_name, sources=sources) is not None:
-        return None
+        return _declined(why, "agreement_refusal")
     value = _settled(run, task, FieldOutcome(task.key, answer), by_name=by_name, evidence=evidence,
         asset_id=asset_id, blobs=blobs)
     if value is None:
-        return None
+        return _declined(why, "literal_not_in_readings")
     lookup = next((item for item in run.lookups if _no_name(item, whole)), None)
     if lookup is None:
         # GBIF's answer for a name with no genus, made with no request. First,
@@ -1037,7 +1069,7 @@ def _taxon_literals(run, tasks: Sequence[FieldTask], outcomes: Sequence[FieldOut
 
 def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[FieldTask],
         outcomes: Sequence[FieldOutcome], *, blobs=None, calls: Sequence[SourceCall] = (),
-        asset_id: str | None = None) -> list[str]:
+        asset_id: str | None = None, decisions: dict[str, dict] | None = None) -> list[str]:
     """Turn the outcomes into the run's field values and evidence, in memory only.
 
     resolved: supported, with the literal, its lineage, the label rows of the
@@ -1061,7 +1093,8 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     label does not state (mark_not_on_label); the keys derived are returned.
     Last, a field whose expert's answer stood although a source it asked
     could not be reached (FieldOutcome.unreachable) ends its reason with a
-    note naming that source (_unreachable_note).
+    note naming that source (_unreachable_note). ``decisions`` collects, per
+    field, the codes of the checks and rules that decided it (trace_fields).
     """
     from .agreement import PLACE_ORDER
 
@@ -1083,18 +1116,29 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     ordered = sorted(outcomes, key=lambda o: PLACE_ORDER.index(o.key) if o.key in PLACE_ORDER else len(PLACE_ORDER))
     pending = {outcome.key for outcome in ordered}
     final = last_attempt(run)
+    decisions = {} if decisions is None else decisions
     for outcome in ordered:
         task = tasks_by_key.get(outcome.key)
         pending.discard(outcome.key)
         if task is None or task.key in human:
             continue
+        decision = decisions.setdefault(task.key, {})
         run.fields[task.key] = _field_value(run, task, outcome, readings=readings, by_name=by_name,
             evidence=evidence, asset_id=asset_id, blobs=blobs, date_rules=profile.date_rules,
-            sources=received.get(task.key, ()), places=places, pending=frozenset(pending), final=final)
+            sources=received.get(task.key, ()), places=places, pending=frozenset(pending), final=final,
+            decision=decision)
     eligible = [key for key in field_keys(profile) if key not in human]
     derived = derive.fill(run, eligible=eligible, asset_id=asset_id, blobs=blobs)
+    for key in derived:
+        decisions.setdefault(key, {})["rule"] = "derived"
     # Last, so that a value derived above is never marked absent.
-    mark_not_on_label(run, profile, tasks, outcomes, readings=readings, asset_id=asset_id, blobs=blobs)
+    declined: dict[str, str] = {}
+    for key in mark_not_on_label(run, profile, tasks, outcomes, readings=readings, asset_id=asset_id, blobs=blobs,
+            why=declined):
+        decisions.setdefault(key, {})["rule"] = "A_not_on_label"
+    for key, code in declined.items():
+        # A value derived above keeps "derived" (rule A declines it as present).
+        decisions.setdefault(key, {}).setdefault("rule", "A_declined:" + code)
     # An answer that stood although a source could not be reached names it.
     rows = {item.id: item for item in run.evidence}
     for outcome in outcomes:
@@ -1293,7 +1337,7 @@ def not_on_label_excerpt(key: str, readings: Sequence[Reading]) -> str:
 
 def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask],
         outcomes: Sequence[FieldOutcome], *, readings: Sequence[Reading] | None = None,
-        asset_id: str | None = None, blobs=None) -> list[str]:
+        asset_id: str | None = None, blobs=None, why: dict[str, str] | None = None) -> list[str]:
     """Owner decision A (2026-10-09): a field on the profile's list
     (not_on_label_keys) that a person has not decided, researched in this
     attempt, is marked "not on the label" when all of these hold:
@@ -1317,11 +1361,15 @@ def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask
     not cite readings of several labels (integrity.verify_evidence), so its
     excerpt and stored record name them (not_on_label_excerpt). A row an
     earlier attempt wrote is dropped from a field researched again. Returns
-    the keys marked."""
+    the keys marked; ``why`` collects, as a code, why each field whose
+    expert answered label_lacks_value was not marked (trace_fields)."""
     readings = run_readings(run) if readings is None else readings
     tasks_by_key = {task.key: task for task in tasks}
     by_key = {o.key: o for o in outcomes if o.key in tasks_by_key}
     human = human_keys(run)
+    why = {} if why is None else why
+    lacking = {key for key, o in by_key.items() if key not in human and o.failure is None and o.answer is not None
+        and o.answer.outcome == "label_lacks_value" and not o.finalized_without_model}
     rows = {item.id: item for item in run.evidence}
     for key in by_key:
         value = run.fields.get(key)
@@ -1332,28 +1380,34 @@ def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask
             value.evidence_relations.pop(stale, None)
     allowed = not_on_label_keys(profile)
     if not allowed or not _whole_label_read(run, readings):
+        why.update(dict.fromkeys(lacking, "label_not_read_whole" if allowed else "not_listed"))
         return []
     elevation = None
     marked = []
     for key in field_keys(profile):
         outcome, value = by_key.get(key), run.fields.get(key)
         if key not in allowed or key in human or outcome is None or value is None:
+            if key in lacking:
+                why[key] = "not_listed"
             continue
         answer = outcome.answer
-        if (outcome.failure is not None or answer is None or answer.outcome != "label_lacks_value"
-                or outcome.finalized_without_model):
+        if key not in lacking:
             continue
         if value.state != ValueState.NOT_PRESENT or any((value.literal, value.parsed, value.normalized,
                 value.authority_id, value.authority_identity, value.verbatim_by_observation)):
+            why[key] = "value_present"
             continue
         if any(not (key in INSIDE_A_PLACE and _inside_a_settled_place(run, key, text))
                 for text in _organiser_texts(tasks_by_key[key])):
+            why[key] = "organiser_found_text"
             continue
         if key in ELEVATION_FIELDS:
             elevation = _elevation_written(run, readings) if elevation is None else elevation
             if elevation:
+                why[key] = "elevation_written"
                 continue
         if key == "precise_location" and not _place_settled_below_province(run):
+            why[key] = "no_city_or_county_settled"
             continue
         record = json.dumps({"field_key": key, "check": "not_on_label", "readings": [
             {"name": r.name, "region_id": r.region_id, "observation_id": r.observation_id,
@@ -1394,6 +1448,81 @@ def not_on_label(key: str, value: FieldValue, run, evidence: Mapping[str, Eviden
                 and row.source == SOURCE and row.locator == NOT_ON_LABEL_CHECK and row.excerpt == expected):
             return True
     return False
+
+
+# ---- each field's trace ---------------------------------------------------
+
+# agreement's reasons for refusing a resolved answer, by constant name.
+REFUSALS = ("DIFFER", "LABELS_DIFFER", "NOT_DECIDED", "NOT_CANDIDATE", "PART_OF_NAME", "DOUBTFUL_GENUS",
+    "NO_PLACE", "NO_PARENTS", "NO_COUNTRY", "NOT_IN_COUNTRY", "NOT_IN_PROVINCE", "NEAR_UNFIT")
+# A lookup's status as a field's trace names it. Logfire's default scrubber
+# replaces any attribute whose value holds "auth" or "credential", so the two
+# refusals (HTTP 401 and 403) are renamed.
+TRACE_STATUS = {LookupStatus.AUTHENTICATION: "login_refused", LookupStatus.AUTHORIZATION: "access_refused"}
+
+
+def refusal_code(reason: str) -> str:
+    """A refusal's reason (one of agreement's fixed texts) as its code, the
+    constant's name in lower case ("no_place"); "other" for any other text."""
+    from . import agreement
+
+    return next((name.lower() for name in REFUSALS if getattr(agreement, name) == reason), "other")
+
+
+def trace_fields(run, tasks: Sequence[FieldTask], outcomes: Sequence[FieldOutcome], calls: Sequence[SourceCall],
+        decisions: Mapping[str, Mapping[str, str]]) -> None:
+    """One FIELD_SPAN span per field of this attempt, inside the step's SPAN:
+    what the step decided after the field's expert, beside the expert's own
+    agent run, so a person can build evals from the traces. Codes only: the
+    field key; the expert's outcome, its failure, whether the answer is the
+    resolver's fallback and whether the field was finalized without a model
+    call; the value's state and layer and the run's reason codes for it; the
+    check that refused a resolved answer and the rule that decided the field
+    (``decisions``: apply_outcomes); each lookup as source and status, the
+    sources that answered and those that could not be reached. The literal,
+    the value, the authority and the reason, which may quote the labels, are
+    added only when the process captures approved content
+    (provider_privacy.approved_content_configured)."""
+    from specimen_digitization.application.domain import OPERATIONAL
+    from specimen_digitization.provider_privacy import approved_content_configured
+
+    content = approved_content_configured()
+    by_key = {outcome.key: outcome for outcome in outcomes}
+    made: dict[str, list[SourceCall]] = {}
+    for call in calls:
+        made.setdefault(call.field_key, []).append(call)
+    for task in tasks:
+        outcome = by_key.get(task.key)
+        if outcome is None:
+            continue
+        value = run.fields.get(task.key) or FieldValue()
+        decision = decisions.get(task.key, {})
+        lookups = made.get(task.key, [])
+        attributes = {
+            "field_key": task.key,
+            "expert_outcome": outcome.answer.outcome if outcome.answer is not None else "none",
+            "failure": outcome.failure or "none",
+            "fallback": outcome.fallback,
+            "finalized_without_model": outcome.finalized_without_model,
+            "model_calls": outcome.model_calls,
+            "state": str(value.state),
+            "layer": value.layer or "none",
+            "reason_codes": [reason for reason in run.reasons if reason.endswith(":" + task.key)
+                or (task.key == "taxon" and reason == "taxonomy_unresolved")],
+            "refusal": decision.get("refusal", "none"),
+            "rule": decision.get("rule", "none"),
+            "lookups": [f"{call.source_id}:{TRACE_STATUS.get(call.answer.status, call.answer.status.value)}"
+                for call in lookups],
+            "sources_answered": sorted({call.source_id for call in lookups if call.answer.status not in OPERATIONAL}),
+            "sources_unreachable": list(outcome.unreachable),
+        }
+        if content:
+            # "source_record" is the value's authority id, under a name the
+            # scrubber keeps (TRACE_STATUS).
+            attributes.update(literal=value.literal or "", value=value.normalized or value.parsed or "",
+                source_record=value.authority_id or "", reason=value.reason or "")
+        with logfire.span(FIELD_SPAN, **attributes):
+            pass
 
 
 # ---- the scientific rules -------------------------------------------------
@@ -1924,26 +2053,30 @@ class FieldResearchStep:
             raise OperationalBlock("field_research_unconfigured") from error
         calls: list[SourceCall] = []
         outcomes = None
-        try:
-            outcomes = asyncio.run(self._research(run, profile, prepared, resolver, workflow.blobs,
-                calls, self._bound(deadline_seconds)))
-        finally:
-            # Research cut short by an error still settles to what the meter
-            # spent: once asyncio.run returns no request is in flight, and each
-            # one that ended early kept its worst case (MeteredModel). Only a
-            # reservation still outstanding leaves the spend unknown.
-            known = outcomes is not None or meter.outstanding_micros == 0
-            record_cost(run, route, reserved=cap_micros,
-                spent=meter.spent_micros if known else None,
-                outcome="completed" if outcomes is not None else "failed" if known else "unknown",
-                model_calls=sum(o.model_calls for o in outcomes or ()))
-        try:
-            apply_outcomes(run, profile, prepared[1], outcomes, blobs=workflow.blobs, calls=calls,
-                asset_id=specimen.asset.id)
-            blocker = finalize_fields(run, profile, outcomes, specimen=specimen, blobs=workflow.blobs,
-                today=workflow.clock().date())
-        except EvidenceIntegrityError as error:
-            raise OperationalBlock(str(error)) from error
+        decisions: dict[str, dict] = {}
+        # Research, then each field's decision (trace_fields), in one span.
+        with logfire.span(SPAN) as span:
+            try:
+                outcomes = asyncio.run(self._research(run, profile, prepared, resolver, workflow.blobs,
+                    calls, self._bound(deadline_seconds), span))
+            finally:
+                # Research cut short by an error still settles to what the meter
+                # spent: once asyncio.run returns no request is in flight, and each
+                # one that ended early kept its worst case (MeteredModel). Only a
+                # reservation still outstanding leaves the spend unknown.
+                known = outcomes is not None or meter.outstanding_micros == 0
+                record_cost(run, route, reserved=cap_micros,
+                    spent=meter.spent_micros if known else None,
+                    outcome="completed" if outcomes is not None else "failed" if known else "unknown",
+                    model_calls=sum(o.model_calls for o in outcomes or ()))
+            try:
+                apply_outcomes(run, profile, prepared[1], outcomes, blobs=workflow.blobs, calls=calls,
+                    asset_id=specimen.asset.id, decisions=decisions)
+                blocker = finalize_fields(run, profile, outcomes, specimen=specimen, blobs=workflow.blobs,
+                    today=workflow.clock().date())
+            except EvidenceIntegrityError as error:
+                raise OperationalBlock(str(error)) from error
+            trace_fields(run, prepared[1], outcomes, calls, decisions)
         if blocker is not None:
             if run.paid_calls and run.paid_calls[-1]["step"] == STEP:
                 run.paid_calls[-1]["outcome"] = "failed"
@@ -1958,10 +2091,10 @@ class FieldResearchStep:
             bound = min(bound, deadline.remaining() - self.margin_seconds)
         return max(1.0, bound)
 
-    async def _research(self, run, profile, prepared, resolver, blobs, calls, bound):
+    async def _research(self, run, profile, prepared, resolver, blobs, calls, bound, span=None):
         async with self.tools_factory(run, profile, blobs) as tools:
             return await research_fields(run, profile, resolver=resolver, tools=tools,
-                concurrency=self.concurrency, deadline_seconds=bound, prepared=prepared, calls=calls)
+                concurrency=self.concurrency, deadline_seconds=bound, prepared=prepared, calls=calls, span=span)
 
 
 def _production_resolver(run, profile, meter):

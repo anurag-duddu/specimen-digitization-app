@@ -102,7 +102,16 @@ handover runs field research instead of the six specialists:
    the decided reading). The rules of step 5 apply to it.
 3. **One expert per field.** Every other field gets its own Pydantic AI agent
    (`field_<key>`), its own instructions (shared rules plus the field's brief)
-   and only its approved tools. All experts run at once.
+   and only its approved tools. All experts run at once. After the step has
+   decided (steps 5 to 7), each field of the attempt is one
+   `field_research.field` span inside the step's `field_research` span
+   (`step.trace_fields`): the expert's outcome, its failure and fallback,
+   the value's state and layer, the run's reason codes for the field, the
+   check that refused a resolved answer and the rule that decided the field
+   (rule A or B, a derivation, an unreachable source on the last attempt),
+   and each lookup as source and status. These are codes; the literal,
+   value, authority id and reason are added only when the worker captures
+   approved content.
 4. **Sources.** GBIF (with Catalogue of Life and Global Names Verifier
    alongside), GEOLocate, Getty TGN, Wikidata and NGA, plus deterministic date,
    elevation and catalogue-number checks. One request per distinct query per

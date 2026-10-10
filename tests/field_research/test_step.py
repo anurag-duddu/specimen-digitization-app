@@ -1333,10 +1333,13 @@ class TgnDown(FakeSources):
     WIKIDATA = {"United States": ("country", ()), "Illinois": ("state", ("United States",)),
         "Cook": ("county", ("Illinois", "United States"))}
 
-    def __init__(self, blobs):
-        super().__init__(blobs, down=("tgn",))
+    def __init__(self, blobs, down=()):
+        super().__init__(blobs)
 
     def _answer(self, source_id, query):
+        if source_id == "tgn":
+            return SourceAnswer("tgn", query, LookupStatus.AUTHORIZATION, (), None,
+                note="Getty TGN refused the request with HTTP 403")
         if source_id != "wikidata" or query not in self.WIKIDATA:
             return super()._answer(source_id, query)
         kind, within = self.WIKIDATA[query]
@@ -1349,11 +1352,11 @@ class TgnDown(FakeSources):
         return SourceAnswer("wikidata", query, LookupStatus.SUCCESS, (candidate,), evidence, note="match")
 
 
-def place_experts(county):
+def place_experts(county, scripts=None):
     """The real experts (experts.make_resolver) for the country, state and
     county, each asking Getty TGN and Wikidata about the label's text at once
     and then resolving on Wikidata's candidate, the county answering `county`
-    instead when given; test_step's scripts for every other field."""
+    instead when given; `scripts`, else test_step's, for every other field."""
 
     def play(messages, info):
         prompt = next(part.content for m in messages if isinstance(m, ModelRequest) for part in m.parts
@@ -1374,7 +1377,7 @@ def place_experts(county):
 
     expert = make_resolver(model_factory=lambda: FunctionModel(play),
         meter=CostMeter(1_000_000, input_micros_per_million=1, output_micros_per_million=1))
-    scripted = Scripted()
+    scripted = Scripted(scripts)
 
     async def resolver(task, readings, context, *, tools):
         if task.key in ("country", "province_state", "county"):
@@ -1514,6 +1517,65 @@ def test_a_model_error_on_the_last_attempt_still_stops_the_retries(rig):
     *_, last = until_the_last_attempt(rig, Scripted({"country": failing("model_error")}))
     assert (last.stage, last.dead_letter, last.blocker) == (
         "processing_blocked", True, "retry_budget_exhausted:field_research_model_error")
+
+
+def field_spans(capfire):
+    """The step's field_research span and its field spans, by field key."""
+    spans = capfire.exporter.exported_spans_as_dict()
+    [step] = [span for span in spans if span["name"] == "field_research"]
+    fields = {span["attributes"]["field_key"]: span for span in spans if span["name"] == "field_research.field"}
+    return step, fields
+
+
+@pytest.mark.parametrize("content", [False, True])
+def test_each_fields_decision_is_its_own_span_inside_the_steps(rig, capfire, monkeypatch, content):
+    """A settled field (the taxon, on GBIF), a refused one (a city no place
+    source confirms) and one settled although a source could not be reached
+    (the state, on Wikidata with Getty TGN down): what the step decided after
+    each expert, as codes; the field's text only under approved content."""
+    from specimen_digitization import provider_privacy
+
+    monkeypatch.setattr(provider_privacy, "approved_content_configured", lambda: content)
+    mounted(rig, place_experts(None, {"city": answering(resolved(LABEL["city"]))}), sources=TgnDown)
+    run = rig.workflow.step(rig.principal, rig.specimen.id).run
+    assert (run.stage, run.disposition) == ("finalized", Disposition.REVIEW)
+    step, fields = field_spans(capfire)
+    assert set(fields) == set(field_step.field_keys(field_step.profile_of(run)))
+    assert all(span["parent"]["span_id"] == step["context"]["span_id"] for span in fields.values())
+    codes = ("expert_outcome", "failure", "fallback", "finalized_without_model", "state", "layer",
+        "reason_codes", "refusal", "rule", "lookups", "sources_answered", "sources_unreachable")
+    # Logfire exports a list attribute as its JSON text.
+    lists = {"reason_codes", "lookups", "sources_answered", "sources_unreachable"}
+    shown = {key: {name: json.loads(span["attributes"][name]) if name in lists else span["attributes"][name]
+        for name in codes} for key, span in fields.items()}
+    assert shown["taxon"] == {"expert_outcome": "resolved", "failure": "none", "fallback": False,
+        "finalized_without_model": False, "state": "supported", "layer": "settled", "reason_codes": [],
+        "refusal": "none", "rule": "none", "lookups": ["gbif:success"], "sources_answered": ["gbif"],
+        "sources_unreachable": []}
+    assert shown["city"] == {"expert_outcome": "resolved", "failure": "none", "fallback": False,
+        "finalized_without_model": False, "state": "unresolved", "layer": "none",
+        "reason_codes": ["mandatory_unresolved:city"], "refusal": "no_place", "rule": "none", "lookups": [],
+        "sources_answered": [], "sources_unreachable": []}
+    assert shown["province_state"] == {"expert_outcome": "resolved", "failure": "none", "fallback": False,
+        "finalized_without_model": False, "state": "supported", "layer": "settled", "reason_codes": [],
+        "refusal": "none", "rule": "none", "lookups": ["tgn:access_refused", "wikidata:success"],
+        "sources_answered": ["wikidata"], "sources_unreachable": ["tgn"]}
+    assert shown["collectors"]["finalized_without_model"] and shown["collectors"]["expert_outcome"] == "resolved"
+    assert shown["identified_by_irn"]["rule"] == "irn_nonblocking_exception"
+    # The label states one date; the step derives its end (G44).
+    assert (shown["date_visited_to"]["expert_outcome"], shown["date_visited_to"]["rule"]) == (
+        "label_lacks_value", "derived")
+    assert "Scrubbed" not in json.dumps([span["attributes"] for span in fields.values()])
+    text = json.dumps([span["attributes"] for span in fields.values()])
+    if not content:
+        assert not any(name in span["attributes"] for span in fields.values()
+            for name in ("literal", "value", "source_record", "reason"))
+        assert not any(value in text for value in (*LABEL.values(), GBIF_NAME, "J. Smith"))
+        return
+    taxon = fields["taxon"]["attributes"]
+    assert (taxon["literal"], taxon["value"], taxon["source_record"]) == (LABEL["taxon"], GBIF_NAME, GBIF_KEY)
+    assert fields["province_state"]["attributes"]["reason"].endswith(
+        "Getty TGN could not be reached; settled from Wikidata.")
 
 
 def test_a_run_without_a_harness_route_keeps_the_ordinary_plan_step(rig):
