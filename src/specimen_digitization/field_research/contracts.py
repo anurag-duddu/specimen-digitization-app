@@ -209,7 +209,8 @@ class FieldOutcome:
     # The approved sources the expert could not reach: a lookup whose last
     # attempt (per source and query) ended in an outage, in call order
     # (experts.SOURCE_OUTAGES). When the expert's answer stands, the field's
-    # reason names them (step._unreachable_note).
+    # reason names them (step._unreachable_note); so does a source_unavailable
+    # field's on the step's last attempt (step._unreachable_reason).
     unreachable: tuple[str, ...] = ()
 
 

@@ -1460,6 +1460,62 @@ def test_a_blocked_run_retries_only_its_unsettled_fields_and_settles_its_cost(ri
     verify_evidence(done, rig.blobs)
 
 
+class TgnDownForTheCountry(FakeSources):
+    """Getty TGN never answers the country's lookup."""
+
+    def _answer(self, source_id, query):
+        if (source_id, query) == ("tgn", LABEL["country"]):
+            return SourceAnswer("tgn", query, LookupStatus.PROVIDER, (), None, note="unreachable")
+        return super()._answer(source_id, query)
+
+
+async def tgn_never_answers(task, readings, tools):
+    """An expert none of whose lookups answered: Getty TGN is down."""
+    answer = await tools.lookup("tgn", LABEL[task.key], field_key=task.key)
+    assert answer.status == LookupStatus.PROVIDER
+    outcome = FieldOutcome(task.key, FieldAnswer(outcome="sources_cannot_resolve", explanation="TGN is down."),
+        failure="source_unavailable", model_calls=1)
+    outcome.unreachable = ("tgn",)
+    return outcome
+
+
+def until_the_last_attempt(rig, resolver):
+    """The field research step, retried as the workflow schedules it, to its
+    last allowed attempt; each attempt's run."""
+    mounted(rig, resolver, sources=TgnDownForTheCountry)
+    runs = []
+    for _ in range(rig.specimen.run.profile.execution.max_attempts):
+        runs.append(rig.workflow.step(rig.principal, rig.specimen.id).run)
+        rig.clock.now += timedelta(hours=1)
+    return runs
+
+
+def test_a_source_still_unreachable_on_the_last_attempt_goes_to_review_and_the_run_finalizes(rig):
+    *early, last = until_the_last_attempt(rig, Scripted({"country": tgn_never_answers}))
+    # Earlier attempts retry: the outage may clear.
+    for attempt, run in enumerate(early, 1):
+        assert (run.stage, run.blocker, run.attempts[FIELD_RESEARCH]) == (
+            "retry_scheduled", "lookup_operational_failure", attempt)
+        assert run.fields["country"].reason == field_step.FIELD_REASONS["source_unavailable"]
+    # The last one sends the country to review, naming the source, and finalizes the rest.
+    assert (last.stage, last.blocker, last.dead_letter, last.disposition) == (
+        "finalized", None, False, Disposition.REVIEW)
+    assert last.attempts[FIELD_RESEARCH] == 3 and last.completed_steps[-1] == FIELD_RESEARCH
+    assert (last.fields["country"].state, last.fields["country"].reason) == (
+        ValueState.UNRESOLVED, "Getty TGN could not be reached after 3 attempts.")
+    assert "mandatory_unresolved:country" in last.reasons
+    assert not [reason for reason in last.reasons if reason.startswith("lookup_operational_failure")]
+    assert last.fields["taxon"].layer == "settled" and last.paid_calls[-1]["outcome"] == "completed"
+
+
+def test_a_model_error_on_the_last_attempt_still_stops_the_retries(rig):
+    """Only a source lookup's outage is graceful on the last attempt; a model
+    or provider failure keeps its block."""
+    *_, last = until_the_last_attempt(rig, Scripted({"country": failing("model_error")}))
+    assert (last.stage, last.dead_letter, last.blocker) == (
+        "processing_blocked", True, "retry_budget_exhausted:field_research_model_error")
+
+
 def test_a_run_without_a_harness_route_keeps_the_ordinary_plan_step(rig):
     mounted(rig, Scripted())
     run = rig.specimen.run
