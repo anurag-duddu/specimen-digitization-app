@@ -15,6 +15,15 @@ class PublicationUnavailable(RuntimeError):
     pass
 
 
+class ResearchNotRegistered(PublicationUnavailable):
+    """No research is registered for the record's current revision.
+
+    Either none was ever registered, or the one registered is for an earlier
+    revision or run (the binding read then returns no row). The record has no
+    research to show; that is not an outage, so the API answers 404, not 503.
+    """
+
+
 class PublicationGuard(FrozenRecord):
     scope: ResearchScope
     binding_digest: str = Field(pattern=r"^[0-9a-f]{64}$")

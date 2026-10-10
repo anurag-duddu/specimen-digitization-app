@@ -20,7 +20,7 @@ from specimen_digitization.application.domain import Principal
 from specimen_digitization.process_logging import log_code
 
 from .canonical_binding import BindingUnavailable
-from .compatibility import PublicationUnavailable
+from .compatibility import PublicationUnavailable, ResearchNotRegistered
 from .contracts import FieldKey
 from .persistence import BudgetExceeded, CasConflict, HeldUnknown, StaleWork
 from .service import ResearchLocator, ResearchService, RetryAccepted, RetryFieldRequest
@@ -83,6 +83,10 @@ class _PrivateResearchRoute(APIRoute):
                 response = JSONResponse({"detail":"research_state_changed"}, status_code=409)
             except (HeldUnknown, BudgetExceeded):
                 response = JSONResponse({"detail":"research_retry_unavailable"}, status_code=409)
+            except ResearchNotRegistered:
+                # The record has no research for its current revision: nothing
+                # to show, and not an outage, so no 503 and no log line.
+                response = JSONResponse({"detail":"research_not_registered"}, status_code=404)
             except Exception as error:
                 _log_unavailable(request.method, route_path, error)
                 response = JSONResponse({"detail":"research_service_unavailable"}, status_code=503)
