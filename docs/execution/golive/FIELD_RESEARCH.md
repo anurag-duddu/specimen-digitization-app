@@ -139,19 +139,26 @@ handover runs field research instead of the six specialists:
      when the label marks its genus as doubtful (`checks.genus_in_doubt`,
      through `agreement._genus_in_doubt`): wherever the quote of a candidate
      of that literal, the text of a reading the answer names, or the text of
-     its label's decided reading writes the literal, a qualifier of the
-     doubt signs' list (below, under B) or a "?" stands in the
-     whitespace-separated part holding the literal's first word
-     ("cfr.Epipsocus", "Epipsocus?") or in the part just before it, across a
-     line break too ("cfr. Epipsocus", "(?) Epipsocus"), or a part with a
-     "?" and no letter or digit stands just after it ("Epipsocus ?"). The
-     value goes to
-     review ("The label marks this name's genus as doubtful."): GBIF may
-     decide the bare genus the taxon brief has the expert look up, and an
-     expert that then resolves the taxon as that genus ("Epipsocus" quoting
-     "cfr. Epipsocus", or quoting "Epipsocus" on a reading line that writes
-     "Epipsocus?") is refused. A qualifier after the genus ("Epipsocus cf.
-     sp. 1", G25) is none.
+     its label's decided reading writes the literal:
+     - a qualifier, read as the doubt signs read one (below, under B; a
+       person's initials such as "C.F." are none), stands in the
+       whitespace-separated part holding the literal's first word
+       ("cfr.Epipsocus") or in the part just before it, across a line
+       break too ("cfr. Epipsocus", "cf." ending the line above); or
+     - a question mark ("?", the full-width one, U+FF1F, or the inverted
+       one, U+00BF: `checks.QUESTION_MARKS`) is on that word itself ("Epipsocus?",
+       "?Epipsocus", "Epipsocus(?)"), or stands alone, a part with no letter
+       or digit, just before it on its line ("? Epipsocus", "(?)
+       Epipsocus").
+
+     A question mark on another word ("Davao? Epipsocus"), any on the line
+     above ("1946?" above "Epipsocus sp. 1"), one after the genus
+     ("Epipsocus ?") and a qualifier after the genus ("Epipsocus cf. sp.
+     1", G25) are none. The value goes to review ("The label marks this
+     name's genus as doubtful."): GBIF may decide the bare genus the taxon
+     brief has the expert look up, and an expert that then resolves the
+     taxon as that genus ("Epipsocus" quoting "cfr. Epipsocus", or quoting
+     "Epipsocus" on a reading line that writes "Epipsocus?") is refused.
    - A value that differs from the literal is a source candidate the expert
      was given, or a deterministic check's settled parse of that literal (an
      ambiguous check's readings are only options for a person). An elevation
@@ -556,7 +563,8 @@ all of these hold:
   (below) with its final period shed at the start, or at the end with no
   letter right before it, written against the word or as a word of its
   own ("cf.Epipsocus", "c.f.Epipsocus" and "Conf.Epipsocus" are
-  "Epipsocus"; `checks._token`); what then holds no letter or digit (a sex
+  "Epipsocus"; a person's initials such as "C.F." keep their letters;
+  `checks._token`); what then holds no letter or digit (a sex
   sign, a "+", a lone "?" or "cf.") is no token. Two tokens are read: the one
   written immediately before the code (the last before it on its line or,
   when its line has none there, the last of the nearest line above that
@@ -594,18 +602,25 @@ all of these hold:
   (`step._doubt_on_the_labels`): none in any reading's, reader's or
   transcript's text of any label, whether or not that label writes the
   code. The signs are one list, `checks.DOUBT_SIGNS`:
-  - a "?" in a whitespace-separated part that holds a letter
-    ("Epipsocus?", "?Epipsocus", "Epipsocus(?)", "E.?"), or in the part
-    just before or just after one, across a line break too ("Epipsocus
-    ?", "(?) Epipsocus", "Epipsocus" with "?" on the next line);
+  - a question mark ("?", the full-width one, U+FF1F, or the inverted
+    one, U+00BF: `checks.QUESTION_MARKS`) in a whitespace-separated part
+    that holds a letter ("Epipsocus?", "?Epipsocus", "Epipsocus(?)",
+    "E.?"), or in the part just before or just after one, across a line
+    break too ("Epipsocus ?", "(?) Epipsocus", "Epipsocus" with "?" on the
+    next line);
   - a qualifier (`checks.DOUBT_QUALIFIERS`): cf, cfr, aff, affin,
     affinis, nr, near, prob, probably, poss, possibly, conf, vic or prope,
-    each a whole word in any case, with or without its periods (a period
-    may follow each of its letters, so "c.f.", "C.F." and "n.r." are "cf"
-    and "nr"), with no letter right before or after it: apart or against a
-    word ("cf. Epipsocus", "CF.Epipsocus", "(cf) Epipsocus", "cfr.
-    Epipsocus", "Epipsocus nr", "possibly Epipsocus"), never inside a
-    longer word ("Nearctic", "Staff", "Victoria", "Proper");
+    each a whole word, in any case except vic, which counts in lower case
+    only (`checks.LOWER_CASE_QUALIFIERS`: "vic." and "v.i.c.", never "Vic."
+    or "VIC", Victoria), and with or without its periods (a period may
+    follow each of its letters, so "c.f.", "Cf.", "CF." and "n.r." are
+    "cf" and "nr"), with no letter right before or after it: apart or
+    against a word ("cf. Epipsocus", "CF.Epipsocus", "(cf) Epipsocus",
+    "cfr. Epipsocus", "Epipsocus nr", "possibly Epipsocus"), never inside a
+    longer word ("Nearctic", "Staff", "Victoria", "Proper"). Two or more
+    capitals each followed by a period are a person's initials, never a
+    qualifier (`checks._initials`: "C.F." in "leg. C.F. Baker" or "Baker,
+    C.F.", "N.R. Smith");
   - a placeholder for an unread word, by rule A's own test
     (`checks.shows_placeholder`): "[unreadable]", "(unreadable)",
     "[illegible]", "(illegible)", "[illeg.]", "[illeg]", "(illeg.)",
@@ -623,7 +638,8 @@ all of these hold:
   label, and "cf. Epipsocus", "cfr. Epipsocus" or "c.f. Epipsocus"
   anywhere, a determination label of its own included, keep the taxon in
   review, as does a locality's "near" or "nr." and a "?" beside any
-  word. No reading of 105526321, 105526326 or 105526327 shows a sign.
+  word; a collector's "C.F. Baker" and a locality's "Melbourne, Vic." do
+  not. No reading of 105526321, 105526326 or 105526327 shows a sign.
   105526324's unreadable label, whose readers list the span and write
   "[unreadable]", holds back the "sp 22" another of its labels writes;
 - the readers settle on the literal by the rule for readers that disagree
