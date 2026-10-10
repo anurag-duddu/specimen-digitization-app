@@ -206,7 +206,19 @@ handover runs field research instead of the six specialists:
    An unreadable answer of GBIF, Getty TGN, Wikidata or NGA stays an outage:
    it is a body that is not the source's answer or breaks its shape (an
    invalid identifier, more records than were asked for), not an answer
-   about the query, and a later attempt may read one.
+   about the query, and a later attempt may read one. These answers that
+   report a hit the parser cannot read are unreadable too, never no match
+   (the second review of #299: readers "Yepocapa" and "Yepocapo" settled
+   on such a Getty TGN answer for "Yepocapo"; the field now goes to
+   review): a Getty TGN reconciliation answer with a hit that is not an
+   object, has an id other than `tgn/<digits>` or has no name, even beside
+   hits that can be read (`georef_tgn.parse_reconcile`); an NGA name search
+   or feature read with a row that has no integer feature id (`ufi`) or no
+   termination field (`georef_nga.parse_search`, `parse_features`); and a
+   Wikidata search none of whose items can be read
+   (`georef_wikidata.parse_search`). A TGN hit of another Getty vocabulary
+   (AAT, ULAN, CONA or IA: a concept, a person, a work or a subject) is no
+   place and is skipped, so an answer of such hits only is no match.
 
    **A source that cannot be reached** (a lookup whose last attempt was rate
    limited, timed out, was refused or redirected, failed on the server or
