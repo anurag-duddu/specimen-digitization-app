@@ -10,7 +10,9 @@ import io
 import json
 import logging
 import re
+import threading
 import time
+from collections import Counter
 from pathlib import Path
 
 import httpx
@@ -34,6 +36,7 @@ from specimen_digitization.application.integrity import (
 )
 from specimen_digitization.application.storage import LocalBlobs
 from specimen_digitization.field_research.contracts import PlaceRef, SourceCandidate
+from specimen_digitization.field_research import sources as approved_sources
 from specimen_digitization.field_research.sources import (
     EXCERPT_LIMIT,
     ApprovedSources,
@@ -517,6 +520,117 @@ def test_geolocate_spacing_holds_across_records(tmp_path):
     client = httpx.AsyncClient(transport=httpx.MockTransport(nothing))
     first, second = (ApprovedSources(blobs=blobs, client=client) for _ in range(2))
     assert first._pacer is second._pacer is SOURCE_PACER
+
+
+# --- At most two requests at a time to each gazetteer ---
+
+
+class Held:
+    """An offline provider that holds each request a moment and counts the
+    requests in flight to each host, from any thread."""
+
+    def __init__(self, seconds=0.02):
+        self.seconds = seconds
+        self._lock = threading.Lock()
+        self.active, self.peak, self.total = Counter(), Counter(), Counter()
+
+    async def __call__(self, request):
+        host = request.url.host
+        with self._lock:
+            self.active[host] += 1
+            self.total[host] += 1
+            self.peak[host] = max(self.peak[host], self.active[host])
+        try:
+            await asyncio.sleep(self.seconds)
+        finally:
+            with self._lock:
+                self.active[host] -= 1
+        return httpx.Response(404)  # Final: one request per lookup.
+
+
+def held_sources(tmp_path, held, slots=None):
+    """A record's sources over `held`, with the process's slots unless given."""
+    given = {} if slots is None else {"slots": slots}
+    return ApprovedSources(blobs=LocalBlobs(tmp_path / "blobs"),
+                           client=httpx.AsyncClient(transport=httpx.MockTransport(held)), **given)
+
+
+@pytest.mark.asyncio
+async def test_at_most_two_requests_at_a_time_go_to_each_gazetteer(tmp_path):
+    held = Held()
+    tools = held_sources(tmp_path, held)
+    await asyncio.gather(*(tools.lookup(source, f"Place {name}", field_key="city")
+                           for source in ("tgn", "wikidata", "nga") for name in "ABCDE"))
+    hosts = {"services.getty.edu", "www.wikidata.org", "geonames.nga.mil"}
+    assert set(held.total) == hosts and all(held.total[host] == 5 for host in hosts)
+    # Each source is held to two at once on its own, not all three to two together.
+    assert {host: held.peak[host] for host in hosts} == dict.fromkeys(hosts, 2)
+
+
+def test_the_limit_holds_across_records_on_their_own_loops_and_threads(tmp_path):
+    """Each record researches on its own event loop (FieldResearchStep.run's
+    asyncio.run), maybe in its own thread: the two slots are the process's."""
+    held, slots = Held(), approved_sources.SourceSlots({"tgn": 2})
+
+    def record(n):
+        async def research():
+            tools = held_sources(tmp_path / str(n), held, slots)
+            await asyncio.gather(*(tools.lookup("tgn", f"Place {'XYZ'[n]}{name}", field_key="city")
+                                   for name in "ABCD"))
+        asyncio.run(research())
+
+    threads = [threading.Thread(target=record, args=(n,)) for n in range(3)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert held.total["services.getty.edu"] == 12 and held.peak["services.getty.edu"] == 2
+    assert slots.in_flight("tgn") == 0
+
+
+def test_a_request_cancelled_while_it_waits_never_keeps_a_slot():
+    async def scenario():
+        slots = approved_sources.SourceSlots({"tgn": 1})
+        entered, release = asyncio.Event(), asyncio.Event()
+
+        async def hold():
+            async with slots.slot("tgn"):
+                entered.set()
+                await release.wait()
+
+        async def take():
+            async with slots.slot("tgn"):
+                pass
+
+        first = asyncio.create_task(hold())
+        await entered.wait()
+        # Cancelled while it waits: it never had the slot.
+        waiting = asyncio.create_task(take())
+        await asyncio.sleep(0)
+        waiting.cancel()
+        # Cancelled just after the slot was passed to it: it passes it on.
+        given = asyncio.create_task(take())
+        await asyncio.sleep(0)
+        release.set()
+        await first
+        given.cancel()
+        results = await asyncio.gather(waiting, given, return_exceptions=True)
+        assert all(isinstance(result, asyncio.CancelledError) for result in results)
+        assert slots.in_flight("tgn") == 0
+        await asyncio.wait_for(take(), 1)
+        assert slots.in_flight("tgn") == 0
+
+    asyncio.run(scenario())
+
+
+def test_every_records_sources_share_the_process_slots_and_geolocate_keeps_its_spacing(tmp_path):
+    blobs = LocalBlobs(tmp_path / "blobs")
+    client = httpx.AsyncClient(transport=httpx.MockTransport(nothing))
+    first, second = (ApprovedSources(blobs=blobs, client=client) for _ in range(2))
+    assert first._slots is second._slots is approved_sources.SOURCE_SLOTS
+    # GEOLocate is spaced (SOURCE_PACER), never held; GBIF is neither.
+    assert approved_sources.SOURCE_SLOTS.limits == {"tgn": 2, "wikidata": 2, "nga": 2}
+    assert first._pacer is SOURCE_PACER
 
 
 # --- Retries and failures ---
