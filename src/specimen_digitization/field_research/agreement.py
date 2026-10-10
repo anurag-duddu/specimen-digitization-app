@@ -14,7 +14,13 @@ fields' outcomes:
    parser read) of each reading the answer names, or, on a label with a
    decided transcript, of the decided reading. Literals are compared after
    NFC and whitespace collapse only (checks.collapse): "E. slope" and
-   "E.slope" differ. A field with no such candidate is never resolved. For a
+   "E.slope" differ. Or else, read from the transcript (literal_basis,
+   TRANSCRIPT; coordinator's ruling of 2026-10-09): each of those readings
+   writes the literal as a run of whole words within one line
+   (verbatim_runs), and it cuts or extends none of that reading's
+   candidates (_cut_candidate); a taxon so read must sit in no longer name
+   on its reading (_longer_written). Points 1, 3 and 4 hold for it as for a
+   candidate, its readers per point 3 as agreeing_runs reads them. For a
    taxon, the candidate's quote, the reading's text it was taken from, must
    write no longer name around the literal (checks.longer_name): a candidate
    "Danaus plexippus" quoting "Danaus plexippus megalippe" (N3 of the third
@@ -190,6 +196,7 @@ NOT_CANDIDATE = "This value is not the text found for this field in the readings
 PART_OF_NAME = "The label writes a longer scientific name than this value."
 DOUBTFUL_GENUS = "The label marks this name's genus as doubtful."
 NO_PLACE = "No approved place source confirms this value."
+NOT_EVERY_READER = "Not every reader of the label writes this text."
 
 
 @dataclass(frozen=True)
@@ -258,15 +265,147 @@ def candidate_literal(task: FieldTask, readings: Sequence[Reading], literal: str
     return whole
 
 
+# Where a resolved literal comes from (literal_basis): an organiser's whole
+# candidate, or text the expert read in the transcript itself.
+CANDIDATE, TRANSCRIPT = "candidate", "transcript"
+# A comma or a semicolon ends a word even with no space after it
+# ("Yepocapa,4800 ft."), except between two digits ("1,200 m").
+WORD_ENDS = frozenset(",;")
+
+
+def _lines(text: str) -> Iterable[tuple[int, str]]:
+    """Each line of the text, with the offset it starts at."""
+    offset = 0
+    for line in text.split("\n"):
+        yield offset, line
+        offset += len(line) + 1
+
+
+def _words(line: str) -> list[tuple[int, int]]:
+    """The words of one line, as (start, end): split at spaces, and after a
+    comma or a semicolon that does not stand between two digits."""
+    words: list[tuple[int, int]] = []
+    start = None
+    for index, char in enumerate(line):
+        if char.isspace():
+            if start is not None:
+                words.append((start, index))
+            start = None
+            continue
+        if start is None:
+            start = index
+        if char in WORD_ENDS and not (0 < index < len(line) - 1 and line[index - 1].isdigit()
+                and line[index + 1].isdigit()):
+            words.append((start, index + 1))
+            start = None
+    if start is not None:
+        words.append((start, len(line)))
+    return words
+
+
+def _edges(line: str) -> tuple[frozenset[int], frozenset[int]]:
+    """Where a run of whole words may start and where it may end on the line:
+    at a word's edge, or past the punctuation at its edge (the comma of
+    "Yepocapa,", the brackets of "(Davao)"), never between two letters or
+    digits of one word ("24-48" is no run of "IV-24-48", nor "30" of
+    "Sp.30")."""
+    starts: set[int] = set()
+    ends: set[int] = set()
+    for start, end in _words(line):
+        letters = [index for index in range(start, end) if line[index].isalnum()]
+        first, last = (letters[0], letters[-1] + 1) if letters else (start, end)
+        starts.update(range(start, first + 1))
+        ends.update(range(last, end + 1))
+    return frozenset(starts), frozenset(ends)
+
+
+def verbatim_runs(text: str, literal: str) -> list[tuple[int, int]]:
+    """Where the text writes the literal exactly as a run of whole words within
+    one line (or that whole line), as (start, end) offsets in the text: the
+    literal holds a letter or a digit, lies on one line, and starts and ends
+    at word edges (_edges), so it cuts no word. Empty when it writes none."""
+    found: list[tuple[int, int]] = []
+    if (not literal or "\n" in literal or literal != literal.strip()
+            or not any(char.isalnum() for char in literal)):
+        return found
+    for offset, line in _lines(text):
+        at = line.find(literal)
+        if at < 0:
+            continue
+        starts, ends = _edges(line)
+        while at >= 0:
+            if at in starts and at + len(literal) in ends:
+                found.append((offset + at, offset + at + len(literal)))
+            at = line.find(literal, at + 1)
+    return found
+
+
+def agreeing_runs(text: str, literal: str) -> list[str]:
+    """The runs of whole words within one line of the text (as verbatim_runs
+    reads them) that are the literal, letter case and spacing aside
+    (agreement_key), each as the text writes it."""
+    want = agreement_key(literal)
+    found: list[str] = []
+    if not want or not any(char.isalnum() for char in want):
+        return found
+    for _, line in _lines(text):
+        if want not in agreement_key(line):
+            continue
+        starts, ends = _edges(line)
+        for start in sorted(starts):
+            for end in sorted(ends):
+                if end > start and agreement_key(line[start:end]) == want:
+                    found.append(line[start:end])
+    return list(dict.fromkeys(found))
+
+
+def _cut_candidate(task: FieldTask, readings: Sequence[Reading], literal: str,
+        named: Sequence[Reading]) -> tuple[str, str] | None:
+    """A candidate of a reading the answer names (its label's decided reading,
+    on a label with one) that the literal cuts or extends, as (reading,
+    candidate literal): one holds the other and they differ ("Sept. '46" and
+    "3 Sept. '46", "Danaus" and "Danaus plexippus", B2). None otherwise."""
+    want = collapse(literal)
+    allowed = candidates_by_reading(task, readings)
+    for reading in dict.fromkeys(_deciding(r, readings) for r in named):
+        for text, given in allowed.get(reading.name, {}).items():
+            if text != want and (want in text or text in want):
+                return reading.name, given
+    return None
+
+
+def literal_basis(task: FieldTask, readings: Sequence[Reading], literal: str,
+        named: Sequence[Reading]) -> str | None:
+    """Where the answer's literal comes from. CANDIDATE: it is a whole
+    candidate literal of every reading it names (candidate_literal).
+    TRANSCRIPT: it is not, but each of those readings (its label's decided
+    reading, on a label with one) writes it as a run of whole words within
+    one line (verbatim_runs), and it cuts or extends no candidate of that
+    reading (_cut_candidate): the expert read it in the transcript itself
+    (the owner's design: experts with every raw transcription). None
+    otherwise."""
+    if not named:
+        return None
+    if candidate_literal(task, readings, literal, named) is not None:
+        return CANDIDATE
+    if (all(verbatim_runs(_deciding(reading, readings).text, literal) for reading in named)
+            and _cut_candidate(task, readings, literal, named) is None):
+        return TRANSCRIPT
+    return None
+
+
 def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: str,
         named: Sequence[Reading]) -> Refusal | None:
     """Why the answer's literal may not settle the field, or None: a label's
     decided transcript must write it (G19), and it must be a whole candidate
     literal of each reading it names (the decided reading's, on a label with
-    one), never a shorter or longer piece of a reading (B2); for a taxon, a
+    one), or text each of those readings writes as a run of whole words
+    within one line that cuts or extends no candidate of it (literal_basis),
+    never a shorter or longer piece of a candidate (B2); for a taxon, a
     candidate whose quote writes a longer name from it on is such a piece too
-    (_part_of_name), and a literal whose genus the label marks as doubtful
-    never settles (_genus_in_doubt)."""
+    (_part_of_name), as is text read from a reading that writes a longer
+    name around it (_longer_written), and a literal whose genus the label
+    marks as doubtful never settles (_genus_in_doubt)."""
     for reading in named:
         chosen = _deciding(reading, readings)
         if chosen.input_source == DECIDED and literal not in chosen.text:
@@ -274,18 +413,50 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
                 f"Reading {chosen.name} is the transcript decided for this label: its text decides "
                 f"this field (G19), and it does not contain {literal!r}. Copy the literal from "
                 f"{chosen.name}, or answer several_possibilities or sources_cannot_resolve."))
-    if candidate_literal(task, readings, literal, named) is not None:
+    basis = literal_basis(task, readings, literal, named)
+    if basis == CANDIDATE:
         return _part_of_name(task, readings, literal, named) or _genus_in_doubt(task, readings, literal, named)
+    if basis == TRANSCRIPT:
+        return _longer_written(task, readings, literal, named) or _genus_in_doubt(task, readings, literal, named)
     allowed = candidates_by_reading(task, readings)
     offered = [f"{source.name}: {text!r}" for source in dict.fromkeys(_deciding(r, readings) for r in named)
         for text in allowed.get(source.name, {}).values()]
     shown = "; ".join(offered) or "none"
-    return Refusal(NOT_CANDIDATE, (
+    cut = _cut_candidate(task, readings, literal, named)
+    why = f"{literal!r} cuts or extends the candidate {cut[1]!r} of reading {cut[0]}. " if cut else ""
+    return Refusal(NOT_CANDIDATE, why + (
         "A resolved literal is one of the organiser's candidate literals for every reading you "
         "name (on a label with a decided transcript, that reading's), whole and exactly as the "
         f"candidate gives it. Candidates for the readings you named: {shown}. Never shorten or "
-        "extend a candidate. Copy one and name only readings that have it, or answer "
+        "extend a candidate. When no candidate is the right text, the literal may be text that "
+        "each reading you name writes itself: whole words within one line, cutting no word and "
+        "no candidate. Copy it and name only readings that have it, or answer "
         "several_possibilities or sources_cannot_resolve."))
+
+
+def _longer_written(task: FieldTask, readings: Sequence[Reading], literal: str,
+        named: Sequence[Reading]) -> Refusal | None:
+    """For a taxon read from the transcript (TRANSCRIPT), why it cannot settle:
+    a reading it is read from (its label's decided reading, on a label with
+    one) writes a longer name around it, as a candidate's quote would
+    (checks.longer_name, on the reading's text from the line above the
+    literal on): "Danaus plexippus" on a line that writes "Danaus plexippus
+    megalippe", "sp. 1" below "Epipsocus". None otherwise, and for any other
+    field."""
+    if task.key != "taxon":
+        return None
+    for reading in dict.fromkeys(_deciding(r, readings) for r in named):
+        text = reading.text
+        for start, _ in verbatim_runs(text, literal):
+            line_start = text.rfind("\n", 0, start) + 1
+            above = text.rfind("\n", 0, line_start - 1) + 1 if line_start else 0
+            longer = longer_name(text[above:], literal)
+            if longer is not None:
+                return Refusal(PART_OF_NAME, (
+                    f"Reading {reading.name} writes the longer name {longer!r} around {literal!r}. A "
+                    "taxon settles only on the whole name its reading writes, so this text cannot "
+                    "settle it: answer several_possibilities or sources_cannot_resolve."))
+    return None
 
 
 def _part_of_name(task: FieldTask, readings: Sequence[Reading], literal: str,
@@ -462,9 +633,14 @@ class Label:
     # A source settled readers that differ (G20, N4), rather than a decided
     # transcript or readers that agree.
     by_source: bool = False
+    # Readers of a label the answer's text from the transcript is read on
+    # that write it nowhere, letter case and spacing aside, and have no text
+    # the organiser found: what they write for the field is unknown.
+    unread: frozenset[str] = frozenset()
 
 
-def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[SourceAnswer]) -> dict[str, Label]:
+def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[SourceAnswer], *,
+        transcript: str | None = None, named: Sequence[Reading] = ()) -> dict[str, Label]:
     """Each label that writes the field, by region, settled on its own
     (G19, G20, G27, G32):
     - a label with a decided transcript, on the one candidate literal its
@@ -482,13 +658,30 @@ def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[Sourc
       on the source's evidence, each literal matching the candidate's name
       by the place comparison key (case, accents, punctuation, unit words),
       and on each of the literals: the answer gives one of them, with that
-      authority_id."""
+      authority_id.
+
+    `transcript` is the answer's literal when it is read from the transcript
+    (TRANSCRIPT), and `named` the readings it names. On each of their labels,
+    every reader then also writes the runs of whole words within one line
+    that are that text, letter case and spacing aside (agreeing_runs), as it
+    writes them, and a decided reading that writes it exactly has it as a
+    candidate. A reader of such a label (with no decided transcript) that
+    writes it nowhere and has no text the organiser found for the field is
+    unread: what it writes is unknown, so no lookup can have covered it, and
+    the label does not settle."""
     literals = reader_literals(task, readings)
     allowed = candidates_by_reading(task, readings)
     sourced = bool(frozenset(task.tools) & SOURCE_IDS)
+    read_on = frozenset(reading.region_id for reading in named) if transcript is not None else frozenset()
     regions: dict[str, list[Reading]] = {}
     for reading in readings:
         regions.setdefault(reading.region_id, []).append(reading)
+        if reading.region_id in read_on:
+            runs = agreeing_runs(reading.text, transcript)
+            if runs:
+                literals.setdefault(reading.name, set()).update(collapse(run) for run in runs)
+            if verbatim_runs(reading.text, transcript):
+                allowed.setdefault(reading.name, {}).setdefault(collapse(transcript), transcript)
     found: dict[str, Label] = {}
     for region, group in regions.items():
         decided = next((r for r in group if r.input_source == DECIDED), None)
@@ -501,6 +694,10 @@ def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[Sourc
         each = [frozenset(literals.get(r.name, ())) for r in group]
         texts = frozenset().union(*each)
         if not texts:
+            continue
+        unread = frozenset(r.name for r, own in zip(group, each) if not own) if region in read_on else frozenset()
+        if unread:
+            found[region] = Label(texts, unread=unread)
             continue
         if all(each) and len({agreement_key(text) for text in texts}) == 1:
             # Every reader writes it, at most letter case or spacing apart
@@ -522,17 +719,29 @@ def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[Sourc
 
 def _disagreement(task: FieldTask, readings: Sequence[Reading], *, literal: str,
         authority_id: str | None, cited: Sequence[SourceAnswer],
-        received: Sequence[SourceAnswer]) -> Refusal | None:
+        received: Sequence[SourceAnswer], transcript: str | None = None,
+        named: Sequence[Reading] = ()) -> Refusal | None:
     """Why readers or labels that disagree do not settle the field on this
-    answer, or None (B1 of #284's reviews; G19, G20, G27, G32, N4)."""
+    answer, or None (B1 of #284's reviews; G19, G20, G27, G32, N4). For text
+    read from the transcript (`transcript`, on the `named` readings' labels),
+    a reader of such a label that writes it nowhere and has no text the
+    organiser found leaves the label unsettled (labels, Label.unread)."""
     sources = frozenset(task.tools) & SOURCE_IDS
     answers = [a for a in received if a.source_id in sources]
-    found = labels(task, readings, answers)
+    found = labels(task, readings, answers, transcript=transcript, named=named)
     settled = frozenset().union(*(label.settled for label in found.values())) if found else frozenset()
     every = sorted(frozenset().union(*(label.literals for label in found.values()))) if found else []
     shown = "; ".join(repr(text) for text in every)
     if not found:
         return None
+    unread = sorted(frozenset().union(*(label.unread for label in found.values())))
+    if unread:
+        return Refusal(NOT_EVERY_READER, (
+            f"You read {literal!r} from the transcript, and reading {', '.join(unread)} of the same "
+            "label writes it nowhere (letter case and spacing aside), nor did the organiser find "
+            "other text for this field there. On a label with no decided transcript, text read "
+            "from the transcript settles only when every reader of the label writes it. Answer "
+            "several_possibilities with each reader's text, or sources_cannot_resolve."), differ=True)
     if (all(label.settled for label in found.values()) and len(settled) == 1
             and not any(label.by_source for label in found.values())):
         # Every label settles on its own text, and they agree: on that text,
@@ -587,6 +796,30 @@ def _disagreement(task: FieldTask, readings: Sequence[Reading], *, literal: str,
         "approved source confirms each label's text as the same place or name: ask about each, "
         "give that authority_id and cite the answer for your literal, or answer "
         "several_possibilities."), differ=True)
+
+
+# What kind of text each field's value is, for the guard on text read from
+# the transcript (step._taken): a reading's text settled as one field's value
+# is never also settled, from the transcript, as a field's of another kind.
+# Fields of one kind may share text: places nest (a town inside the precise
+# location), a date or an elevation is a range's end or a unit's copy, and a
+# determiner may be a collector. Verbatim D/T/S may share any field's text,
+# as what it holds is an open museum question. Any other field is a kind of
+# its own.
+FIELD_KINDS = {
+    **dict.fromkeys(("country", "province_state", "county", "city", "precise_location"), "place"),
+    **dict.fromkeys(("date_visited_from", "date_visited_to", "date_identified"), "date"),
+    **dict.fromkeys(("elevation_from_m", "elevation_to_m", "elevation_from_ft", "elevation_to_ft"), "elevation"),
+    **dict.fromkeys(("collectors", "identified_by_irn"), "person"),
+}
+SHARES_ANY_TEXT = frozenset({"verbatim_dts"})
+
+
+def may_share_text(key: str, other: str) -> bool:
+    """Whether two fields' values may be the same text of a reading: fields of
+    one kind (FIELD_KINDS), or either of them verbatim D/T/S."""
+    return (key in SHARES_ANY_TEXT or other in SHARES_ANY_TEXT
+        or FIELD_KINDS.get(key, key) == FIELD_KINDS.get(other, other))
 
 
 ASKED, NOTATION, NEAR_SPELLING = "asked", "notation", "near_spelling"
@@ -727,8 +960,9 @@ def refusal(task: FieldTask, readings: Sequence[Reading], *, literal: str,
     refused = literal_refusal(task, readings, literal=literal, named=named)
     if refused is not None:
         return refused
+    transcript = literal if literal_basis(task, readings, literal, named) == TRANSCRIPT else None
     refused = _disagreement(task, readings, literal=literal, authority_id=authority_id, cited=cited,
-        received=received)
+        received=received, transcript=transcript, named=named)
     if refused is not None:
         return refused
     if task.key in PLACE_VALUE_FIELDS:

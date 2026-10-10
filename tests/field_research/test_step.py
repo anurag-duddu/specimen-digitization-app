@@ -778,18 +778,21 @@ def test_an_organiser_candidate_that_cuts_the_name_on_its_line_never_settles_the
     assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:taxon" in run.reasons
 
 
-def test_a_field_with_no_candidate_is_never_resolved(tmp_path):
+def test_a_field_with_no_candidate_settles_on_text_both_readers_write(tmp_path):
     """No reading is decided, so the keyed-line parser reads nothing, and the
-    organiser gave only the collectors: the taxon expert's answer, GBIF's
-    decision for the name both readers write, has no candidate to be."""
+    organiser gave only the collectors. The taxon expert's answer, GBIF's
+    decision for the name both readers write, quotes text it read in the
+    transcript itself (agreement.TRANSCRIPT): until 2026-10-09 it had no
+    candidate to be and went to review; it now settles, marked so."""
     rig = build_rig(tmp_path, TEXT, TEXT.replace("Synthetic grassland", "Synthetic grassIand"))
     run = rig.specimen.run
     [task] = [task for task in build_tasks(run)[1] if task.key == "taxon"]
     assert task.candidates == () and task.current.state == ValueState.UNKNOWN
     settle(rig, Scripted())
     taxon = run.fields["taxon"]
-    assert taxon.state == ValueState.UNRESOLVED and taxon.reason == agreement.NOT_CANDIDATE + " Settled."
-    assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:taxon" in run.reasons
+    assert (taxon.state, taxon.literal, taxon.authority_id) == (ValueState.SUPPORTED, "Danaus plexippus", GBIF_KEY)
+    assert "transcript_literal:taxon" in [f.reason_code for f in run.findings]
+    assert not [reason for reason in run.reasons if reason.endswith(":taxon") or reason.startswith("taxonomy")]
 
 
 # ---- readers that disagree (G19, G20, G27; the review's B1) --------------------

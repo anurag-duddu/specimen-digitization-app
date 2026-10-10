@@ -5,7 +5,8 @@ brief and only the tools that field may use, so each record and field starts
 with fresh context and shows in Logfire as its own agent. An answer is checked
 against the readings and against what this expert's own tools returned before
 it is accepted: the literal must occur in the readings it names and be a whole
-organiser candidate literal of each (agreement.literal_refusal), a value that
+organiser candidate literal of each, or text each writes as whole words within
+one line that cuts no candidate (agreement.literal_refusal), a value that
 differs from it must be a source candidate or a deterministic check's output, a
 taxon is GBIF's decision for the whole name that candidate writes, and the
 agreement rules hold (agreement.refusal). A field-level problem never raises;
@@ -405,8 +406,8 @@ class _Expert:
                 )
             names.append(reading.name)
         named = [self.by_label[_label(name)] for name in answer.reading_names]
-        # The literal is a whole organiser candidate of the readings it names
-        # (agreement.literal_refusal), never a piece of a reading.
+        # The literal is a whole organiser candidate of the readings it names,
+        # or whole words of one line of each (agreement.literal_refusal).
         refused = agreement.literal_refusal(self.task, self.readings, literal=literal, named=named)
         if refused is not None:
             raise ModelRetry(refused.retry)
@@ -437,9 +438,10 @@ class _Expert:
                     "check you ran on exactly this literal. Leave value empty or correct it."
                 )
         if key == "taxon":
-            # The whole name the label writes is the candidate's, not the answer's.
+            # The whole name the label writes is the candidate's, not the answer's;
+            # text read from the transcript passed literal_refusal as a whole name.
             self._validate_taxon(answer, cited,
-                agreement.candidate_literal(self.task, self.readings, literal, named) or "")
+                agreement.candidate_literal(self.task, self.readings, literal, named) or literal)
         refused = agreement.refusal(
             self.task,
             self.readings,

@@ -122,8 +122,7 @@ handover runs field research instead of the six specialists:
      that takes a piece of a reading's candidate ("Danaus plexippus" where
      the candidate is "Danaus plexippus megalippe", "Sept. '46" where it is
      "3 Sept. '46", "San Pedro" where it is "San Pedro Sacatepequez") is
-     refused, and a field with no candidate is never resolved: it goes to
-     review. A candidate can itself be a piece of its reading, since the
+     refused. A candidate can itself be a piece of its reading, since the
      organiser's candidate need only lie inside its quote; for the taxon,
      the scientific-name parser reads the candidate's quote from the literal
      on, and, for a literal in which it reads no genus, with the word the
@@ -135,6 +134,71 @@ handover runs field research instead of the six specialists:
      A keyed line's "taxon:", an author and year, a sex sign or "sp. 1" are
      no longer name. Other fields' candidates are not checked against their
      quotes.
+   - **Or text read from the transcript** (the coordinator's ruling of
+     2026-10-09, after the real runs of that day: 105526328's collecting
+     date "IV-24-48", which both readers of its label write and parse_date
+     reads as 1948-04-24, could not settle because the organiser offered no
+     candidate; nor could its collection method "trap", or 105526329's and
+     105526330's precise location). When the literal is no whole candidate,
+     it may be text the expert read in the readings itself
+     (`agreement.literal_basis`, TRANSCRIPT): each reading the answer names
+     (on a label with a decided transcript, the decided reading) writes it
+     as a run of whole words within one line, or that whole line
+     (`agreement.verbatim_runs`). Words are split at spaces, and after a
+     comma or a semicolon that does not stand between two digits
+     ("Yepocapa,4800 ft." is two words, "1,200 m" is not); a run starts and
+     ends at a word's edge, or past the punctuation at its edge ("Yepocapa"
+     of "Yepocapa,", "Mindanao" of "(Mindanao)"), never between two letters
+     or digits of one word ("24-48" is no run of "IV-24-48", nor "30" of
+     "Sp.30", nor "200 m" of "1,200 m"), and never across a line break. It
+     may cut or extend no candidate of that reading ("Sept. '46" beside the
+     candidate "3 Sept. '46", "San Pedro Sacatepequez" beside the candidate
+     "San Pedro"): the answer is then refused as above. Every other rule
+     applies to it as to a candidate: G19's decided transcript, the readers'
+     rules below, the place checks (the lookup of the label's own text, the
+     level, the parents, the near spelling) and the doubtful genus. For the taxon, the
+     reading's text from the line above the literal on stands in for a
+     candidate's quote (`agreement._longer_written`, `checks.longer_name`),
+     so "Danaus plexippus" on a line that writes "Danaus plexippus
+     megalippe", or "sp. 1" below "Epipsocus", never settles it. On a label
+     with no decided transcript, each reader then writes the text as it
+     writes it, letter case and spacing aside (`agreement.agreeing_runs`),
+     beside any text the organiser found for it there; a reader that writes
+     it nowhere and has none is unread, its text for the field unknown, so
+     no lookup can have covered it and the label does not settle ("Not
+     every reader of the label writes this text.": 105526328's "Yepocapa,
+     Mun.", which its other reader writes "Mum."). A decided reading that
+     writes the text beside another candidate of the organiser's for the
+     field writes two texts and settles neither. Such a value is marked:
+     the label rows field research writes for it cite the literal's first
+     run of whole words and carry `"basis": "transcript"` in their stored
+     records, an info finding
+     `transcript_literal:<field>` beside the record cites them (it never
+     routes the record), and one Logfire event, "field_research literal
+     read from the transcript", names the field and the readings, never
+     their text (`step._from_the_transcript`). A place settled so is
+     written, for the parents check below, by each reading that writes its
+     literal as whole words (`step._misfit`).
+   - **Text another field holds** (the step only, `step._taken`, before
+     any value is made). A literal read from the transcript never settles
+     when the same text, overlapping in the same reading, is claimed for a
+     field of another kind: another field's answer of this attempt
+     (resolved, or sources_cannot_resolve quoting a literal), wherever its
+     literal stands in the readings of the labels it names, or another
+     field's value settled before this attempt or by a person. The field
+     goes to review with the reason "This text, read from the transcript,
+     is also the value found for <field>." The kinds are
+     `agreement.FIELD_KINDS`: the place fields (precise location among
+     them) are one kind, so a town inside the locality is no conflict; the
+     dates are one, the elevations one, collectors and determiner one; any
+     other field is a kind of its own; and verbatim D/T/S shares text with
+     any field, as what it holds is an open museum question. So
+     105526329's precise location "Yepocapa, 4800ft.", read from the
+     transcript, goes to review beside the elevation "4800ft." (the brief
+     leaves elevations out of the locality), while "Volcan Barva" beside
+     "2000 msnm" settles. An organiser's candidate is never refused here,
+     and two fields that both read the text from the transcript both go to
+     review.
    - **A doubtful genus (taxon only).** The literal never settles the taxon
      when the label marks its genus as doubtful (`checks.genus_in_doubt`,
      through `agreement._genus_in_doubt`): wherever the quote of a candidate
