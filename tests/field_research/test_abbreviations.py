@@ -58,6 +58,10 @@ from specimen_digitization.field_research.abbreviations import abbreviated, fit,
     ("S.A.", "South Australia"),
     ("S.A.", "South Africa"),
     ("S.A.", "Saudi Arabia"),
+    # The rule's limit: a whole word with a trailing period reads as an
+    # abbreviation, so the letters allow this too. The gazetteer's level, the
+    # parent check and a rival expansion are what stand behind it.
+    ("Lima.", "Limassol"),
 ])
 def test_an_abbreviation_fits_the_expansion_its_letters_spell_in_order(abbreviation, expansion):
     assert fits(abbreviation, expansion)
