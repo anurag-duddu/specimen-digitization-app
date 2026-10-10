@@ -159,16 +159,42 @@ handover runs field research instead of the six specialists:
      that reading ("Sept. '46" beside the candidate "3 Sept. '46", "San
      Pedro Sacatepequez" beside the candidate "San Pedro"): the answer is
      then refused as above. A date or an elevation so read is never one end
-     of a range (`agreement._part_of_range`, PR #300's review): where a
-     reading it is read from writes it, the comma- or semicolon-separated
-     part of the line holding it may not join two words that each hold a
-     digit with "to", "-", an en dash or "a" (any case) standing as a word
-     of its own, unless the literal holds that joiner and both those words,
-     the whole range ("The label writes this value as one end of a range.":
-     "V-2-48" or "IV-24-48" of "IV-24-48 to V-2-48", "1500 m" of "1200 to
-     1500 m" or "1200 a 1500 m"; "1200 to 1500 m" whole keeps the rules a
-     candidate has). A range glued with a hyphen ("1200-1500 m") is one
-     word, which no run cuts. Every other rule
+     of a range (`agreement._part_of_range`, PR #300's review and finding 1
+     of its review of 6fd595b3b): where a reading it is read from writes
+     it, the comma- or semicolon-separated part of the line holding it may
+     write no range (`written.ranges`) unless the literal holds both its
+     ends, the whole range ("The label writes this value as one end of a
+     range."). A range is two ends, each a word holding a digit, joined by
+     a run of joiners: a dash of any form (a hyphen, an en or em dash, a
+     minus sign, a figure dash, a full-width hyphen, a wave dash and the
+     others `written.DASHES` pins by name), standing as a word of its own
+     or touching one end ("1200- 1500 m", "IV-24-48 -V-2-48"); a sign "&",
+     "/" or "~" standing alone; or a word of `written.RANGE_WORDS`, compared
+     with letter case and accents aside: English "to", "till", "until",
+     "thru", "through", "and"; Spanish "a", "al", "hasta", "y"; Portuguese
+     "a", "ao", "ate" (with its acute accent), "e"; French "a" (with its
+     grave accent), "au", "jusqu'a", "jusqu'au", "et"; German "bis", "und";
+     Italian "a", "al", "fino", "e"; Dutch "tot", "en", "t/m"; Latin "ad",
+     "usque" (a run of them, such as "fino a", is one joiner). Up to five
+     words that may stand beside a number (`written.BESIDE_A_NUMBER`) may
+     come between an end and the joiner: a unit's words ("1200 m to 1500
+     m", "1200 m a. s. l. to 1500 m"), a month in English, Spanish,
+     Portuguese, French, German, Italian or Dutch, a Roman numeral I to XII
+     in capitals ("April 24 to May 2, 1948", "24 avril au 2 mai 1948"), or
+     an approximate marker ("ca."). The two ends are written alike: in one
+     unit, or both dates (an end that writes letters, or has a month or a
+     Roman month beside it), or a bare number beside either. Ends in
+     different units are one elevation written in both, no range ("4800 ft.
+     / 1463 m": each settles its own unit's field), and a unit beside a
+     date is two fields ("Guatemala / 1200 m / 24.IV.1948"). A word of two
+     numbers joined by a dash or a "/" ("1200-1500 m", "10-12") is one word,
+     which no run cuts; standing right before or after the literal, it
+     makes the literal part of its range too ("Sept. 1946" of "10-12 Sept.
+     1946", "IV 1948" of "24/30 IV 1948"). So "1500 m" of "1200 bis 1500
+     m", "entre 1200 y 1500 msnm", "1200 - 1500 m" with an em dash, "1200-
+     1500 m" or "1200 m to 1500 m", "V-2-48" of "IV-24-48 au V-2-48" and
+     "May 2, 1948" of "April 24 to May 2, 1948" go to review; "1200 to 1500
+     m" whole keeps the rules a candidate has. Every other rule
      applies to it as to a candidate: G19's decided transcript, the readers'
      rules below, the place checks (the lookup of the label's own text, the
      level, the parents, the near spelling) and the doubtful genus. For the taxon, the

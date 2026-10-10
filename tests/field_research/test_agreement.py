@@ -880,3 +880,95 @@ def test_text_beside_or_holding_a_whole_range_is_not_cut_from_it(key, line, lite
     readings = label(line + "\nleg. J. Smith")
     assert agreement.refusal(uncandidated(key), readings, literal=literal, named=list(readings), value=None,
         authority_id=None, cited=[], received=[]) is None
+
+
+# PR #300's review of 6fd595b3b, finding 1: the range guard knew only "to",
+# "-", an en dash and "a" standing as words between two words with digits.
+# Ranges are written in many languages, with every form of dash, with a dash
+# touching one end, and with a unit or a month between a number and the
+# joiner (written.RANGE_WORDS, RANGE_SIGNS, DASHES, BESIDE_A_NUMBER).
+
+RANGES_IN_ANY_LANGUAGE = {
+    # Elevations: France, Germany, Spain and Latin America, Brazil, Italy, the Netherlands.
+    "french-a-grave": ("elevation_from_m", "1200 \N{LATIN SMALL LETTER A WITH GRAVE} 1500 m", "1500 m"),
+    "german-bis": ("elevation_from_m", "H\N{LATIN SMALL LETTER O WITH DIAERESIS}he 1200 bis 1500 m", "1500 m"),
+    "spanish-hasta": ("elevation_to_m", "desde 1200 hasta 1500 m", "1500 m"),
+    "spanish-entre-y": ("elevation_from_m", "entre 1200 y 1500 msnm", "1500 msnm"),
+    "portuguese-ate": ("elevation_from_m", "1200 at\N{LATIN SMALL LETTER E WITH ACUTE} 1500 m", "1500 m"),
+    "italian-fino-a": ("elevation_from_m", "da 1200 fino a 1500 m s.l.m.", "1500 m s.l.m."),
+    "dutch-tot": ("elevation_from_m", "van 1200 tot 1500 m", "1500 m"),
+    "latin-ad": ("elevation_from_m", "1200 ad 1500 m", "1500 m"),
+    "english-and": ("elevation_from_m", "between 1200 and 1500 m", "1500 m"),
+    "ampersand": ("elevation_from_m", "1200 & 1500 m", "1500 m"),
+    # Every dash, standing alone or touching one end.
+    "em-dash": ("elevation_from_m", "1200 \N{EM DASH} 1500 m", "1500 m"),
+    "minus-sign": ("elevation_from_m", "1200 \N{MINUS SIGN} 1500 m", "1500 m"),
+    "figure-dash": ("elevation_from_m", "1200 \N{FIGURE DASH} 1500 m", "1500 m"),
+    "fullwidth-hyphen": ("elevation_from_m", "1200 \N{FULLWIDTH HYPHEN-MINUS} 1500 m", "1500 m"),
+    "japanese-wave-dash": ("elevation_from_m", "1200 \N{WAVE DASH} 1500 m", "1500 m"),
+    "hyphen-touching-the-first": ("elevation_from_m", "1200- 1500 m", "1500 m"),
+    "hyphen-touching-the-second": ("elevation_from_m", "1200 -1500 m", "1500 m"),
+    # A unit on both ends, either end taken.
+    "units-on-both-ends": ("elevation_from_m", "1200 m to 1500 m", "1500 m"),
+    "units-on-both-ends-first": ("elevation_from_m", "1200 m - 1500 m", "1200 m"),
+    "feet-on-both-ends": ("elevation_from_ft", "4000 ft to 4800 ft", "4000 ft"),
+    # Dates: French, German, English and Spanish joiners, a slash, a dash touching one end.
+    "french-au": ("date_visited_from", "IV-24-48 au V-2-48", "V-2-48"),
+    "german-bis-date": ("date_visited_to", "24.IV.1948 bis 2.V.1948", "2.V.1948"),
+    "english-thru": ("date_visited_from", "IV-24-48 thru V-2-48", "V-2-48"),
+    "ampersand-date": ("date_visited_from", "IV-24-48 & V-2-48", "V-2-48"),
+    "slash-date": ("date_visited_from", "IV-24-48 / V-2-48", "V-2-48"),
+    "dash-touching-the-second-date": ("date_visited_from", "IV-24-48 -V-2-48", "V-2-48"),
+    "dash-touching-the-first-date": ("date_visited_from", "IV-24-48- V-2-48", "IV-24-48"),
+    "spanish-al-days": ("date_visited_from", "24 al 30-IV-1948", "30-IV-1948"),
+    # A month between the number and the joiner, in English and in French.
+    "english-month-names": ("date_visited_from", "April 24 to May 2, 1948", "May 2, 1948"),
+    "french-month-names": ("date_visited_from", "24 avril au 2 mai 1948", "2 mai 1948"),
+    # A day range glued in one word, right before the month and year.
+    "glued-day-range": ("date_visited_from", "10-12 Sept. 1946", "Sept. 1946"),
+    "glued-slash-day-range": ("date_visited_from", "24/30 IV 1948", "IV 1948"),
+}
+
+
+@pytest.mark.parametrize(("key", "line", "literal"), RANGES_IN_ANY_LANGUAGE.values(), ids=RANGES_IN_ANY_LANGUAGE)
+def test_one_end_of_a_range_in_any_language_is_never_read_from_the_transcript(key, line, literal):
+    """On 6fd595b3b each is accepted."""
+    readings = label(line + "\nleg. J. Smith")
+    refused = agreement.refusal(uncandidated(key), readings, literal=literal, named=list(readings), value=None,
+        authority_id=None, cited=[], received=[])
+    assert refused is not None and refused.reason == agreement.PART_OF_RANGE
+
+
+def test_the_experts_check_sends_back_a_range_end_joined_in_german():
+    """The expert's own check, with parse_date run on the end: on 6fd595b3b it
+    keeps "2.V.1948" as the start of "24.IV.1948 bis 2.V.1948"."""
+    readings = label("Bayern, 24.IV.1948 bis 2.V.1948\nleg. J. Schmidt")
+    with pytest.raises(ModelRetry, match="one end of a range"):
+        checked(uncandidated("date_visited_from"), readings, dict(outcome="resolved", literal="2.V.1948",
+            reading_names=["3A", "3B"], value="1948-05-02"), checks=[("parse_date", "2.V.1948")])
+
+
+@pytest.mark.parametrize(("key", "line", "literal"), [
+    # One elevation written in both units is no range.
+    ("elevation_from_ft", "4800 ft. / 1463 m", "4800 ft."),
+    ("elevation_from_m", "4800 ft. / 1463 m", "1463 m"),
+    # Dashes and slashes between fields of different kinds join no range.
+    ("elevation_from_m", "Guatemala / 1200 m / 24.IV.1948", "1200 m"),
+    ("date_visited_from", "Guatemala / 1200 m / 24.IV.1948", "24.IV.1948"),
+    ("date_visited_from", "Yepocapa - 1200 m - IV-24-48", "IV-24-48"),
+    # A range of the other field in another clause.
+    ("elevation_from_m", "alt. 1200 m, 24 al 30-IV-1948", "1200 m"),
+    # Spanish "a" and Italian "e" joining no two numbers.
+    ("elevation_from_m", "camino a Yepocapa, 1200 m", "1200 m"),
+    ("date_visited_from", "Lago di Garda e dintorni 24.VI.1952", "24.VI.1952"),
+    # Whole ranges, in Spanish and German, keep the rules a candidate has.
+    ("elevation_from_m", "1200 a 1500 m", "1200 a 1500 m"),
+    ("date_visited_from", "24.IV.1948 bis 2.V.1948", "24.IV.1948 bis 2.V.1948"),
+], ids=["feet-beside-metres", "metres-beside-feet", "slash-separated-elevation", "slash-separated-date",
+    "dash-separated-date", "range-in-another-clause", "spanish-a-before-a-word", "italian-e-between-words",
+    "whole-spanish-range", "whole-german-range"])
+def test_text_beside_a_joiner_that_joins_no_range_settles(key, line, literal):
+    """The control: each settles, as on 6fd595b3b."""
+    readings = label(line + "\nleg. J. Smith")
+    assert agreement.refusal(uncandidated(key), readings, literal=literal, named=list(readings), value=None,
+        authority_id=None, cited=[], received=[]) is None

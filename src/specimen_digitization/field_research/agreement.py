@@ -20,7 +20,9 @@ fields' outcomes:
    (verbatim_runs), and it cuts or extends none of that reading's
    candidates (_cut_candidate); a taxon so read must sit in no longer name
    on its reading (_longer_written), and a date or an elevation so read is
-   never one end of a range its clause writes (_part_of_range). Points 1, 3
+   never one end of a range its clause writes, joined in any of the
+   languages and with any of the dashes field_research.written lists
+   (_part_of_range). Points 1, 3
    and 4 hold for it as for a candidate, its readers per point 3 as
    agreeing_runs reads them, and on a label with no decided transcript the
    clauses holding it agree in every reader (holding_clauses). For a
@@ -153,9 +155,12 @@ from dataclasses import dataclass
 from specimen_digitization.application.domain import LookupStatus
 from specimen_digitization.application.georef_locality import comparison_key, one_letter_apart
 
+from . import written
 from .checks import collapse, genus_in_doubt, longer_name, taxon_query_grounded
 from .contracts import PLACE_SOURCES, FieldTask, Reading, SourceAnswer, SourceCandidate
 from .notations import expansion
+from .written import separates as _separates
+from .written import words as _words
 
 DECIDED = "decided_transcript"
 # Place fields whose value a place source settles; precise_location is
@@ -273,9 +278,6 @@ def candidate_literal(task: FieldTask, readings: Sequence[Reading], literal: str
 # Where a resolved literal comes from (literal_basis): an organiser's whole
 # candidate, or text the expert read in the transcript itself.
 CANDIDATE, TRANSCRIPT = "candidate", "transcript"
-# A comma or a semicolon ends a word even with no space after it
-# ("Yepocapa,4800 ft."), except between two digits ("1,200 m").
-WORD_ENDS = frozenset(",;")
 
 
 def _lines(text: str) -> Iterable[tuple[int, str]]:
@@ -286,32 +288,12 @@ def _lines(text: str) -> Iterable[tuple[int, str]]:
         offset += len(line) + 1
 
 
-def _separates(line: str, index: int) -> bool:
-    """Whether the character at `index` is a comma or a semicolon that ends a
-    word and a clause: any but one between two digits ("1,200 m")."""
-    return line[index] in WORD_ENDS and not (0 < index < len(line) - 1 and line[index - 1].isdigit()
-        and line[index + 1].isdigit())
-
-
-def _words(line: str) -> list[tuple[int, int]]:
-    """The words of one line, as (start, end): split at spaces, and after a
-    comma or a semicolon that does not stand between two digits."""
-    words: list[tuple[int, int]] = []
-    start = None
-    for index, char in enumerate(line):
-        if char.isspace():
-            if start is not None:
-                words.append((start, index))
-            start = None
-            continue
-        if start is None:
-            start = index
-        if _separates(line, index):
-            words.append((start, index + 1))
-            start = None
-    if start is not None:
-        words.append((start, len(line)))
-    return words
+def _line_of(text: str, start: int, end: int) -> tuple[int, str]:
+    """The line of the text that holds the span [start, end), with the offset
+    it starts at."""
+    line_start = text.rfind("\n", 0, start) + 1
+    line_end = text.find("\n", end)
+    return line_start, text[line_start:len(text) if line_end < 0 else line_end]
 
 
 def _clause(line: str, start: int, end: int) -> tuple[int, int]:
@@ -325,27 +307,23 @@ def _clause(line: str, start: int, end: int) -> tuple[int, int]:
     return first, last
 
 
-# The words that join two dates or two numbers into a range ("IV-24-48 to
-# V-2-48", "1200 a 1500 m", "1200 - 1500 m"), standing as words of their own.
-RANGE_JOINERS = frozenset({"to", "-", "\N{EN DASH}", "a"})
-
-
 def _in_a_range(line: str, start: int, end: int) -> bool:
     """Whether the span [start, end) of the line is part of a range: the
-    clause holding it (_clause) has a joiner (RANGE_JOINERS, any case) as a
-    word between two words that each hold a digit, and the span does not
-    hold that joiner and both those words (the whole range)."""
+    clause holding it (_clause) writes a range (written.ranges: two ends that
+    each hold a digit, written alike, joined by a dash of any form standing
+    alone or at a word's edge, or by a joiner of written.RANGE_WORDS or
+    written.RANGE_SIGNS, in any of the languages listed, with a unit, a month
+    or an approximate marker allowed between a number and the joiner), and
+    the span does not hold both its ends (the whole range); or a word of two
+    numbers joined by a dash or a "/" (written.glued_range: "10-12") stands
+    right before or after the span ("Sept. 1946" of "10-12 Sept. 1946")."""
     first, last = _clause(line, start, end)
-    words = [(a, b) for a, b in _words(line) if first <= a and b <= last]
-
-    def has_a_digit(word: tuple[int, int]) -> bool:
-        return any(char.isdigit() for char in line[word[0]:word[1]])
-
-    for before, joiner, after in zip(words, words[1:], words[2:]):
-        if (line[joiner[0]:joiner[1]].casefold() in RANGE_JOINERS and has_a_digit(before)
-                and has_a_digit(after) and not (start <= before[0] and after[1] <= end)):
+    spans = written.pieces(line, [(a, b) for a, b in _words(line) if first <= a and b <= last])
+    for found in written.ranges(line, spans):
+        if not found.glued and not (start <= found.start and found.end <= end):
             return True
-    return False
+    beside = [(a, b) for a, b in spans if b <= start][-1:] + [(a, b) for a, b in spans if a >= end][:1]
+    return any(written.glued_range(line[a:b]) for a, b in beside)
 
 
 def _edges(line: str) -> tuple[frozenset[int], frozenset[int]]:
@@ -513,9 +491,7 @@ def _part_of_range(task: FieldTask, readings: Sequence[Reading], literal: str,
         return None
     for reading in dict.fromkeys(_deciding(r, readings) for r in named):
         for start, end in verbatim_runs(reading.text, literal):
-            line_start = reading.text.rfind("\n", 0, start) + 1
-            line_end = reading.text.find("\n", end)
-            line = reading.text[line_start:len(reading.text) if line_end < 0 else line_end]
+            line_start, line = _line_of(reading.text, start, end)
             if _in_a_range(line, start - line_start, end - line_start):
                 return Refusal(PART_OF_RANGE, (
                     f"Reading {reading.name} writes {literal!r} as one end of a range ({line!r}). Text "
