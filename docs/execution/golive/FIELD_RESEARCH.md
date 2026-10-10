@@ -123,7 +123,10 @@ handover runs field research instead of the six specialists:
    that waits 30 s for one of those slots is not sent: its lookup gives up
    at once as a timeout ("Getty TGN was busy; this lookup was not sent"),
    logged like any unanswered request (`error=slot_busy`), so the expert
-   goes on with its other sources. Each source
+   goes on with its other sources. A GEOLocate request whose turn under the
+   3 s spacing is more than 30 s off is busy the same way ("GEOLocate was
+   busy; this lookup was not sent"), and it takes no turn, so the requests
+   after it are not spaced behind it. Each source
    response is stored once as evidence. Each request a source leaves
    unanswered (a final status other than 200, or retries that ran out) is
    logged in one WARNING line with the source, the host, the HTTP status or
