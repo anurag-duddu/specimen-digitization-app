@@ -20,7 +20,7 @@ from .domain import (
 )
 from .field_resolution import Reading
 from .organiser import extraction_readings
-from .reliability import AdapterFailure
+from .reliability import AdapterFailure, ReadingStopped, reader_failure_is_recoverable
 from .storage import LocalBlobs
 
 
@@ -109,6 +109,9 @@ def _model_child(payload):
         else:
             raise ValueError("Unknown trusted model operation")
         return json.dumps({"status": "completed", "value": value}).encode()
+    except ReadingStopped as exc:
+        # A reading stopped by its token limits crosses as a known status (#153).
+        return json.dumps({"status": "stopped", "code": exc.code}).encode()
     except AdapterFailure as exc:
         return json.dumps(
             {
@@ -123,6 +126,27 @@ def _model_child(payload):
         # Only application-owned fixed codes cross this boundary. Provider error
         # strings and tracebacks are suppressed by the worker process runner.
         return json.dumps({"status": "blocked", "code": str(exc)}).encode()
+
+
+def child_without_answer(run, operation, reason):
+    """The failure of a model child that ended without an answer.
+
+    Whatever ended it (a deadline, a kill, a transport error or any exception
+    the child does not map, whose text never crosses the process boundary), the
+    parent cannot tell whether the provider answered. For a reader that is a
+    known, retryable failure (``reader_failure_is_recoverable``): the workflow
+    asks again, then ends the reading. For any other operation it stays an
+    unknown outcome that blocks the run.
+    """
+    from .domain import LookupStatus
+    from .workflow import OperationalBlock
+
+    if not reader_failure_is_recoverable(run, operation):
+        return OperationalBlock("external_outcome_unknown")
+    return AdapterFailure(
+        "reader_" + reason,
+        LookupStatus.TIMEOUT if reason == "deadline_exceeded" else LookupStatus.PROVIDER,
+    )
 
 
 def invoke_model(
@@ -182,7 +206,11 @@ def invoke_model(
         trace_required=True,
     )
     if result.status != "completed" or not result.cleanup_complete:
-        raise OperationalBlock("external_outcome_unknown")
+        raise child_without_answer(
+            run,
+            operation,
+            result.status if result.status != "completed" else "cleanup_incomplete",
+        )
     body = json.loads(result.value)
     if body["status"] == "adapter_failure":
         raise AdapterFailure(
@@ -193,8 +221,10 @@ def invoke_model(
         )
     if body["status"] == "blocked":
         raise OperationalBlock(body["code"])
+    if body["status"] == "stopped":
+        raise ReadingStopped(body["code"])
     if body["status"] != "completed":
-        raise OperationalBlock("external_outcome_unknown")
+        raise child_without_answer(run, operation, "unrecognized_answer")
     value = body["value"]
     if operation == "transcribe":
         observation = Observation.model_validate(value["observation"])

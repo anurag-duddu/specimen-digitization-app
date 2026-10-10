@@ -18,10 +18,9 @@ from specimen_digitization.application.api import (
     SYNTHETIC_TEXT,
     create_app,
 )
-from specimen_digitization.application.domain import LookupStatus, Principal
+from specimen_digitization.application.domain import Principal
 from specimen_digitization.application.lane_allowance import ProgramLedger
 from specimen_digitization.application.profile_runtime import published_risk_registry
-from specimen_digitization.application.reliability import AdapterFailure
 from specimen_digitization.application.storage import LocalBlobs, canonical_json, digest
 from specimen_digitization.research_harness.persistence import (
     DurabilityScope,
@@ -45,16 +44,20 @@ MUSE = "handwriting-muse"
 
 
 class DroppedReader(TokenAdapters):
-    """Readers whose first `handwriting-muse` request has an unknown outcome."""
+    """Readers whose first `handwriting-muse` request has an unknown outcome.
+
+    The worker fails after the request was sent, with an error that is not a
+    provider failure. A provider's own timeout or 5xx on a reader is a known,
+    retried failure now (reliability.reader_failure_is_recoverable), so it no
+    longer leaves an unknown outcome to reconcile; this does.
+    """
 
     unknown_reads = 0
 
     def transcribe(self, specimen, region, route):
         if route == MUSE and self.unknown_reads:
             self.unknown_reads -= 1
-            raise AdapterFailure(
-                "model_timeout", LookupStatus.TIMEOUT, outcome_unknown=True
-            )
+            raise RuntimeError("the worker lost its connection after the request was sent")
         return super().transcribe(specimen, region, route)
 
 

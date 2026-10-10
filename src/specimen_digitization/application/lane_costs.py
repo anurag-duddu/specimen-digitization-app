@@ -216,10 +216,17 @@ def settle_step(repository, principal, specimen, step, reserved, clock=None):
         run.program_allowance = position
 
 
-def record_step(repository, principal, specimen, step, observations, seconds, reserved, clock=None):
+def record_step(
+    repository, principal, specimen, step, observations, seconds, reserved,
+    clock=None, failure=None,
+):
     """The workflow's hook after a paid step: record its calls, then settle.
 
-    A reading reports its tokens on its observation. SAM request seconds are diagnostics only: they omit workflow warm-up,
+    A reading reports its tokens on its observation. A reading that gave none
+    failed, even when its step then completed (a reader that is given up on, or
+    stopped by its limits, completes with no observation): it is recorded as
+    `failed` with the code it failed with, and its reservation stays held in
+    full. SAM request seconds are diagnostics only: they omit workflow warm-up,
     startup CPU boost and idle lifecycle billing, so the full service liability
     remains reserved unless an authoritative billed amount is supplied.
     """
@@ -239,9 +246,11 @@ def record_step(repository, principal, specimen, step, observations, seconds, re
                 outcome=outcome,
             )
         if not readings:
-            record_reserved(
-                run, step, "model", outcome=outcome, route_id=step.split(":")[-1]
-            )
+            name = {"route_id": step.split(":")[-1]}
+            if failure:
+                name["failure_code"] = failure
+                outcome = "failed" if outcome == "completed" else outcome
+            record_reserved(run, step, "model", outcome=outcome, **name)
     elif step.startswith("first_pass:"):
         matching = [d.call for d in run.first_pass_decisions
             if d.region_id == step.split(":", 1)[1]]

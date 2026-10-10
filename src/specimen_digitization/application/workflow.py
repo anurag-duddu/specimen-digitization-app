@@ -45,7 +45,13 @@ from .integrity import EvidenceIntegrityError, verify_evidence
 from .lookup import PLACE_FIELDS, taxonomy_lookup
 from .policy import finalize
 from .storage import BlobStore, Repository, digest
-from .reliability import AdapterFailure, retry_delay
+from .reliability import (
+    AdapterFailure,
+    ReadingStopped,
+    failure_is_retryable,
+    reader_failure_is_recoverable,
+    retry_delay,
+)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -442,8 +448,15 @@ class Workflow:
         # Set once the step's model or lookup call has returned: a later failure
         # is deterministic and its outcome known (issue #80, HARNESS.md 2).
         effect_settled = False
-        # A SAM 3 failure keeps its retry even past the budget (below).
-        repeatable = False
+        # A SAM 3 failure keeps its retry even past the budget (below). So does
+        # a reader, whatever its call did: a reading is a pure read, so a failed
+        # one is a known failure and a late answer keeps its observation, where
+        # the deadline override would stamp the unknown outcome and drop it.
+        repeatable = step.startswith("transcribe:") and reader_failure_is_recoverable(
+            run, step
+        )
+        # The code a reading that gave no observation failed with, for its record.
+        reading_failure = None
         observed = len(run.observations)
         try:
             if step == "pin_dependencies":
@@ -513,10 +526,47 @@ class Workflow:
             elif step.startswith("transcribe:"):
                 _, region_id, route = step.split(":", 2)
                 region = next(r for r in run.regions if r.id == region_id)
-                observation = self.adapters.transcribe(specimen, region, route)
-                if observation.region_id != region.id or observation.route_id != route:
-                    raise OperationalBlock("observation_contract_invalid")
-                run.observations.append(observation)
+                try:
+                    observation = self.adapters.transcribe(specimen, region, route)
+                except ReadingStopped as stopped:
+                    if not reader_failure_is_recoverable(run, step):
+                        # An evidence-pilot reader keeps what a child that ended
+                        # without an answer always was: an unknown outcome.
+                        raise OperationalBlock("external_outcome_unknown") from stopped
+                    # A reading stopped by its token limits (#153) is not asked
+                    # again: the step completes with no observation, and the
+                    # region stays one reading short.
+                    reading_failure = stopped.code
+                    _log_step_failure(
+                        run,
+                        step,
+                        "reading_stopped",
+                        error=stopped,
+                        code=log_code(stopped.code),
+                    )
+                    observation = None
+                except AdapterFailure as failure:
+                    if not self.reading_has_no_attempt_left(run, step, failure):
+                        raise  # Retried, or a block that names its cause (below).
+                    # The last attempt failed too (a reader's failure is known,
+                    # reliability.reader_failure_is_recoverable): end the reading
+                    # with no observation, and the record goes to review.
+                    reading_failure = failure.code
+                    circuit_failure = failure.status.value
+                    circuit_retry_after = failure.retry_after_seconds
+                    _log_step_failure(
+                        run,
+                        step,
+                        "reading_given_up",
+                        error=failure,
+                        status=failure.status.value,
+                        code=log_code(failure.code),
+                    )
+                    observation = None
+                if observation is not None:
+                    if observation.region_id != region.id or observation.route_id != route:
+                        raise OperationalBlock("observation_contract_invalid")
+                    run.observations.append(observation)
             elif step.startswith("first_pass:"):
                 region = next(r for r in run.regions if r.id == step.split(":", 1)[1])
                 readings = [o for o in run.observations if o.region_id == region.id]
@@ -783,22 +833,24 @@ class Workflow:
             if step not in {"finalize", FIELD_RESEARCH, FIELD_RECHECK}:
                 run.stage = self.next_step(run).split(":")[0]
         except AdapterFailure as exc:
+            # The provider may have billed, but a reader is a pure read: its
+            # failure is a known one that is asked again (reliability.py). The
+            # flag still decides every other step.
+            recoverable = reader_failure_is_recoverable(run, step)
+            outcome_unknown = exc.outcome_unknown and not recoverable
+            if recoverable:
+                reading_failure = exc.code
             circuit_failure = exc.status.value
             circuit_retry_after = exc.retry_after_seconds
-            run.blocker = (
-                "external_outcome_unknown" if exc.outcome_unknown else exc.code
-            )
+            run.blocker = "external_outcome_unknown" if outcome_unknown else exc.code
             run.stage = "processing_blocked"
             run.disposition = None
-            if not exc.outcome_unknown and exc.status in {
-                LookupStatus.RATE_LIMITED,
-                LookupStatus.TIMEOUT,
-                LookupStatus.PROVIDER,
-            }:
+            if not outcome_unknown and failure_is_retryable(run, step, exc.status):
                 self.schedule_retry(run, step, exc.retry_after_seconds)
             # The SAM 3 service answers a repeat of a run's request from the
-            # response it stored (sam3_server.RunSegmenter).
-            repeatable = (
+            # response it stored (sam3_server.RunSegmenter). A reader's known
+            # failure stays known past the deadline override (set above).
+            repeatable = recoverable or (
                 step == "segment"
                 and exc.code.startswith("sam3_")
                 and not exc.outcome_unknown
@@ -812,7 +864,7 @@ class Workflow:
                 code=log_code(exc.code),
                 blocker=log_code(run.blocker),
                 stage=run.stage,
-                outcome_unknown=exc.outcome_unknown,
+                outcome_unknown=outcome_unknown,
             )
         except OperationalBlock as exc:
             circuit_failure = (
@@ -915,6 +967,7 @@ class Workflow:
                 elapsed,
                 cost,
                 self.clock,
+                failure=reading_failure,
             )
         if billable and not run.profile.synthetic:
             if self.settle_retained_cost is not None:
@@ -973,6 +1026,21 @@ class Workflow:
         else:
             run.dead_letter = True
             run.blocker = "retry_budget_exhausted:" + (run.blocker or "adapter_failure")
+
+    @staticmethod
+    def reading_has_no_attempt_left(run, step, failure) -> bool:
+        """Whether a reader's failed attempt was its last one.
+
+        The same test as ``schedule_retry``: attempts are counted when the call
+        is sent, so a failure at ``max_attempts`` has no retry left. A failure
+        that is not retried at all (a credential error) is not given up on: it
+        stays a block that names its cause.
+        """
+        return (
+            reader_failure_is_recoverable(run, step)
+            and failure_is_retryable(run, step, failure.status)
+            and run.attempts.get(step, 0) >= run.profile.execution.max_attempts
+        )
 
     @staticmethod
     def next_step(run: Run) -> str:
