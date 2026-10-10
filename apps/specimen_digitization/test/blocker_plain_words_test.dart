@@ -185,7 +185,7 @@ void main() {
       },
     });
 
-    Future<void> openRequirements(WidgetTester tester, String blocker) async {
+    Future<void> pumpWorkbench(WidgetTester tester, String blocker) async {
       useWindow(tester, largeWindow);
       await tester.pumpWidget(
         workbenchHost(
@@ -198,6 +198,10 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+    }
+
+    Future<void> openRequirements(WidgetTester tester, String blocker) async {
+      await pumpWorkbench(tester, blocker);
       await tester.ensureVisible(find.text('Record review requirements'));
       await tester.tap(find.text('Record review requirements'));
       await tester.pumpAndSettle();
@@ -221,6 +225,23 @@ void main() {
         expect(tester.takeException(), isNull);
       });
     }
+
+    testWidgets('the code stays in the technical details, two taps down', (
+      WidgetTester tester,
+    ) async {
+      final String code = knownCauses.first.code;
+      await pumpWorkbench(tester, code);
+      expect(find.textContaining('retry_budget_exhausted'), findsNothing);
+      for (final String title in <String>[
+        'Review details',
+        'Technical review details',
+      ]) {
+        await tester.ensureVisible(find.text(title));
+        await tester.tap(find.text(title));
+        await tester.pumpAndSettle();
+      }
+      expect(find.textContaining(code), findsOneWidget);
+    });
 
     testWidgets('an unknown code is listed in the generic sentence', (
       WidgetTester tester,
