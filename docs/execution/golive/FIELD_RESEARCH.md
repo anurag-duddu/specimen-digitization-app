@@ -466,7 +466,12 @@ row the settled value cites shows them.
   and the year is bare, never a measurement or a determination's year. Two
   forms, with a different bareness rule because they have different authors:
   - the literal is both lines, as the organiser quotes it (`"IV-25\n1948"`, or
-    the year first): the organiser has named the year, so it may be followed by
+    the year first). The year line may carry the period, comma, semicolon or
+    colon a sentence leaves (`1948.`, `1948,`): it is the year alone, every rule
+    below applies to it, and the mark the literal quotes counts as following
+    the year (`"3 Sept.\n1948."` in a reading that goes on `1948.5 m` is
+    refused). Lines with a blank line between them are `no_match` with
+    `split_lines_not_adjacent`. The organiser has named the year, so it may be followed by
     a comma, semicolon or period and then other text (`1948, R.D. Mitchell`),
     but never by a unit (`1948 m`, `1948 ft.`, `1948 msnm`), an apostrophe
     (`1948'`), a dash and a number (`1948-49`), a decimal or second number
@@ -486,6 +491,11 @@ row the settled value cites shows them.
     borrowed, nor is `'48`, a bare two-digit number or `4800`; and when the lines
     above and below give two different years, neither is. In every such case the
     date stays open (`year_missing`) and goes to review.
+- **A literal that spans a line break is judged only by those rules.** The
+  parser reads no notation across a line break: any such literal that is not
+  a date and its year as above (`3\nSept.\n1946`, `3 Sept.\n1946 leg.`,
+  `1948-\nIX-3`) is `no_match` with the note `literal_spans_a_line_break`, so
+  a notation's whitespace never joins two lines past the rules above.
 - **Readings of one label that disagree.** The check reads the literal in each
   reading's own text. When those results are not all the same (one reader's
   adjacent year is 1948 and the other's 1949; one has the year line and one has
@@ -493,7 +503,8 @@ row the settled value cites shows them.
   with the notes `readers_disagree_on_date` and one naming each reading and
   its result (`1A: 1948-04-25; 1B: 1949-04-25`), whichever reading is listed
   first. The first reading's result is never taken for the others, and
-  `step._check_row` keeps no row for it. A reading that shows the literal inside
+  `step._check_row` keeps no row for it. `reading_names` must name every
+  reading (a mismatch is a `ValueError`, never a silently shorter list). A reading that shows the literal inside
   a slide code or a hyphen-joined token still makes it no date, as before.
 - **Ranges** (`3-5.IX.1946`, `VIII-IX.46`, `3.IX-5.X.1946`, `10-12 Sept.
   1946`, `Sept. 3-5, 1946`, `3 Sept.-5 Oct. 1946`, `Sept.-Oct. 1946`,

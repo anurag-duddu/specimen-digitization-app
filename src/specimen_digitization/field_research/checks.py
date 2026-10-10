@@ -195,7 +195,7 @@ def parse_date(
         return DateCheck(literal, LookupStatus.POLICY, notes=(NOT_IN_SOURCE,), part=part)
     names = list(reading_names) if reading_names is not None else [
         str(number) for number in range(1, len(reading_texts) + 1)]
-    texts = [(name, text) for name, text in zip(names, reading_texts) if literal in text]
+    texts = [(name, text) for name, text in zip(names, reading_texts, strict=True) if literal in text]
     if not texts:
         return DateCheck(literal, LookupStatus.POLICY, notes=(NOT_IN_SOURCE,), part=part)
     rules = _date_rules(date_rules)

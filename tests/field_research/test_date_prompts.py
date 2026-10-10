@@ -40,6 +40,8 @@ def emitted() -> dict[str, checks.DateCheck]:
         "readers_disagree_on_date": checks.parse_date("IV-25", reading_texts=[
             "Guatemala, IV-25\n1948", "Guatemala, IV-25\n1949"], date_rules=PILOT),
         "split_lines_year_not_alone": run("IV-25\n1948", "Guatemala, IV-25\n1948 m"),
+        "split_lines_not_adjacent": run("IV-25\n\n1948", "Guatemala, IV-25\n\n1948"),
+        "literal_spans_a_line_break": run("3\nSept.\n1946", "Davao 3\nSept.\n1946"),
     }
 
 
@@ -61,6 +63,8 @@ def test_each_date_brief_names_how_the_check_reads_a_split_date_and_an_ambiguous
     for word in ("day_month_order_ambiguous", "split_lines", "year_on_next_line", "year_on_previous_line",
                  "readers_disagree_on_date"):
         assert word in brief, (key, word)
+    if key == "date_visited_from":
+        assert "split_lines_not_adjacent" in brief and "literal_spans_a_line_break" in brief
 
 
 def test_the_range_briefs_say_which_end_each_field_takes():

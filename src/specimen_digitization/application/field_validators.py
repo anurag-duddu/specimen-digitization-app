@@ -80,6 +80,13 @@ def date_parser(
         codes = all(_slide_code(token) for token in enclosing or [text])
         warning = "slide_code" if codes else "part_of_hyphenated_token"
         return _date_result(outcome=LookupStatus.NO_MATCH, warnings=[warning])
+    if "\n" in text or "\r" in text:
+        # A notation never reads across a line break; a date split over two lines
+        # is the research harness's rule (field_research/date_lines.py), which
+        # hands this parser one line and the year beside it.
+        return _date_result(
+            outcome=LookupStatus.NO_MATCH, warnings=["literal_spans_a_line_break"]
+        )
     text = normalize(text)
     order, g = next(
         ((o, hit.groupdict()) for o, p in NOTATIONS if (hit := p.fullmatch(text))),

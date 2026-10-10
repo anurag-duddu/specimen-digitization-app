@@ -233,6 +233,16 @@ REFUSED = [
     ("31 juin 1946", "invalid_calendar_date"),
     ("3 sept. 1700", "implausible_year"),
     ("31-IX-1946", "invalid_calendar_date"),
+    # No notation is read across a line break; the research harness's split-line rules
+    # (field_research/date_lines.py) hand the parser one line and the year beside it.
+    ("3 Sept.\n1946", "literal_spans_a_line_break"),
+    ("3\nSept.\n1946", "literal_spans_a_line_break"),
+    ("IV-25\n1948", "literal_spans_a_line_break"),
+    ("3.IX\n1946", "literal_spans_a_line_break"),
+    ("3-5\n.IX.1946", "literal_spans_a_line_break"),
+    ("Sept.\n1946", "literal_spans_a_line_break"),
+    ("1946\nIX-3", "literal_spans_a_line_break"),
+    ("3 Sept.\r\n1946", "literal_spans_a_line_break"),
     # Ranges and years the parser does not read.
     ("3.9-5.10.1946", None),
     ("1946-48", None),

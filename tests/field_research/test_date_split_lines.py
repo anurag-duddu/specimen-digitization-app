@@ -305,6 +305,74 @@ def test_a_reader_that_shows_the_literal_inside_a_code_still_decides_it_is_no_da
     assert result.status == LookupStatus.NO_MATCH and "part_of_hyphenated_token" in result.notes
 
 
+# A literal that spans a line break is judged only by the split-line rules (review 297, round 2):
+# the year line may carry the period or comma a sentence leaves, and every rule still applies.
+LINE_BREAK_CASES = [
+    # literal, the reading's text, the value an expert could answer
+    ("3 Sept.\n1948.", "Guatemala, 3 Sept.\n1948.5 m", "1948-09-03"),
+    ("3 Sept.\n1948.", "3.VI.1947, 3 Sept.\n1948.", "1948-09-03"),
+    ("3 Sept.\n1948,", "Guatemala, 3 Sept.\n1948, 1900 m", "1948-09-03"),
+    ("1948.\nIX-3", "det. J. Smith 1948.\nIX-3 Guatemala", "1948-09-03"),
+    ("1948-\nIX-3", "El. 1948-\nIX-3 Guatemala", "1948-09-03"),
+    ("25.IV.\n1948.", "Guatemala 25.IV.\n1948.5 m", "1948-04-25"),
+    ("3 Sept.\n\n1948", "Guatemala, 3 Sept.\n\n1948", "1948-09-03"),
+]
+
+
+@pytest.mark.parametrize(("literal", "text", "value"), LINE_BREAK_CASES, ids=[c[0] for c in LINE_BREAK_CASES])
+def test_a_literal_over_a_line_break_that_breaks_a_split_line_rule_keeps_no_check_row(literal, text, value):
+    row = field_step._check_row("date_visited_from", ("date_parser",), literal, value,
+        texts=[text], date_rules=PILOT, asset_id=None, blobs=None)
+
+    assert date(literal, [text]).status == LookupStatus.NO_MATCH
+    assert row is None
+
+
+@pytest.mark.parametrize(
+    ("literal", "text", "note"),
+    [
+        ("3 Sept.\n1948.", "Guatemala, 3 Sept.\n1948.5 m", "split_lines_year_not_alone"),
+        ("3 Sept.\n1948.", "3.VI.1947, 3 Sept.\n1948.", "split_lines_hold_another_date"),
+        ("3 Sept.\n1948,", "Guatemala, 3 Sept.\n1948, 1900 m", "split_lines_hold_another_date"),
+        ("1948.\nIX-3", "det. J. Smith 1948.\nIX-3 Guatemala", "split_lines_year_not_alone"),
+        ("1948-\nIX-3", "El. 1948-\nIX-3 Guatemala", "literal_spans_a_line_break"),
+        ("25.IV.\n1948.", "Guatemala 25.IV.\n1948.5 m", "split_lines_year_not_alone"),
+        ("3 Sept.\n\n1948", "Guatemala, 3 Sept.\n\n1948", "split_lines_not_adjacent"),
+        ("3\nSept.\n1946", "Davao 3\nSept.\n1946", "literal_spans_a_line_break"),
+        ("3 Sept.\n1946 leg.", "Davao 3 Sept.\n1946 leg.", "literal_spans_a_line_break"),
+    ],
+)
+def test_each_refusal_names_the_split_line_rule_it_broke(literal, text, note):
+    result = date(literal, [text])
+
+    assert result.status == LookupStatus.NO_MATCH and result.notes == (note,) and result.values == ()
+
+
+@pytest.mark.parametrize(
+    ("literal", "text", "value"),
+    [
+        ("3 Sept.\n1948.", "Guatemala, 3 Sept.\n1948. R.D. Mitchell", "1948-09-03"),
+        ("3 Sept.\n1948,", "Guatemala, 3 Sept.\n1948, R.D. Mitchell", "1948-09-03"),
+        ("3 Sept.\n1948.", "Guatemala, 3 Sept.\n1948.", "1948-09-03"),
+        ("1948.\nIX-3", "1948.\nIX-3 Guatemala", "1948-09-03"),
+        ("25.IV.\n1948.", "Guatemala 25.IV.\n1948. R.D. Mitchell", "1948-04-25"),
+    ],
+)
+def test_a_year_line_with_the_mark_a_sentence_leaves_is_read_under_every_rule(literal, text, value):
+    row = field_step._check_row("date_visited_from", ("date_parser",), literal, value,
+        texts=[text], date_rules=PILOT, asset_id=None, blobs=None)
+
+    assert date(literal, [text]).values == (value,)
+    assert row is not None and '"split_lines"' in row.excerpt
+
+
+def test_a_reading_that_cannot_be_named_is_refused_not_dropped():
+    with pytest.raises(ValueError):
+        date("IV-25", ["Guatemala, IV-25\n1948", "Guatemala, IV-25\n1949"], reading_names=["1A"])
+    with pytest.raises(ValueError):
+        date("IV-25", ["Guatemala, IV-25\n1948"], reading_names=["1A", "1B"])
+
+
 # -- ranges and the field that takes their end ---------------------------------------------------
 
 RANGE_TEXT = "Mindanao, P.I.\n3-5.IX.1946 Davao\nF. G. Werner"

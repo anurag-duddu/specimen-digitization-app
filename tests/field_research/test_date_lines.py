@@ -17,7 +17,13 @@ from specimen_digitization.field_research import date_lines
         ("3 Sept.\n1946", ("3 Sept.", "1946")),
         ("IV-25\n48", None),
         ("IV-25", None),
-        ("IV-25\n\n1948", None),
+        ("IV-25\n\n1948", ("IV-25", "1948")),  # not adjacent: split_problem says so
+        ("3 Sept.\n1948.", ("3 Sept.", "1948")),
+        ("3 Sept.\n1948,", ("3 Sept.", "1948")),
+        ("1948.\nIX-3", ("IX-3", "1948")),
+        ("25.IV.\n1948.", ("25.IV.", "1948")),
+        ("1948-\nIX-3", None),
+        ("3 Sept.\n1948.5", None),
         ("1948\n1949", None),
         ("IV-25\nV-3", None),
         ("a\nb\n1948", None),
@@ -74,6 +80,17 @@ def test_year_beside_needs_the_date_to_end_or_start_its_line_and_the_year_alone(
         ("1948\nIV-25", "1948\nIV-25 x", None),
         ("1948\nIV-25", "det. x 1948\nIV-25 x", date_lines.YEAR_NOT_ALONE),
         ("1948\nIV-25", "1948\nIV-25 3.VI", date_lines.OTHER_DATE),
+        ("IV-25\n\n1948", "x, IV-25\n\n1948", date_lines.NOT_ADJACENT),
+        ("1948\n\nIV-25", "1948\n\nIV-25", date_lines.NOT_ADJACENT),
+        # The mark the literal itself quotes after the year counts as following it.
+        ("3 Sept.\n1948.", "Guatemala, 3 Sept.\n1948.5 m", date_lines.YEAR_NOT_ALONE),
+        ("3 Sept.\n1948.", "3.VI.1947, 3 Sept.\n1948.", date_lines.OTHER_DATE),
+        ("3 Sept.\n1948,", "Guatemala, 3 Sept.\n1948, 1900 m", date_lines.OTHER_DATE),
+        ("3 Sept.\n1948,", "Guatemala, 3 Sept.\n1948, R.D. Mitchell", None),
+        ("3 Sept.\n1948.", "Guatemala, 3 Sept.\n1948. R.D. Mitchell", None),
+        ("1948.\nIX-3", "det. J. Smith 1948.\nIX-3 Guatemala", date_lines.YEAR_NOT_ALONE),
+        ("1948.\nIX-3", "1948.\nIX-3 Guatemala", None),
+        ("25.IV.\n1948.", "Guatemala 25.IV.\n1948.5 m", date_lines.YEAR_NOT_ALONE),
     ],
 )
 def test_split_problem(literal, text, problem):

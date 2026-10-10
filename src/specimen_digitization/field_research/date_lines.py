@@ -74,19 +74,26 @@ def _lines(literal: str) -> list[str]:
     return [line.strip() for line in literal.strip().replace("\r\n", "\n").replace("\r", "\n").split("\n")]
 
 
+def _unmarked(line: str) -> str:
+    """The line without the period, comma, semicolon or colon a sentence leaves
+    after its last word ("1948." is the year 1948), as the date parser reads it."""
+    return line.strip().rstrip(" .,;:")
+
+
 def split_literal(literal: str) -> tuple[str, str] | None:
-    """A literal of exactly two lines, one of them a year alone: the other line
-    (the date that states no year, if it is one) and the year. None for any
-    other literal."""
-    lines = _lines(literal)
-    if len(lines) != 2 or not all(lines):
+    """A literal of two lines (blank lines aside) one of which is a year alone,
+    with at most a period or comma after it: the other line (the date that
+    states no year, if it is one) and the year without its mark. None for any
+    other literal. Whether the two lines are adjacent is `split_problem`'s."""
+    lines = [line for line in _lines(literal) if line]
+    if len(lines) != 2:
         return None
     first, second = lines
-    year_first, year_second = bool(_ALONE.fullmatch(first)), bool(_ALONE.fullmatch(second))
+    year_first, year_second = bool(_ALONE.fullmatch(_unmarked(first))), bool(_ALONE.fullmatch(_unmarked(second)))
     if year_second and not year_first:
-        return first, second
+        return first, _unmarked(second)
     if year_first and not year_second:
-        return second, first
+        return second, _unmarked(first)
     return None
 
 
@@ -98,23 +105,31 @@ def _line_around(text: str, start: int, end: int) -> tuple[int, int]:
 
 OTHER_DATE = "split_lines_hold_another_date"
 YEAR_NOT_ALONE = "split_lines_year_not_alone"
+NOT_ADJACENT = "split_lines_not_adjacent"
 
 
 def split_problem(literal: str, text: str) -> str | None:
     """Why the (two-line) literal, where it stands in the text, is not a date and
-    its year (a note: `split_lines_hold_another_date` or
-    `split_lines_year_not_alone`), or None when some place of it is clear.
+    its year (a note: `split_lines_not_adjacent`, `split_lines_hold_another_date`
+    or `split_lines_year_not_alone`), or None when some place of it is clear.
 
-    The date's own line holds nothing else that could be a date. A year that
-    ends the line above the date must stand alone on its line; one that starts
-    the line below it may be followed by a comma, semicolon or period (and then
-    other text), never by a unit, an apostrophe, a dash and a number, a second
-    number, or a word."""
-    year_first = bool(_ALONE.fullmatch(_lines(literal)[0]))
+    The two lines are adjacent: no blank line between them. The date's own line
+    holds nothing else that could be a date. A year that ends the line above the
+    date must stand alone on its line; one that starts the line below it may be
+    followed by a comma, semicolon or period (and then other text), never by a
+    unit, an apostrophe, a dash and a number, a second number, or a word. A
+    period or comma the literal itself quotes after the year counts as following
+    it."""
+    lines = _lines(literal)
+    if len(lines) != 2:
+        return NOT_ADJACENT
+    year_first = bool(_ALONE.fullmatch(_unmarked(lines[0])))
+    # The mark the literal quotes after a year that ends it ("1948." in "3 Sept.\n1948.").
+    tail = lines[1][len(_unmarked(lines[1])) :] if not year_first else ""
     problem = OTHER_DATE
     for hit in re.finditer(re.escape(literal), text):
         line_start, line_end = _line_around(text, hit.start(), hit.end())
-        before, after = text[line_start : hit.start()], text[hit.end() : line_end]
+        before, after = text[line_start : hit.start()], tail + text[hit.end() : line_end]
         if year_first:
             # The year ends its line: it stands alone there; the date's line is after.
             if could_be_a_date(before) or could_be_a_date(after):
