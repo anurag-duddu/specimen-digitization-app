@@ -8,8 +8,11 @@ import contextvars
 import hashlib
 import io
 import json
+import logging
 import re
+import threading
 import time
+from collections import Counter
 from pathlib import Path
 
 import httpx
@@ -33,6 +36,7 @@ from specimen_digitization.application.integrity import (
 )
 from specimen_digitization.application.storage import LocalBlobs
 from specimen_digitization.field_research.contracts import PlaceRef, SourceCandidate
+from specimen_digitization.field_research import sources as approved_sources
 from specimen_digitization.field_research.sources import (
     EXCERPT_LIMIT,
     ApprovedSources,
@@ -518,6 +522,117 @@ def test_geolocate_spacing_holds_across_records(tmp_path):
     assert first._pacer is second._pacer is SOURCE_PACER
 
 
+# --- At most two requests at a time to each gazetteer ---
+
+
+class Held:
+    """An offline provider that holds each request a moment and counts the
+    requests in flight to each host, from any thread."""
+
+    def __init__(self, seconds=0.02):
+        self.seconds = seconds
+        self._lock = threading.Lock()
+        self.active, self.peak, self.total = Counter(), Counter(), Counter()
+
+    async def __call__(self, request):
+        host = request.url.host
+        with self._lock:
+            self.active[host] += 1
+            self.total[host] += 1
+            self.peak[host] = max(self.peak[host], self.active[host])
+        try:
+            await asyncio.sleep(self.seconds)
+        finally:
+            with self._lock:
+                self.active[host] -= 1
+        return httpx.Response(404)  # Final: one request per lookup.
+
+
+def held_sources(tmp_path, held, slots=None):
+    """A record's sources over `held`, with the process's slots unless given."""
+    given = {} if slots is None else {"slots": slots}
+    return ApprovedSources(blobs=LocalBlobs(tmp_path / "blobs"),
+                           client=httpx.AsyncClient(transport=httpx.MockTransport(held)), **given)
+
+
+@pytest.mark.asyncio
+async def test_at_most_two_requests_at_a_time_go_to_each_gazetteer(tmp_path):
+    held = Held()
+    tools = held_sources(tmp_path, held)
+    await asyncio.gather(*(tools.lookup(source, f"Place {name}", field_key="city")
+                           for source in ("tgn", "wikidata", "nga") for name in "ABCDE"))
+    hosts = {"services.getty.edu", "www.wikidata.org", "geonames.nga.mil"}
+    assert set(held.total) == hosts and all(held.total[host] == 5 for host in hosts)
+    # Each source is held to two at once on its own, not all three to two together.
+    assert {host: held.peak[host] for host in hosts} == dict.fromkeys(hosts, 2)
+
+
+def test_the_limit_holds_across_records_on_their_own_loops_and_threads(tmp_path):
+    """Each record researches on its own event loop (FieldResearchStep.run's
+    asyncio.run), maybe in its own thread: the two slots are the process's."""
+    held, slots = Held(), approved_sources.SourceSlots({"tgn": 2})
+
+    def record(n):
+        async def research():
+            tools = held_sources(tmp_path / str(n), held, slots)
+            await asyncio.gather(*(tools.lookup("tgn", f"Place {'XYZ'[n]}{name}", field_key="city")
+                                   for name in "ABCD"))
+        asyncio.run(research())
+
+    threads = [threading.Thread(target=record, args=(n,)) for n in range(3)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert held.total["services.getty.edu"] == 12 and held.peak["services.getty.edu"] == 2
+    assert slots.in_flight("tgn") == 0
+
+
+def test_a_request_cancelled_while_it_waits_never_keeps_a_slot():
+    async def scenario():
+        slots = approved_sources.SourceSlots({"tgn": 1})
+        entered, release = asyncio.Event(), asyncio.Event()
+
+        async def hold():
+            async with slots.slot("tgn"):
+                entered.set()
+                await release.wait()
+
+        async def take():
+            async with slots.slot("tgn"):
+                pass
+
+        first = asyncio.create_task(hold())
+        await entered.wait()
+        # Cancelled while it waits: it never had the slot.
+        waiting = asyncio.create_task(take())
+        await asyncio.sleep(0)
+        waiting.cancel()
+        # Cancelled just after the slot was passed to it: it passes it on.
+        given = asyncio.create_task(take())
+        await asyncio.sleep(0)
+        release.set()
+        await first
+        given.cancel()
+        results = await asyncio.gather(waiting, given, return_exceptions=True)
+        assert all(isinstance(result, asyncio.CancelledError) for result in results)
+        assert slots.in_flight("tgn") == 0
+        await asyncio.wait_for(take(), 1)
+        assert slots.in_flight("tgn") == 0
+
+    asyncio.run(scenario())
+
+
+def test_every_records_sources_share_the_process_slots_and_geolocate_keeps_its_spacing(tmp_path):
+    blobs = LocalBlobs(tmp_path / "blobs")
+    client = httpx.AsyncClient(transport=httpx.MockTransport(nothing))
+    first, second = (ApprovedSources(blobs=blobs, client=client) for _ in range(2))
+    assert first._slots is second._slots is approved_sources.SOURCE_SLOTS
+    # GEOLocate is spaced (SOURCE_PACER), never held; GBIF is neither.
+    assert approved_sources.SOURCE_SLOTS.limits == {"tgn": 2, "wikidata": 2, "nga": 2}
+    assert first._pacer is SOURCE_PACER
+
+
 # --- Retries and failures ---
 
 
@@ -598,6 +713,82 @@ async def test_other_client_errors_are_final(tmp_path, code, status):
     assert answer.status is status and answer.evidence is None
     assert answer.note == f"GEOLocate refused the request with HTTP {code}"
     assert len(server.requests) == 1
+
+
+def unanswered(caplog):
+    """The sources' log lines for unanswered lookups, as key=value maps."""
+    prefix = "Field research lookup unanswered: "
+    return [
+        dict(pair.split("=", 1) for pair in record.getMessage().removeprefix(prefix).split())
+        for record in caplog.records
+        if record.name == "specimen_digitization.field_research.sources"
+        and record.levelname == "WARNING" and record.getMessage().startswith(prefix)
+    ]
+
+
+TGN_HOST = "services.getty.edu"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("reply", "status", "line"),
+    [
+        # As Getty TGN may answer Cloud Run's addresses: a refusal, or a redirect,
+        # which is never followed. Either is an outage, and logged.
+        (httpx.Response(403), LookupStatus.AUTHORIZATION,
+         {"http_status": "403", "error": "-", "retry_after": "absent", "attempt": "1"}),
+        (httpx.Response(302, headers={"Location": "https://www.getty.edu/blocked"}), LookupStatus.PROVIDER,
+         {"http_status": "302", "error": "-", "retry_after": "absent", "attempt": "1"}),
+        (httpx.Response(503, headers={"Retry-After": "1"}), LookupStatus.PROVIDER,
+         {"http_status": "503", "error": "-", "retry_after": "present", "attempt": "3"}),
+        (httpx.ConnectError("refused"), LookupStatus.PROVIDER,
+         {"http_status": "-", "error": "ConnectError", "retry_after": "absent", "attempt": "3"}),
+        (httpx.Response(429, headers={"Retry-After": "30"}), LookupStatus.RATE_LIMITED,
+         {"http_status": "429", "error": "-", "retry_after": "present", "attempt": "1"}),
+    ],
+)
+async def test_every_unanswered_tgn_lookup_is_an_outage_logged_without_its_query(
+    tmp_path, caplog, reply, status, line
+):
+    from specimen_digitization.field_research.experts import SOURCE_OUTAGES
+
+    tools, server, _, blobs = make(tmp_path, replies(reply))
+    with caplog.at_level(logging.WARNING, logger="specimen_digitization.field_research.sources"):
+        answer = await tools.lookup("tgn", "Davao Province, Philippines", field_key="province_state")
+    assert answer.status is status and status in SOURCE_OUTAGES and answer.evidence is None
+    assert {request.url.host for _, request in server.requests} == {TGN_HOST}
+    assert unanswered(caplog) == [
+        {"step": "field_research", "source": "tgn", "host": TGN_HOST, **line}
+    ]
+    assert "Davao" not in caplog.text and "Philippines" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_an_unanswered_geolocate_or_gbif_lookup_is_logged_too(tmp_path, caplog):
+    def reply(request):
+        if request.url.host == "api.gbif.org":
+            return httpx.Response(503)
+        raise httpx.ReadTimeout("slow")
+
+    tools, _, _, _ = make(tmp_path, reply)
+    with caplog.at_level(logging.WARNING, logger="specimen_digitization.field_research.sources"):
+        place = await tools.lookup("geolocate", YEPOCAPA, field_key="city")
+        taxon = await tools.lookup("gbif", "Apis mellifera", field_key="taxon")
+    assert (place.status, taxon.status) == (LookupStatus.TIMEOUT, LookupStatus.PROVIDER)
+    lines_ = unanswered(caplog)
+    assert [(item["source"], item["host"]) for item in lines_] == [
+        ("geolocate", "geo-locate.org"), ("gbif", "api.gbif.org")]
+    assert (lines_[0]["error"], lines_[0]["attempt"]) == ("ReadTimeout", "3")
+    assert lines_[1]["error"] == "provider_error" and int(lines_[1]["attempt"]) >= 1
+    assert "Yepocapa" not in caplog.text and "Apis" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_an_answered_lookup_logs_nothing(tmp_path, caplog):
+    tools, _, _, _ = make(tmp_path, gazetteers())
+    with caplog.at_level(logging.WARNING, logger="specimen_digitization.field_research.sources"):
+        answer = await tools.lookup("wikidata", "Davao Province", field_key="province_state")
+    assert answer.status is LookupStatus.SUCCESS and unanswered(caplog) == []
 
 
 @pytest.mark.asyncio
