@@ -239,7 +239,14 @@ handover runs field research instead of the six specialists:
      field's organiser candidate (or keyed line the parser read), where its
      quote stands in its reading, whatever that field's expert did in this
      attempt (PR #300's review: the elevation's candidate "4800ft." claims
-     its text even when the elevation's expert failed). The field
+     its text even when the elevation's expert failed). An answer's or a
+     settled value's literal claims only where it stands as whole tokens:
+     each occurrence that neither starts nor ends between two letters or
+     between two digits (`step._occurrences`; finding 2 of the review of
+     6fd595b3b), so a collection code settled as "2" claims the "2" of "lot
+     #2" but not the "2" of "IV-24-48", and the date read from the
+     transcript settles; a code settled as "IV-24-48" still claims the
+     date's whole text. The field
      goes to review with the reason "This text, read from the transcript,
      is also the value found for <field>." The kinds are
      `agreement.FIELD_KINDS`: the place fields (precise location among
@@ -253,6 +260,30 @@ handover runs field research instead of the six specialists:
      "2000 msnm" settles. An organiser's candidate is never refused here,
      and two fields that both read the text from the transcript both go to
      review.
+   - **Text plainly of another kind** (the answer check and the step,
+     `agreement._holds_another_kind`; finding 2 of the review of
+     6fd595b3b). A place field (country, province or state, county, city,
+     precise location) or the collection code read from the transcript
+     never holds text that is plainly another kind of field's, whether or
+     not any field claims it (`written.other_kind`): an elevation, a number
+     with an elevation unit after it or before it ("4800ft.", "m 1200"; the
+     units below), unless a compass point or "of", "from", "de", "von" and
+     the like (`written.DISTANCE_AFTER`) follows it, which makes it a
+     distance ("500 m N of the church" is locality text); a date, any run
+     of up to five whole words the date parser reads as a date or as
+     several, with Roman months read and no century rule ("IV-24-48",
+     "24.VI.1952", "24 Apr 1948", a year from 1750 on such as "1948"; a
+     slide code is none); or a range of dates or elevations (`written.ranges`
+     with a unit, a month, a Roman month or letters at an end: "24 IV a 2
+     V"; a range of bare numbers, "km 12 a 15", is none). Such an answer is
+     sent back, telling the expert to leave that text out, and the step
+     sends the field to review ("This text holds an elevation, which is
+     another field's.", "...holds a date...", "...holds a range of dates or
+     elevations..."). So with no elevation candidate and the elevation's
+     expert failing, "Yepocapa, 4800ft." no longer settles as the locality
+     while "Yepocapa" does, and with no date candidate "IV-24-48" no longer
+     settles as the collection code; "Volcan Barva" beside "2000 msnm"
+     still settles. An organiser's candidate is not checked here.
    - **The elevation's unit** (the answer check and the step,
      `agreement._unit_refusal`, for an organiser's candidate and for text
      read from the transcript alike; finding 5 of the review of 6fd595b3b,

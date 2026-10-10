@@ -19,12 +19,14 @@ fields' outcomes:
    writes the literal as a run of whole words within one line
    (verbatim_runs), and it cuts or extends none of that reading's
    candidates (_cut_candidate); a taxon so read must sit in no longer name
-   on its reading (_longer_written), and a date or an elevation so read is
+   on its reading (_longer_written), a date or an elevation so read is
    never one end of a range its clause writes, joined in any of the
    languages and with any of the dashes field_research.written lists
-   (_part_of_range). An elevation, a candidate or so read, settles only a
-   field of the unit its reading writes it in, and a number with no unit
-   settles none (_unit_refusal). Points 1, 3
+   (_part_of_range), and a place or the collection code so read never holds
+   a date, an elevation or a range of them (_holds_another_kind). An
+   elevation, a candidate or so read, settles only a field of the unit its
+   reading writes it in, and a number with no unit settles none
+   (_unit_refusal). Points 1, 3
    and 4 hold for it as for a candidate, its readers per point 3 as
    agreeing_runs reads them, and on a label with no decided transcript the
    clauses holding it agree in every reader (holding_clauses). For a
@@ -212,10 +214,19 @@ NOT_EVERY_READER = "Not every reader of the label writes this text."
 PART_OF_RANGE = "The label writes this value as one end of a range."
 UNIT_DIFFERS = "The label writes this elevation in the other unit."
 NO_UNIT = "The label writes no elevation unit with this number."
+HOLDS_AN_ELEVATION = "This text holds an elevation, which is another field's."
+HOLDS_A_DATE = "This text holds a date, which is another field's."
+HOLDS_A_RANGE = "This text holds a range of dates or elevations, which is another field's."
+HOLDS = {written.ELEVATION: HOLDS_AN_ELEVATION, written.DATE: HOLDS_A_DATE, written.RANGE: HOLDS_A_RANGE}
 # The unit each elevation field holds (application.derivations.UNITS), and
 # its name in the experts' retry.
 FIELD_UNITS = {key: unit for unit, keys in UNITS.items() for key in keys}
 UNIT_NAMES = {"m": "metres", "ft": "feet"}
+# The fields whose text read from the transcript never holds a date, an
+# elevation or a range of them (_holds_another_kind): the place fields
+# (precise location among them) and the collection code.
+NO_DATES_OR_ELEVATIONS = frozenset({"country", "province_state", "county", "city", "precise_location",
+    "collection_code"})
 
 
 @dataclass(frozen=True)
@@ -461,8 +472,9 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
     marks as doubtful never settles (_genus_in_doubt). An elevation, by
     candidate or read from the transcript, settles only a field of the unit
     the reading writes it in (_unit_refusal). Text read from the transcript
-    is never one end of a range for a date or an elevation
-    (_part_of_range)."""
+    is never one end of a range for a date or an elevation (_part_of_range),
+    and never holds a date, an elevation or a range of them for a place or
+    the collection code (_holds_another_kind)."""
     for reading in named:
         chosen = _deciding(reading, readings)
         if chosen.input_source == DECIDED and literal not in chosen.text:
@@ -476,7 +488,8 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
             or _genus_in_doubt(task, readings, literal, named))
     if basis == TRANSCRIPT:
         return (_part_of_range(task, readings, literal, named) or _unit_refusal(task, readings, literal, named)
-            or _longer_written(task, readings, literal, named) or _genus_in_doubt(task, readings, literal, named))
+            or _holds_another_kind(task, literal) or _longer_written(task, readings, literal, named)
+            or _genus_in_doubt(task, readings, literal, named))
     allowed = candidates_by_reading(task, readings)
     offered = [f"{source.name}: {text!r}" for source in dict.fromkeys(_deciding(r, readings) for r in named)
         for text in allowed.get(source.name, {}).values()]
@@ -547,6 +560,27 @@ def _unit_refusal(task: FieldTask, readings: Sequence[Reading], literal: str,
                 " in any spelling). A unit is never guessed from the magnitude, the place or a map: answer "
                 "sources_cannot_resolve and quote it."))
     return None
+
+
+def _holds_another_kind(task: FieldTask, literal: str) -> Refusal | None:
+    """For a place field or the collection code read from the transcript
+    (TRANSCRIPT), why it cannot settle: the literal holds text that is plainly
+    another kind of field's (written.other_kind; PR #300's review, finding
+    2), whether or not another field's expert claimed that text: an
+    elevation ("Yepocapa, 4800ft."), a date the date parser reads
+    ("IV-24-48" as the collection code) or a range of dates or elevations.
+    A distance ("500 m N of the bridge") is no elevation. None otherwise,
+    and for any other field."""
+    if task.key not in NO_DATES_OR_ELEVATIONS:
+        return None
+    found = written.other_kind(literal)
+    if found is None:
+        return None
+    kind, text = found
+    return Refusal(HOLDS[kind], (
+        f"{literal!r} holds {text!r}, which is {('an ' if kind == written.ELEVATION else 'a ') + kind}: "
+        "another field's text, never this one's. Copy only this field's own text, leaving that out, or "
+        "answer several_possibilities or sources_cannot_resolve."))
 
 
 def _longer_written(task: FieldTask, readings: Sequence[Reading], literal: str,

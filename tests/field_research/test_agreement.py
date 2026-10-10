@@ -319,9 +319,10 @@ ACCEPTED = {
     "328-collecting-date": (label(LABEL_3A, LABEL_3B), "date_visited_from",
         dict(literal="IV-24-48", value="1948-04-24"), [("parse_date", "IV-24-48")]),
     "328-collection-method": (label(LABEL_3A, LABEL_3B), "collection_method", dict(literal="trap"), []),
-    # 105526330's locality, from its decided transcript; the other reader is evidence only.
+    # 105526330's locality, from its decided transcript; the other reader is evidence only. The
+    # elevation after the comma is the elevation's text, not the locality's (the brief leaves it out).
     "330-precise-location": (label("Yepocapa,4800 ft.\nIV-25\n1948", "Yepocapa, 4800 ft.\nIV-25\n1948",
-        decided=True), "precise_location", dict(literal="Yepocapa,4800 ft."), []),
+        decided=True), "precise_location", dict(literal="Yepocapa"), []),
     # A Costa Rican label: the locality before its comma, the elevation after it.
     "spanish-locality": (label("Volc" + A_ACUTE + "n Barva, 2000 msnm\n15-VIII-1965"), "precise_location",
         dict(literal="Volc" + A_ACUTE + "n Barva"), []),
@@ -872,11 +873,13 @@ def test_the_experts_check_sends_a_range_end_back():
     ("elevation_from_ft", "Yepocapa, 4800 ft., IV-24-48 to V-2-48", "4800 ft."),
     # "a" that joins no two numbers (Spanish "at").
     ("elevation_from_m", "Mata a 1200 m", "1200 m"),
-    # A field that is no date or elevation.
-    ("collection_code", "IV-24-48 to V-2-48", "V-2-48"),
+    # A field that is no date or elevation, beside a range of plain numbers. (Its old case, the
+    # collection code "V-2-48" of "IV-24-48 to V-2-48", is now refused as holding a date:
+    # test_a_place_or_code_read_from_the_transcript_never_holds_another_kinds_text.)
+    ("collection_code", "lot 12 to 15", "15"),
 ], ids=["whole-range", "range-in-another-clause", "a-joining-no-numbers", "not-a-date-field"])
 def test_text_beside_or_holding_a_whole_range_is_not_cut_from_it(key, line, literal):
-    """The control: unchanged from 61c193e93."""
+    """The control: each settles, as on 6fd595b3b."""
     readings = label(line + "\nleg. J. Smith")
     assert agreement.refusal(uncandidated(key), readings, literal=literal, named=list(readings), value=None,
         authority_id=None, cited=[], received=[]) is None
@@ -972,6 +975,7 @@ def test_text_beside_a_joiner_that_joins_no_range_settles(key, line, literal):
     readings = label(line + "\nleg. J. Smith")
     assert agreement.refusal(uncandidated(key), readings, literal=literal, named=list(readings), value=None,
         authority_id=None, cited=[], received=[]) is None
+
 
 # PR #300's review of 6fd595b3b, finding 5 (pre-existing on main): "1500 m"
 # from "alt. 1500 m" settled elevation_from_ft as 1500. An elevation settles
@@ -1086,3 +1090,130 @@ def test_an_elevation_in_its_own_unit_still_settles(key, line, literal):
     readings = label(line + "\nleg. J. Smith")
     assert agreement.refusal(uncandidated(key), readings, literal=literal, named=list(readings), value=None,
         authority_id=None, cited=[], received=[]) is None
+
+
+# PR #300's review of 6fd595b3b, finding 2: the overlap guard needed another
+# field to claim the text. With no elevation or date candidate and that
+# expert failing, "Yepocapa, 4800ft." settled as the locality and "IV-24-48"
+# as the collection code. A place or a code read from the transcript never
+# holds text that is plainly an elevation, a date or a range of them
+# (written.other_kind), whoever claims it. And a short settled literal
+# claimed the digits inside longer tokens: a settled code "2" sent the date
+# "IV-24-48" to review.
+
+HOLDS_ANOTHER_KIND = {
+    # Elevations inside a locality: Guatemala, Italy (the unit first), Costa Rica, Borneo, Switzerland, Mexico.
+    "guatemala-feet": ("precise_location", "Yepocapa, 4800ft.", "HOLDS_AN_ELEVATION"),
+    "italy-unit-first": ("precise_location", "Alpi Apuane, m 1200", "HOLDS_AN_ELEVATION"),
+    "costa-rica-msnm": ("precise_location", "Volc\N{LATIN SMALL LETTER A WITH ACUTE}n Barva, 2000 msnm",
+        "HOLDS_AN_ELEVATION"),
+    "borneo-m-a-s-l": ("precise_location", "Mt. Kinabalu, 1500 m a.s.l.", "HOLDS_AN_ELEVATION"),
+    "swiss-m-ue-M": ("precise_location", "Val Bavona 800 m \N{LATIN SMALL LETTER U WITH DIAERESIS}. M.",
+        "HOLDS_AN_ELEVATION"),
+    "mexico-pies": ("precise_location", "Real de Catorce 9000 pies", "HOLDS_AN_ELEVATION"),
+    # Dates inside a code or a locality, as the date parser reads them.
+    "code-is-a-date": ("collection_code", "IV-24-48", "HOLDS_A_DATE"),
+    "code-is-a-range-end": ("collection_code", "V-2-48", "HOLDS_A_DATE"),
+    "german-locality-and-date": ("precise_location", "Lichtfang Bayern 24.VI.1952", "HOLDS_A_DATE"),
+    "english-month-name": ("precise_location", "Mindanao, Davao, 24 Apr 1948", "HOLDS_A_DATE"),
+    # A range of dates the parser does not read whole: days and Roman months, no year.
+    "spanish-day-range": ("precise_location", "R\N{LATIN SMALL LETTER I WITH ACUTE}o Negro, 24 IV a 2 V",
+        "HOLDS_A_RANGE"),
+}
+
+
+@pytest.mark.parametrize(("key", "literal", "reason"), HOLDS_ANOTHER_KIND.values(), ids=HOLDS_ANOTHER_KIND)
+def test_a_place_or_code_read_from_the_transcript_never_holds_another_kinds_text(key, literal, reason):
+    """No other field claims the text here. On 6fd595b3b each is accepted."""
+    readings = label(("IV-24-48 to V-2-48" if literal == "V-2-48" else literal) + "\nleg. J. Smith")
+    refused = agreement.refusal(uncandidated(key), readings, literal=literal, named=list(readings), value=None,
+        authority_id=None, cited=[], received=[])
+    assert refused is not None and refused.reason == getattr(agreement, reason)
+
+
+def test_the_experts_check_sends_the_locality_back_without_its_elevation():
+    """The expert is told to leave the elevation out, and "Yepocapa" then
+    settles. On 6fd595b3b "Yepocapa, 4800ft." is kept."""
+    readings = label("Yepocapa, 4800ft.\nIV-23-48")
+    with pytest.raises(ModelRetry, match="'4800ft.', which is an elevation"):
+        checked(uncandidated("precise_location"), readings, dict(outcome="resolved", literal="Yepocapa, 4800ft.",
+            reading_names=["3A", "3B"]))
+    kept = checked(uncandidated("precise_location"), readings, dict(outcome="resolved", literal="Yepocapa",
+        reading_names=["3A", "3B"]))
+    assert kept.literal == "Yepocapa"
+
+
+@pytest.mark.parametrize(("key", "literal"), [
+    ("precise_location", "Yepocapa"),
+    # A distance is no elevation: English, Spanish, German.
+    ("precise_location", "Yepocapa, 500 m N of church"),
+    ("precise_location", "2 km al S de Antigua, 300 m de la carretera"),
+    ("precise_location", "Schwarzwald, 800 m von Titisee"),
+    # Minutes of arc are no feet.
+    ("precise_location", "Mindanao, 7\N{DEGREE SIGN}30' N 125\N{DEGREE SIGN}15' E"),
+    # Plain numbers, and a range of plain numbers, are no dates.
+    ("precise_location", "Carretera km 12 a 15"),
+    ("collection_code", "lot #2"),
+    ("collection_code", "V-4-67-1-B"),
+], ids=["locality", "english-distance", "spanish-distance", "german-distance", "coordinates", "km-range",
+    "lot-number", "letter-coded"])
+def test_a_place_or_code_with_no_date_or_elevation_in_it_settles(key, literal):
+    """The control: each settles, as on 6fd595b3b."""
+    readings = label(literal + "\nleg. J. Smith")
+    assert agreement.refusal(uncandidated(key), readings, literal=literal, named=list(readings), value=None,
+        authority_id=None, cited=[], received=[]) is None
+
+
+@pytest.mark.parametrize("elevation", ["fails", "lacks"])
+def test_a_locality_holding_an_elevation_no_one_claims_goes_to_review(tmp_path, elevation):
+    """The review's probe: no elevation candidate, and the elevation's
+    expert fails or finds none. On 6fd595b3b the locality is supported."""
+    rig = label_3(tmp_path, SPANISH_LABEL, SPANISH_LABEL.replace("Mitchell", "mitchell"), [])
+    run = rig.specimen.run
+    settle(rig, Scripted({
+        "elevation_from_ft": failing("timeout") if elevation == "fails" else answering(LACKS),
+        "precise_location": answering(FieldAnswer(outcome="resolved", literal="Yepocapa, 4800ft.",
+            reading_names=["1A", "1B"], explanation="Both readers write it."))}))
+    place = run.fields["precise_location"]
+    assert place.state == ValueState.UNRESOLVED
+    assert place.reason == agreement.HOLDS_AN_ELEVATION + " Both readers write it."
+
+
+def test_a_date_as_the_collection_code_no_one_claims_goes_to_review(tmp_path):
+    """The review's probe: no date candidate, and the date's expert fails.
+    On 6fd595b3b the collection code is supported as "IV-24-48"."""
+    rig = label_3(tmp_path, LABEL_3A, LABEL_3B, [])
+    run = rig.specimen.run
+    settle(rig, Scripted({"date_visited_from": failing("timeout"), "collection_code": answering(FieldAnswer(
+        outcome="resolved", literal="IV-24-48", reading_names=["1A", "1B"], explanation="Read."))}))
+    code = run.fields["collection_code"]
+    assert code.state == ValueState.UNRESOLVED
+    assert code.reason == agreement.HOLDS_A_DATE + " Read."
+
+
+def test_a_short_settled_value_claims_only_whole_tokens(tmp_path):
+    """The review's probe: a collection code settled earlier as "2" claimed
+    the "2" inside "IV-24-48" and sent the date read from the transcript to
+    review. On 6fd595b3b the date is unresolved."""
+    rig = label_3(tmp_path, LABEL_3A, LABEL_3B, [])
+    run = rig.specimen.run
+    run.fields["collection_code"] = FieldValue(state=ValueState.SUPPORTED, literal="2", parsed="2",
+        layer="settled", source_region_id=run.regions[0].id)
+    settle(rig, Scripted({"date_visited_from": answering(FieldAnswer(outcome="resolved", literal="IV-24-48",
+        value="1948-04-24", reading_names=["1A", "1B"], explanation="Both write it."))}))
+    assert run.fields["date_visited_from"].state == ValueState.SUPPORTED
+
+
+def test_a_settled_value_still_claims_its_whole_tokens(tmp_path):
+    """The control: a collection code settled earlier as "IV-24-48" claims
+    the date's whole text, and the date read from the transcript goes to
+    review, as on 6fd595b3b."""
+    rig = label_3(tmp_path, LABEL_3A, LABEL_3B, [])
+    run = rig.specimen.run
+    run.fields["collection_code"] = FieldValue(state=ValueState.SUPPORTED, literal="IV-24-48", parsed="IV-24-48",
+        layer="settled", source_region_id=run.regions[0].id)
+    settle(rig, Scripted({"date_visited_from": answering(FieldAnswer(outcome="resolved", literal="IV-24-48",
+        value="1948-04-24", reading_names=["1A", "1B"], explanation="Both write it."))}))
+    date_value = run.fields["date_visited_from"]
+    assert date_value.state == ValueState.UNRESOLVED
+    assert date_value.reason.startswith(field_step.TAKEN.format(other="Collection Code"))

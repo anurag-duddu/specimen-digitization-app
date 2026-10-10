@@ -1,6 +1,6 @@
 """The tables and readers of field_research.written: how a label joins a
 range and writes an elevation's unit, in any language (PR #300's review of
-6fd595b3b, finding 1). The guards that use them are tested through
+6fd595b3b, findings 1, 2 and 5). The guards that use them are tested through
 agreement.refusal, the experts' check and the step in test_agreement.
 """
 
@@ -66,3 +66,17 @@ def test_fold_keeps_one_character_for_one(text, folded):
 ])
 def test_the_unit_each_number_is_written_in(line, units):
     assert [number.unit for number in written.numbers(line)] == units
+
+
+@pytest.mark.parametrize(("text", "found"), [
+    ("Yepocapa, 4800ft.", ("elevation", "4800ft.")),
+    ("Alpi Apuane, m 1200", ("elevation", "m 1200")),
+    ("IV-24-48", ("date", "IV-24-48")),
+    ("Mindanao, Davao, 24 Apr 1948", ("date", "24 Apr 1948")),
+    ("R\N{LATIN SMALL LETTER I WITH ACUTE}o Negro, 24 IV a 2 V", ("range", "24 IV a 2")),
+    ("Yepocapa, 500 m N of church", None),
+    ("Carretera km 12 a 15", None),
+    ("V-4-67-1", None),
+])
+def test_text_of_another_kind_inside_a_literal(text, found):
+    assert written.other_kind(text) == found

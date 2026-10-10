@@ -1,5 +1,5 @@
 """How a label writes a range and an elevation's unit, in any language (the
-review of PR #300 at 6fd595b3b, findings 1 and 5).
+review of PR #300 at 6fd595b3b, findings 1, 2 and 5).
 
 The tables here are the data the guards in agreement.py read:
 
@@ -38,6 +38,9 @@ import re
 import unicodedata
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+
+from specimen_digitization.application.domain import LookupStatus
+from specimen_digitization.application.field_validators import date_parser
 
 # A comma or a semicolon ends a word even with no space after it
 # ("Yepocapa,4800 ft."), except between two digits ("1,200 m").
@@ -385,6 +388,45 @@ def units_of(text: str, literal: str) -> list[frozenset[str]]:
         start, end = hit.start() - line_start, hit.end() - line_start
         found.append(frozenset(n.unit for n in numbers(line) if start <= n.start < end and n.unit))
     return found
+
+
+# How dates are found inside other text (other_kind): as the date parser
+# reads them, with Roman months read and no century rule (a two-digit year
+# stays partial, and the text is still a date).
+FINDING_DATES = {"version": "date-rules-v1", "two_digit_year_century": None, "roman_numeral_months": True}
+# The most words a date the parser reads is written in ("IV - 24 - 48").
+DATE_WORDS = 5
+ELEVATION, DATE, RANGE = "elevation", "date", "range"
+
+
+def other_kind(text: str) -> tuple[str, str] | None:
+    """Text inside one line of text that is plainly an elevation, a date or a
+    range of them, as (ELEVATION, DATE or RANGE, that text); None when it
+    holds none:
+    - ELEVATION: a number with an elevation unit (numbers), unless a compass
+      point or "of" follows it, which makes it a distance ("500 m N of");
+    - RANGE: a range of dates or elevations (ranges, `marked`: "24 IV to 2
+      V"), never two bare numbers ("km 12 to 15");
+    - DATE: a run of up to DATE_WORDS whole words, its edge punctuation
+      aside, that the date parser reads as a date, alone or one of several
+      readings (field_validators.date_parser under FINDING_DATES: "IV-24-48",
+      "24.IV.1948", "May 2, 1948", "Sept. 1946", a year "1948"); a slide
+      code ("V-4-67-1") is none."""
+    spans = pieces(text, words(text))
+    for number in numbers(text, spans):
+        if number.unit is not None and number.whole is not None and not number.distance:
+            return ELEVATION, text[number.whole[0]:number.whole[1]]
+    for found in ranges(text, spans):
+        if found.marked:
+            return RANGE, text[found.start:found.end]
+    found_words = words(text)
+    for first in range(len(found_words)):
+        for last in range(first, min(len(found_words), first + DATE_WORDS)):
+            run = text[found_words[first][0]:found_words[last][1]].strip(EDGE).rstrip(".,;:")
+            if _has_digit(run) and date_parser(run, source_text=text, date_rules=FINDING_DATES).outcome in (
+                    LookupStatus.SUCCESS, LookupStatus.AMBIGUOUS):
+                return DATE, run
+    return None
 
 
 @dataclass(frozen=True)
