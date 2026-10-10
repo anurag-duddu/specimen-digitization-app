@@ -1402,9 +1402,10 @@ def _corroborate(run, tasks_by_key: Mapping[str, FieldTask], applied: Mapping[st
     keeps the Philippines when its province "Davao, Prov." settles on a
     province of the Philippines. Otherwise the value is ambiguous, for review,
     with a reason naming the initials (agreement.initialism_alone), and the
-    rows its settling added are dropped. Checked from the city up, once every
-    place is in. Returns the keys left ambiguous, for their trace
-    (trace_fields)."""
+    rows its settling added are dropped, with the transcript_literal finding
+    of a literal read from the transcript (_from_the_transcript). Checked
+    from the city up, once every place is in. Returns the keys left
+    ambiguous, for their trace (trace_fields)."""
     from .agreement import PLACE_ORDER, PlaceField, initialism_alone, initialism_of, lies_in
 
     unsettled = []
@@ -1435,6 +1436,8 @@ def _corroborate(run, tasks_by_key: Mapping[str, FieldTask], applied: Mapping[st
         run.evidence[:] = [item for item in run.evidence if item.id not in dropped]
         for item_id in dropped:
             evidence.pop(item_id, None)
+        # A literal read from the transcript: its finding goes with its rows.
+        run.findings[:] = [finding for finding in run.findings if finding.reason_code != transcript_code(key)]
         cited = [e for e in answer.source_evidence_ids if e in evidence and evidence[e].kind != "literal"]
         run.fields[key] = _unsettled(task, ValueState.AMBIGUOUS, cited=cited,
             reason=f"{initialism_alone(answer.literal, expansion)} {answer.explanation}")

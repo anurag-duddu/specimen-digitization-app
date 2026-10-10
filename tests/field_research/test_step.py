@@ -1363,6 +1363,24 @@ def test_a_place_left_ambiguous_on_its_initials_alone_names_that_check_in_its_tr
     assert decisions["country"] == {"refusal": "initialism_alone"}
 
 
+def test_a_place_from_the_transcript_left_ambiguous_on_its_initials_keeps_no_transcript_finding(tmp_path):
+    """_corroborate drops what settling a place it leaves ambiguous added: its
+    label rows and, for a literal its expert read in the transcript (the
+    readers differ on another line, so no keyed line is parsed and the
+    organiser offered no country), its transcript_literal finding, which
+    would otherwise mark an unsettled value and cite a dropped row."""
+    text = label_with(country="UK", province_state=None, county=None, city=None)
+    rig = build_rig(tmp_path, text, text.replace("J. Smith", "J. Smlth"))
+    run = rig.specimen.run
+    settle(rig, Scripted({"country": from_tgn("United Kingdom", "UK", "United Kingdom", "tgn:united-kingdom"),
+        "province_state": LACKING, "county": LACKING, "city": LACKING}), tools=Gazetteer(rig.blobs))
+    assert run.fields["country"].state == ValueState.AMBIGUOUS
+    codes = [finding.reason_code for finding in run.findings]
+    assert "transcript_literal:country" not in codes and "transcript_literal:taxon" in codes
+    ids = {item.id for item in run.evidence}
+    assert all(i in ids for finding in run.findings for i in finding.evidence_ids)
+
+
 def test_the_labels_own_text_found_as_another_nation_leaves_the_country_ambiguous(tmp_path):
     """The review of #295: the expert looked up "Georgia" for "Ga." and also
     "Ga." itself, which TGN (constructed) finds as one nation, Gabon. The own
