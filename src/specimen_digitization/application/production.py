@@ -50,6 +50,7 @@ from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.usage import UsageLimits
 
 from .worker_deadline import deadline_call, guarded
+from ..process_logging import log_code
 
 actor_uid = contextvars.ContextVar("verified_actor_uid", default=None)
 
@@ -74,6 +75,20 @@ REVIEW_ROLES = {"reviewer", "manager", "admin"}
 
 class ProjectionRejected(RuntimeError):
     """A projection write the connector refused for a reason other than a replay."""
+
+
+# A specimen id as GetSpecimen's `$id: UUID!` takes it: 8-4-4-4-12 hex digits, with
+# or without the hyphens (the connector returns them without).
+SPECIMEN_UUID = re.compile(
+    r"[0-9a-fA-F]{8}(-?)[0-9a-fA-F]{4}\1[0-9a-fA-F]{4}\1[0-9a-fA-F]{4}\1[0-9a-fA-F]{12}"
+)
+
+
+def graphql_error_code(errors) -> str:
+    """The first GraphQL error's `extensions.code`, safe to log (never its message)."""
+    first = errors[0] if isinstance(errors, list) and errors else None
+    extensions = first.get("extensions") if isinstance(first, dict) else None
+    return log_code(extensions.get("code") if isinstance(extensions, dict) else None)
 
 
 def sql_emulator_host() -> str:
@@ -167,6 +182,9 @@ class SqlConnectRepository:
             raise OperationalBlock("sql_connect_unavailable_or_connector_not_published")
         body = deadline_call(response.json)
         if body.get("errors"):
+            # Every GraphQL error becomes a Conflict (409); the code says which kind it was.
+            LOGGER.warning("SQL Connect %s rejected: code=%s",
+                           log_code(operation), graphql_error_code(body["errors"]))
             raise Conflict(
                 "SQL Connect transaction rejected; reload current revision and membership"
             )
@@ -228,6 +246,10 @@ class SqlConnectRepository:
         ]
 
     def get(self, scope, specimen_id):
+        # GetSpecimen takes `$id: UUID!`. Any other id names no specimen: it is
+        # Missing (404), not a refused query read as a conflict (409).
+        if not isinstance(specimen_id, str) or not SPECIMEN_UUID.fullmatch(specimen_id):
+            raise Missing(specimen_id)
         data = self.execute("GetSpecimen", dict(self.variables(scope), id=specimen_id))
         snapshots = data.get("specimenSnapshots", [])
         if not data.get("specimen") or not snapshots:

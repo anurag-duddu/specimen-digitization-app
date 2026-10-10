@@ -228,9 +228,14 @@ class ApiSpecimenRepository
         final error = result['error'] is Map
             ? Map<String, dynamic>.from(result['error'])
             : <String, dynamic>{};
+        // The research routes answer with a bare {"detail": code}.
+        final detail = result['detail'];
         throw ApiFailure(
           textOf(error['message'], 'The request did not complete. Retry.'),
-          code: textOf(error['code'], 'request_failed'),
+          code: textOf(
+            error['code'],
+            detail is String && detail.isNotEmpty ? detail : 'request_failed',
+          ),
           status: response.statusCode,
           details: error['details'] is Map
               ? Map<String, dynamic>.from(error['details'])
