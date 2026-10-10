@@ -304,15 +304,20 @@ def word_before(text: str, start: int) -> str | None:
 _SHED = _AROUND + "?*_\N{LEFT SINGLE QUOTATION MARK}\N{RIGHT SINGLE QUOTATION MARK}" + (
     "\N{LEFT DOUBLE QUOTATION MARK}\N{RIGHT DOUBLE QUOTATION MARK}")
 # The qualifiers that put a name in doubt (B4 of #289's fifth review): each a
-# whole word, in any case, its periods aside ("cf", "cf.", "Cf.", "CF" and
+# whole word, in any case ("vic" in lower case only: LOWER_CASE_QUALIFIERS),
+# its periods aside ("cf", "cf.", "Cf.", "CF" and
 # "c.f." are "cf"; "n.r." is "nr"). Capitals each followed by a period are
 # a person's initials, never a qualifier ("C.F." in "C.F. Baker", "N.R.";
 # _initials).
 DOUBT_QUALIFIERS = ("cf", "cfr", "aff", "affin", "affinis", "nr", "near", "prob", "probably", "poss", "possibly",
     "conf", "vic", "prope")
+# The qualifiers that count in lower case only: "vic." (vicinity), never
+# "Vic." or "VIC" (Victoria).
+LOWER_CASE_QUALIFIERS = frozenset({"vic"})
 # One of them as a text writes it: its letters, each with an optional period
-# after it ("c.f", "cf", "C.F").
-_QUALIFIER_WORD = "(?:" + "|".join(r"\.?".join(word) for word in DOUBT_QUALIFIERS) + ")"
+# after it ("c.f", "cf", "C.F"), in any case unless it is lower case only.
+_QUALIFIER_WORD = "(?:" + "|".join((r"(?-i:{})" if word in LOWER_CASE_QUALIFIERS else "{}").format(r"\.?".join(word))
+    for word in DOUBT_QUALIFIERS) + ")"
 # Two or more capitals, each followed by a period: initials ("C.F.", "N.R.", "A.F.F.").
 _INITIALS = re.compile(r"(?:[A-Z]\.){2,}")
 

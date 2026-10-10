@@ -385,6 +385,8 @@ def test_the_words_after_a_code_that_are_no_genus_are_one_short_list():
     ("C.F.", "C.F."),
     ("C.F.Baker", "C.F.Baker"),
     ("Baker,N.R.", "Baker,N.R."),
+    # "vic." counts in lower case only; "Vic." is Victoria.
+    ("Vic.", "Vic."),
     # A qualifier's letters ending a longer word are no qualifier.
     ("Staff.", "Staff."),
     ("?", ""),
@@ -566,9 +568,11 @@ def test_a_doubt_sign_shows_wherever_a_text_writes_it(text, sign):
 # spelling: in any case, with or without its periods, apart or against the
 # genus, before or after it.
 QUALIFIER_SPELLINGS = [
-    *(form for word in ("cfr", "affin", "affinis", "probably", "poss", "possibly", "conf", "vic", "prope")
+    *(form for word in ("cfr", "affin", "affinis", "probably", "poss", "possibly", "conf", "prope")
         for form in (word + ". Epipsocus", word.upper() + " Epipsocus", word.capitalize() + ".Epipsocus",
             "Epipsocus " + word)),
+    # "vic" in lower case only.
+    "vic. Epipsocus", "vic.Epipsocus", "Epipsocus vic", "v.i.c. Epipsocus",
     "c.f. Epipsocus", "C.f. Epipsocus", "c.f.Epipsocus", "(c.f.) Epipsocus", "n.r. Epipsocus", "C.F Epipsocus",
     "a.f.f. Epipsocus", "c.f.r. Epipsocus", "Epipsocus c.f.",
 ]
@@ -631,7 +635,10 @@ PILOT_READINGS = {
         "Cfrs"],
     # A person's initials, capitals each followed by a period.
     ["leg. C.F. Baker", "C.F.Baker", "Baker, C.F.", "N.R. Smith", "det. A.F.F. Jones", "C.F. Epipsocus"],
-], ids=[*PILOT_READINGS, "question-mark-beside-numbers", "qualifier-letters-inside-words", "initials"])
+    # "Vic." and "VIC" with a capital: Victoria, never "vic." (vicinity).
+    ["Melbourne, Vic.", "Ballarat VIC", "Vic. Epipsocus", "Vic.Epipsocus"],
+], ids=[*PILOT_READINGS, "question-mark-beside-numbers", "qualifier-letters-inside-words", "initials",
+    "capital-vic"])
 def test_no_doubt_sign_shows_where_none_is_written(texts):
     from specimen_digitization.field_research import checks
 

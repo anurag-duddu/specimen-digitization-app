@@ -2621,6 +2621,17 @@ def test_a_collectors_initials_are_no_qualifier_and_the_code_still_clears(tmp_pa
     assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
 
 
+@pytest.mark.parametrize("locality", ["Melbourne, Vic.", "Ballarat VIC"])
+def test_a_locality_in_victoria_is_no_qualifier_and_the_code_still_clears(tmp_path, locality):
+    """"vic." counts in lower case only: "Vic." with a capital is Victoria,
+    so the morphocode label clears as unmatched under rule B."""
+    rig = build_rig(tmp_path, morphocoded(MORPHOCODE) + "\n" + locality)
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": cannot_resolve(MORPHOCODE)}), tools=NoGenus(rig.blobs))
+    assert (run.fields["taxon"].state, run.fields["taxon"].reason) == (ValueState.SUPPORTED, field_step.UNMATCHED)
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+
+
 # N1 of #289's fourth review: a genus written with a placeholder other than
 # the reader prompt's "[unreadable]", no unreadable span listed. The text,
 # the organiser's candidate, and its quote.
