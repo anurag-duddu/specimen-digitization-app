@@ -521,19 +521,17 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending):
     reading when its value is supported, this attempt has done with it (it is
     not `pending`) and the reading writes its literal, compared as place
     names."""
-    from .agreement import PLACE_ORDER, PLACE_VALUE_FIELDS, PlaceField, parents_refusal, place_name, place_settling
+    from .agreement import PLACE_ORDER, PLACE_VALUE_FIELDS, PlaceField, parents_refusal, place_name
 
     if task.key not in PLACE_VALUE_FIELDS:
         return None
-    by_id = {item.evidence.id: item for item in sources if item.evidence is not None}
-    cited = [by_id[i] for i in dict.fromkeys(answer.source_evidence_ids) if i in by_id]
-    settled_value = answer.value if answer.value is not None else answer.literal
-    found = place_settling(task, answer.literal, settled_value, answer.authority_id, cited)
+    found = _settling(task, answer, sources)
     if found is None:
         return None  # _refusal has refused it already.
-    basis, candidate = found
+    basis, candidate = found.basis, found.candidate
     named = [by_name[n] for n in dict.fromkeys(answer.reading_names) if n in by_name and answer.literal in by_name[n].text]
     decided = {r.region_id: r for r in readings if r.input_source == "decided_transcript"}
+    rows = {item.id: item for item in run.evidence}
     for reading in dict.fromkeys(decided.get(r.region_id, r) for r in named):
         written, settled = {}, {}
         for key in PLACE_ORDER:
@@ -543,7 +541,8 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending):
             value = run.fields.get(key)
             if (key not in pending and value is not None and value.state == ValueState.SUPPORTED and value.literal
                     and place_name(value.literal) in {place_name(text) for text in texts}):
-                names = (*sorted(texts), *(text for text in (value.normalized, value.parsed) if text))
+                names = (*sorted(texts), *(text for text in (value.normalized, value.parsed) if text),
+                    *_expansions(key, value, rows))
                 written[key] = settled[key] = PlaceField(tuple(dict.fromkeys(names)), value.authority_id)
             else:
                 written[key] = PlaceField(tuple(sorted(texts)))
@@ -553,31 +552,60 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending):
     return None
 
 
+def _settling(task, answer, sources):
+    """How the answer's cited place answers settle its place value
+    (agreement.place_settling), or None. ``sources`` are the source answers
+    the field received."""
+    from .agreement import place_settling
+
+    by_id = {item.evidence.id: item for item in sources if item.evidence is not None}
+    cited = [by_id[i] for i in dict.fromkeys(answer.source_evidence_ids) if i in by_id]
+    settled = answer.value if answer.value is not None else answer.literal
+    return place_settling(task, answer.literal, settled, answer.authority_id, cited)
+
+
 NEAR_SPELLING_RULES = "field-research-places-v1"
+# The locator of a settled place value's abbreviation row: the field, then
+# the expansion its source was asked (_place_basis).
+ABBREVIATION_LOCATOR = "abbreviation:{key}:{expansion}"
+
+
+def _expansions(key: str, value: FieldValue, rows: Mapping[str, Evidence]) -> list[str]:
+    """The expansions a settled place value settled through: those its
+    abbreviation rows name (_place_basis), which a parent may name it by
+    (agreement.lies_in)."""
+    prefix = ABBREVIATION_LOCATOR.format(key=key, expansion="")
+    return [row.locator.removeprefix(prefix) for row in (rows.get(i) for i in value.evidence_ids)
+        if row is not None and row.kind == "rule" and row.locator and row.locator.startswith(prefix)]
 
 
 def _place_basis(run, task, answer, sources, value: FieldValue) -> None:
-    """What a settled place value's basis adds (agreement.place_basis): for a
-    lookup of a notation's expansion (P4), one rule row naming the table entry,
-    cited by the value as support (no stored record, so it is never projected);
-    for a lookup of the candidate's own name one letter from the label's text,
-    which settled only on G34's whole condition (_misfit), a warning finding
-    beside the record, naming the deciding answers, which never routes it
-    (RunFinding). The value keeps the label's spelling as its literal (G27)."""
-    from .agreement import NEAR_SPELLING, NOTATION, PLACE_VALUE_FIELDS, place_basis
-    from .notations import expansion
+    """What a settled place value's basis adds (agreement.place_settling): for
+    a lookup of an expansion the literal abbreviates (the letter rule,
+    abbreviations.fit), one rule row naming the abbreviation, the expansion
+    and how its letters fit, cited by the value as support (no stored record,
+    so it is never projected); for a lookup of the candidate's own name one
+    letter from the label's text, which settled only on G34's whole condition
+    (_misfit), a warning finding beside the record, naming the deciding
+    answers, which never routes it (RunFinding). The value keeps the label's
+    spelling as its literal (G27)."""
+    from .abbreviations import fit, shown
+    from .agreement import ABBREVIATION, NEAR_SPELLING, PLACE_VALUE_FIELDS, asked_name
 
     if task.key not in PLACE_VALUE_FIELDS:
         return
     by_id = {item.evidence.id: item for item in sources if item.evidence is not None}
     cited = [by_id[i] for i in dict.fromkeys(answer.source_evidence_ids) if i in by_id]
-    settled = answer.value if answer.value is not None else answer.literal
-    basis = place_basis(task, answer.literal, settled, answer.authority_id, cited)
-    if basis == NOTATION:
-        entry = expansion(answer.literal, task.key)
-        row = Evidence(kind="rule", source=SOURCE, locator=f"notation:{entry.field}:{entry.notation}",
-            excerpt=(f'{task.key}: "{answer.literal}" is the notation "{entry.notation}", looked up as '
-                f'"{entry.expansion}" (G29; field_research.notations)'))
+    found = _settling(task, answer, sources)
+    basis = found.basis if found is not None else None
+    if basis == ABBREVIATION:
+        expansion = asked_name(found.answer)
+        pairs = fit(answer.literal, expansion)
+        row = Evidence(kind="rule", source=SOURCE,
+            locator=ABBREVIATION_LOCATOR.format(key=task.key, expansion=expansion),
+            excerpt=(f'{task.key}: "{answer.literal}" abbreviates "{expansion}", the name '
+                f'{found.answer.source_id} was asked: its letters fit the words in order '
+                f'({shown(pairs)}; field_research.abbreviations)'))
         run.evidence.append(row)
         value.evidence_ids.append(row.id)
         value.evidence_relations[row.id] = "supports"
@@ -1088,7 +1116,9 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     a pick between readers no source settles, a place no place source
     confirms), or whose place does not lie in the country and province
     settled for its reading (_misfit, after the places above it), is
-    ambiguous or unresolved instead. label_lacks_value: not present;
+    ambiguous or unresolved instead; a place settled on initials that no
+    place below it confirms is ambiguous (_corroborate, once every place is
+    in). label_lacks_value: not present;
     sources_cannot_resolve: unresolved, except a taxon that names no genus,
     supported as written and unmatched (_unmatched_taxon); several_possibilities:
     ambiguous, the options in the reason; a failure: unresolved with a
@@ -1122,16 +1152,22 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     pending = {outcome.key for outcome in ordered}
     final = last_attempt(run)
     decisions = {} if decisions is None else decisions
+    applied: dict[str, FieldOutcome] = {}
+    added: dict[str, list[str]] = {}
     for outcome in ordered:
         task = tasks_by_key.get(outcome.key)
         pending.discard(outcome.key)
         if task is None or task.key in human:
             continue
         decision = decisions.setdefault(task.key, {})
+        before = len(run.evidence)
         run.fields[task.key] = _field_value(run, task, outcome, readings=readings, by_name=by_name,
             evidence=evidence, asset_id=asset_id, blobs=blobs, date_rules=profile.date_rules,
             sources=received.get(task.key, ()), places=places, pending=frozenset(pending), final=final,
             decision=decision)
+        applied[task.key] = outcome
+        added[task.key] = [item.id for item in run.evidence[before:]]
+    _corroborate(run, tasks_by_key, applied, received, evidence=evidence, added=added)
     eligible = [key for key in field_keys(profile) if key not in human]
     derived = derive.fill(run, eligible=eligible, asset_id=asset_id, blobs=blobs)
     for key in derived:
@@ -1178,6 +1214,54 @@ def _unreachable_note(outcome: FieldOutcome, value: FieldValue, rows: Mapping[st
         if cited:
             note += f"; settled from {_source_names(cited)}"
     return note + "."
+
+
+def _corroborate(run, tasks_by_key: Mapping[str, FieldTask], applied: Mapping[str, FieldOutcome],
+        received: Mapping[str, Sequence[SourceAnswer]], *, evidence: dict, added: Mapping[str, Sequence[str]]) -> None:
+    """A place value settled in this attempt on initials (agreement.initialism_of:
+    "P.I." looked up as "Philippine Islands", "UK" as "United Kingdom") stays
+    settled only when a place field below it, settled in this attempt on its
+    own evidence (on anything but initials), lies inside it: that field's
+    settling candidate names it among its parents (agreement.lies_in: its
+    record, or its text, value or expansion by name). So "Mindanao, P.I."
+    keeps the Philippines when its province "Davao, Prov." settles on a
+    province of the Philippines. Otherwise the value is ambiguous, for review,
+    with a reason naming the initials (agreement.initialism_alone), and the
+    rows its settling added are dropped. Checked from the city up, once every
+    place is in."""
+    from .agreement import PLACE_ORDER, PlaceField, initialism_alone, initialism_of, lies_in
+
+    settlings = {}
+    for key in PLACE_ORDER:
+        outcome, task, value = applied.get(key), tasks_by_key.get(key), run.fields.get(key)
+        answer = outcome.answer if outcome is not None else None
+        if (task is None or answer is None or answer.outcome != "resolved" or value is None
+                or value.state != ValueState.SUPPORTED):
+            continue
+        found = _settling(task, answer, received.get(key, ()))
+        if found is not None:
+            settlings[key] = (found, initialism_of(answer.literal, found))
+    rows = {item.id: item for item in run.evidence}
+    for index in reversed(range(len(PLACE_ORDER))):
+        key = PLACE_ORDER[index]
+        if key not in settlings or settlings[key][1] is None:
+            continue
+        expansion, value = settlings[key][1], run.fields[key]
+        names = (value.literal, *(text for text in (value.normalized, value.parsed) if text),
+            *_expansions(key, value, rows))
+        field = PlaceField(tuple(dict.fromkeys(names)), value.authority_id)
+        if any(other in settlings and settlings[other][1] is None
+                and lies_in(settlings[other][0].candidate, key, field) for other in PLACE_ORDER[index + 1:]):
+            continue
+        task, answer = tasks_by_key[key], applied[key].answer
+        dropped = set(added.get(key, ()))
+        run.evidence[:] = [item for item in run.evidence if item.id not in dropped]
+        for item_id in dropped:
+            evidence.pop(item_id, None)
+        cited = [e for e in answer.source_evidence_ids if e in evidence and evidence[e].kind != "literal"]
+        run.fields[key] = _unsettled(task, ValueState.AMBIGUOUS, cited=cited,
+            reason=f"{initialism_alone(answer.literal, expansion)} {answer.explanation}")
+        del settlings[key]
 
 
 # ---- fields the label does not state (owner decision A) -------------------

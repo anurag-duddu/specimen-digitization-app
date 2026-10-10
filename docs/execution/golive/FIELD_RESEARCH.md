@@ -282,8 +282,10 @@ handover runs field research instead of the six specialists:
      Chimaltenango, Guatemala" for a province
      "Yepocapa", its candidate is "Chimaltenango", a province inferred from a
      locality). So TGN's ambiguous
-     answer for "Philippines" (the nation, a Dutch village, a sea) settles
-     the country "P.I." as Philippines, and its answer for "Chimaltenango"
+     answer for "Philippine Islands" (a ridge, the nation, a Dutch village, a
+     sea, an island group) settles the country "P.I." as Philippines (on the
+     abbreviation rule below, when another place of the label lies in the
+     Philippines), and its answer for "Chimaltenango"
      (the department and its town) settles the province as the department
      and a city only as the town. Precise location stays the verbatim text.
    - **The label's own text (P3).** The answer that decides a place value
@@ -291,16 +293,126 @@ handover runs field research instead of the six specialists:
      the name the source searches, has the literal's comparison key (as
      above, case, accents, punctuation and notations such as "Prov." aside).
      For GEOLocate that part is the city it settles. There are two
-     exceptions. A place notation (P4): when the literal is a notation
-     of the table in `field_research/notations.py` for this field (compared
-     by the same key, so "P. I." is "P.I."), the query may be the expansion
-     the table gives it; the step then writes one evidence row of kind
-     "rule" naming the table entry (locator `notation:<field>:<notation>`, no
-     stored record, so it is never projected), and the value cites it as
-     support. The table holds G29's notations as the briefs state them:
-     "P.I." (country) is looked up as "Philippine Islands", "Guat." (country)
-     as "Guatemala"; the shared brief's notation line is rendered from the
-     same table. A near spelling: the query is the chosen candidate's own
+     exceptions. An abbreviation (P4): when the literal is written as an
+     abbreviation, the query's first part may be an expansion its letters
+     fit ("Philippine Islands" for "P.I.", "New South Wales" for "N.S.W.",
+     "Guatemala" for "Guat."). No table lists abbreviations: one letter
+     rule decides, for any place field and any language
+     (`field_research/abbreviations.py`, `fit`; the owner, 2026-10-09: "make
+     resolving and lasting changes that can handle big variance especially
+     as specimens can be anywhere not just insect parasites"):
+     - The literal is written as an abbreviation: it has a period, or its
+       letters are all capitals and at most four ("NSW", "UK"), or one of
+       its groups is one of the forms written without a period in
+       `abbreviations.PERIOD_FREE` (Mt, Mts, Mtn, Mtns, St, Ste, Sta, Sto,
+       Ft, Pt, Co, Is: "Mt Apo", "Falkland Is"). "Lima" is none, so
+       "Limassol" asked for it settles nothing.
+     - The expansion has more letters than the literal.
+     - The literal splits into letter groups at periods, spaces and
+       hyphens, and the expansion into words at the same. Letters and
+       digits compare casefolded with accents dropped ("GUAT." fits
+       "Guatemala", and "Mex." written with an acute accent on the e fits
+       "Mexico"); any other character is left out.
+     - The groups map in order onto consecutive words of the expansion,
+       which may skip only its minor words (of, the, and, de, del, la, le,
+       da, do, dos, das, van, von, y, et: "Edo. Mex." fits "Estado de
+       Mexico"). Every group maps onto one word, and every word left over is
+       minor, so "Mex." does not fit "Mexico City", nor "P.I." "Peru" or
+       "Philippines".
+     - Each group is its word written in full, or one of the two forms an
+       abbreviation takes, with at most 60% of the word's letters
+       (`abbreviations._form`, `MAX_SHARE`): a truncation, the word's first
+       letters ("Guat" for "Guatemala", "Prov" for "Province", "Ill" for
+       "Illinois", "P" for "Philippine"), or a contraction, the word's first
+       and last letters with letters of the word between them in order
+       ("Sta" for "Santa", "Ft" for "Fort", "Mts" for "Mountains", "Dpto"
+       for "Departamento", "Qld" for "Queensland", "Edo" for "Estado").
+       "Ill." does not fit "Iowa", nor "Mts." "Mount". A name with a letter
+       or two dropped is no abbreviation, period or not: "Chimaltenago."
+       (12 of 13 letters), "Chimaltango.", "Guatmala.", "Mindano." and
+       "Philipines." fit nothing, and each is a near spelling (below) or
+       nothing, as without the period.
+     - At least one group is a truncation or a contraction: "Rio Janeiro."
+       does not fit "Rio de Janeiro".
+     - A literal of four capitals or fewer with no period ("UK", "USA",
+       "NSW", "MALI") is read only as initials, one letter for each word of
+       an expansion of two or more words: "UK" fits "United Kingdom", never
+       "Ukraine"; "MALI" fits no "Malawi" and "IRAN" no "Ireland"; one
+       capital alone fits nothing.
+
+     An expansion may write out a unit word the label abbreviates after or
+     before the name ("Davao Province" for "Davao, Prov.", "Cook County" for
+     "Cook Co.", "Estado de Mexico" for "Edo. de Mexico", "Departamento
+     Cusco" for "Dpto. Cusco"). A query that fits is taken as an expansion
+     even when it also has the literal's comparison key, as a unit word
+     written out does ("Davao Province" and "Davao, Prov." are both
+     "davao"), so it gets the row and the rival check below; the literal
+     asked as written ("Davao Prov."), or the name before its comma
+     ("Davao"), is the label's own text. The province and county briefs
+     have the expert search with the unit word written out. In the parent
+     session's run of the pilots on 2026-10-09, Getty TGN's answer for
+     "Davao, Philippines" held two first-level units (Davao del Norte and
+     the special city of Davao), which settles nothing, and Wikidata's
+     answer for "Davao Province, Philippines" held one, the former province
+     of Davao.
+
+     The letters only allow an expansion; they do not choose one ("S.A."
+     fits "South Australia", "South Africa" and "Saudi Arabia", and a short
+     word with a trailing period reads as a truncation, so "Lima." fits
+     "Limassol"). Everything
+     else above still holds: the cited answer has exactly one candidate at
+     the field's level, and the place must fit the label's other place
+     fields (below). Two more checks stand behind the letters:
+     - **A rival** (`agreement.rival_expansion`, in the expert's check and
+       in the step). The field settles nothing and is ambiguous, for review
+       ("The sources found different places for the label's
+       abbreviation."), when one of the field's place sources (a success or
+       ambiguous answer, its evidence stored) was asked another name than
+       the settling expansion (compared folded: case, accents and
+       punctuation aside) and found another place at the field's level:
+       another expansion the literal fits, with any candidate at the level
+       that is another place; or the label's own text, with exactly one
+       candidate at the level, another place. Another place has another
+       record and another name: the same nation in two gazetteers (TGN's
+       and Wikidata's Philippines) is one place. So "S.A." looked up as
+       "South Africa" and as "Saudi Arabia", two nations, leaves the country
+       ambiguous, as does "Ga." looked up as "Georgia" when its own text was
+       found as one other nation; "South Australia", a state, is no rival
+       for a country, and an own text found as several nations, or as none,
+       is none either.
+     - **Initials** (`abbreviations.initialism`: every group one letter or
+       a minor word, as "P.I.", "S.A.", "N.S.W.", "B.C.", "UK"). The letters
+       of initials allow many places ("P.I." fits "Philippine Islands",
+       "Pacific Islands" and "Pitcairn Islands"), so a place settled on
+       initials stays settled only when a place field below it, settled in
+       the same attempt on its own evidence (anything but initials), lies
+       inside it: that field's settling candidate names it among its
+       parents, by record, or by its text, value or expansion
+       (`step._corroborate`, once every place is in, from the city up).
+       Otherwise the field is ambiguous, for review, with a reason naming
+       the initials ('The initials "P.I." fit "Philippine Islands", but no
+       other place on the label was found inside it, so the initials alone
+       do not decide.'), and the rows its settling wrote are dropped. Only
+       the step checks this. So "Mindanao, P.I." keeps the Philippines when
+       its province "Davao, Prov." settles on Wikidata's former province of
+       Davao, whose parent is the Philippines; with no other place on the
+       label, with a province that settles outside the Philippines, or with
+       a province written as initials itself ("D.P."), it goes to review. A
+       city is the lowest place field, so a city on initials always does.
+       Truncations and contractions need no such place.
+
+     When the value
+     settles, the step writes one evidence row of kind "rule" (locator
+     `abbreviation:<field>:<expansion>`, no stored record, so it is never
+     projected) naming the abbreviation, the expansion, the source asked
+     and how the letters fit (`country: "P.I." abbreviates "Philippine
+     Islands", the name tgn was asked: its letters fit the words in order
+     (P = Philippine, I = Islands; field_research.abbreviations)`), and the
+     value cites it as support. The shared brief has the expert look up an
+     abbreviation's expansion, with each abbreviated word written out, when
+     it knows what it stands for, and name the abbreviation it expanded in
+     its explanation. A near spelling: the
+     query is the chosen candidate's own
      name, and that name is one letter from the literal
      (`georef_locality.one_letter_apart`: both full names, their comparison
      keys one insertion, deletion or substitution apart). That is the
@@ -310,11 +422,14 @@ handover runs field research instead of the six specialists:
      never routes it. Any other lookup settles nothing, for decided and contested labels
      alike, in the expert's check and in the step: "Escuintla" asked for a
      label's "Chimaltenago", "Philippines" for "P.I." (a lookup of the modern
-     name is context only), a notation the table does not hold, or a name
-     two letters away ("Chimaltenango" for "Chimaltango"). So "P.I." settles
+     name is context only), a name the literal's letters do not spell
+     ("Peru" for "P.I."), or a name two letters away ("Chimaltenango" for
+     "Chimaltango", with or without a period after it). So "P.I." settles
      its country on Getty TGN's answer to "Philippine Islands", whose one
-     nation is the Philippines; TGN and NGA have no match for "P.I." itself
-     (the coordinator's lookup of 2026-10-09).
+     nation is the Philippines, when another place on its label lies in the
+     Philippines, as 105526326's province "Davao, Prov." does; TGN and NGA
+     have no match for "P.I." itself (the coordinator's lookup of
+     2026-10-09).
    - **The label's other place fields (B3, N1).** A place below the
      country settles only when its source names, among the places it lies
      in, the country (and province) settled from the reading the answer
@@ -338,8 +453,11 @@ handover runs field research instead of the six specialists:
      value is supported, the step has done with it, and the reading writes
      its literal (compared as place names). A parent is that field when it
      is the field's settled record (its authority_id), or when its name has
-     the comparison key of one of the field's texts, of the notation table's
-     expansion of one, or of the value the field settled on. Then:
+     the comparison key of one of the field's texts, of the value the field
+     settled on, or of the expansion it settled through (the one its
+     abbreviation row names: a GEOLocate city asked with the country
+     "Philippine Islands" lies in the country "Phil. Is." settled through
+     that expansion, `step._expansions`). Then:
      - a province, county or city settles only when its candidate has
        parents and one is the country settled for the reading, and, for a
        county or a city, one is also the province settled for it when one
