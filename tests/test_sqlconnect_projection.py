@@ -173,6 +173,49 @@ def test_saves_project_every_stage_one_to_five_row_once(tmp_path, caplog):
         actor_uid.reset(token)
 
 
+def test_a_first_review_decision_is_projected_and_its_replay_is_absorbed(tmp_path, caplog):
+    """A save that carries a human review decision writes it once; the connector's own check used to deny it."""
+    from datetime import datetime
+
+    from specimen_digitization.application.domain import AuditEvent
+
+    def instant(value):
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+    token = actor_uid.set("synthetic-reviewer")
+    try:
+        scope = Scope(organization_id=SYNTHETIC_ORG, collection_id=SYNTHETIC_COLLECTION)
+        principal = Principal(user_id="synthetic-reviewer", scope=scope, role="reviewer")
+        blobs = LocalBlobs(tmp_path / "blobs")
+        repo = SqlConnectRepository(project="demo-specimen-data", emulator_host=sql_emulator_host(), graph_blobs=blobs)
+        s = specimen(blobs, scope, principal.user_id)
+        created = repo.create(principal, s, "ingest:" + s.id, digest({"create": s.id}))
+        processed(created, blobs)
+        created.audit.append(AuditEvent(actor=principal.user_id, action="review_field", reason="Checked the label", after={"literal": "Cook"}))
+        with caplog.at_level(logging.WARNING):
+            saved = repo.save(principal, created, 1, "result:1:" + s.id, digest({"save": s.id}))
+        assert not [r for r in caplog.records if "Projection" in r.getMessage()], [r.getMessage() for r in caplog.records]
+        query = f"""query {{
+ reviewDecisions(where:{{specimenId:{{eq:"{s.id}"}}}}) {{ id actorUid baseRevision resultingRevision reason correction createdAt }}
+}}"""
+        (review,) = admin(query)["reviewDecisions"]
+        (event,) = [e for e in saved.audit if e.action == "review_field"]
+        assert bare(review["id"]) == bare(event.id)
+        assert (review["actorUid"], review["baseRevision"], review["resultingRevision"], review["reason"]) == (principal.user_id, 1, 2, "Checked the label")
+        assert review["correction"]["action"] == "review_field" and review["correction"]["after"] == {"literal": "Cook"}
+        assert instant(review["createdAt"]) == instant(event.created_at)
+        # A new process projects the same revision again; the primary key absorbs the replay and the row stands.
+        fresh = SqlConnectRepository(project="demo-specimen-data", emulator_host=sql_emulator_host(), graph_blobs=blobs)
+        caplog.clear()
+        with caplog.at_level(logging.WARNING):
+            result = fresh.write_projection(scope, saved, True)
+        assert not [r for r in caplog.records if "Projection" in r.getMessage()], [r.getMessage() for r in caplog.records]
+        assert result.complete
+        assert admin(query)["reviewDecisions"] == [review]
+    finally:
+        actor_uid.reset(token)
+
+
 def test_saves_project_the_first_pass_harness_fields_and_decision(tmp_path, caplog):
     from test_projection_decisions import (
         DecidedTranscript,
