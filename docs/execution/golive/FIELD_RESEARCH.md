@@ -426,7 +426,10 @@ row the settled value cites shows them.
   (`date_months`). A day may carry an ordinal (`3rd`, `1er`, `1o`), and `de`,
   `del`, `of`, `di`, `da` or `do` may stand between a day and its month and
   between a month and its year (`14 de septiembre de 1946`); a month name and
-  its year may be joined by a comma (`September, 1946` is September 1946).
+  its year may be joined by a comma (`September, 1946` is September 1946). A
+  numeral is written in ASCII letters only: the dotless i (U+0131) and the
+  dotted capital I (U+0130) match `I` under Unicode's case rules, and neither
+  reads as `I` (`3.` U+0131 `x.1946` is no date; `date_notations.month_of`).
 - **Years.** Four digits, or two digits after an apostrophe (`'46`) or bare
   after a month or inside a date (`Sept. 46`, `14.IX.46`, `4-5-48`). The profile's
   century rule reads a two-digit year as 19xx and the reading records it as
@@ -454,7 +457,11 @@ row the settled value cites shows them.
   the parser's default still leaves both readings, because the six-specialist
   harness's hash-pinned explicit-event rules (`research_harness/temporal_context.py`)
   read the second one to refuse a year that "alone chooses" between a day and a
-  short year (`test_temporal_event_links.py`).
+  short year (`test_temporal_event_links.py`). The step never settles a value on
+  a year literal: `step._check_row` runs the check again on the literal alone,
+  without it, so a date only a year literal completes stays unsupported and goes
+  to review. A date settles with its year only when the literal quotes both, on
+  two lines or on one (the next two rules).
 - **A date split over two lines of one label** (`date_lines`; pilot
   105526330: "Guatemala, IV-25" above "1948, R.D. Mitchell"). The date and the
   year are one date only under all of these rules, none a guess: the two lines
@@ -466,11 +473,15 @@ row the settled value cites shows them.
   and the year is bare, never a measurement or a determination's year. Two
   forms, with a different bareness rule because they have different authors:
   - the literal is both lines, as the organiser quotes it (`"IV-25\n1948"`, or
-    the year first). The year line may carry the period, comma, semicolon or
-    colon a sentence leaves (`1948.`, `1948,`): it is the year alone, every rule
-    below applies to it, and the mark the literal quotes counts as following
-    the year (`"3 Sept.\n1948."` in a reading that goes on `1948.5 m` is
-    refused). Lines with a blank line between them are `no_match` with
+    the year first). A year below the date may carry the period, comma or
+    semicolon a sentence leaves (`1948.`, `1948,`, `1948;`): it is the year
+    alone, every rule below applies to it, and the mark the literal quotes
+    counts as following the year (`"3 Sept.\n1948."` in a reading that goes on
+    `1948.5 m` is refused). A colon after it is no such mark:
+    `"3 Sept.\n1948:"` is `split_lines_year_not_alone`. A year above the date
+    may end in any of the four, colon included (`"1948:\nIX-3"` over
+    `IX-3 Guatemala` reads), because it must stand alone on its line. Lines
+    with a blank line between them are `no_match` with
     `split_lines_not_adjacent`. The organiser has named the year, so it may be followed by
     a comma, semicolon or period and then other text (`1948, R.D. Mitchell`),
     but never by a unit (`1948 m`, `1948 ft.`, `1948 msnm`), an apostrophe
@@ -481,7 +492,10 @@ row the settled value cites shows them.
     `split_lines`). Another date on the lines is `no_match` with the note
     `split_lines_hold_another_date`; a year that is marked or does not stand
     alone is `no_match` with `split_lines_year_not_alone`; a date that already
-    states a year is `no_match` with `split_lines_state_two_years`;
+    states a year is `no_match` with `split_lines_state_two_years`; a line the
+    parser does not read with the year is `no_match` with the parser's own note
+    (`"28.XII-3.I\n1947"` is `range_end_before_start`) or, when it has none,
+    `split_lines_date_not_read` (`"Davao\n1948"`, `"3.9-5.10\n1946"`);
   - the literal is the day and month alone (`IV-25`): nobody has named a year,
     so it takes one only from a line that holds nothing but a four-digit year,
     optionally followed by a period or a comma, directly below it or directly
@@ -491,11 +505,78 @@ row the settled value cites shows them.
     borrowed, nor is `'48`, a bare two-digit number or `4800`; and when the lines
     above and below give two different years, neither is. In every such case the
     date stays open (`year_missing`) and goes to review.
-- **A literal that spans a line break is judged only by those rules.** The
-  parser reads no notation across a line break: any such literal that is not
-  a date and its year as above (`3\nSept.\n1946`, `3 Sept.\n1946 leg.`,
-  `1948-\nIX-3`) is `no_match` with the note `literal_spans_a_line_break`, so
-  a notation's whitespace never joins two lines past the rules above.
+
+  In both forms, and on one line (below), **a bare number beside an elevation, a
+  depth or a determination is no year** (`date_lines._year_marker`; review 297,
+  rounds 2 and 3: `Alt.` ending the line above `1900` lent 1900 to the date
+  below it). The year's own line, and the nearest line above it that is not
+  blank, must hold none of these, and the nearest line below it that is not
+  blank must not start with a unit:
+  - an elevation or depth word, matched without accents and in any case, in the
+    languages of the month tables: `alt.`, `alt`, `altitude` (English, French,
+    Portuguese), `altitud`, `altura` (Spanish, Portuguese), `altitudine`, `quota`
+    (Italian), `altitudo` (Latin), `elev.`, `elevation` and the Spanish,
+    Portuguese and French spellings, `Hoehe`, `Seehoehe`, `Meereshoehe` (German,
+    written with the umlaut too), `depth`, `profundidad`, `profundidade`,
+    `profondeur`, `profondita`, `Tiefe`; `El.` with its period (`El` alone is
+    the Spanish article: `El Salvador` above `1948` still lends it); a height
+    above sea level (`msnm`, `m.s.n.m.`, `snm`, `s.l.m.`, `a.s.l.`, `m.a.s.l.`);
+  - a unit after a number, in any case (`1900 m`, `1900m`, `4800 ft.`,
+    `6000 pies`, `4800'`; also `mts`, `metros`, `metres`, `meters`, `metri`,
+    `feet`, `pieds`, `piedi`, `Fuss`), or `m`, `mts` or `ft` standing alone in
+    lower case (`1948. m`). A distance is no marker (`5 mi W`), nor is a word
+    such as `foot` alone (`foot of Volcan Fuego`), `Prof.` or a capital `M.`;
+  - a determination: `det.`, `determ.`, `determinavit`, `determined`, and the
+    Spanish, Portuguese and French `determino`, `determinou`, `determine`
+    (accents dropped). It counts only for a year on a line of its own, and only
+    on a line that does not hold the date: `det. J. Smith` above `1950` above
+    `IV-25 Guatemala` is refused, but `"det. J. Smith IV-25\n1950"` and
+    `det. J. Smith, IV-25 1950` read, being the determination's date written
+    whole (Date Identified's, by the experts' briefs);
+  - below the year, a line that starts with `m`, `mts`, `ft` or a sea-level
+    mark in lower case (`1900` above `m`).
+
+  A two-line literal is then `no_match` with
+  `split_lines_year_may_be_a_measurement` or
+  `split_lines_year_may_be_a_determination`; a day and month alone borrow no
+  year and stay open (`year_missing`). The rule covers the year's line and the
+  line above it whole, so it also sends to review some joins that read before
+  it: `"IV-25\n1948, 1,900 m"`, `"IV-25\n1948, 1900m"` and
+  `"4800 ft. IV-25\n1948"`. A marker two lines above the year, or one with a
+  number of its own below it (`1948` above `Elev. 1500 m`), does not.
+- **A day and month, then their year, on one line** (`date_lines.one_line_literal`,
+  `one_line_problem`; review 297c, note 5). When no notation reads a one-line
+  literal whole and it ends in a year (four digits, or two after an
+  apostrophe) joined to what comes before it only by spaces, a comma or a
+  period, `parse_date` reads what comes before with that year, if the parser
+  reads it as a day and month (or a range) with no year of its own:
+  `IV-25 1948`, `IV-25, 1948`, `IV.25 1948`, `25.IV, 1948`, `25 IV, 1948`,
+  `25.iv 1948`, `IV-25 '48` (`via` `one_line`; `IV-25` beside 1948 is April 25,
+  1948 only). The rules are a year on the line below its date's: nothing else
+  on the line could be a date (`one_line_holds_another_date`); the year may be
+  followed by a comma, semicolon or period and other text, never by a unit, an
+  apostrophe, a dash and a number, a second number, a word or a colon
+  (`one_line_year_not_alone`); no measurement marker as above on its line or
+  the line above it, and no unit starting the line below it
+  (`one_line_year_may_be_a_measurement`; a determination there makes it the
+  determination's date, which reads); readers that disagree leave it ambiguous. A date part the calendar refuses
+  says so (`31.IV, 1948` is `invalid_calendar_date`). Not read this way: a
+  semicolon or colon between the date and the year (`IV-25; 1948`), a bare
+  two-digit number (`IV-25 48`), `IV 25 1948`, a lowercase numeral month-first
+  (`iv-25 1948`), and every all-numeric date (`4-25 1948`, `25.4 1948`): which
+  number is the month is never picked. A form a notation reads whole is read
+  as before, not by this rule (`25 IV 1948`, `25.IV 1948`, `3 Sept. 1948`,
+  `25.4. 1948`, where 25 is no month).
+- **A literal that spans a line break is judged only by those rules.** A line
+  is what `str.splitlines()` gives, the same lines `checks.py` and `step.py`
+  split texts into: a break is `\n`, `\r\n`, `\r`, VT, FF, NEL (U+0085),
+  U+2028, U+2029 or the file, group and record separators. The parser reads no
+  notation across one: any such literal that is not a date and its year as
+  above (`3\nSept.\n1946`, `3 Sept.\n1946 leg.`, `1948-\nIX-3`, `3 Sept.`
+  U+2028 `1946`) is `no_match` with the note `literal_spans_a_line_break`, so
+  a notation's whitespace never joins two lines past the rules above, and
+  `date_lines` finds a literal's line, and the lines beside it, by the same
+  breaks.
 - **Readings of one label that disagree.** The check reads the literal in each
   reading's own text. When those results are not all the same (one reader's
   adjacent year is 1948 and the other's 1949; one has the year line and one has
@@ -514,20 +595,36 @@ row the settled value cites shows them.
   reading has the start as `iso` and `precision` and the end as `end` and
   `end_precision`; the rule is `range:<start kind>..<end kind>`. An end
   before its start is no range (`range_end_before_start`), and a numeric
-  range is not read. Date Visited From takes the start; Date Visited To takes
+  range is not read. Two Roman months and a bare two-digit number all joined
+  by hyphens (`III-V-46`, `I-II-46`, `VIII-IX-46`) are no date
+  (`range_shaped_like_a_code`): the shape is also the slide codes'
+  (`IV-29-68-4`), and nothing in it says which; the same months with the year
+  marked by a period, an apostrophe or four digits read (`VIII-IX.46`,
+  `III-V-'46`, `III-V-1946`). A range written apart from its year takes it
+  under the rules above, on the line beside it (`"3-5.IX\n1946"`,
+  `"3.IX-5.X.\n1946"`, `"VIII-IX\n1946"`, `"10.-12. Mai\n1946"`, via
+  `split_lines`) or after a comma on its line (`3-5.IX, 1946`,
+  `VIII-IX, 1946`, via `one_line`), when neither end states a year of its own
+  (`date_notations.ranges(text, year)`; the parser does this only with
+  `year_literal_decides`, so other callers read ranges as before). Date
+  Visited From takes the start; Date Visited To takes
   the end (`checks.DATE_PART`: the check returns the end as that field's
   value, and a single date is its own end, so an explicit end date written
   whole still works). The literal for both fields is the whole range, one of
   the organiser's candidates. The G44 copy never fills Date Visited To from a
-  range's start (`derive.fill`).
+  range's start (`derive.fill`, which asks `date_lines.written_range`: a range
+  whose year is beside it is a range too).
 
 Not read at all, each left for a person: a numeric range (`3.9-5.10.1946`), a
-year range (`1946-48`), a bare two-digit year alone (`46`), and a lowercase
-Roman numeral beside spaces (`12 vi 1946`). The tests
+year range (`1946-48`), a bare two-digit year alone (`46`), a lowercase
+Roman numeral beside spaces (`12 vi 1946`), a month range shaped like a code
+(`III-V-46`) and an all-numeric day and month followed by their year after
+another separator (`4-25 1948`, `25.4 1948`). The tests
 are `tests/test_date_forms.py` (a table of more than 60 forms in seven
 languages, with start, end, precision and rule, and every date and code the ten
 pilot labels write), `tests/test_date_months.py`,
 `tests/field_research/test_date_split_lines.py`,
+`tests/field_research/test_date_one_line.py`,
 `tests/field_research/test_date_lines.py` and the three date tests at the end
 of `tests/field_research/test_experts.py`.
 

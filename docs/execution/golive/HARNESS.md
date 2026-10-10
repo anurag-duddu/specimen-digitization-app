@@ -743,6 +743,14 @@ harness settles which one the evidence supports (G29):
   day and month with no year (`14.IX`), and ranges (`3-5.IX.1946`,
   `VIII-IX.46`, `3.IX-5.X.1946`), whose reading has the start in `iso` and the
   end in `end`. A reading's `order` names the notation rule that matched.
+  Added 2026-10-10 (same tool version): a literal of more than one
+  `str.splitlines()` line is `no_match` with `literal_spans_a_line_break` (NEL,
+  U+2028, U+2029, VT and FF too, not only `\n` and `\r`); a Roman numeral is
+  read only in ASCII letters (the dotless i, U+0131, is no `I`); two Roman
+  months and a bare two-digit number all joined by hyphens (`III-V-46`) are
+  `no_match` with `range_shaped_like_a_code`; and a range that states no year
+  takes the year literal only when the caller passes `year_literal_decides`
+  (field research), so other callers read ranges as before.
 - A two-digit year becomes 19xx only under the profile's
   `date_rules.two_digit_year_century` (G24; `century_rule` records it); without
   the rule the year is missing. A bare number after a month is its day, or under
