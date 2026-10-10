@@ -1330,11 +1330,14 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
             continue
         decision = decisions.setdefault(task.key, {})
         before = len(run.evidence)
-        run.fields[task.key] = _taken_value(task, outcome, taken[task.key], evidence) if task.key in taken else (
-            _field_value(run, task, outcome, readings=readings, by_name=by_name,
-            evidence=evidence, asset_id=asset_id, blobs=blobs, date_rules=profile.date_rules,
-            sources=received.get(task.key, ()), places=places, pending=frozenset(pending), final=final,
-            decision=decision))
+        if task.key in taken:
+            decision["refusal"] = "taken"
+            run.fields[task.key] = _taken_value(task, outcome, taken[task.key], evidence)
+        else:
+            run.fields[task.key] = _field_value(run, task, outcome, readings=readings, by_name=by_name,
+                evidence=evidence, asset_id=asset_id, blobs=blobs, date_rules=profile.date_rules,
+                sources=received.get(task.key, ()), places=places, pending=frozenset(pending), final=final,
+                decision=decision)
         applied[task.key] = outcome
         added[task.key] = [item.id for item in run.evidence[before:]]
     for key in _corroborate(run, tasks_by_key, applied, received, evidence=evidence, added=added):
@@ -1734,7 +1737,8 @@ def not_on_label(key: str, value: FieldValue, run, evidence: Mapping[str, Eviden
 
 # agreement's reasons for refusing a resolved answer, by constant name.
 REFUSALS = ("DIFFER", "LABELS_DIFFER", "NOT_DECIDED", "NOT_CANDIDATE", "PART_OF_NAME", "DOUBTFUL_GENUS",
-    "NO_PLACE", "EXPANSIONS_DIFFER", "NO_PARENTS", "NO_COUNTRY", "NOT_IN_COUNTRY", "NOT_IN_PROVINCE", "NEAR_UNFIT")
+    "NO_PLACE", "EXPANSIONS_DIFFER", "NO_PARENTS", "NO_COUNTRY", "NOT_IN_COUNTRY", "NOT_IN_PROVINCE", "NEAR_UNFIT",
+    "NOT_EVERY_READER", "PART_OF_RANGE")
 # A lookup's status as a field's trace names it. Logfire's default scrubber
 # replaces any attribute whose value holds "auth" or "credential", so the two
 # refusals (HTTP 401 and 403) are renamed.

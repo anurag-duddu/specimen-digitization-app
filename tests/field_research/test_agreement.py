@@ -579,6 +579,25 @@ def test_text_from_the_transcript_that_another_kind_of_field_settles_goes_to_rev
     assert "transcript_literal:precise_location" not in [f.reason_code for f in run.findings]
 
 
+def test_text_another_kind_of_field_claims_names_that_check_in_the_fields_trace(tmp_path):
+    """The field's trace (step.trace_fields) names the check that refused a
+    resolved answer: for text read from the transcript that another kind of
+    field claims (_taken), "taken"."""
+    from test_step import research
+
+    rig = label_3(tmp_path, SPANISH_LABEL, SPANISH_LABEL.replace("Mitchell", "mitchell"),
+        [("elevation_from_ft", name, "4800ft.", "Yepocapa, 4800ft.") for name in ("1A", "1B")])
+    run = rig.specimen.run
+    prepared, outcomes, calls = research(rig, Scripted({
+        "elevation_from_ft": answering(resolved("4800ft.", value="4800")),
+        "precise_location": answering(FieldAnswer(outcome="resolved", literal="Yepocapa, 4800ft.",
+            reading_names=["1A", "1B"], explanation="Both readers write it."))}))
+    decisions: dict[str, dict] = {}
+    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    assert run.fields["precise_location"].state == ValueState.UNRESOLVED
+    assert decisions["precise_location"] == {"refusal": "taken"}
+
+
 def test_text_from_the_transcript_beside_another_kinds_text_settles(tmp_path):
     """A Costa Rican label: the locality before the comma, the elevation
     after it. Neither holds the other: the locality settles from the
