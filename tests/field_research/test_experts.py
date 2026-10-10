@@ -288,6 +288,8 @@ def test_an_expert_that_keeps_inventing_a_value_goes_to_review():
     assert experts.UNCHECKED == "The expert's answer could not be checked against the readings and sources."
     assert outcome.evidence == [GBIF_EVIDENCE]  # what it gathered is still reported
     assert outcome.model_calls == 4
+    # The resolver's answer, not the expert's (owner decision B never clears on it).
+    assert outcome.fallback
 
 
 GBIF_TWO = SourceAnswer(
@@ -447,6 +449,23 @@ def test_a_taxon_candidate_whose_quote_writes_a_longer_name_is_sent_back():
                                       for name in ("1A", "1B")])
     plain = tuple(Reading(name, "r1", f"o{name}", "raw_reading", "taxon: Danaus plexippus") for name in ("1A", "1B"))
     assert agreement.literal_refusal(keyed, plain, literal="Danaus plexippus", named=plain) is None
+
+
+def test_a_code_candidate_whose_quote_writes_a_genus_before_it_is_a_piece_of_the_name():
+    """B1 of #289's review: a candidate "sp. 1" quoting "Epipsocus sp. 1", or
+    "Epipsocus" with "sp. 1" on the next line, cuts the genus off its name."""
+    code = "sp. 1 \N{FEMALE SIGN}"
+    for written in ("Epipsocus " + code, "Epipsocus\n" + code):
+        readings = tuple(Reading(name, "r1", f"o{name}", "raw_reading", written) for name in ("1A", "1B"))
+        cut = task("taxon", candidates=[Candidate(name, written, code, f"ev-{name}") for name in ("1A", "1B")])
+        refused = agreement.literal_refusal(cut, readings, literal=code, named=readings)
+        assert refused is not None and refused.reason == agreement.PART_OF_NAME
+        assert "writes the longer name 'Epipsocus'" in refused.retry
+    # The code on a line of its own, below a line with no genus at its end, settles.
+    alone = "Mossy forest 6400'\n" + code
+    readings = tuple(Reading(name, "r1", f"o{name}", "raw_reading", alone) for name in ("1A", "1B"))
+    own = task("taxon", candidates=[Candidate(name, alone, code, f"ev-{name}") for name in ("1A", "1B")])
+    assert agreement.literal_refusal(own, readings, literal=code, named=readings) is None
 
 
 def test_the_reviewers_taxon_probes_end_in_review_not_resolved():
@@ -644,6 +663,17 @@ def test_running_out_of_requests_is_sources_cannot_resolve():
     assert outcome.failure is None
     assert outcome.answer == FieldAnswer(outcome="sources_cannot_resolve", explanation=EXHAUSTED)
     assert outcome.model_calls == 2
+    assert outcome.fallback
+
+
+def test_an_experts_own_sources_cannot_resolve_is_no_fallback():
+    script = Script(dict(outcome="sources_cannot_resolve", literal="Epipsocus sp. 1", reading_names=["1A"],
+                         explanation="GBIF cannot settle the genus."))
+
+    outcome = resolve(script, task("taxon"))
+
+    assert outcome.answer.outcome == "sources_cannot_resolve" and outcome.answer.literal == "Epipsocus sp. 1"
+    assert not outcome.fallback
 
 
 def test_a_provider_error_is_a_model_error_logged_by_class_only(caplog):
@@ -698,6 +728,26 @@ def test_the_briefs_place_notations_are_the_tables():
     # A notation is matched by the place comparison key, for its own field only.
     assert notations.expansion("P. I.", "country").expansion == "Philippine Islands"
     assert notations.expansion("P.I.", "province_state") is None and notations.expansion("Phil.", "country") is None
+
+
+def test_the_taxon_brief_has_a_doubtful_or_distant_genus_looked_up_alone():
+    """B4 of #289's fifth review: the brief no longer withholds the lookup
+    for a genus in doubt, whatever its qualifier's spelling, and has every
+    genus a label writes looked up before a morphocode stands alone, so that
+    the GBIF guard (step._gbif_asked_another_name) sees it."""
+    from specimen_digitization.field_research.prompts import instructions
+
+    lines = instructions("taxon").splitlines()
+    assert not [line for line in lines if "make no lookup" in line]
+    [doubt] = [line for line in lines if "is in doubt" in line]
+    assert "any spelling" in doubt and '"?"' in doubt
+    assert all(f'"{qualifier}"' in doubt for qualifier in ("cf.", "cfr.", "c.f.", "aff.", "nr.", "conf.", "poss."))
+    [alone] = [line for line in lines if line.startswith("- Still look up a doubtful genus alone")]
+    assert "no qualifier and no epithet" in alone and "sources_cannot_resolve, whatever GBIF says" in alone
+    [morphocode] = [line for line in lines if line.startswith("- Before you answer for a morphocode")]
+    assert "look up alone any genus that any label writes anywhere" in morphocode
+    assert "another label, with a qualifier or without" in morphocode
+    assert "Only when no label writes a genus does the morphocode stand alone" in morphocode
 
 
 def test_every_field_has_a_brief():
@@ -912,7 +962,7 @@ def test_readers_that_differ_on_a_town_written_with_a_comma_settle_on_its_lookup
     # Only a place: the same lookup settles no collectors between readers that differ.
     ("collectors", None, "readers disagree on this field"),
 ])
-def test_readers_that_differ_only_by_punctuation_settle_on_the_one_place_confirming_both(key, authority, says):
+def test_readers_whose_texts_match_the_place_confirming_both_by_its_comparison_key_settle_on_it(key, authority, says):
     readings = (Reading("1A", "region-1", "obs-1a", "raw_reading", "Mun. Yepocapa, Chimaltenango"),
                 Reading("1B", "region-1", "obs-1b", "raw_reading", "Mun. Yepocapa Chimaltenango"))
     field = task(key, current=FieldValue(state=ValueState.AMBIGUOUS),

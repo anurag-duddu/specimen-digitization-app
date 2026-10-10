@@ -50,6 +50,33 @@ FIELD_TOOLS: Mapping[str, tuple[str, ...]] = {
 
 NO_APPROVED_AUTHORITY = frozenset({"identified_by_irn"})
 
+# Owner decision A, 2026-10-09: "clearing as not on the label is fine". The
+# fields of a collection profile that clear as "not on the label" when no
+# reading states them and their expert found none (step.mark_not_on_label;
+# FIELD_RESEARCH.md, "Fields the label does not state"). The list is the schema
+# session's engineering reading of the decision (schema-harness-plan.md, H6
+# item 5), which the owner may narrow. It lives here, keyed by the profile's id
+# and version, and the rule reads it through the run's pinned profile: a Retry
+# keeps the run's profile snapshot, so a key added to the published profile
+# would never reach it. Another profile, or a new version of this one, gets its
+# own entry.
+NOT_ON_LABEL: Mapping[tuple[str, str], frozenset[str]] = {
+    ("zoology_insects_slides", "1.0.0"): frozenset({
+        "county", "city", "collection_code", "collection_method", "date_identified", "habitat",
+        "elevation_from_m", "elevation_to_m", "elevation_from_ft", "elevation_to_ft", "precise_location",
+    }),
+}
+# Never "not on the label", whatever a profile lists: their absence usually
+# means a reading failed. The taxon follows owner decision B instead (a name
+# with no genus clears as written, unmatched; step._unmatched_taxon).
+NEVER_NOT_ON_LABEL = frozenset({
+    "fmnh_ins_number", "country", "date_visited_from", "date_visited_to", "collectors", "taxon"})
+
+
+def not_on_label_fields(profile_id: str, version: str) -> frozenset[str]:
+    """The fields of this profile version that may clear as "not on the label"."""
+    return NOT_ON_LABEL.get((profile_id, version), frozenset()) - NEVER_NOT_ON_LABEL
+
 
 @dataclass(frozen=True)
 class Reading:
@@ -174,6 +201,11 @@ class FieldOutcome:
     finalized_without_model: bool = False
     cost_micros: int = 0
     model_calls: int = 0
+    # The resolver's own sources_cannot_resolve in place of an answer its
+    # expert never gave: the expert ran out of requests or tool calls
+    # (experts.EXHAUSTED), or kept breaking its answer's checks
+    # (experts.UNCHECKED). Never an answer the expert gave itself.
+    fallback: bool = False
 
 
 class FieldResolver(Protocol):

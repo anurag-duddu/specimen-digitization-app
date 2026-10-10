@@ -15,7 +15,10 @@ the workflow saves the run once after it:
    with no model call; every other field's expert runs at once, inside one
    ``field_research`` span.
 3. ``apply_outcomes``: the outcomes become field values and evidence on the
-   run, then the derived values (derive.py; G37, G41, G44).
+   run, then the derived values (derive.py; G37, G41, G44), then the listed
+   fields no reading states are marked "not on the label" (owner decision A;
+   ``mark_not_on_label``). A taxon with no genus clears as written, unmatched
+   (owner decision B; ``_unmatched_taxon``).
 4. ``finalize_fields``: the scientific rules the six-specialist harness applied
    (research_harness/canonical_materialization_v2.py, ``_scientific_reasons``)
    with no blanket human approval (G1). A field that cannot be settled sends the
@@ -88,6 +91,7 @@ from .contracts import (
     Reading,
     SourceAnswer,
     SourceTools,
+    not_on_label_fields,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -677,9 +681,234 @@ def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, b
         options = [o for o in dict.fromkeys(answer.options) if o and o.strip()]
         reason = answer.explanation + (" Options: " + "; ".join(options) + "." if options else "")
         return _unsettled(task, ValueState.AMBIGUOUS, cited=cited, reason=reason)
-    # sources_cannot_resolve: the label's text stays when a reading writes it.
+    # sources_cannot_resolve: a taxon that names no genus clears as written,
+    # unmatched (owner decision B); otherwise the label's text stays when a
+    # reading writes it.
+    if task.key == "taxon":
+        unmatched = _unmatched_taxon(run, task, outcome, readings=readings, by_name=by_name, evidence=evidence,
+            asset_id=asset_id, blobs=blobs, sources=sources)
+        if unmatched is not None:
+            return unmatched
     literal = answer.literal if answer.literal and any(answer.literal in r.text for r in readings) else current.literal
     return _unsettled(task, ValueState.UNRESOLVED, literal=literal, cited=cited, reason=answer.explanation)
+
+
+# Owner decision B, 2026-10-09: a taxon whose label names no genus clears as
+# written, marked unmatched, with GBIF's no-match as its support.
+NO_GENUS_CHECK = "check:taxon_no_genus"
+UNMATCHED = "Unmatched: the label names no genus, so GBIF has nothing to match"
+
+
+def no_genus_excerpt(literal: str, lookup_id: str) -> str:
+    """The excerpt of an unmatched taxon's check row: its literal and the GBIF
+    no-name lookup the run keeps for it."""
+    return (f'taxon: "{literal}" names no genus, so GBIF has nothing to match '
+        f"(GBIF lookup {lookup_id}: no_match, no scientific name; nothing was sent)")
+
+
+def _no_name(lookup, literal: str) -> bool:
+    """Whether a run lookup is GBIF's no-name answer for this literal
+    (application.lookup.no_name_lookup): no_match, nothing asked or stored,
+    no candidates, the literal as its verbatim name."""
+    metadata = getattr(lookup, "metadata", None) or {}
+    return (isinstance(lookup, Lookup) and lookup.provider == "gbif" and lookup.status == LookupStatus.NO_MATCH
+        and not lookup.query and not lookup.candidates and not lookup.raw_ref
+        and metadata.get("verbatim_name") == literal and metadata.get("reason") == "no_scientific_name")
+
+
+def _gbif_found_a_genus(status: LookupStatus, candidates, queries: Iterable[str | None]) -> bool:
+    """Whether a GBIF answer for the taxon shows that the label names a genus
+    (B1 of #289's second review): GBIF answered with candidates, a success or
+    an ambiguous answer (105526328's "Epipsocus" homonym), or what was asked
+    names a genus (checks.query_names_a_genus). The taxon brief has the expert
+    look up the genus a label writes ("Epipsocus" for "Epipsocus sp. 1", G25),
+    so such a lookup is the expert's own finding that the label writes one,
+    wherever on the label it stands. GBIF's no-name answer for a morphocode
+    (no match, no candidates, "sp. 30 <female sign>" asked) is not."""
+    from .checks import query_names_a_genus
+
+    return (bool(candidates) or status in (LookupStatus.SUCCESS, LookupStatus.AMBIGUOUS)
+        or any(query_names_a_genus(query) for query in queries))
+
+
+def _answer_found_a_genus(item: SourceAnswer) -> bool:
+    """_gbif_found_a_genus for a GBIF answer an expert received."""
+    return item.source_id == "gbif" and _gbif_found_a_genus(item.status, item.candidates, (item.query,))
+
+
+def _lookup_found_a_genus(lookup) -> bool:
+    """_gbif_found_a_genus for a GBIF lookup the run stores: its query, as
+    sent ("scientificName") or as asked ("name"), or the name it could not
+    read (its "verbatim_name")."""
+    if not isinstance(lookup, Lookup) or lookup.provider != "gbif":
+        return False
+    asked = (lookup.query.get("scientificName"), lookup.query.get("name"), (lookup.metadata or {}).get("verbatim_name"))
+    return _gbif_found_a_genus(lookup.status, lookup.candidates,
+        (text for text in asked if isinstance(text, str)))
+
+
+def _gbif_asked_another_name(queries: Iterable[str], literal: str) -> bool:
+    """Whether GBIF was asked, for the taxon, any query that is not the
+    morphocode `literal` itself (checks.query_is_the_code: case, spaces,
+    punctuation and sex signs aside; N2 of #289's fourth review). The taxon
+    brief never has the expert send GBIF a name no reading prints, so any
+    other query is its own finding that a reading prints a name, read or
+    misread ("Epipsocu55")."""
+    from .checks import query_is_the_code
+
+    return any(not query_is_the_code(query, literal) for query in queries)
+
+
+def _lookup_asked_another_name(lookup, literal: str) -> bool:
+    """_gbif_asked_another_name for a GBIF lookup the run stores: its query,
+    as sent ("scientificName") or as asked ("name"), or the name it could
+    not read (its "verbatim_name"). The step's own no-name lookup for the
+    literal (_no_name) does not count."""
+    if not isinstance(lookup, Lookup) or lookup.provider != "gbif" or _no_name(lookup, literal):
+        return False
+    asked = (lookup.query.get("scientificName"), lookup.query.get("name"), (lookup.metadata or {}).get("verbatim_name"))
+    return _gbif_asked_another_name((text for text in asked if isinstance(text, str)), literal)
+
+
+def _expert_found_no_genus(outcome: FieldOutcome, literal: str, *, by_name,
+        sources: Sequence[SourceAnswer]) -> bool:
+    """Whether the taxon's expert itself answered sources_cannot_resolve for
+    the morphocode `literal`, as rule A requires its expert's own answer
+    (mark_not_on_label, item 1): no failure, a model's answer (the field was
+    not finalized without a model call), and not the resolver's fallback
+    (FieldOutcome.fallback: an expert out of attempts, or whose answers
+    could not be checked); no GBIF answer it received for the field
+    (`sources`, the field's lookups) shows a genus (_answer_found_a_genus:
+    candidates, or a query that names a genus); its answer quotes the code
+    itself, its literal compared with `literal` as the GBIF guard compares a
+    query (checks.query_is_the_code: case, spaces, punctuation and sex signs
+    aside; N2 of #289's fifth review), whether or not it asked GBIF; and it
+    answered after a GBIF lookup attempt for the field, or after its own
+    check that the label names no genus: its literal is a morphocode of the
+    same code (checks.morphocode) that a reading it names writes."""
+    from .checks import morphocode, query_is_the_code
+
+    answer = outcome.answer
+    if (outcome.failure is not None or answer is None or answer.outcome != "sources_cannot_resolve"
+            or outcome.finalized_without_model or outcome.fallback):
+        return False
+    if any(_answer_found_a_genus(item) for item in sources):
+        return False
+    if not answer.literal or not query_is_the_code(answer.literal, literal):
+        return False
+    if any(item.source_id == "gbif" for item in sources):
+        return True
+    return morphocode(answer.literal) == morphocode(literal) and any(
+        answer.literal in by_name[name].text for name in answer.reading_names if name in by_name)
+
+
+def _unmatched_taxon(run, task, outcome: FieldOutcome, *, readings, by_name, evidence, asset_id, blobs,
+        sources: Sequence[SourceAnswer]) -> FieldValue | None:
+    """Owner decision B: the taxon as written, unmatched, when the expert
+    found that GBIF cannot resolve it and the label names no genus. All of:
+    - the expert answered sources_cannot_resolve itself, quoting the code
+      itself (case, spaces, punctuation and sex signs aside), after a GBIF
+      lookup attempt or from a reading it names that writes it
+      (_expert_found_no_genus); a failure, a field finalized without a
+      model call and the resolver's fallback never qualify, nor does an
+      expert any of whose GBIF answers for the field has candidates or
+      asked a name that names a genus, nor one that quotes anything else
+      ("Epipsocus");
+    - the expert asked GBIF, for the field, no query but the code itself
+      (_gbif_asked_another_name: case, spaces, punctuation and sex signs
+      aside), so a misread genus it asked ("Epipsocu55") holds it back;
+    - the organiser's literal names no genus (checks.names_no_genus: "sp. 30
+      <female sign>"; "Aus bus n. sp." and "Epipsocus sp. 1" do not qualify);
+    - every taxon candidate is the same morphocode, a text with no genus and
+      the same code (checks.morphocode: a reader's "Sp.30 <female sign>"
+      beside "sp. 30 <female sign>", but never "sp. 39");
+    - the label names no genus for that code (checks.label_names_no_genus):
+      wherever any reading writes it, no token that may be a genus
+      (checks.may_be_genus: a letter and no digit, "Epipsocus?", "E.?",
+      "[unreadable]"; or three letters or more and one digit at most,
+      "Epipsocu5", "ep1psocus") is written immediately before it (on its line, or
+      ending the nearest line above that has a token), or first after it on
+      its line other than one of checks.NOT_GENERA. A candidate "sp. 1"
+      taken from "Epipsocus sp. 1", or from "Epipsocus" with "sp. 1" on the
+      next line, does not qualify;
+    - no part of a label that writes the code is unreadable
+      (_code_label_unreadable, rule A's test on that label);
+    - no sign of a doubtful or unreadable name shows anywhere on the
+      specimen (_doubt_on_the_labels: checks.DOUBT_SIGNS in any reading of
+      any label, or an unreadable span on any label). The taxon brief has
+      the expert look a doubtful genus up alone, a query the GBIF guard
+      above refuses; these signs hold the taxon back when it does not;
+    - the readers settle on the literal by B1's rule (agreement.labels):
+      each label that writes the taxon settles on its own on that one text.
+      With no successful lookup that is a label's decided transcript (its
+      other readers are evidence only), or readers of a label with none that
+      each write exactly that text.
+    The value meets the agreement rules any resolved answer meets
+    (agreement.refusal through _refusal: G19's decided transcript, a whole
+    candidate whose quote writes no longer name around it, readers that
+    agree). It is built as a settled answer is (_settled: the label rows and
+    the lineage), with the literal as written, no authority and the layer
+    settled, and cites one check row naming GBIF's no-name lookup, which the
+    run keeps (lookup.no_name_lookup: no request is made; the step adds it
+    when the expert never asked GBIF that literal). None otherwise: a taxon
+    with a genus GBIF cannot decide still goes to review."""
+    from specimen_digitization.application.lookup import no_name_lookup
+
+    from .agreement import DECIDED, SOURCE_IDS, candidate_literal, labels, reader_literals
+    from .checks import collapse, label_names_no_genus, morphocode
+
+    literal = task.current.literal
+    code = morphocode(literal)
+    if task.key != "taxon" or code is None:
+        return None
+    if not _expert_found_no_genus(outcome, literal, by_name=by_name, sources=sources):
+        return None
+    if _gbif_asked_another_name((item.query for item in sources if item.source_id == "gbif"), literal):
+        return None
+    if not task.candidates or any(morphocode(c.literal) != code for c in task.candidates):
+        return None
+    if (not label_names_no_genus(code, [r.text for r in readings]) or _code_label_unreadable(run, readings, code)
+            or _doubt_on_the_labels(run, readings)):
+        return None
+    want = collapse(literal)
+    tools = frozenset(task.tools) & SOURCE_IDS
+    found = labels(task, readings, [a for a in sources if a.source_id in tools])
+    if not found or any(label.settled != frozenset({want}) or label.by_source for label in found.values()):
+        return None
+    written = reader_literals(task, readings)
+    decided = {r.region_id for r in readings if r.input_source == DECIDED}
+    named = [r for r in readings if r.region_id in found and want in written.get(r.name, ())
+        and (r.input_source == DECIDED or r.region_id not in decided)]
+    whole = candidate_literal(task, readings, literal, named) if named else None
+    if whole is None:
+        return None
+    answer = FieldAnswer(outcome="resolved", literal=whole, reading_names=[r.name for r in named],
+        explanation=UNMATCHED)
+    # The agreement rules every resolved answer meets (agreement.refusal),
+    # #284's guard against a candidate that cuts its quoted name among them.
+    if _refusal(task, answer, readings=readings, by_name=by_name, sources=sources) is not None:
+        return None
+    value = _settled(run, task, FieldOutcome(task.key, answer), by_name=by_name, evidence=evidence,
+        asset_id=asset_id, blobs=blobs)
+    if value is None:
+        return None
+    lookup = next((item for item in run.lookups if _no_name(item, whole)), None)
+    if lookup is None:
+        # GBIF's answer for a name with no genus, made with no request. First,
+        # so the lookup a reviewer chooses a taxon from stays last.
+        lookup = no_name_lookup(whole)
+        run.lookups.insert(0, lookup)
+    record = json.dumps({"field_key": task.key, "literal": whole, "check": "names_no_genus",
+        "lookup_id": lookup.id, "readings": [r.name for r in named]}, sort_keys=True).encode()
+    row = Evidence(kind="derived", asset_id=asset_id, source=SOURCE, locator=NO_GENUS_CHECK,
+        excerpt=no_genus_excerpt(whole, lookup.id),
+        raw_ref=blobs.put(record) if blobs is not None else None,
+        digest=hashlib.sha256(record).hexdigest() if blobs is not None else None)
+    run.evidence.append(row)
+    evidence[row.id] = row
+    value.evidence_ids.append(row.id)
+    value.evidence_relations[row.id] = "supports"
+    return value
 
 
 def _tool_call(run, made: Sequence[SourceCall], item: Evidence, readings: Sequence[Reading]) -> ToolCallRecord:
@@ -805,9 +1034,11 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     confirms), or whose place does not lie in the country and province
     settled for its reading (_misfit, after the places above it), is
     ambiguous or unresolved instead. label_lacks_value: not present;
-    sources_cannot_resolve: unresolved; several_possibilities: ambiguous, the
-    options in the reason; a failure: unresolved with a retryable reason. Then
-    the derived values; the keys derived are returned.
+    sources_cannot_resolve: unresolved, except a taxon that names no genus,
+    supported as written and unmatched (_unmatched_taxon); several_possibilities:
+    ambiguous, the options in the reason; a failure: unresolved with a
+    retryable reason. Then the derived values, then the listed fields the
+    label does not state (mark_not_on_label); the keys derived are returned.
     """
     from .agreement import PLACE_ORDER
 
@@ -837,7 +1068,275 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
             evidence=evidence, asset_id=asset_id, blobs=blobs, date_rules=profile.date_rules,
             sources=received.get(task.key, ()), places=places, pending=frozenset(pending))
     eligible = [key for key in field_keys(profile) if key not in human]
-    return derive.fill(run, eligible=eligible, asset_id=asset_id, blobs=blobs)
+    derived = derive.fill(run, eligible=eligible, asset_id=asset_id, blobs=blobs)
+    # Last, so that a value derived above is never marked absent.
+    mark_not_on_label(run, profile, tasks, outcomes, readings=readings, asset_id=asset_id, blobs=blobs)
+    return derived
+
+
+# ---- fields the label does not state (owner decision A) -------------------
+
+NOT_ON_LABEL_CHECK = "check:not_on_label"
+NOT_ON_LABEL_REASON = "Not on the label: no reading states it, and its expert found none."
+# The place fields whose literal can hold another place field's text.
+PLACE_TEXT_FIELDS = ("country", "province_state", "county", "city", "precise_location")
+# The fields whose organiser text may sit inside another settled place (the
+# organiser's "Mt. McKinley" as a city, inside the settled precise location).
+INSIDE_A_PLACE = frozenset({"county", "city", "precise_location"})
+ELEVATION_FIELDS = frozenset({"elevation_from_m", "elevation_to_m", "elevation_from_ft", "elevation_to_ft"})
+# A number in metres above sea level, however its unit is spaced or dotted:
+# "msnm", "m snm", "m.s.n.m." (metros sobre el nivel del mar), "masl",
+# "m a.s.l.". The place tool reads "m" before a space or a period as metres,
+# but not "msnm" or "masl" written as one word (georef_locality.ELEVATION).
+SEA_LEVEL_METRES = re.compile(
+    r"\d[^\S\n]*m\.?[^\S\n]*(?:s\.?[^\S\n]*n\.?[^\S\n]*m|a\.?[^\S\n]*s\.?[^\S\n]*l)(?![A-Za-z])", re.I)
+# A number, then a unit of elevation the place tool does not read, as Latin
+# American labels write it: metres ("1200 mts.", "1200 mts", "1200 metros",
+# "1200 msm") and feet ("6400 pies", "6400 p.s.n.m."); or metres as "m" or
+# "m." ("1200 m", "1200 m."), which the place tool reads too. The number
+# stands on its own, never the end of a date or a code ("V-4-67-1"), with an
+# optional range end ("1200-1500 mts."); the unit is a whole word on the
+# number's line ("1200 mm" is none).
+NUMBER_AND_UNIT = re.compile(
+    r"(?<![A-Za-z0-9/-])\d+(?:[.,]\d+)*(?:[^\S\n]*-[^\S\n]*\d+(?:[.,]\d+)*)?[^\S\n]*"
+    r"(?:m|mts?|mtrs?|metros?|msm|pies|p\.?[^\S\n]*s\.?[^\S\n]*n\.?[^\S\n]*m)\.?(?![A-Za-z0-9])", re.I)
+
+
+def not_on_label_keys(profile: CollectionProfile) -> frozenset[str]:
+    """The profile's fields that may clear as "not on the label", by its id
+    and version (contracts.NOT_ON_LABEL): a run's pinned profile, so a Retry
+    sees the same list."""
+    return not_on_label_fields(profile.id, profile.version)
+
+
+def _whole_label_read(run, readings: Sequence[Reading]) -> bool:
+    """Every label was read whole: label coverage confirmed; each label has
+    two or more readers, each with text, and two or more named readings; and
+    no part of any label is unreadable: no reader's unreadable span, no
+    transcript marked unreadable, and no placeholder for an unread word
+    anywhere in a reader's, a reading's or a transcript's text
+    (checks.shows_placeholder, rule B's own test: the "[unreadable]" marker
+    the reader prompt asks for in place of each unreadable span, prompts.py,
+    and the other placeholders a transcriber writes, whether or not the
+    reader also listed the span; N1 of #289's fifth review)."""
+    from .checks import shows_placeholder
+
+    if not run.coverage_confirmed or not run.regions:
+        return False
+    for region in run.regions:
+        observed = [o for o in run.observations if o.region_id == region.id]
+        named = [r for r in readings if r.region_id == region.id]
+        if len(observed) < 2 or len(named) < 2 or any(not o.literal_text.strip() for o in observed):
+            return False
+    if any(not r.text.strip() for r in readings):
+        return False
+    texts = [*(o.literal_text for o in run.observations), *(r.text for r in readings),
+        *(t.text or "" for t in run.transcripts)]
+    if any(o.unreadable_spans for o in run.observations) or any(shows_placeholder(t) for t in texts):
+        return False
+    return not any(t.value_state == ValueState.UNREADABLE for t in run.transcripts)
+
+
+def _code_label_unreadable(run, readings: Sequence[Reading], code: str) -> bool:
+    """Whether part of a label that writes the morphocode `code` is
+    unreadable, by rule A's test (_whole_label_read) on that label (B2 of
+    #289's third review): a label any of whose readings, readers' texts or
+    transcripts writes the code (checks.writes_code) has a reader's
+    unreadable span, a transcript marked unreadable, or a placeholder for an
+    unread word (checks.shows_placeholder) in a reader's, a reading's or a
+    transcript's text. An unreadable word on the label may be the code's
+    genus. True also when no text of the run writes the code."""
+    from .checks import shows_placeholder, writes_code
+
+    texts = [*((r.region_id, r.text) for r in readings), *((o.region_id, o.literal_text) for o in run.observations),
+        *((t.region_id, t.text or "") for t in run.transcripts)]
+    regions = {region for region, text in texts if writes_code(text, code)}
+    return (not regions or any(o.unreadable_spans for o in run.observations if o.region_id in regions)
+        or any(t.value_state == ValueState.UNREADABLE for t in run.transcripts if t.region_id in regions)
+        or any(shows_placeholder(text) for region, text in texts if region in regions))
+
+
+def _doubt_on_the_labels(run, readings: Sequence[Reading]) -> tuple[str, ...]:
+    """The signs of a doubtful or unreadable name (checks.DOUBT_SIGNS) that
+    show anywhere on the specimen (B3 of #289's fourth review): in a
+    reading's, a reader's or a transcript's text of any label, whether or
+    not it writes the code; or a reader's unreadable span, or a transcript
+    marked unreadable, on any label. Rule B refuses when any shows."""
+    from .checks import doubt_signs
+
+    texts = [*(r.text for r in readings), *(o.literal_text for o in run.observations),
+        *(t.text or "" for t in run.transcripts)]
+    unreadable = (any(o.unreadable_spans for o in run.observations)
+        or any(t.value_state == ValueState.UNREADABLE for t in run.transcripts))
+    return doubt_signs(texts, unreadable=unreadable)
+
+
+def _organiser_texts(task: FieldTask) -> list[str]:
+    """What the organiser found for the field: its candidates' literals, and
+    its value's literal and readers' verbatims."""
+    texts = [c.literal for c in task.candidates]
+    texts += [task.current.literal, *task.current.verbatim_by_observation.values()]
+    return [text for text in texts if text and text.strip()]
+
+
+def _inside_a_settled_place(run, key: str, text: str) -> bool:
+    """Whether the text names part of another supported place field's
+    literal, word for word: its words, by the place comparison key
+    (agreement.place_name: case, accents and punctuation aside, "Mt." read as
+    "mount"), are a run of whole words of that literal's ("Mt. McKinley" in
+    "E. slope Mt. McKinley"; never "Lee" in "Leesburg"). A text that writes a
+    unit word of its own ("Cook County", "Davao Prov.", "Chimaltenango Dept.",
+    "Mun. Yepocapa"; georef_locality.UNIT_WORDS) names a place of its own
+    field and never counts."""
+    from specimen_digitization.application.georef_locality import UNIT_WORDS, fold
+
+    from .agreement import place_name
+
+    words = place_name(text).split()
+    if not words or any(word in UNIT_WORDS for word in fold(text).split()):
+        return False
+    for other in PLACE_TEXT_FIELDS:
+        value = run.fields.get(other)
+        if other == key or value is None or value.state != ValueState.SUPPORTED or not value.literal:
+            continue
+        within = place_name(value.literal).split()
+        if any(within[start:start + len(words)] == words for start in range(len(within) - len(words) + 1)):
+            return True
+    return False
+
+
+def _elevation_written(run, readings: Sequence[Reading]) -> bool:
+    """Whether any reading writes an elevation: as the place tool reads one
+    (georef_locality.read_locality), in its whole text or in any one line;
+    a number in metres above sea level (SEA_LEVEL_METRES: "2000 msnm",
+    "1200 masl", "1200 m.s.n.m.", "1200 m snm"), which the place tool does
+    not read when written as one word; or a number and a unit it does not
+    read (NUMBER_AND_UNIT: "1200 mts.", "1200 metros", "1200 msm", "6400
+    pies", "6400 p.s.n.m.", and "1200 m" or "1200 m." too)."""
+    from specimen_digitization.application.georef_locality import read_locality
+
+    texts = dict.fromkeys([*(r.text for r in readings), *(o.literal_text for o in run.observations)])
+    return any(SEA_LEVEL_METRES.search(text) or NUMBER_AND_UNIT.search(text) for text in texts) or any(
+        read_locality(part).elevations for text in texts for part in (text, *text.splitlines()) if part.strip())
+
+
+def _place_settled_below_province(run) -> bool:
+    """A city or county is supported: a precise location the label does not
+    state then adds nothing finer than the places settled."""
+    return any((run.fields.get(key) or FieldValue()).state == ValueState.SUPPORTED for key in ("city", "county"))
+
+
+def not_on_label_excerpt(key: str, readings: Sequence[Reading]) -> str:
+    """The excerpt of a field's not-on-the-label check row: the readings it
+    names, by name and observation."""
+    names = ", ".join(r.name for r in readings)
+    return (f"{key}: not on the label; none of the readings {names} states it and its expert found none\n"
+        + "readings: " + "; ".join(f"{r.name} {r.observation_id}" for r in readings))
+
+
+def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask],
+        outcomes: Sequence[FieldOutcome], *, readings: Sequence[Reading] | None = None,
+        asset_id: str | None = None, blobs=None) -> list[str]:
+    """Owner decision A (2026-10-09): a field on the profile's list
+    (not_on_label_keys) that a person has not decided, researched in this
+    attempt, is marked "not on the label" when all of these hold:
+    1. its expert answered label_lacks_value, with no failure, and the field
+       was not finalized without a model call (a fallback answer is
+       sources_cannot_resolve, so it never qualifies);
+    2. its value is still not present (a value derive.fill derived is kept);
+    3. label coverage is confirmed, every label has two or more readings and
+       every reading has text (_whole_label_read);
+    4. no part of any label is unreadable (_whole_label_read);
+    5. the organiser found no text for it (_organiser_texts); for a county,
+       a city or a precise location, a text counts as absent only when its
+       whole words, by the place comparison key, are a run of the words of
+       another supported place field's literal, and it writes no unit word
+       of its own (_inside_a_settled_place);
+    6. for an elevation, no reading writes an elevation (_elevation_written);
+    7. for a precise location, a city or a county is supported.
+    The value then cites one check row (kind "derived", locator
+    "check:not_on_label") naming every reading of the run, and its reason
+    starts "Not on the label:". The row has no observation_ids: one row may
+    not cite readings of several labels (integrity.verify_evidence), so its
+    excerpt and stored record name them (not_on_label_excerpt). A row an
+    earlier attempt wrote is dropped from a field researched again. Returns
+    the keys marked."""
+    readings = run_readings(run) if readings is None else readings
+    tasks_by_key = {task.key: task for task in tasks}
+    by_key = {o.key: o for o in outcomes if o.key in tasks_by_key}
+    human = human_keys(run)
+    rows = {item.id: item for item in run.evidence}
+    for key in by_key:
+        value = run.fields.get(key)
+        if key in human or value is None:
+            continue
+        for stale in [i for i in value.evidence_ids if i in rows and rows[i].locator == NOT_ON_LABEL_CHECK]:
+            value.evidence_ids.remove(stale)
+            value.evidence_relations.pop(stale, None)
+    allowed = not_on_label_keys(profile)
+    if not allowed or not _whole_label_read(run, readings):
+        return []
+    elevation = None
+    marked = []
+    for key in field_keys(profile):
+        outcome, value = by_key.get(key), run.fields.get(key)
+        if key not in allowed or key in human or outcome is None or value is None:
+            continue
+        answer = outcome.answer
+        if (outcome.failure is not None or answer is None or answer.outcome != "label_lacks_value"
+                or outcome.finalized_without_model):
+            continue
+        if value.state != ValueState.NOT_PRESENT or any((value.literal, value.parsed, value.normalized,
+                value.authority_id, value.authority_identity, value.verbatim_by_observation)):
+            continue
+        if any(not (key in INSIDE_A_PLACE and _inside_a_settled_place(run, key, text))
+                for text in _organiser_texts(tasks_by_key[key])):
+            continue
+        if key in ELEVATION_FIELDS:
+            elevation = _elevation_written(run, readings) if elevation is None else elevation
+            if elevation:
+                continue
+        if key == "precise_location" and not _place_settled_below_province(run):
+            continue
+        record = json.dumps({"field_key": key, "check": "not_on_label", "readings": [
+            {"name": r.name, "region_id": r.region_id, "observation_id": r.observation_id,
+             "input_source": r.input_source} for r in readings]}, sort_keys=True).encode()
+        row = Evidence(kind="derived", asset_id=asset_id, source=SOURCE, locator=NOT_ON_LABEL_CHECK,
+            excerpt=not_on_label_excerpt(key, readings),
+            raw_ref=blobs.put(record) if blobs is not None else None,
+            digest=hashlib.sha256(record).hexdigest() if blobs is not None else None)
+        run.evidence.append(row)
+        value.evidence_ids.append(row.id)
+        value.evidence_relations[row.id] = "supports"
+        value.reason = f"{NOT_ON_LABEL_REASON} {answer.explanation}".strip()
+        marked.append(key)
+    return marked
+
+
+def not_on_label(key: str, value: FieldValue, run, evidence: Mapping[str, Evidence],
+        allowed: frozenset[str]) -> bool:
+    """Whether a field clears as "not on the label" (mark_not_on_label),
+    checked on the stored value: the key is on the profile's list
+    (`allowed`); the value is not present, with no literal, parsed,
+    normalized or authority value and no reader's text; it cites as support
+    a not-on-the-label check row whose readings are the run's current
+    readings (not_on_label_excerpt); and, for a precise location, a city or a
+    county is still supported. An older not-present value, with no such row,
+    never clears."""
+    if key not in allowed or value.state != ValueState.NOT_PRESENT:
+        return False
+    if any((value.literal, value.parsed, value.normalized, value.authority_id, value.authority_identity,
+            value.verbatim_by_observation)):
+        return False
+    if key == "precise_location" and not _place_settled_below_province(run):
+        return False
+    expected = not_on_label_excerpt(key, run_readings(run))
+    for evidence_id in value.evidence_ids:
+        row = evidence.get(evidence_id)
+        if (row is not None and value.evidence_relations.get(evidence_id) == "supports" and row.kind == "derived"
+                and row.source == SOURCE and row.locator == NOT_ON_LABEL_CHECK and row.excerpt == expected):
+            return True
+    return False
 
 
 # ---- the scientific rules -------------------------------------------------
@@ -929,8 +1428,44 @@ def taxon_chosen(taxon: FieldValue, settled: str, evidence: Mapping[str, Evidenc
     return False
 
 
+def taxon_unmatched(taxon: FieldValue, evidence: Mapping[str, Evidence], lookups: Sequence[Lookup] = (), *,
+        run) -> bool:
+    """Whether the taxon is owner decision B's unmatched name
+    (_unmatched_taxon), checked on the stored value: supported, its literal a
+    name with no genus (checks.names_no_genus) that the label, the `run`'s
+    readings (run_readings), writes with no genus beside it
+    (checks.label_names_no_genus), with no part of a label that writes it
+    unreadable (_code_label_unreadable) and no sign of a doubtful or
+    unreadable name anywhere on the specimen (_doubt_on_the_labels), as
+    written (parsed is the literal or empty), with no normalized value or
+    authority, in the settled layer,
+    citing as support the check row for that literal and the GBIF no-name
+    lookup of the run that the row names; and no GBIF lookup the run stores
+    shows a genus (_lookup_found_a_genus: candidates, or a query that names
+    a genus) or asked anything but the code itself
+    (_lookup_asked_another_name; the step's own no-name lookup aside), so a
+    value stored before those rules does not clear either. A taxon with a
+    genus never is."""
+    from .checks import label_names_no_genus, morphocode
+
+    literal = taxon.literal
+    code = morphocode(literal)
+    readings = run_readings(run)
+    if (taxon.state != ValueState.SUPPORTED or code is None
+            or not label_names_no_genus(code, [r.text for r in readings]) or _code_label_unreadable(run, readings, code)
+            or _doubt_on_the_labels(run, readings)
+            or any(_lookup_found_a_genus(lookup) or _lookup_asked_another_name(lookup, literal) for lookup in lookups)
+            or taxon.layer != "settled" or taxon.parsed not in (None, literal)
+            or any((taxon.normalized, taxon.authority_id, taxon.authority_identity))):
+        return False
+    rows = [evidence[i] for i in taxon.evidence_ids if i in evidence and taxon.evidence_relations.get(i) == "supports"
+        and evidence[i].kind == "derived" and evidence[i].source == SOURCE and evidence[i].locator == NO_GENUS_CHECK]
+    return any(row.excerpt == no_genus_excerpt(literal, lookup.id)
+        for row in rows for lookup in lookups if _no_name(lookup, literal))
+
+
 def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterable[str],
-        qualified: frozenset[str], today: date) -> list[str]:
+        qualified: frozenset[str], today: date, allowed: frozenset[str] = frozenset()) -> list[str]:
     """canonical_materialization_v2._scientific_reasons (182-295), ported.
 
     The same G1/G6/G42/G43 rules on the same run fields, evaluated on the
@@ -953,6 +1488,11 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
       lookup's candidates, as policy.py accepts (taxon_chosen).
     - ``qualified`` (the native lineage proof) is the derived values: their
       lineage is their derivation, and they have no literal by definition (G37).
+    - 232-236: a field on the profile's "not on the label" list (``allowed``,
+      not_on_label_keys) that research marked so (not_on_label) is not
+      mandatory_unresolved (owner decision A, 2026-10-09).
+    - 254-260: a taxon that names no genus, cleared as written and unmatched
+      (taxon_unmatched), is not taxonomy_unresolved (owner decision B).
     """
     reasons: list[str] = []
     # 198-199
@@ -994,6 +1534,9 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
             continue
         if key not in mandatory and value.state != ValueState.SUPPORTED:
             continue
+        # Owner decision A: a listed field no reading states, with its check row.
+        if not_on_label(key, value, run, evidence, allowed):
+            continue
         # 232-236
         settled = value.normalized or value.parsed or value.literal
         if (value.state != ValueState.SUPPORTED or not settled
@@ -1025,7 +1568,8 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
             reasons.append("identified_by_irn_identity_unproved")
     # 254-260
     taxon = run.fields.get("taxon") or FieldValue()
-    if latest_work.get("taxon") in TERMINAL and not taxon_decided(taxon, run.tool_calls, evidence, run.lookups):
+    if latest_work.get("taxon") in TERMINAL and not (taxon_decided(taxon, run.tool_calls, evidence, run.lookups)
+            or taxon_unmatched(taxon, evidence, run.lookups, run=run)):
         reasons.append("taxonomy_unresolved")
     # 261-271
     # An empty elevation is mandatory_unresolved above; only a value that is
@@ -1123,7 +1667,8 @@ def finalize_fields(run, profile: CollectionProfile | None, outcomes: Sequence[F
     work = work_states(run, profile, outcomes)
     qualified = frozenset(key for key, value in run.fields.items()
         if value.state == ValueState.SUPPORTED and value.layer == "derived")
-    human = scientific_reasons(run, work, mandatory=profile.mandatory_fields, qualified=qualified, today=today)
+    human = scientific_reasons(run, work, mandatory=profile.mandatory_fields, qualified=qualified, today=today,
+        allowed=not_on_label_keys(profile))
     # canonical_materialization_v2 447-450: a person's carried decision is
     # reviewed again, until a person approves the record (on the native path the
     # approval's ordinary finalize no longer names it).
