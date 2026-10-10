@@ -1349,6 +1349,21 @@ def test_initials_with_no_other_place_on_the_label_stay_ambiguous(tmp_path, writ
     assert not [row for row in run.evidence if row.kind == "rule"]
 
 
+def test_a_place_left_ambiguous_on_its_initials_alone_names_that_check_in_its_trace(tmp_path):
+    """The field's trace (trace_fields) names the check that refused a
+    resolved answer: for a place settled on initials that no place below it
+    confirms (_corroborate), "initialism_alone"."""
+    rig = build_rig(tmp_path, label_with(country="UK", province_state=None, county=None, city=None))
+    run = rig.specimen.run
+    prepared, outcomes, calls = research(rig, Scripted({
+        "country": from_tgn("United Kingdom", "UK", "United Kingdom", "tgn:united-kingdom"),
+        "province_state": LACKING, "county": LACKING, "city": LACKING}), tools=Gazetteer(rig.blobs))
+    decisions: dict[str, dict] = {}
+    apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    assert run.fields["country"].state == ValueState.AMBIGUOUS
+    assert decisions["country"] == {"refusal": "initialism_alone"}
+
+
 def test_the_labels_own_text_found_as_another_nation_leaves_the_country_ambiguous(tmp_path):
     """The review of #295: the expert looked up "Georgia" for "Ga." and also
     "Ga." itself, which TGN (constructed) finds as one nation, Gabon. The own

@@ -1167,7 +1167,8 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
             decision=decision)
         applied[task.key] = outcome
         added[task.key] = [item.id for item in run.evidence[before:]]
-    _corroborate(run, tasks_by_key, applied, received, evidence=evidence, added=added)
+    for key in _corroborate(run, tasks_by_key, applied, received, evidence=evidence, added=added):
+        decisions.setdefault(key, {})["refusal"] = "initialism_alone"
     eligible = [key for key in field_keys(profile) if key not in human]
     derived = derive.fill(run, eligible=eligible, asset_id=asset_id, blobs=blobs)
     for key in derived:
@@ -1217,7 +1218,8 @@ def _unreachable_note(outcome: FieldOutcome, value: FieldValue, rows: Mapping[st
 
 
 def _corroborate(run, tasks_by_key: Mapping[str, FieldTask], applied: Mapping[str, FieldOutcome],
-        received: Mapping[str, Sequence[SourceAnswer]], *, evidence: dict, added: Mapping[str, Sequence[str]]) -> None:
+        received: Mapping[str, Sequence[SourceAnswer]], *, evidence: dict,
+        added: Mapping[str, Sequence[str]]) -> list[str]:
     """A place value settled in this attempt on initials (agreement.initialism_of:
     "P.I." looked up as "Philippine Islands", "UK" as "United Kingdom") stays
     settled only when a place field below it, settled in this attempt on its
@@ -1228,9 +1230,11 @@ def _corroborate(run, tasks_by_key: Mapping[str, FieldTask], applied: Mapping[st
     province of the Philippines. Otherwise the value is ambiguous, for review,
     with a reason naming the initials (agreement.initialism_alone), and the
     rows its settling added are dropped. Checked from the city up, once every
-    place is in."""
+    place is in. Returns the keys left ambiguous, for their trace
+    (trace_fields)."""
     from .agreement import PLACE_ORDER, PlaceField, initialism_alone, initialism_of, lies_in
 
+    unsettled = []
     settlings = {}
     for key in PLACE_ORDER:
         outcome, task, value = applied.get(key), tasks_by_key.get(key), run.fields.get(key)
@@ -1262,6 +1266,8 @@ def _corroborate(run, tasks_by_key: Mapping[str, FieldTask], applied: Mapping[st
         run.fields[key] = _unsettled(task, ValueState.AMBIGUOUS, cited=cited,
             reason=f"{initialism_alone(answer.literal, expansion)} {answer.explanation}")
         del settlings[key]
+        unsettled.append(key)
+    return unsettled
 
 
 # ---- fields the label does not state (owner decision A) -------------------
