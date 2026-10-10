@@ -408,29 +408,64 @@ handover runs field research instead of the six specialists:
    ("Getty TGN could not be reached after 3 attempts."), and the record
    finalizes with its other fields. A model failure or timeout on the last
    attempt still stops the automatic retries
-   (`retry_budget_exhausted:<code>`). The app judges such a blocker by the
-   cause after the colon, never by the word "budget" in the prefix, and never
-   shows the code. The processing panel's "Blocked:" line names the cause and
-   a two-sentence passage says what happened and what to do; the workbench
-   issue list shows the same cause and next step; the queue row, the history,
-   the blocker filter menu and the reason chips show the name alone:
+   (`retry_budget_exhausted:<code>`). The app reads a blocker by its exact
+   code, from a table (`lib/src/blocker_words.dart` and the vocabulary table),
+   and never shows the code. A word inside a code decides nothing: the "budget"
+   in `retry_budget_exhausted:` says retries ran out, and a step limit, a
+   request limit and a time limit also say "budget" on the wire and are no cost
+   limit. A code the app has no name for reads "Needs an operator check".
+
+   For a run whose retries ran out, the app reads the cause after the colon:
 
    | Cause after the colon | Name | Sentences |
    | --- | --- | --- |
-   | `lookup_operational_failure` | Approved source not reachable | An approved source could not be reached after repeated attempts. Retry later, or ask an administrator. |
-   | `field_research_timeout` | Field research ran out of time | Field research ran out of time after repeated attempts. Retry later, or ask an administrator. |
-   | `field_research_model_error` | No usable model answer | The model gave no usable answer after repeated attempts. Retry later, or ask an administrator. |
+   | `lookup_operational_failure` | Retries stopped, source not reachable | An approved source could not be reached after repeated attempts. Retry later, or ask an administrator. |
+   | `field_research_timeout` | Retries stopped, ran out of time | Field research ran out of time after repeated attempts. Retry later, or ask an administrator. |
+   | `field_research_model_error` | Retries stopped, no usable model answer | The model gave no usable answer after repeated attempts. Retry later, or ask an administrator. |
    | any other cause | Automatic retries stopped | Processing stopped after repeated attempts. Retry later, or ask an administrator. |
 
-   A cause containing "budget" or "cost" is a cost limit and reads "Cost
-   limit reached" with "Processing stopped at a cost limit." A blocker the
-   app has no name for, whether or not it carries a colon, reads "Needs an
-   operator check" with "Processing needs an operator check before it can
-   continue. Ask an administrator to review it." The raw code stays in the
+   A run stopped by a limit, or by the settings that carry one, reads by its
+   own code. Only a limit on money is called a cost limit or a spending
+   allowance:
+
+   | Code | Name | What the app says |
+   | --- | --- | --- |
+   | `step_budget_exhausted` | Step limit reached | The run reached its limit on processing steps. |
+   | `external_call_budget_exhausted` | External request limit reached | The run reached its limit on external requests. |
+   | `token_budget_exhausted` | Model unit limit reached | The run reached its limit on model units. |
+   | `active_time_budget_exhausted` | Active time limit reached | The run reached its limit on active processing time. |
+   | `evidence_harness_blocked:elapsed_budget_exhausted` | Evidence check time limit reached | An evidence check reached its time limit. |
+   | `cost_budget_exhausted` | Cost limit reached | Processing stopped at a cost limit. |
+   | `program_allowance_exhausted` | Spending allowance reached | Processing stopped at the program's spending allowance. |
+   | `pilot_launch_budget_exhausted` | Pilot cost limit reached | The pilot's cost limit would be crossed. |
+   | `pilot_cohort_reading_budget_insufficient` | Reading cost limit too low | The cost limit does not cover the planned readings. |
+   | `approved_cost_budget_unavailable` | Cost settings not available | The approved cost settings for this run are not available. |
+   | `research_budget_state_unavailable` | Saved cost totals not readable | The saved cost totals for this record could not be read. |
+   | `program_allowance_ledger_unavailable` | Allowance totals not readable | The program's spending totals could not be read. |
+   | `program_allowance_unavailable` | Spending allowance not set up | The program's spending allowance is not set up for this collection. |
+   | `pilot_run_budget_not_approved` | Run limits do not fit the pilot | The run's approved limits do not fit the pilot launch. |
+   | `pilot_stage_cost_reservations_mismatch` | Stage cost settings differ | The run's stage cost settings differ from the pilot launch. |
+   | `pilot_cohort_reader_cost_unknown` | Reading cost not set | The cost of a reading step is not set. |
+
+   Each limit's sentence is followed by what to do: an administrator must
+   review the approved limit, the allowance or the cost settings, or an
+   operator must check the totals. A test in the app reads the server source
+   files that set a run's limit blockers and fails when a code it finds there
+   is not in these tables.
+
+   The processing panel's "Blocked:" line shows the name and a passage shows
+   the sentences. The workbench issue list shows the same sentence and next
+   step for every code in the two tables above. For a code the app has no
+   name for, the panel shows "Processing needs an operator check before it can
+   continue. Ask an administrator to review it." and the issue list shows the
+   first sentence with "Open processing details for the current state and
+   permitted actions." The queue row, the history, the blocker filter menu and
+   the reason chips show the name alone; two codes the app has no name for stay
+   two entries in the filter menu, numbered. The raw code stays in the
    workbench's "Technical review details" drawer (inside the closed "Review
-   details" disclosure), which lists each issue's `reason_code`. The history's
-   "Retained version data" drawer also holds a past version's raw record.
-   No line, sentence, row or menu above shows it.
+   details" disclosure), which lists each issue's `reason_code`, and in the
+   history's "Retained version data" drawer, which holds a past version's raw
+   record. No line, sentence, row or menu above shows it.
 8. **Budget.** Before every model call the step reserves that call's worst
    case (its input, the provider's chat template and the output cap) from
    what remains of the run's ceiling (the profile's `run_cost_limit_micros`,
