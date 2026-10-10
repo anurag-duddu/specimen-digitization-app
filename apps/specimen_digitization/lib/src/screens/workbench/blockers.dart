@@ -9,6 +9,7 @@ library;
 
 import 'package:flutter/foundation.dart';
 
+import '../../blocker_words.dart';
 import '../../models.dart';
 import '../../review_context.dart';
 import 'workbench_layout.dart';
@@ -288,7 +289,19 @@ ClearanceBlocker _issueFor(
       ? null
       : _namedField(specimen, suffix);
   final String? stop = _researchStops[base];
-  if (outage != null && outageField != null) {
+  // A run whose automatic retries ran out. The cause is the operator's or the
+  // clock's to clear, so it stays with processing, and it says what stopped
+  // the run in the words the processing panel uses, never the code.
+  final BlockerWords? retriesStopped = isCostLimit(code)
+      ? null
+      : retriesStoppedWords(code);
+  if (retriesStopped != null) {
+    kind = ClearanceBlockerKind.processing;
+    message = retriesStopped.what;
+    detail = retriesStopped.next;
+    field = null;
+    region = null;
+  } else if (outage != null && outageField != null) {
     // An outage is the operator's or the clock's to clear, never a field
     // edit, so it stays with processing; naming the field keeps one line per
     // field that was not checked.
@@ -370,7 +383,7 @@ ClearanceBlocker _issueFor(
     kind = ClearanceBlockerKind.processing;
     field = null;
     region = null;
-    message ??= 'Processing needs an operator check before it can continue';
+    message ??= unnamedBlockerWords.what;
     detail ??=
         'Open processing details for the current state and permitted actions.';
   } else if (kind != ClearanceBlockerKind.processing) {

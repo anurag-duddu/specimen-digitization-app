@@ -13,6 +13,7 @@ import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import 'administrator_contact.dart';
+import 'blocker_words.dart';
 import 'models.dart';
 import 'review_context.dart';
 import 'screens/workbench/moments.dart';
@@ -201,14 +202,14 @@ class ProcessingDetail extends StatelessWidget {
     // A run whose automatic retries ran out is blocked by
     // `retry_budget_exhausted:<cause>`. It is judged by that cause, never by
     // the word "budget" in the prefix: an unreachable source is no cost limit.
-    const String retriesStopped = 'retry_budget_exhausted:';
-    final bool retriesRanOut = blocker.startsWith(retriesStopped);
-    final String cause = retriesRanOut
-        ? blocker.substring(retriesStopped.length)
-        : blocker;
-    final bool costStop = cause.contains('budget') || cause.contains('cost');
-    final bool sourceStop =
-        retriesRanOut && cause == 'lookup_operational_failure';
+    // No code reaches the screen: a blocker says what stopped the run, and one
+    // this client has no words for says so generally (`blocker_words.dart`).
+    final bool hasBlocker = blocker.isNotEmpty && blocker != 'Not recorded';
+    final bool costStop = isCostLimit(blocker);
+    final BlockerWords? stopped = costStop
+        ? null
+        : retriesStoppedWords(blocker);
+    final bool unnamed = hasBlocker && !blockerIsNamed(blocker);
     final List<String> actions =
         (specimen.data['available_actions'] as List? ?? <Object?>[])
             .map((Object? a) => a.toString())
@@ -221,8 +222,8 @@ class ProcessingDetail extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        if (blocker.isNotEmpty && blocker != 'Not recorded')
-          Text('Blocked: ${vocabularyLabel(blocker)}', style: ui.type.label),
+        if (hasBlocker)
+          Text('Blocked: ${blockerLabel(blocker)}', style: ui.type.label),
         if (blocker == 'pilot_evidence_review_required') ...<Widget>[
           Text(
             'Pilot evidence review needed. Check the saved label regions and '
@@ -250,12 +251,8 @@ class ProcessingDetail extends StatelessWidget {
           if (canOperate && actions.contains('reconcile'))
             _reconcileButton(context, run, activeLease: activeLease),
         ],
-        if (sourceStop) ...<Widget>[
-          Text(
-            'An approved source could not be reached after repeated '
-            'attempts. Retry later, or ask an administrator.',
-            style: ui.type.body,
-          ),
+        if (stopped != null) ...<Widget>[
+          Text(stopped.sentence, style: ui.type.body),
           const AdministratorContactLine(),
         ],
         if (costStop) ...<Widget>[
@@ -266,6 +263,10 @@ class ProcessingDetail extends StatelessWidget {
                 'provider configuration.',
             why: 'Where a cost is not recorded, it is unknown, not zero.',
           ),
+          const AdministratorContactLine(),
+        ],
+        if (unnamed) ...<Widget>[
+          Text(unnamedBlockerWords.sentence, style: ui.type.body),
           const AdministratorContactLine(),
         ],
         if (run['next_retry_at'] != null)
