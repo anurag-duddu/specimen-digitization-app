@@ -791,17 +791,85 @@ async def test_an_answered_lookup_logs_nothing(tmp_path, caplog):
     assert answer.status is LookupStatus.SUCCESS and unanswered(caplog) == []
 
 
+def unreadable(caplog):
+    """The sources' log lines for unreadable answers, as key=value maps."""
+    prefix = "Field research lookup unreadable: "
+    return [
+        dict(pair.split("=", 1) for pair in record.getMessage().removeprefix(prefix).split())
+        for record in caplog.records
+        if record.name == "specimen_digitization.field_research.sources"
+        and record.levelname == "WARNING" and record.getMessage().startswith(prefix)
+    ]
+
+
 @pytest.mark.asyncio
-async def test_a_malformed_body_is_malformed_and_kept(tmp_path):
+async def test_a_malformed_body_is_malformed_and_kept(tmp_path, caplog):
     tools, server, _, blobs = make(
         tmp_path, replies(httpx.Response(200, content=b"<html>maintenance</html>"))
     )
-    answer = await tools.lookup("geolocate", YEPOCAPA, field_key="city")
+    with caplog.at_level(logging.WARNING, logger="specimen_digitization.field_research.sources"):
+        answer = await tools.lookup("geolocate", YEPOCAPA, field_key="city")
     assert answer.status is LookupStatus.MALFORMED and answer.candidates == ()
     assert answer.note == "GEOLocate's answer could not be read"
     assert (answer.evidence.kind, answer.evidence.locator) == ("lookup", None)
     assert stored(blobs, answer.evidence) == b"<html>maintenance</html>"
     assert len(server.requests) == 1
+    [line] = unreadable(caplog)
+    assert (line["source"], line["read_as"]) == ("geolocate", "malformed_response")
+
+
+# GEOLocate's answer in the real run of 2026-10-09 to 105526329's lookups with
+# the country "Central America", which it does not know: its count, no result set.
+UNKNOWN_COUNTRY = {"engineVersion": "GLC:9.4|U:1.01374|eng:1.0", "numResults": 0, "executionTimems": 0}
+
+
+@pytest.mark.asyncio
+async def test_geolocates_own_answer_with_no_readable_match_is_no_match_and_logged(tmp_path, caplog):
+    """It was classed malformed, an outage, which blocked 105526329 for a retry."""
+    from specimen_digitization.field_research.experts import SOURCE_OUTAGES
+
+    tools, server, _, blobs = make(tmp_path, replies(httpx.Response(200, json=UNKNOWN_COUNTRY)))
+    with caplog.at_level(logging.WARNING, logger="specimen_digitization.field_research.sources"):
+        answer = await tools.lookup("geolocate", "Yepocapa, Central America", field_key="city")
+    assert answer.status is LookupStatus.NO_MATCH and answer.status not in SOURCE_OUTAGES
+    assert answer.candidates == () and answer.note == "GEOLocate's answer holds no match it could read"
+    assert (answer.evidence.kind, answer.evidence.locator) == ("lookup", None)
+    assert json.loads(stored(blobs, answer.evidence)) == UNKNOWN_COUNTRY
+    assert unreadable(caplog) == [{"step": "field_research", "source": "geolocate", "host": "geo-locate.org",
+                                   "http_status": "200", "read_as": "no_match", "error": "ValueError"}]
+    assert "Yepocapa" not in caplog.text and "Central" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_an_expert_whose_geolocate_answer_holds_no_readable_match_is_not_blocked(tmp_path):
+    """105526329 in the real run: the expert's GEOLocate lookup answered, with
+    no match, so the field is reviewed, not retried as unreachable."""
+    from pydantic_ai.messages import ModelResponse, ToolCallPart
+    from pydantic_ai.models.function import FunctionModel
+
+    from specimen_digitization.application.domain import FieldValue
+    from specimen_digitization.field_research.budget import CostMeter
+    from specimen_digitization.field_research.contracts import FIELD_TOOLS, FieldTask, Reading
+    from specimen_digitization.field_research.experts import make_resolver
+
+    tools, _, _, _ = make(tmp_path, replies(httpx.Response(200, json=UNKNOWN_COUNTRY)))
+    turns = iter([
+        lambda info: ModelResponse(parts=[ToolCallPart(
+            "lookup", {"source": "geolocate", "query": "Yepocapa, Central America"})]),
+        lambda info: ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, {
+            "outcome": "sources_cannot_resolve", "explanation": "GEOLocate has no match."})]),
+    ])
+    model = FunctionModel(lambda messages, info: next(turns)(info))
+    meter = CostMeter(1_000_000, input_micros_per_million=200_000, output_micros_per_million=600_000)
+    resolver = make_resolver(model_factory=lambda: model, meter=meter)
+    readings = (Reading("2A", "region-2", "obs-2a", "raw_reading", "Yepocapa, 4800ft.\nChimaltenango,\nGuatemala"),)
+
+    outcome = await resolver(FieldTask("city", True, FieldValue(), (), FIELD_TOOLS["city"]), readings, {},
+                             tools=tools)
+
+    assert (outcome.failure, outcome.unreachable, outcome.answer.outcome) == (
+        None, (), "sources_cannot_resolve")
+    assert [item.source for item in outcome.evidence] == ["geolocate"]
 
 
 # --- Getty TGN, Wikidata and NGA ---

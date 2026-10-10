@@ -159,11 +159,27 @@ handover runs field research instead of the six specialists:
    the error's class, whether a Retry-After came back and the attempt it
    ended on, never the query; for GBIF, the status its verification ended on.
 
+   **GEOLocate's own answer with no readable match.** A GEOLocate answer
+   (HTTP 200) whose body is GEOLocate's JSON, with its count of results, but
+   holds no match that can be read is no match, not an outage: asked about
+   a country it does not know ("Central America"), GEOLocate answers
+   `{"numResults": 0}` with no result set. In the real run of 2026-10-09
+   that answer was classed unreadable, an outage, and blocked 105526329 for
+   a retry. A GEOLocate body that is not its JSON answer (an HTML page, a
+   cut body) is still unreadable, an outage. Either is logged in one
+   WARNING line ("Field research lookup unreadable") with the source, the
+   host, the status it was read as and the error's class, never the query.
+   An unreadable answer of GBIF, Getty TGN, Wikidata or NGA stays an outage:
+   it is a body that is not the source's answer or breaks its shape (an
+   invalid identifier, more records than were asked for), not an answer
+   about the query, and a later attempt may read one.
+
    **A source that cannot be reached** (a lookup whose last attempt was rate
    limited, timed out, was refused or redirected, failed on the server or
-   came back unreadable; a refused query is not one) does not void the
-   field when another of its expert's lookups answered. The expert's answer
-   then stands and is checked under the rules of step 5 like any other, and
+   came back unreadable, as above; a refused query is not one) does not
+   void the field when another of its expert's lookups answered. The
+   expert's answer then stands and is checked under the rules of step 5
+   like any other, and
    the field's reason ends by naming the source ("Getty TGN could not be
    reached; settled from Wikidata."). A place settles on a cited answer of
    any place source, so no Getty TGN answer is needed. Only when every
