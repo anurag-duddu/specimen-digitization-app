@@ -27,7 +27,8 @@ fields' outcomes:
    review), or "sp. 1" quoting "Epipsocus sp. 1" (B1 of #289's review), is a
    piece of the name the label writes, and never settles the taxon. Nor does
    a literal whose genus the candidate's quote, or the text of a reading the
-   answer names (or of its label's decided reading), marks as doubtful with
+   answer names (or of its label's decided reading, or of any reader of its
+   label when the label has no decided transcript), marks as doubtful with
    a qualifier or a "?" right before it or on it (checks.genus_in_doubt:
    "Epipsocus" quoting "cfr. Epipsocus" or "Epipsocus?"; 1c of #289's fifth
    review). The step's unmatched taxon (owner decision B) meets these rules
@@ -491,8 +492,11 @@ def _genus_in_doubt(task: FieldTask, readings: Sequence[Reading], literal: str,
     genus as doubtful (checks.genus_in_doubt: a qualifier or a "?" right
     before the literal's first word or on it) in the quote of a candidate of
     that literal, or in the text of a reading the answer names or of its
-    label's decided reading, wherever that text writes the literal (1c of
-    #289's fifth review). The taxon brief has the expert look such a genus up
+    label's decided reading, or of any reader of its label when the label has
+    no decided transcript (then every reader is the label's text: 1A's "cf.
+    Epipsocus sp. 1" holds back an answer naming only 1B's "Epipsocus sp.
+    1"), wherever that text writes the literal (1c of #289's fifth review;
+    the sixth review's probe 3). The taxon brief has the expert look such a genus up
     alone and answer sources_cannot_resolve; GBIF may still decide it, and
     this refuses an answer that resolves it. None otherwise, and for any
     other field."""
@@ -500,6 +504,10 @@ def _genus_in_doubt(task: FieldTask, readings: Sequence[Reading], literal: str,
         return None
     want = collapse(literal)
     names = {reading.name for reading in named} | {_deciding(reading, readings).name for reading in named}
+    # On a label with no decided transcript every reader is the label's text:
+    # one reader's "cf." holds the genus back whichever reader is named.
+    undecided = {reading.region_id for reading in named if _deciding(reading, readings).input_source != DECIDED}
+    names |= {reading.name for reading in readings if reading.region_id in undecided}
     texts = [(candidate.quote, candidate.literal) for candidate in task.candidates
         if candidate.reading in names and collapse(candidate.literal) == want]
     texts += [(reading.text, literal) for reading in readings if reading.name in names]

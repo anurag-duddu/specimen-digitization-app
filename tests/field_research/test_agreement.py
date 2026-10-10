@@ -678,3 +678,35 @@ def test_a_country_read_from_the_transcript_is_the_country_its_places_lie_in(tmp
     assert (country.state, country.authority_id) == (ValueState.SUPPORTED, "tgn:7005493")
     assert (province.state, province.authority_id) == (ValueState.SUPPORTED, "tgn:1000565")
     assert "transcript_literal:country" in [f.reason_code for f in run.findings]
+
+
+# ---- a doubtful genus on any reader of a label with no decided transcript ----
+# The sixth review's probe 3 (readers disagreeing on "cf."): 1A writes "cf.
+# Epipsocus sp. 1", 1B "Epipsocus sp. 1", and an answer naming only 1B settled
+# the genus. On origin/main its record went to review only because its other
+# fields had no candidate; once they settle from the transcript, the taxon
+# would clear.
+
+@pytest.mark.parametrize("doubtful", ["cf. Epipsocus sp. 1", "? Epipsocus sp. 1", "aff. Epipsocus sp. 1"],
+    ids=["cf", "question-mark", "aff"])
+def test_one_readers_doubt_holds_the_genus_whichever_reader_is_named(doubtful):
+    """On origin/main the answer naming 1B passes."""
+    literal = "Epipsocus sp. 1"
+    readings = label(doubtful + "\nleg. J. Smith", literal + "\nleg. J. Smith", names=("1A", "1B"), region="r1")
+    task = FieldTask("taxon", True, FieldValue(state=ValueState.SUPPORTED, literal=literal),
+        (Candidate("1A", doubtful, literal, "ev-1A"), Candidate("1B", literal, literal, "ev-1B")), FIELD_TOOLS["taxon"])
+    refused = agreement.refusal(task, readings, literal=literal, named=[readings[1]], value=None, authority_id=None,
+        cited=[], received=[])
+    assert refused is not None and refused.reason == agreement.DOUBTFUL_GENUS
+
+
+def test_a_decided_clean_transcript_still_decides_beside_a_doubtful_reader():
+    """The control, unchanged (G19): the decided reading writes no doubt, and
+    the other reader's "cf." is evidence only."""
+    literal = "Epipsocus sp. 1"
+    readings = label(literal + "\nleg. J. Smith", "cf. Epipsocus sp. 1\nleg. J. Smith", decided=True,
+        names=("1A", "1B"), region="r1")
+    task = FieldTask("taxon", True, FieldValue(state=ValueState.SUPPORTED, literal=literal),
+        (Candidate("1A", literal, literal, "ev-1A"),), FIELD_TOOLS["taxon"])
+    assert agreement.refusal(task, readings, literal=literal, named=[readings[0]], value=None, authority_id=None,
+        cited=[], received=[]) is None

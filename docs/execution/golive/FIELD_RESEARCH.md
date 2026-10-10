@@ -202,8 +202,11 @@ handover runs field research instead of the six specialists:
    - **A doubtful genus (taxon only).** The literal never settles the taxon
      when the label marks its genus as doubtful (`checks.genus_in_doubt`,
      through `agreement._genus_in_doubt`): wherever the quote of a candidate
-     of that literal, the text of a reading the answer names, or the text of
-     its label's decided reading writes the literal:
+     of that literal, the text of a reading the answer names, the text of
+     its label's decided reading, or, on a label with no decided transcript,
+     the text of any of its readers writes the literal (every reader is
+     then the label's text: 1A's "cf. Epipsocus sp. 1" holds back an answer
+     that names only 1B's "Epipsocus sp. 1"):
      - a qualifier, read as the doubt signs read one (below, under B; a
        person's initials such as "C.F." are none), stands in the
        whitespace-separated part holding the literal's first word
