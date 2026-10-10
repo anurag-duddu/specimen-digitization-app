@@ -2795,6 +2795,71 @@ def test_a_genus_the_expert_asked_gbif_keeps_the_code_in_review_though_gbif_has_
     in_review_with_a_genus(rig.specimen.run)
 
 
+# 1c of #289's fifth review: GBIF decides the genus the brief now has the
+# expert look up alone.
+EPIPSOCUS_GENUS, EPIPSOCUS_GENUS_KEY = "Epipsocus Hagen, 1866", "1045361"
+
+
+class EpipsocusGenus(FakeSources):
+    """GBIF decides the genus Epipsocus, one candidate, when asked "Epipsocus"."""
+
+    def _answer(self, source_id, query):
+        answer = super()._answer(source_id, query)
+        if source_id != "gbif" or query != "Epipsocus":
+            return answer
+        candidate = SourceCandidate(name=EPIPSOCUS_GENUS, authority_id=EPIPSOCUS_GENUS_KEY, kind="GENUS")
+        evidence = answer.evidence.model_copy(update={"locator": EPIPSOCUS_GENUS_KEY,
+            "excerpt": f"GBIF: exact accepted match\n{EPIPSOCUS_GENUS} | {EPIPSOCUS_GENUS_KEY} | GENUS | "})
+        lookup = answer.taxonomy_lookup.model_copy(update={
+            "candidates": [{"key": EPIPSOCUS_GENUS_KEY, "scientificName": EPIPSOCUS_GENUS}]})
+        return SourceAnswer("gbif", query, LookupStatus.SUCCESS, (candidate,), evidence, note="exact",
+            taxonomy_lookup=lookup)
+
+
+# The label above 105526327's slide number and code, and the quote of the
+# organiser's candidate "Epipsocus".
+RESOLVED_DOUBTFUL_GENUS = {
+    "cfr-quote": ("cfr. Epipsocus", "cfr. Epipsocus"),
+    "conf-quote": ("conf. Epipsocus", "conf. Epipsocus"),
+    "dotted-cf-quote": ("c.f. Epipsocus", "c.f. Epipsocus"),
+    "cf-quote": ("cf. Epipsocus", "cf. Epipsocus"),
+    "question-quote": ("Epipsocus?", "Epipsocus?"),
+    # The organiser quotes the genus alone; the reading's line still writes the doubt.
+    "cfr-line-bare-quote": ("cfr. Epipsocus", "Epipsocus"),
+    "question-line-bare-quote": ("Epipsocus?", "Epipsocus"),
+}
+
+
+@pytest.mark.parametrize(("line", "quote"), RESOLVED_DOUBTFUL_GENUS.values(), ids=RESOLVED_DOUBTFUL_GENUS)
+def test_an_answer_that_resolves_a_genus_the_label_marks_as_doubtful_never_settles_the_taxon(tmp_path, line, quote):
+    """The expert breaks its brief: it asks GBIF the genus alone, GBIF
+    decides it, and the expert resolves the taxon as that genus. The
+    agreement rules refuse it (agreement._genus_in_doubt)."""
+    rig = build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", line + "\nV-4-67-1\n" + SP1),
+        candidates=[*COLLECTORS, *(("taxon", name, "Epipsocus", quote) for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": taxon_on("Epipsocus", value=EPIPSOCUS_GENUS, authority_id=EPIPSOCUS_GENUS_KEY,
+        literal="Epipsocus")}), tools=EpipsocusGenus(rig.blobs))
+    taxon = run.fields["taxon"]
+    assert (taxon.state, taxon.literal, taxon.normalized, taxon.authority_id) == (
+        ValueState.UNRESOLVED, "Epipsocus", None, None)
+    assert taxon.reason.startswith(agreement.DOUBTFUL_GENUS)
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["mandatory_unresolved:taxon", "taxonomy_unresolved"])
+
+
+def test_an_answer_that_resolves_a_genus_written_with_no_doubt_still_settles_the_taxon(tmp_path):
+    """The control: the same label with "Epipsocus" plain."""
+    rig = build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", "Epipsocus\nV-4-67-1\n" + SP1),
+        candidates=[*COLLECTORS, *(("taxon", name, "Epipsocus", "Epipsocus") for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": taxon_on("Epipsocus", value=EPIPSOCUS_GENUS, authority_id=EPIPSOCUS_GENUS_KEY,
+        literal="Epipsocus")}), tools=EpipsocusGenus(rig.blobs))
+    taxon = run.fields["taxon"]
+    assert (taxon.state, taxon.normalized, taxon.authority_id) == (
+        ValueState.SUPPORTED, EPIPSOCUS_GENUS, EPIPSOCUS_GENUS_KEY)
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+
+
 EPIPSOCUS_HOMONYM = SourceCandidate(name="Epipsocus Hagen, 1866", authority_id="1045361", kind="GENUS")
 
 

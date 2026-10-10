@@ -19,8 +19,13 @@ fields' outcomes:
    write no longer name around the literal (checks.longer_name): a candidate
    "Danaus plexippus" quoting "Danaus plexippus megalippe" (N3 of the third
    review), or "sp. 1" quoting "Epipsocus sp. 1" (B1 of #289's review), is a
-   piece of the name the label writes, and never settles the taxon. The
-   step's unmatched taxon (owner decision B) meets these rules too.
+   piece of the name the label writes, and never settles the taxon. Nor does
+   a literal whose genus the candidate's quote, or the text of a reading the
+   answer names (or of its label's decided reading), marks as doubtful with
+   a qualifier or a "?" right before it or on it (checks.genus_in_doubt:
+   "Epipsocus" quoting "cfr. Epipsocus" or "Epipsocus?"; 1c of #289's fifth
+   review). The step's unmatched taxon (owner decision B) meets these rules
+   too.
 3. Readers and labels that disagree (B1; G19, G20, G27, G32). From the
    field's candidates and the organiser's per-reader verbatims, whatever
    state the organiser gave the field, each label that writes the field
@@ -135,7 +140,7 @@ from dataclasses import dataclass
 from specimen_digitization.application.domain import LookupStatus
 from specimen_digitization.application.georef_locality import comparison_key, one_letter_apart
 
-from .checks import collapse, longer_name, taxon_query_grounded
+from .checks import collapse, genus_in_doubt, longer_name, taxon_query_grounded
 from .contracts import PLACE_SOURCES, FieldTask, Reading, SourceAnswer, SourceCandidate
 from .notations import expansion
 
@@ -180,6 +185,7 @@ LABELS_DIFFER = "The labels differ, and no approved source confirms them as one 
 NOT_DECIDED = "The reading chosen for this label does not write this value."
 NOT_CANDIDATE = "This value is not the text found for this field in the readings."
 PART_OF_NAME = "The label writes a longer scientific name than this value."
+DOUBTFUL_GENUS = "The label marks this name's genus as doubtful."
 NO_PLACE = "No approved place source confirms this value."
 
 
@@ -256,7 +262,8 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
     literal of each reading it names (the decided reading's, on a label with
     one), never a shorter or longer piece of a reading (B2); for a taxon, a
     candidate whose quote writes a longer name from it on is such a piece too
-    (_part_of_name)."""
+    (_part_of_name), and a literal whose genus the label marks as doubtful
+    never settles (_genus_in_doubt)."""
     for reading in named:
         chosen = _deciding(reading, readings)
         if chosen.input_source == DECIDED and literal not in chosen.text:
@@ -265,7 +272,7 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
                 f"this field (G19), and it does not contain {literal!r}. Copy the literal from "
                 f"{chosen.name}, or answer several_possibilities or sources_cannot_resolve."))
     if candidate_literal(task, readings, literal, named) is not None:
-        return _part_of_name(task, readings, literal, named)
+        return _part_of_name(task, readings, literal, named) or _genus_in_doubt(task, readings, literal, named)
     allowed = candidates_by_reading(task, readings)
     offered = [f"{source.name}: {text!r}" for source in dict.fromkeys(_deciding(r, readings) for r in named)
         for text in allowed.get(source.name, {}).values()]
@@ -301,6 +308,33 @@ def _part_of_name(task: FieldTask, readings: Sequence[Reading], literal: str,
                 f"{candidate.quote!r}, which writes the longer name {longer!r}. A taxon settles only "
                 "on the whole name its reading writes, so this candidate cannot settle it: answer "
                 "several_possibilities or sources_cannot_resolve."))
+    return None
+
+
+def _genus_in_doubt(task: FieldTask, readings: Sequence[Reading], literal: str,
+        named: Sequence[Reading]) -> Refusal | None:
+    """For a taxon, why the literal cannot settle it: the label marks its
+    genus as doubtful (checks.genus_in_doubt: a qualifier or a "?" right
+    before the literal's first word or on it) in the quote of a candidate of
+    that literal, or in the text of a reading the answer names or of its
+    label's decided reading, wherever that text writes the literal (1c of
+    #289's fifth review). The taxon brief has the expert look such a genus up
+    alone and answer sources_cannot_resolve; GBIF may still decide it, and
+    this refuses an answer that resolves it. None otherwise, and for any
+    other field."""
+    if task.key != "taxon":
+        return None
+    want = collapse(literal)
+    names = {reading.name for reading in named} | {_deciding(reading, readings).name for reading in named}
+    texts = [(candidate.quote, candidate.literal) for candidate in task.candidates
+        if candidate.reading in names and collapse(candidate.literal) == want]
+    texts += [(reading.text, literal) for reading in readings if reading.name in names]
+    for text, written in texts:
+        if genus_in_doubt(text, written):
+            return Refusal(DOUBTFUL_GENUS, (
+                f"{text!r} writes a qualifier or a '?' right before or on the genus of {written!r}, so the "
+                "label marks that genus as doubtful. A doubtful genus never settles the taxon, whatever "
+                "GBIF says: answer sources_cannot_resolve."))
     return None
 
 

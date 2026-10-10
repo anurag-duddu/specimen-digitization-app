@@ -436,6 +436,34 @@ def _has_a_letter(part: str) -> bool:
     return any(c.isalpha() for c in part)
 
 
+def genus_in_doubt(text: str, literal: str) -> bool:
+    """Whether the text, wherever it writes the taxon literal, marks the
+    literal's first word, its genus, as doubtful (1c of #289's fifth review):
+    a qualifier (DOUBT_QUALIFIERS, read as the doubt signs read one) or a "?"
+    in the whitespace-separated part of the text that holds that word
+    ("cfr.Epipsocus", "Epipsocus?", "?Epipsocus", "Epipsocus(?)"), or in the
+    part just before it, across a line break too ("cfr. Epipsocus", "C.F.
+    Epipsocus", "(?) Epipsocus", "cf." ending the line above); or a part of
+    "?" and brackets alone just after it ("Epipsocus ?"). A qualifier after
+    the genus ("Epipsocus cf. sp. 1", G25) is none. False when the text does
+    not write the literal."""
+    literal = literal.strip()
+    if not literal:
+        return False
+    parts = list(re.finditer(r"\S+", text))
+    start = text.find(literal)
+    while start >= 0:
+        at = next(i for i, part in enumerate(parts) if part.start() <= start < part.end())
+        own = parts[at].group()
+        before = parts[at - 1].group() if at > 0 else ""
+        after = parts[at + 1].group() if at + 1 < len(parts) else ""
+        if ("?" in own or _qualifier(own) or "?" in before or _qualifier(before)
+                or ("?" in after and not any(c.isalnum() for c in after))):
+            return True
+        start = text.find(literal, start + 1)
+    return False
+
+
 def _question_mark(text: str) -> bool:
     """A "?" attached to a letter-token, a whitespace-separated part that
     holds a letter ("Epipsocus?", "?Epipsocus", "E.?", "Epipsocus(?)"), or

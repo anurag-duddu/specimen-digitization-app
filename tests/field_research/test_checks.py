@@ -614,6 +614,38 @@ def test_no_doubt_sign_shows_where_none_is_written(texts):
     assert checks.doubt_signs(texts) == ()
 
 
+# 1c of #289's fifth review: the label marks a taxon literal's genus as
+# doubtful, a qualifier or a "?" right before it or on it, wherever the text
+# writes the literal.
+@pytest.mark.parametrize(("text", "literal", "doubtful"), [
+    ("cfr. Epipsocus", "Epipsocus", True),
+    ("conf. Epipsocus", "Epipsocus", True),
+    ("C.F. Epipsocus", "Epipsocus", True),
+    ("cfr.Epipsocus", "Epipsocus", True),
+    ("Possibly Epipsocus sp. 1", "Epipsocus sp. 1", True),
+    ("Epipsocus?", "Epipsocus", True),
+    ("?Epipsocus", "Epipsocus", True),
+    ("Epipsocus(?)", "Epipsocus", True),
+    ("Epipsocus ?", "Epipsocus", True),
+    ("(?) Epipsocus", "Epipsocus", True),
+    ("cf.\nEpipsocus sp. 1", "Epipsocus sp. 1", True),
+    ("V-4-67-1\nnr. Epipsocus\nsp. 1 " + FEMALE, "Epipsocus", True),
+    ("Epipsocus\ncfr. Epipsocus", "Epipsocus", True),
+    # No doubt right before the genus or on it.
+    ("Epipsocus", "Epipsocus", False),
+    ("Epipsocus\nV-4-67-1\nsp. 1 " + FEMALE, "Epipsocus", False),
+    ("Epipsocus cf. sp. 1", "Epipsocus cf. sp. 1", False),
+    ("Epipsocus sp. 1?", "Epipsocus", False),
+    ("taxon: Danaus plexippus", "Danaus plexippus", False),
+    ("Mossy forest 6400'\nsp. 30 " + FEMALE, "sp. 30 " + FEMALE, False),
+    ("cfr. Epipsocus", "Danaus plexippus", False),
+])
+def test_a_genus_the_text_marks_as_doubtful(text, literal, doubtful):
+    from specimen_digitization.field_research import checks
+
+    assert checks.genus_in_doubt(text, literal) is doubtful
+
+
 @pytest.mark.parametrize(("quote", "literal", "longer"), [
     # The third review's N3: an organiser candidate that cuts the subspecies off its line.
     ("Danaus plexippus megalippe", "Danaus plexippus", "Danaus plexippus megalippe"),
