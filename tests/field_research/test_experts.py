@@ -723,11 +723,16 @@ def test_the_briefs_have_a_place_abbreviation_looked_up_by_its_expansion():
     assert "PLACE_NOTATIONS" not in (_ROOT / "common.txt").read_text(encoding="utf-8")
     for key in FIELD_TOOLS:
         [line] = [line for line in instructions(key).splitlines() if line.startswith("- A place abbreviation")]
-        assert "look up its expansion" in line and "name in your explanation the abbreviation you expanded" in line
+        assert "look up its expansion with each abbreviated word written out" in line
+        assert '"Davao Province"' in line and "name in your explanation the abbreviation you expanded" in line
+    # The unit word written out, where the label abbreviates it (105526326's "Davao, Prov.").
+    assert 'Search with the unit word written out ("Davao Province")' in instructions("province_state")
+    assert 'search with the unit word written out ("Cook County")' in instructions("county")
     [rule] = [line for line in instructions("country").splitlines() if "whose words its letters fit in order" in line]
     accepted, context = rule.split("when the literal is an abbreviation", 1)[1].split("A lookup of any other name", 1)
     expansions = re.findall(r'"([^"]+)" for "([^"]+)"', accepted)
-    assert expansions == [("Philippine Islands", "P.I."), ("New South Wales", "N.S.W.")]
+    assert expansions == [("Philippine Islands", "P.I."), ("New South Wales", "N.S.W."),
+                          ("Davao Province", "Davao, Prov.")]
     assert all(fits(abbreviation, expansion) for expansion, abbreviation in expansions)
     others = re.findall(r'"([^"]+)" for "([^"]+)"', context)
     assert ("Philippines", "P.I.") in others
@@ -1240,6 +1245,17 @@ def answered(source: str, query: str, evidence_id: str, name: str, kind: str | N
     ("city", "Ft. Lauderdale", answered("geolocate", "Fort Lauderdale, Florida, United States", "ev-1",
                                         "Fort Lauderdale", None), True),
     ("city", "Sta. Cruz", answered("geolocate", "Santa Cruz, Bolivia", "ev-1", "Santa Cruz", None), True),
+    # A unit word written out. Wikidata's answer for "Davao Province" is the real one
+    # (2026-10-09); a search for "Davao" alone has several units at a province's level.
+    ("province_state", "Davao, Prov.", answered("wikidata", "Davao Province, Philippines", "ev-1", "Davao",
+                                                "former province of the Philippines, province of the Philippines"), True),
+    ("province_state", "Davao\nProv.", answered("wikidata", "Davao Province, Philippines", "ev-1", "Davao",
+                                                "former province of the Philippines, province of the Philippines"), True),
+    ("county", "Cook Co.", answered("tgn", "Cook County", "ev-1", "Cook",
+                                    "counties, second level subdivisions (political entities)"), True),
+    ("province_state", "Edo. de M\u00e9xico", answered("wikidata", "Estado de M\u00e9xico", "ev-1", "State of Mexico",
+                                                       "state of Mexico"), True),
+    ("province_state", "Dpto. Cusco", answered("tgn", "Departamento Cusco", "ev-1", "Cusco", FIRST), True),
     # Names the letters do not spell: two groups never fit one word, and Iowa has no "l".
     ("country", "P.I.", answered("tgn", "Peru", "ev-1", "Peru", NATION), False),
     ("province_state", "Ill.", answered("tgn", "Iowa", "ev-1", "Iowa", STATE), False),
@@ -1263,6 +1279,21 @@ def test_a_place_abbreviation_settles_on_a_lookup_of_an_expansion_its_letters_fi
         return
     with pytest.raises(ModelRetry, match="asked the label's own text"):
         made.validate(given)
+
+
+@pytest.mark.parametrize(("query", "basis"), [
+    # The unit word written out: an expansion (agreement.ABBREVIATION), though its
+    # comparison key is the literal's.
+    ("Davao Province, Philippines", "abbreviation"),
+    # The label's own text (agreement.ASKED): the name before the comma, or the
+    # literal with no more letters.
+    ("Davao, Philippines", "asked"),
+    ("Davao Prov., Philippines", "asked"),
+])
+def test_a_unit_word_written_out_is_an_expansion_and_the_labels_own_text_is_not(query, basis):
+    found = answered("wikidata", query, "ev-1", "Davao", "former province of the Philippines")
+    province = task("province_state", candidates=offered(("1A", "Davao, Prov.")))
+    assert agreement.place_basis(province, "Davao, Prov.", "Davao", "wikidata:davao", [found]) == basis
 
 
 SOUTH_AFRICA = answered("tgn", "South Africa", "ev-za", "South Africa", NATION)

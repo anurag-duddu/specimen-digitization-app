@@ -3,7 +3,8 @@
 Labels abbreviate place names in every language and country: "P.I.",
 "N.S.W.", "Guat.", "Edo.", "Dpto.", "Qld.", "Mts.", "Ft.". No list of them is
 kept. A place expert that knows what an abbreviation stands for looks up the
-expansion ("Philippine Islands" for "P.I."), and the place rule
+expansion ("Philippine Islands" for "P.I."; "Davao Province" for "Davao,
+Prov.", a unit word written out), and the place rule
 (agreement.place_settling) accepts that lookup for the label's text only when
 the text fits the expansion (`fit`):
 
@@ -42,6 +43,8 @@ MINOR_WORDS = frozenset("of the and de del la le da do dos das van von y et".spl
 PERIOD_FREE = frozenset("mt mts mtn mtns st ste sta sto ft pt co is".split())
 # Where a text splits into groups: periods, spaces and hyphens.
 SPLIT = re.compile(r"[.\s-]+")
+# What a group or word shows without at its ends: anything but a letter or digit.
+EDGES = re.compile(r"^[\W_]+|[\W_]+$")
 MAX_CAPITALS = 4
 
 
@@ -52,8 +55,10 @@ def _letters(text: str) -> str:
 
 def _groups(text: str) -> tuple[tuple[str, str], ...]:
     """The text's groups split at periods, spaces and hyphens: each as written,
-    with its letters (_letters). A group with no letter or digit is left out."""
-    return tuple((piece, letters) for piece in SPLIT.split(text) if (letters := _letters(piece)))
+    without the punctuation at its ends ("Davao," is "Davao"), with its
+    letters (_letters). A group with no letter or digit is left out."""
+    return tuple((EDGES.sub("", piece), letters) for piece in SPLIT.split(text)
+        if (letters := _letters(piece)))
 
 
 def abbreviated(text: str) -> bool:

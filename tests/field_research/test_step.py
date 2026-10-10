@@ -1244,6 +1244,50 @@ def test_mindanao_p_i_settles_its_country_as_the_philippines_by_the_letter_rule(
     assert rule.locator == "abbreviation:country:Philippine Islands" and "P = Philippine, I = Islands" in rule.excerpt
 
 
+class DavaoProvince(Gazetteer):
+    """Wikidata's real answer for "Davao Province" (the parent session's run of
+    2026-10-09): one place, the former province of the Philippines."""
+
+    def _answer(self, source_id, query):
+        answer = super()._answer(source_id, query)
+        if source_id != "wikidata" or query != "Davao Province, Philippines":
+            return answer
+        candidate = SourceCandidate("Davao", "wikidata:Q15095071",
+            "former province of the Philippines, province of the Philippines", "in Philippines",
+            (PlaceRef("Philippines", "wikidata:Q928"),))
+        evidence = answer.evidence.model_copy(update={"locator": candidate.authority_id,
+            "excerpt": f"{candidate.name} | {candidate.authority_id} | {candidate.kind} | {candidate.detail}"})
+        return SourceAnswer("wikidata", query, LookupStatus.SUCCESS, (candidate,), evidence, note="match")
+
+
+def test_davao_prov_settles_on_a_lookup_with_the_unit_word_written_out_and_says_so(tmp_path):
+    """105526326's label writes "Davao, Prov. 3300'" above "Mindanao, P.I.".
+    The province is looked up as "Davao Province", the unit word written
+    out, which Wikidata finds as the one former province: the value settles,
+    and its rule row says how "Davao, Prov." became "Davao Province"."""
+    text = label_with(country=None, province_state=None, county=None, city=None) + (
+        "\nDavao, Prov. 3300'\nMindanao, P.I.")
+    rig = build_rig(tmp_path, text, candidates=[*COLLECTORS,
+        *(("country", name, "P.I.", "Mindanao, P.I.") for name in ("1A", "1B")),
+        *(("province_state", name, "Davao, Prov.", "Davao, Prov. 3300'") for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    lacks = answering(FieldAnswer(outcome="label_lacks_value", explanation="Not on the label."))
+    settle(rig, Scripted({**ABBREVIATED_COUNTRY,
+        "province_state": from_tgn("Davao Province, Philippines", "Davao, Prov.", "Davao", "wikidata:Q15095071",
+            source="wikidata"),
+        "county": lacks, "city": lacks}), tools=DavaoProvince(rig.blobs))
+    province = run.fields["province_state"]
+    assert (province.state, province.literal, province.normalized, province.authority_id) == (
+        ValueState.SUPPORTED, "Davao, Prov.", "Davao", "wikidata:Q15095071")
+    assert not reasons_for(run, "province_state")
+    rules = {row.locator: row for row in run.evidence if row.kind == "rule"}
+    assert sorted(rules) == ["abbreviation:country:Philippine Islands", "abbreviation:province_state:Davao Province"]
+    row = rules["abbreviation:province_state:Davao Province"]
+    assert row.excerpt == ('province_state: "Davao, Prov." abbreviates "Davao Province", the name wikidata was '
+        "asked: its letters fit the words in order (Davao = Davao, Prov = Province; field_research.abbreviations)")
+    assert province.evidence_relations[row.id] == "supports"
+
+
 @pytest.mark.parametrize(("written", "settled_by", "value", "authority_id", "rival"), [
     ("S.A.", "South Africa", "South Africa", "tgn:south-africa", "Saudi Arabia"),
     # The table's own "P.I.", which settled on origin/main whatever else was found.

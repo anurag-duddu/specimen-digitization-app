@@ -84,11 +84,14 @@ fields' outcomes:
    it. And that answer was asked about the label's own text (point 3's
    "about", P3); or else about an expansion of the literal, a name the
    literal abbreviates by the letter rule (field_research.abbreviations.fit:
-   "Philippine Islands" for "P.I.", "New South Wales" for "N.S.W."), for
-   which the step cites one rule row naming the abbreviation, the expansion
-   and how its letters fit, and which settles nothing when another fitting
-   expansion was answered as another place at the field's level
-   (rival_expansion: the field is ambiguous); or else about the candidate's
+   "Philippine Islands" for "P.I.", "New South Wales" for "N.S.W.", "Davao
+   Province" for "Davao, Prov."), for which the step cites one rule row
+   naming the abbreviation, the expansion and how its letters fit, and which
+   settles nothing when another fitting expansion was answered as another
+   place at the field's level (rival_expansion: the field is ambiguous). A
+   query that fits is taken as an expansion even when it also has the
+   literal's comparison key, as one that writes out a unit word does; or
+   else about the candidate's
    own name when that name is one letter from the literal
    (application.georef_locality.one_letter_apart: both full names,
    comparison keys one insertion, deletion or substitution apart), the
@@ -583,13 +586,16 @@ def place_settling(task: FieldTask, literal: str, settled: str, authority_id: st
     answer has exactly one candidate at the field's level (placed), that
     candidate is the settled value (its name exactly, after NFC and whitespace
     collapse) with the answer's authority_id, and the answer was asked
-    - about the label's own text (about): ASKED; or else
-    - about an expansion of the literal (asked_name), a name the literal
+    - an expansion of the literal (asked_name), a name the literal
       abbreviates by the letter rule (abbreviations.fit: "Philippine Islands"
-      for "P.I."): ABBREVIATION, for which the step cites a rule row naming
-      the abbreviation, the expansion and how its letters fit, and which
-      refusal holds back when another fitting expansion was answered as
-      another place (rival_expansion); or else
+      for "P.I.", "Davao Province" for "Davao, Prov."): ABBREVIATION, for
+      which the step cites a rule row naming the abbreviation, the expansion
+      and how its letters fit, and which refusal holds back when another
+      fitting expansion was answered as another place (rival_expansion). An
+      expansion that writes out only a unit word has the literal's
+      comparison key too ("Davao Province" and "Davao, Prov." are both
+      "davao"); it is still an expansion; or else
+    - about the label's own text (about): ASKED; or else
     - about that candidate's own name, when the name is one letter from the
       label's text (application.georef_locality.one_letter_apart: both full
       names, comparison keys one single-letter edit apart): NEAR_SPELLING. It
@@ -602,10 +608,10 @@ def place_settling(task: FieldTask, literal: str, settled: str, authority_id: st
         one = placed(task.key, answer) if answer.source_id in sources else None
         if one is None or collapse(one.name) != collapse(settled) or one.authority_id != authority_id:
             continue
-        if about(answer, collapse(literal)):
-            found.setdefault(ASKED, Settling(ASKED, one, answer))
-        elif fits(literal, asked_name(answer)):
+        if fits(literal, asked_name(answer)):
             found.setdefault(ABBREVIATION, Settling(ABBREVIATION, one, answer))
+        elif about(answer, collapse(literal)):
+            found.setdefault(ASKED, Settling(ASKED, one, answer))
         elif about(answer, collapse(one.name)) and one_letter_apart(literal, one.name):
             found.setdefault(NEAR_SPELLING, Settling(NEAR_SPELLING, one, answer))
     return next((found[basis] for basis in (ASKED, ABBREVIATION, NEAR_SPELLING) if basis in found), None)

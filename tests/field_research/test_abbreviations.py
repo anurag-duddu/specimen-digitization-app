@@ -34,6 +34,13 @@ from specimen_digitization.field_research.abbreviations import abbreviated, fit,
     ("M\u00e9x.", "Mexico"),
     ("Mex.", "M\u00e9xico"),
     ("Edo. M\u00e9x.", "Estado de M\u00e9xico"),
+    # A place name with its unit word written out (105526326's "Davao, Prov.",
+    # 105526323's "Davao" above "Prov.").
+    ("Davao, Prov.", "Davao Province"),
+    ("Davao\nProv.", "Davao Province"),
+    ("Cook Co.", "Cook County"),
+    ("Edo. de Mexico", "Estado de Mexico"),
+    ("Dpto. Cusco", "Departamento Cusco"),
     # Feature and unit words.
     ("Co.", "County"),
     ("Mts.", "Mountains"),
@@ -123,4 +130,6 @@ def test_the_fit_names_the_word_each_group_stands_for():
     assert fit("P.I.", "Philippine Islands") == (("P", "Philippine"), ("I", "Islands"))
     assert shown(fit("Edo. Mex.", "Estado de Mexico")) == "Edo = Estado, Mex = Mexico"
     assert shown(fit("NSW", "New South Wales")) == "N = New, S = South, W = Wales"
+    # A group shows without the punctuation at its ends.
+    assert shown(fit("Davao, Prov.", "Davao Province")) == "Davao = Davao, Prov = Province"
     assert fit("P.I.", "Peru") is None

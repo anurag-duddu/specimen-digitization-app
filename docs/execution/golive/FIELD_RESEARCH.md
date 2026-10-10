@@ -288,6 +288,22 @@ handover runs field research instead of the six specialists:
        one letter per group ("NSW" fits "New South Wales", "USA" "United
        States of America").
 
+     An expansion may write out a unit word the label abbreviates after or
+     before the name ("Davao Province" for "Davao, Prov.", "Cook County" for
+     "Cook Co.", "Estado de Mexico" for "Edo. de Mexico", "Departamento
+     Cusco" for "Dpto. Cusco"). A query that fits is taken as an expansion
+     even when it also has the literal's comparison key, as a unit word
+     written out does ("Davao Province" and "Davao, Prov." are both
+     "davao"), so it gets the row and the rival check below; the literal
+     asked as written ("Davao Prov."), or the name before its comma
+     ("Davao"), is the label's own text. The province and county briefs
+     have the expert search with the unit word written out. In the parent
+     session's run of the pilots on 2026-10-09, Getty TGN's answer for
+     "Davao, Philippines" held two first-level units (Davao del Norte and
+     the special city of Davao), which settles nothing, and Wikidata's
+     answer for "Davao Province, Philippines" held one, the former province
+     of Davao.
+
      The letters only allow an expansion; they do not choose one ("S.A."
      fits "South Australia", "South Africa" and "Saudi Arabia", and a word
      with a trailing period counts as written abbreviated, so "Lima." fits
@@ -311,8 +327,9 @@ handover runs field research instead of the six specialists:
      Islands", the name tgn was asked: its letters fit the words in order
      (P = Philippine, I = Islands; field_research.abbreviations)`), and the
      value cites it as support. The shared brief has the expert look up an
-     abbreviation's expansion when it knows what it stands for, and name
-     the abbreviation it expanded in its explanation. A near spelling: the
+     abbreviation's expansion, with each abbreviated word written out, when
+     it knows what it stands for, and name the abbreviation it expanded in
+     its explanation. A near spelling: the
      query is the chosen candidate's own
      name, and that name is one letter from the literal
      (`georef_locality.one_letter_apart`: both full names, their comparison

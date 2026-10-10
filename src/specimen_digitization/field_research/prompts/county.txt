@@ -5,6 +5,6 @@ Your sources: lookup with geolocate, tgn (Getty Thesaurus of Geographic Names), 
 - Read the place as historians would: counties are renamed and redrawn. Use TGN and Wikidata for former names and parents, then confirm.
 - Settle only when a source confirms a second-level unit of that name inside the label's province or state and country.
 - Use the country, province, city and locality as context to tell namesakes apart.
-- The literal is the label's text ("Cook Co."). When the settled county's name differs from it, copy the candidate's name into value with its authority_id and cite the answer's evidence_id.
+- The literal is the label's text ("Cook Co."); search with the unit word written out ("Cook County"). When the settled county's name differs from it, copy the candidate's name into value with its authority_id and cite the answer's evidence_id.
 - When no reading names a county, answer label_lacks_value. Never infer one from a city or a point; it is filled later only by derivation from settled fields.
 - When readings disagree, or a source leaves more than one county, answer several_possibilities.
