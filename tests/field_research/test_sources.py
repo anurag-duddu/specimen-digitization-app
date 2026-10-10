@@ -513,6 +513,30 @@ async def test_geolocate_requests_start_at_least_three_seconds_apart(tmp_path):
     assert all(later - earlier >= 3 for earlier, later in zip(starts, starts[1:], strict=False))
 
 
+@pytest.mark.asyncio
+async def test_a_geolocate_turn_further_off_than_a_slot_wait_is_not_taken(tmp_path, caplog):
+    """Twelve GEOLocate lookups at once, 3 s apart on the fake clock: the
+    eleventh starts 30 s on, and the twelfth's turn would be 33 s off, more
+    than SLOT_WAIT_SECONDS, so it is not sent and takes no turn. A lookup 3 s
+    later then gets the turn it left, 30 s off, and is sent."""
+    tools, server, clock, _ = make(tmp_path, recorded_geolocate("yepocapa-modern.json"))
+    queries = [f"Yepocapa {n}, Chimaltenango, Guatemala" for n in range(12)]
+    with caplog.at_level(logging.WARNING, logger="specimen_digitization.field_research.sources"):
+        answers = await asyncio.gather(*(tools.lookup("geolocate", query, field_key="precise_location")
+                                         for query in queries))
+    assert [(answer.query, answer.status, answer.note) for answer in answers
+            if answer.status is LookupStatus.TIMEOUT] == [
+        (queries[11], LookupStatus.TIMEOUT, "GEOLocate was busy; this lookup was not sent")]
+    assert sorted(at for at, _ in server.requests) == [3.0 * n for n in range(11)]
+    assert unanswered(caplog) == [{"step": "field_research", "source": "geolocate", "host": "geo-locate.org",
+                                   "http_status": "-", "error": "slot_busy", "retry_after": "absent",
+                                   "attempt": "1"}]
+    assert "Yepocapa" not in caplog.text
+    await clock.sleep(3)
+    late = await tools.lookup("geolocate", "Yepocapa late, Chimaltenango, Guatemala", field_key="precise_location")
+    assert late.status is not LookupStatus.TIMEOUT and max(at for at, _ in server.requests) == 33.0
+
+
 def test_geolocate_spacing_holds_across_records(tmp_path):
     """Each record has its own sources; the spacing between GEOLocate requests is
     the process's, as the six-specialist harness keeps it."""

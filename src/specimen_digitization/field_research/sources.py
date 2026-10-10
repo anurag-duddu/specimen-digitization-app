@@ -386,6 +386,8 @@ class _Waiter:
 # others waiting ahead of it is sent in time. It is a fifth of an expert's
 # 150 s (experts.make_resolver's field_timeout_seconds), so a field whose
 # lookup gives up still has the time to decide with its other sources.
+# GEOLocate's turn under its 3 s spacing (SOURCE_PACER) has the same bound:
+# a request with up to ten others ahead of it is sent in time (_get).
 SLOT_WAIT_SECONDS = 2 * REQUEST_TIMEOUT_SECONDS
 
 
@@ -895,16 +897,19 @@ class ApprovedSources:
         followed) and a request that got none are logged (_log_unanswered)."""
         name = NAMES[policy.id]
         for attempt in range(1, ATTEMPTS + 1):
-            await self._pacer.wait(policy.id)
             wait, retry, code, error = None, "", None, None
             try:
+                # GEOLocate's turn (SOURCE_PACER) further off than a slot's
+                # wait is busy too; the request takes no turn.
+                if not await self._pacer.wait(policy.id, limit=SLOT_WAIT_SECONDS):
+                    raise SlotBusy(policy.id)
                 async with self._slots.slot(policy.id):
                     code, body, retry = await self._read(url, policy.max_response_bytes, name)
             except _Unanswered:
                 _log_unanswered(policy.id, url, attempt=attempt, error="response_too_large")
                 raise
             except SlotBusy:
-                # Every slot stayed taken (SLOT_WAIT_SECONDS): this request is
+                # No slot or turn within SLOT_WAIT_SECONDS: this request is
                 # not sent, and the lookup gives up rather than spend its
                 # field's time waiting.
                 _log_unanswered(policy.id, url, attempt=attempt, error="slot_busy")
