@@ -21,6 +21,7 @@ from .date_months import MONTH_WORDS_BY_LANGUAGE
 from .date_notations import (  # noqa: F401 (ROMAN and ROMAN_MONTHS are re-exported)
     APOSTROPHES,
     AS_YEAR,
+    CODE_SHAPED_RANGE,
     NO_MONTH,
     NO_YEAR,
     NOTATIONS,
@@ -158,6 +159,9 @@ def _range_reading(
     or month of the range. Both ends are read by the rules of a single date. A
     range that states no year takes the year literal, if one is given (3-5.IX
     above 1946); the reading then records it as its `year_literal`."""
+    if CODE_SHAPED_RANGE.fullmatch(text):
+        warnings = ["range_shaped_like_a_code"]
+        return _date_result(outcome=LookupStatus.NO_MATCH, warnings=warnings)
     candidates, borrowed = ranges(text), None
     token = (year_literal or "").strip()
     if not candidates and YEAR.fullmatch(token):

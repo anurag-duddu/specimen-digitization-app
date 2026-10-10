@@ -125,6 +125,10 @@ SINGLE_DATES = [
     ("3-5.IX.1946", "1946-09-03", "1946-09-05", "day", "range:day..date"),
     ("3-5.ix.1946", "1946-09-03", "1946-09-05", "day", "range:day..date"),
     ("VIII-IX.46", "1946-08", "1946-09", "month", "range:month..month-year"),
+    # The same months with the year marked by a period, an apostrophe or four digits.
+    ("III-V.46", "1946-03", "1946-05", "month", "range:month..month-year"),
+    ("III-V-'46", "1946-03", "1946-05", "month", "range:month..month-year"),
+    ("III-V-1946", "1946-03", "1946-05", "month", "range:month..month-year"),
     ("3.IX-5.X.1946", "1946-09-03", "1946-10-05", "day", "range:day-month..date"),
     ("3.IX.1946-5.X.1946", "1946-09-03", "1946-10-05", "day", "range:date..date"),
     ("10-12 Sept. 1946", "1946-09-10", "1946-09-12", "day", "range:day..date"),
@@ -265,6 +269,13 @@ REFUSED = [
     # A range that ends before it starts, and one the months make impossible.
     ("5-3.IX.1946", "range_end_before_start"),
     ("IX-VIII.46", "range_end_before_start"),
+    # Two Roman months and a bare two-digit number all joined by hyphens: a month range
+    # or a code of the slide codes' shape, and nothing says which (review 297, round 2).
+    ("III-V-46", "range_shaped_like_a_code"),
+    ("I-II-46", "range_shaped_like_a_code"),
+    ("I-V-48", "range_shaped_like_a_code"),
+    ("VIII-IX-46", "range_shaped_like_a_code"),
+    ("III - V - 46", "range_shaped_like_a_code"),
     ("30-31 Feb. 1946", "invalid_calendar_date"),
 ]
 

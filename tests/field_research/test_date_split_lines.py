@@ -657,6 +657,18 @@ def test_a_range_apart_from_its_year_that_does_not_read_names_why(literal, text,
             asset_id=None, blobs=None) is None
 
 
+@pytest.mark.parametrize(("literal", "value"), [("III-V-46", "1946-03"), ("I-II-46", "1946-01")])
+def test_a_month_range_shaped_like_a_code_settles_no_field(literal, value):
+    # Review 297 (round 2): "III-V-46" read as March to May 1946; a Roman code of that
+    # shape would have settled. It is no date, so neither date field keeps a row.
+    text = f"Davao {literal} Werner"
+
+    assert date(literal, [text]).notes == ("range_shaped_like_a_code",)
+    for key in ("date_visited_from", "date_visited_to"):
+        assert field_step._check_row(key, ("date_parser",), literal, value, texts=[text], date_rules=PILOT,
+            asset_id=None, blobs=None) is None
+
+
 # -- G44 never copies a range's start to its end ---------------------------------------------------
 
 

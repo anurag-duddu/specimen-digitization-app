@@ -115,6 +115,12 @@ COMPLETE = frozenset({
     "year-month-day", "year-monthname-day",
 })
 RANGE_DASH = re.compile(f"[{DASHES}]")
+# Two Roman months and a bare two-digit number, all joined by hyphens (III-V-46,
+# I-II-46): a range of months, or a code of the shape the pilot's slide codes have
+# (IV-29-68-4). Nothing in it says which, so it is no date (review 297, round 2:
+# origin/main refused it, and nothing yet shows the shape is only ever a range).
+_NUMERAL = "(?:" + "|".join(reversed(ROMAN)) + ")"
+CODE_SHAPED_RANGE = re.compile(rf"{_NUMERAL}\s*-\s*{_NUMERAL}\s*-\s*[0-9]{{2}}")
 
 
 def normalize(text: str) -> str:
