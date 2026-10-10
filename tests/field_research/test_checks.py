@@ -374,6 +374,13 @@ def test_the_words_after_a_code_that_are_no_genus_are_one_short_list():
     ("legs,", "legs"),
     ("cf.", ""),
     ("aff.", ""),
+    # Every qualifier of the doubt signs' list, its periods aside (B4 of #289's fifth review).
+    ("cfr.Epipsocus", "Epipsocus"),
+    ("c.f.Epipsocus", "Epipsocus"),
+    ("Conf.Epipsocus", "Epipsocus"),
+    ("Epipsocus,poss.", "Epipsocus"),
+    ("vic.", ""),
+    ("C.F.", ""),
     ("?", ""),
     ("(?)", ""),
 ])
@@ -507,7 +514,8 @@ def test_the_signs_of_a_doubtful_or_unreadable_name_are_one_list():
     from specimen_digitization.field_research import checks
 
     assert [name for name, _ in checks.DOUBT_SIGNS] == ["question_mark", "qualifier", "placeholder", "unreadable_span"]
-    assert checks.DOUBT_QUALIFIERS == ("cf.", "aff.", "nr.", "near", "prob.")
+    assert checks.DOUBT_QUALIFIERS == ("cf", "cfr", "aff", "affin", "affinis", "nr", "near", "prob", "probably", "poss",
+        "possibly", "conf", "vic", "prope")
     assert checks.DOUBT_PLACEHOLDERS == ("[unreadable]", "[illegible]", "[?]", "???", "...", "[...]",
         "\N{HORIZONTAL ELLIPSIS}")
     assert checks.doubt_signs(["Epipsocus?", "V-4-67-1", "cf. Epipsocus"]) == ("question_mark", "qualifier")
@@ -546,6 +554,28 @@ def test_a_doubt_sign_shows_wherever_a_text_writes_it(text, sign):
     assert checks.doubt_signs(["V-4-67-1\nsp. 1 " + FEMALE, text]) == (sign,)
 
 
+# B4 of #289's fifth review: every qualifier of the list, whatever its
+# spelling: in any case, with or without its periods, apart or against the
+# genus, before or after it.
+QUALIFIER_SPELLINGS = [
+    *(form for word in ("cfr", "affin", "affinis", "probably", "poss", "possibly", "conf", "vic", "prope")
+        for form in (word + ". Epipsocus", word.upper() + " Epipsocus", word.capitalize() + ".Epipsocus",
+            "Epipsocus " + word)),
+    "c.f. Epipsocus", "C.F. Epipsocus", "c.f.Epipsocus", "(c.f.) Epipsocus", "n.r. Epipsocus", "N.R.Epipsocus",
+    "a.f.f. Epipsocus", "c.f.r. Epipsocus", "Epipsocus c.f.",
+]
+
+
+@pytest.mark.parametrize("text", QUALIFIER_SPELLINGS)
+def test_a_qualifier_in_any_spelling_of_the_list_is_a_doubt_sign(text):
+    from specimen_digitization.field_research import checks
+
+    assert checks.doubt_signs([text]) == ("qualifier",)
+    assert checks.doubt_signs(["V-4-67-1\nsp. 1 " + FEMALE, text + "\ndet. E. L. Mockford"]) == ("qualifier",)
+    # Above the slide number above the code, where the label check does not read.
+    assert checks.label_names_no_genus("1", [text + "\nV-4-67-1\nsp. 1 " + FEMALE])
+
+
 # N1 of #289's fourth review: a placeholder for a word a reader could not
 # read, on a line of its own, in any case.
 @pytest.mark.parametrize("placeholder", ["[unreadable]", "[UNREADABLE]", "[illegible]", "[Illegible]", "[?]", "???",
@@ -575,7 +605,8 @@ PILOT_READINGS = {
     # A "?" with no word that holds a letter beside it.
     ["6400 ?", "1946?", "? 3300'"],
     # Words that hold a qualifier's letters.
-    ["Nearctic", "Staff", "probably", "Cfx", "nrs", "affinis"],
+    ["Nearctic", "Staff", "Cfx", "nrs", "Affine", "Probability", "Possum", "Conform", "Victoria", "Proper",
+        "Cfrs"],
 ], ids=[*PILOT_READINGS, "question-mark-beside-numbers", "qualifier-letters-inside-words"])
 def test_no_doubt_sign_shows_where_none_is_written(texts):
     from specimen_digitization.field_research import checks

@@ -303,10 +303,20 @@ def word_before(text: str, start: int) -> str | None:
 # brackets, and the punctuation _AROUND drops.
 _SHED = _AROUND + "?*_\N{LEFT SINGLE QUOTATION MARK}\N{RIGHT SINGLE QUOTATION MARK}" + (
     "\N{LEFT DOUBLE QUOTATION MARK}\N{RIGHT DOUBLE QUOTATION MARK}")
-# A qualifier a token sheds when it starts or ends it, written against the
-# word ("cf.Epipsocus") or as a word of its own ("cf. Epipsocus").
-_QUALIFIER_FIRST = re.compile(r"^(?:cf|aff|prob)\.", re.I)
-_QUALIFIER_LAST = re.compile(r"(?:cf|aff|prob)\.$", re.I)
+# The qualifiers that put a name in doubt (B4 of #289's fifth review): each a
+# whole word, in any case, its periods aside ("cf", "cf.", "c.f." and "C.F."
+# are "cf"; "n.r." is "nr").
+DOUBT_QUALIFIERS = ("cf", "cfr", "aff", "affin", "affinis", "nr", "near", "prob", "probably", "poss", "possibly",
+    "conf", "vic", "prope")
+# One of them as a text writes it: its letters, each with an optional period
+# after it ("c.f", "cf", "C.F").
+_QUALIFIER_WORD = "(?:" + "|".join(r"\.?".join(word) for word in DOUBT_QUALIFIERS) + ")"
+# A qualifier a token sheds when it starts it, or ends it with no letter
+# right before it, with its final period, written against the word
+# ("cf.Epipsocus", "c.f.Epipsocus", "Epipsocus,aff.") or as a word of its own
+# ("cfr." in "cfr. Epipsocus"): DOUBT_QUALIFIERS, the doubt signs' own list.
+_QUALIFIER_FIRST = re.compile(r"^" + _QUALIFIER_WORD + r"\.", re.I)
+_QUALIFIER_LAST = re.compile(r"(?<![^\W\d_])" + _QUALIFIER_WORD + r"\.$", re.I)
 # The label words that may follow a morphocode on its line and are no genus,
 # as written: the parts a slide mounts, and the sex signs. The one list the
 # label check passes over (genus_beside).
@@ -415,12 +425,11 @@ def label_names_no_genus(code: str, reading_texts: Sequence[str]) -> bool:
     return found
 
 
-# The qualifiers that put a name in doubt, attached to a word or apart, in
-# any case, with or without a period ("cf.Epipsocus", "CF. Epipsocus",
-# "Epipsocus nr.", "near Epipsocus").
-DOUBT_QUALIFIERS = ("cf.", "aff.", "nr.", "near", "prob.")
-_DOUBT_QUALIFIER = re.compile(r"(?<![^\W\d_])(?:" + "|".join(q.rstrip(".") for q in DOUBT_QUALIFIERS)
-    + r")(?![^\W\d_])", re.I)
+# One of DOUBT_QUALIFIERS with no letter right before or after it: attached
+# to a word or apart, in any case, with or without its periods
+# ("cf.Epipsocus", "CF. Epipsocus", "c.f. Epipsocus", "Epipsocus nr.",
+# "near Epipsocus"), never inside a longer word ("Nearctic", "Staff").
+_DOUBT_QUALIFIER = re.compile(r"(?<![^\W\d_])" + _QUALIFIER_WORD + r"(?![^\W\d_])", re.I)
 
 
 def _has_a_letter(part: str) -> bool:

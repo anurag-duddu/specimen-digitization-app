@@ -2509,6 +2509,48 @@ def test_a_doubtful_or_unreadable_genus_on_another_label_keeps_the_taxon_in_revi
     taxon_held_back(run)
 
 
+# B4 of #289's fifth review: a genus behind a qualifier in a spelling the
+# doubt signs did not list before, above 105526327's slide number (the
+# DOUBTFUL_ELSEWHERE layout).
+QUALIFIER_VARIANTS = {name: line + "\nV-4-67-1\n" + SP1 for name, line in {
+    "cfr": "cfr. Epipsocus", "c.f.": "c.f. Epipsocus", "C.F.": "C.F. Epipsocus", "n.r.": "n.r. Epipsocus",
+    "conf": "conf. Epipsocus", "poss": "poss. Epipsocus", "possibly": "possibly Epipsocus",
+    "probably": "probably Epipsocus", "vic": "vic. Epipsocus", "affin": "affin. Epipsocus",
+    "affinis": "affinis Epipsocus", "prope": "prope Epipsocus", "cfr-after": "Epipsocus CFR."}.items()}
+
+
+@pytest.mark.parametrize("written", QUALIFIER_VARIANTS.values(), ids=QUALIFIER_VARIANTS)
+def test_a_genus_behind_any_qualifier_of_the_list_keeps_the_taxon_in_review(tmp_path, written):
+    """The expert makes no lookup and quotes the code: the doubt sign holds
+    rule B back, whatever the qualifier's spelling."""
+    rig = build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", written),
+        candidates=[*COLLECTORS, *(("taxon", name, SP1, SP1) for name in ("1A", "1B"))])
+    settle(rig, Scripted({"taxon": cannot_resolve(SP1)}), tools=NoGenus(rig.blobs))
+    taxon_held_back(rig.specimen.run)
+
+
+def test_the_real_resolver_with_no_lookup_for_a_cfr_genus_keeps_the_taxon_in_review(tmp_path):
+    """The real experts.make_resolver, its model making no lookup for the
+    "cfr." genus and quoting the code."""
+    rig = build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", QUALIFIER_VARIANTS["cfr"]),
+        candidates=[*COLLECTORS, *(("taxon", name, SP1, SP1) for name in ("1A", "1B"))])
+    settle(rig, Scripted({"taxon": following_the_brief(SP1, "The genus is qualified (cfr.), so no lookup is made; "
+        "sp. 1 is a morphocode.")}), tools=NoGenus(rig.blobs))
+    taxon_held_back(rig.specimen.run)
+
+
+@pytest.mark.parametrize("label", ["cfr. Epipsocus\ndet. E. L. Mockford", "c.f. Epipsocus\ndet. Mockford 1968"],
+    ids=["cfr-det-label", "c.f.-det-label"])
+def test_a_qualified_genus_on_a_determination_label_of_its_own_keeps_the_taxon_in_review(tmp_path, monkeypatch, label):
+    """The code's label writes "V-4-67-1" above "sp. 1" with a female sign;
+    the qualified genus and its determiner are on a second label."""
+    a_second_label(monkeypatch, label)
+    rig = build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", "V-4-67-1\n" + SP1),
+        candidates=[*COLLECTORS, *(("taxon", name, SP1, SP1) for name in ("1A", "1B"))])
+    settle(rig, Scripted({"taxon": cannot_resolve(SP1)}), tools=NoGenus(rig.blobs))
+    taxon_held_back(rig.specimen.run)
+
+
 # N1 of #289's fourth review: a genus written with a placeholder other than
 # the reader prompt's "[unreadable]", no unreadable span listed. The text,
 # the organiser's candidate, and its quote.
