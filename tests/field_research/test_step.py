@@ -782,18 +782,21 @@ def test_an_organiser_candidate_that_cuts_the_name_on_its_line_never_settles_the
     assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:taxon" in run.reasons
 
 
-def test_a_field_with_no_candidate_is_never_resolved(tmp_path):
+def test_a_field_with_no_candidate_settles_on_text_both_readers_write(tmp_path):
     """No reading is decided, so the keyed-line parser reads nothing, and the
-    organiser gave only the collectors: the taxon expert's answer, GBIF's
-    decision for the name both readers write, has no candidate to be."""
+    organiser gave only the collectors. The taxon expert's answer, GBIF's
+    decision for the name both readers write, quotes text it read in the
+    transcript itself (agreement.TRANSCRIPT): until 2026-10-09 it had no
+    candidate to be and went to review; it now settles, marked so."""
     rig = build_rig(tmp_path, TEXT, TEXT.replace("Synthetic grassland", "Synthetic grassIand"))
     run = rig.specimen.run
     [task] = [task for task in build_tasks(run)[1] if task.key == "taxon"]
     assert task.candidates == () and task.current.state == ValueState.UNKNOWN
     settle(rig, Scripted())
     taxon = run.fields["taxon"]
-    assert taxon.state == ValueState.UNRESOLVED and taxon.reason == agreement.NOT_CANDIDATE + " Settled."
-    assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:taxon" in run.reasons
+    assert (taxon.state, taxon.literal, taxon.authority_id) == (ValueState.SUPPORTED, "Danaus plexippus", GBIF_KEY)
+    assert "transcript_literal:taxon" in [f.reason_code for f in run.findings]
+    assert not [reason for reason in run.reasons if reason.endswith(":taxon") or reason.startswith("taxonomy")]
 
 
 # ---- readers that disagree (G19, G20, G27; the review's B1) --------------------
@@ -1157,10 +1160,6 @@ ABBREVIATED_COUNTRY = {"country": from_tgn("Philippine Islands", "P.I.", "Philip
     (label_with(**GUATEMALAN, province_state="San Pedro"), {**IN_GUATEMALA, "province_state": from_tgn(
         "San Pedro", "San Pedro", "San Pedro Department", "wikidata:San Pedro Department", source="wikidata")},
      "province_state", agreement.NOT_IN_COUNTRY),
-    # G34's whole condition: the reading also writes a city, which is no province's parent.
-    (label_with(**{**GUATEMALAN, "city": "Yepocapa"}, province_state="Chimaltenago"),
-     {**IN_GUATEMALA, "province_state": from_tgn("Chimaltenango", "Chimaltenago", "Chimaltenango", "tgn:1000565")},
-     "province_state", agreement.NEAR_UNFIT),
     # A candidate whose source names no parent: GEOLocate asked the city alone.
     (TEXT, {"city": place_on("Chicago")}, "city", agreement.NO_PARENTS),
     # A city in the country, but not in the province the label gives.
@@ -1171,7 +1170,7 @@ ABBREVIATED_COUNTRY = {"country": from_tgn("Philippine Islands", "P.I.", "Philip
     (TEXT, {"country": answering(FieldAnswer(outcome="sources_cannot_resolve", explanation="No match."))},
      "province_state", agreement.NO_COUNTRY),
 ], ids=["us-label-near-spelling", "us-label-asked", "philippine-label", "capped-list-paraguay",
-        "near-spelling-with-a-city", "no-parents", "not-in-province", "no-country"])
+        "no-parents", "not-in-province", "no-country"])
 def test_a_place_settles_only_inside_the_labels_country_and_province(tmp_path, text, scripts, key, reason):
     rig = build_rig(tmp_path, text)
     run = rig.specimen.run
@@ -3903,21 +3902,18 @@ def test_readers_whose_place_texts_differ_by_a_unit_word_settle_on_the_place_con
     assert not reasons_for(run, "province_state")
 
 
-@pytest.mark.parametrize(("province", "authority_id", "settles"), [
-    # Getty TGN's nation lists itself as its parent: a province of the nation's own name.
-    ("Guatemala", "tgn:1000621", True),
-    ("Chimaltenango", "tgn:1000565", False),
+@pytest.mark.parametrize(("province", "authority_id"), [
+    # Getty TGN's nation lists itself as its parent, but a province is no parent of a
+    # country: a place's parents are only larger places, and a country has none.
+    ("Guatemala", "tgn:1000621"),
+    ("Chimaltenango", "tgn:1000565"),
 ])
-def test_a_near_spelled_country_settles_beside_places_of_the_nations_own_name_only(
-        tmp_path, province, authority_id, settles):
+def test_a_near_spelled_country_never_settles(tmp_path, province, authority_id):
     rig = build_rig(tmp_path, label_with(country="Guatamala", province_state=province, county=None, city=None))
     run = rig.specimen.run
     settle(rig, Scripted({"country": from_tgn("Guatemala", "Guatamala", "Guatemala", "tgn:7005493"),
         "province_state": from_tgn(province, province, None, authority_id),
         **dict.fromkeys(("county", "city"), answering(LACKS))}), tools=Gazetteer(rig.blobs))
     country = run.fields["country"]
-    if not settles:
-        assert (country.state, country.reason) == (ValueState.UNRESOLVED, agreement.NEAR_UNFIT + " Settled.")
-        return
-    assert (country.state, country.literal, country.normalized) == (ValueState.SUPPORTED, "Guatamala", "Guatemala")
-    assert "near_spelling:country" in [f.reason_code for f in run.findings] and not reasons_for(run, "country")
+    assert (country.state, country.reason) == (ValueState.UNRESOLVED, agreement.NEAR_UNFIT + " Settled.")
+    assert "near_spelling:country" not in [f.reason_code for f in run.findings]

@@ -1483,13 +1483,14 @@ PHILIPPINES_SETTLED = agreement.PlaceField(("P.I.", "Philippines"), "tgn:1000135
      {"country": GUATEMALA}, None),
     ("province_state", CHIMALTENANGO.candidates[1], agreement.NEAR_SPELLING, {"country": GUATEMALA},
      {"country": GUATEMALA}, None),
-    # The reading also writes a city, which no province lies in.
+    # The reading also writes a city, below the province: a place's parents are only larger
+    # places, so the city is not checked (105526330's province).
     ("province_state", CHIMALTENANGO.candidates[1], agreement.NEAR_SPELLING,
      {"country": GUATEMALA, "city": agreement.PlaceField(("Yepocapa",))}, {"country": GUATEMALA},
-     agreement.NEAR_UNFIT),
+     None),
     # No other place field at all (this file's earlier case): no country settled for it.
     ("province_state", CHIMALTENANGO.candidates[1], agreement.NEAR_SPELLING, {}, {}, agreement.NO_COUNTRY),
-    # A country one letter off needs another place field too, and none is its parent.
+    # A country one letter off has no larger place field to confirm it.
     ("country", tgn("Guatemala", "ev-gt", ("Guatemala", "tgn:7005493", NATION, IN_GUATEMALA)).candidates[0],
      agreement.NEAR_SPELLING, {}, {}, agreement.NEAR_UNFIT),
     # A Philippine label's country.
