@@ -341,6 +341,25 @@ def test_the_date_beside_an_elevation_reads_without_it():
     assert result.parsed["readings"][0]["iso"] == "1946-09-14"
 
 
+def test_a_range_takes_a_year_written_apart_only_when_the_year_literal_decides():
+    # Field research passes the year beside a range and decides with it (review 297c,
+    # note 4); every other caller reads ranges as before.
+    source = "Davao, 3-5.IX\n1946"
+    decided = date_parser("3-5.IX", source_text=source, year_literal="1946", date_rules=INSECTS,
+        year_literal_decides=True)
+    plain = date_parser("3-5.IX", source_text=source, year_literal="1946", date_rules=INSECTS)
+    own = date_parser("3-5.IX.1946", source_text="3-5.IX.1946 1948", year_literal="1948",
+        date_rules=INSECTS, year_literal_decides=True)
+
+    assert decided.outcome == LookupStatus.SUCCESS and decided.parsed["year_literal"] == "1946"
+    [reading] = decided.parsed["readings"]
+    assert (reading["iso"], reading["end"]["iso"], reading["order"]) == (
+        "1946-09-03", "1946-09-05", "range:day..date")
+    assert plain.outcome == LookupStatus.NO_MATCH and plain.parsed is None
+    # A range that states its own year keeps it and borrows none.
+    assert own.parsed["year_literal"] is None and own.parsed["readings"][0]["iso"] == "1946-09-03"
+
+
 def test_a_date_range_is_not_a_slide_code():
     # Four or more hyphen-joined parts whose first three are date-shaped are a
     # code (HARNESS.md section 8); a written range is not that.

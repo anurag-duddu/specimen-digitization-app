@@ -96,7 +96,10 @@ def date_parser(
         (None, {}),
     )
     if order is None:
-        return _range_reading(text, version, century, roman_months)
+        # A range written apart from its year takes the year literal only when it
+        # decides the year (field research); other callers' ranges are as before.
+        given = year_literal if year_literal_decides else None
+        return _range_reading(text, version, century, roman_months, given)
     roman = g.get("roman")
     if roman and not roman_months:
         warnings = ["roman_numeral_months_not_enabled"]
@@ -144,12 +147,21 @@ def date_parser(
 
 
 def _range_reading(
-    text: str, version: str, century: int | None, roman_months: bool
+    text: str,
+    version: str,
+    century: int | None,
+    roman_months: bool,
+    year_literal: str | None = None,
 ) -> ToolResult:
     """A literal no single notation fits, read as a range of two dates (3-5.IX.1946,
     VIII-IX.46, 3.IX-5.X.1946): the start is the reading, its `end` the last day
-    or month of the range. Both ends are read by the rules of a single date."""
-    candidates = ranges(text)
+    or month of the range. Both ends are read by the rules of a single date. A
+    range that states no year takes the year literal, if one is given (3-5.IX
+    above 1946); the reading then records it as its `year_literal`."""
+    candidates, borrowed = ranges(text), None
+    token = (year_literal or "").strip()
+    if not candidates and YEAR.fullmatch(token):
+        candidates, borrowed = ranges(text, year=token), year_literal
     if not candidates:
         return _date_result(outcome=LookupStatus.NO_MATCH)
     if len(candidates) > 1:
@@ -182,15 +194,17 @@ def _range_reading(
     warnings = list(dict.fromkeys(warnings))
     return _date_result(
         outcome=LookupStatus.AMBIGUOUS if warnings else LookupStatus.SUCCESS,
-        parsed={"readings": [first], "year_literal": None},
+        parsed={"readings": [first], "year_literal": borrowed},
         warnings=warnings,
     )
 
 
-def written_range(literal: str) -> bool:
+def written_range(literal: str, year: str | None = None) -> bool:
     """Whether the literal is written as a range of two dates, whatever the
-    profile's rules (a Roman month or a two-digit year may not be readable yet)."""
-    return bool(ranges(normalize(literal)))
+    profile's rules (a Roman month or a two-digit year may not be readable yet);
+    with `year`, also a range that takes that year from beside it (3-5.IX and 1946)."""
+    text = normalize(literal)
+    return bool(ranges(text) or (year is not None and ranges(text, year=year)))
 
 
 def catalog_number_validator(literal: str, *, source_text: str) -> ToolResult:

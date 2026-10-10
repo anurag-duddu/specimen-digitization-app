@@ -583,6 +583,80 @@ def test_a_year_written_whole_records_no_century_rule():
     assert row is not None and "century_rule" not in row.excerpt
 
 
+# -- a range written apart from its year (review 297c, note 4) -------------------------------------
+# "3-5.IX" above "1946" was no_match with no note: the range never took the year. It now reads
+# under the same rules as a single date split from its year, on two lines or on one.
+
+U_CIRCUMFLEX = "\N{LATIN SMALL LETTER U WITH CIRCUMFLEX}"
+SPLIT_RANGES = [
+    # literal, the reading's text, start, end, the rule, how the year was found
+    ("3-5.IX\n1946", "Davao, 3-5.IX\n1946, F. G. Werner", "1946-09-03", "1946-09-05", "range:day..date",
+     "split_lines"),
+    ("3.IX-5.X.\n1946", "Davao, 3.IX-5.X.\n1946", "1946-09-03", "1946-10-05", "range:day-month..date",
+     "split_lines"),
+    ("VIII-IX\n1946", "Davao, VIII-IX\n1946", "1946-08", "1946-09", "range:month..month-year", "split_lines"),
+    ("1946\n3-5.IX", "Mindanao\n1946\n3-5.IX Davao", "1946-09-03", "1946-09-05", "range:day..date",
+     "split_lines"),
+    ("12-14 de septiembre\n1946", "Cali, 12-14 de septiembre\n1946", "1946-09-12", "1946-09-14",
+     "range:day..date", "split_lines"),
+    (f"3-5 ao{U_CIRCUMFLEX}t\n1946", f"Grenoble, 3-5 ao{U_CIRCUMFLEX}t\n1946", "1946-08-03", "1946-08-05",
+     "range:day..date", "split_lines"),
+    ("10.-12. Mai\n1946", "Innsbruck, 10.-12. Mai\n1946", "1946-05-10", "1946-05-12", "range:day..date",
+     "split_lines"),
+    ("Sept. 3-5\n1946", "Davao, Sept. 3-5\n1946", "1946-09-03", "1946-09-05", "range:month-day..day-year",
+     "split_lines"),
+    ("3-5 sett.\n'46", "Bolzano, 3-5 sett.\n'46", "1946-09-03", "1946-09-05", "range:day..date", "split_lines"),
+    ("3-5.IX, 1946", "Davao, 3-5.IX, 1946", "1946-09-03", "1946-09-05", "range:day..date", "one_line"),
+    ("3.IX-5.X, 1946", "Brasil, Nova Teutonia, 3.IX-5.X, 1946", "1946-09-03", "1946-10-05",
+     "range:day-month..date", "one_line"),
+    ("VIII-IX, 1946", "Davao, VIII-IX, 1946", "1946-08", "1946-09", "range:month..month-year", "one_line"),
+]
+
+
+@pytest.mark.parametrize(("literal", "text", "start", "end", "order", "via"), SPLIT_RANGES,
+    ids=[r[0] for r in SPLIT_RANGES])
+def test_a_range_written_apart_from_its_year_reads_under_the_same_rules(literal, text, start, end, order, via):
+    first, last = date(literal, [text]), date(literal, [text], part="end")
+    start_row = field_step._check_row("date_visited_from", ("date_parser",), literal, start,
+        texts=[text], date_rules=PILOT, asset_id=None, blobs=None)
+    end_row = field_step._check_row("date_visited_to", ("date_parser",), literal, end,
+        texts=[text], date_rules=PILOT, asset_id=None, blobs=None)
+
+    assert first.status == LookupStatus.SUCCESS, first.as_dict()
+    [reading] = first.readings
+    assert (reading.iso, reading.end, reading.order, reading.via) == (start, end, order, (via,))
+    assert first.values == (start,) and last.values == (end,)
+    assert start_row is not None and end_row is not None
+
+
+@pytest.mark.parametrize(
+    ("literal", "text", "note"),
+    [
+        # The year makes the range end before it starts, or the line is no range the parser reads:
+        # each now names why (52a8f393c said nothing).
+        ("28.XII-3.I\n1947", "Davao, 28.XII-3.I\n1947", "range_end_before_start"),
+        ("28.XII-3.I, 1947", "Davao, 28.XII-3.I, 1947", "range_end_before_start"),
+        ("3.9-5.10\n1946", "Davao, 3.9-5.10\n1946", "split_lines_date_not_read"),
+        ("Davao\n1948", "Mindanao, Davao\n1948, Hoogstraal", "split_lines_date_not_read"),
+        ("31.IV, 1948", "Davao, 31.IV, 1948", "invalid_calendar_date"),
+        # The split-line rules refuse it as they refuse a single date.
+        ("3-5.IX\n1946", "Davao, 3-5.IX\n1946 m", "split_lines_year_not_alone"),
+        ("1946\n3-5.IX", "Alt.\n1946\n3-5.IX Davao", "split_lines_year_may_be_a_measurement"),
+        ("3-5.IX\n1946", "Davao, 3.VI, 3-5.IX\n1946", "split_lines_hold_another_date"),
+        ("3-5.IX, 1946", "Davao, 3-5.IX, 1946 m", "one_line_year_not_alone"),
+        ("3-5.IX.1946\n1946", "Davao, 3-5.IX.1946\n1946", "split_lines_state_two_years"),
+    ],
+)
+def test_a_range_apart_from_its_year_that_does_not_read_names_why(literal, text, note):
+    result = date(literal, [text])
+
+    assert result.status == LookupStatus.NO_MATCH and result.notes == (note,), result.as_dict()
+    for key, value in (("date_visited_from", "1946-09-03"), ("date_visited_to", "1946-09-05"),
+                       ("date_visited_from", "1947-12-28")):
+        assert field_step._check_row(key, ("date_parser",), literal, value, texts=[text], date_rules=PILOT,
+            asset_id=None, blobs=None) is None
+
+
 # -- G44 never copies a range's start to its end ---------------------------------------------------
 
 
@@ -593,7 +667,10 @@ def run_with(start: FieldValue, end: FieldValue):
 @pytest.mark.parametrize(
     ("literal", "copied"),
     [("3 sept. '46", True), ("IV-25\n1948", True), ("3-5.IX.1946", False), ("VIII-IX.46", False),
-     ("3.IX-5.X.1946", False), ("10-12 Sept. 1946", False)],
+     ("3.IX-5.X.1946", False), ("10-12 Sept. 1946", False),
+     # A range written apart from its year is a range too (review 297c, note 4).
+     ("3-5.IX\n1946", False), ("1946\n3-5.IX", False), ("VIII-IX\n1946", False),
+     ("3-5.IX, 1946", False), ("VIII-IX, 1946", False), ("IV-25 1948", True)],
 )
 def test_a_range_s_start_is_not_copied_to_its_end(literal, copied):
     start = FieldValue(state=ValueState.SUPPORTED, literal=literal, parsed="1946-09-03", layer="settled")

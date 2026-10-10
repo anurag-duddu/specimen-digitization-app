@@ -42,6 +42,7 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime
 
+from specimen_digitization.application import field_validators
 from specimen_digitization.application.date_months import MONTH_WORDS, fold
 from specimen_digitization.application.date_notations import APOSTROPHES, ROMAN
 from specimen_digitization.application.field_validators import EARLIEST_YEAR
@@ -318,6 +319,15 @@ def one_line_problem(literal: str, text: str) -> str | None:
             return None
         found.add(reason)
     return _note(found, _ONE_LINE_NOTES)
+
+
+def written_range(literal: str) -> bool:
+    """Whether the literal writes a range of two dates (G44 never copies its start to
+    its end): whole ("3-5.IX.1946"), or with its year on the line beside it or after
+    it on its line ("3-5.IX\\n1946", "3-5.IX, 1946")."""
+    parts = split_literal(literal) or one_line_literal(literal)
+    return field_validators.written_range(literal) or (
+        parts is not None and field_validators.written_range(parts[0], year=parts[1]))
 
 
 def _bare_year(line: str) -> str | None:

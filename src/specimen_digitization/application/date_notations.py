@@ -15,13 +15,15 @@ works out "all possible cases"), but each rule is explicit and none guesses:
   written first (1946-04-05) is read the same way and never taken for the ISO
   order.
 - A range ("3-5.IX.1946", "VIII-IX.46", "3.IX-5.X.1946") is two dates, the first
-  borrowing what it leaves out (the month, the year) from the second.
+  borrowing what it leaves out (the month, the year) from the second. A range
+  whose year is written apart from it ("3-5.IX" above "1946") takes that year
+  only when the caller passes it (`ranges(text, year)`).
 """
 
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from .date_months import MONTH_WORDS, fold
 
@@ -205,11 +207,29 @@ def _combine(left: Part, right: Part) -> tuple[str, Spec, Spec] | None:
     return None
 
 
-def ranges(text: str) -> list[tuple[str, Spec, Spec]]:
+def _given_year(left: Part, right: Part, year: str) -> Part | None:
+    """The second end of a range whose year is written apart from it (the line
+    below, or after a comma): that end with the year, when neither end states a
+    year of its own and the end is a day and month ("3-5.IX" and 1946), a month
+    ("VIII-IX" and 1946), or the day after a month and day ("Sept. 3-5" and 1946)."""
+    if left.year is not None or right.year is not None:
+        return None
+    if right.kind in ("day-month", "month-day"):
+        return replace(right, kind="date", year=year)
+    if right.kind == "month":
+        return replace(right, kind="month-year", year=year)
+    if right.kind == "day" and left.kind == "month-day":
+        return replace(right, kind="day-year", year=year)
+    return None
+
+
+def ranges(text: str, year: str | None = None) -> list[tuple[str, Spec, Spec]]:
     """Every distinct way `text` reads as a range of two dates joined by a dash.
 
     The text is split at each dash; each side must read as an end by itself, and
-    the first only borrows what it leaves out from the second."""
+    the first only borrows what it leaves out from the second. With `year` (a year
+    the label writes apart from the range, which the caller has checked) the second
+    end takes that year, and neither end may state its own (`_given_year`)."""
     found = []
     for dash in RANGE_DASH.finditer(text):
         left_text = text[: dash.start()].strip(" .,;:")
@@ -218,6 +238,7 @@ def ranges(text: str) -> list[tuple[str, Spec, Spec]]:
             continue
         for left in _parts(left_text):
             for right in _parts(right_text):
-                if (pair := _combine(left, right)) is not None and pair not in found:
+                end = right if year is None else _given_year(left, right, year)
+                if end is not None and (pair := _combine(left, end)) is not None and pair not in found:
                     found.append(pair)
     return found
