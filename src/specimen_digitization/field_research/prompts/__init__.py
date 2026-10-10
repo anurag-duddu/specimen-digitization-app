@@ -3,7 +3,9 @@
 The files ship inside the package (hatch includes every file under
 src/specimen_digitization), like research_harness/prompts. The shared rules'
 place-notation line is rendered from field_research.notations, the table the
-place rule reads, so the two cannot drift.
+place rule reads, and its range and elevation-unit lines from
+field_research.written, the tables the range and unit rules read, so they
+cannot drift.
 """
 
 from __future__ import annotations
@@ -13,6 +15,7 @@ from pathlib import Path
 
 from ..contracts import FIELD_TOOLS
 from ..notations import MARKER, brief_line
+from ..written import RANGE_MARKER, UNIT_MARKER, range_line, unit_line
 
 # The display names of PRD's mandatory-field table.
 FIELD_LABELS = {
@@ -47,8 +50,9 @@ def instructions(key: str) -> str:
     if key not in FIELD_TOOLS or key not in FIELD_LABELS:
         raise KeyError(f"no field brief for {key!r}")
     common = (_ROOT / "common.txt").read_text(encoding="utf-8").strip()
-    if common.count(MARKER) != 1:
-        raise ValueError("common.txt must hold the place-notation marker once")
-    common = common.replace(MARKER, brief_line())
+    for marker, line in ((MARKER, brief_line()), (RANGE_MARKER, range_line()), (UNIT_MARKER, unit_line())):
+        if common.count(marker) != 1:
+            raise ValueError(f"common.txt must hold the marker {marker!r} once")
+        common = common.replace(marker, line)
     brief = (_ROOT / f"{key}.txt").read_text(encoding="utf-8").strip()
     return common + "\n\n" + brief + "\n"

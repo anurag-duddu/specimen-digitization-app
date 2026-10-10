@@ -318,7 +318,10 @@ handover runs field research instead of the six specialists:
      field goes to review, and no elevation is derived while one is
      unresolved (`derive._elevations`). The answer check's written rule
      (`extraction_refusal`, a unit after a bare number) still applies
-     before this one.
+     before this one. The experts' shared brief renders its range and
+     elevation-unit lines from the tables these rules read
+     (`written.range_line`, `written.unit_line`, folded to ASCII), as it
+     renders the place notations.
    - **A doubtful genus (taxon only).** The literal never settles the taxon
      when the label marks its genus as doubtful (`checks.genus_in_doubt`,
      through `agreement._genus_in_doubt`): wherever the quote of a candidate

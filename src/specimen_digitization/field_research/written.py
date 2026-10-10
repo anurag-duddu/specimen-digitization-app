@@ -1,7 +1,9 @@
 """How a label writes a range and an elevation's unit, in any language (the
 review of PR #300 at 6fd595b3b, findings 1, 2 and 5).
 
-The tables here are the data the guards in agreement.py read:
+The tables here are the data the guards in agreement.py read, and the
+experts' shared brief renders its range and unit lines from them
+(prompts.instructions), so the two cannot drift:
 
 - RANGE_WORDS, RANGE_SIGNS and DASHES: what joins two numbers or dates into a
   range ("IV-24-48 to V-2-48", "1200 a 1500 m", "1200 bis 1500 m", "entre 1200
@@ -522,3 +524,39 @@ def _end(texts: Sequence[str], order: Iterable[int]) -> int | None:
         if not _beside(texts[index]):
             return None
     return None
+
+
+# The stand-ins common.txt holds for the rendered range and unit lines
+# (prompts.instructions), as notations.MARKER for the place notations.
+RANGE_MARKER = "- RANGE_JOINERS"
+UNIT_MARKER = "- ELEVATION_UNITS"
+# The unit spellings the brief shows, as ASCII (the brief is ASCII): each is
+# a spelling of ELEVATION_UNITS, accents aside ("pes" is written with an
+# acute accent, "m u. M." with an umlaut).
+SHOWN_UNITS = {
+    "m": ("m", "mts.", "metres", "meters", "metros", "metri", "msnm", "m.s.n.m.", "msm", "m a.s.l.", "masl",
+        "m s.l.m.", "m u. M.", "m alt."),
+    "ft": ("ft.", "feet", "'", "pies", "p.s.n.m.", "pes", "Fuss", "pieds", "piedi", "voet"),
+}
+
+
+def range_line() -> str:
+    """The experts' brief line for what joins a range (common.txt), from
+    RANGE_WORDS and RANGE_SIGNS, folded to ASCII."""
+    by_language = "; ".join(f"{language} " + ", ".join(f'"{fold(word)}"' for word in spelled)
+        for language, spelled in RANGE_WORDS.items())
+    signs = ", ".join(f'"{sign}"' for sign in RANGE_SIGNS)
+    return ("- A range joins two numbers or dates with a dash of any form (a hyphen, an en or em dash, a minus "
+        f"sign), standing alone or touching one end, with {signs}, or with a word: {by_language} (letter case "
+        'and accents aside). A unit or a month may stand between a number and the joiner ("1200 m to 1500 m", '
+        '"April 24 to May 2, 1948").')
+
+
+def unit_line() -> str:
+    """The experts' brief line for the elevation units (common.txt), from
+    SHOWN_UNITS."""
+    metres, feet = (", ".join(f'"{spelling}"' for spelling in SHOWN_UNITS[unit]) for unit in ("m", "ft"))
+    return (f"- Elevation units, letter case and accents aside: metres {metres}, also before the number "
+        f'("m 1200"); feet {feet}. "mt" may be Mount and "mm" is no elevation. A number the label writes '
+        "with no unit settles no elevation field, and an elevation settles only the fields of the unit it is "
+        "written in.")
