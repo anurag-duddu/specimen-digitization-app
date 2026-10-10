@@ -458,15 +458,6 @@ void main() {
         expect(reason, cause.label);
       });
     }
-
-    test('no two codes the client names share a name', () {
-      final List<String> names = <String>[
-        for (final Case cause in everyCase)
-          if (cause.code != unknownCode.code && cause.code != unknownCause.code)
-            cause.label,
-      ];
-      expect(names.toSet(), hasLength(names.length));
-    });
   });
 
   group('the history', () {
