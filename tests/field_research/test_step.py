@@ -2398,6 +2398,13 @@ PILOT_CODES = {
     "105526326": ("", "Sp. 22", "\n\N{FEMALE SIGN} wings"),
     # 105526327's third label: a slide code, the code, then "legs".
     "105526327": ("V-4-67-1\n", "sp 22", "\nlegs"),
+    # The real-model run of the ten pilots (2026-10-09): body parts or a
+    # collector with initials right before the code, as a reader of each
+    # wrote them. Each was read as a genus before.
+    "105526322": ("shrubs, mostly forest\nwings + head\n", "sp. 30 \N{FEMALE SIGN}", ""),
+    "105526323": ("shrubs, mostly forest\ngenitalia + legs\n", "Sp 30 \N{FEMALE SIGN}", ""),
+    "105526329": ("IV-29-68-4\nR.D.mitchell\n", "sp #1 \N{MALE SIGN}", "\nhead & legs"),
+    "105526330": ("1948, R.D. Mitchell\n\N{FEMALE SIGN} legs ", "Sp.#1", ""),
 }
 
 
@@ -2416,6 +2423,45 @@ def test_the_pilots_codes_with_no_genus_beside_them_still_clear_as_unmatched(tmp
     assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
     assert field_step.taxon_unmatched(taxon, {item.id: item for item in run.evidence}, run.lookups,
         run=run)
+
+
+def test_readers_that_write_the_code_differently_with_no_decided_transcript_keep_it_in_review(tmp_path):
+    """105526329 as its two readers wrote it, with no decided transcript:
+    the label check finds no genus, but the readers write "sp #1" and
+    "Sp #1", and no source settles either (the readers' rule)."""
+    from specimen_digitization.field_research import checks
+
+    first, second = ("IV-29-68-4\nR.D.mitchell\n" + code + " \N{MALE SIGN}\nhead & legs" for code in ("sp #1", "Sp #1"))
+    assert checks.label_names_no_genus("1", [first, second])
+    rest = TEXT.replace("taxon: Danaus plexippus\n", "")
+    rig = build_rig(tmp_path, rest + "\n" + first, rest + "\n" + second, candidates=[*COLLECTORS,
+        ("taxon", "1A", "sp #1 \N{MALE SIGN}", "sp #1 \N{MALE SIGN}"),
+        ("taxon", "1B", "Sp #1 \N{MALE SIGN}", "Sp #1 \N{MALE SIGN}")])
+    settle(rig, Scripted({"taxon": cannot_resolve("sp #1 \N{MALE SIGN}")}), tools=NoGenus(rig.blobs))
+    taxon_held_back(rig.specimen.run)
+
+
+# A genus beside the code, or a doubtful one, in the same layouts: the text
+# before the code, the code and the text after it.
+STILL_A_GENUS = {
+    "genus-above-a-body-part-code-line": ("Epipsocus\n\N{FEMALE SIGN} legs ", "Sp.#1", ""),
+    "genus-before-a-body-part-on-the-code-line": ("Epipsocus legs ", "sp. 1", ""),
+    # Read as no genus before (after the code, "legs" stopped the reading).
+    "genus-past-a-body-part-after-the-code": ("V-4-67-1\n", "sp. 1", " \N{FEMALE SIGN} legs Epipsocus"),
+    "genus-after-cf-initials": ("C.F. Epipsocus\n", "sp. 1", ""),
+    "genus-right-before-the-code-under-a-collector": ("R.D. Mitchell\nEpipsocus ", "sp. 1", ""),
+    "doubtful-genus-above-a-body-part-code-line": ("R.D. Mitchell\nEpipsocus?\n\N{FEMALE SIGN} legs ", "Sp.#1", ""),
+    "qualified-genus-above-body-parts": ("cf. Epipsocus\ngenitalia + legs\n", "Sp 30 \N{FEMALE SIGN}", ""),
+}
+
+
+@pytest.mark.parametrize(("before", "code", "after"), STILL_A_GENUS.values(), ids=STILL_A_GENUS)
+def test_a_genus_beside_the_code_still_keeps_the_taxon_in_review(tmp_path, before, code, after):
+    """The expert quotes the code with no GBIF lookup."""
+    text = TEXT.replace("taxon: Danaus plexippus", before + code + after)
+    rig = build_rig(tmp_path, text, candidates=[*COLLECTORS, *(("taxon", name, code, code) for name in ("1A", "1B"))])
+    settle(rig, Scripted({"taxon": cannot_resolve(code)}), tools=NoGenus(rig.blobs))
+    taxon_held_back(rig.specimen.run)
 
 
 def test_a_later_pass_judges_the_label_of_an_unmatched_taxon_again(tmp_path):
@@ -2697,6 +2743,10 @@ LOOKED_UP_GENUS = {
     "unlisted-doubt-word": ("sim. Epipsocus\nV-4-67-1\n" + SP1, ()),
     "plain-genus-above-the-slide-number": ("Epipsocus\nV-4-67-1\n" + SP1, ()),
     "listed-qualifier": ("cfr. Epipsocus\nV-4-67-1\n" + SP1, ("qualifier",)),
+    # Words the doubt signs read as a nature reserve or as initials (N3 of
+    # #289's sixth review).
+    "capital-nr-before-the-genus": ("NR Epipsocus\nV-4-67-1\n" + SP1, ()),
+    "initials-without-the-final-period-before-the-genus": ("C.F Epipsocus\nV-4-67-1\n" + SP1, ()),
 }
 
 
@@ -2715,6 +2765,19 @@ def test_the_real_resolver_looking_the_genus_up_as_its_brief_says_keeps_the_taxo
     settle(rig, Scripted({"taxon": looking_the_genus_up_first("Epipsocus", SP1)}), tools=NoMatch(rig.blobs))
     taxon_held_back(run)
     assert [lookup.query.get("name") for lookup in run.lookups if lookup.provider == "gbif"] == ["Epipsocus"]
+
+
+@pytest.mark.parametrize("written", [*(line + "\nV-4-67-1\n" + SP1 for line in ("sim. Epipsocus", "NR Epipsocus",
+    "C.F Epipsocus")), "Epipsocus\nwings + head\n" + SP1, "Epipsocus\nlegs\n" + SP1, "R.D. Epipsocus\n" + SP1])
+def test_a_genus_the_label_checks_do_not_read_clears_when_the_expert_makes_no_lookup(tmp_path, written):
+    """The documented remaining cases (FIELD_RESEARCH.md, "Two cases
+    remain"): an expert that skips the lookup its brief asks for, quoting
+    the code, clears the taxon as unmatched."""
+    rig = build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", written),
+        candidates=[*COLLECTORS, *(("taxon", name, SP1, SP1) for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": cannot_resolve(SP1)}), tools=NoGenus(rig.blobs))
+    assert (run.fields["taxon"].state, run.fields["taxon"].reason) == (ValueState.SUPPORTED, field_step.UNMATCHED)
 
 
 def a_second_label(monkeypatch, text, spans=()):
@@ -2835,6 +2898,73 @@ def test_a_locality_in_victoria_is_no_qualifier_and_the_code_still_clears(tmp_pa
     settle(rig, Scripted({"taxon": cannot_resolve(MORPHOCODE)}), tools=NoGenus(rig.blobs))
     assert (run.fields["taxon"].state, run.fields["taxon"].reason) == (ValueState.SUPPORTED, field_step.UNMATCHED)
     assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+
+
+# N3 of #289's sixth review: ordinary label words that hold a qualifier's
+# letters or a run of periods, on a line of the code's label. Each held the
+# taxon back before.
+ORDINARY_LINES = {
+    "nature-reserve": "Sabah, Danum Valley NR",
+    "german-number": "Praep. Nr. 1234",
+    "confirmed-by-initials": "det. E. L. Mockford 1968, conf. K. Yoshizawa",
+    "confirmed-by": "conf. by J. Smith",
+    "initials-without-the-final-period": "leg. Baker, C.F",
+    "initials-before-a-surname": "C.F Baker",
+    "dot-leader": "Loc. ........ Chicago",
+    # The city the label's place fields settled (Chicago), after "near" or
+    # "nr." or before "vic.".
+    "near-the-settled-city": "5 mi near Chicago",
+    "nr-the-settled-city": "E. slope, nr. Chicago",
+    "vicinity-of-the-settled-city": "Chicago vic.",
+}
+
+
+@pytest.mark.parametrize("line", ORDINARY_LINES.values(), ids=ORDINARY_LINES)
+def test_ordinary_label_words_are_no_doubt_sign_and_the_code_still_clears(tmp_path, line):
+    """The expert quotes the code with no lookup; the later pass
+    (taxon_unmatched) reads the label's places the same way."""
+    rig = build_rig(tmp_path, morphocoded(MORPHOCODE) + "\n" + line)
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": cannot_resolve(MORPHOCODE)}), tools=NoGenus(rig.blobs))
+    taxon = run.fields["taxon"]
+    assert (taxon.state, taxon.reason) == (ValueState.SUPPORTED, field_step.UNMATCHED)
+    assert field_step.taxon_unmatched(taxon, {item.id: item for item in run.evidence}, run.lookups, run=run)
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+
+
+@pytest.mark.parametrize(("line", "city"), [
+    # A place the label's place fields did not settle.
+    ("5 mi near Davao", None),
+    ("Davao vic.", None),
+    # The city the line names did not settle.
+    ("5 mi near Chicago", NO_TOWN),
+], ids=["near-an-unsettled-place", "vicinity-of-an-unsettled-place", "near-a-city-that-did-not-settle"])
+def test_near_or_vicinity_beside_no_settled_place_keeps_the_taxon_in_review(tmp_path, line, city):
+    rig = build_rig(tmp_path, morphocoded(MORPHOCODE) + "\n" + line)
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": cannot_resolve(MORPHOCODE), **({"city": city} if city else {})}),
+        tools=NoGenus(rig.blobs))
+    taxon_held_back(run)
+
+
+# The doubtful genera the narrowing keeps out (N2 and N3 of #289's sixth
+# review), above 105526327's slide number, beside a label whose city
+# (Chicago) is settled.
+STILL_DOUBTFUL = {name: line + "\nV-4-67-1\n" + SP1 for name, line in {
+    "cf": "cf. Epipsocus", "cfr": "cfr. Epipsocus", "question": "Epipsocus?", "nr": "nr. Epipsocus",
+    "capital-nr-with-period": "NR. Epipsocus", "german-nr-before-a-word": "Nr. Epipsocus",
+    "conf-before-a-genus": "conf. Epipsocus", "near-before-a-genus-beside-a-place": "Chicago, near Epipsocus",
+    "ellipsis": "Mossy ...", "bracketed-ellipsis": "[...]"}.items()}
+
+
+@pytest.mark.parametrize("written", STILL_DOUBTFUL.values(), ids=STILL_DOUBTFUL)
+def test_a_doubtful_or_unread_genus_still_keeps_the_taxon_in_review(tmp_path, written):
+    rig = build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", written),
+        candidates=[*COLLECTORS, *(("taxon", name, SP1, SP1) for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": cannot_resolve(SP1)}), tools=NoGenus(rig.blobs))
+    assert run.fields["city"].state == ValueState.SUPPORTED
+    taxon_held_back(run)
 
 
 # N1 of #289's fourth review: a genus written with a placeholder other than
@@ -3140,6 +3270,10 @@ UNDOUBTED_GENUS = {
     # A "?" on another word, on the line above or on the genus's own line.
     "question-on-a-year-above": "1946?\nEpipsocus sp. 1",
     "question-on-a-place-before": "Davao? Epipsocus sp. 1",
+    # A locality line above that ends in a word of the qualifier list (N2 of
+    # #289's sixth review): a nature reserve, a vicinity.
+    "nature-reserve-ending-the-line-above": "Sabah, Danum Valley NR\nEpipsocus sp. 1",
+    "vicinity-ending-the-line-above": "Mindanao, Davao vic.\nEpipsocus sp. 1",
 }
 
 
@@ -3157,7 +3291,36 @@ def test_a_genus_with_no_doubt_written_on_it_still_settles_the_taxon(tmp_path, w
     assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
 
 
-EPIPSOCUS_HOMONYM = SourceCandidate(name="Epipsocus Hagen, 1866", authority_id="1045361", kind="GENUS")
+# A qualifier right before the genus on its line, or standing alone on the
+# line above it: the label marks the genus as doubtful.
+QUALIFIED_GENUS_LINE = {
+    "cf-alone-on-the-line-above": "cf.\nEpipsocus sp. 1",
+    "nr-alone-on-the-line-above": "Det. Mockford\nnr.\nEpipsocus sp. 1",
+    "capital-nr-alone-on-the-line-above": "NR\nEpipsocus sp. 1",
+    "cf-before-the-genus": "cf. Epipsocus sp. 1",
+    "cfr-before-the-genus": "cfr. Epipsocus sp. 1",
+    "nr-before-the-genus": "nr. Epipsocus sp. 1",
+    "capital-nr-before-the-genus": "Danum Valley NR Epipsocus sp. 1",
+}
+
+
+@pytest.mark.parametrize("written", QUALIFIED_GENUS_LINE.values(), ids=QUALIFIED_GENUS_LINE)
+def test_a_qualifier_right_before_the_genus_or_alone_on_the_line_above_never_settles_it(tmp_path, written):
+    """The expert breaks its brief and resolves "Epipsocus sp. 1" as GBIF's
+    genus; the organiser quotes the genus's own line."""
+    literal = "Epipsocus sp. 1"
+    rig = build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", written),
+        candidates=[*COLLECTORS, *(("taxon", name, literal, written.split("\n")[-1]) for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": taxon_on("Epipsocus", value=EPIPSOCUS_GENUS, authority_id=EPIPSOCUS_GENUS_KEY,
+        literal=literal)}), tools=EpipsocusGenus(rig.blobs))
+    taxon = run.fields["taxon"]
+    assert (taxon.state, taxon.normalized, taxon.authority_id) == (ValueState.UNRESOLVED, None, None)
+    assert taxon.reason.startswith(agreement.DOUBTFUL_GENUS)
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["mandatory_unresolved:taxon", "taxonomy_unresolved"])
+
+
+EPIPSOCUS_HOMONYM =SourceCandidate(name="Epipsocus Hagen, 1866", authority_id="1045361", kind="GENUS")
 
 
 @pytest.mark.parametrize(("status", "candidates", "asked", "genus"), [
@@ -3346,7 +3509,7 @@ def test_an_inline_unreadable_marker_with_no_span_listed_keeps_every_listed_fiel
 # (checks.shows_placeholder), in any case.
 PLACEHOLDERS = ["[unreadable]", "(unreadable)", "[illegible]", "(illegible)", "[illeg.]", "[illeg]", "(illeg.)",
     "[unclear]", "(unclear)", "illegible", "unreadable", "[?]", "???", "...", "[...]", "\N{HORIZONTAL ELLIPSIS}",
-    "ILLEGIBLE", "Unreadable", "[Unclear]"]
+    "ILLEGIBLE", "Unreadable", "[Unclear]", "(...)", "[....]"]
 
 
 @pytest.mark.parametrize("placeholder", PLACEHOLDERS)
@@ -3361,7 +3524,9 @@ def test_any_placeholder_with_no_span_listed_keeps_every_listed_field_in_review(
     assert not cleared_as_not_on_label(run) and not any(not_on_label_rows(run, key) for key in ABSENT)
 
 
-@pytest.mark.parametrize("line", ["V-4-67-1", "Legible label"])
+@pytest.mark.parametrize("line", ["V-4-67-1", "Legible label",
+    # A printed form's dot leaders and "etc..." (N3 of #289's sixth review).
+    "Det. ..........", "Loc. ......", "Coll. J. Smith etc..."])
 def test_a_line_with_no_placeholder_still_lets_the_listed_fields_clear(tmp_path, line):
     rig = build_rig(tmp_path, SPARSE + "\n" + line)
     run = rig.specimen.run

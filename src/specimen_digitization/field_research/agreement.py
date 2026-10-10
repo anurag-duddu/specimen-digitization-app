@@ -24,8 +24,9 @@ fields' outcomes:
    answer names (or of its label's decided reading), marks as doubtful with
    a qualifier or a "?" right before it or on it (checks.genus_in_doubt:
    "Epipsocus" quoting "cfr. Epipsocus" or "Epipsocus?"; 1c of #289's fifth
-   review). The step's unmatched taxon (owner decision B) meets these rules
-   too.
+   review); a qualifier on the line above counts only standing alone on
+   that line ("cf." above "Epipsocus sp. 1", never "Danum Valley NR"). The
+   step's unmatched taxon (owner decision B) meets these rules too.
 3. Readers and labels that disagree (B1; G19, G20, G27, G32). From the
    field's candidates and the organiser's per-reader verbatims, whatever
    state the organiser gave the field, each label that writes the field
@@ -315,7 +316,8 @@ def _genus_in_doubt(task: FieldTask, readings: Sequence[Reading], literal: str,
         named: Sequence[Reading]) -> Refusal | None:
     """For a taxon, why the literal cannot settle it: the label marks its
     genus as doubtful (checks.genus_in_doubt: a qualifier or a "?" right
-    before the literal's first word or on it) in the quote of a candidate of
+    before the literal's first word or on it, a qualifier on the line above
+    only standing alone there) in the quote of a candidate of
     that literal, or in the text of a reading the answer names or of its
     label's decided reading, wherever that text writes the literal (1c of
     #289's fifth review). The taxon brief has the expert look such a genus up

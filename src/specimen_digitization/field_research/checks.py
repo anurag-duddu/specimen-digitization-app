@@ -22,6 +22,7 @@ from specimen_digitization.application.field_validators import (
     catalog_number_validator,
     date_parser,
 )
+from specimen_digitization.application.georef_locality import comparison_key
 
 # The elevation parser and the taxon marker projection live with the
 # six-specialist harness; they move with these imports when that harness is deleted.
@@ -346,10 +347,34 @@ def _shed_qualifier(part: str) -> str:
         if found is not None and not _initials(found.group()):
             part = part[:found.start()] + part[found.end():]
     return part
-# The label words that may follow a morphocode on its line and are no genus,
-# as written: the parts a slide mounts, and the sex signs. The one list the
-# label check passes over (genus_beside).
-NOT_GENERA = frozenset({"legs", "leg", "wings", "wing", "head", "terminalia", "genitalia", "slide", "mount",
+
+
+# The label words that may stand beside a morphocode and are no genus, as
+# written (NFC): the parts a slide mounts, the slide or mount itself and the
+# specimen's sex, in English, Spanish, French, German (its nouns with their
+# capital) and Portuguese, and the sex signs. A genus is written with a
+# capital, so the lower-case words are listed only in lower case ("Legs" and
+# "Ala" are not listed). "perna" is not listed: Perna is a mussel genus. The
+# one list the label check passes over, before or after the code
+# (genus_beside).
+NOT_GENERA = frozenset({
+    # English.
+    "head", "leg", "legs", "wing", "wings", "abdomen", "antenna", "antennae", "genitalia", "terminalia", "slide",
+    "mount", "male", "males", "female", "females",
+    # Spanish.
+    "cabeza", "pata", "patas", "ala", "alas", "antena", "antenas", "l\N{LATIN SMALL LETTER A WITH ACUTE}mina",
+    "montaje", "macho", "machos", "hembra", "hembras",
+    # French.
+    "t\N{LATIN SMALL LETTER E WITH CIRCUMFLEX}te", "patte", "pattes", "aile", "ailes", "antenne", "antennes", "lame",
+    "montage", "m\N{LATIN SMALL LETTER A WITH CIRCUMFLEX}le", "m\N{LATIN SMALL LETTER A WITH CIRCUMFLEX}les",
+    "femelle", "femelles",
+    # German.
+    "Kopf", "Bein", "Beine", "Fl\N{LATIN SMALL LETTER U WITH DIAERESIS}gel",
+    "F\N{LATIN SMALL LETTER U WITH DIAERESIS}hler", "Pr\N{LATIN SMALL LETTER A WITH DIAERESIS}parat",
+    "M\N{LATIN SMALL LETTER A WITH DIAERESIS}nnchen", "Weibchen",
+    # Portuguese.
+    "cabe\N{LATIN SMALL LETTER C WITH CEDILLA}a", "pernas", "asa", "asas",
+    "l\N{LATIN SMALL LETTER A WITH CIRCUMFLEX}mina", "montagem", "f\N{LATIN SMALL LETTER E WITH CIRCUMFLEX}mea", "f\N{LATIN SMALL LETTER E WITH CIRCUMFLEX}meas",
     "\N{FEMALE SIGN}", "\N{MALE SIGN}"})
 # A keyed line, as Workflow.parse reads "key: value" lines: a field key and a
 # colon at the line's start; and the taxon's key alone.
@@ -392,6 +417,21 @@ def may_be_genus(token: str) -> bool:
     return GENUS_SHAPED.fullmatch(token) is not None or (letters > 0 and digits == 0) or (letters >= 3 and digits <= 1)
 
 
+def _lines_before(text: str, start: int) -> list[str]:
+    """The lines the label check reads before text[start:], nearest first:
+    its line up to it, then the nearest line above that has a token
+    (_tokens). When its line writes only the taxon's key before it
+    ("taxon: sp. 30", a keyed line Workflow.parse reads), the key is no
+    token and that line is not read, and a keyed line above (_KEYED_LINE:
+    "habitat: Mossy forest") is another field's: none is read."""
+    line_start = text.rfind("\n", 0, start) + 1
+    own, above = text[line_start:start], list(reversed(text[:line_start].splitlines()))
+    nearest = next((part for part in above if _tokens(part)), None)
+    if _TAXON_KEY.fullmatch(own) is not None:
+        return [] if nearest is None or _KEYED_LINE.match(nearest) else [nearest]
+    return [own] if nearest is None else [own, nearest]
+
+
 def token_before(text: str, start: int) -> str | None:
     """The token (_tokens) written immediately before text[start:]: the last
     one before it on its line, or, when its line has none there, the last
@@ -399,36 +439,88 @@ def token_before(text: str, start: int) -> str | None:
     When its line writes only the taxon's key before it ("taxon: sp. 30", a
     keyed line Workflow.parse reads), the key is no token, and a keyed line
     above (_KEYED_LINE: "habitat: Mossy forest") is another field's: None."""
-    line_start = text.rfind("\n", 0, start) + 1
-    own, above = text[line_start:start], list(reversed(text[:line_start].splitlines()))
-    keyed = _TAXON_KEY.fullmatch(own) is not None
-    for part in above if keyed else [own, *above]:
-        tokens = _tokens(part)
-        if tokens:
-            return None if keyed and _KEYED_LINE.match(part) else tokens[-1]
-    return None
+    tokens = next((found for found in map(_tokens, _lines_before(text, start)) if found), None)
+    return tokens[-1] if tokens else None
+
+
+def _line_after(text: str, end: int) -> str:
+    """The rest of the line after text[:end]."""
+    line_end = text.find("\n", end)
+    return text[end:] if line_end < 0 else text[end:line_end]
 
 
 def token_after(text: str, end: int) -> str | None:
     """The first token (_tokens) after text[:end] on its line, or None."""
-    line_end = text.find("\n", end)
-    tokens = _tokens(text[end:] if line_end < 0 else text[end:line_end])
+    tokens = _tokens(_line_after(text, end))
     return tokens[0] if tokens else None
+
+
+# A person's name written with initials, as a collector or a determiner is:
+# initials run into the surname ("R.D.mitchell", "R.D.Mitchell"), initials
+# then a capitalised surname ("R. D. Mitchell", "F.G. Werner", "H.
+# Hoogstraal"), a surname, a comma and initials ("Mitchell, R.D.",
+# "Mitchell, R. D.", "Baker, C.F"), or two or more initials alone ("R.D.").
+# One capital and a period alone ("E.") abbreviates a genus, never a person.
+_PERSON = (r"(?:[A-Z]\.){2,}[^\W\d_]+|(?:[A-Z]\.[^\S\n]*)+[A-Z][^\W\d_]+"
+    r"|[A-Z][^\W\d_]+,[^\S\n]*(?:[A-Z]\.[^\S\n]*)*[A-Z]\.?|(?:[A-Z]\.){2,}")
+_PERSON_LAST = re.compile(r"(?:^|(?<=[\s,;:(]))(?:" + _PERSON + r")\.?$")
+_PERSON_FIRST = re.compile(r"^(?:" + _PERSON + r")(?![^\W\d_])")
+# A capital standing alone, no letter right before or after it: an initial.
+_LONE_CAPITAL = re.compile(r"(?<![^\W\d_])[A-Z](?![^\W\d_])")
+
+
+def _a_persons_name(found: re.Match | None) -> bool:
+    """Whether a _PERSON match is a person's name: its initials do not spell
+    a qualifier of DOUBT_QUALIFIERS ("C.F. Epipsocus" and "N.R. Epipsocus"
+    may be "cf." and "nr." before a genus; "R.D. Mitchell" is a name)."""
+    return found is not None and _DOUBT_QUALIFIER.fullmatch("".join(_LONE_CAPITAL.findall(found.group()))) is None
+
+
+def _no_genus_word(token: str) -> bool:
+    """Whether a token is one of NOT_GENERA, as written (NFC)."""
+    return unicodedata.normalize("NFC", token) in NOT_GENERA
+
+
+def _read_token(words: list[str], *, last: bool) -> tuple[str, str] | None:
+    """The token (_tokens) the label check reads among one line's
+    whitespace-separated words: the last (or, not `last`, the first) that is
+    not one of NOT_GENERA, with the line's text through it (from it), its
+    words joined by single spaces and _SHED's characters shed at that end.
+    None when every token of the words is one of NOT_GENERA."""
+    words = list(words)
+    while words:
+        token = _token(words[-1] if last else words[0])
+        if any(c.isalnum() for c in token) and not _no_genus_word(token):
+            joined = " ".join(words)
+            return token, joined.rstrip(_SHED) if last else joined.lstrip(_SHED)
+        words.pop(-1 if last else 0)
+    return None
 
 
 def genus_beside(text: str, start: int, end: int) -> str | None:
     """The token beside text[start:end] that may be a genus (may_be_genus):
-    the token written immediately before it (token_before: "Epipsocus" in
-    "Epipsocus sp. 1", in "Epipsocus?" with "sp. 1" on the next line, and
-    "unreadable" in "[unreadable] sp. 1"), else the first token after it on
-    its line unless it is one of NOT_GENERA ("Epipsocus" in "sp. 1
-    Epipsocus", never "legs" in "sp. 1 legs"). None when neither is."""
-    before = token_before(text, start)
-    if before is not None and may_be_genus(before):
-        return before
-    after = token_after(text, end)
-    if after is not None and after not in NOT_GENERA and may_be_genus(after):
-        return after
+    the token written immediately before it ("Epipsocus" in "Epipsocus sp.
+    1", in "Epipsocus?" with "sp. 1" on the next line, and "unreadable" in
+    "[unreadable] sp. 1"), else the first token after it on its line
+    ("Epipsocus" in "sp. 1 Epipsocus"). Words of NOT_GENERA are passed over
+    (_read_token). Before the code, the token read is the last on its line
+    that is not one of them ("Epipsocus" in "Epipsocus legs sp. 1"), or,
+    when its line has none, the last such of the nearest line above that
+    has a token (_lines_before: "Epipsocus" above "<female sign> legs
+    Sp.#1"); when every token of that line is one of them, none is read
+    ("wings + head" above "sp. 30", "legs" above "sp. 1"). After it, the
+    first on its line that is not one of them ("sp. 1 legs Epipsocus"), and
+    none when every token there is one ("sp. 1 legs"). A token that ends
+    (before) or starts (after) a person's name written with initials is
+    none either (_PERSON, _a_persons_name: "R.D.mitchell" or "1948, R.D.
+    Mitchell" above the code, "sp. 1 R.D. Mitchell"). None when neither may
+    be a genus."""
+    found = next(filter(None, (_read_token(part.split(), last=True) for part in _lines_before(text, start))), None)
+    if found is not None and not _a_persons_name(_PERSON_LAST.search(found[1])) and may_be_genus(found[0]):
+        return found[0]
+    found = _read_token(_line_after(text, end).split(), last=False)
+    if found is not None and not _a_persons_name(_PERSON_FIRST.match(found[1])) and may_be_genus(found[0]):
+        return found[0]
     return None
 
 
@@ -440,9 +532,11 @@ def label_names_no_genus(code: str, reading_texts: Sequence[str]) -> bool:
     organiser's literal: a candidate "sp. 1" taken from "Epipsocus sp. 1", or
     from "Epipsocus" with "sp. 1" on the next line (105526328's label), names
     a genus, and so does one beside an unclear word ("Epipsocus?", "E.?",
-    "[unreadable]", "legs" before it). "Mossy forest 6400'" above "sp. 30"
-    (105526321), "V-4-67-1" above "sp 22" (105526327) and "Sp. 22" on a
-    label of its own (105526326) do not."""
+    "[unreadable]"). "Mossy forest 6400'" above "sp. 30" (105526321),
+    "V-4-67-1" above "sp 22" (105526327), "Sp. 22" on a label of its own
+    (105526326), "wings + head" above "sp. 30" (105526322), "genitalia +
+    legs" above "Sp 30" (105526323), "R.D.mitchell" above "sp #1"
+    (105526329) and "legs" before "Sp.#1" (105526330) do not."""
     found = False
     for text in reading_texts:
         for match in NO_GENUS.finditer(text):
@@ -480,13 +574,26 @@ def _alone_a_question_mark(part: str) -> bool:
     return _has_question_mark(part) and not any(c.isalnum() for c in part)
 
 
+def _alone_on_its_line(text: str, part: re.Match) -> bool:
+    """Whether a whitespace-separated part of the text is the only one on
+    its line, with nothing before it there ("cf." on a line of its own).
+    The caller knows that nothing follows it on its line."""
+    return not text[text.rfind("\n", 0, part.start()) + 1:part.start()].strip()
+
+
 def genus_in_doubt(text: str, literal: str) -> bool:
     """Whether the text, wherever it writes the taxon literal, marks the
     literal's first word, its genus, as doubtful (1c of #289's fifth review):
-    - a qualifier (DOUBT_QUALIFIERS, read as the doubt signs read one) in
-      the whitespace-separated part of the text that holds that word
-      ("cfr.Epipsocus") or in the part just before it, across a line break
-      too ("cfr. Epipsocus", "cf." ending the line above);
+    - a qualifier (DOUBT_QUALIFIERS, read by _qualifier: in any case except
+      "vic", with or without its periods, a person's initials such as "C.F."
+      aside) in the whitespace-separated part of the text that holds that
+      word ("cfr.Epipsocus"), in the part just before it on its line
+      ("cfr. Epipsocus", "nr. Epipsocus", "NR Epipsocus"), or standing alone
+      on the line above, the only part of that line ("cf." on a line of its
+      own above "Epipsocus sp. 1"). A qualifier that ends a longer line above
+      is none: it belongs to that line ("Sabah, Danum Valley NR" or
+      "Mindanao, Davao vic." above "Epipsocus sp. 1"; N2 of #289's sixth
+      review);
     - a "?" on that word, in its own part ("Epipsocus?", "?Epipsocus",
       "Epipsocus(?)"), or a "?" standing alone, a part with no letter or
       digit, just before or just after it on its line ("? Epipsocus",
@@ -494,7 +601,10 @@ def genus_in_doubt(text: str, literal: str) -> bool:
     A "?" is any of QUESTION_MARKS. A "?" on another word ("Davao?
     Epipsocus"), any "?" on the line above ("1946?" above "Epipsocus sp.
     1") or below, and a qualifier after the genus ("Epipsocus cf. sp. 1",
-    G25) are none. False when the text does not write the literal."""
+    G25) are none. The doubt signs' narrower reading of a qualifier
+    (_qualifier_sign) is not used here: right before a genus, "NR", "C.F"
+    and "conf." stay qualifiers. False when the text does not write the
+    literal."""
     literal = literal.strip()
     if not literal:
         return False
@@ -508,7 +618,9 @@ def genus_in_doubt(text: str, literal: str) -> bool:
         if at > 0:
             before = parts[at - 1]
             on_its_line = "\n" not in text[before.end():parts[at].start()]
-            if _qualifier(before.group()) or (on_its_line and _alone_a_question_mark(before.group())):
+            if on_its_line and (_qualifier(before.group()) or _alone_a_question_mark(before.group())):
+                return True
+            if not on_its_line and _qualifier(before.group()) and _alone_on_its_line(text, before):
                 return True
         if at + 1 < len(parts):
             after = parts[at + 1]
@@ -537,27 +649,122 @@ def _qualifier(text: str) -> bool:
         for found in _DOUBT_QUALIFIER.finditer(text))
 
 
+# Capitals with a period between each two, with or without the final
+# period: a person's initials ("C.F" in "leg. Baker, C.F" and "C.F Baker",
+# "N.R"; N3 of #289's sixth review).
+_DOTTED_CAPITALS = re.compile(r"(?:[A-Z]\.)+[A-Z]")
+# A number on the line after "Nr" or "NR" and its optional period: German
+# "Nummer" ("Praep. Nr. 1234").
+_NUMBER_AFTER = re.compile(r"\.?[^\S\n]*\d")
+# What follows "conf" and its optional period when it means "confirmed by":
+# the word "by" in any case, or a person's initials, capitals each followed
+# by a period, before a capitalised surname ("K. Yoshizawa", "E.L.
+# Mockford", "E. L. Mockford") or two or more of them alone ("E.L.M.").
+_CONFIRMED_BY = re.compile(
+    r"\.?\s*(?:(?i:by)(?![^\W\d_])|(?:[A-Z]\.[^\S\n]*)+[A-Z][^\W\d_]|(?:[A-Z]\.){2,})")
+# The qualifiers that may place a locality near a place: "near" and "nr"
+# before the place, "vic" (vicinity) before or after it.
+PLACE_QUALIFIERS = ("near", "nr", "vic")
+
+
+def _beside_a_place(text: str, found: re.Match, keys: frozenset[str], *, either_side: bool) -> bool:
+    """Whether the qualifier `found` stands right before a place whose
+    comparison key (application.georef_locality.comparison_key: case,
+    accents, punctuation and unit words such as "Prov." aside) is one of
+    `keys`, on its line: the rest of its line, after its period, starts with
+    that place's whole name. With `either_side`, also right after one: its
+    line up to it ends with that name ("Chicago vic.", "Chicago, vic.")."""
+    line_start = text.rfind("\n", 0, found.start()) + 1
+    line_end = text.find("\n", found.end())
+    line_end = len(text) if line_end < 0 else line_end
+    after = comparison_key(text[found.end() + text.startswith(".", found.end()):line_end])
+    if any(after == key or after.startswith(key + " ") for key in keys):
+        return True
+    ahead = comparison_key(text[line_start:found.start()]) if either_side else ""
+    return any(ahead == key or ahead.endswith(" " + key) for key in keys)
+
+
+def _says_nothing_of_a_name(text: str, found: re.Match, keys: frozenset[str]) -> bool:
+    """Whether a qualifier the doubt signs find (_DOUBT_QUALIFIER) is one of
+    the ordinary label words _qualifier_sign passes over."""
+    written, after = found.group(), text[found.end():]
+    word = written.replace(".", "").casefold()
+    if _DOTTED_CAPITALS.fullmatch(written):
+        return True
+    if written == "NR" and not after.startswith("."):
+        return True
+    if written in ("Nr", "NR") and _NUMBER_AFTER.match(after):
+        return True
+    if word == "conf" and _CONFIRMED_BY.match(after):
+        return True
+    return word in PLACE_QUALIFIERS and bool(keys) and _beside_a_place(text, found, keys, either_side=word == "vic")
+
+
+def _qualifier_sign(text: str, places: Iterable[str] = ()) -> bool:
+    """A qualifier as a doubt sign (DOUBT_SIGNS; N3 of #289's sixth review):
+    one of DOUBT_QUALIFIERS, as _DOUBT_QUALIFIER finds one, that is none of
+    these ordinary label words:
+    - capitals with a period between each two, with or without the final
+      period: a person's initials ("C.F." and "C.F" in "leg. Baker, C.F",
+      "C.F Baker", "N.R. Smith");
+    - "NR", all capitals with no period after it: a nature reserve ("Sabah,
+      Danum Valley NR");
+    - "Nr" or "NR", with or without its period, before a number on its line:
+      German "Nummer" ("Praep. Nr. 1234");
+    - "conf", with or without its period, before "by" or a person's initials
+      (_CONFIRMED_BY): "confirmed by" ("conf. by J. Smith", "conf. K.
+      Yoshizawa", "conf. E.L. Mockford"). A surname with no initials
+      ("conf. Yoshizawa") cannot be told from a genus and stays a sign;
+    - "near" or "nr" right before a place of `places`, or "vic" right
+      before or after one, on its line (_beside_a_place): "5 mi near
+      Chicago", "nr. Chicago", "Chicago vic." beside a settled city
+      "Chicago". With no `places`, every "near", "nr" and "vic" stays a
+      sign ("5 km nr. Davao").
+    Every other spelling stays a sign: "cf. Epipsocus", "nr. Epipsocus",
+    "NR. Epipsocus", "Nr. Epipsocus", "conf. Epipsocus"."""
+    keys = frozenset(key for key in map(comparison_key, places) if key)
+    return any(not _says_nothing_of_a_name(text, found, keys) for found in _DOUBT_QUALIFIER.finditer(text))
+
+
 # What a reader may write in place of a word it cannot read: the reader
 # prompt's "[unreadable]", and the other placeholders a transcriber uses
 # (N1 of #289's fourth and fifth reviews), anywhere in a text, in any case;
-# and the words "illegible" and "unreadable" standing alone, with no letter
-# right before or after them. Rule A (step._whole_label_read) and rule B
-# (DOUBT_SIGNS and step._code_label_unreadable) read this one test
-# (shows_placeholder).
+# the words "illegible" and "unreadable" standing alone, with no letter
+# right before or after them; three periods for a missing word
+# (_ELLIPSIS); and three or more periods in brackets (_BRACKETED_PERIODS).
+# Rule A (step._whole_label_read) and rule B (DOUBT_SIGNS and
+# step._code_label_unreadable) read this one test (shows_placeholder).
 DOUBT_PLACEHOLDERS = ("[unreadable]", "(unreadable)", "[illegible]", "(illegible)", "[illeg.]", "[illeg]", "(illeg.)",
-    "[unclear]", "(unclear)", "[?]", "???", "...", "[...]", "\N{HORIZONTAL ELLIPSIS}")
+    "[unclear]", "(unclear)", "[?]", "???", "[...]", "\N{HORIZONTAL ELLIPSIS}")
 PLACEHOLDER_WORDS = ("illegible", "unreadable")
 _PLACEHOLDER_WORD = re.compile(r"(?<![^\W\d_])(?:" + "|".join(PLACEHOLDER_WORDS) + r")(?![^\W\d_])", re.I)
+# Exactly three periods, with no period right before or after them ("Mossy
+# ...", "(...)"). A run of four or more is a printed form's dot leader
+# ("Det. ..........", "Loc. ......"), never a placeholder (N3 of #289's
+# sixth review).
+_ELLIPSIS = re.compile(r"(?<!\.)\.{3}(?!\.)")
+# Three or more periods in brackets, however many ("[...]", "[....]", "(....)").
+_BRACKETED_PERIODS = re.compile(r"[\[(][^\S\n]*\.{3,}[^\S\n]*[\])]")
+
+
+def _after_etc(text: str, start: int) -> bool:
+    """Whether text[start:] follows the word "etc", in any case, with no
+    letter before it ("etc..." ends a list; it leaves no word out)."""
+    return text[max(start - 3, 0):start].casefold() == "etc" and not (start > 3 and text[start - 4].isalpha())
 
 
 def shows_placeholder(text: str) -> bool:
     """Whether the text writes a placeholder for a word a reader could not
-    read: one of DOUBT_PLACEHOLDERS in any case ("..." also inside "...."),
-    or one of PLACEHOLDER_WORDS as a whole word in any case ("Illegible",
-    "UNREADABLE"; never "illegibly")."""
+    read: one of DOUBT_PLACEHOLDERS in any case; one of PLACEHOLDER_WORDS as
+    a whole word in any case ("Illegible", "UNREADABLE"; never "illegibly");
+    exactly three periods (_ELLIPSIS: "Mossy ...", "(...)"), unless right
+    after the word "etc" ("etc..."); or three or more periods in brackets
+    (_BRACKETED_PERIODS: "[....]"). Four or more periods outside brackets
+    are a printed form's dot leader ("Det. .........."), none."""
     folded = text.casefold()
-    return any(placeholder in folded for placeholder in DOUBT_PLACEHOLDERS) or (
-        _PLACEHOLDER_WORD.search(text) is not None)
+    return (any(placeholder in folded for placeholder in DOUBT_PLACEHOLDERS)
+        or _PLACEHOLDER_WORD.search(text) is not None or _BRACKETED_PERIODS.search(text) is not None
+        or any(not _after_etc(text, found.start()) for found in _ELLIPSIS.finditer(text)))
 
 
 # The signs that a name on a label is in doubt or that part of a label
@@ -573,22 +780,29 @@ def shows_placeholder(text: str) -> bool:
 # (step._gbif_asked_another_name) refuses; these signs hold the taxon back
 # when the expert does not. "unreadable_span" is a reader's listed
 # unreadable span, or a transcript marked unreadable, on any label; no text
-# shows it.
-DOUBT_SIGNS: tuple[tuple[str, Callable[[str], bool] | None], ...] = (
+# shows it. The qualifier sign (_qualifier_sign) also reads the label's
+# settled places.
+DOUBT_SIGNS: tuple[tuple[str, Callable[..., bool] | None], ...] = (
     ("question_mark", _question_mark),
-    ("qualifier", _qualifier),
+    ("qualifier", _qualifier_sign),
     ("placeholder", shows_placeholder),
     ("unreadable_span", None),
 )
 
 
-def doubt_signs(texts: Iterable[str], *, unreadable: bool = False) -> tuple[str, ...]:
+def doubt_signs(texts: Iterable[str], *, unreadable: bool = False, places: Iterable[str] = ()) -> tuple[str, ...]:
     """The names of the DOUBT_SIGNS that show, in the list's order: a sign
     whose test any of the texts meets, and "unreadable_span" when
-    `unreadable`. Empty when none shows."""
-    texts = list(texts)
-    return tuple(name for name, shows in DOUBT_SIGNS
-        if (unreadable if shows is None else any(shows(text) for text in texts)))
+    `unreadable`. `places` are the texts of the label's settled places,
+    which the qualifier sign reads (_qualifier_sign). Empty when none
+    shows."""
+    texts, places = list(texts), tuple(places)
+
+    def shows(test, text):
+        return test(text, places) if test is _qualifier_sign else test(text)
+
+    return tuple(name for name, test in DOUBT_SIGNS
+        if (unreadable if test is None else any(shows(test, text) for text in texts)))
 
 
 # Markdown emphasis a reader or an expert may write around a name ("*Epipsocus*").
