@@ -526,14 +526,339 @@ Field Museum's currently published active Darwin Core mapping, together with its
 | Date Visited From | `date_visited_from` | Literal text plus a separately parsed date or partial date. |
 | Date Visited To | `date_visited_to` | Literal text plus a separately parsed date or partial date. |
 | Collectors | `collectors` | Verbatim names plus separate person/party candidates when resolution is required. |
-| Verbatim D/T/S | `verbatim_dts` | Transcribed exactly; expansion and internal semantics require confirmation. |
+| Verbatim D/T/S | `verbatim_dts` | Original collection-event date/time expressions that do not fit EMu's standard format, including partial or seasonal dates and qualitative times. Preserve wording and separately supported interpretations; see the 2026-10-07 clarification below. |
 | Taxon | `taxon` | Verbatim scientific name plus separately resolved name, authorship, status, rank, and source identifier. |
 | Identified by IRN | `identified_by_irn` | Internal Record Number of the resolved `eparties` record. Qualify it with source system, tenant/environment, and module; the current production column, expected serialization, and approved lookup path require confirmation. |
 | Date Identified | `date_identified` | Literal text plus a separately parsed date or partial date. |
 
 > 2026-09-23: The "Identified by IRN" row's mandatory status is superseded for the slide pilot by [`docs/execution/golive/PLAN.md` section 2.1](../execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G16: `identified_by_irn` is recorded as not resolved and does not block clearance until EMu Parties is connected.
 
-The proposed internal keys are implementation candidates, not approved Field Museum mappings. They must be reconciled with the target collection-management schema before development.
+The table above records the existing pilot field contract. The new internal model will use application-owned concepts and value types; a later adapter will reconcile them with approved target-system mappings.
+
+#### Date and time semantics — clarified 2026-10-07
+
+The owner relayed the collection manager's EMu instruction for Verbatim D/T/S:
+"Used to hold non EMu-standard format time and date values." Its examples are
+"Avril 1917; Summer 1914; am; pm". The collection manager explained that it is
+used in Collection Events when there is no exact time or date, including
+"sunrise" and "daylight". This establishes the field's purpose; it does not
+establish an expansion of the acronym or support a date/time/site interpretation.
+
+For the new internal field model, the owner identifies Date Visited From/To
+and Date Identified as the same structural problem as the four elevation
+fields. The design direction is a reusable event date/time value that retains
+the original expressions and their source evidence, with structured
+interpretations where supported. It must represent a single date or time,
+an interval, partial precision, uncertainty, seasonal dates and qualitative
+times. Date and time components may occur together. Collecting and
+identification remain distinct events using this same value type; the date
+on one event does not supply the date of another.
+
+For example, "Avril 1917" can have a month-precision interpretation of
+`1917-04` while retaining the French original. "Summer 1914" retains the
+season and year without inventing exact endpoints. "am", "pm", "sunrise"
+and "daylight" retain their time description without supplying a clock
+time or missing date. A single date does not need two independently editable
+copies. In the new model, the purpose of Verbatim D/T/S belongs in the event's
+date/time source expressions, rather than an additional required EMu-shaped
+field. Target-system mapping remains a later adapter task.
+
+This is a field-model direction, not an implemented schema or a revision of
+the current pilot's requiredness and clearance policy. The policy for
+accepting qualitative temporal expressions, interpreting seasons and handling
+absent event dates still needs to be defined for the new schema version.
+
+#### Field model v2: four groups
+
+Status: the four groups were confirmed by the owner on 2026-10-08. Four working
+defaults in "Open items" still await the owner's reading. Nothing here is
+implemented, and nothing here changes the clearance rules of the current pilot.
+
+Sources of this decision:
+
+- The owner's message that opened the Codex thread "Create field cleanup branch"
+  (2026-10-07): the 20 pilot fields are EMu's own shape, for example elevation
+  stored as feet, metres, from and to. The application should own its schema.
+  A database adapter maps to EMu, or to any other database, later and is not
+  part of this work.
+- The owner's statements in the Claude Code session of 2026-10-08: "yes, those
+  four groups are the destination"; the harness derives and infers values, and
+  the schema records how; a person reviews only the field, or the part of a
+  field, that conflicts or is in doubt; location is a tree; the three bases
+  below for how a value was obtained; the rollout approval "additive first,
+  published pilot records stay as they are".
+
+What the owner confirmed is the list above. Everything else in this section is
+proposal by the schema session: the seven numbered rollout steps, the value
+kinds (canonical metres, the approximation flag, the datum default, leading
+zeros kept), rules 3, 5 and 6 below, and the four working defaults. Some of it
+follows the Codex assessment of 2026-10-07. None of it is an owner ruling.
+
+The goal behind the schema: each specimen resolves itself from the raw
+transcription to final database records, by the same searches, lookups and
+reasoning a person would use, and a person is asked only about the part that
+conflicts or is in doubt. The schema exists to receive those results and to say
+how each one was obtained.
+
+##### The four groups
+
+| Group | What it holds | Replaces these v1 keys |
+|---|---|---|
+| IDs (specimen identity) | Identifiers (catalogue number as text, with namespace and source) and the collection reference | `fmnh_ins_number`, `collection_code` |
+| Collection related (collecting event) | The place as a tree, elevation, collectors, habitat, collection method, and the event's date | `country`, `province_state`, `county`, `city`, `precise_location`, the four elevation keys, `collectors`, `habitat`, `collection_method` |
+| Taxa related (identification) | The name as written and as resolved, who identified it, and the identification's date | `taxon`, `identified_by_irn` |
+| Date | One reusable "when" value, used by the collecting event and by the identification. It also carries what Verbatim D/T/S held. | `date_visited_from`, `date_visited_to`, `date_identified`, `verbatim_dts` |
+
+##### How every value is recorded
+
+Each value, and each part of a value, carries:
+
+- the value, typed by its kind (see "Value kinds");
+- its basis, how it was obtained, one of three values:
+  - `label`: the label states it, as written;
+  - `derived`: it follows from what is stated plus a known fact, a rule or a
+    lookup, for example a unit conversion, a historical country name, a
+    Roman-numeral month;
+  - `inferred`: a reasoned conclusion that is probable but not certain;
+- its support: the wording as read, the readings that contain it, each lookup
+  (source, query and result), each fixed check or rule that applied, and any
+  reasoning that led to it;
+- its state: the existing value states (`supported`, `unknown`, `unreadable`,
+  `not_present`, `not_applicable`, `ambiguous`, `unresolved`);
+- whether a person needs to look at it, and why (conflict, doubt, or nothing
+  supports it).
+
+Basis is a separate thing from the layer the record already carries. The layer
+(`verbatim`, `settled`, `derived`; owner ruling G38, 2026-09-24) is the stage a
+whole field's value came through, and it stays as it is. The two do not map onto
+each other:
+
+- a value a fixed rule parses, such as a date or a measurement, has layer
+  `settled`, and a value a lookup confirmed has layer `settled` even when it
+  equals what the label says, as with "Mindanao" confirmed by a lookup. Its
+  basis is `label`;
+- layer `derived` today, in the research thread, requires a derivation record
+  whose operation is only a copy of an endpoint, a multiplication or a division, so it cannot hold a
+  Roman-numeral month or "P.I." read as the Philippines;
+- one value can have a layer of `derived` and a basis of `inferred`, as in a
+  conversion from a unit that was itself inferred;
+- a new layer value would break every reader of the layer, including the app's
+  embedded schema, which refuses unknown values.
+
+So v2 adds an optional `basis` on each part and leaves `layer` alone. For
+records already written, a basis can be computed for display only, and only
+approximately: `verbatim` gives `label`; `derived` gives `derived`; `settled`
+gives `label` when the values that are present (the literal, the parsed value,
+the normalized value) agree once case, spacing and unit marks are ignored (a written "6400'" parsed as
+6400, or "Mindanao" confirmed by a lookup), and `derived` when they differ ("P.I."
+settled as Philippines, "Chimaltenago" settled as Chimaltenango). Where the
+stored values cannot tell the two apart, nothing is shown instead of a guess. An
+old record is never shown as `inferred`.
+
+Rules:
+
+1. The harness does everything the evidence supports. A value that can be read,
+   derived or inferred with recorded support is filled in, with its basis.
+   The live v1 record already derives exact unit conversions and copies of
+   endpoints (owner rulings G41 and G44 in `docs/execution/golive/PLAN.md`),
+   and it proposes geography from a place for a reviewer to accept; v2 adds
+   `inferred` values and review of a single part. Inventing a value with no
+   recorded support remains forbidden.
+2. A value is `unresolved` only when nothing supports even an inference.
+3. On a conflict or a doubt, the harness fills in the best-supported value and
+   marks that part for a person. A person sees the part that needs attention,
+   not the whole record.
+4. The original wording is always kept next to every interpreted value.
+5. A person's decision on a part is recorded as a person's decision. The
+   earlier label and support stay in the history.
+6. A derived or inferred value never silently becomes `label`.
+
+##### Value kinds
+
+- Elevation: one value of kind `point`, `range`, or a one-sided limit (`above`
+  or `below`). Numbers are exact decimals in metres, the canonical unit. The
+  reader chooses feet or metres for display, with the exact definition
+  1 ft = 0.3048 m. The original wording and unit stay in the support. A value
+  with no unit is kept, and the unit is itself a part with its own basis.
+  A `range` keeps both bounds inside the one value. Approximation (for
+  example "ca.") is a flag, uncertainty is recorded only when the source states
+  it, the vertical datum defaults to unknown, and a terrain-model value keeps
+  its method and dependencies and is never shown as a collector's measurement.
+  Feet and metre statements that disagree remain competing assertions.
+- Place: a tree from the broadest level to the most specific. Each node has a
+  level, a name, and its own basis, support and review state. The verbatim
+  locality stays at the root as read. The set of levels is not fixed, because
+  it differs by country: the pilot already spans island and province in the
+  Philippines and department and municipality in Guatemala. Coordinates are not
+  part of v2 as a working default: the owner's G39 chose to record coordinate
+  fields only after the pilot, and the coordinator ruled that a matched point is
+  candidate metadata in the tool result and the trace (`docs/execution/golive/
+  PLAN.md`; open item 4 below).
+- When: the original wording plus an optional date and an optional time,
+  independently. A date can be exact, partial (year, or year and month), an
+  interval, a bound, a season, or unresolved. A time can be a clock time, a
+  named part of the day, or am and pm. Examples: `Avril 1917` is month
+  precision with the French kept; `Summer 1914` is a season and a year with no
+  invented endpoints; `sunrise` is a named part of the day; a single date is
+  stored once, not copied into a second endpoint.
+- Person: the recorded name and role, an optional resolved identity, and
+  optional qualified external identities. An EMu IRN is one such identity, not
+  the person.
+- Taxon: the name as written plus its resolved taxonomy (accepted name, rank,
+  authorship, status), each with its own basis and support.
+- Identifier: a namespace, the value as text with leading zeros kept, and the
+  source.
+
+##### Worked example: subject 105526321
+
+The label as hand-read from the images by the go-live research session S8 (the
+table of the ten pilot labels, 2026-09-23, in
+`~/specimen-golive/research/S8-pilot-localities.md`, outside the repository; it
+is a reading of the images, not a reader output): locality "E. slope Mt.
+McKinley / Davao Prov. / Mindanao, P.I.", "Mossy forest 6400'", date "3 Sept.
+'46", collector "F.G. Werner".
+
+| Part | Value | Basis | Support |
+|---|---|---|---|
+| Place: country | Philippines | derived | "P.I." is the pre-independence name of the country (Philippine Islands); Mindanao and Davao agree |
+| Place: island | Mindanao | label | as written |
+| Place: province | Davao | label | as written; which present-day province contains the named place is a lookup |
+| Place: named place | E. slope Mt. McKinley | label | as written; a place lookup of "Mt. McKinley" has returned Denali, so only a curator-confirmed entry (G36) settles it, or the part is marked for a person |
+| Elevation | 6400 ft, stored as 1950.72 m, kind `point` | label, metre value derived | "6400'" as written; 6400 x 0.3048 = 1950.72 (G41) |
+| When (collecting) | 1946-09-03, day precision | derived | "3 Sept. '46": the two-digit year is read as 19xx for the Insects collection, recorded as the century rule (G24) |
+| Collectors | F.G. Werner | label | as written; one of the two readers wrote "Wermer", a conflict between readings. This part goes to a person unless a lookup settles it. |
+
+Four more cases from the same ten labels:
+
+- Subject 105526322: the S8 reading of the image records "Elev. 6400'", and both
+  readers dropped the foot mark and wrote "Elev. 6400". The harness sees only
+  the readers' text, so the unit is missing from its evidence. Metres is
+  implausible, because 6400 m exceeds the highest point in the Philippines (Mt.
+  Apo, about 2,954 m). The unit is recorded as feet with basis `inferred` and
+  that reasoning as its support, never silently.
+- Subjects 105526324 to 105526326: "IX-14-46" is 14 September 1946, with a
+  Roman-numeral month (G29), `derived`. Subject 105526327: "XI.'46" is November
+  1946 at month precision, with no invented day.
+- Top-edge codes such as "10-6-78-1a" and "IX-17-66-2" are slide-preparation
+  codes. They are not collection dates and are not read as dates.
+- Subjects 105526329 and 105526330: the label spells "Chimaltenago". One reader
+  silently corrected it to "Chimaltenango". The label's spelling is kept as
+  read, and the corrected department name is `derived` and says so.
+
+##### Naming a part
+
+Review, reasons and decisions all name a part of a value the same way:
+`<value>/<part>[/n]`. The first segment is the value, not its group, so
+`elevation/unit` and `collectors/1` are valid names. Examples:
+`location/country`, `location/island`, `location/place/2` (the second place
+node), `elevation/unit`, `collectors/1`, `when/start`, `taxon/resolved`. Until
+the stored record has a field for a part's state, the reason code on the run
+will carry the part name; that is planned, not live.
+
+##### v1 keys from v2 parts, during the transition
+
+While v1 records and the existing publish operation stay in use, each v1 key
+is meant to be filled from the v2 parts below. This is the intended projection,
+not live v1 behaviour: where the live code does something else, it is noted. The
+adapter and the app reuse the same table. The names are descriptive, as stated
+above.
+
+| v1 key | Filled from |
+|---|---|
+| `fmnh_ins_number` | `ids/catalogue_number`, as text with leading zeros kept |
+| `collection_code` | `ids/collection` |
+| `country` | `location/country` |
+| `province_state` | the first level below the country, chosen by role (province, state, department), not by name |
+| `county` | the second administrative level below the country, by role (county, district), where the country has one and the evidence supports it; live v1 does not invent a county in Guatemala and treats the unsupported case as waiting for a policy |
+| `city` | the settlement level, when there is one |
+| `precise_location` | the verbatim locality at the root of the place tree, as written, as live v1 keeps it |
+| `elevation_from_m`, `elevation_to_m` | `elevation`: a point fills both with the same value (the v1 copy rule), a range fills its two bounds; an `above` or `below` limit has no v1 equivalent and fills only the bound it states |
+| `elevation_from_ft`, `elevation_to_ft` | the same elevation converted at 1 ft = 0.3048 m (G41), or the written feet value when the label gave feet |
+| `date_visited_from`, `date_visited_to` | `when/start` and `when/end` of the collecting event; a single date fills both (G44) |
+| `date_identified` | `when` of the identification |
+| `collectors` | the collectors' recorded names, joined in the v1 form |
+| `habitat`, `collection_method` | read as written; no lookup applies |
+| `verbatim_dts` | stays waiting for a policy, as in live v1 (the verbatim D/T/S item in `docs/execution/golive/PLAN.md` that the owner has not ruled on); not filled from every date's wording |
+| `taxon` | `taxon` as resolved; the name as written stays in the support |
+| `identified_by_irn` | stays recorded as not resolved until EMu Parties exist (G16) |
+
+A v1 key has no home for a level such as an island. That level lives only in
+the v2 tree, and the v1 record does not carry it.
+
+##### How a person resolves each group today
+
+A starting point from sources the repository already names. The harness
+proposal requested on 2026-10-08 refines it for each field's expert.
+
+| Group | Where a person looks | Named in this repository |
+|---|---|---|
+| IDs | The label and its barcode; the collection list | The FMNH-INS identifier is validated and canonicalized while its literal form is kept |
+| Collection related | The label; gazetteers and maps for places; a terrain model for elevation | GEOLocate checks the historian agent's reading of the locality (2026-10-03 rulings); Google Maps is not used; a terrain-model elevation exists in the georeferencing code |
+| Taxa related | Taxonomic name databases | Global Names Verifier, Catalogue of Life, GBIF; BugGuide is named in this document but not used for the pilot (G23, G42). The identifier's identity waits for EMu Parties (G16) and stays recorded as not resolved |
+| Date | The label; calendar, season and Roman-numeral conventions | No external source; interpretation rules |
+
+##### Contract v2 and rollout order
+
+Contract v2 is the structure above. Contract v1, the 20 keys in the pilot table,
+stays valid for every record already published, and published pilot records are
+not rewritten. Every change to the field list costs a contract version, so the
+four groups are settled together. Whether v2 is released in one step or several
+is decided with the harness proposal.
+
+The order follows what the code enforces today:
+
+1. This documentation lands first. It changes no behaviour.
+2. The harness contract gains versioned key sets and the value record above.
+   Today `FieldKey` is both the vocabulary and the "all fields mandatory" set,
+   and the `CollectionProfile` validator requires a profile's fields to equal
+   it exactly, so v1 profile snapshots must stay valid.
+3. The app accepts both key sets before the server emits v2. The app's
+   `ResearchThread` reader rejects a thread unless its fields equal its
+   hard-coded vocabulary, and its embedded schemas are regenerated from the
+   server's `FieldKey` export.
+4. The new Data Connect publish operation ships together with its caller,
+   never alone. The data release's additive gate refuses to remove or rename
+   an existing operation, so any operation added is permanent. The existing
+   publish operation hard-codes the 20 v1 keys, and the gate compares against
+   the live sources, so once it is live editing it is refused.
+5. The harness resolvers switch to v2 after the harness work now in flight has
+   landed. That work replaces the six topic specialists with one expert per
+   field and goes live first as built, on the v1 keys. The next harness change
+   adds the optional per-part basis, the reasoning row, the part name in reason
+   codes and a hold for runs in flight, before any inferred value is written
+   (the harness session's staging decision, which is engineering and not an
+   owner ruling). The app reader ships first, because its embedded schema
+   refuses fields it does not know. Field research has no prompt pin today and a
+   run keeps the profile snapshot it started with; the hold for runs in flight
+   is part of the harness's proposed change. The harness proposal names the first field
+   group to switch; the place tree is the candidate, because it needs the
+   tree, inference and part-level review together.
+6. Part-level review needs a way to address a part of a field. Today a human
+   question is keyed to one whole field. "Naming a part" above defines the name;
+   the review screen and the question record that use it are designed with the
+   harness proposal.
+7. Removing the v1 keys is a separate, later release. The data release never
+   drops, deletes or truncates, so that removal needs the owner.
+
+##### Open items
+
+Four working defaults, used until the owner says otherwise:
+
+1. "Date Visited" always means the collecting date.
+2. One collecting event per specimen. Any other case goes to a person.
+3. Clearance requirements stay as they are today, mapped onto the new fields.
+4. Identification history and a separate georeference are left out of v2, with
+   room to add them later.
+
+Not decided by this section:
+
+- Which information is required for clearance under a v2 profile. The data
+  model can represent missing information; the clearance policy is a separate
+  decision.
+- Final key names. The names in this section are descriptive.
+- The meaning of `verbatim_dts` for the kind check recorded in
+  `docs/execution/golive/PLAN.md`, which that plan saves for the owner.
+- The EMu adapter, which is deferred.
 
 #### Source registry and intended use
 
@@ -563,7 +888,7 @@ Source adapters must preserve the exact query, result candidates, source release
 #### Insects-specific items not yet confirmed
 
 - The exact parent path and collection code for Insects in the application's configurable taxonomy.
-- The expansion, format, and business meaning of `Verbatim D/T/S`.
+- The validation and clearance treatment of partial, seasonal and qualitative event date/time expressions. The purpose of `Verbatim D/T/S` was clarified by the collection manager via the owner on 2026-10-07; see the dated clarification above. No acronym expansion is assumed.
 - The current production column, serialization, and approved lookup path for the `eparties` record referenced by `Identified by IRN`; no anonymous public Parties resolver was confirmed in the 2026-09-07 check.
 - Whether the collection manager confirms Parties resolution for every person-name field. Current Field Museum schema evidence supports collector, identifier, and taxonomy-author references, but the production requirement remains unapproved.
 - Whether missing metric or imperial elevation values should be converted, left absent, or both; any conversion must remain visibly derived.
@@ -896,6 +1221,7 @@ These questions do not prevent the initial PRD draft, but the starred items must
 2. **What does “cleared” mean institutionally?** ★ Must every pilot record receive human approval, or can a calibrated subset clear automatically after hard gates?
    > 2026-09-23: Answered for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](../execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G1: a pilot record the agentic harness is able to resolve is cleared without human approval, and a record it cannot resolve goes to human review or deferral as this PRD defines them.
 3. **What does `Verbatim D/T/S` mean in the target system, including its format and validation rules?** ★
+   > 2026-10-07: Its purpose is answered by the collection manager, as relayed by the owner: it holds non-standard collection-event date/time expressions such as "Avril 1917", "Summer 1914", "am", "pm", "sunrise" and "daylight". The new internal model should represent these within a reusable event date/time value. Validation and clearance rules for these expressions remain to be defined; no acronym expansion or exact date/time is inferred.
 4. **Can Field Museum confirm the current production column, serialization, authority-access method, and permitted fields for the `eparties` record referenced by `Identified by IRN`?** ★
 5. **Can the collection manager confirm that Parties resolution is required for every person-name field, including species authors, Collectors, and identifiers?** ★
 6. **What are the acceptable error targets, especially for critical fields, and who approves the gold set?** ★

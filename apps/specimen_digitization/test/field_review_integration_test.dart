@@ -94,8 +94,14 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Location'), findsOneWidget);
-      expect(find.text('Identification'), findsOneWidget);
+      // The fixture holds a country, a taxon and a collection code: three of
+      // the four groups. Date has no field here and so does not draw.
+      expect(find.text('IDs'), findsOneWidget);
+      expect(find.text('Collection'), findsOneWidget);
+      expect(find.text('Taxa'), findsOneWidget);
+      expect(find.text('Date'), findsNothing);
+      expect(find.text('Location'), findsNothing);
+      expect(find.text('Identification'), findsNothing);
       expect(find.text('mandatory_unresolved:country'), findsNothing);
       expect(find.textContaining('private-diagnostic-id'), findsNothing);
       expect(find.textContaining('internal-policy-checksum'), findsNothing);

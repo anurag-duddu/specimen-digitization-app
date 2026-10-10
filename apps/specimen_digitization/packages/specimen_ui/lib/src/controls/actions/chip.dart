@@ -256,6 +256,25 @@ class UiChip extends StatelessWidget {
     };
   }
 
+  /// The width this chip needs to draw the whole of its label in [context].
+  ///
+  /// Measured through the same painter the engine lays the label out with, at
+  /// the reviewer's text scale, so a parent can decide where to put the chip
+  /// before it is laid out (11 section 3.3, `UiDisclosure.trailing`).
+  double intrinsicWidthIn(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    return _intrinsicWidth(
+      context,
+      ui,
+      UiChipStyle.resolve(
+        ui,
+        variant,
+        status: status,
+        textScaler: MediaQuery.textScalerOf(context),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;

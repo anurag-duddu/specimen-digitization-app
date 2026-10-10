@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `UiDisclosure` takes an optional `trailing` chip (`controls/overlays/disclosure.dart`). It sits at the end of the header, before the caret, while the whole title and the whole summary (two lines) fit beside it, and moves under the title and summary, at the start of its own line, when either would not (11 section 3.3, the `UiListRow` rung). The header measures the chip through the new `UiChip.intrinsicWidthIn`, the title through `measureLabel` and the summary through a `TextPainter`, so a title is never ellipsised and a summary never loses its last words to the chip. The chip sits inside the header's press target, and the header's single semantics node excludes it, so what it says must also be in `semanticsLabel`. A disclosure with no `trailing` builds the header it always did. Reason: the specimen data tab shows a basis chip ("As written", "Derived", "Inferred") on each field row. A first version bounded the chip to 0.4 of the width and cut "Province or state" and "Required" at 390 dp and double text size; that bound is gone.
+
 ## 0.3.0 (2026-09-17)
 
 The fit and scale release. `design/11-fit-and-scale.md` read three defects seen

@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/operational_panel.dart';
 import 'package:specimen_digitization/src/screens/workbench/blockers.dart';
+import 'package:specimen_digitization/src/screens/workbench/field_presentation.dart';
 import 'package:specimen_digitization/src/screens/workbench/pending_changes.dart';
 import 'package:specimen_digitization/src/screens/workbench/status_strip.dart';
 import 'package:specimen_digitization/src/screens/workbench/workbench_layout.dart';
@@ -103,6 +104,46 @@ void main() {
         'collectors',
         'country',
       ]);
+    },
+  );
+
+  test(
+    'an issue keeps its field key in whichever of the four groups it sits',
+    () {
+      final List<ClearanceBlocker> issues = blockersFor(
+        record(
+          reasons: const <String>[
+            'mandatory_unresolved:fmnh_ins_number',
+            'mandatory_unresolved:country',
+            'mandatory_unresolved:elevation_from_m',
+            'mandatory_unresolved:taxon',
+          ],
+        ),
+      );
+
+      expect(issues.map((ClearanceBlocker issue) => issue.fieldKey), <String>[
+        'fmnh_ins_number',
+        'country',
+        'elevation_from_m',
+        'taxon',
+      ]);
+      // Routing goes by key, so moving a field between groups never moves its
+      // issue. The group only decides where the row is drawn.
+      expect(
+        issues.map(
+          (ClearanceBlocker issue) =>
+              fieldReviewGroup(<String, dynamic>{'field_key': issue.fieldKey}),
+        ),
+        <String>['IDs', 'Collection', 'Collection', 'Taxa'],
+      );
+      expect(
+        issues.every(
+          (ClearanceBlocker issue) =>
+              issue.kind == ClearanceBlockerKind.field &&
+              issue.segment == WorkbenchSegment.fields,
+        ),
+        isTrue,
+      );
     },
   );
 

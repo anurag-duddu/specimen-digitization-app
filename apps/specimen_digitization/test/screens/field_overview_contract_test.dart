@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/research/research_models.dart';
 import 'package:specimen_digitization/src/screens/workbench/blockers.dart';
+import 'package:specimen_digitization/src/screens/workbench/field_presentation.dart';
 import 'package:specimen_digitization/src/screens/workbench/fields_panel.dart';
 import 'package:specimen_digitization/src/screens/workbench/pending_changes.dart';
 import 'package:specimen_digitization/src/screens/workbench/workbench_layout.dart';
@@ -138,25 +139,30 @@ void main() {
     'domain groups ignore wire ordering and unresolved fields lead their group',
     (tester) async {
       await showOverview(tester);
-      for (final name in [
+      // The four groups of the field model v2. The fixture holds nothing for
+      // Date, so that group does not draw.
+      for (final name in ['IDs', 'Collection', 'Taxa']) {
+        expect(find.text(name), findsOneWidget);
+      }
+      expect(find.text('Date'), findsNothing);
+      for (final retired in [
         'Location',
-        'Collection',
         'Identification',
         'Record identifiers',
       ]) {
-        expect(find.text(name), findsOneWidget);
+        expect(find.text(retired), findsNothing);
       }
       expect(
         tester.getTopLeft(uiDisclosure('Country')).dy,
         lessThan(tester.getTopLeft(uiDisclosure('City')).dy),
       );
       expect(
-        tester.getTopLeft(find.text('Location')).dy,
+        tester.getTopLeft(find.text('IDs')).dy,
         lessThan(tester.getTopLeft(find.text('Collection')).dy),
       );
       expect(
         tester.getTopLeft(find.text('Collection')).dy,
-        lessThan(tester.getTopLeft(find.text('Identification')).dy),
+        lessThan(tester.getTopLeft(find.text('Taxa')).dy),
       );
       expect(find.text('Needs review · Unknown · Required'), findsOneWidget);
       expect(find.text('Needs review · Ambiguous · Smith'), findsOneWidget);
@@ -164,6 +170,46 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  test('every key the server writes has one group and one place in it', () {
+    // The four groups of the field model v2 hold the 20 v1 keys exactly once.
+    expect(fieldReviewGroups, ['IDs', 'Collection', 'Date', 'Taxa', 'Other']);
+    final placed = <String, String>{};
+    final places = <String, Set<int>>{};
+    for (final key in researchFieldKeys) {
+      final field = {'field_key': key};
+      final group = fieldReviewGroup(field);
+      expect(group, isNot('Other'), reason: '$key has no group');
+      placed[key] = group;
+      expect(
+        places.putIfAbsent(group, () => <int>{}).add(fieldReviewOrder(field)),
+        isTrue,
+        reason: '$key repeats a position in $group',
+      );
+    }
+    expect(placed, hasLength(researchFieldKeys.length));
+    expect(placed.values.toSet(), {'IDs', 'Collection', 'Date', 'Taxa'});
+    expect(
+      placed.entries.where((e) => e.value == 'IDs').map((e) => e.key),
+      unorderedEquals(['fmnh_ins_number', 'collection_code']),
+    );
+    expect(
+      placed.entries.where((e) => e.value == 'Date').map((e) => e.key),
+      unorderedEquals([
+        'date_visited_from',
+        'date_visited_to',
+        'date_identified',
+        'verbatim_dts',
+      ]),
+    );
+    expect(
+      placed.entries.where((e) => e.value == 'Taxa').map((e) => e.key),
+      unorderedEquals(['taxon', 'identified_by_irn']),
+    );
+    expect(placed.entries.where((e) => e.value == 'Collection'), hasLength(12));
+    // A key no group names is kept, last, and never dropped.
+    expect(fieldReviewGroup({'field_key': 'island'}), 'Other');
+  });
 
   testWidgets(
     'an unknown field has one state and a direct label link without a citation',

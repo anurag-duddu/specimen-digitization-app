@@ -1,0 +1,371 @@
+{
+  "source": "The ten pilot slide labels as hand-read from the images by go-live research session S8 (table of 2026-09-23, ~/specimen-golive/research/S8-pilot-localities.md, outside the repository; a reading of the images, not a reader output). The as_written values are copied from that table, with its ' / ' line breaks written as newlines. The parts are the v2 values a harness that did everything the evidence supports would record (PRD, Field model v2: P.I. read as the Philippines, Roman-numeral months, feet stored as exact metres, a department spelled as the label misspells it kept only in the verbatim locality). The expected mirror is the v1 keys those parts fill, worked by hand from the live rules (G41, G44) and the PRD table.",
+  "rows": [
+    {
+      "subject": "105526321",
+      "barcode": "FMNHINS 4486784",
+      "as_written": {
+        "locality": "E. slope Mt. McKinley\nDavao Prov.\nMindanao, P.I.",
+        "date": "3 Sept. '46",
+        "elevation": "Mossy forest 6400'",
+        "collector": "F.G. Werner"
+      },
+      "parts": {
+        "ids/catalog_number": "4486784",
+        "location/verbatim": "E. slope Mt. McKinley\nDavao Prov.\nMindanao, P.I.",
+        "location/country": "Philippines",
+        "location/island": "Mindanao",
+        "location/province": "Davao",
+        "location/place": "E. slope Mt. McKinley",
+        "elevation/from": "1950.72",
+        "elevation/unit": "ft",
+        "elevation/kind": "point",
+        "when/collected/start": "1946-09-03",
+        "collectors/1": "F.G. Werner"
+      },
+      "expected": {
+        "fmnh_ins_number": "4486784",
+        "country": "Philippines",
+        "province_state": "Davao",
+        "precise_location": "E. slope Mt. McKinley\nDavao Prov.\nMindanao, P.I.",
+        "elevation_from_m": "1950.72",
+        "elevation_to_m": "1950.72",
+        "elevation_from_ft": "6400",
+        "elevation_to_ft": "6400",
+        "date_visited_from": "1946-09-03",
+        "date_visited_to": "1946-09-03",
+        "collectors": "F.G. Werner"
+      }
+    },
+    {
+      "subject": "105526322",
+      "barcode": "FMNHINS 4486783",
+      "as_written": {
+        "locality": "CNHM. E Slope Mt.\nMcKinley, Davao Prov.\nMindanao, P.I.",
+        "date": "6-Sept-1946",
+        "elevation": "Elev. 6400'",
+        "collector": "H. Hoogstraal leg."
+      },
+      "note": "Both readers dropped the foot mark and wrote 'Elev. 6400'; the unit is recorded as feet with basis inferred (Mt. Apo, about 2,954 m, is the highest point), so 6400 is stored as 1950.72 m. Live v1 fills no elevation without a written unit, so when the basis of the unit is passed to the adapter (bases) the elevation mirror is withheld; without bases the adapter maps the values as given (expected).",
+      "bases": {
+        "elevation/unit": "inferred"
+      },
+      "expected_with_bases": {
+        "fmnh_ins_number": "4486783",
+        "country": "Philippines",
+        "province_state": "Davao",
+        "precise_location": "CNHM. E Slope Mt.\nMcKinley, Davao Prov.\nMindanao, P.I.",
+        "date_visited_from": "1946-09-06",
+        "date_visited_to": "1946-09-06",
+        "collectors": "H. Hoogstraal"
+      },
+      "parts": {
+        "ids/catalog_number": "4486783",
+        "location/verbatim": "CNHM. E Slope Mt.\nMcKinley, Davao Prov.\nMindanao, P.I.",
+        "location/country": "Philippines",
+        "location/island": "Mindanao",
+        "location/province": "Davao",
+        "location/place": "E Slope Mt. McKinley",
+        "elevation/from": "1950.72",
+        "elevation/unit": "ft",
+        "elevation/kind": "point",
+        "when/collected/start": "1946-09-06",
+        "collectors/1": "H. Hoogstraal"
+      },
+      "expected": {
+        "fmnh_ins_number": "4486783",
+        "country": "Philippines",
+        "province_state": "Davao",
+        "precise_location": "CNHM. E Slope Mt.\nMcKinley, Davao Prov.\nMindanao, P.I.",
+        "elevation_from_m": "1950.72",
+        "elevation_to_m": "1950.72",
+        "elevation_from_ft": "6400",
+        "elevation_to_ft": "6400",
+        "date_visited_from": "1946-09-06",
+        "date_visited_to": "1946-09-06",
+        "collectors": "H. Hoogstraal"
+      }
+    },
+    {
+      "subject": "105526323",
+      "barcode": "FMNHINS 4486782",
+      "as_written": {
+        "locality": "CNHM. E. Slope Mt.\nMcKinley, Davao\nProv., Mindanao, P.I.",
+        "date": "6-Sept.-1946",
+        "elevation": "Elev. 6400'",
+        "collector": "H. Hoogstraal leg."
+      },
+      "parts": {
+        "ids/catalog_number": "4486782",
+        "location/verbatim": "CNHM. E. Slope Mt.\nMcKinley, Davao\nProv., Mindanao, P.I.",
+        "location/country": "Philippines",
+        "location/island": "Mindanao",
+        "location/province": "Davao",
+        "location/place": "E. Slope Mt. McKinley",
+        "elevation/from": "1950.72",
+        "elevation/unit": "ft",
+        "elevation/kind": "point",
+        "when/collected/start": "1946-09-06",
+        "collectors/1": "H. Hoogstraal"
+      },
+      "expected": {
+        "fmnh_ins_number": "4486782",
+        "country": "Philippines",
+        "province_state": "Davao",
+        "precise_location": "CNHM. E. Slope Mt.\nMcKinley, Davao\nProv., Mindanao, P.I.",
+        "elevation_from_m": "1950.72",
+        "elevation_to_m": "1950.72",
+        "elevation_from_ft": "6400",
+        "elevation_to_ft": "6400",
+        "date_visited_from": "1946-09-06",
+        "date_visited_to": "1946-09-06",
+        "collectors": "H. Hoogstraal"
+      }
+    },
+    {
+      "subject": "105526324",
+      "barcode": "FMNHINS 4486781",
+      "as_written": {
+        "locality": "E. slope Mt. McKinley\n3300', Davao Prov.\nMindanao,\nPhilippine Islands",
+        "date": "IX-14-46",
+        "elevation": "3300'",
+        "collector": "H. Hoogstraal; CNHM"
+      },
+      "note": "IX-14-46 is 14 September 1946 with a Roman-numeral month. The top-edge code IX-17-66-2 is a slide-preparation code, not a date. The author of this fixture, not S8, reads CNHM as the museum's old name rather than a collector, so only H. Hoogstraal is recorded as the collector; S8's table lists 'H. Hoogstraal; CNHM' in its collector column (rows 105526324 and 105526325).",
+      "parts": {
+        "ids/catalog_number": "4486781",
+        "location/verbatim": "E. slope Mt. McKinley\n3300', Davao Prov.\nMindanao,\nPhilippine Islands",
+        "location/country": "Philippines",
+        "location/island": "Mindanao",
+        "location/province": "Davao",
+        "location/place": "E. slope Mt. McKinley",
+        "elevation/from": "1005.84",
+        "elevation/unit": "ft",
+        "elevation/kind": "point",
+        "when/collected/start": "1946-09-14",
+        "collectors/1": "H. Hoogstraal"
+      },
+      "expected": {
+        "fmnh_ins_number": "4486781",
+        "country": "Philippines",
+        "province_state": "Davao",
+        "precise_location": "E. slope Mt. McKinley\n3300', Davao Prov.\nMindanao,\nPhilippine Islands",
+        "elevation_from_m": "1005.84",
+        "elevation_to_m": "1005.84",
+        "elevation_from_ft": "3300",
+        "elevation_to_ft": "3300",
+        "date_visited_from": "1946-09-14",
+        "date_visited_to": "1946-09-14",
+        "collectors": "H. Hoogstraal"
+      }
+    },
+    {
+      "subject": "105526325",
+      "barcode": "FMNHINS 4486780",
+      "as_written": {
+        "locality": "E. Slope Mt.\nMcKinley, Davao\nProv., Mindanao,\nPhilippine Islands",
+        "date": "IX-14-46",
+        "elevation": "3300'",
+        "collector": "H. Hoogstraal; CNHM"
+      },
+      "parts": {
+        "ids/catalog_number": "4486780",
+        "location/verbatim": "E. Slope Mt.\nMcKinley, Davao\nProv., Mindanao,\nPhilippine Islands",
+        "location/country": "Philippines",
+        "location/island": "Mindanao",
+        "location/province": "Davao",
+        "location/place": "E. Slope Mt. McKinley",
+        "elevation/from": "1005.84",
+        "elevation/unit": "ft",
+        "elevation/kind": "point",
+        "when/collected/start": "1946-09-14",
+        "collectors/1": "H. Hoogstraal"
+      },
+      "expected": {
+        "fmnh_ins_number": "4486780",
+        "country": "Philippines",
+        "province_state": "Davao",
+        "precise_location": "E. Slope Mt.\nMcKinley, Davao\nProv., Mindanao,\nPhilippine Islands",
+        "elevation_from_m": "1005.84",
+        "elevation_to_m": "1005.84",
+        "elevation_from_ft": "3300",
+        "elevation_to_ft": "3300",
+        "date_visited_from": "1946-09-14",
+        "date_visited_to": "1946-09-14",
+        "collectors": "H. Hoogstraal"
+      }
+    },
+    {
+      "subject": "105526326",
+      "barcode": "FMNHINS 4486779",
+      "as_written": {
+        "locality": "E. slope Mt. McKinley\nDavao, Prov. 3300'\nMindanao, P.I.",
+        "date": "IX-14-46",
+        "elevation": "3300'",
+        "collector": "H. Hoogstraal"
+      },
+      "parts": {
+        "ids/catalog_number": "4486779",
+        "location/verbatim": "E. slope Mt. McKinley\nDavao, Prov. 3300'\nMindanao, P.I.",
+        "location/country": "Philippines",
+        "location/island": "Mindanao",
+        "location/province": "Davao",
+        "location/place": "E. slope Mt. McKinley",
+        "elevation/from": "1005.84",
+        "elevation/unit": "ft",
+        "elevation/kind": "point",
+        "when/collected/start": "1946-09-14",
+        "collectors/1": "H. Hoogstraal"
+      },
+      "expected": {
+        "fmnh_ins_number": "4486779",
+        "country": "Philippines",
+        "province_state": "Davao",
+        "precise_location": "E. slope Mt. McKinley\nDavao, Prov. 3300'\nMindanao, P.I.",
+        "elevation_from_m": "1005.84",
+        "elevation_to_m": "1005.84",
+        "elevation_from_ft": "3300",
+        "elevation_to_ft": "3300",
+        "date_visited_from": "1946-09-14",
+        "date_visited_to": "1946-09-14",
+        "collectors": "H. Hoogstraal"
+      }
+    },
+    {
+      "subject": "105526327",
+      "barcode": "FMNHINS 4486778",
+      "as_written": {
+        "locality": "E. slope Mt. Apo,\nDavao Prov.,\nMindanao, P.I.",
+        "date": "XI.'46",
+        "elevation": "none",
+        "collector": "H. Hoogstraal"
+      },
+      "note": "XI.'46 is November 1946 at month precision, with no invented day. The label gives no elevation, so no elevation part exists.",
+      "parts": {
+        "ids/catalog_number": "4486778",
+        "location/verbatim": "E. slope Mt. Apo,\nDavao Prov.,\nMindanao, P.I.",
+        "location/country": "Philippines",
+        "location/island": "Mindanao",
+        "location/province": "Davao",
+        "location/place": "E. slope Mt. Apo",
+        "when/collected/start": "1946-11",
+        "collectors/1": "H. Hoogstraal"
+      },
+      "expected": {
+        "fmnh_ins_number": "4486778",
+        "country": "Philippines",
+        "province_state": "Davao",
+        "precise_location": "E. slope Mt. Apo,\nDavao Prov.,\nMindanao, P.I.",
+        "date_visited_from": "1946-11",
+        "date_visited_to": "1946-11",
+        "collectors": "H. Hoogstraal"
+      }
+    },
+    {
+      "subject": "105526328",
+      "barcode": "FMNHINS 4486777",
+      "as_written": {
+        "locality": "Yepocapa, Mun.\nYepocapa,\nchimaltenago,\nGuatemala.",
+        "date": "IV-24-48",
+        "elevation": "Elev. 4800 ft.",
+        "collector": "R.D. Mitchell"
+      },
+      "parts": {
+        "ids/catalog_number": "4486777",
+        "location/verbatim": "Yepocapa, Mun.\nYepocapa,\nchimaltenago,\nGuatemala.",
+        "location/country": "Guatemala",
+        "location/department": "Chimaltenango",
+        "location/municipality": "Yepocapa",
+        "elevation/from": "1463.04",
+        "elevation/unit": "ft",
+        "elevation/kind": "point",
+        "when/collected/start": "1948-04-24",
+        "collectors/1": "R.D. Mitchell"
+      },
+      "expected": {
+        "fmnh_ins_number": "4486777",
+        "country": "Guatemala",
+        "province_state": "Chimaltenango",
+        "precise_location": "Yepocapa, Mun.\nYepocapa,\nchimaltenago,\nGuatemala.",
+        "elevation_from_m": "1463.04",
+        "elevation_to_m": "1463.04",
+        "elevation_from_ft": "4800",
+        "elevation_to_ft": "4800",
+        "date_visited_from": "1948-04-24",
+        "date_visited_to": "1948-04-24",
+        "collectors": "R.D. Mitchell"
+      }
+    },
+    {
+      "subject": "105526329",
+      "barcode": "FMNHINS 4486776",
+      "as_written": {
+        "locality": "Yepocapa, 4800 ft.\nChimaltenago,\nGuatemala",
+        "date": "IV-23-48",
+        "elevation": "4800 ft.",
+        "collector": "R.D. Mitchell"
+      },
+      "note": "The label misspells the department as Chimaltenago. The label's spelling stays in the verbatim locality (the precise_location mirror); the department is Chimaltenango, derived. A municipality is not a county and live v1 does not invent a county in Guatemala, so county is absent.",
+      "parts": {
+        "ids/catalog_number": "4486776",
+        "location/verbatim": "Yepocapa, 4800 ft.\nChimaltenago,\nGuatemala",
+        "location/country": "Guatemala",
+        "location/department": "Chimaltenango",
+        "location/municipality": "Yepocapa",
+        "elevation/from": "1463.04",
+        "elevation/unit": "ft",
+        "elevation/kind": "point",
+        "when/collected/start": "1948-04-23",
+        "collectors/1": "R.D. Mitchell"
+      },
+      "expected": {
+        "fmnh_ins_number": "4486776",
+        "country": "Guatemala",
+        "province_state": "Chimaltenango",
+        "precise_location": "Yepocapa, 4800 ft.\nChimaltenago,\nGuatemala",
+        "elevation_from_m": "1463.04",
+        "elevation_to_m": "1463.04",
+        "elevation_from_ft": "4800",
+        "elevation_to_ft": "4800",
+        "date_visited_from": "1948-04-23",
+        "date_visited_to": "1948-04-23",
+        "collectors": "R.D. Mitchell"
+      }
+    },
+    {
+      "subject": "105526330",
+      "barcode": "FMNHINS 4486775",
+      "as_written": {
+        "locality": "Yepocapa, 4800 ft.\nChimaltenago\nGuatemala",
+        "date": "IV-25 1948",
+        "elevation": "4800 ft.",
+        "collector": "R.D. Mitchell"
+      },
+      "parts": {
+        "ids/catalog_number": "4486775",
+        "location/verbatim": "Yepocapa, 4800 ft.\nChimaltenago\nGuatemala",
+        "location/country": "Guatemala",
+        "location/department": "Chimaltenango",
+        "location/municipality": "Yepocapa",
+        "elevation/from": "1463.04",
+        "elevation/unit": "ft",
+        "elevation/kind": "point",
+        "when/collected/start": "1948-04-25",
+        "collectors/1": "R.D. Mitchell"
+      },
+      "expected": {
+        "fmnh_ins_number": "4486775",
+        "country": "Guatemala",
+        "province_state": "Chimaltenango",
+        "precise_location": "Yepocapa, 4800 ft.\nChimaltenago\nGuatemala",
+        "elevation_from_m": "1463.04",
+        "elevation_to_m": "1463.04",
+        "elevation_from_ft": "4800",
+        "elevation_to_ft": "4800",
+        "date_visited_from": "1948-04-25",
+        "date_visited_to": "1948-04-25",
+        "collectors": "R.D. Mitchell"
+      }
+    }
+  ]
+}

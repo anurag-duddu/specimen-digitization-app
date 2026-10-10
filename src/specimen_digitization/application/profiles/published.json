@@ -230,7 +230,7 @@
         "reader_timeout_seconds": 120,
         "lease_seconds": 300,
         "program_allowance": {
-          "allowance_micros": 5000000,
+          "allowance_micros": 15000000,
           "ledger_collection": "insects"
         },
         "price_list": {

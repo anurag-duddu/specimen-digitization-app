@@ -46,6 +46,8 @@ PUBLISHED = (
 SCOPE = Scope(organization_id=SYNTHETIC_ORG, collection_id=SYNTHETIC_COLLECTION)
 OTHER_COLLECTION = "00000000-0000-4000-8000-0000000000c9"
 MOMENT = datetime(2026, 9, 23, 12, 0, tzinfo=timezone.utc)
+# The pilot profile's program allowance: G30, USD 15 (raised from USD 5 on 2026-10-09).
+ALLOWANCE = 15_000_000
 
 
 def lab(tmp_path, adapters=ProductionLikeAdapters, repository=None):
@@ -95,7 +97,7 @@ def seed(repository, reserved_total_micros):
 def test_the_pilot_carries_the_program_allowance():
     allowance = published_registry().resolve("insects").profile.processing.program_allowance
     assert (allowance.allowance_micros, allowance.ledger_collection) == (
-        5_000_000,
+        ALLOWANCE,
         "insects",
     )
 
@@ -139,7 +141,7 @@ def test_a_request_copies_the_allowance_and_the_ledger_collection():
     specimen = specimen_with(Run(profile=Profile(synthetic=False)))
     queue(specimen, published_registry({SYNTHETIC_COLLECTION: "insects"}), USER)
     execution = specimen.run.profile.execution
-    assert execution.program_allowance_micros == 5_000_000
+    assert execution.program_allowance_micros == ALLOWANCE
     assert execution.program_ledger_collection == SYNTHETIC_COLLECTION
 
 
@@ -180,7 +182,7 @@ def test_reprocessing_preserves_the_retained_profile_and_unknown_costs(tmp_path)
     execution = saved.run.profile.execution
     policy = profiles.resolve(SYNTHETIC_COLLECTION).profile.processing
     assert execution.approved_cost_limit_micros == policy.run_cost_limit_micros == 1_000_000
-    assert execution.program_allowance_micros == 5_000_000
+    assert execution.program_allowance_micros == ALLOWANCE
     assert execution.program_ledger_collection == SYNTHETIC_COLLECTION
     assert execution.stage_cost_reservations == policy.stage_cost_micros
     assert execution.price_list == policy.price_list.model_dump(mode="json")
@@ -211,9 +213,9 @@ def test_each_paid_step_reserves_on_the_program_ledger(tmp_path):
     assert run.usage.actual_cost_micros is None
     assert stored["sensitive"] is False
     position = run.program_allowance
-    assert position["allowance_micros"] == 5_000_000
+    assert position["allowance_micros"] == ALLOWANCE
     assert position["reserved_total_micros"] == run.usage.reserved_cost_micros
-    assert position["remaining_micros"] == 5_000_000 - run.usage.reserved_cost_micros
+    assert position["remaining_micros"] == ALLOWANCE - run.usage.reserved_cost_micros
     assert position["ledger_revision"] == stored["revision"]
 
 
@@ -229,7 +231,7 @@ class CountingAdapters(ProductionLikeAdapters):
 
 def test_a_step_that_would_cross_the_allowance_is_not_called(tmp_path):
     app, repository = lab(tmp_path, adapters=CountingAdapters)
-    seed(repository, 4_990_000)
+    seed(repository, ALLOWANCE - 10_000)
     specimen = app.state.workflow.drain(principal(), uploaded(app))
     run = specimen.run
     assert (run.stage, run.blocker) == ("processing_blocked", "program_allowance_exhausted")
@@ -237,7 +239,7 @@ def test_a_step_that_would_cross_the_allowance_is_not_called(tmp_path):
     position = run.program_allowance
     assert position["remaining_micros"] == 10_000
     assert position["requested_micros"] == 182_321
-    assert ProgramLedger(repository, SCOPE).read()["reserved_total_micros"] == 4_990_000
+    assert ProgramLedger(repository, SCOPE).read()["reserved_total_micros"] == ALLOWANCE - 10_000
 
 
 class BusyOnceAdapters(ProductionLikeAdapters):

@@ -236,6 +236,20 @@ endpoints or converted elevations pending policy. Identified-by identity is
 `{source_system, tenant, environment, module: "eparties", irn}` with confirmed
 authority evidence. A catalogue IRN or person-name search snippet is insufficient.
 
+Planned, not yet in force (2026-10-08): field contract v2 is meant to replace
+these 20 keys, in a later release, with four groups (IDs, collection related,
+taxa related, date), and every value part records its basis (`label`,
+`derived` or `inferred`) with its support. The v1 record already derives exact
+unit conversions and copies of endpoints (G41, G44 in
+`docs/execution/golive/PLAN.md`), marks them with the layer `derived`, and
+proposes geography from a place for a reviewer to accept. v2 adds `inferred`
+values and review of a single part; a value with no recorded support is still
+not invented. These 20 keys remain the contract
+for every record published under v1, and nothing in this section changes until
+the rollout reaches the harness. The structure, worked examples, rollout order
+and open items are in [`PRD.md`](../product-requirements/PRD.md), section
+"Field model v2: four groups".
+
 Clearance requires label coverage, two independent configured observations per
 required label, completed adjudication, resolved critical disagreements, all
 mandatory values, valid schema, full provenance, no unresolved hard findings,
