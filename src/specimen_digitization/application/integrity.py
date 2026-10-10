@@ -127,7 +127,14 @@ def verify_evidence(specimen: Specimen, blobs: BlobStore) -> None:
             decisions = {d.region_id: d for d in run.first_pass_decisions}
             for transcript in run.transcripts:
                 require(transcript.region_id in regions)
-                require(bool(transcript.observation_ids))
+                # A region no reader read (every reader's attempts failed) keeps
+                # a transcript with no text and no readings, and the queue
+                # decision sends it to review. A transcript that holds text
+                # must still trace to the readings it came from.
+                require(
+                    bool(transcript.observation_ids)
+                    or not (transcript.resolved or transcript.text)
+                )
                 require(
                     all(
                         ident in observations

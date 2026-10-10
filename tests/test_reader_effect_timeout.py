@@ -131,9 +131,15 @@ def test_real_reader_child_timeout_kills_process_without_using_sam_limit(
         row = intake(http)
         path = PREFIX + "/specimens/" + row["specimen_id"]
         result = http.get(path + "/workspace", headers=HEADERS).json()
-        assert result["blocker"] == "external_outcome_unknown"
+        # A reader's deadline is a known failure that is asked again (a reader
+        # is a pure read), not an unknown outcome that blocks the run for good.
+        assert result["blocker"] == "reader_deadline_exceeded"
+        assert result["run"]["stage"] == "retry_scheduled"
+        assert result["run"]["lease_until"] is None
         assert result["run"]["profile"]["execution"]["external_timeout_seconds"] == 120
-        assert result["run"]["usage"]["reserved_active_seconds"] == 3
+        # The reader's 3 s ended it, not the 120 s limit that SAM 3 keeps.
+        assert 3 <= result["run"]["usage"]["active_seconds"] < 60
+        assert result["run"]["usage"]["reserved_active_seconds"] == 0
         pid = int((tmp_path / "child-pid").read_text())
         with pytest.raises(ProcessLookupError):
             os.kill(pid, 0)

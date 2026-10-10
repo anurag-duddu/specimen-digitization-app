@@ -185,7 +185,11 @@ def test_unexpected_child_failure_exports_only_safe_failure_and_does_not_replay(
         row = intake(http)
         path = PREFIX + "/specimens/" + row["specimen_id"]
         work = http.get(path + "/workspace", headers=HEADERS).json()
-        assert work["blocker"] == "external_outcome_unknown"
+        # A reader's child that dies is a known failure that is retried when
+        # its backoff has passed, not an unknown outcome (reliability.py); the
+        # call is still not replayed before then.
+        assert work["blocker"] == "reader_worker_failed"
+        assert work["run"]["stage"] == "retry_scheduled"
         assert not work["run"]["observations"]
         calls = work["run"]["usage"]["external_calls"]
         http.post(path + "/process", headers=HEADERS)

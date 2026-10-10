@@ -445,6 +445,6 @@ def test_g9_project_alert_does_not_raise_the_separate_g30_model_allowance():
     [command] = [shlex.split(line) for line in steps if line.startswith("gcloud billing budgets create ")]
     assert "--budget-amount=25USD" in command
     assert "--display-name=specimen-digitization USD 25" in command
-    assert not {"--budget-amount=12USD", "--budget-amount=5USD"}.intersection(command)
+    assert not {"--budget-amount=12USD", "--budget-amount=5USD", "--budget-amount=15USD"}.intersection(command)
     allowance = published_registry().resolve("insects").profile.processing.program_allowance
-    assert allowance.allowance_micros == 5_000_000
+    assert allowance.allowance_micros == 15_000_000

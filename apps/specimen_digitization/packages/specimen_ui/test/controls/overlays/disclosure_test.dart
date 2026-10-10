@@ -2,7 +2,7 @@
 
 import 'dart:ui' show Tristate;
 
-import 'package:flutter/semantics.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -237,6 +237,191 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text(_body), findsOneWidget);
     }
+  });
+
+  testWidgets('a trailing sits before the caret and leaves the header alone', (
+    WidgetTester tester,
+  ) async {
+    final SemanticsHandle handle = tester.ensureSemantics();
+    await tester.pumpWidget(
+      uiHarness(
+        child: const SizedBox(
+          width: 360,
+          child: UiDisclosure(
+            title: _title,
+            summary: _summary,
+            trailing: UiChip(label: 'Derived'),
+            semanticsLabel: '$_label. Basis: derived',
+            child: Text(_body),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final Rect chip = tester.getRect(find.byType(UiChip));
+    final Rect caret = tester.getRect(find.byType(AnimatedRotation));
+    final Rect title = tester.getRect(find.text(_title));
+    expect(chip.right, lessThan(caret.left), reason: 'the chip is before it');
+    expect(title.right, lessThan(chip.left), reason: 'and after the text');
+    expect(
+      tester.getSize(find.byType(Pressable)).height,
+      greaterThanOrEqualTo(UiDensity.hitBox),
+    );
+    // The header publishes one node, so the chip is read as part of the label
+    // the caller gave, and a press on the chip toggles the row.
+    expect(find.bySemanticsLabel('$_label. Basis: derived'), findsOneWidget);
+    expect(find.bySemanticsLabel('Derived'), findsNothing);
+    await tester.tap(find.byType(UiChip));
+    await tester.pumpAndSettle();
+    expect(find.text(_body), findsOneWidget);
+    handle.dispose();
+  });
+
+  /// The text of [title], and whether the line it was drawn on cut it short.
+  ///
+  /// Compared against the width the same words take unbroken, so a label that
+  /// was ellipsised is caught whether or not the framework reports an
+  /// overflow.
+  (double drawn, double needed, bool exceeded) titleFit(
+    WidgetTester tester,
+    String title,
+  ) {
+    final RenderParagraph paragraph = tester.renderObject<RenderParagraph>(
+      find.text(title),
+    );
+    final TextPainter painter = TextPainter(
+      text: paragraph.text,
+      textDirection: TextDirection.ltr,
+      textScaler: paragraph.textScaler,
+      maxLines: 1,
+    )..layout();
+    final double needed = painter.width;
+    painter.dispose();
+    return (paragraph.size.width, needed, paragraph.didExceedMaxLines);
+  }
+
+  testWidgets('a trailing moves under the text when the title would not fit', (
+    WidgetTester tester,
+  ) async {
+    const String long = 'Elevation from (m)';
+    const UiChip chip = UiChip(label: 'As written');
+    Widget at(double width) => uiHarness(
+      textScaler: const TextScaler.linear(2),
+      child: SizedBox(
+        width: width,
+        child: const UiDisclosure(
+          title: long,
+          summary: 'Supported 1950.72',
+          trailing: chip,
+          child: Text(_body),
+        ),
+      ),
+    );
+
+    // Wide enough for the title and the chip on one line.
+    await tester.pumpWidget(at(640));
+    await tester.pumpAndSettle();
+    Rect title = tester.getRect(find.text(long));
+    Rect box = tester.getRect(find.byType(UiChip));
+    expect(box.left, greaterThan(title.right), reason: 'beside the title');
+    expect(box.center.dy, lessThan(title.bottom + box.height));
+    final double besideHeight = tester.getSize(find.byType(Pressable)).height;
+
+    // Too narrow for both, at double text size: the chip goes under the text.
+    await tester.pumpWidget(at(390));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    title = tester.getRect(find.text(long));
+    box = tester.getRect(find.byType(UiChip));
+    final Rect summary = tester.getRect(find.text('Supported 1950.72'));
+    expect(box.left, title.left, reason: 'starts where the title starts');
+    expect(box.top, greaterThanOrEqualTo(summary.bottom));
+    expect(
+      tester.getSize(find.byType(Pressable)).height,
+      greaterThan(besideHeight),
+      reason: 'the chip has a line of its own',
+    );
+    final (double drawn, double needed, bool exceeded) = titleFit(tester, long);
+    expect(exceeded, isFalse, reason: 'the title keeps every letter');
+    expect(drawn, greaterThanOrEqualTo(needed - 0.5));
+  });
+
+  testWidgets('a trailing never costs the title a letter, at any width', (
+    WidgetTester tester,
+  ) async {
+    const String long = 'Province or state';
+    for (final (double width, double scale) in <(double, double)>[
+      (320, 1),
+      (390, 1),
+      (390, 2),
+      (520, 2),
+    ]) {
+      await tester.pumpWidget(
+        uiHarness(
+          textScaler: TextScaler.linear(scale),
+          child: SizedBox(
+            width: width,
+            child: const UiDisclosure(
+              title: long,
+              summary: 'Supported Davao',
+              trailing: UiChip(label: 'As written'),
+              child: Text(_body),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull, reason: '$width at ${scale}x');
+      final (double drawn, double needed, bool exceeded) = titleFit(
+        tester,
+        long,
+      );
+      expect(exceeded, isFalse, reason: '$width at ${scale}x');
+      expect(drawn, greaterThanOrEqualTo(needed - 0.5));
+      expect(find.byType(UiChip), findsOneWidget);
+    }
+  });
+
+  testWidgets('a trailing moves under the text rather than cut the summary', (
+    WidgetTester tester,
+  ) async {
+    const String summary = 'Supported · Philippines · Required';
+    Widget at(double width, double scale) => uiHarness(
+      textScaler: TextScaler.linear(scale),
+      child: SizedBox(
+        width: width,
+        child: const UiDisclosure(
+          title: 'Country',
+          summary: summary,
+          trailing: UiChip(label: 'Derived'),
+          child: Text(_body),
+        ),
+      ),
+    );
+    RenderParagraph paragraph() =>
+        tester.renderObject<RenderParagraph>(find.text(summary));
+
+    // At double text the title alone fits beside the chip, but the two lines
+    // of summary the row has left would lose the review state.
+    await tester.pumpWidget(at(390, 2));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(paragraph().didExceedMaxLines, isFalse, reason: 'the whole summary');
+    expect(
+      tester.getRect(find.byType(UiChip)).left,
+      tester.getRect(find.text('Country')).left,
+      reason: 'under the text, where the summary has the whole line',
+    );
+
+    // At normal text everything fits on the one line: the chip stays beside.
+    await tester.pumpWidget(at(390, 1));
+    await tester.pumpAndSettle();
+    expect(paragraph().didExceedMaxLines, isFalse);
+    expect(
+      tester.getRect(find.byType(UiChip)).left,
+      greaterThan(tester.getRect(find.text('Country')).right),
+    );
   });
 
   testWidgets('it satisfies the control contract', (WidgetTester tester) async {

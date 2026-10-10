@@ -1986,6 +1986,12 @@ def create_app(
                 raise ValueError("Unsupported transcription state")
             if state == "supported" and (not isinstance(text, str) or not text.strip()):
                 raise ValueError("Supported literal text required")
+            if state == "supported" and not transcript.observation_ids:
+                # No reader read this region (every attempt failed): text with no
+                # reading to trace to is refused by evidence verification and
+                # would block the next run, so it is refused here with the
+                # record unchanged. An abstention stays possible.
+                raise ValueError("No reader read this region; record an abstention")
             if state != "supported" and text is not None:
                 raise ValueError("An abstention carries null text, not a placeholder")
             # Reparsing explicitly supersedes the prior source-dependent field
