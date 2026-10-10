@@ -3070,6 +3070,45 @@ def test_an_inline_unreadable_marker_with_no_span_listed_keeps_every_listed_fiel
     assert not cleared_as_not_on_label(run) and not any(not_on_label_rows(run, key) for key in ABSENT)
 
 
+# N1 of #289's fifth review: every placeholder rule B reads as unreadable
+# (checks.shows_placeholder), in any case.
+PLACEHOLDERS = ["[unreadable]", "(unreadable)", "[illegible]", "(illegible)", "[illeg.]", "[illeg]", "(illeg.)",
+    "[unclear]", "(unclear)", "illegible", "unreadable", "[?]", "???", "...", "[...]", "\N{HORIZONTAL ELLIPSIS}",
+    "ILLEGIBLE", "Unreadable", "[Unclear]"]
+
+
+@pytest.mark.parametrize("placeholder", PLACEHOLDERS)
+def test_any_placeholder_with_no_span_listed_keeps_every_listed_field_in_review(tmp_path, placeholder):
+    """Both readers write the placeholder on a line of their own, and
+    neither lists the span: rule A reads rule B's placeholder test."""
+    rig = build_rig(tmp_path, SPARSE + "\nMossy " + placeholder)
+    run = rig.specimen.run
+    assert not any(item.unreadable_spans for item in run.observations)
+    settle(rig, lacking(*ABSENT))
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, unresolved(*ABSENT))
+    assert not cleared_as_not_on_label(run) and not any(not_on_label_rows(run, key) for key in ABSENT)
+
+
+@pytest.mark.parametrize("line", ["V-4-67-1", "Legible label"])
+def test_a_line_with_no_placeholder_still_lets_the_listed_fields_clear(tmp_path, line):
+    rig = build_rig(tmp_path, SPARSE + "\n" + line)
+    run = rig.specimen.run
+    settle(rig, lacking(*ABSENT))
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+    assert cleared_as_not_on_label(run) == set(ABSENT)
+
+
+@pytest.mark.parametrize("placeholder", PLACEHOLDERS)
+def test_any_placeholder_above_the_slide_number_keeps_the_taxon_in_review(tmp_path, placeholder):
+    """Rule B: the placeholder as the genus line above 105526327's slide
+    number and the code, no span listed; the expert quotes the code with no
+    lookup."""
+    rig = build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", placeholder + "\nV-4-67-1\n" + SP1),
+        candidates=[*COLLECTORS, *(("taxon", name, SP1, SP1) for name in ("1A", "1B"))])
+    settle(rig, Scripted({"taxon": cannot_resolve(SP1)}), tools=NoGenus(rig.blobs))
+    taxon_held_back(rig.specimen.run)
+
+
 @pytest.mark.parametrize("written", ["2000 msnm", "1200 m.s.n.m.", "1200 m snm", "1200 masl", "1,200 MSNM"])
 def test_metres_above_sea_level_keep_the_elevations_in_review(tmp_path, written):
     """N2 of #289's review: an elevation in metres above sea level, as Latin

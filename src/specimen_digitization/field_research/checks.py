@@ -480,14 +480,25 @@ def _qualifier(text: str) -> bool:
 
 # What a reader may write in place of a word it cannot read: the reader
 # prompt's "[unreadable]", and the other placeholders a transcriber uses
-# (N1 of #289's fourth review), anywhere in a text, in any case.
-DOUBT_PLACEHOLDERS = ("[unreadable]", "[illegible]", "[?]", "???", "...", "[...]", "\N{HORIZONTAL ELLIPSIS}")
+# (N1 of #289's fourth and fifth reviews), anywhere in a text, in any case;
+# and the words "illegible" and "unreadable" standing alone, with no letter
+# right before or after them. Rule A (step._whole_label_read) and rule B
+# (DOUBT_SIGNS and step._code_label_unreadable) read this one test
+# (shows_placeholder).
+DOUBT_PLACEHOLDERS = ("[unreadable]", "(unreadable)", "[illegible]", "(illegible)", "[illeg.]", "[illeg]", "(illeg.)",
+    "[unclear]", "(unclear)", "[?]", "???", "...", "[...]", "\N{HORIZONTAL ELLIPSIS}")
+PLACEHOLDER_WORDS = ("illegible", "unreadable")
+_PLACEHOLDER_WORD = re.compile(r"(?<![^\W\d_])(?:" + "|".join(PLACEHOLDER_WORDS) + r")(?![^\W\d_])", re.I)
 
 
-def _placeholder(text: str) -> bool:
-    """One of DOUBT_PLACEHOLDERS ("..." also inside "....")."""
+def shows_placeholder(text: str) -> bool:
+    """Whether the text writes a placeholder for a word a reader could not
+    read: one of DOUBT_PLACEHOLDERS in any case ("..." also inside "...."),
+    or one of PLACEHOLDER_WORDS as a whole word in any case ("Illegible",
+    "UNREADABLE"; never "illegibly")."""
     folded = text.casefold()
-    return any(placeholder in folded for placeholder in DOUBT_PLACEHOLDERS)
+    return any(placeholder in folded for placeholder in DOUBT_PLACEHOLDERS) or (
+        _PLACEHOLDER_WORD.search(text) is not None)
 
 
 # The signs that a name on a label is in doubt or that part of a label
@@ -507,7 +518,7 @@ def _placeholder(text: str) -> bool:
 DOUBT_SIGNS: tuple[tuple[str, Callable[[str], bool] | None], ...] = (
     ("question_mark", _question_mark),
     ("qualifier", _qualifier),
-    ("placeholder", _placeholder),
+    ("placeholder", shows_placeholder),
     ("unreadable_span", None),
 )
 

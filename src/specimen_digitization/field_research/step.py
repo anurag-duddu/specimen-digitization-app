@@ -1100,7 +1100,6 @@ SEA_LEVEL_METRES = re.compile(
 NUMBER_AND_UNIT = re.compile(
     r"(?<![A-Za-z0-9/-])\d+(?:[.,]\d+)*(?:[^\S\n]*-[^\S\n]*\d+(?:[.,]\d+)*)?[^\S\n]*"
     r"(?:m|mts?|mtrs?|metros?|msm|pies|p\.?[^\S\n]*s\.?[^\S\n]*n\.?[^\S\n]*m)\.?(?![A-Za-z0-9])", re.I)
-UNREADABLE_TEXT = "[unreadable]"
 
 
 def not_on_label_keys(profile: CollectionProfile) -> frozenset[str]:
@@ -1114,10 +1113,14 @@ def _whole_label_read(run, readings: Sequence[Reading]) -> bool:
     """Every label was read whole: label coverage confirmed; each label has
     two or more readers, each with text, and two or more named readings; and
     no part of any label is unreadable: no reader's unreadable span, no
-    transcript marked unreadable, and no "[unreadable]" marker anywhere in a
-    reader's, a reading's or a transcript's text (the marker the reader
-    prompt asks for in place of each unreadable span, prompts.py, whether or
-    not the reader also listed the span)."""
+    transcript marked unreadable, and no placeholder for an unread word
+    anywhere in a reader's, a reading's or a transcript's text
+    (checks.shows_placeholder, rule B's own test: the "[unreadable]" marker
+    the reader prompt asks for in place of each unreadable span, prompts.py,
+    and the other placeholders a transcriber writes, whether or not the
+    reader also listed the span; N1 of #289's fifth review)."""
+    from .checks import shows_placeholder
+
     if not run.coverage_confirmed or not run.regions:
         return False
     for region in run.regions:
@@ -1129,7 +1132,7 @@ def _whole_label_read(run, readings: Sequence[Reading]) -> bool:
         return False
     texts = [*(o.literal_text for o in run.observations), *(r.text for r in readings),
         *(t.text or "" for t in run.transcripts)]
-    if any(o.unreadable_spans for o in run.observations) or any(UNREADABLE_TEXT in t.casefold() for t in texts):
+    if any(o.unreadable_spans for o in run.observations) or any(shows_placeholder(t) for t in texts):
         return False
     return not any(t.value_state == ValueState.UNREADABLE for t in run.transcripts)
 
@@ -1139,18 +1142,18 @@ def _code_label_unreadable(run, readings: Sequence[Reading], code: str) -> bool:
     unreadable, by rule A's test (_whole_label_read) on that label (B2 of
     #289's third review): a label any of whose readings, readers' texts or
     transcripts writes the code (checks.writes_code) has a reader's
-    unreadable span, a transcript marked unreadable, or the "[unreadable]"
-    marker in a reader's, a reading's or a transcript's text. An unreadable
-    word on the label may be the code's genus. True also when no text of
-    the run writes the code."""
-    from .checks import writes_code
+    unreadable span, a transcript marked unreadable, or a placeholder for an
+    unread word (checks.shows_placeholder) in a reader's, a reading's or a
+    transcript's text. An unreadable word on the label may be the code's
+    genus. True also when no text of the run writes the code."""
+    from .checks import shows_placeholder, writes_code
 
     texts = [*((r.region_id, r.text) for r in readings), *((o.region_id, o.literal_text) for o in run.observations),
         *((t.region_id, t.text or "") for t in run.transcripts)]
     regions = {region for region, text in texts if writes_code(text, code)}
     return (not regions or any(o.unreadable_spans for o in run.observations if o.region_id in regions)
         or any(t.value_state == ValueState.UNREADABLE for t in run.transcripts if t.region_id in regions)
-        or any(UNREADABLE_TEXT in text.casefold() for region, text in texts if region in regions))
+        or any(shows_placeholder(text) for region, text in texts if region in regions))
 
 
 def _doubt_on_the_labels(run, readings: Sequence[Reading]) -> tuple[str, ...]:

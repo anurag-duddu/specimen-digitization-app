@@ -516,8 +516,10 @@ def test_the_signs_of_a_doubtful_or_unreadable_name_are_one_list():
     assert [name for name, _ in checks.DOUBT_SIGNS] == ["question_mark", "qualifier", "placeholder", "unreadable_span"]
     assert checks.DOUBT_QUALIFIERS == ("cf", "cfr", "aff", "affin", "affinis", "nr", "near", "prob", "probably", "poss",
         "possibly", "conf", "vic", "prope")
-    assert checks.DOUBT_PLACEHOLDERS == ("[unreadable]", "[illegible]", "[?]", "???", "...", "[...]",
-        "\N{HORIZONTAL ELLIPSIS}")
+    assert checks.DOUBT_PLACEHOLDERS == ("[unreadable]", "(unreadable)", "[illegible]", "(illegible)", "[illeg.]",
+        "[illeg]", "(illeg.)", "[unclear]", "(unclear)", "[?]", "???", "...", "[...]", "\N{HORIZONTAL ELLIPSIS}")
+    assert checks.PLACEHOLDER_WORDS == ("illegible", "unreadable")
+    assert dict(checks.DOUBT_SIGNS)["placeholder"] is checks.shows_placeholder
     assert checks.doubt_signs(["Epipsocus?", "V-4-67-1", "cf. Epipsocus"]) == ("question_mark", "qualifier")
     assert checks.doubt_signs(["sp. 1 " + FEMALE], unreadable=True) == ("unreadable_span",)
     assert checks.doubt_signs([]) == ()
@@ -579,12 +581,26 @@ def test_a_qualifier_in_any_spelling_of_the_list_is_a_doubt_sign(text):
 # N1 of #289's fourth review: a placeholder for a word a reader could not
 # read, on a line of its own, in any case.
 @pytest.mark.parametrize("placeholder", ["[unreadable]", "[UNREADABLE]", "[illegible]", "[Illegible]", "[?]", "???",
-    "...", "....", "[...]", "\N{HORIZONTAL ELLIPSIS}"])
+    "...", "....", "[...]", "\N{HORIZONTAL ELLIPSIS}",
+    # N1 of #289's fifth review: the placeholder list rule A shares.
+    "(unreadable)", "(illegible)", "[illeg.]", "[ILLEG]", "(illeg.)", "[unclear]", "(Unclear)", "illegible",
+    "Illegible", "UNREADABLE", "unreadable"])
 def test_a_placeholder_for_an_unread_word_is_a_doubt_sign(placeholder):
     from specimen_digitization.field_research import checks
 
     assert checks.doubt_signs([placeholder]) == ("placeholder",)
     assert "placeholder" in checks.doubt_signs(["VI-24-68-7.\n" + placeholder + "\nsp. 1\n" + FEMALE + " terminalia"])
+    assert checks.shows_placeholder("Mossy " + placeholder)
+
+
+@pytest.mark.parametrize("text", ["legible", "readable", "Illegibly", "unreadably", "unclear", "Unclear River", "illeg",
+    "..", "Mossy forest 6400'", "V-4-67-1"])
+def test_text_with_no_placeholder_shows_none(text):
+    """The placeholder words count only whole; the bracketed forms only
+    with their brackets."""
+    from specimen_digitization.field_research import checks
+
+    assert not checks.shows_placeholder(text)
 
 
 # The real readings of every label of the pilot's 105526321, 105526326 and
