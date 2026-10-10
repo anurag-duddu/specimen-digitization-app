@@ -11,7 +11,8 @@ The rules that decide an answer stay where they are: GBIF's in
 application.taxonomy_tool.verify_taxon, GEOLocate's in research_harness.sources
 and the historical gazetteers' in research_harness.historical_gazetteers. A
 source problem is an answer with a plain note, never an exception; only a blob
-store failure raises.
+store failure raises. Each request a source leaves unanswered is logged in one
+WARNING line with its source, host and HTTP status or error, never its query.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ import concurrent.futures
 import dataclasses
 import hashlib
 import json
+import logging
 import re
 import time
 import unicodedata
@@ -59,6 +61,7 @@ from specimen_digitization.research_harness.sources import (
 
 from .contracts import PLACE_SOURCES, PlaceRef, SourceAnswer, SourceCandidate
 
+LOGGER = logging.getLogger(__name__)
 SOURCES = ("gbif", *PLACE_SOURCES)
 NAMES = {
     "gbif": "GBIF",
@@ -68,6 +71,8 @@ NAMES = {
     "nga": "NGA GEOnet Names Server",
 }
 SUPPORT = {"col": "Catalogue of Life", "gnv": "Global Names Verifier"}
+# Where verify_taxon asks GBIF (application.lookup.GbifTaxonomy), for its log line.
+GBIF_MATCH_URL = "https://api.gbif.org/v2/species/match"
 REQUEST_TIMEOUT_SECONDS = 15.0
 ATTEMPTS = 3
 RETRY_AFTER_LIMIT_SECONDS = 10
@@ -294,6 +299,35 @@ def _evidence(
     )
 
 
+def _log_unanswered(
+    source_id: str,
+    url: str,
+    *,
+    attempt: int,
+    http_status: int | None = None,
+    error: str | None = None,
+    retry_after: bool = False,
+) -> None:
+    """One WARNING line for a lookup a source left unanswered, as the worker
+    logs a failed step (workflow._log_step_failure: key=value pairs): the
+    source id, the host, the HTTP status or the error's class, whether the
+    source sent a Retry-After, and the attempt the request ended on. Never
+    the query, a parameter or a body, so no specimen text."""
+    values = {
+        "step": "field_research",
+        "source": source_id,
+        "host": urlsplit(url).hostname,
+        "http_status": http_status,
+        "error": error,
+        "retry_after": "present" if retry_after else "absent",
+        "attempt": attempt,
+    }
+    LOGGER.warning(
+        "Field research lookup unanswered: %s",
+        " ".join(f"{key}={'-' if value is None else value}" for key, value in values.items()),
+    )
+
+
 class _Unanswered(Exception):
     """No usable answer came back: the status to return and its plain note."""
 
@@ -472,6 +506,16 @@ class ApprovedSources:
         asked = [call for call in result.sub_calls if call.source == "gbif"]
         status = decided.status
         if status not in ANSWERED:
+            # verify_taxon made and retried GBIF's requests: its last call says
+            # how it ended, as a status (no HTTP code reaches this far).
+            last = asked[-1] if asked else None
+            _log_unanswered(
+                "gbif",
+                GBIF_MATCH_URL,
+                attempt=last.attempt if last else 0,
+                error=status.value,
+                retry_after=last is not None and last.retry_after_seconds is not None,
+            )
             return _answer(
                 "gbif", query, status, _taxon_failure(status, asked), taxonomy_lookup=decided
             )
@@ -721,22 +765,33 @@ class ApprovedSources:
         """One GET with retries: a rate limit, a server error, a timeout or a
         transport error is tried again, ATTEMPTS times in all, with backoff and
         jitter and never sooner than the provider's Retry-After. A Retry-After
-        over RETRY_AFTER_LIMIT_SECONDS ends the retries; any other answer is final."""
+        over RETRY_AFTER_LIMIT_SECONDS ends the retries; any other answer is final.
+        A final answer other than 200 (a refusal, a redirect, which is never
+        followed) and a request that got none are logged (_log_unanswered)."""
         name = NAMES[policy.id]
         for attempt in range(1, ATTEMPTS + 1):
             await self._pacer.wait(policy.id)
-            wait = None
+            wait, retry, code, error = None, "", None, None
             try:
                 code, body, retry = await self._read(url, policy.max_response_bytes, name)
-            except (httpx.TimeoutException, TimeoutError):
+            except _Unanswered:
+                _log_unanswered(policy.id, url, attempt=attempt, error="response_too_large")
+                raise
+            except (httpx.TimeoutException, TimeoutError) as failure:
                 status, note = LookupStatus.TIMEOUT, f"{name} did not answer after {ATTEMPTS} attempts"
-            except httpx.HTTPError:
+                error = type(failure).__name__
+            except httpx.HTTPError as failure:
                 status, note = (
                     LookupStatus.PROVIDER,
                     f"{name} could not be reached after {ATTEMPTS} attempts",
                 )
+                error = type(failure).__name__
             else:
                 if code != 429 and code < 500:
+                    if code != 200:
+                        _log_unanswered(
+                            policy.id, url, attempt=attempt, http_status=code, retry_after=bool(retry)
+                        )
                     return _Fetched(url, code, body)
                 status = LookupStatus.RATE_LIMITED if code == 429 else LookupStatus.PROVIDER
                 note = (
@@ -746,6 +801,7 @@ class ApprovedSources:
                 )
                 wait = retry_after(retry)
                 if wait is not None and wait > RETRY_AFTER_LIMIT_SECONDS:
+                    _log_unanswered(policy.id, url, attempt=attempt, http_status=code, retry_after=True)
                     raise _Unanswered(
                         status,
                         f"{name} asked to wait {wait} s before another request, "
@@ -753,6 +809,9 @@ class ApprovedSources:
                     )
             if attempt < ATTEMPTS:
                 await self._sleep(retry_delay(attempt, wait))
+        _log_unanswered(
+            policy.id, url, attempt=ATTEMPTS, http_status=code, error=error, retry_after=bool(retry)
+        )
         raise _Unanswered(status, note)
 
     async def _read(self, url: str, limit: int, name: str) -> tuple[int, bytes, str]:

@@ -8,6 +8,7 @@ import contextvars
 import hashlib
 import io
 import json
+import logging
 import re
 import time
 from pathlib import Path
@@ -598,6 +599,82 @@ async def test_other_client_errors_are_final(tmp_path, code, status):
     assert answer.status is status and answer.evidence is None
     assert answer.note == f"GEOLocate refused the request with HTTP {code}"
     assert len(server.requests) == 1
+
+
+def unanswered(caplog):
+    """The sources' log lines for unanswered lookups, as key=value maps."""
+    prefix = "Field research lookup unanswered: "
+    return [
+        dict(pair.split("=", 1) for pair in record.getMessage().removeprefix(prefix).split())
+        for record in caplog.records
+        if record.name == "specimen_digitization.field_research.sources"
+        and record.levelname == "WARNING" and record.getMessage().startswith(prefix)
+    ]
+
+
+TGN_HOST = "services.getty.edu"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("reply", "status", "line"),
+    [
+        # As Getty TGN may answer Cloud Run's addresses: a refusal, or a redirect,
+        # which is never followed. Either is an outage, and logged.
+        (httpx.Response(403), LookupStatus.AUTHORIZATION,
+         {"http_status": "403", "error": "-", "retry_after": "absent", "attempt": "1"}),
+        (httpx.Response(302, headers={"Location": "https://www.getty.edu/blocked"}), LookupStatus.PROVIDER,
+         {"http_status": "302", "error": "-", "retry_after": "absent", "attempt": "1"}),
+        (httpx.Response(503, headers={"Retry-After": "1"}), LookupStatus.PROVIDER,
+         {"http_status": "503", "error": "-", "retry_after": "present", "attempt": "3"}),
+        (httpx.ConnectError("refused"), LookupStatus.PROVIDER,
+         {"http_status": "-", "error": "ConnectError", "retry_after": "absent", "attempt": "3"}),
+        (httpx.Response(429, headers={"Retry-After": "30"}), LookupStatus.RATE_LIMITED,
+         {"http_status": "429", "error": "-", "retry_after": "present", "attempt": "1"}),
+    ],
+)
+async def test_every_unanswered_tgn_lookup_is_an_outage_logged_without_its_query(
+    tmp_path, caplog, reply, status, line
+):
+    from specimen_digitization.field_research.experts import SOURCE_OUTAGES
+
+    tools, server, _, blobs = make(tmp_path, replies(reply))
+    with caplog.at_level(logging.WARNING, logger="specimen_digitization.field_research.sources"):
+        answer = await tools.lookup("tgn", "Davao Province, Philippines", field_key="province_state")
+    assert answer.status is status and status in SOURCE_OUTAGES and answer.evidence is None
+    assert {request.url.host for _, request in server.requests} == {TGN_HOST}
+    assert unanswered(caplog) == [
+        {"step": "field_research", "source": "tgn", "host": TGN_HOST, **line}
+    ]
+    assert "Davao" not in caplog.text and "Philippines" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_an_unanswered_geolocate_or_gbif_lookup_is_logged_too(tmp_path, caplog):
+    def reply(request):
+        if request.url.host == "api.gbif.org":
+            return httpx.Response(503)
+        raise httpx.ReadTimeout("slow")
+
+    tools, _, _, _ = make(tmp_path, reply)
+    with caplog.at_level(logging.WARNING, logger="specimen_digitization.field_research.sources"):
+        place = await tools.lookup("geolocate", YEPOCAPA, field_key="city")
+        taxon = await tools.lookup("gbif", "Apis mellifera", field_key="taxon")
+    assert (place.status, taxon.status) == (LookupStatus.TIMEOUT, LookupStatus.PROVIDER)
+    lines_ = unanswered(caplog)
+    assert [(item["source"], item["host"]) for item in lines_] == [
+        ("geolocate", "geo-locate.org"), ("gbif", "api.gbif.org")]
+    assert (lines_[0]["error"], lines_[0]["attempt"]) == ("ReadTimeout", "3")
+    assert lines_[1]["error"] == "provider_error" and int(lines_[1]["attempt"]) >= 1
+    assert "Yepocapa" not in caplog.text and "Apis" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_an_answered_lookup_logs_nothing(tmp_path, caplog):
+    tools, _, _, _ = make(tmp_path, gazetteers())
+    with caplog.at_level(logging.WARNING, logger="specimen_digitization.field_research.sources"):
+        answer = await tools.lookup("wikidata", "Davao Province", field_key="province_state")
+    assert answer.status is LookupStatus.SUCCESS and unanswered(caplog) == []
 
 
 @pytest.mark.asyncio
