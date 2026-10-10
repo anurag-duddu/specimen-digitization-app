@@ -1383,8 +1383,10 @@ def test_the_labels_own_text_found_as_another_nation_leaves_the_country_ambiguou
 
 @pytest.mark.parametrize(("text", "key", "written", "query", "authority_id", "reason"), [
     # H1: the PR's own G34 case with a period after it, beside the city "Yepocapa".
+    # #300 checks a near spelling against the larger places only, so the city no
+    # longer holds the province back: it settles as a near spelling (reason None).
     (label_with(**{**GUATEMALAN, "city": "Yepocapa"}, province_state="Chimaltenago."), "province_state",
-        "Chimaltenago.", "Chimaltenango", "tgn:1000565", agreement.NEAR_UNFIT),
+        "Chimaltenago.", "Chimaltenango", "tgn:1000565", None),
     # H2: two letters dropped.
     (label_with(**GUATEMALAN, province_state="Chimaltango."), "province_state", "Chimaltango.", "Chimaltenango",
         "tgn:1000565", agreement.NO_PLACE),
@@ -1405,8 +1407,14 @@ def test_a_name_with_letters_dropped_and_a_period_after_is_no_abbreviation(
         scripts.update({"province_state": LACKING, "county": LACKING, "city": LACKING})
     settle(rig, guatemalan(**scripts) if key != "country" else Scripted(scripts), tools=InParaguay(rig.blobs))
     field = run.fields[key]
-    assert (field.state, field.reason) == (ValueState.UNRESOLVED, reason + " Settled.")
     assert not [row for row in run.evidence if row.kind == "rule"]
+    if reason is None:
+        # A near spelling (its warning finding), never an abbreviation (no rule row).
+        assert (field.state, field.literal, field.normalized, field.authority_id) == (
+            ValueState.SUPPORTED, written, query, authority_id)
+        assert [f.reason_code for f in run.findings if f.field_key == key] == [f"near_spelling:{key}"]
+        return
+    assert (field.state, field.reason) == (ValueState.UNRESOLVED, reason + " Settled.")
     assert not [f for f in run.findings if f.reason_code == f"near_spelling:{key}"]
 
 
