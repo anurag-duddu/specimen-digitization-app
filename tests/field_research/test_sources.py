@@ -661,6 +661,10 @@ async def test_a_lookup_that_waits_too_long_for_a_slot_gives_up_unsent(tmp_path,
     assert slots.in_flight("tgn") == 0
     async with asyncio.timeout(1), slots.slot("tgn"):
         assert slots.in_flight("tgn") == 1
+    # As any unanswered request, the busy one is kept for the record: the
+    # same request, from another field, is not sent either.
+    again = await tools.lookup("tgn", "Davao Province, Philippines", field_key="county")
+    assert (again.status, again.note, server.requests) == (answer.status, answer.note, [])
 
 
 @pytest.mark.asyncio
