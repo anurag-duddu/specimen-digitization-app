@@ -1807,6 +1807,25 @@ def test_each_fields_decision_is_its_own_span_inside_the_steps(rig, capfire, mon
         "Getty TGN could not be reached; settled from Wikidata.")
 
 
+def test_every_reason_agreement_refuses_with_has_its_own_trace_code():
+    """A field's trace names the check that refused its answer by agreement's
+    constant (step.refusal_code), never "other", for every constant
+    agreement returns a Refusal with, the abbreviation rule's
+    EXPANSIONS_DIFFER among them."""
+    import ast
+    import inspect
+
+    from specimen_digitization.field_research import agreement
+
+    tree = ast.parse(inspect.getsource(agreement))
+    refused = {node.args[0].id for node in ast.walk(tree) if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name) and node.func.id == "Refusal"
+        and node.args and isinstance(node.args[0], ast.Name)}
+    assert "EXPANSIONS_DIFFER" in refused and "NO_PLACE" in refused
+    assert {name: field_step.refusal_code(getattr(agreement, name)) for name in refused} == {
+        name: name.lower() for name in refused}
+
+
 def test_a_run_without_a_harness_route_keeps_the_ordinary_plan_step(rig):
     mounted(rig, Scripted())
     run = rig.specimen.run
