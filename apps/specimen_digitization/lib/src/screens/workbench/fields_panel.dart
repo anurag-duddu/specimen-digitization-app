@@ -22,6 +22,8 @@ import 'blockers.dart';
 import 'evidence_picker.dart';
 import 'field_presentation.dart';
 import 'pending_changes.dart';
+import 'value_basis.dart';
+import 'value_basis_chip.dart';
 
 /// The record's fields, their evidence and their corrections.
 class WorkbenchFields extends StatefulWidget {
@@ -377,6 +379,9 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
       if (field['required'] == true) 'Required',
     ].join(' · ');
     final authority = _authorityLine(field, pending);
+    // A correction not yet saved is a person's decision, not the stored
+    // value, so the stored value's basis is not drawn over it.
+    final ValueBasis? basis = pending == null ? fieldValueBasis(field) : null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -401,8 +406,10 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
           key: ValueKey<String>('field-row:${widget.specimen.id}:$key'),
           title: name,
           summary: summary,
+          trailing: basis == null ? null : valueBasisChip(basis),
           semanticsLabel:
-              '$name${field['required'] == true ? ', required' : ', optional'}. $summary',
+              '$name${field['required'] == true ? ', required' : ', optional'}. $summary'
+              '${basis == null ? '' : '. ${basis.semanticsLabel}'}',
           onExpansionChanged: (expanded) {
             if (expanded) {
               widget.onFocusRegion?.call(_regionFor(field, pending));
