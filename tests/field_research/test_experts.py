@@ -843,6 +843,43 @@ def test_an_answer_now_the_run_ceiling_cannot_pay_for_is_never_sent():
     assert cost.outstanding_micros == 0 and cost.spent_micros == outcome.cost_micros
 
 
+def test_many_experts_at_once_under_a_small_ceiling_all_answer_when_their_spend_fits():
+    """In this branch's real runs 105526321's experts were refused under a
+    cap of USD 0.08 that their real spend (about USD 0.035) fitted: the worst
+    cases of every expert's first request, held at once, did not. A request
+    that does not fit now waits for held ones to settle; the ceiling holds."""
+    keys = ("habitat", "collectors", "collection_code", "collection_method", "verbatim_dts", "elevation_to_m",
+            "elevation_to_ft", "date_identified")
+    held: list[int] = []
+    probe = meter()
+
+    async def answer(messages, info):
+        held.append(probe.outstanding_micros)
+        return final(outcome="label_lacks_value")(messages, info)
+
+    resolver = make_resolver(model_factory=lambda: FunctionModel(answer), meter=probe)
+    for key in keys:  # each expert's one request, alone: its worst case
+        asyncio.run(resolver(task(key), READINGS, CONTEXT, tools=FakeTools()))
+    worst = max(held)
+    cost = meter(worst + worst // 2)  # room for one request's worst case at a time
+
+    async def slow(messages, info):
+        await asyncio.sleep(0.01)
+        return final(outcome="label_lacks_value")(messages, info)
+
+    resolver = make_resolver(model_factory=lambda: FunctionModel(slow), meter=cost)
+
+    async def eight():
+        return await asyncio.gather(*(resolver(task(key), READINGS, CONTEXT, tools=FakeTools()) for key in keys))
+
+    outcomes = asyncio.run(eight())
+
+    assert [o.failure for o in outcomes] == [None] * 8
+    assert all(o.answer.outcome == "label_lacks_value" for o in outcomes)
+    assert cost.outstanding_micros == 0 and cost.spent_micros <= cost.cap_micros
+    assert cost.spent_micros == sum(o.cost_micros for o in outcomes)
+
+
 def test_tool_results_tell_an_expert_near_its_limits_to_answer_now():
     tools, script = mckinley(dict(outcome="label_lacks_value", explanation="No town."))
 
@@ -994,6 +1031,19 @@ def test_no_brief_gives_an_example_a_model_could_take_for_label_text():
     resolve(script, task("city"))
     description = script.seen[0][1].function_tools[0].description
     assert [name for name in REAL_EXAMPLES if name in description] == []
+
+
+def test_the_habitat_brief_never_takes_a_collecting_method_for_the_habitat():
+    """105526328's habitat expert confirmed the organiser's "trap", the end
+    of its collecting line "lot #2 cut branch / trap", in this branch's real
+    run of 529f8033c."""
+    from specimen_digitization.field_research.prompts import FIELD_LABELS, instructions
+
+    brief = instructions("habitat").split(f"Field: {FIELD_LABELS['habitat']} (habitat)", 1)[1]
+    [line] = [line for line in brief.splitlines() if line.startswith("- A collecting method or device")]
+    assert all(word in line for word in ("a trap", "beating", "Berlese", "pitfall", "cut branch"))
+    assert "is the collection method, never the habitat" in line
+    assert line.endswith("the label lacks a habitat: answer label_lacks_value.")
 
 
 def test_the_shared_brief_has_the_expert_stop_when_the_sources_have_answered():

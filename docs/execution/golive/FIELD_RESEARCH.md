@@ -119,7 +119,12 @@ handover runs field research instead of the six specialists:
    already let it: in this change's first real runs the verbatim D/T/S
    experts of 105526321 and 105526326 answered several_possibilities
    between their decided reading's text and the other reader's ("3 sept.
-   '46" and "3 Sept. '46"; "IX - 14 - 46" and "IX-14-46").
+   '46" and "3 Sept. '46"; "IX - 14 - 46" and "IX-14-46"). The habitat
+   brief says a collecting method or device (a trap, a net, beating, cut
+   branch and the like) is the collection method, never the habitat, and
+   that when the only text offered for the habitat is a method the label
+   lacks one: in the real run of 529f8033c 105526328's habitat expert still
+   confirmed the organiser's "trap".
 3. **One expert per field.** Every field gets its own Pydantic AI agent
    (`field_<key>`), its own instructions (shared rules plus the field's brief)
    and only its approved tools. All experts run at once. After the step has
@@ -490,7 +495,15 @@ handover runs field research instead of the six specialists:
    case (its input, the provider's chat template and the output cap) from
    what remains of the run's ceiling (the profile's `run_cost_limit_micros`,
    USD 1 for the pilot), and settles to the real usage after. A call that
-   would cross the ceiling is not sent; that field goes to review. The step
+   would cross the ceiling is not sent: while other calls' reservations are
+   held it waits for them to settle, each to its real cost (about a tenth
+   of its worst case or less), and tries again; only when no other
+   reservation is held and it still does not fit is it refused, and its
+   field goes to review (`budget.CostMeter.reserve`). So every expert can
+   run under a cap its real spend fits, though the worst cases of all
+   experts' requests at once do not (in this branch's real runs, two of
+   105526321's fields were refused under a USD 0.080 cap its real spend of
+   about USD 0.035 fitted); the ceiling is never raised or crossed. The step
    holds no more of the shared program allowance than it has left: when that
    is less than the run's headroom, the meter's cap is what is left, and a
    field that does not fit goes to review. Only when the program allowance
