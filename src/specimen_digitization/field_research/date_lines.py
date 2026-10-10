@@ -1,9 +1,13 @@
-"""A date written over two lines of one label.
+"""A date written over two lines of one label, or a day and month and their year
+on one line that no notation reads whole.
 
 A label sometimes breaks a date at the end of a line: the day and month on one
 line and the year alone on the next ("Guatemala, IV-25" above "1948"), or the
-reverse. A person reads that as one date, and so does the date check, but only
-under all of these rules, none of them a guess:
+reverse; or it writes the year after the day and month with only a space, a
+comma or a period between them ("IV-25 1948", "25.IV, 1948": `one_line_literal`,
+`one_line_problem`, the rules of a year on the line below its date). A person
+reads that as one date, and so does the date check, but only under all of these
+rules, none of them a guess (a line is what str.splitlines() gives):
 
 - the date and the year are on adjacent lines, with nothing between them but
   the line break (the date ends its line and the year starts the next, or the
@@ -19,6 +23,11 @@ under all of these rules, none of them a guess:
     a dash and a number, a second number or a word without such a mark ("1948
     m", "1948'", "1948-49", "1948 det."), and a year that ends the line above
     the date must stand alone on its line (`split_problem`);
+  - no marker makes the year a measurement or a determination's year: its own
+    line and the nearest line above it hold no elevation or depth word, no
+    unit after a number and no determination ("Alt." above "1900", "1948,
+    1900m", "det. J. Smith" above "1950"), and the nearest line below it does
+    not start with a unit ("1900" above "m") (`_year_marker`);
 - nothing else on either line could be a date: no other year, Roman or written
   month, or numeric date (`could_be_a_date`);
 - the date states no year of its own (the date parser says so);
@@ -259,6 +268,56 @@ def split_problem(literal: str, text: str) -> str | None:
             return None
         found.add(reason)
     return _note(found, _SPLIT_NOTES)
+
+
+# A one-line literal that ends in a year joined to what comes before it only by
+# spaces, a comma or a period ("IV-25 1948", "IV-25, 1948", "25.IV, 1948"); a
+# semicolon or a colon between them is not that ("IV-25; 1948").
+_ONE_LINE = re.compile(rf"(?P<date>.*?[^\s,;:])(?:\s*[,.]\s*|\s+)(?P<year>{YEAR_TOKEN})")
+ONE_LINE_OTHER_DATE = "one_line_holds_another_date"
+ONE_LINE_NOT_ALONE = "one_line_year_not_alone"
+ONE_LINE_MEASUREMENT = "one_line_year_may_be_a_measurement"
+ONE_LINE_DETERMINATION = "one_line_year_may_be_a_determination"
+_ONE_LINE_NOTES = {"alone": ONE_LINE_NOT_ALONE, MEASUREMENT: ONE_LINE_MEASUREMENT,
+    DETERMINATION: ONE_LINE_DETERMINATION, "other": ONE_LINE_OTHER_DATE}
+
+
+def one_line_literal(literal: str) -> tuple[str, str] | None:
+    """A literal of one line that ends in a year (four digits, or two after an
+    apostrophe) joined to what comes before it only by spaces, a comma or a period:
+    what comes before (the date that states no year, if the date parser reads it
+    as one) and the year. A period, comma or semicolon after the year is left off
+    (`one_line_problem` judges it, and a colon). None for any other literal."""
+    text = literal.strip()
+    if len(text.splitlines()) != 1:
+        return None
+    hit = _ONE_LINE.fullmatch(_unmarked(text))
+    return (hit["date"], hit["year"]) if hit else None
+
+
+def one_line_problem(literal: str, text: str) -> str | None:
+    """Why the one-line literal, a date and then its year, is not one date where it
+    stands in the text (a note: `one_line_year_not_alone`,
+    `one_line_year_may_be_a_measurement`, `one_line_year_may_be_a_determination` or
+    `one_line_holds_another_date`), or None when some place of it is clear. The
+    rules are those of a year on the line below its date (`split_problem`): nothing
+    else on the line could be a date; the year may be followed by a comma,
+    semicolon or period and other text, never by a unit, an apostrophe, a dash and
+    a number, a second number or a word; and no marker on the line, on the nearest
+    line above it or starting the nearest line below it makes the year a
+    measurement or a determination's year (`_year_marker`)."""
+    quoted = literal.strip()
+    tail = quoted[len(_unmarked(quoted)) :]
+    found = set()
+    spans = _spans(text)
+    for hit in re.finditer(re.escape(literal), text):
+        _, last, line_start, line_end = _around(spans, hit.start(), hit.end())
+        before, after = text[line_start : hit.start()], tail + text[hit.end() : line_end]
+        reason = _year_after(before, after) or _year_marker(text, spans, last)
+        if reason is None:
+            return None
+        found.add(reason)
+    return _note(found, _ONE_LINE_NOTES)
 
 
 def _bare_year(line: str) -> str | None:

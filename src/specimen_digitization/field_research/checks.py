@@ -66,7 +66,8 @@ class DateReading:
     end_precision: Literal["day", "month", "year"] | None = None
     # How the year was found when the notation gives none: "year_literal" (the
     # year the expert passed), "year_on_next_line" or "year_on_previous_line"
-    # (the adjacent line, date_lines), "split_lines" (a literal of two lines).
+    # (the adjacent line, date_lines), "split_lines" (a literal of two lines),
+    # "one_line" (a day and month, then their year, on one line).
     via: tuple[str, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
@@ -184,7 +185,9 @@ def parse_date(
     alone can take. A month and day with no year also take the year of a line
     just above or below that holds nothing but the year (`date_lines`), and a
     literal of two lines (the date, then its year, or the reverse) is read as one
-    date, under the rules of that module. A literal that is part of a
+    date, under the rules of that module, as is a day and month followed on the
+    same line by their year that no notation reads whole ("IV-25 1948",
+    "25.IV, 1948"). A literal that is part of a
     slide-preparation code, or of any other hyphen-joined token, in any reading is
     no date. Each reading that holds the literal is read by its own text, and
     readings that give different results leave the date ambiguous, naming them
@@ -233,6 +236,9 @@ def _date_run(literal: str, name: str, text: str, year_literal: str | None,
     literal gives when the literal itself and the expert give none."""
     result = date_parser(literal, source_text=text, year_literal=year_literal, date_rules=rules,
         year_literal_decides=True)
+    if result.outcome == LookupStatus.NO_MATCH and not result.warnings and (
+            one := date_lines.one_line_literal(literal)) is not None:
+        return _one_line_run(literal, one, name, text, rules) or _run(name, result, ())
     via = ("year_literal",) if year_literal and result.parsed and result.parsed["year_literal"] else ()
     if year_literal is None and "year_missing" in result.warnings:
         beside = date_lines.year_beside(literal, text)
@@ -243,6 +249,22 @@ def _date_run(literal: str, name: str, text: str, year_literal: str | None,
             if again.parsed and again.parsed["year_literal"]:
                 return _run(name, again, (f"year_on_{where}",))
     return _run(name, result, via)
+
+
+def _one_line_run(literal: str, one: tuple[str, str], name: str, text: str,
+        rules: dict | None) -> _Run | None:
+    """A day and month, then their year on the same line, that no notation reads
+    whole ("IV-25 1948", "IV-25, 1948", "25.IV, 1948"): one date under the rules of
+    a year on the line below its date (`date_lines.one_line_problem`). None when the
+    first part is no date that states no year: the literal is then no date."""
+    date_part, year = one
+    result = date_parser(date_part, source_text=text, year_literal=year, date_rules=rules,
+        year_literal_decides=True)
+    if not (result.parsed and result.parsed["year_literal"]):
+        return None
+    if (problem := date_lines.one_line_problem(literal, text)) is not None:
+        return _Run(name, LookupStatus.NO_MATCH, (), (problem,))
+    return _run(name, result, ("one_line",))
 
 
 def _split_run(literal: str, split: tuple[str, str], name: str, text: str, rules: dict | None) -> _Run:
