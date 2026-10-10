@@ -199,16 +199,14 @@ class ProcessingDetail extends StatelessWidget {
       run['blocker'],
       textOf(specimen.data['blocker'], ''),
     );
-    // A run whose automatic retries ran out is blocked by
-    // `retry_budget_exhausted:<cause>`. It is judged by that cause, never by
-    // the word "budget" in the prefix: an unreachable source is no cost limit.
-    // No code reaches the screen: a blocker says what stopped the run, and one
-    // this client has no words for says so generally (`blocker_words.dart`).
+    // A blocker is read by its exact code, from a table (`blocker_words.dart`).
+    // A run whose automatic retries ran out is read by the cause after the
+    // colon, never by the word "budget" in the prefix, and a limit is named for
+    // what it limits: a step count and a time limit are no cost limit. No code
+    // reaches the screen, and a blocker this client has no words for says so
+    // generally.
     final bool hasBlocker = blocker.isNotEmpty && blocker != 'Not recorded';
-    final bool costStop = isCostLimit(blocker);
-    final BlockerWords? stopped = costStop
-        ? null
-        : retriesStoppedWords(blocker);
+    final BlockerWords? words = blockerWords(blocker);
     final bool unnamed = hasBlocker && !blockerIsNamed(blocker);
     final List<String> actions =
         (specimen.data['available_actions'] as List? ?? <Object?>[])
@@ -251,18 +249,13 @@ class ProcessingDetail extends StatelessWidget {
           if (canOperate && actions.contains('reconcile'))
             _reconcileButton(context, run, activeLease: activeLease),
         ],
-        if (stopped != null) ...<Widget>[
-          Text(stopped.sentence, style: ui.type.body),
-          const AdministratorContactLine(),
-        ],
-        if (costStop) ...<Widget>[
-          Text('Processing stopped at a cost limit.', style: ui.type.body),
-          const CaveatText(
-            label:
-                'An administrator must review the approved limit or the '
-                'provider configuration.',
-            why: 'Where a cost is not recorded, it is unknown, not zero.',
-          ),
+        if (words != null) ...<Widget>[
+          if (words.why == null)
+            Text(words.sentence, style: ui.type.body)
+          else ...<Widget>[
+            Text('${words.what}.', style: ui.type.body),
+            CaveatText(label: words.next, why: words.why!),
+          ],
           const AdministratorContactLine(),
         ],
         if (unnamed) ...<Widget>[

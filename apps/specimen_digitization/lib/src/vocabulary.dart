@@ -78,7 +78,6 @@ const Map<String, String> userFacingTerms = <String, String>{
   'collection_processing_unconfigured': 'Processing awaits collection setup',
   'sensitive_record_not_processed': 'Sensitive record held from processing',
   'institutional_policy_unapproved': 'Collection policy not approved',
-  'institutional_policy_not_approved': 'Collection policy not approved',
   'mandatory_semantics_unconfirmed': 'Required field rules not confirmed',
   'field_semantics_unconfirmed': 'Field rules not confirmed',
   'worker_readiness_not_verified': 'Processing not confirmed ready',
@@ -86,6 +85,36 @@ const Map<String, String> userFacingTerms = <String, String>{
   'storage_unavailable': 'Specimen storage unavailable',
   'pilot_dispatch_reconciliation_required': 'Previous attempt needs a check',
   'evidence_integrity_failure': 'Saved evidence needs a check',
+  // A run stopped by a limit or by the settings that carry one. Each code is
+  // named for the limit it is: a step count, a request count, model units,
+  // time and money are different limits, and only a money limit says "cost".
+  // The sentences for each are in `blocker_words.dart`.
+  'step_budget_exhausted': 'Step limit reached',
+  'external_call_budget_exhausted': 'External request limit reached',
+  'token_budget_exhausted': 'Model unit limit reached',
+  'active_time_budget_exhausted': 'Active time limit reached',
+  'cost_budget_exhausted': 'Cost limit reached',
+  'approved_cost_budget_unavailable': 'Cost settings not available',
+  'research_budget_state_unavailable': 'Saved cost totals not readable',
+  'program_allowance_exhausted': 'Spending allowance reached',
+  'program_allowance_ledger_unavailable': 'Allowance totals not readable',
+  'program_allowance_unavailable': 'Spending allowance not set up',
+  'evidence_harness_blocked:elapsed_budget_exhausted':
+      'Evidence check time limit reached',
+  'pilot_launch_budget_exhausted': 'Pilot cost limit reached',
+  'pilot_cohort_reading_budget_insufficient': 'Reading cost limit too low',
+  'pilot_run_budget_not_approved': 'Run limits do not fit the pilot',
+  'pilot_stage_cost_reservations_mismatch': 'Stage cost settings differ',
+  'pilot_cohort_reader_cost_unknown': 'Reading cost not set',
+  // A run whose automatic retries ran out, by the cause that stopped it. The
+  // name differs from the cause's own, so a menu that lists both keeps them
+  // apart. A cause not named here reads `retriesStoppedLabel`.
+  'retry_budget_exhausted:lookup_operational_failure':
+      'Retries stopped, source not reachable',
+  'retry_budget_exhausted:field_research_timeout':
+      'Retries stopped, ran out of time',
+  'retry_budget_exhausted:field_research_model_error':
+      'Retries stopped, no usable model answer',
 };
 
 /// What a run's blocker starts with once its automatic retries have run out.
@@ -141,10 +170,9 @@ const Map<String, String> _retiredWords = <String, String>{
 String vocabularyLabel(String value) {
   final String? named = userFacingTerms[value];
   if (named != null) return named;
-  // A run whose retries ran out reads as the cause that stopped it, not as
-  // `retry budget exhausted:` followed by that cause's code.
-  final String? cause = retriesStoppedCause(value);
-  if (cause != null) return userFacingTerms[cause] ?? retriesStoppedLabel;
+  // A run whose retries ran out for a cause the table does not name reads as
+  // one general line, not as `retry budget exhausted:` and that cause's code.
+  if (retriesStoppedCause(value) != null) return retriesStoppedLabel;
   return value
       .split('_')
       .map((String word) => _retiredWords[word] ?? word)

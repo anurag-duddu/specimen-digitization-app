@@ -473,9 +473,11 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
         };
       }
       final text = textOf(value, 'Not recorded');
-      // A blocker is a machine code. It reads as its cause, or generically,
-      // and an absent one stays "Not recorded".
-      if (key == 'blocker') return value == null ? text : blockerLabel(text);
+      // A blocker is a machine code. It reads as its name, or generically,
+      // and an absent one, null or empty, stays "Not recorded".
+      if (key == 'blocker') {
+        return text == 'Not recorded' ? text : blockerLabel(text);
+      }
       return {'state', 'value_state', 'stage'}.contains(key)
           ? vocabularyLabel(text)
           : text;

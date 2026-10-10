@@ -289,16 +289,16 @@ ClearanceBlocker _issueFor(
       ? null
       : _namedField(specimen, suffix);
   final String? stop = _researchStops[base];
-  // A run whose automatic retries ran out. The cause is the operator's or the
-  // clock's to clear, so it stays with processing, and it says what stopped
-  // the run in the words the processing panel uses, never the code.
-  final BlockerWords? retriesStopped = isCostLimit(code)
-      ? null
-      : retriesStoppedWords(code);
-  if (retriesStopped != null) {
+  // A blocker the client has words for by its exact code: a run whose
+  // automatic retries ran out (read by its cause), or one stopped by a limit.
+  // The cause is the operator's or the clock's to clear, so it stays with
+  // processing, and it says what stopped the run in the words the processing
+  // panel uses, never the code.
+  final BlockerWords? words = blockerWords(code);
+  if (words != null) {
     kind = ClearanceBlockerKind.processing;
-    message = retriesStopped.what;
-    detail = retriesStopped.next;
+    message = words.what;
+    detail = words.next;
     field = null;
     region = null;
   } else if (outage != null && outageField != null) {

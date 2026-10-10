@@ -535,6 +535,7 @@ class SearchFiltersState extends State<SearchFilters> {
 
   Widget _picker(String key, List<String> choices) {
     if (choices.isEmpty) return _textField(key);
+    final List<String> labels = _optionLabels(key, choices);
     final String current = choices.contains(_values[key])
         ? _values[key]!
         : _anyValue;
@@ -546,18 +547,36 @@ class SearchFiltersState extends State<SearchFilters> {
         value: current,
         options: <UiSelectOption<String>>[
           const UiSelectOption<String>(value: _anyValue, label: 'Any'),
-          for (final String choice in choices)
-            UiSelectOption<String>(
-              value: choice,
-              label: key == 'blocker'
-                  ? blockerLabel(choice)
-                  : vocabularyLabel(choice),
-            ),
+          for (final (int index, String choice) in choices.indexed)
+            UiSelectOption<String>(value: choice, label: labels[index]),
         ],
         onChanged: (String value) =>
             _set(key, value == _anyValue ? null : value),
       ),
     );
+  }
+
+  /// The words for each choice of [key], one per choice, in order.
+  ///
+  /// Two codes the client names alike, as two blockers it has no words for do,
+  /// would be one entry twice, so a name two choices share is numbered and each
+  /// choice stays a choice of its own.
+  static List<String> _optionLabels(String key, List<String> choices) {
+    final List<String> labels = <String>[
+      for (final String choice in choices)
+        key == 'blocker' ? blockerLabel(choice) : vocabularyLabel(choice),
+    ];
+    final Map<String, int> shared = <String, int>{};
+    for (final String label in labels) {
+      shared[label] = (shared[label] ?? 0) + 1;
+    }
+    final Map<String, int> seen = <String, int>{};
+    return <String>[
+      for (final String label in labels)
+        shared[label] == 1
+            ? label
+            : '$label (${seen[label] = (seen[label] ?? 0) + 1})',
+    ];
   }
 
   /// One day, typed.
