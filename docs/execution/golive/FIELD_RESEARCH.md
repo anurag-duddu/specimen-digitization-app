@@ -108,7 +108,10 @@ handover runs field research instead of the six specialists:
    source supplies, gets no expert (its nonblocking exception). A value
    settled for a field with no source or check is the verbatim layer, any
    other the settled layer. In that run the expert of a field with no source
-   or check made one request (once two), of about USD 0.0007 each. The
+   or check made one request (once two), of about USD 0.0007 each; in this
+   change's real runs of 105526321, 105526326 and 105526327 the experts of
+   such fields whose organiser value was supported added USD 0.0014 to
+   0.0021 per specimen. The
    briefs of those fields (collectors, collection code, habitat, collection
    method, verbatim D/T/S) say that a label's decided transcript decides
    its text and another reader's different text is evidence only, never a
@@ -153,7 +156,10 @@ handover runs field research instead of the six specialists:
    then stop: a place no gazetteer holds is not found by asking again with
    other larger units after its name. (In the real run of 2026-10-09 on the
    ten pilot specimens, twelve fields on seven specimens ran out, and the
-   fallback replaced their experts' answers.)
+   fallback replaced their experts' answers. In this change's real runs of
+   105526321, 105526326 and 105526327, live and with Getty TGN down, no
+   expert ran out: eight tool results told an expert to answer now, and no
+   answer-now request was needed.)
 4. **Sources.** GBIF (with Catalogue of Life and Global Names Verifier
    alongside), GEOLocate, Getty TGN, Wikidata and NGA, plus deterministic date,
    elevation and catalogue-number checks. One request per distinct query per
