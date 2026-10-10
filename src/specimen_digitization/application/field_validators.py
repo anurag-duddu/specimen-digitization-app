@@ -3,10 +3,12 @@
 `date_parser` reads a date literal by the owner's rules (G24 as amended by
 G29): it returns every reading the notation allows, at the precision written
 and within the plausible years, and the harness settles which one the
-evidence supports. `catalog_number_validator` recognizes a Field Museum insect
-catalog number. Neither calls a provider, so neither makes a source call.
-Neither changes the literal or invents a value, and each answers only for a
-literal that occurs in the reading it was copied from.
+evidence supports. The notations are `date_notations`' (Roman and written
+months in seven languages, ranges, years written first); each reading's
+`order` names the rule that matched. `catalog_number_validator` recognizes a
+Field Museum insect catalog number. Neither calls a provider, so neither makes a
+source call. Neither changes the literal or invents a value, and each answers
+only for a literal that occurs in the reading it was copied from.
 """
 
 from __future__ import annotations
@@ -15,58 +17,31 @@ import re
 from datetime import UTC, date, datetime
 from functools import partial
 
+from .date_months import MONTH_WORDS_BY_LANGUAGE
+from .date_notations import (  # noqa: F401 (ROMAN and ROMAN_MONTHS are re-exported)
+    APOSTROPHES,
+    AS_YEAR,
+    NO_MONTH,
+    NO_YEAR,
+    NOTATIONS,
+    ROMAN,
+    ROMAN_MONTHS,
+    YEAR,
+    month_of,
+    normalize,
+    ranges,
+)
 from .domain import LookupStatus
 from .harness_tools import ToolResult
 
-MONTHS = (
-    *("january", "february", "march", "april", "may", "june"),
-    *("july", "august", "september", "october", "november", "december"),
-)
-# An English month name or its 3-to-4-letter abbreviation (sep, sept).
-MONTH_NAMES = {
-    n: i for i, full in enumerate(MONTHS, 1) for n in (full[:3], full[:4], full)
-}
-ROMAN = ("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII")
-ROMAN_MONTHS = {numeral: month for month, numeral in enumerate(ROMAN, 1)}
 EARLIEST_YEAR = 1750  # HAR-006: a plausible year is from 1750 to the current one.
-APOSTROPHES = "'’‘"  # A two-digit year's mark, straight or curly.
-_YEAR = rf"(?P<y>[{APOSTROPHES}]?[0-9]{{2}}|[0-9]{{4}})"
-_MARKED_YEAR = rf"(?P<y>[{APOSTROPHES}][0-9]{{2}}|[0-9]{{4}})"
-_NUMBER = "(?P<n>[0-9]{1,2})"  # A day, or under the century rule a year.
-_SEP, _AGAIN = r"\s*(?P<sep>[-./])\s*", r"\s*(?P=sep)\s*"
-_GAP, _COMMA = r"(?:\s*[-./]\s*|\s+)", r"(?:\s*[-./,]\s*|\s+)"
-_DOT = r"\s*[-.]\s*"
-_DAY, _NAME = "(?P<d>[0-9]{1,2})", r"(?P<name>[a-z]+)\.?"
-# Roman months I to XII. Lowercase only between a day and a year joined by "."
-# or "-" (12.x.46): with spaces, 12 x 46 may be a measurement.
-_ROMAN = "(?P<roman>" + "|".join(reversed(ROMAN)) + ")"
-_UPPER_ROMAN = "(?-i:" + _ROMAN + ")"
-# The notations S4 reads under G24 and G29. The list is S4's, not a closed one:
-# the owner's G29 answer has the harness work out all possible cases. "numeric"
-# reads both orders.
-NOTATIONS = [
-    (order, re.compile(pattern, re.IGNORECASE))
-    for order, pattern in (
-        ("month-day-year", _UPPER_ROMAN + _SEP + _DAY + _AGAIN + _YEAR),
-        ("month-day", _UPPER_ROMAN + _SEP + _NUMBER),
-        ("month-year", _UPPER_ROMAN + "(?:" + _DOT + r"|\s+)" + _MARKED_YEAR),
-        ("day-month-year", _DAY + _GAP + _UPPER_ROMAN + _GAP + _YEAR),
-        ("day-month-year", _DAY + _DOT + _ROMAN + _DOT + _YEAR),
-        ("numeric", "(?P<a>[0-9]{1,2})" + _SEP + "(?P<b>[0-9]{1,2})" + _AGAIN + _YEAR),
-        ("day-monthname-year", _DAY + _GAP + _NAME + _GAP + _YEAR),
-        ("monthname-day-year", _NAME + _GAP + _DAY + _COMMA + _YEAR),
-        ("monthname-year", _NAME + _GAP + _MARKED_YEAR),
-        ("monthname-day", _NAME + _GAP + _NUMBER),
-        ("year", "(?P<y>[0-9]{4})"),
-    )
-]
-# A bare number after a month is its day, or under the century rule its year.
-AS_YEAR = {"month-day": "month-year", "monthname-day": "monthname-year"}
-YEAR = re.compile(_YEAR)
+# An English month name or its 3-to-4-letter abbreviation (sep, sept); the month
+# words of every language the parser reads are `date_months.MONTH_WORDS`.
+MONTH_NAMES = MONTH_WORDS_BY_LANGUAGE["en"]
 CATALOG = re.compile(
     r"\s*(?:FMNH[\s#-]*INS[\s#-]*)?(?P<digits>[0-9]{5,9})\s*", re.IGNORECASE
 )
-_date_result = partial(ToolResult, tool="date_parser", tool_version="date-parser-v1")
+_date_result = partial(ToolResult, tool="date_parser", tool_version="date-parser-v2")
 _catalog_result = partial(
     ToolResult, tool="catalog_number_validator", tool_version="catalog-number-v1"
 )
@@ -78,10 +53,18 @@ def date_parser(
     source_text: str,
     year_literal: str | None = None,
     date_rules: dict | None = None,
+    year_literal_decides: bool = False,
 ) -> ToolResult:
     """Every reading of a date literal that its notation allows. `source_text`
     is the reading the literal was copied from; `year_literal`, a year the same
-    label states elsewhere, is the only year a month and a day alone can take."""
+    label states elsewhere, is the only year a month and a day alone can take.
+
+    A bare number after a month is its day, or under the century rule also a
+    two-digit year (`IV-25`: April 25, or April 1925). By default a year literal
+    leaves both readings, which the research harness's explicit-event rules
+    (`research_harness/temporal_context.py`, hash-pinned) still read. With
+    `year_literal_decides` the year literal is the date's year and `IV-25` beside
+    1948 is April 25, 1948 only (field research, `field_research/checks.py`)."""
     version, century, roman_months = _rules(date_rules)
     if literal not in source_text or (
         year_literal is not None and year_literal not in source_text
@@ -97,22 +80,26 @@ def date_parser(
         codes = all(_slide_code(token) for token in enclosing or [text])
         warning = "slide_code" if codes else "part_of_hyphenated_token"
         return _date_result(outcome=LookupStatus.NO_MATCH, warnings=[warning])
+    text = normalize(text)
     order, g = next(
         ((o, hit.groupdict()) for o, p in NOTATIONS if (hit := p.fullmatch(text))),
         (None, {}),
     )
-    roman, name = g.get("roman"), (g.get("name") or "").lower()
+    if order is None:
+        return _range_reading(text, version, century, roman_months)
+    roman = g.get("roman")
     if roman and not roman_months:
         warnings = ["roman_numeral_months_not_enabled"]
         return _date_result(outcome=LookupStatus.NO_MATCH, warnings=warnings)
     # A letter that matches a numeral only under Unicode case rules (U+0130)
     # is none, so the literal is no date.
-    month = ROMAN_MONTHS.get(roman.upper()) if roman else MONTH_NAMES.get(name)
-    if order is None or (month is None and order not in ("numeric", "year")):
+    month = month_of(g)
+    if month is None and order not in NO_MONTH:
         return _date_result(outcome=LookupStatus.NO_MATCH)
     roman_rule = [f"{version}:roman_numeral_months=true"] if roman else []
     found = []  # Each reading with the warning for its missing year, if any.
-    for shape, m, d, token in _shapes(order, g, month, century, year_literal):
+    shapes = _shapes(order, g, month, century, year_literal, year_literal_decides)
+    for shape, m, d, token in shapes:
         year, century_rule, warning, probe = _year(token, version, century)
         if _exists(probe, m, d):
             rules = roman_rule + ([century_rule] if century_rule else [])
@@ -130,8 +117,12 @@ def date_parser(
         unique.setdefault((r["year"], r["month"], r["day"], *r["rules"]), (r, w))
     readings = [r for r, _ in unique.values()]
     warnings = ["several_readings"] if len(readings) > 1 else []
+    if len(readings) > 1 and order in ("numeric", "year-numeric"):
+        # Which of the two numbers is the month is not written, and no part
+        # over 12 decides it.
+        warnings.append("day_month_order_ambiguous")
     warnings += [w for w in dict.fromkeys(w for _, w in unique.values()) if w]
-    borrowed = any(r["order"] in AS_YEAR for r in readings)
+    borrowed = any(r["order"] in AS_YEAR or r["order"] in NO_YEAR for r in readings)
     return _date_result(
         outcome=LookupStatus.AMBIGUOUS if warnings else LookupStatus.SUCCESS,
         parsed={
@@ -140,6 +131,56 @@ def date_parser(
         },
         warnings=warnings,
     )
+
+
+def _range_reading(
+    text: str, version: str, century: int | None, roman_months: bool
+) -> ToolResult:
+    """A literal no single notation fits, read as a range of two dates (3-5.IX.1946,
+    VIII-IX.46, 3.IX-5.X.1946): the start is the reading, its `end` the last day
+    or month of the range. Both ends are read by the rules of a single date."""
+    candidates = ranges(text)
+    if not candidates:
+        return _date_result(outcome=LookupStatus.NO_MATCH)
+    if len(candidates) > 1:
+        warnings = ["range_notation_ambiguous"]
+        return _date_result(outcome=LookupStatus.NO_MATCH, warnings=warnings)
+    order, start, end = candidates[0]
+    if (start.roman or end.roman) and not roman_months:
+        warnings = ["roman_numeral_months_not_enabled"]
+        return _date_result(outcome=LookupStatus.NO_MATCH, warnings=warnings)
+    ends, warnings = [], []
+    for spec in (start, end):
+        year, century_rule, warning, probe = _year(spec.year, version, century)
+        if not _exists(probe, spec.month, spec.day):
+            warnings = ["invalid_calendar_date"]
+            return _date_result(outcome=LookupStatus.NO_MATCH, warnings=warnings)
+        rules = ([f"{version}:roman_numeral_months=true"] if spec.roman else []) + (
+            [century_rule] if century_rule else []
+        )
+        ends.append(_reading(order, year, spec.month, spec.day, century_rule, rules))
+        warnings += [warning] if warning else []
+    first, last = ends
+    if not all(_plausible(r["year"]) for r in ends):
+        return _date_result(outcome=LookupStatus.NO_MATCH, warnings=["implausible_year"])
+    if first["year"] and last["year"] and _calendar(last) < _calendar(first):
+        warnings = ["range_end_before_start"]
+        return _date_result(outcome=LookupStatus.NO_MATCH, warnings=warnings)
+    first["end"] = {
+        key: last[key] for key in ("iso", "year", "month", "day", "precision", "century_rule")
+    }
+    warnings = list(dict.fromkeys(warnings))
+    return _date_result(
+        outcome=LookupStatus.AMBIGUOUS if warnings else LookupStatus.SUCCESS,
+        parsed={"readings": [first], "year_literal": None},
+        warnings=warnings,
+    )
+
+
+def written_range(literal: str) -> bool:
+    """Whether the literal is written as a range of two dates, whatever the
+    profile's rules (a Roman month or a two-digit year may not be readable yet)."""
+    return bool(ranges(normalize(literal)))
 
 
 def catalog_number_validator(literal: str, *, source_text: str) -> ToolResult:
@@ -199,18 +240,29 @@ def _shapes(
     month: int | None,
     century: int | None,
     year_literal: str | None,
+    year_literal_decides: bool = False,
 ) -> list[tuple[str, int | None, int | None, str | None]]:
     """Each reading's order, month, day and year token (G29)."""
-    if order == "numeric":
+    if order in ("numeric", "year-numeric"):
         a, b = int(g["a"]), int(g["b"])
-        return [("month-day-year", a, b, g["y"]), ("day-month-year", b, a, g["y"])]
-    if order not in AS_YEAR:
+        first, second = (
+            ("month-day-year", "day-month-year")
+            if order == "numeric"
+            else ("year-month-day", "year-day-month")
+        )
+        return [(first, a, b, g["y"]), (second, b, a, g["y"])]
+    if order not in AS_YEAR and order not in NO_YEAR:
         return [(order, month, int(g["d"]) if g.get("d") else None, g.get("y"))]
-    # A bare number after a month: the day, whose year only the year literal
-    # gives, and under the century rule also a two-digit year.
+    # A month and a day alone: the day, whose year only the year literal gives.
     token = (year_literal or "").strip()
-    shapes = [(order, month, int(g["n"]), token if YEAR.fullmatch(token) else None)]
-    if century is not None and len(g["n"]) == 2:
+    usable = token if YEAR.fullmatch(token) else None
+    if order in NO_YEAR:
+        return [(order, month, int(g["d"]), usable)]
+    # A bare number after a month: under the century rule also a two-digit year,
+    # unless the year literal is decided to be the year ("IV-25" beside 1948 is
+    # not also April 1925).
+    shapes = [(order, month, int(g["n"]), usable)]
+    if century is not None and len(g["n"]) == 2 and not (year_literal_decides and usable):
         shapes.append((AS_YEAR[order], month, None, g["n"]))
     return shapes
 
@@ -239,6 +291,11 @@ def _exists(year: int, month: int | None, day: int | None) -> bool:
     except (ValueError, OverflowError):
         return False
     return True
+
+
+def _calendar(reading: dict) -> tuple[int, int, int]:
+    """A reading's place on the calendar, to order the two ends of a range."""
+    return reading["year"], reading["month"] or 1, reading["day"] or 1
 
 
 def _plausible(year: int | None) -> bool:
