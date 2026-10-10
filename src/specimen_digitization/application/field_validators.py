@@ -101,8 +101,8 @@ def date_parser(
     if roman and not roman_months:
         warnings = ["roman_numeral_months_not_enabled"]
         return _date_result(outcome=LookupStatus.NO_MATCH, warnings=warnings)
-    # A letter that matches a numeral only under Unicode case rules (U+0130)
-    # is none, so the literal is no date.
+    # A letter that matches a numeral only under Unicode case rules (U+0130,
+    # U+0131) is none, so the literal is no date (`month_of`).
     month = month_of(g)
     if month is None and order not in NO_MONTH:
         return _date_result(outcome=LookupStatus.NO_MATCH)

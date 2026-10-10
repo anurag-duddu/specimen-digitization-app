@@ -119,14 +119,17 @@ def normalize(text: str) -> str:
     """The text a notation is matched against: the punctuation a line or a
     sentence may add after it (a closing period, comma or semicolon) left off.
     Nothing else changes: a letter that is a numeral only under Unicode case
-    rules (U+0130) must stay what it is."""
+    rules (U+0130, U+0131) must stay what it is."""
     return text.strip().rstrip(" .,;:")
 
 
 def month_of(group: dict) -> int | None:
-    """The month a matched Roman numeral or month word names."""
-    if group.get("roman"):
-        return ROMAN_MONTHS.get(group["roman"].upper())
+    """The month a matched Roman numeral or month word names. A numeral is written
+    in ASCII letters only: a case-insensitive pattern also lets the dotless i
+    (U+0131) and the dotted capital I (U+0130) match I, and the dotless i's
+    upper case is I, so neither may be read as I (3.<U+0131>x.1946 is no date)."""
+    if numeral := group.get("roman"):
+        return ROMAN_MONTHS.get(numeral.upper()) if numeral.isascii() else None
     return MONTH_WORDS.get(fold(group.get("name") or "").lower())
 
 
