@@ -770,18 +770,23 @@ def _lookup_asked_another_name(lookup, literal: str) -> bool:
     return _gbif_asked_another_name((text for text in asked if isinstance(text, str)), literal)
 
 
-def _expert_found_no_genus(outcome: FieldOutcome, code: str, *, by_name, sources: Sequence[SourceAnswer]) -> bool:
-    """Whether the taxon's expert itself answered sources_cannot_resolve, as
-    rule A requires its expert's own answer (mark_not_on_label, item 1): no
-    failure, a model's answer (the field was not finalized without a model
-    call), and not the resolver's fallback (FieldOutcome.fallback: an expert
-    out of attempts, or whose answers could not be checked); no GBIF answer
-    it received for the field (`sources`, the field's lookups) shows a genus
-    (_answer_found_a_genus: candidates, or a query that names a genus); and
-    it answered after a GBIF lookup attempt for the field, or after its own
-    check that the label names no genus: its literal is a morphocode of this
-    code (checks.morphocode) that a reading it names writes."""
-    from .checks import morphocode
+def _expert_found_no_genus(outcome: FieldOutcome, literal: str, *, by_name,
+        sources: Sequence[SourceAnswer]) -> bool:
+    """Whether the taxon's expert itself answered sources_cannot_resolve for
+    the morphocode `literal`, as rule A requires its expert's own answer
+    (mark_not_on_label, item 1): no failure, a model's answer (the field was
+    not finalized without a model call), and not the resolver's fallback
+    (FieldOutcome.fallback: an expert out of attempts, or whose answers
+    could not be checked); no GBIF answer it received for the field
+    (`sources`, the field's lookups) shows a genus (_answer_found_a_genus:
+    candidates, or a query that names a genus); its answer quotes the code
+    itself, its literal compared with `literal` as the GBIF guard compares a
+    query (checks.query_is_the_code: case, spaces, punctuation and sex signs
+    aside; N2 of #289's fifth review), whether or not it asked GBIF; and it
+    answered after a GBIF lookup attempt for the field, or after its own
+    check that the label names no genus: its literal is a morphocode of the
+    same code (checks.morphocode) that a reading it names writes."""
+    from .checks import morphocode, query_is_the_code
 
     answer = outcome.answer
     if (outcome.failure is not None or answer is None or answer.outcome != "sources_cannot_resolve"
@@ -789,9 +794,11 @@ def _expert_found_no_genus(outcome: FieldOutcome, code: str, *, by_name, sources
         return False
     if any(_answer_found_a_genus(item) for item in sources):
         return False
+    if not answer.literal or not query_is_the_code(answer.literal, literal):
+        return False
     if any(item.source_id == "gbif" for item in sources):
         return True
-    return morphocode(answer.literal) == code and any(
+    return morphocode(answer.literal) == morphocode(literal) and any(
         answer.literal in by_name[name].text for name in answer.reading_names if name in by_name)
 
 
@@ -799,11 +806,14 @@ def _unmatched_taxon(run, task, outcome: FieldOutcome, *, readings, by_name, evi
         sources: Sequence[SourceAnswer]) -> FieldValue | None:
     """Owner decision B: the taxon as written, unmatched, when the expert
     found that GBIF cannot resolve it and the label names no genus. All of:
-    - the expert answered sources_cannot_resolve itself, after a GBIF lookup
-      attempt or quoting the code (_expert_found_no_genus); a failure, a
-      field finalized without a model call and the resolver's fallback
-      never qualify, nor does an expert any of whose GBIF answers for the
-      field has candidates or asked a name that names a genus;
+    - the expert answered sources_cannot_resolve itself, quoting the code
+      itself (case, spaces, punctuation and sex signs aside), after a GBIF
+      lookup attempt or from a reading it names that writes it
+      (_expert_found_no_genus); a failure, a field finalized without a
+      model call and the resolver's fallback never qualify, nor does an
+      expert any of whose GBIF answers for the field has candidates or
+      asked a name that names a genus, nor one that quotes anything else
+      ("Epipsocus");
     - the expert asked GBIF, for the field, no query but the code itself
       (_gbif_asked_another_name: case, spaces, punctuation and sex signs
       aside), so a misread genus it asked ("Epipsocu55") holds it back;
@@ -851,7 +861,7 @@ def _unmatched_taxon(run, task, outcome: FieldOutcome, *, readings, by_name, evi
     code = morphocode(literal)
     if task.key != "taxon" or code is None:
         return None
-    if not _expert_found_no_genus(outcome, code, by_name=by_name, sources=sources):
+    if not _expert_found_no_genus(outcome, literal, by_name=by_name, sources=sources):
         return None
     if _gbif_asked_another_name((item.query for item in sources if item.source_id == "gbif"), literal):
         return None

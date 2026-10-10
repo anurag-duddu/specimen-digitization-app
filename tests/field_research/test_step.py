@@ -2674,6 +2674,31 @@ def test_any_gbif_query_but_the_code_itself_keeps_the_taxon_in_review(tmp_path, 
     taxon_held_back(rig.specimen.run)
 
 
+@pytest.mark.parametrize("quoted", ["Epipsocus", "V-4-67-1", "sp. 2 \N{FEMALE SIGN}", None])
+@pytest.mark.parametrize("asked", [True, False], ids=["gbif-asked-the-code", "no-lookup"])
+def test_an_answer_that_quotes_anything_but_the_code_never_clears_the_taxon(tmp_path, quoted, asked):
+    """N2 of #289's fifth review: the label writes "Epipsocus" above
+    "V-4-67-1" above the code, and the organiser's candidate is the code.
+    The expert answers sources_cannot_resolve quoting something else (the
+    genus, the slide number, another code, nothing), whether or not it
+    asked GBIF the code itself."""
+    rig = build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", "Epipsocus\nV-4-67-1\n" + SP1),
+        candidates=[*COLLECTORS, *(("taxon", name, SP1, SP1) for name in ("1A", "1B"))])
+    settle(rig, Scripted({"taxon": cannot_resolve(quoted, asks=[SP1] if asked else [])}), tools=NoGenus(rig.blobs))
+    taxon_held_back(rig.specimen.run)
+
+
+@pytest.mark.parametrize("quoted", ["Sp.30 \N{FEMALE SIGN}", "SP 30", "sp. 30"])
+def test_an_answer_that_quotes_the_code_in_another_form_after_asking_gbif_still_clears_it(tmp_path, quoted):
+    """The control: the answer's quote is the code itself, case, spaces,
+    punctuation and sex signs aside, as the GBIF guard compares a query."""
+    rig = build_rig(tmp_path, morphocoded(MORPHOCODE))
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": cannot_resolve(quoted, asks=[MORPHOCODE])}), tools=NoGenus(rig.blobs))
+    assert (run.fields["taxon"].state, run.fields["taxon"].literal) == (ValueState.SUPPORTED, MORPHOCODE)
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+
+
 @pytest.mark.parametrize("asked", ["Sp.30 \N{FEMALE SIGN}", "SP 30", "sp #30"])
 def test_a_gbif_query_of_the_code_in_another_form_still_clears_it_as_unmatched(tmp_path, asked):
     """The control: case, spaces, punctuation and sex signs aside, the query
