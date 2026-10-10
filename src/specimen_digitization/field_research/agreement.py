@@ -19,8 +19,11 @@ fields' outcomes:
    writes the literal as a run of whole words within one line
    (verbatim_runs), and it cuts or extends none of that reading's
    candidates (_cut_candidate); a taxon so read must sit in no longer name
-   on its reading (_longer_written). Points 1, 3 and 4 hold for it as for a
-   candidate, its readers per point 3 as agreeing_runs reads them. For a
+   on its reading (_longer_written), and a date or an elevation so read is
+   never one end of a range its clause writes (_part_of_range). Points 1, 3
+   and 4 hold for it as for a candidate, its readers per point 3 as
+   agreeing_runs reads them, and on a label with no decided transcript the
+   clauses holding it agree in every reader (holding_clauses). For a
    taxon, the candidate's quote, the reading's text it was taken from, must
    write no longer name around the literal (checks.longer_name): a candidate
    "Danaus plexippus" quoting "Danaus plexippus megalippe" (N3 of the third
@@ -198,6 +201,7 @@ PART_OF_NAME = "The label writes a longer scientific name than this value."
 DOUBTFUL_GENUS = "The label marks this name's genus as doubtful."
 NO_PLACE = "No approved place source confirms this value."
 NOT_EVERY_READER = "Not every reader of the label writes this text."
+PART_OF_RANGE = "The label writes this value as one end of a range."
 
 
 @dataclass(frozen=True)
@@ -282,6 +286,13 @@ def _lines(text: str) -> Iterable[tuple[int, str]]:
         offset += len(line) + 1
 
 
+def _separates(line: str, index: int) -> bool:
+    """Whether the character at `index` is a comma or a semicolon that ends a
+    word and a clause: any but one between two digits ("1,200 m")."""
+    return line[index] in WORD_ENDS and not (0 < index < len(line) - 1 and line[index - 1].isdigit()
+        and line[index + 1].isdigit())
+
+
 def _words(line: str) -> list[tuple[int, int]]:
     """The words of one line, as (start, end): split at spaces, and after a
     comma or a semicolon that does not stand between two digits."""
@@ -295,8 +306,7 @@ def _words(line: str) -> list[tuple[int, int]]:
             continue
         if start is None:
             start = index
-        if char in WORD_ENDS and not (0 < index < len(line) - 1 and line[index - 1].isdigit()
-                and line[index + 1].isdigit()):
+        if _separates(line, index):
             words.append((start, index + 1))
             start = None
     if start is not None:
@@ -304,10 +314,45 @@ def _words(line: str) -> list[tuple[int, int]]:
     return words
 
 
+def _clause(line: str, start: int, end: int) -> tuple[int, int]:
+    """The comma- or semicolon-separated part of the line that holds the span
+    [start, end), as (start, end): from just after the last separator before
+    the span to just before the first one at or after its end (a separator
+    inside the span is part of it); the whole line when it has none."""
+    marks = [index for index in range(len(line)) if _separates(line, index)]
+    first = max((index for index in marks if index < start), default=-1) + 1
+    last = min((index for index in marks if index >= end), default=len(line))
+    return first, last
+
+
+# The words that join two dates or two numbers into a range ("IV-24-48 to
+# V-2-48", "1200 a 1500 m", "1200 - 1500 m"), standing as words of their own.
+RANGE_JOINERS = frozenset({"to", "-", "\N{EN DASH}", "a"})
+
+
+def _in_a_range(line: str, start: int, end: int) -> bool:
+    """Whether the span [start, end) of the line is part of a range: the
+    clause holding it (_clause) has a joiner (RANGE_JOINERS, any case) as a
+    word between two words that each hold a digit, and the span does not
+    hold that joiner and both those words (the whole range)."""
+    first, last = _clause(line, start, end)
+    words = [(a, b) for a, b in _words(line) if first <= a and b <= last]
+
+    def has_a_digit(word: tuple[int, int]) -> bool:
+        return any(char.isdigit() for char in line[word[0]:word[1]])
+
+    for before, joiner, after in zip(words, words[1:], words[2:]):
+        if (line[joiner[0]:joiner[1]].casefold() in RANGE_JOINERS and has_a_digit(before)
+                and has_a_digit(after) and not (start <= before[0] and after[1] <= end)):
+            return True
+    return False
+
+
 def _edges(line: str) -> tuple[frozenset[int], frozenset[int]]:
     """Where a run of whole words may start and where it may end on the line:
-    at a word's edge, or past the punctuation at its edge (the comma of
-    "Yepocapa,", the brackets of "(Davao)"), never between two letters or
+    at a word's edge, or past any characters other than letters and digits
+    at its edge (the comma of "Yepocapa,", the brackets of "(Davao)", the
+    quote of "'46", the foot mark of "6400'"), never between two letters or
     digits of one word ("24-48" is no run of "IV-24-48", nor "30" of
     "Sp.30")."""
     starts: set[int] = set()
@@ -341,12 +386,12 @@ def verbatim_runs(text: str, literal: str) -> list[tuple[int, int]]:
     return found
 
 
-def agreeing_runs(text: str, literal: str) -> list[str]:
-    """The runs of whole words within one line of the text (as verbatim_runs
-    reads them) that are the literal, letter case and spacing aside
-    (agreement_key), each as the text writes it."""
+def _agreeing_spans(text: str, literal: str) -> list[tuple[str, int, int]]:
+    """Each run of whole words within one line of the text (as verbatim_runs
+    reads them) that is the literal, letter case and spacing aside
+    (agreement_key), as (line, start, end)."""
     want = agreement_key(literal)
-    found: list[str] = []
+    found: list[tuple[str, int, int]] = []
     if not want or not any(char.isalnum() for char in want):
         return found
     for _, line in _lines(text):
@@ -356,7 +401,27 @@ def agreeing_runs(text: str, literal: str) -> list[str]:
         for start in sorted(starts):
             for end in sorted(ends):
                 if end > start and agreement_key(line[start:end]) == want:
-                    found.append(line[start:end])
+                    found.append((line, start, end))
+    return found
+
+
+def agreeing_runs(text: str, literal: str) -> list[str]:
+    """The runs of whole words within one line of the text (as verbatim_runs
+    reads them) that are the literal, letter case and spacing aside
+    (agreement_key), each as the text writes it."""
+    return list(dict.fromkeys(line[start:end] for line, start, end in _agreeing_spans(text, literal)))
+
+
+def holding_clauses(text: str, literal: str) -> list[str]:
+    """The clauses of the text that hold the literal: for each run that is
+    the literal, letter case and spacing aside (_agreeing_spans), the comma-
+    or semicolon-separated part of its line around it (_clause), the whole
+    line when it has none. "trap" is held by "light trap", "Yepocapa" by
+    "Yepocapa" in "Yepocapa, Mun.", "IV-24-48" by "IV-24-48 to V-2-48"."""
+    found = []
+    for line, start, end in _agreeing_spans(text, literal):
+        first, last = _clause(line, start, end)
+        found.append(line[first:last])
     return list(dict.fromkeys(found))
 
 
@@ -418,7 +483,8 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
     if basis == CANDIDATE:
         return _part_of_name(task, readings, literal, named) or _genus_in_doubt(task, readings, literal, named)
     if basis == TRANSCRIPT:
-        return _longer_written(task, readings, literal, named) or _genus_in_doubt(task, readings, literal, named)
+        return (_part_of_range(task, readings, literal, named) or _longer_written(task, readings, literal, named)
+            or _genus_in_doubt(task, readings, literal, named))
     allowed = candidates_by_reading(task, readings)
     offered = [f"{source.name}: {text!r}" for source in dict.fromkeys(_deciding(r, readings) for r in named)
         for text in allowed.get(source.name, {}).values()]
@@ -433,6 +499,30 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
         "each reading you name writes itself: whole words within one line, cutting no word and "
         "no candidate. Copy it and name only readings that have it, or answer "
         "several_possibilities or sources_cannot_resolve."))
+
+
+def _part_of_range(task: FieldTask, readings: Sequence[Reading], literal: str,
+        named: Sequence[Reading]) -> Refusal | None:
+    """For a date or an elevation read from the transcript (TRANSCRIPT), why
+    it cannot settle: wherever a reading it is read from (its label's decided
+    reading, on a label with one) writes it, it is part of a range the clause
+    writes (_in_a_range): "V-2-48" or "IV-24-48" of "IV-24-48 to V-2-48",
+    "1500 m" of "1200 to 1500 m". The whole range keeps the rules a candidate
+    has. None otherwise, and for any other field."""
+    if FIELD_KINDS.get(task.key) not in ("date", "elevation"):
+        return None
+    for reading in dict.fromkeys(_deciding(r, readings) for r in named):
+        for start, end in verbatim_runs(reading.text, literal):
+            line_start = reading.text.rfind("\n", 0, start) + 1
+            line_end = reading.text.find("\n", end)
+            line = reading.text[line_start:len(reading.text) if line_end < 0 else line_end]
+            if _in_a_range(line, start - line_start, end - line_start):
+                return Refusal(PART_OF_RANGE, (
+                    f"Reading {reading.name} writes {literal!r} as one end of a range ({line!r}). Text "
+                    "read from the readings is never one end of a range: copy the whole range as the "
+                    "literal and take the end your brief names from a check run on exactly it, or answer "
+                    "several_possibilities or sources_cannot_resolve."))
+    return None
 
 
 def _longer_written(task: FieldTask, readings: Sequence[Reading], literal: str,
@@ -645,6 +735,9 @@ class Label:
     # that write it nowhere, letter case and spacing aside, and have no text
     # the organiser found: what they write for the field is unknown.
     unread: frozenset[str] = frozenset()
+    # Its readers write the answer's text from the transcript, but different
+    # text around it in the clause that holds it (holding_clauses).
+    around: bool = False
 
 
 def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[SourceAnswer], *,
@@ -676,7 +769,11 @@ def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[Sourc
     candidate. A reader of such a label (with no decided transcript) that
     writes it nowhere and has no text the organiser found for the field is
     unread: what it writes is unknown, so no lookup can have covered it, and
-    the label does not settle."""
+    the label does not settle. Nor does such a label when its readers'
+    clauses holding the text (holding_clauses: the comma- or
+    semicolon-separated part of the line around it, else the whole line)
+    differ beyond letter case and spacing: 1A's "trap" beside 1B's "light
+    trap", or "IV-24-48" beside "IV-24-48 to V-2-48" (Label.around)."""
     literals = reader_literals(task, readings)
     allowed = candidates_by_reading(task, readings)
     sourced = bool(frozenset(task.tools) & SOURCE_IDS)
@@ -707,6 +804,16 @@ def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[Sourc
         if unread:
             found[region] = Label(texts, unread=unread)
             continue
+        if region in read_on:
+            # Each reader's clauses holding the text agree, letter case and
+            # spacing aside, or the readers write different text around it
+            # ("trap" and "light trap", "Yepocapa" and "near Yepocapa").
+            held = {r.name: holding_clauses(r.text, transcript) for r in group}
+            keys = {frozenset(agreement_key(clause) for clause in clauses) for clauses in held.values() if clauses}
+            if len(keys) > 1:
+                found[region] = Label(texts | frozenset(collapse(clause) for clauses in held.values()
+                    for clause in clauses), around=True)
+                continue
         if all(each) and len({agreement_key(text) for text in texts}) == 1:
             # Every reader writes it, at most letter case or spacing apart
             # ("shrubs" and "Shrubs", "sp. 30" and "Sp.30"): they agree, on
@@ -750,6 +857,13 @@ def _disagreement(task: FieldTask, readings: Sequence[Reading], *, literal: str,
             "other text for this field there. On a label with no decided transcript, text read "
             "from the transcript settles only when every reader of the label writes it. Answer "
             "several_possibilities with each reader's text, or sources_cannot_resolve."), differ=True)
+    if any(label.around for label in found.values()):
+        return Refusal(DIFFER, (
+            f"You read {literal!r} from the transcript, and the readers of its label write different "
+            f"text around it ({shown}): the part of the line holding it (between commas or "
+            "semicolons, else the whole line) must be the same in every reader, letter case and "
+            "spacing aside. Answer several_possibilities with each reader's text, or "
+            "sources_cannot_resolve."), differ=True)
     if (all(label.settled for label in found.values()) and len(settled) == 1
             and not any(label.by_source for label in found.values())):
         # Every label settles on its own text, and they agree: on that text,

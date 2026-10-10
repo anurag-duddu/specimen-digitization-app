@@ -147,13 +147,28 @@ handover runs field research instead of the six specialists:
      (`agreement.verbatim_runs`). Words are split at spaces, and after a
      comma or a semicolon that does not stand between two digits
      ("Yepocapa,4800 ft." is two words, "1,200 m" is not); a run starts and
-     ends at a word's edge, or past the punctuation at its edge ("Yepocapa"
-     of "Yepocapa,", "Mindanao" of "(Mindanao)"), never between two letters
-     or digits of one word ("24-48" is no run of "IV-24-48", nor "30" of
-     "Sp.30", nor "200 m" of "1,200 m"), and never across a line break. It
-     may cut or extend no candidate of that reading ("Sept. '46" beside the
-     candidate "3 Sept. '46", "San Pedro Sacatepequez" beside the candidate
-     "San Pedro"): the answer is then refused as above. Every other rule
+     ends at a word's edge, or past any characters other than letters and
+     digits at its edge, which may be left off: punctuation, quotes,
+     brackets, a foot or minute mark or a "#" ("Yepocapa" of "Yepocapa,",
+     "Mindanao" of "(Mindanao)", "46" of "'46", "6400" of "6400'", "2" of
+     "#2"). It never starts or ends between two letters or digits of one
+     word ("24-48" is no run of "IV-24-48", nor "30" of "Sp.30", nor "200 m"
+     of "1,200 m"), and never crosses a line break. A unit left off is
+     still refused where a written rule reads it (`extraction_refusal`:
+     "6400" of "6400'" as metres). It may cut or extend no candidate of
+     that reading ("Sept. '46" beside the candidate "3 Sept. '46", "San
+     Pedro Sacatepequez" beside the candidate "San Pedro"): the answer is
+     then refused as above. A date or an elevation so read is never one end
+     of a range (`agreement._part_of_range`, PR #300's review): where a
+     reading it is read from writes it, the comma- or semicolon-separated
+     part of the line holding it may not join two words that each hold a
+     digit with "to", "-", an en dash or "a" (any case) standing as a word
+     of its own, unless the literal holds that joiner and both those words,
+     the whole range ("The label writes this value as one end of a range.":
+     "V-2-48" or "IV-24-48" of "IV-24-48 to V-2-48", "1500 m" of "1200 to
+     1500 m" or "1200 a 1500 m"; "1200 to 1500 m" whole keeps the rules a
+     candidate has). A range glued with a hyphen ("1200-1500 m") is one
+     word, which no run cuts. Every other rule
      applies to it as to a candidate: G19's decided transcript, the readers'
      rules below, the place checks (the lookup of the label's own text, the
      level, the parents, the near spelling) and the doubtful genus. For the taxon, the
@@ -167,7 +182,16 @@ handover runs field research instead of the six specialists:
      it nowhere and has none is unread, its text for the field unknown, so
      no lookup can have covered it and the label does not settle ("Not
      every reader of the label writes this text.": 105526328's "Yepocapa,
-     Mun.", which its other reader writes "Mum."). A decided reading that
+     Mun.", which its other reader writes "Mum."). Nor does it settle when
+     its readers write different text around it (PR #300's review): the
+     comma- or semicolon-separated part of each reader's line that holds
+     the text, else the whole line (`agreement.holding_clauses`), must be
+     the same in every reader, letter case and spacing aside, as a
+     candidate's whole text would be. So 1A "trap" beside 1B "light trap",
+     "Yepocapa" beside "near Yepocapa", "forest" beside "cloud forest" and
+     "IV-24-48" beside "IV-24-48 to V-2-48" go to review as readers that
+     differ, while "Yepocapa" in "Yepocapa, Mun." beside "Yepocapa, Mum."
+     agrees. A decided reading that
      writes the text beside another candidate of the organiser's for the
      field writes two texts and settles neither. Such a value is marked:
      the label rows field research writes for it cite the literal's first
@@ -184,8 +208,12 @@ handover runs field research instead of the six specialists:
      when the same text, overlapping in the same reading, is claimed for a
      field of another kind: another field's answer of this attempt
      (resolved, or sources_cannot_resolve quoting a literal), wherever its
-     literal stands in the readings of the labels it names, or another
-     field's value settled before this attempt or by a person. The field
+     literal stands in the readings of the labels it names; another
+     field's value settled before this attempt or by a person; or another
+     field's organiser candidate (or keyed line the parser read), where its
+     quote stands in its reading, whatever that field's expert did in this
+     attempt (PR #300's review: the elevation's candidate "4800ft." claims
+     its text even when the elevation's expert failed). The field
      goes to review with the reason "This text, read from the transcript,
      is also the value found for <field>." The kinds are
      `agreement.FIELD_KINDS`: the place fields (precise location among

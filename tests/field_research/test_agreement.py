@@ -13,6 +13,7 @@ import json
 from types import SimpleNamespace
 
 import pytest
+from pydantic_ai import ModelRetry
 from test_step import (
     LACKS,
     TEXT,
@@ -23,6 +24,7 @@ from test_step import (
     cited_rows,
     confirming,
     every_field,
+    failing,
     from_tgn,
     label_with,
     reasons_for,
@@ -478,6 +480,14 @@ def test_the_kinds_of_text_two_fields_may_share():
     # One line only, and a letter or a digit in it.
     ("Yepocapa,\nchimaltenango,", "Yepocapa,\nchimaltenango,", False),
     ("? Epipsocus", "?", False),
+    # Any characters other than letters and digits at a word's edge may be left
+    # off, as the brief says: a quote, a foot or minute mark, a bracket.
+    ("3 Sept. '46", "46", True),
+    ("Elev. 6400'", "6400", True),
+    ('"Yepocapa"', "Yepocapa", True),
+    ("lot #2 cut branch", "2", True),
+    # A range glued with a hyphen is one word.
+    ("1200-1500 m", "1500 m", False),
 ])
 def test_a_run_of_whole_words_within_one_line(text, literal, found):
     assert bool(agreement.verbatim_runs(text, literal)) == found
@@ -710,3 +720,163 @@ def test_a_decided_clean_transcript_still_decides_beside_a_doubtful_reader():
         (Candidate("1A", literal, literal, "ev-1A"),), FIELD_TOOLS["taxon"])
     assert agreement.refusal(task, readings, literal=literal, named=[readings[0]], value=None, authority_id=None,
         cited=[], received=[]) is None
+
+
+# ---- PR #300's review: readers that write more words around the text ---------
+# Blocking finding 1: 3A "trap" and 3B "light trap" settled the method on
+# "trap", because 3B's "light trap" writes "trap" as a run of whole words; the
+# same readers with each reader's text as its candidate refuse (DIFFER). The
+# clause of each reader's line that holds the text (between commas or
+# semicolons, else the whole line) must now agree, letter case and spacing
+# aside.
+
+AROUND = {
+    # The review's four cases.
+    "trap-beside-light-trap": ("collection_method", "trap", "light trap"),
+    "yepocapa-beside-near-yepocapa": ("precise_location", "Yepocapa", "near Yepocapa"),
+    "forest-beside-cloud-forest": ("habitat", "forest", "cloud forest"),
+    "date-beside-a-date-range": ("date_visited_from", "IV-24-48", "IV-24-48 to V-2-48"),
+    # Spanish, French and Portuguese.
+    "spanish-cerca-de": ("precise_location", "Yepocapa", "cerca de Yepocapa"),
+    "french-piege-lumineux": ("collection_method", "pi" + E_GRAVE + "ge", "pi" + E_GRAVE + "ge lumineux"),
+    "portuguese-mata-atlantica": ("habitat", "mata", "mata atl" + A_CIRCUMFLEX + "ntica"),
+}
+
+
+@pytest.mark.parametrize(("key", "first", "second"), AROUND.values(), ids=AROUND)
+def test_readers_that_write_more_words_around_the_text_disagree(key, first, second):
+    """On 61c193e93 each settles on the first reader's text."""
+    readings = label(first + "\nleg. J. Smith", second + "\nleg. J. Smith")
+    refused = agreement.refusal(uncandidated(key), readings, literal=first, named=[readings[0]], value=None,
+        authority_id=None, cited=[], received=[])
+    assert refused is not None and (refused.reason, refused.differ) == (agreement.DIFFER, True)
+    assert repr(collapse(second)) in refused.retry
+
+
+@pytest.mark.parametrize("names", [("3A", "3B"), ("3A",)], ids=["both-named", "first-named"])
+def test_the_review_probe_trap_beside_light_trap_refuses_however_the_readers_are_named(names):
+    readings = label("trap\nleg. J. Smith", "light trap\nleg. J. Smith")
+    refused = agreement.refusal(uncandidated("collection_method"), readings, literal="trap",
+        named=[r for r in readings if r.name in names], value=None, authority_id=None, cited=[], received=[])
+    assert refused is not None and refused.reason == agreement.DIFFER
+
+
+@pytest.mark.parametrize(("first", "second", "literal"), [
+    # 105526328's municipality line: the clause holding "Yepocapa" is the same.
+    (LABEL_3A, LABEL_3B, "Yepocapa"),
+    # A Costa Rican line whose readers space the comma differently.
+    ("Volc" + A_ACUTE + "n Barva, 2000 msnm", "Volc" + A_ACUTE + "n Barva,2000 msnm", "Volc" + A_ACUTE + "n Barva"),
+    # Case and spacing aside, the clause is one.
+    ("Mossy forest, 6400'", "mossy  Forest, 6400'", "Mossy forest"),
+], ids=["328-municipality-clause", "spanish-comma-spacing", "case-and-spacing"])
+def test_readers_whose_clauses_holding_the_text_agree_settle(first, second, literal):
+    """The control: unchanged from 61c193e93."""
+    readings = label(first, second)
+    assert agreement.refusal(uncandidated("precise_location" if "Barva" in literal else "habitat"), readings,
+        literal=literal, named=[readings[0]], value=None, authority_id=None, cited=[], received=[]) is None
+
+
+@pytest.mark.parametrize(("key", "first", "second"), list(AROUND.values())[:4], ids=list(AROUND)[:4])
+def test_through_the_step_readers_that_write_more_words_go_to_review(tmp_path, key, first, second):
+    """The review's four cases end to end; on 61c193e93 each field is
+    supported on the first reader's text, and the second reader's verbatim is
+    recorded as that text."""
+    rig = build_rig(tmp_path, first + "\nleg. J. Smith", second + "\nleg. J. Smith", candidates=[])
+    run = rig.specimen.run
+    settle(rig, Scripted({key: answering(FieldAnswer(outcome="resolved", literal=first, reading_names=["1A"],
+        explanation="Read from the readings."))}))
+    value = run.fields[key]
+    assert (value.state, value.literal) == (ValueState.AMBIGUOUS, None)
+    assert value.reason.startswith(agreement.DIFFER)
+    assert f"transcript_literal:{key}" not in [f.reason_code for f in run.findings]
+
+
+def test_the_review_probe_p13_trap_and_light_trap_naming_both_readers(tmp_path):
+    rig = build_rig(tmp_path, "trap\nleg. J. Smith", "light trap\nleg. J. Smith", candidates=[])
+    run = rig.specimen.run
+    settle(rig, Scripted({"collection_method": answering(FieldAnswer(outcome="resolved", literal="trap",
+        reading_names=["1A", "1B"], explanation="Both write it."))}))
+    method = run.fields["collection_method"]
+    assert (method.state, method.literal) == (ValueState.AMBIGUOUS, None)
+
+
+# Not blocking 2: the overlap guard was attempt-local. With the elevation
+# expert failing, "Yepocapa, 4800ft." cleared as the locality; the organiser's
+# candidate "4800ft." for the elevation now claims its text whatever the
+# elevation's expert did.
+
+@pytest.mark.parametrize("elevation", ["fails", "lacks"])
+def test_an_organiser_candidate_claims_its_text_when_its_expert_settles_nothing(tmp_path, elevation):
+    """On 61c193e93 the locality is supported."""
+    rig = label_3(tmp_path, SPANISH_LABEL, SPANISH_LABEL.replace("Mitchell", "mitchell"),
+        [("elevation_from_ft", name, "4800ft.", "Yepocapa, 4800ft.") for name in ("1A", "1B")])
+    run = rig.specimen.run
+    settle(rig, Scripted({
+        "elevation_from_ft": failing("timeout") if elevation == "fails" else answering(LACKS),
+        "precise_location": answering(FieldAnswer(outcome="resolved", literal="Yepocapa, 4800ft.",
+            reading_names=["1A", "1B"], explanation="Both readers write it."))}))
+    place = run.fields["precise_location"]
+    assert place.state == ValueState.UNRESOLVED
+    assert place.reason.startswith(field_step.TAKEN.format(other="Elevation From (ft)"))
+
+
+# Not blocking 3: a date or an elevation read from the transcript is never one
+# end of a range its line writes ("to", "-", an en dash or "a" between two
+# words that hold digits).
+
+RANGE_ENDS = {
+    "date-to-end": ("date_visited_from", "IV-24-48 to V-2-48", "V-2-48"),
+    "date-to-start": ("date_visited_from", "IV-24-48 to V-2-48", "IV-24-48"),
+    "date-hyphen-end": ("date_visited_from", "IV-24-48 - V-2-48", "V-2-48"),
+    "date-capital-to": ("date_visited_to", "IV-24-48 TO V-2-48", "V-2-48"),
+    "spanish-date-a": ("date_visited_from", "10 a 15-VIII-1965", "15-VIII-1965"),
+    "elevation-to": ("elevation_from_m", "1200 to 1500 m", "1500 m"),
+    "spanish-elevation-a": ("elevation_to_m", "1200 a 1500 m", "1500 m"),
+    "elevation-en-dash": ("elevation_from_m", "1200 \N{EN DASH} 1500 m", "1500 m"),
+    "imperial-elevation-to": ("elevation_from_ft", "4000 to 4800 ft.", "4800 ft."),
+}
+
+
+@pytest.mark.parametrize(("key", "line", "literal"), RANGE_ENDS.values(), ids=RANGE_ENDS)
+def test_one_end_of_a_range_is_never_read_from_the_transcript(key, line, literal):
+    """On 61c193e93 each is accepted."""
+    readings = label(line + "\nleg. J. Smith")
+    refused = agreement.refusal(uncandidated(key), readings, literal=literal, named=list(readings), value=None,
+        authority_id=None, cited=[], received=[])
+    assert refused is not None and refused.reason == agreement.PART_OF_RANGE
+
+
+def test_a_foot_mark_left_off_is_still_feet_to_the_written_rules():
+    """Edge characters may be left off a run, but extraction_refusal still
+    reads the reading: "6400" of "Elev. 6400'" is no elevation in metres."""
+    readings = label("Mossy forest, Elev. 6400'\nleg. J. Smith")
+    assert agreement.verbatim_runs(readings[0].text, "6400")
+    with pytest.raises(ModelRetry):
+        checked(uncandidated("elevation_from_m"), readings, dict(outcome="resolved", literal="6400",
+            reading_names=["3A", "3B"]))
+
+
+def test_the_experts_check_sends_a_range_end_back():
+    """The review's probe: "V-2-48" as date_visited_from 1948-05-02 passed the
+    expert's check on 61c193e93."""
+    readings = label("IV-24-48 to V-2-48\nleg. J. Smith")
+    with pytest.raises(ModelRetry, match="one end of a range"):
+        checked(uncandidated("date_visited_from"), readings, dict(outcome="resolved", literal="V-2-48",
+            reading_names=["3A", "3B"], value="1948-05-02"), checks=[("parse_date", "V-2-48")])
+
+
+@pytest.mark.parametrize(("key", "line", "literal"), [
+    # The whole range keeps today's handling.
+    ("elevation_from_m", "1200 to 1500 m", "1200 to 1500 m"),
+    # A range in another clause of the line.
+    ("elevation_from_ft", "Yepocapa, 4800 ft., IV-24-48 to V-2-48", "4800 ft."),
+    # "a" that joins no two numbers (Spanish "at").
+    ("elevation_from_m", "Mata a 1200 m", "1200 m"),
+    # A field that is no date or elevation.
+    ("collection_code", "IV-24-48 to V-2-48", "V-2-48"),
+], ids=["whole-range", "range-in-another-clause", "a-joining-no-numbers", "not-a-date-field"])
+def test_text_beside_or_holding_a_whole_range_is_not_cut_from_it(key, line, literal):
+    """The control: unchanged from 61c193e93."""
+    readings = label(line + "\nleg. J. Smith")
+    assert agreement.refusal(uncandidated(key), readings, literal=literal, named=list(readings), value=None,
+        authority_id=None, cited=[], received=[]) is None

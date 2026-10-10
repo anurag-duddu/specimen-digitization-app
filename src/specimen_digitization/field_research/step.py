@@ -568,6 +568,20 @@ def _occurrences(literal: str, readings: Iterable[Reading]) -> frozenset[tuple[s
     return frozenset(found)
 
 
+def _candidate_spans(reading: Reading, candidate: Candidate) -> frozenset[tuple[str, int, int]]:
+    """Where an organiser candidate's literal stands in its reading: inside
+    each place its quote does, else wherever the reading writes it."""
+    text, found = reading.text, set()
+    at = text.find(candidate.quote) if candidate.quote else -1
+    while at >= 0:
+        inner = candidate.quote.find(candidate.literal)
+        while inner >= 0:
+            found.add((reading.name, at + inner, at + inner + len(candidate.literal)))
+            inner = candidate.quote.find(candidate.literal, inner + 1)
+        at = text.find(candidate.quote, at + 1)
+    return frozenset(found) or _occurrences(candidate.literal, [reading])
+
+
 def _overlap(spans, others) -> bool:
     return any(name == other and start < other_end and other_start < end
         for name, start, end in spans for other, other_start, other_end in others)
@@ -583,9 +597,12 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
     names; it is claimed when it overlaps, in the same reading, the literal
     of another field's answer of this attempt (resolved, or
     sources_cannot_resolve quoting it), wherever that literal stands in the
-    readings of the labels that answer names, or the literal of another
+    readings of the labels that answer names, the literal of another
     field's value settled before this attempt (or a person's), in the
-    readings of its labels. Which field such text belongs to is for a
+    readings of its labels, or another field's organiser candidate (the
+    organiser's or the keyed-line parser's, _candidates) where its quote
+    stands in its reading, whatever that field's expert did in this attempt
+    (it may have failed). Which field such text belongs to is for a
     person: the field goes to review. A place inside the precise location,
     or an elevation copied to the other unit, is one kind; an elevation or a
     date inside the precise location is not. An organiser candidate is
@@ -621,6 +638,13 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
             if i in evidence and evidence[i].kind == "literal"} | {r.region_id for r in readings
             if r.observation_id in observed}
         claims.append((key, _occurrences(value.literal, [r for r in readings if r.region_id in regions])))
+    # The organiser placed its candidates: each claims its literal where its
+    # quote stands in its reading, whatever its field's expert did.
+    for key, candidates in _candidates(run, readings).items():
+        for candidate in candidates:
+            reading = by_name.get(candidate.reading)
+            if reading is not None and candidate.literal.strip():
+                claims.append((key, _candidate_spans(reading, candidate)))
     taken = {}
     for key, spans in mine.items():
         other = next((other for other, theirs in claims
