@@ -347,10 +347,34 @@ def _shed_qualifier(part: str) -> str:
         if found is not None and not _initials(found.group()):
             part = part[:found.start()] + part[found.end():]
     return part
-# The label words that may follow a morphocode on its line and are no genus,
-# as written: the parts a slide mounts, and the sex signs. The one list the
-# label check passes over (genus_beside).
-NOT_GENERA = frozenset({"legs", "leg", "wings", "wing", "head", "terminalia", "genitalia", "slide", "mount",
+
+
+# The label words that may stand beside a morphocode and are no genus, as
+# written (NFC): the parts a slide mounts, the slide or mount itself and the
+# specimen's sex, in English, Spanish, French, German (its nouns with their
+# capital) and Portuguese, and the sex signs. A genus is written with a
+# capital, so the lower-case words are listed only in lower case ("Legs" and
+# "Ala" are not listed). "perna" is not listed: Perna is a mussel genus. The
+# one list the label check passes over, before or after the code
+# (genus_beside).
+NOT_GENERA = frozenset({
+    # English.
+    "head", "leg", "legs", "wing", "wings", "abdomen", "antenna", "antennae", "genitalia", "terminalia", "slide",
+    "mount", "male", "males", "female", "females",
+    # Spanish.
+    "cabeza", "pata", "patas", "ala", "alas", "antena", "antenas", "l\N{LATIN SMALL LETTER A WITH ACUTE}mina",
+    "montaje", "macho", "machos", "hembra", "hembras",
+    # French.
+    "t\N{LATIN SMALL LETTER E WITH CIRCUMFLEX}te", "patte", "pattes", "aile", "ailes", "antenne", "antennes", "lame",
+    "montage", "m\N{LATIN SMALL LETTER A WITH CIRCUMFLEX}le", "m\N{LATIN SMALL LETTER A WITH CIRCUMFLEX}les",
+    "femelle", "femelles",
+    # German.
+    "Kopf", "Bein", "Beine", "Fl\N{LATIN SMALL LETTER U WITH DIAERESIS}gel",
+    "F\N{LATIN SMALL LETTER U WITH DIAERESIS}hler", "Pr\N{LATIN SMALL LETTER A WITH DIAERESIS}parat",
+    "M\N{LATIN SMALL LETTER A WITH DIAERESIS}nnchen", "Weibchen",
+    # Portuguese.
+    "cabe\N{LATIN SMALL LETTER C WITH CEDILLA}a", "pernas", "asa", "asas",
+    "l\N{LATIN SMALL LETTER A WITH CIRCUMFLEX}mina", "montagem", "f\N{LATIN SMALL LETTER E WITH CIRCUMFLEX}mea", "f\N{LATIN SMALL LETTER E WITH CIRCUMFLEX}meas",
     "\N{FEMALE SIGN}", "\N{MALE SIGN}"})
 # A keyed line, as Workflow.parse reads "key: value" lines: a field key and a
 # colon at the line's start; and the taxon's key alone.
@@ -393,6 +417,21 @@ def may_be_genus(token: str) -> bool:
     return GENUS_SHAPED.fullmatch(token) is not None or (letters > 0 and digits == 0) or (letters >= 3 and digits <= 1)
 
 
+def _lines_before(text: str, start: int) -> list[str]:
+    """The lines the label check reads before text[start:], nearest first:
+    its line up to it, then the nearest line above that has a token
+    (_tokens). When its line writes only the taxon's key before it
+    ("taxon: sp. 30", a keyed line Workflow.parse reads), the key is no
+    token and that line is not read, and a keyed line above (_KEYED_LINE:
+    "habitat: Mossy forest") is another field's: none is read."""
+    line_start = text.rfind("\n", 0, start) + 1
+    own, above = text[line_start:start], list(reversed(text[:line_start].splitlines()))
+    nearest = next((part for part in above if _tokens(part)), None)
+    if _TAXON_KEY.fullmatch(own) is not None:
+        return [] if nearest is None or _KEYED_LINE.match(nearest) else [nearest]
+    return [own] if nearest is None else [own, nearest]
+
+
 def token_before(text: str, start: int) -> str | None:
     """The token (_tokens) written immediately before text[start:]: the last
     one before it on its line, or, when its line has none there, the last
@@ -400,36 +439,88 @@ def token_before(text: str, start: int) -> str | None:
     When its line writes only the taxon's key before it ("taxon: sp. 30", a
     keyed line Workflow.parse reads), the key is no token, and a keyed line
     above (_KEYED_LINE: "habitat: Mossy forest") is another field's: None."""
-    line_start = text.rfind("\n", 0, start) + 1
-    own, above = text[line_start:start], list(reversed(text[:line_start].splitlines()))
-    keyed = _TAXON_KEY.fullmatch(own) is not None
-    for part in above if keyed else [own, *above]:
-        tokens = _tokens(part)
-        if tokens:
-            return None if keyed and _KEYED_LINE.match(part) else tokens[-1]
-    return None
+    tokens = next((found for found in map(_tokens, _lines_before(text, start)) if found), None)
+    return tokens[-1] if tokens else None
+
+
+def _line_after(text: str, end: int) -> str:
+    """The rest of the line after text[:end]."""
+    line_end = text.find("\n", end)
+    return text[end:] if line_end < 0 else text[end:line_end]
 
 
 def token_after(text: str, end: int) -> str | None:
     """The first token (_tokens) after text[:end] on its line, or None."""
-    line_end = text.find("\n", end)
-    tokens = _tokens(text[end:] if line_end < 0 else text[end:line_end])
+    tokens = _tokens(_line_after(text, end))
     return tokens[0] if tokens else None
+
+
+# A person's name written with initials, as a collector or a determiner is:
+# initials run into the surname ("R.D.mitchell", "R.D.Mitchell"), initials
+# then a capitalised surname ("R. D. Mitchell", "F.G. Werner", "H.
+# Hoogstraal"), a surname, a comma and initials ("Mitchell, R.D.",
+# "Mitchell, R. D.", "Baker, C.F"), or two or more initials alone ("R.D.").
+# One capital and a period alone ("E.") abbreviates a genus, never a person.
+_PERSON = (r"(?:[A-Z]\.){2,}[^\W\d_]+|(?:[A-Z]\.[^\S\n]*)+[A-Z][^\W\d_]+"
+    r"|[A-Z][^\W\d_]+,[^\S\n]*(?:[A-Z]\.[^\S\n]*)*[A-Z]\.?|(?:[A-Z]\.){2,}")
+_PERSON_LAST = re.compile(r"(?:^|(?<=[\s,;:(]))(?:" + _PERSON + r")\.?$")
+_PERSON_FIRST = re.compile(r"^(?:" + _PERSON + r")(?![^\W\d_])")
+# A capital standing alone, no letter right before or after it: an initial.
+_LONE_CAPITAL = re.compile(r"(?<![^\W\d_])[A-Z](?![^\W\d_])")
+
+
+def _a_persons_name(found: re.Match | None) -> bool:
+    """Whether a _PERSON match is a person's name: its initials do not spell
+    a qualifier of DOUBT_QUALIFIERS ("C.F. Epipsocus" and "N.R. Epipsocus"
+    may be "cf." and "nr." before a genus; "R.D. Mitchell" is a name)."""
+    return found is not None and _DOUBT_QUALIFIER.fullmatch("".join(_LONE_CAPITAL.findall(found.group()))) is None
+
+
+def _no_genus_word(token: str) -> bool:
+    """Whether a token is one of NOT_GENERA, as written (NFC)."""
+    return unicodedata.normalize("NFC", token) in NOT_GENERA
+
+
+def _read_token(words: list[str], *, last: bool) -> tuple[str, str] | None:
+    """The token (_tokens) the label check reads among one line's
+    whitespace-separated words: the last (or, not `last`, the first) that is
+    not one of NOT_GENERA, with the line's text through it (from it), its
+    words joined by single spaces and _SHED's characters shed at that end.
+    None when every token of the words is one of NOT_GENERA."""
+    words = list(words)
+    while words:
+        token = _token(words[-1] if last else words[0])
+        if any(c.isalnum() for c in token) and not _no_genus_word(token):
+            joined = " ".join(words)
+            return token, joined.rstrip(_SHED) if last else joined.lstrip(_SHED)
+        words.pop(-1 if last else 0)
+    return None
 
 
 def genus_beside(text: str, start: int, end: int) -> str | None:
     """The token beside text[start:end] that may be a genus (may_be_genus):
-    the token written immediately before it (token_before: "Epipsocus" in
-    "Epipsocus sp. 1", in "Epipsocus?" with "sp. 1" on the next line, and
-    "unreadable" in "[unreadable] sp. 1"), else the first token after it on
-    its line unless it is one of NOT_GENERA ("Epipsocus" in "sp. 1
-    Epipsocus", never "legs" in "sp. 1 legs"). None when neither is."""
-    before = token_before(text, start)
-    if before is not None and may_be_genus(before):
-        return before
-    after = token_after(text, end)
-    if after is not None and after not in NOT_GENERA and may_be_genus(after):
-        return after
+    the token written immediately before it ("Epipsocus" in "Epipsocus sp.
+    1", in "Epipsocus?" with "sp. 1" on the next line, and "unreadable" in
+    "[unreadable] sp. 1"), else the first token after it on its line
+    ("Epipsocus" in "sp. 1 Epipsocus"). Words of NOT_GENERA are passed over
+    (_read_token). Before the code, the token read is the last on its line
+    that is not one of them ("Epipsocus" in "Epipsocus legs sp. 1"), or,
+    when its line has none, the last such of the nearest line above that
+    has a token (_lines_before: "Epipsocus" above "<female sign> legs
+    Sp.#1"); when every token of that line is one of them, none is read
+    ("wings + head" above "sp. 30", "legs" above "sp. 1"). After it, the
+    first on its line that is not one of them ("sp. 1 legs Epipsocus"), and
+    none when every token there is one ("sp. 1 legs"). A token that ends
+    (before) or starts (after) a person's name written with initials is
+    none either (_PERSON, _a_persons_name: "R.D.mitchell" or "1948, R.D.
+    Mitchell" above the code, "sp. 1 R.D. Mitchell"). None when neither may
+    be a genus."""
+    found = next(filter(None, (_read_token(part.split(), last=True) for part in _lines_before(text, start))), None)
+    if found is not None and not _a_persons_name(_PERSON_LAST.search(found[1])) and may_be_genus(found[0]):
+        return found[0]
+    found = _read_token(_line_after(text, end).split(), last=False)
+    if found is not None and not _a_persons_name(_PERSON_FIRST.match(found[1])) and may_be_genus(found[0]):
+        return found[0]
     return None
 
 
@@ -441,9 +532,11 @@ def label_names_no_genus(code: str, reading_texts: Sequence[str]) -> bool:
     organiser's literal: a candidate "sp. 1" taken from "Epipsocus sp. 1", or
     from "Epipsocus" with "sp. 1" on the next line (105526328's label), names
     a genus, and so does one beside an unclear word ("Epipsocus?", "E.?",
-    "[unreadable]", "legs" before it). "Mossy forest 6400'" above "sp. 30"
-    (105526321), "V-4-67-1" above "sp 22" (105526327) and "Sp. 22" on a
-    label of its own (105526326) do not."""
+    "[unreadable]"). "Mossy forest 6400'" above "sp. 30" (105526321),
+    "V-4-67-1" above "sp 22" (105526327), "Sp. 22" on a label of its own
+    (105526326), "wings + head" above "sp. 30" (105526322), "genitalia +
+    legs" above "Sp 30" (105526323), "R.D.mitchell" above "sp #1"
+    (105526329) and "legs" before "Sp.#1" (105526330) do not."""
     found = False
     for text in reading_texts:
         for match in NO_GENUS.finditer(text):

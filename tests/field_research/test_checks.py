@@ -239,13 +239,14 @@ PILOT_CODE_LABELS = {
         "Mossy forest 6400'\nSp.30 " + FEMALE], True),
     "105526326": ("22", ["sp. 22\n" + FEMALE + " wings", "Sp. 22\n" + FEMALE + " wings"], True),
     "105526327": ("22", ["V-4-67-1\nsp 22\nlegs", "V-4-67-1\nsp 22\nlegs"], True),
-    # A word with a letter and no digit right before the code may be a genus
-    # (B2 of #289's third review): "head", "legs", "R.D.mitchell".
-    "105526322": ("30", ["wings + head\nsp. 30 " + FEMALE, "Wings 4 head\nSp.30 " + FEMALE + "\np-95-81-16"], False),
-    "105526323": ("30", ["genitalia + legs\nSp 30 " + FEMALE, "genitalia " + FEMALE + " legs\nSp 30 " + FEMALE], False),
+    # A body part or a collector with initials right before the code is no
+    # genus (the real-model run of the ten pilots, 2026-10-09): "head",
+    # "legs", "R.D.mitchell". Each was read as a genus before.
+    "105526322": ("30", ["wings + head\nsp. 30 " + FEMALE, "Wings 4 head\nSp.30 " + FEMALE + "\np-95-81-16"], True),
+    "105526323": ("30", ["genitalia + legs\nSp 30 " + FEMALE, "genitalia " + FEMALE + " legs\nSp 30 " + FEMALE], True),
     "105526329": ("1", ["R.D.mitchell\nsp #1 " + MALE + "\nhead & legs", "R.D.mitchell\nSp #1 " + MALE + "\nhead & legs"],
-        False),
-    "105526330": ("1", ["Guatemala, IV-25\n1948, R.D. Mitchell\n" + FEMALE + " legs Sp.#1"], False),
+        True),
+    "105526330": ("1", ["Guatemala, IV-25\n1948, R.D. Mitchell\n" + FEMALE + " legs Sp.#1"], True),
     # The genus on the line above the code, as each reader reads it.
     "105526328": ("1", ["VI-24-68-7.\nEpipocus\nsp. 1\n" + FEMALE + " terminalia\nVII-18-66-1",
         "VI-24-68-7.\nEpipsocus\nsp. 1\n" + FEMALE + " terminalia\nVII-18-66-1"], False),
@@ -273,12 +274,33 @@ def test_a_pilot_label_names_no_genus_only_when_no_genus_is_written_beside_its_c
     ("sp. 1 " + FEMALE + " Epipsocus", False),
     # One reader's genus is enough, and another place the label writes the code.
     ("sp. 1\nEpipsocus sp. 1", False),
-    # Any word with a letter and no digit right before it (B2 of #289's third review).
-    ("legs sp. 1", False),
-    ("Epipsocus\nwings + head\nsp. 1", False),
+    # Any other word with a letter and no digit right before it (B2 of #289's third review).
+    ("Mitchell\nsp. 1", False),
+    ("Legs sp. 1", False),
+    # A genus past a body part on the line read (NOT_GENERA are passed over).
+    ("Epipsocus legs sp. 1", False),
+    ("Epipsocus\n" + FEMALE + " legs Sp.#1", False),
+    ("sp. 1 legs Epipsocus", False),
+    # A genus after initials that may spell "cf." or "nr.", or after a whole name.
+    ("C.F. Epipsocus\nsp. 1", False),
+    ("C.F.Epipsocus sp. 1", False),
+    ("N.R. Epipsocus sp. 1", False),
+    ("R.D. Mitchell Epipsocus sp. 1", False),
+    ("sp. 1 C.F. Epipsocus", False),
+    # A genus that is also a word for a body part, and one capital, abbreviated.
+    ("Perna sp. 1", False),
+    ("perna sp. 1", False),
+    ("Ala sp. 1", False),
+    ("E.\nsp. 1", False),
     # A word with a digit right before it, or the genus further away.
     ("Mossy forest 6400'\nsp. 1", True),
     ("Epipsocus\nV-4-67-1\nsp. 1", True),
+    # Behind a line of body parts, or one body part, the genus is not read,
+    # nor right after initials, read as a name.
+    ("Epipsocus\nwings + head\nsp. 1", True),
+    ("Epipsocus\nlegs\nsp. 1", True),
+    ("R.D. Epipsocus\nsp. 1", True),
+    ("legs sp. 1", True),
     # Another code beside the genus.
     ("Epipsocus sp. 2\nsp. 1", True),
     # The code is not written at all.
@@ -347,16 +369,59 @@ def test_a_code_with_no_word_beside_it_that_may_be_a_genus_names_no_genus(text):
     assert checks.label_names_no_genus("1", [text])
 
 
-def test_the_words_after_a_code_that_are_no_genus_are_one_short_list():
-    """NOT_GENERA, as written; before the code the same word may be a genus."""
+# The real-model run of the ten pilots (2026-10-09): a collector's name with
+# initials beside the code is no genus. Each was read as a genus before.
+PERSONS_BESIDE = [
+    "R.D.mitchell\nsp #1 " + MALE,
+    "R.D.Mitchell\nsp. 1",
+    "R. D. Mitchell\nsp. 1",
+    "1948, R.D. Mitchell\nsp. 1",
+    "leg. R.D. Mitchell\nsp. 1",
+    "R.D. Mitchell.\nsp. 1",
+    "H. Hoogstraal\nsp. 1",
+    "Mitchell, R.D.\nsp. 1",
+    "Mitchell, R. D.\nsp. 1",
+    "R.D.\nsp. 1",
+    "sp. 1 R.D. Mitchell",
+    "sp. 1 " + FEMALE + " Mitchell, R.D.",
+]
+
+
+@pytest.mark.parametrize("text", PERSONS_BESIDE)
+def test_a_persons_name_with_initials_beside_the_code_is_no_genus(text):
     from specimen_digitization.field_research import checks
 
-    assert checks.NOT_GENERA == {"legs", "leg", "wings", "wing", "head", "terminalia", "genitalia", "slide",
-        "mount", FEMALE, MALE}
+    assert checks.label_names_no_genus("1", [text])
+
+
+ENGLISH = {"head", "leg", "legs", "wing", "wings", "abdomen", "antenna", "antennae", "genitalia", "terminalia", "slide",
+    "mount", "male", "males", "female", "females"}
+SPANISH = {"cabeza", "pata", "patas", "ala", "alas", "antena", "antenas", "l\N{LATIN SMALL LETTER A WITH ACUTE}mina",
+    "montaje", "macho", "machos", "hembra", "hembras"}
+FRENCH = {"t\N{LATIN SMALL LETTER E WITH CIRCUMFLEX}te", "patte", "pattes", "aile", "ailes", "antenne", "antennes",
+    "lame", "montage", "m\N{LATIN SMALL LETTER A WITH CIRCUMFLEX}le", "m\N{LATIN SMALL LETTER A WITH CIRCUMFLEX}les",
+    "femelle", "femelles"}
+GERMAN = {"Kopf", "Bein", "Beine", "Fl\N{LATIN SMALL LETTER U WITH DIAERESIS}gel",
+    "F\N{LATIN SMALL LETTER U WITH DIAERESIS}hler", "Pr\N{LATIN SMALL LETTER A WITH DIAERESIS}parat",
+    "M\N{LATIN SMALL LETTER A WITH DIAERESIS}nnchen", "Weibchen"}
+PORTUGUESE = {"cabe\N{LATIN SMALL LETTER C WITH CEDILLA}a", "pernas", "asa", "asas",
+    "l\N{LATIN SMALL LETTER A WITH CIRCUMFLEX}mina", "montagem", "f\N{LATIN SMALL LETTER E WITH CIRCUMFLEX}mea",
+    "f\N{LATIN SMALL LETTER E WITH CIRCUMFLEX}meas"}
+
+
+def test_the_words_beside_a_code_that_are_no_genus_are_one_list():
+    """NOT_GENERA, as written, in five languages: passed over before the
+    code and after it (the real-model run of the ten pilots)."""
+    from specimen_digitization.field_research import checks
+
+    assert checks.NOT_GENERA == ENGLISH | SPANISH | FRENCH | GERMAN | PORTUGUESE | {FEMALE, MALE}
     for word in checks.NOT_GENERA - {FEMALE, MALE}:
         assert checks.label_names_no_genus("1", ["sp. 1 " + word, "sp. 1 " + FEMALE + " " + word + ","]), word
-        assert not checks.label_names_no_genus("1", [word + " sp. 1"]), word
+        before = [word + " sp. 1", word + "\nsp. 1", FEMALE + " " + word + " sp. 1"]
+        assert checks.label_names_no_genus("1", before), word
     assert checks.label_names_no_genus("1", ["sp. 1 " + FEMALE + MALE])
+    # As written: "t\N{LATIN SMALL LETTER E WITH CIRCUMFLEX}te" decomposed is the same word.
+    assert checks.label_names_no_genus("1", ["te\N{COMBINING CIRCUMFLEX ACCENT}te\nsp. 1"])
 
 
 @pytest.mark.parametrize(("part", "token"), [

@@ -828,9 +828,11 @@ def _unmatched_taxon(run, task, outcome: FieldOutcome, *, readings, by_name, evi
       "[unreadable]"; or three letters or more and one digit at most,
       "Epipsocu5", "ep1psocus") is written immediately before it (on its line, or
       ending the nearest line above that has a token), or first after it on
-      its line other than one of checks.NOT_GENERA. A candidate "sp. 1"
-      taken from "Epipsocus sp. 1", or from "Epipsocus" with "sp. 1" on the
-      next line, does not qualify;
+      its line, words of checks.NOT_GENERA ("legs", "head", "Kopf") and a
+      person's name with initials ("R.D.mitchell") passed over
+      (checks.genus_beside). A candidate "sp. 1" taken from "Epipsocus sp.
+      1", or from "Epipsocus" with "sp. 1" on the next line, does not
+      qualify;
     - no part of a label that writes the code is unreadable
       (_code_label_unreadable, rule A's test on that label);
     - no sign of a doubtful or unreadable name shows anywhere on the

@@ -2193,6 +2193,13 @@ PILOT_CODES = {
     "105526326": ("", "Sp. 22", "\n\N{FEMALE SIGN} wings"),
     # 105526327's third label: a slide code, the code, then "legs".
     "105526327": ("V-4-67-1\n", "sp 22", "\nlegs"),
+    # The real-model run of the ten pilots (2026-10-09): body parts or a
+    # collector with initials right before the code, as a reader of each
+    # wrote them. Each was read as a genus before.
+    "105526322": ("shrubs, mostly forest\nwings + head\n", "sp. 30 \N{FEMALE SIGN}", ""),
+    "105526323": ("shrubs, mostly forest\ngenitalia + legs\n", "Sp 30 \N{FEMALE SIGN}", ""),
+    "105526329": ("IV-29-68-4\nR.D.mitchell\n", "sp #1 \N{MALE SIGN}", "\nhead & legs"),
+    "105526330": ("1948, R.D. Mitchell\n\N{FEMALE SIGN} legs ", "Sp.#1", ""),
 }
 
 
@@ -2211,6 +2218,45 @@ def test_the_pilots_codes_with_no_genus_beside_them_still_clear_as_unmatched(tmp
     assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
     assert field_step.taxon_unmatched(taxon, {item.id: item for item in run.evidence}, run.lookups,
         run=run)
+
+
+def test_readers_that_write_the_code_differently_with_no_decided_transcript_keep_it_in_review(tmp_path):
+    """105526329 as its two readers wrote it, with no decided transcript:
+    the label check finds no genus, but the readers write "sp #1" and
+    "Sp #1", and no source settles either (the readers' rule)."""
+    from specimen_digitization.field_research import checks
+
+    first, second = ("IV-29-68-4\nR.D.mitchell\n" + code + " \N{MALE SIGN}\nhead & legs" for code in ("sp #1", "Sp #1"))
+    assert checks.label_names_no_genus("1", [first, second])
+    rest = TEXT.replace("taxon: Danaus plexippus\n", "")
+    rig = build_rig(tmp_path, rest + "\n" + first, rest + "\n" + second, candidates=[*COLLECTORS,
+        ("taxon", "1A", "sp #1 \N{MALE SIGN}", "sp #1 \N{MALE SIGN}"),
+        ("taxon", "1B", "Sp #1 \N{MALE SIGN}", "Sp #1 \N{MALE SIGN}")])
+    settle(rig, Scripted({"taxon": cannot_resolve("sp #1 \N{MALE SIGN}")}), tools=NoGenus(rig.blobs))
+    taxon_held_back(rig.specimen.run)
+
+
+# A genus beside the code, or a doubtful one, in the same layouts: the text
+# before the code, the code and the text after it.
+STILL_A_GENUS = {
+    "genus-above-a-body-part-code-line": ("Epipsocus\n\N{FEMALE SIGN} legs ", "Sp.#1", ""),
+    "genus-before-a-body-part-on-the-code-line": ("Epipsocus legs ", "sp. 1", ""),
+    # Read as no genus before (after the code, "legs" stopped the reading).
+    "genus-past-a-body-part-after-the-code": ("V-4-67-1\n", "sp. 1", " \N{FEMALE SIGN} legs Epipsocus"),
+    "genus-after-cf-initials": ("C.F. Epipsocus\n", "sp. 1", ""),
+    "genus-right-before-the-code-under-a-collector": ("R.D. Mitchell\nEpipsocus ", "sp. 1", ""),
+    "doubtful-genus-above-a-body-part-code-line": ("R.D. Mitchell\nEpipsocus?\n\N{FEMALE SIGN} legs ", "Sp.#1", ""),
+    "qualified-genus-above-body-parts": ("cf. Epipsocus\ngenitalia + legs\n", "Sp 30 \N{FEMALE SIGN}", ""),
+}
+
+
+@pytest.mark.parametrize(("before", "code", "after"), STILL_A_GENUS.values(), ids=STILL_A_GENUS)
+def test_a_genus_beside_the_code_still_keeps_the_taxon_in_review(tmp_path, before, code, after):
+    """The expert quotes the code with no GBIF lookup."""
+    text = TEXT.replace("taxon: Danaus plexippus", before + code + after)
+    rig = build_rig(tmp_path, text, candidates=[*COLLECTORS, *(("taxon", name, code, code) for name in ("1A", "1B"))])
+    settle(rig, Scripted({"taxon": cannot_resolve(code)}), tools=NoGenus(rig.blobs))
+    taxon_held_back(rig.specimen.run)
 
 
 def test_a_later_pass_judges_the_label_of_an_unmatched_taxon_again(tmp_path):
@@ -2516,12 +2562,13 @@ def test_the_real_resolver_looking_the_genus_up_as_its_brief_says_keeps_the_taxo
     assert [lookup.query.get("name") for lookup in run.lookups if lookup.provider == "gbif"] == ["Epipsocus"]
 
 
-@pytest.mark.parametrize("line", ["sim. Epipsocus", "NR Epipsocus", "C.F Epipsocus"])
-def test_a_genus_the_doubt_signs_do_not_read_clears_when_the_expert_makes_no_lookup(tmp_path, line):
-    """The documented remaining case (FIELD_RESEARCH.md, "Two cases
+@pytest.mark.parametrize("written", [*(line + "\nV-4-67-1\n" + SP1 for line in ("sim. Epipsocus", "NR Epipsocus",
+    "C.F Epipsocus")), "Epipsocus\nwings + head\n" + SP1, "Epipsocus\nlegs\n" + SP1, "R.D. Epipsocus\n" + SP1])
+def test_a_genus_the_label_checks_do_not_read_clears_when_the_expert_makes_no_lookup(tmp_path, written):
+    """The documented remaining cases (FIELD_RESEARCH.md, "Two cases
     remain"): an expert that skips the lookup its brief asks for, quoting
     the code, clears the taxon as unmatched."""
-    rig = build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", line + "\nV-4-67-1\n" + SP1),
+    rig = build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", written),
         candidates=[*COLLECTORS, *(("taxon", name, SP1, SP1) for name in ("1A", "1B"))])
     run = rig.specimen.run
     settle(rig, Scripted({"taxon": cannot_resolve(SP1)}), tools=NoGenus(rig.blobs))

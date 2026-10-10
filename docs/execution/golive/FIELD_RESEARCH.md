@@ -581,33 +581,72 @@ all of these hold:
   own ("cf.Epipsocus", "c.f.Epipsocus" and "Conf.Epipsocus" are
   "Epipsocus"; a person's initials such as "C.F." keep their letters;
   `checks._token`); what then holds no letter or digit (a sex
-  sign, a "+", a lone "?" or "cf.") is no token. Two tokens are read: the one
-  written immediately before the code (the last before it on its line or,
-  when its line has none there, the last of the nearest line above that
-  has one), and the first after the code on its line. Either may be a
-  genus (`checks.may_be_genus`), judged with its first letter made a
-  capital, as the query check above judges a token: when it holds a letter
-  and no digit ("Epipsocus", "epipsocus?", "E.?", "cf.Epipsocus",
-  "R.D.mitchell", "legs", the reader's "[unreadable]"); when it is then a
-  capital followed by letters and digits ending in a letter, with an
-  optional final period ("Ep1psocus", "ep1psocus"); or when it holds three
-  letters or more and one digit at most, a genus misread with a digit
-  ("Epipsocu5", "3pipsocus"; with one digit, no date or number
-  punctuation stands between digits). Any other token is none: "V-4-67-1",
-  "6400'", "IX-14-46", "Epipsocu55". The token after the code is passed over
-  when it is, as written, one of `checks.NOT_GENERA`, the one list of
-  such words: legs, leg, wings, wing, head, terminalia, genitalia, slide,
-  mount and the two sex signs. On the taxon's keyed line ("taxon: sp.
-  30", as `Workflow.parse` reads key: value text) the key is no token;
-  when the nearest line above with a token is itself a keyed line
-  ("verbatim_dts: ..."), it is another field's, and no token before the
-  code is read. So "Epipsocus sp. 1", "Epipsocus", "Epipsocus?" or
+  sign, a "+", a lone "?" or "cf.") is no token. Two tokens are read
+  (`checks.genus_beside`), and words of `checks.NOT_GENERA` are passed
+  over on both sides (the real-model run of the ten pilots, 2026-10-09):
+  - before the code, the last token on its line that is not one of them;
+    when its line has none, the last such token of the nearest line above
+    that has any token; when every token of that line is one of them, none
+    ("Epipsocus" in "Epipsocus legs sp. 1" and above "<female sign> legs
+    Sp.#1"; none for "legs sp. 1" or for "wings + head" above "sp. 30");
+  - after the code, the first token on its line that is not one of them,
+    and none when every token there is one ("Epipsocus" in "sp. 1
+    <female sign> legs Epipsocus"; none for "sp. 1 legs").
+
+  `checks.NOT_GENERA` is the one list of such words, compared as written
+  (Unicode NFC): the parts a slide mounts, the slide or mount and the sex,
+  in English (head, leg, legs, wing, wings, abdomen, antenna, antennae,
+  genitalia, terminalia, slide, mount, male, males, female, females),
+  Spanish (cabeza, pata, patas, ala, alas, antena, antenas, lamina,
+  montaje, macho, machos, hembra, hembras), French (tete, patte, pattes,
+  aile, ailes, antenne, antennes, lame, montage, male, males, femelle,
+  femelles), German (Kopf, Bein, Beine, Fluegel, Fuehler, Praeparat,
+  Maennchen, Weibchen) and Portuguese (cabeca, pernas, asa, asas, lamina,
+  montagem, femea, femeas), and the two sex signs. This note is plain
+  ASCII: the list holds each word with its accents (the Spanish lamina
+  with an acute a, the Portuguese one with a circumflex a; tete, femea and
+  femeas with a circumflex e; the French male and males with a circumflex
+  a; cabeca with a c cedilla) and the German words with an umlaut (u
+  umlaut for "ue", a umlaut for "ae"); their ASCII spellings are not
+  listed, but for the English male and males. A genus is
+  written with a capital, so the lower-case words are listed only in lower
+  case ("Legs" and "Ala" may still be a genus), and "perna" is not
+  listed (Perna is a mussel genus). A token is none either when a
+  person's name written with initials ends with it (before the code) or
+  starts with it (after the code) (`checks._PERSON`): initials run into
+  the surname ("R.D.mitchell"), initials then a capitalised surname ("R.
+  D. Mitchell", "1948, R.D. Mitchell", "H. Hoogstraal"), a surname, a
+  comma and initials ("Mitchell, R.D.", "Mitchell, R. D."), or two or more
+  initials alone ("R.D."), unless the initials spell a qualifier of the
+  doubt signs' list ("C.F. Epipsocus" and "N.R. Epipsocus" may be "cf."
+  and "nr."). One capital and a period ("E.") abbreviates a genus.
+
+  The token read may be a genus (`checks.may_be_genus`), judged with its
+  first letter made a capital, as the query check above judges a token:
+  when it holds a letter and no digit ("Epipsocus", "epipsocus?", "E.?",
+  "cf.Epipsocus", "Mitchell", the reader's "[unreadable]"); when it is
+  then a capital followed by letters and digits ending in a letter, with
+  an optional final period ("Ep1psocus", "ep1psocus"); or when it holds
+  three letters or more and one digit at most, a genus misread with a
+  digit ("Epipsocu5", "3pipsocus"; with one digit, no date or number
+  punctuation stands between digits). Any other token is none:
+  "V-4-67-1", "6400'", "IX-14-46", "Epipsocu55". On the taxon's keyed line
+  ("taxon: sp. 30", as `Workflow.parse` reads key: value text) the key is
+  no token; when the nearest line above with a token is itself a keyed
+  line ("verbatim_dts: ..."), it is another field's, and no token before
+  the code is read. So "Epipsocus sp. 1", "Epipsocus", "Epipsocus?" or
   "[unreadable]" with "sp. 1" on the next line (as on 105526328), "E.?
-  sp. 1", "Epipsocu5 sp. 1" and "legs sp. 1" never clear as unmatched,
-  whatever the organiser's candidate is; the pilot's 105526321 ("Mossy
-  forest 6400'" above "sp. 30"), 105526326 ("Sp. 22" on a label of its
-  own) and 105526327 ("V-4-67-1" above "sp 22", "legs" on the line below)
-  clear;
+  sp. 1", "Epipsocu5 sp. 1", "C.F. Epipsocus" above "sp. 1" and "Legs sp.
+  1" never clear as unmatched, whatever the organiser's candidate is; the
+  pilot's 105526321 ("Mossy forest 6400'" above "sp. 30"), 105526326
+  ("Sp. 22" on a label of its own), 105526327 ("V-4-67-1" above "sp 22",
+  "legs" on the line below), 105526322 ("wings + head" above "sp. 30"),
+  105526323 ("genitalia + legs" above "Sp 30"), 105526329 ("R.D.mitchell"
+  above "sp #1") and 105526330 ("1948, R.D. Mitchell" above
+  "<female sign> legs Sp.#1") pass this check. 105526322 and 105526329
+  still go to review on the readers' rule below: their readers write
+  "sp. 30" and "Sp.30", "sp #1" and "Sp #1", and their labels have no
+  decided transcript;
 - no part of a label that writes the code is unreadable
   (`step._code_label_unreadable`): rule A's test (no reader's unreadable
   span, no transcript marked unreadable, no placeholder of rule A's list
@@ -726,9 +765,12 @@ its brief has it look up (alone, any genus a label writes, doubtful or
 not, before it answers for a morphocode):
 - a genus written with no doubt sign where the label check does not count
   it (away from the code, as "Epipsocus" above "V-4-67-1" above the code,
-  on the line after the code's or on another label; or misread beside it
-  into a token the label check's test does not count, as "Epipsocu55"),
-  when the expert makes no GBIF lookup but of the code itself;
+  on the line after the code's or on another label; behind a line of
+  `checks.NOT_GENERA` words, as "Epipsocus" above "wings + head" or
+  "legs" above the code; right after a person's initials, as "R.D.
+  Epipsocus" above the code, read as a name; or misread beside it into a
+  token the label check's test does not count, as "Epipsocu55"), when the
+  expert makes no GBIF lookup but of the code itself;
 - a genus marked doubtful in a way the doubt signs do not read (a doubt
   word outside the qualifier list, as "sim. Epipsocus" above "V-4-67-1"
   above the code; or a qualifier the signs read as an ordinary label word,
@@ -737,9 +779,10 @@ not, before it answers for a morphocode):
   the code itself.
 
 Each still clears as unmatched
-(`test_a_genus_the_doubt_signs_do_not_read_clears_when_the_expert_makes_no_lookup`
+(`test_a_genus_the_label_checks_do_not_read_clears_when_the_expert_makes_no_lookup`
 for "sim. Epipsocus", "NR Epipsocus" and "C.F Epipsocus" above
-"V-4-67-1"). Where the expert does look the genus up, as its brief says,
+"V-4-67-1", and for "Epipsocus" above "wings + head" or "legs" and "R.D.
+Epipsocus" right above the code). Where the expert does look the genus up, as its brief says,
 the GBIF guard refuses rule B, since that query is not the code
 (`step._gbif_asked_another_name`;
 `test_the_real_resolver_looking_the_genus_up_as_its_brief_says_keeps_the_taxon_in_review`
