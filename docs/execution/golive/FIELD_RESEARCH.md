@@ -108,7 +108,8 @@ handover runs field research instead of the six specialists:
    (`step.trace_fields`): the expert's outcome, its failure and fallback,
    the value's state and layer, the run's reason codes for the field, the
    check that refused a resolved answer and the rule that decided the field
-   (rule A or B, a derivation, an unreachable source on the last attempt),
+   (rule A or B, a derivation, an unreachable source or a timeout on the
+   last attempt),
    and each lookup as source and status. These are codes; the literal,
    value, authority id and reason are added only when the worker captures
    approved content.
@@ -118,7 +119,11 @@ handover runs field research instead of the six specialists:
    record (shared cache), retries with backoff (three attempts, a Retry-After
    of at most 10 s honoured, a redirect never followed), GEOLocate spacing
    kept, and at most two requests at a time to each of Getty TGN, Wikidata
-   and NGA across the worker process (`sources.SOURCE_SLOTS`). Each source
+   and NGA across the worker process (`sources.SOURCE_SLOTS`). A request
+   that waits 30 s for one of those slots is not sent: its lookup gives up
+   at once as a timeout ("Getty TGN was busy; this lookup was not sent"),
+   logged like any unanswered request (`error=slot_busy`), so the expert
+   goes on with its other sources. Each source
    response is stored once as evidence. Each request a source leaves
    unanswered (a final status other than 200, or retries that ran out) is
    logged in one WARNING line with the source, the host, the HTTP status or
@@ -405,9 +410,10 @@ handover runs field research instead of the six specialists:
    3 by default). On
    the step's last attempt a field whose sources still could not be reached
    goes to Needs human review instead, unresolved, its reason naming them
-   ("Getty TGN could not be reached after 3 attempts."), and the record
-   finalizes with its other fields. A model failure or timeout on the last
-   attempt still stops the automatic retries
+   ("Getty TGN could not be reached after 3 attempts."), and so does a field
+   that ran out of time ("Research on this field ran out of time after 3
+   attempts."); the record finalizes with its other fields. A model failure
+   on the last attempt still stops the automatic retries
    (`retry_budget_exhausted:<code>`). The app's processing panel judges such
    a blocker by its code: for `lookup_operational_failure` it says an
    approved source could not be reached, never that a cost limit stopped
@@ -425,7 +431,8 @@ handover runs field research instead of the six specialists:
    error, or a step that overran its deadline, settles to what the meter spent.
 9. **Time.** Research stops a minute before the step's deadline (210 s of the
    pilot's 270 s): a field still being researched becomes a timeout for the
-   retry, and every settled field is kept. The work after research measured
+   retry (on the last attempt, a field for review; step 7), and every settled
+   field is kept. The work after research measured
    4.3 s on a slide-sized record with a 50 ms storage round trip per blob, most
    of it the integrity check, so the minute is more than three times it. The
    record's sources close when research ends, so a GBIF check still running
@@ -779,7 +786,8 @@ never clears on a re-check; only new research writes the row.
 
 A field research run that failed (a field whose expert reached no source, a
 model error, a timeout) is retried until its last allowed attempt, on which
-a source still unreachable sends its field to review (step 7 above), and
+a source still unreachable or a timeout sends its field to review (step 7
+above), and
 the retry researches only the fields that did not settle (a
 province, county or city that waited for a country that did not settle
 is among them). A field marked not on the label is not settled, so the
