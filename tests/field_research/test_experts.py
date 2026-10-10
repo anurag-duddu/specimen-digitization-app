@@ -786,6 +786,24 @@ def test_the_briefs_place_notations_are_the_tables():
     assert notations.expansion("P.I.", "province_state") is None and notations.expansion("Phil.", "country") is None
 
 
+UNREACHABLE_LINE = (
+    "- If a source cannot be reached (an error status and no evidence_id), decide with the sources that "
+    "answered when they settle the field under these rules, and say in the explanation which source did "
+    "not answer.")
+
+
+def test_every_place_brief_has_its_expert_decide_with_the_sources_that_answered():
+    """One unreachable source does not void a field (experts.make_resolver):
+    every brief whose expert may ask Getty TGN says so, once."""
+    from specimen_digitization.field_research.prompts import instructions
+
+    places = [key for key, tools in FIELD_TOOLS.items() if "tgn" in tools]
+    assert places == ["country", "province_state", "county", "city", "precise_location"]
+    for key in FIELD_TOOLS:
+        lines = instructions(key).splitlines()
+        assert lines.count(UNREACHABLE_LINE) == (1 if key in places else 0), key
+
+
 def test_the_taxon_brief_has_a_doubtful_or_distant_genus_looked_up_alone():
     """B4 of #289's fifth review: the brief no longer withholds the lookup
     for a genus in doubt, whatever its qualifier's spelling, and has every
