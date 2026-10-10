@@ -86,6 +86,11 @@ List<String> recordReasonCodes(Specimen specimen) {
 }
 
 String _readable(String code) {
+  // A run whose retries ran out is named by its cause, which is the whole
+  // reason; the cause's code is not a subject to print after a colon.
+  if (code.startsWith(retriesStoppedPrefix)) {
+    return _sentence(vocabularyLabel(code));
+  }
   final int colon = code.indexOf(':');
   if (colon < 0) return _sentence(vocabularyLabel(code));
   final String head = vocabularyLabel(code.substring(0, colon));

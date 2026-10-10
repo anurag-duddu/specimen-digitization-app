@@ -17,6 +17,7 @@ import 'package:flutter/semantics.dart' show SemanticsRole;
 import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
+import 'blocker_words.dart';
 import 'models.dart';
 import 'saved_filters.dart';
 import 'vocabulary.dart';
@@ -548,7 +549,9 @@ class SearchFiltersState extends State<SearchFilters> {
           for (final String choice in choices)
             UiSelectOption<String>(
               value: choice,
-              label: vocabularyLabel(choice),
+              label: key == 'blocker'
+                  ? blockerLabel(choice)
+                  : vocabularyLabel(choice),
             ),
         ],
         onChanged: (String value) =>

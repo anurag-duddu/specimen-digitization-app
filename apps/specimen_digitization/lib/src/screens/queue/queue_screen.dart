@@ -17,6 +17,7 @@ import '../../app/routes.dart';
 import '../../app/shell.dart';
 import '../../models.dart';
 import '../../reason_codes.dart';
+import '../../blocker_words.dart';
 import '../../selection.dart';
 import '../../vocabulary.dart';
 import '../../widgets/widgets.dart';
@@ -49,9 +50,10 @@ String queueReason(Specimen specimen) {
     'risk_not_measured',
     'risk_not_calibrated',
   };
+  final Object? blocker = data['blocker'];
   for (final Object? value in <Object?>[
     for (final Json finding in specimen.findings) finding['message'],
-    data['blocker'],
+    blocker,
     ...data['reason_codes'] as List? ?? const <Object?>[],
   ]) {
     if (value is! String || value.trim().isEmpty) continue;
@@ -59,7 +61,11 @@ String queueReason(Specimen specimen) {
     if (sharedStates.contains(normalized)) {
       continue;
     }
-    return vocabularyLabel(value.trim());
+    // A blocker is a machine code, so it reads as its cause or, where this
+    // client has no words for it, as a generic line. Never as the code.
+    return value == blocker
+        ? blockerLabel(value.trim())
+        : vocabularyLabel(value.trim());
   }
   return '';
 }
