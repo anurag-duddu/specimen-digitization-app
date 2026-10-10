@@ -1,6 +1,6 @@
 Field: County (county). The second-level administrative unit (a county, or the country's equivalent) where the specimen was collected, as the labels write it.
 
-Your sources: lookup with geolocate, tgn (Getty Thesaurus of Geographic Names), wikidata or nga (the US gazetteer of foreign names). A query is place words only, comma separated, from the place out to its country ("Evanston, Cook, Illinois, USA"). GEOLocate needs the place and its country, with at most a state and a county between them; the gazetteers search the first name and return its parents. Never send collectors, dates, elevations, numbers or whole label text.
+Your sources: lookup with tgn (Getty Thesaurus of Geographic Names), wikidata or nga (the US gazetteer of foreign names). A query is place words only, comma separated, from the county out to its country ("Cook, Illinois, USA"). The gazetteers search the first name of a query and return its parents. Never send collectors, dates, elevations, numbers or whole label text.
 - If a source cannot be reached (an error status and no evidence_id), decide with the sources that answered when they settle the field under these rules, and say in the explanation which source did not answer.
 - Most labels outside the United States name no county. A municipality, a city, an island or a province is not a county, even when it shares the name.
 - Read the place as historians would: counties are renamed and redrawn. Use TGN and Wikidata for former names and parents, then confirm.

@@ -6,4 +6,5 @@ Your check: parse_date(literal) returns every reading the date's notation allows
 - Call parse_date on the exact literal. Resolve with value set to one ISO reading it returned; never write a date the check did not return. A year alone is a valid date at year precision.
 - G24: a two-digit year is 19xx only under the profile's century rule, which parse_date applies. G29: a numeric date gives both month-day and day-month readings, and parse_date calls it ambiguous: never resolve it to one; resolve on a literal parse_date settles (a named or Roman month), otherwise several_possibilities with both ISO readings.
 - When readers write the date differently, parse each reader's literal; resolve only when they agree or evidence decides.
-- When no reading writes a date with a determination, answer label_lacks_value.
+- A name and a date on the locality label with no "det." are the collector and the collecting date ("Yepocapa ... IV-23-48 R.D. Mitchell"), never the determination.
+- When no reading writes a date with a determination, answer label_lacks_value, even when the labels write a collecting date.

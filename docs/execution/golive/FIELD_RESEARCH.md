@@ -306,7 +306,11 @@ handover runs field research instead of the six specialists:
      which it only repeats, so it confirms nothing there (asked "Yepocapa,
      Chimaltenango, Guatemala" for a province
      "Yepocapa", its candidate is "Chimaltenango", a province inferred from a
-     locality). So TGN's ambiguous
+     locality). The country and county experts therefore do not have
+     GEOLocate among their tools, only Getty TGN, Wikidata and NGA
+     (`contracts.GAZETTEERS`; in the real runs of 2026-10-09 all 22 of the
+     county experts' GEOLocate lookups were refused before they were sent,
+     and the country experts spent 51 lookups on it). So TGN's ambiguous
      answer for "Philippines" (the nation, a Dutch village, a sea) settles
      the country "P.I." as Philippines, and its answer for "Chimaltenango"
      (the department and its town) settles the province as the department
@@ -500,7 +504,14 @@ elevation is derived first, and only for a field a person has not decided):
    (label_lacks_value), with no failure, in this attempt. Every field but
    the identified-by IRN gets its expert (step 2), so the answer is the
    model's; no lookup is required, since a field such as the habitat has no
-   source to search.
+   source to search. The shared brief has the expert answer
+   label_lacks_value for a value the labels do not write, a value it could
+   only infer or look up included (a town for labels that name only a
+   province or a mountain, an identification date for labels whose only
+   date is the collecting date), and never sources_cannot_resolve; the city
+   and date-identified briefs say so for their fields. (In the real run of
+   2026-10-09 105526326's city and 105526329's date identified were answered
+   sources_cannot_resolve where the labels lack them.)
    The resolver's fallback, put in place of an answer the expert never gave
    (out of attempts with no checked answer when asked once more, or answers
    that failed their checks), is sources_cannot_resolve, so it never

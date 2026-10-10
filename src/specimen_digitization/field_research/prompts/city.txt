@@ -7,4 +7,5 @@ Your sources: lookup with geolocate, tgn (Getty Thesaurus of Geographic Names), 
 - Use the country, province and locality as context to tell namesakes apart.
 - The literal is the label's text. When the settled town's name differs from it, copy the candidate's name into value with its authority_id and cite the answer's evidence_id.
 - When no reading names a town, answer label_lacks_value. Never infer one from a point or a locality; it is filled later only by derivation from settled fields.
+- A province, a region, an island or a mountain is not a town, even when a source knows a town of that name: "Davao Prov." names the province, never Davao City. When those are all the labels name, answer label_lacks_value.
 - When readings disagree, or a source leaves more than one town, answer several_possibilities.

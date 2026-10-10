@@ -907,6 +907,48 @@ def test_a_repeated_lookup_is_sent_once():
     assert ["repeat" in result for result in shown] == [False, True, True]
 
 
+@pytest.mark.parametrize("key", ["country", "county"])
+def test_the_country_and_county_experts_have_no_geolocate(key):
+    """In the real runs of 2026-10-09 every county GEOLocate lookup was refused
+    before it was sent (105526329's "Yepocapa, Chimaltenango, Guatemala"
+    among them), and GEOLocate settles no country: their experts ask the
+    gazetteers only."""
+    from specimen_digitization.field_research.prompts import FIELD_LABELS, instructions
+
+    assert FIELD_TOOLS[key] == ("tgn", "wikidata", "nga")
+    brief = instructions(key).split(f"Field: {FIELD_LABELS[key]} ({key})", 1)[1]
+    assert "geolocate" not in brief.lower()
+    query = "Yepocapa, Chimaltenango, Guatemala"
+    tools = FakeTools()
+    script = Script(call("lookup", source="geolocate", query=query),
+                    dict(outcome="sources_cannot_resolve", explanation="No source settled it."))
+
+    outcome = resolve(script, task(key), tools)
+
+    lookup = script.seen[0][1].function_tools[0]
+    assert lookup.parameters_json_schema["properties"]["source"]["enum"] == ["tgn", "wikidata", "nga"]
+    assert "geolocate" not in lookup.description
+    assert tools.calls == [] and outcome.failure is None
+
+
+def test_the_briefs_answer_label_lacks_value_for_a_value_the_label_does_not_write():
+    """In the real run of 2026-10-09, 105526326's city expert (labels naming
+    only "Davao, Prov.") and 105526329's date-identified expert (only a
+    collecting date, "IV-23-48" with "R.D.mitchell") answered
+    sources_cannot_resolve, so the not-on-the-label rule could not read them."""
+    from specimen_digitization.field_research.prompts import instructions
+
+    common = instructions("habitat")
+    [lacks] = [line for line in common.splitlines() if line.startswith("- label_lacks_value:")]
+    assert "A value you could only infer or look up is not on the label" in lacks
+    [cannot] = [line for line in common.splitlines() if line.startswith("- sources_cannot_resolve:")]
+    assert cannot.endswith("A value the labels do not write is label_lacks_value, never sources_cannot_resolve.")
+    assert '"Davao Prov." names the province, never Davao City' in instructions("city")
+    date = instructions("date_identified")
+    assert 'with no "det." are the collector and the collecting date' in date
+    assert "answer label_lacks_value, even when the labels write a collecting date" in date
+
+
 def test_the_shared_brief_has_the_expert_stop_when_the_sources_have_answered():
     from specimen_digitization.field_research.prompts import instructions
 
