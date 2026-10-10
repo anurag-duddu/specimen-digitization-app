@@ -70,6 +70,79 @@ def _plausible(year: str) -> bool:
     return year[0] in APOSTROPHES or EARLIEST_YEAR <= int(year) <= datetime.now(UTC).year
 
 
+# What makes a bare number beside it a measurement or a determination's year, not a
+# collecting date's year. Words are matched folded (accents dropped) and in lower case,
+# in the languages of the month tables: alt., altitude (en, fr, pt), altitud, altura
+# (es, pt), altitudine, quota (it), altitudo (la), elev. and elevation (en; the es, pt
+# and fr spellings fold to the three below), Hohe, Seehohe, Meereshohe (de, with the
+# umlaut or "oe"), depth, profundidad, profundidade, profondeur, profondita, Tiefe; and
+# the marks of a height above sea level (msnm, m.s.n.m., snm, s.n.m., s.l.m., a.s.l.,
+# m.a.s.l.). "El." counts only with its period: "El" alone is the Spanish article.
+_SEA_LEVEL = frozenset({"msnm", "snm", "slm", "asl", "masl"})
+_MEASURE_WORDS = _SEA_LEVEL | {
+    "alt", "altitude", "altitud", "altura", "altitudine", "altitudo", "quota",
+    "elev", "elevation", "elevacion", "elevacao",
+    "hohe", "hoehe", "seehohe", "seehoehe", "meereshohe", "meereshoehe",
+    "depth", "profundidad", "profundidade", "profondeur", "profondita", "tiefe",
+}
+# The units of an elevation or a depth after a number, in any case (1900 m, 4800ft,
+# 6000 pies, 1200 M, 4800'); a distance (5 mi W, 3 km) is not one. The short marks
+# also count as a word of their own in lower case ("1948. m"): a word such as "foot"
+# or "metro" alone does not ("foot of Volcan Fuego").
+_UNITS = ("m", "mt", "mts", "metro", "metros", "metre", "metres", "meter", "meters", "metri",
+    "ft", "feet", "foot", "pies", "pes", "pieds", "piedi", "fuss", "fu\N{LATIN SMALL LETTER SHARP S}")
+_SHORT_UNITS = frozenset({"m", "mts", "ft"})
+_UNIT_AFTER_NUMBER = re.compile(
+    r"[0-9]\s*(?:" + "|".join(_UNITS) + r")(?![^\W\d_])"
+    "|[0-9]['\N{RIGHT SINGLE QUOTATION MARK}\N{PRIME}]", re.IGNORECASE)
+# A determination: det., determ., determinavit, determined (en), determino (es),
+# determinou (pt), determine (fr, accent folded).
+_DETERMINATION_WORDS = frozenset({
+    "det", "determ", "determinavit", "determined", "determino", "determinou", "determine"})
+# A word of letters, with the periods inside or after it (m.s.n.m., Alt., R.D.).
+_TOKEN = re.compile(r"[^\W\d_](?:[^\W\d_]|\.(?=[^\W\d_]))*\.?")
+MEASUREMENT, DETERMINATION = "measurement", "determination"
+
+
+def _marker(line: str) -> str | None:
+    """Whether a line marks the numbers on it, and on the line below it, as an
+    elevation, a depth or another measurement (`measurement`), or as a
+    determination's (`determination`); None when it marks neither."""
+    folded = fold(line)
+    if _UNIT_AFTER_NUMBER.search(folded):
+        return MEASUREMENT
+    found = None
+    for token in _TOKEN.findall(folded):
+        word = token.lower().replace(".", "")
+        if word in _MEASURE_WORDS or token.lower() == "el." or (word in _SHORT_UNITS and token.islower()):
+            return MEASUREMENT
+        if word in _DETERMINATION_WORDS:
+            found = DETERMINATION
+    return found
+
+
+def _starts_with_a_unit(line: str) -> bool:
+    """Whether a line begins with a short unit or a height above sea level in lower
+    case ("m", "ft.", "msnm", "m.s.n.m."): the unit of a number that ends the line above."""
+    token = _TOKEN.match(fold(line).lstrip())
+    word = token.group().replace(".", "") if token else ""
+    return bool(token) and word.islower() and (word in _SHORT_UNITS or word in _SEA_LEVEL)
+
+
+def _year_marker(text: str, spans: list[tuple[int, int]], line: int) -> str | None:
+    """Why a number that is the year on the given line of the text may be no
+    collecting date's year (`measurement` or `determination`): its own line, or the
+    nearest line above it that is not blank, marks it (`_marker`), or the nearest
+    line below it that is not blank starts with a unit. None when nothing does."""
+    lines = [text[start:end] for start, end in spans]
+    above = next((lines[i] for i in range(line - 1, -1, -1) if lines[i].strip()), "")
+    below = next((lines[i] for i in range(line + 1, len(lines)) if lines[i].strip()), "")
+    for marked in (lines[line], above):
+        if kind := _marker(marked):
+            return kind
+    return MEASUREMENT if _starts_with_a_unit(below) else None
+
+
 # The line breaks str.splitlines() splits at: one definition of a line for the date
 # parser (`literal_spans_a_line_break`), these rules, the checks and the step.
 _BREAK = re.compile("\r\n|[\n\r\v\f\x1c\x1d\x1e\x85\N{LINE SEPARATOR}\N{PARAGRAPH SEPARATOR}]")
@@ -126,50 +199,66 @@ def _around(spans: list[tuple[int, int]], start: int, end: int) -> tuple[int, in
 OTHER_DATE = "split_lines_hold_another_date"
 YEAR_NOT_ALONE = "split_lines_year_not_alone"
 NOT_ADJACENT = "split_lines_not_adjacent"
+YEAR_MEASUREMENT = "split_lines_year_may_be_a_measurement"
+YEAR_DETERMINATION = "split_lines_year_may_be_a_determination"
+_SPLIT_NOTES = {"alone": YEAR_NOT_ALONE, MEASUREMENT: YEAR_MEASUREMENT,
+    DETERMINATION: YEAR_DETERMINATION, "other": OTHER_DATE}
+
+
+def _year_after(before: str, after: str) -> str | None:
+    """Why a year that follows its date (starting the next line, or later on the
+    date's own line) is not the date's year, from the text before the date and
+    after the year on their lines: "other" (something there could be a date) or
+    "alone" (the year is followed by more than a comma, semicolon or period and
+    other text); None when neither."""
+    if could_be_a_date(before):
+        return "other"
+    if not after.strip() or (after[0] in ",;." and not after[1:2].isdigit()):
+        return "other" if could_be_a_date(after[1:]) else None
+    return "other" if could_be_a_date(after) else "alone"
+
+
+def _note(found: set[str], notes: dict[str, str]) -> str:
+    """The note for the reasons the literal's places gave, the first of `notes` that applies."""
+    return next((note for reason, note in notes.items() if reason in found), notes["other"])
 
 
 def split_problem(literal: str, text: str) -> str | None:
     """Why the (two-line) literal, where it stands in the text, is not a date and
-    its year (a note: `split_lines_not_adjacent`, `split_lines_hold_another_date`
-    or `split_lines_year_not_alone`), or None when some place of it is clear.
+    its year (a note: `split_lines_not_adjacent`, `split_lines_year_not_alone`,
+    `split_lines_year_may_be_a_measurement`, `split_lines_year_may_be_a_determination`
+    or `split_lines_hold_another_date`), or None when some place of it is clear.
 
     The two lines are adjacent: no blank line between them. The date's own line
     holds nothing else that could be a date. A year that ends the line above the
     date must stand alone on its line; one that starts the line below it may be
     followed by a comma, semicolon or period (and then other text), never by a
     unit, an apostrophe, a dash and a number, a second number, or a word. A
-    period or comma the literal itself quotes after the year counts as following
-    it."""
+    period, comma or semicolon the literal itself quotes after the year counts as
+    following it (a colon does not: "1948:" is not alone). And no marker makes the
+    year a measurement or a determination's year (`_year_marker`)."""
     lines = _lines(literal)
     if len(lines) != 2:
         return NOT_ADJACENT
     year_first = bool(_ALONE.fullmatch(_unmarked(lines[0])))
     # The mark the literal quotes after a year that ends it ("1948." in "3 Sept.\n1948.").
     tail = lines[1][len(_unmarked(lines[1])) :] if not year_first else ""
-    problem = OTHER_DATE
+    found = set()
     spans = _spans(text)
     for hit in re.finditer(re.escape(literal), text):
-        _, _, line_start, line_end = _around(spans, hit.start(), hit.end())
+        first, last, line_start, line_end = _around(spans, hit.start(), hit.end())
         before, after = text[line_start : hit.start()], tail + text[hit.end() : line_end]
         if year_first:
             # The year ends its line: it stands alone there; the date's line is after.
-            if could_be_a_date(before) or could_be_a_date(after):
-                continue
-            if before.strip():
-                problem = YEAR_NOT_ALONE
-                continue
+            reason = "other" if could_be_a_date(before) or could_be_a_date(after) else (
+                "alone" if before.strip() else None)
+        else:
+            reason = _year_after(before, after)
+        reason = reason or _year_marker(text, spans, first if year_first else last)
+        if reason is None:
             return None
-        if could_be_a_date(before):
-            continue
-        rest = after.strip()
-        if not rest or (after[0] in ",;." and not after[1:2].isdigit()):
-            if not could_be_a_date(after[1:]):
-                return None
-            continue
-        if could_be_a_date(after):
-            continue
-        problem = YEAR_NOT_ALONE
-    return problem
+        found.add(reason)
+    return _note(found, _SPLIT_NOTES)
 
 
 def _bare_year(line: str) -> str | None:
@@ -185,7 +274,8 @@ def year_beside(literal: str, text: str) -> tuple[str, str] | None:
     The date must end its line and the line below hold nothing but a four-digit
     year (and at most a period or comma), or the date must start its line and
     the line above hold nothing else; the rest of the date's own line must hold
-    nothing that could be a date."""
+    nothing that could be a date; and no marker may make the year a measurement
+    or a determination's year (`_year_marker`: "Alt." above "1900")."""
     found: dict[str, str] = {}
     spans = _spans(text)
     for hit in re.finditer(re.escape(literal), text):
@@ -193,11 +283,11 @@ def year_beside(literal: str, text: str) -> tuple[str, str] | None:
         before, after = text[line_start : hit.start()], text[hit.end() : line_end]
         if not after.strip() and last + 1 < len(spans) and not could_be_a_date(before):
             year = _bare_year(text[slice(*spans[last + 1])])
-            if year:
+            if year and not _year_marker(text, spans, last + 1):
                 found.setdefault(year, "next_line")
         if not before.strip() and first > 0 and not could_be_a_date(after):
             year = _bare_year(text[slice(*spans[first - 1])])
-            if year:
+            if year and not _year_marker(text, spans, first - 1):
                 found.setdefault(year, "previous_line")
     if len(found) != 1:
         return None

@@ -12,7 +12,7 @@ from types import SimpleNamespace
 import pytest
 
 from specimen_digitization.application.domain import FieldValue, LookupStatus, ValueState
-from specimen_digitization.field_research import checks, derive
+from specimen_digitization.field_research import checks, date_lines, derive
 from specimen_digitization.field_research import step as field_step
 
 PILOT = {"version": "date-rules-v1", "two_digit_year_century": 1900, "roman_numeral_months": True}
@@ -406,6 +406,92 @@ def test_a_reading_that_cannot_be_named_is_refused_not_dropped():
         date("IV-25", ["Guatemala, IV-25\n1948", "Guatemala, IV-25\n1949"], reading_names=["1A"])
     with pytest.raises(ValueError):
         date("IV-25", ["Guatemala, IV-25\n1948"], reading_names=["1A", "1B"])
+
+
+# -- a bare number beside an elevation, a depth, a unit or a determination is not a year -----------
+# Review 297 (rounds 2 and 3): "Alt." ending the line above "1900" lent 1900 as the year of
+# "IV-25" below it. The year's line and the nearest line above it must hold no such marker,
+# and the nearest line below it must not start with a unit.
+
+O_UMLAUT = "\N{LATIN SMALL LETTER O WITH DIAERESIS}"
+MEASURE = "split_lines_year_may_be_a_measurement"
+DETERMINATION = "split_lines_year_may_be_a_determination"
+MARKED_YEARS = [
+    # The reading's text, the organiser's two-line literal, the note; the bare day and month
+    # (the literal's other line) must not borrow the year either.
+    ("Guatemala\nAlt.\n1900\nIV-25 Yepocapa", "1900\nIV-25", MEASURE),
+    ("Guatemala\nElev.\n1900\nIV-25 Yepocapa", "1900\nIV-25", MEASURE),
+    ("Guatemala\nEl.\n1900\nIV-25 Yepocapa", "1900\nIV-25", MEASURE),
+    ("Guatemala\nalt\n1900\nIV-25 Yepocapa", "1900\nIV-25", MEASURE),
+    ("Guatemala\naltitude\n1900\nIV-25 Yepocapa", "1900\nIV-25", MEASURE),
+    ("Guatemala\nm.s.n.m.\n1900\nIV-25 Yepocapa", "1900\nIV-25", MEASURE),
+    ("Antioquia, Colombia\nAltitud:\n1900\n25.IV Medellin", "1900\n25.IV", MEASURE),  # es
+    ("Minas Gerais\nAltura\n1900\n25.IV Ouro Preto", "1900\n25.IV", MEASURE),  # pt
+    ("Is\N{LATIN SMALL LETTER E WITH GRAVE}re\nAltitude\n1900\n25.IV Grenoble", "1900\n25.IV", MEASURE),  # fr
+    ("Trentino\nQuota\n1900\n25.IV Bolzano", "1900\n25.IV", MEASURE),  # it
+    (f"Tirol\nH{O_UMLAUT}he\n1900\n25.IV Innsbruck", "1900\n25.IV", MEASURE),  # de
+    (f"Tirol\nSeeh{O_UMLAUT}he\n1900\n25.IV Innsbruck", "1900\n25.IV", MEASURE),  # de
+    ("Andes\nAltitudo\n1900\n25.IV", "1900\n25.IV", MEASURE),  # la
+    ("Lago Titicaca\nProfundidad\n1900\n25.IV", "1900\n25.IV", MEASURE),  # es, a depth
+    # A unit starting the line below the year, after a number, or alone in lower case.
+    ("Guatemala, IV-25\n1900\nm, R.D. Mitchell", "IV-25\n1900", MEASURE),
+    ("Guatemala, IV-25\n1900\nmsnm", "IV-25\n1900", MEASURE),
+    ("Guatemala, IV-25\n1948, 1900m", "IV-25\n1948", MEASURE),
+    ("Guatemala, IV-25\n1948, 4800 ft.", "IV-25\n1948", MEASURE),
+    ("Guatemala, IV-25\n1948, 6000 pies", "IV-25\n1948", MEASURE),
+    ("Guatemala, IV-25\n1948. m", "IV-25\n1948", MEASURE),
+    ("Yepocapa, 4800 ft. IV-25\n1948", "IV-25\n1948", MEASURE),
+    # A determination on the year's line or above it.
+    ("Guatemala\ndet. J. Smith\n1950\nIV-25 Yepocapa", "1950\nIV-25", DETERMINATION),
+    ("Guatemala, IV-25\n1948, det. R.D. Mitchell", "IV-25\n1948", DETERMINATION),
+]
+
+
+@pytest.mark.parametrize(("text", "literal", "note"), MARKED_YEARS, ids=[t[0] for t in MARKED_YEARS])
+def test_a_year_beside_a_measurement_or_a_determination_is_no_date_s_year(text, literal, note):
+    split = date(literal, [text])
+    alone = date(date_lines.split_literal(literal)[0], [text])
+
+    assert split.status == LookupStatus.NO_MATCH and split.notes == (note,), split.as_dict()
+    assert alone.status == LookupStatus.AMBIGUOUS and "year_missing" in alone.notes, alone.as_dict()
+    assert all(r.via == () for r in alone.readings)
+
+
+@pytest.mark.parametrize(("text", "literal", "note"), MARKED_YEARS, ids=[t[0] for t in MARKED_YEARS])
+def test_the_step_keeps_no_row_for_a_year_beside_a_measurement_or_a_determination(text, literal, note):
+    for quoted in (literal, date_lines.split_literal(literal)[0]):
+        for value in ("1900-04-25", "1948-04-25", "1950-04-25"):
+            row = field_step._check_row("date_visited_from", ("date_parser",), quoted, value,
+                texts=[text], date_rules=PILOT, asset_id=None, blobs=None)
+            assert row is None, (quoted, value)
+
+
+@pytest.mark.parametrize(
+    ("text", "literal", "iso"),
+    [
+        # A marker two lines above the year, or with a number of its own on the line below it.
+        ("Alt. 1500 m\nGuatemala, IV-25\n1948, R.D. Mitchell", "IV-25\n1948", "1948-04-25"),
+        ("Guatemala, IV-25\n1948\nElev. 1500 m", "IV-25\n1948", "1948-04-25"),
+        # Words that are no marker: "El" without its period (the article), "foot of", "Prof.",
+        # a capital "M." (an initial), a distance in miles (review 297c, note 3, as documented).
+        ("El Salvador\n1948\nIV-25 Chalatenango", "1948\nIV-25", "1948-04-25"),
+        ("Guatemala, foot of Volcan Fuego, IV-25\n1948", "IV-25\n1948", "1948-04-25"),
+        ("leg. Prof. J. Smith\n1948\nIV-25 Guatemala", "1948\nIV-25", "1948-04-25"),
+        ("Guatemala, IV-25\n1948\nM. Smith", "IV-25\n1948", "1948-04-25"),
+        ("Guatemala, Sept. 3\n1948. 5 mi W", "Sept. 3\n1948.", "1948-09-03"),
+        # Other languages' labels with no marker beside the year.
+        ("Antioquia, 25.IV\n1948, leg. J. Restrepo", "25.IV\n1948", "1948-04-25"),
+        ("Minas Gerais, 25 de abril\n1948", "25 de abril\n1948", "1948-04-25"),
+        ("Innsbruck, 25. April\n1948", "25. April\n1948", "1948-04-25"),
+    ],
+)
+def test_a_year_with_no_marker_beside_it_still_joins_its_date(text, literal, iso):
+    result = date(literal, [text])
+    row = field_step._check_row("date_visited_from", ("date_parser",), literal, iso,
+        texts=[text], date_rules=PILOT, asset_id=None, blobs=None)
+
+    assert result.status == LookupStatus.SUCCESS and result.values == (iso,), result.as_dict()
+    assert row is not None
 
 
 # -- ranges and the field that takes their end ---------------------------------------------------

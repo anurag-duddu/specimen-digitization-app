@@ -62,10 +62,34 @@ def test_year_beside_needs_the_date_to_end_or_start_its_line_and_the_year_alone(
         assert date_lines.year_beside("IV-25", f"{line}\nIV-25 x") is None, line
 
 
+def test_year_beside_lends_no_year_a_marker_makes_a_measurement_or_a_determination():
+    # Review 297 (rounds 2 and 3): "Alt." above "1900" lent 1900 to the date below it.
+    for text in ("x\nAlt.\n1900\nIV-25 y", "x\nEl.\n1900\nIV-25 y", "x\nAlt.\n\n1900\nIV-25 y",
+                 "x\ndet. J. Smith\n1950\nIV-25 y", "x, IV-25\n1900\nm", "x, IV-25\n1900\nm.s.n.m.",
+                 "4800 ft. IV-25\n1948", "x, 1500 m, IV-25\n1948"):
+        assert date_lines.year_beside("IV-25", text) is None, text
+    # A marker further away, or a word that is no marker, lends the year as before.
+    assert date_lines.year_beside("IV-25", "Alt. 1500 m\nx, IV-25\n1948") == ("1948", "next_line")
+    assert date_lines.year_beside("IV-25", "El Salvador\n1948\nIV-25 y") == ("1948", "previous_line")
+    assert date_lines.year_beside("IV-25", "x, IV-25\n1948\nM. Smith") == ("1948", "next_line")
+
+
 @pytest.mark.parametrize(
     ("literal", "text", "problem"),
     [
         ("IV-25\n1948", "x, IV-25\n1948", None),
+        # A marker on the year's line or the line above it, or a unit starting the line below.
+        ("1900\nIV-25", "Alt.\n1900\nIV-25 x", date_lines.YEAR_MEASUREMENT),
+        ("IV-25\n1900", "x, IV-25\n1900\nm", date_lines.YEAR_MEASUREMENT),
+        ("IV-25\n1948", "x, IV-25\n1948, 1900m", date_lines.YEAR_MEASUREMENT),
+        ("IV-25\n1948", "4800 ft. IV-25\n1948", date_lines.YEAR_MEASUREMENT),
+        ("1950\nIV-25", "det. J. Smith\n1950\nIV-25 x", date_lines.YEAR_DETERMINATION),
+        ("IV-25\n1948", "x, IV-25\n1948, det. y", date_lines.YEAR_DETERMINATION),
+        # The year is not alone and a marker is there too: the year's own reason is named.
+        ("IV-25\n1948", "Alt.\nx, IV-25\n1948 m", date_lines.YEAR_NOT_ALONE),
+        # The colon after a year below the date is no sentence mark (review 297c, note 2).
+        ("3 Sept.\n1948:", "Guatemala, 3 Sept.\n1948: R.D. Mitchell", date_lines.YEAR_NOT_ALONE),
+        ("3 Sept.\n1948;", "Guatemala, 3 Sept.\n1948; R.D. Mitchell", None),
         ("IV-25\n1948", "x, IV-25\n1948, R.D. Mitchell", None),
         ("IV-25\n1948", "x, IV-25\n1948; y", None),
         ("IV-25\n1948", "x, IV-25\n1948. y", None),
