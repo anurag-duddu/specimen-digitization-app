@@ -28,9 +28,14 @@ from specimen_digitization.application.field_validators import (
 from specimen_digitization.research_harness.evidence import EvidenceError, parse_measurement
 from specimen_digitization.research_harness.taxonomy import taxonomy_scientific_name
 
+from . import date_lines
+
 NOT_IN_SOURCE = "literal_not_in_source"
 # The date parser's notes for a literal that is (part of) a hyphen-joined code.
 _CODE_NOTES = frozenset({"slide_code", "part_of_hyphenated_token"})
+# The part of a date literal a field takes: Date Visited To takes a range's end
+# (a single date is its own end); every other date field takes the start.
+DATE_PART: dict[str, Literal["start", "end"]] = {"date_visited_to": "end"}
 
 
 def _as_dict(result: Any) -> dict[str, Any]:
@@ -53,11 +58,19 @@ class DateReading:
     # None when the notation states no year (or no century rule gives one).
     iso: str | None
     precision: Literal["day", "month", "year"]
+    # The notation rule that matched (date_notations): the trace shows it.
     order: str
     century_rule: str | None = None
+    # A range's end, as the same ISO form and precision; the fields above are its start.
+    end: str | None = None
+    end_precision: Literal["day", "month", "year"] | None = None
+    # How the year was found when the notation gives none: "year_literal" (the
+    # year the expert passed), "year_on_next_line" or "year_on_previous_line"
+    # (the adjacent line, date_lines), "split_lines" (a literal of two lines).
+    via: tuple[str, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
-        return {k: v for k, v in vars(self).items() if v is not None}
+        return {k: v for k, v in vars(self).items() if v is not None and v != ()}
 
 
 @dataclass(frozen=True)
@@ -67,10 +80,16 @@ class DateCheck:
     readings: tuple[DateReading, ...] = ()
     notes: tuple[str, ...] = ()
     check: str = "date_parser"
+    # "end" for the field that takes a range's last date (date_visited_to); None
+    # (the start) for every other field.
+    part: Literal["start", "end"] | None = None
 
     @property
     def values(self) -> tuple[str, ...]:
-        """The dates the literal can be: each reading's ISO form."""
+        """The dates the literal can be for this field: each reading's ISO form,
+        or, for the end part, a range's end (a single date is its own end)."""
+        if self.part == "end":
+            return tuple(dict.fromkeys(r.end or r.iso for r in self.readings if r.end or r.iso))
         return tuple(r.iso for r in self.readings if r.iso)
 
     def as_dict(self) -> dict[str, Any]:
@@ -140,41 +159,90 @@ def parse_date(
     reading_texts: Sequence[str],
     date_rules: Any = None,
     year_literal: str | None = None,
+    part: Literal["start", "end"] | None = None,
 ) -> DateCheck:
     """Every reading a date literal's notation allows (G24, G29; HARNESS.md section 8).
 
     `date_rules` is the profile's (century rule, Roman months); without it a
     two-digit year stays partial and a Roman month is not read. `year_literal`
     is a year the same reading states elsewhere, the only year a month and day
-    alone can take. A literal that is part of a slide-preparation code, or of
-    any other hyphen-joined token, in any reading is no date.
+    alone can take. A month and day with no year also take the year of the line
+    just above or below (`date_lines`), and a literal of two lines (the date, then
+    its year alone, or the reverse) is read as one date, under the rules of that
+    module. A literal that is part of a slide-preparation code, or of any other
+    hyphen-joined token, in any reading is no date. `part` is "end" for the field
+    that takes a range's last date.
     """
     texts = _sources(literal, reading_texts)
     if not texts:
-        return DateCheck(literal, LookupStatus.POLICY, notes=(NOT_IN_SOURCE,))
+        return DateCheck(literal, LookupStatus.POLICY, notes=(NOT_IN_SOURCE,), part=part)
     rules = _date_rules(date_rules)
-    results = [
-        date_parser(literal, source_text=t, year_literal=year_literal, date_rules=rules)
-        for t in texts
-    ]
+    split = date_lines.split_literal(literal)
+    if split is not None:
+        return _split_date(literal, split, texts, rules, part)
+    runs = [_date_run(literal, t, year_literal, rules) for t in texts]
     # A year literal must be in the same reading as the date it completes.
-    results = [r for r in results if r.outcome != LookupStatus.POLICY]
-    if not results:
-        return DateCheck(literal, LookupStatus.POLICY, notes=("year_literal_not_in_reading",))
+    runs = [(r, via) for r, via in runs if r.outcome != LookupStatus.POLICY]
+    if not runs:
+        return DateCheck(literal, LookupStatus.POLICY, notes=("year_literal_not_in_reading",), part=part)
+    return _date_check(literal, runs, part)
+
+
+def _date_run(literal: str, text: str, year_literal: str | None,
+        rules: dict | None) -> tuple[Any, tuple[str, ...]]:
+    """The date parser on one reading's text, with the year the line beside the
+    literal gives when the literal itself and the expert give none."""
+    result = date_parser(literal, source_text=text, year_literal=year_literal, date_rules=rules,
+        year_literal_decides=True)
+    via = ("year_literal",) if year_literal and result.parsed and result.parsed["year_literal"] else ()
+    if year_literal is None and "year_missing" in result.warnings:
+        beside = date_lines.year_beside(literal, text)
+        if beside is not None:
+            year, where = beside
+            again = date_parser(literal, source_text=text, year_literal=year, date_rules=rules,
+                year_literal_decides=True)
+            if again.parsed and again.parsed["year_literal"]:
+                return again, (f"year_on_{where}",)
+    return result, via
+
+
+def _split_date(literal: str, split: tuple[str, str], texts: Sequence[str], rules: dict | None,
+        part: Literal["start", "end"] | None) -> DateCheck:
+    """A literal of two lines, the date and its year, as one date."""
+    date_part, year = split
+    runs = []
+    for text in texts:
+        if date_lines.lines_hold_no_other_date(literal, text):
+            result = date_parser(date_part, source_text=text, year_literal=year, date_rules=rules,
+                year_literal_decides=True)
+            runs.append((result, ("split_lines",)))
+    if not runs:
+        return DateCheck(literal, LookupStatus.NO_MATCH, notes=("split_lines_hold_another_date",), part=part)
+    # A date that states a year of its own is not a date split from its year.
+    splits = [run for run in runs if run[0].parsed and run[0].parsed["year_literal"]]
+    if not splits:
+        notes = ("split_lines_state_two_years",) if any(r.parsed for r, _ in runs) else ()
+        return DateCheck(literal, LookupStatus.NO_MATCH, notes=notes, part=part)
+    return _date_check(literal, splits, part)
+
+
+def _date_check(literal: str, runs: Sequence[tuple[Any, tuple[str, ...]]],
+        part: Literal["start", "end"] | None) -> DateCheck:
     # Where one reader shows the literal inside a code, it is not a date at all.
-    result = next(
-        (r for r in results if _CODE_NOTES & set(r.warnings)), results[0]
-    )
+    result, via = next((run for run in runs if _CODE_NOTES & set(run[0].warnings)), runs[0])
     readings = tuple(
         DateReading(
             iso=r["iso"],
             precision=r["precision"],
             order=r["order"],
             century_rule=r["century_rule"],
+            end=r["end"]["iso"] if "end" in r else None,
+            end_precision=r["end"]["precision"] if "end" in r else None,
+            via=via,
         )
         for r in (result.parsed or {}).get("readings", ())
     )
-    return DateCheck(literal, result.outcome, readings, tuple(result.warnings))
+    return DateCheck(literal, result.outcome, readings, tuple(result.warnings), part=part)
 
 
 def collapse(text: str) -> str:

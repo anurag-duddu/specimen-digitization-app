@@ -1320,3 +1320,78 @@ def test_a_resolved_elevation_in_its_own_unit_is_accepted():
     accepted = made.validate(answer(outcome="resolved", literal="1500", reading_names=["2a"]))
 
     assert accepted.reading_names == ["2A"]
+
+
+# -- dates split over lines, and ranges (the pilot's 105526330) ----------------------------------
+
+SPLIT_READINGS = (
+    Reading("1A", "region-1", "obs-1a", "decided_transcript",
+            "IV-29-68-2\nYepocapa,4800 ft.\nChimaltenago\nGuatemala,IV-25\n1948, R.D. Mitchell"),
+    Reading("1B", "region-1", "obs-1b", "raw_reading",
+            "IV-29-68-a\nYepocapa, 4800 ft.\nChimaltenango\nGuatemala, IV-25\n1948, R.D. Mitchell"),
+)
+RANGE_READINGS = (
+    Reading("1A", "region-1", "obs-1a", "decided_transcript", "Davao\n3-5.IX.1946\nH. Hoogstraal"),
+    Reading("1B", "region-1", "obs-1b", "raw_reading", "Davao\n3-5.IX.1946\nH. Hoogstraal"),
+)
+
+
+def resolve_on(readings, script, key, literal):
+    field = task(key, candidates=offered(("1A", literal), ("1B", literal)))
+    resolver = make_resolver(model_factory=script.model, meter=meter(), date_rules=PILOT_DATES)
+    return asyncio.run(resolver(field, readings, CONTEXT, tools=FakeTools()))
+
+
+def test_the_pilots_split_date_resolves_on_the_whole_literal_the_check_read():
+    # Before: parse_date("IV-25\n1948") was no_match and the field ran out of attempts.
+    script = Script(
+        call("parse_date", literal="IV-25\n1948"),
+        dict(outcome="resolved", literal="IV-25\n1948", reading_names=["1A", "1B"], value="1948-04-25",
+             explanation="IV-25 ends one line and 1948 starts the next."),
+    )
+
+    outcome = resolve_on(SPLIT_READINGS, script, "date_visited_from", "IV-25\n1948")
+
+    shown = tool_returns(script.seen[1][0])[0]
+    assert shown["status"] == "success"
+    assert [(r["iso"], r["order"], r["via"]) for r in shown["readings"]] == [
+        ("1948-04-25", "month-day", ("split_lines",))]
+    assert outcome.failure is None and outcome.answer.outcome == "resolved"
+    assert outcome.answer.value == "1948-04-25"
+
+
+def test_a_day_and_month_alone_resolve_with_the_year_on_the_next_line():
+    script = Script(
+        call("parse_date", literal="IV-25"),
+        dict(outcome="resolved", literal="IV-25", reading_names=["1A", "1B"], value="1948-04-25"),
+    )
+
+    outcome = resolve_on(SPLIT_READINGS, script, "date_visited_from", "IV-25")
+
+    assert tool_returns(script.seen[1][0])[0]["status"] == "success"
+    assert outcome.failure is None and outcome.answer.value == "1948-04-25"
+
+
+def test_a_range_is_two_dates_the_from_field_takes_its_start_and_the_to_field_its_end():
+    literal = "3-5.IX.1946"
+    from_script = Script(
+        call("parse_date", literal=literal),
+        dict(outcome="resolved", literal=literal, reading_names=["1A", "1B"], value="1946-09-05"),
+        dict(outcome="resolved", literal=literal, reading_names=["1A", "1B"], value="1946-09-03"),
+    )
+    to_script = Script(
+        call("parse_date", literal=literal),
+        dict(outcome="resolved", literal=literal, reading_names=["1A", "1B"], value="1946-09-03"),
+        dict(outcome="resolved", literal=literal, reading_names=["1A", "1B"], value="1946-09-05"),
+    )
+
+    start = resolve_on(RANGE_READINGS, from_script, "date_visited_from", literal)
+    end = resolve_on(RANGE_READINGS, to_script, "date_visited_to", literal)
+
+    # Each field is sent back once for the other end, then settles on its own.
+    assert "differs from the literal" in retries(from_script.seen[2][0])[0]
+    assert "differs from the literal" in retries(to_script.seen[2][0])[0]
+    assert (start.failure, start.answer.value) == (None, "1946-09-03")
+    assert (end.failure, end.answer.value) == (None, "1946-09-05")
+    shown = tool_returns(to_script.seen[1][0])[0]["readings"][0]
+    assert (shown["iso"], shown["end"], shown["order"]) == ("1946-09-03", "1946-09-05", "range:day..date")
