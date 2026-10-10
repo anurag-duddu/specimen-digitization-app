@@ -332,6 +332,18 @@ def _log_unanswered(
     )
 
 
+def _geolocate_found_nothing(payload) -> bool:
+    """Whether a GEOLocate answer says it found nothing: its count of results
+    is the integer 0 and it carries no result set, or one with no features."""
+    if not isinstance(payload, dict):
+        return False
+    count = payload.get("numResults")
+    if type(count) is not int or count != 0:
+        return False
+    result_set = payload.get("resultSet")
+    return result_set is None or (isinstance(result_set, dict) and result_set.get("features") in (None, []))
+
+
 def _log_unreadable(source_id: str, url: str, *, status: LookupStatus, error: str) -> None:
     """One WARNING line for a 200 answer that could not be read, in
     _log_unanswered's form: the source id, the host, the status it was read
@@ -783,16 +795,18 @@ class ApprovedSources:
                 payload,
             )
         except (ValueError, TypeError, KeyError, AttributeError, ArithmeticError, RecursionError) as error:
-            # GEOLocate's own answer (its JSON, with its count of results) that
-            # holds no match it could read is no match, not an outage: asked
-            # about a country it does not know ("Central America"), GEOLocate
-            # answers {"numResults": 0} with no result set. A body that is not
-            # GEOLocate's answer at all (an HTML page, a cut body) could not be
-            # read: an outage, as for every other source.
-            own = isinstance(payload, dict) and "numResults" in payload
-            status = LookupStatus.NO_MATCH if own else LookupStatus.MALFORMED
+            # GEOLocate's answer that it found nothing is no match, not an
+            # outage: asked about a country it does not know ("Central
+            # America"), it answers {"numResults": 0} with no result set. Any
+            # other answer that cannot be read stays unreadable, an outage, as
+            # for every other source: a body that is not GEOLocate's answer (an
+            # HTML page, a cut body), and an answer that reports a match the
+            # parser cannot read, so a reader's text GEOLocate found is never
+            # ruled out as no match (G20, G32).
+            nothing = _geolocate_found_nothing(payload)
+            status = LookupStatus.NO_MATCH if nothing else LookupStatus.MALFORMED
             found = []
-            note = ("GEOLocate's answer holds no match it could read" if own
+            note = ("GEOLocate found no match (it answered no results)" if nothing
                     else "GEOLocate's answer could not be read")
             _log_unreadable("geolocate", fetched.url, status=status, error=type(error).__name__)
         candidates = tuple(

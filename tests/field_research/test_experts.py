@@ -838,8 +838,9 @@ def test_an_answer_now_the_run_ceiling_cannot_pay_for_is_never_sent():
 
     outcome = resolve(script, task("taxon"), tools, cost=cost, request_limit=1)
 
-    assert outcome.answer == FieldAnswer(outcome="sources_cannot_resolve", explanation=EXHAUSTED)
-    assert outcome.fallback and len(script.seen) == 1 and outcome.model_calls == 1
+    # The field reports why (the review of #299): the ceiling refused it.
+    assert (outcome.answer, outcome.failure, outcome.fallback) == (None, "budget_exhausted", False)
+    assert len(script.seen) == 1 and outcome.model_calls == 1
     assert cost.outstanding_micros == 0 and cost.spent_micros == outcome.cost_micros
 
 

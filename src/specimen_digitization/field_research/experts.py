@@ -596,13 +596,14 @@ class _Expert:
         """The expert's answer from what it has, once it ran out of requests or
         tool calls: one more request on the same metered model, with its
         tools withheld, asking for its answer (ANSWER_NOW_PROMPT). The answer
-        is checked as any other. None when that request is not sent (the
-        run's ceiling, the input bound) or its answer does not pass the
-        checks: the resolver's fallback then stands."""
+        is checked as any other. None when its answer does not pass the
+        checks: the resolver's fallback then stands. A request the run's
+        ceiling or the input bound refuses raises, as any refused request
+        does (BudgetExhausted, InputTooLarge), so the field reports why."""
         try:
             result = await self.agent(model, tools=False).run(
                 None, message_history=_answer_now_history(messages), usage_limits=ANSWER_NOW_LIMITS)
-        except (UsageLimitExceeded, UnexpectedModelBehavior, BudgetExhausted) as error:
+        except (UsageLimitExceeded, UnexpectedModelBehavior) as error:
             LOGGER.warning(
                 "field_research expert gave no answer at its limit: field=%s error=%s",
                 self.task.key, type(error).__name__,
@@ -722,8 +723,9 @@ def make_resolver(
     DateRules (a record or its dict); without it two-digit years stay partial
     and Roman months are not read. An expert that runs out of its
     `request_limit` or `tool_calls_limit` is asked once more, on the same
-    meter, for its answer (_Expert.answer_now); only when that gives none is
-    the resolver's fallback (EXHAUSTED) its answer.
+    meter, for its answer (_Expert.answer_now); when that answer fails its
+    checks the resolver's fallback (EXHAUSTED) is its answer, and when the
+    ceiling refuses that request the field fails as budget_exhausted.
     """
     for key in FIELD_TOOLS:
         instructions(key)  # Every brief loads before the first record, not mid-run.

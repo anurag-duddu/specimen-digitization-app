@@ -152,10 +152,12 @@ handover runs field research instead of the six specialists:
    answers it has (`_Expert.answer_now`): one request on the same meter,
    under the same run ceiling, with its tools withheld and each tool call
    the limit stopped answered "Not run". That answer is checked like any
-   other and is the expert's own. Only when that request is not sent (the
-   run's ceiling, the input bound) or its answer breaks its checks does the
-   resolver's fallback take its place: sources_cannot_resolve, "The expert
-   used all its attempts without settling this field." The shared brief has
+   other and is the expert's own. Only when its answer breaks its checks
+   does the resolver's fallback take its place: sources_cannot_resolve,
+   "The expert used all its attempts without settling this field." When the
+   run's ceiling or the input bound refuses that request, the field fails as
+   for any refused request (budget_exhausted, input_too_large) and goes to
+   review, its reason saying so. The shared brief has
    the expert ask about the label's own text first, then, when no source
    knows it, an abbreviation written out or another reading's variant, and
    then stop: a place no gazetteer holds is not found by asking again with
@@ -184,14 +186,21 @@ handover runs field research instead of the six specialists:
    the error's class, whether a Retry-After came back and the attempt it
    ended on, never the query; for GBIF, the status its verification ended on.
 
-   **GEOLocate's own answer with no readable match.** A GEOLocate answer
-   (HTTP 200) whose body is GEOLocate's JSON, with its count of results, but
-   holds no match that can be read is no match, not an outage: asked about
-   a country it does not know ("Central America"), GEOLocate answers
-   `{"numResults": 0}` with no result set. In the real run of 2026-10-09
-   that answer was classed unreadable, an outage, and blocked 105526329 for
-   a retry. A GEOLocate body that is not its JSON answer (an HTML page, a
-   cut body) is still unreadable, an outage. Either is logged in one
+   **GEOLocate's answer that it found nothing.** A GEOLocate answer (HTTP
+   200) that the parser cannot read is no match, not an outage, only when
+   it says it found nothing: its count of results is 0 and it has no
+   result set, or one with no features (`sources._geolocate_found_nothing`).
+   Asked about a country it does not know ("Central America"), GEOLocate
+   answers `{"numResults": 0}` with no result set; in the real run of
+   2026-10-09 that answer was classed unreadable, an outage, and blocked
+   105526329 for a retry. Any other answer that cannot be read is still
+   unreadable, an outage: a body that is not GEOLocate's answer (an HTML
+   page, a cut body), and an answer that reports a match the parser cannot
+   read (a count above 0, or a feature of the wrong shape). So a reader's
+   text GEOLocate found is never ruled out as no match under the readers'
+   rule of step 5 (G20, G32; the review of #299, whose probe had readers
+   "Yepocapa" and "Yepocapo" settle on an unreadable match for "Yepocapo";
+   it now goes to review). Either is logged in one
    WARNING line ("Field research lookup unreadable") with the source, the
    host, the status it was read as and the error's class, never the query.
    An unreadable answer of GBIF, Getty TGN, Wikidata or NGA stays an outage:

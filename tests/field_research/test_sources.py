@@ -35,7 +35,7 @@ from specimen_digitization.application.integrity import (
     verify_evidence,
 )
 from specimen_digitization.application.storage import LocalBlobs
-from specimen_digitization.field_research.contracts import PlaceRef, SourceCandidate
+from specimen_digitization.field_research.contracts import PlaceRef, Reading, SourceCandidate
 from specimen_digitization.field_research import sources as approved_sources
 from specimen_digitization.field_research.sources import (
     EXCERPT_LIMIT,
@@ -824,7 +824,7 @@ UNKNOWN_COUNTRY = {"engineVersion": "GLC:9.4|U:1.01374|eng:1.0", "numResults": 0
 
 
 @pytest.mark.asyncio
-async def test_geolocates_own_answer_with_no_readable_match_is_no_match_and_logged(tmp_path, caplog):
+async def test_geolocates_answer_that_it_found_nothing_is_no_match_and_logged(tmp_path, caplog):
     """It was classed malformed, an outage, which blocked 105526329 for a retry."""
     from specimen_digitization.field_research.experts import SOURCE_OUTAGES
 
@@ -832,12 +832,106 @@ async def test_geolocates_own_answer_with_no_readable_match_is_no_match_and_logg
     with caplog.at_level(logging.WARNING, logger="specimen_digitization.field_research.sources"):
         answer = await tools.lookup("geolocate", "Yepocapa, Central America", field_key="city")
     assert answer.status is LookupStatus.NO_MATCH and answer.status not in SOURCE_OUTAGES
-    assert answer.candidates == () and answer.note == "GEOLocate's answer holds no match it could read"
+    assert answer.candidates == () and answer.note == "GEOLocate found no match (it answered no results)"
     assert (answer.evidence.kind, answer.evidence.locator) == ("lookup", None)
     assert json.loads(stored(blobs, answer.evidence)) == UNKNOWN_COUNTRY
     assert unreadable(caplog) == [{"step": "field_research", "source": "geolocate", "host": "geo-locate.org",
                                    "http_status": "200", "read_as": "no_match", "error": "ValueError"}]
     assert "Yepocapa" not in caplog.text and "Central" not in caplog.text
+
+
+def reported_match(place: str, *, breaking: str):
+    """GEOLocate's recorded answer for Yepocapa, reporting one match named
+    `place` (the review of #299), broken as `breaking` says, so that
+    geolocate_verdict cannot read it."""
+    payload = json.loads((GEOLOCATE / "yepocapa-modern.json").read_text(encoding="utf-8"))
+    payload["numResults"] = 1
+    payload["resultSet"]["features"] = payload["resultSet"]["features"][:1]
+    feature = payload["resultSet"]["features"][0]
+    feature["properties"]["parsePattern"] = place.upper()
+    feature["properties"]["debug"] = feature["properties"]["debug"].replace("YEPOCAPA", place.upper())
+    if breaking == "score":
+        feature["properties"]["score"] = 83.0
+    elif breaking == "count":
+        payload["numResults"] = 2
+    else:
+        feature["geometry"]["coordinates"] = [-190.0, 14.5]
+    return payload
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("breaking", ["score", "count", "coordinates"])
+async def test_a_geolocate_answer_reporting_a_match_it_cannot_read_stays_unreadable(tmp_path, breaking):
+    """Only GEOLocate's answer that it found nothing is no match: an answer
+    reporting a match the parser cannot read is an outage, never a no-match
+    that rules a reader's text out."""
+    tools, _, _, _ = make(tmp_path, replies(httpx.Response(200, json=reported_match("Yepocapo", breaking=breaking))))
+    answer = await tools.lookup("geolocate", "Yepocapo, Chimaltenango, Guatemala", field_key="city")
+    assert answer.status is LookupStatus.MALFORMED and answer.note == "GEOLocate's answer could not be read"
+
+
+# The review of #299's probe: readers of one label, no decided transcript.
+YEPOCAPO = (
+    Reading("1A", "region-1", "obs-1a", "raw_reading", "Yepocapa, 4800 ft.\nChimaltenango\nGuatemala"),
+    Reading("1B", "region-1", "obs-1b", "raw_reading", "Yepocapo, 4800 ft.\nChimaltenango\nGuatemala"),
+)
+
+
+def by_locality(request):
+    """GEOLocate confirms "Yepocapa"; for any other place it reports one match it cannot read."""
+    locality = dict(request.url.params)["Locality"]
+    if locality == "Yepocapa":
+        return httpx.Response(200, content=(GEOLOCATE / "yepocapa-modern.json").read_bytes())
+    return httpx.Response(200, json=reported_match(locality, breaking="score"))
+
+
+@pytest.mark.asyncio
+async def test_readers_that_differ_never_settle_on_a_geolocate_answer_it_could_not_read(tmp_path):
+    """GEOLocate confirms 1A's "Yepocapa" and reports a match for 1B's
+    "Yepocapo" that cannot be read. That is no no-match: the readers' rule
+    (G20, G32) does not rule "Yepocapo" out, and the expert's pick of
+    "Yepocapa" never settles the city: it goes to review."""
+    from pydantic_ai.messages import ModelRequest, ModelResponse, ToolCallPart, ToolReturnPart
+    from pydantic_ai.models.function import FunctionModel
+
+    from specimen_digitization.application.domain import FieldValue, ValueState
+    from specimen_digitization.field_research import agreement
+    from specimen_digitization.field_research.budget import CostMeter
+    from specimen_digitization.field_research.contracts import FIELD_TOOLS, Candidate, FieldTask
+    from specimen_digitization.field_research.experts import make_resolver
+
+    city = FieldTask("city", True, FieldValue(state=ValueState.AMBIGUOUS),
+                     tuple(Candidate(name, text, text, f"ev-{name}") for name, text in
+                           (("1A", "Yepocapa"), ("1B", "Yepocapo"))), FIELD_TOOLS["city"])
+    tools, _, _, _ = make(tmp_path, by_locality)
+    found = await tools.lookup("geolocate", "Yepocapa, Chimaltenango, Guatemala", field_key="city")
+    unread = await tools.lookup("geolocate", "Yepocapo, Chimaltenango, Guatemala", field_key="city")
+    assert (found.status, unread.status) == (LookupStatus.SUCCESS, LookupStatus.MALFORMED)
+    assert not agreement.ruled_out([found, unread], "Yepocapo")
+    assert agreement.refusal(city, YEPOCAPO, literal="Yepocapa", named=[YEPOCAPO[0]], value=None,
+                             authority_id=found.candidates[0].authority_id, cited=[found],
+                             received=[found, unread]) is not None
+
+    async def expert(messages, info):
+        if not any(isinstance(m, ModelResponse) for m in messages):
+            return ModelResponse(parts=[
+                ToolCallPart("lookup", {"source": "geolocate", "query": "Yepocapa, Chimaltenango, Guatemala"}),
+                ToolCallPart("lookup", {"source": "geolocate", "query": "Yepocapo, Chimaltenango, Guatemala"})])
+        returns = [part.content for m in messages if isinstance(m, ModelRequest) for part in m.parts
+                   if isinstance(part, ToolReturnPart)]
+        success = next(r for r in returns if r.get("status") == "success")
+        return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, {
+            "outcome": "resolved", "literal": "Yepocapa", "reading_names": ["1A"],
+            "authority_id": success["candidates"][0]["authority_id"], "source_evidence_ids": [success["evidence_id"]],
+            "explanation": "GEOLocate confirms Yepocapa and has no match for Yepocapo."})])
+
+    meter = CostMeter(1_000_000, input_micros_per_million=200_000, output_micros_per_million=600_000)
+    resolver = make_resolver(model_factory=lambda: FunctionModel(expert), meter=meter)
+    tools, _, _, _ = make(tmp_path, by_locality)
+    context = {"country": FieldValue(state=ValueState.SUPPORTED, literal="Guatemala"),
+               "province_state": FieldValue(state=ValueState.SUPPORTED, literal="Chimaltenango")}
+    outcome = await resolver(city, YEPOCAPO, context, tools=tools)
+    assert outcome.answer.outcome != "resolved" and outcome.fallback  # its pick was sent back, then review
 
 
 @pytest.mark.asyncio
