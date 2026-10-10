@@ -408,10 +408,29 @@ handover runs field research instead of the six specialists:
    ("Getty TGN could not be reached after 3 attempts."), and the record
    finalizes with its other fields. A model failure or timeout on the last
    attempt still stops the automatic retries
-   (`retry_budget_exhausted:<code>`). The app's processing panel judges such
-   a blocker by its code: for `lookup_operational_failure` it says an
-   approved source could not be reached, never that a cost limit stopped
-   processing.
+   (`retry_budget_exhausted:<code>`). The app judges such a blocker by the
+   cause after the colon, never by the word "budget" in the prefix, and never
+   shows the code. The processing panel's "Blocked:" line names the cause and
+   a two-sentence passage says what happened and what to do; the workbench
+   issue list shows the same cause and next step; the queue row, the history,
+   the blocker filter menu and the reason chips show the name alone:
+
+   | Cause after the colon | Name | Sentences |
+   | --- | --- | --- |
+   | `lookup_operational_failure` | Approved source not reachable | An approved source could not be reached after repeated attempts. Retry later, or ask an administrator. |
+   | `field_research_timeout` | Field research ran out of time | Field research ran out of time after repeated attempts. Retry later, or ask an administrator. |
+   | `field_research_model_error` | No usable model answer | The model gave no usable answer after repeated attempts. Retry later, or ask an administrator. |
+   | any other cause | Automatic retries stopped | Processing stopped after repeated attempts. Retry later, or ask an administrator. |
+
+   A cause containing "budget" or "cost" is a cost limit and reads "Cost
+   limit reached" with "Processing stopped at a cost limit." A blocker the
+   app has no name for, whether or not it carries a colon, reads "Needs an
+   operator check" with "Processing needs an operator check before it can
+   continue. Ask an administrator to review it." The raw code stays in the
+   workbench's "Technical review details" drawer (inside the closed "Review
+   details" disclosure), which lists each issue's `reason_code`. The history's
+   "Retained version data" drawer also holds a past version's raw record.
+   No line, sentence, row or menu above shows it.
 8. **Budget.** Before every model call the step reserves that call's worst
    case (its input, the provider's chat template and the output cap) from
    what remains of the run's ceiling (the profile's `run_cost_limit_micros`,
