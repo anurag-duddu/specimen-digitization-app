@@ -588,6 +588,34 @@ def test_a_qualifier_in_any_spelling_of_the_list_is_a_doubt_sign(text):
     assert checks.label_names_no_genus("1", [text + "\nV-4-67-1\nsp. 1 " + FEMALE])
 
 
+# The full-width and the inverted question marks are a "?" wherever "?" is a
+# doubt sign (the fifth review's two remaining probes).
+FULLWIDTH, INVERTED = "\N{FULLWIDTH QUESTION MARK}", "\N{INVERTED QUESTION MARK}"
+
+
+@pytest.mark.parametrize("text", ["Epipsocus" + FULLWIDTH, INVERTED + "Epipsocus", "Epipsocus " + FULLWIDTH,
+    INVERTED + " Epipsocus", "Epipsocus\n" + FULLWIDTH, INVERTED + "Epipsocus" + FULLWIDTH])
+def test_a_full_width_or_inverted_question_mark_is_a_doubt_sign(text):
+    from specimen_digitization.field_research import checks
+
+    assert checks.QUESTION_MARKS == ("?", FULLWIDTH, INVERTED)
+    assert checks.doubt_signs([text]) == ("question_mark",)
+    assert checks.doubt_signs(["V-4-67-1\nsp. 1 " + FEMALE, text + "\nV-4-67-1"]) == ("question_mark",)
+
+
+@pytest.mark.parametrize(("text", "doubtful"), [
+    ("Epipsocus" + FULLWIDTH, True),
+    (INVERTED + "Epipsocus", True),
+    (INVERTED + " Epipsocus", True),
+    ("1946" + FULLWIDTH + "\nEpipsocus", False),
+    (INVERTED + "\nEpipsocus", False),
+])
+def test_a_full_width_or_inverted_question_mark_on_the_genus_marks_it_as_doubtful(text, doubtful):
+    from specimen_digitization.field_research import checks
+
+    assert checks.genus_in_doubt(text, "Epipsocus") is doubtful
+
+
 # N1 of #289's fourth review: a placeholder for a word a reader could not
 # read, on a line of its own, in any case.
 @pytest.mark.parametrize("placeholder", ["[unreadable]", "[UNREADABLE]", "[illegible]", "[Illegible]", "[?]", "???",

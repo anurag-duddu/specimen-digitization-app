@@ -465,6 +465,15 @@ def _has_a_letter(part: str) -> bool:
     return any(c.isalpha() for c in part)
 
 
+# The question marks that put a name in doubt wherever "?" does: "?", the
+# full-width "?" (U+FF1F) and the inverted "?" (U+00BF).
+QUESTION_MARKS = ("?", "\N{FULLWIDTH QUESTION MARK}", "\N{INVERTED QUESTION MARK}")
+
+
+def _has_question_mark(part: str) -> bool:
+    return any(mark in part for mark in QUESTION_MARKS)
+
+
 def genus_in_doubt(text: str, literal: str) -> bool:
     """Whether the text, wherever it writes the taxon literal, marks the
     literal's first word, its genus, as doubtful (1c of #289's fifth review):
@@ -475,10 +484,11 @@ def genus_in_doubt(text: str, literal: str) -> bool:
     - a "?" on that word, in its own part ("Epipsocus?", "?Epipsocus",
       "Epipsocus(?)"), or a "?" standing alone, a part with no letter or
       digit, just before it on its line ("? Epipsocus", "(?) Epipsocus").
-    A "?" on another word ("Davao? Epipsocus"), any "?" on the line above
-    ("1946?" above "Epipsocus sp. 1"), one after the genus ("Epipsocus ?")
-    and a qualifier after the genus ("Epipsocus cf. sp. 1", G25) are none.
-    False when the text does not write the literal."""
+    A "?" is any of QUESTION_MARKS. A "?" on another word ("Davao?
+    Epipsocus"), any "?" on the line above ("1946?" above "Epipsocus sp.
+    1"), one after the genus ("Epipsocus ?") and a qualifier after the genus
+    ("Epipsocus cf. sp. 1", G25) are none. False when the text does not
+    write the literal."""
     literal = literal.strip()
     if not literal:
         return False
@@ -487,12 +497,12 @@ def genus_in_doubt(text: str, literal: str) -> bool:
     while start >= 0:
         at = next(i for i, part in enumerate(parts) if part.start() <= start < part.end())
         own = parts[at].group()
-        if "?" in own or _qualifier(own):
+        if _has_question_mark(own) or _qualifier(own):
             return True
         if at > 0:
             before = parts[at - 1]
             on_its_line = "\n" not in text[before.end():parts[at].start()]
-            if _qualifier(before.group()) or (on_its_line and "?" in before.group()
+            if _qualifier(before.group()) or (on_its_line and _has_question_mark(before.group())
                     and not any(c.isalnum() for c in before.group())):
                 return True
         start = text.find(literal, start + 1)
@@ -500,12 +510,14 @@ def genus_in_doubt(text: str, literal: str) -> bool:
 
 
 def _question_mark(text: str) -> bool:
-    """A "?" attached to a letter-token, a whitespace-separated part that
-    holds a letter ("Epipsocus?", "?Epipsocus", "E.?", "Epipsocus(?)"), or
-    standing beside one, as the part just before or after it ("Epipsocus ?",
-    "(?) Epipsocus", or "Epipsocus" with "?" on the next line)."""
+    """A "?", any of QUESTION_MARKS, attached to a letter-token, a
+    whitespace-separated part that holds a letter ("Epipsocus?",
+    "?Epipsocus", "E.?", "Epipsocus(?)"), or standing beside one, as the part
+    just before or after it ("Epipsocus ?", "(?) Epipsocus", or "Epipsocus"
+    with "?" on the next line)."""
     parts = text.split()
-    return any("?" in part and any(map(_has_a_letter, parts[max(i - 1, 0):i + 2])) for i, part in enumerate(parts))
+    return any(_has_question_mark(part) and any(map(_has_a_letter, parts[max(i - 1, 0):i + 2]))
+        for i, part in enumerate(parts))
 
 
 def _qualifier(text: str) -> bool:

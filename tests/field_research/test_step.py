@@ -2876,7 +2876,21 @@ RESOLVED_DOUBTFUL_GENUS = {
     # The organiser quotes the genus alone; the reading's line still writes the doubt.
     "cfr-line-bare-quote": ("cfr. Epipsocus", "Epipsocus"),
     "question-line-bare-quote": ("Epipsocus?", "Epipsocus"),
+    # The full-width and the inverted question marks.
+    "full-width-question-quote": ("Epipsocus\N{FULLWIDTH QUESTION MARK}", "Epipsocus\N{FULLWIDTH QUESTION MARK}"),
+    "inverted-question-line-bare-quote": ("\N{INVERTED QUESTION MARK}Epipsocus", "Epipsocus"),
 }
+
+
+@pytest.mark.parametrize("line", ["Epipsocus\N{FULLWIDTH QUESTION MARK}", "\N{INVERTED QUESTION MARK}Epipsocus"],
+    ids=["full-width", "inverted"])
+def test_a_genus_with_a_full_width_or_inverted_question_mark_keeps_the_code_in_review(tmp_path, line):
+    """Rule B: the genus line above 105526327's slide number and the code;
+    the expert quotes the code with no lookup."""
+    rig = build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", line + "\nV-4-67-1\n" + SP1),
+        candidates=[*COLLECTORS, *(("taxon", name, SP1, SP1) for name in ("1A", "1B"))])
+    settle(rig, Scripted({"taxon": cannot_resolve(SP1)}), tools=NoGenus(rig.blobs))
+    taxon_held_back(rig.specimen.run)
 
 
 @pytest.mark.parametrize(("line", "quote"), RESOLVED_DOUBTFUL_GENUS.values(), ids=RESOLVED_DOUBTFUL_GENUS)
