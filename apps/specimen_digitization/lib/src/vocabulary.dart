@@ -69,7 +69,43 @@ const Map<String, String> userFacingTerms = <String, String>{
   'raw_provenance_missing': 'Reading evidence file missing',
   'identified_by_irn_identity_unproved': 'Identifier not confirmed in EMu',
   'preserved_human_decision': 'Earlier review decision to confirm',
+  // Run blockers: the server's reason a run stopped. Each name says what is
+  // wrong, in the words the processing panel and the review list already use
+  // for it. A blocker that is not named here is shown as the generic line
+  // `blockerLabel` returns, never as its code.
+  'external_outcome_unknown': 'Last request may have run',
+  'pilot_evidence_review_required': 'Pilot evidence review needed',
+  'collection_processing_unconfigured': 'Processing awaits collection setup',
+  'sensitive_record_not_processed': 'Sensitive record held from processing',
+  'institutional_policy_unapproved': 'Collection policy not approved',
+  'institutional_policy_not_approved': 'Collection policy not approved',
+  'mandatory_semantics_unconfirmed': 'Required field rules not confirmed',
+  'field_semantics_unconfirmed': 'Field rules not confirmed',
+  'worker_readiness_not_verified': 'Processing not confirmed ready',
+  'lookup_operational_failure': 'Approved source not reachable',
+  'storage_unavailable': 'Specimen storage unavailable',
+  'pilot_dispatch_reconciliation_required': 'Previous attempt needs a check',
+  'evidence_integrity_failure': 'Saved evidence needs a check',
 };
+
+/// What a run's blocker starts with once its automatic retries have run out.
+///
+/// The cause that stopped the run follows the colon:
+/// `retry_budget_exhausted:lookup_operational_failure`. The word "budget" in
+/// the prefix says the retries ran out. It never says a cost limit stopped the
+/// run, so a reader of this code looks at the cause.
+const String retriesStoppedPrefix = 'retry_budget_exhausted:';
+
+/// The cause behind a run whose automatic retries ran out, or null when
+/// [value] is not such a blocker.
+String? retriesStoppedCause(String value) =>
+    value.startsWith(retriesStoppedPrefix)
+    ? value.substring(retriesStoppedPrefix.length)
+    : null;
+
+/// The name for a run whose retries ran out for a cause this client has no
+/// name for.
+const String retriesStoppedLabel = 'Automatic retries stopped';
 
 /// Single retired words, applied to any value the table above does not name.
 ///
@@ -105,6 +141,10 @@ const Map<String, String> _retiredWords = <String, String>{
 String vocabularyLabel(String value) {
   final String? named = userFacingTerms[value];
   if (named != null) return named;
+  // A run whose retries ran out reads as the cause that stopped it, not as
+  // `retry budget exhausted:` followed by that cause's code.
+  final String? cause = retriesStoppedCause(value);
+  if (cause != null) return userFacingTerms[cause] ?? retriesStoppedLabel;
   return value
       .split('_')
       .map((String word) => _retiredWords[word] ?? word)
