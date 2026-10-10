@@ -106,8 +106,28 @@ handover runs field research instead of the six specialists:
 4. **Sources.** GBIF (with Catalogue of Life and Global Names Verifier
    alongside), GEOLocate, Getty TGN, Wikidata and NGA, plus deterministic date,
    elevation and catalogue-number checks. One request per distinct query per
-   record (shared cache), retries with backoff, GEOLocate spacing kept. Each
-   source response is stored once as evidence.
+   record (shared cache), retries with backoff (three attempts, a Retry-After
+   of at most 10 s honoured, a redirect never followed), GEOLocate spacing
+   kept, and at most two requests at a time to each of Getty TGN, Wikidata
+   and NGA across the worker process (`sources.SOURCE_SLOTS`). Each source
+   response is stored once as evidence. Each request a source leaves
+   unanswered (a final status other than 200, or retries that ran out) is
+   logged in one WARNING line with the source, the host, the HTTP status or
+   the error's class, whether a Retry-After came back and the attempt it
+   ended on, never the query; for GBIF, the status its verification ended on.
+
+   **A source that cannot be reached** (a lookup whose last attempt was rate
+   limited, timed out, was refused or redirected, failed on the server or
+   came back unreadable; a refused query is not one) does not void the
+   field when another of its expert's lookups answered. The expert's answer
+   then stands and is checked under the rules of step 5 like any other, and
+   the field's reason ends by naming the source ("Getty TGN could not be
+   reached; settled from Wikidata."). A place settles on a cited answer of
+   any place source, so no Getty TGN answer is needed. Only when every
+   lookup the expert made failed, at least one because its source could not
+   be reached, does an unresolved answer leave the field for a retry
+   (`source_unavailable`; see step 7). The place briefs tell the expert to
+   decide with the sources that answered and to say which did not.
 5. **Checked answers.** The expert's answer check (an answer that breaks it
    is sent back for correction) and, again, the step before a resolved answer
    becomes a value apply these rules (`field_research/agreement.py`, on the
@@ -369,8 +389,20 @@ handover runs field research instead of the six specialists:
 7. **One save.** Field values, evidence and reasons are written in one save
    at the end, through the existing record writer. Clearance uses the existing
    scientific rules without blanket human approval (G1). Anything unresolved
-   sends the record to Needs human review with a plain reason; a source or
-   model outage leaves the record blocked with retry.
+   sends the record to Needs human review with a plain reason. A field whose
+   expert reached no source (step 4), a model failure and a field's timeout
+   leave the record blocked with a retry, every settled field kept. The
+   workflow allows the run's `max_attempts` attempts (its execution policy,
+   3 by default). On
+   the step's last attempt a field whose sources still could not be reached
+   goes to Needs human review instead, unresolved, its reason naming them
+   ("Getty TGN could not be reached after 3 attempts."), and the record
+   finalizes with its other fields. A model failure or timeout on the last
+   attempt still stops the automatic retries
+   (`retry_budget_exhausted:<code>`). The app's processing panel judges such
+   a blocker by its code: for `lookup_operational_failure` it says an
+   approved source could not be reached, never that a cost limit stopped
+   processing.
 8. **Budget.** Before every model call the step reserves that call's worst
    case (its input, the provider's chat template and the output cap) from
    what remains of the run's ceiling (the profile's `run_cost_limit_micros`,
@@ -736,8 +768,10 @@ anything but the code. A not-present
 value with no such row, as every record researched before 2026-10-09 has,
 never clears on a re-check; only new research writes the row.
 
-A field research run that failed (an outage, a model error, a timeout) is
-retried, and the retry researches only the fields that did not settle (a
+A field research run that failed (a field whose expert reached no source, a
+model error, a timeout) is retried until its last allowed attempt, on which
+a source still unreachable sends its field to review (step 7 above), and
+the retry researches only the fields that did not settle (a
 province, county or city that waited for a country that did not settle
 is among them). A field marked not on the label is not settled, so the
 retry researches it again, and it then cites only the row the retry writes.
