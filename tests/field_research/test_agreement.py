@@ -8,27 +8,47 @@ resolver and sources of test_step.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from test_step import (
+    LACKS,
+    TEXT,
+    Disposition,
     Gazetteer,
     Scripted,
     ValueState,
     answering,
     build_rig,
+    cited_rows,
     confirming,
+    every_field,
     from_tgn,
     label_with,
-    LACKS,
     reasons_for,
+    resolved,
     settle,
 )
 
-from specimen_digitization.field_research import agreement
-from specimen_digitization.field_research.contracts import PlaceRef, SourceCandidate
+from specimen_digitization.application.domain import FieldValue
+from specimen_digitization.field_research import agreement, experts
+from specimen_digitization.field_research.checks import collapse
+from specimen_digitization.field_research.contracts import (
+    FIELD_TOOLS,
+    Candidate,
+    FieldAnswer,
+    FieldTask,
+    PlaceRef,
+    Reading,
+    SourceCandidate,
+)
 
-E_ACUTE, E_GRAVE, U_UMLAUT, A_ACUTE = (
+E_ACUTE, E_GRAVE, U_UMLAUT, A_ACUTE, A_CIRCUMFLEX, E_CIRCUMFLEX, SHARP_S = (
     "\N{LATIN SMALL LETTER E WITH ACUTE}", "\N{LATIN SMALL LETTER E WITH GRAVE}",
-    "\N{LATIN SMALL LETTER U WITH DIAERESIS}", "\N{LATIN SMALL LETTER A WITH ACUTE}")
+    "\N{LATIN SMALL LETTER U WITH DIAERESIS}", "\N{LATIN SMALL LETTER A WITH ACUTE}",
+    "\N{LATIN SMALL LETTER A WITH CIRCUMFLEX}", "\N{LATIN SMALL LETTER E WITH CIRCUMFLEX}",
+    "\N{LATIN SMALL LETTER SHARP S}")
+FEMALE = "\N{FEMALE SIGN}"
 
 
 # ---- G34: a near spelling is checked against the larger places only ---------
@@ -118,3 +138,133 @@ def test_105526330s_province_settles_one_letter_off_beside_its_town(tmp_path):
     assert [f.reason_code for f in run.findings] == ["near_spelling:province_state"]
     assert run.fields["city"].state == ValueState.SUPPORTED
     assert not reasons_for(run, "province_state") and not reasons_for(run, "city")
+
+
+# ---- readers that differ only in letter case or spacing agree ---------------
+# 105526322's habitat ("shrubs, mostly forest" and "Shrubs, mostly forest")
+# and taxon ("sp. 30" and "Sp.30"), and 105526330's precise location
+# ("Yepocapa,4800 ft." beside "Yepocapa, 4800 ft."), went to review as readers
+# that differ. Compared after casefolding and removing every space, they are
+# one text, settled on the first reader's spelling.
+
+def two_readers(key, first, second, *, line="leg. R. D. Mitchell"):
+    """Label 2 with no decided transcript: 2A writes `first`, 2B `second`, and
+    the organiser gives each reader's text as its candidate."""
+    readings = tuple(Reading(name, "region-2", "obs-" + name, "raw_reading", f"{text}\n{line}")
+        for name, text in (("2A", first), ("2B", second)))
+    task = FieldTask(key, True, FieldValue(state=ValueState.AMBIGUOUS),
+        tuple(Candidate(name, text, text, "ev-" + name) for name, text in (("2A", first), ("2B", second))),
+        FIELD_TOOLS[key])
+    return task, readings
+
+
+def refusal_of(task, readings, literal, *names):
+    named = [reading for reading in readings if reading.name in (names or ("2A",))]
+    return agreement.refusal(task, readings, literal=literal, named=named, value=None, authority_id=None,
+        cited=[], received=[])
+
+
+AGREE = {
+    # 105526322's habitat and taxon, and a locality with "Mt." in capitals.
+    "322-habitat": ("habitat", "shrubs, mostly forest", "Shrubs, mostly forest"),
+    "322-taxon": ("taxon", "sp. 30 " + FEMALE, "Sp.30 " + FEMALE),
+    "mount-in-capitals": ("precise_location", "E. slope Mt. McKinley", "E. slope MT. McKinley"),
+    # Spanish, Portuguese, French and German labels.
+    "spanish-habitat": ("habitat", "bosque nublado", "Bosque Nublado"),
+    "portuguese-habitat": ("habitat", "mata atl" + A_CIRCUMFLEX + "ntica", "Mata Atl" + A_CIRCUMFLEX + "ntica"),
+    "french-locality-spacing": ("precise_location", "for" + E_CIRCUMFLEX + "t de  Fontainebleau",
+        "For" + E_CIRCUMFLEX + "t de Fontainebleau"),
+    "german-method": ("collection_method", "Lichtfang", "LICHTFANG"),
+    "german-sharp-s": ("precise_location", "Waldstra" + SHARP_S + "e 4", "WALDSTRASSE 4"),
+    # Metric and imperial elevations, and dates in Roman and numeric styles.
+    "feet-spacing": ("elevation_from_ft", "6400 ft", "6400ft"),
+    "metres-case": ("elevation_from_m", "1200 m", "1200 M"),
+    "roman-month-case": ("date_visited_from", "24.IV.1948", "24.iv.1948"),
+    "numeric-date-spacing": ("date_visited_from", "IV-24-48", "IV-24- 48"),
+    "collector-initials-spacing": ("collectors", "H. Hoogstraal", "H.Hoogstraal"),
+}
+
+
+@pytest.mark.parametrize(("key", "first", "second"), AGREE.values(), ids=AGREE)
+def test_readers_that_differ_only_in_case_or_spacing_agree_on_the_first_readers_spelling(key, first, second):
+    """On origin/main each label settles on nothing: its readers differ."""
+    task, readings = two_readers(key, first, second)
+    [label] = agreement.labels(task, readings, []).values()
+    assert (label.settled, label.by_source) == (frozenset({collapse(first)}), False)
+    assert refusal_of(task, readings, first) is None
+
+
+@pytest.mark.parametrize(("key", "first", "second"), list(AGREE.values())[:4], ids=list(AGREE)[:4])
+def test_the_second_readers_spelling_is_sent_back_for_the_first(key, first, second):
+    """The literal keeps the first reader's spelling. On origin/main the
+    answer is refused as readers that disagree."""
+    task, readings = two_readers(key, first, second)
+    refused = refusal_of(task, readings, second, "2B")
+    assert refused is not None and refused.reason == agreement.DIFFER and refused.differ
+    assert f"agree on {collapse(first)!r}" in refused.retry
+
+
+DIFFER = {
+    # 105526328's municipality and 105526323's year: a letter apart.
+    "328-municipality": ("collection_method", "Yepocapa, Mun.", "Yepocapa, Mum."),
+    "323-year": ("date_visited_from", "6-Sept.-1946", "6-Sept.-1948"),
+    # 105526322's elevation, the foot mark missing; a metres period; a dotted month.
+    "322-foot-mark": ("elevation_from_ft", "Elev.6400'", "Elev. 6400"),
+    "metres-period": ("elevation_from_m", "1200 m", "1200 m."),
+    "month-period": ("date_visited_from", "24 Apr 1948", "24 apr. 1948"),
+    # An accent is a letter: Portuguese "Atlantica" against "Atlantica" with its circumflex.
+    "accent": ("habitat", "Mata Atlantica", "Mata Atl" + A_CIRCUMFLEX + "ntica"),
+    # 105526322's collector, a letter apart.
+    "322-collector": ("collectors", "H. Hoopstraal", "H. Hoogstraal"),
+}
+
+
+@pytest.mark.parametrize(("key", "first", "second"), DIFFER.values(), ids=DIFFER)
+def test_readers_that_differ_in_punctuation_or_a_letter_still_disagree(key, first, second):
+    """The control, unchanged: no source decides between them."""
+    task, readings = two_readers(key, first, second)
+    [label] = agreement.labels(task, readings, []).values()
+    assert not label.settled
+    refused = refusal_of(task, readings, first)
+    assert refused is not None and refused.reason == agreement.DIFFER
+
+
+def test_a_decided_transcript_keeps_its_own_spelling():
+    """105526330's precise location: 2A, the decided reading, writes
+    "Yepocapa,4800 ft.", 2B "Yepocapa, 4800 ft.". G19 decides on 2A's text;
+    2B's spelling is refused as before."""
+    readings = (Reading("2A", "region-2", "obs-2A", "decided_transcript", "Yepocapa,4800 ft.\nIV-25 1948"),
+        Reading("2B", "region-2", "obs-2B", "raw_reading", "Yepocapa, 4800 ft.\nIV-25 1948"))
+    task = FieldTask("precise_location", False, FieldValue(state=ValueState.AMBIGUOUS),
+        (Candidate("2A", "Yepocapa,4800 ft.", "Yepocapa,4800 ft.", "ev-2A"),
+         Candidate("2B", "Yepocapa, 4800 ft.", "Yepocapa, 4800 ft.", "ev-2B")), FIELD_TOOLS["precise_location"])
+    assert refusal_of(task, readings, "Yepocapa,4800 ft.") is None
+    assert refusal_of(task, readings, "Yepocapa, 4800 ft.", "2B").reason == agreement.NOT_DECIDED
+
+
+def test_the_experts_check_accepts_the_first_readers_spelling():
+    """105526322's habitat at the expert: the answer naming 2A passes its
+    check; on origin/main it is sent back as readers that disagree."""
+    task, readings = two_readers("habitat", "shrubs, mostly forest", "Shrubs, mostly forest")
+    made = experts._Expert(task, readings, SimpleNamespace(sources=()), None)
+    given = FieldAnswer(outcome="resolved", literal="shrubs, mostly forest", reading_names=["2A"],
+        explanation="Both readers write it; 2B capitalises it.")
+    assert made.validate(given).reading_names == ["2A"]
+
+
+def test_readers_that_differ_only_in_case_settle_the_field_and_keep_both_texts(tmp_path):
+    """105526322's habitat through the step: no decided transcript, 1A writes
+    "shrubs, mostly forest" and 1B "Shrubs, mostly forest". The value is 1A's
+    spelling; 1B's text stays in the lineage. On origin/main it is ambiguous."""
+    first, second = "shrubs, mostly forest", "Shrubs, mostly forest"
+    rig = build_rig(tmp_path, TEXT.replace("Synthetic grassland", first), TEXT.replace("Synthetic grassland", second),
+        candidates=every_field(("habitat", "1A", first, "habitat: " + first),
+            ("habitat", "1B", second, "habitat: " + second)))
+    run = rig.specimen.run
+    reader_a, reader_b = run.observations
+    settle(rig, Scripted({"habitat": answering(resolved(first, reading="1A"))}))
+    habitat = run.fields["habitat"]
+    assert (habitat.state, habitat.literal, habitat.input_source) == (ValueState.SUPPORTED, first, "raw_reading")
+    assert habitat.verbatim_by_observation == {reader_a.id: first, reader_b.id: second}
+    assert cited_rows(run, "habitat")["habitat: " + first] == "supports"
+    assert not reasons_for(run, "habitat")

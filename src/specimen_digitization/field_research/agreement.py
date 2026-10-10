@@ -33,7 +33,11 @@ fields' outcomes:
    - a label with a decided transcript, on its decided reading's one
      candidate literal; its other readers are evidence only, and a label
      whose decided reading writes nothing for the field takes no part;
-   - a label with none whose readers each write the same one literal, on it;
+   - a label with none whose readers each write the same text, letter case
+     and spacing aside (agreement_key: "shrubs" and "Shrubs", "sp. 30" and
+     "Sp.30", "Mt." and "MT."), on its first reader's spelling, which the
+     answer's literal then is; a punctuation mark or a letter more or less
+     is a different text;
    - any other label (readers that differ, or one that writes nothing) only
      through the field's approved sources: exactly one of its literals is
      confirmed by an answer about it (below), and every other has a captured
@@ -132,6 +136,7 @@ a place's readers whose texts one candidate at the field's level confirms.
 
 from __future__ import annotations
 
+import unicodedata
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
@@ -428,6 +433,24 @@ def ruled_out(answers: Iterable[SourceAnswer], literal: str) -> bool:
         and not any(a.status in (LookupStatus.SUCCESS, LookupStatus.AMBIGUOUS) for a in asked))
 
 
+def agreement_key(text: str) -> str:
+    """A reader's text as readers' texts are compared for agreement: NFC,
+    casefolded, with every space and line break removed. "shrubs" and
+    "Shrubs", "sp. 30" and "Sp.30", "Mt." and "MT." are one text; a
+    punctuation mark or a letter more or less is another ("Mun." and
+    "Mum.", "6-Sept.-1946" and "6-Sept.-1948")."""
+    return "".join(unicodedata.normalize("NFC", text).casefold().split())
+
+
+def _spelling(task: FieldTask, name: str, texts: Iterable[str]) -> str:
+    """The reader's own spelling a label settles on when its readers agree:
+    the reader's candidate literal (the organiser's first, when the reader
+    has more than one spelling), else its first text in sorted order."""
+    texts = set(texts)
+    return next((collapse(candidate.literal) for candidate in task.candidates
+        if candidate.reading == name and collapse(candidate.literal) in texts), min(texts))
+
+
 @dataclass(frozen=True)
 class Label:
     """One label that writes the field: its readings' literals, and the
@@ -447,7 +470,9 @@ def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[Sourc
     - a label with a decided transcript, on the one candidate literal its
       decided reading has; its other readers are evidence only, and a label
       whose decided reading writes nothing for the field takes no part;
-    - a label whose readers each write the same one literal, on that literal;
+    - a label whose readers each write the same text, letter case and
+      spacing aside (agreement_key: "shrubs" and "Shrubs", "sp. 30" and
+      "Sp.30"), on the first reader's spelling (_spelling);
     - a label whose readers differ (or where one writes nothing), only through
       the field's approved sources (`answers`): exactly one of its literals
       is confirmed (identities), and every other is ruled out (ruled_out);
@@ -477,8 +502,11 @@ def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[Sourc
         texts = frozenset().union(*each)
         if not texts:
             continue
-        if len(texts) == 1 and all(len(own) == 1 for own in each):
-            found[region] = Label(texts, texts)
+        if all(each) and len({agreement_key(text) for text in texts}) == 1:
+            # Every reader writes it, at most letter case or spacing apart
+            # ("shrubs" and "Shrubs", "sp. 30" and "Sp.30"): they agree, on
+            # the first reader's spelling.
+            found[region] = Label(texts, frozenset({_spelling(task, group[0].name, each[0])}))
             continue
         confirmed = {text: identities(answers, text, task.key) for text in texts} if sourced else {}
         ones = frozenset(text for text, ids in confirmed.items() if ids)
@@ -501,11 +529,22 @@ def _disagreement(task: FieldTask, readings: Sequence[Reading], *, literal: str,
     answers = [a for a in received if a.source_id in sources]
     found = labels(task, readings, answers)
     settled = frozenset().union(*(label.settled for label in found.values())) if found else frozenset()
-    if not found or (all(label.settled for label in found.values()) and len(settled) == 1
-            and not any(label.by_source for label in found.values())):
-        return None  # Every label settles on its own text, and they agree.
-    every = sorted(frozenset().union(*(label.literals for label in found.values())))
+    every = sorted(frozenset().union(*(label.literals for label in found.values()))) if found else []
     shown = "; ".join(repr(text) for text in every)
+    if not found:
+        return None
+    if (all(label.settled for label in found.values()) and len(settled) == 1
+            and not any(label.by_source for label in found.values())):
+        # Every label settles on its own text, and they agree: on that text,
+        # as the label's decided transcript or its first reader spells it.
+        [one] = settled
+        if collapse(literal) == one:
+            return None
+        return Refusal(DIFFER, (
+            f"The readers write {shown}, which agree on {one!r} (a decided transcript's spelling, "
+            "or the first reader's when the label has none; letter case and spacing aside, they "
+            f"are one text). Copy the literal {one!r} exactly from a reading that writes it, and "
+            "name only readings that write it so."), differ=True)
     if not all(label.settled for label in found.values()):
         return Refusal(DIFFER, (
             f"The readers disagree on this field ({shown}). A label with no decided transcript "

@@ -173,8 +173,15 @@ handover runs field research instead of the six specialists:
      organiser gave the field, each label that writes it settles on its own:
      a label with a decided transcript on its decided reading's one candidate
      literal (a label whose decided reading writes nothing for the field takes
-     no part); a label whose readers each write the same one literal on that
-     literal; any other label (readers that differ, or one that writes
+     no part); a label whose readers each write the same text, letter case
+     and spacing aside, on its first reader's spelling (readers that differ
+     only so agree, the coordinator's ruling of 2026-10-09: texts compare
+     after NFC, casefolding and removing every space and line break,
+     `agreement.agreement_key`, so "shrubs" and "Shrubs", "sp. 30" and
+     "Sp.30", "Mt." and "MT." agree, while "Mun." and "Mum." or "1200 m"
+     and "1200 m." do not; the answer's literal is then the first reader's
+     text, 2A before 2B, and an answer giving another reader's spelling is
+     sent back); any other label (readers that differ, or one that writes
      nothing) only when the expert asked the field's approved sources about
      every distinct text its readers write, exactly one is confirmed by an
      answer about it, and every other has a captured no_match answer
@@ -219,8 +226,9 @@ handover runs field research instead of the six specialists:
      to review, with each reader's candidate row still cited. So a field with no approved source (collectors,
      habitat, collection method, collection code, verbatim D/T/S), or only
      deterministic checks, goes to review when the readers of a label with no
-     decided transcript differ. This follows the native harness's G20 and G32
-     rules (`research_harness/evidence.py`); it is stricter than
+     decided transcript differ by more than letter case or spacing. This
+     follows the native harness's G20 and G32 rules
+     (`research_harness/evidence.py`); it is stricter than
      `application/field_resolution.py`, which clears readers that differ when
      every success names one value, unless they are a place's readers whose
      texts one candidate confirms (above).
@@ -555,7 +563,8 @@ all of these hold:
   same number or code, case, spacing, punctuation and sex signs aside, so a
   reader's "Sp.30" beside "sp. 30", never "sp. 39"). This compares the
   organiser's candidates. Readers of a label with no decided transcript
-  whose codes differ never settle (the readers' rule below). On a label
+  whose codes differ never settle (the readers' rule below), unless they
+  differ only in letter case or spacing. On a label
   with a decided transcript, the rule refuses another reader's different
   code only when the organiser gives that reader's text as a candidate;
   where it gives none, the decided transcript's code clears alone, as G19
@@ -651,7 +660,8 @@ all of these hold:
 - the readers settle on the literal by the rule for readers that disagree
   (step 5 above): with no successful lookup, that is a label's decided
   transcript, its other readers evidence only, or readers of a label with
-  none that each write exactly that text;
+  none that each write that text, letter case and spacing aside, the
+  first of them writing it exactly;
 - the value meets the agreement rules every resolved answer meets
   (`agreement.refusal`): among them, no candidate of it may quote a longer
   name around it, and no text may mark the literal's first word as a
