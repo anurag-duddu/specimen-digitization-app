@@ -55,6 +55,9 @@ READ = [
     (f"Espa{N_TILDE}a, Madrid, IV-25. 1948. leg. Lopez", "IV-25. 1948.", "1948-04-25"),
     ("Peru, Cusco, 3.XII,1946", "3.XII,1946", "1946-12-03"),
     ("Colombia, Cali, IV-25 '48", "IV-25 '48", "1948-04-25"),
+    # A determination's date written whole on its line reads too (Date Identified's).
+    ("det. J. Smith, IV-25 1950", "IV-25 1950", "1950-04-25"),
+    ("det. J. Smith\nIV-25 1950", "IV-25 1950", "1950-04-25"),
 ]
 
 
@@ -130,7 +133,7 @@ def test_an_apostrophe_year_records_the_century_rule():
             "one_line_holds_another_date",
         ),
         ("Guatemala, IV-25 1948, 3 Sept.", "IV-25 1948", "one_line_holds_another_date"),
-        # A measurement or a determination on the line, on the line above, or a unit below.
+        # A measurement on the line or on the line above, or a unit below.
         (
             "Guatemala, Alt. 1500 m, IV-25 1948",
             "IV-25 1948",
@@ -155,11 +158,6 @@ def test_an_apostrophe_year_records_the_century_rule():
             "Bolzano\nQuota 1900 m\n25.IV, 1948",
             "25.IV, 1948",
             "one_line_year_may_be_a_measurement",
-        ),
-        (
-            "det. J. Smith, IV-25 1950",
-            "IV-25 1950",
-            "one_line_year_may_be_a_determination",
         ),
     ],
 )

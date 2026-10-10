@@ -72,6 +72,8 @@ def test_year_beside_lends_no_year_a_marker_makes_a_measurement_or_a_determinati
     assert date_lines.year_beside("IV-25", "Alt. 1500 m\nx, IV-25\n1948") == ("1948", "next_line")
     assert date_lines.year_beside("IV-25", "El Salvador\n1948\nIV-25 y") == ("1948", "previous_line")
     assert date_lines.year_beside("IV-25", "x, IV-25\n1948\nM. Smith") == ("1948", "next_line")
+    # A determination on the date's own line: that date is the determination's, read whole.
+    assert date_lines.year_beside("IV-25", "det. J. Smith IV-25\n1950") == ("1950", "next_line")
 
 
 @pytest.mark.parametrize(

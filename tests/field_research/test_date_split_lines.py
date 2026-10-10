@@ -437,6 +437,7 @@ MARKED_YEARS = [
     ("Guatemala, IV-25\n1900\nm, R.D. Mitchell", "IV-25\n1900", MEASURE),
     ("Guatemala, IV-25\n1900\nmsnm", "IV-25\n1900", MEASURE),
     ("Guatemala, IV-25\n1948, 1900m", "IV-25\n1948", MEASURE),
+    ("Guatemala, IV-25\n1948, 1,900 m", "IV-25\n1948", MEASURE),
     ("Guatemala, IV-25\n1948, 4800 ft.", "IV-25\n1948", MEASURE),
     ("Guatemala, IV-25\n1948, 6000 pies", "IV-25\n1948", MEASURE),
     ("Guatemala, IV-25\n1948. m", "IV-25\n1948", MEASURE),
@@ -479,6 +480,8 @@ def test_the_step_keeps_no_row_for_a_year_beside_a_measurement_or_a_determinatio
         ("leg. Prof. J. Smith\n1948\nIV-25 Guatemala", "1948\nIV-25", "1948-04-25"),
         ("Guatemala, IV-25\n1948\nM. Smith", "IV-25\n1948", "1948-04-25"),
         ("Guatemala, Sept. 3\n1948. 5 mi W", "Sept. 3\n1948.", "1948-09-03"),
+        # A determination on the date's own line: the determination's date, written whole.
+        ("det. J. Smith IV-25\n1950", "IV-25\n1950", "1950-04-25"),
         # Other languages' labels with no marker beside the year.
         ("Antioquia, 25.IV\n1948, leg. J. Restrepo", "25.IV\n1948", "1948-04-25"),
         ("Minas Gerais, 25 de abril\n1948", "25 de abril\n1948", "1948-04-25"),
