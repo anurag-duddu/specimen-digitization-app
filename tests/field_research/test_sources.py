@@ -10,6 +10,7 @@ import io
 import json
 import logging
 import re
+import shlex
 import threading
 import time
 from collections import Counter
@@ -716,14 +717,19 @@ async def test_other_client_errors_are_final(tmp_path, code, status):
 
 
 def unanswered(caplog):
-    """The sources' log lines for unanswered lookups, as key=value maps."""
+    """The sources' log lines for unanswered lookups, as key=value maps; a
+    quoted value is read as the shell reads it."""
     prefix = "Field research lookup unanswered: "
     return [
-        dict(pair.split("=", 1) for pair in record.getMessage().removeprefix(prefix).split())
+        dict(pair.split("=", 1) for pair in shlex.split(record.getMessage().removeprefix(prefix)))
         for record in caplog.records
         if record.name == "specimen_digitization.field_research.sources"
         and record.levelname == "WARNING" and record.getMessage().startswith(prefix)
     ]
+
+
+NO_SENDER = {"server": "-", "via": "-", "html_page": "-", "body": "-"}
+BARE = {"server": "-", "via": "-", "html_page": "no", "body": "-"}
 
 
 TGN_HOST = "services.getty.edu"
@@ -738,15 +744,16 @@ SPARQL_HOST = "vocab.getty.edu"
         # the search to the SPARQL endpoint (here it answers the same), or a
         # redirect, which is never followed. Either is an outage, and logged.
         (httpx.Response(403), LookupStatus.AUTHORIZATION, [TGN_HOST, SPARQL_HOST],
-         {"http_status": "403", "error": "-", "retry_after": "absent", "attempt": "1"}),
+         {"http_status": "403", "error": "-", "retry_after": "absent", "attempt": "1", **BARE}),
         (httpx.Response(302, headers={"Location": "https://www.getty.edu/blocked"}), LookupStatus.PROVIDER,
-         [TGN_HOST], {"http_status": "302", "error": "-", "retry_after": "absent", "attempt": "1"}),
+         [TGN_HOST], {"http_status": "302", "error": "-", "retry_after": "absent", "attempt": "1", **BARE}),
         (httpx.Response(503, headers={"Retry-After": "1"}), LookupStatus.PROVIDER, [TGN_HOST, SPARQL_HOST],
-         {"http_status": "503", "error": "-", "retry_after": "present", "attempt": "3"}),
+         {"http_status": "503", "error": "-", "retry_after": "present", "attempt": "3", **BARE}),
         (httpx.ConnectError("refused"), LookupStatus.PROVIDER, [TGN_HOST, SPARQL_HOST],
-         {"http_status": "-", "error": "ConnectError", "retry_after": "absent", "attempt": "3"}),
+         {"http_status": "-", "error": "ConnectError", "retry_after": "absent", "attempt": "3",
+          **NO_SENDER}),
         (httpx.Response(429, headers={"Retry-After": "30"}), LookupStatus.RATE_LIMITED, [TGN_HOST],
-         {"http_status": "429", "error": "-", "retry_after": "present", "attempt": "1"}),
+         {"http_status": "429", "error": "-", "retry_after": "present", "attempt": "1", **BARE}),
     ],
 )
 async def test_every_unanswered_tgn_lookup_is_an_outage_logged_without_its_query(
@@ -763,6 +770,91 @@ async def test_every_unanswered_tgn_lookup_is_an_outage_logged_without_its_query
         {"step": "field_research", "source": "tgn", "host": host, **line} for host in hosts
     ]
     assert "Davao" not in caplog.text and "Philippines" not in caplog.text
+
+
+# A block page that writes back the request in the ways a server may: as sent,
+# percent-encoded, in HTML entities and JSON escapes, upper case, accented and
+# run into other words.
+ECHOING_BLOCK_PAGE = (
+    "<!DOCTYPE html><html><head><title>403 Forbidden</title></head><body>"
+    "<p>Request blocked</p><p>queries=%7B%22q0%22%3A%7B%22query%22%3A%22Davao%20Province%22</p>"
+    "<p>Davao Province DAVAO PROVINCE D&#97;vao Prov&iacute;nce \\u0044avao D\u00e1vao "
+    "searchDavaoProvinceNow</p>" + "<p>padding</p>" * 40 + "</body></html>"
+)
+
+
+@pytest.mark.asyncio
+async def test_a_refusal_log_says_who_refused_without_a_word_of_the_query(tmp_path, caplog):
+    refusal = httpx.Response(
+        403,
+        headers={"Server": "envoy", "Via": "1.1 google", "Content-Type": "text/html"},
+        text=ECHOING_BLOCK_PAGE,
+    )
+    tools, _, _, _ = make(tmp_path, tgn_refused(refusal))
+    with caplog.at_level(logging.WARNING, logger="specimen_digitization.field_research.sources"):
+        answer = await tools.lookup("tgn", "Davao Province, Philippines", field_key="province_state")
+    assert answer.note.startswith("Getty TGN's search refused the request (HTTP 403)")
+    (line,) = unanswered(caplog)
+    assert (line["host"], line["http_status"]) == (TGN_HOST, "403")
+    assert (line["server"], line["via"], line["html_page"]) == ("envoy", "1.1 google", "yes")
+    assert line["body"].startswith("<!doctype html><html><head><title>403 forbidden</title>")
+    assert len(line["body"]) <= 200 and "[query]" in line["body"]
+    assert len(caplog.records) == 1 and "\n" not in caplog.records[0].getMessage()
+    for word in ("davao", "province", "vao", "dav"):
+        assert word not in caplog.text.lower()
+
+
+@pytest.mark.parametrize(
+    ("headers", "body", "html_page"),
+    [
+        ({}, b"<HTML><body>Access Denied</body></HTML>", True),
+        ({"content-type": "text/html; charset=utf-8"}, b"Forbidden", True),
+        ({"content-type": "application/json"}, b'{"error": "forbidden"}', False),
+        ({}, b"", False),
+    ],
+)
+def test_a_block_page_is_told_by_its_type_or_its_markup(headers, body, html_page):
+    sender = approved_sources._sender("https://vocab.getty.edu/sparql.json?query=x", headers, body)
+    assert sender.html_page is html_page
+
+
+def test_a_sender_without_any_word_of_the_query_keeps_the_rest():
+    url = tgn.SPARQL + "?query=" + "Mount%20Apo%20of%20Davao"
+    sender = approved_sources._sender(
+        url,
+        {"server": "nginx/1.29.8 (Davao)", "via": "1.1 Mount-Apo-proxy"},
+        b'MALFORMED QUERY: luc:term "mount apo" of davao; of-course offline\x00\r\nline two',
+    )
+    assert sender.server == "nginx/1.29.8 ([query])"
+    assert sender.via == "1.1 [query]-[query]-proxy"
+    # A short word goes only where it stands alone; a long one wherever it appears.
+    assert sender.body == 'malformed query: luc:term "[query] [query]" [query] [query]; [query]-course offline\x00 line two'
+    # Global Names Verifier carries the name in the path.
+    gnv = approved_sources._sender(
+        "https://verifier.globalnames.org/api/v1/verifications/Apis%20mellifera", {},
+        b"<html>No verification for Apis mellifera</html>",
+    )
+    assert gnv.body == "<html>no verification for [query] [query]</html>"
+
+
+@pytest.mark.asyncio
+async def test_a_gbif_refusal_log_says_who_refused_without_the_name(tmp_path, caplog):
+    def reply(request):
+        return httpx.Response(
+            403,
+            headers={"Server": "cloudflare", "Content-Type": "text/html"},
+            text=f"<html><body>Blocked: {request.url}</body></html>",
+        )
+
+    tools, _, _, _ = make(tmp_path, reply)
+    with caplog.at_level(logging.WARNING, logger="specimen_digitization.field_research.sources"):
+        answer = await tools.lookup("gbif", "Apis mellifera", field_key="taxon")
+    assert answer.status is LookupStatus.AUTHORIZATION
+    (line,) = unanswered(caplog)
+    assert (line["source"], line["server"], line["via"], line["html_page"]) == (
+        "gbif", "cloudflare", "-", "yes")
+    assert line["body"].startswith("<html><body>blocked: https://")
+    assert "apis" not in caplog.text.lower() and "mellifera" not in caplog.text.lower()
 
 
 @pytest.mark.asyncio

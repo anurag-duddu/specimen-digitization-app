@@ -16,7 +16,8 @@ store failure raises. When Getty TGN's reconciliation service refuses a request
 or cannot be reached, TGN is searched through Getty's SPARQL endpoint instead
 (historical_gazetteers), and the note says so. Each request a source leaves
 unanswered is logged in one WARNING line with its source, host and HTTP status
-or error, never its query.
+or error, and who sent the response (its Server and Via headers, whether it is
+an HTML page, the start of its body), never its query or a word of it.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ import asyncio
 import concurrent.futures
 import dataclasses
 import hashlib
+import html
 import json
 import logging
 import re
@@ -36,7 +38,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequenc
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from functools import cache
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import parse_qsl, unquote, unquote_plus, urlencode, urlsplit
 
 import httpx
 
@@ -91,6 +93,15 @@ EXCERPT_LIMIT = 2_000
 NOTE_LIMIT = 300  # of the note that heads an excerpt
 MAX_TAXA = 10
 MAX_KINDS = 3
+# A response that was no answer, as its log line shows it (_Sender): the first
+# BODY_READ bytes of the body are read, BODY_EXCERPT characters of them logged,
+# and at most HEADER_EXCERPT of the Server and Via headers.
+BODY_READ = 8192
+BODY_EXCERPT = 200
+HEADER_EXCERPT = 100
+HTML_PAGE = re.compile(r"<!doctype\s+html|<html", re.IGNORECASE)
+# The response headers a GET keeps: for its retries and its log line.
+KEPT_HEADERS = ("retry-after", "server", "via", "content-type")
 # What research_harness.sources.BoundedHTTPTransport sends.
 HEADERS = {
     "Accept": "application/json",
@@ -311,6 +322,74 @@ def _evidence(
     )
 
 
+@dataclass(frozen=True)
+class _Sender:
+    """Who sent a response that was no answer, as its log line says: the
+    response's Server and Via headers, whether its body is an HTML page (as a
+    block page is), and the start of the body on one line, each without a
+    word of the request's query (`_sender`)."""
+
+    server: str | None
+    via: str | None
+    html_page: bool
+    body: str | None
+
+
+def _sender(url: str, headers: Mapping[str, str], body: bytes) -> _Sender:
+    """A response's sender, read from its headers and the first BODY_READ bytes
+    of its body. Every word the request's URL carries in its query parameters
+    or its path is cut out first (`_without_query`), so no specimen text
+    reaches the log."""
+    hidden = _query_words(url)
+    text = _plain(unquote_plus(body[:BODY_READ].decode("utf-8", errors="replace")))
+    content_type = (headers.get("content-type") or "").lower()
+    return _Sender(
+        server=_without_query(headers.get("server"), hidden, HEADER_EXCERPT),
+        via=_without_query(headers.get("via"), hidden, HEADER_EXCERPT),
+        html_page="html" in content_type or bool(HTML_PAGE.search(text[:1024])),
+        body=_without_query(text, hidden, BODY_EXCERPT),
+    )
+
+
+def _plain(text: str) -> str:
+    """Text as the log compares it with a query: HTML entities and JSON
+    \\uXXXX escapes read, accents dropped, case folded."""
+    text = re.sub(
+        r"\\u([0-9a-fA-F]{4})", lambda escape: chr(int(escape[1], 16)), html.unescape(text)
+    )
+    bare = "".join(
+        character
+        for character in unicodedata.normalize("NFKD", text)
+        if not unicodedata.combining(character)
+    )
+    return bare.casefold()
+
+
+def _query_words(url: str) -> frozenset[str]:
+    """Every word (run of letters and digits) of a URL's query parameters and
+    of its path, where Global Names Verifier carries a name."""
+    parts = urlsplit(url)
+    texts = [unquote(parts.path), *(value for _, value in parse_qsl(parts.query, keep_blank_values=True))]
+    return frozenset(word for text in texts for word in re.findall(r"[^\W_]+", _plain(text)))
+
+
+def _without_query(text: str | None, hidden: frozenset[str], limit: int) -> str | None:
+    """`text` on one line, at most `limit` characters, with each of the query's
+    words replaced by "[query]": a word of five characters or more wherever it
+    appears, even run into other words, a shorter one where it stands as a word
+    of its own (so "type" leaves "doctype" whole)."""
+    if not text:
+        return None
+    plain = _plain(text)
+    long = sorted((re.escape(word) for word in hidden if len(word) >= 5), key=len, reverse=True)
+    short = sorted((re.escape(word) for word in hidden if len(word) < 5), key=len, reverse=True)
+    if long:
+        plain = re.sub("|".join(long), "[query]", plain)
+    if short:
+        plain = re.sub(r"(?<![^\W_])(?:" + "|".join(short) + r")(?![^\W_])", "[query]", plain)
+    return " ".join(plain.split())[:limit] or None
+
+
 def _log_unanswered(
     source_id: str,
     url: str,
@@ -319,12 +398,16 @@ def _log_unanswered(
     http_status: int | None = None,
     error: str | None = None,
     retry_after: bool = False,
+    sender: _Sender | None = None,
 ) -> None:
     """One WARNING line for a lookup a source left unanswered, as the worker
     logs a failed step (workflow._log_step_failure: key=value pairs): the
     source id, the host, the HTTP status or the error's class, whether the
-    source sent a Retry-After, and the attempt the request ended on. Never
-    the query, a parameter or a body, so no specimen text."""
+    source sent a Retry-After, the attempt the request ended on, and who sent
+    the last response that was no answer (`_Sender`: server, via, html_page and
+    body, the two headers and the body quoted as JSON strings). Never the
+    query or a parameter, and no word of them in the body, so no specimen
+    text."""
     values = {
         "step": "field_research",
         "source": source_id,
@@ -333,6 +416,10 @@ def _log_unanswered(
         "error": error,
         "retry_after": "present" if retry_after else "absent",
         "attempt": attempt,
+        "server": None if sender is None or sender.server is None else json.dumps(sender.server),
+        "via": None if sender is None or sender.via is None else json.dumps(sender.via),
+        "html_page": None if sender is None else "yes" if sender.html_page else "no",
+        "body": None if sender is None or sender.body is None else json.dumps(sender.body),
     }
     LOGGER.warning(
         "Field research lookup unanswered: %s",
@@ -543,6 +630,9 @@ class ApprovedSources:
         self._responses: dict[str, asyncio.Task[_Fetched]] = {}
         # verify_taxon's requests and waits on the loop, from its worker threads.
         self._running: set[concurrent.futures.Future] = set()
+        # Per host, who sent verify_taxon's last response that was no answer,
+        # for GBIF's log line (_log_unanswered).
+        self._senders: dict[str, _Sender] = {}
         self.closed = False
 
     def close(self) -> None:
@@ -627,6 +717,7 @@ class ApprovedSources:
                 attempt=last.attempt if last else 0,
                 error=status.value,
                 retry_after=last is not None and last.retry_after_seconds is not None,
+                sender=self._senders.get(urlsplit(GBIF_MATCH_URL).hostname or ""),
             )
             return _answer(
                 "gbif", query, status, _taxon_failure(status, asked), taxonomy_lookup=decided
@@ -698,6 +789,8 @@ class ApprovedSources:
                     await response.aclose()
         except TimeoutError as error:
             raise httpx.ReadTimeout("no answer in time", request=request) from error
+        if response.status_code != 200:
+            self._senders[request.url.host] = _sender(url, response.headers, bytes(body))
         kept = {
             name: value
             for name in ("content-type", "retry-after")
@@ -896,14 +989,16 @@ class ApprovedSources:
         jitter and never sooner than the provider's Retry-After. A Retry-After
         over RETRY_AFTER_LIMIT_SECONDS ends the retries; any other answer is final.
         A final answer other than 200 (a refusal, a redirect, which is never
-        followed) and a request that got none are logged (_log_unanswered)."""
+        followed) and a request that got none are logged (_log_unanswered),
+        with who sent the last response that was no answer (_sender)."""
         name = NAMES[policy.id]
         for attempt in range(1, ATTEMPTS + 1):
             await self._pacer.wait(policy.id)
-            wait, retry, code, error = None, "", None, None
+            wait, retry, code, error, sender = None, "", None, None, None
             try:
                 async with self._slots.slot(policy.id):
-                    code, body, retry = await self._read(url, policy.max_response_bytes, name)
+                    code, body, headers = await self._read(url, policy.max_response_bytes, name)
+                retry = headers.get("retry-after", "")
             except _Unanswered:
                 _log_unanswered(policy.id, url, attempt=attempt, error="response_too_large")
                 raise
@@ -917,10 +1012,13 @@ class ApprovedSources:
                 )
                 error = type(failure).__name__
             else:
+                if code != 200:
+                    sender = _sender(url, headers, body)
                 if code != 429 and code < 500:
                     if code != 200:
                         _log_unanswered(
-                            policy.id, url, attempt=attempt, http_status=code, retry_after=bool(retry)
+                            policy.id, url, attempt=attempt, http_status=code,
+                            retry_after=bool(retry), sender=sender,
                         )
                     return _Fetched(url, code, body)
                 status = LookupStatus.RATE_LIMITED if code == 429 else LookupStatus.PROVIDER
@@ -931,7 +1029,10 @@ class ApprovedSources:
                 )
                 wait = retry_after(retry)
                 if wait is not None and wait > RETRY_AFTER_LIMIT_SECONDS:
-                    _log_unanswered(policy.id, url, attempt=attempt, http_status=code, retry_after=True)
+                    _log_unanswered(
+                        policy.id, url, attempt=attempt, http_status=code, retry_after=True,
+                        sender=sender,
+                    )
                     raise _Unanswered(
                         status,
                         f"{name} asked to wait {wait} s before another request, "
@@ -940,11 +1041,13 @@ class ApprovedSources:
             if attempt < ATTEMPTS:
                 await self._sleep(retry_delay(attempt, wait))
         _log_unanswered(
-            policy.id, url, attempt=ATTEMPTS, http_status=code, error=error, retry_after=bool(retry)
+            policy.id, url, attempt=ATTEMPTS, http_status=code, error=error,
+            retry_after=bool(retry), sender=sender,
         )
         raise _Unanswered(status, note)
 
-    async def _read(self, url: str, limit: int, name: str) -> tuple[int, bytes, str]:
+    async def _read(self, url: str, limit: int, name: str) -> tuple[int, bytes, dict[str, str]]:
+        """A GET's status, body and KEPT_HEADERS."""
         async with asyncio.timeout(REQUEST_TIMEOUT_SECONDS):
             async with self.client.stream(
                 "GET",
@@ -961,7 +1064,12 @@ class ApprovedSources:
                             LookupStatus.MALFORMED,
                             f"{name}'s answer is longer than {limit:,} bytes",
                         )
-                return response.status_code, bytes(body), response.headers.get("Retry-After", "")
+                kept = {
+                    header: value
+                    for header in KEPT_HEADERS
+                    if (value := response.headers.get(header)) is not None
+                }
+                return response.status_code, bytes(body), kept
 
 
 def _approved(policy: SourcePolicy, url: str) -> bool:
