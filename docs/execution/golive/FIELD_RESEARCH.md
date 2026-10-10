@@ -135,6 +135,23 @@ handover runs field research instead of the six specialists:
      A keyed line's "taxon:", an author and year, a sex sign or "sp. 1" are
      no longer name. Other fields' candidates are not checked against their
      quotes.
+   - **A doubtful genus (taxon only).** The literal never settles the taxon
+     when the label marks its genus as doubtful (`checks.genus_in_doubt`,
+     through `agreement._genus_in_doubt`): wherever the quote of a candidate
+     of that literal, the text of a reading the answer names, or the text of
+     its label's decided reading writes the literal, a qualifier of the
+     doubt signs' list (below, under B) or a "?" stands in the
+     whitespace-separated part holding the literal's first word
+     ("cfr.Epipsocus", "Epipsocus?") or in the part just before it, across a
+     line break too ("cfr. Epipsocus", "(?) Epipsocus"), or a part with a
+     "?" and no letter or digit stands just after it ("Epipsocus ?"). The
+     value goes to
+     review ("The label marks this name's genus as doubtful."): GBIF may
+     decide the bare genus the taxon brief has the expert look up, and an
+     expert that then resolves the taxon as that genus ("Epipsocus" quoting
+     "cfr. Epipsocus", or quoting "Epipsocus" on a reading line that writes
+     "Epipsocus?") is refused. A qualifier after the genus ("Epipsocus cf.
+     sp. 1", G25) is none.
    - A value that differs from the literal is a source candidate the expert
      was given, or a deterministic check's settled parse of that literal (an
      ambiguous check's readings are only options for a person). An elevation
@@ -407,9 +424,16 @@ elevation is derived first, and only for a field a person has not decided):
 3. Label coverage is confirmed, every label has two or more readings, and
    every reading has text.
 4. No part of any label is unreadable: no reader's unreadable span, no
-   transcript marked unreadable, and no "[unreadable]" marker (the one the
-   reader prompt asks for in place of each unreadable span) anywhere in a
-   reader's, a reading's or a transcript's text.
+   transcript marked unreadable, and no placeholder for an unread word
+   anywhere in a reader's, a reading's or a transcript's text
+   (`checks.shows_placeholder`, the one test rule B reads too). The
+   placeholders are "[unreadable]" (the marker the reader prompt asks for
+   in place of each unreadable span), "(unreadable)", "[illegible]",
+   "(illegible)", "[illeg.]", "[illeg]", "(illeg.)", "[unclear]",
+   "(unclear)", "[?]", "???", "...", "[...]" and the ellipsis character, in
+   any case (`checks.DOUBT_PLACEHOLDERS`; "..." also inside "...."), and
+   the words "illegible" and "unreadable" standing alone, in any case
+   (`checks.PLACEHOLDER_WORDS`; never "illegibly").
 5. The organiser found no text for it: no candidate, no literal, no
    reader's verbatim. For a county, a city or a precise location, a text
    counts as absent only when its whole words, compared by the place
@@ -466,9 +490,14 @@ all of these hold:
 - its expert itself answered that GBIF cannot resolve it
   (sources_cannot_resolve), with no failure, not finalized without a model
   call, and not as the resolver's fallback (`FieldOutcome.fallback`: an expert out of
-  attempts, or whose answers kept failing their checks); and it answered
-  after a GBIF lookup attempt for the field, or quoting as its literal the
-  morphocode a reading it names writes (`step._expert_found_no_genus`);
+  attempts, or whose answers kept failing their checks); its answer's
+  literal is the code itself, compared with the organiser's literal as
+  the GBIF query guard below compares a query (case, spaces, punctuation
+  and sex signs aside), whether or not it asked GBIF, so an answer quoting
+  "Epipsocus", the slide number, another code or nothing never qualifies;
+  and it answered after a GBIF lookup attempt for the field, or quoting
+  as its literal the morphocode a reading it names writes
+  (`step._expert_found_no_genus`);
 - no GBIF answer the expert received for the field shows a genus
   (`step._answer_found_a_genus`): none has candidates (105526328's
   "Epipsocus" homonym has two), none has the status success or ambiguous
@@ -485,7 +514,14 @@ all of these hold:
   accented capital). The taxon brief has the
   expert look up the genus a label writes, so such a lookup is its own
   finding that the label writes one, wherever on the label the genus
-  stands. GBIF's no-name answer for a morphocode (no match, no candidates,
+  stands. The brief has it look up alone, before it answers for a
+  morphocode, any genus any label writes anywhere (on another line or
+  another label, with a qualifier or without), and a genus in doubt too:
+  a genus, or a word that may be one, behind a qualifier of any spelling
+  ("cf.", "cfr.", "c.f.", "aff.", "nr.", "conf.", "poss.", "prob.") or
+  with "?" is looked up as the bare genus word, with no qualifier and no
+  epithet, and the expert then answers sources_cannot_resolve whatever
+  GBIF says (`prompts/taxon.txt`). GBIF's no-name answer for a morphocode (no match, no candidates,
   "sp. 30" asked) shows none, so the pilots' codes still clear with no
   GBIF lookup or after that answer;
 - the expert asked GBIF, for the field, no query but the code itself
@@ -516,10 +552,12 @@ all of these hold:
   Wherever any reading writes the code, no token beside it may be a genus
   (`checks.genus_beside`). A token is a whitespace-separated word with
   "?", "*", "_", straight and curly quotes, backticks, brackets, ",", ";"
-  and ":" shed at either end, and a "cf.", "aff." or "prob." shed at
-  either end, written against the word or as a word of its own
-  (`checks._token`); what then holds no letter or digit (a sex sign, a
-  "+", a lone "?" or "cf.") is no token. Two tokens are read: the one
+  and ":" shed at either end, and a qualifier of the doubt signs' list
+  (below) with its final period shed at the start, or at the end with no
+  letter right before it, written against the word or as a word of its
+  own ("cf.Epipsocus", "c.f.Epipsocus" and "Conf.Epipsocus" are
+  "Epipsocus"; `checks._token`); what then holds no letter or digit (a sex
+  sign, a "+", a lone "?" or "cf.") is no token. Two tokens are read: the one
   written immediately before the code (the last before it on its line or,
   when its line has none there, the last of the nearest line above that
   has one), and the first after the code on its line. Either may be a
@@ -548,10 +586,10 @@ all of these hold:
   clear;
 - no part of a label that writes the code is unreadable
   (`step._code_label_unreadable`): rule A's test (no reader's unreadable
-  span, no transcript marked unreadable, no "[unreadable]" marker in a
-  reader's, a reading's or a transcript's text), applied to each label any
-  of whose texts writes the code. An unreadable word there may be the
-  genus;
+  span, no transcript marked unreadable, no placeholder of rule A's list
+  in a reader's, a reading's or a transcript's text,
+  `checks.shows_placeholder`), applied to each label any of whose texts
+  writes the code. An unreadable word there may be the genus;
 - no sign of a doubtful or unreadable name shows anywhere on the specimen
   (`step._doubt_on_the_labels`): none in any reading's, reader's or
   transcript's text of any label, whether or not that label writes the
@@ -560,33 +598,42 @@ all of these hold:
     ("Epipsocus?", "?Epipsocus", "Epipsocus(?)", "E.?"), or in the part
     just before or just after one, across a line break too ("Epipsocus
     ?", "(?) Epipsocus", "Epipsocus" with "?" on the next line);
-  - a qualifier, "cf.", "aff.", "nr.", "near" or "prob."
-    (`checks.DOUBT_QUALIFIERS`), in any case and with or without its
-    period, with no letter right before or after it: apart or against a
-    word ("cf. Epipsocus", "CF.Epipsocus", "(cf) Epipsocus", "Epipsocus
-    nr"), never inside a longer word ("Nearctic", "Staff");
-  - a placeholder, "[unreadable]", "[illegible]", "[?]", "???", "...",
-    "[...]" or the ellipsis character (`checks.DOUBT_PLACEHOLDERS`),
-    anywhere in a text, in any case;
+  - a qualifier (`checks.DOUBT_QUALIFIERS`): cf, cfr, aff, affin,
+    affinis, nr, near, prob, probably, poss, possibly, conf, vic or prope,
+    each a whole word in any case, with or without its periods (a period
+    may follow each of its letters, so "c.f.", "C.F." and "n.r." are "cf"
+    and "nr"), with no letter right before or after it: apart or against a
+    word ("cf. Epipsocus", "CF.Epipsocus", "(cf) Epipsocus", "cfr.
+    Epipsocus", "Epipsocus nr", "possibly Epipsocus"), never inside a
+    longer word ("Nearctic", "Staff", "Victoria", "Proper");
+  - a placeholder for an unread word, by rule A's own test
+    (`checks.shows_placeholder`): "[unreadable]", "(unreadable)",
+    "[illegible]", "(illegible)", "[illeg.]", "[illeg]", "(illeg.)",
+    "[unclear]", "(unclear)", "[?]", "???", "...", "[...]" or the ellipsis
+    character anywhere in a text, in any case, or the words "illegible"
+    and "unreadable" standing alone, in any case;
   - a reader's unreadable span, or a transcript marked unreadable, on any
     label.
 
   These sit on top of the label check, which reads only the two tokens
-  beside the code: the taxon brief has the expert make no GBIF lookup for
-  a genus marked doubtful, so the GBIF guard never sees one. So
-  "Epipsocus?" above "V-4-67-1" above the code, on the line after the
-  code or on another label, and "cf. Epipsocus" anywhere, keep the taxon
-  in review, as does a locality's "near" or "nr." and a "?" beside any
+  beside the code. The taxon brief has the expert look a doubtful genus up
+  alone, a query the GBIF guard above refuses; the signs hold the taxon
+  back when the expert makes no such lookup. So "Epipsocus?" above
+  "V-4-67-1" above the code, on the line after the code or on another
+  label, and "cf. Epipsocus", "cfr. Epipsocus" or "c.f. Epipsocus"
+  anywhere, a determination label of its own included, keep the taxon in
+  review, as does a locality's "near" or "nr." and a "?" beside any
   word. No reading of 105526321, 105526326 or 105526327 shows a sign.
-  105526324's unreadable label, whose readers list the span, holds back
-  the "sp 22" another of its labels writes;
+  105526324's unreadable label, whose readers list the span and write
+  "[unreadable]", holds back the "sp 22" another of its labels writes;
 - the readers settle on the literal by the rule for readers that disagree
   (step 5 above): with no successful lookup, that is a label's decided
   transcript, its other readers evidence only, or readers of a label with
   none that each write exactly that text;
 - the value meets the agreement rules every resolved answer meets
   (`agreement.refusal`): among them, no candidate of it may quote a longer
-  name around it.
+  name around it, and no text may mark the literal's first word as a
+  doubtful genus (step 5 above).
 
 The value is supported, with the literal as written, no authority, the
 settled layer and the reason "Unmatched: the label names no genus, so GBIF
@@ -609,12 +656,25 @@ writes the genus, or any word that may be one, as a token beside the code,
 by the label check; when a label that writes the code has an unreadable
 part; when any label shows a sign of a doubtful or unreadable name; and,
 wherever the label writes the genus, when the expert asked GBIF anything
-but the code. One case remains: a genus written with no such sign where
-the label check does not count it (away from the code, as "Epipsocus"
-above "V-4-67-1" above the code, on the line after the code's or on
-another label; or misread beside it into a token the label check's test
-does not count, as "Epipsocu55") still clears as unmatched when the
-expert, against its brief, makes no GBIF lookup but of the code itself.
+but the code; and when the expert's answer quotes anything but the code.
+Two cases remain, each only when the expert makes no lookup of a genus
+its brief has it look up (alone, any genus a label writes, doubtful or
+not, before it answers for a morphocode):
+- a genus written with no doubt sign where the label check does not count
+  it (away from the code, as "Epipsocus" above "V-4-67-1" above the code,
+  on the line after the code's or on another label; or misread beside it
+  into a token the label check's test does not count, as "Epipsocu55"),
+  when the expert makes no GBIF lookup but of the code itself;
+- a genus marked doubtful in a way the doubt signs do not read (a doubt
+  word outside the qualifier list, as "sim. Epipsocus" above "V-4-67-1"
+  above the code), when the expert likewise makes no GBIF lookup but of
+  the code itself.
+
+Each still clears as unmatched. Where the expert does look the genus up,
+as its brief says, the GBIF guard refuses rule B, since that query is not
+the code (`step._gbif_asked_another_name`;
+`test_the_real_resolver_looking_the_genus_up_as_its_brief_says_keeps_the_taxon_in_review`
+for "sim. Epipsocus" and "Epipsocus" above "V-4-67-1").
 
 **Known limitation.** The canonical projection skips a field with no literal
 (`application/projection.py`, `_fields`), so the record in Data Connect does
