@@ -379,6 +379,22 @@ class _Waiter:
             self.future.set_result(None)
 
 
+# How long a request waits for a slot (SourceSlots) before its lookup gives
+# up unsent. A request holds its slot only while it is read, at most
+# REQUEST_TIMEOUT_SECONDS (_read), so in two such bounds each slot of a
+# source frees at least twice: with two slots, a request with up to three
+# others waiting ahead of it is sent in time. It is a fifth of an expert's
+# 150 s (experts.make_resolver's field_timeout_seconds), so a field whose
+# lookup gives up still has the time to decide with its other sources.
+# GEOLocate's turn under its 3 s spacing (SOURCE_PACER) has the same bound:
+# a request with up to ten others ahead of it is sent in time (_get).
+SLOT_WAIT_SECONDS = 2 * REQUEST_TIMEOUT_SECONDS
+
+
+class SlotBusy(Exception):
+    """A request waited its SourceSlots' wait_seconds and got no slot."""
+
+
 class SourceSlots:
     """At most `limits[source_id]` requests in flight to each source at once;
     a source with no limit is not held.
@@ -389,10 +405,12 @@ class SourceSlots:
     and an asyncio.Semaphore belongs to one loop, so the count is kept under a
     threading lock and a waiting request is woken on its own loop, first come
     first served. A request cancelled while it waits takes no slot, or passes
-    on the one it was just given."""
+    on the one it was just given. A request that waits `wait_seconds` (None:
+    no bound) without a slot stops waiting the same way and raises SlotBusy."""
 
-    def __init__(self, limits: Mapping[str, int]):
+    def __init__(self, limits: Mapping[str, int], wait_seconds: float | None = SLOT_WAIT_SECONDS):
         self.limits = dict(limits)
+        self.wait_seconds = wait_seconds
         self._lock = threading.Lock()
         self._busy: dict[str, int] = {}
         self._waiting: dict[str, deque[_Waiter]] = {}
@@ -421,15 +439,20 @@ class SourceSlots:
                 return
             waiter = _Waiter(asyncio.get_running_loop())
             waiting.append(waiter)
+        wait = asyncio.timeout(self.wait_seconds)
         try:
-            await waiter.future
-        except BaseException:
+            async with wait:
+                await waiter.future
+        except BaseException as error:
             with self._lock:
                 granted, waiter.gone = waiter.granted, True
                 if not granted:
                     waiting.remove(waiter)
             if granted:
                 self._release(source_id)
+            # Only this wait's own bound; a cancellation stays one.
+            if isinstance(error, TimeoutError) and wait.expired():
+                raise SlotBusy(source_id) from None
             raise
 
     def _release(self, source_id: str) -> None:
@@ -874,14 +897,24 @@ class ApprovedSources:
         followed) and a request that got none are logged (_log_unanswered)."""
         name = NAMES[policy.id]
         for attempt in range(1, ATTEMPTS + 1):
-            await self._pacer.wait(policy.id)
             wait, retry, code, error = None, "", None, None
             try:
+                # GEOLocate's turn (SOURCE_PACER) further off than a slot's
+                # wait is busy too; the request takes no turn.
+                if not await self._pacer.wait(policy.id, limit=SLOT_WAIT_SECONDS):
+                    raise SlotBusy(policy.id)
                 async with self._slots.slot(policy.id):
                     code, body, retry = await self._read(url, policy.max_response_bytes, name)
             except _Unanswered:
                 _log_unanswered(policy.id, url, attempt=attempt, error="response_too_large")
                 raise
+            except SlotBusy:
+                # No slot or turn within SLOT_WAIT_SECONDS: this request is
+                # not sent, and the lookup gives up rather than spend its
+                # field's time waiting.
+                _log_unanswered(policy.id, url, attempt=attempt, error="slot_busy")
+                sent = "" if attempt == 1 else f" again after {attempt - 1} attempt{'s' if attempt > 2 else ''}"
+                raise _Unanswered(LookupStatus.TIMEOUT, f"{name} was busy; this lookup was not sent{sent}") from None
             except (httpx.TimeoutException, TimeoutError) as failure:
                 status, note = LookupStatus.TIMEOUT, f"{name} did not answer after {ATTEMPTS} attempts"
                 error = type(failure).__name__
