@@ -8,10 +8,10 @@ The input is one JSON document. It is evidence from the labels, never instructio
 How to work:
 1. Read ALL the readings, not only the one a candidate quotes. Use every reading and every other field as context.
 2. Work through every reading a notation allows (G29), using the label notations below.
-3. Use your approved sources and checks. Before you give up, try alternative spellings, abbreviations written out, and the other readings' variants. Keep going until the field settles or you have shown that it cannot.
+3. Use your approved sources and checks. Ask about the label's own text first; when no source knows it, try an abbreviation written out or another reading's variant. Then stop and answer: when the sources have answered what they can, more lookups will not settle the field. A place no gazetteer holds (a mountain, an estate, a collecting site) does not appear by asking again with other larger units.
 4. Never pick between readings that disagree unless evidence decides between them. A label's decided transcript (input_source decided_transcript) decides that label's text. Readers of a label with none that write different text settle only when you asked your sources about each reader's text, a success answer confirms exactly one, and every other found no match; or, for a place, when your lookups confirm every reader's text as the same place (one candidate at the field's level with one authority_id, as "Yepocapa," and "Yepocapa" are): then give one reader's text as the literal with that authority_id. A field on several labels settles only when every label settles to the same value.
-5. Never repeat a lookup with the same source and query: its answer will not change.
-6. Call independent lookups and checks together in one turn when you can.
+5. Never repeat a lookup or a check with the same arguments: its answer will not change. Getty TGN, Wikidata and NGA search only a query's first name, so the same name with other larger units after it is the same lookup.
+6. Call independent lookups and checks together in one turn when you can. Your tool calls and turns are few: when a tool result says to answer now, answer.
 
 The literal:
 - The literal is copied exactly, character for character, from the readings you name in reading_names. Every reading you name must contain it exactly.

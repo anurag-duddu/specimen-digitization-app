@@ -112,6 +112,31 @@ handover runs field research instead of the six specialists:
    and each lookup as source and status. These are codes; the literal,
    value, authority id and reason are added only when the worker captures
    approved content.
+
+   **Each expert's budget.** An expert has 6 model requests ("turns") and 12
+   tool calls (`experts.REQUEST_LIMIT`, `experts.TOOL_CALLS_LIMIT`). Once a
+   third of its tool calls or fewer are left (four of twelve), or its next
+   turn is its last, each tool result tells it to answer now
+   (`experts.ANSWER_NOW_NOTE`). A tool call identical to one the same expert
+   made before (the same tool and arguments) gets that call's answer,
+   marked as a repeat, and runs nothing again; a lookup whose source could
+   not be reached is the exception and is asked again (the record's sources
+   then answer it from their own cache). An expert that still runs out (a
+   turn that asks for more tool calls than are left, or a turn past its
+   last) is asked once more for its answer from the readings and the
+   answers it has (`_Expert.answer_now`): one request on the same meter,
+   under the same run ceiling, with its tools withheld and each tool call
+   the limit stopped answered "Not run". That answer is checked like any
+   other and is the expert's own. Only when that request is not sent (the
+   run's ceiling, the input bound) or its answer breaks its checks does the
+   resolver's fallback take its place: sources_cannot_resolve, "The expert
+   used all its attempts without settling this field." The shared brief has
+   the expert ask about the label's own text first, then, when no source
+   knows it, an abbreviation written out or another reading's variant, and
+   then stop: a place no gazetteer holds is not found by asking again with
+   other larger units after its name. (In the real run of 2026-10-09 on the
+   ten pilot specimens, twelve fields on seven specimens ran out, and the
+   fallback replaced their experts' answers.)
 4. **Sources.** GBIF (with Catalogue of Life and Global Names Verifier
    alongside), GEOLocate, Getty TGN, Wikidata and NGA, plus deterministic date,
    elevation and catalogue-number checks. One request per distinct query per
@@ -467,8 +492,10 @@ elevation is derived first, and only for a field a person has not decided):
    finalized without a model call, so the answer is the model's; no lookup
    is required, since a field such as the habitat has no source to search.
    The resolver's fallback, put in place of an answer the expert never gave
-   (out of attempts, or answers that failed their checks), is
-   sources_cannot_resolve, so it never qualifies.
+   (out of attempts with no checked answer when asked once more, or answers
+   that failed their checks), is sources_cannot_resolve, so it never
+   qualifies. An expert's answer when asked once more is its own and
+   qualifies.
 2. Its value is still not present.
 3. Label coverage is confirmed, every label has two or more readings, and
    every reading has text.
@@ -539,7 +566,8 @@ all of these hold:
 - its expert itself answered that GBIF cannot resolve it
   (sources_cannot_resolve), with no failure, not finalized without a model
   call, and not as the resolver's fallback (`FieldOutcome.fallback`: an expert out of
-  attempts, or whose answers kept failing their checks); its answer's
+  attempts with no checked answer when asked once more, or whose answers
+  kept failing their checks); its answer's
   literal is the code itself, compared with the organiser's literal as
   the GBIF query guard below compares a query (case, spaces, punctuation
   and sex signs aside), whether or not it asked GBIF, so an answer quoting

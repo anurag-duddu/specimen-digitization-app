@@ -708,18 +708,213 @@ def test_the_field_deadline_is_a_timeout():
     assert cost.outstanding_micros == 0 and cost.spent_micros == outcome.cost_micros > 0
 
 
-def test_running_out_of_requests_is_sources_cannot_resolve():
+# An expert's budget: the real run of 2026-10-09 (twelve fields on seven
+# specimens ran out of tool calls or requests, and the resolver's fallback
+# replaced the expert's own answer).
+
+# 105526321's labels as its readers wrote them in that run (sex sign left out).
+MCKINLEY = (
+    Reading("1A", "region-1", "obs-1a", "decided_transcript", "FMNHINS\n4486784"),
+    Reading("1B", "region-1", "obs-1b", "raw_reading", "FMNHINS\n4486784"),
+    Reading("2A", "region-2", "obs-2a", "decided_transcript",
+            "10-6-78-la\nE. slope Mt. McKinley\nDavao Prov.\nMindanao, P.I.\nF.G. Werner\n"
+            "3 sept. '46\nMossy forest 6400'\nsp. 30"),
+    Reading("2B", "region-2", "obs-2b", "raw_reading",
+            "10-6-78-1a\nE.slope Mt. McKinley\nDavao Prov.\nMindanao, P.I.\nF.G. Wermer\n"
+            "3 Sept. '46\nMossy forest 6400'\nSp.30"),
+)
+# The organiser's city for 105526321: the mountain.
+MCKINLEY_CITY = FieldTask(
+    key="city", mandatory=True, current=FieldValue(state=ValueState.SUPPORTED, literal="Mt. McKinley"),
+    candidates=tuple(offered(("2A", "Mt. McKinley"), ("2B", "Mt. McKinley"))), tools=FIELD_TOOLS["city"])
+# Its city expert's lookups in that run, turn by turn: twelve, then a thirteenth
+# that the tool-call limit stopped.
+MCKINLEY_TURNS = (
+    (("tgn", "Mount McKinley, Davao, Philippines"), ("wikidata", "Mount McKinley, Davao, Philippines"),
+     ("geolocate", "Mt. McKinley, Davao, Philippines"), ("nga", "Mount McKinley, Davao, Philippines")),
+    (("geolocate", "McKinley, Davao, Philippines"), ("tgn", "McKinley, Davao, Philippines"),
+     ("wikidata", "McKinley, Davao, Philippines"), ("nga", "McKinley, Davao, Philippines")),
+    (("geolocate", "Mount McKinley, Davao, Philippines"), ("nga", "Mount McKinley, Mindanao, Philippines"),
+     ("wikidata", "Mount McKinley, Mindanao, Philippines"), ("tgn", "Mount McKinley, Mindanao, Philippines")),
+    (("geolocate", "McKinley, Mindanao, Philippines"),),
+)
+
+
+def no_place(source: str, query: str) -> SourceAnswer:
+    return SourceAnswer(source, query, LookupStatus.NO_MATCH, (),
+                        Evidence(id=f"ev-{source}-{query}", kind="lookup", source=source, locator=None,
+                                 excerpt="no place"), "no place")
+
+
+def lookups(*pairs) -> Step:
+    """One turn that asks each (source, query) at once."""
+    return lambda messages, info: ModelResponse(parts=[
+        ToolCallPart("lookup", {"source": source, "query": query}) for source, query in pairs])
+
+
+def resolve_on(readings, script: Script, field: FieldTask, tools=None, *, cost=None, **kw):
+    resolver = make_resolver(model_factory=script.model, meter=cost or meter(), date_rules=PILOT_DATES, **kw)
+    return asyncio.run(resolver(field, readings, CONTEXT, tools=tools or FakeTools()))
+
+
+def mckinley(*after: Step | dict):
+    """105526321's city expert: its four turns of lookups, then `after`."""
+    tools = FakeTools({pair: no_place(*pair) for turn in MCKINLEY_TURNS for pair in turn})
+    return tools, Script(*(lookups(*turn) for turn in MCKINLEY_TURNS), *after)
+
+
+def test_an_expert_out_of_tool_calls_answers_from_what_it_has():
+    """The thirteenth lookup is over the limit: the expert is asked once more,
+    its tools withheld, and its own answer stands (no fallback), so the
+    not-on-the-label rule can read it."""
+    tools, script = mckinley(dict(outcome="label_lacks_value",
+                                  explanation="Mt. McKinley is a mountain; no reading names a town."))
+    cost = meter()
+
+    outcome = resolve_on(MCKINLEY, script, MCKINLEY_CITY, tools, cost=cost)
+
+    assert (outcome.failure, outcome.fallback, outcome.answer.outcome) == (None, False, "label_lacks_value")
+    assert len(tools.calls) == 12  # the thirteenth never ran
+    assert outcome.model_calls == 5 and outcome.cost_micros == cost.spent_micros
+    messages, info = script.seen[-1]
+    assert info.function_tools == []  # its tools are withheld
+    last = messages[-1]
+    assert [p.content for p in last.parts if isinstance(p, ToolReturnPart)] == [experts.NOT_RUN]
+    assert isinstance(last.parts[-1], UserPromptPart) and last.parts[-1].content == experts.ANSWER_NOW_PROMPT
+
+
+def test_an_expert_out_of_requests_answers_from_what_it_has():
     tools = FakeTools({("gbif", q): SourceAnswer("gbif", q, LookupStatus.NO_MATCH, (), None)
                        for q in ("Epipsocus", "Epipsocvs")})
     script = Script(call("lookup", source="gbif", query="Epipsocus"),
-                    call("lookup", source="gbif", query="Epipsocvs"))
+                    call("lookup", source="gbif", query="Epipsocvs"),
+                    dict(outcome="sources_cannot_resolve", literal="Epipsocus sp. 1", reading_names=["1A"],
+                         explanation="GBIF has no match for either spelling."))
+    cost = meter()
 
-    outcome = resolve(script, task("taxon"), tools, request_limit=2)
+    outcome = resolve(script, task("taxon"), tools, cost=cost, request_limit=2)
 
-    assert outcome.failure is None
+    assert (outcome.failure, outcome.fallback) == (None, False)
+    assert (outcome.answer.outcome, outcome.answer.literal) == ("sources_cannot_resolve", "Epipsocus sp. 1")
+    assert outcome.model_calls == 3 and outcome.cost_micros == cost.spent_micros
+    messages, info = script.seen[2]
+    assert info.function_tools == []
+    # The last lookup's result, which the request limit kept from being sent, is in it.
+    assert [r["query"] for r in tool_returns(messages)] == ["Epipsocus", "Epipsocvs"]
+    assert messages[-1].parts[-1].content == experts.ANSWER_NOW_PROMPT
+
+
+def test_an_answer_now_that_breaks_its_checks_leaves_the_fallback():
+    tools = FakeTools({("gbif", "Epipsocus"): SourceAnswer("gbif", "Epipsocus", LookupStatus.NO_MATCH, (), None)})
+    # A taxon resolved with no GBIF success is sent back, and no request is left.
+    script = Script(call("lookup", source="gbif", query="Epipsocus"),
+                    dict(outcome="resolved", literal="Epipsocus sp. 1", reading_names=["1A"]))
+
+    outcome = resolve(script, task("taxon"), tools, request_limit=1)
+
     assert outcome.answer == FieldAnswer(outcome="sources_cannot_resolve", explanation=EXHAUSTED)
-    assert outcome.model_calls == 2
-    assert outcome.fallback
+    assert outcome.fallback and outcome.failure is None and outcome.model_calls == 2
+
+
+class Refusing(CostMeter):
+    """A run ceiling that pays for `allowed` requests and refuses the next."""
+
+    def __init__(self, allowed: int):
+        super().__init__(1_000_000, input_micros_per_million=200_000, output_micros_per_million=600_000)
+        self.allowed = allowed
+
+    async def reserve(self, input_tokens, output_tokens):
+        if self.allowed == 0:
+            raise experts.BudgetExhausted("run_cost_ceiling")
+        self.allowed -= 1
+        return await super().reserve(input_tokens, output_tokens)
+
+
+def test_an_answer_now_the_run_ceiling_cannot_pay_for_is_never_sent():
+    tools = FakeTools({("gbif", "Epipsocus"): SourceAnswer("gbif", "Epipsocus", LookupStatus.NO_MATCH, (), None)})
+    script = Script(call("lookup", source="gbif", query="Epipsocus"),
+                    dict(outcome="sources_cannot_resolve", explanation="Never sent."))
+    cost = Refusing(allowed=1)
+
+    outcome = resolve(script, task("taxon"), tools, cost=cost, request_limit=1)
+
+    assert outcome.answer == FieldAnswer(outcome="sources_cannot_resolve", explanation=EXHAUSTED)
+    assert outcome.fallback and len(script.seen) == 1 and outcome.model_calls == 1
+    assert cost.outstanding_micros == 0 and cost.spent_micros == outcome.cost_micros
+
+
+def test_tool_results_tell_an_expert_near_its_limits_to_answer_now():
+    tools, script = mckinley(dict(outcome="label_lacks_value", explanation="No town."))
+
+    resolve_on(MCKINLEY, script, MCKINLEY_CITY, tools)
+
+    first, second = (tool_returns(script.seen[turn][0])[-4:] for turn in (1, 2))
+    assert not any("budget" in result for result in first)  # eight of twelve left
+    assert all(result["budget"].startswith("Answer now") for result in second)  # four left
+    assert "(tool calls left: 4 of 12; turns left: 4 of 6)" in second[0]["budget"]
+    # The last turn: one lookup a turn, five turns made, one left.
+    tools = FakeTools({("gbif", q): SourceAnswer("gbif", q, LookupStatus.NO_MATCH, (), None)
+                       for q in ("A", "B", "C", "D", "E")})
+    script = Script(*(call("lookup", source="gbif", query=q) for q in "ABCDE"),
+                    dict(outcome="sources_cannot_resolve", explanation="No match."))
+    resolve(script, task("taxon"), tools)
+    budgets = [result.get("budget") for result in tool_returns(script.seen[-1][0])]
+    assert budgets[:4] == [None] * 4 and "turns left: 1 of 6" in budgets[4]
+
+
+# 105526330's label 2 (decided reading) as its reader wrote it in that run.
+LABEL_330 = (Reading("2A", "region-2", "obs-2a", "decided_transcript",
+                     "IV-29-68-2\nYepocapa,4800 ft.\nChimaltenago\nGuatemala,IV-25\n1948, R.D. Mitchell"),)
+
+
+def test_a_repeated_check_is_answered_from_its_first_call(monkeypatch):
+    """105526330's date expert asked parse_date the same thing three times."""
+    from specimen_digitization.field_research import checks
+
+    runs = []
+    parse = checks.parse_date
+    monkeypatch.setattr(checks, "parse_date", lambda *args, **kw: runs.append(args) or parse(*args, **kw))
+    same = {"literal": "IV-25\n1948", "year_literal": "1948"}
+    script = Script(
+        lambda messages, info: ModelResponse(parts=[
+            ToolCallPart("parse_date", same), ToolCallPart("parse_date", {**same, "literal": "IV-25 1948"})]),
+        call("parse_date", **same),
+        dict(outcome="sources_cannot_resolve", explanation="parse_date reads no date there."),
+    )
+    field = FieldTask(key="date_visited_from", mandatory=True,
+                      current=FieldValue(state=ValueState.SUPPORTED, literal="IV-25\n1948"),
+                      candidates=tuple(offered(("2A", "IV-25\n1948"))), tools=FIELD_TOOLS["date_visited_from"])
+
+    resolve_on(LABEL_330, script, field)
+
+    assert runs == [("IV-25\n1948",), ("IV-25 1948",)]  # the repeat ran nothing
+    first, _, again = tool_returns(script.seen[2][0])
+    assert again["repeat"] == experts.REPEAT_NOTE
+    assert {key: value for key, value in again.items() if key != "repeat"} == first
+
+
+def test_a_repeated_lookup_is_sent_once():
+    found = no_place("tgn", "Mount McKinley, Davao, Philippines")
+    tools = FakeTools({("tgn", found.query): found})
+    script = Script(lookups(("tgn", found.query), ("tgn", found.query)), lookups(("tgn", found.query)),
+                    dict(outcome="label_lacks_value", explanation="No town."))
+
+    outcome = resolve_on(MCKINLEY, script, MCKINLEY_CITY, tools)
+
+    assert tools.calls == [("tgn", found.query, "city")]
+    assert outcome.evidence == [found.evidence]
+    shown = tool_returns(script.seen[2][0])
+    assert ["repeat" in result for result in shown] == [False, True, True]
+
+
+def test_the_shared_brief_has_the_expert_stop_when_the_sources_have_answered():
+    from specimen_digitization.field_research.prompts import instructions
+
+    text = instructions("city")
+    assert "Keep going until" not in text
+    assert "Then stop and answer: when the sources have answered what they can" in text
+    assert "the same name with other larger units after it is the same lookup" in text
+    assert "when a tool result says to answer now, answer" in text
 
 
 def test_an_experts_own_sources_cannot_resolve_is_no_fallback():
