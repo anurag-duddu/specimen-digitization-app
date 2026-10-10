@@ -835,9 +835,12 @@ def _unmatched_taxon(run, task, outcome: FieldOutcome, *, readings, by_name, evi
       (_code_label_unreadable, rule A's test on that label);
     - no sign of a doubtful or unreadable name shows anywhere on the
       specimen (_doubt_on_the_labels: checks.DOUBT_SIGNS in any reading of
-      any label, or an unreadable span on any label). The taxon brief has
-      the expert look a doubtful genus up alone, a query the GBIF guard
-      above refuses; these signs hold the taxon back when it does not;
+      any label, the qualifier sign reading the run's places, settled
+      before the taxon (_settled_places), or an unreadable span on any
+      label). The
+      taxon brief has the expert look a doubtful genus up alone, a query
+      the GBIF guard above refuses; these signs hold the taxon back when it
+      does not;
     - the readers settle on the literal by B1's rule (agreement.labels):
       each label that writes the taxon settles on its own on that one text.
       With no successful lookup that is a label's decided transcript (its
@@ -1156,19 +1159,34 @@ def _code_label_unreadable(run, readings: Sequence[Reading], code: str) -> bool:
         or any(shows_placeholder(text) for region, text in texts if region in regions))
 
 
+def _settled_places(run) -> tuple[str, ...]:
+    """The literals of the run's place fields (country, province or state,
+    county, city) settled on a place source's record: supported, with a
+    literal and an authority_id. The qualifier doubt sign reads them
+    (checks._qualifier_sign: "near Chicago" beside the settled city
+    "Chicago"). apply_outcomes settles the places before the taxon, so
+    _unmatched_taxon sees them, as the re-check (taxon_unmatched) does."""
+    from .agreement import PLACE_ORDER
+
+    values = [run.fields.get(key) for key in PLACE_ORDER]
+    return tuple(value.literal for value in values if value is not None and value.state == ValueState.SUPPORTED
+        and value.literal and value.authority_id)
+
+
 def _doubt_on_the_labels(run, readings: Sequence[Reading]) -> tuple[str, ...]:
     """The signs of a doubtful or unreadable name (checks.DOUBT_SIGNS) that
     show anywhere on the specimen (B3 of #289's fourth review): in a
     reading's, a reader's or a transcript's text of any label, whether or
     not it writes the code; or a reader's unreadable span, or a transcript
-    marked unreadable, on any label. Rule B refuses when any shows."""
+    marked unreadable, on any label. The qualifier sign reads the run's
+    settled places (_settled_places). Rule B refuses when any shows."""
     from .checks import doubt_signs
 
     texts = [*(r.text for r in readings), *(o.literal_text for o in run.observations),
         *(t.text or "" for t in run.transcripts)]
     unreadable = (any(o.unreadable_spans for o in run.observations)
         or any(t.value_state == ValueState.UNREADABLE for t in run.transcripts))
-    return doubt_signs(texts, unreadable=unreadable)
+    return doubt_signs(texts, unreadable=unreadable, places=_settled_places(run))
 
 
 def _organiser_texts(task: FieldTask) -> list[str]:

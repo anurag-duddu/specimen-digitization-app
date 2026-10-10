@@ -140,11 +140,17 @@ handover runs field research instead of the six specialists:
      through `agreement._genus_in_doubt`): wherever the quote of a candidate
      of that literal, the text of a reading the answer names, or the text of
      its label's decided reading writes the literal:
-     - a qualifier, read as the doubt signs read one (below, under B; a
-       person's initials such as "C.F." are none), stands in the
+     - a qualifier of the doubt signs' list (below, under B), in any case
+       except "vic", with or without its periods, stands in the
        whitespace-separated part holding the literal's first word
-       ("cfr.Epipsocus") or in the part just before it, across a line
-       break too ("cfr. Epipsocus", "cf." ending the line above); or
+       ("cfr.Epipsocus"), in the part just before it on its line ("cfr.
+       Epipsocus", "nr. Epipsocus", "NR Epipsocus", "C.F Epipsocus"), or
+       alone on the line above, the only part of that line ("cf." on a
+       line of its own above "Epipsocus sp. 1"). A person's initials with
+       the final period ("C.F.") are none. The doubt signs' other
+       exceptions under B (a nature reserve's "NR", "Nr." before a number,
+       "conf." before a person, initials without the final period, a
+       settled place beside "near", "nr." or "vic.") do not apply here; or
      - a question mark ("?", the full-width one, U+FF1F, or the inverted
        one, U+00BF: `checks.QUESTION_MARKS`) is on that word itself ("Epipsocus?",
        "?Epipsocus", "Epipsocus(?)"), or stands alone, a part with no letter
@@ -154,8 +160,11 @@ handover runs field research instead of the six specialists:
 
      A question mark on or beside another word ("Davao? Epipsocus",
      "Epipsocus sp. 1 ?"), any on the line above ("1946?" above "Epipsocus
-     sp. 1") or below ("?" under "Epipsocus"), and a qualifier after the
-     genus ("Epipsocus cf. sp. 1", G25) are none. The value goes to review ("The label marks this
+     sp. 1") or below ("?" under "Epipsocus"), a qualifier that ends a
+     longer line above ("Sabah, Danum Valley NR" or "Mindanao, Davao vic."
+     above "Epipsocus sp. 1": it belongs to that line; N2 of #289's sixth
+     review), and a qualifier after the genus ("Epipsocus cf. sp. 1", G25)
+     are none. The value goes to review ("The label marks this
      name's genus as doubtful."): GBIF may decide the bare genus the taxon
      brief has the expert look up, and an expert that then resolves the
      taxon as that genus ("Epipsocus" quoting "cfr. Epipsocus", or quoting
@@ -438,10 +447,16 @@ elevation is derived first, and only for a field a person has not decided):
    placeholders are "[unreadable]" (the marker the reader prompt asks for
    in place of each unreadable span), "(unreadable)", "[illegible]",
    "(illegible)", "[illeg.]", "[illeg]", "(illeg.)", "[unclear]",
-   "(unclear)", "[?]", "???", "...", "[...]" and the ellipsis character, in
-   any case (`checks.DOUBT_PLACEHOLDERS`; "..." also inside "...."), and
-   the words "illegible" and "unreadable" standing alone, in any case
-   (`checks.PLACEHOLDER_WORDS`; never "illegibly").
+   "(unclear)", "[?]", "???", "[...]" and the ellipsis character, anywhere
+   in a text, in any case (`checks.DOUBT_PLACEHOLDERS`); the words
+   "illegible" and "unreadable" standing alone, in any case
+   (`checks.PLACEHOLDER_WORDS`; never "illegibly"); exactly three periods,
+   with no period right before or after them ("Mossy ...", "Mossy...",
+   "(...)"), unless right after the word "etc", in any case ("etc...");
+   and three or more periods in square or round brackets ("[....]").
+   Four or more periods outside brackets are a printed form's dot leader
+   ("Det. ..........", "Loc. ......"), never a placeholder (N3 of #289's
+   sixth review).
 5. The organiser found no text for it: no candidate, no literal, no
    reader's verbatim. For a county, a city or a precise location, a text
    counts as absent only when its whole words, compared by the place
@@ -618,16 +633,43 @@ all of these hold:
     "cf" and "nr"), with no letter right before or after it: apart or
     against a word ("cf. Epipsocus", "CF.Epipsocus", "(cf) Epipsocus",
     "cfr. Epipsocus", "Epipsocus nr", "possibly Epipsocus"), never inside a
-    longer word ("Nearctic", "Staff", "Victoria", "Proper"). Two or more
-    capitals each followed by a period are a person's initials, never a
-    qualifier (`checks._initials`: "C.F." in "leg. C.F. Baker" or "Baker,
-    C.F.", "N.R. Smith");
+    longer word ("Nearctic", "Staff", "Victoria", "Proper"). These
+    ordinary label words, which say nothing about a name, are no sign
+    (`checks._qualifier_sign`; N3 of #289's sixth review):
+    - capitals with a period between each two, with or without the final
+      period: a person's initials ("C.F." in "leg. C.F. Baker", "Baker,
+      C.F", "C.F Baker", "N.R. Smith");
+    - "NR", all capitals with no period after it: a nature reserve
+      ("Sabah, Danum Valley NR");
+    - "Nr" or "NR", with or without its period, before a number on its
+      line: German "Nummer" ("Praep. Nr. 1234");
+    - "conf", in any case, with or without its period, before the word
+      "by" in any case, or before a person's initials (capitals each
+      followed by a period) and a capitalised surname, or two or more
+      initials alone, after spaces or a line break: "confirmed by"
+      ("conf. by J. Smith", "conf. K. Yoshizawa", "conf. E.L. Mockford",
+      "Conf. E.L.M."). A surname with no initials ("conf. Yoshizawa")
+      cannot be told from a genus and stays a sign;
+    - "near" or "nr" right before a place the label's place fields
+      settled, or "vic" right before or right after one, on its line:
+      the rest of the line after it (and its period) starts with that
+      place's whole name, or, for "vic", the line up to it ends with that
+      name, compared by the place comparison key ("5 mi near Chicago",
+      "nr. Chicago", "Chicago vic.", "Chicago, vic." beside the settled
+      city "Chicago"). The places are the country, province or state,
+      county and city settled on a place source's record (supported, with
+      a literal and an authority_id: `step._settled_places`).
+      `apply_outcomes` settles the places before the taxon, so the step
+      and the later re-check (`step.taxon_unmatched`) read the same
+      places. "near", "nr." and "vic." beside any other word, or beside a
+      place no place field settled ("5 km nr. Davao" when no place field
+      settled Davao, or "5 mi near Chicago" when the city did not settle),
+      stay signs;
   - a placeholder for an unread word, by rule A's own test
-    (`checks.shows_placeholder`): "[unreadable]", "(unreadable)",
-    "[illegible]", "(illegible)", "[illeg.]", "[illeg]", "(illeg.)",
-    "[unclear]", "(unclear)", "[?]", "???", "...", "[...]" or the ellipsis
-    character anywhere in a text, in any case, or the words "illegible"
-    and "unreadable" standing alone, in any case;
+    (`checks.shows_placeholder`, item 4 of rule A above): its listed
+    placeholders, the words "illegible" and "unreadable" standing alone,
+    exactly three periods (never after "etc"), and three or more periods in
+    brackets; never a dot leader of four or more periods;
   - a reader's unreadable span, or a transcript marked unreadable, on any
     label.
 
@@ -638,9 +680,14 @@ all of these hold:
   "V-4-67-1" above the code, on the line after the code or on another
   label, and "cf. Epipsocus", "cfr. Epipsocus" or "c.f. Epipsocus"
   anywhere, a determination label of its own included, keep the taxon in
-  review, as does a locality's "near" or "nr." and a "?" beside any
-  word; a collector's "C.F. Baker" and a locality's "Melbourne, Vic." do
-  not. No reading of 105526321, 105526326 or 105526327 shows a sign.
+  review, as do "nr. Epipsocus", "NR. Epipsocus", "Nr. Epipsocus", "conf.
+  Epipsocus", a locality's "near", "nr." or "vic." beside a place no place
+  field settled, a "?" beside any word, "Mossy ..." and "[...]". A
+  collector's "C.F. Baker" or "Baker, C.F", a locality's "Melbourne,
+  Vic.", "Sabah, Danum Valley NR" or "5 mi near Chicago" beside the
+  settled city Chicago, "Praep. Nr. 1234", "conf. K. Yoshizawa" and a
+  printed form's "Loc. ........" do not. No reading of 105526321,
+  105526326 or 105526327 shows a sign.
   105526324's unreadable label, whose readers list the span and write
   "[unreadable]", holds back the "sp 22" another of its labels writes;
 - the readers settle on the literal by the rule for readers that disagree
@@ -684,14 +731,19 @@ not, before it answers for a morphocode):
   when the expert makes no GBIF lookup but of the code itself;
 - a genus marked doubtful in a way the doubt signs do not read (a doubt
   word outside the qualifier list, as "sim. Epipsocus" above "V-4-67-1"
-  above the code), when the expert likewise makes no GBIF lookup but of
+  above the code; or a qualifier the signs read as an ordinary label word,
+  as "NR Epipsocus", a nature reserve to them, or "C.F Epipsocus",
+  initials to them), when the expert likewise makes no GBIF lookup but of
   the code itself.
 
-Each still clears as unmatched. Where the expert does look the genus up,
-as its brief says, the GBIF guard refuses rule B, since that query is not
-the code (`step._gbif_asked_another_name`;
+Each still clears as unmatched
+(`test_a_genus_the_doubt_signs_do_not_read_clears_when_the_expert_makes_no_lookup`
+for "sim. Epipsocus", "NR Epipsocus" and "C.F Epipsocus" above
+"V-4-67-1"). Where the expert does look the genus up, as its brief says,
+the GBIF guard refuses rule B, since that query is not the code
+(`step._gbif_asked_another_name`;
 `test_the_real_resolver_looking_the_genus_up_as_its_brief_says_keeps_the_taxon_in_review`
-for "sim. Epipsocus" and "Epipsocus" above "V-4-67-1").
+for the same three and "Epipsocus" above "V-4-67-1").
 
 **Known limitation.** The canonical projection skips a field with no literal
 (`application/projection.py`, `_fields`), so the record in Data Connect does

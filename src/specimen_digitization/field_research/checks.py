@@ -22,6 +22,7 @@ from specimen_digitization.application.field_validators import (
     catalog_number_validator,
     date_parser,
 )
+from specimen_digitization.application.georef_locality import comparison_key
 
 # The elevation parser and the taxon marker projection live with the
 # six-specialist harness; they move with these imports when that harness is deleted.
@@ -480,13 +481,26 @@ def _alone_a_question_mark(part: str) -> bool:
     return _has_question_mark(part) and not any(c.isalnum() for c in part)
 
 
+def _alone_on_its_line(text: str, part: re.Match) -> bool:
+    """Whether a whitespace-separated part of the text is the only one on
+    its line, with nothing before it there ("cf." on a line of its own).
+    The caller knows that nothing follows it on its line."""
+    return not text[text.rfind("\n", 0, part.start()) + 1:part.start()].strip()
+
+
 def genus_in_doubt(text: str, literal: str) -> bool:
     """Whether the text, wherever it writes the taxon literal, marks the
     literal's first word, its genus, as doubtful (1c of #289's fifth review):
-    - a qualifier (DOUBT_QUALIFIERS, read as the doubt signs read one) in
-      the whitespace-separated part of the text that holds that word
-      ("cfr.Epipsocus") or in the part just before it, across a line break
-      too ("cfr. Epipsocus", "cf." ending the line above);
+    - a qualifier (DOUBT_QUALIFIERS, read by _qualifier: in any case except
+      "vic", with or without its periods, a person's initials such as "C.F."
+      aside) in the whitespace-separated part of the text that holds that
+      word ("cfr.Epipsocus"), in the part just before it on its line
+      ("cfr. Epipsocus", "nr. Epipsocus", "NR Epipsocus"), or standing alone
+      on the line above, the only part of that line ("cf." on a line of its
+      own above "Epipsocus sp. 1"). A qualifier that ends a longer line above
+      is none: it belongs to that line ("Sabah, Danum Valley NR" or
+      "Mindanao, Davao vic." above "Epipsocus sp. 1"; N2 of #289's sixth
+      review);
     - a "?" on that word, in its own part ("Epipsocus?", "?Epipsocus",
       "Epipsocus(?)"), or a "?" standing alone, a part with no letter or
       digit, just before or just after it on its line ("? Epipsocus",
@@ -494,7 +508,10 @@ def genus_in_doubt(text: str, literal: str) -> bool:
     A "?" is any of QUESTION_MARKS. A "?" on another word ("Davao?
     Epipsocus"), any "?" on the line above ("1946?" above "Epipsocus sp.
     1") or below, and a qualifier after the genus ("Epipsocus cf. sp. 1",
-    G25) are none. False when the text does not write the literal."""
+    G25) are none. The doubt signs' narrower reading of a qualifier
+    (_qualifier_sign) is not used here: right before a genus, "NR", "C.F"
+    and "conf." stay qualifiers. False when the text does not write the
+    literal."""
     literal = literal.strip()
     if not literal:
         return False
@@ -508,7 +525,9 @@ def genus_in_doubt(text: str, literal: str) -> bool:
         if at > 0:
             before = parts[at - 1]
             on_its_line = "\n" not in text[before.end():parts[at].start()]
-            if _qualifier(before.group()) or (on_its_line and _alone_a_question_mark(before.group())):
+            if on_its_line and (_qualifier(before.group()) or _alone_a_question_mark(before.group())):
+                return True
+            if not on_its_line and _qualifier(before.group()) and _alone_on_its_line(text, before):
                 return True
         if at + 1 < len(parts):
             after = parts[at + 1]
@@ -537,27 +556,122 @@ def _qualifier(text: str) -> bool:
         for found in _DOUBT_QUALIFIER.finditer(text))
 
 
+# Capitals with a period between each two, with or without the final
+# period: a person's initials ("C.F" in "leg. Baker, C.F" and "C.F Baker",
+# "N.R"; N3 of #289's sixth review).
+_DOTTED_CAPITALS = re.compile(r"(?:[A-Z]\.)+[A-Z]")
+# A number on the line after "Nr" or "NR" and its optional period: German
+# "Nummer" ("Praep. Nr. 1234").
+_NUMBER_AFTER = re.compile(r"\.?[^\S\n]*\d")
+# What follows "conf" and its optional period when it means "confirmed by":
+# the word "by" in any case, or a person's initials, capitals each followed
+# by a period, before a capitalised surname ("K. Yoshizawa", "E.L.
+# Mockford", "E. L. Mockford") or two or more of them alone ("E.L.M.").
+_CONFIRMED_BY = re.compile(
+    r"\.?\s*(?:(?i:by)(?![^\W\d_])|(?:[A-Z]\.[^\S\n]*)+[A-Z][^\W\d_]|(?:[A-Z]\.){2,})")
+# The qualifiers that may place a locality near a place: "near" and "nr"
+# before the place, "vic" (vicinity) before or after it.
+PLACE_QUALIFIERS = ("near", "nr", "vic")
+
+
+def _beside_a_place(text: str, found: re.Match, keys: frozenset[str], *, either_side: bool) -> bool:
+    """Whether the qualifier `found` stands right before a place whose
+    comparison key (application.georef_locality.comparison_key: case,
+    accents, punctuation and unit words such as "Prov." aside) is one of
+    `keys`, on its line: the rest of its line, after its period, starts with
+    that place's whole name. With `either_side`, also right after one: its
+    line up to it ends with that name ("Chicago vic.", "Chicago, vic.")."""
+    line_start = text.rfind("\n", 0, found.start()) + 1
+    line_end = text.find("\n", found.end())
+    line_end = len(text) if line_end < 0 else line_end
+    after = comparison_key(text[found.end() + text.startswith(".", found.end()):line_end])
+    if any(after == key or after.startswith(key + " ") for key in keys):
+        return True
+    ahead = comparison_key(text[line_start:found.start()]) if either_side else ""
+    return any(ahead == key or ahead.endswith(" " + key) for key in keys)
+
+
+def _says_nothing_of_a_name(text: str, found: re.Match, keys: frozenset[str]) -> bool:
+    """Whether a qualifier the doubt signs find (_DOUBT_QUALIFIER) is one of
+    the ordinary label words _qualifier_sign passes over."""
+    written, after = found.group(), text[found.end():]
+    word = written.replace(".", "").casefold()
+    if _DOTTED_CAPITALS.fullmatch(written):
+        return True
+    if written == "NR" and not after.startswith("."):
+        return True
+    if written in ("Nr", "NR") and _NUMBER_AFTER.match(after):
+        return True
+    if word == "conf" and _CONFIRMED_BY.match(after):
+        return True
+    return word in PLACE_QUALIFIERS and bool(keys) and _beside_a_place(text, found, keys, either_side=word == "vic")
+
+
+def _qualifier_sign(text: str, places: Iterable[str] = ()) -> bool:
+    """A qualifier as a doubt sign (DOUBT_SIGNS; N3 of #289's sixth review):
+    one of DOUBT_QUALIFIERS, as _DOUBT_QUALIFIER finds one, that is none of
+    these ordinary label words:
+    - capitals with a period between each two, with or without the final
+      period: a person's initials ("C.F." and "C.F" in "leg. Baker, C.F",
+      "C.F Baker", "N.R. Smith");
+    - "NR", all capitals with no period after it: a nature reserve ("Sabah,
+      Danum Valley NR");
+    - "Nr" or "NR", with or without its period, before a number on its line:
+      German "Nummer" ("Praep. Nr. 1234");
+    - "conf", with or without its period, before "by" or a person's initials
+      (_CONFIRMED_BY): "confirmed by" ("conf. by J. Smith", "conf. K.
+      Yoshizawa", "conf. E.L. Mockford"). A surname with no initials
+      ("conf. Yoshizawa") cannot be told from a genus and stays a sign;
+    - "near" or "nr" right before a place of `places`, or "vic" right
+      before or after one, on its line (_beside_a_place): "5 mi near
+      Chicago", "nr. Chicago", "Chicago vic." beside a settled city
+      "Chicago". With no `places`, every "near", "nr" and "vic" stays a
+      sign ("5 km nr. Davao").
+    Every other spelling stays a sign: "cf. Epipsocus", "nr. Epipsocus",
+    "NR. Epipsocus", "Nr. Epipsocus", "conf. Epipsocus"."""
+    keys = frozenset(key for key in map(comparison_key, places) if key)
+    return any(not _says_nothing_of_a_name(text, found, keys) for found in _DOUBT_QUALIFIER.finditer(text))
+
+
 # What a reader may write in place of a word it cannot read: the reader
 # prompt's "[unreadable]", and the other placeholders a transcriber uses
 # (N1 of #289's fourth and fifth reviews), anywhere in a text, in any case;
-# and the words "illegible" and "unreadable" standing alone, with no letter
-# right before or after them. Rule A (step._whole_label_read) and rule B
-# (DOUBT_SIGNS and step._code_label_unreadable) read this one test
-# (shows_placeholder).
+# the words "illegible" and "unreadable" standing alone, with no letter
+# right before or after them; three periods for a missing word
+# (_ELLIPSIS); and three or more periods in brackets (_BRACKETED_PERIODS).
+# Rule A (step._whole_label_read) and rule B (DOUBT_SIGNS and
+# step._code_label_unreadable) read this one test (shows_placeholder).
 DOUBT_PLACEHOLDERS = ("[unreadable]", "(unreadable)", "[illegible]", "(illegible)", "[illeg.]", "[illeg]", "(illeg.)",
-    "[unclear]", "(unclear)", "[?]", "???", "...", "[...]", "\N{HORIZONTAL ELLIPSIS}")
+    "[unclear]", "(unclear)", "[?]", "???", "[...]", "\N{HORIZONTAL ELLIPSIS}")
 PLACEHOLDER_WORDS = ("illegible", "unreadable")
 _PLACEHOLDER_WORD = re.compile(r"(?<![^\W\d_])(?:" + "|".join(PLACEHOLDER_WORDS) + r")(?![^\W\d_])", re.I)
+# Exactly three periods, with no period right before or after them ("Mossy
+# ...", "(...)"). A run of four or more is a printed form's dot leader
+# ("Det. ..........", "Loc. ......"), never a placeholder (N3 of #289's
+# sixth review).
+_ELLIPSIS = re.compile(r"(?<!\.)\.{3}(?!\.)")
+# Three or more periods in brackets, however many ("[...]", "[....]", "(....)").
+_BRACKETED_PERIODS = re.compile(r"[\[(][^\S\n]*\.{3,}[^\S\n]*[\])]")
+
+
+def _after_etc(text: str, start: int) -> bool:
+    """Whether text[start:] follows the word "etc", in any case, with no
+    letter before it ("etc..." ends a list; it leaves no word out)."""
+    return text[max(start - 3, 0):start].casefold() == "etc" and not (start > 3 and text[start - 4].isalpha())
 
 
 def shows_placeholder(text: str) -> bool:
     """Whether the text writes a placeholder for a word a reader could not
-    read: one of DOUBT_PLACEHOLDERS in any case ("..." also inside "...."),
-    or one of PLACEHOLDER_WORDS as a whole word in any case ("Illegible",
-    "UNREADABLE"; never "illegibly")."""
+    read: one of DOUBT_PLACEHOLDERS in any case; one of PLACEHOLDER_WORDS as
+    a whole word in any case ("Illegible", "UNREADABLE"; never "illegibly");
+    exactly three periods (_ELLIPSIS: "Mossy ...", "(...)"), unless right
+    after the word "etc" ("etc..."); or three or more periods in brackets
+    (_BRACKETED_PERIODS: "[....]"). Four or more periods outside brackets
+    are a printed form's dot leader ("Det. .........."), none."""
     folded = text.casefold()
-    return any(placeholder in folded for placeholder in DOUBT_PLACEHOLDERS) or (
-        _PLACEHOLDER_WORD.search(text) is not None)
+    return (any(placeholder in folded for placeholder in DOUBT_PLACEHOLDERS)
+        or _PLACEHOLDER_WORD.search(text) is not None or _BRACKETED_PERIODS.search(text) is not None
+        or any(not _after_etc(text, found.start()) for found in _ELLIPSIS.finditer(text)))
 
 
 # The signs that a name on a label is in doubt or that part of a label
@@ -573,22 +687,29 @@ def shows_placeholder(text: str) -> bool:
 # (step._gbif_asked_another_name) refuses; these signs hold the taxon back
 # when the expert does not. "unreadable_span" is a reader's listed
 # unreadable span, or a transcript marked unreadable, on any label; no text
-# shows it.
-DOUBT_SIGNS: tuple[tuple[str, Callable[[str], bool] | None], ...] = (
+# shows it. The qualifier sign (_qualifier_sign) also reads the label's
+# settled places.
+DOUBT_SIGNS: tuple[tuple[str, Callable[..., bool] | None], ...] = (
     ("question_mark", _question_mark),
-    ("qualifier", _qualifier),
+    ("qualifier", _qualifier_sign),
     ("placeholder", shows_placeholder),
     ("unreadable_span", None),
 )
 
 
-def doubt_signs(texts: Iterable[str], *, unreadable: bool = False) -> tuple[str, ...]:
+def doubt_signs(texts: Iterable[str], *, unreadable: bool = False, places: Iterable[str] = ()) -> tuple[str, ...]:
     """The names of the DOUBT_SIGNS that show, in the list's order: a sign
     whose test any of the texts meets, and "unreadable_span" when
-    `unreadable`. Empty when none shows."""
-    texts = list(texts)
-    return tuple(name for name, shows in DOUBT_SIGNS
-        if (unreadable if shows is None else any(shows(text) for text in texts)))
+    `unreadable`. `places` are the texts of the label's settled places,
+    which the qualifier sign reads (_qualifier_sign). Empty when none
+    shows."""
+    texts, places = list(texts), tuple(places)
+
+    def shows(test, text):
+        return test(text, places) if test is _qualifier_sign else test(text)
+
+    return tuple(name for name, test in DOUBT_SIGNS
+        if (unreadable if test is None else any(shows(test, text) for text in texts)))
 
 
 # Markdown emphasis a reader or an expert may write around a name ("*Epipsocus*").
