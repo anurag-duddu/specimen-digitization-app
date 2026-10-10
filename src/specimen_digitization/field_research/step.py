@@ -11,9 +11,10 @@ the workflow saves the run once after it:
    value after parse, its candidates (the organiser's, and each keyed line the
    parser read, on each reading that writes the line) and the tools its expert
    may call. A field is resolved only to one of its candidates' literals.
-2. ``research_fields``: a field that is already an accurate read is finalized
-   with no model call; every other field's expert runs at once, inside one
-   ``field_research`` span. After step 4, each field's decision is its own
+2. ``research_fields``: every field's expert runs, all at once, inside one
+   ``field_research`` span, whatever the organiser's value (it may confirm
+   it); only the identified-by IRN, which no approved source supplies, gets
+   none. After step 4, each field's decision is its own
    ``field_research.field`` span inside it (``trace_fields``).
 3. ``apply_outcomes``: the outcomes become field values and evidence on the
    run, then the derived values (derive.py; G37, G41, G44), then the listed
@@ -121,7 +122,6 @@ IRN_EXPLANATION = (
     "No approved source can supply a confirmed EMu parties IRN, and a name on the "
     "label is not one."
 )
-ACCURATE = "Accurate read: the organiser's value, exactly as the named readings write it."
 # Work states, as canonical_materialization_v2 names them (37-39).
 RESOLVED, WAITING_HUMAN, NONBLOCKING, FAILED = (
     "resolved", "waiting_human", "nonblocking_exception", "operational_failed")
@@ -251,31 +251,6 @@ def build_tasks(run, profile: CollectionProfile | None = None):
     return readings, tuple(tasks), context
 
 
-def accurate_read(task: FieldTask) -> bool:
-    """A field with no source or check whose organiser value is supported."""
-    current = task.current
-    return (not task.tools and task.key not in NO_APPROVED_AUTHORITY
-        and current.state == ValueState.SUPPORTED and bool(current.literal and current.literal.strip()))
-
-
-def _current_reading_names(task: FieldTask, readings: Sequence[Reading], evidence) -> list[str]:
-    """The readings that write the organiser's literal, by its candidates and
-    rows; of a label with a decided transcript, only the decided reading (G19:
-    its other reader is evidence only)."""
-    literal = task.current.literal
-    names = [c.reading for c in task.candidates if c.literal == literal]
-    for evidence_id in task.current.evidence_ids:
-        row = evidence.get(evidence_id)
-        if row is None or row.kind != "literal" or literal not in row.excerpt:
-            continue
-        names += [r.name for r in readings
-            if r.region_id == row.region_id and r.observation_id in row.observation_ids]
-    by_name = {r.name: r for r in readings}
-    decided = {r.region_id: r.name for r in readings if r.input_source == "decided_transcript"}
-    return [n for n in dict.fromkeys(names) if n in by_name and literal in by_name[n].text
-        and decided.get(by_name[n].region_id, n) == n]
-
-
 # ---- research -------------------------------------------------------------
 
 @dataclass(frozen=True)
@@ -345,10 +320,11 @@ async def research_fields(run, profile: CollectionProfile | None = None, *, reso
         prepared=None, calls: list[SourceCall] | None = None, span=None) -> list[FieldOutcome]:
     """One outcome per task, in task order.
 
-    An accurate read finalizes with no model call; a field with no approved
-    authority (identified_by_irn) gets none either and keeps its nonblocking
-    exception; every other field's resolver runs, up to ``concurrency`` at once.
-    A field still running at ``deadline_seconds`` is cancelled as a timeout.
+    Every field's resolver runs, up to ``concurrency`` at once, whatever the
+    organiser's value (its expert may confirm it, or find it is not this
+    field's text). A field with no approved authority (identified_by_irn)
+    gets no model call and keeps its nonblocking exception. A field still
+    running at ``deadline_seconds`` is cancelled as a timeout.
     ``prepared`` is build_tasks' result; ``calls`` collects every lookup made.
     Its counts go on ``span``, the step's ``field_research`` span, or on a
     span of that name of its own when none is given.
@@ -356,17 +332,12 @@ async def research_fields(run, profile: CollectionProfile | None = None, *, reso
     profile = profile_of(run) if profile is None else profile
     readings, tasks, context = build_tasks(run, profile) if prepared is None else prepared
     recorded = _RecordedTools(tools, [] if calls is None else calls)
-    evidence = {item.id: item for item in run.evidence}
     outcomes: dict[str, FieldOutcome] = {}
     pending: list[FieldTask] = []
     for task in tasks:
         if task.key in NO_APPROVED_AUTHORITY:
             outcomes[task.key] = FieldOutcome(task.key, FieldAnswer(outcome="sources_cannot_resolve",
                 explanation=IRN_EXPLANATION), finalized_without_model=True)
-        elif accurate_read(task) and (names := _current_reading_names(task, readings, evidence)):
-            outcomes[task.key] = FieldOutcome(task.key, FieldAnswer(outcome="resolved",
-                literal=task.current.literal, reading_names=names, explanation=ACCURATE),
-                finalized_without_model=True)
         else:
             pending.append(task)
     with (logfire.span(SPAN) if span is None else nullcontext(span)) as span:
@@ -640,9 +611,11 @@ def _settled(run, task, outcome, *, by_name, evidence, asset_id, blobs, date_rul
                 relations[row.id] = "supports"
     elif value is not None:
         normalized = value
+    # A field no source or check supplies is the label's text as written (G38's
+    # verbatim layer); any other is settled by its sources and checks.
     return FieldValue(state=ValueState.SUPPORTED, literal=literal, parsed=parsed, normalized=normalized,
         authority_id=answer.authority_id, evidence_ids=list(relations), evidence_relations=relations,
-        reason=answer.explanation, layer="verbatim" if outcome.finalized_without_model else "settled",
+        reason=answer.explanation, layer="settled" if task.tools else "verbatim",
         **_lineage(named, literal, others))
 
 

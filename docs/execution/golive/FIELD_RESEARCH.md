@@ -96,11 +96,20 @@ handover runs field research instead of the six specialists:
    names them), the organiser's candidates and settled value for each field
    (a keyed line the parser read is a candidate of each reading that writes
    it), and the profile's field list.
-2. **Accurate reads finalize.** A field with no approved source or check whose
-   organiser value is supported is finalized as written, with no model call,
-   on the readings that write it (of a label with a decided transcript, only
-   the decided reading). The rules of step 5 apply to it.
-3. **One expert per field.** Every other field gets its own Pydantic AI agent
+2. **Every field gets its expert.** A field whose organiser value is
+   supported is researched like any other, whether or not an approved source
+   or check covers it: its expert may confirm the organiser's value or find
+   that it is not this field's text; an accurate read (spec point 4) is
+   finalized when its expert confirms it. (Until 2026-10-09 a field with no
+   source or check whose organiser value was supported was finalized as
+   written with no model call. In the real run of 2026-10-09 that cleared
+   105526328's habitat as "trap", the end of its collecting-method line "lot
+   #2 cut branch / trap".) Only the identified-by IRN, which no approved
+   source supplies, gets no expert (its nonblocking exception). A value
+   settled for a field with no source or check is the verbatim layer, any
+   other the settled layer. In that run the expert of a field with no source
+   or check made one request (once two), of about USD 0.0007 each.
+3. **One expert per field.** Every field gets its own Pydantic AI agent
    (`field_<key>`), its own instructions (shared rules plus the field's brief)
    and only its approved tools. All experts run at once. After the step has
    decided (steps 5 to 7), each field of the attempt is one
@@ -488,9 +497,10 @@ this one, gets its own entry.
 hold (`step.mark_not_on_label`, after the derived values, so a derivable
 elevation is derived first, and only for a field a person has not decided):
 1. Its expert itself answered that no reading states it
-   (label_lacks_value), with no failure, in this attempt. The field was not
-   finalized without a model call, so the answer is the model's; no lookup
-   is required, since a field such as the habitat has no source to search.
+   (label_lacks_value), with no failure, in this attempt. Every field but
+   the identified-by IRN gets its expert (step 2), so the answer is the
+   model's; no lookup is required, since a field such as the habitat has no
+   source to search.
    The resolver's fallback, put in place of an answer the expert never gave
    (out of attempts with no checked answer when asked once more, or answers
    that failed their checks), is sources_cannot_resolve, so it never
