@@ -111,11 +111,12 @@ handover runs field research instead of the six specialists:
    or check made one request (once two), of about USD 0.0007 each. The
    briefs of those fields (collectors, collection code, habitat, collection
    method, verbatim D/T/S) say that a label's decided transcript decides
-   its text and another reader's different text is evidence only (G19), as
-   the agreement rules of step 5 already let it: in this change's first real
-   run 105526321's verbatim D/T/S expert, following its brief's older
-   wording, answered several_possibilities between its decided reading's "3
-   sept. '46" and the other reader's "3 Sept. '46".
+   its text and another reader's different text is evidence only, never a
+   reason for several_possibilities (G19), as the agreement rules of step 5
+   already let it: in this change's first real runs the verbatim D/T/S
+   experts of 105526321 and 105526326 answered several_possibilities
+   between their decided reading's text and the other reader's ("3 sept.
+   '46" and "3 Sept. '46"; "IX - 14 - 46" and "IX-14-46").
 3. **One expert per field.** Every field gets its own Pydantic AI agent
    (`field_<key>`), its own instructions (shared rules plus the field's brief)
    and only its approved tools. All experts run at once. After the step has

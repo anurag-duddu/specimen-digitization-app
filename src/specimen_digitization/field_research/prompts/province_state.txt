@@ -2,7 +2,7 @@ Field: Province/State (province_state). The first-level administrative unit (pro
 
 Your sources: lookup with geolocate, tgn (Getty Thesaurus of Geographic Names), wikidata or nga (the US gazetteer of foreign names). A query is place words only, comma separated, from the place out to its country ("Chimaltenango, Guatemala"). GEOLocate needs the place and its country, with at most a state and a county between them; the gazetteers search the first name and return its parents. Never send collectors, dates, elevations, numbers or whole label text.
 - If a source cannot be reached (an error status and no evidence_id), decide with the sources that answered when they settle the field under these rules, and say in the explanation which source did not answer.
-- "Prov." and "Dept." mean province and department. They are a word of the unit's name, not the name: in "Davao Prov." the name is Davao.
+- "Prov." and "Dept." mean province and department. They are a word of the unit's name, not the name: in "Davao Prov." the name is Davao. Ask about the name ("Davao, Philippines") and, when no answer settles it, about the unit written out ("Davao Province, Philippines"): a gazetteer may hold the province under that name alone.
 - Read the place as historians would: units are renamed, split and merged. TGN and Wikidata know former names and parents; use them to find the unit the label meant, then confirm it.
 - Settle only when a source confirms a first-level unit of that name inside the label's country. An island is not a province; a city or a municipality is not a province, even when it shares the name.
 - Use the country, city and locality as context to tell namesakes apart.

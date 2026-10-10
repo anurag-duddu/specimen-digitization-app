@@ -960,6 +960,7 @@ def test_the_briefs_of_fields_no_source_checks_let_a_decided_transcript_decide(k
     brief = instructions(key).split(f"Field: {FIELD_LABELS[key]} ({key})", 1)[1]
     [line] = [line for line in brief.splitlines() if "decided transcript (input_source decided_transcript)" in line]
     assert "another reader's different text is evidence only" in line
+    assert "never a reason for several_possibilities" in line
 
 
 def test_the_shared_brief_has_the_expert_stop_when_the_sources_have_answered():
@@ -968,6 +969,7 @@ def test_the_shared_brief_has_the_expert_stop_when_the_sources_have_answered():
     text = instructions("city")
     assert "Keep going until" not in text
     assert 'try its abbreviations written out ("Davao Province" for "Davao Prov.")' in text
+    assert 'about the unit written out ("Davao Province, Philippines")' in instructions("province_state")
     assert "Then stop and answer: when the sources have answered what they can" in text
     assert "the same name with other larger units after it is the same lookup" in text
     assert "when a tool result says to answer now, answer" in text
