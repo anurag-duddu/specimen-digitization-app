@@ -2915,6 +2915,9 @@ UNDOUBTED_GENUS = {
     # A determiner's or collector's initials, capitals each followed by a period.
     "initials-ending-the-line-above": "Baker, C.F.\nEpipsocus sp. 1",
     "initials-before-the-genus": "det. C.F. Epipsocus sp. 1",
+    # A "?" on another word, on the line above or on the genus's own line.
+    "question-on-a-year-above": "1946?\nEpipsocus sp. 1",
+    "question-on-a-place-before": "Davao? Epipsocus sp. 1",
 }
 
 

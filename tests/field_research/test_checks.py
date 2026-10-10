@@ -657,8 +657,8 @@ def test_no_doubt_sign_shows_where_none_is_written(texts):
     ("Epipsocus?", "Epipsocus", True),
     ("?Epipsocus", "Epipsocus", True),
     ("Epipsocus(?)", "Epipsocus", True),
-    ("Epipsocus ?", "Epipsocus", True),
     ("(?) Epipsocus", "Epipsocus", True),
+    ("V-4-67-1 ? Epipsocus", "Epipsocus", True),
     ("cf.\nEpipsocus sp. 1", "Epipsocus sp. 1", True),
     ("V-4-67-1\nnr. Epipsocus\nsp. 1 " + FEMALE, "Epipsocus", True),
     ("Epipsocus\ncfr. Epipsocus", "Epipsocus", True),
@@ -673,6 +673,12 @@ def test_no_doubt_sign_shows_where_none_is_written(texts):
     # A person's initials before the genus are no qualifier.
     ("C.F. Epipsocus", "Epipsocus", False),
     ("Baker, C.F.\nEpipsocus sp. 1", "Epipsocus sp. 1", False),
+    # A "?" on another word, on the line above, or after the genus is not on the genus.
+    ("Davao? Epipsocus", "Epipsocus", False),
+    ("1946?\nEpipsocus sp. 1", "Epipsocus sp. 1", False),
+    ("?\nEpipsocus", "Epipsocus", False),
+    ("(?)\nEpipsocus sp. 1", "Epipsocus sp. 1", False),
+    ("Epipsocus ?", "Epipsocus", False),
 ])
 def test_a_genus_the_text_marks_as_doubtful(text, literal, doubtful):
     from specimen_digitization.field_research import checks

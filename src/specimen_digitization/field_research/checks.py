@@ -468,14 +468,17 @@ def _has_a_letter(part: str) -> bool:
 def genus_in_doubt(text: str, literal: str) -> bool:
     """Whether the text, wherever it writes the taxon literal, marks the
     literal's first word, its genus, as doubtful (1c of #289's fifth review):
-    a qualifier (DOUBT_QUALIFIERS, read as the doubt signs read one) or a "?"
-    in the whitespace-separated part of the text that holds that word
-    ("cfr.Epipsocus", "Epipsocus?", "?Epipsocus", "Epipsocus(?)"), or in the
-    part just before it, across a line break too ("cfr. Epipsocus", "C.F.
-    Epipsocus", "(?) Epipsocus", "cf." ending the line above); or a part
-    with a "?" and no letter or digit just after it ("Epipsocus ?"). A
-    qualifier after the genus ("Epipsocus cf. sp. 1", G25) is none. False
-    when the text does not write the literal."""
+    - a qualifier (DOUBT_QUALIFIERS, read as the doubt signs read one) in
+      the whitespace-separated part of the text that holds that word
+      ("cfr.Epipsocus") or in the part just before it, across a line break
+      too ("cfr. Epipsocus", "cf." ending the line above);
+    - a "?" on that word, in its own part ("Epipsocus?", "?Epipsocus",
+      "Epipsocus(?)"), or a "?" standing alone, a part with no letter or
+      digit, just before it on its line ("? Epipsocus", "(?) Epipsocus").
+    A "?" on another word ("Davao? Epipsocus"), any "?" on the line above
+    ("1946?" above "Epipsocus sp. 1"), one after the genus ("Epipsocus ?")
+    and a qualifier after the genus ("Epipsocus cf. sp. 1", G25) are none.
+    False when the text does not write the literal."""
     literal = literal.strip()
     if not literal:
         return False
@@ -484,11 +487,14 @@ def genus_in_doubt(text: str, literal: str) -> bool:
     while start >= 0:
         at = next(i for i, part in enumerate(parts) if part.start() <= start < part.end())
         own = parts[at].group()
-        before = parts[at - 1].group() if at > 0 else ""
-        after = parts[at + 1].group() if at + 1 < len(parts) else ""
-        if ("?" in own or _qualifier(own) or "?" in before or _qualifier(before)
-                or ("?" in after and not any(c.isalnum() for c in after))):
+        if "?" in own or _qualifier(own):
             return True
+        if at > 0:
+            before = parts[at - 1]
+            on_its_line = "\n" not in text[before.end():parts[at].start()]
+            if _qualifier(before.group()) or (on_its_line and "?" in before.group()
+                    and not any(c.isalnum() for c in before.group())):
+                return True
         start = text.find(literal, start + 1)
     return False
 
