@@ -21,6 +21,8 @@ from types import SimpleNamespace
 
 import pytest
 from PIL import Image
+from pydantic_ai.messages import ModelRequest, ModelResponse, ToolCallPart, ToolReturnPart, UserPromptPart
+from pydantic_ai.models.function import FunctionModel
 
 from specimen_digitization.application.collection_profiles import published_registry
 from specimen_digitization.application.domain import (
@@ -38,9 +40,11 @@ from specimen_digitization.application.workflow import (
 )
 from specimen_digitization.field_research import agreement
 from specimen_digitization.field_research import step as field_step
+from specimen_digitization.field_research.budget import CostMeter
 from specimen_digitization.field_research.contracts import (
     FIELD_TOOLS, Candidate, FieldAnswer, FieldOutcome, FieldTask, PlaceRef, Reading, SourceAnswer, SourceCandidate,
 )
+from specimen_digitization.field_research.experts import INPUT_PREFIX, make_resolver
 from specimen_digitization.field_research.step import (
     FieldResearchStep, apply_outcomes, build_tasks, finalize_fields, research_fields,
 )
@@ -1319,6 +1323,89 @@ def test_an_outage_blocks_the_run_and_keeps_every_settled_field(rig):
     # The places below the country wait for it: no country, no place inside it.
     assert {run.fields[key].reason for key in ("province_state", "county", "city")} == {
         agreement.NO_COUNTRY + " Settled."}
+
+
+class TgnDown(FakeSources):
+    """Getty TGN cannot be reached (refused, as from Cloud Run on 2026-10-09);
+    Wikidata knows the synthetic label's country, state and county at their
+    levels, each in the places above it."""
+
+    WIKIDATA = {"United States": ("country", ()), "Illinois": ("state", ("United States",)),
+        "Cook": ("county", ("Illinois", "United States"))}
+
+    def __init__(self, blobs):
+        super().__init__(blobs, down=("tgn",))
+
+    def _answer(self, source_id, query):
+        if source_id != "wikidata" or query not in self.WIKIDATA:
+            return super()._answer(source_id, query)
+        kind, within = self.WIKIDATA[query]
+        raw = json.dumps({"source": source_id, "query": query}).encode()
+        candidate = SourceCandidate(query, f"wikidata:{query}", kind, "in " + ", ".join(within) if within else None,
+            tuple(PlaceRef(name, f"wikidata:{name}") for name in within))
+        evidence = Evidence(kind="authority", source="wikidata", locator=candidate.authority_id,
+            excerpt=f"match\n{query} | {candidate.authority_id} | {kind} | {candidate.detail or ''}",
+            raw_ref=self.blobs.put(raw), digest=hashlib.sha256(raw).hexdigest())
+        return SourceAnswer("wikidata", query, LookupStatus.SUCCESS, (candidate,), evidence, note="match")
+
+
+def place_experts(county):
+    """The real experts (experts.make_resolver) for the country, state and
+    county, each asking Getty TGN and Wikidata about the label's text at once
+    and then resolving on Wikidata's candidate, the county answering `county`
+    instead when given; test_step's scripts for every other field."""
+
+    def play(messages, info):
+        prompt = next(part.content for m in messages if isinstance(m, ModelRequest) for part in m.parts
+            if isinstance(part, UserPromptPart))
+        key = json.loads(prompt[len(INPUT_PREFIX):])["field"]["key"]
+        returns = [part.content for m in messages if isinstance(m, ModelRequest) for part in m.parts
+            if isinstance(part, ToolReturnPart)]
+        if not returns:
+            return ModelResponse(parts=[ToolCallPart("lookup", {"source": source, "query": LABEL[key]})
+                for source in ("tgn", "wikidata")])
+        [found] = [item for item in returns if item["source"] == "wikidata"]
+        answer = {"outcome": "resolved", "literal": LABEL[key], "reading_names": ["1A"],
+            "authority_id": found["candidates"][0]["authority_id"], "source_evidence_ids": [found["evidence_id"]],
+            "explanation": "Wikidata has the place at the field's level."}
+        if key == "county" and county is not None:
+            answer = county
+        return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, answer)])
+
+    expert = make_resolver(model_factory=lambda: FunctionModel(play),
+        meter=CostMeter(1_000_000, input_micros_per_million=1, output_micros_per_million=1))
+    scripted = Scripted()
+
+    async def resolver(task, readings, context, *, tools):
+        if task.key in ("country", "province_state", "county"):
+            return await expert(task, readings, context, tools=tools)
+        return await scripted(task, readings, context, tools=tools)
+    return resolver
+
+
+UNSETTLED_COUNTY = {"outcome": "sources_cannot_resolve", "literal": "Cook", "reading_names": ["1A"],
+    "explanation": "Getty TGN did not answer and Wikidata's Cook was not checked."}
+
+
+@pytest.mark.parametrize("county", [None, UNSETTLED_COUNTY])
+def test_one_source_down_among_several_settles_from_the_others_and_names_it(rig, county):
+    """Getty TGN never answers; Wikidata does. The places settle on Wikidata
+    under the same rules, each reason naming TGN, and an unresolved county goes
+    to review with its reason instead of blocking the record."""
+    run = rig.specimen.run
+    blocker = settle(rig, place_experts(county), tools=TgnDown(rig.blobs))
+    assert blocker is None and (run.stage, run.blocker) == ("finalized", None)
+    for key in ("country", "province_state") + (("county",) if county is None else ()):
+        value = run.fields[key]
+        assert (value.state, value.authority_id) == (ValueState.SUPPORTED, f"wikidata:{LABEL[key]}")
+        assert value.reason == ("Wikidata has the place at the field's level. "
+            "Getty TGN could not be reached; settled from Wikidata.")
+    if county is None:
+        assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+        return
+    assert run.fields["county"].state == ValueState.UNRESOLVED
+    assert run.fields["county"].reason == UNSETTLED_COUNTY["explanation"] + " Getty TGN could not be reached."
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["mandatory_unresolved:county"])
 
 
 # ---- through the workflow: one step, retry, cost -------------------------------

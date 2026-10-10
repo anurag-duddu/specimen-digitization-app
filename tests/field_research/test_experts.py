@@ -557,6 +557,62 @@ def test_a_source_outage_leaves_the_field_for_retry(failure):
     assert tool_returns(script.seen[1][0])[0]["status"] in {"timeout", "provider_error"}
 
 
+TGN_DOWN = SourceAnswer("tgn", "Davao", LookupStatus.AUTHORIZATION, (), None,
+                        "Getty TGN refused the request with HTTP 403")
+WIKIDATA_NONE = SourceAnswer("wikidata", "Davao", LookupStatus.NO_MATCH, (),
+                             Evidence(id="ev-wd-1", kind="lookup", source="wikidata", locator=None,
+                                      excerpt="Wikidata has no place for 'Davao'"),
+                             "Wikidata has no place for 'Davao'")
+
+
+@pytest.mark.parametrize("answer", [
+    dict(outcome="sources_cannot_resolve", literal="Davao", reading_names=["1A"],
+         explanation="Getty TGN did not answer; Wikidata has no town Davao."),
+    dict(outcome="label_lacks_value", explanation="No reading names a town."),
+    dict(outcome="several_possibilities", options=["Davao", "Mindanao"],
+         explanation="The town may be either."),
+])
+def test_one_source_down_among_several_leaves_the_experts_own_answer(answer):
+    """One dead source does not void the field: Wikidata answered, so the
+    expert's unresolved answer stands for review, naming Getty TGN."""
+    tools = FakeTools({("tgn", "Davao"): TGN_DOWN, ("wikidata", "Davao"): WIKIDATA_NONE})
+    script = Script(
+        lambda messages, info: ModelResponse(parts=[
+            ToolCallPart("lookup", {"source": "tgn", "query": "Davao"}),
+            ToolCallPart("lookup", {"source": "wikidata", "query": "Davao"})]),
+        answer,
+    )
+
+    outcome = resolve(script, task("city"), tools)
+
+    assert outcome.failure is None and outcome.answer.outcome == answer["outcome"]
+    assert outcome.unreachable == ("tgn",)
+    assert outcome.evidence == [WIKIDATA_NONE.evidence]
+
+
+@pytest.mark.parametrize("others", [
+    # Every lookup failed operationally: Wikidata timed out too.
+    {("wikidata", "Davao"): SourceAnswer("wikidata", "Davao", LookupStatus.TIMEOUT, (), None)},
+    # A refused query is no answer either.
+    {("geolocate", "Davao"): SourceAnswer("geolocate", "Davao", LookupStatus.POLICY, (), None)},
+])
+def test_an_expert_none_of_whose_lookups_answered_waits_for_a_retry(others):
+    tools = FakeTools({("tgn", "Davao"): TGN_DOWN, **others})
+    [(source, query)] = others
+    script = Script(
+        lambda messages, info: ModelResponse(parts=[
+            ToolCallPart("lookup", {"source": "tgn", "query": "Davao"}),
+            ToolCallPart("lookup", {"source": source, "query": query})]),
+        dict(outcome="sources_cannot_resolve", explanation="No source answered."),
+    )
+
+    outcome = resolve(script, task("city"), tools)
+
+    assert outcome.failure == "source_unavailable"
+    unreachable = ("tgn", "wikidata") if source == "wikidata" else ("tgn",)
+    assert outcome.unreachable == unreachable
+
+
 def test_a_query_that_later_succeeds_clears_its_outage():
     tools = FakeTools({("gbif", "Epipsocus"): GBIF_SUCCESS})
     script = Script(

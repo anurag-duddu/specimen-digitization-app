@@ -511,14 +511,32 @@ class _Expert:
 
     # Result ------------------------------------------------------------------
 
-    @property
-    def outage(self) -> bool:
-        """Whether a lookup's last attempt (per source and query) ended in an outage."""
+    def _last(self) -> dict[tuple[str, str], LookupStatus]:
+        """Each lookup's last status, per source and query, in first-call order."""
         last: dict[tuple[str, str], LookupStatus] = {}
         for call in self.calls:
             if call.status is not None:
                 last[(call.source, call.query)] = call.status
-        return any(status in SOURCE_OUTAGES for status in last.values())
+        return last
+
+    @property
+    def outage(self) -> bool:
+        """Whether a lookup's last attempt (per source and query) ended in an outage."""
+        return bool(self.unreachable)
+
+    @property
+    def unreachable(self) -> tuple[str, ...]:
+        """The sources a lookup's last attempt (per source and query) could not
+        reach (SOURCE_OUTAGES), in call order."""
+        return tuple(dict.fromkeys(
+            source for (source, _), status in self._last().items() if status in SOURCE_OUTAGES))
+
+    @property
+    def answered(self) -> bool:
+        """Whether a lookup's last attempt (per source and query) came back with
+        an answer: a status that is no operational failure (OPERATIONAL), so a
+        success, a no-match, an ambiguous or an empty answer."""
+        return any(status not in OPERATIONAL for status in self._last().values())
 
     def outcome(
         self,
@@ -548,6 +566,7 @@ class _Expert:
             cost_micros=model.cost_micros if model is not None else 0,
             model_calls=model.model_calls if model is not None else 0,
             fallback=fallback,
+            unreachable=self.unreachable,
         )
 
 
@@ -648,7 +667,14 @@ def make_resolver(
         finally:
             if model is not None:
                 await _close_client(model)
-        if answer is not None and answer.outcome != "resolved" and expert.outage:
+        # One source that could not be reached does not void the field (the
+        # owner's "failures are graceful"): when any of the expert's lookups
+        # answered, its answer stands and the step checks it as any other
+        # (a resolved one may settle; an unresolved one goes to review), its
+        # reason naming the unreachable source. Only an unresolved answer
+        # none of whose lookups answered waits for a retry.
+        if (answer is not None and answer.outcome != "resolved" and expert.outage
+                and not expert.answered):
             failure = "source_unavailable"
         return expert.outcome(answer, failure, model, fallback=fallback)
 

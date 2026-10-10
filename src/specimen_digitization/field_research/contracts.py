@@ -206,6 +206,11 @@ class FieldOutcome:
     # (experts.EXHAUSTED), or kept breaking its answer's checks
     # (experts.UNCHECKED). Never an answer the expert gave itself.
     fallback: bool = False
+    # The approved sources the expert could not reach: a lookup whose last
+    # attempt (per source and query) ended in an outage, in call order
+    # (experts.SOURCE_OUTAGES). When the expert's answer stands, the field's
+    # reason names them (step._unreachable_note).
+    unreachable: tuple[str, ...] = ()
 
 
 class FieldResolver(Protocol):

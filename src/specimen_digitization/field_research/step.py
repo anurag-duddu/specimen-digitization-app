@@ -1039,6 +1039,9 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     ambiguous, the options in the reason; a failure: unresolved with a
     retryable reason. Then the derived values, then the listed fields the
     label does not state (mark_not_on_label); the keys derived are returned.
+    Last, a field whose expert's answer stood although a source it asked
+    could not be reached (FieldOutcome.unreachable) ends its reason with a
+    note naming that source (_unreachable_note).
     """
     from .agreement import PLACE_ORDER
 
@@ -1071,7 +1074,40 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     derived = derive.fill(run, eligible=eligible, asset_id=asset_id, blobs=blobs)
     # Last, so that a value derived above is never marked absent.
     mark_not_on_label(run, profile, tasks, outcomes, readings=readings, asset_id=asset_id, blobs=blobs)
+    # An answer that stood although a source could not be reached names it.
+    rows = {item.id: item for item in run.evidence}
+    for outcome in outcomes:
+        value = run.fields.get(outcome.key)
+        if (outcome.failure is None and outcome.unreachable and outcome.key in tasks_by_key
+                and outcome.key not in human and value is not None and value.layer != "derived"):
+            value.reason = " ".join(part for part in (value.reason, _unreachable_note(outcome, value, rows))
+                if part)
     return derived
+
+
+def _source_names(source_ids: Iterable[str]) -> str:
+    """Source ids as the sources call themselves (sources.NAMES), in plain
+    words: "Getty TGN", "Wikidata and NGA GEOnet Names Server"."""
+    from .sources import NAMES
+
+    names = list(dict.fromkeys(NAMES.get(source, source) for source in source_ids))
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def _unreachable_note(outcome: FieldOutcome, value: FieldValue, rows: Mapping[str, Evidence]) -> str:
+    """The note a field's reason ends with when its expert's answer stood
+    although a source could not be reached (experts: one dead source does
+    not void a field): the sources not reached and, for a settled value, the
+    sources whose answers it cites."""
+    from .sources import NAMES
+
+    note = f"{_source_names(outcome.unreachable)} could not be reached"
+    if value.state == ValueState.SUPPORTED:
+        cited = [rows[i].source for i in value.evidence_ids if i in rows and rows[i].source in NAMES
+            and value.evidence_relations.get(i) in ("supports", "decides")]
+        if cited:
+            note += f"; settled from {_source_names(cited)}"
+    return note + "."
 
 
 # ---- fields the label does not state (owner decision A) -------------------
