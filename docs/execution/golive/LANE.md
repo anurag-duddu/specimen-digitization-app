@@ -97,13 +97,16 @@ decision (`human_field_carry.human_regions`). That holds in two cases:
   the saved history (`_kept_chain`). The save that started the run must be that
   `reprocess`, holding this run, these regions and this marker. The run it
   started from must hold the same regions, and be the decision's own run or a
-  kept run naming the same decision. Only the `reprocess` action writes the
-  marker, after proving its source the same way, so the reads do not grow with
-  the lineage.
+  kept run naming the same decision. Only the `reprocess` action creates the
+  marker on a new run, after proving its source the same way. The pin step and
+  a history restore keep it unchanged. So the reads do not grow with the
+  lineage.
 Equal regions alone are not enough: a restored model run can hold regions a
 person later confirmed unchanged, and it is segmented again. A lineage that
 does not prove out is refused. The new run starts on a copy of the regions,
-with their coverage confirmed and `segment` done (`keep_regions`). It is pinned
+with `segment` done (`keep_regions`). Their coverage is what the active run
+holds: confirmed by the regions decision, unless a person's coverage decision
+withdrew it. It is pinned
 and classified afresh, never segmented, and read from those regions, as the run
 a regions decision starts is. The pin step keeps the lineage. If an adapter's
 pins would replace the lineage or a field carry, the pin step blocks as

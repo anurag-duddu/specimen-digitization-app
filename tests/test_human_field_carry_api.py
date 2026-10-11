@@ -533,11 +533,36 @@ def test_pins_that_would_replace_a_carry_block_before_replacing_anything(case, k
     _finished_classified_run(case)
     assert _save_regions(case).status_code == 200
     assert _drive(case, lambda s: False).run.stage == "finalized"
+    assert case.save_unknown("city", "No city appears on the label").status_code == 200
     assert case.reprocess(key="reprocess-kept").status_code == 200
     kept = case.workspace().json()["run"]["dependencies"]
+    assert set(kept["preserved_human_fields"]) == {"city"} and kept["preserved_human_regions"]
     case.workflow.adapters.pin_dependencies = lambda run: {
         "adapter": "fixture", "synthetic": True, key: {"forged": True}}
     blocked = _drive(case, lambda s: False)
     assert blocked.run.stage == "processing_blocked"
     assert blocked.run.blocker == "preserved_human_field_provenance_unavailable"
     assert case.workspace().json()["run"]["dependencies"] == kept
+
+
+def test_a_withdrawn_coverage_confirmation_stays_withdrawn_on_the_new_run(case):
+    # A person's coverage decision after the regions decision (review of 92686e81).
+    _finished_classified_run(case)
+    saved = _save_regions(case)
+    assert saved.status_code == 200
+    assert _drive(case, lambda s: False).run.stage == "finalized"
+    current = case.workspace().json()
+    withdrawn = case.client.post(
+        f"{case.prefix}/specimens/{case.current.id}/decisions",
+        headers=case.headers(ACTORS[0], "coverage-withdrawn"),
+        json={"expected_revision": current["revision"],
+            "base_record_version_id": f"{current['active_run_id']}:{current['revision']}",
+            "kind": "coverage", "after": {"confirmed": False},
+            "reason": "A third label is not outlined"},
+    )
+    assert withdrawn.status_code == 200, withdrawn.text
+    assert case.workspace().json()["run"]["coverage_confirmed"] is False
+    assert case.reprocess(key="reprocess-after-withdrawn-coverage").status_code == 200
+    fresh = case.workspace().json()["run"]
+    assert fresh["regions"] == saved.json()["run"]["regions"] and fresh["completed_steps"] == ["segment"]
+    assert fresh["coverage_confirmed"] is False

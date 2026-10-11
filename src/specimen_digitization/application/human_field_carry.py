@@ -239,9 +239,10 @@ def _kept_chain(repository, specimen, decisions):
     """Prove a kept run's regions descend from the decision, from two immutable saves.
 
     A kept run names its origin decision and the run and revision it was started
-    from (``keep_regions``). Only the ``reprocess`` action writes that marker, and
-    only after proving its source the same way, so one step back proves the
-    whole lineage: the save that started this run must be that ``reprocess``,
+    from (``keep_regions``). Only the ``reprocess`` action creates that marker on
+    a new run, and only after proving its source the same way; the pin step and
+    a history restore keep it unchanged. So one step back proves the whole
+    lineage: the save that started this run must be that ``reprocess``,
     holding this run, these regions and this marker; the run it started from
     must hold the same regions and be the decision's own run, or a kept run
     naming the same decision. The reads do not grow with the lineage. A marker
@@ -412,12 +413,14 @@ def keep_regions(event, source, target):
 
     The fresh run is pinned and classified afresh, then skips segmentation and
     reads from those regions, as the run a regions decision starts does
-    (api.regions): the person confirmed their coverage.
+    (api.regions). Their coverage stays as the active run holds it: confirmed by
+    the regions decision, unless a person's coverage decision withdrew it.
     """
     if REGIONS not in event.after:
         return
     target.regions = [region.model_copy(deep=True) for region in source.regions]
-    target.coverage_confirmed = True
+    # A person's later coverage decision on the active run stands (review_coverage).
+    target.coverage_confirmed = source.coverage_confirmed
     target.completed_steps = ["segment"]
     # The lineage the next fresh run proves (_kept_chain); pinning keeps it.
     target.dependencies[REGIONS] = {**event.after[REGIONS], **event.before}
