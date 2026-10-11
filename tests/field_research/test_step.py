@@ -34,6 +34,7 @@ from specimen_digitization.application.integrity import verify_evidence
 from specimen_digitization.application.policy import evaluate
 from specimen_digitization.application.profile_runtime import bind_profile_rules, published_risk_registry
 from specimen_digitization.application.region_pixels import region_png
+from specimen_digitization.application.reliability import AdapterFailure
 from specimen_digitization.application.storage import LocalBlobs, SQLiteRepository, digest
 from specimen_digitization.application.workflow import (
     FIELD_RESEARCH, OperationalBlock, SyntheticAdapters, Workflow,
@@ -80,9 +81,10 @@ EXPERTS = NO_TOOLS | RESEARCHED
 TODAY = date(2026, 10, 8)
 
 
-def make_specimen(blobs, text=TEXT, other=None):
+def make_specimen(blobs, text=TEXT, other=None, *, first_pass=True):
     """A non-sensitive specimen at adjudicate: one label, two readers, which agree
-    unless `other` is the second reader's text."""
+    unless `other` is the second reader's text. Without `first_pass` a label
+    whose readers differ is still at its first pass."""
     published = published_registry().profiles[0]
     output = io.BytesIO()
     Image.new("RGB", (100, 100), "white").save(output, format="JPEG", quality=95)
@@ -125,7 +127,7 @@ def make_specimen(blobs, text=TEXT, other=None):
             raw_sha256=hashlib.sha256(raw).hexdigest()))
     run.completed_steps = ["pin_dependencies", "classify", "quality_check", "segment"] + [
         f"transcribe:{region.id}:{route}" for route in run.profile.routes]
-    if len(set(texts)) > 1:
+    if len(set(texts)) > 1 and first_pass:
         # The first pass picked no reading (its synthetic fixture never does).
         run.completed_steps.append(f"first_pass:{region.id}")
     run.stage = "running"
@@ -147,17 +149,39 @@ def every_field(*candidates):
     return [*keyed, *(COLLECTORS if "collectors" not in given else ()), *candidates]
 
 
-def build_rig(tmp_path, text=TEXT, other=None, *, decided=False, candidates=COLLECTORS):
+class RefusedFirstPass(SyntheticAdapters):
+    """A first pass the provider refuses with HTTP 429 on every attempt."""
+
+    def first_pass(self, specimen, region, readings):
+        raise AdapterFailure("model_rate_limited", LookupStatus.RATE_LIMITED, refused=True)
+
+
+def build_rig(tmp_path, text=TEXT, other=None, *, decided=False, candidates=COLLECTORS,
+        refused=False):
     """The run at the plan handover after adjudicate, parse and the organiser's
     `candidates` ((field, reading, literal, quote)). With `other` the second
     reader differs; `decided` then has the first pass pick reader 1A, whose
-    text becomes the label's transcript (G19); otherwise no reading is picked."""
+    text becomes the label's transcript (G19); otherwise no reading is picked.
+    With `refused` the workflow runs the first pass, which is refused on every
+    attempt (each retry at its scheduled time) and given up on."""
     blobs = LocalBlobs(tmp_path / "blobs")
     repository = SQLiteRepository(tmp_path / "records.sqlite")
     clock = SimpleNamespace(now=datetime(2026, 10, 8, 12, tzinfo=timezone.utc))
-    workflow = Workflow(repository, blobs, SyntheticAdapters(blobs, TEXT), clock=lambda: clock.now)
+    adapters = (RefusedFirstPass if refused else SyntheticAdapters)(blobs, TEXT)
+    workflow = Workflow(repository, blobs, adapters, clock=lambda: clock.now)
     principal = worker_principal()
-    created = repository.create(principal, make_specimen(blobs, text, other), "intake", "intake")
+    specimen = make_specimen(blobs, text, other, first_pass=False) if refused else make_specimen(blobs, text, other)
+    if refused:
+        # The published stage reservations, so the paid first pass can reserve.
+        execution = specimen.run.profile.execution
+        specimen.run.profile.execution = execution.model_copy(update={
+            "stage_cost_reservations": published_registry().profiles[0].processing.stage_cost_micros})
+    created = repository.create(principal, specimen, "intake", "intake")
+    while workflow.next_step(repository.get(principal.scope, created.id).run).startswith("first_pass:"):
+        attempted = workflow.step(principal, created.id).run
+        assert attempted.stage != "processing_blocked", attempted.blocker
+        if attempted.next_retry_at:
+            clock.now = datetime.fromisoformat(attempted.next_retry_at)
     adjudicated = workflow.step(principal, created.id)  # adjudicate
     if decided:
         [transcript] = adjudicated.run.transcripts
@@ -951,6 +975,31 @@ def test_readers_that_differ_settle_only_when_every_readers_text_was_looked_up(t
     assert (city.state, city.literal) == (ValueState.AMBIGUOUS, None)
     assert city.reason == agreement.DIFFER + " Settled."
     assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:city" in run.reasons
+
+
+def test_a_label_whose_first_pass_was_given_up_goes_to_review_however_its_fields_settle(tmp_path):
+    """Specimen 105526323 (2026-10-11): the first pass was refused on every
+    attempt. The workflow gives it up and goes on to field research, which
+    settles every field, as the test above does for the same readers with a
+    first pass that picked no reading, where the record clears. Here the label
+    still goes to a person: no first pass compared its readings."""
+    rig = build_rig(tmp_path, SAN_PEDRO, SAN_PABLO, candidates=every_field(*CITIES), refused=True)
+    region = rig.specimen.run.regions[0].id
+    step = f"first_pass:{region}"
+    mounted(rig, Scripted({"city": confirming("San Pedro", reading="1A", absent=("San Pablo",))}))
+
+    run = rig.workflow.step(rig.principal, rig.specimen.id).run
+
+    assert (run.attempts[step], run.first_pass_decisions) == (3, [])
+    assert step in run.completed_steps and run.completed_steps[-1] == FIELD_RESEARCH
+    [transcript] = run.transcripts
+    assert (transcript.text, transcript.resolved, transcript.alternatives) == (None, False, [SAN_PEDRO, SAN_PABLO])
+    city = run.fields["city"]
+    assert (city.state, city.literal) == (ValueState.SUPPORTED, "San Pedro")
+    assert (run.stage, run.blocker, run.disposition) == ("finalized", None, Disposition.REVIEW)
+    assert run.reasons == [f"unresolved_transcription:{region}"]
+    assert [(f.severity, f.reason_code) for f in run.findings if f.rule_id == "first_pass_given_up"] == [
+        ("warning", f"first_pass_given_up:{region}:model_rate_limited")]
 
 
 def test_readers_whose_texts_one_source_confirms_as_one_place_name_that_place(tmp_path):
