@@ -381,6 +381,18 @@ def test_a_short_retry_is_waited_for_before_the_worker_exits(lane):
     assert lane.clock.now >= START + timedelta(seconds=12)
 
 
+def test_a_run_waiting_for_its_retry_does_not_hold_up_the_next_request(lane):
+    # A rate-limited step waits 30 s or more (reliability.RATE_LIMIT_FLOORS):
+    # the next requested run is drained meanwhile, then the retry is waited for.
+    queued(lane.repository, "a-oldest", minutes=30)
+    queued(lane.repository, "b-next", minutes=10)
+    lane.workflow.scripts = {"a-oldest": ["retry:90", "finalized"]}
+    summary = worker(lane.repository, lane.workflow, lane.clock).run(stop=None)
+    assert lane.workflow.steps == ["a-oldest", "b-next", "a-oldest"]
+    assert summary["status"] == "drained"
+    assert lane.clock.now >= START + timedelta(seconds=90)
+
+
 def test_a_retry_after_the_window_is_handed_to_the_next_execution(lane):
     queued(lane.repository, "a-oldest", minutes=30)
 

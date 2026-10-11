@@ -113,12 +113,29 @@ def retry_after(value: str | None, current: datetime | None = None) -> int | Non
         return None
 
 
+# The least wait, in seconds, before a rate-limited step is sent again: after
+# its first attempt, then after every later one. The backoff alone waits 2 to 4
+# seconds after a first attempt and 4 to 8 after a second, too short for a
+# provider's rate limit to clear, and the model calls' failures carry no
+# Retry-After (``AdapterFailure.retry_after_seconds`` is None).
+RATE_LIMIT_FLOORS = (30, 90)
+
+
 def retry_delay(
-    attempt: int, provider_seconds: int | None = None, random_value=None
+    attempt: int,
+    provider_seconds: int | None = None,
+    random_value=None,
+    *,
+    rate_limited: bool = False,
 ) -> float:
     # Jitter never schedules before a provider's Retry-After minimum.
     jitter = (random_value or random.random)()
     base = min(300, 2 ** min(attempt, 8))
+    if rate_limited:
+        # Long enough for a provider's rate limit to clear, jittered upward as
+        # every other wait is, so runs refused together are not sent together.
+        floor = RATE_LIMIT_FLOORS[min(max(attempt, 1), len(RATE_LIMIT_FLOORS)) - 1]
+        base = max(base, floor)
     return max(float(provider_seconds or 0), base) + jitter * base
 
 
