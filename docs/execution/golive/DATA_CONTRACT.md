@@ -644,11 +644,16 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
   - The one exception is `refused`: the provider answered HTTP 429 to a model
     call's first request, so nothing was generated or billed
     (`reliability.run_agent_bounded`). The call costs 0, with `usage` null,
-    `outcome` `failed` and its `failure_code` (`model_rate_limited`); it settles
-    as a known zero and releases its whole reservation on the run and the
-    program ledger (`lane_costs.record_refused`). A 429 after an answer in the
-    same call (the agent's output retry) stays `reserved`, as does every other
-    failure without usage. Readers, the first pass and the organiser record it;
+    `outcome` `failed` and its `failure_code` (`model_rate_limited`).
+    `lane_costs.record_refused` records it, and `lane_costs.settle_step` settles
+    it as a known zero, which releases its whole reservation on the run and the
+    program ledger. A 429 after an answer in the same call (the agent's output
+    retry) stays `reserved`, as does every other failure without usage. A first
+    pass or the organiser that ends past its effect timeout has an unknown
+    outcome (the workflow's deadline override), so its 429 stays `reserved` too;
+    a reader (other than the evidence pilot's) keeps a refusal past its
+    deadline, as it keeps any known failure (HARNESS.md section 3).
+    Readers, the first pass and the organiser record it;
     a field research request refused with 429 settles its meter at zero
     (`budget.MeteredModel`). From the coordinator's brief of 2026-10-11, after
     specimen 105526327's run blocked as `cost_budget_exhausted` behind two
