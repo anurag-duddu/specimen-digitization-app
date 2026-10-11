@@ -511,6 +511,26 @@ def test_pacer_spaces_request_starts_three_seconds_per_source():
     assert slept == [3.0, 6.0]
 
 
+def test_a_turn_further_off_than_the_limit_is_not_taken():
+    """With a 6 s limit the fourth turn, 9 s off, is refused without a wait
+    and leaves no turn behind: 3 s later the next request waits 6 s, not 9."""
+    clock, slept = [100.0], []
+
+    async def sleep(seconds):
+        slept.append(seconds)
+
+    pacer = RequestPacer({"geolocate": 3.0}, clock=lambda: clock[0], sleep=sleep)
+
+    async def burst():
+        taken = [await pacer.wait("geolocate", limit=6) for _ in range(4)]
+        clock[0] += 3
+        return taken, await pacer.wait("geolocate", limit=6), await pacer.wait("gbif", limit=0)
+
+    taken, later, unspaced = asyncio.run(burst())
+    assert (taken, later, unspaced) == ([True, True, True, False], True, True)
+    assert slept == [3.0, 6.0, 6.0]
+
+
 def test_bounded_transport_waits_for_the_pacer_before_each_request():
     events = []
 

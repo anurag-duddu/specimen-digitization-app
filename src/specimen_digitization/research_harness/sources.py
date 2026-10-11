@@ -732,16 +732,22 @@ class RequestPacer:
         self._lock = threading.Lock()
         self._next_start: dict[str, float] = {}
 
-    async def wait(self, source_id: str) -> None:
+    async def wait(self, source_id: str, *, limit: float | None = None) -> bool:
+        """Wait for this request's turn to start; True. With `limit`, a turn
+        more than `limit` seconds off is not taken: False at once, and the
+        requests after it are not spaced behind a request that is not sent."""
         interval = self._intervals.get(source_id)
         if not interval:
-            return
+            return True
         with self._lock:
             current = self._clock()
             start = max(current, self._next_start.get(source_id, current))
+            if limit is not None and start - current > limit:
+                return False
             self._next_start[source_id] = start + interval
         if start > current:
             await self._sleep(start - current)
+        return True
 
 
 SOURCE_PACER = RequestPacer(SOURCE_REQUEST_INTERVAL_SECONDS)

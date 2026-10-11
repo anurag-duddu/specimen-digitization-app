@@ -513,6 +513,30 @@ async def test_geolocate_requests_start_at_least_three_seconds_apart(tmp_path):
     assert all(later - earlier >= 3 for earlier, later in zip(starts, starts[1:], strict=False))
 
 
+@pytest.mark.asyncio
+async def test_a_geolocate_turn_further_off_than_a_slot_wait_is_not_taken(tmp_path, caplog):
+    """Twelve GEOLocate lookups at once, 3 s apart on the fake clock: the
+    eleventh starts 30 s on, and the twelfth's turn would be 33 s off, more
+    than SLOT_WAIT_SECONDS, so it is not sent and takes no turn. A lookup 3 s
+    later then gets the turn it left, 30 s off, and is sent."""
+    tools, server, clock, _ = make(tmp_path, recorded_geolocate("yepocapa-modern.json"))
+    queries = [f"Yepocapa {n}, Chimaltenango, Guatemala" for n in range(12)]
+    with caplog.at_level(logging.WARNING, logger="specimen_digitization.field_research.sources"):
+        answers = await asyncio.gather(*(tools.lookup("geolocate", query, field_key="precise_location")
+                                         for query in queries))
+    assert [(answer.query, answer.status, answer.note) for answer in answers
+            if answer.status is LookupStatus.TIMEOUT] == [
+        (queries[11], LookupStatus.TIMEOUT, "GEOLocate was busy; this lookup was not sent")]
+    assert sorted(at for at, _ in server.requests) == [3.0 * n for n in range(11)]
+    assert unanswered(caplog) == [{"step": "field_research", "source": "geolocate", "host": "geo-locate.org",
+                                   "http_status": "-", "error": "slot_busy", "retry_after": "absent",
+                                   "attempt": "1"}]
+    assert "Yepocapa" not in caplog.text
+    await clock.sleep(3)
+    late = await tools.lookup("geolocate", "Yepocapa late, Chimaltenango, Guatemala", field_key="precise_location")
+    assert late.status is not LookupStatus.TIMEOUT and max(at for at, _ in server.requests) == 33.0
+
+
 def test_geolocate_spacing_holds_across_records(tmp_path):
     """Each record has its own sources; the spacing between GEOLocate requests is
     the process's, as the six-specialist harness keeps it."""
@@ -621,6 +645,132 @@ def test_a_request_cancelled_while_it_waits_never_keeps_a_slot():
         assert slots.in_flight("tgn") == 0
 
     asyncio.run(scenario())
+
+
+# --- A lookup waits a bounded time for a slot ---
+
+
+def busy(slots, *sources):
+    """Every slot of each source taken until the block ends."""
+    from contextlib import AsyncExitStack, asynccontextmanager
+
+    @asynccontextmanager
+    async def held():
+        async with AsyncExitStack() as stack:
+            for source in sources:
+                for _ in range(slots.limits[source]):
+                    await stack.enter_async_context(slots.slot(source))
+            yield
+
+    return held()
+
+
+@pytest.mark.asyncio
+async def test_a_lookup_that_waits_too_long_for_a_slot_gives_up_unsent(tmp_path, caplog):
+    """Getty TGN's one slot stays taken: after the slots' wait the lookup
+    gives up without a request, an outage with a plain note, logged as any
+    unanswered lookup; it leaves the slot to the next request."""
+    slots = approved_sources.SourceSlots({"tgn": 1}, wait_seconds=0.05)
+    tools, server, _, blobs = make(tmp_path, nothing, slots=slots)
+    with caplog.at_level(logging.WARNING, logger="specimen_digitization.field_research.sources"):
+        async with asyncio.timeout(1), busy(slots, "tgn"):
+            answer = await tools.lookup("tgn", "Davao Province, Philippines", field_key="province_state")
+    assert (answer.status, answer.evidence, answer.candidates) == (LookupStatus.TIMEOUT, None, ())
+    assert answer.note == "Getty TGN was busy; this lookup was not sent"
+    assert server.requests == [] and blobs.puts == []
+    assert unanswered(caplog) == [{"step": "field_research", "source": "tgn", "host": TGN_HOST,
+                                   "http_status": "-", "error": "slot_busy", "retry_after": "absent",
+                                   "attempt": "1"}]
+    assert "Davao" not in caplog.text and "Philippines" not in caplog.text
+    assert slots.in_flight("tgn") == 0
+    async with asyncio.timeout(1), slots.slot("tgn"):
+        assert slots.in_flight("tgn") == 1
+    # As any unanswered request, the busy one is kept for the record: the
+    # same request, from another field, is not sent either.
+    again = await tools.lookup("tgn", "Davao Province, Philippines", field_key="county")
+    assert (again.status, again.note, server.requests) == (answer.status, answer.note, [])
+
+
+@pytest.mark.asyncio
+async def test_a_retry_that_waits_too_long_for_a_slot_says_the_lookup_was_sent_before(tmp_path, caplog):
+    """Getty TGN fails the first request with HTTP 503, and another request
+    takes its one slot before the retry: the retry is not sent, and the note
+    says how many attempts were."""
+    slots = approved_sources.SourceSlots({"tgn": 1}, wait_seconds=0.05)
+    done, holders = asyncio.Event(), []
+
+    async def hold():
+        async with slots.slot("tgn"):
+            await done.wait()
+
+    def reply(request):
+        holders.append(asyncio.ensure_future(hold()))  # It waits for the slot this request holds.
+        return httpx.Response(503)
+
+    tools, server, _, _ = make(tmp_path, reply, slots=slots)
+    with caplog.at_level(logging.WARNING, logger="specimen_digitization.field_research.sources"):
+        async with asyncio.timeout(1):
+            answer = await tools.lookup("tgn", "Davao Province", field_key="province_state")
+    done.set()
+    await asyncio.gather(*holders)
+    assert (answer.status, answer.note) == (
+        LookupStatus.TIMEOUT, "Getty TGN was busy; this lookup was not sent again after 1 attempt")
+    assert len(server.requests) == 1
+    assert [(line["error"], line["attempt"]) for line in unanswered(caplog)] == [("slot_busy", "2")]
+
+
+def test_the_process_slots_wait_two_request_bounds_a_fifth_of_a_fields_time():
+    import inspect
+
+    from specimen_digitization.field_research.experts import make_resolver
+
+    field = inspect.signature(make_resolver).parameters["field_timeout_seconds"].default
+    assert approved_sources.SOURCE_SLOTS.wait_seconds == approved_sources.SLOT_WAIT_SECONDS == 30.0
+    assert approved_sources.SLOT_WAIT_SECONDS == 2 * approved_sources.REQUEST_TIMEOUT_SECONDS
+    assert approved_sources.SLOT_WAIT_SECONDS <= field / 5
+
+
+@pytest.mark.parametrize(("taken", "failure", "unreachable"), [
+    (("tgn",), None, ("tgn",)),
+    (("tgn", "wikidata"), "source_unavailable", ("tgn", "wikidata")),
+])
+def test_a_busy_gazetteer_is_unanswered_and_another_answer_keeps_the_field(tmp_path, taken, failure, unreachable):
+    """An expert asks Getty TGN and Wikidata. With Getty TGN busy and
+    Wikidata answering, the expert's answer stands, naming TGN; with both
+    busy no lookup answered, and the field waits for a retry."""
+    from pydantic_ai.messages import ModelResponse, ToolCallPart
+    from pydantic_ai.models.function import FunctionModel
+
+    from specimen_digitization.application.domain import FieldValue
+    from specimen_digitization.field_research.budget import CostMeter
+    from specimen_digitization.field_research.contracts import FIELD_TOOLS, Candidate, FieldTask, Reading
+    from specimen_digitization.field_research.experts import make_resolver
+
+    def model(messages, info):
+        if len(messages) == 1:
+            return ModelResponse(parts=[ToolCallPart("lookup", {"source": source, "query": "Chimaltenago"})
+                                        for source in ("tgn", "wikidata")])
+        return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, {
+            "outcome": "sources_cannot_resolve", "explanation": "No source has Chimaltenago."})])
+
+    reading = Reading("1A", "region-1", "obs-1a", "decided_transcript", "Chimaltenago")
+    task = FieldTask(key="province_state", mandatory=True, current=FieldValue(),
+                     candidates=(Candidate("1A", "Chimaltenago", "Chimaltenago", "ev-1A"),),
+                     tools=FIELD_TOOLS["province_state"])
+    resolver = make_resolver(model_factory=lambda: FunctionModel(model), meter=CostMeter(
+        1_000_000, input_micros_per_million=200_000, output_micros_per_million=600_000))
+    slots = approved_sources.SourceSlots({"tgn": 1, "wikidata": 1}, wait_seconds=0.05)
+    tools, server, _, _ = make(tmp_path, gazetteers(), slots=slots)
+
+    async def research():
+        async with asyncio.timeout(1), busy(slots, *taken):
+            return await resolver(task, (reading,), {}, tools=tools)
+
+    outcome = asyncio.run(research())
+    assert (outcome.failure, outcome.unreachable) == (failure, unreachable)
+    assert outcome.answer.outcome == "sources_cannot_resolve"
+    sent = {request.url.host for _, request in server.requests}
+    assert sent == (set() if failure else {"www.wikidata.org"})
 
 
 def test_every_records_sources_share_the_process_slots_and_geolocate_keeps_its_spacing(tmp_path):
