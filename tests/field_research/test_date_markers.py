@@ -1,5 +1,6 @@
 """Measurement markers, determinations and literals inside longer tokens (the reviews of
-PR #306 at d305db77e, f89292766 and d0707cca, and the coordinator's rulings on them).
+PR #306 at d305db77e, f89292766, d0707cca and 04bbe6936, and the coordinator's rulings on
+them).
 
 A unit belongs to the year only when it is attached to it. A unit followed by a number
 of its own ("m 1200", "M 1200": the unit written before its number, as Italian labels
@@ -9,9 +10,10 @@ capitalised marker word after it is no name ("Ft. Coll. Smith"), and a unit in l
 case or capitals stays a unit whatever follows it. A unit starting the next line counts
 in every spelling and case. A date a determination stands before on its line, or a date
 alone on its line under a determination, is the determination's: Date Identified
-settles only from such a date, and the collecting date never does. A collector after
-the date on its line keeps it the collecting date. A literal counts only where it
-stands as a token of its own.
+settles only from such a date, and the collecting date never does. A determination
+claims the first complete date after it only. A collector after the date on its line
+keeps it the collecting date; a collection mark ("ex coll. Jones", "Coll. FMNH") is no
+collector. A literal counts only where it stands as a token of its own.
 """
 
 from __future__ import annotations
@@ -410,6 +412,30 @@ DETERMINATION_BEFORE = [
     ("Ident. par J. Dupont 1952", "1952", "1952"),
     ("Ident. von H. Weber 1952", "1952", "1952"),
     ("leg. Rossi det. Bianchi 1950", "1950", "1950"),
+    # A date without its year is no complete date: the determination claims the first
+    # date with a year after it (the coordinator's ruling on the review of 04bbe6936).
+    ("det. J. Smith, IV-25 1950", "1950", "1950"),
+    ("det. J. Smith IV-25\n1950", "1950", "1950"),
+    # A collection or provenance mark after the date, or between, is no collector: "ex"
+    # before coll. or col., or a museum or collection word or an acronym after it (the
+    # same ruling).
+    ("det. J. Smith 1950, coll. Mus. Paris", "1950", "1950"),
+    ("det. J. Smith 1950 ex coll. Jones", "1950", "1950"),
+    ("det. J. Smith 1950 Ex. Coll. Jones", "1950", "1950"),
+    ("Det. J. Perez 1950, Col. IAvH", "1950", "1950"),
+    ("det. J. Smith 25.IV.1950 Coll. FMNH", "25.IV.1950", "1950-04-25"),
+    ("det. J. Smith 1950 coll. MCZ", "1950", "1950"),
+    ("det. J. Smith 1950 coll. Museum Paris", "1950", "1950"),
+    (f"det. J. Smith 1950 coll. Mus{E_ACUTE}e Paris", "1950", "1950"),
+    ("det. J. Smith 1950 coll. Musee Paris", "1950", "1950"),
+    ("det. J. Smith 1950 coll. Museo Madrid", "1950", "1950"),
+    ("det. J. Smith 1950 coll. Museu Paulista", "1950", "1950"),
+    ("det. J. Smith 1950 coll. Collection Oberthur", "1950", "1950"),
+    ("det. J. Smith 1950 coll. Coll. Oberthur", "1950", "1950"),
+    ("det. J. Smith 1950 coll.", "1950", "1950"),
+    ("det. Bianchi ex coll. Rossi 1950", "1950", "1950"),
+    # The determination's first complete date is its own.
+    ("det. J. Smith 1952 25.IV.1948", "1952", "1952"),
 ]
 
 
@@ -453,6 +479,17 @@ DETERMINATION_ABOVE = [
     ("Ident. J. Smith\n25.IV.1952", "25.IV.1952", "1952-04-25"),
     ("Identified by J. Smith\n25.IV.1952", "25.IV.1952", "1952-04-25"),
     ("leg. Rossi det. Bianchi\n1950", "1950", "1950"),
+    # Only the parts of the date without a year are passed over: a bare year takes the
+    # line above its day and month ("IV-25"), month ("Sept.") and day ("3").
+    ("det. J. Smith\nIV-25\n1952", "1952", "1952"),
+    ("det. J. Smith\n3\nSept.\n1952", "1952", "1952"),
+    ("det. J. Smith\n1952\n25.IV.1948", "1952", "1952"),
+    ("det. J. Smith\n1952\n\n25.IV.1948", "1952", "1952"),
+    ("Det. J. Smith\n25.IV.1952\nIV-25-1948", "25.IV.1952", "1952-04-25"),
+    ("det. J. Smith\n1952\nIV-25\n1948", "1952", "1952"),
+    # A collection mark after the date leaves it alone on its line.
+    ("det. J. Smith\n25.IV.1950 coll. FMNH", "25.IV.1950", "1950-04-25"),
+    ("det. J. Smith\n25.IV.1950 ex coll. Jones", "25.IV.1950", "1950-04-25"),
 ]
 
 
@@ -472,8 +509,9 @@ def test_a_date_alone_on_its_line_under_a_determination_is_date_identified_s_onl
 # The collecting date, which Date Identified does not take: a collector after the date on
 # its line; a determination with another date or a collector between it and the date
 # (a determination claims the first date after it only); a date whose line holds other
-# text, under a determination; a line above that is no determination; and "Ident." before
-# a number ("Ident. No. 5"), which counts only before a name or "by".
+# text, under a determination; a line above that is no determination; a complete date
+# between the determination's line and the date's; and "Ident." before a number
+# ("Ident. No. 5"), which counts only before a name or "by".
 COLLECTING_DATE = [
     ("det. J. Smith\n25.IV.1948 leg. Hoogstraal", "25.IV.1948", "1948-04-25"),
     ("det. J. Smith 25.IV.1948 leg. Hoogstraal", "25.IV.1948", "1948-04-25"),
@@ -489,6 +527,30 @@ COLLECTING_DATE = [
     ("Ident. Nr. 12\n25.IV.1948", "25.IV.1948", "1948-04-25"),
     # "Ident." with nothing after it on its line has no name or "by" after it.
     ("Ident.\n25.IV.1948", "25.IV.1948", "1948-04-25"),
+    # A line that holds a complete date of its own stops the search above a date alone
+    # on its line (the coordinator's ruling on the review of 04bbe6936): the
+    # determination's own date comes first.
+    ("det. J. Smith\n1952\n25.IV.1948", "25.IV.1948", "1948-04-25"),
+    ("det. J. Smith\n1952\n\n25.IV.1948", "25.IV.1948", "1948-04-25"),
+    ("Det. J. Smith\n25.IV.1952\nIV-25-1948", "IV-25-1948", "1948-04-25"),
+    ("det. J. Smith\n1952\nIV-25\n1948", "IV-25\n1948", "1948-04-25"),
+    ("det. J. Smith\n1952\nIV-25\n1948", "1948", "1948"),
+    ("det. J. Smith\n1952\nIV-25\n1948", "IV-25", "1948-04-25"),
+    # A date with a year is passed over by no date but a bare year's own parts.
+    ("det. J. Smith\nIV-25\n25.IV.1948", "25.IV.1948", "1948-04-25"),
+    ("det. J. Smith 1952 25.IV.1948", "25.IV.1948", "1948-04-25"),
+    # coll. or col. before a person's name is a collector.
+    ("25.IV.1948 coll. J. Smith", "25.IV.1948", "1948-04-25"),
+    ("det. J. Smith 25.IV.1948 coll. J. Jones", "25.IV.1948", "1948-04-25"),
+    ("det. J. Smith\n25.IV.1948 coll. J. Jones", "25.IV.1948", "1948-04-25"),
+    ("det. J. Smith 25.IV.1948 Coll. Jones", "25.IV.1948", "1948-04-25"),
+    ("det. J. Smith 25.IV.1948 coll. R.D. Mitchell", "25.IV.1948", "1948-04-25"),
+    ("det. J. Smith\n25.IV.1948 col. J. Perez", "25.IV.1948", "1948-04-25"),
+    ("det. J. Smith\n25.IV.1948 coll. FMNH, leg. Jones", "25.IV.1948", "1948-04-25"),
+    ("det. Bianchi coll. Rossi 1950", "1950", "1950"),
+    # A determination joined to coll. or col. stands between it and the name.
+    ("det. J. Smith\n25.IV.1948 coll. & det. J. Jones", "25.IV.1948", "1948-04-25"),
+    ("det. J. Smith\n3-IX-1946, col. y det. J. Perez", "3-IX-1946", "1946-09-03"),
 ]
 
 

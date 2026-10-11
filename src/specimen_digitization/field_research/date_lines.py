@@ -243,8 +243,66 @@ def _determination(line: str) -> bool:
     return bool(_determination_ends(line))
 
 
+# "coll." and "col." also mark a collection or a provenance (the coordinator's ruling on
+# the review of #306 at 04bbe6936): they name a collector only before a person's name, never
+# after "ex" ("ex coll. Jones") or before a museum or collection word or an acronym
+# ("coll. Mus. Paris", "Coll. FMNH", "Col. IAvH"). After a museum or collection word they
+# are the same mark ("coll. Coll. Oberthur").
+_NAME_AFTER = frozenset({"coll", "col"})
+_COLLECTION_WORDS = frozenset({"mus", "museum", "musee", "museo", "museu", "collection", "coll"})
+
+
+def _acronym(token: str) -> bool:
+    """An acronym: two to six letters, written without periods, at least two of them
+    capitals ("FMNH", "IAvH", "MCZ")."""
+    letters = token.rstrip(".")
+    return (letters.isalpha() and 2 <= len(letters) <= 6
+        and sum(letter.isupper() for letter in letters) >= 2)
+
+
+def _person(token: str) -> bool:
+    """Whether a token can begin a person's name: capitalised, and no marker word,
+    museum or collection word, or acronym ("J.", "R.D.", "Jones")."""
+    return (token[:1].isupper() and _word(token) not in _MARKER_WORDS | _COLLECTION_WORDS
+        and not _acronym(token))
+
+
 def _collector(line: str) -> bool:
-    return any(_word(token) in _COLLECTOR_WORDS for token in _TOKEN.findall(line))
+    """Whether the text names a collector: leg., legit, colr., collector, colector or
+    coletor anywhere, or coll. or col. before a person's name and not after "ex" or a
+    museum or collection word. A determination joined to it comes between them
+    ("coll. & det. J. Jones", "col. y det. J. Perez")."""
+    tokens = _TOKEN.findall(line)
+    for index, token in enumerate(tokens):
+        word = _word(token)
+        if word not in _COLLECTOR_WORDS:
+            continue
+        if word in _NAME_AFTER:
+            before = _word(tokens[index - 1]) if index else ""
+            rest = [t for t in tokens[index + 1 :] if _word(t) not in _JOINED]
+            if before == "ex" or before in _COLLECTION_WORDS or not (rest and _person(rest[0])):
+                continue
+        return True
+    return False
+
+
+# The words that join a determination to a collector ("leg. et det.", "col. y det.",
+# "leg. u. det."; "&" and "/" are no words).
+_JOINED = _DETERMINATION_WORDS | {"et", "y", "e", "u", "und", "and"}
+
+
+def _collection_mark(text: str) -> bool:
+    """Whether the text begins with a collection or provenance mark: coll. or col., or
+    "ex" and one of them, that names no collector ("coll. FMNH", "ex coll. Jones")."""
+    words = [_word(token) for token in _TOKEN.findall(text)]
+    start = 1 if words[:1] == ["ex"] else 0
+    return len(words) > start and words[start] in _NAME_AFTER and not _collector(text)
+
+
+def _has_year(text: str) -> bool:
+    """Whether the text writes a year, which makes a date complete ("1952", "25.IV.1952",
+    "IV-25 '52"; not "IV-25" or "Sept. 3")."""
+    return any(_plausible(hit["y"]) for hit in _ANY_YEAR.finditer(text))
 
 
 # The words a line that holds only a date may have: month words, Roman numerals, "de",
@@ -546,25 +604,29 @@ def one_line_year_problem(literal: str, text: str) -> str | None:
     return ONE_LINE_MEASUREMENT if found else None
 
 
-_PUNCTUATION = " \t.,;:()[]"
-
-
 def determination_date(literal: str, text: str) -> bool:
     """Whether the literal is a determination's date at every place it stands in the text
-    (the coordinator's rulings on the reviews of #306 at f89292766 and d0707cca):
+    (the coordinator's rulings on the reviews of #306 at f89292766, d0707cca and
+    04bbe6936):
 
     - a collector after the date on its line makes it a collecting date ("det. J.
       Smith" above "25.IV.1948 leg. Hoogstraal", "det. J. Smith 25.IV.1948 leg.
-      Hoogstraal");
+      Hoogstraal"); a collection mark is no collector ("det. J. Smith 1950 ex coll.
+      Jones", "det. J. Smith 25.IV.1950 Coll. FMNH": `_collector`);
     - a determination before the date on its line makes it the determination's when
-      neither a collector nor another date stands between them ("det. J. Smith 1950",
-      "det. 25.IV.1950", "leg. Rossi det. Bianchi 1950"; not "det. J. Smith 1952 /
-      Guatemala IV-25-1948", "det. Bianchi leg. Rossi 1950");
-    - a date whose line holds other text decides from its own line only;
-    - a date on a line by itself takes the first line above it that is not blank and
-      not itself only a date, under the same rule ("det. J. Smith" above
-      "25.IV.1952", "J. Smith det." above "1952", "det. J. Smith" above "IV-25" above
-      "1952"; not "det. J. Smith 1950" above "25.IV.1952").
+      neither a collector nor a complete date (one with its year) stands between them
+      ("det. J. Smith 1950", "det. 25.IV.1950", "leg. Rossi det. Bianchi 1950", "det.
+      J. Smith, IV-25 1950" for "1950"; not "det. J. Smith 1952 / Guatemala
+      IV-25-1948", "det. Bianchi leg. Rossi 1950");
+    - a date whose line holds other text decides from its own line only; a collection
+      mark after it is no other text ("det. J. Smith" above "25.IV.1950 coll. FMNH" is
+      the determination's: `_collection_mark`);
+    - a date on a line by itself takes the first line above it that is not blank and,
+      when the date is a bare year, not a part of that date without a year, under the
+      same rule ("det. J. Smith" above "25.IV.1952", "J. Smith det." above "1952",
+      "det. J. Smith" above "IV-25" above "1952"). A line that holds a complete date
+      of its own stops the search: "det. J. Smith" above "1952" above "25.IV.1948",
+      or above "1952" above "IV-25" above "1948", leaves 1948 a collecting date.
 
     A determination after the date ("25.IV.1948 leg. et det. J. Smith", "Bolivia, 25
     IV 1948 det. Smith") does not count, and "Ident." counts only before "by" or a name
@@ -577,12 +639,13 @@ def determination_date(literal: str, text: str) -> bool:
 
 def _claims(text: str) -> bool:
     """Whether a determination in `text` claims the date that comes after the text: its
-    last marker has no collector and no date after it."""
+    last marker has no collector and no complete date after it (a determination claims
+    the first complete date after it only)."""
     ends = _determination_ends(text)
     if not ends:
         return False
     between = text[ends[-1] :]
-    return not _collector(between) and not could_be_a_date(between)
+    return not _collector(between) and not _has_year(between)
 
 
 _PUNCTUATION = " \t.,;:()[]"
@@ -593,12 +656,24 @@ def _determination_place(text: str, lines: list[str], spans: list[tuple[int, int
     before, after = text[line_start : hit.start()], text[hit.end() : line_end]
     if _collector(after):
         return False
-    if before.strip(_PUNCTUATION) or after.strip(_PUNCTUATION):
+    if before.strip(_PUNCTUATION) or (after.strip(_PUNCTUATION) and not _collection_mark(after)):
         return _claims(before)
+    # A bare year completes the parts of its date written without a year on the lines
+    # above it ("IV-25" above "1952", "3" above "Sept." above "1952"); any other
+    # date-only line is a date of its own.
+    completes = bool(_ALONE.fullmatch(lines[first].strip(_PUNCTUATION)))
     index = first - 1
-    while index >= 0 and (not lines[index].strip() or _date_only(lines[index])):
+    while index >= 0 and (not lines[index].strip() or (completes and _yearless_part(lines[index]))):
         index -= 1
     return index >= 0 and _claims(lines[index])
+
+
+def _yearless_part(line: str) -> bool:
+    """Whether a line holds only a part of a date without its year: a day and month
+    ("IV-25", "Sept. 3"), a month ("Sept.") or a day ("3")."""
+    bare = line.strip(_PUNCTUATION)
+    day = bare.isdigit() and len(bare) <= 2 and 1 <= int(bare) <= 31
+    return day or (_date_only(line) and not _has_year(line))
 
 
 def written_range(literal: str) -> bool:
