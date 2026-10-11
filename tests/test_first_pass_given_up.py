@@ -238,6 +238,28 @@ def test_a_first_pass_given_up_on_a_provider_error_stays_reserved_and_names_its_
     ][f"{step}:3"] == {"reserved_micros": reserved, "settled_micros": None}
 
 
+def test_two_held_first_pass_failures_leave_no_room_for_a_third_under_the_run_cap(
+    tmp_path, monkeypatch
+):
+    # Not changed here: with the published first-pass reservation, two failures
+    # that stay held (a 402 is no refusal) and SAM's liability leave no room
+    # under the run's USD 1 for a third attempt, so the first pass blocks before
+    # it could be given up on. A refused 429 holds nothing (the test above).
+    adapters = ChildLab(LocalBlobs(tmp_path / "blobs"), first_passes=3)
+    workflow, principal, ident, backend = lab(tmp_path, monkeypatch, adapters, "http_402")
+
+    *retried, last = drains(workflow, principal, ident, backend)
+
+    run = last.run
+    step = first_pass_step(run)
+    assert [d.run.blocker for d in retried] == ["model_provider_error"] * 2
+    assert (run.stage, run.blocker) == ("processing_blocked", "cost_budget_exhausted")
+    assert run.attempts[step] == 2 and requests(tmp_path, "first_pass") == 2
+    assert run.usage.reserved_cost_micros + FIRST_PASS_RESERVATION > (
+        run.profile.execution.approved_cost_limit_micros
+    )
+
+
 def last_specimen(workflow, principal, ident):
     return workflow.repository.get(principal.scope, ident)
 
