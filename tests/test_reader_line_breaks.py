@@ -100,6 +100,15 @@ def test_each_break_may_be_written_its_own_way():
     assert output.verbatim_text == "\n".join(lines)
 
 
+def test_an_empty_line_has_a_break_on_each_side():
+    # Exactly one character stands for each break between two lines, so two
+    # spaces are accepted only where the lines have two breaks: around an
+    # empty line. Two spaces at one break are refused (below).
+    lines = ["FMNHINS", "", "4486779"]
+    output = LiteralTranscription(verbatim_text="FMNHINS  4486779", lines=lines)
+    assert output.verbatim_text == "FMNHINS\n\n4486779"
+
+
 @pytest.mark.parametrize(
     ("lines", "text"),
     [
@@ -258,7 +267,7 @@ def test_reader_call_refuses_an_answer_whose_words_differ(monkeypatch):
     assert failure.value.outcome_unknown is False
 
 
-@pytest.mark.parametrize("name", ["space_joined_six_lines", "words_differ"])
+@pytest.mark.parametrize("name", [*OTHER_BREAKS, "newline_joined", "words_differ"])
 def test_production_reader_keeps_the_answer_and_records_its_lines(
     tmp_path, monkeypatch, name
 ):
@@ -304,6 +313,10 @@ def test_production_reader_keeps_the_answer_and_records_its_lines(
     raw = json.loads(blobs.get(observation.raw_ref))
     assert raw[-1]["parts"][0]["args"] == recorded(name)["arguments"]
     assert raw[-1]["provider_response_id"] == recorded(name)["response_id"]
+    # Reading the stored raw answer again by the reader's contract gives the
+    # observation's text: the rewrite is reproducible from what is retained.
+    again = LiteralTranscription.model_validate_json(raw[-1]["parts"][0]["args"])
+    assert again.verbatim_text == observation.literal_text
     # The declaration evidence agrees with the observation's text, so its
     # provenance check passes.
     effective_declarations(specimen, observation, blobs)

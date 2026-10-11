@@ -46,20 +46,28 @@ space (three answers on 2026-10-03; 16 of the 18 answers of run 0c7f52e1 on
 2026-10-11) or as the newline symbol `↵`, U+21B5 (the other two). The exact
 rule refused all 18 of 2026-10-11, so every handwriting-qwen reading of that
 run failed as `model_malformed_response`. Such an answer is now read as its
-lines joined with newlines: each break between two lines may be written as a
-newline, a space or `↵`, and nothing else in `verbatim_text` may differ from
-the lines. An answer whose text and lines differ in anything else is still
-refused: a word (a recorded 2026-10-05 answer read "tap" in one and "trap" in
-the other), a doubled space, a break the lines do not have, text added or
-dropped. A refused answer gets Pydantic AI's one output retry and then fails as
+lines joined with newlines. The rule is exact: `verbatim_text` must be the lines
+in order with exactly one character between each two lines, that character a
+newline, a space or `↵`, and every other character the same as in the lines.
+Two spaces are therefore accepted only where the lines have two breaks, around
+an empty line (lines `["a", "", "b"]` with "a  b" read `"a\n\nb"`). Anything
+else is still refused: a word that differs (a recorded 2026-10-05 answer read
+"tap" in its text and "trap" in its lines), two characters at one break, a break
+the lines do not have, text added or dropped, lines out of order. A refused
+answer gets Pydantic AI's one output retry and then fails as
 `model_malformed_response`, which the workflow retries as a reader's failure
 (`docs/execution/golive/HARNESS.md` section 3).
 
 The schema the readers are sent is unchanged, and the raw response stored with
 an observation keeps the provider's answer as it was sent; the observation's
-text and its declaration evidence hold the newline form. The recorded answers
-are in `tests/fixtures/qwen_reader_answers.json`, replayed by
-`tests/test_reader_line_breaks.py`.
+text and its declaration evidence hold the newline form. Nothing on the
+observation records that a break was rewritten: reading the stored raw answer
+again with `LiteralTranscription` gives the observation's text. The human-review
+release checker (`scripts/qa/live/human_review.py`, `literal_output`) compares a
+retained raw answer with its observation that way, so it applies the same rule
+as the reader. The recorded answers are in
+`tests/fixtures/qwen_reader_answers.json`, replayed by
+`tests/test_reader_line_breaks.py` and `scripts/qa/live/test_human_review.py`.
 
 ## First-pass and harness routes
 
