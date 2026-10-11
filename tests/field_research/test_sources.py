@@ -10,6 +10,7 @@ import io
 import json
 import logging
 import re
+import shlex
 import threading
 import time
 from collections import Counter
@@ -716,39 +717,47 @@ async def test_other_client_errors_are_final(tmp_path, code, status):
 
 
 def unanswered(caplog):
-    """The sources' log lines for unanswered lookups, as key=value maps."""
+    """The sources' log lines for unanswered lookups, as key=value maps; a
+    quoted value is read as the shell reads it."""
     prefix = "Field research lookup unanswered: "
     return [
-        dict(pair.split("=", 1) for pair in record.getMessage().removeprefix(prefix).split())
+        dict(pair.split("=", 1) for pair in shlex.split(record.getMessage().removeprefix(prefix)))
         for record in caplog.records
         if record.name == "specimen_digitization.field_research.sources"
         and record.levelname == "WARNING" and record.getMessage().startswith(prefix)
     ]
 
 
+NO_SENDER = {"server": "-", "via": "-", "html_page": "-", "body": "-"}
+BARE = {"server": "-", "via": "-", "html_page": "no", "body": "-"}
+
+
 TGN_HOST = "services.getty.edu"
+SPARQL_HOST = "vocab.getty.edu"
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("reply", "status", "line"),
+    ("reply", "status", "hosts", "line"),
     [
-        # As Getty TGN may answer Cloud Run's addresses: a refusal, or a redirect,
-        # which is never followed. Either is an outage, and logged.
-        (httpx.Response(403), LookupStatus.AUTHORIZATION,
-         {"http_status": "403", "error": "-", "retry_after": "absent", "attempt": "1"}),
+        # As Getty TGN may answer Cloud Run's addresses: a refusal, which sends
+        # the search to the SPARQL endpoint (here it answers the same), or a
+        # redirect, which is never followed. Either is an outage, and logged.
+        (httpx.Response(403), LookupStatus.AUTHORIZATION, [TGN_HOST, SPARQL_HOST],
+         {"http_status": "403", "error": "-", "retry_after": "absent", "attempt": "1", **BARE}),
         (httpx.Response(302, headers={"Location": "https://www.getty.edu/blocked"}), LookupStatus.PROVIDER,
-         {"http_status": "302", "error": "-", "retry_after": "absent", "attempt": "1"}),
-        (httpx.Response(503, headers={"Retry-After": "1"}), LookupStatus.PROVIDER,
-         {"http_status": "503", "error": "-", "retry_after": "present", "attempt": "3"}),
-        (httpx.ConnectError("refused"), LookupStatus.PROVIDER,
-         {"http_status": "-", "error": "ConnectError", "retry_after": "absent", "attempt": "3"}),
-        (httpx.Response(429, headers={"Retry-After": "30"}), LookupStatus.RATE_LIMITED,
-         {"http_status": "429", "error": "-", "retry_after": "present", "attempt": "1"}),
+         [TGN_HOST], {"http_status": "302", "error": "-", "retry_after": "absent", "attempt": "1", **BARE}),
+        (httpx.Response(503, headers={"Retry-After": "1"}), LookupStatus.PROVIDER, [TGN_HOST, SPARQL_HOST],
+         {"http_status": "503", "error": "-", "retry_after": "present", "attempt": "3", **BARE}),
+        (httpx.ConnectError("refused"), LookupStatus.PROVIDER, [TGN_HOST, SPARQL_HOST],
+         {"http_status": "-", "error": "ConnectError", "retry_after": "absent", "attempt": "3",
+          **NO_SENDER}),
+        (httpx.Response(429, headers={"Retry-After": "30"}), LookupStatus.RATE_LIMITED, [TGN_HOST],
+         {"http_status": "429", "error": "-", "retry_after": "present", "attempt": "1", **BARE}),
     ],
 )
 async def test_every_unanswered_tgn_lookup_is_an_outage_logged_without_its_query(
-    tmp_path, caplog, reply, status, line
+    tmp_path, caplog, reply, status, hosts, line
 ):
     from specimen_digitization.field_research.experts import SOURCE_OUTAGES
 
@@ -756,11 +765,96 @@ async def test_every_unanswered_tgn_lookup_is_an_outage_logged_without_its_query
     with caplog.at_level(logging.WARNING, logger="specimen_digitization.field_research.sources"):
         answer = await tools.lookup("tgn", "Davao Province, Philippines", field_key="province_state")
     assert answer.status is status and status in SOURCE_OUTAGES and answer.evidence is None
-    assert {request.url.host for _, request in server.requests} == {TGN_HOST}
+    assert list(dict.fromkeys(request.url.host for _, request in server.requests)) == hosts
     assert unanswered(caplog) == [
-        {"step": "field_research", "source": "tgn", "host": TGN_HOST, **line}
+        {"step": "field_research", "source": "tgn", "host": host, **line} for host in hosts
     ]
     assert "Davao" not in caplog.text and "Philippines" not in caplog.text
+
+
+# A block page that writes back the request in the ways a server may: as sent,
+# percent-encoded, in HTML entities and JSON escapes, upper case, accented and
+# run into other words.
+ECHOING_BLOCK_PAGE = (
+    "<!DOCTYPE html><html><head><title>403 Forbidden</title></head><body>"
+    "<p>Request blocked</p><p>queries=%7B%22q0%22%3A%7B%22query%22%3A%22Davao%20Province%22</p>"
+    "<p>Davao Province DAVAO PROVINCE D&#97;vao Prov&iacute;nce \\u0044avao D\u00e1vao "
+    "searchDavaoProvinceNow</p>" + "<p>padding</p>" * 40 + "</body></html>"
+)
+
+
+@pytest.mark.asyncio
+async def test_a_refusal_log_says_who_refused_without_a_word_of_the_query(tmp_path, caplog):
+    refusal = httpx.Response(
+        403,
+        headers={"Server": "envoy", "Via": "1.1 google", "Content-Type": "text/html"},
+        text=ECHOING_BLOCK_PAGE,
+    )
+    tools, _, _, _ = make(tmp_path, tgn_refused(refusal))
+    with caplog.at_level(logging.WARNING, logger="specimen_digitization.field_research.sources"):
+        answer = await tools.lookup("tgn", "Davao Province, Philippines", field_key="province_state")
+    assert answer.note.startswith("Getty TGN's search refused the request (HTTP 403)")
+    (line,) = unanswered(caplog)
+    assert (line["host"], line["http_status"]) == (TGN_HOST, "403")
+    assert (line["server"], line["via"], line["html_page"]) == ("envoy", "1.1 google", "yes")
+    assert line["body"].startswith("<!doctype html><html><head><title>403 forbidden</title>")
+    assert len(line["body"]) <= 200 and "[query]" in line["body"]
+    assert len(caplog.records) == 1 and "\n" not in caplog.records[0].getMessage()
+    for word in ("davao", "province", "vao", "dav"):
+        assert word not in caplog.text.lower()
+
+
+@pytest.mark.parametrize(
+    ("headers", "body", "html_page"),
+    [
+        ({}, b"<HTML><body>Access Denied</body></HTML>", True),
+        ({"content-type": "text/html; charset=utf-8"}, b"Forbidden", True),
+        ({"content-type": "application/json"}, b'{"error": "forbidden"}', False),
+        ({}, b"", False),
+    ],
+)
+def test_a_block_page_is_told_by_its_type_or_its_markup(headers, body, html_page):
+    sender = approved_sources._sender("https://vocab.getty.edu/sparql.json?query=x", headers, body)
+    assert sender.html_page is html_page
+
+
+def test_a_sender_without_any_word_of_the_query_keeps_the_rest():
+    url = tgn.SPARQL + "?query=" + "Mount%20Apo%20of%20Davao"
+    sender = approved_sources._sender(
+        url,
+        {"server": "nginx/1.29.8 (Davao)", "via": "1.1 Mount-Apo-proxy"},
+        b'MALFORMED QUERY: luc:term "mount apo" of davao; of-course offline\x00\r\nline two',
+    )
+    assert sender.server == "nginx/1.29.8 ([query])"
+    assert sender.via == "1.1 [query]-[query]-proxy"
+    # A short word goes only where it stands alone; a long one wherever it appears.
+    assert sender.body == 'malformed query: luc:term "[query] [query]" [query] [query]; [query]-course offline\x00 line two'
+    # Global Names Verifier carries the name in the path.
+    gnv = approved_sources._sender(
+        "https://verifier.globalnames.org/api/v1/verifications/Apis%20mellifera", {},
+        b"<html>No verification for Apis mellifera</html>",
+    )
+    assert gnv.body == "<html>no verification for [query] [query]</html>"
+
+
+@pytest.mark.asyncio
+async def test_a_gbif_refusal_log_says_who_refused_without_the_name(tmp_path, caplog):
+    def reply(request):
+        return httpx.Response(
+            403,
+            headers={"Server": "cloudflare", "Content-Type": "text/html"},
+            text=f"<html><body>Blocked: {request.url}</body></html>",
+        )
+
+    tools, _, _, _ = make(tmp_path, reply)
+    with caplog.at_level(logging.WARNING, logger="specimen_digitization.field_research.sources"):
+        answer = await tools.lookup("gbif", "Apis mellifera", field_key="taxon")
+    assert answer.status is LookupStatus.AUTHORIZATION
+    (line,) = unanswered(caplog)
+    assert (line["source"], line["server"], line["via"], line["html_page"]) == (
+        "gbif", "cloudflare", "-", "yes")
+    assert line["body"].startswith("<html><body>blocked: https://")
+    assert "apis" not in caplog.text.lower() and "mellifera" not in caplog.text.lower()
 
 
 @pytest.mark.asyncio
@@ -894,6 +988,106 @@ async def test_gazetteer_answers_and_their_evidence(
     assert [line.split(" | ")[0] for line in lines(evidence)[1:]] == [
         item.name for item in answer.candidates
     ]
+
+
+def tgn_refused(refusal, sparql=None):
+    """Getty TGN as Cloud Run met it on 2026-10-10: its reconciliation service
+    answers `refusal` (a response, or an exception raised as the transport's).
+    The SPARQL endpoint answers `sparql` when given, else as recorded: a name
+    search with the recorded terms of the places the recorded reconciliation
+    found for that name, a records query with the recorded records."""
+    recorded_answers = gazetteers()
+    found = {name.lower(): hits for name, hits in recorded("tgn_reconcile.json")["responses"].items()}
+    terms = recorded("tgn_names.json")["bindings"]
+
+    def reply(request):
+        url = f"https://{request.url.host}{request.url.path}"
+        if url == tgn.RECONCILE or sparql is not None:
+            answer = refusal if url == tgn.RECONCILE else sparql
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+        query = dict(request.url.params)["query"]
+        searched = re.search(r'luc:term "([^"\\]*)"', query)
+        if searched is None:
+            return recorded_answers(request)
+        ids = [hit["id"].split("/")[1] for hit in found[searched[1]]]
+        rows = [row for record in ids for row in terms if row["place"]["value"] == tgn.TGN + record]
+        return {"results": {"bindings": rows}}
+
+    return reply
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("refusal", "reason", "kept"),
+    [
+        (httpx.Response(403, text="RBAC: access denied"), "refused the request (HTTP 403)", 3),
+        (httpx.Response(401), "refused the request (HTTP 401)", 3),
+        (httpx.ConnectError("refused"), "could not be reached after 3 attempts", 2),
+        (httpx.ReadTimeout("slow"), "did not answer after 3 attempts", 2),
+        (httpx.Response(502), "failed with HTTP 502 after 3 attempts", 2),
+    ],
+)
+@pytest.mark.parametrize("query", ["Chimaltenango", "Mount McKinley"])
+async def test_a_refused_tgn_search_finds_the_same_places_through_sparql(
+    tmp_path, refusal, reason, kept, query
+):
+    plain, _, _, _ = make(tmp_path / "plain", gazetteers())
+    expected = await plain.lookup("tgn", query, field_key="city")
+    tools, server, _, blobs = make(tmp_path, tgn_refused(refusal))
+    answer = await tools.lookup("tgn", query, field_key="city")
+    assert answer.status is expected.status is LookupStatus.AMBIGUOUS
+    assert answer.candidates == expected.candidates and len(answer.candidates) > 1
+    assert answer.note == (
+        f"Getty TGN's search {reason}; searched Getty's SPARQL endpoint instead. {expected.note}"
+    )
+    assert server.urls()[-2:] == [SPARQL_HOST + "/sparql.json"] * 2
+    # One record names every response that came back, the refused one too; each
+    # stored response by its digest. A request that got no response has none.
+    record = json.loads(stored(blobs, answer.evidence))
+    assert record["status"] == "ambiguous" and len(record["exchanges"]) == kept
+    if kept == 3:
+        refused = record["exchanges"][0]
+        assert refused["url"].startswith(tgn.RECONCILE) and refused["http_status"] == refusal.status_code
+        assert (refused["raw_ref"], refused["sha256"]) == (None, None)
+    for exchange in record["exchanges"][kept - 2 :]:
+        assert exchange["url"].startswith(tgn.SPARQL) and exchange["http_status"] == 200
+        assert hashlib.sha256(blobs.get(exchange["raw_ref"])).hexdigest() == exchange["sha256"]
+    assert lines(answer.evidence)[1:] == lines(expected.evidence)[1:]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("sparql", "status", "outcome"),
+    [
+        (httpx.Response(403), LookupStatus.AUTHORIZATION, "Getty TGN refused the request with HTTP 403"),
+        (httpx.ConnectError("refused"), LookupStatus.PROVIDER,
+         "Getty TGN could not be reached after 3 attempts"),
+    ],
+)
+async def test_when_the_sparql_endpoint_fails_too_the_tgn_lookup_stays_an_outage(
+    tmp_path, sparql, status, outcome
+):
+    from specimen_digitization.field_research.experts import SOURCE_OUTAGES
+
+    tools, _, _, blobs = make(tmp_path, tgn_refused(httpx.Response(403), sparql))
+    answer = await tools.lookup("tgn", "Chimaltenango", field_key="city")
+    assert answer.status is status and status in SOURCE_OUTAGES
+    assert answer.evidence is None and answer.candidates == () and blobs.puts == []
+    assert answer.note == (
+        "Getty TGN's search refused the request (HTTP 403); searched Getty's SPARQL "
+        f"endpoint instead. {outcome}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_tgn_search_through_sparql_carries_the_place_name_only(tmp_path):
+    tools, server, _, _ = make(tmp_path, tgn_refused(httpx.Response(403)))
+    await tools.lookup("tgn", "Mount McKinley, Alaska, USA", field_key="city")
+    search = dict(server.requests[1][1].url.params)["query"]
+    assert 'luc:term "mount mckinley" ;' in search
+    assert "Alaska" not in search and "USA" not in search
 
 
 @pytest.mark.asyncio

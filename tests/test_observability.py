@@ -44,6 +44,7 @@ def test_configure_observability_uses_metadata_policy_by_default(
         resource_attributes={
             "specimen.telemetry.capture_mode": "metadata",
         },
+        scrubbing=logfire.ScrubbingOptions(callback=observability.keep_lookup_status),
         send_to_logfire=False,
     )
     instrument.assert_called_once_with(

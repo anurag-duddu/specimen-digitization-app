@@ -51,6 +51,46 @@ def test_actual_standing_sdk_configuration_uses_source_production_and_approved_c
             include_model_request_parameters=True, version=5)
 
 
+def scrub(options, attributes):
+    """Span attributes as the SDK's scrubber leaves them under `options`, built
+    as logfire.configure builds it from its ScrubbingOptions."""
+    from logfire._internal.scrubbing import Scrubber
+
+    scrubbing = options["scrubbing"]
+    return Scrubber(scrubbing.extra_patterns, scrubbing.callback).scrub_value(("attributes",), attributes)[0]
+
+
+def test_a_lookup_status_survives_scrubbing_and_nothing_else_does(production, monkeypatch):
+    from specimen_digitization.application.domain import LookupStatus
+
+    configure = Mock()
+    monkeypatch.setattr(logfire, "configure", configure)
+    monkeypatch.setattr(logfire, "instrument_pydantic_ai", Mock())
+    O.configure_production_observability("specimen-worker")
+    options = configure.call_args.kwargs
+    # A lookup tool's returned value, as its execute_tool span records it.
+    response = {"source": "tgn", "query": "Davao", "status": "authorization_error",
+                "note": "Getty TGN refused the request with HTTP 403"}
+    attributes = scrub(options, {
+        "tool_response": json.dumps(response),
+        "status": "authentication_error",
+        "auth_status": "authorization_error",
+        "password": "authorization_error",  # pragma: allowlist secret - a status word, no secret
+        "note": "Authorization: Bearer abc",
+        "nested": {"status": "authorization_error: Bearer xyz", "other": "authorization_error"},
+        "loose": {"status": "authorization"},
+    })
+    assert json.loads(attributes["tool_response"]) == response
+    assert attributes["status"] == "authentication_error"
+    for key in ("auth_status", "password", "note"):
+        assert attributes[key].startswith("[Scrubbed due to "), key
+    assert attributes["nested"]["status"].startswith("[Scrubbed due to ")
+    assert attributes["nested"]["other"].startswith("[Scrubbed due to ")
+    assert attributes["loose"]["status"].startswith("[Scrubbed due to ")
+    for status in LookupStatus:
+        assert scrub(options, {"status": status.value}) == {"status": status.value}
+
+
 @pytest.mark.parametrize("name,value", [("LOGFIRE_BASE_URL", "https://foreign.invalid"),
     ("OTEL_EXPORTER_OTLP_ENDPOINT", "https://foreign.invalid"),
     ("SPECIMEN_TRACE_EXPORT_MODE", "bounded-v1"), ("APP_ENV", "development")])
