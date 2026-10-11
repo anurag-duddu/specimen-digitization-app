@@ -55,6 +55,8 @@ def emitted() -> dict[str, checks.DateCheck]:
         "date_follows_a_determination": run("1950", "det. J. Smith 1950"),
         "date_follows_no_determination": run("25.IV.1948", "25.IV.1948 leg. Smith", field="date_identified"),
         "literal_inside_a_longer_token": run("III-25 1948", "VIII-25 1948"),
+        # Codex's review of #306 at 8a742bb6.
+        "coll_may_name_a_collector_or_a_collection": run("1950", "det. J. Smith 1950 coll. JONES"),
     }
 
 
@@ -74,7 +76,8 @@ def test_each_date_brief_names_how_the_check_reads_a_split_date_and_an_ambiguous
     brief = instructions(key)
 
     for word in ("day_month_order_ambiguous", "split_lines", "year_on_next_line", "year_on_previous_line",
-                 "readers_disagree_on_date", "one_line", "year_literal never settles a value"):
+                 "readers_disagree_on_date", "one_line", "year_literal never settles a value",
+                 "coll_may_name_a_collector_or_a_collection"):
         assert word in brief, (key, word)
     if key == "date_visited_from":
         assert "split_lines_not_adjacent" in brief and "literal_spans_a_line_break" in brief

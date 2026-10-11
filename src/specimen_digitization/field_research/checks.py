@@ -42,6 +42,9 @@ DETERMINATION_FIELD = "date_identified"
 # date; Date Identified settles only from such a date.
 AFTER_A_DETERMINATION = "date_follows_a_determination"
 AFTER_NO_DETERMINATION = "date_follows_no_determination"
+# Words after coll. or col. that may name the collector or a collection ("coll. JONES"),
+# when the date is the determination's only if they name a collection: no field settles.
+COLLECTOR_OR_COLLECTION = "coll_may_name_a_collector_or_a_collection"
 # The date parser's notes for a literal that is (part of) a hyphen-joined code.
 _CODE_NOTES = frozenset({"slide_code", "part_of_hyphenated_token"})
 # The part of a date literal a field takes: Date Visited To takes a range's end
@@ -212,7 +215,10 @@ def parse_date(
     (`DETERMINATION_FIELD`) settles only from such a date, and every other field, or no
     field, takes no such date (`date_follows_a_determination`,
     `date_follows_no_determination`). A determination after the date ("25.IV.1948 leg. et
-    det. J. Smith") leaves it the collecting date. A reading counts only where the
+    det. J. Smith") leaves it the collecting date. When the date is the determination's
+    only if the words after coll. or col. name a collection, and they may name a person
+    ("det. J. Smith 25.IV.1950 coll. JONES"), no field takes it
+    (`coll_may_name_a_collector_or_a_collection`). A reading counts only where the
     literal stands as a token of its own
     (`date_lines.places`); a literal found only inside longer tokens is no date
     (`literal_inside_a_longer_token`).
@@ -264,7 +270,10 @@ def _field_rule(run: _Run, literal: str, text: str, collection: bool) -> _Run:
     its line is no collecting date, and Date Identified takes no other date."""
     if not run.readings:
         return run
-    if collection == date_lines.determination_date(literal, text):
+    owner = date_lines.determination_date(literal, text)
+    if owner is None:
+        return _Run(run.name, LookupStatus.NO_MATCH, (), (COLLECTOR_OR_COLLECTION,))
+    if collection == owner:
         note = AFTER_A_DETERMINATION if collection else AFTER_NO_DETERMINATION
         return _Run(run.name, LookupStatus.NO_MATCH, (), (note,))
     return run

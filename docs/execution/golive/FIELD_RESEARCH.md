@@ -1281,17 +1281,43 @@ row the settled value cites shows them.
   `colector` and `coletor` always name a collector; `coll.` and `col.` only before a
   person's name, perhaps after a determination joined to them (`25.IV.1948 coll. J.
   Smith`, `coll. R.D. Mitchell`, `Coll. Jones`, `coll. & det. J. Jones`, `col. y
-  det. J. Perez`). After `ex` or a museum or collection word, before a museum or
-  collection word (`Mus.`, `Museum`, `Musee` with or without its accent, `Museo`,
-  `Museu`, `Collection`, `Coll.`) or an acronym (two to six letters without
-  periods, two or more of them capitals: `FMNH`, `IAvH`, `MCZ`), or with no name
-  after them, they are a collection or provenance mark and no collector (the
-  coordinator's ruling on the review of 04bbe6936): `det. J. Smith 1950, coll. Mus.
-  Paris`, `det. J. Smith 1950 ex coll. Jones`, `Det. J. Perez 1950, Col. IAvH`,
-  `det. J. Smith 25.IV.1950 Coll. FMNH`, `det. J. Smith 1950 coll. Coll.
-  Oberthur`, `det. J. Smith 1950 coll.` and `det. Bianchi ex coll. Rossi 1950` are
-  Date Identified's, and so are `25.IV.1950 coll. FMNH` and `25.IV.1950 ex coll.
-  Jones` alone on their line under `det. J. Smith`. `Ident.` is a determination only before
+  det. J. Perez`). A name may begin with initials or lower-case particles, and after
+  them its surname may be written in capitals (`coll. van Dyke`, `coll. de la Cruz`,
+  `coll. J. van Dyke`, `coll. H. DYBAS`); a surname with a second capital after a
+  lower-case letter, or a word in capitals longer than six letters, is a name too
+  (`coll. McRae`, `coll. HOOGSTRAAL`). After `ex` or a museum or collection word,
+  before a museum or collection word (`Mus.`, `Museum`, `Musee` with or without its
+  accent, `Museo`, `Museu`, `Collection`, `Coll.`) or an acronym (two to six letters
+  without periods, beginning with two capitals, and not all capitals with a vowel:
+  `FMNH`, `IAvH`, `MCZ`), or with no name after them, they are a collection or
+  provenance mark and no collector (the coordinator's ruling on the review of
+  04bbe6936): `det. J. Smith 1950, coll. Mus. Paris`, `det. J. Smith 1950 ex coll.
+  Jones`, `Det. J. Perez 1950, Col. IAvH`, `det. J. Smith 25.IV.1950 Coll. FMNH`,
+  `det. J. Smith 1950 coll. Coll. Oberthur`, `det. J. Smith 1950 coll.` and `det.
+  Bianchi ex coll. Rossi 1950` are Date Identified's, and so are `25.IV.1950 coll.
+  FMNH` and `25.IV.1950 ex coll. Jones` alone on their line under `det. J. Smith`.
+  A museum or collection word after the date is a mark too, with `coll.` or `col.`
+  after it or not (Codex's review of 8a742bb6): under `det. J. Smith`,
+  `25.IV.1950 Mus. coll. Jones`, `Museum coll. Jones`, `Collection col. Jones`,
+  `ex Mus. coll. Jones`, `Mus. Paris` and `, Collection Oberthur` are Date
+  Identified's.
+
+  Some words after `coll.` or `col.` may name a person or a collection: two to six
+  capitals with a vowel (a surname or an acronym: `JONES`, `USNM`), another
+  lower-case word (`smith`), or initials with no name after them (`U.S.N.M.`). When
+  the date is the determination's only if those words name a collection, no field
+  takes it (Codex's review of 8a742bb6): `det. J. Smith 25.IV.1950 coll. JONES`,
+  `det. J. Smith` above `25.IV.1950 coll. JONES`, `det. J. Smith 25.IV.1950 coll.
+  USNM`, `det. J. Smith` above `25.IV.1950 coll. smith`, `det. J. Smith 25.IV.1948
+  coll. U.S.N.M.` and `det. Bianchi coll. JONES 1950` are `no_match` with
+  `coll_may_name_a_collector_or_a_collection` for every field and for no field
+  (`date_lines.determination_date` answers both ways and finds they differ). A
+  collector beside them decides (`det. J. Smith` above `25.IV.1948 coll. JONES,
+  leg. Rossi` is a collecting date), and without a determination they change
+  nothing (`Guatemala 25.IV.1948 coll. JONES` and `25.IV.1948 coll. smith` are
+  collecting dates).
+
+  `Ident.` is a determination only before
   `by`, `por`, `par`, `von` or a capitalised name that is no marker word:
   `Ident. No. 5, Davao, 25.IV.1948`, and `Ident. No. 5` or `Ident. Nr. 12` above
   `25.IV.1948`, are collecting dates.

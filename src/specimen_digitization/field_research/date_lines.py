@@ -247,7 +247,8 @@ def _determination(line: str) -> bool:
 # the review of #306 at 04bbe6936): they name a collector only before a person's name, never
 # after "ex" ("ex coll. Jones") or before a museum or collection word or an acronym
 # ("coll. Mus. Paris", "Coll. FMNH", "Col. IAvH"). After a museum or collection word they
-# are the same mark ("coll. Coll. Oberthur").
+# are the same mark ("coll. Coll. Oberthur", "Mus. coll. Jones"), and a museum or
+# collection word alone is a mark too ("Mus. Paris": Codex's review of 8a742bb6).
 _NAME_AFTER = frozenset({"coll", "col"})
 _COLLECTION_WORDS = frozenset({"mus", "museum", "musee", "museo", "museu", "collection", "coll"})
 
@@ -260,18 +261,54 @@ def _acronym(token: str) -> bool:
         and sum(letter.isupper() for letter in letters) >= 2)
 
 
-def _person(token: str) -> bool:
-    """Whether a token can begin a person's name: capitalised, and no marker word,
-    museum or collection word, or acronym ("J.", "R.D.", "Jones")."""
-    return (token[:1].isupper() and _word(token) not in _MARKER_WORDS | _COLLECTION_WORDS
-        and not _acronym(token))
+# Initials ("J.", "R.D.", "U.S.N.M.") and the lower-case particles a surname may begin
+# with ("van Dyke", "de la Cruz", "von Wolf").
+_INITIALS = re.compile(r"(?:[^\W\d_]\.)+")
+_PARTICLES = frozenset({"van", "von", "de", "der", "den", "del", "della", "di", "da", "du", "dos", "das",
+    "la", "le", "ten", "ter"})
+_VOWELS = frozenset("AEIOUY")
 
 
-def _collector(line: str) -> bool:
+def _names_a_person(tokens: list[str]) -> bool | None:
+    """Whether the words after coll. or col. (a determination joined to them left out)
+    name a person (Codex's review of #306 at 8a742bb6).
+
+    True for a capitalised name, after initials or lower-case particles or not ("Jones",
+    "McRae", "J. Jones", "R.D. Mitchell", "H. DYBAS", "van Dyke", "J. van Dyke").
+    False for nothing, a museum or collection word, a marker word, or an acronym that
+    begins with two capitals and is no word in capitals with a vowel ("Mus. Paris",
+    "FMNH", "MCZ", "IAvH"). None when the words may be either: a word of two to six
+    capitals with a vowel may be a surname or an acronym ("JONES", "USNM"), another
+    lower-case word may be a name written in lower case ("smith"), and initials with no
+    name after them may be a dotted acronym ("U.S.N.M.")."""
+    words = [token for token in tokens if _word(token) not in _JOINED]
+    if not words:
+        return False
+    index = 0
+    while index < len(words) and words[index][:1].isupper() and _INITIALS.fullmatch(words[index]):
+        index += 1
+    while index < len(words) and words[index].islower() and _word(words[index]) in _PARTICLES:
+        index += 1
+    if index == len(words):
+        return None
+    token = words[index]
+    if _word(token) in _MARKER_WORDS | _COLLECTION_WORDS:
+        return None if index else False
+    if not token[:1].isupper():
+        return None
+    if index == 0 and token[1:2].isupper() and _acronym(token):
+        letters = token.rstrip(".")
+        return None if letters.isupper() and _VOWELS & set(letters) else False
+    return True
+
+
+def _collector(line: str, doubt: bool) -> bool:
     """Whether the text names a collector: leg., legit, colr., collector, colector or
     coletor anywhere, or coll. or col. before a person's name and not after "ex" or a
     museum or collection word. A determination joined to it comes between them
-    ("coll. & det. J. Jones", "col. y det. J. Perez")."""
+    ("coll. & det. J. Jones", "col. y det. J. Perez"). Words after coll. or col. that
+    may name a person or a collection (`_names_a_person`) count as a collector when
+    `doubt` is true."""
     tokens = _TOKEN.findall(line)
     for index, token in enumerate(tokens):
         word = _word(token)
@@ -279,8 +316,10 @@ def _collector(line: str) -> bool:
             continue
         if word in _NAME_AFTER:
             before = _word(tokens[index - 1]) if index else ""
-            rest = [t for t in tokens[index + 1 :] if _word(t) not in _JOINED]
-            if before == "ex" or before in _COLLECTION_WORDS or not (rest and _person(rest[0])):
+            if before == "ex" or before in _COLLECTION_WORDS:
+                continue
+            named = _names_a_person(tokens[index + 1 :])
+            if not (doubt if named is None else named):
                 continue
         return True
     return False
@@ -291,12 +330,13 @@ def _collector(line: str) -> bool:
 _JOINED = _DETERMINATION_WORDS | {"et", "y", "e", "u", "und", "and"}
 
 
-def _collection_mark(text: str) -> bool:
-    """Whether the text begins with a collection or provenance mark: coll. or col., or
-    "ex" and one of them, that names no collector ("coll. FMNH", "ex coll. Jones")."""
+def _collection_mark(text: str, doubt: bool) -> bool:
+    """Whether the text begins with a collection or provenance mark that names no
+    collector: a museum or collection word, or coll. or col., after "ex" or not ("Mus.
+    Paris", "coll. FMNH", "ex coll. Jones", "Mus. coll. Jones")."""
     words = [_word(token) for token in _TOKEN.findall(text)]
     start = 1 if words[:1] == ["ex"] else 0
-    return len(words) > start and words[start] in _NAME_AFTER and not _collector(text)
+    return len(words) > start and words[start] in _COLLECTION_WORDS | _NAME_AFTER and not _collector(text, doubt)
 
 
 def _has_year(text: str) -> bool:
@@ -604,7 +644,7 @@ def one_line_year_problem(literal: str, text: str) -> str | None:
     return ONE_LINE_MEASUREMENT if found else None
 
 
-def determination_date(literal: str, text: str) -> bool:
+def determination_date(literal: str, text: str) -> bool | None:
     """Whether the literal is a determination's date at every place it stands in the text
     (the coordinator's rulings on the reviews of #306 at f89292766, d0707cca and
     04bbe6936):
@@ -630,14 +670,21 @@ def determination_date(literal: str, text: str) -> bool:
 
     A determination after the date ("25.IV.1948 leg. et det. J. Smith", "Bolivia, 25
     IV 1948 det. Smith") does not count, and "Ident." counts only before "by" or a name
-    (`_determination_ends`)."""
+    (`_determination_ends`).
+
+    None when the answer turns on words after coll. or col. that may name a person or a
+    collection (`_names_a_person`): "det. J. Smith 25.IV.1950 coll. JONES". With no
+    determination to claim the date, such words change nothing ("Guatemala 25.IV.1948
+    coll. JONES" is a collecting date)."""
     spans = _spans(text)
     lines = [text[start:end] for start, end in spans]
     found = places(literal, text)
-    return bool(found) and all(_determination_place(text, lines, spans, hit) for hit in found)
+    answers = {bool(found) and all(_determination_place(text, lines, spans, hit, doubt) for hit in found)
+        for doubt in (True, False)}
+    return answers.pop() if len(answers) == 1 else None
 
 
-def _claims(text: str) -> bool:
+def _claims(text: str, doubt: bool) -> bool:
     """Whether a determination in `text` claims the date that comes after the text: its
     last marker has no collector and no complete date after it (a determination claims
     the first complete date after it only)."""
@@ -645,19 +692,20 @@ def _claims(text: str) -> bool:
     if not ends:
         return False
     between = text[ends[-1] :]
-    return not _collector(between) and not _has_year(between)
+    return not _collector(between, doubt) and not _has_year(between)
 
 
 _PUNCTUATION = " \t.,;:()[]"
 
 
-def _determination_place(text: str, lines: list[str], spans: list[tuple[int, int]], hit: re.Match) -> bool:
+def _determination_place(text: str, lines: list[str], spans: list[tuple[int, int]], hit: re.Match,
+        doubt: bool) -> bool:
     first, _, line_start, line_end = _around(spans, hit.start(), hit.end())
     before, after = text[line_start : hit.start()], text[hit.end() : line_end]
-    if _collector(after):
+    if _collector(after, doubt):
         return False
-    if before.strip(_PUNCTUATION) or (after.strip(_PUNCTUATION) and not _collection_mark(after)):
-        return _claims(before)
+    if before.strip(_PUNCTUATION) or (after.strip(_PUNCTUATION) and not _collection_mark(after, doubt)):
+        return _claims(before, doubt)
     # A bare year completes the parts of its date written without a year on the lines
     # above it ("IV-25" above "1952", "3" above "Sept." above "1952"); any other
     # date-only line is a date of its own.
@@ -665,7 +713,7 @@ def _determination_place(text: str, lines: list[str], spans: list[tuple[int, int
     index = first - 1
     while index >= 0 and (not lines[index].strip() or (completes and _yearless_part(lines[index]))):
         index -= 1
-    return index >= 0 and _claims(lines[index])
+    return index >= 0 and _claims(lines[index], doubt)
 
 
 def _yearless_part(line: str) -> bool:

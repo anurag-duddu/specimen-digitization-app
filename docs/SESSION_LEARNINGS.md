@@ -19225,3 +19225,12 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
 - Unresolved:
   - (a) The colonies with reassigned codes that the review named come from its live Wikidata query. The test here is constructed in their shape.
   - (b) One independent review of this head and green required checks: Not confirmed at this entry.
+
+## 2026-10-11 - Dates PR #306: Codex's review of 8a742bb6, and main merged in
+
+- Task: a takeover session finishing #306 (the owner's words: "technical decision you dont need my approval as I'm not technical"). Codex (`codex exec -s read-only`) reviewed 476d4d0d and 8a742bb6 and asked for changes; main abe9dde1a was merged in with `--no-ff` (34398393).
+- The merge: `experts.py` keeps `field=self.task.key` inside main's `self._once(...)`; `_once` caches per expert and each expert has one field, so the cache key needs no field. #306's lines in the three date briefs give their examples as patterns (`<yyyy>`, `<dd>.<Roman month>.<yyyy>`, `det. <Initials> <Surname>`, `Coll. <ACRONYM>`), because main's `test_no_brief_gives_an_example_a_model_could_take_for_label_text` refuses real names, places and years in any brief.
+- Codex's three wrong settles: a museum word before `coll.` (`det. J. Smith` above `25.IV.1950 Mus. coll. Jones` settled Date Visited From); a lower-case particle (`coll. van Dyke` settled Date Identified); an acronym-shaped surname (`coll. JONES` settled Date Identified).
+- Fix: a museum or collection word after the date is a collection mark, with `coll.` after it or not (`Mus. Paris` too). A name may begin with initials or particles, and `McRae` (capital, lower case, capital) is a name, which also fixes the PR body's known `coll. McRae` miss. Words that may be a name or a collection (capitals with a vowel, `JONES`, `USNM`; a lower-case word; initials alone, `U.S.N.M.`) make `date_lines.determination_date` answer both ways; when the answers differ, every field gets `no_match` with `coll_may_name_a_collector_or_a_collection`. With no determination they change nothing.
+- Validation: 15 new cases in `test_date_markers.py` fail against 8a742bb6's `src` and pass at the fix; 6 controls pass on both.
+- Reusable learning: when a token class splits a label two ways (a name or a collection), compute the answer under both readings and refuse only when they differ. Refusing whenever the token appears would also refuse labels where it cannot matter, such as a collecting date with no determination anywhere.

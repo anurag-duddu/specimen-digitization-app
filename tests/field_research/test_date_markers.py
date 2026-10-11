@@ -490,6 +490,14 @@ DETERMINATION_ABOVE = [
     # A collection mark after the date leaves it alone on its line.
     ("det. J. Smith\n25.IV.1950 coll. FMNH", "25.IV.1950", "1950-04-25"),
     ("det. J. Smith\n25.IV.1950 ex coll. Jones", "25.IV.1950", "1950-04-25"),
+    # A museum or collection word before coll. or col. makes them the same mark (Codex's
+    # review of 8a742bb6).
+    ("det. J. Smith\n25.IV.1950 Mus. coll. Jones", "25.IV.1950", "1950-04-25"),
+    ("det. J. Smith\n25.IV.1950 Museum coll. Jones", "25.IV.1950", "1950-04-25"),
+    ("det. J. Smith\n25.IV.1950 Collection col. Jones", "25.IV.1950", "1950-04-25"),
+    ("det. J. Smith\n25.IV.1950 ex Mus. coll. Jones", "25.IV.1950", "1950-04-25"),
+    ("det. J. Smith\n25.IV.1950 Mus. Paris", "25.IV.1950", "1950-04-25"),
+    ("det. J. Smith\n25.IV.1950, Collection Oberthur", "25.IV.1950", "1950-04-25"),
 ]
 
 
@@ -548,6 +556,19 @@ COLLECTING_DATE = [
     ("det. J. Smith\n25.IV.1948 col. J. Perez", "25.IV.1948", "1948-04-25"),
     ("det. J. Smith\n25.IV.1948 coll. FMNH, leg. Jones", "25.IV.1948", "1948-04-25"),
     ("det. Bianchi coll. Rossi 1950", "1950", "1950"),
+    # A surname may begin with lower-case particles, or with a capital, a lower-case
+    # letter and another capital; initials may come first (Codex's review of 8a742bb6).
+    ("det. J. Smith\n25.IV.1950 coll. van Dyke", "25.IV.1950", "1950-04-25"),
+    ("det. J. Smith 25.IV.1950 coll. de la Cruz", "25.IV.1950", "1950-04-25"),
+    ("det. J. Smith\n25.IV.1950 coll. J. van Dyke", "25.IV.1950", "1950-04-25"),
+    ("det. J. Smith 25.IV.1948 coll. McRae", "25.IV.1948", "1948-04-25"),
+    ("det. J. Smith\n25.IV.1948 coll. H. DYBAS", "25.IV.1948", "1948-04-25"),
+    ("det. J. Smith\n25.IV.1948 coll. HOOGSTRAAL", "25.IV.1948", "1948-04-25"),
+    # A word that may be a name or a collection beside a collector: the collector decides.
+    ("det. J. Smith\n25.IV.1948 coll. JONES, leg. Rossi", "25.IV.1948", "1948-04-25"),
+    # With no determination, a word that may be a name or a collection changes nothing.
+    ("Guatemala 25.IV.1948 coll. JONES", "25.IV.1948", "1948-04-25"),
+    ("25.IV.1948 coll. smith", "25.IV.1948", "1948-04-25"),
     # A determination joined to coll. or col. stands between it and the name.
     ("det. J. Smith\n25.IV.1948 coll. & det. J. Jones", "25.IV.1948", "1948-04-25"),
     ("det. J. Smith\n3-IX-1946, col. y det. J. Perez", "3-IX-1946", "1946-09-03"),
@@ -562,6 +583,34 @@ def test_a_date_no_determination_claims_is_the_collecting_date(text, literal, is
         text, literal, iso
     )
     test_date_identified_takes_no_date_a_determination_follows(text, literal, iso)
+
+
+# A word after coll. or col. that may be a surname or a collection: capitals with a vowel
+# ("JONES", "USNM"), another lower-case word ("smith"), or initials with no name after
+# them ("U.S.N.M."). When the determination would claim the date only if the word names
+# a collection, the date belongs to no field for certain, and neither settles (Codex's
+# review of 8a742bb6: never settle a date the label does not support).
+COLLECTOR_OR_COLLECTION = [
+    ("det. J. Smith\n25.IV.1950 coll. JONES", "25.IV.1950"),
+    ("det. J. Smith 25.IV.1950 coll. JONES", "25.IV.1950"),
+    ("det. J. Smith 25.IV.1950 coll. USNM", "25.IV.1950"),
+    ("det. J. Smith\n25.IV.1950 coll. smith", "25.IV.1950"),
+    ("det. J. Smith 25.IV.1948 coll. U.S.N.M.", "25.IV.1948"),
+    ("det. Bianchi coll. JONES 1950", "1950"),
+]
+
+
+@pytest.mark.parametrize(
+    ("text", "literal"), COLLECTOR_OR_COLLECTION, ids=[r[0] for r in COLLECTOR_OR_COLLECTION]
+)
+def test_a_word_that_may_name_a_collector_or_a_collection_settles_no_date_field(text, literal):
+    for field in (None, "date_identified", *COLLECTING):
+        result = date(literal, [text], field=field)
+        assert result.status == LookupStatus.NO_MATCH, (field, result.as_dict())
+        assert result.notes == ("coll_may_name_a_collector_or_a_collection",)
+    for key in ("date_identified", *COLLECTING):
+        for value in ("1950-04-25", "1948-04-25", "1950"):
+            assert row(literal, value, [text], key=key) is None
 
 
 @pytest.mark.parametrize(
