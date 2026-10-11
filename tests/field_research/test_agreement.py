@@ -985,6 +985,28 @@ def test_the_mirror_of_105526328_clears_the_method_as_not_on_the_label(tmp_path)
     assert "collection_method" in cleared_as_not_on_label(run)
 
 
+def test_105526328s_readers_writing_mun_and_mtn_keep_the_precise_location_ambiguous(tmp_path):
+    """Finding 2 (ruling 2): 3B writes "Yepocapa, Mtn." (a mountain) where
+    3A writes "Yepocapa, Mun.". "Mtn." is a word for a place's feature, no
+    misreading of the marker, so the readers disagree on a place and the
+    precise location stays ambiguous, for review, as on 5332ce4e3. On
+    b36341d1 it cleared as not on the label."""
+    from test_step import IN_YEPOCAPA
+
+    rig = label_3(tmp_path, LABEL_3A, LABEL_3B.replace("Mum.", "Mtn."))
+    decisions = apply_scripts(rig, {**IN_YEPOCAPA,
+        "province_state": answering(FieldAnswer(outcome="several_possibilities",
+            options=["chimaltenango", "chimaltenago"], explanation="The readers differ.")),
+        "precise_location": answering(FieldAnswer(outcome="several_possibilities",
+            options=["Yepocapa, Mun.", "Yepocapa, Mtn."], explanation="Mun. or Mtn."))},
+        tools=Gazetteer(rig.blobs))
+    run = rig.specimen.run
+    assert run.fields["city"].state == ValueState.SUPPORTED
+    assert run.fields["precise_location"].state == ValueState.AMBIGUOUS
+    assert "refusal" not in decisions["precise_location"]
+    assert "precise_location" not in cleared_as_not_on_label(run)
+
+
 def test_the_first_pass_leaves_the_run_the_blobs_and_logfire_as_they_were(tmp_path, monkeypatch):
     """The review's probe of A's first pass (_first_pass): the run's record
     and the blob store are unchanged by it, it makes no Logfire event, and

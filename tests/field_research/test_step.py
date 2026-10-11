@@ -2608,6 +2608,12 @@ MARKERS_ONLY = {
     "italy-comune": ({"city": "Trento"}, ["Comune Trento"], '"Comune"'),
     "germany-gemeinde": ({"city": "Ahrweiler"}, ["Gemeinde Ahrweiler"], '"Gemeinde"'),
     "us-county-after-its-name": ({"county": "Cook", "province_state": "Illinois"}, ["Cook Co., Illinois"], '"Co."'),
+    # PR #309's review probes that still clear: a reader's "Mus." is no word for a
+    # place's feature, and "Dist." is a marker itself.
+    "a-reader-writes-mus": ({"city": "Yepocapa"}, ["Yepocapa, Mun.", "Yepocapa, Mus."], '"Mun."'),
+    "sri-lanka-distr-and-dist": ({"county": "Kandy"}, ["Distr. Kandy", "Dist. Kandy"], '"Distr.", "Dist."'),
+    # A municipality marker beside the municipio held as the county.
+    "a-municipio-held-as-the-county": ({"county": "Yepocapa"}, ["Yepocapa, Mun."], '"Mun."'),
 }
 FINER_PLACES = {
     # 105526321's locality beside its settled province.
@@ -2622,6 +2628,37 @@ FINER_PLACES = {
     "the-town-alone": ({"city": "Yepocapa"}, ["Yepocapa"]),
     # Nothing settled to take the town's name as.
     "no-place-settled": ({}, ["Yepocapa, Mun."]),
+    # A review probe that gave None before: no marker.
+    "washington-district-of-columbia": ({"city": "Washington"}, ["Washington, District of Columbia"]),
+}
+# PR #309's review, finding 1 (the coordinator's ruling 1): a unit below the
+# county or the municipio names a place of its own, and a marker counts only
+# next to the settled place of the level it marks. On b36341d1 each gave a
+# marker.
+NO_MARKER_OF_A_SETTLED_LEVEL = {
+    "us-township": ({"county": "Ionia"}, ["Ionia Twp."]),
+    "us-township-and-county": ({"county": "Ionia"}, ["Ionia Twp., Ionia Co."]),
+    "ecuador-parroquia": ({"county": "Mera"}, ["Parr. Mera"]),
+    "panama-corregimiento": ({"county": "Boquete"}, ["Corregimiento Boquete"]),
+    "portugal-freguesia": ({"county": "Sintra"}, ["Freguesia Sintra"]),
+    "sweden-socken": ({"county": "Lund"}, ["Lund socken"]),
+    "poland-gmina": ({"county": "Kazimierz"}, ["Gmina Kazimierz"]),
+    "spain-municipio-in-a-province-of-its-name": ({"province_state": "Cuenca"}, ["Mun. Cuenca"]),
+    # "Co." after a city is no county of it (Colorado's abbreviation, or a county unsettled).
+    "a-city-co": ({"city": "Boulder"}, ["Boulder, Co."]),
+    "a-kreis-beside-a-city": ({"city": "Ahrweiler"}, ["Kreis Ahrweiler"]),
+    "a-province-marker-beside-a-city": ({"city": "Davao"}, ["Prov. Davao"]),
+}
+# PR #309's review, finding 2 (ruling 2): a reader's word for a place's feature
+# one letter from the marker is no misreading of it. On b36341d1 each gave a
+# marker.
+FEATURE_WORDS = {
+    "guatemala-mun-or-mtn": ({"city": "Tajumulco"}, ["Tajumulco, Mun.", "Tajumulco, Mtn."]),
+    "us-co-or-cr": ({"county": "Cook"}, ["Cook Co.", "Cook Cr."]),
+    "us-co-or-ck": ({"county": "Cook"}, ["Cook Co.", "Cook Ck."]),
+    "switzerland-kt-or-mt": ({"province_state": "Washington"}, ["Kt. Washington", "Mt. Washington"]),
+    "the-review-kt-or-mt": ({"city": "Washington"}, ["Kt. Washington", "Mt. Washington"]),
+    "guatemala-mun-or-run": ({"city": "Yepocapa"}, ["Yepocapa, Mun.", "Yepocapa, Run"]),
 }
 
 
@@ -2635,14 +2672,38 @@ def test_a_precise_location_naming_any_other_word_is_a_place(places, texts):
     assert field_step._admin_markers(settled_places(**places), texts) is None
 
 
-def test_the_marker_list_is_folded_words():
-    """Each marker is a word as georef_locality.fold leaves it, so it
-    compares with a label's word whatever its case, accents or period."""
-    from specimen_digitization.application.georef_locality import fold
-    from specimen_digitization.field_research.admin_markers import ADMIN_MARKERS, AFTER_A_NAME
+@pytest.mark.parametrize(("places", "texts"), NO_MARKER_OF_A_SETTLED_LEVEL.values(),
+    ids=NO_MARKER_OF_A_SETTLED_LEVEL)
+def test_a_unit_below_the_county_or_a_marker_of_an_unsettled_level_is_a_place(places, texts):
+    assert field_step._admin_markers(settled_places(**places), texts) is None
 
-    assert all(fold(marker) == marker and len(marker.split()) == 1 for marker in ADMIN_MARKERS)
-    assert AFTER_A_NAME <= ADMIN_MARKERS
+
+@pytest.mark.parametrize(("places", "texts"), FEATURE_WORDS.values(), ids=FEATURE_WORDS)
+def test_a_readers_word_for_a_place_feature_is_no_misread_marker(places, texts):
+    assert field_step._admin_markers(settled_places(**places), texts) is None
+
+
+def test_the_marker_lists_are_folded_words():
+    """Each marker and feature word is a word as georef_locality.fold
+    leaves it, so it compares with a label's word whatever its case, accents
+    or period; each marker marks a settled place field's level; and no unit
+    below the county or municipio that PR #309's review named is a marker."""
+    from specimen_digitization.application.georef_locality import fold
+    from specimen_digitization.field_research.admin_markers import (
+        ADMIN_MARKERS,
+        AFTER_A_NAME,
+        PLACE_FEATURE_WORDS,
+    )
+
+    assert all(fold(word) == word and len(word.split()) == 1 for word in (*ADMIN_MARKERS, *PLACE_FEATURE_WORDS))
+    assert AFTER_A_NAME <= set(ADMIN_MARKERS)
+    assert all(levels and levels <= {"city", "county", "province_state"} for levels in ADMIN_MARKERS.values())
+    below = {"twp", "township", "parish", "parroquia", "parr", "corregimiento", "freguesia", "socken", "sogn",
+        "gmina", "distrito", "taluk", "taluka", "tehsil", "tahsil", "bezirk", "arrondissement", "comuna", "herred"}
+    assert not below & set(ADMIN_MARKERS)
+    assert {"mt", "mtn", "mte", "mts", "cr", "ck", "cerro", "run", "r", "rio", "l", "lago", "lac", "is", "isla",
+        "pt", "pta", "punta", "pk", "peak", "vol", "volcan", "fca", "finca", "hda", "hacienda", "sta", "sto",
+        "san", "b", "bay", "kt"} <= PLACE_FEATURE_WORDS
 
 
 GUATEMALAN_MUN = GUATEMALAN_TOWN + "\nYepocapa, Mun. Chimaltenango"
@@ -2734,6 +2795,52 @@ def test_a_municipio_line_stays_in_review_where_the_profile_does_not_list_the_pr
         tools=Gazetteer(rig.blobs))
     assert run.fields["precise_location"].state == ValueState.AMBIGUOUS
     assert (run.disposition, run.reasons) == (Disposition.REVIEW, unresolved("precise_location"))
+
+
+def test_a_resolved_municipio_line_settles_where_the_profile_does_not_list_the_precise_location(
+        tmp_path, monkeypatch):
+    """PR #309's review, finding 4: with the precise location off the
+    profile's list, the step does not look for a marker, so a resolved
+    answer settles as its text, as before this check, and the record clears."""
+    from specimen_digitization.field_research import contracts
+
+    monkeypatch.setitem(contracts.NOT_ON_LABEL, ("zoology_insects_slides", "1.0.0"),
+        contracts.NOT_ON_LABEL[("zoology_insects_slides", "1.0.0")] - {"precise_location"})
+    rig = build_rig(tmp_path, GUATEMALAN_MUN, candidates=[*COLLECTORS,
+        *(("precise_location", name, MUN_LINE, MUN_LINE) for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    settle(rig, lacking(*ABSENT, **IN_YEPOCAPA, precise_location=answering(MUN_ANSWERS["resolved"])),
+        tools=Gazetteer(rig.blobs))
+    place = run.fields["precise_location"]
+    assert (place.state, place.literal) == (ValueState.SUPPORTED, MUN_LINE)
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+
+
+@pytest.mark.parametrize("expert", ["resolved", "label-lacks-value"])
+def test_a_township_beside_its_settled_county_is_a_precise_location(tmp_path, expert):
+    """PR #309's review, finding 1: "Ionia Twp." beside the settled county
+    "Ionia" names a township, a place inside the county. Resolved, it
+    settles; found missing, the organiser's text keeps it in review; both as
+    on 5332ce4e3. On b36341d1 both cleared as not on the label."""
+    line = "Ionia Twp."
+    text = label_with(**dict.fromkeys(ABSENT, None), country=None, province_state=None, city=None) + "\n" + line
+    rig = build_rig(tmp_path, text, candidates=[*COLLECTORS,
+        *(("precise_location", name, line, line) for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    a_county_settled_before(run, "Ionia")
+    script = answering(resolved(line)) if expert == "resolved" else answering(LACKS)
+    prepared, outcomes, calls = research(rig, lacking(*(set(ABSENT) - {"precise_location"}),
+        precise_location=script))
+    decisions: dict[str, dict] = {}
+    apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    place = run.fields["precise_location"]
+    assert "precise_location" not in cleared_as_not_on_label(run)
+    if expert == "resolved":
+        assert (place.state, place.literal) == (ValueState.SUPPORTED, line)
+        assert decisions["precise_location"] == {}
+    else:
+        assert place.state == ValueState.NOT_PRESENT
+        assert decisions["precise_location"] == {"rule": "A_declined:organiser_found_text"}
 
 
 def a_county_settled_before(run, county):

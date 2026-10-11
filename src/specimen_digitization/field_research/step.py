@@ -1758,11 +1758,11 @@ def _place_settled_below_province(run) -> bool:
     return any((run.fields.get(key) or FieldValue()).state == ValueState.SUPPORTED for key in ("city", "county"))
 
 
-def _settled_place_texts(run) -> list[str]:
+def _settled_place_texts(run) -> list[tuple[str, str]]:
     """The texts of the settled country, province or state, county and city
-    (agreement.PLACE_ORDER; settled as _claims_text says): each value's
-    literal, its value (normalized and parsed) and each reader's verbatim it
-    keeps."""
+    (agreement.PLACE_ORDER; settled as _claims_text says), each with its
+    field: each value's literal, its value (normalized and parsed) and each
+    reader's verbatim it keeps."""
     from .agreement import PLACE_ORDER
 
     human = human_keys(run)
@@ -1770,35 +1770,64 @@ def _settled_place_texts(run) -> list[str]:
     for key in PLACE_ORDER:
         value = run.fields.get(key)
         if value is not None and _claims_text(key, value, human):
-            texts += [value.literal, value.normalized, value.parsed, *value.verbatim_by_observation.values()]
-    return [text for text in dict.fromkeys(texts) if isinstance(text, str) and text.strip()]
+            texts += [(key, text) for text in (value.literal, value.normalized, value.parsed,
+                *value.verbatim_by_observation.values())]
+    return [(key, text) for key, text in dict.fromkeys(texts) if isinstance(text, str) and text.strip()]
 
 
-def _beside_places(text: str, places: Sequence[tuple[str, ...]]) -> tuple[list[str], list[bool]]:
+def _beside_places(text: str, places: Sequence[tuple[str, tuple[str, ...]]]) -> tuple[list[str], list[frozenset]]:
     """The text's words (georef_locality.fold: letter case, accents and
-    punctuation aside) and, for each, whether it is in a run of words that is
-    a settled place's whole text (`places`, each as its words)."""
+    punctuation aside) and, for each, the settled place fields whose whole
+    text (`places`: each field with its text's words) is a run of words
+    holding it; none for a word no settled place's text holds."""
     from specimen_digitization.application.georef_locality import fold
 
     words = fold(text).split()
-    covered = [False] * len(words)
-    for place in places:
+    owners: list[frozenset] = [frozenset()] * len(words)
+    for key, place in places:
         for start in range(len(words) - len(place) + 1):
             if tuple(words[start:start + len(place)]) == place:
-                covered[start:start + len(place)] = [True] * len(place)
-    return words, covered
+                for i in range(start, start + len(place)):
+                    owners[i] = owners[i] | {key}
+    return words, owners
 
 
-def _only_markers(words: Sequence[str], covered: Sequence[bool]) -> bool:
-    """Whether the words that are no settled place's (at least one) are all
-    administrative markers (admin_markers.ADMIN_MARKERS), each where it may
-    stand: one of AFTER_A_NAME ("Co.") only right after a settled place's
-    words ("Cook Co.", never "Co. Chirripo", a hill)."""
+def _marks_a_settled_place(words: Sequence[str], owners: Sequence[frozenset], i: int) -> bool:
+    """Whether word `i` is an administrative marker standing next to the
+    settled place of the level it marks (admin_markers.ADMIN_MARKERS): the
+    word right before it, or right after it, is that place's. One of
+    AFTER_A_NAME ("Co.") counts only after the name ("Cook Co.", never "Co.
+    Chirripo", a hill). "Boulder, Co." beside the settled city "Boulder"
+    marks no settled county, and "Ionia Twp." marks nothing (a township is no
+    marker)."""
     from .admin_markers import ADMIN_MARKERS, AFTER_A_NAME
 
-    left = [i for i, inside in enumerate(covered) if not inside]
-    return bool(left) and all(words[i] in ADMIN_MARKERS
-        and (words[i] not in AFTER_A_NAME or (i > 0 and covered[i - 1])) for i in left)
+    levels = ADMIN_MARKERS.get(words[i], frozenset())
+    before = owners[i - 1] if i > 0 else frozenset()
+    after = owners[i + 1] if i + 1 < len(words) and words[i] not in AFTER_A_NAME else frozenset()
+    return bool(levels & (before | after))
+
+
+def _only_markers(words: Sequence[str], owners: Sequence[frozenset]) -> bool:
+    """Whether the words that are no settled place's (at least one) are all
+    administrative markers next to the settled place of their level
+    (_marks_a_settled_place)."""
+    left = [i for i, inside in enumerate(owners) if not inside]
+    return bool(left) and all(_marks_a_settled_place(words, owners, i) for i in left)
+
+
+def _misread_marker(word: str, marker: str) -> bool:
+    """Whether a reader's word may be a misreading of a marker: letters only,
+    as long as the marker, one letter different ("mum" for "mun"), and no
+    word or abbreviation for a place's feature (admin_markers.
+    PLACE_FEATURE_WORDS: never "mtn", a mountain, "run", a stream, "cr" or
+    "ck", a creek, or "mt" for "kt")."""
+    from specimen_digitization.application.georef_locality import letters_apart
+
+    from .admin_markers import PLACE_FEATURE_WORDS
+
+    return (word.isalpha() and len(word) == len(marker) and letters_apart(word, marker) == 1
+        and word not in PLACE_FEATURE_WORDS)
 
 
 def _admin_markers(run, texts: Sequence[str]) -> str | None:
@@ -1807,35 +1836,37 @@ def _admin_markers(run, texts: Sequence[str]) -> str | None:
     settled places; None otherwise. Each text's words are taken less every run of words
     that is a settled country's, province's or state's, county's or city's
     whole text (_settled_place_texts, _beside_places). What is left of at
-    least one text is administrative markers only (_only_markers: "Mun." of
-    "Yepocapa, Mun. Chimaltenango" beside the settled "Yepocapa" and
-    "Chimaltenango", "Kreis" of "Kreis Ahrweiler", "Distr." of "Distr.
-    Kandy"); what is left of every other text is nothing, markers only, or
-    a reader's misreading of such a text's marker: the same words, with one
-    letter apart (georef_locality.letters_apart) in the marker's place, so
-    105526328's 3B "Yepocapa, Mum." beside 3A's "Yepocapa, Mun.". Any other
-    word left ("E. slope Mt. McKinley", "5 km N of", "Finca Moca") gives
-    None: that text names a place finer than the places settled."""
-    from specimen_digitization.application.georef_locality import fold, letters_apart
+    least one text is administrative markers only, each next to the settled
+    place of the level it marks (_only_markers: "Mun." of "Yepocapa, Mun.
+    Chimaltenango" beside the settled city "Yepocapa" and province
+    "Chimaltenango", "Kreis" of "Kreis Ahrweiler" beside the settled county
+    "Ahrweiler", "Distr." of "Distr. Kandy"); what is left of every other
+    text is nothing, markers only, or the same words with, in a marker's
+    place, a word that may be a misreading of it (_misread_marker:
+    105526328's 3B "Yepocapa, Mum." beside 3A's "Yepocapa, Mun.", but never
+    "Yepocapa, Mtn."). Any other word left ("E. slope Mt. McKinley", "5 km
+    N of", "Finca Moca", "Twp.") gives None: that text names a place of its
+    own, or readers that differ on more than a marker."""
+    from specimen_digitization.application.georef_locality import fold
 
-    places = [place for place in dict.fromkeys(tuple(fold(text).split()) for text in _settled_place_texts(run))
-        if place]
+    places = [(key, place) for key, place in dict.fromkeys((key, tuple(fold(text).split()))
+        for key, text in _settled_place_texts(run)) if place]
     if not places:
         return None
     read = [(text, *_beside_places(text, places)) for text in texts]
-    marked = [(text, words, covered) for text, words, covered in read if _only_markers(words, covered)]
+    marked = [(text, words, owners) for text, words, owners in read if _only_markers(words, owners)]
     if not marked:
         return None
-    for text, words, covered in read:
-        if all(covered) or _only_markers(words, covered):
+    for text, words, owners in read:
+        if all(owners) or _only_markers(words, owners):
             continue
-        if not any(len(words) == len(theirs) and all(word == their or (not inside and letters_apart(word, their) <= 1)
-                for word, their, inside in zip(words, theirs, places_in, strict=True))
-                for _, theirs, places_in in marked):
+        if not any(len(words) == len(theirs) and all(word == their or (not inside and _misread_marker(word, their))
+                for word, their, inside in zip(words, theirs, their_owners, strict=True))
+                for _, theirs, their_owners in marked):
             return None
     shown = []
-    for text, words, covered in marked:
-        markers = {word for word, inside in zip(words, covered, strict=True) if not inside}
+    for text, words, owners in marked:
+        markers = {word for word, inside in zip(words, owners, strict=True) if not inside}
         written = [token.strip(",;:") for token in text.split() if fold(token) in markers]
         shown += written or sorted(markers)
     return ", ".join(f'"{marker}"' for marker in dict.fromkeys(shown))
@@ -1857,16 +1888,18 @@ def _no_finer_place(run, profile: CollectionProfile, tasks_by_key: Mapping[str, 
     (resolved, several_possibilities or sources_cannot_resolve; no failure,
     not the resolver's fallback, not finalized without a model call) cites
     texts each of which a reading writes, and that give nothing beyond the
-    places settled but an administrative marker, or readers that differ
-    only in such a marker (_admin_markers: 105526328's options "Yepocapa,
-    Mun." and "Yepocapa, Mum." beside the settled city "Yepocapa"), has no
-    value on the label: it is not present, its reason says why
-    (NO_FINER_PLACE), and the rows its settling added and the
-    transcript_literal finding of a literal read from the transcript are
-    dropped. Only when the profile lets the precise location clear as not
-    on the label (not_on_label_keys); otherwise the answer's value stands,
-    for review. Returns {"precise_location": the markers as written} for
-    rule A (mark_not_on_label), or {}. Checked once every place is in."""
+    places settled but an administrative marker next to the settled place
+    of its level, or readers that differ only in such a marker
+    (_admin_markers: 105526328's options "Yepocapa, Mun." and "Yepocapa,
+    Mum." beside the settled city "Yepocapa"), has no value on the label:
+    it is not present, its reason says why (NO_FINER_PLACE), and the rows
+    its settling added and the transcript_literal finding of a literal read
+    from the transcript are dropped. Only when the profile lets the precise
+    location clear as not on the label (not_on_label_keys); otherwise the
+    answer is applied as before this check: a resolved answer settles as
+    its text and may clear, and an unsettled one stays for review. Returns
+    {"precise_location": the markers as written} for rule A
+    (mark_not_on_label), or {}. Checked once every place is in."""
     key = "precise_location"
     task, outcome = tasks_by_key.get(key), applied.get(key)
     if (task is None or outcome is None or key not in not_on_label_keys(profile) or outcome.failure is not None
