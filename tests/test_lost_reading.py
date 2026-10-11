@@ -92,6 +92,10 @@ def test_a_lost_reading_is_asked_again_instead_of_parking_the_run(tmp_path, monk
     assert settled.stage == "retry_scheduled" and settled.blocker == LOST_READING
     assert settled.lease_until is None and step not in settled.completed_steps
     assert muse_calls(settled) == [(1, "failed", LOST_READING, "reserved")]
+    # The call may have run to its timeout: that time is spent, not released.
+    timeout = lost.profile.execution.effect_timeout_for_step(step)
+    assert settled.usage.active_seconds - lost.usage.active_seconds == timeout
+    assert lost.usage.reserved_active_seconds - settled.usage.reserved_active_seconds == timeout
     assert done.stage == "finalized" and done.blocker is None, done.blocker
     assert done.attempts[step] == 2 and calls["muse"] == 2
     assert sorted(o.route_id for o in done.observations) == ["handwriting-muse", "handwriting-qwen"]
@@ -149,3 +153,32 @@ def test_a_reconciled_reading_that_keeps_timing_out_ends_and_the_run_goes_on(tmp
     assert run.blocker != UNKNOWN and "adjudicate" in run.completed_steps, run.blocker
     assert [o.route_id for o in run.observations] == [ROUTES[0]]
     assert repo.get(SCOPE, blocked.id).run.blocker != UNKNOWN
+
+
+def test_a_reading_the_ledger_settled_before_its_worker_stopped_keeps_that_cost(tmp_path, monkeypatch):
+    # The worker read the label, settled the program ledger to the reading's
+    # cost, and stopped before saving the run (review of c15d4f73).
+    from specimen_digitization.application import active_graph
+
+    app, principal, specimen_id, calls = dying_lab(tmp_path, monkeypatch)
+    kept_save, stopped = active_graph.save_recoverably, []
+
+    def save(repository, principal, specimen, revision, key, value):
+        if (key.startswith("result:") and not stopped
+                and any(o.route_id == MUSE for o in specimen.run.observations)):
+            stopped.append(key)
+            raise WorkerStopped
+        return kept_save(repository, principal, specimen, revision, key, value)
+
+    monkeypatch.setattr(active_graph, "save_recoverably", save)
+    runs = drain_days(app, principal, specimen_id)
+    settled, done = runs[1], runs[-1]
+    step = step_of(done, 1)
+    assert stopped and calls["muse"] == 2
+    assert settled.stage == "retry_scheduled" and settled.blocker == LOST_READING
+    first = [c for c in done.paid_calls if c["step"] == step][0]
+    assert (first["attempt"], first["outcome"], first["failure_code"], first["cost_basis"]) == (
+        1, "failed", LOST_READING, "computed")
+    assert first["cost_micros"] == 900  # The Muse reading's cost in this lab.
+    assert done.stage == "finalized" and done.attempts[step] == 2
+    assert ledger_total(app) == done.usage.reserved_cost_micros

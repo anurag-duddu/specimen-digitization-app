@@ -1088,9 +1088,11 @@ class Workflow:
         policy = run.profile.execution
         run.lease_until = None
         run.disposition = None
-        run.usage.reserved_active_seconds = max(
-            0, run.usage.reserved_active_seconds - policy.effect_timeout_for_step(step)
-        )
+        # The call may have run to its effect timeout: that time is spent, not
+        # released, so the run's active-time budget still counts it.
+        timeout = policy.effect_timeout_for_step(step)
+        run.usage.active_seconds += min(timeout, run.usage.reserved_active_seconds)
+        run.usage.reserved_active_seconds = max(0, run.usage.reserved_active_seconds - timeout)
         if run.attempts.get(step, 0) >= policy.max_attempts:
             run.blocker = None
             run.completed_steps.append(step)
@@ -1108,20 +1110,37 @@ class Workflow:
             stage=run.stage,
         )
         if not run.profile.synthetic:
-            from .lane_costs import record_step
+            from .lane_costs import record_settled, record_step, settle_step
             from .lane_reservations import step_reservation
 
-            record_step(
-                self.repository,
-                principal,
-                specimen,
-                step,
-                [],
-                0,
-                step_reservation(run, step),
-                self.clock,
-                failure=LOST_READING,
-            )
+            reserved = step_reservation(run, step)
+            settled = self._ledger_settlement(principal, specimen, step)
+            if settled is None:
+                record_step(
+                    self.repository,
+                    principal,
+                    specimen,
+                    step,
+                    [],
+                    0,
+                    reserved,
+                    self.clock,
+                    failure=LOST_READING,
+                )
+            else:
+                # The stopped worker had settled the ledger before saving: the
+                # run's budget is settled to the same known cost.
+                record_settled(
+                    run,
+                    step,
+                    "model",
+                    cost_micros=settled,
+                    failure_code=LOST_READING,
+                    route_id=step.split(":")[-1],
+                )
+                settle_step(
+                    self.repository, principal, specimen, step, reserved, self.clock
+                )
             if self.settle_retained_cost is not None:
                 self.settle_retained_cost(principal, specimen, step)
         specimen.audit.append(
@@ -1142,6 +1161,37 @@ class Workflow:
             f"lost-reading:{revision}",
             digest({"lost_reading": step, "run": run.id}),
         )
+
+    def _ledger_settlement(self, principal, specimen, step):
+        """What the program ledger settled for the step's current attempt, or None.
+
+        None when the run has no program allowance, the ledger cannot be read,
+        or the attempt is reserved there but not settled.
+        """
+        from .domain import Scope
+        from .lane_allowance import ProgramLedger
+
+        run = specimen.run
+        policy = run.profile.execution
+        if policy.program_allowance_micros is None:
+            return None
+        try:
+            ledger = ProgramLedger(
+                self.repository,
+                Scope(
+                    organization_id=principal.scope.organization_id,
+                    collection_id=policy.program_ledger_collection,
+                ),
+                clock=self.clock,
+            )
+            key = ProgramLedger._ordinary_key(
+                specimen.id, run.id, step, run.attempts.get(step, 0)
+            )
+            entry = ledger.read().get("ordinary_effects", {}).get(key)
+        except Exception:  # noqa: BLE001 - an unreadable ledger proves no settlement
+            return None
+        settled = entry.get("settled_micros") if isinstance(entry, dict) else None
+        return settled if type(settled) is int and settled >= 0 else None
 
     def schedule_retry(self, run, step, provider_seconds=None, *, rate_limited=False):
         """Wait before the step's next attempt, or end its retries.

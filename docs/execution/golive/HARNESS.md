@@ -157,12 +157,20 @@ reading's intent (`external_outcome_unknown` and a lease) before the call and
 its result after it. If the worker stops between the two (a job's time limit, a
 lost instance), the lease runs out with no result saved. The next drain after
 the lease settles that attempt as a failed reading, `reading_result_lost`,
-instead of parking the run: it is recorded `failed` in `paid_calls` with its
-reservation held in full, the reading is asked again within `max_attempts`, and
-after the last attempt its step completes with no observation and the record
-goes to review as above (`Workflow._settle_lost_reading`). Any other step whose
-worker stopped, and a reader of the evidence pilot, still parks as
-`external_outcome_unknown`. A run already parked that way stays parked until an
+instead of parking the run (`Workflow._settle_lost_reading`):
+- It is recorded `failed` in `paid_calls` at its full reservation, which stays
+  held.
+- One exception: the program ledger may show that the stopped worker had
+  already settled that attempt. Then the attempt is recorded at that settled
+  cost, and the run's budget is settled to it, so the two agree.
+- Its effect timeout counts as spent active time.
+- The reading is asked again within `max_attempts`. After the last attempt its
+  step completes with no observation and the record goes to review as above.
+
+Any other step whose worker stopped after saving its intent, and a reader of
+the evidence pilot, still parks as `external_outcome_unknown`. So does a
+reading during which the worker's own code (not the child) raises an
+unexpected exception. A run already parked that way stays parked until an
 administrator reconciles it. Specimen 105526322 is one: a release before the
 reader rules blocked it on 2026-10-09. Reconciling reads the label again, and a
 failure of that reading follows the reader rules above, so a reading that keeps
