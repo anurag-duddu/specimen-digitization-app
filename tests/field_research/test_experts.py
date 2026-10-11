@@ -1959,7 +1959,7 @@ RANGE_READINGS = (
 )
 
 
-def resolve_on(readings, script, key, literal):
+def resolve_date_on(readings, script, key, literal):
     field = task(key, candidates=offered(("1A", literal), ("1B", literal)))
     resolver = make_resolver(model_factory=script.model, meter=meter(), date_rules=PILOT_DATES)
     return asyncio.run(resolver(field, readings, CONTEXT, tools=FakeTools()))
@@ -1973,7 +1973,7 @@ def test_the_pilots_split_date_resolves_on_the_whole_literal_the_check_read():
              explanation="IV-25 ends one line and 1948 starts the next."),
     )
 
-    outcome = resolve_on(SPLIT_READINGS, script, "date_visited_from", "IV-25\n1948")
+    outcome = resolve_date_on(SPLIT_READINGS, script, "date_visited_from", "IV-25\n1948")
 
     shown = tool_returns(script.seen[1][0])[0]
     assert shown["status"] == "success"
@@ -1999,7 +1999,7 @@ def test_a_day_and_month_alone_resolve_with_a_year_alone_on_the_next_line():
         dict(outcome="resolved", literal="IV-25", reading_names=["1A", "1B"], value="1948-04-25"),
     )
 
-    outcome = resolve_on(BARE_YEAR_READINGS, script, "date_visited_from", "IV-25")
+    outcome = resolve_date_on(BARE_YEAR_READINGS, script, "date_visited_from", "IV-25")
 
     assert tool_returns(script.seen[1][0])[0]["status"] == "success"
     assert outcome.failure is None and outcome.answer.value == "1948-04-25"
@@ -2018,8 +2018,8 @@ def test_a_range_is_two_dates_the_from_field_takes_its_start_and_the_to_field_it
         dict(outcome="resolved", literal=literal, reading_names=["1A", "1B"], value="1946-09-05"),
     )
 
-    start = resolve_on(RANGE_READINGS, from_script, "date_visited_from", literal)
-    end = resolve_on(RANGE_READINGS, to_script, "date_visited_to", literal)
+    start = resolve_date_on(RANGE_READINGS, from_script, "date_visited_from", literal)
+    end = resolve_date_on(RANGE_READINGS, to_script, "date_visited_to", literal)
 
     # Each field is sent back once for the other end, then settles on its own.
     assert "differs from the literal" in retries(from_script.seen[2][0])[0]
@@ -2039,7 +2039,7 @@ def test_readers_with_different_years_are_named_to_the_expert_and_settle_nothing
              options=["1948-04-25", "1949-04-25"], explanation="The readers give different years."),
     )
 
-    outcome = resolve_on(DISAGREEING_READINGS, script, "date_visited_from", "IV-25")
+    outcome = resolve_date_on(DISAGREEING_READINGS, script, "date_visited_from", "IV-25")
 
     shown = tool_returns(script.seen[1][0])[0]
     assert shown["status"] == "ambiguous"
