@@ -19250,6 +19250,7 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
   - To simulate a worker that stops mid-call, raise a `BaseException` subclass from the adapter. `Workflow._step` catches `Exception` only, so the intent stays saved and nothing else is. The next drain, with the clock past `lease_seconds`, is the recovery path.
   - The priced lab (`test_lane_costs.lab`) drains explicitly; intake in emulator mode does not drain. Its readers return the same text, so a run there has no first pass step.
   - Outside the evidence pilot, the parked state is only reachable for a reading through an exception raised in the worker's own process (the reconcile tests use one) or through a record saved by an older release. A child's failure, including an unmapped exception and a kill, is already an `AdapterFailure`.
+- Correction to the entry "A new run keeps a person's label regions instead of being refused (105526321)" (PR #317): its last line names the "round-3 head". The head whose review was then unconfirmed is round 4's, 78adddb2 (Codex's non-blocking note in its approval of 78adddb2).
 - Unresolved: an exception the worker's own code raises during a reading (not the child's) still parks the run as `external_outcome_unknown` for an administrator. One independent review of this head and green required checks: Not confirmed at this entry.
 ## 2026-10-11 - Dates PR #306: Codex's review of 8a742bb6, and main merged in
 
