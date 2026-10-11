@@ -356,12 +356,14 @@ class _CaptureScreenState extends State<CaptureScreen>
       final XFile file = await camera.capture();
       if (!mounted) return;
       if (_autoIngest) {
+        final XFile normalized = await _normalizeCameraCapture(file);
+        if (!mounted) return;
         if (!_foreground ||
             generation != _cameraGeneration ||
             !identical(camera, _camera)) {
           return;
         }
-        _accept(file);
+        _accept(normalized);
         return;
       }
       final Uint8List bytes = await readCapture(file);
@@ -371,12 +373,8 @@ class _CaptureScreenState extends State<CaptureScreen>
       // Review owns an in-memory copy. The camera package's temporary path is
       // no longer retained, while these bytes remain available until Intake
       // accepts them or the operator retakes the photograph.
-      final XFile review = XFile.fromData(
-        bytes,
-        path: file.name,
-        name: file.name,
-        mimeType: file.mimeType,
-      );
+      final XFile review = await _normalizeCameraCapture(file, bytes: bytes);
+      if (!mounted) return;
       setState(() {
         _review = review;
         _reviewBytes = bytes;
@@ -388,7 +386,7 @@ class _CaptureScreenState extends State<CaptureScreen>
       if (mounted && _foreground) {
         setState(
           () => _captureError =
-              'The photograph could not be read. Take it again, or use the device camera app.',
+              'The photograph could not be read. Take it again, or return to Intake and choose the file.',
         );
       }
     } on CaptureCameraUnavailable catch (error) {
@@ -400,6 +398,50 @@ class _CaptureScreenState extends State<CaptureScreen>
     } finally {
       if (mounted) setState(() => _capturing = false);
     }
+  }
+
+  /// Camera Web can return a Blob-backed [XFile] without a filename or MIME
+  /// type. Intake deliberately admits images by filename extension, so give
+  /// camera output stable image metadata before either submission path sees
+  /// it. Native captures that already carry matching metadata keep their
+  /// original file handle and avoid an unnecessary byte copy.
+  Future<XFile> _normalizeCameraCapture(XFile file, {Uint8List? bytes}) async {
+    final String originalName = file.name.trim();
+    String? extension = _supportedCameraExtension(originalName);
+    extension ??= _cameraExtensionForMime(file.mimeType);
+
+    Uint8List? capturedBytes = bytes;
+    if (extension == null) {
+      capturedBytes ??= await readCapture(file);
+      extension = _cameraExtensionForBytes(capturedBytes);
+    }
+    if (extension == null) {
+      throw const FormatException('Unsupported camera image format.');
+    }
+
+    final String mimeType = _cameraMimeForExtension(extension);
+    final bool keepOriginalName =
+        _isSafeCameraFilename(originalName) &&
+        _supportedCameraExtension(originalName) != null;
+    final String name = keepOriginalName
+        ? originalName
+        : 'camera-photo-${_acceptedCount + 1}.$extension';
+    final String? originalMimeType = file.mimeType?.trim().toLowerCase();
+    if (capturedBytes == null &&
+        name == file.name &&
+        (originalMimeType == null ||
+            originalMimeType.isEmpty ||
+            originalMimeType == mimeType)) {
+      return file;
+    }
+
+    capturedBytes ??= await readCapture(file);
+    return XFile.fromData(
+      capturedBytes,
+      path: name,
+      name: name,
+      mimeType: mimeType,
+    );
   }
 
   void _retake() => setState(() {
@@ -473,6 +515,8 @@ class _CaptureScreenState extends State<CaptureScreen>
         _cropping = false;
         _crop = const Rect.fromLTWH(0.06, 0.06, 0.88, 0.88);
       });
+    } on CaptureEditSizeException catch (error) {
+      if (mounted) setState(() => _editError = error.message);
     } catch (_) {
       if (mounted) {
         setState(
@@ -490,17 +534,6 @@ class _CaptureScreenState extends State<CaptureScreen>
     Navigator.of(context).pop(
       CaptureResult(
         files: List<XFile>.unmodifiable(_accepted),
-        streamed: widget.onAccepted != null,
-      ),
-    );
-  }
-
-  void _fallback() {
-    if (!mounted) return;
-    Navigator.of(context).pop(
-      CaptureResult(
-        files: List<XFile>.unmodifiable(_accepted),
-        unavailable: _unavailable,
         streamed: widget.onAccepted != null,
       ),
     );
@@ -561,8 +594,7 @@ class _CaptureScreenState extends State<CaptureScreen>
     onPopInvokedWithResult: (bool didPop, CaptureResult? _) {
       if (didPop) return;
       // A back gesture keeps what was already accepted. Nothing the
-      // operator confirmed is thrown away by leaving. Only the explicit
-      // fallback action may open another camera.
+      // operator confirmed is thrown away by leaving.
       _finish();
     },
     // No sky and no navigation: the preview is the evidence and it fills the
@@ -611,17 +643,7 @@ class _CaptureScreenState extends State<CaptureScreen>
               ),
               SizedBox(height: ui.space.s6),
               UiButtonRow(
-                primary: UiButton(
-                  label: widget.deviceFallbackAvailable
-                      ? 'Use device camera'
-                      : 'Back to Intake',
-                  onPressed: _fallback,
-                ),
-                secondary: UiButton(
-                  label: 'Cancel',
-                  variant: UiButtonVariant.secondary,
-                  onPressed: _finish,
-                ),
+                primary: UiButton(label: 'Back to Intake', onPressed: _finish),
               ),
             ],
           ),
@@ -1002,6 +1024,70 @@ class _CaptureScreenState extends State<CaptureScreen>
     );
   }
 }
+
+const Set<String> _supportedCameraExtensions = <String>{
+  'jpg',
+  'jpeg',
+  'png',
+  'heic',
+  'heif',
+  'tif',
+  'tiff',
+  'dng',
+};
+
+String? _supportedCameraExtension(String name) {
+  final int dot = name.lastIndexOf('.');
+  if (dot <= 0 || dot == name.length - 1) return null;
+  final String extension = name.substring(dot + 1).toLowerCase();
+  return _supportedCameraExtensions.contains(extension) ? extension : null;
+}
+
+bool _isSafeCameraFilename(String name) {
+  if (name.isEmpty || name.contains('/') || name.contains(r'\')) return false;
+  return !name.codeUnits.any((int unit) => unit < 0x20 || unit == 0x7f);
+}
+
+String? _cameraExtensionForMime(String? mimeType) =>
+    switch (mimeType?.trim().toLowerCase()) {
+      'image/jpeg' || 'image/jpg' => 'jpg',
+      'image/png' => 'png',
+      'image/heic' => 'heic',
+      'image/heif' => 'heif',
+      'image/tiff' => 'tif',
+      'image/dng' || 'image/x-adobe-dng' => 'dng',
+      _ => null,
+    };
+
+String? _cameraExtensionForBytes(Uint8List bytes) {
+  if (bytes.length >= 3 &&
+      bytes[0] == 0xff &&
+      bytes[1] == 0xd8 &&
+      bytes[2] == 0xff) {
+    return 'jpg';
+  }
+  const List<int> png = <int>[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+  if (bytes.length >= png.length) {
+    var matches = true;
+    for (var index = 0; index < png.length; index++) {
+      if (bytes[index] != png[index]) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) return 'png';
+  }
+  return null;
+}
+
+String _cameraMimeForExtension(String extension) => switch (extension) {
+  'jpg' || 'jpeg' => 'image/jpeg',
+  'png' => 'image/png',
+  'heic' || 'heif' => 'image/heic',
+  'tif' || 'tiff' => 'image/tiff',
+  'dng' => 'image/x-adobe-dng',
+  _ => throw const FormatException('Unsupported camera image format.'),
+};
 
 enum _CropDrag { move, topLeft, topRight, bottomLeft, bottomRight }
 

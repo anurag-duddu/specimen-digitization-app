@@ -2,13 +2,42 @@
 ///
 /// The editor always emits a PNG with metadata stripped. The operator sees
 /// the exact pixels that will enter intake; the untouched camera file remains
-/// available until they choose "Send for processing".
+/// available until they choose "Send for processing". Full resolution is
+/// retained whenever the encoded edit fits Intake's upload limit. An
+/// oversized edit is proportionally reduced until that same accepted PNG
+/// format fits, rather than reaching Intake only to be rejected.
 library;
+
+import 'dart:math' as math;
 
 import 'dart:ui' show Rect;
 
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as image;
+
+/// Intake's current per-file upload contract, in decimal bytes.
+///
+/// This is intentionally local to the editor so the capture package does not
+/// depend on the Intake screen that presents it.
+const int captureEditMaximumBytes = 25000000;
+
+/// The edited photograph could not be represented within Intake's size limit.
+class CaptureEditSizeException implements Exception {
+  const CaptureEditSizeException(this.maximumBytes);
+
+  final int maximumBytes;
+
+  String get message {
+    final String limit = maximumBytes == captureEditMaximumBytes
+        ? '25 MB'
+        : '$maximumBytes bytes';
+    return 'This edit could not be kept under $limit. Retake the photograph '
+        'at a smaller size, or send the original unchanged.';
+  }
+
+  @override
+  String toString() => message;
+}
 
 /// The decoded result of one review-screen edit.
 @immutable
@@ -31,6 +60,7 @@ class CaptureEditRequest {
     required this.bytes,
     this.quarterTurns = 0,
     this.crop,
+    this.maximumBytes = captureEditMaximumBytes,
   });
 
   final Uint8List bytes;
@@ -38,6 +68,12 @@ class CaptureEditRequest {
 
   /// A crop in displayed-image fractions, from zero to one.
   final Rect? crop;
+
+  /// Maximum encoded bytes accepted by Intake.
+  ///
+  /// Callers use the production default. The explicit value also lets tests
+  /// exercise the size-safety path without allocating a 25 MB fixture.
+  final int maximumBytes;
 }
 
 /// Pixel dimensions after EXIF orientation is applied for display.
@@ -101,10 +137,52 @@ CaptureEditResult applyCaptureEditSynchronously(CaptureEditRequest request) {
     edited = image.copyRotate(edited, angle: turns * 90);
   }
 
+  return _encodeWithinLimit(edited, request.maximumBytes);
+}
+
+CaptureEditResult _encodeWithinLimit(image.Image edited, int maximumBytes) {
+  if (maximumBytes <= 0) {
+    throw CaptureEditSizeException(maximumBytes);
+  }
+
+  image.Image candidate = edited;
+  double cumulativeScale = 1;
+  Uint8List encoded = image.encodePng(candidate, level: 9, singleFrame: true);
+  while (encoded.lengthInBytes > maximumBytes) {
+    if (candidate.width == 1 && candidate.height == 1) {
+      throw CaptureEditSizeException(maximumBytes);
+    }
+
+    // PNG size is content-dependent, but for photographs it tracks pixel
+    // count closely. The square root converts the required byte ratio to a
+    // linear scale; a small margin avoids repeated near-limit encodes.
+    final double byteScale = math.sqrt(maximumBytes / encoded.lengthInBytes);
+    final double scale = math.min(0.95, byteScale * 0.97);
+    cumulativeScale *= scale;
+    final int width = math.max(1, (edited.width * cumulativeScale).floor());
+    final int height = math.max(1, (edited.height * cumulativeScale).floor());
+    final int nextWidth = math.min(
+      width,
+      candidate.width > 1 ? candidate.width - 1 : 1,
+    );
+    final int nextHeight = math.min(
+      height,
+      candidate.height > 1 ? candidate.height - 1 : 1,
+    );
+
+    candidate = image.copyResize(
+      edited,
+      width: nextWidth,
+      height: nextHeight,
+      interpolation: image.Interpolation.cubic,
+    );
+    encoded = image.encodePng(candidate, level: 9, singleFrame: true);
+  }
+
   return CaptureEditResult(
-    bytes: image.encodePng(edited),
-    width: edited.width,
-    height: edited.height,
+    bytes: encoded,
+    width: candidate.width,
+    height: candidate.height,
   );
 }
 

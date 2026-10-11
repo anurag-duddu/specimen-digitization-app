@@ -14,6 +14,9 @@ import 'package:specimen_ui/specimen_ui.dart';
 import 'widgets/harness.dart' show expectAccessible;
 
 class _FakeCamera implements CaptureCamera {
+  _FakeCamera({this.emptyCaptureMetadata = false});
+
+  final bool emptyCaptureMetadata;
   final StreamController<CapturePreviewReading> _readings =
       StreamController<CapturePreviewReading>.broadcast();
   final List<XFile> captures = <XFile>[];
@@ -36,8 +39,8 @@ class _FakeCamera implements CaptureCamera {
   Future<XFile> capture() async {
     final XFile file = XFile.fromData(
       frame,
-      name: 'camera-${captures.length + 1}.png',
-      mimeType: 'image/png',
+      name: emptyCaptureMetadata ? '' : 'camera-${captures.length + 1}.png',
+      mimeType: emptyCaptureMetadata ? '' : 'image/png',
     );
     captures.add(file);
     return file;
@@ -142,6 +145,26 @@ void main() {
     expect(find.text('1 photograph in this batch'), findsOne);
   });
 
+  testWidgets('auto-ingest names a web capture with empty metadata', (
+    WidgetTester tester,
+  ) async {
+    final _FakeCamera camera = _FakeCamera(emptyCaptureMetadata: true);
+    final List<XFile> accepted = <XFile>[];
+    await _pumpCamera(
+      tester,
+      camera: camera,
+      autoIngest: true,
+      onAccepted: accepted.add,
+    );
+
+    await _takePhotograph(tester);
+
+    expect(accepted, hasLength(1));
+    expect(accepted.single.name, 'camera-photo-1.png');
+    expect(accepted.single.mimeType, 'image/png');
+    expect(await accepted.single.readAsBytes(), _FakeCamera.frame);
+  });
+
   testWidgets('manual mode offers review and editing before submission', (
     WidgetTester tester,
   ) async {
@@ -161,6 +184,23 @@ void main() {
     await tester.pumpAndSettle();
     expect(accepted, hasLength(1));
     expect(find.byKey(const ValueKey<String>('fake-camera-preview')), findsOne);
+  });
+
+  testWidgets('unedited manual send names a web capture with empty metadata', (
+    WidgetTester tester,
+  ) async {
+    final _FakeCamera camera = _FakeCamera(emptyCaptureMetadata: true);
+    final List<XFile> accepted = <XFile>[];
+    await _pumpCamera(tester, camera: camera, onAccepted: accepted.add);
+
+    await _takePhotograph(tester, waitForReview: true);
+    await tester.tap(find.byKey(const ValueKey<String>('capture-send')));
+    await tester.pumpAndSettle();
+
+    expect(accepted, hasLength(1));
+    expect(accepted.single.name, 'camera-photo-1.png');
+    expect(accepted.single.mimeType, 'image/png');
+    expect(await accepted.single.readAsBytes(), _FakeCamera.frame);
   });
 
   testWidgets('the camera toggle changes which capture path is used', (

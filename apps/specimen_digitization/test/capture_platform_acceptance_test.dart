@@ -560,6 +560,8 @@ void main() {
           find.text(CaptureUnavailable.permission.message),
           findsOneWidget,
         );
+        expect(find.text('Use device camera'), findsNothing);
+        expect(find.text('Back to Intake'), findsOneWidget);
         expect(tester.takeException(), isNull);
       });
     },

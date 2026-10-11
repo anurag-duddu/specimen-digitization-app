@@ -16,6 +16,25 @@ Uint8List _png({required int width, required int height}) {
   return Uint8List.fromList(image.encodePng(source));
 }
 
+Uint8List _noisyPng({required int width, required int height}) {
+  final image.Image source = image.Image(width: width, height: height);
+  var value = 0x13579bdf;
+  for (var y = 0; y < height; y++) {
+    for (var x = 0; x < width; x++) {
+      value = (value * 1664525 + 1013904223) & 0xffffffff;
+      source.setPixelRgba(
+        x,
+        y,
+        value & 0xff,
+        (value >> 8) & 0xff,
+        (value >> 16) & 0xff,
+        255,
+      );
+    }
+  }
+  return Uint8List.fromList(image.encodePng(source));
+}
+
 void main() {
   test('dimensions can be decoded off the UI isolate', () async {
     final CaptureDimensions dimensions = await captureDimensions(
@@ -46,6 +65,50 @@ void main() {
     expect(decoded, isNotNull);
     expect(decoded!.width, 80);
     expect(decoded.height, 40);
+  });
+
+  test('an oversized edited PNG is reduced below the Intake limit', () async {
+    const int testLimit = 90000;
+    final CaptureEditResult result = await applyCaptureEdit(
+      CaptureEditRequest(
+        bytes: _noisyPng(width: 240, height: 180),
+        maximumBytes: testLimit,
+      ),
+    );
+
+    expect(result.bytes.lengthInBytes, lessThanOrEqualTo(testLimit));
+    expect(result.width, lessThan(240));
+    expect(result.height, lessThan(180));
+    expect(result.width / result.height, closeTo(240 / 180, 0.02));
+    final image.Image? decoded = image.decodePng(result.bytes);
+    expect(decoded, isNotNull);
+    expect(decoded!.width, result.width);
+    expect(decoded.height, result.height);
+  });
+
+  test('the production edit limit matches Intake exactly', () {
+    expect(captureEditMaximumBytes, 25000000);
+  });
+
+  test('an impossible byte limit fails with clear recovery guidance', () {
+    expect(
+      () => applyCaptureEditSynchronously(
+        CaptureEditRequest(bytes: _png(width: 2, height: 2), maximumBytes: 1),
+      ),
+      throwsA(
+        isA<CaptureEditSizeException>()
+            .having(
+              (CaptureEditSizeException error) => error.message,
+              'message',
+              contains('could not be kept under 1 bytes'),
+            )
+            .having(
+              (CaptureEditSizeException error) => error.message,
+              'recovery',
+              contains('Retake the photograph'),
+            ),
+      ),
+    );
   });
 
   test('a quarter turn swaps output dimensions', () {

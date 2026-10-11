@@ -216,7 +216,7 @@ Future<void> takeOne(WidgetTester tester) async {
           find.text(CaptureUnavailable.failed.message).evaluate().isNotEmpty ||
           find
               .text(
-                'The photograph could not be read. Take it again, or use the device camera app.',
+                'The photograph could not be read. Take it again, or return to Intake and choose the file.',
               )
               .evaluate()
               .isNotEmpty) {
@@ -383,7 +383,7 @@ void main() {
     expect(find.byKey(const ValueKey<String>('fake-preview')), findsOneWidget);
     expect(
       find.text(
-        'The photograph could not be read. Take it again, or use the device camera app.',
+        'The photograph could not be read. Take it again, or return to Intake and choose the file.',
       ),
       findsOneWidget,
     );
@@ -632,7 +632,7 @@ void main() {
     expect(first.disposed, isTrue);
   });
 
-  testWidgets('a camera that will not start explains itself and falls back', (
+  testWidgets('a camera that will not start returns cleanly to Intake', (
     WidgetTester tester,
   ) async {
     final FakeCaptureCamera camera = FakeCaptureCamera(
@@ -669,10 +669,12 @@ void main() {
       findsOneWidget,
       reason: 'the reason is a plain sentence, never a code',
     );
-    await tester.tap(find.text('Use device camera'));
+    expect(find.text('Use device camera'), findsNothing);
+    expect(find.text('Back to Intake'), findsOneWidget);
+    await tester.tap(find.text('Back to Intake'));
     await tester.pumpAndSettle();
-    expect(result!.needsFallback, isTrue);
-    expect(result!.unavailable, CaptureUnavailable.permission);
+    expect(result!.needsFallback, isFalse);
+    expect(result!.unavailable, isNull);
   });
 
   testWidgets(
