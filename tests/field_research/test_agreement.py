@@ -33,7 +33,7 @@ from test_step import (
     settle,
 )
 
-from specimen_digitization.application.domain import Evidence, FieldValue, LookupStatus, ValueState
+from specimen_digitization.application.domain import Disposition, Evidence, FieldValue, LookupStatus, ValueState
 from specimen_digitization.application.integrity import verify_evidence
 from specimen_digitization.field_research import agreement, experts
 from specimen_digitization.field_research import step as field_step
@@ -1730,3 +1730,131 @@ def test_a_parent_named_by_a_country_code_is_the_country_whose_record_carries_th
     refused = agreement.parents_refusal("province_state", candidate, agreement.NEAR_SPELLING,
         written={"country": country}, settled={"country": country})
     assert refused is None if settles else refused.reason == agreement.NOT_IN_COUNTRY
+
+
+# ---- a precise location that is only a settled place's text (round 4) -------
+# 105526329's precise location settled as "Yepocapa", the text of the settled
+# city of the same reading; its brief asks label_lacks_value when no reading
+# writes a locality finer than the other place fields.
+
+def yepocapa_rig(tmp_path, line=None):
+    """A town-only Guatemalan label (test_step.GUATEMALAN_TOWN), with `line`
+    added below it."""
+    from test_step import COLLECTORS, GUATEMALAN_TOWN
+
+    return build_rig(tmp_path, GUATEMALAN_TOWN + (f"\n{line}" if line else ""), candidates=COLLECTORS)
+
+
+def precise(literal):
+    return answering(FieldAnswer(outcome="resolved", literal=literal, reading_names=["1A", "1B"],
+        explanation="Read."))
+
+
+@pytest.mark.parametrize(("literal", "field_name"), [
+    # 105526329: the town itself, the settled city's text.
+    ("Yepocapa", "City"),
+    # The department, the settled province's text.
+    ("Chimaltenango", "Province/State"),
+], ids=["the-city", "the-province"])
+def test_a_precise_location_that_is_only_a_settled_places_text_is_not_on_the_label(tmp_path, literal, field_name):
+    """The answer settles nothing finer than the places: the precise location
+    is not present, as label_lacks_value would make it, and clears as not on
+    the label (rule A), its reason and check row saying why. On f800c656 it
+    settles as the place's text."""
+    from test_step import ABSENT, IN_YEPOCAPA, TODAY, lacking, not_on_label_rows, research
+
+    rig = yepocapa_rig(tmp_path)
+    run = rig.specimen.run
+    prepared, outcomes, calls = research(rig, lacking(*(set(ABSENT) - {"precise_location"}), **IN_YEPOCAPA,
+        precise_location=precise(literal)), tools=Gazetteer(rig.blobs))
+    decisions: dict[str, dict] = {}
+    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    field_step.finalize_fields(run, None, outcomes, specimen=rig.specimen, blobs=rig.blobs, today=TODAY)
+    assert {key: run.fields[key].state for key in ("province_state", "city")} == dict.fromkeys(
+        ("province_state", "city"), ValueState.SUPPORTED)
+    place = run.fields["precise_location"]
+    assert (place.state, place.literal) == (ValueState.NOT_PRESENT, None)
+    assert place.reason == field_step.REPEATS_NOT_ON_LABEL.format(literal=literal, field=field_name) + " Read."
+    assert decisions["precise_location"] == {"refusal": "place_text_only", "rule": "A_not_on_label"}
+    assert "precise_location" in cleared_as_not_on_label(run)
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+    [row] = not_on_label_rows(run, "precise_location")
+    assert row.excerpt == field_step.not_on_label_excerpt("precise_location", field_step.run_readings(run),
+        place=True)
+    assert json.loads(rig.blobs.get(row.raw_ref))["place_field"] == field_name
+    assert "transcript_literal:precise_location" not in [f.reason_code for f in run.findings]
+    verify_evidence(rig.specimen, rig.blobs)
+
+
+@pytest.mark.parametrize("line", ["E. slope Mt. McKinley", "5 km N of Yepocapa", "nr. Yepocapa"])
+def test_a_precise_location_that_adds_anything_to_the_places_still_settles(tmp_path, line):
+    """The controls, as on f800c656: a direction, a distance or "nr." is a
+    locality finer than the settled town."""
+    from test_step import ABSENT, IN_YEPOCAPA, lacking
+
+    rig = yepocapa_rig(tmp_path, line)
+    run = rig.specimen.run
+    settle(rig, lacking(*(set(ABSENT) - {"precise_location"}), **IN_YEPOCAPA, precise_location=precise(line)),
+        tools=Gazetteer(rig.blobs))
+    place = run.fields["precise_location"]
+    assert (place.state, place.literal) == (ValueState.SUPPORTED, line)
+    assert run.fields["city"].state == ValueState.SUPPORTED
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+
+
+def test_a_precise_location_whose_town_did_not_settle_is_unchanged(tmp_path):
+    """The control, as on f800c656: with the city unresolved, no settled
+    place holds "Yepocapa", so it settles as the precise location."""
+    from test_step import ABSENT, IN_YEPOCAPA, NO_TOWN, lacking
+
+    rig = yepocapa_rig(tmp_path)
+    run = rig.specimen.run
+    settle(rig, lacking(*(set(ABSENT) - {"precise_location"}), **{**IN_YEPOCAPA, "city": NO_TOWN},
+        precise_location=precise("Yepocapa")), tools=Gazetteer(rig.blobs))
+    assert run.fields["city"].state == ValueState.UNRESOLVED
+    place = run.fields["precise_location"]
+    assert (place.state, place.literal) == (ValueState.SUPPORTED, "Yepocapa")
+
+
+def test_a_precise_location_that_is_only_the_towns_text_waits_for_a_person_where_rule_a_declines(tmp_path):
+    """Rule A needs every label read whole: with a reader's unreadable span the
+    precise location stays not present, for review, its reason naming the
+    city, as label_lacks_value would leave it."""
+    from test_step import ABSENT, IN_YEPOCAPA, TODAY, lacking, not_on_label_rows, research
+
+    rig = yepocapa_rig(tmp_path)
+    run = rig.specimen.run
+    run.observations[1].unreadable_spans = ["0:3"]
+    prepared, outcomes, calls = research(rig, lacking(*(set(ABSENT) - {"precise_location"}), **IN_YEPOCAPA,
+        precise_location=precise("Yepocapa")), tools=Gazetteer(rig.blobs))
+    decisions: dict[str, dict] = {}
+    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    field_step.finalize_fields(run, None, outcomes, specimen=rig.specimen, blobs=rig.blobs, today=TODAY)
+    place = run.fields["precise_location"]
+    assert (place.state, place.literal) == (ValueState.NOT_PRESENT, None)
+    assert place.reason == field_step.REPEATS_A_PLACE.format(literal="Yepocapa", field="City") + " Read."
+    assert decisions["precise_location"] == {"refusal": "place_text_only",
+        "rule": "A_declined:label_not_read_whole"}
+    assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:precise_location" in run.reasons
+    assert not not_on_label_rows(run, "precise_location")
+
+
+def test_a_precise_location_that_is_only_the_towns_text_is_not_present_off_the_profiles_list(
+        tmp_path, monkeypatch):
+    """Off the profile's not-on-the-label list the value is still what
+    label_lacks_value makes it, not present, and the record waits for a
+    person (rule A applies only to the fields the profile lists)."""
+    from test_step import ABSENT, IN_YEPOCAPA, lacking
+
+    from specimen_digitization.field_research import contracts
+
+    monkeypatch.setitem(contracts.NOT_ON_LABEL, ("zoology_insects_slides", "1.0.0"),
+        contracts.NOT_ON_LABEL[("zoology_insects_slides", "1.0.0")] - {"precise_location"})
+    rig = yepocapa_rig(tmp_path)
+    run = rig.specimen.run
+    settle(rig, lacking(*(set(ABSENT) - {"precise_location"}), **IN_YEPOCAPA, precise_location=precise("Yepocapa")),
+        tools=Gazetteer(rig.blobs))
+    place = run.fields["precise_location"]
+    assert (place.state, place.literal) == (ValueState.NOT_PRESENT, None)
+    assert place.reason == field_step.REPEATS_A_PLACE.format(literal="Yepocapa", field="City") + " Read."
+    assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:precise_location" in run.reasons
