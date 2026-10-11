@@ -203,22 +203,36 @@ handover runs field research instead of the six specialists:
    it now goes to review). Either is logged in one
    WARNING line ("Field research lookup unreadable") with the source, the
    host, the status it was read as and the error's class, never the query.
-   An unreadable answer of GBIF, Getty TGN, Wikidata or NGA stays an outage:
-   it is a body that is not the source's answer or breaks its shape (an
-   invalid identifier, more records than were asked for), not an answer
-   about the query, and a later attempt may read one. These answers that
-   report a hit the parser cannot read are unreadable too, never no match
-   (the second review of #299: readers "Yepocapa" and "Yepocapo" settled
-   on such a Getty TGN answer for "Yepocapo"; the field now goes to
-   review): a Getty TGN reconciliation answer with a hit that is not an
-   object, has an id other than `tgn/<digits>` or has no name, even beside
-   hits that can be read (`georef_tgn.parse_reconcile`); an NGA name search
-   or feature read with a row that has no integer feature id (`ufi`) or no
-   termination field (`georef_nga.parse_search`, `parse_features`); and a
-   Wikidata search none of whose items can be read
-   (`georef_wikidata.parse_search`). A TGN hit of another Getty vocabulary
-   (AAT, ULAN, CONA or IA: a concept, a person, a work or a subject) is no
-   place and is skipped, so an answer of such hits only is no match.
+   An unreadable answer of GBIF (with Catalogue of Life and Global Names
+   Verifier alongside), or an unreadable answer to the search request of
+   Getty TGN, Wikidata or NGA, stays an outage: a body that is not the
+   source's answer or breaks its shape, not an answer about the query; a
+   later attempt may read one. For the gazetteers' search requests these
+   answers that report a hit the parser cannot read are unreadable too,
+   never no match (the second review of #299: readers "Yepocapa" and
+   "Yepocapo" settled on such a Getty TGN answer for "Yepocapo"; the field
+   now goes to review): a Getty TGN reconciliation answer with a hit that
+   is not an object, has an id other than `tgn/<digits>` or has no name,
+   even beside hits that can be read (`georef_tgn.parse_reconcile`); an NGA
+   name search with a row that has no integer feature id (`ufi`) or no
+   termination field (`georef_nga.parse_search`; the feature read after it
+   checks the same, `parse_features`); and a Wikidata search none of whose
+   items can be read (`georef_wikidata.parse_search`). A TGN hit of
+   another Getty vocabulary (AAT, ULAN, CONA or IA: a concept, a person, a
+   work or a subject) is no place and is skipped, so an answer of such hits
+   only is no match.
+
+   **Not yet: the later requests of a Getty TGN, Wikidata or NGA lookup.**
+   Once the search request has found a hit, a reply to a later request
+   that holds no row the parser can use, or no row at all, is still read
+   as no match for the whole lookup and stored as its evidence, and the
+   readers' rule of step 5 can rule the reader's text out on it
+   (`research_harness.historical_gazetteers` ends the lookup with that
+   request's no match). That covers Getty TGN's records and names (a row
+   whose place is not a TGN id, a record with no name, no rows), Wikidata's
+   entities (an entity reported missing or with no label, none returned)
+   and NGA's features and units (a feature row with no name, no rows). The
+   fix is planned in a separate PR.
 
    **A source that cannot be reached** (a lookup whose last attempt was rate
    limited, timed out, was refused or redirected, failed on the server or
@@ -304,7 +318,8 @@ handover runs field research instead of the six specialists:
      every distinct text its readers write, exactly one is confirmed by an
      answer about it, and every other has a captured no_match answer
      about it and no success or ambiguous one. An error, a timeout or a text
-     never asked about is not a no-match. For a place field (country,
+     never asked about is not a no-match; a later gazetteer reply that step
+     4 says is still read as no match is one. For a place field (country,
      province or state, county, city) such a label also settles when every
      text its readers write is confirmed and one authority_id confirms them
      all: the readers name that place ("Yepocapa," and "Yepocapa", both
