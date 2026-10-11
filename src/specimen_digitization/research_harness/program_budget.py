@@ -163,7 +163,9 @@ def settle_ordinary_liability(repository, principal, specimen, step, *, attempt=
     """After record_step, settle only its complete known provider usage.
 
     SAM's request-duration estimate and unknown calls have cost_basis=reserved;
-    neither can refund any liability. Original seed costs remain immutable.
+    neither can refund any liability. A call refused before any work
+    (cost_basis=refused, lane_costs.record_refused) is a known zero and settles.
+    Original seed costs remain immutable.
     """
     from .persistence import DurabilityScope, ResearchStore, SqlConnectStateBackend
     from .production_runtime import research_program_key
@@ -172,7 +174,7 @@ def settle_ordinary_liability(repository, principal, specimen, step, *, attempt=
         calls = [call for call in specimen.run.paid_calls if call["step"] == step and call["attempt"] == number]
         if not calls or any(call["cost_basis"] == "reserved" for call in calls):
             return
-        if any(call["cost_basis"] not in {"computed", "billed"}
+        if any(call["cost_basis"] not in {"computed", "billed", "refused"}
             or type(call["cost_micros"]) is not int or call["cost_micros"] < 0 for call in calls):
             raise ValueError("Unknown ordinary settlement basis")
         scope = DurabilityScope(principal.scope.organization_id, principal.scope.collection_id,
