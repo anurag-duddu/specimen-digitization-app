@@ -243,6 +243,26 @@ def test_only_a_429_to_the_calls_first_request_is_a_refusal(statuses, refused):
     assert failure.value.refused is refused
 
 
+def test_a_refused_call_is_a_known_zero_in_the_runs_actual_cost():
+    # Unlike a reserved call, it never makes the run's actual cost unknown.
+    from specimen_digitization.application.lane_costs import (
+        record_model_usage,
+        record_refused,
+    )
+    from test_lane_costs import QWEN, priced_run
+
+    run = priced_run()
+    run.attempts[QWEN] = 1
+    record_refused(
+        run, QWEN, "model", route_id="handwriting-qwen", failure_code="model_rate_limited"
+    )
+    assert run.usage.actual_cost_micros == 0
+    run.attempts[QWEN] = 2
+    record_model_usage(run, QWEN, "handwriting-qwen", input_tokens=1_000, output_tokens=500)
+    assert run.usage.actual_cost_micros == 550
+    assert [c["cost_basis"] for c in run.paid_calls] == ["refused", "computed"]
+
+
 def test_two_first_pass_refusals_cost_nothing_and_the_third_attempt_is_sent(
     tmp_path, monkeypatch
 ):
