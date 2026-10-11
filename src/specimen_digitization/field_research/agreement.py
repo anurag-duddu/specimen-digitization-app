@@ -136,7 +136,11 @@ fields' outcomes:
    names). A parent is that field when it is the field's settled record (its
    authority_id), or when its name has the comparison key of one of the
    field's texts, of the value the field settled on, or of the expansion it
-   settled through (the step's abbreviation row):
+   settled through (the step's abbreviation row), or, for the country, when
+   its source names it only by a country code (NGA's "GT") that is the ISO
+   3166-1 alpha-2 code the record the country settled on carries (Wikidata's
+   P297 for Guatemala), the same two capital letters, outside ISO's
+   user-assigned codes (lies_in):
    - below the country, the candidate has parents, one of them is the
      country settled for the reading, and for a county or a city one is the
      province settled for it too, when one is. No country settled for the
@@ -161,6 +165,7 @@ a place's readers whose texts one candidate at the field's level confirms.
 
 from __future__ import annotations
 
+import re
 import unicodedata
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -1162,11 +1167,13 @@ class PlaceField:
     """Another place field as one reading writes it: the texts that reading
     writes for it (its candidate literals and verbatims), with, when it is
     settled from that reading's text, the value it settled on and the
-    expansion it settled through (the step's abbreviation row), and that
-    value's authority_id."""
+    expansion it settled through (the step's abbreviation row), that
+    value's authority_id, and, for the country, the ISO 3166-1 alpha-2 code
+    that record carries (SourceCandidate.iso_code), when it carries one."""
 
     texts: tuple[str, ...]
     authority_id: str | None = None
+    iso_code: str | None = None
 
 
 def place_keys(texts: Iterable[str]) -> frozenset[str]:
@@ -1174,12 +1181,34 @@ def place_keys(texts: Iterable[str]) -> frozenset[str]:
     return frozenset(place_name(text) for text in texts) - {""}
 
 
+# ISO 3166-1's user-assigned alpha-2 codes (AA, QM to QZ, XA to XZ, ZZ):
+# the standard gives them no country, so any source may give one a place of
+# its own choosing ("XK" for Kosovo), and two sources need not mean one
+# place by it.
+USER_ASSIGNED = re.compile(r"AA|Q[M-Z]|X[A-Z]|ZZ")
+
+
+def country_code(code: str | None) -> str | None:
+    """A country code lies_in compares: two capital letters, exactly as
+    written, and none of ISO 3166-1's user-assigned codes (USER_ASSIGNED).
+    None for anything else."""
+    if code is None or not re.fullmatch(r"[A-Z]{2}", code) or USER_ASSIGNED.fullmatch(code):
+        return None
+    return code
+
+
 def lies_in(candidate: SourceCandidate, key: str, field: PlaceField) -> bool:
     """Whether a parent of the candidate is this place field: the same record
-    (the field's authority_id), or a name with one of its comparison keys."""
+    (the field's authority_id), a name with one of its comparison keys, or,
+    for a parent its source names only by a country code (PlaceRef.iso_code:
+    NGA's "GT"), the same code as the ISO 3166-1 alpha-2 code the field's
+    settled record carries (Wikidata's P297 "GT" for Guatemala), compared
+    exactly (country_code); never a code guessed from a name."""
     names = place_keys(field.texts)
+    code = country_code(field.iso_code)
     return any((field.authority_id is not None and parent.authority_id == field.authority_id)
-        or place_name(parent.name) in names for parent in candidate.parents)
+        or place_name(parent.name) in names
+        or (code is not None and country_code(parent.iso_code) == code) for parent in candidate.parents)
 
 
 def parents_refusal(key: str, candidate: SourceCandidate, basis: str, *,

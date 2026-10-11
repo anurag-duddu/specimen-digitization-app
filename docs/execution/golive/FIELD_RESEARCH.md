@@ -133,8 +133,9 @@ handover runs field research instead of the six specialists:
    (`step.trace_fields`): the expert's outcome, its failure and fallback,
    the value's state and layer, the run's reason codes for the field, the
    check that refused a resolved answer (or "admin_marker_only": a precise
-   location's answer that gives only an administrative marker, see "Fields
-   the label does not state") and the rule that decided the field (rule A
+   location's answer that gives only an administrative marker, or
+   "place_text_only": one settled on only a settled place's text, see
+   "Fields the label does not state") and the rule that decided the field (rule A
    or B, a derivation, an unreachable source or a timeout on the last
    attempt), and each lookup as source and status. These are codes; the literal,
    value, authority id and reason are added only when the worker captures
@@ -801,7 +802,8 @@ handover runs field research instead of the six specialists:
      Wikidata name each parent by its own record, so TGN's "Pilipinas" is
      the record tgn:1000135 it calls "Philippines" when searched; NGA names a
      first-order unit and a two-letter country code ("GT"), which a
-     country's name does not match; a GEOLocate match lies in its admin unit (the
+     country's name does not match but its record's ISO code may (the
+     country code paragraph below); a GEOLocate match lies in its admin unit (the
      first-level unit outside the USA, the county inside it), the queried
      state inside the USA, and the queried country, the only one GEOLocate
      searches. For each reading the answer names (its label's decided
@@ -850,6 +852,41 @@ handover runs field research instead of the six specialists:
      answer names are read, so a province that only another reader of the
      label writes is not checked. A city is checked against the country and
      the province, never the county.
+
+     A country named only by its code (round 4 of the production test,
+     2026-10-11). 105526329's country settled on Wikidata's Guatemala
+     (Q774), and its province's expert cited NGA's department
+     Chimaltenango, one letter from the label's "Chimaltenago", which NGA
+     puts "in GT": the code matched neither the name nor the record, so the
+     province went to review. NGA's country parent now carries its code
+     (`PlaceRef.iso_code`, `sources._parent`), and a candidate carries the
+     ISO 3166-1 alpha-2 code its own record carries
+     (`SourceCandidate.iso_code`: Wikidata's P297 on any item, NGA's code on
+     any PCL feature; Getty TGN gives none), except a record that names an
+     end date, a dissolved state or a former colony, whose code ISO may
+     since have given to another country (`sources._place`). A code is
+     matched only against the record the country field settled on, and the
+     country settles only on a record at a nation's level
+     (`agreement.placed`): a colony's record settles no country and supplies
+     no code, and a province's record supplies none either. A parent is the
+     settled country when its code is that record's code, compared exactly
+     (`agreement.lies_in`, `agreement.country_code`): two capital letters,
+     never one of ISO's user-assigned codes (AA, QM to QZ, XA to XZ, ZZ),
+     never a code read from a name. The step takes the record's code from
+     the answers the country field received in this attempt
+     (`step._record_code`); a country settled in an earlier attempt or by a
+     person has none there, so a place below it is compared by name and
+     record only, as before. For a country settled on initials it takes the
+     settling candidate's code (`step._corroborate`). Both checks
+     read the code (the country a place lies in, and the places above a
+     near spelling), so 329's
+     province settles one letter off with its `near_spelling` warning,
+     and NGA's town Yepocapa settles inside it, while NGA's department in
+     "GT" still does not settle on a label whose country settled as the
+     Philippines ("PH"). GNS writes ISO codes, not FIPS 10-4, in the
+     recorded capture: Costa Rica's Limon "CR-L", Honduras's Yoro "HN-YO",
+     the Philippines' Davao "PH-DVC", each feature under them inside that
+     country (`test_ngas_unit_codes_start_with_the_iso_country_code`).
    - **105526330's province.** The decided reading writes "Chimaltenago" and
      Getty TGN knows only "Chimaltenango". An answer that takes the other
      reader's "Chimaltenango" as its literal is refused (G19). An answer that
@@ -1372,6 +1409,39 @@ a precise location. When rule A declines (a label not read whole, no city
 or county settled), the record goes to review. A precise location that
 named only the town and its marker therefore no longer settles as that
 text: it clears as not on the label, or waits for a person.
+
+**A precise location that is only a settled place's text (round 4 of the
+production test, 2026-10-11).** 105526329's precise location settled as
+"Yepocapa", the text of its settled city on the same reading, though its
+brief asks label_lacks_value when no reading writes a locality finer than
+the other place fields. Once every place is in (after
+`step._no_finer_place`), a precise location settled on its expert's
+resolved answer whose literal, folded (`georef_locality.fold`: case,
+accents, punctuation and spacing aside, every word kept), is only the text
+of a settled city, county, province or state, or country on a reading the
+answer names (that field's literal standing there as whole tokens, or the
+verbatim it keeps of that reading) is made what label_lacks_value makes
+it: not present, citing the answer's sources, its reason "The readings
+give no place finer than the places settled: "Yepocapa" is the text of
+the City field." followed by the expert's explanation; the rows its
+settling added and its transcript_literal finding are dropped, and its
+trace names "place_text_only" (`step._repeats_a_place`). This holds
+whatever the profile's not-on-the-label list says, as for
+label_lacks_value. Rule A then judges it as a field whose expert found
+none: when it clears, its reason starts "Not on the label: beside the
+places settled, the readings write no finer place;", its check row's
+excerpt says the readings write no finer place (its record names the
+field), and the clearance rules accept that excerpt; when rule A declines
+(a label not read whole) or the profile does not list the precise
+location, the record goes to review. A literal that adds any word to the
+place's text still settles: "nr. Yepocapa", "5 km N of Yepocapa", "E.
+slope Mt. McKinley", "Yepocapa region", and "Co. Chirripo", a hill beside
+the county Chirripo (the review of #312 found that a comparison by place
+name, which drops unit words, took the last two for the place). A marker
+beside a settled place is the marker check's alone: "Yepocapa, Mun." is
+not present where the profile lists the precise location
+(`_no_finer_place`) and settles as its text where it does not, as above.
+"Yepocapa" also settles when the city did not settle.
 
 **A taxon with no genus (B).** A taxon whose label names no genus for its
 morphocode ("sp. 30" with a sex sign, and no genus written beside it)
