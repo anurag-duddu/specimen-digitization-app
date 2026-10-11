@@ -52,7 +52,8 @@ def emitted() -> dict[str, checks.DateCheck]:
         "split_lines_date_not_read": run("Davao\n1948", "Mindanao, Davao\n1948"),
         "range_shaped_like_a_code": run("III-V-46", "Davao III-V-46"),
         # The review of #306 at d305db77e.
-        "one_line_year_may_be_a_determination": run("25 IV 1948", "Bolivia, 25 IV 1948 det. Smith"),
+        "date_follows_a_determination": run("1950", "det. J. Smith 1950"),
+        "date_follows_no_determination": run("25.IV.1948", "25.IV.1948 leg. Smith", field="date_identified"),
         "literal_inside_a_longer_token": run("III-25 1948", "VIII-25 1948"),
     }
 
@@ -80,13 +81,16 @@ def test_each_date_brief_names_how_the_check_reads_a_split_date_and_an_ambiguous
         for word in ("split_lines_year_may_be_a_measurement", "split_lines_year_may_be_a_determination",
                      "split_lines_date_not_read", "one_line_year_not_alone", "one_line_year_may_be_a_measurement",
                      "one_line_holds_another_date", "range_shaped_like_a_code",
-                     "one_line_year_may_be_a_determination", "literal_inside_a_longer_token"):
+                     "date_follows_a_determination", "literal_inside_a_longer_token"):
             assert word in brief, word
         # The brief no longer promises that a year passed as year_literal resolves the date.
         assert "pass that year as year_literal." not in brief
         # A bare month and day settle with a bare year on the adjacent line too (review of
         # #306): the brief said they settle only with a year the literal quotes.
         assert "settle only with the year the literal itself quotes" not in brief
+    if key == "date_identified":
+        # Date Identified settles only from a date a determination stands before on its line.
+        assert "date_follows_no_determination" in brief
 
 
 def test_the_range_briefs_say_which_end_each_field_takes():

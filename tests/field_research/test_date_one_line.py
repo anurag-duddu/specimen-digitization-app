@@ -56,7 +56,6 @@ READ = [
     ("Peru, Cusco, 3.XII,1946", "3.XII,1946", "1946-12-03"),
     ("Colombia, Cali, IV-25 '48", "IV-25 '48", "1948-04-25"),
     # A determination's date written whole on its line reads too (Date Identified's).
-    ("det. J. Smith, IV-25 1950", "IV-25 1950", "1950-04-25"),
     ("det. J. Smith\nIV-25 1950", "IV-25 1950", "1950-04-25"),
     # A measurement with its own number on the line, or any marker on the line above, is not
     # attached to the year (coordinator's ruling on PR #306; 5f2937c85 refused these).
@@ -146,28 +145,6 @@ def test_an_apostrophe_year_records_the_century_rule():
             "one_line_holds_another_date",
         ),
         ("Guatemala, IV-25 1948, 3 Sept.", "IV-25 1948", "one_line_holds_another_date"),
-        # A determination after the year is no collector: for a collecting date (the
-        # default), the year may be the determination's (review of #306).
-        (
-            "Guatemala, IV-25 1948 det. J. Smith",
-            "IV-25 1948",
-            "one_line_year_may_be_a_determination",
-        ),
-        (
-            "Guatemala, IV-25 1948 det R.D. Mitchell",
-            "IV-25 1948",
-            "one_line_year_may_be_a_determination",
-        ),
-        (
-            "Guatemala, IV-25 1948 identified by R.D. Mitchell",
-            "IV-25 1948",
-            "one_line_year_may_be_a_determination",
-        ),
-        (
-            "Guatemala, IV-25 1948 ident. R.D. Mitchell",
-            "IV-25 1948",
-            "one_line_year_may_be_a_determination",
-        ),
         # A unit attached right after the year: after a period or a comma with no number of
         # its own, or starting the line below.
         (
@@ -345,7 +322,6 @@ def test_a_year_a_notation_reads_whole_is_no_year_with_a_unit_attached(
         # A capital M. after the year is an initial; a determination before a year is no unit.
         ("Bolivia, Yungas, 25 IV 1948, M. Smith", "25 IV 1948", "1948-04-25"),
         ("Bolivia, Yungas, 25 IV 1948 M. Smith", "25 IV 1948", "1948-04-25"),
-        ("det. J. Smith 1948", "1948", "1948"),
     ],
 )
 def test_a_year_a_notation_reads_whole_with_no_unit_attached_reads_as_before(

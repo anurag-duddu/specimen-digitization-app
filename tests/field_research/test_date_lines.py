@@ -95,7 +95,8 @@ def test_year_beside_lends_no_year_a_marker_makes_a_measurement_or_a_determinati
         ("IV-25\n1948", "4800 ft. IV-25\n1948", None),
         ("1948\nIV-25", "Alt. 1500 m\n1948\nIV-25 x", None),
         ("1950\nIV-25", "det. J. Smith\n1950\nIV-25 x", date_lines.YEAR_DETERMINATION),
-        ("IV-25\n1948", "x, IV-25\n1948, det. y", date_lines.YEAR_DETERMINATION),
+        # A determination after the year leaves it the date's (review of f89292766).
+        ("IV-25\n1948", "x, IV-25\n1948, det. y", None),
         # The year is not alone and a marker is there too: the year's own reason is named.
         ("IV-25\n1948", "Alt.\nx, IV-25\n1948 m", date_lines.YEAR_NOT_ALONE),
         # The colon after a year below the date is no sentence mark (review 297c, note 2).

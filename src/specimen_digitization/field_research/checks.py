@@ -37,6 +37,10 @@ SPLIT_DATE_NOT_READ = "split_lines_date_not_read"
 INSIDE_A_TOKEN = "literal_inside_a_longer_token"
 # The field that takes a determination's date; every other date field is a collecting date.
 DETERMINATION_FIELD = "date_identified"
+# A date a determination stands before on its line is the determination's, no collecting
+# date; Date Identified settles only from such a date.
+AFTER_A_DETERMINATION = "date_follows_a_determination"
+AFTER_NO_DETERMINATION = "date_follows_no_determination"
 # The date parser's notes for a literal that is (part of) a hyphen-joined code.
 _CODE_NOTES = frozenset({"slide_code", "part_of_hyphenated_token"})
 # The part of a date literal a field takes: Date Visited To takes a range's end
@@ -200,10 +204,13 @@ def parse_date(
     readings that give different results leave the date ambiguous, naming them
     (`reading_names` names them, in the order of `reading_texts`; the default is
     their numbers). `part` is "end" for the field that takes a range's last date.
-    `field` is the field asking: a determination after a one-line date's year makes it
-    no collecting date (`date_lines.one_line_problem`, `one_line_year_problem`), so
-    only Date Identified (`DETERMINATION_FIELD`) reads it; without a field the rule
-    applies. A reading counts only where the literal stands as a token of its own
+    `field` is the field asking. A date that a determination stands before on its line
+    ("det. J. Smith 1950", "det. 25.IV.1950") is the determination's: Date Identified
+    (`DETERMINATION_FIELD`) settles only from such a date, and every other field, or no
+    field, takes no such date (`date_follows_a_determination`,
+    `date_follows_no_determination`). A determination after the date ("25.IV.1948 leg. et
+    det. J. Smith") leaves it the collecting date. A reading counts only where the
+    literal stands as a token of its own
     (`date_lines.places`); a literal found only inside longer tokens is no date
     (`literal_inside_a_longer_token`).
     """
@@ -223,7 +230,9 @@ def parse_date(
     if split is not None:
         runs = [_split_run(literal, split, name, text, rules) for name, text in texts]
     else:
-        runs = [_date_run(literal, name, text, year_literal, rules, collection) for name, text in texts]
+        runs = [_date_run(literal, name, text, year_literal, rules) for name, text in texts]
+    runs = [_field_rule(run, literal, text, collection) for run, (_, text) in zip(runs, texts, strict=True)]
+    if split is None:
         # A year literal must be in the same reading as the date it completes.
         runs = [run for run in runs if run.outcome != LookupStatus.POLICY]
     if not runs:
@@ -247,21 +256,31 @@ def _run(name: str, result: Any, via: tuple[str, ...]) -> _Run:
     return _Run(name, result.outcome, readings, tuple(result.warnings))
 
 
+def _field_rule(run: _Run, literal: str, text: str, collection: bool) -> _Run:
+    """The run as the asking field may take it: a date a determination stands before on
+    its line is no collecting date, and Date Identified takes no other date."""
+    if not run.readings:
+        return run
+    if collection == date_lines.determination_before(literal, text):
+        note = AFTER_A_DETERMINATION if collection else AFTER_NO_DETERMINATION
+        return _Run(run.name, LookupStatus.NO_MATCH, (), (note,))
+    return run
+
+
 def _date_run(literal: str, name: str, text: str, year_literal: str | None,
-        rules: dict | None, collection: bool = True) -> _Run:
+        rules: dict | None) -> _Run:
     """The date parser on one reading's text, with the year the line beside the
     literal gives when the literal itself and the expert give none."""
     result = date_parser(literal, source_text=text, year_literal=year_literal, date_rules=rules,
         year_literal_decides=True)
     if result.outcome == LookupStatus.NO_MATCH and not result.warnings and (
             one := date_lines.one_line_literal(literal)) is not None:
-        return _one_line_run(literal, one, name, text, rules, collection) or _run(name, result, ())
+        return _one_line_run(literal, one, name, text, rules) or _run(name, result, ())
     # A year the literal writes itself is no year when a unit is attached right after it,
     # or an elevation word right before it ("25.IV 1900 m", "Alt. 1948"), whatever
-    # notation reads the date; nor, for a collecting date, when a determination follows
-    # it on its line ("25 IV 1948 det. Smith").
+    # notation reads the date.
     if result.parsed and not result.parsed["year_literal"] and (
-            problem := date_lines.one_line_year_problem(literal, text, collection=collection)):
+            problem := date_lines.one_line_year_problem(literal, text)):
         return _Run(name, LookupStatus.NO_MATCH, (), (problem,))
     via = ("year_literal",) if year_literal and result.parsed and result.parsed["year_literal"] else ()
     if year_literal is None and "year_missing" in result.warnings:
@@ -276,7 +295,7 @@ def _date_run(literal: str, name: str, text: str, year_literal: str | None,
 
 
 def _one_line_run(literal: str, one: tuple[str, str], name: str, text: str,
-        rules: dict | None, collection: bool = True) -> _Run | None:
+        rules: dict | None) -> _Run | None:
     """A day and month, then their year on the same line, that no notation reads
     whole ("IV-25 1948", "IV-25, 1948", "25.IV, 1948"): one date under the rules of
     a year on the line below its date (`date_lines.one_line_problem`). None when the
@@ -289,7 +308,7 @@ def _one_line_run(literal: str, one: tuple[str, str], name: str, text: str,
         # starts, say so; anything else the parser does not read is no date.
         return None if result.parsed or not result.warnings else _Run(
             name, LookupStatus.NO_MATCH, (), tuple(result.warnings))
-    if (problem := date_lines.one_line_problem(literal, text, collection=collection)) is not None:
+    if (problem := date_lines.one_line_problem(literal, text)) is not None:
         return _Run(name, LookupStatus.NO_MATCH, (), (problem,))
     return _run(name, result, ("one_line",))
 
