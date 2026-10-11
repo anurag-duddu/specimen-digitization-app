@@ -1858,3 +1858,74 @@ def test_a_precise_location_that_is_only_the_towns_text_is_not_present_off_the_p
     assert (place.state, place.literal) == (ValueState.NOT_PRESENT, None)
     assert place.reason == field_step.REPEATS_A_PLACE.format(literal="Yepocapa", field="City") + " Read."
     assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:precise_location" in run.reasons
+
+
+# The review of #312 (issue comment 6113525852): the check compared place names,
+# which drop unit words anywhere ("co", "region", "mun"), so a literal that adds
+# such a word to the place's text was taken for the place itself. Each of these
+# settles as on f800c656; at 9a71f4bd each was not present.
+
+def test_a_hill_beside_the_settled_county_of_its_name_still_settles(tmp_path):
+    """"Co. Chirripo" is a hill (Cerro) beside the county Chirripo, settled
+    before; its expert resolves the line."""
+    from test_step import ABSENT, COLLECTORS, a_county_settled_before, lacking, research
+
+    line = "Co. Chirripo"
+    text = label_with(**dict.fromkeys(ABSENT, None), country=None, province_state=None, city=None) + "\n" + line
+    rig = build_rig(tmp_path, text, candidates=[*COLLECTORS,
+        *(("precise_location", name, line, line) for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    a_county_settled_before(run, "Chirripo")
+    prepared, outcomes, calls = research(rig, lacking(*(set(ABSENT) - {"precise_location"}),
+        precise_location=precise(line)))
+    decisions: dict[str, dict] = {}
+    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    place = run.fields["precise_location"]
+    assert (place.state, place.literal) == (ValueState.SUPPORTED, line)
+    assert decisions["precise_location"] == {}
+    assert "precise_location" not in cleared_as_not_on_label(run)
+
+
+def test_a_town_with_a_unit_word_after_it_still_settles(tmp_path):
+    """"Yepocapa region" beside the settled town: a word beyond the town's
+    text, so a locality of its own."""
+    from test_step import ABSENT, IN_YEPOCAPA, lacking
+
+    rig = yepocapa_rig(tmp_path, "Yepocapa region")
+    run = rig.specimen.run
+    settle(rig, lacking(*(set(ABSENT) - {"precise_location"}), **IN_YEPOCAPA,
+        precise_location=precise("Yepocapa region")), tools=Gazetteer(rig.blobs))
+    place = run.fields["precise_location"]
+    assert (place.state, place.literal) == (ValueState.SUPPORTED, "Yepocapa region")
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+
+
+@pytest.mark.parametrize("listed", [False, True], ids=["off-the-list", "listed"])
+def test_a_town_and_its_marker_are_the_marker_checks_alone(tmp_path, monkeypatch, listed):
+    """"Yepocapa, Mun." beside the settled town. Off the profile's list the
+    step does not look for a marker (_no_finer_place), so the resolved line
+    settles as its text and the record clears, as PR #309's review (finding
+    4) established; listed, the marker check makes it not present and it
+    clears as not on the label. Both as on f800c656."""
+    from test_step import ABSENT, IN_YEPOCAPA, TODAY, lacking, research
+
+    from specimen_digitization.field_research import contracts
+
+    if not listed:
+        monkeypatch.setitem(contracts.NOT_ON_LABEL, ("zoology_insects_slides", "1.0.0"),
+            contracts.NOT_ON_LABEL[("zoology_insects_slides", "1.0.0")] - {"precise_location"})
+    rig = yepocapa_rig(tmp_path, "Yepocapa, Mun.")
+    run = rig.specimen.run
+    prepared, outcomes, calls = research(rig, lacking(*(set(ABSENT) - {"precise_location"}), **IN_YEPOCAPA,
+        precise_location=precise("Yepocapa, Mun.")), tools=Gazetteer(rig.blobs))
+    decisions: dict[str, dict] = {}
+    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    field_step.finalize_fields(run, None, outcomes, specimen=rig.specimen, blobs=rig.blobs, today=TODAY)
+    place = run.fields["precise_location"]
+    if listed:
+        assert (place.state, place.literal) == (ValueState.NOT_PRESENT, None)
+        assert decisions["precise_location"] == {"refusal": "admin_marker_only", "rule": "A_not_on_label"}
+    else:
+        assert (place.state, place.literal) == (ValueState.SUPPORTED, "Yepocapa, Mun.")
+        assert decisions.get("precise_location", {}) == {}
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])

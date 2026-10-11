@@ -1967,11 +1967,12 @@ def _repeats_a_place(run, tasks_by_key: Mapping[str, FieldTask], applied: Mappin
     """A precise location settled in this attempt on its expert's resolved
     answer (supported, its literal the answer's) whose literal is only the
     text of a settled city, county, province or state, or country of the
-    same reading: compared as place names (agreement.place_name: case,
-    accents, punctuation and unit words aside), it is that field's settled
-    literal (_claims_text) where that literal stands as whole tokens in a
-    reading the answer names, on one of that field's labels (_value_spans),
-    or the verbatim that field keeps of such a reading. Such text is no
+    same reading: folded (georef_locality.fold: case, accents, punctuation
+    and spacing aside; every word kept, unit words and markers too), it is
+    that field's settled literal (_claims_text) where that literal stands as
+    whole tokens in a reading the answer names, on one of that field's
+    labels (_value_spans), or the verbatim that field keeps of such a
+    reading. Such text is no
     locality more precise than the place fields, for which the precise
     location's brief asks label_lacks_value, so the value is made what that
     answer makes it: not present, citing the sources the answer cites, with
@@ -1981,11 +1982,15 @@ def _repeats_a_place(run, tasks_by_key: Mapping[str, FieldTask], applied: Mappin
     read from the transcript are dropped. Rule A then judges it as a field
     whose expert found none (mark_not_on_label). Whatever the profile's
     not-on-the-label list, as for label_lacks_value. A literal with any
-    word of its own ("nr. Yepocapa", "5 km N of Yepocapa", "E. slope Mt.
-    McKinley") is left as it is, and so is a precise location whose place
-    did not settle. Returns {"precise_location": (the literal, the field)}
+    word beyond the place's text ("nr. Yepocapa", "5 km N of Yepocapa", "E.
+    slope Mt. McKinley", "Yepocapa region", "Co. Chirripo", a hill beside the
+    county Chirripo) is left as it is, and so is a precise location whose
+    place did not settle; a marker beside a settled place is
+    _no_finer_place's. Returns {"precise_location": (the literal, the field)}
     for rule A, or {}. Checked once every place is in."""
-    from .agreement import PLACE_ORDER, place_name
+    from specimen_digitization.application.georef_locality import fold
+
+    from .agreement import PLACE_ORDER
     from .prompts import FIELD_LABELS
 
     key = "precise_location"
@@ -1996,7 +2001,7 @@ def _repeats_a_place(run, tasks_by_key: Mapping[str, FieldTask], applied: Mappin
             or not value.literal or value.literal != outcome.answer.literal):
         return {}
     answer = outcome.answer
-    wanted = place_name(answer.literal)
+    wanted = fold(answer.literal)
     named = [r for r in readings if r.name in answer.reading_names and answer.literal in r.text]
     if not wanted or not named:
         return {}
@@ -2009,7 +2014,7 @@ def _repeats_a_place(run, tasks_by_key: Mapping[str, FieldTask], applied: Mappin
         texts = [place.verbatim_by_observation.get(r.observation_id) for r in named]
         if _value_spans(place, named, evidence):
             texts.append(place.literal)
-        if any(text and place_name(text) == wanted for text in texts):
+        if any(text and fold(text) == wanted for text in texts):
             holder = other
             break
     if holder is None:
