@@ -419,3 +419,102 @@ def test_sqlite_event_alone_is_not_authoritative_carry_proof(tmp_path):
         assert case.dispatcher.calls == calls_before
     finally:
         case.client.close()
+
+
+def _drive(case, until):
+    """Run the local synthetic worker until ``until`` holds or the run stops."""
+    token = actor_uid.set(ACTORS[0])
+    try:
+        principal = Principal(user_id=ACTORS[0], scope=case.current.scope, role="reviewer")
+        current = case.workflow.step(principal, case.current.id)
+        for _ in range(60):
+            if until(current) or current.run.stage in {"finalized", "processing_blocked"}:
+                break
+            current = case.workflow.step(principal, case.current.id)
+        case.current = current
+    finally:
+        actor_uid.reset(token)
+    return current
+
+
+def _finished_classified_run(case):
+    # The fixture's run was never classified; a first new run pins its profile.
+    assert case.reprocess(key="first-classified-run").status_code == 200
+    assert _drive(case, lambda s: False).run.stage == "finalized"
+
+
+def _save_regions(case):
+    current = case.workspace().json()
+    regions = [
+        {"asset_id": current["asset"]["id"], "x": 2, "y": 3, "width": 50, "height": 40,
+            "order": 0, "method": "human", "version": "review-v1"},
+        {"asset_id": current["asset"]["id"], "x": 60, "y": 10, "width": 40, "height": 30,
+            "order": 1, "method": "human", "version": "review-v1"},
+    ]
+    return case.client.post(
+        f"{case.prefix}/specimens/{case.current.id}/regions",
+        headers=case.headers(ACTORS[0], f"regions-{current['revision']}"),
+        json={"expected_revision": current["revision"], "base_run_id": current["active_run_id"],
+            "reason": "Verified both existing label regions", "regions": regions},
+    )
+
+
+def test_http_new_run_after_a_regions_decision_reads_the_persons_regions(case, monkeypatch):
+    # Specimen 105526321: a person's regions decision, a finished run, then
+    # "Start new run". The new run keeps the regions instead of being refused.
+    _finished_classified_run(case)
+    saved = _save_regions(case)
+    assert saved.status_code == 200, saved.text
+    regions = saved.json()["run"]["regions"]
+    region_event = next(e for e in saved.json()["events"] if e["action"] == "review_regions")
+    assert _drive(case, lambda s: False).run.stage == "finalized"
+    finished = case.workspace().json()
+    assert "reprocess" in finished["available_actions"]
+
+    response = case.reprocess(key="reprocess-after-regions")
+    assert response.status_code == 200, response.text
+    fresh = case.workspace().json()
+    assert fresh["active_run_id"] != finished["active_run_id"]
+    assert fresh["run"]["regions"] == regions and fresh["run"]["coverage_confirmed"]
+    assert fresh["run"]["completed_steps"] == ["segment"]
+    event = next(e for e in fresh["events"] if e["action"] == "reprocess")
+    assert event["after"]["preserved_human_regions"] == {
+        "origin_event_id": region_event["id"], "origin_revision": saved.json()["revision"]}
+
+    # The worker pins and classifies afresh, never segments, and reads the regions.
+    segmented = []
+    segment = case.workflow.adapters.segment
+    monkeypatch.setattr(case.workflow.adapters, "segment", lambda s: segmented.append(s.id) or segment(s))
+    assert _drive(case, lambda s: False).run.stage == "finalized"
+    done = case.workspace().json()
+    assert done["active_run_id"] == fresh["active_run_id"] and segmented == []
+    steps = done["run"]["completed_steps"]
+    assert steps[0] == "segment" and steps.count("segment") == 1
+    assert {"pin_dependencies", "classify", "quality_check", "adjudicate", "finalize"} <= set(steps)
+    assert done["run"]["regions"] == regions
+    assert {o["region_id"] for o in done["run"]["observations"]} == {r["id"] for r in regions}
+
+
+def test_summary_does_not_offer_a_new_run_the_server_refuses(case):
+    _finished_classified_run(case)
+    saved = _save_regions(case)
+    assert saved.status_code == 200, saved.text
+    assert _drive(case, lambda s: False).run.stage == "finalized"
+    current = case.workspace().json()
+    region_id = current["run"]["transcripts"][0]["region_id"]
+    corrected = case.client.post(
+        f"{case.prefix}/specimens/{case.current.id}/decisions",
+        headers=case.headers(ACTORS[0], "transcription-unreadable"),
+        json={"expected_revision": current["revision"],
+            "base_record_version_id": f"{current['active_run_id']}:{current['revision']}",
+            "kind": "transcription", "target_id": region_id,
+            "after": {"state": "unreadable", "text": None},
+            "reason": "The ink is too faded to read"},
+    )
+    assert corrected.status_code == 200, corrected.text
+    # A person's transcript correction cannot be carried and is never erased:
+    # the server refuses a new run, so the summary does not offer one.
+    assert "reprocess" not in case.workspace().json()["available_actions"]
+    refused = case.reprocess(key="reprocess-over-transcript")
+    assert refused.status_code == 422, refused.text
+    assert "preserved_human_field_provenance_unavailable" in refused.text

@@ -17,6 +17,7 @@ from .storage import ReviewDecisionProof, canonical_json, digest
 from ..research_harness.contracts import FieldKey, FrozenRecord
 
 KEY = "preserved_human_fields"
+REGIONS = "preserved_human_regions"
 INVALID = "preserved_human_field_provenance_unavailable"
 LIMIT = 1024 * 1024
 
@@ -184,12 +185,7 @@ def _latest(repository, specimen, proofs):
             snapshots[p.resulting_revision] = repository.version(specimen.scope, specimen.id, p.resulting_revision)
         original = snapshots[p.resulting_revision]
         if event.action == "review_regions":
-            # This field-only carry has no authority to recreate a still-current
-            # human geometry decision as a fresh default/model segmentation.
-            if (original.run.id == specimen.run.id
-                    and event.after.get("run_id") == original.run.id
-                    and original.run.regions == specimen.run.regions):
-                _fail()
+            # Geometry, not a field: a fresh run keeps it (human_regions).
             continue
         if event.action == "review_transcription":
             # Only a still-current correction would be erased. An obsolete
@@ -210,6 +206,29 @@ def _latest(repository, specimen, proofs):
         if key not in latest or order > latest[key][0]:
             latest[key] = (order, p, original)
     return latest
+
+
+def human_regions(repository, specimen, proofs):
+    """The proved regions decision whose regions the active run still holds, or None.
+
+    A ``review_regions`` decision starts a run on the reviewer's own regions. While
+    the active run holds exactly those regions (its own, or a copy an earlier fresh
+    run kept), a fresh run keeps them instead of segmenting again, so a person's
+    geometry is never replaced by a model's. A run that has not segmented yet, or
+    that segmented again after a classification change, holds no person's regions.
+    """
+    run = specimen.run
+    if "segment" not in run.completed_steps:
+        return None
+    found = None
+    for p in proofs:
+        if p.event.action != "review_regions" or not isinstance(p.event.after, dict):
+            continue
+        original = repository.version(specimen.scope, specimen.id, p.resulting_revision)
+        if (p.event.after.get("run_id") == original.run.id and original.run.regions == run.regions
+                and (found is None or p.resulting_revision > found.resulting_revision)):
+            found = p
+    return found
 
 
 def _source(repository, specimen, blobs):
@@ -333,10 +352,41 @@ def prepare(repository, specimen, target_run_id, event, blobs):
         result[key] = carry.model_copy(update={"transitions": (*carry.transitions, transition)})
     if result and set(result) == set(specimen.run.fields):
         raise ValueError("preserved_human_fields_no_new_research_work")
+    regions = human_regions(repository, specimen, proofs)
     event.before = {"source_run_id": specimen.run.id, "source_revision": specimen.version}
     event.after = {"target_run_id": target_run_id,
         "preserved_human_fields": {k: digest(v.model_dump(mode="json")) for k, v in sorted(result.items())}}
+    if regions is not None:
+        # The caller starts the fresh run on the active run's regions (keep_regions).
+        event.after[REGIONS] = {"origin_event_id": regions.event.id,
+            "origin_revision": regions.resulting_revision}
     return result
+
+
+def keep_regions(event, source, target):
+    """Start ``target`` on ``source``'s human regions when prepare kept them.
+
+    The fresh run is pinned and classified afresh, then skips segmentation and
+    reads from those regions, as the run a regions decision starts does
+    (api.regions): the person confirmed their coverage.
+    """
+    if REGIONS not in event.after:
+        return
+    target.regions = [region.model_copy(deep=True) for region in source.regions]
+    target.coverage_confirmed = True
+    target.completed_steps = ["segment"]
+
+
+def reprocess_hold(specimen):
+    """The refusal prepare gives, when the record alone shows it; otherwise None.
+
+    A person's transcript correction in the active run is never erased by a fresh
+    run (_latest), so prepare refuses. summary() reads this, so it does not offer
+    a fresh run the server refuses. Refusals that need proofs stay the server's.
+    """
+    if any(t.actor is not None for t in specimen.run.transcripts):
+        return INVALID
+    return None
 
 
 def _transition(repository, specimen, carry, t, index):
