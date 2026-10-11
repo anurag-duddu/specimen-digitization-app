@@ -1663,26 +1663,47 @@ def _organiser_texts(task: FieldTask, readings: Sequence[Reading]) -> list[tuple
     return [(text, spans) for text, spans in found if text and text.strip()]
 
 
-def _settled_claims(run, readings: Sequence[Reading]) -> list[tuple[str, frozenset]]:
-    """Each settled value's field, with where its literal stands
+def _settled_claims(run, readings: Sequence[Reading]) -> list[tuple[str, str, frozenset]]:
+    """Each settled value's field and literal, with where the literal stands
     (_claims_text, _value_spans): the text the run's settled values hold."""
     evidence = {item.id: item for item in run.evidence}
     human = human_keys(run)
-    return [(key, _value_spans(value, readings, evidence)) for key, value in run.fields.items()
+    return [(key, value.literal, _value_spans(value, readings, evidence)) for key, value in run.fields.items()
         if _claims_text(key, value, human)]
 
 
-def _held_by_another_kind(key: str, spans: frozenset, claims: Sequence[tuple[str, frozenset]]) -> str | None:
+# Punctuation and spaces at the start and at the end of a text, which rule A's
+# comparison of an organiser text with a settled literal leaves aside (_bare).
+LEADING, TRAILING = re.compile(r"^[\W_]+"), re.compile(r"[\W_]+$")
+
+
+def _bare(text: str) -> str:
+    """A text compared without letter case or the punctuation around it:
+    "Trampa de luz." and "trampa de luz" are one text."""
+    return TRAILING.sub("", LEADING.sub("", text)).casefold()
+
+
+def _held_by_another_kind(key: str, text: str, spans: frozenset,
+        claims: Sequence[tuple[str, str, frozenset]]) -> str | None:
     """The field of another kind (agreement.may_share_text) whose settled
-    value holds the organiser's text for this field wherever it stands:
-    every place the text stands (`spans`; at least one) lies inside where
-    that value's literal stands, in the same reading. None otherwise."""
+    literal is the organiser's text for this field, letter case and the
+    punctuation around it aside (_bare), where it stands: every place the
+    text stands (`spans`; at least one), less that punctuation, lies inside
+    where that literal stands, in the same reading. A settled value that
+    only holds the text inside a longer literal ("cloud forest nr. Finca
+    Moca" beside the organiser's precise location "nr. Finca Moca") does
+    not. None otherwise."""
     from .agreement import may_share_text
 
-    if not spans:
+    if not spans or not _bare(text):
         return None
-    for other, theirs in claims:
-        if other != key and not may_share_text(key, other) and all(
+    # Where the text stands, less the punctuation around it (each span is the
+    # text's whole length).
+    first = len(text) - len(LEADING.sub("", text))
+    last = len(TRAILING.sub("", text))
+    spans = frozenset((name, start + first, start + last) for name, start, _ in spans)
+    for other, literal, theirs in claims:
+        if other != key and not may_share_text(key, other) and _bare(text) == _bare(literal) and all(
                 any(name == theirs_name and theirs_start <= start and end <= theirs_end
                     for theirs_name, theirs_start, theirs_end in theirs)
                 for name, start, end in spans):
@@ -1900,15 +1921,18 @@ def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask
        every reading has text (_whole_label_read);
     4. no part of any label is unreadable (_whole_label_read);
     5. the organiser found no text for it (_organiser_texts), judged after
-       every value of this attempt is made: a text counts as absent when,
-       wherever it stands, it lies inside the text a field of another kind
-       settled (_held_by_another_kind: this attempt's, an earlier attempt's
-       or a person's value; _claims_text), so 105526328's "trap", which the
-       organiser offered as the habitat, is absent once the collecting method
-       settles on it; for a county, a city or a precise location, a text also
-       counts as absent when its whole words, by the place comparison key,
-       are a run of the words of another supported place field's literal,
-       and it writes no unit word of its own (_inside_a_settled_place); and
+       every value of this attempt is made: a text counts as absent when it
+       is, where it stands, the literal a field of another kind settled
+       (_held_by_another_kind: letter case and surrounding punctuation
+       aside; this attempt's, an earlier attempt's or a person's value;
+       _claims_text), so 105526328's "trap", which the organiser offered as
+       the habitat, is absent once the collecting method settles on "trap"
+       (and the method's "trap" once the habitat settles on it); text only
+       inside a longer settled literal still counts; for a county, a city
+       or a precise location, a text also counts as absent when its whole
+       words, by the place comparison key, are a run of the words of
+       another supported place field's literal, and it writes no unit word
+       of its own (_inside_a_settled_place); and
        for a precise location, the texts left count as absent when, beside
        the places settled, they write only an administrative marker, or
        readers differ only in one (_admin_markers);
@@ -1963,7 +1987,7 @@ def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask
         claims = _settled_claims(run, readings) if claims is None else claims
         found = [text for text, spans in _organiser_texts(tasks_by_key[key], readings)
             if not (key in INSIDE_A_PLACE and _inside_a_settled_place(run, key, text))
-            and _held_by_another_kind(key, spans, claims) is None]
+            and _held_by_another_kind(key, text, spans, claims) is None]
         if found and not (key == "precise_location" and _admin_markers(run, found) is not None):
             why[key] = "organiser_found_text"
             continue

@@ -910,6 +910,113 @@ def test_organiser_text_with_more_than_the_settled_text_stays_in_review(tmp_path
     assert decisions["habitat"] == {"rule": "A_declined:organiser_found_text"}
 
 
+def apply_scripts(rig, scripts, **kwargs):
+    """Research and apply the rig's run with these experts; the decisions."""
+    from test_step import research
+
+    prepared, outcomes, calls = research(rig, Scripted(scripts), **kwargs)
+    decisions: dict[str, dict] = {}
+    field_step.apply_outcomes(rig.specimen.run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls,
+        decisions=decisions)
+    return decisions
+
+
+# ---- PR #309's review ---------------------------------------------------------
+
+FINCA_MOCA = "cloud forest nr. Finca Moca"
+
+
+def test_a_longer_settled_text_of_another_kind_does_not_clear_a_places_organiser_text(tmp_path):
+    """Finding 3 (the coordinator's ruling 3): the organiser offers "nr.
+    Finca Moca" as the precise location, quoting the line "cloud forest nr.
+    Finca Moca"; the habitat's expert settles the whole line, and the
+    precise location's expert finds none. The organiser's text is only
+    inside the settled habitat, not the habitat's literal, so rule A still
+    declines the precise location, as on 5332ce4e3, and the record goes to
+    review. The habitat settles, as only settled values claim text (A); on
+    5332ce4e3 the organiser's candidate held it. On b36341d1 the precise
+    location cleared as not on the label."""
+    from test_step import ABSENT, COLLECTORS, GUATEMALAN_TOWN, IN_YEPOCAPA, lacking, research
+
+    rig = build_rig(tmp_path, GUATEMALAN_TOWN + "\n" + FINCA_MOCA, candidates=[*COLLECTORS,
+        *(("precise_location", name, "nr. Finca Moca", FINCA_MOCA) for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    prepared, outcomes, calls = research(rig, lacking(*(set(ABSENT) - {"precise_location", "habitat"}),
+        **IN_YEPOCAPA, habitat=answering(FieldAnswer(outcome="resolved", literal=FINCA_MOCA,
+            reading_names=["1A", "1B"], explanation="The habitat line.")),
+        precise_location=answering(LACKS)), tools=Gazetteer(rig.blobs))
+    decisions: dict[str, dict] = {}
+    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    assert (run.fields["habitat"].state, run.fields["habitat"].literal) == (ValueState.SUPPORTED, FINCA_MOCA)
+    assert decisions["precise_location"] == {"rule": "A_declined:organiser_found_text"}
+    assert "precise_location" not in cleared_as_not_on_label(run)
+
+
+def test_organiser_text_equal_to_the_settled_literal_but_for_case_and_punctuation_lets_rule_a_apply(tmp_path):
+    """Ruling 3's comparison: the organiser offers "Trampa de luz." as the
+    habitat and the method settles "Trampa de luz" (the period left off):
+    the same text, letter case and the punctuation around it aside."""
+    text = "Finca Moca, 1200 msnm\n15-VIII-1965\nTrampa de luz.\nleg. J. Ramirez"
+    rig = label_3(tmp_path, text, text, organiser_offers("habitat", "Trampa de luz."))
+    decisions = apply_scripts(rig, {"habitat": answering(LACKS),
+        "collection_method": answering(FieldAnswer(outcome="resolved", literal="Trampa de luz",
+            reading_names=["1A", "1B"], explanation="A light trap."))})
+    run = rig.specimen.run
+    assert (run.fields["collection_method"].state, run.fields["collection_method"].literal) == (
+        ValueState.SUPPORTED, "Trampa de luz")
+    assert decisions["habitat"] == {"rule": "A_not_on_label"}
+    assert "habitat" in cleared_as_not_on_label(run)
+
+
+def test_the_mirror_of_105526328_clears_the_method_as_not_on_the_label(tmp_path):
+    """Ruling 5, accepted behaviour under B: the organiser offers "trap" as
+    the collecting method, the habitat's expert settles "trap", and the
+    method's expert finds no method. The organiser's text is the habitat's
+    literal, so the method clears as not on the label beside the habitat
+    "trap". On 5332ce4e3 both went to review (the candidate held the
+    habitat's text, and rule A declined the method)."""
+    rig = label_3(tmp_path, candidates=[("collection_method", name, "trap", "trap") for name in ("1A", "1B")])
+    decisions = apply_scripts(rig, {"habitat": answering(FieldAnswer(outcome="resolved", literal="trap",
+            reading_names=["1A", "1B"], explanation="A trap.")),
+        "collection_method": answering(LACKS)})
+    run = rig.specimen.run
+    assert (run.fields["habitat"].state, run.fields["habitat"].literal) == (ValueState.SUPPORTED, "trap")
+    assert decisions["collection_method"] == {"rule": "A_not_on_label"}
+    assert "collection_method" in cleared_as_not_on_label(run)
+
+
+def test_the_first_pass_leaves_the_run_the_blobs_and_logfire_as_they_were(tmp_path, monkeypatch):
+    """The review's probe of A's first pass (_first_pass): the run's record
+    and the blob store are unchanged by it, it makes no Logfire event, and
+    the real pass makes the two the settled transcript literals need."""
+    rig = label_3(tmp_path, candidates=TRAP_HABITAT)
+    run = rig.specimen.run
+    real = field_step._first_pass
+    seen: dict = {}
+    events: list = []
+    monkeypatch.setattr(field_step.logfire, "info", lambda *args, **kwargs: events.append(args[0]))
+
+    def blob_files():
+        return sorted(path.name for path in (tmp_path / "blobs").rglob("*") if path.is_file())
+
+    def watched(run_, *args, **kwargs):
+        before, files = run_.model_dump_json(), blob_files()
+        events.clear()
+        settled = real(run_, *args, **kwargs)
+        seen.update(same=run_.model_dump_json() == before, files=blob_files() == files, events=list(events),
+            settled=sorted(settled))
+        return settled
+
+    monkeypatch.setattr(field_step, "_first_pass", watched)
+    apply_scripts(rig, {"habitat": answering(LACKS),
+        "date_visited_from": answering(FieldAnswer(outcome="resolved", literal="IV-24-48", value="1948-04-24",
+            reading_names=["1A", "1B"], explanation="Date.")),
+        "collection_method": answering(FieldAnswer(outcome="resolved", literal="trap", reading_names=["1A", "1B"],
+            explanation="A trap."))})
+    assert seen == {"same": True, "files": True, "events": [], "settled": ["collection_method", "date_visited_from"]}
+    assert events == ["field_research literal read from the transcript: {field_key}"] * 2
+
+
 def test_a_province_read_from_the_transcript_one_letter_off_settles_on_g34(tmp_path):
     """105526330's spelling with no organiser candidate: both readers write
     "Chimaltenago", Getty TGN's department is one letter off, and the
