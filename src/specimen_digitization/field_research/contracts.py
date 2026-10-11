@@ -17,15 +17,22 @@ from specimen_digitization.application.domain import Evidence, FieldValue, Looku
 
 
 PLACE_SOURCES = ("geolocate", "tgn", "wikidata", "nga")
+# The gazetteers: every place source but GEOLocate.
+GAZETTEERS = ("tgn", "wikidata", "nga")
 
 # The approved sources and deterministic checks each field's expert may call.
 # "gbif" is GBIF's decision with Catalogue of Life and Global Names Verifier
-# alongside (application.taxonomy_tool.verify_taxon).
+# alongside (application.taxonomy_tool.verify_taxon). GEOLocate settles
+# nothing for a country or a county (agreement.PLACE_LEVELS: its candidate
+# repeats a part of the query). In the real runs of 2026-10-09 (the ten pilot
+# specimens, live and with Getty TGN down) all 22 of the county experts'
+# GEOLocate lookups were refused before they were sent, and the country
+# experts spent 51 lookups on it, so those two experts do not have it.
 FIELD_TOOLS: Mapping[str, tuple[str, ...]] = {
     "taxon": ("gbif",),
-    "country": PLACE_SOURCES,
+    "country": GAZETTEERS,
     "province_state": PLACE_SOURCES,
-    "county": PLACE_SOURCES,
+    "county": GAZETTEERS,
     "city": PLACE_SOURCES,
     # Verbatim locality text: checked against places, never replaced (PRD 515).
     "precise_location": PLACE_SOURCES,
@@ -115,10 +122,14 @@ class FieldTask:
 class PlaceRef:
     """A place a source puts a candidate in: the name the source gives it and,
     when the source names it by one of its own records, that record's
-    authority_id, in the form the source's candidates carry ("tgn:1000135")."""
+    authority_id, in the form the source's candidates carry ("tgn:1000135").
+    A country the source names only by its two-letter code (NGA: the code
+    its first-order unit codes start with, "GT" of "GT-04") carries that
+    code as its iso_code (sources._place)."""
 
     name: str
     authority_id: str | None = None
+    iso_code: str | None = None
 
 
 @dataclass(frozen=True)
@@ -133,6 +144,12 @@ class SourceCandidate:
     # country last (sources._place, sources._geolocate); () when the source
     # names none.
     parents: tuple[PlaceRef, ...] = ()
+    # The ISO 3166-1 alpha-2 code the record itself carries
+    # (georef_places.Place.iso_code: Wikidata's P297 on any item, NGA's code
+    # for a PCL feature), unless the record names an end date (sources._place);
+    # None when it carries none. Only the record the country field settled on
+    # supplies a code to the place check (step._record_code).
+    iso_code: str | None = None
 
 
 @dataclass(frozen=True)
@@ -206,6 +223,12 @@ class FieldOutcome:
     # (experts.EXHAUSTED), or kept breaking its answer's checks
     # (experts.UNCHECKED). Never an answer the expert gave itself.
     fallback: bool = False
+    # The approved sources the expert could not reach: a lookup whose last
+    # attempt (per source and query) ended in an outage, in call order
+    # (experts.SOURCE_OUTAGES). When the expert's answer stands, the field's
+    # reason names them (step._unreachable_note); so does a source_unavailable
+    # field's on the step's last attempt (step._unreachable_reason).
+    unreachable: tuple[str, ...] = ()
 
 
 class FieldResolver(Protocol):

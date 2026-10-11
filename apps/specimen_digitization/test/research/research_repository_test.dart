@@ -4,7 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:specimen_digitization/src/api_repository.dart';
-import 'package:specimen_digitization/src/models.dart' show ApiFailure;
+import 'package:specimen_digitization/src/models.dart'
+    show ApiFailure, CollectionScope, Specimen;
 import 'package:specimen_digitization/src/research/research_models.dart';
 import 'package:specimen_digitization/src/research/research_repository.dart';
 
@@ -137,6 +138,39 @@ void main() {
           _ => ResearchFailureKind.unavailable,
         });
       }
+    });
+  }
+
+  // The API answers research/current with 404 research_not_registered when the
+  // record has no research for its current revision. Only that answer is "not
+  // registered"; any other 404 stays unavailable.
+  for (final (detail, kind) in [
+    ('research_not_registered', 'notRegistered'),
+    ('not_found', 'unavailable'),
+  ]) {
+    test('a 404 $detail from discovery is $kind', () async {
+      final legacy = ApiSpecimenRepository(
+        baseUrl: Uri.parse('http://localhost:8080'),
+        token: () async => 'synthetic-token',
+        client: MockClient(
+          (request) async => http.Response(jsonEncode({'detail': detail}), 404),
+        ),
+      );
+      addTearDown(legacy.close);
+      final repository = ApiResearchRepository(request: legacy.request);
+      await expectLater(
+        repository.discover(
+          const CollectionScope(
+            organizationId: 'org',
+            collectionId: 'insects',
+            name: 'Insects',
+          ),
+          Specimen({'specimen_id': 'specimen', 'revision': 88}),
+        ),
+        throwsA(
+          isA<ResearchFailure>().having((f) => f.kind.name, 'kind', kind),
+        ),
+      );
     });
   }
 

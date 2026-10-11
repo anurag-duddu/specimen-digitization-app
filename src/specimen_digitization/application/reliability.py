@@ -7,6 +7,14 @@ from .domain import LookupStatus
 
 
 class AdapterFailure(RuntimeError):
+    """A known failure of an external call.
+
+    ``refused`` is set only when the provider refused the call before doing any
+    work: an HTTP 429 answering the call's first request (``run_agent_bounded``).
+    Nothing was generated, so nothing is billed, and the call is recorded at no
+    cost (``lane_costs.record_refused``).
+    """
+
     def __init__(
         self,
         code: str,
@@ -14,12 +22,14 @@ class AdapterFailure(RuntimeError):
         *,
         retry_after_seconds: int | None = None,
         outcome_unknown=False,
+        refused=False,
     ):
         super().__init__(code)
         self.code = code
         self.status = status
         self.retry_after_seconds = retry_after_seconds
         self.outcome_unknown = outcome_unknown
+        self.refused = refused
 
 
 class ReadingStopped(RuntimeError):
@@ -190,8 +200,21 @@ def run_agent_bounded(agent, prompt, *, timeout_seconds: float, usage_limits):
         }.get(exc.status_code, LookupStatus.PROVIDER)
         # A gateway/server failure may follow an accepted billable effect.
         # A workflow retry must never turn an ambiguous 5xx into duplicate spend.
+        # A 429 that answers the call's first request is a refusal before any
+        # work: no answer came back, so nothing was generated or billed. One
+        # after an answer (the agent's output retry) is not: that answer was.
+        # "Proven" assumes no layer under these routes retries on its own: the
+        # huggingface_hub/httpx client sends each request once, and Pydantic AI
+        # does not retry HTTP errors. A client with built-in retries (the OpenAI
+        # SDK retries twice by default) could put a billed attempt before a 429.
+        refused = exc.status_code == 429 and not any(
+            m.kind == "response" for m in messages
+        )
         raise AdapterFailure(
-            "model_" + status.value, status, outcome_unknown=exc.status_code >= 500
+            "model_" + status.value,
+            status,
+            outcome_unknown=exc.status_code >= 500,
+            refused=refused,
         ) from exc
     except UsageLimitExceeded as exc:
         exc.run_messages, exc.run_usage = messages, usage

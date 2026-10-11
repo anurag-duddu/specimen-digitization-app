@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart' hide FieldLayer;
 
+import 'blocker_words.dart';
 import 'large_record.dart';
 import 'history_timeline.dart';
 import 'models.dart';
@@ -472,7 +473,12 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
         };
       }
       final text = textOf(value, 'Not recorded');
-      return {'state', 'value_state', 'stage', 'blocker'}.contains(key)
+      // A blocker is a machine code. It reads as its name, or generically,
+      // and an absent one, null or empty, stays "Not recorded".
+      if (key == 'blocker') {
+        return text == 'Not recorded' ? text : blockerLabel(text);
+      }
+      return {'state', 'value_state', 'stage'}.contains(key)
           ? vocabularyLabel(text)
           : text;
     }

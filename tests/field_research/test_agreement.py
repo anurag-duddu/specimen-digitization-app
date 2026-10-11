@@ -1,0 +1,2012 @@
+"""The agreement rules the real runs of 2026-10-09 on the ten pilot specimens
+questioned (agreement.py; FIELD_RESEARCH.md, step 5), with labels from other
+countries and languages beside the pilot's.
+
+The step's cases run the ordinary workflow's run through the scripted
+resolver and sources of test_step.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import json
+from types import SimpleNamespace
+
+import pytest
+from pydantic_ai import ModelRetry
+from test_step import (
+    LACKS,
+    TEXT,
+    Gazetteer,
+    Scripted,
+    answering,
+    build_rig,
+    cited_rows,
+    cleared_as_not_on_label,
+    confirming,
+    every_field,
+    failing,
+    from_tgn,
+    label_with,
+    reasons_for,
+    resolved,
+    settle,
+)
+
+from specimen_digitization.application.domain import Disposition, Evidence, FieldValue, LookupStatus, ValueState
+from specimen_digitization.application.integrity import verify_evidence
+from specimen_digitization.field_research import agreement, experts
+from specimen_digitization.field_research import step as field_step
+from specimen_digitization.field_research.checks import collapse
+from specimen_digitization.field_research.contracts import (
+    FIELD_TOOLS,
+    Candidate,
+    FieldAnswer,
+    FieldTask,
+    PlaceRef,
+    Reading,
+    SourceAnswer,
+    SourceCandidate,
+)
+
+E_ACUTE, E_GRAVE, U_UMLAUT, A_ACUTE, A_CIRCUMFLEX, E_CIRCUMFLEX, SHARP_S = (
+    "\N{LATIN SMALL LETTER E WITH ACUTE}", "\N{LATIN SMALL LETTER E WITH GRAVE}",
+    "\N{LATIN SMALL LETTER U WITH DIAERESIS}", "\N{LATIN SMALL LETTER A WITH ACUTE}",
+    "\N{LATIN SMALL LETTER A WITH CIRCUMFLEX}", "\N{LATIN SMALL LETTER E WITH CIRCUMFLEX}",
+    "\N{LATIN SMALL LETTER SHARP S}")
+FEMALE = "\N{FEMALE SIGN}"
+
+
+# ---- G34: a near spelling is checked against the larger places only ---------
+# 105526330's province: the decided reading writes "Chimaltenago", Getty TGN
+# knows only "Chimaltenango", and the reading also writes the town Yepocapa.
+# The step checked the town as a parent of the department and left the
+# province for review. A place's parents are only larger places.
+
+def place(name, authority_id, *parents):
+    """A source's candidate with its parents (name, authority_id), nearest first."""
+    return SourceCandidate(name, authority_id, "place", None, tuple(PlaceRef(*parent) for parent in parents))
+
+
+def field(*texts, authority_id=None):
+    return agreement.PlaceField(tuple(texts), authority_id)
+
+
+FRANCE = field("France", authority_id="tgn:1000070")
+GERMANY = field("Deutschland", authority_id="tgn:7000084")
+BRAZIL = field("Brasil", authority_id="tgn:1000047")
+
+
+@pytest.mark.parametrize(("key", "candidate", "written", "settled"), [
+    # A French departement one letter off ("Finistre"), in its region and country, with the
+    # town of Brest below it on the reading.
+    ("county", place("Finist" + E_GRAVE + "re", "tgn:7002849", ("Bretagne", "tgn:7002848"),
+        ("France", "tgn:1000070")),
+     {"country": FRANCE, "province_state": field("Bretagne", authority_id="tgn:7002848"), "city": field("Brest")},
+     {"country": FRANCE, "province_state": field("Bretagne", authority_id="tgn:7002848")}),
+    # A German Land one letter off ("Bayer" for Bayern), with Muenchen below it.
+    ("province_state", place("Bayern", "tgn:7003686", ("Deutschland", "tgn:7000084")),
+     {"country": GERMANY, "city": field("M" + U_UMLAUT + "nchen")}, {"country": GERMANY}),
+    # A Brazilian state one letter off ("Minas Geras"), with a county and a city below it.
+    ("province_state", place("Minas Gerais", "tgn:1001780", ("Brasil", "tgn:1000047")),
+     {"country": BRAZIL, "county": field("Sabar" + A_ACUTE), "city": field("Belo Horizonte")},
+     {"country": BRAZIL}),
+], ids=["french-departement-above-its-town", "german-land-above-its-city", "brazilian-state-above-county-and-city"])
+def test_a_near_spelled_place_is_not_checked_against_the_places_below_it(key, candidate, written, settled):
+    """On origin/main each is refused: the town below is no parent of the place."""
+    assert agreement.parents_refusal(key, candidate, agreement.NEAR_SPELLING, written=written,
+        settled=settled) is None
+
+
+@pytest.mark.parametrize(("literal", "nation", "authority_id", "town"), [
+    # Spanish: "Mexco" beside the city "Mexico" (with its accent), TGN's nation lists itself.
+    ("Mexco", "Mexico", "tgn:1000077", "M" + E_ACUTE + "xico"),
+    # German and French spellings of Luxembourg, the city of the same name below it.
+    ("Luxemburg", "Luxembourg", "tgn:7006830", "Luxembourg"),
+    # Spanish: "Panma" beside the city "Panama" (with its accent).
+    ("Panma", "Panam" + A_ACUTE, "tgn:1000149", "Panam" + A_ACUTE),
+], ids=["mexico", "luxembourg", "panama"])
+def test_a_near_spelled_country_never_settles_on_a_city_of_its_name(literal, nation, authority_id, town):
+    """On origin/main each settles: a nation lists itself as its parent, and
+    the city below it has the nation's name. A country has no larger place."""
+    candidate = place(nation, authority_id, (nation, authority_id))
+    refused = agreement.parents_refusal("country", candidate, agreement.NEAR_SPELLING,
+        written={"city": field(town)}, settled={})
+    assert refused is not None and refused.reason == agreement.NEAR_UNFIT
+
+
+def test_a_near_spelled_city_still_needs_every_larger_place_as_its_parent():
+    """The control, unchanged: a Brazilian city one letter off ("Bello
+    Horizonte") whose reading writes a state it does not lie in."""
+    candidate = place("Belo Horizonte", "tgn:7012345", ("Minas Gerais", "tgn:1001780"), ("Brasil", "tgn:1000047"))
+    refused = agreement.parents_refusal("city", candidate, agreement.NEAR_SPELLING,
+        written={"country": BRAZIL, "province_state": field("S" + A_ACUTE + "o Paulo")}, settled={"country": BRAZIL})
+    assert refused is not None and refused.reason == agreement.NEAR_UNFIT
+
+
+def test_105526330s_province_settles_one_letter_off_beside_its_town(tmp_path):
+    """The real run's shape: country Guatemala, the decided province
+    "Chimaltenago" and the town Yepocapa. Getty TGN's department
+    Chimaltenango, one letter off, lies in Guatemala: the province settles
+    with a near_spelling warning, and the town settles inside it. On
+    origin/main the province goes to review (NEAR_UNFIT)."""
+    rig = build_rig(tmp_path, label_with(country="Guatemala", province_state="Chimaltenago", county=None,
+        city="Yepocapa"))
+    run = rig.specimen.run
+    settle(rig, Scripted({"country": from_tgn("Guatemala", "Guatemala", None, "tgn:7005493"),
+        "province_state": from_tgn("Chimaltenango", "Chimaltenago", "Chimaltenango", "tgn:1000565"),
+        "county": answering(LACKS),
+        "city": confirming("Yepocapa", reading="1A", within=("Chimaltenango", "Guatemala"))}),
+        tools=Gazetteer(rig.blobs))
+    province = run.fields["province_state"]
+    assert (province.state, province.literal, province.normalized, province.authority_id) == (
+        ValueState.SUPPORTED, "Chimaltenago", "Chimaltenango", "tgn:1000565")
+    assert [f.reason_code for f in run.findings] == ["near_spelling:province_state"]
+    assert run.fields["city"].state == ValueState.SUPPORTED
+    assert not reasons_for(run, "province_state") and not reasons_for(run, "city")
+
+
+# ---- readers that differ only in letter case or spacing agree ---------------
+# 105526322's habitat ("shrubs, mostly forest" and "Shrubs, mostly forest")
+# and taxon ("sp. 30" and "Sp.30"), and 105526330's precise location
+# ("Yepocapa,4800 ft." beside "Yepocapa, 4800 ft."), went to review as readers
+# that differ. Compared after casefolding and removing every space, they are
+# one text, settled on the first reader's spelling.
+
+def two_readers(key, first, second, *, line="leg. R. D. Mitchell"):
+    """Label 2 with no decided transcript: 2A writes `first`, 2B `second`, and
+    the organiser gives each reader's text as its candidate."""
+    readings = tuple(Reading(name, "region-2", "obs-" + name, "raw_reading", f"{text}\n{line}")
+        for name, text in (("2A", first), ("2B", second)))
+    task = FieldTask(key, True, FieldValue(state=ValueState.AMBIGUOUS),
+        tuple(Candidate(name, text, text, "ev-" + name) for name, text in (("2A", first), ("2B", second))),
+        FIELD_TOOLS[key])
+    return task, readings
+
+
+def refusal_of(task, readings, literal, *names):
+    named = [reading for reading in readings if reading.name in (names or ("2A",))]
+    return agreement.refusal(task, readings, literal=literal, named=named, value=None, authority_id=None,
+        cited=[], received=[])
+
+
+AGREE = {
+    # 105526322's habitat and taxon, and a locality with "Mt." in capitals.
+    "322-habitat": ("habitat", "shrubs, mostly forest", "Shrubs, mostly forest"),
+    "322-taxon": ("taxon", "sp. 30 " + FEMALE, "Sp.30 " + FEMALE),
+    "mount-in-capitals": ("precise_location", "E. slope Mt. McKinley", "E. slope MT. McKinley"),
+    # Spanish, Portuguese, French and German labels.
+    "spanish-habitat": ("habitat", "bosque nublado", "Bosque Nublado"),
+    "portuguese-habitat": ("habitat", "mata atl" + A_CIRCUMFLEX + "ntica", "Mata Atl" + A_CIRCUMFLEX + "ntica"),
+    "french-locality-spacing": ("precise_location", "for" + E_CIRCUMFLEX + "t de  Fontainebleau",
+        "For" + E_CIRCUMFLEX + "t de Fontainebleau"),
+    "german-method": ("collection_method", "Lichtfang", "LICHTFANG"),
+    "german-sharp-s": ("precise_location", "Waldstra" + SHARP_S + "e 4", "WALDSTRASSE 4"),
+    # Metric and imperial elevations, and dates in Roman and numeric styles.
+    "feet-spacing": ("elevation_from_ft", "6400 ft", "6400ft"),
+    "metres-case": ("elevation_from_m", "1200 m", "1200 M"),
+    "roman-month-case": ("date_visited_from", "24.IV.1948", "24.iv.1948"),
+    "numeric-date-spacing": ("date_visited_from", "IV-24-48", "IV-24- 48"),
+    "collector-initials-spacing": ("collectors", "H. Hoogstraal", "H.Hoogstraal"),
+}
+
+
+@pytest.mark.parametrize(("key", "first", "second"), AGREE.values(), ids=AGREE)
+def test_readers_that_differ_only_in_case_or_spacing_agree_on_the_first_readers_spelling(key, first, second):
+    """On origin/main each label settles on nothing: its readers differ."""
+    task, readings = two_readers(key, first, second)
+    [label] = agreement.labels(task, readings, []).values()
+    assert (label.settled, label.by_source) == (frozenset({collapse(first)}), False)
+    assert refusal_of(task, readings, first) is None
+
+
+@pytest.mark.parametrize(("key", "first", "second"), list(AGREE.values())[:4], ids=list(AGREE)[:4])
+def test_the_second_readers_spelling_is_sent_back_for_the_first(key, first, second):
+    """The literal keeps the first reader's spelling. On origin/main the
+    answer is refused as readers that disagree."""
+    task, readings = two_readers(key, first, second)
+    refused = refusal_of(task, readings, second, "2B")
+    assert refused is not None and refused.reason == agreement.DIFFER and refused.differ
+    assert f"agree on {collapse(first)!r}" in refused.retry
+
+
+DIFFER = {
+    # 105526328's municipality and 105526323's year: a letter apart.
+    "328-municipality": ("collection_method", "Yepocapa, Mun.", "Yepocapa, Mum."),
+    "323-year": ("date_visited_from", "6-Sept.-1946", "6-Sept.-1948"),
+    # 105526322's elevation, the foot mark missing; a metres period; a dotted month.
+    "322-foot-mark": ("elevation_from_ft", "Elev.6400'", "Elev. 6400"),
+    "metres-period": ("elevation_from_m", "1200 m", "1200 m."),
+    "month-period": ("date_visited_from", "24 Apr 1948", "24 apr. 1948"),
+    # An accent is a letter: Portuguese "Atlantica" against "Atlantica" with its circumflex.
+    "accent": ("habitat", "Mata Atlantica", "Mata Atl" + A_CIRCUMFLEX + "ntica"),
+    # 105526322's collector, a letter apart.
+    "322-collector": ("collectors", "H. Hoopstraal", "H. Hoogstraal"),
+}
+
+
+@pytest.mark.parametrize(("key", "first", "second"), DIFFER.values(), ids=DIFFER)
+def test_readers_that_differ_in_punctuation_or_a_letter_still_disagree(key, first, second):
+    """The control, unchanged: no source decides between them."""
+    task, readings = two_readers(key, first, second)
+    [label] = agreement.labels(task, readings, []).values()
+    assert not label.settled
+    refused = refusal_of(task, readings, first)
+    assert refused is not None and refused.reason == agreement.DIFFER
+
+
+def test_a_decided_transcript_keeps_its_own_spelling():
+    """105526330's precise location: 2A, the decided reading, writes
+    "Yepocapa,4800 ft.", 2B "Yepocapa, 4800 ft.". G19 decides on 2A's text;
+    2B's spelling is refused as before."""
+    readings = (Reading("2A", "region-2", "obs-2A", "decided_transcript", "Yepocapa,4800 ft.\nIV-25 1948"),
+        Reading("2B", "region-2", "obs-2B", "raw_reading", "Yepocapa, 4800 ft.\nIV-25 1948"))
+    task = FieldTask("precise_location", False, FieldValue(state=ValueState.AMBIGUOUS),
+        (Candidate("2A", "Yepocapa,4800 ft.", "Yepocapa,4800 ft.", "ev-2A"),
+         Candidate("2B", "Yepocapa, 4800 ft.", "Yepocapa, 4800 ft.", "ev-2B")), FIELD_TOOLS["precise_location"])
+    assert refusal_of(task, readings, "Yepocapa,4800 ft.") is None
+    assert refusal_of(task, readings, "Yepocapa, 4800 ft.", "2B").reason == agreement.NOT_DECIDED
+
+
+def test_the_experts_check_accepts_the_first_readers_spelling():
+    """105526322's habitat at the expert: the answer naming 2A passes its
+    check; on origin/main it is sent back as readers that disagree."""
+    task, readings = two_readers("habitat", "shrubs, mostly forest", "Shrubs, mostly forest")
+    made = experts._Expert(task, readings, SimpleNamespace(sources=()), None)
+    given = FieldAnswer(outcome="resolved", literal="shrubs, mostly forest", reading_names=["2A"],
+        explanation="Both readers write it; 2B capitalises it.")
+    assert made.validate(given).reading_names == ["2A"]
+
+
+def test_readers_that_differ_only_in_case_settle_the_field_and_keep_both_texts(tmp_path):
+    """105526322's habitat through the step: no decided transcript, 1A writes
+    "shrubs, mostly forest" and 1B "Shrubs, mostly forest". The value is 1A's
+    spelling; 1B's text stays in the lineage. On origin/main it is ambiguous."""
+    first, second = "shrubs, mostly forest", "Shrubs, mostly forest"
+    rig = build_rig(tmp_path, TEXT.replace("Synthetic grassland", first), TEXT.replace("Synthetic grassland", second),
+        candidates=every_field(("habitat", "1A", first, "habitat: " + first),
+            ("habitat", "1B", second, "habitat: " + second)))
+    run = rig.specimen.run
+    reader_a, reader_b = run.observations
+    settle(rig, Scripted({"habitat": answering(resolved(first, reading="1A"))}))
+    habitat = run.fields["habitat"]
+    assert (habitat.state, habitat.literal, habitat.input_source) == (ValueState.SUPPORTED, first, "raw_reading")
+    assert habitat.verbatim_by_observation == {reader_a.id: first, reader_b.id: second}
+    assert cited_rows(run, "habitat")["habitat: " + first] == "supports"
+    assert not reasons_for(run, "habitat")
+
+
+# ---- an expert may cite text the readings write, not only a candidate --------
+# 105526328's date_visited_from: both readers of label 3 write "IV-24-48" and
+# parse_date reads 1948-04-24, but the organiser offered no candidate, so the
+# expert's answer was sent back and the field went to review; so did its
+# collection method ("trap"), and 105526329's and 105526330's precise
+# location. The literal may now be whole words of one line that each reading
+# it names writes, under the same reader rules as a candidate.
+
+PILOT_DATES = {"version": "date-rules-v1", "two_digit_year_century": 1900, "roman_numeral_months": True}
+LABEL_3A = ("Yepocapa, Mun.\nYepocapa,\nchimaltenango,\nGuatemala.\nIV-24-48\nElev. 4800 ft.\n"
+    "lot #2 cut branch\ntrap\nR.D. Mitchell")
+LABEL_3B = ("Yepocapa, Mum.\nYepocapa,\nchimaltenago,\nGuatemala.\nIV-24-48\nElev. 4800 ft.\n"
+    "lot #a cut branch\ntrap\nR.D. Mitchell")
+
+
+def label(first, second=None, *, decided=False, region="region-3", names=("3A", "3B")):
+    """One label's two readers; the first is its decided transcript when `decided`."""
+    return (Reading(names[0], region, "obs-" + names[0], "decided_transcript" if decided else "raw_reading", first),
+        Reading(names[1], region, "obs-" + names[1], "raw_reading", first if second is None else second))
+
+
+def uncandidated(key, *candidates):
+    """The field's task as the organiser left it: no value, and only these
+    (reading, literal) candidates, each quoting its literal."""
+    return FieldTask(key, True, FieldValue(), tuple(Candidate(name, text, text, f"ev-{name}-{text}")
+        for name, text in candidates), FIELD_TOOLS[key])
+
+
+def checked(task, readings, given, *, checks=(), received=()):
+    """The expert's own check of an answer: the checks it ran, the lookups it
+    received, then its answer. The answer it keeps, or the ModelRetry."""
+    made = experts._Expert(task, readings, SimpleNamespace(sources=tuple(FIELD_TOOLS[task.key])), PILOT_DATES)
+    for tool, literal in checks:
+        asyncio.run(getattr(made, tool)(literal))
+    for answer in received:
+        made.calls.append(experts._Call(answer.source_id, answer.query, answer.status, answer))
+    return made.validate(FieldAnswer(explanation="Read from the readings.", **given))
+
+
+ACCEPTED = {
+    # 105526328's label 3, two readers and no decided transcript.
+    "328-collecting-date": (label(LABEL_3A, LABEL_3B), "date_visited_from",
+        dict(literal="IV-24-48", value="1948-04-24"), [("parse_date", "IV-24-48")]),
+    "328-collection-method": (label(LABEL_3A, LABEL_3B), "collection_method", dict(literal="trap"), []),
+    # 105526330's locality, from its decided transcript; the other reader is evidence only. The
+    # elevation after the comma is the elevation's text, not the locality's (the brief leaves it out).
+    "330-precise-location": (label("Yepocapa,4800 ft.\nIV-25\n1948", "Yepocapa, 4800 ft.\nIV-25\n1948",
+        decided=True), "precise_location", dict(literal="Yepocapa"), []),
+    # A Costa Rican label: the locality before its comma, the elevation after it.
+    "spanish-locality": (label("Volc" + A_ACUTE + "n Barva, 2000 msnm\n15-VIII-1965"), "precise_location",
+        dict(literal="Volc" + A_ACUTE + "n Barva"), []),
+    "spanish-date": (label("Volc" + A_ACUTE + "n Barva, 2000 msnm\n15-VIII-1965"), "date_visited_from",
+        dict(literal="15-VIII-1965", value="1965-08-15"), [("parse_date", "15-VIII-1965")]),
+    # French: a light trap and its date on one line.
+    "french-method": (label("pi" + E_GRAVE + "ge lumineux, 12.VII.1971\nleg. J. Dupont"), "collection_method",
+        dict(literal="pi" + E_GRAVE + "ge lumineux"), []),
+    "french-date": (label("pi" + E_GRAVE + "ge lumineux, 12.VII.1971\nleg. J. Dupont"), "date_visited_from",
+        dict(literal="12.VII.1971", value="1971-07-12"), [("parse_date", "12.VII.1971")]),
+    # German: light trapping and a date with a Roman month.
+    "german-date": (label("Lichtfang 24.VI.1952\nBayern"), "date_visited_from",
+        dict(literal="24.VI.1952", value="1952-06-24"), [("parse_date", "24.VI.1952")]),
+    # Portuguese: the habitat before a Malaise trap.
+    "portuguese-habitat": (label("Mata Atl" + A_CIRCUMFLEX + "ntica, armadilha Malaise"), "habitat",
+        dict(literal="Mata Atl" + A_CIRCUMFLEX + "ntica"), []),
+    "portuguese-method": (label("Mata Atl" + A_CIRCUMFLEX + "ntica, armadilha Malaise"), "collection_method",
+        dict(literal="armadilha Malaise"), []),
+    # Imperial and metric elevations, as the readings write them.
+    "imperial-elevation": (label("Mossy forest 6400'\nsp. 30 " + FEMALE), "elevation_from_ft",
+        dict(literal="6400'", value="6400"), [("parse_elevation", "6400'")]),
+    "metric-elevation": (label("Mindanao, alt. 1200 m\n24 Apr 1948"), "elevation_from_m",
+        dict(literal="1200 m", value="1200"), [("parse_elevation", "1200 m")]),
+    "english-date": (label("Mindanao, alt. 1200 m\n24 Apr 1948"), "date_visited_from",
+        dict(literal="24 Apr 1948", value="1948-04-24"), [("parse_date", "24 Apr 1948")]),
+    # Readers that differ only in case read the same text (2A's spelling).
+    "case-only-readers": (label("Mossy forest\nleg. H. Hoogstraal", "mossy Forest\nleg. H. Hoogstraal"), "habitat",
+        dict(literal="Mossy forest"), []),
+}
+
+
+@pytest.mark.parametrize(("readings", "key", "given", "ran"), ACCEPTED.values(), ids=ACCEPTED)
+def test_text_every_reader_writes_as_whole_words_of_one_line_settles(readings, key, given, ran):
+    """On origin/main each is sent back: the organiser offered no candidate."""
+    task = uncandidated(key)
+    names = [readings[0].name] if readings[0].input_source == "decided_transcript" or not readings[1].text.count(
+        given["literal"]) else [r.name for r in readings]
+    kept = checked(task, readings, dict(outcome="resolved", reading_names=names, **given), checks=ran)
+    assert kept.literal == given["literal"]
+    assert agreement.literal_basis(task, readings, given["literal"], [readings[0]]) == agreement.TRANSCRIPT
+
+
+GBIF_DANAUS = SourceAnswer("gbif", "Danaus plexippus", LookupStatus.SUCCESS,
+    (SourceCandidate("Danaus plexippus (Linnaeus, 1758)", "5133088", "SPECIES"),),
+    Evidence(id="ev-danaus", kind="authority", source="gbif", locator="5133088",
+        excerpt="Danaus plexippus (Linnaeus, 1758) | 5133088 | SPECIES | "), note="exact")
+
+
+def test_a_taxon_read_from_the_transcript_settles_on_gbifs_decision_for_it():
+    """Both readers write the binomial on a line of its own and the organiser
+    offered no candidate. On origin/main the answer is sent back."""
+    readings = label("Danaus plexippus\nMexico, Sinaloa\nleg. R. D. Mitchell", names=("1A", "1B"), region="r1")
+    kept = checked(uncandidated("taxon"), readings, dict(outcome="resolved", literal="Danaus plexippus",
+        reading_names=["1A", "1B"], value="Danaus plexippus (Linnaeus, 1758)", authority_id="5133088",
+        source_evidence_ids=["ev-danaus"]), received=[GBIF_DANAUS])
+    assert kept.authority_id == "5133088"
+
+
+REFUSED = {
+    # 105526328's municipality: 3B writes "Mum.", and the organiser found nothing there.
+    "328-county-one-reader": (label(LABEL_3A, LABEL_3B), uncandidated("collection_method"),
+        "Yepocapa, Mun.", ["3A"], "NOT_EVERY_READER"),
+    # Portuguese: the other reader drops the accent, a letter apart.
+    "portuguese-accent": (label("Mata Atl" + A_CIRCUMFLEX + "ntica, Malaise", "Mata Atlantica, Malaise"),
+        uncandidated("habitat"), "Mata Atl" + A_CIRCUMFLEX + "ntica", ["3A"], "NOT_EVERY_READER"),
+    # Imperial: the other reader misses the foot mark.
+    "imperial-foot-mark": (label("Mossy forest 6400'", "Mossy forest 6400"), uncandidated("habitat"),
+        "Mossy forest 6400'", ["3A"], "NOT_EVERY_READER"),
+    # 105526323's year: the organiser gave only 2B's "6-Sept.-1948"; 2A's text read from the
+    # transcript is then one of two readers' texts, and no source decides a date.
+    "323-year": (label("6-Sept.-1946, Elev. 6400'", "6-Sept.-1948, Elev.6400'", names=("2A", "2B"), region="r2"),
+        uncandidated("collectors", ("2B", "6-Sept.-1948")), "6-Sept.-1946", ["2A"], "DIFFER"),
+    # A decided label whose organiser placed other text in the field: two texts, no settling.
+    "decided-beside-a-candidate": (label("Yepocapa, Mun.\nChimaltenango", decided=True),
+        uncandidated("habitat", ("3A", "Chimaltenango")), "Yepocapa, Mun.", ["3A"], "DIFFER"),
+    # A taxon whose line writes a longer name, or whose genus stands on the line above.
+    "longer-name-on-the-line": (label("Danaus plexippus megalippe\nleg. J. Smith"), uncandidated("taxon"),
+        "Danaus plexippus", ["3A", "3B"], "PART_OF_NAME"),
+    "328-genus-on-the-line-above": (label("VI-24-68-7.\nEpipsocus\nsp. 1\n" + FEMALE + " terminalia"),
+        uncandidated("taxon"), "sp. 1", ["3A", "3B"], "PART_OF_NAME"),
+    # A genus marked doubtful on its line.
+    "doubtful-genus": (label("cf. Epipsocus sp. 1\nleg. J. Smith"), uncandidated("taxon"),
+        "Epipsocus sp. 1", ["3A", "3B"], "DOUBTFUL_GENUS"),
+}
+
+
+@pytest.mark.parametrize(("readings", "task", "literal", "names", "reason"), REFUSED.values(), ids=REFUSED)
+def test_text_read_from_the_transcript_keeps_every_other_rule(readings, task, literal, names, reason):
+    """Each refusal is new: on origin/main every one is NOT_CANDIDATE."""
+    named = [reading for reading in readings if reading.name in names]
+    refused = agreement.refusal(task, readings, literal=literal, named=named, value=None, authority_id=None,
+        cited=[], received=[])
+    assert refused is not None and refused.reason == getattr(agreement, reason)
+
+
+STILL_NOT_TEXT = {
+    # Part of a word: the day and year of a date, a morphocode's number, a number's thousands.
+    "inside-a-date": (label(LABEL_3A, LABEL_3B), "date_visited_from", "24-48"),
+    "inside-a-code": (label("Sp.30 " + FEMALE), "taxon", "30"),
+    "thousands": (label("Mindanao, 1,200 m"), "elevation_from_m", "200 m"),
+    # Two lines: 105526328's locality block.
+    "two-lines": (label(LABEL_3A, LABEL_3B), "precise_location", "Yepocapa, Mun.\nYepocapa,"),
+}
+
+
+@pytest.mark.parametrize(("readings", "key", "literal"), STILL_NOT_TEXT.values(), ids=STILL_NOT_TEXT)
+def test_text_that_cuts_a_word_or_spans_lines_is_still_no_literal(readings, key, literal):
+    """The control: refused as before; only the retry, which now names the
+    whole-word rule, is new."""
+    refused = agreement.literal_refusal(uncandidated(key), readings, literal=literal, named=list(readings))
+    assert refused is not None and refused.reason == agreement.NOT_CANDIDATE
+    assert "whole words within one line" in refused.retry
+
+
+@pytest.mark.parametrize(("written", "literal"), [
+    # The second review's B2: a piece of the candidate, or the candidate extended.
+    ("3 Sept. '46", "Sept. '46"),
+    ("San Pedro", "San Pedro Sacatepequez"),
+    ("Danaus plexippus megalippe", "Danaus plexippus"),
+])
+def test_text_that_cuts_or_extends_a_candidate_of_its_reading_is_still_refused(written, literal):
+    """The control: the reading's text holds both, and the candidate is the
+    organiser's whole text there. Refused as before; only the retry, which
+    now names the candidate cut, is new."""
+    readings = label(f"{written} Sacatepequez\nleg. J. Smith" if written == "San Pedro" else f"{written}\nleg. J. Smith")
+    task = uncandidated("collectors", *((name, written) for name in ("3A", "3B")))
+    refused = agreement.literal_refusal(task, readings, literal=literal, named=list(readings))
+    assert refused is not None and refused.reason == agreement.NOT_CANDIDATE
+    assert f"cuts or extends the candidate {written!r}" in refused.retry
+
+
+def test_the_kinds_of_text_two_fields_may_share():
+    assert agreement.may_share_text("city", "precise_location")  # a place inside the locality
+    assert agreement.may_share_text("elevation_from_ft", "elevation_from_m")
+    assert agreement.may_share_text("date_visited_from", "date_identified")
+    assert agreement.may_share_text("verbatim_dts", "date_visited_from")  # D/T/S may hold anything
+    assert not agreement.may_share_text("precise_location", "elevation_from_ft")
+    assert not agreement.may_share_text("collection_code", "date_visited_from")
+    assert not agreement.may_share_text("habitat", "collection_method")
+    assert not agreement.may_share_text("taxon", "collection_code")
+    assert agreement.may_share_text("collectors", "identified_by_irn")
+
+
+@pytest.mark.parametrize(("text", "literal", "found"), [
+    # A comma ends a word with no space after it, except between digits.
+    ("Yepocapa,4800 ft.", "4800 ft.", True),
+    ("Yepocapa,4800 ft.", "Yepocapa", True),
+    ("Mindanao, 1,200 m", "1,200 m", True),
+    ("Mindanao, 1,200 m", "200 m", False),
+    # Punctuation at a word's edge may be left off; a word is never cut.
+    ("Mindanao (Davao)", "Davao", True),
+    ("Guatemala.", "Guatemala", True),
+    ("IV-24-48", "24-48", False),
+    ("Sp.30 " + FEMALE, "30", False),
+    ("trapping site", "trap", False),
+    # One line only, and a letter or a digit in it.
+    ("Yepocapa,\nchimaltenango,", "Yepocapa,\nchimaltenango,", False),
+    ("? Epipsocus", "?", False),
+    # Any characters other than letters and digits at a word's edge may be left
+    # off, as the brief says: a quote, a foot or minute mark, a bracket.
+    ("3 Sept. '46", "46", True),
+    ("Elev. 6400'", "6400", True),
+    ('"Yepocapa"', "Yepocapa", True),
+    ("lot #2 cut branch", "2", True),
+    # A range glued with a hyphen is one word.
+    ("1200-1500 m", "1500 m", False),
+])
+def test_a_run_of_whole_words_within_one_line(text, literal, found):
+    assert bool(agreement.verbatim_runs(text, literal)) == found
+
+
+def test_text_from_the_transcript_on_a_decided_label_is_the_decided_readings():
+    """G19, as for a candidate: 105526330's other reader's spacing, which the
+    decided reading does not write, is refused."""
+    readings = label("Yepocapa,4800 ft.\nIV-25", "Yepocapa, 4800 ft.\nIV-25", decided=True)
+    refused = agreement.refusal(uncandidated("precise_location"), readings, literal="Yepocapa, 4800 ft.",
+        named=[readings[1]], value=None, authority_id=None, cited=[], received=[])
+    assert refused is not None and refused.reason == agreement.NOT_DECIDED
+
+
+# The step, end to end.
+
+def label_3(tmp_path, first=LABEL_3A, second=LABEL_3B, candidates=()):
+    return build_rig(tmp_path, first, second, candidates=list(candidates))
+
+
+def test_105526328s_date_and_method_settle_from_the_transcript_and_say_so(tmp_path):
+    """Label 3's readers both write "IV-24-48" and "trap"; the organiser
+    offered neither. Both settle, each with a transcript_literal finding and a
+    label row whose record names the transcript as its basis. On origin/main
+    both are unresolved."""
+    rig = label_3(tmp_path)
+    run = rig.specimen.run
+    both = ["1A", "1B"]
+    settle(rig, Scripted({
+        "date_visited_from": answering(FieldAnswer(outcome="resolved", literal="IV-24-48", reading_names=both,
+            value="1948-04-24", explanation="Both readers write the date.")),
+        "collection_method": answering(FieldAnswer(outcome="resolved", literal="trap", reading_names=both,
+            explanation="Both readers write it."))}))
+    date, method = run.fields["date_visited_from"], run.fields["collection_method"]
+    assert (date.state, date.literal, date.parsed) == (ValueState.SUPPORTED, "IV-24-48", "1948-04-24")
+    assert (method.state, method.literal) == (ValueState.SUPPORTED, "trap")
+    findings = {f.reason_code: f for f in run.findings}
+    assert {"transcript_literal:date_visited_from", "transcript_literal:collection_method"} <= set(findings)
+    finding = findings["transcript_literal:collection_method"]
+    assert (finding.severity, finding.rule_id) == ("info", "transcript_literal")
+    evidence = {item.id: item for item in run.evidence}
+    rows = [evidence[i] for i in finding.evidence_ids]
+    assert {row.kind for row in rows} == {"literal"} and all(row.source == "field_research" for row in rows)
+    assert all(json.loads(rig.blobs.get(row.raw_ref))["basis"] == "transcript" for row in rows)
+    assert all(row.excerpt == "trap" for row in rows)
+    verify_evidence(rig.specimen, rig.blobs)
+
+
+def test_a_label_row_for_text_from_the_transcript_cites_its_whole_word():
+    """The row cites the line that writes "trap" as a word, not "trapping"
+    above it, where the text first stands."""
+    reading = Reading("1A", "r1", "o1a", "raw_reading", "trapping site\ntrap")
+    assert field_step._literal_row("collection_method", reading, "trap", None, None, transcript=True).excerpt == "trap"
+    assert field_step._literal_row("collection_method", reading, "trap", None, None).excerpt == "trapping site"
+
+
+def test_the_trace_names_the_field_read_from_the_transcript_never_its_text(tmp_path, capfire):
+    rig = label_3(tmp_path)
+    settle(rig, Scripted({"collection_method": answering(FieldAnswer(outcome="resolved", literal="trap",
+        reading_names=["1A", "1B"], explanation="Both readers write it."))}))
+    [event] = [item for item in capfire.exporter.exported_spans_as_dict()
+        if item["name"].startswith("field_research literal read from the transcript")]
+    assert event["attributes"]["field_key"] == "collection_method"
+    assert event["attributes"]["literal_basis"] == "transcript"
+    assert json.loads(event["attributes"]["reading_names"]) == ["1A", "1B"]
+    assert "trap" not in json.dumps(event["attributes"])
+
+
+SPANISH_LABEL = "Yepocapa, 4800ft.\nIV-23-48\nR.D. Mitchell"
+
+
+def test_text_from_the_transcript_that_another_kind_of_field_settles_goes_to_review(tmp_path):
+    """105526329's locality: both readers write "Yepocapa, 4800ft.", whose
+    "4800ft." the organiser gave as the elevation. The precise location read
+    from the transcript whole would hold that elevation: the step sends it to
+    review, naming the field. On origin/main it is unresolved as no
+    candidate."""
+    rig = label_3(tmp_path, SPANISH_LABEL, SPANISH_LABEL.replace("Mitchell", "mitchell"),
+        [("elevation_from_ft", name, "4800ft.", "Yepocapa, 4800ft.") for name in ("1A", "1B")])
+    run = rig.specimen.run
+    settle(rig, Scripted({
+        "elevation_from_ft": answering(resolved("4800ft.", value="4800")),
+        "precise_location": answering(FieldAnswer(outcome="resolved", literal="Yepocapa, 4800ft.",
+            reading_names=["1A", "1B"], explanation="Both readers write it."))}))
+    place = run.fields["precise_location"]
+    assert place.state == ValueState.UNRESOLVED
+    assert place.reason == field_step.TAKEN.format(other="Elevation From (ft)") + " Both readers write it."
+    assert run.fields["elevation_from_ft"].state == ValueState.SUPPORTED
+    assert "transcript_literal:precise_location" not in [f.reason_code for f in run.findings]
+
+
+def test_text_another_kind_of_field_claims_names_that_check_in_the_fields_trace(tmp_path):
+    """The field's trace (step.trace_fields) names the check that refused a
+    resolved answer: for text read from the transcript that another kind of
+    field claims (_taken), "taken"."""
+    from test_step import research
+
+    rig = label_3(tmp_path, SPANISH_LABEL, SPANISH_LABEL.replace("Mitchell", "mitchell"),
+        [("elevation_from_ft", name, "4800ft.", "Yepocapa, 4800ft.") for name in ("1A", "1B")])
+    run = rig.specimen.run
+    prepared, outcomes, calls = research(rig, Scripted({
+        "elevation_from_ft": answering(resolved("4800ft.", value="4800")),
+        "precise_location": answering(FieldAnswer(outcome="resolved", literal="Yepocapa, 4800ft.",
+            reading_names=["1A", "1B"], explanation="Both readers write it."))}))
+    decisions: dict[str, dict] = {}
+    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    assert run.fields["precise_location"].state == ValueState.UNRESOLVED
+    assert decisions["precise_location"] == {"refusal": "taken"}
+
+
+def test_text_from_the_transcript_beside_another_kinds_text_settles(tmp_path):
+    """A Costa Rican label: the locality before the comma, the elevation
+    after it. Neither holds the other: the locality settles from the
+    transcript. On origin/main it is unresolved as no candidate."""
+    text = "Volc" + A_ACUTE + "n Barva, 2000 msnm\n15-VIII-1965"
+    rig = label_3(tmp_path, text, text + "\nleg. anon.",
+        [("elevation_from_m", name, "2000 msnm", "Volc" + A_ACUTE + "n Barva, 2000 msnm") for name in ("1A", "1B")])
+    run = rig.specimen.run
+    settle(rig, Scripted({"precise_location": answering(FieldAnswer(outcome="resolved",
+        literal="Volc" + A_ACUTE + "n Barva", reading_names=["1A", "1B"], explanation="Both readers write it."))}))
+    assert run.fields["precise_location"].state == ValueState.SUPPORTED
+    assert "transcript_literal:precise_location" in [f.reason_code for f in run.findings]
+
+
+@pytest.mark.parametrize(("key", "settles"), [
+    # A collection code read from the transcript where the organiser placed the date.
+    ("collection_code", False),
+    # Verbatim D/T/S may hold the date: its meaning is an open museum question.
+    ("verbatim_dts", True),
+])
+def test_text_the_organiser_placed_in_another_field(tmp_path, key, settles):
+    """The organiser gave "IV-24-48" as the collecting date; another field's
+    expert reads the same text from the transcript. The organiser's date
+    settles either way; a field of another kind does not. On origin/main
+    both are unresolved as no candidate."""
+    rig = label_3(tmp_path, candidates=[("date_visited_from", name, "IV-24-48", "IV-24-48") for name in ("1A", "1B")])
+    run = rig.specimen.run
+    settle(rig, Scripted({
+        "date_visited_from": answering(resolved("IV-24-48", value="1948-04-24")),
+        key: answering(FieldAnswer(outcome="resolved", literal="IV-24-48", reading_names=["1A", "1B"],
+            explanation="Read from the transcript."))}))
+    assert run.fields["date_visited_from"].state == ValueState.SUPPORTED
+    value = run.fields[key]
+    if settles:
+        assert value.state == ValueState.SUPPORTED
+        return
+    assert value.state == ValueState.UNRESOLVED
+    assert value.reason.startswith(field_step.TAKEN.format(other="Date Visited From"))
+
+
+def test_a_date_settled_before_this_attempt_still_holds_its_text(tmp_path):
+    """Another field's claim on the text need not be settled in this
+    attempt: a date settled by an earlier attempt holds "IV-24-48" against a
+    collection code read from the transcript."""
+    rig = label_3(tmp_path)
+    run = rig.specimen.run
+    run.fields["date_visited_from"] = FieldValue(state=ValueState.SUPPORTED, literal="IV-24-48",
+        parsed="1948-04-24", layer="settled", source_region_id=run.regions[0].id)
+    settle(rig, Scripted({"collection_code": answering(FieldAnswer(outcome="resolved", literal="IV-24-48",
+        reading_names=["1A", "1B"], explanation="Read from the transcript."))}))
+    code = run.fields["collection_code"]
+    assert code.state == ValueState.UNRESOLVED
+    assert code.reason.startswith(field_step.TAKEN.format(other="Date Visited From"))
+
+
+def test_a_date_its_expert_quotes_but_cannot_settle_claims_no_text(tmp_path):
+    """Round 2 of the production test: only a settled value claims text. A
+    date expert that quotes "IV-24-48" and cannot settle it no longer holds
+    it against a collection code read from the transcript; the code still
+    goes to review, as text that plainly holds a date
+    (agreement.HOLDS_A_DATE). On 5332ce4e3 the reason named the date."""
+    rig = label_3(tmp_path)
+    run = rig.specimen.run
+    settle(rig, Scripted({
+        "collection_code": answering(FieldAnswer(outcome="resolved", literal="IV-24-48",
+            reading_names=["1A", "1B"], explanation="Read from the transcript.")),
+        "date_visited_from": answering(FieldAnswer(outcome="sources_cannot_resolve",
+            literal="IV-24-48", reading_names=["1A"], explanation="Two possible years."))}))
+    code = run.fields["collection_code"]
+    assert code.state == ValueState.UNRESOLVED
+    assert code.reason.startswith(agreement.HOLDS_A_DATE)
+
+
+def test_a_code_refused_as_a_date_claims_no_text_and_the_date_from_the_transcript_settles(tmp_path):
+    """Two experts read "IV-24-48" from the transcript, the date's and the
+    collection code's. The code holds a date (agreement.HOLDS_A_DATE), so it
+    settles nothing and claims nothing: the date settles, and the code goes
+    to review as text the settled date holds. On 5332ce4e3 both went to
+    review."""
+    rig = label_3(tmp_path)
+    run = rig.specimen.run
+    settle(rig, Scripted({key: answering(FieldAnswer(outcome="resolved", literal="IV-24-48",
+        reading_names=["1A", "1B"], value="1948-04-24" if key == "date_visited_from" else None,
+        explanation="Read from the transcript.")) for key in ("date_visited_from", "collection_code")}))
+    date = run.fields["date_visited_from"]
+    assert (date.state, date.literal, date.parsed) == (ValueState.SUPPORTED, "IV-24-48", "1948-04-24")
+    code = run.fields["collection_code"]
+    assert code.state == ValueState.UNRESOLVED
+    assert code.reason.startswith(field_step.TAKEN.format(other="Date Visited From"))
+
+
+def test_two_fields_that_both_settle_the_same_text_from_the_transcript_both_go_to_review(tmp_path):
+    """The control: 105526328's "trap" read from the transcript by the
+    habitat's expert and the collecting method's, each of which would
+    settle it. Which field it belongs to is for a person."""
+    rig = label_3(tmp_path)
+    run = rig.specimen.run
+    settle(rig, Scripted({key: answering(FieldAnswer(outcome="resolved", literal="trap",
+        reading_names=["1A", "1B"], explanation="Both readers write it."))
+        for key in ("habitat", "collection_method")}))
+    habitat, method = run.fields["habitat"], run.fields["collection_method"]
+    assert (habitat.state, method.state) == (ValueState.UNRESOLVED, ValueState.UNRESOLVED)
+    assert habitat.reason.startswith(field_step.TAKEN.format(other="Collection Method"))
+    assert method.reason.startswith(field_step.TAKEN.format(other="Habitat"))
+    assert not {"transcript_literal:habitat", "transcript_literal:collection_method"} & {
+        f.reason_code for f in run.findings}
+
+
+TRAP_HABITAT = [("habitat", name, "trap", "trap") for name in ("1A", "1B")]
+# How 105526328's habitat expert, or another field's, can leave "trap" unsettled.
+UNSETTLED_TRAP = {
+    # The real run: the organiser offered "trap" as the habitat, and its
+    # expert found that the label states no habitat.
+    "organiser-candidate-expert-lacks": (TRAP_HABITAT, answering(LACKS)),
+    "organiser-candidate-expert-fails": (TRAP_HABITAT, failing("timeout")),
+    # No candidate: the habitat's expert quotes "trap" and cannot settle it.
+    "quoted-unsettled": ((), answering(FieldAnswer(outcome="sources_cannot_resolve", literal="trap",
+        reading_names=["1A", "1B"], explanation="It may be the method, not the habitat."))),
+}
+
+
+@pytest.mark.parametrize(("candidates", "habitat"), UNSETTLED_TRAP.values(), ids=UNSETTLED_TRAP)
+def test_text_no_other_field_settles_never_holds_a_method_read_from_the_transcript(tmp_path, candidates, habitat):
+    """Round 2 of the production test, 105526328: the collecting method's
+    expert reads "trap" from the transcript. An organiser candidate and an
+    answer that settles nothing claim no text, so the method settles, its
+    label rows written once (the first pass, _first_pass, leaves the run as
+    it was). On 5332ce4e3 the method was unresolved: "This text, read from
+    the transcript, is also the value found for Habitat."."""
+    rig = label_3(tmp_path, candidates=candidates)
+    run = rig.specimen.run
+    decisions: dict[str, dict] = {}
+    from test_step import research
+    prepared, outcomes, calls = research(rig, Scripted({"habitat": habitat,
+        "collection_method": answering(FieldAnswer(outcome="resolved", literal="trap", reading_names=["1A", "1B"],
+            explanation="The method is a trap."))}))
+    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    method = run.fields["collection_method"]
+    assert (method.state, method.literal, method.layer) == (ValueState.SUPPORTED, "trap", "verbatim")
+    assert "refusal" not in decisions["collection_method"]
+    assert run.fields["habitat"].state != ValueState.SUPPORTED
+    rows = [item for item in run.evidence if item.id in method.evidence_ids and item.source == "field_research"]
+    assert sorted(len(row.observation_ids) for row in rows) == [1, 1] and all(row.excerpt == "trap" for row in rows)
+    assert [f.reason_code for f in run.findings].count("transcript_literal:collection_method") == 1
+    verify_evidence(rig.specimen, rig.blobs)
+
+
+# ---- round 2 of the production test: organiser text another field settled ---
+# 105526328's label 3 (2026-10-11): the organiser offered "trap" as the
+# habitat, whose expert found that the label states no habitat; the method's
+# expert read "trap" from the transcript. Rule A judges the organiser's text
+# against what settled: text a field of another kind settled is no text for
+# the habitat.
+
+SPANISH_TRAP = "Finca Moca, 1200 msnm\n15-VIII-1965\ntrampa de luz\nleg. J. Ramirez"
+# A field's organiser text that another kind of field settles, on labels from
+# Guatemala and Costa Rica: (label, the field, its organiser text, the field
+# that settles the text, that field's answer).
+HELD_ELSEWHERE = {
+    "328-trap-as-habitat": (LABEL_3A, "habitat", "trap", "collection_method",
+        FieldAnswer(outcome="resolved", literal="trap", reading_names=["1A", "1B"], explanation="A trap.")),
+    "a-date-as-collection-code": (LABEL_3A, "collection_code", "IV-24-48", "date_visited_from",
+        FieldAnswer(outcome="resolved", literal="IV-24-48", reading_names=["1A", "1B"], value="1948-04-24",
+            explanation="The collecting date.")),
+    "spanish-light-trap-as-habitat": (SPANISH_TRAP, "habitat", "trampa de luz", "collection_method",
+        FieldAnswer(outcome="resolved", literal="trampa de luz", reading_names=["1A", "1B"],
+            explanation="A light trap.")),
+}
+
+
+def organiser_offers(key, text):
+    return [(key, name, text, text) for name in ("1A", "1B")]
+
+
+@pytest.mark.parametrize(("text", "key", "offered", "other", "answer"), HELD_ELSEWHERE.values(), ids=HELD_ELSEWHERE)
+def test_organiser_text_another_kind_of_field_settles_does_not_hold_back_rule_a(
+        tmp_path, text, key, offered, other, answer):
+    """The field's expert finds that the label states no value for it, and
+    the organiser's only text for it is text another kind of field settles
+    in the same attempt: the field clears as not on the label (rule A),
+    beside the other field's value. On 5332ce4e3 the other field went to
+    review as text the organiser's candidate claimed, and rule A declined
+    the field as organiser_found_text."""
+    from test_step import research
+
+    rig = label_3(tmp_path, text, text, organiser_offers(key, offered))
+    run = rig.specimen.run
+    prepared, outcomes, calls = research(rig, Scripted({key: answering(LACKS), other: answering(answer)}))
+    decisions: dict[str, dict] = {}
+    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    settled = run.fields[other]
+    assert (settled.state, settled.literal) == (ValueState.SUPPORTED, answer.literal)
+    assert decisions[key] == {"rule": "A_not_on_label"}
+    value = run.fields[key]
+    assert (value.state, value.literal) == (ValueState.NOT_PRESENT, None)
+    assert value.reason.startswith("Not on the label:")
+    assert key in cleared_as_not_on_label(run)
+    verify_evidence(rig.specimen, rig.blobs)
+
+
+def test_105526328s_method_settles_and_its_habitat_clears_as_not_on_the_label(tmp_path):
+    """Round 2 of the production test, end to end through the step with the
+    real run's readers ("Mum.", "chimaltenago", "lot #a" in 3B): the method
+    settles "trap" from the transcript, and the habitat, whose expert found
+    none, is not present by rule A. On 5332ce4e3 the method was unresolved
+    ("This text, read from the transcript, is also the value found for
+    Habitat.") and the habitat's rule A declined (organiser_found_text)."""
+    rig = label_3(tmp_path, candidates=TRAP_HABITAT)
+    run = rig.specimen.run
+    settle(rig, Scripted({"habitat": answering(FieldAnswer(outcome="label_lacks_value",
+            explanation='"trap" is a collecting method, not a habitat.')),
+        "collection_method": answering(FieldAnswer(outcome="resolved", literal="trap", reading_names=["1A", "1B"],
+            explanation="The method is a trap."))}))
+    method, habitat = run.fields["collection_method"], run.fields["habitat"]
+    assert (method.state, method.literal) == (ValueState.SUPPORTED, "trap")
+    assert (habitat.state, habitat.literal) == (ValueState.NOT_PRESENT, None)
+    assert "habitat" in cleared_as_not_on_label(run)
+    assert not [reason for reason in run.reasons if reason.endswith((":habitat", ":collection_method"))]
+    verify_evidence(rig.specimen, rig.blobs)
+
+
+def test_105526328s_precise_location_mun_or_mum_beside_the_settled_town_is_not_on_the_label(tmp_path):
+    """Round 2 of the production test, end to end with the real run's
+    readers: the precise location's expert offers "Yepocapa, Mun." (3A) and
+    "Yepocapa, Mum." (3B); the town "Yepocapa" settles. The label writes no
+    place finer than the town, and the readers differ only inside the
+    marker "Mun.": the precise location is not on the label (rule A). On
+    5332ce4e3 it was ambiguous, for review."""
+    from test_step import IN_YEPOCAPA, research
+
+    rig = label_3(tmp_path)
+    run = rig.specimen.run
+    prepared, outcomes, calls = research(rig, Scripted({**IN_YEPOCAPA,
+        "province_state": answering(FieldAnswer(outcome="several_possibilities",
+            options=["chimaltenango", "chimaltenago"], explanation="The readers differ.")),
+        "precise_location": answering(FieldAnswer(outcome="several_possibilities",
+            options=["Yepocapa, Mun.", "Yepocapa, Mum."], explanation="The readers differ: Mun. or Mum."))}),
+        tools=Gazetteer(rig.blobs))
+    decisions: dict[str, dict] = {}
+    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    assert (run.fields["city"].state, run.fields["city"].literal) == (ValueState.SUPPORTED, "Yepocapa")
+    place = run.fields["precise_location"]
+    assert (place.state, place.literal) == (ValueState.NOT_PRESENT, None)
+    assert place.reason == (field_step.NO_FINER_NOT_ON_LABEL.format(markers='"Mun."')
+        + " The readers differ: Mun. or Mum.")
+    assert decisions["precise_location"] == {"refusal": "admin_marker_only", "rule": "A_not_on_label"}
+    assert "precise_location" in cleared_as_not_on_label(run)
+    verify_evidence(rig.specimen, rig.blobs)
+
+
+def test_organiser_text_a_method_settled_by_an_earlier_attempt_holds_lets_rule_a_apply(tmp_path):
+    """A retry: the method settled "trap" in an earlier attempt and is not
+    researched again; the habitat, researched again, is judged against it as
+    against a value settled in this attempt. On 5332ce4e3 rule A declined the
+    habitat (organiser_found_text)."""
+    rig = label_3(tmp_path, candidates=TRAP_HABITAT)
+    run = rig.specimen.run
+    first, second = run.observations
+    run.fields["collection_method"] = FieldValue(state=ValueState.SUPPORTED, literal="trap", layer="verbatim",
+        source_region_id=run.regions[0].id, verbatim_by_observation={first.id: "trap", second.id: "trap"},
+        settled_observation_ids=[first.id, second.id])
+    resolver = Scripted({"habitat": answering(LACKS)})
+    settle(rig, resolver)
+    assert "collection_method" not in resolver.calls
+    assert run.fields["habitat"].state == ValueState.NOT_PRESENT and "habitat" in cleared_as_not_on_label(run)
+
+
+# The method's expert leaves "trap" unsettled.
+METHOD_UNSETTLED = {
+    "lacks": answering(LACKS),
+    "quotes-unsettled": answering(FieldAnswer(outcome="sources_cannot_resolve", literal="trap",
+        reading_names=["1A", "1B"], explanation="It may be the habitat.")),
+    "fails": failing("timeout"),
+}
+
+
+@pytest.mark.parametrize("method", METHOD_UNSETTLED.values(), ids=METHOD_UNSETTLED)
+def test_a_habitat_whose_trap_no_method_settles_stays_in_review(tmp_path, method):
+    """The control: the organiser's habitat is "trap" and no field settles
+    that text, so it may be the habitat: rule A keeps declining, and the
+    habitat goes to review, as on 5332ce4e3."""
+    from test_step import research
+
+    rig = label_3(tmp_path, candidates=TRAP_HABITAT)
+    run = rig.specimen.run
+    prepared, outcomes, calls = research(rig, Scripted({"habitat": answering(LACKS), "collection_method": method}))
+    decisions: dict[str, dict] = {}
+    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    assert run.fields["collection_method"].state != ValueState.SUPPORTED
+    assert decisions["habitat"] == {"rule": "A_declined:organiser_found_text"}
+    assert "habitat" not in cleared_as_not_on_label(run)
+
+
+def test_organiser_text_with_more_than_the_settled_text_stays_in_review(tmp_path):
+    """The control: the organiser's habitat "trap, cloud forest" holds more
+    than the method's settled "trap", so the habitat may be on the label."""
+    from test_step import research
+
+    text = "trap, cloud forest\nIV-24-48\nR.D. Mitchell"
+    rig = label_3(tmp_path, text, text, organiser_offers("habitat", "trap, cloud forest"))
+    run = rig.specimen.run
+    prepared, outcomes, calls = research(rig, Scripted({"habitat": answering(LACKS),
+        "collection_method": answering(FieldAnswer(outcome="resolved", literal="trap", reading_names=["1A", "1B"],
+            explanation="A trap."))}))
+    decisions: dict[str, dict] = {}
+    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    assert run.fields["collection_method"].state == ValueState.SUPPORTED
+    assert decisions["habitat"] == {"rule": "A_declined:organiser_found_text"}
+
+
+def apply_scripts(rig, scripts, **kwargs):
+    """Research and apply the rig's run with these experts; the decisions."""
+    from test_step import research
+
+    prepared, outcomes, calls = research(rig, Scripted(scripts), **kwargs)
+    decisions: dict[str, dict] = {}
+    field_step.apply_outcomes(rig.specimen.run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls,
+        decisions=decisions)
+    return decisions
+
+
+# ---- PR #309's review ---------------------------------------------------------
+
+FINCA_MOCA = "cloud forest nr. Finca Moca"
+
+
+def test_a_longer_settled_text_of_another_kind_does_not_clear_a_places_organiser_text(tmp_path):
+    """Finding 3 (the coordinator's ruling 3): the organiser offers "nr.
+    Finca Moca" as the precise location, quoting the line "cloud forest nr.
+    Finca Moca"; the habitat's expert settles the whole line, and the
+    precise location's expert finds none. The organiser's text is only
+    inside the settled habitat, not the habitat's literal, so rule A still
+    declines the precise location, as on 5332ce4e3, and the record goes to
+    review. The habitat settles, as only settled values claim text (A); on
+    5332ce4e3 the organiser's candidate held it. On b36341d1 the precise
+    location cleared as not on the label."""
+    from test_step import ABSENT, COLLECTORS, GUATEMALAN_TOWN, IN_YEPOCAPA, lacking, research
+
+    rig = build_rig(tmp_path, GUATEMALAN_TOWN + "\n" + FINCA_MOCA, candidates=[*COLLECTORS,
+        *(("precise_location", name, "nr. Finca Moca", FINCA_MOCA) for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    prepared, outcomes, calls = research(rig, lacking(*(set(ABSENT) - {"precise_location", "habitat"}),
+        **IN_YEPOCAPA, habitat=answering(FieldAnswer(outcome="resolved", literal=FINCA_MOCA,
+            reading_names=["1A", "1B"], explanation="The habitat line.")),
+        precise_location=answering(LACKS)), tools=Gazetteer(rig.blobs))
+    decisions: dict[str, dict] = {}
+    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    assert (run.fields["habitat"].state, run.fields["habitat"].literal) == (ValueState.SUPPORTED, FINCA_MOCA)
+    assert decisions["precise_location"] == {"rule": "A_declined:organiser_found_text"}
+    assert "precise_location" not in cleared_as_not_on_label(run)
+
+
+def test_organiser_text_equal_to_the_settled_literal_but_for_case_and_punctuation_lets_rule_a_apply(tmp_path):
+    """Ruling 3's comparison: the organiser offers "Trampa de luz." as the
+    habitat and the method settles "Trampa de luz" (the period left off):
+    the same text, letter case and the punctuation around it aside."""
+    text = "Finca Moca, 1200 msnm\n15-VIII-1965\nTrampa de luz.\nleg. J. Ramirez"
+    rig = label_3(tmp_path, text, text, organiser_offers("habitat", "Trampa de luz."))
+    decisions = apply_scripts(rig, {"habitat": answering(LACKS),
+        "collection_method": answering(FieldAnswer(outcome="resolved", literal="Trampa de luz",
+            reading_names=["1A", "1B"], explanation="A light trap."))})
+    run = rig.specimen.run
+    assert (run.fields["collection_method"].state, run.fields["collection_method"].literal) == (
+        ValueState.SUPPORTED, "Trampa de luz")
+    assert decisions["habitat"] == {"rule": "A_not_on_label"}
+    assert "habitat" in cleared_as_not_on_label(run)
+
+
+def test_the_mirror_of_105526328_clears_the_method_as_not_on_the_label(tmp_path):
+    """Ruling 5, accepted behaviour under B: the organiser offers "trap" as
+    the collecting method, the habitat's expert settles "trap", and the
+    method's expert finds no method. The organiser's text is the habitat's
+    literal, so the method clears as not on the label beside the habitat
+    "trap". On 5332ce4e3 both went to review (the candidate held the
+    habitat's text, and rule A declined the method)."""
+    rig = label_3(tmp_path, candidates=[("collection_method", name, "trap", "trap") for name in ("1A", "1B")])
+    decisions = apply_scripts(rig, {"habitat": answering(FieldAnswer(outcome="resolved", literal="trap",
+            reading_names=["1A", "1B"], explanation="A trap.")),
+        "collection_method": answering(LACKS)})
+    run = rig.specimen.run
+    assert (run.fields["habitat"].state, run.fields["habitat"].literal) == (ValueState.SUPPORTED, "trap")
+    assert decisions["collection_method"] == {"rule": "A_not_on_label"}
+    assert "collection_method" in cleared_as_not_on_label(run)
+
+
+def test_105526328s_readers_writing_mun_and_mtn_keep_the_precise_location_ambiguous(tmp_path):
+    """Finding 2 (ruling 2): 3B writes "Yepocapa, Mtn." (a mountain) where
+    3A writes "Yepocapa, Mun.". "Mtn." is a word for a place's feature, no
+    misreading of the marker, so the readers disagree on a place and the
+    precise location stays ambiguous, for review, as on 5332ce4e3. On
+    b36341d1 it cleared as not on the label."""
+    from test_step import IN_YEPOCAPA
+
+    rig = label_3(tmp_path, LABEL_3A, LABEL_3B.replace("Mum.", "Mtn."))
+    decisions = apply_scripts(rig, {**IN_YEPOCAPA,
+        "province_state": answering(FieldAnswer(outcome="several_possibilities",
+            options=["chimaltenango", "chimaltenago"], explanation="The readers differ.")),
+        "precise_location": answering(FieldAnswer(outcome="several_possibilities",
+            options=["Yepocapa, Mun.", "Yepocapa, Mtn."], explanation="Mun. or Mtn."))},
+        tools=Gazetteer(rig.blobs))
+    run = rig.specimen.run
+    assert run.fields["city"].state == ValueState.SUPPORTED
+    assert run.fields["precise_location"].state == ValueState.AMBIGUOUS
+    assert "refusal" not in decisions["precise_location"]
+    assert "precise_location" not in cleared_as_not_on_label(run)
+
+
+def test_the_first_pass_leaves_the_run_the_blobs_and_logfire_as_they_were(tmp_path, monkeypatch):
+    """The review's probe of A's first pass (_first_pass): the run's record
+    and the blob store are unchanged by it, it makes no Logfire event, and
+    the real pass makes the two the settled transcript literals need."""
+    rig = label_3(tmp_path, candidates=TRAP_HABITAT)
+    run = rig.specimen.run
+    real = field_step._first_pass
+    seen: dict = {}
+    events: list = []
+    monkeypatch.setattr(field_step.logfire, "info", lambda *args, **kwargs: events.append(args[0]))
+
+    def blob_files():
+        return sorted(path.name for path in (tmp_path / "blobs").rglob("*") if path.is_file())
+
+    def watched(run_, *args, **kwargs):
+        before, files = run_.model_dump_json(), blob_files()
+        events.clear()
+        settled = real(run_, *args, **kwargs)
+        seen.update(same=run_.model_dump_json() == before, files=blob_files() == files, events=list(events),
+            settled=sorted(settled))
+        return settled
+
+    monkeypatch.setattr(field_step, "_first_pass", watched)
+    apply_scripts(rig, {"habitat": answering(LACKS),
+        "date_visited_from": answering(FieldAnswer(outcome="resolved", literal="IV-24-48", value="1948-04-24",
+            reading_names=["1A", "1B"], explanation="Date.")),
+        "collection_method": answering(FieldAnswer(outcome="resolved", literal="trap", reading_names=["1A", "1B"],
+            explanation="A trap."))})
+    assert seen == {"same": True, "files": True, "events": [], "settled": ["collection_method", "date_visited_from"]}
+    assert events == ["field_research literal read from the transcript: {field_key}"] * 2
+
+
+def test_a_province_read_from_the_transcript_one_letter_off_settles_on_g34(tmp_path):
+    """105526330's spelling with no organiser candidate: both readers write
+    "Chimaltenago", Getty TGN's department is one letter off, and the
+    country above it, settled for the reading, is its parent. On origin/main
+    the province is unresolved as no candidate."""
+    places = dict(country="Guatemala", province_state="Chimaltenago", county=None, city=None)
+    rig = build_rig(tmp_path, label_with(**places), label_with(**places).replace("J. Smith", "J. Smyth"),
+        candidates=[("country", name, "Guatemala", "country: Guatemala") for name in ("1A", "1B")])
+    run = rig.specimen.run
+    settle(rig, Scripted({"country": from_tgn("Guatemala", "Guatemala", None, "tgn:7005493"),
+        "province_state": from_tgn("Chimaltenango", "Chimaltenago", "Chimaltenango", "tgn:1000565"),
+        **dict.fromkeys(("county", "city"), answering(LACKS))}), tools=Gazetteer(rig.blobs))
+    province = run.fields["province_state"]
+    assert (province.state, province.literal, province.normalized) == (
+        ValueState.SUPPORTED, "Chimaltenago", "Chimaltenango")
+    codes = [f.reason_code for f in run.findings]
+    assert "near_spelling:province_state" in codes and "transcript_literal:province_state" in codes
+
+
+def test_a_country_read_from_the_transcript_is_the_country_its_places_lie_in(tmp_path):
+    """A Guatemalan label whose organiser missed the country: both readers
+    write "Guatemala", Getty TGN settles it, and the department below it is
+    checked against it (step._misfit). On origin/main the country is
+    unresolved, and the department finds no country (NO_COUNTRY)."""
+    places = dict(country="Guatemala", province_state="Chimaltenango", county=None, city=None)
+    rig = build_rig(tmp_path, label_with(**places), label_with(**places).replace("J. Smith", "J. Smyth"),
+        candidates=[("province_state", name, "Chimaltenango", "province_state: Chimaltenango")
+            for name in ("1A", "1B")])
+    run = rig.specimen.run
+    settle(rig, Scripted({"country": from_tgn("Guatemala", "Guatemala", None, "tgn:7005493"),
+        "province_state": from_tgn("Chimaltenango", "Chimaltenango", None, "tgn:1000565"),
+        **dict.fromkeys(("county", "city"), answering(LACKS))}), tools=Gazetteer(rig.blobs))
+    country, province = run.fields["country"], run.fields["province_state"]
+    assert (country.state, country.authority_id) == (ValueState.SUPPORTED, "tgn:7005493")
+    assert (province.state, province.authority_id) == (ValueState.SUPPORTED, "tgn:1000565")
+    assert "transcript_literal:country" in [f.reason_code for f in run.findings]
+
+
+# ---- a doubtful genus on any reader of a label with no decided transcript ----
+# The sixth review's probe 3 (readers disagreeing on "cf."): 1A writes "cf.
+# Epipsocus sp. 1", 1B "Epipsocus sp. 1", and an answer naming only 1B settled
+# the genus. On origin/main its record went to review only because its other
+# fields had no candidate; once they settle from the transcript, the taxon
+# would clear.
+
+@pytest.mark.parametrize("doubtful", ["cf. Epipsocus sp. 1", "? Epipsocus sp. 1", "aff. Epipsocus sp. 1"],
+    ids=["cf", "question-mark", "aff"])
+def test_one_readers_doubt_holds_the_genus_whichever_reader_is_named(doubtful):
+    """On origin/main the answer naming 1B passes."""
+    literal = "Epipsocus sp. 1"
+    readings = label(doubtful + "\nleg. J. Smith", literal + "\nleg. J. Smith", names=("1A", "1B"), region="r1")
+    task = FieldTask("taxon", True, FieldValue(state=ValueState.SUPPORTED, literal=literal),
+        (Candidate("1A", doubtful, literal, "ev-1A"), Candidate("1B", literal, literal, "ev-1B")), FIELD_TOOLS["taxon"])
+    refused = agreement.refusal(task, readings, literal=literal, named=[readings[1]], value=None, authority_id=None,
+        cited=[], received=[])
+    assert refused is not None and refused.reason == agreement.DOUBTFUL_GENUS
+
+
+def test_a_decided_clean_transcript_still_decides_beside_a_doubtful_reader():
+    """The control, unchanged (G19): the decided reading writes no doubt, and
+    the other reader's "cf." is evidence only."""
+    literal = "Epipsocus sp. 1"
+    readings = label(literal + "\nleg. J. Smith", "cf. Epipsocus sp. 1\nleg. J. Smith", decided=True,
+        names=("1A", "1B"), region="r1")
+    task = FieldTask("taxon", True, FieldValue(state=ValueState.SUPPORTED, literal=literal),
+        (Candidate("1A", literal, literal, "ev-1A"),), FIELD_TOOLS["taxon"])
+    assert agreement.refusal(task, readings, literal=literal, named=[readings[0]], value=None, authority_id=None,
+        cited=[], received=[]) is None
+
+
+# ---- PR #300's review: readers that write more words around the text ---------
+# Blocking finding 1: 3A "trap" and 3B "light trap" settled the method on
+# "trap", because 3B's "light trap" writes "trap" as a run of whole words; the
+# same readers with each reader's text as its candidate refuse (DIFFER). The
+# clause of each reader's line that holds the text (between commas or
+# semicolons, else the whole line) must now agree, letter case and spacing
+# aside.
+
+AROUND = {
+    # The review's four cases.
+    "trap-beside-light-trap": ("collection_method", "trap", "light trap"),
+    "yepocapa-beside-near-yepocapa": ("precise_location", "Yepocapa", "near Yepocapa"),
+    "forest-beside-cloud-forest": ("habitat", "forest", "cloud forest"),
+    "date-beside-a-date-range": ("date_visited_from", "IV-24-48", "IV-24-48 to V-2-48"),
+    # Spanish, French and Portuguese.
+    "spanish-cerca-de": ("precise_location", "Yepocapa", "cerca de Yepocapa"),
+    "french-piege-lumineux": ("collection_method", "pi" + E_GRAVE + "ge", "pi" + E_GRAVE + "ge lumineux"),
+    "portuguese-mata-atlantica": ("habitat", "mata", "mata atl" + A_CIRCUMFLEX + "ntica"),
+}
+
+
+@pytest.mark.parametrize(("key", "first", "second"), AROUND.values(), ids=AROUND)
+def test_readers_that_write_more_words_around_the_text_disagree(key, first, second):
+    """On 61c193e93 each settles on the first reader's text."""
+    readings = label(first + "\nleg. J. Smith", second + "\nleg. J. Smith")
+    refused = agreement.refusal(uncandidated(key), readings, literal=first, named=[readings[0]], value=None,
+        authority_id=None, cited=[], received=[])
+    assert refused is not None and (refused.reason, refused.differ) == (agreement.DIFFER, True)
+    assert repr(collapse(second)) in refused.retry
+
+
+@pytest.mark.parametrize("names", [("3A", "3B"), ("3A",)], ids=["both-named", "first-named"])
+def test_the_review_probe_trap_beside_light_trap_refuses_however_the_readers_are_named(names):
+    readings = label("trap\nleg. J. Smith", "light trap\nleg. J. Smith")
+    refused = agreement.refusal(uncandidated("collection_method"), readings, literal="trap",
+        named=[r for r in readings if r.name in names], value=None, authority_id=None, cited=[], received=[])
+    assert refused is not None and refused.reason == agreement.DIFFER
+
+
+@pytest.mark.parametrize(("first", "second", "literal"), [
+    # 105526328's municipality line: the clause holding "Yepocapa" is the same.
+    (LABEL_3A, LABEL_3B, "Yepocapa"),
+    # A Costa Rican line whose readers space the comma differently.
+    ("Volc" + A_ACUTE + "n Barva, 2000 msnm", "Volc" + A_ACUTE + "n Barva,2000 msnm", "Volc" + A_ACUTE + "n Barva"),
+    # Case and spacing aside, the clause is one.
+    ("Mossy forest, 6400'", "mossy  Forest, 6400'", "Mossy forest"),
+], ids=["328-municipality-clause", "spanish-comma-spacing", "case-and-spacing"])
+def test_readers_whose_clauses_holding_the_text_agree_settle(first, second, literal):
+    """The control: unchanged from 61c193e93."""
+    readings = label(first, second)
+    assert agreement.refusal(uncandidated("precise_location" if "Barva" in literal else "habitat"), readings,
+        literal=literal, named=[readings[0]], value=None, authority_id=None, cited=[], received=[]) is None
+
+
+@pytest.mark.parametrize(("key", "first", "second"), list(AROUND.values())[:4], ids=list(AROUND)[:4])
+def test_through_the_step_readers_that_write_more_words_go_to_review(tmp_path, key, first, second):
+    """The review's four cases end to end; on 61c193e93 each field is
+    supported on the first reader's text, and the second reader's verbatim is
+    recorded as that text."""
+    rig = build_rig(tmp_path, first + "\nleg. J. Smith", second + "\nleg. J. Smith", candidates=[])
+    run = rig.specimen.run
+    settle(rig, Scripted({key: answering(FieldAnswer(outcome="resolved", literal=first, reading_names=["1A"],
+        explanation="Read from the readings."))}))
+    value = run.fields[key]
+    assert (value.state, value.literal) == (ValueState.AMBIGUOUS, None)
+    assert value.reason.startswith(agreement.DIFFER)
+    assert f"transcript_literal:{key}" not in [f.reason_code for f in run.findings]
+
+
+def test_the_review_probe_p13_trap_and_light_trap_naming_both_readers(tmp_path):
+    rig = build_rig(tmp_path, "trap\nleg. J. Smith", "light trap\nleg. J. Smith", candidates=[])
+    run = rig.specimen.run
+    settle(rig, Scripted({"collection_method": answering(FieldAnswer(outcome="resolved", literal="trap",
+        reading_names=["1A", "1B"], explanation="Both write it."))}))
+    method = run.fields["collection_method"]
+    assert (method.state, method.literal) == (ValueState.AMBIGUOUS, None)
+
+
+# Not blocking 2: the overlap guard was attempt-local. With the elevation
+# expert failing, "Yepocapa, 4800ft." cleared as the locality. Since round 2
+# of the production test only a settled value claims text, so the organiser's
+# candidate "4800ft." for an elevation that settles nothing no longer does;
+# the locality still goes to review, as text that plainly holds an elevation
+# (agreement._holds_another_kind).
+
+@pytest.mark.parametrize("elevation", ["fails", "lacks"])
+def test_a_locality_holding_an_elevation_no_field_settles_still_goes_to_review(tmp_path, elevation):
+    """On 61c193e93 the locality is supported; on 5332ce4e3 it went to review
+    as text the elevation's candidate claimed."""
+    rig = label_3(tmp_path, SPANISH_LABEL, SPANISH_LABEL.replace("Mitchell", "mitchell"),
+        [("elevation_from_ft", name, "4800ft.", "Yepocapa, 4800ft.") for name in ("1A", "1B")])
+    run = rig.specimen.run
+    settle(rig, Scripted({
+        "elevation_from_ft": failing("timeout") if elevation == "fails" else answering(LACKS),
+        "precise_location": answering(FieldAnswer(outcome="resolved", literal="Yepocapa, 4800ft.",
+            reading_names=["1A", "1B"], explanation="Both readers write it."))}))
+    place = run.fields["precise_location"]
+    assert place.state == ValueState.UNRESOLVED
+    assert place.reason.startswith(agreement.HOLDS_AN_ELEVATION)
+
+
+# Not blocking 3: a date or an elevation read from the transcript is never one
+# end of a range its line writes ("to", "-", an en dash or "a" between two
+# words that hold digits).
+
+RANGE_ENDS = {
+    "date-to-end": ("date_visited_from", "IV-24-48 to V-2-48", "V-2-48"),
+    "date-to-start": ("date_visited_from", "IV-24-48 to V-2-48", "IV-24-48"),
+    "date-hyphen-end": ("date_visited_from", "IV-24-48 - V-2-48", "V-2-48"),
+    "date-capital-to": ("date_visited_to", "IV-24-48 TO V-2-48", "V-2-48"),
+    "spanish-date-a": ("date_visited_from", "10 a 15-VIII-1965", "15-VIII-1965"),
+    "elevation-to": ("elevation_from_m", "1200 to 1500 m", "1500 m"),
+    "spanish-elevation-a": ("elevation_to_m", "1200 a 1500 m", "1500 m"),
+    "elevation-en-dash": ("elevation_from_m", "1200 \N{EN DASH} 1500 m", "1500 m"),
+    "imperial-elevation-to": ("elevation_from_ft", "4000 to 4800 ft.", "4800 ft."),
+}
+
+
+@pytest.mark.parametrize(("key", "line", "literal"), RANGE_ENDS.values(), ids=RANGE_ENDS)
+def test_one_end_of_a_range_is_never_read_from_the_transcript(key, line, literal):
+    """On 61c193e93 each is accepted."""
+    readings = label(line + "\nleg. J. Smith")
+    refused = agreement.refusal(uncandidated(key), readings, literal=literal, named=list(readings), value=None,
+        authority_id=None, cited=[], received=[])
+    assert refused is not None and refused.reason == agreement.PART_OF_RANGE
+
+
+def test_a_foot_mark_left_off_is_still_feet_to_the_written_rules():
+    """Edge characters may be left off a run, but extraction_refusal still
+    reads the reading: "6400" of "Elev. 6400'" is no elevation in metres."""
+    readings = label("Mossy forest, Elev. 6400'\nleg. J. Smith")
+    assert agreement.verbatim_runs(readings[0].text, "6400")
+    with pytest.raises(ModelRetry):
+        checked(uncandidated("elevation_from_m"), readings, dict(outcome="resolved", literal="6400",
+            reading_names=["3A", "3B"]))
+
+
+def test_the_experts_check_sends_a_range_end_back():
+    """The review's probe: "V-2-48" as date_visited_from 1948-05-02 passed the
+    expert's check on 61c193e93."""
+    readings = label("IV-24-48 to V-2-48\nleg. J. Smith")
+    with pytest.raises(ModelRetry, match="one end of a range"):
+        checked(uncandidated("date_visited_from"), readings, dict(outcome="resolved", literal="V-2-48",
+            reading_names=["3A", "3B"], value="1948-05-02"), checks=[("parse_date", "V-2-48")])
+
+
+@pytest.mark.parametrize(("key", "line", "literal"), [
+    # The whole range keeps today's handling.
+    ("elevation_from_m", "1200 to 1500 m", "1200 to 1500 m"),
+    # A range in another clause of the line.
+    ("elevation_from_ft", "Yepocapa, 4800 ft., IV-24-48 to V-2-48", "4800 ft."),
+    # "a" that joins no two numbers (Spanish "at").
+    ("elevation_from_m", "Mata a 1200 m", "1200 m"),
+    # A field that is no date or elevation, beside a range of plain numbers. (Its old case, the
+    # collection code "V-2-48" of "IV-24-48 to V-2-48", is now refused as holding a date:
+    # test_a_place_or_code_read_from_the_transcript_never_holds_another_kinds_text.)
+    ("collection_code", "lot 12 to 15", "15"),
+], ids=["whole-range", "range-in-another-clause", "a-joining-no-numbers", "not-a-date-field"])
+def test_text_beside_or_holding_a_whole_range_is_not_cut_from_it(key, line, literal):
+    """The control: each settles, as on 6fd595b3b."""
+    readings = label(line + "\nleg. J. Smith")
+    assert agreement.refusal(uncandidated(key), readings, literal=literal, named=list(readings), value=None,
+        authority_id=None, cited=[], received=[]) is None
+
+
+# PR #300's review of 6fd595b3b, finding 1: the range guard knew only "to",
+# "-", an en dash and "a" standing as words between two words with digits.
+# Ranges are written in many languages, with every form of dash, with a dash
+# touching one end, and with a unit or a month between a number and the
+# joiner (written.RANGE_WORDS, RANGE_SIGNS, DASHES, BESIDE_A_NUMBER).
+
+RANGES_IN_ANY_LANGUAGE = {
+    # Elevations: France, Germany, Spain and Latin America, Brazil, Italy, the Netherlands.
+    "french-a-grave": ("elevation_from_m", "1200 \N{LATIN SMALL LETTER A WITH GRAVE} 1500 m", "1500 m"),
+    "german-bis": ("elevation_from_m", "H\N{LATIN SMALL LETTER O WITH DIAERESIS}he 1200 bis 1500 m", "1500 m"),
+    "spanish-hasta": ("elevation_to_m", "desde 1200 hasta 1500 m", "1500 m"),
+    "spanish-entre-y": ("elevation_from_m", "entre 1200 y 1500 msnm", "1500 msnm"),
+    "portuguese-ate": ("elevation_from_m", "1200 at\N{LATIN SMALL LETTER E WITH ACUTE} 1500 m", "1500 m"),
+    "italian-fino-a": ("elevation_from_m", "da 1200 fino a 1500 m s.l.m.", "1500 m s.l.m."),
+    "dutch-tot": ("elevation_from_m", "van 1200 tot 1500 m", "1500 m"),
+    "latin-ad": ("elevation_from_m", "1200 ad 1500 m", "1500 m"),
+    "english-and": ("elevation_from_m", "between 1200 and 1500 m", "1500 m"),
+    "ampersand": ("elevation_from_m", "1200 & 1500 m", "1500 m"),
+    # Every dash, standing alone or touching one end.
+    "em-dash": ("elevation_from_m", "1200 \N{EM DASH} 1500 m", "1500 m"),
+    "minus-sign": ("elevation_from_m", "1200 \N{MINUS SIGN} 1500 m", "1500 m"),
+    "figure-dash": ("elevation_from_m", "1200 \N{FIGURE DASH} 1500 m", "1500 m"),
+    "fullwidth-hyphen": ("elevation_from_m", "1200 \N{FULLWIDTH HYPHEN-MINUS} 1500 m", "1500 m"),
+    "japanese-wave-dash": ("elevation_from_m", "1200 \N{WAVE DASH} 1500 m", "1500 m"),
+    "hyphen-touching-the-first": ("elevation_from_m", "1200- 1500 m", "1500 m"),
+    "hyphen-touching-the-second": ("elevation_from_m", "1200 -1500 m", "1500 m"),
+    # A unit on both ends, either end taken.
+    "units-on-both-ends": ("elevation_from_m", "1200 m to 1500 m", "1500 m"),
+    "units-on-both-ends-first": ("elevation_from_m", "1200 m - 1500 m", "1200 m"),
+    "feet-on-both-ends": ("elevation_from_ft", "4000 ft to 4800 ft", "4000 ft"),
+    # Dates: French, German, English and Spanish joiners, a slash, a dash touching one end.
+    "french-au": ("date_visited_from", "IV-24-48 au V-2-48", "V-2-48"),
+    "german-bis-date": ("date_visited_to", "24.IV.1948 bis 2.V.1948", "2.V.1948"),
+    "english-thru": ("date_visited_from", "IV-24-48 thru V-2-48", "V-2-48"),
+    "ampersand-date": ("date_visited_from", "IV-24-48 & V-2-48", "V-2-48"),
+    "slash-date": ("date_visited_from", "IV-24-48 / V-2-48", "V-2-48"),
+    "dash-touching-the-second-date": ("date_visited_from", "IV-24-48 -V-2-48", "V-2-48"),
+    "dash-touching-the-first-date": ("date_visited_from", "IV-24-48- V-2-48", "IV-24-48"),
+    "spanish-al-days": ("date_visited_from", "24 al 30-IV-1948", "30-IV-1948"),
+    # A month between the number and the joiner, in English and in French.
+    "english-month-names": ("date_visited_from", "April 24 to May 2, 1948", "May 2, 1948"),
+    "french-month-names": ("date_visited_from", "24 avril au 2 mai 1948", "2 mai 1948"),
+    # A day range glued in one word, right before the month and year.
+    "glued-day-range": ("date_visited_from", "10-12 Sept. 1946", "Sept. 1946"),
+    "glued-slash-day-range": ("date_visited_from", "24/30 IV 1948", "IV 1948"),
+}
+
+
+@pytest.mark.parametrize(("key", "line", "literal"), RANGES_IN_ANY_LANGUAGE.values(), ids=RANGES_IN_ANY_LANGUAGE)
+def test_one_end_of_a_range_in_any_language_is_never_read_from_the_transcript(key, line, literal):
+    """On 6fd595b3b each is accepted."""
+    readings = label(line + "\nleg. J. Smith")
+    refused = agreement.refusal(uncandidated(key), readings, literal=literal, named=list(readings), value=None,
+        authority_id=None, cited=[], received=[])
+    assert refused is not None and refused.reason == agreement.PART_OF_RANGE
+
+
+def test_the_experts_check_sends_back_a_range_end_joined_in_german():
+    """The expert's own check, with parse_date run on the end: on 6fd595b3b it
+    keeps "2.V.1948" as the start of "24.IV.1948 bis 2.V.1948"."""
+    readings = label("Bayern, 24.IV.1948 bis 2.V.1948\nleg. J. Schmidt")
+    with pytest.raises(ModelRetry, match="one end of a range"):
+        checked(uncandidated("date_visited_from"), readings, dict(outcome="resolved", literal="2.V.1948",
+            reading_names=["3A", "3B"], value="1948-05-02"), checks=[("parse_date", "2.V.1948")])
+
+
+@pytest.mark.parametrize(("key", "line", "literal"), [
+    # One elevation written in both units is no range.
+    ("elevation_from_ft", "4800 ft. / 1463 m", "4800 ft."),
+    ("elevation_from_m", "4800 ft. / 1463 m", "1463 m"),
+    # Dashes and slashes between fields of different kinds join no range.
+    ("elevation_from_m", "Guatemala / 1200 m / 24.IV.1948", "1200 m"),
+    ("date_visited_from", "Guatemala / 1200 m / 24.IV.1948", "24.IV.1948"),
+    ("date_visited_from", "Yepocapa - 1200 m - IV-24-48", "IV-24-48"),
+    # A range of the other field in another clause.
+    ("elevation_from_m", "alt. 1200 m, 24 al 30-IV-1948", "1200 m"),
+    # Spanish "a" and Italian "e" joining no two numbers.
+    ("elevation_from_m", "camino a Yepocapa, 1200 m", "1200 m"),
+    ("date_visited_from", "Lago di Garda e dintorni 24.VI.1952", "24.VI.1952"),
+    # Whole ranges, in Spanish and German, keep the rules a candidate has.
+    ("elevation_from_m", "1200 a 1500 m", "1200 a 1500 m"),
+    ("date_visited_from", "24.IV.1948 bis 2.V.1948", "24.IV.1948 bis 2.V.1948"),
+], ids=["feet-beside-metres", "metres-beside-feet", "slash-separated-elevation", "slash-separated-date",
+    "dash-separated-date", "range-in-another-clause", "spanish-a-before-a-word", "italian-e-between-words",
+    "whole-spanish-range", "whole-german-range"])
+def test_text_beside_a_joiner_that_joins_no_range_settles(key, line, literal):
+    """The control: each settles, as on 6fd595b3b."""
+    readings = label(line + "\nleg. J. Smith")
+    assert agreement.refusal(uncandidated(key), readings, literal=literal, named=list(readings), value=None,
+        authority_id=None, cited=[], received=[]) is None
+
+
+# PR #300's review of 6fd595b3b, finding 5 (pre-existing on main): "1500 m"
+# from "alt. 1500 m" settled elevation_from_ft as 1500. An elevation settles
+# only the fields of the unit the label writes it in (written.ELEVATION_UNITS),
+# and a number with no unit settles none: a unit is never guessed (G41).
+
+OTHER_UNIT = {
+    # The review's case: metres as the feet field, the unit in the literal or after it.
+    "metres-as-feet": ("elevation_from_ft", "alt. 1500 m", "1500 m"),
+    "metres-after-the-number": ("elevation_from_ft", "alt. 1500 m", "1500"),
+    # Spanish and Latin American metres above sea level.
+    "msnm": ("elevation_from_ft", "Volc\N{LATIN SMALL LETTER A WITH ACUTE}n Barva, 2000 msnm", "2000 msnm"),
+    "m-s-n-m": ("elevation_to_ft", "1500 m.s.n.m.", "1500 m.s.n.m."),
+    "metros": ("elevation_from_ft", "1200 metros", "1200 metros"),
+    # English, German and Italian metres above sea level, and a heading after the unit.
+    "m-a-s-l": ("elevation_from_ft", "Mt. Kinabalu, 1500 m a.s.l.", "1500 m a.s.l."),
+    "german-m-ue-M": ("elevation_from_ft", "800 m \N{LATIN SMALL LETTER U WITH DIAERESIS}. M.", "800 m \N{LATIN SMALL LETTER U WITH DIAERESIS}. M."),
+    "italian-unit-first": ("elevation_from_ft", "Alpi Apuane, m 1200", "m 1200"),
+    "m-alt": ("elevation_from_ft", "1500 m alt.", "1500 m alt."),
+    # Feet as the metres field: a foot mark, "ft.", Spanish "pies", Portuguese "pes", German "Fuss".
+    "foot-mark-as-metres": ("elevation_from_m", "Mossy forest 6400'", "6400'"),
+    "ft-as-metres": ("elevation_from_m", "Elev. 4800 ft.", "4800 ft."),
+    "pies": ("elevation_from_m", "6400 pies", "6400 pies"),
+    "pes": ("elevation_to_m", "1500 p\N{LATIN SMALL LETTER E WITH ACUTE}s", "1500 p\N{LATIN SMALL LETTER E WITH ACUTE}s"),
+    "fuss": ("elevation_from_m", "H\N{LATIN SMALL LETTER O WITH DIAERESIS}he 1500 Fu\N{LATIN SMALL LETTER SHARP S}",
+        "1500 Fu\N{LATIN SMALL LETTER SHARP S}"),
+    # Both units in one literal: never one field's.
+    "both-units": ("elevation_from_ft", "4800 ft. (1463 m)", "4800 ft. (1463 m)"),
+}
+
+
+@pytest.mark.parametrize(("key", "line", "literal"), OTHER_UNIT.values(), ids=OTHER_UNIT)
+def test_an_elevation_never_settles_a_field_of_the_other_unit(key, line, literal):
+    """On 6fd595b3b each is accepted by the agreement rules."""
+    readings = label(line + "\nleg. J. Smith")
+    refused = agreement.refusal(uncandidated(key), readings, literal=literal, named=list(readings), value=None,
+        authority_id=None, cited=[], received=[])
+    assert refused is not None and refused.reason == agreement.UNIT_DIFFERS
+
+
+NO_UNIT = {
+    "bare-number": ("elevation_from_m", "Elev. 1500", "1500"),
+    "heading-and-number": ("elevation_from_ft", "Alt. 4800", "Alt. 4800"),
+    # "mt" may be Mount, never read as metres.
+    "mt": ("elevation_from_m", "1200 mt", "1200 mt"),
+    # "mm" is no metre.
+    "millimetres": ("elevation_from_m", "1200 mm", "1200 mm"),
+}
+
+
+@pytest.mark.parametrize(("key", "line", "literal"), NO_UNIT.values(), ids=NO_UNIT)
+def test_a_number_with_no_unit_never_settles_an_elevation(key, line, literal):
+    """On 6fd595b3b each is accepted by the agreement rules."""
+    readings = label(line + "\nleg. J. Smith")
+    refused = agreement.refusal(uncandidated(key), readings, literal=literal, named=list(readings), value=None,
+        authority_id=None, cited=[], received=[])
+    assert refused is not None and refused.reason == agreement.NO_UNIT
+
+
+@pytest.mark.parametrize("basis", ["candidate", "transcript"])
+def test_the_experts_check_sends_metres_back_from_the_feet_field(basis):
+    """The review's probe: "1500 m" as elevation_from_ft, value 1500 from
+    parse_elevation, by candidate and from the transcript. On 6fd595b3b both
+    are kept."""
+    readings = label("alt. 1500 m\nleg. J. Smith")
+    task = uncandidated("elevation_from_ft", *((("3A", "1500 m"), ("3B", "1500 m")) if basis == "candidate" else ()))
+    with pytest.raises(ModelRetry, match="in metres, and this field holds feet"):
+        checked(task, readings, dict(outcome="resolved", literal="1500 m", value="1500", reading_names=["3A", "3B"]),
+            checks=[("parse_elevation", "1500 m")])
+
+
+@pytest.mark.parametrize("basis", ["candidate", "transcript"])
+def test_the_step_never_settles_metres_as_feet(tmp_path, basis):
+    """Through the step: on 6fd595b3b the feet field is supported as 1500 by
+    candidate, and from the transcript too. The metres field settles, and
+    the feet are left to review."""
+    text = "Mindanao, alt. 1500 m\nleg. J. Smith"
+    candidates = [("elevation_from_ft", name, "1500 m", "alt. 1500 m") for name in ("1A", "1B")] if (
+        basis == "candidate") else []
+    rig = label_3(tmp_path, text, text, candidates)
+    run = rig.specimen.run
+    settle(rig, Scripted({
+        "elevation_from_ft": answering(FieldAnswer(outcome="resolved", literal="1500 m", value="1500",
+            reading_names=["1A", "1B"], explanation="Read.")),
+        "elevation_from_m": answering(FieldAnswer(outcome="resolved", literal="1500 m", value="1500",
+            reading_names=["1A", "1B"], explanation="Read."))}))
+    feet = run.fields["elevation_from_ft"]
+    assert feet.state == ValueState.UNRESOLVED
+    assert feet.reason == agreement.UNIT_DIFFERS + " Read."
+    assert run.fields["elevation_from_m"].state == ValueState.SUPPORTED
+
+
+@pytest.mark.parametrize(("key", "line", "literal"), [
+    # The written unit, in any spelling, settles its own unit's field.
+    ("elevation_from_ft", "Elev. 4800 ft.", "4800 ft."),
+    ("elevation_from_ft", "Mossy forest 6400'", "6400'"),
+    ("elevation_from_ft", "Mossy forest 6400'", "6400"),
+    ("elevation_from_m", "alt. 1500 m", "1500 m"),
+    ("elevation_from_m", "alt. 1500 m", "1500"),
+    ("elevation_from_m", "Volc\N{LATIN SMALL LETTER A WITH ACUTE}n Barva, 2000 msnm", "2000 msnm"),
+    ("elevation_from_m", "Alpi Apuane, m 1200", "m 1200"),
+    ("elevation_from_ft", "6400 pies", "6400 pies"),
+    ("elevation_from_ft", "1500 Fu\N{LATIN SMALL LETTER SHARP S}", "1500 Fu\N{LATIN SMALL LETTER SHARP S}"),
+    # A range's trailing unit is both ends' unit; one elevation in both units settles each field.
+    ("elevation_from_m", "1200 to 1500 m", "1200 to 1500 m"),
+    ("elevation_from_m", "4800 ft. / 1463 m", "1463 m"),
+    ("elevation_from_ft", "4800 ft. / 1463 m", "4800 ft."),
+], ids=["feet", "foot-mark", "foot-mark-left-off", "metres", "metres-after-the-number", "msnm", "italian-unit-first",
+    "pies", "fuss", "range-with-a-trailing-unit", "metres-beside-feet", "feet-beside-metres"])
+def test_an_elevation_in_its_own_unit_still_settles(key, line, literal):
+    """The control: each settles, as on 6fd595b3b."""
+    readings = label(line + "\nleg. J. Smith")
+    assert agreement.refusal(uncandidated(key), readings, literal=literal, named=list(readings), value=None,
+        authority_id=None, cited=[], received=[]) is None
+
+
+# PR #300's review of 6fd595b3b, finding 2: the overlap guard needed another
+# field to claim the text. With no elevation or date candidate and that
+# expert failing, "Yepocapa, 4800ft." settled as the locality and "IV-24-48"
+# as the collection code. A place or a code read from the transcript never
+# holds text that is plainly an elevation, a date or a range of them
+# (written.other_kind), whoever claims it. And a short settled literal
+# claimed the digits inside longer tokens: a settled code "2" sent the date
+# "IV-24-48" to review.
+
+HOLDS_ANOTHER_KIND = {
+    # Elevations inside a locality: Guatemala, Italy (the unit first), Costa Rica, Borneo, Switzerland, Mexico.
+    "guatemala-feet": ("precise_location", "Yepocapa, 4800ft.", "HOLDS_AN_ELEVATION"),
+    "italy-unit-first": ("precise_location", "Alpi Apuane, m 1200", "HOLDS_AN_ELEVATION"),
+    "costa-rica-msnm": ("precise_location", "Volc\N{LATIN SMALL LETTER A WITH ACUTE}n Barva, 2000 msnm",
+        "HOLDS_AN_ELEVATION"),
+    "borneo-m-a-s-l": ("precise_location", "Mt. Kinabalu, 1500 m a.s.l.", "HOLDS_AN_ELEVATION"),
+    "swiss-m-ue-M": ("precise_location", "Val Bavona 800 m \N{LATIN SMALL LETTER U WITH DIAERESIS}. M.",
+        "HOLDS_AN_ELEVATION"),
+    "mexico-pies": ("precise_location", "Real de Catorce 9000 pies", "HOLDS_AN_ELEVATION"),
+    # Dates inside a code or a locality, as the date parser reads them.
+    "code-is-a-date": ("collection_code", "IV-24-48", "HOLDS_A_DATE"),
+    "code-is-a-range-end": ("collection_code", "V-2-48", "HOLDS_A_DATE"),
+    "german-locality-and-date": ("precise_location", "Lichtfang Bayern 24.VI.1952", "HOLDS_A_DATE"),
+    "english-month-name": ("precise_location", "Mindanao, Davao, 24 Apr 1948", "HOLDS_A_DATE"),
+    # A range of dates the parser does not read whole: days and Roman months, no year.
+    "spanish-day-range": ("precise_location", "R\N{LATIN SMALL LETTER I WITH ACUTE}o Negro, 24 IV a 2 V",
+        "HOLDS_A_RANGE"),
+}
+
+
+@pytest.mark.parametrize(("key", "literal", "reason"), HOLDS_ANOTHER_KIND.values(), ids=HOLDS_ANOTHER_KIND)
+def test_a_place_or_code_read_from_the_transcript_never_holds_another_kinds_text(key, literal, reason):
+    """No other field claims the text here. On 6fd595b3b each is accepted."""
+    readings = label(("IV-24-48 to V-2-48" if literal == "V-2-48" else literal) + "\nleg. J. Smith")
+    refused = agreement.refusal(uncandidated(key), readings, literal=literal, named=list(readings), value=None,
+        authority_id=None, cited=[], received=[])
+    assert refused is not None and refused.reason == getattr(agreement, reason)
+
+
+def test_the_experts_check_sends_the_locality_back_without_its_elevation():
+    """The expert is told to leave the elevation out, and "Yepocapa" then
+    settles. On 6fd595b3b "Yepocapa, 4800ft." is kept."""
+    readings = label("Yepocapa, 4800ft.\nIV-23-48")
+    with pytest.raises(ModelRetry, match="'4800ft.', which is an elevation"):
+        checked(uncandidated("precise_location"), readings, dict(outcome="resolved", literal="Yepocapa, 4800ft.",
+            reading_names=["3A", "3B"]))
+    kept = checked(uncandidated("precise_location"), readings, dict(outcome="resolved", literal="Yepocapa",
+        reading_names=["3A", "3B"]))
+    assert kept.literal == "Yepocapa"
+
+
+@pytest.mark.parametrize(("key", "literal"), [
+    ("precise_location", "Yepocapa"),
+    # A distance is no elevation: English, Spanish, German.
+    ("precise_location", "Yepocapa, 500 m N of church"),
+    ("precise_location", "2 km al S de Antigua, 300 m de la carretera"),
+    ("precise_location", "Schwarzwald, 800 m von Titisee"),
+    # Minutes of arc are no feet.
+    ("precise_location", "Mindanao, 7\N{DEGREE SIGN}30' N 125\N{DEGREE SIGN}15' E"),
+    # Plain numbers, and a range of plain numbers, are no dates.
+    ("precise_location", "Carretera km 12 a 15"),
+    ("collection_code", "lot #2"),
+    ("collection_code", "V-4-67-1-B"),
+], ids=["locality", "english-distance", "spanish-distance", "german-distance", "coordinates", "km-range",
+    "lot-number", "letter-coded"])
+def test_a_place_or_code_with_no_date_or_elevation_in_it_settles(key, literal):
+    """The control: each settles, as on 6fd595b3b."""
+    readings = label(literal + "\nleg. J. Smith")
+    assert agreement.refusal(uncandidated(key), readings, literal=literal, named=list(readings), value=None,
+        authority_id=None, cited=[], received=[]) is None
+
+
+@pytest.mark.parametrize("elevation", ["fails", "lacks"])
+def test_a_locality_holding_an_elevation_no_one_claims_goes_to_review(tmp_path, elevation):
+    """The review's probe: no elevation candidate, and the elevation's
+    expert fails or finds none. On 6fd595b3b the locality is supported."""
+    rig = label_3(tmp_path, SPANISH_LABEL, SPANISH_LABEL.replace("Mitchell", "mitchell"), [])
+    run = rig.specimen.run
+    settle(rig, Scripted({
+        "elevation_from_ft": failing("timeout") if elevation == "fails" else answering(LACKS),
+        "precise_location": answering(FieldAnswer(outcome="resolved", literal="Yepocapa, 4800ft.",
+            reading_names=["1A", "1B"], explanation="Both readers write it."))}))
+    place = run.fields["precise_location"]
+    assert place.state == ValueState.UNRESOLVED
+    assert place.reason == agreement.HOLDS_AN_ELEVATION + " Both readers write it."
+
+
+def test_a_date_as_the_collection_code_no_one_claims_goes_to_review(tmp_path):
+    """The review's probe: no date candidate, and the date's expert fails.
+    On 6fd595b3b the collection code is supported as "IV-24-48"."""
+    rig = label_3(tmp_path, LABEL_3A, LABEL_3B, [])
+    run = rig.specimen.run
+    settle(rig, Scripted({"date_visited_from": failing("timeout"), "collection_code": answering(FieldAnswer(
+        outcome="resolved", literal="IV-24-48", reading_names=["1A", "1B"], explanation="Read."))}))
+    code = run.fields["collection_code"]
+    assert code.state == ValueState.UNRESOLVED
+    assert code.reason == agreement.HOLDS_A_DATE + " Read."
+
+
+def test_a_short_settled_value_claims_only_whole_tokens(tmp_path):
+    """The review's probe: a collection code settled earlier as "2" claimed
+    the "2" inside "IV-24-48" and sent the date read from the transcript to
+    review. On 6fd595b3b the date is unresolved."""
+    rig = label_3(tmp_path, LABEL_3A, LABEL_3B, [])
+    run = rig.specimen.run
+    run.fields["collection_code"] = FieldValue(state=ValueState.SUPPORTED, literal="2", parsed="2",
+        layer="settled", source_region_id=run.regions[0].id)
+    settle(rig, Scripted({"date_visited_from": answering(FieldAnswer(outcome="resolved", literal="IV-24-48",
+        value="1948-04-24", reading_names=["1A", "1B"], explanation="Both write it."))}))
+    assert run.fields["date_visited_from"].state == ValueState.SUPPORTED
+
+
+def test_a_settled_value_still_claims_its_whole_tokens(tmp_path):
+    """The control: a collection code settled earlier as "IV-24-48" claims
+    the date's whole text, and the date read from the transcript goes to
+    review, as on 6fd595b3b."""
+    rig = label_3(tmp_path, LABEL_3A, LABEL_3B, [])
+    run = rig.specimen.run
+    run.fields["collection_code"] = FieldValue(state=ValueState.SUPPORTED, literal="IV-24-48", parsed="IV-24-48",
+        layer="settled", source_region_id=run.regions[0].id)
+    settle(rig, Scripted({"date_visited_from": answering(FieldAnswer(outcome="resolved", literal="IV-24-48",
+        value="1948-04-24", reading_names=["1A", "1B"], explanation="Both write it."))}))
+    date_value = run.fields["date_visited_from"]
+    assert date_value.state == ValueState.UNRESOLVED
+    assert date_value.reason.startswith(field_step.TAKEN.format(other="Collection Code"))
+
+
+# ---- a country a source names only by its code (round 4, 2026-10-11) --------
+# 105526329 (run 4d5fb467, release fe4163fa9): the country settled on
+# Wikidata's Guatemala, Q774, whose record carries the ISO code "GT" (P297).
+# The province's expert cited NGA's department Chimaltenango, one letter from
+# the label's "Chimaltenago", which NGA puts "in GT": NGA names a country only
+# by its code, which is neither the name "Guatemala" nor the record
+# wikidata:Q774, so the province went to review (NOT_IN_COUNTRY).
+
+def recorded_places(tmp_path):
+    """The approved sources answering from the recorded gazetteer answers
+    (test_sources.gazetteers), with Wikidata's searches for "Guatemala" and
+    "Philippine Islands" cut to their one recorded hit (test_sources.first_hits)."""
+    from test_sources import first_hits, gazetteers, make
+
+    tools, _, _, _ = make(tmp_path, first_hits(gazetteers(), "Guatemala", "Philippine Islands"))
+    return tools
+
+
+# The recorded answers hold none of GBIF's: the taxon's expert asks nothing.
+NO_GBIF = {"taxon": answering(LACKS)}
+
+
+def test_105526329s_province_settles_on_ngas_department_in_the_iso_code_of_the_country(tmp_path):
+    """The real run's shape, through the real source adapters on recorded
+    answers: Wikidata settles the country, NGA's department settles the
+    province one letter off (its country, the one field above it, is the
+    department's parent by the code, G34's whole condition), and NGA's town
+    settles the city inside both. On f800c656 the province and the city go
+    to review (NOT_IN_COUNTRY)."""
+    rig = build_rig(tmp_path, label_with(country="Guatemala", province_state="Chimaltenago", county=None,
+        city="Yepocapa"))
+    run = rig.specimen.run
+    settle(rig, Scripted({**NO_GBIF, "country": from_tgn("Guatemala", "Guatemala", None, "wikidata:Q774",
+            source="wikidata"),
+        "province_state": from_tgn("Chimaltenango", "Chimaltenago", "Chimaltenango", "nga:-1132765",
+            source="nga"),
+        "county": answering(LACKS),
+        "city": from_tgn("Yepocapa", "Yepocapa", None, "nga:-1143757", source="nga")}),
+        tools=recorded_places(tmp_path))
+    assert (run.fields["country"].state, run.fields["country"].authority_id) == (
+        ValueState.SUPPORTED, "wikidata:Q774")
+    province = run.fields["province_state"]
+    assert (province.state, province.literal, province.normalized, province.authority_id) == (
+        ValueState.SUPPORTED, "Chimaltenago", "Chimaltenango", "nga:-1132765")
+    assert [f.reason_code for f in run.findings] == ["near_spelling:province_state"]
+    assert (run.fields["city"].state, run.fields["city"].authority_id) == (ValueState.SUPPORTED, "nga:-1143757")
+    assert not reasons_for(run, "province_state") and not reasons_for(run, "city")
+    verify_evidence(rig.specimen, rig.blobs)
+
+
+def test_ngas_department_in_another_countrys_code_still_is_not_in_the_country(tmp_path):
+    """The control: the label's country settles on Wikidata's Philippines
+    (Q928, "PH"); NGA's department Chimaltenango lies in "GT", so the
+    province goes to review, as on f800c656."""
+    rig = build_rig(tmp_path, label_with(country="Philippine Islands", province_state="Chimaltenago", county=None,
+        city=None))
+    run = rig.specimen.run
+    settle(rig, Scripted({**NO_GBIF, "country": from_tgn("Philippine Islands", "Philippine Islands", "Philippines",
+            "wikidata:Q928", source="wikidata"),
+        "province_state": from_tgn("Chimaltenango", "Chimaltenago", "Chimaltenango", "nga:-1132765",
+            source="nga"),
+        "county": answering(LACKS), "city": answering(LACKS)}), tools=recorded_places(tmp_path))
+    assert (run.fields["country"].state, run.fields["country"].authority_id) == (
+        ValueState.SUPPORTED, "wikidata:Q928")
+    province = run.fields["province_state"]
+    assert (province.state, province.reason) == (ValueState.UNRESOLVED, agreement.NOT_IN_COUNTRY + " Settled.")
+    assert not [f for f in run.findings if f.reason_code == "near_spelling:province_state"]
+
+
+def test_initials_settle_beside_a_province_ngas_code_puts_in_their_country(tmp_path):
+    """"Mindanao, P.I." with "Davao, Prov.": Wikidata finds "Philippine
+    Islands" as the Philippines (Q928, "PH"), and NGA finds "Davao Province"
+    as Davao del Norte, which it puts "in PH". The province lies in the
+    country by the code, so it settles, and it confirms the initials
+    (step._corroborate). On f800c656 the province goes to review
+    (NOT_IN_COUNTRY) and the country stays ambiguous."""
+    from test_step import COLLECTORS, LACKING, MINDANAO, P_I
+
+    rig = build_rig(tmp_path, MINDANAO + "\nDavao, Prov. 3300'", candidates=[*COLLECTORS, *P_I,
+        *(("province_state", name, "Davao, Prov.", "Davao, Prov. 3300'") for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    settle(rig, Scripted({**NO_GBIF, "country": from_tgn("Philippine Islands", "P.I.", "Philippines", "wikidata:Q928",
+            source="wikidata"),
+        "province_state": from_tgn("Davao Province", "Davao, Prov.", "Davao del Norte", "nga:-2424067",
+            source="nga"),
+        "county": LACKING, "city": LACKING}), tools=recorded_places(tmp_path))
+    country, province = run.fields["country"], run.fields["province_state"]
+    assert (country.state, country.normalized, country.authority_id) == (
+        ValueState.SUPPORTED, "Philippines", "wikidata:Q928")
+    assert (province.state, province.authority_id) == (ValueState.SUPPORTED, "nga:-2424067")
+    assert sorted(row.locator for row in run.evidence if row.kind == "rule") == [
+        "abbreviation:country:Philippine Islands", "abbreviation:province_state:Davao Province"]
+
+
+GUATEMALA_Q774 = field("Guatemala", authority_id="wikidata:Q774")
+
+
+@pytest.mark.parametrize(("parent", "iso_code", "settles"), [
+    # NGA's code (the parent's name, record and code), and the code the settled
+    # country's record carries.
+    (("GT", None, "GT"), "GT", True),
+    # Another country's code.
+    (("HN", None, "HN"), "GT", False),
+    # A parent named "GT" whose source gives it as no code: no code is guessed from a name.
+    (("GT", None, None), "GT", False),
+    # The settled country's record carries no code (Getty TGN's records).
+    (("GT", None, "GT"), None, False),
+    # ISO's user-assigned codes are compared by no one.
+    (("XK", None, "XK"), "XK", False),
+    # Only two capital letters, exactly as written.
+    (("GT", None, "GT"), "gt", False),
+    (("GTM", None, "GTM"), "GTM", False),
+], ids=["same-code", "other-code", "name-only", "record-without-code", "user-assigned", "lower-case",
+        "three-letters"])
+def test_a_parent_named_by_a_country_code_is_the_country_whose_record_carries_that_code(parent, iso_code, settles):
+    """Both checks read the code: the country the place must lie in, and, for
+    a near spelling, every place field above it."""
+    country = agreement.PlaceField(GUATEMALA_Q774.texts, GUATEMALA_Q774.authority_id, iso_code)
+    candidate = SourceCandidate("Chimaltenango", "nga:-1132765", "A.ADM1", None, (PlaceRef(*parent),))
+    refused = agreement.parents_refusal("province_state", candidate, agreement.NEAR_SPELLING,
+        written={"country": country}, settled={"country": country})
+    assert refused is None if settles else refused.reason == agreement.NOT_IN_COUNTRY
+
+
+# The review of #312 (issue comment 6113525852): the adapters set a code on any
+# record that carries one (Wikidata's P297 on any item, NGA's on any PCL
+# feature), and live Wikidata gives P297 to former colonies whose codes ISO has
+# since given to other countries (Q1450765, the French Territory of the Afars and
+# the Issas: "AI", now Anguilla's).
+
+def a_candidate(source_id, record_id, name, kind, *, iso_code=None, valid_to=None, country=None, parents=()):
+    """A source's candidate as the real adapter shapes it (sources._place)."""
+    from specimen_digitization.application.georef_places import Place, Ref
+    from specimen_digitization.field_research import sources as field_sources
+
+    return field_sources._place(source_id, Place(source=source_id, record_id=record_id, name=name,
+        kinds=(Ref(kind, kind),), country=Ref(*country) if country else None, iso_code=iso_code,
+        parents=tuple(Ref(*parent) for parent in parents), valid_to=valid_to))
+
+
+def test_a_record_that_names_an_end_date_carries_no_code():
+    """A former colony's record, in the shape of Wikidata's Q1450765, keeps no
+    code; a nation with no end date keeps its own."""
+    colony = a_candidate("wikidata", "Q1450765", "French Territory of the Afars and the Issas", "colony",
+        iso_code="AI", valid_to="1977-06-27")
+    nation = a_candidate("wikidata", "Q774", "Guatemala", "country", iso_code="GT")
+    assert (colony.iso_code, nation.iso_code) == (None, "GT")
+
+
+def test_a_colony_carrying_a_code_settles_no_country():
+    """A record of a colony's kind is at no country's level, so it never
+    settles the country field and never supplies the code its record carries
+    (step._record_code reads only the record the country settled on)."""
+    colony = SourceCandidate("Gilbert and Ellice Islands", "wikidata:Q1050859", "colony", None, (),
+        iso_code="GE")
+    answer = SourceAnswer("wikidata", "Gilbert and Ellice Islands", LookupStatus.SUCCESS, (colony,),
+        Evidence(kind="authority", source="wikidata", locator="wikidata:Q1050859", excerpt="match"))
+    assert agreement.at_level("country", answer) == [] and agreement.placed("country", answer) is None
+
+
+class Constructed:
+    """The recorded sources (recorded_places), with constructed answers in front
+    of them for some queries."""
+
+    sources = ("gbif", "geolocate", "tgn", "wikidata", "nga")
+
+    def __init__(self, tmp_path, blobs, answers):
+        self.recorded, self.blobs, self.answers = recorded_places(tmp_path), blobs, answers
+
+    async def lookup(self, source_id, query, *, field_key):
+        if (source_id, query) not in self.answers:
+            return await self.recorded.lookup(source_id, query, field_key=field_key)
+        candidates = tuple(self.answers[source_id, query])
+        raw = json.dumps({"source": source_id, "query": query}).encode()
+        evidence = Evidence(kind="authority", source=source_id, locator=candidates[0].authority_id,
+            excerpt="\n".join(["match", *(f"{c.name} | {c.authority_id} | {c.kind} | {c.detail}" for c in candidates)]),
+            raw_ref=self.blobs.put(raw), digest=hashlib.sha256(raw).hexdigest())
+        return SourceAnswer(source_id, query, LookupStatus.SUCCESS, candidates, evidence, note="match")
+
+
+def test_only_the_country_supplies_a_code_to_the_place_check(tmp_path):
+    """A province settled on a record that carries the country's code (a
+    constructed department record with P297 "GT") is no parent of NGA's town
+    in another department, "in Escuintla, GT": the city goes to review
+    (NOT_IN_PROVINCE). At 9a71f4bd the province's record code matched the
+    town's country code and the city settled; on f800c656 the city is not in
+    the country (no code at all)."""
+    rig = build_rig(tmp_path, label_with(country="Guatemala", province_state="Chimaltenango", county=None,
+        city="Yepocapa"))
+    run = rig.specimen.run
+    department = a_candidate("wikidata", "Q765975", "Chimaltenango", "department of Guatemala", iso_code="GT",
+        country=("Q774", "Guatemala"), parents=(("Q774", "Guatemala"),))
+    town = a_candidate("nga", "-99", "Yepocapa", "P.PPL", country=("GT",), parents=(("GT-05", "Escuintla"),))
+    tools = Constructed(tmp_path, rig.blobs, {("wikidata", "Chimaltenango"): [department], ("nga", "Yepocapa"): [town]})
+    settle(rig, Scripted({**NO_GBIF, "country": from_tgn("Guatemala", "Guatemala", None, "wikidata:Q774",
+            source="wikidata"),
+        "province_state": from_tgn("Chimaltenango", "Chimaltenango", None, "wikidata:Q765975", source="wikidata"),
+        "county": answering(LACKS),
+        "city": from_tgn("Yepocapa", "Yepocapa", None, "nga:-99", source="nga")}), tools=tools)
+    assert [run.fields[key].state for key in ("country", "province_state")] == [ValueState.SUPPORTED] * 2
+    city = run.fields["city"]
+    assert (city.state, city.reason) == (ValueState.UNRESOLVED, agreement.NOT_IN_PROVINCE + " Settled.")
+
+
+# ---- a precise location that is only a settled place's text (round 4) -------
+# 105526329's precise location settled as "Yepocapa", the text of the settled
+# city of the same reading; its brief asks label_lacks_value when no reading
+# writes a locality finer than the other place fields.
+
+def yepocapa_rig(tmp_path, line=None):
+    """A town-only Guatemalan label (test_step.GUATEMALAN_TOWN), with `line`
+    added below it."""
+    from test_step import COLLECTORS, GUATEMALAN_TOWN
+
+    return build_rig(tmp_path, GUATEMALAN_TOWN + (f"\n{line}" if line else ""), candidates=COLLECTORS)
+
+
+def precise(literal):
+    return answering(FieldAnswer(outcome="resolved", literal=literal, reading_names=["1A", "1B"],
+        explanation="Read."))
+
+
+@pytest.mark.parametrize(("literal", "field_name"), [
+    # 105526329: the town itself, the settled city's text.
+    ("Yepocapa", "City"),
+    # The department, the settled province's text.
+    ("Chimaltenango", "Province/State"),
+], ids=["the-city", "the-province"])
+def test_a_precise_location_that_is_only_a_settled_places_text_is_not_on_the_label(tmp_path, literal, field_name):
+    """The answer settles nothing finer than the places: the precise location
+    is not present, as label_lacks_value would make it, and clears as not on
+    the label (rule A), its reason and check row saying why. On f800c656 it
+    settles as the place's text."""
+    from test_step import ABSENT, IN_YEPOCAPA, TODAY, lacking, not_on_label_rows, research
+
+    rig = yepocapa_rig(tmp_path)
+    run = rig.specimen.run
+    prepared, outcomes, calls = research(rig, lacking(*(set(ABSENT) - {"precise_location"}), **IN_YEPOCAPA,
+        precise_location=precise(literal)), tools=Gazetteer(rig.blobs))
+    decisions: dict[str, dict] = {}
+    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    field_step.finalize_fields(run, None, outcomes, specimen=rig.specimen, blobs=rig.blobs, today=TODAY)
+    assert {key: run.fields[key].state for key in ("province_state", "city")} == dict.fromkeys(
+        ("province_state", "city"), ValueState.SUPPORTED)
+    place = run.fields["precise_location"]
+    assert (place.state, place.literal) == (ValueState.NOT_PRESENT, None)
+    assert place.reason == field_step.REPEATS_NOT_ON_LABEL.format(literal=literal, field=field_name) + " Read."
+    assert decisions["precise_location"] == {"refusal": "place_text_only", "rule": "A_not_on_label"}
+    assert "precise_location" in cleared_as_not_on_label(run)
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+    [row] = not_on_label_rows(run, "precise_location")
+    assert row.excerpt == field_step.not_on_label_excerpt("precise_location", field_step.run_readings(run),
+        place=True)
+    assert json.loads(rig.blobs.get(row.raw_ref))["place_field"] == field_name
+    assert "transcript_literal:precise_location" not in [f.reason_code for f in run.findings]
+    verify_evidence(rig.specimen, rig.blobs)
+
+
+@pytest.mark.parametrize("line", ["E. slope Mt. McKinley", "5 km N of Yepocapa", "nr. Yepocapa"])
+def test_a_precise_location_that_adds_anything_to_the_places_still_settles(tmp_path, line):
+    """The controls, as on f800c656: a direction, a distance or "nr." is a
+    locality finer than the settled town."""
+    from test_step import ABSENT, IN_YEPOCAPA, lacking
+
+    rig = yepocapa_rig(tmp_path, line)
+    run = rig.specimen.run
+    settle(rig, lacking(*(set(ABSENT) - {"precise_location"}), **IN_YEPOCAPA, precise_location=precise(line)),
+        tools=Gazetteer(rig.blobs))
+    place = run.fields["precise_location"]
+    assert (place.state, place.literal) == (ValueState.SUPPORTED, line)
+    assert run.fields["city"].state == ValueState.SUPPORTED
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+
+
+def test_a_precise_location_whose_town_did_not_settle_is_unchanged(tmp_path):
+    """The control, as on f800c656: with the city unresolved, no settled
+    place holds "Yepocapa", so it settles as the precise location."""
+    from test_step import ABSENT, IN_YEPOCAPA, NO_TOWN, lacking
+
+    rig = yepocapa_rig(tmp_path)
+    run = rig.specimen.run
+    settle(rig, lacking(*(set(ABSENT) - {"precise_location"}), **{**IN_YEPOCAPA, "city": NO_TOWN},
+        precise_location=precise("Yepocapa")), tools=Gazetteer(rig.blobs))
+    assert run.fields["city"].state == ValueState.UNRESOLVED
+    place = run.fields["precise_location"]
+    assert (place.state, place.literal) == (ValueState.SUPPORTED, "Yepocapa")
+
+
+def test_a_precise_location_that_is_only_the_towns_text_waits_for_a_person_where_rule_a_declines(tmp_path):
+    """Rule A needs every label read whole: with a reader's unreadable span the
+    precise location stays not present, for review, its reason naming the
+    city, as label_lacks_value would leave it."""
+    from test_step import ABSENT, IN_YEPOCAPA, TODAY, lacking, not_on_label_rows, research
+
+    rig = yepocapa_rig(tmp_path)
+    run = rig.specimen.run
+    run.observations[1].unreadable_spans = ["0:3"]
+    prepared, outcomes, calls = research(rig, lacking(*(set(ABSENT) - {"precise_location"}), **IN_YEPOCAPA,
+        precise_location=precise("Yepocapa")), tools=Gazetteer(rig.blobs))
+    decisions: dict[str, dict] = {}
+    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    field_step.finalize_fields(run, None, outcomes, specimen=rig.specimen, blobs=rig.blobs, today=TODAY)
+    place = run.fields["precise_location"]
+    assert (place.state, place.literal) == (ValueState.NOT_PRESENT, None)
+    assert place.reason == field_step.REPEATS_A_PLACE.format(literal="Yepocapa", field="City") + " Read."
+    assert decisions["precise_location"] == {"refusal": "place_text_only",
+        "rule": "A_declined:label_not_read_whole"}
+    assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:precise_location" in run.reasons
+    assert not not_on_label_rows(run, "precise_location")
+
+
+def test_a_precise_location_that_is_only_the_towns_text_is_not_present_off_the_profiles_list(
+        tmp_path, monkeypatch):
+    """Off the profile's not-on-the-label list the value is still what
+    label_lacks_value makes it, not present, and the record waits for a
+    person (rule A applies only to the fields the profile lists)."""
+    from test_step import ABSENT, IN_YEPOCAPA, lacking
+
+    from specimen_digitization.field_research import contracts
+
+    monkeypatch.setitem(contracts.NOT_ON_LABEL, ("zoology_insects_slides", "1.0.0"),
+        contracts.NOT_ON_LABEL[("zoology_insects_slides", "1.0.0")] - {"precise_location"})
+    rig = yepocapa_rig(tmp_path)
+    run = rig.specimen.run
+    settle(rig, lacking(*(set(ABSENT) - {"precise_location"}), **IN_YEPOCAPA, precise_location=precise("Yepocapa")),
+        tools=Gazetteer(rig.blobs))
+    place = run.fields["precise_location"]
+    assert (place.state, place.literal) == (ValueState.NOT_PRESENT, None)
+    assert place.reason == field_step.REPEATS_A_PLACE.format(literal="Yepocapa", field="City") + " Read."
+    assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:precise_location" in run.reasons
+
+
+# The review of #312 (issue comment 6113525852): the check compared place names,
+# which drop unit words anywhere ("co", "region", "mun"), so a literal that adds
+# such a word to the place's text was taken for the place itself. Each of these
+# settles as on f800c656; at 9a71f4bd each was not present.
+
+def test_a_hill_beside_the_settled_county_of_its_name_still_settles(tmp_path):
+    """"Co. Chirripo" is a hill (Cerro) beside the county Chirripo, settled
+    before; its expert resolves the line."""
+    from test_step import ABSENT, COLLECTORS, a_county_settled_before, lacking, research
+
+    line = "Co. Chirripo"
+    text = label_with(**dict.fromkeys(ABSENT, None), country=None, province_state=None, city=None) + "\n" + line
+    rig = build_rig(tmp_path, text, candidates=[*COLLECTORS,
+        *(("precise_location", name, line, line) for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    a_county_settled_before(run, "Chirripo")
+    prepared, outcomes, calls = research(rig, lacking(*(set(ABSENT) - {"precise_location"}),
+        precise_location=precise(line)))
+    decisions: dict[str, dict] = {}
+    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    place = run.fields["precise_location"]
+    assert (place.state, place.literal) == (ValueState.SUPPORTED, line)
+    assert decisions["precise_location"] == {}
+    assert "precise_location" not in cleared_as_not_on_label(run)
+
+
+def test_a_town_with_a_unit_word_after_it_still_settles(tmp_path):
+    """"Yepocapa region" beside the settled town: a word beyond the town's
+    text, so a locality of its own."""
+    from test_step import ABSENT, IN_YEPOCAPA, lacking
+
+    rig = yepocapa_rig(tmp_path, "Yepocapa region")
+    run = rig.specimen.run
+    settle(rig, lacking(*(set(ABSENT) - {"precise_location"}), **IN_YEPOCAPA,
+        precise_location=precise("Yepocapa region")), tools=Gazetteer(rig.blobs))
+    place = run.fields["precise_location"]
+    assert (place.state, place.literal) == (ValueState.SUPPORTED, "Yepocapa region")
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+
+
+@pytest.mark.parametrize("listed", [False, True], ids=["off-the-list", "listed"])
+def test_a_town_and_its_marker_are_the_marker_checks_alone(tmp_path, monkeypatch, listed):
+    """"Yepocapa, Mun." beside the settled town. Off the profile's list the
+    step does not look for a marker (_no_finer_place), so the resolved line
+    settles as its text and the record clears, as PR #309's review (finding
+    4) established; listed, the marker check makes it not present and it
+    clears as not on the label. Both as on f800c656."""
+    from test_step import ABSENT, IN_YEPOCAPA, TODAY, lacking, research
+
+    from specimen_digitization.field_research import contracts
+
+    if not listed:
+        monkeypatch.setitem(contracts.NOT_ON_LABEL, ("zoology_insects_slides", "1.0.0"),
+            contracts.NOT_ON_LABEL[("zoology_insects_slides", "1.0.0")] - {"precise_location"})
+    rig = yepocapa_rig(tmp_path, "Yepocapa, Mun.")
+    run = rig.specimen.run
+    prepared, outcomes, calls = research(rig, lacking(*(set(ABSENT) - {"precise_location"}), **IN_YEPOCAPA,
+        precise_location=precise("Yepocapa, Mun.")), tools=Gazetteer(rig.blobs))
+    decisions: dict[str, dict] = {}
+    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    field_step.finalize_fields(run, None, outcomes, specimen=rig.specimen, blobs=rig.blobs, today=TODAY)
+    place = run.fields["precise_location"]
+    if listed:
+        assert (place.state, place.literal) == (ValueState.NOT_PRESENT, None)
+        assert decisions["precise_location"] == {"refusal": "admin_marker_only", "rule": "A_not_on_label"}
+    else:
+        assert (place.state, place.literal) == (ValueState.SUPPORTED, "Yepocapa, Mun.")
+        assert decisions.get("precise_location", {}) == {}
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])

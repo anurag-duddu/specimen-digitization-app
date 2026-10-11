@@ -19,6 +19,10 @@ enum ResearchFailureKind {
   conflict,
   invalidResponse,
   unavailable,
+
+  /// The record has no research for its current version. Not a failure to
+  /// show: the host hides the research line.
+  notRegistered,
 }
 
 /// A fixed reviewer-facing failure without raw service or exception text.
@@ -35,6 +39,8 @@ class ResearchFailure implements Exception {
       'Research could not be verified. Refresh the current record.',
     ResearchFailureKind.unavailable =>
       'Research is unavailable right now. Refresh to try again.',
+    ResearchFailureKind.notRegistered =>
+      'No research is recorded for this version.',
   };
   @override
   String toString() => message;
@@ -186,6 +192,8 @@ class ApiResearchRepository implements ResearchRepository {
         401 => ResearchFailureKind.unauthenticated,
         403 => ResearchFailureKind.forbidden,
         409 || 412 => ResearchFailureKind.conflict,
+        404 when failure.code == 'research_not_registered' =>
+          ResearchFailureKind.notRegistered,
         _ => ResearchFailureKind.unavailable,
       });
     } on ResearchFailure {

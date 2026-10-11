@@ -497,6 +497,13 @@ def _evidence(run: Run, asset) -> list[Write]:
             if len(producers) != 1:
                 raise ValueError("lookup_evidence_producer_invalid")
             outcome = _value(producers[0].outcome)
+        locator = item.locator
+        if outcome == "recorded" and locator is None and item.source != GOOGLE:
+            # Recorded evidence always has a locator (section 6); the connector
+            # refuses the row without one. A source answer no single candidate
+            # decides (several candidates) has none of its own, so its row is
+            # located by its id, as a lookup's is. Google's may only be a place id.
+            locator = f"evidence/{item.id}"
         result.append(
             _write(
                 "AppendEvidenceItemV2",
@@ -508,7 +515,7 @@ def _evidence(run: Run, asset) -> list[Write]:
                     "adapterVersion": item.kind,
                     "query": {},
                     "outcome": outcome,
-                    "locator": item.locator,
+                    "locator": locator,
                     "responseSha256": item.digest,
                     "capturedAt": item.created_at,
                     "rawAssetId": asset(item.raw_ref, "evidence_record"),

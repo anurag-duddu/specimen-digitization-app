@@ -86,6 +86,15 @@ List<String> recordReasonCodes(Specimen specimen) {
 }
 
 String _readable(String code) {
+  // A code the table names whole is read by that name before it is split at
+  // a colon: `evidence_harness_blocked:elapsed_budget_exhausted` is one reason,
+  // not a reason with a subject. A run whose retries ran out is named by its
+  // cause, which is the whole reason; the cause's code is not a subject to
+  // print after a colon.
+  if (userFacingTerms.containsKey(code) ||
+      code.startsWith(retriesStoppedPrefix)) {
+    return _sentence(vocabularyLabel(code));
+  }
   final int colon = code.indexOf(':');
   if (colon < 0) return _sentence(vocabularyLabel(code));
   final String head = vocabularyLabel(code.substring(0, colon));

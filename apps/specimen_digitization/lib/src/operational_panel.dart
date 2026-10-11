@@ -13,6 +13,7 @@ import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import 'administrator_contact.dart';
+import 'blocker_words.dart';
 import 'models.dart';
 import 'review_context.dart';
 import 'screens/workbench/moments.dart';
@@ -198,6 +199,15 @@ class ProcessingDetail extends StatelessWidget {
       run['blocker'],
       textOf(specimen.data['blocker'], ''),
     );
+    // A blocker is read by its exact code, from a table (`blocker_words.dart`).
+    // A run whose automatic retries ran out is read by the cause after the
+    // colon, never by the word "budget" in the prefix, and a limit is named for
+    // what it limits: a step count and a time limit are no cost limit. No code
+    // reaches the screen, and a blocker this client has no words for says so
+    // generally.
+    final bool hasBlocker = blocker.isNotEmpty && blocker != 'Not recorded';
+    final BlockerWords? words = blockerWords(blocker);
+    final bool unnamed = hasBlocker && !blockerIsNamed(blocker);
     final List<String> actions =
         (specimen.data['available_actions'] as List? ?? <Object?>[])
             .map((Object? a) => a.toString())
@@ -210,8 +220,8 @@ class ProcessingDetail extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        if (blocker.isNotEmpty && blocker != 'Not recorded')
-          Text('Blocked: ${vocabularyLabel(blocker)}', style: ui.type.label),
+        if (hasBlocker)
+          Text('Blocked: ${blockerLabel(blocker)}', style: ui.type.label),
         if (blocker == 'pilot_evidence_review_required') ...<Widget>[
           Text(
             'Pilot evidence review needed. Check the saved label regions and '
@@ -239,14 +249,17 @@ class ProcessingDetail extends StatelessWidget {
           if (canOperate && actions.contains('reconcile'))
             _reconcileButton(context, run, activeLease: activeLease),
         ],
-        if (blocker.contains('budget') || blocker.contains('cost')) ...<Widget>[
-          Text('Processing stopped at a cost limit.', style: ui.type.body),
-          const CaveatText(
-            label:
-                'An administrator must review the approved limit or the '
-                'provider configuration.',
-            why: 'Where a cost is not recorded, it is unknown, not zero.',
-          ),
+        if (words != null) ...<Widget>[
+          if (words.why == null)
+            Text(words.sentence, style: ui.type.body)
+          else ...<Widget>[
+            Text('${words.what}.', style: ui.type.body),
+            CaveatText(label: words.next, why: words.why!),
+          ],
+          const AdministratorContactLine(),
+        ],
+        if (unnamed) ...<Widget>[
+          Text(unnamedBlockerWords.sentence, style: ui.type.body),
           const AdministratorContactLine(),
         ],
         if (run['next_retry_at'] != null)

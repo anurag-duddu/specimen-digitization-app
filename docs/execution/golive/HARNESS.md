@@ -135,7 +135,9 @@ observation, as for a cap hit, and the queue decision sends the record to review
 with `independent_observations_missing:{region}`; a region no reader could read
 keeps a transcript with no text and no readings. Every reading that gave no
 observation is recorded in `paid_calls` as `failed` with its `failure_code`, and
-its reservation stays held in full (`cost_basis: reserved`). An authentication or
+its reservation stays held in full (`cost_basis: reserved`), except an attempt
+the provider refused with HTTP 429 before any answer, which costs nothing and
+releases its reservation (`cost_basis: refused`, DATA_CONTRACT.md). An authentication or
 authorization error, and a request the provider refuses as invalid (HTTP 400,
 404, 413, 422: `model_request_rejected`), still block at once and name their
 cause, since asking again repeats them. A reviewer cannot record supported text
@@ -148,6 +150,16 @@ a block, and so does a reader of the evidence pilot, whose exact cohort
 reservations and zero retries never replay a paid call (a pilot reader that is
 stopped by its limits ends as `external_outcome_unknown` too). A run that was
 already blocked as `external_outcome_unknown` stays so.
+
+**A reader's line breaks** (2026-10-11). An answer whose `verbatim_text` is its
+`lines` in order, with each break between two lines written as a newline, a
+space or `↵` (U+21B5), is not malformed: it is read as its lines joined with
+newlines. Novita's Qwen3-VL wrote breaks as spaces or `↵` in all 18 answers of
+run 0c7f52e1, so every handwriting-qwen reading of that run failed as
+`model_malformed_response` and each label had one reading. Text that differs
+from the lines in any other way is still malformed.
+`docs/product-requirements/HUGGINGFACE_MODEL_ROUTING.md` ("How a reader's
+answer is read") has the rule and the recorded answers.
 
 **Tracing.** The agent carries no instrumentation override; it inherits the
 lane's global setting (content on, binary off in approved-content mode, S3 T5).

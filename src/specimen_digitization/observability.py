@@ -17,6 +17,11 @@ from pathlib import Path
 
 import logfire
 
+from .application.domain import LookupStatus
+
+# The values a lookup's status may take, which the scrubber keeps (keep_lookup_status).
+LOOKUP_STATUSES = frozenset(status.value for status in LookupStatus)
+
 
 class ObservabilityConfigurationError(RuntimeError):
     """Raised when telemetry settings would violate the capture policy."""
@@ -288,6 +293,7 @@ def configure_observability(
         "resource_attributes": {
             "specimen.telemetry.capture_mode": settings.capture_mode.value,
         },
+        "scrubbing": logfire.ScrubbingOptions(callback=keep_lookup_status),
     }
     if send_to_logfire is not None:
         configure_options["send_to_logfire"] = send_to_logfire
@@ -313,7 +319,7 @@ def configure_observability(
                 include_resource_attributes_in_context=False,
                 include_baggage_in_context=False, instrument=False),
             add_baggage_to_attributes=False,
-            scrubbing=logfire.ScrubbingOptions(extra_patterns=[
+            scrubbing=logfire.ScrubbingOptions(callback=keep_lookup_status, extra_patterns=[
                 r"(?:firebase|app)[._ -]?(?:user|uid)", r"user[._ -]?(?:id|email)",
                 r"authorization", r"bearer", r"credential", r"email",
             ]),
@@ -330,6 +336,22 @@ def configure_observability(
     return settings
 
 
+
+
+def keep_lookup_status(match: logfire.ScrubMatch) -> str | None:
+    """Logfire's scrubbing callback: keep a value the scrubber would redact only
+    when its key is ``status`` and the value is exactly one of the lookup
+    statuses (application.domain.LookupStatus), such as "authorization_error",
+    which the default "auth" pattern otherwise turns into "[Scrubbed due to
+    'auth']" on a lookup tool's span. Every other match is redacted as before."""
+    if (
+        match.path
+        and match.path[-1] == "status"
+        and isinstance(match.value, str)
+        and match.value in LOOKUP_STATUSES
+    ):
+        return match.value
+    return None
 
 
 def _private_exception_callback(helper):

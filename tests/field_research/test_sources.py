@@ -8,8 +8,12 @@ import contextvars
 import hashlib
 import io
 import json
+import logging
 import re
+import shlex
+import threading
 import time
+from collections import Counter
 from pathlib import Path
 
 import httpx
@@ -32,7 +36,8 @@ from specimen_digitization.application.integrity import (
     verify_evidence,
 )
 from specimen_digitization.application.storage import LocalBlobs
-from specimen_digitization.field_research.contracts import PlaceRef, SourceCandidate
+from specimen_digitization.field_research.contracts import PlaceRef, Reading, SourceCandidate
+from specimen_digitization.field_research import sources as approved_sources
 from specimen_digitization.field_research.sources import (
     EXCERPT_LIMIT,
     ApprovedSources,
@@ -509,6 +514,31 @@ async def test_geolocate_requests_start_at_least_three_seconds_apart(tmp_path):
     assert all(later - earlier >= 3 for earlier, later in zip(starts, starts[1:], strict=False))
 
 
+@pytest.mark.asyncio
+async def test_a_geolocate_turn_further_off_than_a_slot_wait_is_not_taken(tmp_path, caplog):
+    """Twelve GEOLocate lookups at once, 3 s apart on the fake clock: the
+    eleventh starts 30 s on, and the twelfth's turn would be 33 s off, more
+    than SLOT_WAIT_SECONDS, so it is not sent and takes no turn. A lookup 3 s
+    later then gets the turn it left, 30 s off, and is sent."""
+    tools, server, clock, _ = make(tmp_path, recorded_geolocate("yepocapa-modern.json"))
+    queries = [f"Yepocapa {n}, Chimaltenango, Guatemala" for n in range(12)]
+    with caplog.at_level(logging.WARNING, logger="specimen_digitization.field_research.sources"):
+        answers = await asyncio.gather(*(tools.lookup("geolocate", query, field_key="precise_location")
+                                         for query in queries))
+    assert [(answer.query, answer.status, answer.note) for answer in answers
+            if answer.status is LookupStatus.TIMEOUT] == [
+        (queries[11], LookupStatus.TIMEOUT, "GEOLocate was busy; this lookup was not sent")]
+    assert sorted(at for at, _ in server.requests) == [3.0 * n for n in range(11)]
+    # The line names no sender (NO_SENDER, #303): the request was never sent.
+    assert unanswered(caplog) == [{"step": "field_research", "source": "geolocate", "host": "geo-locate.org",
+                                   "http_status": "-", "error": "slot_busy", "retry_after": "absent",
+                                   "attempt": "1", **NO_SENDER}]
+    assert "Yepocapa" not in caplog.text
+    await clock.sleep(3)
+    late = await tools.lookup("geolocate", "Yepocapa late, Chimaltenango, Guatemala", field_key="precise_location")
+    assert late.status is not LookupStatus.TIMEOUT and max(at for at, _ in server.requests) == 33.0
+
+
 def test_geolocate_spacing_holds_across_records(tmp_path):
     """Each record has its own sources; the spacing between GEOLocate requests is
     the process's, as the six-specialist harness keeps it."""
@@ -516,6 +546,244 @@ def test_geolocate_spacing_holds_across_records(tmp_path):
     client = httpx.AsyncClient(transport=httpx.MockTransport(nothing))
     first, second = (ApprovedSources(blobs=blobs, client=client) for _ in range(2))
     assert first._pacer is second._pacer is SOURCE_PACER
+
+
+# --- At most two requests at a time to each gazetteer ---
+
+
+class Held:
+    """An offline provider that holds each request a moment and counts the
+    requests in flight to each host, from any thread."""
+
+    def __init__(self, seconds=0.02):
+        self.seconds = seconds
+        self._lock = threading.Lock()
+        self.active, self.peak, self.total = Counter(), Counter(), Counter()
+
+    async def __call__(self, request):
+        host = request.url.host
+        with self._lock:
+            self.active[host] += 1
+            self.total[host] += 1
+            self.peak[host] = max(self.peak[host], self.active[host])
+        try:
+            await asyncio.sleep(self.seconds)
+        finally:
+            with self._lock:
+                self.active[host] -= 1
+        return httpx.Response(404)  # Final: one request per lookup.
+
+
+def held_sources(tmp_path, held, slots=None):
+    """A record's sources over `held`, with the process's slots unless given."""
+    given = {} if slots is None else {"slots": slots}
+    return ApprovedSources(blobs=LocalBlobs(tmp_path / "blobs"),
+                           client=httpx.AsyncClient(transport=httpx.MockTransport(held)), **given)
+
+
+@pytest.mark.asyncio
+async def test_at_most_two_requests_at_a_time_go_to_each_gazetteer(tmp_path):
+    held = Held()
+    tools = held_sources(tmp_path, held)
+    await asyncio.gather(*(tools.lookup(source, f"Place {name}", field_key="city")
+                           for source in ("tgn", "wikidata", "nga") for name in "ABCDE"))
+    hosts = {"services.getty.edu", "www.wikidata.org", "geonames.nga.mil"}
+    assert set(held.total) == hosts and all(held.total[host] == 5 for host in hosts)
+    # Each source is held to two at once on its own, not all three to two together.
+    assert {host: held.peak[host] for host in hosts} == dict.fromkeys(hosts, 2)
+
+
+def test_the_limit_holds_across_records_on_their_own_loops_and_threads(tmp_path):
+    """Each record researches on its own event loop (FieldResearchStep.run's
+    asyncio.run), maybe in its own thread: the two slots are the process's."""
+    held, slots = Held(), approved_sources.SourceSlots({"tgn": 2})
+
+    def record(n):
+        async def research():
+            tools = held_sources(tmp_path / str(n), held, slots)
+            await asyncio.gather(*(tools.lookup("tgn", f"Place {'XYZ'[n]}{name}", field_key="city")
+                                   for name in "ABCD"))
+        asyncio.run(research())
+
+    threads = [threading.Thread(target=record, args=(n,)) for n in range(3)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert held.total["services.getty.edu"] == 12 and held.peak["services.getty.edu"] == 2
+    assert slots.in_flight("tgn") == 0
+
+
+def test_a_request_cancelled_while_it_waits_never_keeps_a_slot():
+    async def scenario():
+        slots = approved_sources.SourceSlots({"tgn": 1})
+        entered, release = asyncio.Event(), asyncio.Event()
+
+        async def hold():
+            async with slots.slot("tgn"):
+                entered.set()
+                await release.wait()
+
+        async def take():
+            async with slots.slot("tgn"):
+                pass
+
+        first = asyncio.create_task(hold())
+        await entered.wait()
+        # Cancelled while it waits: it never had the slot.
+        waiting = asyncio.create_task(take())
+        await asyncio.sleep(0)
+        waiting.cancel()
+        # Cancelled just after the slot was passed to it: it passes it on.
+        given = asyncio.create_task(take())
+        await asyncio.sleep(0)
+        release.set()
+        await first
+        given.cancel()
+        results = await asyncio.gather(waiting, given, return_exceptions=True)
+        assert all(isinstance(result, asyncio.CancelledError) for result in results)
+        assert slots.in_flight("tgn") == 0
+        await asyncio.wait_for(take(), 1)
+        assert slots.in_flight("tgn") == 0
+
+    asyncio.run(scenario())
+
+
+# --- A lookup waits a bounded time for a slot ---
+
+
+def busy(slots, *sources):
+    """Every slot of each source taken until the block ends."""
+    from contextlib import AsyncExitStack, asynccontextmanager
+
+    @asynccontextmanager
+    async def held():
+        async with AsyncExitStack() as stack:
+            for source in sources:
+                for _ in range(slots.limits[source]):
+                    await stack.enter_async_context(slots.slot(source))
+            yield
+
+    return held()
+
+
+@pytest.mark.asyncio
+async def test_a_lookup_that_waits_too_long_for_a_slot_gives_up_unsent(tmp_path, caplog):
+    """Getty TGN's one slot stays taken: after the slots' wait the lookup
+    gives up without a request, an outage with a plain note, logged as any
+    unanswered lookup; it leaves the slot to the next request."""
+    slots = approved_sources.SourceSlots({"tgn": 1}, wait_seconds=0.05)
+    tools, server, _, blobs = make(tmp_path, nothing, slots=slots)
+    with caplog.at_level(logging.WARNING, logger="specimen_digitization.field_research.sources"):
+        async with asyncio.timeout(1), busy(slots, "tgn"):
+            answer = await tools.lookup("tgn", "Davao Province, Philippines", field_key="province_state")
+    assert (answer.status, answer.evidence, answer.candidates) == (LookupStatus.TIMEOUT, None, ())
+    assert answer.note == "Getty TGN was busy; this lookup was not sent"
+    assert server.requests == [] and blobs.puts == []
+    # The line names no sender (NO_SENDER, #303): the request was never sent.
+    assert unanswered(caplog) == [{"step": "field_research", "source": "tgn", "host": TGN_HOST,
+                                   "http_status": "-", "error": "slot_busy", "retry_after": "absent",
+                                   "attempt": "1", **NO_SENDER}]
+    assert "Davao" not in caplog.text and "Philippines" not in caplog.text
+    assert slots.in_flight("tgn") == 0
+    async with asyncio.timeout(1), slots.slot("tgn"):
+        assert slots.in_flight("tgn") == 1
+    # As any unanswered request, the busy one is kept for the record: the
+    # same request, from another field, is not sent either.
+    again = await tools.lookup("tgn", "Davao Province, Philippines", field_key="county")
+    assert (again.status, again.note, server.requests) == (answer.status, answer.note, [])
+
+
+@pytest.mark.asyncio
+async def test_a_retry_that_waits_too_long_for_a_slot_says_the_lookup_was_sent_before(tmp_path, caplog):
+    """Getty TGN fails the first request with HTTP 503, and another request
+    takes its one slot before the retry: the retry is not sent, and the note
+    says how many attempts were."""
+    slots = approved_sources.SourceSlots({"tgn": 1}, wait_seconds=0.05)
+    done, holders = asyncio.Event(), []
+
+    async def hold():
+        async with slots.slot("tgn"):
+            await done.wait()
+
+    def reply(request):
+        holders.append(asyncio.ensure_future(hold()))  # It waits for the slot this request holds.
+        return httpx.Response(503)
+
+    tools, server, _, _ = make(tmp_path, reply, slots=slots)
+    with caplog.at_level(logging.WARNING, logger="specimen_digitization.field_research.sources"):
+        async with asyncio.timeout(1):
+            answer = await tools.lookup("tgn", "Davao Province", field_key="province_state")
+    done.set()
+    await asyncio.gather(*holders)
+    assert (answer.status, answer.note) == (
+        LookupStatus.TIMEOUT, "Getty TGN was busy; this lookup was not sent again after 1 attempt")
+    assert len(server.requests) == 1
+    assert [(line["error"], line["attempt"]) for line in unanswered(caplog)] == [("slot_busy", "2")]
+
+
+def test_the_process_slots_wait_two_request_bounds_a_fifth_of_a_fields_time():
+    import inspect
+
+    from specimen_digitization.field_research.experts import make_resolver
+
+    field = inspect.signature(make_resolver).parameters["field_timeout_seconds"].default
+    assert approved_sources.SOURCE_SLOTS.wait_seconds == approved_sources.SLOT_WAIT_SECONDS == 30.0
+    assert approved_sources.SLOT_WAIT_SECONDS == 2 * approved_sources.REQUEST_TIMEOUT_SECONDS
+    assert approved_sources.SLOT_WAIT_SECONDS <= field / 5
+
+
+@pytest.mark.parametrize(("taken", "failure", "unreachable"), [
+    (("tgn",), None, ("tgn",)),
+    (("tgn", "wikidata"), "source_unavailable", ("tgn", "wikidata")),
+])
+def test_a_busy_gazetteer_is_unanswered_and_another_answer_keeps_the_field(tmp_path, taken, failure, unreachable):
+    """An expert asks Getty TGN and Wikidata. With Getty TGN busy and
+    Wikidata answering, the expert's answer stands, naming TGN; with both
+    busy no lookup answered, and the field waits for a retry."""
+    from pydantic_ai.messages import ModelResponse, ToolCallPart
+    from pydantic_ai.models.function import FunctionModel
+
+    from specimen_digitization.application.domain import FieldValue
+    from specimen_digitization.field_research.budget import CostMeter
+    from specimen_digitization.field_research.contracts import FIELD_TOOLS, Candidate, FieldTask, Reading
+    from specimen_digitization.field_research.experts import make_resolver
+
+    def model(messages, info):
+        if len(messages) == 1:
+            return ModelResponse(parts=[ToolCallPart("lookup", {"source": source, "query": "Chimaltenago"})
+                                        for source in ("tgn", "wikidata")])
+        return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, {
+            "outcome": "sources_cannot_resolve", "explanation": "No source has Chimaltenago."})])
+
+    reading = Reading("1A", "region-1", "obs-1a", "decided_transcript", "Chimaltenago")
+    task = FieldTask(key="province_state", mandatory=True, current=FieldValue(),
+                     candidates=(Candidate("1A", "Chimaltenago", "Chimaltenago", "ev-1A"),),
+                     tools=FIELD_TOOLS["province_state"])
+    resolver = make_resolver(model_factory=lambda: FunctionModel(model), meter=CostMeter(
+        1_000_000, input_micros_per_million=200_000, output_micros_per_million=600_000))
+    slots = approved_sources.SourceSlots({"tgn": 1, "wikidata": 1}, wait_seconds=0.05)
+    tools, server, _, _ = make(tmp_path, gazetteers(), slots=slots)
+
+    async def research():
+        async with asyncio.timeout(1), busy(slots, *taken):
+            return await resolver(task, (reading,), {}, tools=tools)
+
+    outcome = asyncio.run(research())
+    assert (outcome.failure, outcome.unreachable) == (failure, unreachable)
+    assert outcome.answer.outcome == "sources_cannot_resolve"
+    sent = {request.url.host for _, request in server.requests}
+    assert sent == (set() if failure else {"www.wikidata.org"})
+
+
+def test_every_records_sources_share_the_process_slots_and_geolocate_keeps_its_spacing(tmp_path):
+    blobs = LocalBlobs(tmp_path / "blobs")
+    client = httpx.AsyncClient(transport=httpx.MockTransport(nothing))
+    first, second = (ApprovedSources(blobs=blobs, client=client) for _ in range(2))
+    assert first._slots is second._slots is approved_sources.SOURCE_SLOTS
+    # GEOLocate is spaced (SOURCE_PACER), never held; GBIF is neither.
+    assert approved_sources.SOURCE_SLOTS.limits == {"tgn": 2, "wikidata": 2, "nga": 2}
+    assert first._pacer is SOURCE_PACER
 
 
 # --- Retries and failures ---
@@ -600,17 +868,413 @@ async def test_other_client_errors_are_final(tmp_path, code, status):
     assert len(server.requests) == 1
 
 
+def unanswered(caplog):
+    """The sources' log lines for unanswered lookups, as key=value maps; a
+    quoted value is read as the shell reads it."""
+    prefix = "Field research lookup unanswered: "
+    return [
+        dict(pair.split("=", 1) for pair in shlex.split(record.getMessage().removeprefix(prefix)))
+        for record in caplog.records
+        if record.name == "specimen_digitization.field_research.sources"
+        and record.levelname == "WARNING" and record.getMessage().startswith(prefix)
+    ]
+
+
+NO_SENDER = {"server": "-", "via": "-", "html_page": "-", "body": "-"}
+BARE = {"server": "-", "via": "-", "html_page": "no", "body": "-"}
+
+
+TGN_HOST = "services.getty.edu"
+SPARQL_HOST = "vocab.getty.edu"
+
+
 @pytest.mark.asyncio
-async def test_a_malformed_body_is_malformed_and_kept(tmp_path):
+@pytest.mark.parametrize(
+    ("reply", "status", "hosts", "line"),
+    [
+        # As Getty TGN may answer Cloud Run's addresses: a refusal, which sends
+        # the search to the SPARQL endpoint (here it answers the same), or a
+        # redirect, which is never followed. Either is an outage, and logged.
+        (httpx.Response(403), LookupStatus.AUTHORIZATION, [TGN_HOST, SPARQL_HOST],
+         {"http_status": "403", "error": "-", "retry_after": "absent", "attempt": "1", **BARE}),
+        (httpx.Response(302, headers={"Location": "https://www.getty.edu/blocked"}), LookupStatus.PROVIDER,
+         [TGN_HOST], {"http_status": "302", "error": "-", "retry_after": "absent", "attempt": "1", **BARE}),
+        (httpx.Response(503, headers={"Retry-After": "1"}), LookupStatus.PROVIDER, [TGN_HOST, SPARQL_HOST],
+         {"http_status": "503", "error": "-", "retry_after": "present", "attempt": "3", **BARE}),
+        (httpx.ConnectError("refused"), LookupStatus.PROVIDER, [TGN_HOST, SPARQL_HOST],
+         {"http_status": "-", "error": "ConnectError", "retry_after": "absent", "attempt": "3",
+          **NO_SENDER}),
+        (httpx.Response(429, headers={"Retry-After": "30"}), LookupStatus.RATE_LIMITED, [TGN_HOST],
+         {"http_status": "429", "error": "-", "retry_after": "present", "attempt": "1", **BARE}),
+    ],
+)
+async def test_every_unanswered_tgn_lookup_is_an_outage_logged_without_its_query(
+    tmp_path, caplog, reply, status, hosts, line
+):
+    from specimen_digitization.field_research.experts import SOURCE_OUTAGES
+
+    tools, server, _, blobs = make(tmp_path, replies(reply))
+    with caplog.at_level(logging.WARNING, logger="specimen_digitization.field_research.sources"):
+        answer = await tools.lookup("tgn", "Davao Province, Philippines", field_key="province_state")
+    assert answer.status is status and status in SOURCE_OUTAGES and answer.evidence is None
+    assert list(dict.fromkeys(request.url.host for _, request in server.requests)) == hosts
+    assert unanswered(caplog) == [
+        {"step": "field_research", "source": "tgn", "host": host, **line} for host in hosts
+    ]
+    assert "Davao" not in caplog.text and "Philippines" not in caplog.text
+
+
+# A block page that writes back the request in the ways a server may: as sent,
+# percent-encoded, in HTML entities and JSON escapes, upper case, accented and
+# run into other words.
+ECHOING_BLOCK_PAGE = (
+    "<!DOCTYPE html><html><head><title>403 Forbidden</title></head><body>"
+    "<p>Request blocked</p><p>queries=%7B%22q0%22%3A%7B%22query%22%3A%22Davao%20Province%22</p>"
+    "<p>Davao Province DAVAO PROVINCE D&#97;vao Prov&iacute;nce \\u0044avao D\u00e1vao "
+    "searchDavaoProvinceNow</p>" + "<p>padding</p>" * 40 + "</body></html>"
+)
+
+
+@pytest.mark.asyncio
+async def test_a_refusal_log_says_who_refused_without_a_word_of_the_query(tmp_path, caplog):
+    refusal = httpx.Response(
+        403,
+        headers={"Server": "envoy", "Via": "1.1 google", "Content-Type": "text/html"},
+        text=ECHOING_BLOCK_PAGE,
+    )
+    tools, _, _, _ = make(tmp_path, tgn_refused(refusal))
+    with caplog.at_level(logging.WARNING, logger="specimen_digitization.field_research.sources"):
+        answer = await tools.lookup("tgn", "Davao Province, Philippines", field_key="province_state")
+    assert answer.note.startswith("Getty TGN's search refused the request (HTTP 403)")
+    (line,) = unanswered(caplog)
+    assert (line["host"], line["http_status"]) == (TGN_HOST, "403")
+    assert (line["server"], line["via"], line["html_page"]) == ("envoy", "1.1 google", "yes")
+    assert line["body"].startswith("<!doctype html><html><head><title>403 forbidden</title>")
+    assert len(line["body"]) <= 200 and "[query]" in line["body"]
+    assert len(caplog.records) == 1 and "\n" not in caplog.records[0].getMessage()
+    for word in ("davao", "province", "vao", "dav"):
+        assert word not in caplog.text.lower()
+
+
+@pytest.mark.parametrize(
+    ("headers", "body", "html_page"),
+    [
+        ({}, b"<HTML><body>Access Denied</body></HTML>", True),
+        ({"content-type": "text/html; charset=utf-8"}, b"Forbidden", True),
+        ({"content-type": "application/json"}, b'{"error": "forbidden"}', False),
+        ({}, b"", False),
+    ],
+)
+def test_a_block_page_is_told_by_its_type_or_its_markup(headers, body, html_page):
+    sender = approved_sources._sender("https://vocab.getty.edu/sparql.json?query=x", headers, body)
+    assert sender.html_page is html_page
+
+
+def test_a_sender_without_any_word_of_the_query_keeps_the_rest():
+    url = tgn.SPARQL + "?query=" + "Mount%20Apo%20of%20Davao"
+    sender = approved_sources._sender(
+        url,
+        {"server": "nginx/1.29.8 (Davao)", "via": "1.1 Mount-Apo-proxy"},
+        b'MALFORMED QUERY: luc:term "mount apo" of davao; of-course offline\x00\r\nline two',
+    )
+    assert sender.server == "nginx/1.29.8 ([query])"
+    assert sender.via == "1.1 [query]-[query]-proxy"
+    # A short word goes only where it stands alone; a long one wherever it appears.
+    assert sender.body == 'malformed query: luc:term "[query] [query]" [query] [query]; [query]-course offline\x00 line two'
+    # Global Names Verifier carries the name in the path.
+    gnv = approved_sources._sender(
+        "https://verifier.globalnames.org/api/v1/verifications/Apis%20mellifera", {},
+        b"<html>No verification for Apis mellifera</html>",
+    )
+    assert gnv.body == "<html>no verification for [query] [query]</html>"
+
+
+@pytest.mark.asyncio
+async def test_a_gbif_refusal_log_says_who_refused_without_the_name(tmp_path, caplog):
+    def reply(request):
+        return httpx.Response(
+            403,
+            headers={"Server": "cloudflare", "Content-Type": "text/html"},
+            text=f"<html><body>Blocked: {request.url}</body></html>",
+        )
+
+    tools, _, _, _ = make(tmp_path, reply)
+    with caplog.at_level(logging.WARNING, logger="specimen_digitization.field_research.sources"):
+        answer = await tools.lookup("gbif", "Apis mellifera", field_key="taxon")
+    assert answer.status is LookupStatus.AUTHORIZATION
+    (line,) = unanswered(caplog)
+    assert (line["source"], line["server"], line["via"], line["html_page"]) == (
+        "gbif", "cloudflare", "-", "yes")
+    assert line["body"].startswith("<html><body>blocked: https://")
+    assert "apis" not in caplog.text.lower() and "mellifera" not in caplog.text.lower()
+
+
+@pytest.mark.asyncio
+async def test_an_unanswered_geolocate_or_gbif_lookup_is_logged_too(tmp_path, caplog):
+    def reply(request):
+        if request.url.host == "api.gbif.org":
+            return httpx.Response(503)
+        raise httpx.ReadTimeout("slow")
+
+    tools, _, _, _ = make(tmp_path, reply)
+    with caplog.at_level(logging.WARNING, logger="specimen_digitization.field_research.sources"):
+        place = await tools.lookup("geolocate", YEPOCAPA, field_key="city")
+        taxon = await tools.lookup("gbif", "Apis mellifera", field_key="taxon")
+    assert (place.status, taxon.status) == (LookupStatus.TIMEOUT, LookupStatus.PROVIDER)
+    lines_ = unanswered(caplog)
+    assert [(item["source"], item["host"]) for item in lines_] == [
+        ("geolocate", "geo-locate.org"), ("gbif", "api.gbif.org")]
+    assert (lines_[0]["error"], lines_[0]["attempt"]) == ("ReadTimeout", "3")
+    assert lines_[1]["error"] == "provider_error" and int(lines_[1]["attempt"]) >= 1
+    assert "Yepocapa" not in caplog.text and "Apis" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_an_answered_lookup_logs_nothing(tmp_path, caplog):
+    tools, _, _, _ = make(tmp_path, gazetteers())
+    with caplog.at_level(logging.WARNING, logger="specimen_digitization.field_research.sources"):
+        answer = await tools.lookup("wikidata", "Davao Province", field_key="province_state")
+    assert answer.status is LookupStatus.SUCCESS and unanswered(caplog) == []
+
+
+def unreadable(caplog):
+    """The sources' log lines for unreadable answers, as key=value maps."""
+    prefix = "Field research lookup unreadable: "
+    return [
+        dict(pair.split("=", 1) for pair in record.getMessage().removeprefix(prefix).split())
+        for record in caplog.records
+        if record.name == "specimen_digitization.field_research.sources"
+        and record.levelname == "WARNING" and record.getMessage().startswith(prefix)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_malformed_body_is_malformed_and_kept(tmp_path, caplog):
     tools, server, _, blobs = make(
         tmp_path, replies(httpx.Response(200, content=b"<html>maintenance</html>"))
     )
-    answer = await tools.lookup("geolocate", YEPOCAPA, field_key="city")
+    with caplog.at_level(logging.WARNING, logger="specimen_digitization.field_research.sources"):
+        answer = await tools.lookup("geolocate", YEPOCAPA, field_key="city")
     assert answer.status is LookupStatus.MALFORMED and answer.candidates == ()
     assert answer.note == "GEOLocate's answer could not be read"
     assert (answer.evidence.kind, answer.evidence.locator) == ("lookup", None)
     assert stored(blobs, answer.evidence) == b"<html>maintenance</html>"
     assert len(server.requests) == 1
+    [line] = unreadable(caplog)
+    assert (line["source"], line["read_as"]) == ("geolocate", "malformed_response")
+
+
+# GEOLocate's answer in the real run of 2026-10-09 to 105526329's lookups with
+# the country "Central America", which it does not know: its count, no result set.
+UNKNOWN_COUNTRY = {"engineVersion": "GLC:9.4|U:1.01374|eng:1.0", "numResults": 0, "executionTimems": 0}
+
+
+@pytest.mark.asyncio
+async def test_geolocates_answer_that_it_found_nothing_is_no_match_and_logged(tmp_path, caplog):
+    """It was classed malformed, an outage, which blocked 105526329 for a retry."""
+    from specimen_digitization.field_research.experts import SOURCE_OUTAGES
+
+    tools, server, _, blobs = make(tmp_path, replies(httpx.Response(200, json=UNKNOWN_COUNTRY)))
+    with caplog.at_level(logging.WARNING, logger="specimen_digitization.field_research.sources"):
+        answer = await tools.lookup("geolocate", "Yepocapa, Central America", field_key="city")
+    assert answer.status is LookupStatus.NO_MATCH and answer.status not in SOURCE_OUTAGES
+    assert answer.candidates == () and answer.note == "GEOLocate found no match (it answered no results)"
+    assert (answer.evidence.kind, answer.evidence.locator) == ("lookup", None)
+    assert json.loads(stored(blobs, answer.evidence)) == UNKNOWN_COUNTRY
+    assert unreadable(caplog) == [{"step": "field_research", "source": "geolocate", "host": "geo-locate.org",
+                                   "http_status": "200", "read_as": "no_match", "error": "ValueError"}]
+    assert "Yepocapa" not in caplog.text and "Central" not in caplog.text
+
+
+def reported_match(place: str, *, breaking: str):
+    """GEOLocate's recorded answer for Yepocapa, reporting one match named
+    `place` (the review of #299), broken as `breaking` says, so that
+    geolocate_verdict cannot read it."""
+    payload = json.loads((GEOLOCATE / "yepocapa-modern.json").read_text(encoding="utf-8"))
+    payload["numResults"] = 1
+    payload["resultSet"]["features"] = payload["resultSet"]["features"][:1]
+    feature = payload["resultSet"]["features"][0]
+    feature["properties"]["parsePattern"] = place.upper()
+    feature["properties"]["debug"] = feature["properties"]["debug"].replace("YEPOCAPA", place.upper())
+    if breaking == "score":
+        feature["properties"]["score"] = 83.0
+    elif breaking == "count":
+        payload["numResults"] = 2
+    else:
+        feature["geometry"]["coordinates"] = [-190.0, 14.5]
+    return payload
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("breaking", ["score", "count", "coordinates"])
+async def test_a_geolocate_answer_reporting_a_match_it_cannot_read_stays_unreadable(tmp_path, breaking):
+    """Only GEOLocate's answer that it found nothing is no match: an answer
+    reporting a match the parser cannot read is an outage, never a no-match
+    that rules a reader's text out."""
+    tools, _, _, _ = make(tmp_path, replies(httpx.Response(200, json=reported_match("Yepocapo", breaking=breaking))))
+    answer = await tools.lookup("geolocate", "Yepocapo, Chimaltenango, Guatemala", field_key="city")
+    assert answer.status is LookupStatus.MALFORMED and answer.note == "GEOLocate's answer could not be read"
+
+
+# The review of #299's probe: readers of one label, no decided transcript.
+YEPOCAPO = (
+    Reading("1A", "region-1", "obs-1a", "raw_reading", "Yepocapa, 4800 ft.\nChimaltenango\nGuatemala"),
+    Reading("1B", "region-1", "obs-1b", "raw_reading", "Yepocapo, 4800 ft.\nChimaltenango\nGuatemala"),
+)
+
+
+def by_locality(request):
+    """GEOLocate confirms "Yepocapa"; for any other place it reports one match it cannot read."""
+    locality = dict(request.url.params)["Locality"]
+    if locality == "Yepocapa":
+        return httpx.Response(200, content=(GEOLOCATE / "yepocapa-modern.json").read_bytes())
+    return httpx.Response(200, json=reported_match(locality, breaking="score"))
+
+
+async def readers_go_to_review(tmp_path, reply, unread_source):
+    """GEOLocate confirms 1A's "Yepocapa"; `unread_source` reports something
+    for 1B's "Yepocapo" that cannot be read. That is no no-match: the readers'
+    rule (G20, G32) does not rule "Yepocapo" out, and the expert's pick of
+    "Yepocapa" never settles the city: it goes to review."""
+    from pydantic_ai.messages import ModelRequest, ModelResponse, ToolCallPart, ToolReturnPart
+    from pydantic_ai.models.function import FunctionModel
+
+    from specimen_digitization.application.domain import FieldValue, ValueState
+    from specimen_digitization.field_research import agreement
+    from specimen_digitization.field_research.budget import CostMeter
+    from specimen_digitization.field_research.contracts import FIELD_TOOLS, Candidate, FieldTask
+    from specimen_digitization.field_research.experts import make_resolver
+
+    city = FieldTask("city", True, FieldValue(state=ValueState.AMBIGUOUS),
+                     tuple(Candidate(name, text, text, f"ev-{name}") for name, text in
+                           (("1A", "Yepocapa"), ("1B", "Yepocapo"))), FIELD_TOOLS["city"])
+    tools, _, _, _ = make(tmp_path, reply)
+    found = await tools.lookup("geolocate", "Yepocapa, Chimaltenango, Guatemala", field_key="city")
+    unread = await tools.lookup(unread_source, "Yepocapo, Chimaltenango, Guatemala", field_key="city")
+    assert (found.status, unread.status) == (LookupStatus.SUCCESS, LookupStatus.MALFORMED)
+    assert not agreement.ruled_out([found, unread], "Yepocapo")
+    assert agreement.refusal(city, YEPOCAPO, literal="Yepocapa", named=[YEPOCAPO[0]], value=None,
+                             authority_id=found.candidates[0].authority_id, cited=[found],
+                             received=[found, unread]) is not None
+
+    async def expert(messages, info):
+        if not any(isinstance(m, ModelResponse) for m in messages):
+            return ModelResponse(parts=[
+                ToolCallPart("lookup", {"source": "geolocate", "query": "Yepocapa, Chimaltenango, Guatemala"}),
+                ToolCallPart("lookup", {"source": unread_source, "query": "Yepocapo, Chimaltenango, Guatemala"})])
+        returns = [part.content for m in messages if isinstance(m, ModelRequest) for part in m.parts
+                   if isinstance(part, ToolReturnPart)]
+        success = next(r for r in returns if r.get("status") == "success")
+        return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, {
+            "outcome": "resolved", "literal": "Yepocapa", "reading_names": ["1A"],
+            "authority_id": success["candidates"][0]["authority_id"], "source_evidence_ids": [success["evidence_id"]],
+            "explanation": "GEOLocate confirms Yepocapa and has no match for Yepocapo."})])
+
+    meter = CostMeter(1_000_000, input_micros_per_million=200_000, output_micros_per_million=600_000)
+    resolver = make_resolver(model_factory=lambda: FunctionModel(expert), meter=meter)
+    tools, _, _, _ = make(tmp_path, reply)
+    context = {"country": FieldValue(state=ValueState.SUPPORTED, literal="Guatemala"),
+               "province_state": FieldValue(state=ValueState.SUPPORTED, literal="Chimaltenango")}
+    outcome = await resolver(city, YEPOCAPO, context, tools=tools)
+    assert outcome.answer.outcome != "resolved" and outcome.fallback  # its pick was sent back, then review
+
+
+@pytest.mark.asyncio
+async def test_readers_that_differ_never_settle_on_a_geolocate_answer_it_could_not_read(tmp_path):
+    await readers_go_to_review(tmp_path, by_locality, "geolocate")
+
+
+def geolocate_and_tgn(request):
+    """GEOLocate confirms "Yepocapa"; Getty TGN reports one hit it cannot read
+    (an id that is a URI, not "tgn/<digits>"), the second review of #299."""
+    if request.url.host == "geo-locate.org":
+        assert dict(request.url.params)["Locality"] == "Yepocapa"
+        return httpx.Response(200, content=(GEOLOCATE / "yepocapa-modern.json").read_bytes())
+    assert f"https://{request.url.host}{request.url.path}" == tgn.RECONCILE
+    return {"q0": {"result": [{"id": tgn.TGN + "7005560", "name": "Yepocapo", "score": 83}]}}
+
+
+@pytest.mark.asyncio
+async def test_readers_that_differ_never_settle_on_a_tgn_answer_it_could_not_read(tmp_path):
+    await readers_go_to_review(tmp_path, geolocate_and_tgn, "tgn")
+
+
+YEPOCAPO_HIT = {"id": "tgn/7005560", "name": "Yepocapo", "score": 83}
+YEPOCAPO_ROW = {"full_name": "Yepocapo", "nt": "N", "term_dt_f": None}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("source", "reply"),
+    [
+        ("tgn", {"q0": {"result": [{**YEPOCAPO_HIT, "id": tgn.TGN + "7005560"}]}}),
+        ("tgn", {"q0": {"result": [None]}}),
+        ("tgn", {"q0": {"result": [{"id": "tgn/7005560", "score": 83}]}}),
+        ("tgn", {"q0": {"result": [YEPOCAPO_HIT, "tgn/7005561"]}}),
+        ("nga", {"features": [{"attributes": {**YEPOCAPO_ROW, "ufi": "-2445615"}}]}),
+        ("nga", {"features": [{"attributes": YEPOCAPO_ROW}]}),
+    ],
+)
+async def test_a_gazetteer_answer_reporting_a_hit_it_cannot_read_is_an_outage(
+    tmp_path, source, reply
+):
+    """The second review of #299: such an answer of Getty TGN or NGA was
+    no_match, captured, and the readers' rule ruled "Yepocapo" out on it. It
+    is malformed_response, an outage, as Wikidata's is; nothing more is asked."""
+    from specimen_digitization.field_research import agreement
+    from specimen_digitization.field_research.experts import SOURCE_OUTAGES
+
+    tools, server, _, _ = make(tmp_path, lambda request: reply)
+    answer = await tools.lookup(source, "Yepocapo, Chimaltenango, Guatemala", field_key="city")
+    assert answer.status is LookupStatus.MALFORMED and answer.status in SOURCE_OUTAGES
+    name = {"tgn": "Getty TGN", "nga": "NGA GEOnet Names Server"}[source]
+    assert (answer.note, len(server.requests)) == (f"{name}'s answer could not be read", 1)
+    assert not agreement.ruled_out([answer], "Yepocapo")
+
+
+@pytest.mark.asyncio
+async def test_a_tgn_answer_of_other_getty_vocabularies_only_is_no_match(tmp_path):
+    """A concept is no place: Getty TGN found none, and that rules the text out."""
+    from specimen_digitization.field_research import agreement
+
+    reply = {"q0": {"result": [{"id": "aat/300008795", "name": "mountains", "score": 9}]}}
+    tools, _, _, _ = make(tmp_path, lambda request: reply)
+    answer = await tools.lookup("tgn", "Yepocapo, Chimaltenango, Guatemala", field_key="city")
+    assert answer.status is LookupStatus.NO_MATCH
+    assert answer.note == "Getty TGN has no place for 'Yepocapo'"
+    assert agreement.ruled_out([answer], "Yepocapo")
+
+
+@pytest.mark.asyncio
+async def test_an_expert_whose_geolocate_answer_holds_no_readable_match_is_not_blocked(tmp_path):
+    """105526329 in the real run: the expert's GEOLocate lookup answered, with
+    no match, so the field is reviewed, not retried as unreachable."""
+    from pydantic_ai.messages import ModelResponse, ToolCallPart
+    from pydantic_ai.models.function import FunctionModel
+
+    from specimen_digitization.application.domain import FieldValue
+    from specimen_digitization.field_research.budget import CostMeter
+    from specimen_digitization.field_research.contracts import FIELD_TOOLS, FieldTask, Reading
+    from specimen_digitization.field_research.experts import make_resolver
+
+    tools, _, _, _ = make(tmp_path, replies(httpx.Response(200, json=UNKNOWN_COUNTRY)))
+    turns = iter([
+        lambda info: ModelResponse(parts=[ToolCallPart(
+            "lookup", {"source": "geolocate", "query": "Yepocapa, Central America"})]),
+        lambda info: ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, {
+            "outcome": "sources_cannot_resolve", "explanation": "GEOLocate has no match."})]),
+    ])
+    model = FunctionModel(lambda messages, info: next(turns)(info))
+    meter = CostMeter(1_000_000, input_micros_per_million=200_000, output_micros_per_million=600_000)
+    resolver = make_resolver(model_factory=lambda: model, meter=meter)
+    readings = (Reading("2A", "region-2", "obs-2a", "raw_reading", "Yepocapa, 4800ft.\nChimaltenango,\nGuatemala"),)
+
+    outcome = await resolver(FieldTask("city", True, FieldValue(), (), FIELD_TOOLS["city"]), readings, {},
+                             tools=tools)
+
+    assert (outcome.failure, outcome.unreachable, outcome.answer.outcome) == (
+        None, (), "sources_cannot_resolve")
+    assert [item.source for item in outcome.evidence] == ["geolocate"]
 
 
 # --- Getty TGN, Wikidata and NGA ---
@@ -705,6 +1369,106 @@ async def test_gazetteer_answers_and_their_evidence(
     ]
 
 
+def tgn_refused(refusal, sparql=None):
+    """Getty TGN as Cloud Run met it on 2026-10-10: its reconciliation service
+    answers `refusal` (a response, or an exception raised as the transport's).
+    The SPARQL endpoint answers `sparql` when given, else as recorded: a name
+    search with the recorded terms of the places the recorded reconciliation
+    found for that name, a records query with the recorded records."""
+    recorded_answers = gazetteers()
+    found = {name.lower(): hits for name, hits in recorded("tgn_reconcile.json")["responses"].items()}
+    terms = recorded("tgn_names.json")["bindings"]
+
+    def reply(request):
+        url = f"https://{request.url.host}{request.url.path}"
+        if url == tgn.RECONCILE or sparql is not None:
+            answer = refusal if url == tgn.RECONCILE else sparql
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+        query = dict(request.url.params)["query"]
+        searched = re.search(r'luc:term "([^"\\]*)"', query)
+        if searched is None:
+            return recorded_answers(request)
+        ids = [hit["id"].split("/")[1] for hit in found[searched[1]]]
+        rows = [row for record in ids for row in terms if row["place"]["value"] == tgn.TGN + record]
+        return {"results": {"bindings": rows}}
+
+    return reply
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("refusal", "reason", "kept"),
+    [
+        (httpx.Response(403, text="RBAC: access denied"), "refused the request (HTTP 403)", 3),
+        (httpx.Response(401), "refused the request (HTTP 401)", 3),
+        (httpx.ConnectError("refused"), "could not be reached after 3 attempts", 2),
+        (httpx.ReadTimeout("slow"), "did not answer after 3 attempts", 2),
+        (httpx.Response(502), "failed with HTTP 502 after 3 attempts", 2),
+    ],
+)
+@pytest.mark.parametrize("query", ["Chimaltenango", "Mount McKinley"])
+async def test_a_refused_tgn_search_finds_the_same_places_through_sparql(
+    tmp_path, refusal, reason, kept, query
+):
+    plain, _, _, _ = make(tmp_path / "plain", gazetteers())
+    expected = await plain.lookup("tgn", query, field_key="city")
+    tools, server, _, blobs = make(tmp_path, tgn_refused(refusal))
+    answer = await tools.lookup("tgn", query, field_key="city")
+    assert answer.status is expected.status is LookupStatus.AMBIGUOUS
+    assert answer.candidates == expected.candidates and len(answer.candidates) > 1
+    assert answer.note == (
+        f"Getty TGN's search {reason}; searched Getty's SPARQL endpoint instead. {expected.note}"
+    )
+    assert server.urls()[-2:] == [SPARQL_HOST + "/sparql.json"] * 2
+    # One record names every response that came back, the refused one too; each
+    # stored response by its digest. A request that got no response has none.
+    record = json.loads(stored(blobs, answer.evidence))
+    assert record["status"] == "ambiguous" and len(record["exchanges"]) == kept
+    if kept == 3:
+        refused = record["exchanges"][0]
+        assert refused["url"].startswith(tgn.RECONCILE) and refused["http_status"] == refusal.status_code
+        assert (refused["raw_ref"], refused["sha256"]) == (None, None)
+    for exchange in record["exchanges"][kept - 2 :]:
+        assert exchange["url"].startswith(tgn.SPARQL) and exchange["http_status"] == 200
+        assert hashlib.sha256(blobs.get(exchange["raw_ref"])).hexdigest() == exchange["sha256"]
+    assert lines(answer.evidence)[1:] == lines(expected.evidence)[1:]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("sparql", "status", "outcome"),
+    [
+        (httpx.Response(403), LookupStatus.AUTHORIZATION, "Getty TGN refused the request with HTTP 403"),
+        (httpx.ConnectError("refused"), LookupStatus.PROVIDER,
+         "Getty TGN could not be reached after 3 attempts"),
+    ],
+)
+async def test_when_the_sparql_endpoint_fails_too_the_tgn_lookup_stays_an_outage(
+    tmp_path, sparql, status, outcome
+):
+    from specimen_digitization.field_research.experts import SOURCE_OUTAGES
+
+    tools, _, _, blobs = make(tmp_path, tgn_refused(httpx.Response(403), sparql))
+    answer = await tools.lookup("tgn", "Chimaltenango", field_key="city")
+    assert answer.status is status and status in SOURCE_OUTAGES
+    assert answer.evidence is None and answer.candidates == () and blobs.puts == []
+    assert answer.note == (
+        "Getty TGN's search refused the request (HTTP 403); searched Getty's SPARQL "
+        f"endpoint instead. {outcome}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_tgn_search_through_sparql_carries_the_place_name_only(tmp_path):
+    tools, server, _, _ = make(tmp_path, tgn_refused(httpx.Response(403)))
+    await tools.lookup("tgn", "Mount McKinley, Alaska, USA", field_key="city")
+    search = dict(server.requests[1][1].url.params)["query"]
+    assert 'luc:term "mount mckinley" ;' in search
+    assert "Alaska" not in search and "USA" not in search
+
+
 @pytest.mark.asyncio
 async def test_a_gazetteer_place_reads_with_its_type_and_parents(tmp_path):
     tools, _, _, _ = make(tmp_path, gazetteers(tgn_hits=1))
@@ -734,8 +1498,6 @@ async def test_a_gazetteer_place_reads_with_its_type_and_parents(tmp_path):
             (PlaceRef("Guatemala", "tgn:7005493"),),
         ]),
         ("wikidata", "Davao Province", [(PlaceRef("Philippines", "wikidata:Q928"),)]),
-        # NGA names a first-order unit and a country code, no record of its own.
-        ("nga", "Yepocapa", [(PlaceRef("Chimaltenango"), PlaceRef("GT"))] * 2),
     ],
 )
 async def test_a_gazetteer_place_names_the_places_it_lies_in(tmp_path, source, query, parents):
@@ -745,6 +1507,83 @@ async def test_a_gazetteer_place_names_the_places_it_lies_in(tmp_path, source, q
     assert [item.detail.split(";")[0] for item in answer.candidates] == [
         "in " + ", ".join(parent.name for parent in found) for found in parents
     ]
+
+
+@pytest.mark.asyncio
+async def test_an_nga_place_names_its_country_by_the_code_it_carries(tmp_path):
+    """NGA names a first-order unit and a country code, no record of its
+    own: the country parent carries that code as its iso_code (the unit
+    none)."""
+    tools, _, _, _ = make(tmp_path, gazetteers())
+    answer = await tools.lookup("nga", "Yepocapa", field_key="city")
+    assert [[(parent.name, parent.authority_id, parent.iso_code) for parent in item.parents]
+        for item in answer.candidates] == [[("Chimaltenango", None, None), ("GT", None, "GT")]] * 2
+    assert [item.detail for item in answer.candidates] == ["in Chimaltenango, GT"] * 2
+
+
+def first_hits(reply, *names):
+    """The recorded answers `reply` gives, with Wikidata's search for each of
+    `names` cut to its first hit: the recording keeps the entities of only
+    that hit ("Guatemala": Q774; "Philippine Islands": Q928), and a search
+    whose entities are not all recorded is incomplete, never settled."""
+
+    def cut(request):
+        answer = reply(request)
+        if request.url.host.endswith("wikidata.org") and dict(request.url.params).get("search") in names:
+            answer = {**answer, "search": answer["search"][:1]}
+        return answer
+
+    return cut
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("source", "query", "authority_id", "iso_code"),
+    [
+        # Wikidata's P297 on the nation's own item.
+        ("wikidata", "Guatemala", "wikidata:Q774", "GT"),
+        ("wikidata", "Philippine Islands", "wikidata:Q928", "PH"),
+        # NGA's code for a nation (feature designation PCLI).
+        ("nga", "Guatemala", "nga:-1135822", "GT"),
+        ("nga", "Philippines", "nga:-2445615", "PH"),
+    ],
+)
+async def test_a_nation_carries_the_iso_code_of_its_own_record(tmp_path, source, query, authority_id, iso_code):
+    """Only the nation carries a code; every other place of the answers, and
+    every Getty TGN place, carries none."""
+    tools, _, _, _ = make(tmp_path, first_hits(gazetteers(), "Guatemala", "Philippine Islands"))
+    answer = await tools.lookup(source, query, field_key="country")
+    assert {item.authority_id: item.iso_code for item in answer.candidates if item.iso_code} == {
+        authority_id: iso_code
+    }
+    tgn_answer = await tools.lookup("tgn", "Chimaltenango", field_key="country")
+    assert tgn_answer.candidates and not any(item.iso_code for item in tgn_answer.candidates)
+    assert not any(parent.iso_code for item in tgn_answer.candidates for parent in item.parents)
+
+
+# Each country's extent in degrees (south, north, west, east), wider than the
+# country itself, for the GNS capture's places in Costa Rica, Honduras and the
+# Philippines.
+EXTENTS = {"CR": (8.0, 11.5, -86.0, -82.5), "HN": (12.9, 16.6, -89.4, -83.1), "PH": (4.5, 21.5, 116.0, 127.0)}
+
+
+def test_ngas_unit_codes_start_with_the_iso_country_code():
+    """The country code field research reads from NGA (the first two letters
+    of a feature's first-order unit code, georef_nga._place) is ISO 3166-1
+    alpha-2 in the GNS capture of 2026-09-24 (tests/fixtures/georeferencing),
+    not FIPS 10-4, where the two differ: Costa Rica's Limon and Guanacaste
+    are "CR-L" and "CR-G" (FIPS: CS; FIPS CR is the Coral Sea Islands),
+    Honduras's Yoro "HN-YO" (FIPS: HO), the Philippines' Davao "PH-DVC"
+    (FIPS: RP); and each feature under those codes lies in that country."""
+    units = {row["adm1"]: row["adm1_name"] for row in recorded("nga_units.json")["features"]}
+    assert (units["CR-L"], units["CR-G"], units["HN-YO"], units["PH-DVC"]) == (
+        "Lim\N{LATIN SMALL LETTER O WITH ACUTE}n", "Guanacaste", "Yoro", "Davao")
+    rows = [row for rows in recorded("nga_search.json")["responses"].values() for row in rows]
+    placed = [row for row in rows if row["adm1"][:2] in EXTENTS]
+    assert {row["adm1"][:2] for row in placed} == set(EXTENTS)
+    for row in placed:
+        south, north, west, east = EXTENTS[row["adm1"][:2]]
+        assert south <= row["lat_dd"] <= north and west <= row["long_dd"] <= east, row
 
 
 @pytest.mark.asyncio

@@ -491,7 +491,9 @@ All artifact descriptors use paths relative to the private evidence directory
 plus SHA-256 over exact retained bytes. The checker verifies original/scope
 bindings; SAM receipt and model config/checkpoint-file hashes; every retained
 region/mask/crop; exact Qwen/Novita and Muse/DeepInfra route pairs; validated,
-non-truncated literal outputs reconstructed from the retained final raw response;
+non-truncated literal outputs reconstructed from the retained final raw response
+(read through the reader's `LiteralTranscription`, so a line break the answer
+wrote as a space or `↵` is a newline: HUGGINGFACE_MODEL_ROUTING.md);
 exact uncertainty; unchanged raw readings/regions across edits; a new reasoned
 review event, coverage confirmation, advanced revision/version and equal saved
 versus reopened state. `sam_config_sha256` is the checkpoint's `config.json`
