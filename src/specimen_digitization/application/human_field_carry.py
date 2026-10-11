@@ -214,8 +214,8 @@ def human_regions(repository, specimen, proofs):
     A ``review_regions`` decision starts a run on the reviewer's own regions. A
     fresh run keeps them, so a person's geometry is never replaced by a model's,
     when the active run has segmented and is either that decision's own run
-    holding exactly its regions, or a run that kept them (``keep_regions``) by a
-    chain of fresh runs proved save by save (``_kept_chain``). Equal regions
+    holding exactly its regions, or a run that kept them (``keep_regions``),
+    proved from the saves that started it (``_kept_chain``). Equal regions
     alone prove nothing: a restored model run can hold the regions a person
     confirmed unchanged later, and it is segmented again.
     """
@@ -236,42 +236,43 @@ def human_regions(repository, specimen, proofs):
 
 
 def _kept_chain(repository, specimen, decisions):
-    """Prove a kept run's regions back to the decision's own run, one fresh run at a time.
+    """Prove a kept run's regions descend from the decision, from two immutable saves.
 
-    Each kept run names its origin decision and the run and revision it was
-    started from (``keep_regions``). The save that started it must be that
-    ``reprocess`` and hold this run with these regions; the run it started from
-    must hold the same regions, and be the decision's own run or a kept run
-    proved the same way. A marker that does not prove out is refused.
+    A kept run names its origin decision and the run and revision it was started
+    from (``keep_regions``). Only the ``reprocess`` action writes that marker, and
+    only after proving its source the same way, so one step back proves the
+    whole lineage: the save that started this run must be that ``reprocess``,
+    holding this run, these regions and this marker; the run it started from
+    must hold the same regions and be the decision's own run, or a kept run
+    naming the same decision. The reads do not grow with the lineage. A marker
+    that does not prove out is refused.
     """
-    run, target, marker = specimen.run, specimen.run.id, specimen.run.dependencies[REGIONS]
-    for _ in range(20):
-        if not isinstance(marker, dict) or set(marker) != {
-                "origin_event_id", "origin_revision", "source_run_id", "source_revision"}:
-            _fail()
-        proof = decisions.get(marker["origin_event_id"])
-        revision = marker["source_revision"]
-        if proof is None or proof.resulting_revision != marker["origin_revision"] or type(revision) is not int:
-            _fail()
-        started = repository.version(specimen.scope, specimen.id, revision + 1)
-        source = repository.version(specimen.scope, specimen.id, revision)
-        events = [e for e in started.audit if e.action == "reprocess" and e.before == {
-            "source_run_id": marker["source_run_id"], "source_revision": revision}]
-        if (started.run.id != target or started.run.regions != run.regions
-                or started.run.dependencies.get(REGIONS) != marker or len(events) != 1
-                or events[0].after.get("target_run_id") != target
-                or events[0].after.get(REGIONS) != {"origin_event_id": proof.event.id,
-                    "origin_revision": proof.resulting_revision}
-                or source.run.id != marker["source_run_id"] or source.run.regions != run.regions):
-            _fail()
-        prior = source.run.dependencies.get(REGIONS)
-        if prior is None:
-            original = repository.version(specimen.scope, specimen.id, proof.resulting_revision)
-            if not proof.event.after.get("run_id") == original.run.id == source.run.id:
-                _fail()
-            return proof
-        target, marker = source.run.id, prior
-    _fail()
+    run, marker = specimen.run, specimen.run.dependencies[REGIONS]
+    if not isinstance(marker, dict) or set(marker) != {
+            "origin_event_id", "origin_revision", "source_run_id", "source_revision"}:
+        _fail()
+    proof = decisions.get(marker["origin_event_id"])
+    revision = marker["source_revision"]
+    if proof is None or proof.resulting_revision != marker["origin_revision"] or type(revision) is not int:
+        _fail()
+    started = repository.version(specimen.scope, specimen.id, revision + 1)
+    source = repository.version(specimen.scope, specimen.id, revision)
+    original = repository.version(specimen.scope, specimen.id, proof.resulting_revision)
+    events = [e for e in started.audit if e.action == "reprocess" and e.before == {
+        "source_run_id": marker["source_run_id"], "source_revision": revision}]
+    prior = source.run.dependencies.get(REGIONS)
+    if (started.run.id != run.id or started.run.regions != run.regions
+            or started.run.dependencies.get(REGIONS) != marker or len(events) != 1
+            or events[0].after.get("target_run_id") != run.id
+            or events[0].after.get(REGIONS) != {"origin_event_id": proof.event.id,
+                "origin_revision": proof.resulting_revision}
+            or source.run.id != marker["source_run_id"] or source.run.regions != run.regions
+            or original.run.regions != run.regions
+            or not (proof.event.after.get("run_id") == original.run.id == source.run.id
+                or isinstance(prior, dict) and (prior.get("origin_event_id"), prior.get("origin_revision"))
+                == (proof.event.id, proof.resulting_revision))):
+        _fail()
+    return proof
 
 
 def _source(repository, specimen, blobs):

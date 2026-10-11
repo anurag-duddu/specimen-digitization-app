@@ -93,16 +93,23 @@ decision (`human_field_carry.human_regions`). That holds in two cases:
 - It is the run that decision started, and it still holds exactly the
   decision's regions.
 - It is a run that kept them. Its `dependencies.preserved_human_regions` names
-  the decision and the run and revision it was started from. Each step back is
-  proved from the saved history (`_kept_chain`): the save that started the run
-  is that `reprocess`, and the run it started from holds the same regions.
+  the decision and the run and revision it was started from. The proof reads
+  the saved history (`_kept_chain`). The save that started the run must be that
+  `reprocess`, holding this run, these regions and this marker. The run it
+  started from must hold the same regions, and be the decision's own run or a
+  kept run naming the same decision. Only the `reprocess` action writes the
+  marker, after proving its source the same way, so the reads do not grow with
+  the lineage.
 Equal regions alone are not enough: a restored model run can hold regions a
 person later confirmed unchanged, and it is segmented again. A lineage that
 does not prove out is refused. The new run starts on a copy of the regions,
 with their coverage confirmed and `segment` done (`keep_regions`). It is pinned
 and classified afresh, never segmented, and read from those regions, as the run
-a regions decision starts is. Pinning keeps the lineage. The `reprocess` audit
-event names the kept decision in `after.preserved_human_regions`. Before this,
+a regions decision starts is. The pin step keeps the lineage. If an adapter's
+pins would replace the lineage or a field carry, the pin step blocks as
+`preserved_human_field_provenance_unavailable` before it replaces anything. The
+`reprocess` audit event names the kept decision in
+`after.preserved_human_regions`. Before this,
 the server refused such a new run with
 `preserved_human_field_provenance_unavailable` while the summary offered it.
 The summary still does not offer `reprocess` while the active run holds a

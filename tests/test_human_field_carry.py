@@ -173,6 +173,25 @@ def test_kept_regions_are_kept_again_by_a_later_fresh_run(case):
     assert case.current.run.dependencies[REGIONS]["source_run_id"] == first.run.id
 
 
+def test_a_long_lineage_of_new_runs_keeps_the_regions_with_bounded_reads(case, monkeypatch):
+    from specimen_digitization.application import human_field_carry
+    event = _save_region_review(case)
+    revision, regions = case.current.version, case.current.run.regions
+    widest = []
+    kept_chain = human_field_carry._kept_chain
+    def counted(repository, specimen, decisions):
+        before = len(repository.cache)
+        result = kept_chain(repository, specimen, decisions)
+        widest.append(len(repository.cache) - before)
+        return result
+    monkeypatch.setattr(human_field_carry, "_kept_chain", counted)
+    for _ in range(25):
+        case.reprocess()
+        assert case.current.run.regions == regions and case.current.run.completed_steps == ["segment"]
+        assert _last_reprocess(case).after[REGIONS] == {"origin_event_id": event.id, "origin_revision": revision}
+    assert len(widest) == 24 and max(widest) <= 2
+
+
 def test_a_restored_model_run_with_the_regions_a_person_confirmed_is_segmented_again(case):
     # Equal regions are not ancestry (review of d52a04f6): a model run, a
     # person confirming its regions unchanged, then the model run restored.

@@ -466,7 +466,7 @@ class Workflow:
             if step == "pin_dependencies":
                 retained_carries = copy.deepcopy(run.dependencies.get(CARRY_KEY, {}))
                 retained_regions = copy.deepcopy(run.dependencies.get(CARRY_REGIONS))
-                run.dependencies = (
+                pinned = (
                     self.adapters.pin_dependencies(run)
                     if hasattr(self.adapters, "pin_dependencies")
                     else {
@@ -474,12 +474,14 @@ class Workflow:
                         "synthetic": run.profile.synthetic,
                     }
                 )
-                if CARRY_KEY in run.dependencies and run.dependencies[CARRY_KEY] != retained_carries:
+                # Checked before the pins replace anything: a block saves the
+                # run, and must keep the carries and the regions lineage intact.
+                if (CARRY_KEY in pinned and pinned[CARRY_KEY] != retained_carries
+                        or CARRY_REGIONS in pinned):
                     raise OperationalBlock("preserved_human_field_provenance_unavailable")
+                run.dependencies = pinned
                 if retained_carries:
                     run.dependencies[CARRY_KEY] = retained_carries
-                if CARRY_REGIONS in run.dependencies:
-                    raise OperationalBlock("preserved_human_field_provenance_unavailable")
                 if retained_regions is not None:
                     run.dependencies[CARRY_REGIONS] = retained_regions
                 if self.classifier is not None and hasattr(self.classifier, "pin"):

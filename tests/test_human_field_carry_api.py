@@ -526,3 +526,18 @@ def test_summary_does_not_offer_a_new_run_the_server_refuses(case):
     refused = case.reprocess(key="reprocess-over-transcript")
     assert refused.status_code == 422, refused.text
     assert "preserved_human_field_provenance_unavailable" in refused.text
+
+
+@pytest.mark.parametrize("key", ["preserved_human_regions", "preserved_human_fields"])
+def test_pins_that_would_replace_a_carry_block_before_replacing_anything(case, key):
+    _finished_classified_run(case)
+    assert _save_regions(case).status_code == 200
+    assert _drive(case, lambda s: False).run.stage == "finalized"
+    assert case.reprocess(key="reprocess-kept").status_code == 200
+    kept = case.workspace().json()["run"]["dependencies"]
+    case.workflow.adapters.pin_dependencies = lambda run: {
+        "adapter": "fixture", "synthetic": True, key: {"forged": True}}
+    blocked = _drive(case, lambda s: False)
+    assert blocked.run.stage == "processing_blocked"
+    assert blocked.run.blocker == "preserved_human_field_provenance_unavailable"
+    assert case.workspace().json()["run"]["dependencies"] == kept
