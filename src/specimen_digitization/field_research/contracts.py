@@ -17,15 +17,22 @@ from specimen_digitization.application.domain import Evidence, FieldValue, Looku
 
 
 PLACE_SOURCES = ("geolocate", "tgn", "wikidata", "nga")
+# The gazetteers: every place source but GEOLocate.
+GAZETTEERS = ("tgn", "wikidata", "nga")
 
 # The approved sources and deterministic checks each field's expert may call.
 # "gbif" is GBIF's decision with Catalogue of Life and Global Names Verifier
-# alongside (application.taxonomy_tool.verify_taxon).
+# alongside (application.taxonomy_tool.verify_taxon). GEOLocate settles
+# nothing for a country or a county (agreement.PLACE_LEVELS: its candidate
+# repeats a part of the query). In the real runs of 2026-10-09 (the ten pilot
+# specimens, live and with Getty TGN down) all 22 of the county experts'
+# GEOLocate lookups were refused before they were sent, and the country
+# experts spent 51 lookups on it, so those two experts do not have it.
 FIELD_TOOLS: Mapping[str, tuple[str, ...]] = {
     "taxon": ("gbif",),
-    "country": PLACE_SOURCES,
+    "country": GAZETTEERS,
     "province_state": PLACE_SOURCES,
-    "county": PLACE_SOURCES,
+    "county": GAZETTEERS,
     "city": PLACE_SOURCES,
     # Verbatim locality text: checked against places, never replaced (PRD 515).
     "precise_location": PLACE_SOURCES,
@@ -206,6 +213,12 @@ class FieldOutcome:
     # (experts.EXHAUSTED), or kept breaking its answer's checks
     # (experts.UNCHECKED). Never an answer the expert gave itself.
     fallback: bool = False
+    # The approved sources the expert could not reach: a lookup whose last
+    # attempt (per source and query) ended in an outage, in call order
+    # (experts.SOURCE_OUTAGES). When the expert's answer stands, the field's
+    # reason names them (step._unreachable_note); so does a source_unavailable
+    # field's on the step's last attempt (step._unreachable_reason).
+    unreachable: tuple[str, ...] = ()
 
 
 class FieldResolver(Protocol):

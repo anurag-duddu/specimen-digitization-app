@@ -277,6 +277,49 @@ denied(await op('AppendReviewDecisionV1', {...scope, actorUid: 'worker', id: ran
 denied(await op('AppendModelObservationV2', {...work.left, id: randomUUID(), stepKey: randomUUID(), actorUid: 'viewer'}));
 console.log('PASS sensitive runs need a sensitive-capable member; review decisions need a reviewer and stay within the specimen\'s revision');
 
+// AppendReviewDecisionV2 proves a decision against the saved snapshots and the save's audit row, then
+// checks the decision row it may already find by key. The first write finds none and has to pass; a row
+// that exists has to agree with every value the write claims. (The check once read the missing row's
+// fields and denied every first write as a provenance mismatch.)
+{
+  const specimenId = randomUUID(), decisionId = randomUUID();
+  const audit = {three: randomUUID(), threeOther: randomUUID(), four: randomUUID()};
+  ok(await raw(`mutation @transaction {
+ s: specimen_insert(data:{${sc},id:"${specimenId}",revision:4,state:"completed",sensitive:false,createdBy:"reviewer"})
+ n2: specimenSnapshot_insert(data:{${sc},specimenId:"${specimenId}",revision:2,contractVersion:"0.1",snapshot:{},sha256:"${hex('2')}"})
+ n3: specimenSnapshot_insert(data:{${sc},specimenId:"${specimenId}",revision:3,contractVersion:"0.1",snapshot:{},sha256:"${hex('3')}"})
+ n4: specimenSnapshot_insert(data:{${sc},specimenId:"${specimenId}",revision:4,contractVersion:"0.1",snapshot:{},sha256:"${hex('4')}"})
+ a3: auditEvent_insert(data:{${sc},id:"${audit.three}",specimenId:"${specimenId}",actorUid:"reviewer",action:"checkpoint_or_review",revision:3,requestSha256:"${hex('a')}"})
+ a3x: auditEvent_insert(data:{${sc},id:"${audit.threeOther}",specimenId:"${specimenId}",actorUid:"another-reviewer",action:"checkpoint_or_review",revision:3,requestSha256:"${hex('b')}"})
+ a4: auditEvent_insert(data:{${sc},id:"${audit.four}",specimenId:"${specimenId}",actorUid:"reviewer",action:"checkpoint_or_review",revision:4,requestSha256:"${hex('c')}"})
+}`));
+  const decision = {...scope, actorUid: 'reviewer', id: decisionId, specimenId, baseRevision: 2, resultingRevision: 3, priorSha256: hex('2'), snapshotSha256: hex('3'), serverAuditId: audit.three, decisionActorUid: 'reviewer', reason: 'Checked the label', correction: {action: 'review_field', before: null, after: {literal: 'Cook'}}, createdAt: '2026-10-01T12:00:00.123456Z'};
+  const mismatch = response => { denied(response); assert.match(JSON.stringify(response), /review decision provenance mismatch/, JSON.stringify(response)); };
+  const decisions = async () => ok(await raw(`query { reviewDecisions(where:{specimenId:{eq:"${specimenId}"}}) { reason createdAt } }`)).reviewDecisions;
+  // The proofs come first and need no existing row: a snapshot digest, an audit row of another id, revision or actor.
+  denied(await op('AppendReviewDecisionV2', {...decision, priorSha256: hex('f')}));
+  denied(await op('AppendReviewDecisionV2', {...decision, snapshotSha256: hex('f')}));
+  denied(await op('AppendReviewDecisionV2', {...decision, serverAuditId: randomUUID()}));
+  denied(await op('AppendReviewDecisionV2', {...decision, serverAuditId: audit.four}));
+  denied(await op('AppendReviewDecisionV2', {...decision, serverAuditId: audit.threeOther}));
+  assert.deepEqual(await decisions(), []);
+  // The first write finds no decision row and is accepted.
+  ok(await op('AppendReviewDecisionV2', decision));
+  assert.equal((await decisions()).length, 1);
+  // The same write again finds its row, agrees with it, and reaches the primary key.
+  conflict(await op('AppendReviewDecisionV2', decision), 'review_decision_pkey');
+  // A row that exists is checked against every value the write claims.
+  mismatch(await op('AppendReviewDecisionV2', {...decision, reason: 'A different reason'}));
+  mismatch(await op('AppendReviewDecisionV2', {...decision, createdAt: '2026-10-01T12:00:00.123457Z'}));
+  mismatch(await op('AppendReviewDecisionV2', {...decision, serverAuditId: audit.threeOther, decisionActorUid: 'another-reviewer'}));
+  mismatch(await op('AppendReviewDecisionV2', {...decision, baseRevision: 3, resultingRevision: 4, priorSha256: hex('3'), snapshotSha256: hex('4'), serverAuditId: audit.four}));
+  assert.equal((await decisions()).length, 1);
+  // The next decision of the same specimen is a first write of its own.
+  ok(await op('AppendReviewDecisionV2', {...decision, id: randomUUID(), baseRevision: 3, resultingRevision: 4, priorSha256: hex('3'), snapshotSha256: hex('4'), serverAuditId: audit.four, reason: 'Checked the date'}));
+  assert.deepEqual((await decisions()).map(row => row.reason).sort(), ['Checked the date', 'Checked the label']);
+}
+console.log('PASS a first review decision passes its provenance check; a replay reaches the primary key; a row that disagrees in reason, time, actor or revision is a provenance mismatch; wrong digests and audit rows are refused');
+
 // Every parent a row names belongs to the row's own run, or to its specimen for assets.
 const b = await chain(other, 'worker');
 await writeAll(b);

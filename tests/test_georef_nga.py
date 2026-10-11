@@ -180,10 +180,30 @@ def test_a_feature_is_named_by_its_approved_name_first():
     assert (place.name, place.names) == ("Approved", ("Conventional", "Variant", "Script"))
 
 
-def test_rows_without_a_usable_id_name_or_point():
+UNREADABLE_IDS = {
+    "a text id": {"ufi": "-2445615"},
+    "a true id": {"ufi": True},
+    "a null id": {"ufi": None},
+    "a fractional id": {"ufi": 1.5},
+    "an id longer than GNS's": {"ufi": 12345678901},
+    "no id": {},
+}
+
+
+@pytest.mark.parametrize("unreadable", list(UNREADABLE_IDS))
+def test_a_row_without_a_readable_feature_id_makes_the_answer_malformed(unreadable):
+    """GNS reported a feature it may have found: that is no answer that it
+    found nothing (NO_MATCH), alone or beside a row that can be read (the
+    review of #299)."""
+    row = {"full_name": "Yepocapo", "nt": "N", "term_dt_f": None} | UNREADABLE_IDS[unreadable]
+    readable = {"ufi": 1, "full_name": "Current", "nt": "N", "term_dt_f": None}
+    for rows in ([row], [readable, row]):
+        assert parse_search(200, answer(*rows)) == (LookupStatus.MALFORMED, ())
+        assert parse_features(200, answer(*rows)) == (LookupStatus.MALFORMED, ())
+
+
+def test_rows_without_a_usable_name_or_point():
     body = answer(
-        {"ufi": True, "full_name": "A true id", "term_dt_f": None},
-        {"ufi": "12", "full_name": "A text id", "term_dt_f": None},
         {"ufi": 7, "full_name": "", "nt": "N", "term_dt_f": None},
         {
             "ufi": 8,

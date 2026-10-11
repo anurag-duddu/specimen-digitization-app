@@ -200,7 +200,13 @@ new region set; deletes are tombstones, not erasure of historical geometry.
 
 Existing `LiteralTranscription` (`verbatim_text`, `lines`, `unreadable_spans`)
 remains supported. Wrap it in immutable observation provenance; do not replace
-its exact line-reconstruction invariant. Extend span evidence additively.
+its exact line-reconstruction invariant. Before the invariant is checked, a
+`verbatim_text` that is the lines in order with each break written as a space or
+`↵` (U+21B5) instead of a newline is rewritten with newlines; any other
+difference still fails it. The reader and the human-review release checker
+(`scripts/qa/live/human_review.py`) both apply it through `LiteralTranscription`
+(`docs/product-requirements/HUGGINGFACE_MODEL_ROUTING.md`, "How a reader's answer
+is read"). Extend span evidence additively.
 Persist raw provider envelopes as well as parsed Pydantic output; existing
 `LiteralTranscriptionRun` alone is insufficient raw-response preservation.
 
@@ -257,7 +263,9 @@ approved semantics/policy and any required human approval. Risk scores cannot
 override these gates. Deferred requires documented capability limitation,
 exhausted viable approved attempts and retry eligibility. Missing configuration,
 429, timeout, invalid credentials, outage, budget exhaustion and code error are
-operational blocks. No reviewer action may simply waive missing evidence. 2026-10-03 (coordinator engineering call, ruling 7, citing owner G6): a GEOLocate no_match or ambiguous outcome for a geography field is a scientific result, not an operational block; it reaches Needs human review with that field's GEOLocate receipts (`contracts.HumanQuestion`), the one exception to "human questions need exhausted sources". Every outage stays an operational block.
+operational blocks. No reviewer action may simply waive missing evidence. 2026-10-03 (coordinator engineering call, ruling 7, citing owner G6): a GEOLocate no_match or ambiguous outcome for a geography field is a scientific result, not an operational block; it reaches Needs human review with that field's GEOLocate receipts (`contracts.HumanQuestion`), the one exception to "human questions need exhausted sources". Every outage stays an operational block, except in field research as the next paragraph says.
+
+2026-10-09, field research (`SPECIMEN_RESEARCH_HARNESS=fields`), under the owner's spec points 6 and 8 in [`golive/FIELD_RESEARCH.md`](golive/FIELD_RESEARCH.md) ("Failures are graceful"; what cannot be settled goes to Needs human review): a source that could not be reached is an operational block for a field only when every lookup its expert made failed, at least one by such an outage. When another of its lookups answered, the expert's answer is checked like any other and the field's reason names the unreachable source. Such a block retries; on the step's last allowed attempt (the run's `max_attempts`) the field goes to Needs human review instead, unresolved, its reason naming the sources not reached, and the record finalizes. A field timeout is an operational block that retries in the same way, and on the last allowed attempt the field goes to Needs human review, unresolved, its reason saying it ran out of time. A model failure stays an operational block on every attempt.
 
 > 2026-09-23: Superseded for the go-live program, for the lane, by [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G1.
 > Two clearance gates above no longer apply: "approved semantics/policy" (the

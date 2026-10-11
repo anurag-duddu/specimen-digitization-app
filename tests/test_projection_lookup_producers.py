@@ -186,6 +186,64 @@ def test_nonlookup_recorded_evidence_needs_no_lookup_producer(typed_lookup):
     )
 
 
+def evidence_rule(session):
+    """AppendEvidenceItemV2's locator rule (dataconnect/connector/projection.gql): recorded
+    evidence has a locator, and a lookup has one exactly when it succeeded. The rule is a
+    @check without a message, so the connector's refusal reads "permission denied"."""
+    def answer(operation):
+        if operation != "AppendEvidenceItemV2":
+            return None
+        variables = session.calls[-1][1]
+        located = variables["locator"] is not None
+        outcome = variables["outcome"]
+        if (located if outcome == "recorded" else (outcome == "success") == located):
+            return None
+        return {"message": "permission denied (aborted)\n(rolled back)",
+                "extensions": {"code": "PERMISSION_DENIED"}}
+    return answer
+
+
+def test_a_source_answer_no_single_candidate_decides_is_projected_with_a_locator(typed_lookup):
+    """Production, 2026-10-10: field research stores a source answer with several candidates
+    (field_research.sources._evidence) as "authority" evidence without a locator. Its recorded
+    row was refused, and the worker's projection stopped at AppendEvidenceItemV2 five times."""
+    from specimen_digitization.field_research.contracts import SourceCandidate
+    from specimen_digitization.field_research.sources import _evidence
+
+    specimen, repo, session, _ = typed_lookup
+    session.answer = evidence_rule(session)
+    stored = specimen.run.evidence[0]
+    answer = _evidence("wikidata", LookupStatus.AMBIGUOUS, "two places",
+        [SourceCandidate("Synthetic Place", "wikidata:Q1"), SourceCandidate("Synthetic Place", "wikidata:Q2")],
+        stored.raw_ref, stored.digest)
+    assert (answer.kind, answer.locator) == ("authority", None)
+    specimen.run.evidence.append(answer)
+    specimen = validated(specimen)
+
+    assert project(specimen, repo) == ProjectionResult(True)
+    row, = [
+        variables for operation, variables in session.calls
+        if operation == "AppendEvidenceItemV2" and variables["id"] == answer.id
+    ]
+    assert (row["outcome"], row["locator"]) == ("recorded", f"evidence/{answer.id}")
+    # The record keeps the answer as stored: only its projected row is located.
+    assert specimen.run.evidence[-1].locator is None
+
+
+def test_google_recorded_evidence_gets_no_made_up_locator(typed_lookup):
+    """A Google locator may only be a place id (G26), so no fallback is written for one."""
+    specimen, repo, _, _ = typed_lookup
+    stored = specimen.run.evidence[0]
+    specimen.run.evidence.append(Evidence(kind="authority", source="google-maps-geocoding",
+        locator=None, excerpt="two places", raw_ref=stored.raw_ref, digest=stored.digest))
+    specimen = validated(specimen)
+    row, = [
+        write.variables for write in writes(specimen, repo.locate, repo._sized, "synthetic-worker")
+        if write.operation == "AppendEvidenceItemV2" and write.variables["id"] == specimen.run.evidence[-1].id
+    ]
+    assert (row["outcome"], row["locator"]) == ("recorded", None)
+
+
 def test_unstored_lookup_stays_in_snapshot_without_a_projection_row(typed_lookup):
     specimen, repo, session, evidence_id = typed_lookup
     specimen.run.evidence[0].raw_ref = None

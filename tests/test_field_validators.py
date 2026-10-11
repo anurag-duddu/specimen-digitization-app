@@ -44,7 +44,7 @@ def reading(iso, year, month, day, precision, order, rules=()):
 
 def test_werner_date_clears_at_the_day_under_the_insects_century_rule():
     result = date_parser("3 sept. '46", source_text=WERNER, date_rules=INSECTS)
-    assert (result.tool, result.tool_version) == ("date_parser", "date-parser-v1")
+    assert (result.tool, result.tool_version) == ("date_parser", "date-parser-v2")
     assert result.outcome == LookupStatus.SUCCESS
     assert result.parsed == {
         "readings": [
@@ -271,6 +271,57 @@ def test_under_the_century_rule_a_number_after_a_month_is_a_day_or_a_year(
     assert result.parsed == {"readings": readings, "year_literal": year_literal}
 
 
+# The default keeps both readings (the pinned explicit-event rules read them);
+# field research asks for the year literal to decide: "IV-25" beside 1948 was
+# also April 1925 on origin/main, so a year literal never settled the date.
+@pytest.mark.parametrize(
+    "literal,source_text,year_literal,expected",
+    [
+        (
+            "IV-25",
+            GUATEMALA,
+            "1948",
+            reading("1948-04-25", 1948, 4, 25, "day", "month-day", [ROMAN]),
+        ),
+        (
+            "IV-25",
+            "Guatemala, IV-25\n'48, R.D. Mitchell",
+            "'48",
+            reading("1948-04-25", 1948, 4, 25, "day", "month-day", [ROMAN, CENTURY]),
+        ),
+        (
+            "Dec. 25",
+            "Dec. 25\n1948",
+            "1948",
+            reading("1948-12-25", 1948, 12, 25, "day", "monthname-day"),
+        ),
+    ],
+)
+def test_a_year_literal_that_decides_leaves_no_two_digit_year_reading(
+    literal, source_text, year_literal, expected
+):
+    result = date_parser(
+        literal,
+        source_text=source_text,
+        year_literal=year_literal,
+        date_rules=INSECTS,
+        year_literal_decides=True,
+    )
+    assert result.outcome == LookupStatus.SUCCESS
+    assert result.warnings == []
+    assert result.parsed == {"readings": [expected], "year_literal": year_literal}
+
+
+def test_a_year_literal_that_decides_changes_nothing_without_a_year_literal():
+    for literal, source in (("IV-25", GUATEMALA), ("Dec. 25", "Dec. 25")):
+        alone = date_parser(literal, source_text=source, date_rules=INSECTS)
+        decided = date_parser(
+            literal, source_text=source, date_rules=INSECTS, year_literal_decides=True
+        )
+        assert decided.parsed == alone.parsed and decided.warnings == alone.warnings
+        assert alone.warnings == ["several_readings", "year_missing"]
+
+
 @pytest.mark.parametrize(
     "literal,rules,warning,expected",
     [
@@ -482,7 +533,7 @@ def test_a_date_with_one_reading_clears_at_the_precision_written(
                 reading("1948-04-05", 1948, 4, 5, "day", "month-day-year", [CENTURY]),
                 reading("1948-05-04", 1948, 5, 4, "day", "day-month-year", [CENTURY]),
             ],
-            ["several_readings"],
+            ["several_readings", "day_month_order_ambiguous"],
         ),
         (
             "3.9.1946",
@@ -491,7 +542,7 @@ def test_a_date_with_one_reading_clears_at_the_precision_written(
                 reading("1946-03-09", 1946, 3, 9, "day", "month-day-year"),
                 reading("1946-09-03", 1946, 9, 3, "day", "day-month-year"),
             ],
-            ["several_readings"],
+            ["several_readings", "day_month_order_ambiguous"],
         ),
         (
             "12/10/1946",
@@ -500,7 +551,7 @@ def test_a_date_with_one_reading_clears_at_the_precision_written(
                 reading("1946-12-10", 1946, 12, 10, "day", "month-day-year"),
                 reading("1946-10-12", 1946, 10, 12, "day", "day-month-year"),
             ],
-            ["several_readings"],
+            ["several_readings", "day_month_order_ambiguous"],
         ),
         (
             "4-5-48",
@@ -509,7 +560,7 @@ def test_a_date_with_one_reading_clears_at_the_precision_written(
                 reading(None, None, 4, 5, "day", "month-day-year"),
                 reading(None, None, 5, 4, "day", "day-month-year"),
             ],
-            ["several_readings", "century_unresolved"],
+            ["several_readings", "day_month_order_ambiguous", "century_unresolved"],
         ),
     ],
 )

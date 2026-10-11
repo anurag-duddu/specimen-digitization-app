@@ -23,7 +23,7 @@ from specimen_digitization.application.domain import AuditEvent, ValueState
 from specimen_digitization.application.projection import derived_id
 from specimen_digitization.application.storage import check_snapshot, digest as canonical_digest
 
-from .compatibility import PublishedResearch
+from .compatibility import PublishedResearch, ResearchNotRegistered
 from .contracts import Digest, FieldCheckpoint, FrozenRecord, ResearchScope, digest
 from .native_canonical import (
     ACCESS_DENIED, CANONICAL_KEYS, RESEARCH_KEYS, CanonicalIdentityV1,
@@ -59,6 +59,10 @@ class CanonicalBindingV2(FrozenRecord):
 
     @classmethod
     def from_native(cls,scope,specimen_id,row):
+        if row is None:
+            # The read returns no row when the active registration is for an
+            # earlier revision or run of the record (research_binding_v2.gql).
+            raise ResearchNotRegistered("native_v2_registration_not_current")
         if not isinstance(row,dict) or set(row)!={"canonical","registrations","snapshot","projection","active_registration_count","causal"}:
             fail("native_v2_binding_unavailable")
         canonical=row["canonical"]
@@ -68,6 +72,8 @@ class CanonicalBindingV2(FrozenRecord):
         registrations=row["registrations"];causal=row["causal"]
         if (not isinstance(registrations,list) or len(registrations)!=1
             or type(row["active_registration_count"]) is not int or row["active_registration_count"]!=1):
+            if registrations==[] and type(row["active_registration_count"]) is int and row["active_registration_count"]==0:
+                raise ResearchNotRegistered("native_v2_registration_missing")
             fail("native_v2_registration_missing_or_ambiguous")
         if (not isinstance(causal,dict) or set(causal)!={"contract_version","authority_digest","import_proof_id","import_proof_digest",
             "head_receipt_id","head_chain_digest","causal_chain","causal_count"}

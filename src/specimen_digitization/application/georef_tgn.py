@@ -4,8 +4,10 @@ The module builds requests to TGN's reconciliation service and SPARQL endpoint
 and reads the answers into `Place` records, with one `LookupStatus` per answer.
 It sends nothing: the tool sends each request and records it as a sub-call. A
 reconciliation query carries one reading's name as S4's place-request filter
-returns it (PLAN 4.8); a SPARQL query carries TGN ids only. Both services answer
-anonymously, and Getty's token-gated gateway is not used (PLAN 2.3).
+returns it (PLAN 4.8); so does the SPARQL name search that stands in for it
+(`search_params`), and every other SPARQL query carries TGN ids only. Both
+services answer anonymously, and Getty's token-gated gateway is not used
+(PLAN 2.3).
 """
 
 from __future__ import annotations
@@ -83,6 +85,37 @@ WHERE {
   OPTIONAL { ?term dct:language ?language . }
 }"""
 )
+# A name search through the SPARQL endpoint, for when the reconciliation service
+# refuses a request or cannot be reached: Getty's full-text index of TGN's terms
+# (luc:term, kept to TGN by skos:inScheme), the first SEARCH_DEPTH places in the
+# index's own order, each with every term as NAMES reads them. The first %s is
+# the name as `search_params` writes it, inside a SPARQL string.
+SEARCH_DEPTH = 50
+SEARCH = (
+    PREFIXES
+    + """PREFIX luc: <http://www.ontotext.com/owlim/lucene#>
+PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+SELECT ?place ?name ?language ?preferred
+WHERE {
+  { SELECT ?place WHERE { ?place luc:term "%s" ; skos:inScheme tgn: . } LIMIT %d }
+  { ?place xl:prefLabel ?term . BIND(true AS ?preferred) }
+  UNION { ?place xl:altLabel ?term . BIND(false AS ?preferred) }
+  ?term xl:literalForm ?name .
+  OPTIONAL { ?term dct:language ?language . }
+}"""
+)
+# What Lucene's query syntax reads as operators rather than words.
+LUCENE_SYNTAX = frozenset('+-&|!(){}[]^"~*?:\\/')
+# How a SPARQL string writes the characters it cannot hold as they are.
+SPARQL_ESCAPES = {
+    "\\": "\\\\",
+    '"': '\\"',
+    "\n": "\\n",
+    "\r": "\\r",
+    "\t": "\\t",
+    "\b": "\\b",
+    "\f": "\\f",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,7 +159,51 @@ def names_params(ids: Iterable[str]) -> dict[str, str]:
     return {"query": NAMES % _values(ids)}
 
 
+def search_params(reading: str) -> dict[str, str]:
+    """Parameters for finding TGN places by one reading's name through the SPARQL
+    endpoint (SEARCH): the name as Lucene words (`lucene_words`) inside a SPARQL
+    string (`sparql_string`). It takes the names a reconciliation takes."""
+    if (
+        not isinstance(reading, str)
+        or not reading.strip()
+        or len(reading) > MAX_NAME
+        or any(unicodedata.category(character).startswith("C") for character in reading)
+    ):
+        raise ValueError("a TGN search takes one printable place name")
+    return {"query": SEARCH % (sparql_string(lucene_words(reading)), SEARCH_DEPTH)}
+
+
+def lucene_words(text: str) -> str:
+    """Text as Lucene query text that holds words only: every character Lucene's
+    syntax reads as an operator (LUCENE_SYNTAX) is escaped with a backslash, and
+    the text is lower-cased, so AND, OR and NOT are words too. Getty's index
+    ignores case ("Manila", "manila" and "MANILA" find the same 34 places,
+    probed 2026-10-10)."""
+    return "".join(
+        "\\" + character if character in LUCENE_SYNTAX else character
+        for character in text.lower()
+    )
+
+
+def sparql_string(text: str) -> str:
+    """Text as the inside of a double-quoted SPARQL string: a backslash, a quote
+    and a line break are escaped (SPARQL_ESCAPES); any other control character is
+    refused, since a string cannot carry it safely."""
+    written = []
+    for character in text:
+        if character in SPARQL_ESCAPES:
+            written.append(SPARQL_ESCAPES[character])
+        elif unicodedata.category(character).startswith("C"):
+            raise ValueError("a SPARQL string takes printable text only")
+        else:
+            written.append(character)
+    return "".join(written)
+
+
 def parse_reconcile(status: int, body: bytes) -> tuple[LookupStatus, tuple[Hit, ...]]:
+    """The TGN places a reconciliation found. A hit of another Getty vocabulary
+    (a concept, a person) is skipped; any other hit that cannot be read makes the
+    whole answer MALFORMED, never NO_MATCH: the service reported something there."""
     outcome, data = _answer(status, body)
     answer = data.get("q0") if isinstance(data.get("q0"), dict) else {}
     results = answer.get("result")
@@ -134,8 +211,15 @@ def parse_reconcile(status: int, body: bytes) -> tuple[LookupStatus, tuple[Hit, 
         outcome = LookupStatus.MALFORMED
     if outcome is not None:
         return outcome, ()
-    hits = tuple(hit for item in results if (hit := _hit(item)) is not None)
-    return (LookupStatus.SUCCESS if hits else LookupStatus.NO_MATCH), hits
+    hits = []
+    for item in results:
+        if _other_vocabulary(item):
+            continue
+        hit = _hit(item)
+        if hit is None:
+            return LookupStatus.MALFORMED, ()
+        hits.append(hit)
+    return (LookupStatus.SUCCESS if hits else LookupStatus.NO_MATCH), tuple(hits)
 
 
 def parse_records(status: int, body: bytes) -> tuple[LookupStatus, tuple[Place, ...]]:
@@ -167,6 +251,50 @@ def parse_names(status: int, body: bytes) -> tuple[LookupStatus, dict[str, tuple
             names.setdefault(record, []).append(term)
     found = {record: tuple(dict.fromkeys(terms)) for record, terms in names.items()}
     return (LookupStatus.SUCCESS if found else LookupStatus.NO_MATCH), found
+
+
+def parse_search(status: int, body: bytes) -> tuple[LookupStatus, dict[str, tuple[Term, ...]]]:
+    """The places a name search (SEARCH) found, in the index's order, each with
+    every term. A row that is not a TGN place with a term and its preferred flag
+    makes the answer malformed, as do more places than the search asks for; an
+    answer with no rows is no match."""
+    outcome, rows = _bindings(status, body)
+    if outcome is not None:
+        return outcome, {}
+    found: dict[str, list[Term]] = {}
+    for row in rows:
+        record, name, preferred = _tgn_id(row.get("place")), row.get("name"), row.get("preferred")
+        if record is None or not name or preferred not in ("true", "false"):
+            return LookupStatus.MALFORMED, {}
+        found.setdefault(record, []).append(Term(name, row.get("language"), preferred == "true"))
+    if len(found) > SEARCH_DEPTH:
+        return LookupStatus.MALFORMED, {}
+    places = {record: tuple(dict.fromkeys(terms)) for record, terms in found.items()}
+    return (LookupStatus.SUCCESS if places else LookupStatus.NO_MATCH), places
+
+
+def search_ids(reading: str, found: Mapping[str, Iterable[Term]]) -> tuple[str, ...]:
+    """The ids of at most LIMIT places of a name search: first those with a term
+    in the same words as the reading, whatever their order, accents, case or
+    punctuation ("McKinley, Mount" for "Mount McKinley", an accented name for
+    its plain spelling), then the rest, each group in the index's order. The
+    reconciliation service ranks such places first too (probed 2026-10-10)."""
+    wanted = _words(reading)
+    same = [
+        record for record, terms in found.items() if any(_words(term.name) == wanted for term in terms)
+    ]
+    rest = [record for record in found if record not in set(same)]
+    return tuple((same + rest)[:LIMIT])
+
+
+def _words(text: str) -> list[str]:
+    """A name's words, without accents or case, in sorted order."""
+    bare = "".join(
+        character
+        for character in unicodedata.normalize("NFKD", text)
+        if not unicodedata.combining(character)
+    )
+    return sorted(re.findall(r"\w+", bare.casefold()))
 
 
 def with_names(places: Iterable[Place], names: Mapping[str, Iterable[Term]]) -> tuple[Place, ...]:
@@ -240,14 +368,24 @@ def _bindings(status: int, body: bytes) -> tuple[LookupStatus | None, list[dict[
     return None, rows
 
 
+def _other_vocabulary(item: object) -> bool:
+    """A reconciliation hit of another Getty vocabulary (AAT, ULAN, CONA or IA):
+    a concept, a person, a work or a subject, not a place."""
+    identifier = item.get("id") if isinstance(item, dict) else None
+    return isinstance(identifier, str) and (
+        re.fullmatch(r"(?:aat|ulan|cona|ia)/[0-9]{1,10}", identifier) is not None
+    )
+
+
 def _hit(item: object) -> Hit | None:
+    """A TGN hit: an id `tgn/<digits>` and a name. None when the item is not one."""
     if not isinstance(item, dict):
         return None
     identifier = item.get("id")
     match = re.fullmatch(r"tgn/([0-9]{1,10})", identifier) if isinstance(identifier, str) else None
-    if match is None:
+    name = item.get("name")
+    if match is None or not isinstance(name, str) or not name.strip():
         return None
-    name = item.get("name") if isinstance(item.get("name"), str) else None
     score = item.get("score")
     numeric_score = None
     if isinstance(score, int | float) and not isinstance(score, bool):

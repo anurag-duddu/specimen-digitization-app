@@ -863,6 +863,103 @@ void main() {
     },
   );
 
+  // research/current answers 404 research_not_registered when the record has no
+  // research for its current revision (the first field-research record, which
+  // showed "Research is unavailable right now" on every field row).
+  HostApi notRegisteredApi() => HostApi((path) async {
+    if (path.endsWith('/research/current')) {
+      throw const ApiFailure(
+        'The request did not complete. Retry.',
+        code: 'research_not_registered',
+        status: 404,
+      );
+    }
+    if (path.endsWith('/research/derivations/capability')) {
+      return derivationCapability();
+    }
+    return {};
+  });
+
+  testWidgets('a record with no registered research shows no research line', (
+    tester,
+  ) async {
+    final api = notRegisteredApi();
+    addTearDown(api.close);
+    await pumpHost(
+      tester,
+      api,
+      item(),
+      builder: (context, researchForField) => Column(
+        children: [
+          researchForField('taxon', null),
+          researchForField('country', (_) {}),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Only the country field's location-suggestion disclosure remains.
+    expect(find.text('Research'), findsOneWidget);
+    await tester.tap(find.text('Research'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Research is unavailable right now. Refresh to try again.'),
+      findsNothing,
+    );
+    expect(
+      find.text('Research history is not available right now.'),
+      findsNothing,
+    );
+    expect(find.text('Refresh research'), findsNothing);
+    expect(find.text('Fill the rest'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the research section is hidden when no research is registered', (
+    tester,
+  ) async {
+    final api = notRegisteredApi();
+    addTearDown(api.close);
+    await pumpHost(tester, api, item());
+    await tester.pumpAndSettle();
+    expect(find.text('Field research'), findsNothing);
+    expect(
+      find.text('Research is unavailable right now. Refresh to try again.'),
+      findsNothing,
+    );
+    expect(find.text('Refresh research'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a research outage still says research is unavailable', (
+    tester,
+  ) async {
+    final api = HostApi((path) async {
+      if (path.endsWith('/research/current')) {
+        throw const ApiFailure(
+          'The request did not complete. Retry.',
+          code: 'research_service_unavailable',
+          status: 503,
+        );
+      }
+      return {};
+    });
+    addTearDown(api.close);
+    await pumpHost(
+      tester,
+      api,
+      item(),
+      builder: (context, researchForField) => researchForField('taxon', null),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Research is unavailable right now. Refresh to try again.'),
+      findsOneWidget,
+    );
+    expect(find.text('Refresh research'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets(
     'current capability can be checked when no research binding is available',
     (tester) async {

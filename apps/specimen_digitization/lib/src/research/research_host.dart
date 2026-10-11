@@ -66,6 +66,10 @@ class _ResearchHostState extends State<ResearchHost> {
   int _epoch = 0;
   String? _message;
   bool _denied = false;
+
+  /// The record has no research for its current version: the research line is
+  /// hidden rather than shown as unavailable.
+  bool _notRegistered = false;
   int? _discoveringEpoch;
   bool _researchRevealed = false;
   bool _derivationRevealed = false;
@@ -87,6 +91,7 @@ class _ResearchHostState extends State<ResearchHost> {
       if (mounted) {
         setState(() {
           _denied = true;
+          _notRegistered = false;
           _message = failure.status == 401
               ? 'Sign in again to view research.'
               : 'Research access is unavailable for this collection.';
@@ -140,6 +145,9 @@ class _ResearchHostState extends State<ResearchHost> {
               _controller!.networkState != ResearchNetworkState.idle;
       _researchRevealed = sameRecord && loaded;
       _derivationRevealed = sameRecord && _derivationRevealed;
+      // A new version of the same record keeps the line hidden until its
+      // discovery answers; another record starts from "checking".
+      _notRegistered = sameRecord && _notRegistered;
       _epoch++;
       _discoveringEpoch = null;
       _clear();
@@ -262,6 +270,7 @@ class _ResearchHostState extends State<ResearchHost> {
       setState(() {
         _controller = controller;
         _message = null;
+        _notRegistered = false;
       });
       if (reloadLoaded && widget.refreshEnabled) {
         await controller.refresh(quiet: quiet && reuse);
@@ -272,7 +281,8 @@ class _ResearchHostState extends State<ResearchHost> {
         _denied =
             failure.kind == ResearchFailureKind.unauthenticated ||
             failure.kind == ResearchFailureKind.forbidden;
-        _message = failure.message;
+        _notRegistered = failure.kind == ResearchFailureKind.notRegistered;
+        _message = _notRegistered ? null : failure.message;
       });
     } finally {
       if (_discoveringEpoch == epoch) _discoveringEpoch = null;
@@ -294,6 +304,7 @@ class _ResearchHostState extends State<ResearchHost> {
     final builder = widget.builder;
     if (builder != null) return builder(context, _researchForField);
     final controller = _controller;
+    if (controller == null && _notRegistered) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
@@ -431,6 +442,13 @@ class _ResearchHostState extends State<ResearchHost> {
     if (controller == null) {
       if (fieldKey == 'country') {
         final derivation = _derivationController;
+        // Location suggestions do not depend on research: with none registered
+        // the disclosure keeps them and drops only the research note.
+        final note = _notRegistered
+            ? null
+            : _message ?? 'Research history is not available right now.';
+        final status = _derivationStatus(derivation);
+        final review = _derivationReview(fieldKey, onSelectCandidate);
         return UiDisclosure(
           title: 'Research',
           summary: 'Check the saved location for suggestions',
@@ -442,24 +460,22 @@ class _ResearchHostState extends State<ResearchHost> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                _message ?? 'Research history is not available right now.',
-                style: context.ui.type.bodySmall,
-              ),
-              if (_derivationStatus(derivation) case final status?) ...[
-                SizedBox(height: context.ui.space.s2),
+              if (note != null) Text(note, style: context.ui.type.bodySmall),
+              if (status != null) ...[
+                if (note != null) SizedBox(height: context.ui.space.s2),
                 Semantics(
                   liveRegion: true,
                   child: Text(status, style: context.ui.type.bodySmall),
                 ),
               ],
-              if (_derivationReview(fieldKey, onSelectCandidate)
-                  case final review?) ...[
-                SizedBox(height: context.ui.space.s2),
+              if (review != null) ...[
+                if (note != null || status != null)
+                  SizedBox(height: context.ui.space.s2),
                 review,
               ],
               if (derivation?.canRequest ?? false) ...[
-                SizedBox(height: context.ui.space.s2),
+                if (note != null || status != null || review != null)
+                  SizedBox(height: context.ui.space.s2),
                 UiButton(
                   label: 'Fill the rest',
                   busyLabel: 'Saving request',
@@ -494,6 +510,10 @@ class _ResearchHostState extends State<ResearchHost> {
             ],
           ),
         );
+      }
+      if (_notRegistered) {
+        return _derivationReview(fieldKey, onSelectCandidate) ??
+            const SizedBox.shrink();
       }
       return Column(
         mainAxisSize: MainAxisSize.min,

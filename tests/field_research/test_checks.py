@@ -239,13 +239,14 @@ PILOT_CODE_LABELS = {
         "Mossy forest 6400'\nSp.30 " + FEMALE], True),
     "105526326": ("22", ["sp. 22\n" + FEMALE + " wings", "Sp. 22\n" + FEMALE + " wings"], True),
     "105526327": ("22", ["V-4-67-1\nsp 22\nlegs", "V-4-67-1\nsp 22\nlegs"], True),
-    # A word with a letter and no digit right before the code may be a genus
-    # (B2 of #289's third review): "head", "legs", "R.D.mitchell".
-    "105526322": ("30", ["wings + head\nsp. 30 " + FEMALE, "Wings 4 head\nSp.30 " + FEMALE + "\np-95-81-16"], False),
-    "105526323": ("30", ["genitalia + legs\nSp 30 " + FEMALE, "genitalia " + FEMALE + " legs\nSp 30 " + FEMALE], False),
+    # A body part or a collector with initials right before the code is no
+    # genus (the real-model run of the ten pilots, 2026-10-09): "head",
+    # "legs", "R.D.mitchell". Each was read as a genus before.
+    "105526322": ("30", ["wings + head\nsp. 30 " + FEMALE, "Wings 4 head\nSp.30 " + FEMALE + "\np-95-81-16"], True),
+    "105526323": ("30", ["genitalia + legs\nSp 30 " + FEMALE, "genitalia " + FEMALE + " legs\nSp 30 " + FEMALE], True),
     "105526329": ("1", ["R.D.mitchell\nsp #1 " + MALE + "\nhead & legs", "R.D.mitchell\nSp #1 " + MALE + "\nhead & legs"],
-        False),
-    "105526330": ("1", ["Guatemala, IV-25\n1948, R.D. Mitchell\n" + FEMALE + " legs Sp.#1"], False),
+        True),
+    "105526330": ("1", ["Guatemala, IV-25\n1948, R.D. Mitchell\n" + FEMALE + " legs Sp.#1"], True),
     # The genus on the line above the code, as each reader reads it.
     "105526328": ("1", ["VI-24-68-7.\nEpipocus\nsp. 1\n" + FEMALE + " terminalia\nVII-18-66-1",
         "VI-24-68-7.\nEpipsocus\nsp. 1\n" + FEMALE + " terminalia\nVII-18-66-1"], False),
@@ -273,12 +274,33 @@ def test_a_pilot_label_names_no_genus_only_when_no_genus_is_written_beside_its_c
     ("sp. 1 " + FEMALE + " Epipsocus", False),
     # One reader's genus is enough, and another place the label writes the code.
     ("sp. 1\nEpipsocus sp. 1", False),
-    # Any word with a letter and no digit right before it (B2 of #289's third review).
-    ("legs sp. 1", False),
-    ("Epipsocus\nwings + head\nsp. 1", False),
+    # Any other word with a letter and no digit right before it (B2 of #289's third review).
+    ("Mitchell\nsp. 1", False),
+    ("Legs sp. 1", False),
+    # A genus past a body part on the line read (NOT_GENERA are passed over).
+    ("Epipsocus legs sp. 1", False),
+    ("Epipsocus\n" + FEMALE + " legs Sp.#1", False),
+    ("sp. 1 legs Epipsocus", False),
+    # A genus after initials that may spell "cf." or "nr.", or after a whole name.
+    ("C.F. Epipsocus\nsp. 1", False),
+    ("C.F.Epipsocus sp. 1", False),
+    ("N.R. Epipsocus sp. 1", False),
+    ("R.D. Mitchell Epipsocus sp. 1", False),
+    ("sp. 1 C.F. Epipsocus", False),
+    # A genus that is also a word for a body part, and one capital, abbreviated.
+    ("Perna sp. 1", False),
+    ("perna sp. 1", False),
+    ("Ala sp. 1", False),
+    ("E.\nsp. 1", False),
     # A word with a digit right before it, or the genus further away.
     ("Mossy forest 6400'\nsp. 1", True),
     ("Epipsocus\nV-4-67-1\nsp. 1", True),
+    # Behind a line of body parts, or one body part, the genus is not read,
+    # nor right after initials, read as a name.
+    ("Epipsocus\nwings + head\nsp. 1", True),
+    ("Epipsocus\nlegs\nsp. 1", True),
+    ("R.D. Epipsocus\nsp. 1", True),
+    ("legs sp. 1", True),
     # Another code beside the genus.
     ("Epipsocus sp. 2\nsp. 1", True),
     # The code is not written at all.
@@ -347,16 +369,59 @@ def test_a_code_with_no_word_beside_it_that_may_be_a_genus_names_no_genus(text):
     assert checks.label_names_no_genus("1", [text])
 
 
-def test_the_words_after_a_code_that_are_no_genus_are_one_short_list():
-    """NOT_GENERA, as written; before the code the same word may be a genus."""
+# The real-model run of the ten pilots (2026-10-09): a collector's name with
+# initials beside the code is no genus. Each was read as a genus before.
+PERSONS_BESIDE = [
+    "R.D.mitchell\nsp #1 " + MALE,
+    "R.D.Mitchell\nsp. 1",
+    "R. D. Mitchell\nsp. 1",
+    "1948, R.D. Mitchell\nsp. 1",
+    "leg. R.D. Mitchell\nsp. 1",
+    "R.D. Mitchell.\nsp. 1",
+    "H. Hoogstraal\nsp. 1",
+    "Mitchell, R.D.\nsp. 1",
+    "Mitchell, R. D.\nsp. 1",
+    "R.D.\nsp. 1",
+    "sp. 1 R.D. Mitchell",
+    "sp. 1 " + FEMALE + " Mitchell, R.D.",
+]
+
+
+@pytest.mark.parametrize("text", PERSONS_BESIDE)
+def test_a_persons_name_with_initials_beside_the_code_is_no_genus(text):
     from specimen_digitization.field_research import checks
 
-    assert checks.NOT_GENERA == {"legs", "leg", "wings", "wing", "head", "terminalia", "genitalia", "slide",
-        "mount", FEMALE, MALE}
+    assert checks.label_names_no_genus("1", [text])
+
+
+ENGLISH = {"head", "leg", "legs", "wing", "wings", "abdomen", "antenna", "antennae", "genitalia", "terminalia", "slide",
+    "mount", "male", "males", "female", "females"}
+SPANISH = {"cabeza", "pata", "patas", "ala", "alas", "antena", "antenas", "l\N{LATIN SMALL LETTER A WITH ACUTE}mina",
+    "montaje", "macho", "machos", "hembra", "hembras"}
+FRENCH = {"t\N{LATIN SMALL LETTER E WITH CIRCUMFLEX}te", "patte", "pattes", "aile", "ailes", "antenne", "antennes",
+    "lame", "montage", "m\N{LATIN SMALL LETTER A WITH CIRCUMFLEX}le", "m\N{LATIN SMALL LETTER A WITH CIRCUMFLEX}les",
+    "femelle", "femelles"}
+GERMAN = {"Kopf", "Bein", "Beine", "Fl\N{LATIN SMALL LETTER U WITH DIAERESIS}gel",
+    "F\N{LATIN SMALL LETTER U WITH DIAERESIS}hler", "Pr\N{LATIN SMALL LETTER A WITH DIAERESIS}parat",
+    "M\N{LATIN SMALL LETTER A WITH DIAERESIS}nnchen", "Weibchen"}
+PORTUGUESE = {"cabe\N{LATIN SMALL LETTER C WITH CEDILLA}a", "pernas", "asa", "asas",
+    "l\N{LATIN SMALL LETTER A WITH CIRCUMFLEX}mina", "montagem", "f\N{LATIN SMALL LETTER E WITH CIRCUMFLEX}mea",
+    "f\N{LATIN SMALL LETTER E WITH CIRCUMFLEX}meas"}
+
+
+def test_the_words_beside_a_code_that_are_no_genus_are_one_list():
+    """NOT_GENERA, as written, in five languages: passed over before the
+    code and after it (the real-model run of the ten pilots)."""
+    from specimen_digitization.field_research import checks
+
+    assert checks.NOT_GENERA == ENGLISH | SPANISH | FRENCH | GERMAN | PORTUGUESE | {FEMALE, MALE}
     for word in checks.NOT_GENERA - {FEMALE, MALE}:
         assert checks.label_names_no_genus("1", ["sp. 1 " + word, "sp. 1 " + FEMALE + " " + word + ","]), word
-        assert not checks.label_names_no_genus("1", [word + " sp. 1"]), word
+        before = [word + " sp. 1", word + "\nsp. 1", FEMALE + " " + word + " sp. 1"]
+        assert checks.label_names_no_genus("1", before), word
     assert checks.label_names_no_genus("1", ["sp. 1 " + FEMALE + MALE])
+    # As written: "t\N{LATIN SMALL LETTER E WITH CIRCUMFLEX}te" decomposed is the same word.
+    assert checks.label_names_no_genus("1", ["te\N{COMBINING CIRCUMFLEX ACCENT}te\nsp. 1"])
 
 
 @pytest.mark.parametrize(("part", "token"), [
@@ -524,9 +589,12 @@ def test_the_signs_of_a_doubtful_or_unreadable_name_are_one_list():
     assert [name for name, _ in checks.DOUBT_SIGNS] == ["question_mark", "qualifier", "placeholder", "unreadable_span"]
     assert checks.DOUBT_QUALIFIERS == ("cf", "cfr", "aff", "affin", "affinis", "nr", "near", "prob", "probably", "poss",
         "possibly", "conf", "vic", "prope")
+    # Three periods are read on their own (N3 of #289's sixth review: a
+    # longer run is a printed form's dot leader).
     assert checks.DOUBT_PLACEHOLDERS == ("[unreadable]", "(unreadable)", "[illegible]", "(illegible)", "[illeg.]",
-        "[illeg]", "(illeg.)", "[unclear]", "(unclear)", "[?]", "???", "...", "[...]", "\N{HORIZONTAL ELLIPSIS}")
+        "[illeg]", "(illeg.)", "[unclear]", "(unclear)", "[?]", "???", "[...]", "\N{HORIZONTAL ELLIPSIS}")
     assert checks.PLACEHOLDER_WORDS == ("illegible", "unreadable")
+    assert checks.PLACE_QUALIFIERS == ("near", "nr", "vic")
     assert dict(checks.DOUBT_SIGNS)["placeholder"] is checks.shows_placeholder
     assert checks.doubt_signs(["Epipsocus?", "V-4-67-1", "cf. Epipsocus"]) == ("question_mark", "qualifier")
     assert checks.doubt_signs(["sp. 1 " + FEMALE], unreadable=True) == ("unreadable_span",)
@@ -573,8 +641,10 @@ QUALIFIER_SPELLINGS = [
             "Epipsocus " + word)),
     # "vic" in lower case only.
     "vic. Epipsocus", "vic.Epipsocus", "Epipsocus vic", "v.i.c. Epipsocus",
-    "c.f. Epipsocus", "C.f. Epipsocus", "c.f.Epipsocus", "(c.f.) Epipsocus", "n.r. Epipsocus", "C.F Epipsocus",
+    "c.f. Epipsocus", "C.f. Epipsocus", "c.f.Epipsocus", "(c.f.) Epipsocus", "n.r. Epipsocus",
     "a.f.f. Epipsocus", "c.f.r. Epipsocus", "Epipsocus c.f.",
+    # Neither a nature reserve, nor a number, nor confirmed by a person.
+    "NR. Epipsocus", "Nr. Epipsocus", "conf. Yoshizawa", "conf. E.",
 ]
 
 
@@ -619,10 +689,12 @@ def test_a_full_width_or_inverted_question_mark_on_the_genus_marks_it_as_doubtfu
 # N1 of #289's fourth review: a placeholder for a word a reader could not
 # read, on a line of its own, in any case.
 @pytest.mark.parametrize("placeholder", ["[unreadable]", "[UNREADABLE]", "[illegible]", "[Illegible]", "[?]", "???",
-    "...", "....", "[...]", "\N{HORIZONTAL ELLIPSIS}",
+    "...", "[...]", "\N{HORIZONTAL ELLIPSIS}",
     # N1 of #289's fifth review: the placeholder list rule A shares.
     "(unreadable)", "(illegible)", "[illeg.]", "[ILLEG]", "(illeg.)", "[unclear]", "(Unclear)", "illegible",
-    "Illegible", "UNREADABLE", "unreadable"])
+    "Illegible", "UNREADABLE", "unreadable",
+    # Three periods in round brackets, and a longer run in brackets.
+    "(...)", "[....]", "(.....)"])
 def test_a_placeholder_for_an_unread_word_is_a_doubt_sign(placeholder):
     from specimen_digitization.field_research import checks
 
@@ -639,6 +711,30 @@ def test_text_with_no_placeholder_shows_none(text):
     from specimen_digitization.field_research import checks
 
     assert not checks.shows_placeholder(text)
+
+
+# N3 of #289's sixth review: a printed form's dot leader, four periods or
+# more outside brackets, and "etc..." leave no word out. Each was a
+# placeholder before.
+@pytest.mark.parametrize("text", ["....", "Det. ..........", "Loc. ......", "Loc. ........ Davao",
+    "Coll. J. Smith etc...", "ETC...", "Etc...", "etc...."])
+def test_a_dot_leader_or_etc_is_no_placeholder(text):
+    from specimen_digitization.field_research import checks
+
+    assert not checks.shows_placeholder(text)
+    assert checks.doubt_signs([text]) == ()
+
+
+# Exactly three periods for a missing word, with or without a space before
+# them, "[...]" and the ellipsis character stay placeholders, as does
+# "etc" ending a longer word.
+@pytest.mark.parametrize("text", ["Mossy ...", "Mossy...", "... sp. 1", "Det. ...", "[...]", "Mossy [...]",
+    "Mossy \N{HORIZONTAL ELLIPSIS}", "Detc...", "etc. ..."])
+def test_three_periods_for_a_missing_word_stay_a_placeholder(text):
+    from specimen_digitization.field_research import checks
+
+    assert checks.shows_placeholder(text)
+    assert checks.doubt_signs([text]) == ("placeholder",)
 
 
 # The real readings of every label of the pilot's 105526321, 105526326 and
@@ -673,6 +769,95 @@ def test_no_doubt_sign_shows_where_none_is_written(texts):
     assert checks.doubt_signs(texts) == ()
 
 
+# N3 of #289's sixth review: ordinary label words that hold a qualifier's
+# letters and say nothing about a name. Each was a doubt sign before.
+ORDINARY_LABEL_WORDS = {
+    # A nature reserve: "NR", all capitals, with no period.
+    "nature-reserve": "Sabah, Danum Valley NR",
+    "nature-reserve-mid-line": "Danum Valley NR, Sabah",
+    # German "Nummer" before a number.
+    "german-number": "Praep. Nr. 1234",
+    "german-number-no-period": "Praep. Nr 1234",
+    "german-number-capitals": "PRAEP. NR. 1234",
+    # "conf." meaning "confirmed by": "by", or a person's initials.
+    "confirmed-by-initials": "det. E. L. Mockford 1968, conf. K. Yoshizawa",
+    "confirmed-by-run-together-initials": "conf. E.L. Mockford",
+    "confirmed-by-initials-alone": "Conf. E.L.M.",
+    "confirmed-by": "conf. by J. Smith",
+    "confirmed-by-capitals": "CONF BY J. SMITH",
+    "confirmed-by-on-the-next-line": "det. Mockford, conf.\nK. Yoshizawa",
+    "confirmed-by-by-on-the-next-line": "det. Mockford, conf.\nby K. Yoshizawa",
+    # A person's initials without the final period.
+    "initials-ending-a-line": "leg. Baker, C.F",
+    "initials-before-a-surname": "C.F Baker",
+    "initials-n-r": "N.R Smith",
+}
+
+
+@pytest.mark.parametrize("text", ORDINARY_LABEL_WORDS.values(), ids=ORDINARY_LABEL_WORDS)
+def test_ordinary_label_words_are_no_doubt_sign(text):
+    from specimen_digitization.field_research import checks
+
+    assert checks.doubt_signs([text]) == ()
+    assert checks.doubt_signs(["V-4-67-1\nsp. 1 " + FEMALE, text]) == ()
+
+
+# The same narrowing reads "C.F Epipsocus" as initials and "NR EPIPSOCUS"
+# as a nature reserve: no doubt sign shows. Right before the genus,
+# genus_in_doubt still reads both as qualifiers (below).
+@pytest.mark.parametrize("text", ["C.F Epipsocus", "NR EPIPSOCUS"])
+def test_initials_or_a_reserve_before_a_genus_show_no_doubt_sign(text):
+    from specimen_digitization.field_research import checks
+
+    assert checks.doubt_signs([text]) == ()
+    assert checks.genus_in_doubt(text, text.split()[1])
+
+
+# "near", "nr." and "vic." beside a place the label's place fields settled,
+# on the line that writes it, compared by the place comparison key: a
+# locality, not a doubtful name.
+@pytest.mark.parametrize(("text", "places"), [
+    ("5 mi near Chicago", ["Chicago"]),
+    ("nr. Chicago", ["Chicago"]),
+    ("NEAR CHICAGO", ["Chicago"]),
+    ("near Chicago, Cook Co.", ["Chicago", "Cook"]),
+    ("near San Pedro Sacatepequez", ["San Pedro"]),
+    ("Chicago vic.", ["Chicago"]),
+    ("Chicago, vic.", ["Chicago"]),
+    ("vic. Chicago", ["Chicago"]),
+    ("Mindanao, Davao vic.", ["Davao"]),
+    ("Kinabalu N.R.\nnr. Chicago\nV-4-67-1", ["Illinois", "Chicago"]),
+])
+def test_near_or_vicinity_beside_a_settled_place_is_no_doubt_sign(text, places):
+    from specimen_digitization.field_research import checks
+
+    assert checks.doubt_signs([text], places=places) == ()
+    # With no settled place it stays a sign.
+    assert checks.doubt_signs([text]) == ("qualifier",)
+
+
+@pytest.mark.parametrize(("text", "places"), [
+    # A place no place field settled.
+    ("5 km nr. Davao", ["Chicago"]),
+    # A genus after the qualifier, or a place only on another line.
+    ("near Epipsocus", ["Chicago"]),
+    ("nr. Epipsocus", ["Chicago"]),
+    ("nr. Epipsocus\nChicago", ["Chicago"]),
+    ("NR. Epipsocus Chicago", ["Chicago"]),
+    # A longer word than the place, and "near" or "nr." after it.
+    ("near Chicagoland", ["Chicago"]),
+    ("Chicago near", ["Chicago"]),
+    ("Chicago nr. Epipsocus", ["Chicago"]),
+    # "vic." beside a genus, and "cf." beside a place.
+    ("Epipsocus vic.", ["Chicago"]),
+    ("cf. Chicago", ["Chicago"]),
+])
+def test_a_qualifier_beside_no_settled_place_stays_a_doubt_sign(text, places):
+    from specimen_digitization.field_research import checks
+
+    assert checks.doubt_signs([text], places=places) == ("qualifier",)
+
+
 # 1c of #289's fifth review: the label marks a taxon literal's genus as
 # doubtful, a qualifier or a "?" right before it or on it, wherever the text
 # writes the literal.
@@ -690,6 +875,20 @@ def test_no_doubt_sign_shows_where_none_is_written(texts):
     ("cf.\nEpipsocus sp. 1", "Epipsocus sp. 1", True),
     ("V-4-67-1\nnr. Epipsocus\nsp. 1 " + FEMALE, "Epipsocus", True),
     ("Epipsocus\ncfr. Epipsocus", "Epipsocus", True),
+    # A qualifier alone on the line above, a blank line between or not, in
+    # any spelling (N2 of #289's sixth review); right before the genus, "NR"
+    # and initials without the final period stay qualifiers.
+    ("NR\nEpipsocus sp. 1", "Epipsocus sp. 1", True),
+    ("  (cf.)\n\nEpipsocus sp. 1", "Epipsocus sp. 1", True),
+    ("Det. Mockford\nnr.\nEpipsocus sp. 1", "Epipsocus sp. 1", True),
+    ("nr. Epipsocus", "Epipsocus", True),
+    ("NR Epipsocus sp. 1", "Epipsocus sp. 1", True),
+    ("C.F Epipsocus", "Epipsocus", True),
+    # A qualifier ending a longer line above belongs to that line.
+    ("Sabah, Danum Valley NR\nEpipsocus sp. 1", "Epipsocus sp. 1", False),
+    ("Mindanao, Davao vic.\nEpipsocus sp. 1", "Epipsocus sp. 1", False),
+    ("5 km nr.\nEpipsocus sp. 1", "Epipsocus sp. 1", False),
+    ("conf. K. Yoshizawa\nEpipsocus sp. 1", "Epipsocus sp. 1", False),
     # No doubt right before the genus or on it.
     ("Epipsocus", "Epipsocus", False),
     ("Epipsocus\nV-4-67-1\nsp. 1 " + FEMALE, "Epipsocus", False),
