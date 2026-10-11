@@ -14,7 +14,9 @@ and the historical gazetteers' in research_harness.historical_gazetteers. A
 source problem is an answer with a plain note, never an exception; only a blob
 store failure raises. When Getty TGN's reconciliation service refuses a request
 or cannot be reached, TGN is searched through Getty's SPARQL endpoint instead
-(historical_gazetteers), and the note says so. Each request a source leaves
+(historical_gazetteers), and the note says so and that this search does not
+match accents or word stems; its answer is then never a success, and a search
+that found nothing is ambiguous, never no match. Each request a source leaves
 unanswered is logged in one WARNING line with its source, host and HTTP status
 or error, and who sent the response (its Server and Via headers, whether it is
 an HTML page, the start of its body), never its query or a word of it.
@@ -988,11 +990,15 @@ class ApprovedSources:
             return _answer(source_id, query, failure.status, note)
         status, places = outcome.status, outcome.places
         if status == LookupStatus.SUCCESS:
+            # One place is a success only from the reconciliation service: the
+            # SPARQL endpoint's search (outcome.fallback) does not match accents
+            # or word stems, so the place the name means may be missing from it
+            # (historical_gazetteers.SPARQL_FOUND_NOTHING).
             status = (
                 LookupStatus.NO_MATCH
                 if not places
                 else LookupStatus.SUCCESS
-                if len(places) == 1
+                if len(places) == 1 and outcome.fallback is None
                 else LookupStatus.AMBIGUOUS
             )
         candidates = tuple(_place(source_id, place) for place in places)
@@ -1320,10 +1326,14 @@ def _place(source_id: str, place: Place) -> SourceCandidate:
 def _searched_instead(name: str, fallback: str | None, note: str) -> str:
     """The note of a Getty TGN search that went through the SPARQL endpoint
     because the reconciliation service refused the request or got no answer
-    (`fallback`): that comes first, then what the search found."""
+    (`fallback`): that comes first, with what that search cannot match, then
+    what the search found."""
     if fallback is None:
         return note
-    return f"{name}'s search {fallback}; searched Getty's SPARQL endpoint instead. {note}"
+    return (
+        f"{name}'s search {fallback}; searched Getty's SPARQL endpoint instead, "
+        f"whose search does not match accents or word stems. {note}"
+    )
 
 
 def _gazetteer_note(
@@ -1334,7 +1344,7 @@ def _gazetteer_note(
     fetched: Sequence[_Fetched],
 ) -> str:
     places = outcome.places
-    if status == LookupStatus.SUCCESS:
+    if status in (LookupStatus.SUCCESS, LookupStatus.AMBIGUOUS) and len(places) == 1:
         return f"{name} has one place for {query!r}: {places[0].name}"
     if status == LookupStatus.AMBIGUOUS and places:
         return f"{name} has {len(places)} places for {query!r}"

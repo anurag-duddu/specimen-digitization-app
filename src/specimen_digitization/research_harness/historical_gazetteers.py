@@ -34,6 +34,13 @@ SEARCH_REFUSALS = frozenset({401, 403})
 # query, so the lookup is MALFORMED (`_later`), never NO_MATCH, which would
 # rule a reading out.
 UNREAD = frozenset({LookupStatus.EMPTY, LookupStatus.NO_MATCH, LookupStatus.MALFORMED})
+# Why a Getty TGN search through the SPARQL endpoint that found no place is
+# AMBIGUOUS, never NO_MATCH: Getty's full-text index matches a name's words as
+# written, not across accents or word stems ("Solola" finds neither Guatemalan
+# place whose name ends in an accented a, tgn:1016724 and tgn:1000765, and
+# "Chimaltenangos" finds no Chimaltenango; probed 2026-10-11), so the place
+# the name means may be there under another spelling.
+SPARQL_FOUND_NOTHING = "the SPARQL search found no place, which rules nothing out"
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
 
@@ -226,7 +233,8 @@ async def _tgn_search(
     places come back as the reconciliation path returns them, in two more
     requests, so the chain stays within MAX_CALLS: one name search
     (tgn.SEARCH), which also returns every term of each place it finds, then
-    the records of at most ten of those places (tgn.search_ids)."""
+    the records of at most ten of those places (tgn.search_ids). A name
+    search that finds no place is AMBIGUOUS (SPARQL_FOUND_NOTHING)."""
     try:
         result = await _tgn_sparql(filtered_name, fetch, calls)
     except _MalformedSource:
@@ -245,6 +253,8 @@ async def _tgn_sparql(
     if failure is not None:
         return _result(failure, calls)
     outcome, found = _source_value(tgn.parse_search, status, body)
+    if outcome == LookupStatus.NO_MATCH:
+        return _result(LookupStatus.AMBIGUOUS, calls, reason=SPARQL_FOUND_NOTHING)
     if outcome != LookupStatus.SUCCESS:
         return _result(outcome, calls)
     ids = tgn.search_ids(filtered_name, found)

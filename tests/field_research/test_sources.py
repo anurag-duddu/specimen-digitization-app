@@ -1512,7 +1512,8 @@ async def test_a_refused_tgn_search_finds_the_same_places_through_sparql(
     assert answer.status is expected.status is LookupStatus.AMBIGUOUS
     assert answer.candidates == expected.candidates and len(answer.candidates) > 1
     assert answer.note == (
-        f"Getty TGN's search {reason}; searched Getty's SPARQL endpoint instead. {expected.note}"
+        f"Getty TGN's search {reason}; searched Getty's SPARQL endpoint instead, "
+        f"whose search does not match accents or word stems. {expected.note}"
     )
     assert server.urls()[-2:] == [SPARQL_HOST + "/sparql.json"] * 2
     # One record names every response that came back, the refused one too; each
@@ -1549,8 +1550,62 @@ async def test_when_the_sparql_endpoint_fails_too_the_tgn_lookup_stays_an_outage
     assert answer.evidence is None and answer.candidates == () and blobs.puts == []
     assert answer.note == (
         "Getty TGN's search refused the request (HTTP 403); searched Getty's SPARQL "
-        f"endpoint instead. {outcome}"
+        f"endpoint instead, whose search does not match accents or word stems. {outcome}"
     )
+
+
+SEARCHED_INSTEAD = (
+    "Getty TGN's search refused the request (HTTP 403); searched Getty's SPARQL endpoint "
+    "instead, whose search does not match accents or word stems. "
+)
+
+
+@pytest.mark.asyncio
+async def test_a_tgn_search_through_sparql_that_finds_nothing_rules_nothing_out(tmp_path):
+    """The review of #303, note 1: Getty's index matches a name as written, so
+    "Solola" finds neither Guatemalan place whose name ends in an accented a.
+    Finding nothing there was no_match, captured, and could rule the text out;
+    it is ambiguous, and the note says why."""
+    from specimen_digitization.field_research import agreement
+
+    empty = {"results": {"bindings": []}}
+    tools, _, _, blobs = make(tmp_path, tgn_refused(httpx.Response(403), empty))
+    answer = await tools.lookup("tgn", "Solola, Guatemala", field_key="province_state")
+    assert answer.status is LookupStatus.AMBIGUOUS and answer.candidates == ()
+    assert answer.note == SEARCHED_INSTEAD + (
+        "Getty TGN cannot settle 'Solola': the SPARQL search found no place, which rules nothing out"
+    )
+    assert json.loads(stored(blobs, answer.evidence))["status"] == "ambiguous"
+    assert not agreement.ruled_out([answer], "Solola")
+
+
+@pytest.mark.asyncio
+async def test_one_place_a_tgn_search_through_sparql_finds_is_never_a_success(tmp_path):
+    """The review of #303, note 1: the SPARQL search may have missed the place
+    the name means, so the one place it finds is no success as the
+    reconciliation service's one hit is: no candidate is the deciding one.
+    The place rules still take the one candidate at a field's level."""
+    from specimen_digitization.field_research import agreement
+
+    recorded_answers, terms = gazetteers(), recorded("tgn_names.json")["bindings"]
+
+    def reply(request):
+        if f"https://{request.url.host}{request.url.path}" == tgn.RECONCILE:
+            return httpx.Response(403)
+        if "luc:term" not in dict(request.url.params)["query"]:
+            return recorded_answers(request)
+        rows = [row for row in terms if row["place"]["value"] == tgn.TGN + "1016636"]
+        return {"results": {"bindings": rows}}
+
+    plain, _, _, _ = make(tmp_path / "plain", gazetteers(tgn_hits=1))
+    expected = await plain.lookup("tgn", "Chimaltenango", field_key="city")
+    assert expected.status is LookupStatus.SUCCESS and expected.evidence.locator == "tgn:1016636"
+    tools, _, _, _ = make(tmp_path, reply)
+    answer = await tools.lookup("tgn", "Chimaltenango", field_key="city")
+    assert answer.status is LookupStatus.AMBIGUOUS and answer.evidence.locator is None
+    assert answer.candidates == expected.candidates
+    assert answer.note == SEARCHED_INSTEAD + expected.note
+    assert agreement.placed("city", answer) == agreement.placed("city", expected) is not None
 
 
 @pytest.mark.asyncio

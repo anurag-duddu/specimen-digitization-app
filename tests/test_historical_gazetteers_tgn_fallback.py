@@ -123,14 +123,18 @@ async def test_the_places_named_as_asked_are_the_ten_read():
 
 
 @pytest.mark.asyncio
-async def test_an_empty_search_is_no_match_after_two_exchanges():
+async def test_an_empty_search_rules_nothing_out_after_two_exchanges():
+    """The review of #303, note 1: Getty's index matches a name as written, so
+    "Solola" finds no place named with an accent. Finding nothing is then no
+    answer that TGN has no such place: ambiguous, never no match."""
     async def fetch(url, params):
         if url == tgn.RECONCILE:
             return 403, b""
         return 200, body({"results": {"bindings": []}})
 
     result = await lookup("tgn", "Yepocapa", fetch)
-    assert result.status is LookupStatus.NO_MATCH and result.places == ()
+    assert result.status is LookupStatus.AMBIGUOUS and result.places == ()
+    assert result.reason == "the SPARQL search found no place, which rules nothing out"
     assert len(result.exchanges) == 2 and result.fallback == "refused the request (HTTP 403)"
 
 
