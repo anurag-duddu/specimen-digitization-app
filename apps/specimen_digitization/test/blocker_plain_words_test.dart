@@ -141,7 +141,7 @@ final List<Case> moneyLimits = <Case>[
     'program_allowance_exhausted',
     'Spending allowance reached',
     "Processing stopped at the program's spending allowance",
-    next: 'An administrator must review the allowance.',
+    next: 'An administrator must review it.',
     caveat: true,
     money: true,
   ),
@@ -572,18 +572,46 @@ void main() {
       expect(reasons, <String>[for (final Case cause in codes) cause.label]);
     });
 
-    test('a limit is offered as the limit it is', () {
+    test('a limit is offered as the limit it is, with or without a colon', () {
+      // The evidence check puts `evidence_harness_blocked:<reason>` into the
+      // run's reasons, and the table names that code whole.
       final List<String> reasons = recordReasonCodes(
         const Specimen(<String, dynamic>{
           'specimen_id': 's',
           'reason_codes': <String>[
             'step_budget_exhausted',
             'cost_budget_exhausted',
+            'evidence_harness_blocked:elapsed_budget_exhausted',
           ],
         }),
       );
-      expect(reasons, <String>['Step limit reached', 'Cost limit reached']);
+      expect(reasons, <String>[
+        'Step limit reached',
+        'Cost limit reached',
+        'Evidence check time limit reached',
+      ]);
     });
+
+    test(
+      'a code with a subject keeps it, and one the table names does not',
+      () {
+        final List<String> reasons = recordReasonCodes(
+          const Specimen(<String, dynamic>{
+            'specimen_id': 's',
+            'reason_codes': <String>[
+              'mandatory_unresolved:country',
+              'evidence_harness_blocked:some_future_reason',
+              'institutional_policy_not_approved',
+            ],
+          }),
+        );
+        expect(reasons, <String>[
+          'Mandatory unresolved: country',
+          'Evidence harness blocked: some future reason',
+          'Collection policy approval missing',
+        ]);
+      },
+    );
   });
 
   group('the filter form', () {

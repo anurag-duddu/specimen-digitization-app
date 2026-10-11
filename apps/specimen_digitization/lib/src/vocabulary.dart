@@ -78,6 +78,7 @@ const Map<String, String> userFacingTerms = <String, String>{
   'collection_processing_unconfigured': 'Processing awaits collection setup',
   'sensitive_record_not_processed': 'Sensitive record held from processing',
   'institutional_policy_unapproved': 'Collection policy not approved',
+  'institutional_policy_not_approved': 'Collection policy approval missing',
   'mandatory_semantics_unconfirmed': 'Required field rules not confirmed',
   'field_semantics_unconfirmed': 'Field rules not confirmed',
   'worker_readiness_not_verified': 'Processing not confirmed ready',

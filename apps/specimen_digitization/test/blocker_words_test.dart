@@ -21,6 +21,7 @@ const List<String> namedBlockers = <String>[
   'collection_processing_unconfigured',
   'sensitive_record_not_processed',
   'institutional_policy_unapproved',
+  'institutional_policy_not_approved',
   'mandatory_semantics_unconfirmed',
   'field_semantics_unconfirmed',
   'worker_readiness_not_verified',
@@ -244,6 +245,16 @@ void main() {
       }
     });
 
+    test('a caveat label fits the 40 character maximum', () {
+      // The panel keeps `cost_budget_exhausted`'s 79 character instruction as
+      // it had it before this change; every other caveat label is short.
+      for (final String code in limitCodes) {
+        final BlockerWords words = blockerWords(code)!;
+        if (words.why == null || code == 'cost_budget_exhausted') continue;
+        expect(words.next.length, lessThanOrEqualTo(40), reason: code);
+      }
+    });
+
     test('the program allowance is a spending limit', () {
       expect(
         blockerLabel('program_allowance_exhausted'),
@@ -304,7 +315,17 @@ void main() {
     }
 
     /// Every quoted code in [text] that [pattern] names (group 1) and that
-    /// speaks of a limit, a budget, a cost or an allowance.
+    /// speaks of a budget, a cost or an allowance.
+    ///
+    /// What this sees, and what it does not: only a code written as a string
+    /// literal in the three forms below, in six files, and only one with
+    /// "budget", "cost" or "allowance" in it. It does not see a code built or
+    /// passed on indirectly (`issue = issue or "<code>"`,
+    /// `OperationalBlock(ledger["reading_time_blocker"])`), nor a pilot launch
+    /// code about capacity or time (`pilot_cohort_reading_capacity_insufficient`,
+    /// `pilot_cohort_reading_time_insufficient`, `pilot_complete_*_time_insufficient`,
+    /// `pilot_cohort_execution_time_exhausted`). Those are not in the table
+    /// and read "Needs an operator check".
     Set<String> limitCodesIn(String text, RegExp pattern) => <String>{
       for (final RegExpMatch match in pattern.allMatches(text))
         if (RegExp(r'budget|cost|allowance').hasMatch(match.group(1)!))

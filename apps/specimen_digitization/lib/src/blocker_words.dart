@@ -101,7 +101,7 @@ const Map<String, BlockerWords> _limitWords = <String, BlockerWords>{
   ),
   'program_allowance_exhausted': BlockerWords(
     "Processing stopped at the program's spending allowance",
-    'An administrator must review the allowance.',
+    'An administrator must review it.',
     why: _costNotRecorded,
   ),
   // A limit that could not be checked, because its settings or totals were
