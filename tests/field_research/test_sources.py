@@ -15,6 +15,7 @@ import threading
 import time
 from collections import Counter
 from pathlib import Path
+from urllib.parse import urlencode
 
 import httpx
 import pytest
@@ -949,8 +950,7 @@ async def test_a_refusal_log_says_who_refused_without_a_word_of_the_query(tmp_pa
     (line,) = unanswered(caplog)
     assert (line["host"], line["http_status"]) == (TGN_HOST, "403")
     assert (line["server"], line["via"], line["html_page"]) == ("envoy", "1.1 google", "yes")
-    assert line["body"].startswith("<!doctype html><html><head><title>403 forbidden</title>")
-    assert len(line["body"]) <= 200 and "[query]" in line["body"]
+    assert line["body"] == "[body withheld]"
     assert len(caplog.records) == 1 and "\n" not in caplog.records[0].getMessage()
     for word in ("davao", "province", "vao", "dav"):
         assert word not in caplog.text.lower()
@@ -971,22 +971,105 @@ def test_a_block_page_is_told_by_its_type_or_its_markup(headers, body, html_page
 
 
 def test_a_sender_without_any_word_of_the_query_keeps_the_rest():
+    # A query to the SPARQL endpoint that georef_tgn did not write: every word
+    # of it is the query's.
     url = tgn.SPARQL + "?query=" + "Mount%20Apo%20of%20Davao"
     sender = approved_sources._sender(
         url,
         {"server": "nginx/1.29.8 (Davao)", "via": "1.1 Mount-Apo-proxy"},
         b'MALFORMED QUERY: luc:term "mount apo" of davao; of-course offline\x00\r\nline two',
     )
+    # In a header a short word goes only where it stands alone; a long one
+    # wherever it appears.
     assert sender.server == "nginx/1.29.8 ([query])"
     assert sender.via == "1.1 [query]-[query]-proxy"
-    # A short word goes only where it stands alone; a long one wherever it appears.
-    assert sender.body == 'malformed query: luc:term "[query] [query]" [query] [query]; [query]-course offline\x00 line two'
+    assert sender.body == "[body withheld]"
+    kept = approved_sources._sender(url, {}, b"Request refused\x00\r\nline two")
+    assert kept.body == "request refused\x00 line two"
     # Global Names Verifier carries the name in the path.
     gnv = approved_sources._sender(
         "https://verifier.globalnames.org/api/v1/verifications/Apis%20mellifera", {},
         b"<html>No verification for Apis mellifera</html>",
     )
-    assert gnv.body == "<html>no verification for [query] [query]</html>"
+    assert gnv.body == "[body withheld]"
+
+
+def asked(name):
+    """Getty TGN's reconciliation request for `name`, as the gazetteer sends it."""
+    return tgn.RECONCILE + "?" + urlencode(tgn.reconcile_params(name))
+
+
+def latin1(text):
+    return text.encode("latin-1")
+
+
+# The review of #303, note 2: a short word of the query run into other text
+# was logged in full. Each: the query, a body that echoes it.
+ECHOES = {
+    "run into a word": ("San Jose", b"request sanjose blocked"),
+    "run into digits": ("Lima", b"request lima2 blocked"),
+    "inside text of its own script": (
+        "".join(map(chr, (0x5317, 0x4EAC))),
+        "".join(map(chr, (0x8BF7, 0x6C42, 0x5317, 0x4EAC, 0x5E02, 0x88AB, 0x62D2, 0x7EDD))).encode(),
+    ),
+    "percent-encoded twice": ("Davao", b"request %2544avao blocked"),
+    "spaced out": ("Peru", b"request p e r u blocked"),
+    "in HTML entities": ("Oslo", b"request &#79;&#115;&#108;&#111; blocked"),
+}
+
+
+@pytest.mark.parametrize("echo", list(ECHOES))
+def test_a_body_that_holds_a_word_of_the_query_is_withheld(echo):
+    name, body = ECHOES[echo]
+    assert approved_sources._sender(asked(name), {"server": "envoy"}, body) == approved_sources._Sender(
+        server="envoy", via=None, html_page=False, body="[body withheld]")
+    # The same body for another place is logged: its words are not that place's.
+    assert approved_sources._sender(asked("Mount McKinley"), {}, body).body not in (None, "[body withheld]")
+
+
+def test_a_body_that_is_not_utf8_is_withheld():
+    """A Latin-1 page writes "Krakow" with an accented o as bytes no UTF-8
+    reading can compare with the query, so it is withheld for any query."""
+    accented = "Krak" + chr(0xF3) + "w"
+    for name in (accented, "Mount McKinley"):
+        assert approved_sources._sender(asked(name), {}, latin1(f"request {accented} blocked")).body == (
+            "[body withheld]")
+    # A UTF-8 body cut inside its last character is still read.
+    cut = b"refused " + ("x" * (approved_sources.BODY_READ - 9)).encode() + chr(0xF3).encode()
+    assert approved_sources._sender(asked("Mount McKinley"), {}, cut).body.startswith("refused xxx")
+
+
+def sparql_url(params):
+    return tgn.SPARQL + "?" + urlencode(params)
+
+
+def test_a_sparql_query_hides_the_reading_and_its_ids_not_the_query_text():
+    """The review of #303, note 3: every word of a SPARQL query was hidden, so
+    the 59 words of its fixed text (select, getty, place, ...) made a
+    vocab.getty.edu refusal unreadable. Only a reading's words (the search's
+    string) and the TGN ids are the query's."""
+    assert approved_sources._query_words(sparql_url(tgn.search_params("Mount McKinley"))) == {
+        "mount", "mckinley"}
+    assert approved_sources._query_words(sparql_url(tgn.records_params(["1105587", "2502238"]))) == {
+        "1105587", "2502238"}
+    assert approved_sources._query_words(sparql_url(tgn.names_params(["1105587"]))) == {"1105587"}
+    # A name that tries to close the string is still all the reading's.
+    hostile = 'Manila" } } SELECT * WHERE { ?s ?p ?o } #'
+    assert approved_sources._query_words(sparql_url(tgn.search_params(hostile))) == {
+        "manila", "select", "where", "s", "p", "o"}
+
+
+def test_a_sparql_refusal_body_stays_readable_without_the_reading():
+    url = sparql_url(tgn.search_params("Mount Apo"))
+    refusal = b"<html>403 Forbidden: this SPARQL SELECT is not allowed at vocab.getty.edu</html>"
+    sender = approved_sources._sender(url, {"server": "nginx (getty)"}, refusal)
+    assert (sender.server, sender.html_page) == ("nginx (getty)", True)
+    assert sender.body == "<html>403 forbidden: this sparql select is not allowed at vocab.getty.edu</html>"
+    echoed = refusal.replace(b"SELECT", b'SELECT luc:term "mount apo"')
+    assert approved_sources._sender(url, {}, echoed).body == "[body withheld]"
+    records = sparql_url(tgn.records_params(["1105587"]))
+    assert approved_sources._sender(records, {}, refusal).body == sender.body
+    assert approved_sources._sender(records, {}, refusal + b" tgn:1105587").body == "[body withheld]"
 
 
 @pytest.mark.asyncio
@@ -1005,7 +1088,7 @@ async def test_a_gbif_refusal_log_says_who_refused_without_the_name(tmp_path, ca
     (line,) = unanswered(caplog)
     assert (line["source"], line["server"], line["via"], line["html_page"]) == (
         "gbif", "cloudflare", "-", "yes")
-    assert line["body"].startswith("<html><body>blocked: https://")
+    assert line["body"] == "[body withheld]"
     assert "apis" not in caplog.text.lower() and "mellifera" not in caplog.text.lower()
 
 
