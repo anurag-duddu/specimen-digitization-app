@@ -124,6 +124,25 @@ handover runs field research instead of the six specialists:
    logged in one WARNING line with the source, the host, the HTTP status or
    the error's class, whether a Retry-After came back and the attempt it
    ended on, never the query; for GBIF, the status its verification ended on.
+   The line also says who sent the last response that was no answer: its
+   Server and Via headers, whether its body is an HTML page, and the first
+   200 characters of its body, with every word of the request's query and
+   path replaced by "[query]" (`sources._sender`).
+
+   **Getty TGN's search** goes through Getty's SPARQL endpoint
+   (vocab.getty.edu, already approved for TGN) when the reconciliation
+   service (services.getty.edu) answers 401 or 403, or times out, cannot be
+   connected to or keeps failing with HTTP 5xx; on 2026-10-10 it answered
+   every request from Cloud Run with 403. The search reads Getty's full-text
+   index (`luc:term`) for the place name, ranks places with a term in the
+   same words first, and reads the records of at most ten, so the candidates
+   have the reconciliation path's shape, and the chain keeps its cap of
+   three responses (`historical_gazetteers.MAX_CALLS`, `_tgn_search`). The
+   evidence record lists the refused response with its HTTP status and no
+   stored body, then the two stored SPARQL responses. The note starts with
+   "Getty TGN's search refused the request (HTTP 403); searched Getty's
+   SPARQL endpoint instead." If the SPARQL endpoint fails too, the lookup is
+   an outage as before.
 
    **A source that cannot be reached** (a lookup whose last attempt was rate
    limited, timed out, was refused or redirected, failed on the server or
