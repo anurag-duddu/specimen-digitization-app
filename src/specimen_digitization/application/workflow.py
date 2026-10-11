@@ -922,7 +922,10 @@ class Workflow:
         elapsed = max(0, self.monotonic() - started)
         if external and elapsed > effect_timeout and not repeatable:
             circuit_failure = "timeout"
-            # Past its deadline the step's outcome is unknown: nothing is released.
+            # Past its deadline this step's outcome is unknown, so even a refusal
+            # releases nothing. A reader whose failure is recoverable never comes
+            # here (`repeatable`): it keeps a refusal past its deadline, as it
+            # keeps any known failure.
             refusal = None
             # Field research's meter knows what its calls cost even when the
             # step overran: its paid call stays, so the settlement below frees

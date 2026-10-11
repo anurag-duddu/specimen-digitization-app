@@ -104,18 +104,27 @@ def refusing_model_child(payload):
 
 class ChildLab(DisagreeingReaders):
     """test_lane_routes' lab, whose first `first_passes` first passes and first
-    `readings` handwriting-muse readings go to the real model child."""
+    `readings` handwriting-muse readings go to the real model child.
 
-    def __init__(self, blobs, *, first_passes=0, readings=0):
+    With `late`, each of those calls also takes longer than its step's effect
+    timeout on the workflow's clock (`elapsed`, as tests/test_sam_retry.py)."""
+
+    def __init__(self, blobs, *, first_passes=0, readings=0, late=False):
         super().__init__(blobs)
         self.model_effect = refusing_model_child
         self.child_first_passes, self.child_readings = first_passes, readings
         self.reader_exposure = []
+        self.late, self.elapsed = late, [0.0]
+
+    def overrun(self, specimen, step):
+        if self.late:
+            self.elapsed[0] += specimen.run.profile.execution.effect_timeout_for_step(step) + 1
 
     def transcribe(self, specimen, region, route):
         if route == MUSE and self.child_readings:
             self.child_readings -= 1
             self.reader_exposure.append(specimen.run.usage.reserved_cost_micros)
+            self.overrun(specimen, f"transcribe:{region.id}:{route}")
             return ProductionAdapters.transcribe(self, specimen, region, route)
         return super().transcribe(specimen, region, route)
 
@@ -123,6 +132,7 @@ class ChildLab(DisagreeingReaders):
         if self.child_first_passes:
             self.child_first_passes -= 1
             self.exposure.append(specimen.run.usage.reserved_cost_micros)
+            self.overrun(specimen, "first_pass:" + region.id)
             return ProductionAdapters.first_pass(self, specimen, region, readings)
         return super().first_pass(specimen, region, readings)
 
@@ -347,6 +357,57 @@ def test_a_first_pass_failure_other_than_a_refusal_holds_its_whole_reservation(
         "reserved_micros": FIRST_PASS_RESERVATION,
         "settled_micros": None,
     }
+
+
+def test_a_first_pass_refused_after_its_deadline_stays_reserved(tmp_path, monkeypatch):
+    # Past its effect timeout a first pass's outcome is unknown (the deadline
+    # override), so even a 429 releases nothing: the run, the program ledger
+    # and the research state all keep its whole reservation.
+    adapters = ChildLab(LocalBlobs(tmp_path / "blobs"), first_passes=1, late=True)
+    workflow, principal, ident, backend = lab(tmp_path, monkeypatch, adapters, "http_429")
+    workflow.monotonic = lambda: adapters.elapsed[0]
+
+    specimen = workflow.drain(principal, ident)
+
+    run = specimen.run
+    step = "first_pass:" + run.regions[0].id
+    assert requests(tmp_path, "first_pass") == 1
+    assert (run.stage, run.blocker) == ("processing_blocked", "external_outcome_unknown")
+    assert run.reasons == ["external_stage_deadline_exceeded"]
+    [call] = [c for c in run.paid_calls if c["step"] == step]
+    assert ledger_rows([call]) == [(1, "unknown", "reserved", FIRST_PASS_RESERVATION, None, None)]
+    assert run.usage.reserved_cost_micros == SAM_RESERVATION + FIRST_PASS_RESERVATION
+    assert ProgramLedger(workflow.repository, SCOPE).read()["reserved_total_micros"] == (
+        SAM_RESERVATION + FIRST_PASS_RESERVATION
+    )
+    assert research_state(backend, specimen)["ordinary_reservations"][f"{step}:1"] == {
+        "reserved_micros": FIRST_PASS_RESERVATION,
+        "settled_micros": None,
+    }
+
+
+def test_a_reading_refused_after_its_deadline_is_still_a_refusal(tmp_path, monkeypatch):
+    # A reader has no deadline override (reliability.reader_failure_is_recoverable):
+    # it keeps a known failure past its effect timeout, and a 429 is one.
+    adapters = ChildLab(LocalBlobs(tmp_path / "blobs"), readings=1, late=True)
+    workflow, principal, ident, backend = lab(tmp_path, monkeypatch, adapters, "http_429")
+    workflow.monotonic = lambda: adapters.elapsed[0]
+
+    specimen = workflow.drain(principal, ident)
+
+    run = specimen.run
+    step = f"transcribe:{run.regions[0].id}:{MUSE}"
+    assert requests(tmp_path, "transcribe") == 1
+    assert (run.stage, run.blocker) == ("retry_scheduled", "model_rate_limited")
+    assert "external_stage_deadline_exceeded" not in run.reasons
+    [call] = [c for c in run.paid_calls if c["step"] == step]
+    assert ledger_rows([call]) == [(1, "failed", "refused", 0, None, "model_rate_limited")]
+    others = sum(c["cost_micros"] for c in run.paid_calls if c["step"] != step)
+    assert run.usage.reserved_cost_micros == others
+    assert ProgramLedger(workflow.repository, SCOPE).read()["reserved_total_micros"] == others
+    assert research_state(backend, specimen)["ordinary_reservations"][f"{step}:1"][
+        "settled_micros"
+    ] == 0
 
 
 def test_a_reading_refused_with_429_costs_nothing_on_every_attempt(tmp_path, monkeypatch):

@@ -203,6 +203,10 @@ def run_agent_bounded(agent, prompt, *, timeout_seconds: float, usage_limits):
         # A 429 that answers the call's first request is a refusal before any
         # work: no answer came back, so nothing was generated or billed. One
         # after an answer (the agent's output retry) is not: that answer was.
+        # "Proven" assumes no layer under these routes retries on its own: the
+        # huggingface_hub/httpx client sends each request once, and Pydantic AI
+        # does not retry HTTP errors. A client with built-in retries (the OpenAI
+        # SDK retries twice by default) could put a billed attempt before a 429.
         refused = exc.status_code == 429 and not any(
             m.kind == "response" for m in messages
         )

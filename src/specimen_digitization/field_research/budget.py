@@ -225,6 +225,9 @@ class MeteredModel(WrapperModel):
         try:
             response = await self.wrapped.request(messages, settings, model_request_parameters)
         except ModelHTTPError as error:
+            # A 429 is this one request's refusal only while no layer under the
+            # route retries on its own: the huggingface_hub/httpx client sends
+            # each request once, and Pydantic AI does not retry HTTP errors.
             if error.status_code == 429:
                 self._settle(ticket, 0, 0)
             else:
