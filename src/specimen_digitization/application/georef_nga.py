@@ -89,13 +89,13 @@ def units_params(codes: Iterable[str]) -> dict[str, str]:
 
 
 def parse_search(status: int, body: bytes) -> tuple[LookupStatus, tuple[str, ...]]:
-    """The ids of the current features a name search found, in the answer's order."""
+    """The ids of the current features a name search found, in the answer's order.
+    A row without a readable feature id or termination field makes the answer
+    MALFORMED, never NO_MATCH: the service reported a feature there."""
     outcome, rows, more = _rows(status, body)
     if outcome is None and more:
         outcome = LookupStatus.AMBIGUOUS  # more features share the name than one answer lists
-    if outcome is None and any(
-        row.get("ufi") is not None and "term_dt_f" not in row for row in rows
-    ):
+    if outcome is None and any(row.get("ufi") is None or "term_dt_f" not in row for row in rows):
         outcome = LookupStatus.MALFORMED
     if outcome is not None:
         return outcome, ()
@@ -105,13 +105,12 @@ def parse_search(status: int, body: bytes) -> tuple[LookupStatus, tuple[str, ...
 
 def parse_features(status: int, body: bytes) -> tuple[LookupStatus, tuple[Place, ...]]:
     """Places from a features answer, their first-order units unnamed until
-    `name_units` names them; features GNS marks terminated are skipped."""
+    `name_units` names them; features GNS marks terminated are skipped. A row
+    without a readable feature id or termination field makes it MALFORMED."""
     outcome, rows, more = _rows(status, body)
     if outcome is None and more:
         outcome = LookupStatus.MALFORMED  # the adapter asked for more than one answer holds
-    if outcome is None and any(
-        row.get("ufi") is not None and "term_dt_f" not in row for row in rows
-    ):
+    if outcome is None and any(row.get("ufi") is None or "term_dt_f" not in row for row in rows):
         outcome = LookupStatus.MALFORMED
     if outcome is not None:
         return outcome, ()
@@ -203,9 +202,12 @@ def _rows(status: int, body: bytes) -> tuple[LookupStatus | None, list[dict], bo
         if not isinstance(attributes, dict):
             return LookupStatus.MALFORMED, [], False
         row = dict(attributes)
-        ufi = row.get("ufi")
-        record = str(ufi) if isinstance(ufi, int) and not isinstance(ufi, bool) else None
-        row["ufi"] = record if record is not None and FEATURE_ID.fullmatch(record) else None
+        if "ufi" in row:
+            ufi = row["ufi"]
+            record = str(ufi) if isinstance(ufi, int) and not isinstance(ufi, bool) else None
+            if record is None or not FEATURE_ID.fullmatch(record):
+                return LookupStatus.MALFORMED, [], False  # a feature id that is no integer id
+            row["ufi"] = record
         rows.append(row)
     return None, rows, data.get("exceededTransferLimit") is True
 

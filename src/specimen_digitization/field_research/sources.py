@@ -429,6 +429,36 @@ def _log_unanswered(
     )
 
 
+def _geolocate_found_nothing(payload) -> bool:
+    """Whether a GEOLocate answer says it found nothing: its count of results
+    is the integer 0 and it carries no result set, or one with no features."""
+    if not isinstance(payload, dict):
+        return False
+    count = payload.get("numResults")
+    if type(count) is not int or count != 0:
+        return False
+    result_set = payload.get("resultSet")
+    return result_set is None or (isinstance(result_set, dict) and result_set.get("features") in (None, []))
+
+
+def _log_unreadable(source_id: str, url: str, *, status: LookupStatus, error: str) -> None:
+    """One WARNING line for a 200 answer that could not be read, in
+    _log_unanswered's form: the source id, the host, the status it was read
+    as and the error's class. Never the query, a parameter or a body."""
+    values = {
+        "step": "field_research",
+        "source": source_id,
+        "host": urlsplit(url).hostname,
+        "http_status": 200,
+        "read_as": status.value,
+        "error": error,
+    }
+    LOGGER.warning(
+        "Field research lookup unreadable: %s",
+        " ".join(f"{key}={value}" for key, value in values.items()),
+    )
+
+
 class _Unanswered(Exception):
     """No usable answer came back: the status to return and its plain note.
     `busy` when the last request was not sent because no slot or turn came
@@ -884,13 +914,30 @@ class ApprovedSources:
         if fetched.status_code != 200:
             return _refused("geolocate", query, fetched.status_code)
         try:
+            payload = parse_json(fetched.body)
+        except (ValueError, RecursionError):
+            payload = None
+        try:
             status, found, _count, note = geolocate_verdict(
                 policy,
                 SourceQuery(source_id="geolocate", field_key=key, query_text=text),
-                parse_json(fetched.body),
+                payload,
             )
-        except (ValueError, TypeError, KeyError, AttributeError, ArithmeticError, RecursionError):
-            status, found, note = LookupStatus.MALFORMED, [], "GEOLocate's answer could not be read"
+        except (ValueError, TypeError, KeyError, AttributeError, ArithmeticError, RecursionError) as error:
+            # GEOLocate's answer that it found nothing is no match, not an
+            # outage: asked about a country it does not know ("Central
+            # America"), it answers {"numResults": 0} with no result set. Any
+            # other answer that cannot be read stays unreadable, an outage, as
+            # for every other source: a body that is not GEOLocate's answer (an
+            # HTML page, a cut body), and an answer that reports a match the
+            # parser cannot read, so a reader's text GEOLocate found is never
+            # ruled out as no match (G20, G32).
+            nothing = _geolocate_found_nothing(payload)
+            status = LookupStatus.NO_MATCH if nothing else LookupStatus.MALFORMED
+            found = []
+            note = ("GEOLocate found no match (it answered no results)" if nothing
+                    else "GEOLocate's answer could not be read")
+            _log_unreadable("geolocate", fetched.url, status=status, error=type(error).__name__)
         candidates = tuple(
             SourceCandidate(
                 name=item["value"],
