@@ -149,6 +149,16 @@ reservations and zero retries never replay a paid call (a pilot reader that is
 stopped by its limits ends as `external_outcome_unknown` too). A run that was
 already blocked as `external_outcome_unknown` stays so.
 
+**A reader's line breaks** (2026-10-11). An answer whose `verbatim_text` is its
+`lines` in order, with each break between two lines written as a newline, a
+space or `↵` (U+21B5), is not malformed: it is read as its lines joined with
+newlines. Novita's Qwen3-VL wrote breaks as spaces or `↵` in all 18 answers of
+run 0c7f52e1, so every handwriting-qwen reading of that run failed as
+`model_malformed_response` and each label had one reading. Text that differs
+from the lines in any other way is still malformed.
+`docs/product-requirements/HUGGINGFACE_MODEL_ROUTING.md` ("How a reader's
+answer is read") has the rule and the recorded answers.
+
 **Tracing.** The agent carries no instrumentation override; it inherits the
 lane's global setting (content on, binary off in approved-content mode, S3 T5).
 The pinned managed prompt reaches the call's span through Pydantic AI's
