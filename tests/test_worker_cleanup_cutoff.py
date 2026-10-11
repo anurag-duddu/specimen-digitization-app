@@ -37,9 +37,11 @@ def actual_production_handler_continuation(payload):
     """Real _run handler installation, with every native setup edge replaced."""
     from argparse import Namespace
     from datetime import datetime, timedelta, timezone
+    import inspect
     import os
     from types import SimpleNamespace
     from specimen_digitization.application import worker
+    from specimen_digitization.application.worker_deadline import WorkerDeadlineExceeded
     from specimen_digitization import observability
 
     observability.configure_observability = lambda **kwargs: None
@@ -50,7 +52,20 @@ def actual_production_handler_continuation(payload):
     def sdk_constructor():
         handler = signal.getsignal(signal.SIGTERM)
         Path(payload["started"]).write_text(handler.__qualname__)
-        time.sleep(max(0, current_deadline().remaining()) + 0.15)
+        stop = inspect.getclosurevars(handler).nonlocals["stop"]
+        # End the window now, while this SDK call is blocked, through the
+        # retained-deadline IPC the supervisor enforces. Interpreter start and
+        # imports, however slow, then cannot use up the window before this point.
+        now = time.time()
+        try:
+            current_deadline().tighten_until(now, now)
+        except WorkerDeadlineExceeded:
+            pass  # A blocked SDK does not observe Python-level deadline checks.
+        # Dispatch as soon as the production handler has run (a graceful TERM),
+        # or after every cleanup bound if the group is never signalled at all.
+        give_up = time.monotonic() + 10
+        while not stop.is_set() and time.monotonic() < give_up:
+            time.sleep(0.01)
         Path(payload["late"]).write_text("SDK continued after production handler returned")
         raise RuntimeError("synthetic SDK failure")
 
@@ -61,9 +76,10 @@ def actual_production_handler_continuation(payload):
 
 
 def test_actual_production_handler_cannot_allow_sdk_continuation(tmp_path):
+    # 60 s only bounds a hung child; the fixture ends the window at its SDK call.
     result = run_isolated(actual_production_handler_continuation,
                          {"started": str(tmp_path / "started"), "late": str(tmp_path / "late")},
-                         2, 100, process_group=True)
+                         60, 100, process_group=True)
     assert (tmp_path / "started").read_text() == "_run.<locals>.<lambda>"
     assert result.status == "deadline_exceeded" and result.cleanup_complete
     assert not (tmp_path / "late").exists()

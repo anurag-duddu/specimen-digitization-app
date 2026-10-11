@@ -19186,3 +19186,34 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
 - Unresolved:
   - (a) The colonies with reassigned codes that the review named come from its live Wikidata query. The test here is constructed in their shape.
   - (b) One independent review of this head and green required checks: Not confirmed at this entry.
+
+## 2026-10-11 - The production-handler cleanup cutoff test no longer races the child's start (PR #316)
+
+- Task: Claude desktop session (worktree `.claude/worktrees/hungry-hugle-217806`), on the owner's brief: make `tests/test_worker_cleanup_cutoff.py::test_actual_production_handler_cannot_allow_sdk_continuation` deterministic without weakening what it checks. Branch `claude/deterministic-cleanup-cutoff-test` from origin/main abe9dde1, PR #316. Commit 126644d1 (test), plus the one holding this entry. Test-only: no `src` change. No merge, deploy, `gcloud` or `firebase` command.
+- Cause:
+  - `run_isolated(..., 2, ...)` starts the 2 s window before the child process exists. Before `_run` installs the handler, the child starts Python and imports `worker`, which pulls in logfire, pydantic and the Google clients.
+  - On unchanged main at a 1-minute load average of 52 (12 CPUs), 3 of 3 runs failed with FileNotFoundError on `started`.
+  - With the fix, the same call takes 8.45 to 14.93 s at loads 42 to 56. Nearly all of that time passes before the SDK call.
+  - A second race, not observed here: the fake SDK wrote `late` at the deadline + 0.15 s. A supervisor that woke more than 150 ms late would fail the test even though the code was correct.
+- Fix:
+  - The run's budget is 60 s, which only bounds a hung child.
+  - The fake SDK writes `started`, then ends the window with `current_deadline().tighten_until(now, now)`. That publishes `deadline.json`. `run_isolated` reads the file every 0.1 s and enforces it through the same `_Deadline` to `_cleanup` path as its own clock. `cleanup_until` stays None, as before.
+  - The fake SDK then waits for the production handler's `stop` event, read with `inspect.getclosurevars(handler).nonlocals["stop"]`. It writes `late` as soon as the handler has run, or after 10 s if the group is never signalled.
+  - The three assertions are unchanged.
+- Validation (worktree `.venv`; LANG/LC_ALL=en_US.UTF-8, TZ=America/Chicago, LOGFIRE_SEND_TO_LOGFIRE=false):
+  - Under load: with `uv run --with pytest-xdist pytest -n 12 tests --ignore=tests/test_worker_cleanup_cutoff.py` running (12 xdist workers), 10 consecutive fresh-process runs of the test all passed, at loads 42 to 56.
+  - The whole file, 3 times under the same load: 4 passed each time.
+  - Mutants of `_cleanup`'s owned-group branch, each in a scratch copy of `src` from `git archive`, put first on `PYTHONPATH`, with `__file__` checked:
+    - M1 restores f6f20c7c's pre-fix group cleanup: TERM, wait `TERMINATE_GRACE_SECONDS`, then KILL. It failed 14 of 14 runs at loads 22 to 69, each on `assert not (tmp_path / "late").exists()`.
+    - M2 sends SIGTERM instead of SIGKILL. It failed 17 of 17 runs: 9 on `late`, 4 on `cleanup_complete` being False, and 4 whose assertion line my output filter cut off. A pass prints no `E` lines, so those 4 did fail.
+  - `pre-commit run --files` and `uvx ruff check --select F,E9` passed on the test file.
+  - Not run: `scripts/ci/verify.sh` in full. The background suite run only provided load and is not evidence for this change. Hosted CI at the head: Not confirmed at this entry.
+- Reusable learnings:
+  - (1) A supervised child can only shorten its deadline. So a test can start a `run_isolated` cutoff at a point the child picks: pass a long budget, then call `current_deadline().tighten_until(now, now)` in the child. The supervisor enforces the published value as it does a production retained cutoff.
+  - (2) To check that work cannot continue after a graceful handler runs, wait on that handler's own effect (here its `stop` event) rather than on a wall-clock margin past the deadline. Poll `is_set()` rather than calling `Event.wait()` in the main thread. `Event.set()` takes the Event's non-reentrant lock, which `wait()` holds briefly in the main thread. A handler that runs inside that window would block on that lock.
+  - (3) A mutant with no SIGKILL can fail on `cleanup_complete` before it reaches `late`: under load, a child that handled TERM does not exit within `KILL_GRACE_SECONDS`. Count both outcomes as caught.
+- Unresolved:
+  - (a) In the same file, `test_no_sdk_continuation_dispatch_during_termination_grace` keeps its 2 s budget and 0.15 s margin. Its child imports only `bounded_effect` and `worker_deadline`. It passed in every run here (1 run at load 21, 3 at loads 44 to 47), but it has the same latent races.
+  - (b) The other wall-time deadline tests that failed once under load in the 2026-10-11 shard run are not changed: in `test_model_runtime`, `test_sam3_runtime`, `test_bounded_effect` (drip), `test_classifier_runtime_tracing`, `test_reader_effect_timeout` and `test_reader_failures_recoverable`.
+  - (c) M1 is caught only if the child writes `late` within the 1 s TERM grace. The old test's window was 0.85 s. It was caught in 14 of 14 runs.
+  - (d) One independent review of the head and green required checks: Not confirmed at this entry.
