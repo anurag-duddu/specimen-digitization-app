@@ -1,0 +1,132 @@
+{
+  "about": "Recorded handwriting-qwen reader answers: Qwen/Qwen3-VL-30B-A3B-Instruct through Hugging Face, provider novita, in production. Each answer's tool call arguments are exactly as Logfire recorded them on the span 'chat Qwen/Qwen3-VL-30B-A3B-Instruct' (gen_ai.output.messages), with its response id, tool call id, finish reason and token counts. Each list is one reading in order: the answer, then the answer to Pydantic AI's output retry. Tests rebuild the chat.completion envelope around these fields.",
+  "answers": {
+    "space_joined_two_lines": {
+      "shape": "lines split at each break; verbatim_text writes each break as a space",
+      "run": "0c7f52e1-ed10-4c12-95bd-a221f16d9764",
+      "responses": [
+        {
+          "recorded_at": "2026-10-11T14:05:12.475552Z",
+          "trace_id": "01a12b481fc31352ee42bb9fd1eb1f1b",
+          "response_id": "e75dda8a160be7047719a89223971d2b",
+          "response_model": "qwen/qwen3-vl-30b-a3b-instruct",
+          "finish_reason": "tool_call",
+          "tool_call_id": "chatcmpl-tool-b6ca57b5b86db1d8",
+          "arguments": "{\"language_candidates\": [], \"language_relation\": \"unspecified\", \"lines\": [\"FMNHINS\", \"4486779\"], \"script_candidates\": [], \"unreadable_spans\": [], \"verbatim_text\": \"FMNHINS 4486779\"}",
+          "input_tokens": 629,
+          "output_tokens": 92
+        },
+        {
+          "recorded_at": "2026-10-11T14:05:18.463049Z",
+          "trace_id": "01a12b481fc31352ee42bb9fd1eb1f1b",
+          "response_id": "2f2f943cf844a03bdd00ece373b90051",
+          "response_model": "qwen/qwen3-vl-30b-a3b-instruct",
+          "finish_reason": "tool_call",
+          "tool_call_id": "chatcmpl-tool-ba14e59d3a277cae",
+          "arguments": "{\"language_candidates\": [], \"language_relation\": \"unspecified\", \"lines\": [\"FMNHINS\", \"4486779\"], \"script_candidates\": [], \"unreadable_spans\": [], \"verbatim_text\": \"FMNHINS 4486779\"}",
+          "input_tokens": 842,
+          "output_tokens": 92
+        }
+      ]
+    },
+    "space_joined_six_lines": {
+      "shape": "lines split at each break; verbatim_text writes each break as a space",
+      "run": "0c7f52e1-ed10-4c12-95bd-a221f16d9764",
+      "responses": [
+        {
+          "recorded_at": "2026-10-11T14:06:23.589037Z",
+          "trace_id": "01a12b4934eeee7118a1b701af24dcb8",
+          "response_id": "5b7e01e02466378d808b3eaaf95bf0e5",
+          "response_model": "qwen/qwen3-vl-30b-a3b-instruct",
+          "finish_reason": "tool_call",
+          "tool_call_id": "chatcmpl-tool-a18b699959ad6d81",
+          "arguments": "{\"language_candidates\": [], \"language_relation\": \"unspecified\", \"lines\": [\"IX-3-66-10\", \"E. slope Mt. McKinley\", \"Davao, Prov. 3300'\", \"Mindanao, P.I.\", \"IX-14-46\", \"H. Hoogstraal\"], \"script_candidates\": [], \"unreadable_spans\": [], \"verbatim_text\": \"IX-3-66-10 E. slope Mt. McKinley Davao, Prov. 3300' Mindanao, P.I. IX-14-46 H. Hoogstraal\"}",
+          "input_tokens": 852,
+          "output_tokens": 177
+        },
+        {
+          "recorded_at": "2026-10-11T14:06:36.636160Z",
+          "trace_id": "01a12b4934eeee7118a1b701af24dcb8",
+          "response_id": "cd46825bb04dd6877bf4eee588f33991",
+          "response_model": "qwen/qwen3-vl-30b-a3b-instruct",
+          "finish_reason": "tool_call",
+          "tool_call_id": "chatcmpl-tool-b9ea1355738a17b1",
+          "arguments": "{\"language_candidates\": [], \"language_relation\": \"unspecified\", \"lines\": [\"IX-3-66-10\", \"E. slope Mt. McKinley\", \"Davao, Prov. 3300'\", \"Mindanao, P.I.\", \"IX-14-46\", \"H. Hoogstraal\"], \"script_candidates\": [], \"unreadable_spans\": [], \"verbatim_text\": \"IX-3-66-10 E. slope Mt. McKinley Davao, Prov. 3300' Mindanao, P.I. IX-14-46 H. Hoogstraal\"}",
+          "input_tokens": 1231,
+          "output_tokens": 177
+        }
+      ]
+    },
+    "newline_symbol": {
+      "shape": "lines split at each break; verbatim_text writes each break as U+21B5",
+      "run": "0c7f52e1-ed10-4c12-95bd-a221f16d9764",
+      "responses": [
+        {
+          "recorded_at": "2026-10-11T14:09:07.489977Z",
+          "trace_id": "01a12b4bb4d577df95a8711453006119",
+          "response_id": "cf042aade64f6c19e13dbab02b5e304e",
+          "response_model": "qwen/qwen3-vl-30b-a3b-instruct",
+          "finish_reason": "tool_call",
+          "tool_call_id": "chatcmpl-tool-8f80c62bc80d1e18",
+          "arguments": "{\"language_candidates\": [], \"language_relation\": \"unspecified\", \"lines\": [\"sp. 22\", \"\u2640 wings\"], \"script_candidates\": [], \"unreadable_spans\": [], \"verbatim_text\": \"sp. 22\u21b5\u2640 wings\"}",
+          "input_tokens": 852,
+          "output_tokens": 86
+        },
+        {
+          "recorded_at": "2026-10-11T14:09:16.636060Z",
+          "trace_id": "01a12b4bb4d577df95a8711453006119",
+          "response_id": "f641379316c3dada17f06b051b2f8713",
+          "response_model": "qwen/qwen3-vl-30b-a3b-instruct",
+          "finish_reason": "tool_call",
+          "tool_call_id": "chatcmpl-tool-bdec59479feb869e",
+          "arguments": "{\"language_candidates\": [], \"language_relation\": \"unspecified\", \"lines\": [\"sp. 22\", \"\u2640 wings\"], \"script_candidates\": [], \"unreadable_spans\": [], \"verbatim_text\": \"sp. 22\u21b5\u2640 wings\"}",
+          "input_tokens": 1053,
+          "output_tokens": 86
+        }
+      ]
+    },
+    "newline_joined": {
+      "shape": "lines split at each break; verbatim_text writes each break as a newline",
+      "responses": [
+        {
+          "recorded_at": "2026-10-09T20:52:37.518745Z",
+          "trace_id": "01a1227067438075475b5a2ca33af56b",
+          "response_id": "17dfcc6849f09cc4a190f259ca80c541",
+          "response_model": "qwen/qwen3-vl-30b-a3b-instruct",
+          "finish_reason": "tool_call",
+          "tool_call_id": "call_e81f8ed493bc4cda8ed53f",
+          "arguments": " {\"verbatim_text\": \"FMNHINS\\n4486783\", \"lines\": [\"FMNHINS\", \"4486783\"], \"unreadable_spans\": []}",
+          "input_tokens": 640,
+          "output_tokens": 56
+        }
+      ]
+    },
+    "words_differ": {
+      "shape": "verbatim_text and lines differ in a word ('tap' against 'trap')",
+      "responses": [
+        {
+          "recorded_at": "2026-10-05T13:07:03.383219Z",
+          "trace_id": "01a10c2cb8e5076fccc70a33f8cb74fe",
+          "response_id": "aaf6eddb70e75feaa5f1ae8467e4eb07",
+          "response_model": "qwen/qwen3-vl-30b-a3b-instruct",
+          "finish_reason": "tool_call",
+          "tool_call_id": "call_9afd7d7cc6864718866a67",
+          "arguments": " {\"language_candidates\": [\"en\"], \"language_relation\": \"unspecified\", \"lines\": [\"Yepocapa, Mun.\", \"Yepocapa,\", \"chimaltenango,\", \"Guatemala.\", \"IV-24-48\", \"Elev. 4800 ft.\", \"lot #2 cut branch\", \"trap\", \"R.D. Mitchell\"], \"script_candidates\": [\"Latin\"], \"unreadable_spans\": [], \"verbatim_text\": \"Yepocapa, Mun.\\nYepocapa,\\nchimaltenango,\\nGuatemala.\\nIV-24-48\\nElev. 4800 ft.\\nlot #2 cut branch\\ntap\\nR.D. Mitchell\"}",
+          "input_tokens": 835,
+          "output_tokens": 164
+        },
+        {
+          "recorded_at": "2026-10-05T13:07:07.944165Z",
+          "trace_id": "01a10c2cb8e5076fccc70a33f8cb74fe",
+          "response_id": "4aa17c055b51f9dceddbf602960c9823",
+          "response_model": "qwen/qwen3-vl-30b-a3b-instruct",
+          "finish_reason": "tool_call",
+          "tool_call_id": "call_ac06378aad6b448388af01",
+          "arguments": " {\"language_candidates\": [\"en\"], \"language_relation\": \"unspecified\", \"lines\": [\"Yepocapa, Mun.\", \"Yepocapa,\", \"chimaltenango,\", \"Guatemala.\", \"IV-24-48\", \"Elev. 4800 ft.\", \"lot #2 cut branch\", \"trap\", \"R.D. Mitchell\"], \"script_candidates\": [\"Latin\"], \"unreadable_spans\": [], \"verbatim_text\": \"Yepocapa, Mun.\\nYepocapa,\\nchimaltenango,\\nGuatemala.\\nIV-24-48\\nElev. 4800 ft.\\nlot #2 cut branch\\ntap\\nR.D. Mitchell\"}",
+          "input_tokens": 1247,
+          "output_tokens": 164
+        }
+      ]
+    }
+  }
+}

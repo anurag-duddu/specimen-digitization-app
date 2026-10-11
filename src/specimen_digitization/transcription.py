@@ -21,6 +21,33 @@ from .tracing import SpecimenTraceContext
 
 SupportedImageMediaType = Literal["image/jpeg", "image/png"]
 
+# How a reader may write the break between two of its `lines` in
+# `verbatim_text`. A newline is what the schema asks for. Novita's server for
+# Qwen/Qwen3-VL-30B-A3B-Instruct (the handwriting-qwen route) has also written
+# every break as a space (production, 2026-10-03 and 2026-10-11) or as the
+# newline symbol U+21B5 (production, 2026-10-11), with `lines` still split at
+# each break. tests/fixtures/qwen_reader_answers.json holds those answers.
+LINE_BREAK_FORMS = frozenset({"\n", " ", "\u21b5"})
+
+
+def _breaks_only(text: str, lines: list[str]) -> bool:
+    """Whether `text` is `lines` in order, with one break form between each two.
+
+    Every character of every line must be in `text`, in place; the only freedom
+    is how each break between two lines is written. Nothing may be added,
+    dropped or changed, so text that differs from `lines` is still refused.
+    """
+    position = 0
+    for index, line in enumerate(lines):
+        if index:
+            if text[position : position + 1] not in LINE_BREAK_FORMS:
+                return False
+            position += 1
+        if not text.startswith(line, position):
+            return False
+        position += len(line)
+    return position == len(text)
+
 
 class LiteralTranscription(DeclarationCandidates):
     """Faithful visual reading before any field normalization or enrichment."""
@@ -43,6 +70,31 @@ class LiteralTranscription(DeclarationCandidates):
         ),
     )
     unreadable_spans: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def line_breaks_written_as_newlines(cls, data):
+        """Write each break between `lines` as a newline in `verbatim_text`.
+
+        An answer whose `verbatim_text` is its `lines` with each break written
+        in one of LINE_BREAK_FORMS is the same transcription; `verbatim_text`
+        becomes the lines joined with newlines, as the schema asks. Anything
+        else is left as it came, for the exact rule below to judge.
+        """
+        if not isinstance(data, dict):
+            return data
+        text, lines = data.get("verbatim_text"), data.get("lines")
+        if not (
+            isinstance(text, str)
+            and isinstance(lines, list)
+            and lines
+            and all(isinstance(line, str) for line in lines)
+        ):
+            return data
+        joined = "\n".join(lines)
+        if text != joined and _breaks_only(text, lines):
+            return {**data, "verbatim_text": joined}
+        return data
 
     @model_validator(mode="after")
     def lines_must_reconstruct_verbatim_text(self) -> LiteralTranscription:

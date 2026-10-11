@@ -9,8 +9,11 @@ import os
 import stat
 from pathlib import Path
 
+from pydantic import ValidationError
+
 from specimen_digitization.hub_models import SAM3_MODEL
 from specimen_digitization.release_budget import APPROVAL_SHA256, APPROVED_LIMIT_MICROS
+from specimen_digitization.transcription import LiteralTranscription
 
 from acceptance import (
     InvalidEvidence, JOURNEY_CASES, LIVE_CASES, MODES, STATES, artifact, artifact_path,
@@ -149,7 +152,16 @@ def literal_output(raw, observation):
     lines = output.get("lines")
     require(isinstance(lines, list) and lines and all(isinstance(line, str) for line in lines),
             "Raw literal lines missing")
-    require("\n".join(lines) == output.get("verbatim_text") == observation.get("literal_text"),
+    # The retained answer is read by the reader's own contract, as it was when
+    # the observation was made: a line break the answer wrote as a space or
+    # U+21B5 becomes a newline, and an answer the reader refuses (text that is
+    # not its lines) is refused here (HUGGINGFACE_MODEL_ROUTING.md, "How a
+    # reader's answer is read").
+    try:
+        reading = LiteralTranscription.model_validate(output)
+    except ValidationError:
+        raise InvalidEvidence("Raw literal output fails the reader contract") from None
+    require(reading.verbatim_text == "\n".join(lines) == observation.get("literal_text"),
             "Literal text differs from retained raw output")
     # LiteralTranscription defines this optional field with an empty-list default.
     spans = output.get("unreadable_spans", [])

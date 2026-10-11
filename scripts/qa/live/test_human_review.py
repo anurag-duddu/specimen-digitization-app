@@ -3,12 +3,15 @@
 import copy
 import hashlib
 import json
+from pathlib import Path
 
 import pytest
+from pydantic_ai.messages import ModelMessagesTypeAdapter, ModelResponse, ToolCallPart
 
 from acceptance import InvalidEvidence, file_digest
-from human_review import evaluate
+from human_review import evaluate, literal_output
 from specimen_digitization.hub_models import SAM3_MODEL
+from specimen_digitization.transcription import LiteralTranscription
 from test_acceptance import CANDIDATE, MANIFEST_SHA, claimed_live_report, manifest
 
 
@@ -391,3 +394,73 @@ def test_json_artifact_checks_open_descriptor_is_regular_before_read(tmp_path, m
     monkeypatch.setattr(os, "fstat", lambda fd: SimpleNamespace(st_mode=stat.S_IFIFO))
     with pytest.raises(InvalidEvidence, match="regular"):
         json_artifact(tmp_path, entry)
+
+
+# Recorded handwriting-qwen answers (PR #310): Novita's Qwen3-VL wrote each line
+# break in verbatim_text as a space or U+21B5 while lines kept the breaks. The
+# reader reads them as the lines joined with newlines; the checker must read the
+# retained answer the same way.
+RECORDED = json.loads(
+    (Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "qwen_reader_answers.json").read_text()
+)["answers"]
+OTHER_BREAKS = ("space_joined_two_lines", "space_joined_six_lines", "newline_symbol")
+
+
+def recorded_raw(name):
+    """The retained raw response as production stores it: Pydantic AI's dump of the answer."""
+    answer = RECORDED[name]["responses"][0]
+    response = ModelResponse(
+        parts=[ToolCallPart("final_result", answer["arguments"], answer["tool_call_id"])],
+        model_name=answer["response_model"], provider_response_id=answer["response_id"],
+        finish_reason="tool_call",
+    )
+    return json.loads(ModelMessagesTypeAdapter.dump_json([response]))
+
+
+def reader_observation(name):
+    """The observation the reader makes of that answer (production.py: verbatim_text)."""
+    output = LiteralTranscription.model_validate_json(RECORDED[name]["responses"][0]["arguments"])
+    return {"literal_text": output.verbatim_text, "unreadable_spans": list(output.unreadable_spans)}
+
+
+@pytest.mark.parametrize("name", OTHER_BREAKS + ("newline_joined",))
+def test_retained_answer_is_read_by_the_reader_contract(name):
+    raw, observation = recorded_raw(name), reader_observation(name)
+    sent = json.loads(RECORDED[name]["responses"][0]["arguments"])
+    assert observation["literal_text"] == "\n".join(sent["lines"])
+    literal_output(raw, observation)
+
+
+@pytest.mark.parametrize("name", OTHER_BREAKS)
+def test_observation_that_kept_the_answers_break_form_is_refused(name):
+    # The reader stores the newline form; an observation holding the provider's
+    # own form was not made by the reader from this answer.
+    sent = json.loads(RECORDED[name]["responses"][0]["arguments"])
+    observation = dict(reader_observation(name), literal_text=sent["verbatim_text"])
+    with pytest.raises(InvalidEvidence, match="Literal text differs"):
+        literal_output(recorded_raw(name), observation)
+
+
+@pytest.mark.parametrize("field", ["lines", "verbatim_text"])
+def test_retained_answer_whose_words_differ_is_refused(field):
+    # Recorded 2026-10-05: verbatim_text says "tap" where lines say "trap".
+    sent = json.loads(RECORDED["words_differ"]["responses"][0]["arguments"])
+    text = "\n".join(sent["lines"]) if field == "lines" else sent["verbatim_text"]
+    observation = {"literal_text": text, "unreadable_spans": sent["unreadable_spans"]}
+    with pytest.raises(InvalidEvidence):
+        literal_output(recorded_raw("words_differ"), observation)
+
+
+@pytest.mark.parametrize("name", OTHER_BREAKS)
+def test_full_review_packet_accepts_a_recorded_answer_with_other_breaks(tmp_path, name):
+    source, report = packet(tmp_path)
+    record = report["human_records"][0]
+    obs_id = next(iter(record["raw_observations"]))
+    assert obs_id.endswith("handwriting-qwen")
+    entry = record["raw_observations"][obs_id]
+    record["raw_observations"][obs_id] = write(tmp_path, entry["path"], recorded_raw(name))
+    observation = dict(reader_observation(name), raw_sha256=record["raw_observations"][obs_id]["sha256"])
+    for field in ("before_review", "after_save", "after_reload"):
+        mutate_file(tmp_path, report, field, lambda p: p["run"]["observations"][0].update(observation))
+    result = check(tmp_path, source, report)
+    assert result["human_review_preflight"] == "ready_for_independent_review"
