@@ -693,18 +693,48 @@ def test_each_experts_inference_client_is_closed():
     assert [client.closed for client in clients] == [1, 1]
 
 
+class StillClockLoop(asyncio.SelectorEventLoop):
+    """An event loop whose clock stands still until the test moves it.
+
+    A deadline on this loop cannot pass while the code under test runs, however
+    loaded the machine; it passes only during `work`.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.now = 0.0
+
+    def time(self) -> float:
+        return self.now
+
+    async def work(self, seconds: float) -> None:
+        """Take `seconds` of this loop's time, all of which pass at once."""
+
+        def advance() -> None:
+            self.now += seconds
+
+        # Moved after the sleep's own timer is set, so every timer due by then,
+        # the sleep's included, fires on the loop's next turn.
+        self.call_soon(advance)
+        await asyncio.sleep(seconds)
+
+
 def test_the_field_deadline_is_a_timeout():
     cost = meter()
 
     async def slow(messages, info):
-        await asyncio.sleep(5)
+        await asyncio.get_running_loop().work(5)
 
     resolver = make_resolver(model_factory=lambda: FunctionModel(slow), meter=cost,
                              field_timeout_seconds=0.05)
-    outcome = asyncio.run(resolver(task("habitat"), READINGS, CONTEXT, tools=FakeTools()))
+    # On wall time a loaded machine spent the 0.05 s before the first request.
+    with asyncio.Runner(loop_factory=StillClockLoop) as runner:
+        outcome = runner.run(resolver(task("habitat"), READINGS, CONTEXT, tools=FakeTools()))
 
     assert outcome.failure == "timeout" and outcome.answer is None
-    # The cancelled request keeps its worst case: it may have been billed.
+    # The deadline passed during the first request, which keeps its worst case:
+    # it may have been billed.
+    assert outcome.model_calls == 1
     assert cost.outstanding_micros == 0 and cost.spent_micros == outcome.cost_micros > 0
 
 
