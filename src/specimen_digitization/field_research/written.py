@@ -412,8 +412,9 @@ def other_kind(text: str) -> tuple[str, str] | None:
     - DATE: a run of up to DATE_WORDS whole words, its edge punctuation
       aside, that the date parser reads as a date, alone or one of several
       readings (field_validators.date_parser under FINDING_DATES: "IV-24-48",
-      "24.IV.1948", "May 2, 1948", "Sept. 1946", a year "1948"); a slide
-      code ("V-4-67-1") is none."""
+      "24.IV.1948", "May 2, 1948", "Sept. 1946", a year "1948"), the longest
+      such run from the first word where one starts; a slide code
+      ("V-4-67-1") is none."""
     spans = pieces(text, words(text))
     for number in numbers(text, spans):
         if number.unit is not None and number.whole is not None and not number.distance:
@@ -423,11 +424,17 @@ def other_kind(text: str) -> tuple[str, str] | None:
             return RANGE, text[found.start:found.end]
     found_words = words(text)
     for first in range(len(found_words)):
+        # The longest run from the first word where one starts: the parser
+        # also reads a shorter run, "24 Apr" of "24 Apr 1948", as a date
+        # (ambiguous, with no year).
+        dated = None
         for last in range(first, min(len(found_words), first + DATE_WORDS)):
             run = text[found_words[first][0]:found_words[last][1]].strip(EDGE).rstrip(".,;:")
             if _has_digit(run) and date_parser(run, source_text=text, date_rules=FINDING_DATES).outcome in (
                     LookupStatus.SUCCESS, LookupStatus.AMBIGUOUS):
-                return DATE, run
+                dated = run
+        if dated is not None:
+            return DATE, dated
     return None
 
 
