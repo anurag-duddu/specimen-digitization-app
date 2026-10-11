@@ -1014,15 +1014,19 @@ REAL_EXAMPLES = (
 def test_no_brief_gives_an_example_a_model_could_take_for_label_text():
     """Examples are patterns (<Genus>, <Place>, <n>): no real taxon, place,
     person, year or slide code, in any brief or in the lookup tool's
-    description. The notation table's line is the rule G29 states, not an
-    example, and stays."""
+    description. The rule G29 states for place abbreviations, which replaced
+    the notation table (#295: the letter rule's line under Label notations
+    and the place rule's line that names the expansions its letters fit),
+    is a rule, not an example, and keeps its names, as the table's line did."""
     import re
 
-    from specimen_digitization.field_research import notations
     from specimen_digitization.field_research.prompts import instructions
 
+    def letter_rule(line: str) -> bool:
+        return line.startswith("- A place abbreviation") or "whose words its letters fit in order" in line
+
     for key in FIELD_TOOLS:
-        text = instructions(key).replace(notations.brief_line(), "")
+        text = "\n".join(line for line in instructions(key).splitlines() if not letter_rule(line))
         assert [name for name in REAL_EXAMPLES if re.search(rf"\b{name}\b", text)] == [], key
         assert not re.search(r"\b(18|19|20)\d\d\b", text), key  # a year
         assert not re.search(r"\b[IVX]+-\d+-\d+-\d+", text), key  # a slide code
@@ -1118,9 +1122,12 @@ def test_the_briefs_have_a_place_abbreviation_looked_up_by_its_expansion():
         [line] = [line for line in instructions(key).splitlines() if line.startswith("- A place abbreviation")]
         assert "look up its expansion with each abbreviated word written out" in line
         assert '"Davao Province"' in line and "name in your explanation the abbreviation you expanded" in line
-    # The unit word written out, where the label abbreviates it (105526326's "Davao, Prov.").
-    assert 'Search with the unit word written out ("Davao Province")' in instructions("province_state")
-    assert 'search with the unit word written out ("Cook County")' in instructions("county")
+    # The unit word written out, where the label abbreviates it (105526326's "Davao, Prov."),
+    # its examples patterns as #299's briefs give them.
+    province = instructions("province_state")
+    assert 'about the unit written out ("<Name> Province, <Country>")' in province
+    assert "the bare name may find only the town or several units" in province
+    assert 'search with the unit word written out ("<County> County")' in instructions("county")
     [rule] = [line for line in instructions("country").splitlines() if "whose words its letters fit in order" in line]
     accepted, context = rule.split("when the literal is an abbreviation", 1)[1].split("A lookup of any other name", 1)
     expansions = re.findall(r'"([^"]+)" for "([^"]+)"', accepted)
