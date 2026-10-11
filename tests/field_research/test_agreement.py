@@ -9,6 +9,7 @@ resolver and sources of test_step.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 from types import SimpleNamespace
 
@@ -1730,6 +1731,86 @@ def test_a_parent_named_by_a_country_code_is_the_country_whose_record_carries_th
     refused = agreement.parents_refusal("province_state", candidate, agreement.NEAR_SPELLING,
         written={"country": country}, settled={"country": country})
     assert refused is None if settles else refused.reason == agreement.NOT_IN_COUNTRY
+
+
+# The review of #312 (issue comment 6113525852): the adapters set a code on any
+# record that carries one (Wikidata's P297 on any item, NGA's on any PCL
+# feature), and live Wikidata gives P297 to former colonies whose codes ISO has
+# since given to other countries (Q1450765, the French Territory of the Afars and
+# the Issas: "AI", now Anguilla's).
+
+def a_candidate(source_id, record_id, name, kind, *, iso_code=None, valid_to=None, country=None, parents=()):
+    """A source's candidate as the real adapter shapes it (sources._place)."""
+    from specimen_digitization.application.georef_places import Place, Ref
+    from specimen_digitization.field_research import sources as field_sources
+
+    return field_sources._place(source_id, Place(source=source_id, record_id=record_id, name=name,
+        kinds=(Ref(kind, kind),), country=Ref(*country) if country else None, iso_code=iso_code,
+        parents=tuple(Ref(*parent) for parent in parents), valid_to=valid_to))
+
+
+def test_a_record_that_names_an_end_date_carries_no_code():
+    """A former colony's record, in the shape of Wikidata's Q1450765, keeps no
+    code; a nation with no end date keeps its own."""
+    colony = a_candidate("wikidata", "Q1450765", "French Territory of the Afars and the Issas", "colony",
+        iso_code="AI", valid_to="1977-06-27")
+    nation = a_candidate("wikidata", "Q774", "Guatemala", "country", iso_code="GT")
+    assert (colony.iso_code, nation.iso_code) == (None, "GT")
+
+
+def test_a_colony_carrying_a_code_settles_no_country():
+    """A record of a colony's kind is at no country's level, so it never
+    settles the country field and never supplies the code its record carries
+    (step._record_code reads only the record the country settled on)."""
+    colony = SourceCandidate("Gilbert and Ellice Islands", "wikidata:Q1050859", "colony", None, (),
+        iso_code="GE")
+    answer = SourceAnswer("wikidata", "Gilbert and Ellice Islands", LookupStatus.SUCCESS, (colony,),
+        Evidence(kind="authority", source="wikidata", locator="wikidata:Q1050859", excerpt="match"))
+    assert agreement.at_level("country", answer) == [] and agreement.placed("country", answer) is None
+
+
+class Constructed:
+    """The recorded sources (recorded_places), with constructed answers in front
+    of them for some queries."""
+
+    sources = ("gbif", "geolocate", "tgn", "wikidata", "nga")
+
+    def __init__(self, tmp_path, blobs, answers):
+        self.recorded, self.blobs, self.answers = recorded_places(tmp_path), blobs, answers
+
+    async def lookup(self, source_id, query, *, field_key):
+        if (source_id, query) not in self.answers:
+            return await self.recorded.lookup(source_id, query, field_key=field_key)
+        candidates = tuple(self.answers[source_id, query])
+        raw = json.dumps({"source": source_id, "query": query}).encode()
+        evidence = Evidence(kind="authority", source=source_id, locator=candidates[0].authority_id,
+            excerpt="\n".join(["match", *(f"{c.name} | {c.authority_id} | {c.kind} | {c.detail}" for c in candidates)]),
+            raw_ref=self.blobs.put(raw), digest=hashlib.sha256(raw).hexdigest())
+        return SourceAnswer(source_id, query, LookupStatus.SUCCESS, candidates, evidence, note="match")
+
+
+def test_only_the_country_supplies_a_code_to_the_place_check(tmp_path):
+    """A province settled on a record that carries the country's code (a
+    constructed department record with P297 "GT") is no parent of NGA's town
+    in another department, "in Escuintla, GT": the city goes to review
+    (NOT_IN_PROVINCE). At 9a71f4bd the province's record code matched the
+    town's country code and the city settled; on f800c656 the city is not in
+    the country (no code at all)."""
+    rig = build_rig(tmp_path, label_with(country="Guatemala", province_state="Chimaltenango", county=None,
+        city="Yepocapa"))
+    run = rig.specimen.run
+    department = a_candidate("wikidata", "Q765975", "Chimaltenango", "department of Guatemala", iso_code="GT",
+        country=("Q774", "Guatemala"), parents=(("Q774", "Guatemala"),))
+    town = a_candidate("nga", "-99", "Yepocapa", "P.PPL", country=("GT",), parents=(("GT-05", "Escuintla"),))
+    tools = Constructed(tmp_path, rig.blobs, {("wikidata", "Chimaltenango"): [department], ("nga", "Yepocapa"): [town]})
+    settle(rig, Scripted({**NO_GBIF, "country": from_tgn("Guatemala", "Guatemala", None, "wikidata:Q774",
+            source="wikidata"),
+        "province_state": from_tgn("Chimaltenango", "Chimaltenango", None, "wikidata:Q765975", source="wikidata"),
+        "county": answering(LACKS),
+        "city": from_tgn("Yepocapa", "Yepocapa", None, "nga:-99", source="nga")}), tools=tools)
+    assert [run.fields[key].state for key in ("country", "province_state")] == [ValueState.SUPPORTED] * 2
+    city = run.fields["city"]
+    assert (city.state, city.reason) == (ValueState.UNRESOLVED, agreement.NOT_IN_PROVINCE + " Settled.")
 
 
 # ---- a precise location that is only a settled place's text (round 4) -------

@@ -144,9 +144,11 @@ class SourceCandidate:
     # country last (sources._place, sources._geolocate); () when the source
     # names none.
     parents: tuple[PlaceRef, ...] = ()
-    # A country's ISO 3166-1 alpha-2 code, as its own record carries it
-    # (georef_places.Place.iso_code: Wikidata's P297, NGA's code for a
-    # nation); None for any other place or source.
+    # The ISO 3166-1 alpha-2 code the record itself carries
+    # (georef_places.Place.iso_code: Wikidata's P297 on any item, NGA's code
+    # for a PCL feature), unless the record names an end date (sources._place);
+    # None when it carries none. Only the record the country field settled on
+    # supplies a code to the place check (step._record_code).
     iso_code: str | None = None
 
 

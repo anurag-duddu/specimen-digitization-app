@@ -1310,7 +1310,10 @@ def _place(source_id: str, place: Place) -> SourceCandidate:
         kind=", ".join(kinds[:MAX_KINDS]) or None,
         detail=detail or None,
         parents=tuple(parents),
-        iso_code=place.iso_code,
+        # A record that names an end date (a dissolved state, a former colony)
+        # carries no code: ISO may have given its code to another country
+        # since ("AI", "GE" and "BQ" of three former colonies on Wikidata).
+        iso_code=place.iso_code if place.valid_to is None else None,
     )
 
 

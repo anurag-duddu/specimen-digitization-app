@@ -519,8 +519,9 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending, r
     those that reading writes (`places`), and one of them is settled for the
     reading when its value is supported, this attempt has done with it (it is
     not `pending`) and the reading writes its literal, compared as place
-    names; a settled field carries the ISO code of its record (_record_code,
-    from the answers each field received, `received`). A place settled on
+    names; a settled country carries the ISO code of the record it settled
+    on (_record_code, from the answers the country field received,
+    `received`), and no other field carries one. A place settled on
     text its expert read in the transcript (transcript_code) is written by
     each reading that writes that text as whole words
     (agreement.verbatim_runs)."""
@@ -558,8 +559,8 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending, r
                     and place_name(value.literal) in {place_name(text) for text in texts}):
                 names = (*sorted(texts), *(text for text in (value.normalized, value.parsed) if text),
                     *_expansions(key, value, rows))
-                written[key] = settled[key] = PlaceField(tuple(dict.fromkeys(names)), value.authority_id,
-                    _record_code(value, (received or {}).get(key, ())))
+                code = _record_code(value, (received or {}).get(key, ())) if key == "country" else None
+                written[key] = settled[key] = PlaceField(tuple(dict.fromkeys(names)), value.authority_id, code)
             else:
                 written[key] = PlaceField(tuple(sorted(texts)))
         refused = parents_refusal(task.key, candidate, basis, written=written, settled=settled)
@@ -569,14 +570,15 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending, r
 
 
 def _record_code(value: FieldValue, answers: Iterable[SourceAnswer]) -> str | None:
-    """The ISO 3166-1 alpha-2 code a settled place's own record carries
-    (SourceCandidate.iso_code: a country's, from Wikidata's P297 or NGA's
-    code for a nation), which agreement.lies_in compares with a parent its
-    source names only by a country code: the one code of the candidates with
-    the value's authority_id in the stored answers its field received in
-    this attempt (`answers`). None when they carry none or several, and for
-    a value with no authority_id or no such answer (one settled in an
-    earlier attempt or by a person)."""
+    """The ISO 3166-1 alpha-2 code the record a settled country settled on
+    carries (SourceCandidate.iso_code), which agreement.lies_in compares
+    with a parent its source names only by a country code: the one code of
+    the candidates with the value's authority_id in the stored answers the
+    country field received in this attempt (`answers`). The country settles
+    only on a record at a nation's level (agreement.placed), so that record
+    is a nation's. None when they carry none or several, and for a value
+    with no authority_id or no such answer (one settled in an earlier
+    attempt or by a person)."""
     codes = {candidate.iso_code for answer in answers if answer.evidence is not None
         for candidate in answer.candidates
         if value.authority_id and candidate.authority_id == value.authority_id and candidate.iso_code}
@@ -1508,8 +1510,9 @@ def _corroborate(run, tasks_by_key: Mapping[str, FieldTask], applied: Mapping[st
     settled only when a place field below it, settled in this attempt on its
     own evidence (on anything but initials), lies inside it: that field's
     settling candidate names it among its parents (agreement.lies_in: its
-    record, or its text, value or expansion by name, or the ISO code its
-    settling candidate carries by a parent's country code). So "Mindanao, P.I."
+    record, or its text, value or expansion by name, or, for the country,
+    the ISO code its settling candidate carries by a parent's country code).
+    So "Mindanao, P.I."
     keeps the Philippines when its province "Davao, Prov." settles on a
     province of the Philippines. Otherwise the value is ambiguous, for review,
     with a reason naming the initials (agreement.initialism_alone), and the
@@ -1538,7 +1541,8 @@ def _corroborate(run, tasks_by_key: Mapping[str, FieldTask], applied: Mapping[st
         expansion, value = settlings[key][1], run.fields[key]
         names = (value.literal, *(text for text in (value.normalized, value.parsed) if text),
             *_expansions(key, value, rows))
-        field = PlaceField(tuple(dict.fromkeys(names)), value.authority_id, settlings[key][0].candidate.iso_code)
+        code = settlings[key][0].candidate.iso_code if key == "country" else None
+        field = PlaceField(tuple(dict.fromkeys(names)), value.authority_id, code)
         if any(other in settlings and settlings[other][1] is None
                 and lies_in(settlings[other][0].candidate, key, field) for other in PLACE_ORDER[index + 1:]):
             continue

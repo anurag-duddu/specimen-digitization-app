@@ -136,10 +136,11 @@ fields' outcomes:
    names). A parent is that field when it is the field's settled record (its
    authority_id), or when its name has the comparison key of one of the
    field's texts, of the value the field settled on, or of the expansion it
-   settled through (the step's abbreviation row), or when its source names it
-   only by a country code (NGA's "GT") that is the ISO 3166-1 alpha-2 code
-   the field's settled record carries (Wikidata's P297 for Guatemala), the
-   same two capital letters, outside ISO's user-assigned codes (lies_in):
+   settled through (the step's abbreviation row), or, for the country, when
+   its source names it only by a country code (NGA's "GT") that is the ISO
+   3166-1 alpha-2 code the record the country settled on carries (Wikidata's
+   P297 for Guatemala), the same two capital letters, outside ISO's
+   user-assigned codes (lies_in):
    - below the country, the candidate has parents, one of them is the
      country settled for the reading, and for a county or a city one is the
      province settled for it too, when one is. No country settled for the
@@ -1167,8 +1168,8 @@ class PlaceField:
     writes for it (its candidate literals and verbatims), with, when it is
     settled from that reading's text, the value it settled on and the
     expansion it settled through (the step's abbreviation row), that
-    value's authority_id, and the ISO 3166-1 alpha-2 code that record
-    carries (SourceCandidate.iso_code: a country's), when it carries one."""
+    value's authority_id, and, for the country, the ISO 3166-1 alpha-2 code
+    that record carries (SourceCandidate.iso_code), when it carries one."""
 
     texts: tuple[str, ...]
     authority_id: str | None = None
