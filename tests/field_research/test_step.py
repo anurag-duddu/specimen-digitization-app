@@ -2601,17 +2601,15 @@ MARKERS_ONLY = {
     "guatemala-readers-mun-and-mum": ({"city": "Yepocapa"}, ["Yepocapa, Mun.", "Yepocapa, Mum."], '"Mun."'),
     "guatemala-a-reader-without-it": ({"city": "Yepocapa"}, ["Yepocapa, Mun.", "Yepocapa"], '"Mun."'),
     "germany-kreis": ({"county": "Ahrweiler"}, ["Kreis Ahrweiler"], '"Kreis"'),
-    "sri-lanka-distr": ({"county": "Kandy", "country": "Sri Lanka"}, ["Distr. Kandy, Sri Lanka"], '"Distr."'),
     "mexico-mpio-and-edo": ({"city": "Xalapa", "province_state": "Veracruz"}, ["Mpio. Xalapa, Edo. Veracruz"],
         '"Mpio.", "Edo."'),
     "japan-pref": ({"province_state": "Nagano"}, ["Nagano Pref."], '"Pref."'),
     "italy-comune": ({"city": "Trento"}, ["Comune Trento"], '"Comune"'),
     "germany-gemeinde": ({"city": "Ahrweiler"}, ["Gemeinde Ahrweiler"], '"Gemeinde"'),
     "us-county-after-its-name": ({"county": "Cook", "province_state": "Illinois"}, ["Cook Co., Illinois"], '"Co."'),
-    # PR #309's review probes that still clear: a reader's "Mus." is no word for a
-    # place's feature, and "Dist." is a marker itself.
+    # A PR #309 review probe that still clears: a reader's "Mus." is no word for a
+    # place's feature.
     "a-reader-writes-mus": ({"city": "Yepocapa"}, ["Yepocapa, Mun.", "Yepocapa, Mus."], '"Mun."'),
-    "sri-lanka-distr-and-dist": ({"county": "Kandy"}, ["Distr. Kandy", "Dist. Kandy"], '"Distr.", "Dist."'),
     # A municipality marker beside the municipio held as the county.
     "a-municipio-held-as-the-county": ({"county": "Yepocapa"}, ["Yepocapa, Mun."], '"Mun."'),
 }
@@ -2648,6 +2646,21 @@ NO_MARKER_OF_A_SETTLED_LEVEL = {
     "a-city-co": ({"city": "Boulder"}, ["Boulder, Co."]),
     "a-kreis-beside-a-city": ({"city": "Ahrweiler"}, ["Kreis Ahrweiler"]),
     "a-province-marker-beside-a-city": ({"city": "Davao"}, ["Prov. Davao"]),
+    # PR #309's re-review (the coordinator's ruling): a district lies inside the
+    # canton in Costa Rica and inside the province in Peru, so "Dist.", "Distr.",
+    # "District" and "Raion" are no markers; Sri Lanka's "Distr. Kandy" goes to
+    # review too, the accepted conservative outcome. On 2b1312ed each gave a
+    # marker.
+    "costa-rica-dist": ({"county": "Turrialba"}, ["Dist. Turrialba"]),
+    "costa-rica-distr": ({"county": "Turrialba"}, ["Distr. Turrialba"]),
+    "costa-rica-district-after-the-name": ({"county": "Turrialba"}, ["Turrialba District"]),
+    "peru-dist": ({"county": "Chanchamayo"}, ["Dist. Chanchamayo"]),
+    "sri-lanka-distr": ({"county": "Kandy", "country": "Sri Lanka"}, ["Distr. Kandy, Sri Lanka"]),
+    "sri-lanka-dist-after-the-name": ({"county": "Kandy"}, ["Kandy Dist."]),
+    "sri-lanka-distr-and-dist": ({"county": "Kandy"}, ["Distr. Kandy", "Dist. Kandy"]),
+    "ukraine-raion": ({"county": "Bila Tserkva"}, ["Bila Tserkva Raion"]),
+    # The control: "Distrito" was already no marker.
+    "costa-rica-distrito": ({"county": "Turrialba"}, ["Distrito Turrialba"]),
 }
 # PR #309's review, finding 2 (ruling 2): a reader's word for a place's feature
 # one letter from the marker is no misreading of it. On b36341d1 each gave a
@@ -2659,6 +2672,9 @@ FEATURE_WORDS = {
     "switzerland-kt-or-mt": ({"province_state": "Washington"}, ["Kt. Washington", "Mt. Washington"]),
     "the-review-kt-or-mt": ({"city": "Washington"}, ["Kt. Washington", "Mt. Washington"]),
     "guatemala-mun-or-run": ({"city": "Yepocapa"}, ["Yepocapa, Mun.", "Yepocapa, Run"]),
+    # PR #309's re-review: a cove and a mine. On 2b1312ed each gave a marker.
+    "us-co-or-cv": ({"county": "Cook"}, ["Cook Co.", "Cook Cv."]),
+    "guatemala-mun-or-min": ({"city": "Yepocapa"}, ["Yepocapa, Mun.", "Yepocapa, Min."]),
 }
 
 
@@ -2699,11 +2715,12 @@ def test_the_marker_lists_are_folded_words():
     assert AFTER_A_NAME <= set(ADMIN_MARKERS)
     assert all(levels and levels <= {"city", "county", "province_state"} for levels in ADMIN_MARKERS.values())
     below = {"twp", "township", "parish", "parroquia", "parr", "corregimiento", "freguesia", "socken", "sogn",
-        "gmina", "distrito", "taluk", "taluka", "tehsil", "tahsil", "bezirk", "arrondissement", "comuna", "herred"}
+        "gmina", "distrito", "taluk", "taluka", "tehsil", "tahsil", "bezirk", "arrondissement", "comuna", "herred",
+        "dist", "distr", "district", "raion"}
     assert not below & set(ADMIN_MARKERS)
     assert {"mt", "mtn", "mte", "mts", "cr", "ck", "cerro", "run", "r", "rio", "l", "lago", "lac", "is", "isla",
         "pt", "pta", "punta", "pk", "peak", "vol", "volcan", "fca", "finca", "hda", "hacienda", "sta", "sto",
-        "san", "b", "bay", "kt"} <= PLACE_FEATURE_WORDS
+        "san", "b", "bay", "kt", "cv", "cove", "min", "mina", "mine"} <= PLACE_FEATURE_WORDS
 
 
 GUATEMALAN_MUN = GUATEMALAN_TOWN + "\nYepocapa, Mun. Chimaltenango"
@@ -2851,7 +2868,8 @@ def a_county_settled_before(run, county):
 
 @pytest.mark.parametrize(("line", "county", "kept"), [
     ("Kreis Ahrweiler", "Ahrweiler", False),
-    ("Distr. Kandy", "Kandy", False),
+    # PR #309's re-review: "Distr." is no marker, so this goes to review.
+    ("Distr. Kandy", "Kandy", True),
     ("Cook Co.", "Cook", False),
     # Controls: a hill, and a distance from the town.
     ("Co. Chirripo", "Chirripo", True),
@@ -2862,7 +2880,8 @@ def test_the_organisers_precise_location_that_only_marks_the_settled_county_is_n
     """Labels from other countries: the organiser offers the county's line,
     with its marker, as the precise location, and the precise location's
     expert finds none. On 5332ce4e3 each went to review (rule A declined,
-    organiser_found_text)."""
+    organiser_found_text); "Distr. Kandy" still does, as "Distr." is no
+    marker (on 2b1312ed it cleared)."""
     text = label_with(**dict.fromkeys(ABSENT, None), country=None, province_state=None, city=None) + "\n" + line
     rig = build_rig(tmp_path, text, candidates=[*COLLECTORS,
         *(("precise_location", name, line, line) for name in ("1A", "1B"))])
@@ -2874,6 +2893,28 @@ def test_the_organisers_precise_location_that_only_marks_the_settled_county_is_n
     assert run.fields["precise_location"].state == ValueState.NOT_PRESENT
     assert decisions["precise_location"]["rule"] == (
         "A_declined:organiser_found_text" if kept else "A_not_on_label")
+
+
+@pytest.mark.parametrize("line", ["Dist. Turrialba", "Distr. Turrialba", "Turrialba District", "Distrito Turrialba"])
+def test_a_costa_rican_district_beside_its_settled_canton_is_a_precise_location(tmp_path, line):
+    """PR #309's re-review: a Costa Rican district lies inside its canton,
+    settled here as the county "Turrialba". Its expert resolves the line,
+    and it settles as the precise location, as on 5332ce4e3. On 2b1312ed
+    "Dist.", "Distr." and "District" cleared it as not on the label;
+    "Distrito Turrialba" is the control."""
+    text = label_with(**dict.fromkeys(ABSENT, None), country=None, province_state=None, city=None) + "\n" + line
+    rig = build_rig(tmp_path, text, candidates=[*COLLECTORS,
+        *(("precise_location", name, line, line) for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    a_county_settled_before(run, "Turrialba")
+    prepared, outcomes, calls = research(rig, lacking(*(set(ABSENT) - {"precise_location"}),
+        precise_location=answering(resolved(line))))
+    decisions: dict[str, dict] = {}
+    apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    place = run.fields["precise_location"]
+    assert (place.state, place.literal) == (ValueState.SUPPORTED, line)
+    assert decisions["precise_location"] == {}
+    assert "precise_location" not in cleared_as_not_on_label(run)
 
 
 def test_a_locality_beside_its_settled_province_keeps_its_precise_location(tmp_path):

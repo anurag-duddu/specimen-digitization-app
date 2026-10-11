@@ -1840,7 +1840,7 @@ def _admin_markers(run, texts: Sequence[str]) -> str | None:
     place of the level it marks (_only_markers: "Mun." of "Yepocapa, Mun.
     Chimaltenango" beside the settled city "Yepocapa" and province
     "Chimaltenango", "Kreis" of "Kreis Ahrweiler" beside the settled county
-    "Ahrweiler", "Distr." of "Distr. Kandy"); what is left of every other
+    "Ahrweiler", "Pref." of "Nagano Pref."); what is left of every other
     text is nothing, markers only, or the same words with, in a marker's
     place, a word that may be a misreading of it (_misread_marker:
     105526328's 3B "Yepocapa, Mum." beside 3A's "Yepocapa, Mun.", but never

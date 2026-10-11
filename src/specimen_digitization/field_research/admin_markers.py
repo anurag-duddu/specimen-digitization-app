@@ -1,6 +1,6 @@
 """Administrative-level markers: the words a label writes beside a place name
 to say which level of place it is ("Yepocapa, Mun." for the municipio of
-Yepocapa, "Kreis Ahrweiler", "Distr. Kandy", "Cook Co.").
+Yepocapa, "Kreis Ahrweiler", "Nagano Pref.", "Cook Co.").
 
 Such a word names no place itself. A precise location whose only text, beside
 the settled places, is such a word, standing next to the settled place of the
@@ -13,16 +13,19 @@ accents and punctuation aside, so "Mun.", "MUN" and "mun." are all "mun").
 ADMIN_MARKERS maps each marker to the fields of the level it marks. A
 municipality marker marks the municipio, which this schema holds as the city
 or the county; a county marker the county; a province marker the province or
-state. Units that, at least in some countries, lie below the county or the
-municipio are left off, as there they name a place of their own inside it:
-township ("Twp."), parish ("Parish", "Parr.", "Parroquia", "Freguesia",
-"Socken", "Sogn"), corregimiento, gmina, district of a province
-("Distrito"), sub-district ("Taluk", "Tehsil"), borough ("Bezirk"),
-arrondissement and comuna. So are words that are part of a
-place's name or name a feature ("St.", "Mt.", "Lk.", "Arr.", "Brgy.",
-"Frazione"), words whose level differs between countries ("Cant.", "Amt",
-"Fylke", "Okrug"), words a label may use for something else ("Dep.", "Par.",
-"Reg.", "Terr.", "Land") and "Canton", also a city's name.
+state.
+
+Left off the list, because in at least one country each names a unit below
+the county or the municipio, a place of its own inside it: township ("Twp."),
+parish ("Parish", "Parr.", "Parroquia", "Freguesia", "Socken", "Sogn"),
+corregimiento, gmina, district ("Dist.", "Distr.", "District", "Distrito",
+"Raion": a Costa Rican district lies inside its canton, a Peruvian one inside
+its province), sub-district ("Taluk", "Tehsil"), borough ("Bezirk"),
+arrondissement and comuna. Also left off: words that are part of a place's
+name or name a feature ("St.", "Mt.", "Lk.", "Arr.", "Brgy.", "Frazione"),
+words whose level differs between countries ("Cant.", "Amt", "Fylke",
+"Okrug"), words a label may use for something else ("Dep.", "Par.", "Reg.",
+"Terr.", "Land") and "Canton", also a city's name.
 """
 
 from __future__ import annotations
@@ -35,9 +38,8 @@ ADMIN_MARKERS = {
     # Municipality, municipio, Gemeinde, comune, commune, kommune.
     **dict.fromkeys(("municipio", "municipality", "mun", "munic", "mpio", "mpo", "comune", "gemeinde",
         "gemeente", "gem", "commune", "cne", "kommune", "kommun", "concelho"), MUNICIPIO),
-    # County, Kreis, district.
-    **dict.fromkeys(("county", "co", "cty", "kreis", "landkreis", "lkr", "kr", "district", "distr", "dist",
-        "powiat", "okres", "raion"), COUNTY),
+    # County, Kreis, powiat, okres.
+    **dict.fromkeys(("county", "co", "cty", "kreis", "landkreis", "lkr", "kr", "powiat", "okres"), COUNTY),
     # Province, department, state, prefecture, region, canton.
     **dict.fromkeys(("province", "prov", "provincia", "pcia", "provincie", "department", "dept", "departamento",
         "depto", "dpto", "dpt", "departement", "state", "estado", "edo", "prefecture", "pref", "region",
@@ -60,12 +62,14 @@ PLACE_FEATURE_WORDS = frozenset({
     "pico", "vol", "volc", "volcan", "kt",
     # Water.
     "cr", "ck", "crk", "creek", "run", "r", "rio", "riv", "river", "l", "lago", "lac", "lake", "lk", "b",
-    "bay", "bahia", "arr", "arroyo", "qda", "quebrada", "fk", "fork", "spr", "spring",
+    "bay", "bahia", "arr", "arroyo", "qda", "quebrada", "fk", "fork", "spr", "spring", "cv", "cove",
     # Islands, points, coasts.
     "is", "isl", "isla", "island", "pt", "pta", "punta", "point", "cab", "cabo", "pto", "puerto",
     # Farms, estates, settlements, saints.
     "fca", "finca", "hda", "hacienda", "rch", "rancho", "est", "sta", "sto", "san", "santa", "santo", "st",
     "ft", "fort",
+    # Mines.
+    "min", "mina", "mine",
     # Valleys, roads, bridges.
     "val", "valle", "vall", "rd", "road", "pte", "puente", "cno", "camino",
 })
