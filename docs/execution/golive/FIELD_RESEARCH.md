@@ -1237,9 +1237,12 @@ elevation is derived first, and only for a field a person has not decided):
    write only an administrative marker next to the settled place of its
    level, or readers differ only in one (below): the organiser's
    "Yepocapa, Mun. Chimaltenango" beside the settled city and province,
-   or "Kreis Ahrweiler", "Distr. Kandy" or "Cook Co." beside the settled
-   county. The organiser's "Ionia Twp." beside the settled county "Ionia"
-   counts (a township is a place inside the county).
+   or "Kreis Ahrweiler" or "Cook Co." beside the settled county. The
+   organiser's "Ionia Twp." beside the settled county "Ionia" counts (a
+   township is a place inside the county), as do "Dist. Turrialba" beside
+   the settled canton "Turrialba" (a Costa Rican district lies inside its
+   canton) and "Distr. Kandy" beside the settled county "Kandy" (the
+   conservative outcome the coordinator accepted).
 6. For an elevation, no reading writes an elevation
    (`step._elevation_written`, on every reading's and every reader's text).
    That is, none of:
@@ -1307,22 +1310,27 @@ researched in this attempt is not present when all of these hold:
   (`step._misread_marker`: letters only, as long as the marker, one
   letter different, and no word or abbreviation for a place's feature).
   So 3B's "Mum." beside 3A's "Mun." clears, but "Mtn." (a mountain), "Run"
-  (a stream), "Cr." or "Ck." (a creek) or "Mt." beside "Kt." keeps the
-  readers apart, for review.
+  (a stream), "Cr." or "Ck." (a creek), "Cv." (a cove), "Min." (a mine) or
+  "Mt." beside "Kt." keeps the readers apart, for review.
 The markers are a data list (`field_research/admin_markers.py`), each with
 the fields of the level it marks: a municipality marker ("Mun.", "Mpio.",
 "Municipio", "Comune", "Gemeinde", "Commune", "Kommune") the city or the
 county, which hold the municipio; a county marker ("Co.", "County",
-"Kreis", "Distr.", "District", "Powiat", "Okres") the county; a province
+"Kreis", "Landkreis", "Powiat", "Okres") the county; a province
 marker ("Prov.", "Dept.", "Depto.", "Departamento", "State", "Estado",
 "Edo.", "Pref.", "Region", "Oblast", "Kanton", "Kt.") the province or
 state. "Boulder, Co." beside the settled city "Boulder", "Kreis Ahrweiler"
 beside a settled city only, or "Mun. Cuenca" beside a settled province
-only, marks no settled level and gives no marker. Units that, at least in
-some countries, lie below the county or the municipio are not markers, as
-there they name a place of their own inside it: "Twp." (township), "Parr."/"Parroquia", "Freguesia", "Socken", "Sogn",
-"Corregimiento", "Gmina", "Distrito", "Taluk", "Tehsil", "Bezirk",
-"Arrondissement", "Comuna" and "Parish"; nor are words that are part of a
+only, marks no settled level and gives no marker. These words are not
+markers, because in at least one country each names a unit below the county
+or the municipio, a place of its own inside it: "Twp." (township),
+"Parr."/"Parroquia", "Freguesia", "Socken", "Sogn", "Corregimiento",
+"Gmina", "Dist.", "Distr.", "District", "Distrito" and "Raion" (a Costa
+Rican district lies inside its canton, a Peruvian one inside its
+province), "Taluk", "Tehsil", "Bezirk", "Arrondissement", "Comuna" and
+"Parish". So "Dist. Turrialba", "Distr. Turrialba", "Turrialba District"
+and "Dist. Chanchamayo" beside a settled county of that name are places,
+and "Distr. Kandy" goes to review. Nor are words that are part of a
 place's name or name a feature ("St.", "Mt.", "Lk.", "Arr.", "Brgy.",
 "Frazione"), words whose level differs between countries ("Cant.", "Amt",
 "Fylke", "Okrug"), "Canton" and words a label uses for something else.
@@ -1331,7 +1339,7 @@ it is also the Spanish "Cerro", a hill ("Co. Chirripo"). The feature words
 are a second data list (`admin_markers.PLACE_FEATURE_WORDS`): Mt, Mtn,
 Mte, Mts, Cr, Ck, Cerro, Run, R, Rio, L, Lago, Lac, Is, Isla, Pt, Pta,
 Punta, Pk, Peak, Vol, Volcan, Fca, Finca, Hda, Hacienda, Sta, Sto, San, B,
-Bay, Kt and others, compared folded ("Rio" and "Volcan" with or without
+Bay, Kt, Cv, Cove, Min, Mina, Mine and others, compared folded ("Rio" and "Volcan" with or without
 their accents). Any other word keeps the text a place: "E. slope Mt.
 McKinley, Davao Prov." beside the settled province "Davao, Prov." still
 settles as the precise location; "Ionia Twp." beside the settled county

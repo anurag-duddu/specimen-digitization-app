@@ -2870,11 +2870,13 @@ def a_county_settled_before(run, county):
     ("Kreis Ahrweiler", "Ahrweiler", False),
     # PR #309's re-review: "Distr." is no marker, so this goes to review.
     ("Distr. Kandy", "Kandy", True),
+    # A Costa Rican district inside its canton, settled as the county.
+    ("Dist. Turrialba", "Turrialba", True),
     ("Cook Co.", "Cook", False),
     # Controls: a hill, and a distance from the town.
     ("Co. Chirripo", "Chirripo", True),
     ("5 km N of Kandy", "Kandy", True),
-], ids=["germany-kreis", "sri-lanka-distr", "us-co", "costa-rica-cerro", "a-distance"])
+], ids=["germany-kreis", "sri-lanka-distr", "costa-rica-dist", "us-co", "costa-rica-cerro", "a-distance"])
 def test_the_organisers_precise_location_that_only_marks_the_settled_county_is_not_on_the_label(
         tmp_path, line, county, kept):
     """Labels from other countries: the organiser offers the county's line,
