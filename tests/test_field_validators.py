@@ -619,6 +619,13 @@ def test_a_year_outside_1750_to_the_current_year_is_no_date(
         "12 vi 1946",
         # U+0130 matches I only under Unicode case rules: no numeral.
         "12." + chr(0x130) + ".46",
+        # Nor does the dotless i (U+0131), whose upper case is I (review 297c, note 6).
+        "3." + chr(0x131) + "x.1946",
+        "3." + chr(0x131) + "v.1948",
+        "14." + chr(0x131) + "x.46",
+        "1946." + chr(0x131) + "x.14",
+        "3." + chr(0x131) + "x",
+        "3-5." + chr(0x131) + "x.1946",
     ],
 )
 def test_a_literal_no_listed_notation_fits_is_no_date(literal):

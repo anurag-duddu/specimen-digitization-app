@@ -12,7 +12,7 @@ from types import SimpleNamespace
 import pytest
 
 from specimen_digitization.application.domain import FieldValue, LookupStatus, ValueState
-from specimen_digitization.field_research import checks, derive
+from specimen_digitization.field_research import checks, date_lines, derive
 from specimen_digitization.field_research import step as field_step
 
 PILOT = {"version": "date-rules-v1", "two_digit_year_century": 1900, "roman_numeral_months": True}
@@ -179,6 +179,8 @@ def test_a_two_line_literal_with_another_date_on_its_lines_is_no_date(text):
         ("Guatemala, IV-25\n1948-2", "IV-25\n1948"),
         ("Guatemala, IV-25\n1948 5", "IV-25\n1948"),
         ("Guatemala, IV-25\n1950 det. J. Smith", "IV-25\n1950"),
+        # A collector after the year is allowed on one line only (coordinator, PR #306).
+        ("Guatemala, IV-25\n1948 leg. R.D. Mitchell", "IV-25\n1948"),
         # The year ends the line above the date and does not stand alone there.
         ("det. J. Smith 1950\nIV-25 Guatemala", "1950\nIV-25"),
         ("El. 1948\nIV-25 Guatemala", "1948\nIV-25"),
@@ -366,11 +368,150 @@ def test_a_year_line_with_the_mark_a_sentence_leaves_is_read_under_every_rule(li
     assert row is not None and '"split_lines"' in row.excerpt
 
 
+# Every line break str.splitlines() splits at is a line break to the date check, as it is
+# to the checks and the step (review 297, round 3): the parser's \s used to join
+# "3 Sept." and "1946" across U+2028, NEL, VT and FF with no split-line rule applied.
+BREAKS = {
+    "LF": "\n", "CRLF": "\r\n", "CR": "\r", "VT": "\x0b", "FF": "\x0c", "FS": "\x1c", "GS": "\x1d",
+    "RS": "\x1e", "NEL": "\x85", "LS": "\N{LINE SEPARATOR}", "PS": "\N{PARAGRAPH SEPARATOR}",
+}
+
+
+@pytest.mark.parametrize("name", list(BREAKS))
+def test_every_line_break_splitlines_knows_is_judged_by_the_split_line_rules(name):
+    br = BREAKS[name]
+    another_date, word_after = f"3.VI.1947, 3 Sept.{br}1946", f"Guatemala, 3 Sept.{br}1946 leg. Smith"
+
+    assert date(f"3 Sept.{br}1946", [another_date]).notes == ("split_lines_hold_another_date",)
+    assert date(f"3 Sept.{br}1946", [word_after]).notes == ("split_lines_year_not_alone",)
+    for text in (another_date, word_after):
+        row = field_step._check_row("date_visited_from", ("date_parser",), f"3 Sept.{br}1946", "1946-09-03",
+            texts=[text], date_rules=PILOT, asset_id=None, blobs=None)
+        assert row is None, text
+
+
+@pytest.mark.parametrize("name", list(BREAKS))
+def test_every_line_break_splitlines_knows_joins_a_date_and_its_year_under_the_rules(name):
+    br = BREAKS[name]
+
+    split = date(f"IV-25{br}1948", [f"Guatemala, IV-25{br}1948, R.D. Mitchell"])
+    below = date("IV-25", [f"Guatemala, IV-25{br}1948{br}R.D. Mitchell"])
+    above = date("IV-25", [f"Guatemala{br}1948{br}IV-25 Yepocapa"])
+
+    assert split.values == ("1948-04-25",) and split.readings[0].via == ("split_lines",)
+    assert below.values == ("1948-04-25",) and below.readings[0].via == ("year_on_next_line",)
+    assert above.values == ("1948-04-25",) and above.readings[0].via == ("year_on_previous_line",)
+
+
 def test_a_reading_that_cannot_be_named_is_refused_not_dropped():
     with pytest.raises(ValueError):
         date("IV-25", ["Guatemala, IV-25\n1948", "Guatemala, IV-25\n1949"], reading_names=["1A"])
     with pytest.raises(ValueError):
         date("IV-25", ["Guatemala, IV-25\n1948"], reading_names=["1A", "1B"])
+
+
+# -- a bare number beside an elevation, a depth, a unit or a determination is not a year -----------
+# Review 297 (rounds 2 and 3): "Alt." ending the line above "1900" lent 1900 as the year of
+# "IV-25" below it. Coordinator's ruling on PR #306 (2026-10-10): a marker counts only when
+# it is attached to the year (a unit right after it, here or starting the line below) or the
+# line above is only a marker waiting for its number; a measurement with its own number
+# elsewhere on these lines does not taint the year.
+
+O_UMLAUT = "\N{LATIN SMALL LETTER O WITH DIAERESIS}"
+MEASURE = "split_lines_year_may_be_a_measurement"
+DETERMINATION = "split_lines_year_may_be_a_determination"
+MARKED_YEARS = [
+    # The reading's text, the organiser's two-line literal, the note; the bare day and month
+    # (the literal's other line) must not borrow the year either.
+    ("Guatemala\nAlt.\n1900\nIV-25 Yepocapa", "1900\nIV-25", MEASURE),
+    ("Guatemala\nElev.\n1900\nIV-25 Yepocapa", "1900\nIV-25", MEASURE),
+    ("Guatemala\nEl.\n1900\nIV-25 Yepocapa", "1900\nIV-25", MEASURE),
+    ("Guatemala\nalt\n1900\nIV-25 Yepocapa", "1900\nIV-25", MEASURE),
+    ("Guatemala\naltitude\n1900\nIV-25 Yepocapa", "1900\nIV-25", MEASURE),
+    ("Guatemala\nm.s.n.m.\n1900\nIV-25 Yepocapa", "1900\nIV-25", MEASURE),
+    ("Antioquia, Colombia\nAltitud:\n1900\n25.IV Medellin", "1900\n25.IV", MEASURE),  # es
+    ("Minas Gerais\nAltura\n1900\n25.IV Ouro Preto", "1900\n25.IV", MEASURE),  # pt
+    ("Is\N{LATIN SMALL LETTER E WITH GRAVE}re\nAltitude\n1900\n25.IV Grenoble", "1900\n25.IV", MEASURE),  # fr
+    ("Trentino\nQuota\n1900\n25.IV Bolzano", "1900\n25.IV", MEASURE),  # it
+    (f"Tirol\nH{O_UMLAUT}he\n1900\n25.IV Innsbruck", "1900\n25.IV", MEASURE),  # de
+    (f"Tirol\nSeeh{O_UMLAUT}he\n1900\n25.IV Innsbruck", "1900\n25.IV", MEASURE),  # de
+    ("Andes\nAltitudo\n1900\n25.IV", "1900\n25.IV", MEASURE),  # la
+    ("Lago Titicaca\nProfundidad\n1900\n25.IV", "1900\n25.IV", MEASURE),  # es, a depth
+    # A line above that ends in the marker, with no number of its own.
+    ("Guatemala, Alt.\n1900\nIV-25 Yepocapa", "1900\nIV-25", MEASURE),
+    ("Guatemala, Elev.:\n1900\nIV-25 Yepocapa", "1900\nIV-25", MEASURE),
+    # A unit attached right after the year: starting the line below, or after a period
+    # or a comma with no number of its own.
+    ("Guatemala, IV-25\n1900\nm, R.D. Mitchell", "IV-25\n1900", MEASURE),
+    ("Guatemala, IV-25\n1900\nmsnm", "IV-25\n1900", MEASURE),
+    ("Guatemala, IV-25\n1948. m", "IV-25\n1948", MEASURE),
+    ("Guatemala, IV-25\n1948.m", "IV-25\n1948", MEASURE),
+    ("Guatemala, IV-25\n1948.ft", "IV-25\n1948", MEASURE),
+    ("Guatemala, IV-25\n1948, m", "IV-25\n1948", MEASURE),
+    # A determination on the year's line or above it.
+    ("Guatemala\ndet. J. Smith\n1950\nIV-25 Yepocapa", "1950\nIV-25", DETERMINATION),
+    ("Guatemala, IV-25\n1948, det. R.D. Mitchell", "IV-25\n1948", DETERMINATION),
+]
+
+
+@pytest.mark.parametrize(("text", "literal", "note"), MARKED_YEARS, ids=[t[0] for t in MARKED_YEARS])
+def test_a_year_beside_a_measurement_or_a_determination_is_no_date_s_year(text, literal, note):
+    split = date(literal, [text])
+    alone = date(date_lines.split_literal(literal)[0], [text])
+
+    assert split.status == LookupStatus.NO_MATCH and split.notes == (note,), split.as_dict()
+    assert alone.status == LookupStatus.AMBIGUOUS and "year_missing" in alone.notes, alone.as_dict()
+    assert all(r.via == () for r in alone.readings)
+
+
+@pytest.mark.parametrize(("text", "literal", "note"), MARKED_YEARS, ids=[t[0] for t in MARKED_YEARS])
+def test_the_step_keeps_no_row_for_a_year_beside_a_measurement_or_a_determination(text, literal, note):
+    for quoted in (literal, date_lines.split_literal(literal)[0]):
+        for value in ("1900-04-25", "1948-04-25", "1950-04-25"):
+            row = field_step._check_row("date_visited_from", ("date_parser",), quoted, value,
+                texts=[text], date_rules=PILOT, asset_id=None, blobs=None)
+            assert row is None, (quoted, value)
+
+
+@pytest.mark.parametrize(
+    ("text", "literal", "iso"),
+    [
+        # A marker two lines above the year, or with a number of its own on the line below it.
+        ("Alt. 1500 m\nGuatemala, IV-25\n1948, R.D. Mitchell", "IV-25\n1948", "1948-04-25"),
+        ("Guatemala, IV-25\n1948\nElev. 1500 m", "IV-25\n1948", "1948-04-25"),
+        # A measurement with its own number, after a comma on the year's line or on the line
+        # above, is not attached to the year (coordinator's ruling on PR #306; 5f2937c85
+        # refused these).
+        ("Guatemala, IV-25\n1948, 1,900 m", "IV-25\n1948", "1948-04-25"),
+        ("Guatemala, IV-25\n1948, 1900m", "IV-25\n1948", "1948-04-25"),
+        ("Guatemala, IV-25\n1948, 4800 ft.", "IV-25\n1948", "1948-04-25"),
+        ("Guatemala, IV-25\n1948, 6000 pies", "IV-25\n1948", "1948-04-25"),
+        ("Yepocapa, 4800 ft. IV-25\n1948", "IV-25\n1948", "1948-04-25"),
+        ("Alt. 1500 m\n1948\nIV-25 Guatemala", "1948\nIV-25", "1948-04-25"),
+        ("Guatemala, IV-25\n1948, Alt. 1500 m", "IV-25\n1948", "1948-04-25"),
+        # Words that are no marker: "El" without its period (the article), "foot of", "Prof.",
+        # a capital "M." (an initial), a distance in miles (review 297c, note 3, as documented).
+        ("El Salvador\n1948\nIV-25 Chalatenango", "1948\nIV-25", "1948-04-25"),
+        ("Guatemala, foot of Volcan Fuego, IV-25\n1948", "IV-25\n1948", "1948-04-25"),
+        ("leg. Prof. J. Smith\n1948\nIV-25 Guatemala", "1948\nIV-25", "1948-04-25"),
+        ("Guatemala, IV-25\n1948\nM. Smith", "IV-25\n1948", "1948-04-25"),
+        ("Guatemala, IV-25\n1948, M. Smith", "IV-25\n1948", "1948-04-25"),
+        ("Guatemala, Sept. 3\n1948. 5 mi W", "Sept. 3\n1948.", "1948-09-03"),
+        # A determination on the date's own line: the determination's date, written whole.
+        ("det. J. Smith IV-25\n1950", "IV-25\n1950", "1950-04-25"),
+        # Other languages' labels with no marker beside the year.
+        ("Antioquia, 25.IV\n1948, leg. J. Restrepo", "25.IV\n1948", "1948-04-25"),
+        ("Minas Gerais, 25 de abril\n1948", "25 de abril\n1948", "1948-04-25"),
+        ("Innsbruck, 25. April\n1948", "25. April\n1948", "1948-04-25"),
+    ],
+)
+def test_a_year_with_no_marker_beside_it_still_joins_its_date(text, literal, iso):
+    result = date(literal, [text])
+    row = field_step._check_row("date_visited_from", ("date_parser",), literal, iso,
+        texts=[text], date_rules=PILOT, asset_id=None, blobs=None)
+
+    assert result.status == LookupStatus.SUCCESS and result.values == (iso,), result.as_dict()
+    assert row is not None
 
 
 # -- ranges and the field that takes their end ---------------------------------------------------
@@ -462,6 +603,92 @@ def test_a_year_written_whole_records_no_century_rule():
     assert row is not None and "century_rule" not in row.excerpt
 
 
+# -- a range written apart from its year (review 297c, note 4) -------------------------------------
+# "3-5.IX" above "1946" was no_match with no note: the range never took the year. It now reads
+# under the same rules as a single date split from its year, on two lines or on one.
+
+U_CIRCUMFLEX = "\N{LATIN SMALL LETTER U WITH CIRCUMFLEX}"
+SPLIT_RANGES = [
+    # literal, the reading's text, start, end, the rule, how the year was found
+    ("3-5.IX\n1946", "Davao, 3-5.IX\n1946, F. G. Werner", "1946-09-03", "1946-09-05", "range:day..date",
+     "split_lines"),
+    ("3.IX-5.X.\n1946", "Davao, 3.IX-5.X.\n1946", "1946-09-03", "1946-10-05", "range:day-month..date",
+     "split_lines"),
+    ("VIII-IX\n1946", "Davao, VIII-IX\n1946", "1946-08", "1946-09", "range:month..month-year", "split_lines"),
+    ("1946\n3-5.IX", "Mindanao\n1946\n3-5.IX Davao", "1946-09-03", "1946-09-05", "range:day..date",
+     "split_lines"),
+    ("12-14 de septiembre\n1946", "Cali, 12-14 de septiembre\n1946", "1946-09-12", "1946-09-14",
+     "range:day..date", "split_lines"),
+    (f"3-5 ao{U_CIRCUMFLEX}t\n1946", f"Grenoble, 3-5 ao{U_CIRCUMFLEX}t\n1946", "1946-08-03", "1946-08-05",
+     "range:day..date", "split_lines"),
+    ("10.-12. Mai\n1946", "Innsbruck, 10.-12. Mai\n1946", "1946-05-10", "1946-05-12", "range:day..date",
+     "split_lines"),
+    ("Sept. 3-5\n1946", "Davao, Sept. 3-5\n1946", "1946-09-03", "1946-09-05", "range:month-day..day-year",
+     "split_lines"),
+    ("3-5 sett.\n'46", "Bolzano, 3-5 sett.\n'46", "1946-09-03", "1946-09-05", "range:day..date", "split_lines"),
+    ("3-5.IX, 1946", "Davao, 3-5.IX, 1946", "1946-09-03", "1946-09-05", "range:day..date", "one_line"),
+    ("3.IX-5.X, 1946", "Brasil, Nova Teutonia, 3.IX-5.X, 1946", "1946-09-03", "1946-10-05",
+     "range:day-month..date", "one_line"),
+    ("VIII-IX, 1946", "Davao, VIII-IX, 1946", "1946-08", "1946-09", "range:month..month-year", "one_line"),
+]
+
+
+@pytest.mark.parametrize(("literal", "text", "start", "end", "order", "via"), SPLIT_RANGES,
+    ids=[r[0] for r in SPLIT_RANGES])
+def test_a_range_written_apart_from_its_year_reads_under_the_same_rules(literal, text, start, end, order, via):
+    first, last = date(literal, [text]), date(literal, [text], part="end")
+    start_row = field_step._check_row("date_visited_from", ("date_parser",), literal, start,
+        texts=[text], date_rules=PILOT, asset_id=None, blobs=None)
+    end_row = field_step._check_row("date_visited_to", ("date_parser",), literal, end,
+        texts=[text], date_rules=PILOT, asset_id=None, blobs=None)
+
+    assert first.status == LookupStatus.SUCCESS, first.as_dict()
+    [reading] = first.readings
+    assert (reading.iso, reading.end, reading.order, reading.via) == (start, end, order, (via,))
+    assert first.values == (start,) and last.values == (end,)
+    assert start_row is not None and end_row is not None
+
+
+@pytest.mark.parametrize(
+    ("literal", "text", "note"),
+    [
+        # The year makes the range end before it starts, or the line is no range the parser reads:
+        # each now names why (52a8f393c said nothing).
+        ("28.XII-3.I\n1947", "Davao, 28.XII-3.I\n1947", "range_end_before_start"),
+        ("28.XII-3.I, 1947", "Davao, 28.XII-3.I, 1947", "range_end_before_start"),
+        ("3.9-5.10\n1946", "Davao, 3.9-5.10\n1946", "split_lines_date_not_read"),
+        ("Davao\n1948", "Mindanao, Davao\n1948, Hoogstraal", "split_lines_date_not_read"),
+        ("31.IV, 1948", "Davao, 31.IV, 1948", "invalid_calendar_date"),
+        # The split-line rules refuse it as they refuse a single date.
+        ("3-5.IX\n1946", "Davao, 3-5.IX\n1946 m", "split_lines_year_not_alone"),
+        ("1946\n3-5.IX", "Alt.\n1946\n3-5.IX Davao", "split_lines_year_may_be_a_measurement"),
+        ("3-5.IX\n1946", "Davao, 3.VI, 3-5.IX\n1946", "split_lines_hold_another_date"),
+        ("3-5.IX, 1946", "Davao, 3-5.IX, 1946 m", "one_line_year_not_alone"),
+        ("3-5.IX.1946\n1946", "Davao, 3-5.IX.1946\n1946", "split_lines_state_two_years"),
+    ],
+)
+def test_a_range_apart_from_its_year_that_does_not_read_names_why(literal, text, note):
+    result = date(literal, [text])
+
+    assert result.status == LookupStatus.NO_MATCH and result.notes == (note,), result.as_dict()
+    for key, value in (("date_visited_from", "1946-09-03"), ("date_visited_to", "1946-09-05"),
+                       ("date_visited_from", "1947-12-28")):
+        assert field_step._check_row(key, ("date_parser",), literal, value, texts=[text], date_rules=PILOT,
+            asset_id=None, blobs=None) is None
+
+
+@pytest.mark.parametrize(("literal", "value"), [("III-V-46", "1946-03"), ("I-II-46", "1946-01")])
+def test_a_month_range_shaped_like_a_code_settles_no_field(literal, value):
+    # Review 297 (round 2): "III-V-46" read as March to May 1946; a Roman code of that
+    # shape would have settled. It is no date, so neither date field keeps a row.
+    text = f"Davao {literal} Werner"
+
+    assert date(literal, [text]).notes == ("range_shaped_like_a_code",)
+    for key in ("date_visited_from", "date_visited_to"):
+        assert field_step._check_row(key, ("date_parser",), literal, value, texts=[text], date_rules=PILOT,
+            asset_id=None, blobs=None) is None
+
+
 # -- G44 never copies a range's start to its end ---------------------------------------------------
 
 
@@ -472,7 +699,10 @@ def run_with(start: FieldValue, end: FieldValue):
 @pytest.mark.parametrize(
     ("literal", "copied"),
     [("3 sept. '46", True), ("IV-25\n1948", True), ("3-5.IX.1946", False), ("VIII-IX.46", False),
-     ("3.IX-5.X.1946", False), ("10-12 Sept. 1946", False)],
+     ("3.IX-5.X.1946", False), ("10-12 Sept. 1946", False),
+     # A range written apart from its year is a range too (review 297c, note 4).
+     ("3-5.IX\n1946", False), ("1946\n3-5.IX", False), ("VIII-IX\n1946", False),
+     ("3-5.IX, 1946", False), ("VIII-IX, 1946", False), ("IV-25 1948", True)],
 )
 def test_a_range_s_start_is_not_copied_to_its_end(literal, copied):
     start = FieldValue(state=ValueState.SUPPORTED, literal=literal, parsed="1946-09-03", layer="settled")

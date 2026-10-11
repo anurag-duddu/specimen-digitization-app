@@ -15,13 +15,15 @@ works out "all possible cases"), but each rule is explicit and none guesses:
   written first (1946-04-05) is read the same way and never taken for the ISO
   order.
 - A range ("3-5.IX.1946", "VIII-IX.46", "3.IX-5.X.1946") is two dates, the first
-  borrowing what it leaves out (the month, the year) from the second.
+  borrowing what it leaves out (the month, the year) from the second. A range
+  whose year is written apart from it ("3-5.IX" above "1946") takes that year
+  only when the caller passes it (`ranges(text, year)`).
 """
 
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from .date_months import MONTH_WORDS, fold
 
@@ -113,20 +115,29 @@ COMPLETE = frozenset({
     "year-month-day", "year-monthname-day",
 })
 RANGE_DASH = re.compile(f"[{DASHES}]")
+# Two Roman months and a bare two-digit number, all joined by hyphens (III-V-46,
+# I-II-46): a range of months, or a code of the shape the pilot's slide codes have
+# (IV-29-68-4). Nothing in it says which, so it is no date (review 297, round 2:
+# origin/main refused it, and nothing yet shows the shape is only ever a range).
+_NUMERAL = "(?:" + "|".join(reversed(ROMAN)) + ")"
+CODE_SHAPED_RANGE = re.compile(rf"{_NUMERAL}\s*-\s*{_NUMERAL}\s*-\s*[0-9]{{2}}")
 
 
 def normalize(text: str) -> str:
     """The text a notation is matched against: the punctuation a line or a
     sentence may add after it (a closing period, comma or semicolon) left off.
     Nothing else changes: a letter that is a numeral only under Unicode case
-    rules (U+0130) must stay what it is."""
+    rules (U+0130, U+0131) must stay what it is."""
     return text.strip().rstrip(" .,;:")
 
 
 def month_of(group: dict) -> int | None:
-    """The month a matched Roman numeral or month word names."""
-    if group.get("roman"):
-        return ROMAN_MONTHS.get(group["roman"].upper())
+    """The month a matched Roman numeral or month word names. A numeral is written
+    in ASCII letters only: a case-insensitive pattern also lets the dotless i
+    (U+0131) and the dotted capital I (U+0130) match I, and the dotless i's
+    upper case is I, so neither may be read as I (3.<U+0131>x.1946 is no date)."""
+    if numeral := group.get("roman"):
+        return ROMAN_MONTHS.get(numeral.upper()) if numeral.isascii() else None
     return MONTH_WORDS.get(fold(group.get("name") or "").lower())
 
 
@@ -202,11 +213,29 @@ def _combine(left: Part, right: Part) -> tuple[str, Spec, Spec] | None:
     return None
 
 
-def ranges(text: str) -> list[tuple[str, Spec, Spec]]:
+def _given_year(left: Part, right: Part, year: str) -> Part | None:
+    """The second end of a range whose year is written apart from it (the line
+    below, or after a comma): that end with the year, when neither end states a
+    year of its own and the end is a day and month ("3-5.IX" and 1946), a month
+    ("VIII-IX" and 1946), or the day after a month and day ("Sept. 3-5" and 1946)."""
+    if left.year is not None or right.year is not None:
+        return None
+    if right.kind in ("day-month", "month-day"):
+        return replace(right, kind="date", year=year)
+    if right.kind == "month":
+        return replace(right, kind="month-year", year=year)
+    if right.kind == "day" and left.kind == "month-day":
+        return replace(right, kind="day-year", year=year)
+    return None
+
+
+def ranges(text: str, year: str | None = None) -> list[tuple[str, Spec, Spec]]:
     """Every distinct way `text` reads as a range of two dates joined by a dash.
 
     The text is split at each dash; each side must read as an end by itself, and
-    the first only borrows what it leaves out from the second."""
+    the first only borrows what it leaves out from the second. With `year` (a year
+    the label writes apart from the range, which the caller has checked) the second
+    end takes that year, and neither end may state its own (`_given_year`)."""
     found = []
     for dash in RANGE_DASH.finditer(text):
         left_text = text[: dash.start()].strip(" .,;:")
@@ -215,6 +244,7 @@ def ranges(text: str) -> list[tuple[str, Spec, Spec]]:
             continue
         for left in _parts(left_text):
             for right in _parts(right_text):
-                if (pair := _combine(left, right)) is not None and pair not in found:
+                end = right if year is None else _given_year(left, right, year)
+                if end is not None and (pair := _combine(left, end)) is not None and pair not in found:
                     found.append(pair)
     return found

@@ -31,6 +31,8 @@ from specimen_digitization.research_harness.taxonomy import taxonomy_scientific_
 from . import date_lines
 
 NOT_IN_SOURCE = "literal_not_in_source"
+# A two-line literal whose line beside the year is no date the parser reads with it.
+SPLIT_DATE_NOT_READ = "split_lines_date_not_read"
 # The date parser's notes for a literal that is (part of) a hyphen-joined code.
 _CODE_NOTES = frozenset({"slide_code", "part_of_hyphenated_token"})
 # The part of a date literal a field takes: Date Visited To takes a range's end
@@ -66,7 +68,8 @@ class DateReading:
     end_precision: Literal["day", "month", "year"] | None = None
     # How the year was found when the notation gives none: "year_literal" (the
     # year the expert passed), "year_on_next_line" or "year_on_previous_line"
-    # (the adjacent line, date_lines), "split_lines" (a literal of two lines).
+    # (the adjacent line, date_lines), "split_lines" (a literal of two lines),
+    # "one_line" (a day and month, then their year, on one line).
     via: tuple[str, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
@@ -184,7 +187,9 @@ def parse_date(
     alone can take. A month and day with no year also take the year of a line
     just above or below that holds nothing but the year (`date_lines`), and a
     literal of two lines (the date, then its year, or the reverse) is read as one
-    date, under the rules of that module. A literal that is part of a
+    date, under the rules of that module, as is a day and month followed on the
+    same line by their year that no notation reads whole ("IV-25 1948",
+    "25.IV, 1948"). A literal that is part of a
     slide-preparation code, or of any other hyphen-joined token, in any reading is
     no date. Each reading that holds the literal is read by its own text, and
     readings that give different results leave the date ambiguous, naming them
@@ -233,6 +238,14 @@ def _date_run(literal: str, name: str, text: str, year_literal: str | None,
     literal gives when the literal itself and the expert give none."""
     result = date_parser(literal, source_text=text, year_literal=year_literal, date_rules=rules,
         year_literal_decides=True)
+    if result.outcome == LookupStatus.NO_MATCH and not result.warnings and (
+            one := date_lines.one_line_literal(literal)) is not None:
+        return _one_line_run(literal, one, name, text, rules) or _run(name, result, ())
+    # A year the literal writes itself is no year when a unit is attached right after it,
+    # or an elevation word right before it ("25.IV 1900 m", "Alt. 1948"), whatever
+    # notation reads the date.
+    if result.parsed and not result.parsed["year_literal"] and date_lines.year_is_a_measurement(literal, text):
+        return _Run(name, LookupStatus.NO_MATCH, (), (date_lines.ONE_LINE_MEASUREMENT,))
     via = ("year_literal",) if year_literal and result.parsed and result.parsed["year_literal"] else ()
     if year_literal is None and "year_missing" in result.warnings:
         beside = date_lines.year_beside(literal, text)
@@ -245,6 +258,25 @@ def _date_run(literal: str, name: str, text: str, year_literal: str | None,
     return _run(name, result, via)
 
 
+def _one_line_run(literal: str, one: tuple[str, str], name: str, text: str,
+        rules: dict | None) -> _Run | None:
+    """A day and month, then their year on the same line, that no notation reads
+    whole ("IV-25 1948", "IV-25, 1948", "25.IV, 1948"): one date under the rules of
+    a year on the line below its date (`date_lines.one_line_problem`). None when the
+    first part is no date that states no year: the literal is then no date."""
+    date_part, year = one
+    result = date_parser(date_part, source_text=text, year_literal=year, date_rules=rules,
+        year_literal_decides=True)
+    if not (result.parsed and result.parsed["year_literal"]):
+        # A day and month the calendar refuses, or a range that ends before it
+        # starts, say so; anything else the parser does not read is no date.
+        return None if result.parsed or not result.warnings else _Run(
+            name, LookupStatus.NO_MATCH, (), tuple(result.warnings))
+    if (problem := date_lines.one_line_problem(literal, text)) is not None:
+        return _Run(name, LookupStatus.NO_MATCH, (), (problem,))
+    return _run(name, result, ("one_line",))
+
+
 def _split_run(literal: str, split: tuple[str, str], name: str, text: str, rules: dict | None) -> _Run:
     """A literal of two lines, the date and its year, as one date in one reading."""
     date_part, year = split
@@ -252,9 +284,13 @@ def _split_run(literal: str, split: tuple[str, str], name: str, text: str, rules
         return _Run(name, LookupStatus.NO_MATCH, (), (problem,))
     result = date_parser(date_part, source_text=text, year_literal=year, date_rules=rules,
         year_literal_decides=True)
-    # A date that states a year of its own is not a date split from its year.
+    # A date that states a year of its own is not a date split from its year. A
+    # line the parser does not read with the year says why: the parser's own note
+    # (a range that ends before it starts, a day the calendar refuses), or
+    # split_lines_date_not_read.
     if not (result.parsed and result.parsed["year_literal"]):
-        notes = ("split_lines_state_two_years",) if result.parsed else ()
+        notes = ("split_lines_state_two_years",) if result.parsed else (
+            tuple(result.warnings) or (SPLIT_DATE_NOT_READ,))
         return _Run(name, LookupStatus.NO_MATCH, (), notes)
     return _run(name, result, ("split_lines",))
 
