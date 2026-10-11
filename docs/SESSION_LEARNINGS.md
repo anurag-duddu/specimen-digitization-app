@@ -19178,3 +19178,18 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
 - Unresolved:
   - (a) The colonies with reassigned codes that the review named come from its live Wikidata query. The test here is constructed in their shape.
   - (b) One independent review of this head and green required checks: Not confirmed at this entry.
+
+## 2026-10-11 - The field deadline test runs on a still clock
+
+- Task: Claude session (worktree `.claude/worktrees/eloquent-lumiere-496801`), branch `claude/deterministic-field-deadline-test` from origin/main 3b40a924, rebased onto abe9dde1. Commit 6ba2411f (test only) and the one holding this entry. No merge, deploy, `gcloud` or `firebase` command.
+- Cause: `tests/field_research/test_experts.py::test_the_field_deadline_is_a_timeout` (added in 43ef4f04) gave `make_resolver` a 0.05 s field deadline on wall time. Under load the deadline ran out before the first model request. The outcome was still `timeout` but with `model_calls=0` and cost 0, so `cost.spent_micros == outcome.cost_micros > 0` failed.
+- Fix: the test runs the resolver with `asyncio.Runner(loop_factory=StillClockLoop)`. `StillClockLoop` is a `SelectorEventLoop` whose `time()` only the test moves. The fake model calls `loop.work(5)`, which starts a 5 s sleep and then moves the clock 5 s. The test also asserts `outcome.model_calls == 1`. No production code changed.
+- Evidence: each run below is a separate `uv run pytest` process, with LANG/LC_ALL=en_US.UTF-8 and TZ=America/Chicago. During the runs, `uv run --with pytest-xdist pytest -n 12 tests --ignore=tests/field_research/test_experts.py` loaded the machine.
+  - main's version: 10 runs, 10 failed, every one with `model_calls=0` (1-min load average 21.7 to 34.3).
+  - New version: 10 of 10 passed at 3b40a924 (load average 33.8 to 41.5), and again 10 of 10 at 6ba2411f (25.3 to 37.5).
+  - Mutants of `experts.py`, each reverted after its run: with `asyncio.timeout(None)`, or with the `except TimeoutError` branch deleted, the new test fails (`'model_error' == 'timeout'`) in under 1 s. Neither mutant hangs.
+  - `tests/field_research` in one process at 6ba2411f: 2010 passed.
+  - `scripts/ci/python_shards.py local --count 6` at 3b40a924 plus this change: 17 failed, all in other files' wall-time deadline, child-process or tracing tests. In one process right after `test_experts.py`, 16 of the 17 passed. `tests/test_worker_cleanup_cutoff.py::test_actual_production_handler_cannot_allow_sdk_continuation` failed in all 6 runs (the shard run and 5 reruns, 1-min load average 22.8 to 34.5 where recorded): its child does not write `started` within the 2 s deadline. Its code is unchanged by this branch.
+  - Not run: the Flutter gates of `scripts/ci/verify.sh` (no Dart changed). Hosted CI: Not confirmed at this entry.
+- Reusable learnings: (1) `asyncio.timeout` schedules its cancel on `loop.time()`, so a loop subclass that overrides `time()`, run through `asyncio.Runner(loop_factory=...)`, controls the deadline without touching production code or the global event loop. (2) To make a fake model "take" N seconds on such a clock, call `call_soon(advance)` and then `await asyncio.sleep(N)`. The clock moves after the sleep's timer is set, so the deadline and the sleep both fire on the next turn. With the deadline gone, the sleep still ends, so a mutant fails instead of hanging.
+- Unresolved: the other wall-time deadline tests above (`test_worker_cleanup_cutoff`, `test_model_runtime`'s whole-model deadline, `test_sam3_runtime`'s total deadline, `test_bounded_effect`'s drip, and the reader deadline tests) can fail under heavy local load. Only `test_worker_cleanup_cutoff`'s failure was reproduced on rerun.
