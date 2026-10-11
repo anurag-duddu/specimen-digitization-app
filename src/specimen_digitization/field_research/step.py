@@ -46,6 +46,7 @@ import os
 import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import asynccontextmanager, nullcontext
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -626,65 +627,86 @@ def _overlap(spans, others) -> bool:
         for name, start, end in spans for other, other_start, other_end in others)
 
 
+# The layers of a value settled from the label: its text as written (G38's
+# verbatim layer) or settled by its sources and checks. A derived value is
+# computed, never read on the label, and the organiser's and the keyed-line
+# parser's values have no layer.
+SETTLED_LAYERS = frozenset({"verbatim", "settled"})
+
+
+def _claims_text(key: str, value: FieldValue, human: frozenset[str]) -> bool:
+    """Whether a stored value is settled, so its literal claims its text
+    (_taken; rule A's organiser texts, mark_not_on_label): supported, with a
+    literal, in a settled layer (SETTLED_LAYERS), or a person's decision that
+    is not derived. An organiser's value, a value research did not settle and
+    a derived value never claim text."""
+    return (value.state == ValueState.SUPPORTED and bool(value.literal and value.literal.strip())
+        and (value.layer in SETTLED_LAYERS or (key in human and value.layer != "derived")))
+
+
+def _value_spans(value: FieldValue, readings: Sequence[Reading], evidence: Mapping[str, Evidence]):
+    """Where a stored value's literal stands as whole tokens (_occurrences) in
+    the readings of its labels: its source region, the regions of its label
+    rows, and those of the readings it keeps a verbatim of or was settled by."""
+    observed = {*value.verbatim_by_observation, *value.settled_observation_ids}
+    regions = ({value.source_region_id} - {None}) | {evidence[i].region_id for i in value.evidence_ids
+        if i in evidence and evidence[i].kind == "literal"} | {r.region_id for r in readings
+        if r.observation_id in observed}
+    return _occurrences(value.literal, [r for r in readings if r.region_id in regions])
+
+
 def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldOutcome],
-        readings: Sequence[Reading]) -> dict[str, str]:
+        readings: Sequence[Reading], settled: Mapping[str, FieldValue]) -> dict[str, str]:
     """The fields whose resolved answer gives a literal its expert read in the
     transcript (agreement.literal_basis: TRANSCRIPT) when that same text is
     claimed for a field of another kind (agreement.may_share_text), each
     with that other field. The text is the literal's runs of whole words
     (agreement.verbatim_runs) in the readings of the labels its answer
-    names; it is claimed when it overlaps, in the same reading, the literal
-    of another field's answer of this attempt (resolved, or
-    sources_cannot_resolve quoting it), wherever that literal stands as
-    whole tokens (_occurrences) in the readings of the labels that answer
-    names, the literal of another field's value settled before this attempt
-    (or a person's), so, in the readings of its labels, or another field's
-    organiser candidate (the
-    organiser's or the keyed-line parser's, _candidates) where its quote
-    stands in its reading, whatever that field's expert did in this attempt
-    (it may have failed). Which field such text belongs to is for a
-    person: the field goes to review. A place inside the precise location,
-    or an elevation copied to the other unit, is one kind; an elevation or a
-    date inside the precise location is not. An organiser candidate is
-    never refused here: the organiser placed it."""
+    names. Only a settled value claims text, where it overlaps that text in
+    the same reading: another field's value this attempt's answers settle
+    (`settled`: _first_pass, before this guard), wherever its literal stands
+    as whole tokens (_occurrences) in the readings of the labels its answer
+    names; or another field's value settled before this attempt or by a
+    person (_claims_text), so, in the readings of its labels
+    (_value_spans). An organiser candidate, an answer that settles nothing
+    (refused, unsettled or failed) and a value no one settled never claim
+    text (round 2 of the production test: the organiser's habitat "trap",
+    whose expert found no habitat, held 105526328's collecting method
+    "trap"). Which field such text belongs to is for a person: the field
+    goes to review. A place inside the precise location, or an elevation
+    copied to the other unit, is one kind; an elevation or a date inside
+    the precise location is not. Two fields that both settle the same text
+    from the transcript both go to review."""
     from .agreement import TRANSCRIPT, literal_basis, may_share_text, verbatim_runs
 
     evidence = {item.id: item for item in run.evidence}
     by_name = {reading.name: reading for reading in readings}
     researched = {outcome.key for outcome in outcomes}
+    human = human_keys(run)
     claims: list[tuple[str, frozenset]] = []
     mine: dict[str, frozenset] = {}
     for outcome in outcomes:
         answer = outcome.answer
-        if (outcome.failure is not None or answer is None or not answer.literal or not answer.literal.strip()
-                or answer.outcome not in ("resolved", "sources_cannot_resolve")):
+        if outcome.failure is not None or answer is None:
             continue
+        value = settled.get(outcome.key)
+        if value is not None and value.literal:
+            named = [by_name[n] for n in dict.fromkeys(answer.reading_names)
+                if n in by_name and value.literal in by_name[n].text]
+            regions = {r.region_id for r in named} or {r.region_id for r in readings if value.literal in r.text}
+            claims.append((outcome.key, _occurrences(value.literal, [r for r in readings if r.region_id in regions])))
         literal = answer.literal
+        if answer.outcome != "resolved" or not literal or not literal.strip():
+            continue
         named = [by_name[n] for n in dict.fromkeys(answer.reading_names) if n in by_name and literal in by_name[n].text]
-        regions = {r.region_id for r in named} or {r.region_id for r in readings if literal in r.text}
-        on_labels = [r for r in readings if r.region_id in regions]
-        claims.append((outcome.key, _occurrences(literal, on_labels)))
         task = tasks_by_key.get(outcome.key)
-        if (task is not None and answer.outcome == "resolved" and named
-                and literal_basis(task, readings, literal, named) == TRANSCRIPT):
-            mine[outcome.key] = frozenset((r.name, start, end) for r in on_labels
+        if task is not None and named and literal_basis(task, readings, literal, named) == TRANSCRIPT:
+            regions = {r.region_id for r in named}
+            mine[outcome.key] = frozenset((r.name, start, end) for r in readings if r.region_id in regions
                 for start, end in verbatim_runs(r.text, literal))
     for key, value in run.fields.items():
-        if (key in researched or value.state != ValueState.SUPPORTED or not value.literal
-                or value.layer == "derived"):
-            continue
-        observed = {*value.verbatim_by_observation, *value.settled_observation_ids}
-        regions = ({value.source_region_id} - {None}) | {evidence[i].region_id for i in value.evidence_ids
-            if i in evidence and evidence[i].kind == "literal"} | {r.region_id for r in readings
-            if r.observation_id in observed}
-        claims.append((key, _occurrences(value.literal, [r for r in readings if r.region_id in regions])))
-    # The organiser placed its candidates: each claims its literal where its
-    # quote stands in its reading, whatever its field's expert did.
-    for key, candidates in _candidates(run, readings).items():
-        for candidate in candidates:
-            reading = by_name.get(candidate.reading)
-            if reading is not None and candidate.literal.strip():
-                claims.append((key, _candidate_spans(reading, candidate)))
+        if key not in researched and _claims_text(key, value, human):
+            claims.append((key, _value_spans(value, readings, evidence)))
     taken = {}
     for key, spans in mine.items():
         other = next((other for other, theirs in claims
@@ -759,6 +781,9 @@ def _place_basis(run, task, answer, sources, value: FieldValue) -> None:
 
 
 TRANSCRIPT_RULES = "field-research-transcript-v1"
+# Set while _first_pass applies the answers to a copy of the run: no Logfire
+# event is made for a value that pass settles (_from_the_transcript).
+_FIRST_PASS: ContextVar[bool] = ContextVar("field_research_first_pass", default=False)
 
 
 def transcript_code(key: str) -> str:
@@ -777,8 +802,9 @@ def _from_the_transcript(run, key: str, named: Sequence[Reading], rows: Sequence
     if not any(f.reason_code == code for f in run.findings):
         run.findings.append(RunFinding(rule_id="transcript_literal", rule_version=TRANSCRIPT_RULES,
             severity="info", field_key=key, reason_code=code, evidence_ids=list(rows)))
-    logfire.info("field_research literal read from the transcript: {field_key}", field_key=key,
-        reading_names=[reading.name for reading in named], literal_basis="transcript")
+    if not _FIRST_PASS.get():
+        logfire.info("field_research literal read from the transcript: {field_key}", field_key=key,
+            reading_names=[reading.name for reading in named], literal_basis="transcript")
 
 
 def _settled(run, task, outcome, *, by_name, evidence, asset_id, blobs, date_rules=None) -> FieldValue | None:
@@ -1275,6 +1301,62 @@ def _taxon_literals(run, tasks: Sequence[FieldTask], outcomes: Sequence[FieldOut
     return [literal for literal in dict.fromkeys(found) if literal]
 
 
+def _apply_answers(run, tasks_by_key: Mapping[str, FieldTask], ordered: Sequence[FieldOutcome], *,
+        taken: Mapping[str, str], human, readings, by_name, evidence: dict, asset_id, blobs, date_rules,
+        received: Mapping[str, Sequence[SourceAnswer]], places, final: bool,
+        decisions: dict[str, dict]) -> tuple[dict[str, FieldOutcome], dict[str, list[str]]]:
+    """Each outcome, in `ordered` (the places from the country down), as its
+    field's value (_field_value), a field in `taken` as text another kind of
+    field claims (_taken_value), then the places settled on initials alone
+    made ambiguous (_corroborate). A field a person decided is left as it is.
+    Returns the outcomes applied and, per field, the evidence rows its value
+    added."""
+    pending = {outcome.key for outcome in ordered}
+    applied: dict[str, FieldOutcome] = {}
+    added: dict[str, list[str]] = {}
+    for outcome in ordered:
+        task = tasks_by_key.get(outcome.key)
+        pending.discard(outcome.key)
+        if task is None or task.key in human:
+            continue
+        decision = decisions.setdefault(task.key, {})
+        before = len(run.evidence)
+        if task.key in taken:
+            decision["refusal"] = "taken"
+            run.fields[task.key] = _taken_value(task, outcome, taken[task.key], evidence)
+        else:
+            run.fields[task.key] = _field_value(run, task, outcome, readings=readings, by_name=by_name,
+                evidence=evidence, asset_id=asset_id, blobs=blobs, date_rules=date_rules,
+                sources=received.get(task.key, ()), places=places, pending=frozenset(pending), final=final,
+                decision=decision)
+        applied[task.key] = outcome
+        added[task.key] = [item.id for item in run.evidence[before:]]
+    for key in _corroborate(run, tasks_by_key, applied, received, evidence=evidence, added=added):
+        decisions.setdefault(key, {})["refusal"] = "initialism_alone"
+    return applied, added
+
+
+def _first_pass(run, tasks_by_key: Mapping[str, FieldTask], ordered: Sequence[FieldOutcome],
+        **common) -> dict[str, FieldValue]:
+    """What this attempt's answers settle before the guard on text another
+    field holds (_taken): every outcome applied as apply_outcomes applies it,
+    with no field taken (_apply_answers), on a copy of the run's fields,
+    evidence, findings and lookups, writing no blob and making no Logfire
+    event (_FIRST_PASS). The run itself is left as it was. Returns the values
+    that settle: supported, in a settled layer (SETTLED_LAYERS)."""
+    copy = run.model_copy(update={
+        "fields": {key: value.model_copy(deep=True) for key, value in run.fields.items()},
+        "evidence": list(run.evidence), "findings": list(run.findings), "lookups": list(run.lookups)})
+    marker = _FIRST_PASS.set(True)
+    try:
+        applied, _ = _apply_answers(copy, tasks_by_key, ordered, taken={},
+            evidence={item.id: item for item in copy.evidence}, blobs=None, decisions={}, **common)
+    finally:
+        _FIRST_PASS.reset(marker)
+    return {key: copy.fields[key] for key in applied
+        if copy.fields[key].state == ValueState.SUPPORTED and copy.fields[key].layer in SETTLED_LAYERS}
+
+
 def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[FieldTask],
         outcomes: Sequence[FieldOutcome], *, blobs=None, calls: Sequence[SourceCall] = (),
         asset_id: str | None = None, decisions: dict[str, dict] | None = None) -> list[str]:
@@ -1292,8 +1374,9 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     source settles, a place no place source confirms), whose place does not
     lie in the country and province settled for its reading (_misfit, after
     the places above it), or whose literal, read from the transcript, is
-    text another kind of field claims (_taken), is ambiguous or unresolved
-    instead; a place settled on initials that no place below it confirms is
+    text another kind of field's settled value claims (_taken, judged on
+    what the answers settle without it: _first_pass), is ambiguous or
+    unresolved instead; a place settled on initials that no place below it confirms is
     ambiguous (_corroborate, once every place is in). A literal read from the
     transcript that settles is marked so (_from_the_transcript).
     label_lacks_value: not present;
@@ -1328,32 +1411,15 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     # The places first, from the country down: a place below it settles only
     # inside the country (and province) settled before it (_misfit).
     ordered = sorted(outcomes, key=lambda o: PLACE_ORDER.index(o.key) if o.key in PLACE_ORDER else len(PLACE_ORDER))
-    pending = {outcome.key for outcome in ordered}
-    final = last_attempt(run)
     decisions = {} if decisions is None else decisions
-    applied: dict[str, FieldOutcome] = {}
-    added: dict[str, list[str]] = {}
-    # Text read from the transcript that another kind of field claims (_taken).
-    taken = _taken(run, tasks_by_key, ordered, readings)
-    for outcome in ordered:
-        task = tasks_by_key.get(outcome.key)
-        pending.discard(outcome.key)
-        if task is None or task.key in human:
-            continue
-        decision = decisions.setdefault(task.key, {})
-        before = len(run.evidence)
-        if task.key in taken:
-            decision["refusal"] = "taken"
-            run.fields[task.key] = _taken_value(task, outcome, taken[task.key], evidence)
-        else:
-            run.fields[task.key] = _field_value(run, task, outcome, readings=readings, by_name=by_name,
-                evidence=evidence, asset_id=asset_id, blobs=blobs, date_rules=profile.date_rules,
-                sources=received.get(task.key, ()), places=places, pending=frozenset(pending), final=final,
-                decision=decision)
-        applied[task.key] = outcome
-        added[task.key] = [item.id for item in run.evidence[before:]]
-    for key in _corroborate(run, tasks_by_key, applied, received, evidence=evidence, added=added):
-        decisions.setdefault(key, {})["refusal"] = "initialism_alone"
+    common = dict(human=human, readings=readings, by_name=by_name, asset_id=asset_id, date_rules=profile.date_rules,
+        received=received, places=places, final=last_attempt(run))
+    # Text read from the transcript that another kind of field claims (_taken):
+    # only what the answers settle claims text, so they are applied once
+    # first, on a copy of the run (_first_pass).
+    taken = _taken(run, tasks_by_key, ordered, readings, _first_pass(run, tasks_by_key, ordered, **common))
+    _apply_answers(run, tasks_by_key, ordered, taken=taken, evidence=evidence, blobs=blobs, decisions=decisions,
+        **common)
     eligible = [key for key in field_keys(profile) if key not in human]
     derived = derive.fill(run, eligible=eligible, asset_id=asset_id, blobs=blobs)
     for key in derived:

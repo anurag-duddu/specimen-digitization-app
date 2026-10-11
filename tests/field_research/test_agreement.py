@@ -639,37 +639,111 @@ def test_text_the_organiser_placed_in_another_field(tmp_path, key, settles):
     assert value.reason.startswith(field_step.TAKEN.format(other="Date Visited From"))
 
 
-def test_a_date_settled_before_or_quoted_unsettled_still_holds_its_text(tmp_path):
+def test_a_date_settled_before_this_attempt_still_holds_its_text(tmp_path):
     """Another field's claim on the text need not be settled in this
-    attempt: a date settled by an earlier attempt, or a date expert that
-    quotes the text and cannot settle it, both hold "IV-24-48" against a
+    attempt: a date settled by an earlier attempt holds "IV-24-48" against a
     collection code read from the transcript."""
-    for earlier in (True, False):
-        rig = label_3(tmp_path / str(earlier))
-        run = rig.specimen.run
-        region = run.regions[0].id
-        scripts = {"collection_code": answering(FieldAnswer(outcome="resolved", literal="IV-24-48",
-            reading_names=["1A", "1B"], explanation="Read from the transcript."))}
-        if earlier:
-            run.fields["date_visited_from"] = FieldValue(state=ValueState.SUPPORTED, literal="IV-24-48",
-                parsed="1948-04-24", layer="settled", source_region_id=region)
-        else:
-            scripts["date_visited_from"] = answering(FieldAnswer(outcome="sources_cannot_resolve",
-                literal="IV-24-48", reading_names=["1A"], explanation="Two possible years."))
-        settle(rig, Scripted(scripts))
-        code = run.fields["collection_code"]
-        assert code.state == ValueState.UNRESOLVED
-        assert code.reason.startswith(field_step.TAKEN.format(other="Date Visited From"))
+    rig = label_3(tmp_path)
+    run = rig.specimen.run
+    run.fields["date_visited_from"] = FieldValue(state=ValueState.SUPPORTED, literal="IV-24-48",
+        parsed="1948-04-24", layer="settled", source_region_id=run.regions[0].id)
+    settle(rig, Scripted({"collection_code": answering(FieldAnswer(outcome="resolved", literal="IV-24-48",
+        reading_names=["1A", "1B"], explanation="Read from the transcript."))}))
+    code = run.fields["collection_code"]
+    assert code.state == ValueState.UNRESOLVED
+    assert code.reason.startswith(field_step.TAKEN.format(other="Date Visited From"))
 
 
-def test_two_fields_that_read_the_same_text_from_the_transcript_both_go_to_review(tmp_path):
+def test_a_date_its_expert_quotes_but_cannot_settle_claims_no_text(tmp_path):
+    """Round 2 of the production test: only a settled value claims text. A
+    date expert that quotes "IV-24-48" and cannot settle it no longer holds
+    it against a collection code read from the transcript; the code still
+    goes to review, as text that plainly holds a date
+    (agreement.HOLDS_A_DATE). On 5332ce4e3 the reason named the date."""
+    rig = label_3(tmp_path)
+    run = rig.specimen.run
+    settle(rig, Scripted({
+        "collection_code": answering(FieldAnswer(outcome="resolved", literal="IV-24-48",
+            reading_names=["1A", "1B"], explanation="Read from the transcript.")),
+        "date_visited_from": answering(FieldAnswer(outcome="sources_cannot_resolve",
+            literal="IV-24-48", reading_names=["1A"], explanation="Two possible years."))}))
+    code = run.fields["collection_code"]
+    assert code.state == ValueState.UNRESOLVED
+    assert code.reason.startswith(agreement.HOLDS_A_DATE)
+
+
+def test_a_code_refused_as_a_date_claims_no_text_and_the_date_from_the_transcript_settles(tmp_path):
+    """Two experts read "IV-24-48" from the transcript, the date's and the
+    collection code's. The code holds a date (agreement.HOLDS_A_DATE), so it
+    settles nothing and claims nothing: the date settles, and the code goes
+    to review as text the settled date holds. On 5332ce4e3 both went to
+    review."""
     rig = label_3(tmp_path)
     run = rig.specimen.run
     settle(rig, Scripted({key: answering(FieldAnswer(outcome="resolved", literal="IV-24-48",
-        reading_names=["1A", "1B"], explanation="Read from the transcript."))
-        for key in ("date_visited_from", "collection_code")}))
-    assert run.fields["date_visited_from"].reason.startswith(field_step.TAKEN.format(other="Collection Code"))
-    assert run.fields["collection_code"].reason.startswith(field_step.TAKEN.format(other="Date Visited From"))
+        reading_names=["1A", "1B"], value="1948-04-24" if key == "date_visited_from" else None,
+        explanation="Read from the transcript.")) for key in ("date_visited_from", "collection_code")}))
+    date = run.fields["date_visited_from"]
+    assert (date.state, date.literal, date.parsed) == (ValueState.SUPPORTED, "IV-24-48", "1948-04-24")
+    code = run.fields["collection_code"]
+    assert code.state == ValueState.UNRESOLVED
+    assert code.reason.startswith(field_step.TAKEN.format(other="Date Visited From"))
+
+
+def test_two_fields_that_both_settle_the_same_text_from_the_transcript_both_go_to_review(tmp_path):
+    """The control: 105526328's "trap" read from the transcript by the
+    habitat's expert and the collecting method's, each of which would
+    settle it. Which field it belongs to is for a person."""
+    rig = label_3(tmp_path)
+    run = rig.specimen.run
+    settle(rig, Scripted({key: answering(FieldAnswer(outcome="resolved", literal="trap",
+        reading_names=["1A", "1B"], explanation="Both readers write it."))
+        for key in ("habitat", "collection_method")}))
+    habitat, method = run.fields["habitat"], run.fields["collection_method"]
+    assert (habitat.state, method.state) == (ValueState.UNRESOLVED, ValueState.UNRESOLVED)
+    assert habitat.reason.startswith(field_step.TAKEN.format(other="Collection Method"))
+    assert method.reason.startswith(field_step.TAKEN.format(other="Habitat"))
+    assert not {"transcript_literal:habitat", "transcript_literal:collection_method"} & {
+        f.reason_code for f in run.findings}
+
+
+TRAP_HABITAT = [("habitat", name, "trap", "trap") for name in ("1A", "1B")]
+# How 105526328's habitat expert, or another field's, can leave "trap" unsettled.
+UNSETTLED_TRAP = {
+    # The real run: the organiser offered "trap" as the habitat, and its
+    # expert found that the label states no habitat.
+    "organiser-candidate-expert-lacks": (TRAP_HABITAT, answering(LACKS)),
+    "organiser-candidate-expert-fails": (TRAP_HABITAT, failing("timeout")),
+    # No candidate: the habitat's expert quotes "trap" and cannot settle it.
+    "quoted-unsettled": ((), answering(FieldAnswer(outcome="sources_cannot_resolve", literal="trap",
+        reading_names=["1A", "1B"], explanation="It may be the method, not the habitat."))),
+}
+
+
+@pytest.mark.parametrize(("candidates", "habitat"), UNSETTLED_TRAP.values(), ids=UNSETTLED_TRAP)
+def test_text_no_other_field_settles_never_holds_a_method_read_from_the_transcript(tmp_path, candidates, habitat):
+    """Round 2 of the production test, 105526328: the collecting method's
+    expert reads "trap" from the transcript. An organiser candidate and an
+    answer that settles nothing claim no text, so the method settles, its
+    label rows written once (the first pass, _first_pass, leaves the run as
+    it was). On 5332ce4e3 the method was unresolved: "This text, read from
+    the transcript, is also the value found for Habitat."."""
+    rig = label_3(tmp_path, candidates=candidates)
+    run = rig.specimen.run
+    decisions: dict[str, dict] = {}
+    from test_step import research
+    prepared, outcomes, calls = research(rig, Scripted({"habitat": habitat,
+        "collection_method": answering(FieldAnswer(outcome="resolved", literal="trap", reading_names=["1A", "1B"],
+            explanation="The method is a trap."))}))
+    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    method = run.fields["collection_method"]
+    assert (method.state, method.literal, method.layer) == (ValueState.SUPPORTED, "trap", "verbatim")
+    assert "refusal" not in decisions["collection_method"]
+    assert run.fields["habitat"].state != ValueState.SUPPORTED
+    rows = [item for item in run.evidence if item.id in method.evidence_ids and item.source == "field_research"]
+    assert sorted(len(row.observation_ids) for row in rows) == [1, 1] and all(row.excerpt == "trap" for row in rows)
+    assert [f.reason_code for f in run.findings].count("transcript_literal:collection_method") == 1
+    verify_evidence(rig.specimen, rig.blobs)
 
 
 def test_a_province_read_from_the_transcript_one_letter_off_settles_on_g34(tmp_path):
@@ -821,13 +895,16 @@ def test_the_review_probe_p13_trap_and_light_trap_naming_both_readers(tmp_path):
 
 
 # Not blocking 2: the overlap guard was attempt-local. With the elevation
-# expert failing, "Yepocapa, 4800ft." cleared as the locality; the organiser's
-# candidate "4800ft." for the elevation now claims its text whatever the
-# elevation's expert did.
+# expert failing, "Yepocapa, 4800ft." cleared as the locality. Since round 2
+# of the production test only a settled value claims text, so the organiser's
+# candidate "4800ft." for an elevation that settles nothing no longer does;
+# the locality still goes to review, as text that plainly holds an elevation
+# (agreement._holds_another_kind).
 
 @pytest.mark.parametrize("elevation", ["fails", "lacks"])
-def test_an_organiser_candidate_claims_its_text_when_its_expert_settles_nothing(tmp_path, elevation):
-    """On 61c193e93 the locality is supported."""
+def test_a_locality_holding_an_elevation_no_field_settles_still_goes_to_review(tmp_path, elevation):
+    """On 61c193e93 the locality is supported; on 5332ce4e3 it went to review
+    as text the elevation's candidate claimed."""
     rig = label_3(tmp_path, SPANISH_LABEL, SPANISH_LABEL.replace("Mitchell", "mitchell"),
         [("elevation_from_ft", name, "4800ft.", "Yepocapa, 4800ft.") for name in ("1A", "1B")])
     run = rig.specimen.run
@@ -837,7 +914,7 @@ def test_an_organiser_candidate_claims_its_text_when_its_expert_settles_nothing(
             reading_names=["1A", "1B"], explanation="Both readers write it."))}))
     place = run.fields["precise_location"]
     assert place.state == ValueState.UNRESOLVED
-    assert place.reason.startswith(field_step.TAKEN.format(other="Elevation From (ft)"))
+    assert place.reason.startswith(agreement.HOLDS_AN_ELEVATION)
 
 
 # Not blocking 3: a date or an elevation read from the transcript is never one
