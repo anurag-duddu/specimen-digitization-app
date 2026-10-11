@@ -132,10 +132,11 @@ handover runs field research instead of the six specialists:
    `field_research.field` span inside the step's `field_research` span
    (`step.trace_fields`): the expert's outcome, its failure and fallback,
    the value's state and layer, the run's reason codes for the field, the
-   check that refused a resolved answer and the rule that decided the field
-   (rule A or B, a derivation, an unreachable source or a timeout on the
-   last attempt),
-   and each lookup as source and status. These are codes; the literal,
+   check that refused a resolved answer (or "admin_marker_only": a precise
+   location's answer that gives only an administrative marker, see "Fields
+   the label does not state") and the rule that decided the field (rule A
+   or B, a derivation, an unreachable source or a timeout on the last
+   attempt), and each lookup as source and status. These are codes; the literal,
    value, authority id and reason are added only when the worker captures
    approved content.
 
@@ -395,18 +396,30 @@ handover runs field research instead of the six specialists:
      their text (`step._from_the_transcript`). A place settled so is
      written, for the parents check below, by each reading that writes its
      literal as whole words (`step._misfit`).
-   - **Text another field holds** (the step only, `step._taken`, before
-     any value is made). A literal read from the transcript never settles
-     when the same text, overlapping in the same reading, is claimed for a
-     field of another kind: another field's answer of this attempt
-     (resolved, or sources_cannot_resolve quoting a literal), wherever its
-     literal stands in the readings of the labels it names; another
-     field's value settled before this attempt or by a person; or another
-     field's organiser candidate (or keyed line the parser read), where its
-     quote stands in its reading, whatever that field's expert did in this
-     attempt (PR #300's review: the elevation's candidate "4800ft." claims
-     its text even when the elevation's expert failed). An answer's or a
-     settled value's literal claims only where it stands as whole tokens:
+   - **Text another field holds** (the step only, `step._taken`). A
+     literal read from the transcript never settles when the same text,
+     overlapping in the same reading, is claimed for a field of another
+     kind. Only a settled value claims text (round 2 of the production
+     test, 2026-10-11): another field's value this attempt's answers
+     settle, wherever its literal stands in the readings of the labels its
+     answer names; or another field's value settled before this attempt or
+     by a person (supported, in the verbatim or settled layer, or a
+     person's value that is not derived: `step._claims_text`), in the
+     readings of its labels. What this attempt settles is found by applying
+     every answer once, before the guard, on a copy of the run
+     (`step._first_pass`: no blob is written, no Logfire event is made, and
+     the run is left as it was); the answers are then applied for real
+     with the guard. An organiser candidate (or keyed line the parser read),
+     an answer that settles nothing (refused, unsettled or failed) and a
+     value no one settled claim no text: 105526328's collecting method
+     "trap", read from the transcript, settles although the organiser
+     offered "trap" as the habitat, whose expert found no habitat. (Before
+     this, from PR #300's review, an organiser candidate claimed its text
+     whatever its expert did. The case that review raised, the locality
+     "Yepocapa, 4800ft." beside an elevation candidate "4800ft." whose
+     expert failed, still goes to review, as text that plainly holds an
+     elevation, below.) A settled value's literal claims only where it
+     stands as whole tokens:
      each occurrence that neither starts nor ends between two letters or
      between two digits (`step._occurrences`; finding 2 of the review of
      6fd595b3b), so a collection code settled as "2" claims the "2" of "lot
@@ -424,8 +437,12 @@ handover runs field research instead of the six specialists:
      transcript, goes to review beside the elevation "4800ft." (the brief
      leaves elevations out of the locality), while "Volcan Barva" beside
      "2000 msnm" settles. An organiser's candidate is never refused here,
-     and two fields that both read the text from the transcript both go to
-     review.
+     and two fields that both settle the same text from the transcript
+     (105526328's "trap" as the habitat and as the method) both go to
+     review. A field whose answer is refused on its own does not claim:
+     a date and a collection code that both read "IV-24-48" settle the
+     date, since the code holds a date (below) and settles nothing, and
+     the code goes to review as text the date holds.
    - **Text plainly of another kind** (the answer check and the step,
      `agreement._holds_another_kind`; finding 2 of the review of
      6fd595b3b). A place field (country, province or state, county, city,
@@ -1144,7 +1161,10 @@ this one, gets its own entry.
 hold (`step.mark_not_on_label`, after the derived values, so a derivable
 elevation is derived first, and only for a field a person has not decided):
 1. Its expert itself answered that no reading states it
-   (label_lacks_value), with no failure, in this attempt. Every field but
+   (label_lacks_value), with no failure, in this attempt; or, for a precise
+   location, its expert's answer gives only an administrative marker
+   beside the places settled (below, "An administrative marker is no
+   precise location"). Every field but
    the identified-by IRN gets its expert (step 2), so the answer is the
    model's; no lookup is required, since a field such as the habitat has no
    source to search. The shared brief has the expert answer
@@ -1181,17 +1201,32 @@ elevation is derived first, and only for a field a person has not decided):
    ("Det. ..........", "Loc. ......"), never a placeholder (N3 of #289's
    sixth review).
 5. The organiser found no text for it: no candidate, no literal, no
-   reader's verbatim. For a county, a city or a precise location, a text
-   counts as absent only when its whole words, compared by the place
-   comparison key (case, accents and punctuation aside, "Mt." read as
-   "mount"), are a run of the words of another settled place field's
-   literal, and it writes no unit word of its own (County, Co., Prov.,
-   Dept., Mun. and the others the place tool knows): the organiser's
-   "Mt. McKinley" as a city, inside the settled precise location "E. slope
-   Mt. McKinley", or the town "Yepocapa" as a precise location beside the
-   settled city "Yepocapa". "Lee" beside the city "Leesburg", or "Cook
-   County" inside the precise location "Cook County Forest Preserve", does
-   not count.
+   reader's verbatim. This is judged after every value of the attempt is
+   made, so against what settled (`step._organiser_texts`, each text with
+   where it stands in the readings). A text counts as absent when,
+   wherever it stands, it lies inside the text a field of another kind
+   (`agreement.FIELD_KINDS`) settled, in this attempt, an earlier one or by
+   a person (`step._held_by_another_kind`, settled as `step._claims_text`
+   says): 105526328's "trap", which the organiser offered as the habitat,
+   once the collecting method settles on "trap"; "IV-24-48" offered as the
+   collection code once the date settles on it; "trampa de luz" offered as
+   the habitat once the method settles on it. A text no other field
+   settled, or one holding more than the settled text ("trap, cloud
+   forest" beside the method "trap"), still counts. For a county, a city
+   or a precise location, a text also counts as absent when its whole
+   words, compared by the place comparison key (case, accents and
+   punctuation aside, "Mt." read as "mount"), are a run of the words of
+   another settled place field's literal, and it writes no unit word of
+   its own (County, Co., Prov., Dept., Mun. and the others the place tool
+   knows): the organiser's "Mt. McKinley" as a city, inside the settled
+   precise location "E. slope Mt. McKinley", or the town "Yepocapa" as a
+   precise location beside the settled city "Yepocapa". "Lee" beside the
+   city "Leesburg", or "Cook County" inside the precise location "Cook
+   County Forest Preserve", does not count. For a precise location, the
+   texts still left count as absent when, beside the places settled, they
+   write only an administrative marker, or readers differ only in one
+   (below): the organiser's "Yepocapa, Mun. Chimaltenango", "Kreis
+   Ahrweiler", "Distr. Kandy" or "Cook Co." beside those places settled.
 6. For an elevation, no reading writes an elevation
    (`step._elevation_written`, on every reading's and every reader's text).
    That is, none of:
@@ -1228,6 +1263,60 @@ So catalogue number, country, the collecting dates and collectors still go
 to review when the label lacks them, as does any listed field a reading
 writes, a label with an unreadable part, and a label whose coverage is not
 confirmed.
+
+**An administrative marker is no precise location (round 2 of the
+production test, 2026-10-11).** 105526328's precise location was left
+ambiguous between "Yepocapa, Mun." (3A) and "Yepocapa, Mum." (3B). The
+label writes no place finer than the town, which settled as the city, and
+the readers differ only inside "Mun." (municipio). Once every place is in
+(after the initials check, `step._no_finer_place`), a precise location
+researched in this attempt is not present when all of these hold:
+- the profile lists the precise location among the fields that may clear
+  as not on the label (`zoology_insects_slides` 1.0.0 does); otherwise its
+  answer's value stands, for review;
+- its expert answered resolved, several_possibilities or
+  sources_cannot_resolve, with no failure, not as the resolver's fallback
+  and not finalized without a model call;
+- every text the answer cites (its literal and its options) is written by
+  a reading;
+- those texts give nothing beyond the settled places but an
+  administrative marker (`step._admin_markers`): each text's words, folded
+  as the place tool folds them (letter case, accents and punctuation
+  aside), less every run of words that is the whole text of a settled
+  country, province or state, county or city (its literal, its value and
+  each reader's verbatim it keeps). What is left of at least one text is
+  markers only, and what is left of every other text is nothing, markers
+  only, or the same words with one letter apart in the marker's place (a
+  reader's misreading: "Mum." for "Mun.").
+The markers are a data list (`field_research/admin_markers.py`), in
+English, Spanish and Portuguese, French, Italian, German and Dutch, the
+Nordic languages, transliterated Slavic languages and South Asian usage:
+"Mun.", "Mpio.", "Municipio", "Dept.", "Depto.", "Prov.", "Distr.", "Pref.",
+"Kreis", "Comune", "Gemeinde" and others. Words that are part of a place's
+name or name a finer place are left off ("St.", "Mt.", "Lk.", "Arr.",
+"Brgy.", "Frazione"), as are "Canton" and words a label uses for something
+else. "Co." counts only right after a settled name ("Cook Co."): before a
+name it is also the Spanish "Cerro", a hill ("Co. Chirripo"). Any other
+word keeps the text a place: "E. slope Mt. McKinley, Davao Prov." beside
+the settled province "Davao, Prov." still settles as the precise location;
+"5 km N of Yepocapa" and "Finca Moca, Mun. Yepocapa" beside the settled
+town are places; and the organiser's "5 km N of Kandy" or "Co. Chirripo"
+beside the settled county keeps the precise location in review.
+When the conditions hold, the value is not present, its reason "The
+readings give no place finer than the places settled: beside them, they
+write only the administrative marker "Mun."." followed by the expert's
+explanation, and
+the rows a settled answer added, with its transcript_literal finding, are
+dropped; its trace names "admin_marker_only". Rule A then judges it as a
+field whose expert found no value (condition 1). When it clears, its
+reason starts "Not on the label: beside the places settled, the readings
+write only the administrative marker "Mun.", no finer place.", and its
+check row's excerpt says the readings write only an administrative marker
+(its record names the marker); the clearance rules accept that excerpt for
+a precise location. When rule A declines (a label not read whole, no city
+or county settled), the record goes to review. A precise location that
+named only the town and its marker therefore no longer settles as that
+text: it clears as not on the label, or waits for a person.
 
 **A taxon with no genus (B).** A taxon whose label names no genus for its
 morphocode ("sp. 30" with a sex sign, and no genus written beside it)
