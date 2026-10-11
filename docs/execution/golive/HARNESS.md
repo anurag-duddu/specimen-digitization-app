@@ -175,10 +175,13 @@ evidence pilot still block and name their cause. The rule is
 
 **Waiting after a rate limit** (2026-10-11). A step that fails with an
 `AdapterFailure` whose status is `rate_limited` (a model call's HTTP 429 is
-`model_rate_limited`) waits at least 30 seconds before its second attempt and 90
-before each later one, jittered up to twice that (`reliability.RATE_LIMIT_FLOORS`);
-the backoff alone waited 2 to 4 and 4 to 8 seconds, which every other failure
-keeps. A later Retry-After is still honoured. The run holds no lease while it
+`model_rate_limited`) waits at least 30 seconds before its second attempt and at
+least 90 before each later one (`reliability.RATE_LIMIT_FLOORS`). The wait's base
+is the larger of that floor and the usual backoff, which doubles with each attempt
+(2 seconds after the first, up to 256 after the eighth), and jitter adds up to the
+base again; so with a profile's later attempts the wait can exceed 90 to 180
+seconds. Every other failure keeps the backoff alone (2 to 4 seconds after the
+first attempt, 4 to 8 after the second). A later Retry-After is still honoured. The run holds no lease while it
 waits and is not sent before `next_retry_at`; the drain works on the next
 requested run meanwhile, and waits for the retry when nothing else is due.
 
