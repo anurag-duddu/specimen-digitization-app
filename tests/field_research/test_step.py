@@ -1902,17 +1902,22 @@ def test_every_reason_agreement_refuses_with_has_its_own_trace_code():
     """A field's trace names the check that refused its answer by agreement's
     constant (step.refusal_code), never "other", for every constant
     agreement returns a Refusal with, the abbreviation rule's
-    EXPANSIONS_DIFFER among them."""
+    EXPANSIONS_DIFFER among them, and each one a table of reasons holds
+    (`Refusal(HOLDS[kind], ...)`)."""
     import ast
     import inspect
 
     from specimen_digitization.field_research import agreement
 
     tree = ast.parse(inspect.getsource(agreement))
-    refused = {node.args[0].id for node in ast.walk(tree) if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name) and node.func.id == "Refusal"
-        and node.args and isinstance(node.args[0], ast.Name)}
-    assert "EXPANSIONS_DIFFER" in refused and "NO_PLACE" in refused
+    calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name) and node.func.id == "Refusal" and node.args]
+    refused = {node.args[0].id for node in calls if isinstance(node.args[0], ast.Name)}
+    names = {value: name for name, value in vars(agreement).items() if name.isupper() and isinstance(value, str)}
+    for node in calls:
+        if isinstance(node.args[0], ast.Subscript) and isinstance(node.args[0].value, ast.Name):
+            refused |= {names[reason] for reason in getattr(agreement, node.args[0].value.id).values()}
+    assert {"EXPANSIONS_DIFFER", "NO_PLACE", "HOLDS_A_DATE"} <= refused
     assert {name: field_step.refusal_code(getattr(agreement, name)) for name in refused} == {
         name: name.lower() for name in refused}
 
