@@ -122,10 +122,14 @@ class FieldTask:
 class PlaceRef:
     """A place a source puts a candidate in: the name the source gives it and,
     when the source names it by one of its own records, that record's
-    authority_id, in the form the source's candidates carry ("tgn:1000135")."""
+    authority_id, in the form the source's candidates carry ("tgn:1000135").
+    A country the source names only by its two-letter code (NGA: the code
+    its first-order unit codes start with, "GT" of "GT-04") carries that
+    code as its iso_code (sources._place)."""
 
     name: str
     authority_id: str | None = None
+    iso_code: str | None = None
 
 
 @dataclass(frozen=True)
@@ -140,6 +144,10 @@ class SourceCandidate:
     # country last (sources._place, sources._geolocate); () when the source
     # names none.
     parents: tuple[PlaceRef, ...] = ()
+    # A country's ISO 3166-1 alpha-2 code, as its own record carries it
+    # (georef_places.Place.iso_code: Wikidata's P297, NGA's code for a
+    # nation); None for any other place or source.
+    iso_code: str | None = None
 
 
 @dataclass(frozen=True)

@@ -510,7 +510,7 @@ def _place_texts(run, tasks_by_key: Mapping[str, FieldTask], readings) -> dict[s
     return found
 
 
-def _misfit(run, task, answer, *, sources, readings, by_name, places, pending):
+def _misfit(run, task, answer, *, sources, readings, by_name, places, pending, received=None):
     """Why a place value the agreement rules accept does not fit the label's
     other place fields (agreement.parents_refusal), or None. It is checked
     here, once every outcome is in: field research runs its fields at once,
@@ -519,9 +519,11 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending):
     those that reading writes (`places`), and one of them is settled for the
     reading when its value is supported, this attempt has done with it (it is
     not `pending`) and the reading writes its literal, compared as place
-    names. A place settled on text its expert read in the transcript
-    (transcript_code) is written by each reading that writes that text as
-    whole words (agreement.verbatim_runs)."""
+    names; a settled field carries the ISO code of its record (_record_code,
+    from the answers each field received, `received`). A place settled on
+    text its expert read in the transcript (transcript_code) is written by
+    each reading that writes that text as whole words
+    (agreement.verbatim_runs)."""
     from .agreement import (
         PLACE_ORDER,
         PLACE_VALUE_FIELDS,
@@ -556,13 +558,29 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending):
                     and place_name(value.literal) in {place_name(text) for text in texts}):
                 names = (*sorted(texts), *(text for text in (value.normalized, value.parsed) if text),
                     *_expansions(key, value, rows))
-                written[key] = settled[key] = PlaceField(tuple(dict.fromkeys(names)), value.authority_id)
+                written[key] = settled[key] = PlaceField(tuple(dict.fromkeys(names)), value.authority_id,
+                    _record_code(value, (received or {}).get(key, ())))
             else:
                 written[key] = PlaceField(tuple(sorted(texts)))
         refused = parents_refusal(task.key, candidate, basis, written=written, settled=settled)
         if refused is not None:
             return refused
     return None
+
+
+def _record_code(value: FieldValue, answers: Iterable[SourceAnswer]) -> str | None:
+    """The ISO 3166-1 alpha-2 code a settled place's own record carries
+    (SourceCandidate.iso_code: a country's, from Wikidata's P297 or NGA's
+    code for a nation), which agreement.lies_in compares with a parent its
+    source names only by a country code: the one code of the candidates with
+    the value's authority_id in the stored answers its field received in
+    this attempt (`answers`). None when they carry none or several, and for
+    a value with no authority_id or no such answer (one settled in an
+    earlier attempt or by a person)."""
+    codes = {candidate.iso_code for answer in answers if answer.evidence is not None
+        for candidate in answer.candidates
+        if value.authority_id and candidate.authority_id == value.authority_id and candidate.iso_code}
+    return codes.pop() if len(codes) == 1 else None
 
 
 def _settling(task, answer, sources):
@@ -892,10 +910,11 @@ def _unsettled(task, state, *, literal=None, cited=(), reason) -> FieldValue:
 
 def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, blobs, date_rules=None,
         sources: Sequence[SourceAnswer] = (), places, pending=frozenset(), final=False,
-        decision: dict | None = None) -> FieldValue:
+        decision: dict | None = None, received: Mapping[str, Sequence[SourceAnswer]] | None = None) -> FieldValue:
     """The field's value from its outcome. ``decision`` collects, as codes,
     which of the step's checks refused a resolved answer ("refusal") and which
-    rule decided it ("rule"), for the field's trace (trace_fields)."""
+    rule decided it ("rule"), for the field's trace (trace_fields).
+    ``received`` holds the source answers of every field, by field (_misfit)."""
     decision = {} if decision is None else decision
     answer = outcome.answer
     current = task.current
@@ -927,7 +946,7 @@ def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, b
             return _unsettled(task, ValueState.UNRESOLVED, literal=current.literal, cited=cited,
                 reason=f"{refused.reason} {answer.explanation}")
         misfit = _misfit(run, task, answer, sources=sources, readings=readings, by_name=by_name,
-            places=places, pending=pending)
+            places=places, pending=pending, received=received)
         if misfit is not None:
             decision["refusal"] = refusal_code(misfit.reason)
             return _unsettled(task, ValueState.UNRESOLVED, literal=current.literal, cited=cited,
@@ -1328,7 +1347,7 @@ def _apply_answers(run, tasks_by_key: Mapping[str, FieldTask], ordered: Sequence
             run.fields[task.key] = _field_value(run, task, outcome, readings=readings, by_name=by_name,
                 evidence=evidence, asset_id=asset_id, blobs=blobs, date_rules=date_rules,
                 sources=received.get(task.key, ()), places=places, pending=frozenset(pending), final=final,
-                decision=decision)
+                decision=decision, received=received)
         applied[task.key] = outcome
         added[task.key] = [item.id for item in run.evidence[before:]]
     for key in _corroborate(run, tasks_by_key, applied, received, evidence=evidence, added=added):
@@ -1483,7 +1502,8 @@ def _corroborate(run, tasks_by_key: Mapping[str, FieldTask], applied: Mapping[st
     settled only when a place field below it, settled in this attempt on its
     own evidence (on anything but initials), lies inside it: that field's
     settling candidate names it among its parents (agreement.lies_in: its
-    record, or its text, value or expansion by name). So "Mindanao, P.I."
+    record, or its text, value or expansion by name, or the ISO code its
+    settling candidate carries by a parent's country code). So "Mindanao, P.I."
     keeps the Philippines when its province "Davao, Prov." settles on a
     province of the Philippines. Otherwise the value is ambiguous, for review,
     with a reason naming the initials (agreement.initialism_alone), and the
@@ -1512,7 +1532,7 @@ def _corroborate(run, tasks_by_key: Mapping[str, FieldTask], applied: Mapping[st
         expansion, value = settlings[key][1], run.fields[key]
         names = (value.literal, *(text for text in (value.normalized, value.parsed) if text),
             *_expansions(key, value, rows))
-        field = PlaceField(tuple(dict.fromkeys(names)), value.authority_id)
+        field = PlaceField(tuple(dict.fromkeys(names)), value.authority_id, settlings[key][0].candidate.iso_code)
         if any(other in settlings and settlings[other][1] is None
                 and lies_in(settlings[other][0].candidate, key, field) for other in PLACE_ORDER[index + 1:]):
             continue

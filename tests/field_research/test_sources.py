@@ -1498,8 +1498,6 @@ async def test_a_gazetteer_place_reads_with_its_type_and_parents(tmp_path):
             (PlaceRef("Guatemala", "tgn:7005493"),),
         ]),
         ("wikidata", "Davao Province", [(PlaceRef("Philippines", "wikidata:Q928"),)]),
-        # NGA names a first-order unit and a country code, no record of its own.
-        ("nga", "Yepocapa", [(PlaceRef("Chimaltenango"), PlaceRef("GT"))] * 2),
     ],
 )
 async def test_a_gazetteer_place_names_the_places_it_lies_in(tmp_path, source, query, parents):
@@ -1509,6 +1507,83 @@ async def test_a_gazetteer_place_names_the_places_it_lies_in(tmp_path, source, q
     assert [item.detail.split(";")[0] for item in answer.candidates] == [
         "in " + ", ".join(parent.name for parent in found) for found in parents
     ]
+
+
+@pytest.mark.asyncio
+async def test_an_nga_place_names_its_country_by_the_code_it_carries(tmp_path):
+    """NGA names a first-order unit and a country code, no record of its
+    own: the country parent carries that code as its iso_code (the unit
+    none)."""
+    tools, _, _, _ = make(tmp_path, gazetteers())
+    answer = await tools.lookup("nga", "Yepocapa", field_key="city")
+    assert [[(parent.name, parent.authority_id, parent.iso_code) for parent in item.parents]
+        for item in answer.candidates] == [[("Chimaltenango", None, None), ("GT", None, "GT")]] * 2
+    assert [item.detail for item in answer.candidates] == ["in Chimaltenango, GT"] * 2
+
+
+def first_hits(reply, *names):
+    """The recorded answers `reply` gives, with Wikidata's search for each of
+    `names` cut to its first hit: the recording keeps the entities of only
+    that hit ("Guatemala": Q774; "Philippine Islands": Q928), and a search
+    whose entities are not all recorded is incomplete, never settled."""
+
+    def cut(request):
+        answer = reply(request)
+        if request.url.host.endswith("wikidata.org") and dict(request.url.params).get("search") in names:
+            answer = {**answer, "search": answer["search"][:1]}
+        return answer
+
+    return cut
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("source", "query", "authority_id", "iso_code"),
+    [
+        # Wikidata's P297 on the nation's own item.
+        ("wikidata", "Guatemala", "wikidata:Q774", "GT"),
+        ("wikidata", "Philippine Islands", "wikidata:Q928", "PH"),
+        # NGA's code for a nation (feature designation PCLI).
+        ("nga", "Guatemala", "nga:-1135822", "GT"),
+        ("nga", "Philippines", "nga:-2445615", "PH"),
+    ],
+)
+async def test_a_nation_carries_the_iso_code_of_its_own_record(tmp_path, source, query, authority_id, iso_code):
+    """Only the nation carries a code; every other place of the answers, and
+    every Getty TGN place, carries none."""
+    tools, _, _, _ = make(tmp_path, first_hits(gazetteers(), "Guatemala", "Philippine Islands"))
+    answer = await tools.lookup(source, query, field_key="country")
+    assert {item.authority_id: item.iso_code for item in answer.candidates if item.iso_code} == {
+        authority_id: iso_code
+    }
+    tgn_answer = await tools.lookup("tgn", "Chimaltenango", field_key="country")
+    assert tgn_answer.candidates and not any(item.iso_code for item in tgn_answer.candidates)
+    assert not any(parent.iso_code for item in tgn_answer.candidates for parent in item.parents)
+
+
+# Each country's extent in degrees (south, north, west, east), wider than the
+# country itself, for the GNS capture's places in Costa Rica, Honduras and the
+# Philippines.
+EXTENTS = {"CR": (8.0, 11.5, -86.0, -82.5), "HN": (12.9, 16.6, -89.4, -83.1), "PH": (4.5, 21.5, 116.0, 127.0)}
+
+
+def test_ngas_unit_codes_start_with_the_iso_country_code():
+    """The country code field research reads from NGA (the first two letters
+    of a feature's first-order unit code, georef_nga._place) is ISO 3166-1
+    alpha-2 in the GNS capture of 2026-09-24 (tests/fixtures/georeferencing),
+    not FIPS 10-4, where the two differ: Costa Rica's Limon and Guanacaste
+    are "CR-L" and "CR-G" (FIPS: CS; FIPS CR is the Coral Sea Islands),
+    Honduras's Yoro "HN-YO" (FIPS: HO), the Philippines' Davao "PH-DVC"
+    (FIPS: RP); and each feature under those codes lies in that country."""
+    units = {row["adm1"]: row["adm1_name"] for row in recorded("nga_units.json")["features"]}
+    assert (units["CR-L"], units["CR-G"], units["HN-YO"], units["PH-DVC"]) == (
+        "Lim\N{LATIN SMALL LETTER O WITH ACUTE}n", "Guanacaste", "Yoro", "Davao")
+    rows = [row for rows in recorded("nga_search.json")["responses"].values() for row in rows]
+    placed = [row for row in rows if row["adm1"][:2] in EXTENTS]
+    assert {row["adm1"][:2] for row in placed} == set(EXTENTS)
+    for row in placed:
+        south, north, west, east = EXTENTS[row["adm1"][:2]]
+        assert south <= row["lat_dd"] <= north and west <= row["long_dd"] <= east, row
 
 
 @pytest.mark.asyncio

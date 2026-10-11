@@ -1606,3 +1606,127 @@ def test_a_settled_value_still_claims_its_whole_tokens(tmp_path):
     date_value = run.fields["date_visited_from"]
     assert date_value.state == ValueState.UNRESOLVED
     assert date_value.reason.startswith(field_step.TAKEN.format(other="Collection Code"))
+
+
+# ---- a country a source names only by its code (round 4, 2026-10-11) --------
+# 105526329 (run 4d5fb467, release fe4163fa9): the country settled on
+# Wikidata's Guatemala, Q774, whose record carries the ISO code "GT" (P297).
+# The province's expert cited NGA's department Chimaltenango, one letter from
+# the label's "Chimaltenago", which NGA puts "in GT": NGA names a country only
+# by its code, which is neither the name "Guatemala" nor the record
+# wikidata:Q774, so the province went to review (NOT_IN_COUNTRY).
+
+def recorded_places(tmp_path):
+    """The approved sources answering from the recorded gazetteer answers
+    (test_sources.gazetteers), with Wikidata's searches for "Guatemala" and
+    "Philippine Islands" cut to their one recorded hit (test_sources.first_hits)."""
+    from test_sources import first_hits, gazetteers, make
+
+    tools, _, _, _ = make(tmp_path, first_hits(gazetteers(), "Guatemala", "Philippine Islands"))
+    return tools
+
+
+# The recorded answers hold none of GBIF's: the taxon's expert asks nothing.
+NO_GBIF = {"taxon": answering(LACKS)}
+
+
+def test_105526329s_province_settles_on_ngas_department_in_the_iso_code_of_the_country(tmp_path):
+    """The real run's shape, through the real source adapters on recorded
+    answers: Wikidata settles the country, NGA's department settles the
+    province one letter off (its country, the one field above it, is the
+    department's parent by the code, G34's whole condition), and NGA's town
+    settles the city inside both. On f800c656 the province and the city go
+    to review (NOT_IN_COUNTRY)."""
+    rig = build_rig(tmp_path, label_with(country="Guatemala", province_state="Chimaltenago", county=None,
+        city="Yepocapa"))
+    run = rig.specimen.run
+    settle(rig, Scripted({**NO_GBIF, "country": from_tgn("Guatemala", "Guatemala", None, "wikidata:Q774",
+            source="wikidata"),
+        "province_state": from_tgn("Chimaltenango", "Chimaltenago", "Chimaltenango", "nga:-1132765",
+            source="nga"),
+        "county": answering(LACKS),
+        "city": from_tgn("Yepocapa", "Yepocapa", None, "nga:-1143757", source="nga")}),
+        tools=recorded_places(tmp_path))
+    assert (run.fields["country"].state, run.fields["country"].authority_id) == (
+        ValueState.SUPPORTED, "wikidata:Q774")
+    province = run.fields["province_state"]
+    assert (province.state, province.literal, province.normalized, province.authority_id) == (
+        ValueState.SUPPORTED, "Chimaltenago", "Chimaltenango", "nga:-1132765")
+    assert [f.reason_code for f in run.findings] == ["near_spelling:province_state"]
+    assert (run.fields["city"].state, run.fields["city"].authority_id) == (ValueState.SUPPORTED, "nga:-1143757")
+    assert not reasons_for(run, "province_state") and not reasons_for(run, "city")
+    verify_evidence(rig.specimen, rig.blobs)
+
+
+def test_ngas_department_in_another_countrys_code_still_is_not_in_the_country(tmp_path):
+    """The control: the label's country settles on Wikidata's Philippines
+    (Q928, "PH"); NGA's department Chimaltenango lies in "GT", so the
+    province goes to review, as on f800c656."""
+    rig = build_rig(tmp_path, label_with(country="Philippine Islands", province_state="Chimaltenago", county=None,
+        city=None))
+    run = rig.specimen.run
+    settle(rig, Scripted({**NO_GBIF, "country": from_tgn("Philippine Islands", "Philippine Islands", "Philippines",
+            "wikidata:Q928", source="wikidata"),
+        "province_state": from_tgn("Chimaltenango", "Chimaltenago", "Chimaltenango", "nga:-1132765",
+            source="nga"),
+        "county": answering(LACKS), "city": answering(LACKS)}), tools=recorded_places(tmp_path))
+    assert (run.fields["country"].state, run.fields["country"].authority_id) == (
+        ValueState.SUPPORTED, "wikidata:Q928")
+    province = run.fields["province_state"]
+    assert (province.state, province.reason) == (ValueState.UNRESOLVED, agreement.NOT_IN_COUNTRY + " Settled.")
+    assert not [f for f in run.findings if f.reason_code == "near_spelling:province_state"]
+
+
+def test_initials_settle_beside_a_province_ngas_code_puts_in_their_country(tmp_path):
+    """"Mindanao, P.I." with "Davao, Prov.": Wikidata finds "Philippine
+    Islands" as the Philippines (Q928, "PH"), and NGA finds "Davao Province"
+    as Davao del Norte, which it puts "in PH". The province lies in the
+    country by the code, so it settles, and it confirms the initials
+    (step._corroborate). On f800c656 the province goes to review
+    (NOT_IN_COUNTRY) and the country stays ambiguous."""
+    from test_step import COLLECTORS, LACKING, MINDANAO, P_I
+
+    rig = build_rig(tmp_path, MINDANAO + "\nDavao, Prov. 3300'", candidates=[*COLLECTORS, *P_I,
+        *(("province_state", name, "Davao, Prov.", "Davao, Prov. 3300'") for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    settle(rig, Scripted({**NO_GBIF, "country": from_tgn("Philippine Islands", "P.I.", "Philippines", "wikidata:Q928",
+            source="wikidata"),
+        "province_state": from_tgn("Davao Province", "Davao, Prov.", "Davao del Norte", "nga:-2424067",
+            source="nga"),
+        "county": LACKING, "city": LACKING}), tools=recorded_places(tmp_path))
+    country, province = run.fields["country"], run.fields["province_state"]
+    assert (country.state, country.normalized, country.authority_id) == (
+        ValueState.SUPPORTED, "Philippines", "wikidata:Q928")
+    assert (province.state, province.authority_id) == (ValueState.SUPPORTED, "nga:-2424067")
+    assert sorted(row.locator for row in run.evidence if row.kind == "rule") == [
+        "abbreviation:country:Philippine Islands", "abbreviation:province_state:Davao Province"]
+
+
+GUATEMALA_Q774 = field("Guatemala", authority_id="wikidata:Q774")
+
+
+@pytest.mark.parametrize(("parent", "iso_code", "settles"), [
+    # NGA's code (the parent's name, record and code), and the code the settled
+    # country's record carries.
+    (("GT", None, "GT"), "GT", True),
+    # Another country's code.
+    (("HN", None, "HN"), "GT", False),
+    # A parent named "GT" whose source gives it as no code: no code is guessed from a name.
+    (("GT", None, None), "GT", False),
+    # The settled country's record carries no code (Getty TGN's records).
+    (("GT", None, "GT"), None, False),
+    # ISO's user-assigned codes are compared by no one.
+    (("XK", None, "XK"), "XK", False),
+    # Only two capital letters, exactly as written.
+    (("GT", None, "GT"), "gt", False),
+    (("GTM", None, "GTM"), "GTM", False),
+], ids=["same-code", "other-code", "name-only", "record-without-code", "user-assigned", "lower-case",
+        "three-letters"])
+def test_a_parent_named_by_a_country_code_is_the_country_whose_record_carries_that_code(parent, iso_code, settles):
+    """Both checks read the code: the country the place must lie in, and, for
+    a near spelling, every place field above it."""
+    country = agreement.PlaceField(GUATEMALA_Q774.texts, GUATEMALA_Q774.authority_id, iso_code)
+    candidate = SourceCandidate("Chimaltenango", "nga:-1132765", "A.ADM1", None, (PlaceRef(*parent),))
+    refused = agreement.parents_refusal("province_state", candidate, agreement.NEAR_SPELLING,
+        written={"country": country}, settled={"country": country})
+    assert refused is None if settles else refused.reason == agreement.NOT_IN_COUNTRY
