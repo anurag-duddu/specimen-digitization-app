@@ -245,7 +245,8 @@ def record_step(
     failed, even when its step then completed (a reader that is given up on, or
     stopped by its limits, completes with no observation): it is recorded as
     `failed` with the code it failed with, and its reservation stays held in
-    full. SAM request seconds are diagnostics only: they omit workflow warm-up,
+    full. So is a first pass that is given up on (its step completes with no
+    decision). SAM request seconds are diagnostics only: they omit workflow warm-up,
     startup CPU boost and idle lifecycle billing, so the full service liability
     remains reserved unless an authoritative billed amount is supplied.
 
@@ -290,8 +291,13 @@ def record_step(
             record_refused(run, step, "model",
                 route_id=run.profile.first_pass_route, failure_code=refusal)
         else:
-            record_reserved(run, step, "model", outcome=outcome,
-                route_id=run.profile.first_pass_route)
+            name = {"route_id": run.profile.first_pass_route}
+            if failure:
+                # A first pass given up on completes its step with no decision:
+                # its last call failed, as a reading's does.
+                name["failure_code"] = failure
+                outcome = "failed" if outcome == "completed" else outcome
+            record_reserved(run, step, "model", outcome=outcome, **name)
     elif step in {"parse", "classify"}:
         # This ordinary ABI does not prove all billable request usage. Keep its
         # whole liability held; tokens alone are not an authoritative bill. A

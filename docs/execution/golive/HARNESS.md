@@ -98,7 +98,8 @@ model's pick stays in the call's raw response and its rationale.
 **Failures** (G6, QUE-005, PRD section 15). For the first pass, the organiser
 and the legacy extraction call (a reader's are below): a rate limit or another
 provider error, HTTP 402 included, is retried with backoff through the workflow's
-existing retry, then blocks as operational; an authentication or authorization
+existing retry, then blocks as operational (a first pass is given up on instead,
+below); an authentication or authorization
 error blocks at once, and so does a request the provider refuses as invalid
 (HTTP 400, 404, 413 or 422), as `model_request_rejected`, since asking again
 repeats it. A timeout or a server error may follow an accepted, billable call,
@@ -150,6 +151,39 @@ a block, and so does a reader of the evidence pilot, whose exact cohort
 reservations and zero retries never replay a paid call (a pilot reader that is
 stopped by its limits ends as `external_outcome_unknown` too). A run that was
 already blocked as `external_outcome_unknown` stays so.
+
+**A first pass given up on** (G6, 2026-10-11, specimen 105526323, whose first
+pass was answered HTTP 429 on all three attempts and dead-lettered the run as
+`retry_budget_exhausted:model_rate_limited`). When the last attempt
+(`max_attempts`) of a first pass fails with a failure the workflow retries
+(`reliability.failure_is_retryable`: a rate limit or a provider error, HTTP 402
+included) and whose outcome is known, the first pass is given up on as a reader
+is: its step completes with no decision and the run goes on through
+`adjudicate`, `parse` and field research. The label's transcript has no text and
+no `decision_kind`, and keeps both readings as its alternatives. A warning
+finding `first_pass_given_up:{region}:{code}` beside the record names the label
+and the failure. The queue decision sends the record to review with
+`unresolved_transcription:{region}`, which field research gives such a label
+however its fields settle: no first pass compared its readings. A 429 refused
+before any answer still costs nothing (`cost_basis: refused`); any other
+given-up attempt stays reserved in full and is recorded `failed` with its
+`failure_code`. An authentication or authorization error,
+`model_request_rejected`, `model_malformed_response`, an unknown outcome (a
+server error, or an attempt past its effect timeout) and a first pass of the
+evidence pilot still block and name their cause. The rule is
+`Workflow.first_pass_has_no_attempt_left`.
+
+**Waiting after a rate limit** (2026-10-11). A step that fails with an
+`AdapterFailure` whose status is `rate_limited` (a model call's HTTP 429 is
+`model_rate_limited`) waits at least 30 seconds before its second attempt and at
+least 90 before each later one (`reliability.RATE_LIMIT_FLOORS`). The wait's base
+is the larger of that floor and the usual backoff, which doubles with each attempt
+(2 seconds after the first, up to 256 after the eighth), and jitter adds up to the
+base again; so with a profile's later attempts the wait can exceed 90 to 180
+seconds. Every other failure keeps the backoff alone (2 to 4 seconds after the
+first attempt, 4 to 8 after the second). A later Retry-After is still honoured. The run holds no lease while it
+waits and is not sent before `next_retry_at`; the drain works on the next
+requested run meanwhile, and waits for the retry when nothing else is due.
 
 **A reader's line breaks** (2026-10-11). An answer whose `verbatim_text` is its
 `lines` in order, with each break between two lines written as a newline, a
