@@ -506,44 +506,62 @@ row the settled value cites shows them.
     above and below give two different years, neither is. In every such case the
     date stays open (`year_missing`) and goes to review.
 
-  In both forms, and on one line (below), **a bare number beside an elevation, a
-  depth or a determination is no year** (`date_lines._year_marker`; review 297,
-  rounds 2 and 3: `Alt.` ending the line above `1900` lent 1900 to the date
-  below it). The year's own line, and the nearest line above it that is not
-  blank, must hold none of these, and the nearest line below it that is not
-  blank must not start with a unit:
-  - an elevation or depth word, matched without accents and in any case, in the
-    languages of the month tables: `alt.`, `alt`, `altitude` (English, French,
-    Portuguese), `altitud`, `altura` (Spanish, Portuguese), `altitudine`, `quota`
-    (Italian), `altitudo` (Latin), `elev.`, `elevation` and the Spanish,
-    Portuguese and French spellings, `Hoehe`, `Seehoehe`, `Meereshoehe` (German,
-    written with the umlaut too), `depth`, `profundidad`, `profundidade`,
-    `profondeur`, `profondita`, `Tiefe`; `El.` with its period (`El` alone is
-    the Spanish article: `El Salvador` above `1948` still lends it); a height
-    above sea level (`msnm`, `m.s.n.m.`, `snm`, `s.l.m.`, `a.s.l.`, `m.a.s.l.`);
-  - a unit after a number, in any case (`1900 m`, `1900m`, `4800 ft.`,
-    `6000 pies`, `4800'`; also `mts`, `metros`, `metres`, `meters`, `metri`,
-    `feet`, `pieds`, `piedi`, `Fuss`), or `m`, `mts` or `ft` standing alone in
-    lower case (`1948. m`). A distance is no marker (`5 mi W`), nor is a word
-    such as `foot` alone (`foot of Volcan Fuego`), `Prof.` or a capital `M.`;
-  - a determination: `det.`, `determ.`, `determinavit`, `determined`, and the
-    Spanish, Portuguese and French `determino`, `determinou`, `determine`
-    (accents dropped). It counts only for a year on a line of its own, and only
-    on a line that does not hold the date: `det. J. Smith` above `1950` above
-    `IV-25 Guatemala` is refused, but `"det. J. Smith IV-25\n1950"` and
-    `det. J. Smith, IV-25 1950` read, being the determination's date written
-    whole (Date Identified's, by the experts' briefs);
-  - below the year, a line that starts with `m`, `mts`, `ft` or a sea-level
-    mark in lower case (`1900` above `m`).
+  In both forms, and on one line (below), **a number with a measurement marker
+  attached is no year** (`date_lines._year_marker`; review 297, rounds 2 and 3:
+  `Alt.` ending the line above `1900` lent 1900 to the date below it; the
+  coordinator's ruling of 2026-10-10 on #306 narrowed the rule to markers
+  attached to the year). The markers, matched without accents and in any case,
+  in the languages of the month tables:
+  - an elevation or depth word, which stands before its number: `alt.`, `alt`,
+    `altitude` (English, French, Portuguese), `altitud`, `altura` (Spanish,
+    Portuguese), `altitudine`, `quota` (Italian), `altitudo` (Latin), `elev.`,
+    `elevation` and the Spanish, Portuguese and French spellings, `Hoehe`,
+    `Seehoehe`, `Meereshoehe` (German, written with the umlaut too), `depth`,
+    `profundidad`, `profundidade`, `profondeur`, `profondita`, `Tiefe`; `El.` with
+    its period (`El` alone is the Spanish article: `El Salvador` above `1948`
+    still lends it);
+  - a unit or a height above sea level, which stands after its number: `m`,
+    `mts`, `metros`, `metres`, `meters`, `metri`, `ft`, `feet`, `pies`, `pieds`,
+    `piedi`, `Fuss`, `msnm`, `m.s.n.m.`, `snm`, `s.l.m.`, `a.s.l.`, `m.a.s.l.`,
+    or a tick (`4800'`). A distance is no marker (`5 mi W`).
 
-  A two-line literal is then `no_match` with
+  A year on a line of its own (split lines, or a year a day and month borrow) is
+  no year when a unit is attached right after it: after nothing but spaces,
+  periods or a comma, with no number of its own between (`1948. m`, `1948.m`,
+  `1948.ft`, `1948, m`; a lone `m` counts in lower case or written against the
+  digits, so `1948, M. Smith` is an initial), or at the start of the nearest
+  line below that is not blank (`1900` above `m` or `msnm`); or when the
+  nearest line above it that is not blank is only a marker waiting for its
+  number: it ends in an elevation or depth word (`Alt.` or `Guatemala, Alt.`
+  above `1900`) or holds no digit and a marker (`m.s.n.m.` above `1900`). A
+  measurement with its own number elsewhere does not count, after a comma on
+  the year's line or on the line above: `"IV-25\n1948, 1,900 m"`,
+  `"IV-25\n1948, 1900m"`, `"IV-25\n1948, Alt. 1500 m"`,
+  `"4800 ft. IV-25\n1948"` and `Alt. 1500 m` above `1948` above `IV-25` read.
+  A unit or an elevation word written against the year on its own line
+  (`1948 m`, `El. 1948`) already leaves the year not alone. A determination
+  (`det.`, `determ.`, `determinavit`, `determined`, and the Spanish, Portuguese
+  and French `determino`, `determinou`, `determine`, accents dropped) counts
+  anywhere on the year's own line or on the line above it, for a year on a line
+  of its own, and only on a line that does not hold the date: `det. J. Smith`
+  above `1950` above `IV-25 Guatemala` is refused, but
+  `"det. J. Smith IV-25\n1950"` and `det. J. Smith, IV-25 1950` read, being the
+  determination's date written whole (Date Identified's, by the experts'
+  briefs). A two-line literal is then `no_match` with
   `split_lines_year_may_be_a_measurement` or
   `split_lines_year_may_be_a_determination`; a day and month alone borrow no
-  year and stay open (`year_missing`). The rule covers the year's line and the
-  line above it whole, so it also sends to review some joins that read before
-  it: `"IV-25\n1948, 1,900 m"`, `"IV-25\n1948, 1900m"` and
-  `"4800 ft. IV-25\n1948"`. A marker two lines above the year, or one with a
-  number of its own below it (`1948` above `Elev. 1500 m`), does not.
+  year and stay open (`year_missing`).
+
+  On one line, whatever notation reads the date (`date_lines.year_is_a_measurement`),
+  the year the literal ends with is no year when a unit is attached right after
+  it as above (`25.IV 1900 m`, `25 IV 1900m`, `25.IV 1900. m`, `3 Sept. 1900 msnm`,
+  `25.IV.1900 m`, `IV-25-1900 ft.`, or `25 IV 1900` above `m`), and the year a
+  literal starts with is no year when an elevation or depth word stands right
+  before it (`Alt. 1948`, `Elev.: 1948 IV 25`): `no_match` with
+  `one_line_year_may_be_a_measurement`. The line above is not asked for a
+  one-line date (`Alt. 1500 m` above `25 IV 1948` reads 1948-04-25), nor does a
+  measurement with its own number on the line count (`25 IV 1948, 1900 m`,
+  `25.IV 1948 1900 m`, and the pilot's `IX-14-46 3300'` read).
 - **A day and month, then their year, on one line** (`date_lines.one_line_literal`,
   `one_line_problem`; review 297c, note 5). When no notation reads a one-line
   literal whole and it ends in a year (four digits, or two after an
@@ -552,21 +570,29 @@ row the settled value cites shows them.
   reads it as a day and month (or a range) with no year of its own:
   `IV-25 1948`, `IV-25, 1948`, `IV.25 1948`, `25.IV, 1948`, `25 IV, 1948`,
   `25.iv 1948`, `IV-25 '48` (`via` `one_line`; `IV-25` beside 1948 is April 25,
-  1948 only). The rules are a year on the line below its date's: nothing else
-  on the line could be a date (`one_line_holds_another_date`); the year may be
-  followed by a comma, semicolon or period and other text, never by a unit, an
-  apostrophe, a dash and a number, a second number, a word or a colon
-  (`one_line_year_not_alone`); no measurement marker as above on its line or
-  the line above it, and no unit starting the line below it
-  (`one_line_year_may_be_a_measurement`; a determination there makes it the
-  determination's date, which reads); readers that disagree leave it ambiguous. A date part the calendar refuses
+  1948 only). The rules are a year on the line below its date's, with the
+  one-line marker rule above: nothing else on the line could be a date
+  (`one_line_holds_another_date`); the year may be followed by a comma,
+  semicolon or period and other text, or by a collector (`leg.`, `leg`,
+  `legit`, `coll.`, `col.`, `colr.`, `collector`, and the Spanish and Portuguese
+  `colector` and `coletor`: `IV-25 1948 leg. R.D. Mitchell` reads as the date
+  written with its collector), never by a unit, an apostrophe, a dash and a
+  number, a second number, any other word or a colon
+  (`one_line_year_not_alone`; a determination after the year, `det.`, `det`,
+  `identified`, `ident.`, stays refused, since the year may be the
+  determination's); no unit attached right after the year
+  (`one_line_year_may_be_a_measurement`: `IV-25 1948. m`, `IV-25, 1948, m`);
+  readers that disagree leave it ambiguous. A determination elsewhere on the
+  line makes it the determination's date, which reads. A collector after the
+  year is allowed on one line only: a year on the line below its date followed
+  by `leg.` is still `split_lines_year_not_alone`. A date part the calendar refuses
   says so (`31.IV, 1948` is `invalid_calendar_date`). Not read this way: a
   semicolon or colon between the date and the year (`IV-25; 1948`), a bare
   two-digit number (`IV-25 48`), `IV 25 1948`, a lowercase numeral month-first
   (`iv-25 1948`), and every all-numeric date (`4-25 1948`, `25.4 1948`): which
   number is the month is never picked. A form a notation reads whole is read
-  as before, not by this rule (`25 IV 1948`, `25.IV 1948`, `3 Sept. 1948`,
-  `25.4. 1948`, where 25 is no month).
+  by its notation, under the one-line marker rule only (`25 IV 1948`,
+  `25.IV 1948`, `3 Sept. 1948`, `25.4. 1948`, where 25 is no month).
 - **A literal that spans a line break is judged only by those rules.** A line
   is what `str.splitlines()` gives, the same lines `checks.py` and `step.py`
   split texts into: a break is `\n`, `\r\n`, `\r`, VT, FF, NEL (U+0085),
