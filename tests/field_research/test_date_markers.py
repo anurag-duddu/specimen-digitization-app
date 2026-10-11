@@ -487,6 +487,8 @@ COLLECTING_DATE = [
     ("Ident. No. 5, Davao, 25.IV.1948", "25.IV.1948", "1948-04-25"),
     ("Ident. No. 5\n25.IV.1948", "25.IV.1948", "1948-04-25"),
     ("Ident. Nr. 12\n25.IV.1948", "25.IV.1948", "1948-04-25"),
+    # "Ident." with nothing after it on its line has no name or "by" after it.
+    ("Ident.\n25.IV.1948", "25.IV.1948", "1948-04-25"),
 ]
 
 
@@ -505,7 +507,8 @@ def test_a_date_no_determination_claims_is_the_collecting_date(text, literal, is
 )
 def test_ident_before_a_number_makes_no_year_the_determination_s(literal, iso):
     # "Ident. No. 5" above the year is no determination: the year is the date's, on both
-    # routes. "Ident. by" or "det." above it still is.
+    # routes. "Ident. by" or "det." above it still is, for every field: the year above
+    # the date may be the determination's alone.
     result = date(literal, ["Ident. No. 5\n1948\nIV-25"])
 
     assert result.status == LookupStatus.SUCCESS and result.values == (iso,), (
@@ -513,9 +516,11 @@ def test_ident_before_a_number_makes_no_year_the_determination_s(literal, iso):
     )
     assert row(literal, iso, ["Ident. No. 5\n1948\nIV-25"]) is not None
     for marker in ("Ident. by J. Smith", "det. J. Smith"):
-        assert date("1950\nIV-25", [f"{marker}\n1950\nIV-25"]).notes == (
-            "split_lines_year_may_be_a_determination",
-        )
+        for field in (None, *COLLECTING, "date_identified"):
+            refused = date("1950\nIV-25", [f"{marker}\n1950\nIV-25"], field=field)
+            assert refused.notes == ("split_lines_year_may_be_a_determination",)
+            alone = date("IV-25", [f"{marker}\n1950\nIV-25"], field=field)
+            assert alone.status != LookupStatus.SUCCESS, (field, alone.as_dict())
 
 
 # -- 5. A literal inside a longer token ----------------------------------------------------------

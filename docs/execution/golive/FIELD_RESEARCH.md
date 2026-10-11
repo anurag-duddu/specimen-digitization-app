@@ -535,7 +535,13 @@ row the settled value cites shows them.
   `Mte.` or `Pto.` (with or without its period), or the initial `M.`, before a
   capitalised name is a place or a person: `Mt. Apo`, `Mt Apo`, `Mt. Rainier`,
   `Ft. Collins`, `Ft. Sherman`, `Mts. Rwenzori` and `M. Smith` are names, as in the
-  pilot's `E. slope Mt. McKinley`. A unit in lower case or in capitals stays a unit
+  pilot's `E. slope Mt. McKinley`. The waiver is for names, never for marker words
+  (the review of d0707cca and the coordinator's ruling): a capitalised collector or
+  determination word, elevation word, lot or number mark (`Lot`, `No.`, `Nr.`,
+  `Cat.`, `Num.`) or `Ex.` after the abbreviation is no name, and the unit stays a
+  unit (`1900 Ft. Coll. Smith`, `1900 M. Leg. Smith`, `1900 M. Det. Smith`,
+  `1900 Mts. Col. J. Perez`, `1900 Mts. Alt.`, `1900 Mt. Lot 5`, `1900 M. No. 12`,
+  and `1900` above `Ft. Coll. Smith`). A unit in lower case or in capitals stays a unit
   whatever follows it (`1900 m R.D. Mitchell`, `1900 ft. Coll. Smith`,
   `1900 msnm Guatemala`, `1900 metros San Pedro`, `1900 FT. COLL. SMITH`,
   `1900 MT. APO`, `1900 M LEG. SMITH`), and so does a Title-case unit word that is
@@ -560,11 +566,14 @@ row the settled value cites shows them.
   above `IV-25`, and `1948` above `m 1200` read. A unit or an elevation word
   written against the year on its own line (`1948 m`, `El. 1948`) already leaves
   the year not alone. A determination (`det.`, `determ.`, `determinavit`,
-  `determined`, `ident.`, `identified`, and the Spanish, Portuguese and French
+  `determined`, `identified`, and the Spanish, Portuguese and French
   `determino`, `determinou`, `determine`, `identificado`, `identifie`, accents
-  dropped) before a year on a line of its own, on the nearest line above it that
-  does not hold the date, makes it the determination's year: `det. J. Smith` above
-  `1950` above `IV-25 Guatemala` is refused. A determination after the year
+  dropped; `ident.` only before `by`, `por`, `par`, `von` or a capitalised name that
+  is no marker word, so `Ident. No. 5` is none) before a year on a line of its own,
+  on the nearest line above it that does not hold the date, makes it the
+  determination's year: `det. J. Smith` or `Ident. by J. Smith` above `1950` above
+  `IV-25` is refused, while `Ident. No. 5` above `1948` above `IV-25` reads
+  1948-04-25. A determination after the year
   (`"IV-25\n1948, det. R.D. Mitchell"`) does not. A two-line literal is then `no_match` with
   `split_lines_year_may_be_a_measurement` or
   `split_lines_year_may_be_a_determination`; a day and month alone borrow no
@@ -586,15 +595,39 @@ row the settled value cites shows them.
   `25 IV 1948, Ft. Sherman, Canal Zone` read).
 
   **A determination before the date makes it the determination's date**
-  (`date_lines.determination_before`, `checks.parse_date(..., field=...)`, which the
-  experts and `step._check_row` pass; the review of f89292766 and the coordinator's
-  ruling). A date that a determination stands before on its own line (`det. J.
-  Smith 1950`, `det. 25.IV.1950`, `det. J. Smith, IV-25 1950`, `"det. J. Smith
-  IV-25\n1950"`) settles only Date Identified; for Date Visited From and To, or with
-  no field, it is `no_match` with `date_follows_a_determination`. Date Identified
-  settles only from such a date: any other date, a determination after it
-  (`25.IV.1948 leg. et det. J. Smith`) or on another line (`det. J. Smith` above
-  `25.IV.1950`), is `no_match` with `date_follows_no_determination` for it. A
+  (`date_lines.determination_date`, `checks.parse_date(..., field=...)`, which the
+  experts and `step._check_row` pass; the reviews of f89292766 and d0707cca and the
+  coordinator's rulings). A date that a determination stands before on its own
+  line, with no collector and no other date between them (`det. J. Smith 1950`,
+  `det. 25.IV.1950`, `det. J. Smith, IV-25 1950`, `"det. J. Smith IV-25\n1950"`,
+  `Ident. by J. Smith 1952`, `leg. Rossi det. Bianchi 1950`), settles only Date
+  Identified; for Date Visited From and To, or with no field, it is `no_match` with
+  `date_follows_a_determination`. A determination claims the first date after it
+  only: in `det. J. Smith 1952 / Guatemala IV-25-1948`, 1952 is the
+  determination's date and IV-25-1948 the collecting date; in `det. Bianchi leg.
+  Rossi 1950` the collector stands between, and 1950 is the collecting date.
+
+  A date alone on its line, with nothing else on it but punctuation, takes the
+  first line above it that is not blank and holds more than a date's parts, under
+  the same rule: `det. J. Smith` above `25.IV.1952`, `(25.IV.1952)` or
+  `IV-25 1952`, `det. J. Smith` above a blank line above `25.IV.1952`, `J. Smith det.`
+  above `1952`, `Det. by H. Dybas` above `Sept. 3, 1952`, `Ident. J. Smith` above
+  `25.IV.1952`, `leg. Rossi det. Bianchi` above `1950`, and `det. J. Smith` above
+  `IV-25` above `1952` (as a literal over both lines, or `IV-25` alone) give
+  Date Identified's date. `det. J. Smith 1950` above `25.IV.1948` does not (the
+  determination's first date is 1950), nor `det. J. Smith` above `leg. Rossi` above
+  `25.IV.1948`, nor `Guatemala` above `25.IV.1948`. A date whose line holds other
+  text decides from its own line only: `det. J. Smith` above `Guatemala
+  25.IV.1948` or `25.IV.1948 Guatemala` is the collecting date. A collector after
+  the date on its line keeps the collecting date, whatever stands before it
+  (`det. J. Smith` above `25.IV.1948 leg. Hoogstraal`, and `det. J. Smith
+  25.IV.1948 leg. Hoogstraal` on one line). `Ident.` is a determination only before
+  `by`, `por`, `par`, `von` or a capitalised name that is no marker word:
+  `Ident. No. 5, Davao, 25.IV.1948`, and `Ident. No. 5` or `Ident. Nr. 12` above
+  `25.IV.1948`, are collecting dates.
+
+  Date Identified settles only from a determination's date: any other date is
+  `no_match` with `date_follows_no_determination` for it. A
   determination after the date, joined to the collector or not, leaves the
   collecting date: `25.IV.1948 leg. et det. J. Smith`, `leg. & det.`, `leg./det.`,
   `leg. u. det.`, `3-IX-1946, col. y det. J. Perez`, `25.VI.1948, leg. Rossi det.
