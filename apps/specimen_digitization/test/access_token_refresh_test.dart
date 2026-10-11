@@ -17,14 +17,13 @@ import 'package:specimen_digitization/src/workspace.dart';
 
 import 'widget_test.dart' show TestSession;
 
-final Json _session =
-    (jsonDecode(
-              File(
-                'test/fixtures/backend-wire-examples.json',
-              ).readAsStringSync(),
-            )
-            as Json)['session']
+final Json _wire =
+    jsonDecode(
+          File('test/fixtures/backend-wire-examples.json').readAsStringSync(),
+        )
         as Json;
+
+final Json _session = _wire['session'] as Json;
 
 final String _collectionId =
     ((_session['memberships'] as List).single as Map)['collection_id']
@@ -157,6 +156,26 @@ void main() {
       expect(denials, hasLength(1));
     });
 
+    test('a refused source image is sent again on minted tokens', () async {
+      // The record answers, and the token expires before its image is read.
+      server.intercept = (http.Request r) async {
+        if (r.url.path.endsWith('/workspace')) {
+          return http.Response(jsonEncode(_wire['workspace_response']), 200);
+        }
+        if (r.url.path.endsWith('/content')) {
+          return r.headers['Authorization'] == 'Bearer id-0'
+              ? _refused()
+              : http.Response.bytes(<int>[1, 2, 3], 200);
+        }
+        return null;
+      };
+      final Specimen record = await repository.specimen(_scope, 'sample');
+      expect(record.assets.single['preview_bytes'], <int>[1, 2, 3]);
+      expect(server.count('/content'), 2);
+      expect(server.sent.last.headers['Authorization'], 'Bearer id-1');
+      expect(denials, isEmpty);
+    });
+
     test('a refused write is not sent again', () async {
       server.intercept = (http.Request r) async => _refused();
       await expectLater(
@@ -243,6 +262,32 @@ void main() {
     await tester.pumpAndSettle();
     expect(server.count('/v1/session'), 2);
     expect(find.byType(AppShell), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('app verification that cannot finish says to reload', (
+    tester,
+  ) async {
+    final server = _Server();
+    final check = _Tokens('check')
+      ..readError = StateError('throttled')
+      ..mintError = StateError('throttled');
+    final session = TestSession();
+    addTearDown(session.controller.close);
+    await tester.pumpWidget(
+      SpecimenDigitizationApp(
+        session: session,
+        repository: _repository(server, _Tokens('id'), check),
+      ),
+    );
+    await tester.pumpAndSettle();
+    const String message =
+        'App verification stopped before collection access was checked. '
+        'Reload or reopen the app to start it again.';
+    // The banner holds this message alone, inside its 120-character budget.
+    expect(find.text(message), findsOneWidget);
+    expect(message.length, lessThanOrEqualTo(120));
+    expect(server.sent, isEmpty);
     await tester.pumpWidget(const SizedBox());
   });
 

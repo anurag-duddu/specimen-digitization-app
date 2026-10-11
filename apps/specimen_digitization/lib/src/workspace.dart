@@ -1461,7 +1461,11 @@ class WorkspaceController extends ChangeNotifier {
             ? 'The local server did not authorize this request. Your collection '
                   'access is unverified, so sign out and sign in with the '
                   'current fixture token.'
-            : '${failure!.message} Your collection access could not be verified.',
+            // App verification's messages already say access was not
+            // checked. Another sentence would break the banner budget.
+            : failure!.code == 'app_check_unavailable'
+            ? failure.message
+            : '${failure.message} Your collection access could not be verified.',
         actionLabel: 'Check access again',
         action: checkAccess,
         clearsAccess: true,

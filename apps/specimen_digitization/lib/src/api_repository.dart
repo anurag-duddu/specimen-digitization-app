@@ -197,7 +197,7 @@ class ApiSpecimenRepository
         // page memory, so only a new page clears it.
         throw _deny(
           const ApiFailure(
-            'App verification did not complete. Check your connection, then reload or reopen the app.',
+            'App verification stopped before collection access was checked. Reload or reopen the app to start it again.',
             code: 'app_check_unavailable',
             status: 403,
           ),
@@ -228,10 +228,12 @@ class ApiSpecimenRepository
   /// web the App Check SDK does not refresh ahead of expiry, and it stamps a
   /// token's expiry when the exchange answers, after the server issued it. In
   /// the last moments of a token's life it can hand out one the API already
-  /// refuses with 403. So a GET refused once is sent again on minted tokens,
-  /// and only a second refusal reaches [_deny]. Writes are never resent here,
-  /// nor is a send whose tokens were [minted] already, nor one from a
-  /// repository that has nothing to mint with.
+  /// refuses with 403. So a GET refused once is sent again on credentials
+  /// read with `fresh`: each token that can be minted is minted, and one whose
+  /// mint throws falls back to its cached token. What reaches [_deny] is the
+  /// answer to that second send, or a failure to read its credentials. Writes
+  /// are never resent here, nor is a send whose tokens were [minted] already,
+  /// nor one from a repository that has nothing to mint with.
   Future<http.StreamedResponse> _send(
     http.BaseRequest Function(Map<String, String> credentials) build,
     Map<String, String> credentials,
