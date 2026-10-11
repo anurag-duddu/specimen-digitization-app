@@ -12,7 +12,7 @@ in every spelling and case. A date a determination stands before on its line, or
 alone on its line under a determination, is the determination's: Date Identified
 settles only from such a date, and the collecting date never does. A determination
 claims the first complete date after it only. A collector after the date on its line
-keeps it the collecting date; a collection mark ("ex coll. Jones", "Coll. FMNH") is no
+keeps it the collecting date; a collection mark ("ex coll. Jones", "Col. IAvH") is no
 collector. A literal counts only where it stands as a token of its own.
 """
 
@@ -423,8 +423,7 @@ DETERMINATION_BEFORE = [
     ("det. J. Smith 1950 ex coll. Jones", "1950", "1950"),
     ("det. J. Smith 1950 Ex. Coll. Jones", "1950", "1950"),
     ("Det. J. Perez 1950, Col. IAvH", "1950", "1950"),
-    ("det. J. Smith 25.IV.1950 Coll. FMNH", "25.IV.1950", "1950-04-25"),
-    ("det. J. Smith 1950 coll. MCZ", "1950", "1950"),
+    ("det. J. Smith 1950 coll. INBio", "1950", "1950"),
     ("det. J. Smith 1950 coll. Museum Paris", "1950", "1950"),
     (f"det. J. Smith 1950 coll. Mus{E_ACUTE}e Paris", "1950", "1950"),
     ("det. J. Smith 1950 coll. Musee Paris", "1950", "1950"),
@@ -488,7 +487,7 @@ DETERMINATION_ABOVE = [
     ("Det. J. Smith\n25.IV.1952\nIV-25-1948", "25.IV.1952", "1952-04-25"),
     ("det. J. Smith\n1952\nIV-25\n1948", "1952", "1952"),
     # A collection mark after the date leaves it alone on its line.
-    ("det. J. Smith\n25.IV.1950 coll. FMNH", "25.IV.1950", "1950-04-25"),
+    ("det. J. Smith\n25.IV.1950 Col. IAvH", "25.IV.1950", "1950-04-25"),
     ("det. J. Smith\n25.IV.1950 ex coll. Jones", "25.IV.1950", "1950-04-25"),
     # A museum or collection word before coll. or col. makes them the same mark (Codex's
     # review of 8a742bb6).
@@ -585,8 +584,9 @@ def test_a_date_no_determination_claims_is_the_collecting_date(text, literal, is
     test_date_identified_takes_no_date_a_determination_follows(text, literal, iso)
 
 
-# A word after coll. or col. that may be a surname or a collection: capitals with a vowel
-# ("JONES", "USNM"), another lower-case word ("smith"), or initials with no name after
+# A word after coll. or col. that may be a surname or a collection: two to six capitals
+# ("JONES", "NG", "FMNH", "MCZ"; Codex's reviews of 8a742bb6 and 7f27908a), another
+# lower-case word ("smith"), or initials with no name after
 # them ("U.S.N.M."). When the determination would claim the date only if the word names
 # a collection, the date belongs to no field for certain, and neither settles (Codex's
 # review of 8a742bb6: never settle a date the label does not support).
@@ -594,6 +594,10 @@ COLLECTOR_OR_COLLECTION = [
     ("det. J. Smith\n25.IV.1950 coll. JONES", "25.IV.1950"),
     ("det. J. Smith 25.IV.1950 coll. JONES", "25.IV.1950"),
     ("det. J. Smith 25.IV.1950 coll. USNM", "25.IV.1950"),
+    ("det. J. Smith\n25.IV.1950 coll. NG", "25.IV.1950"),
+    ("det. J. Smith 25.IV.1950 Coll. FMNH", "25.IV.1950"),
+    ("det. J. Smith\n25.IV.1950 coll. FMNH", "25.IV.1950"),
+    ("det. J. Smith 1950 coll. MCZ", "1950"),
     ("det. J. Smith\n25.IV.1950 coll. smith", "25.IV.1950"),
     ("det. J. Smith 25.IV.1948 coll. U.S.N.M.", "25.IV.1948"),
     ("det. Bianchi coll. JONES 1950", "1950"),
@@ -601,9 +605,13 @@ COLLECTOR_OR_COLLECTION = [
 
 
 @pytest.mark.parametrize(
-    ("text", "literal"), COLLECTOR_OR_COLLECTION, ids=[r[0] for r in COLLECTOR_OR_COLLECTION]
+    ("text", "literal"),
+    COLLECTOR_OR_COLLECTION,
+    ids=[r[0] for r in COLLECTOR_OR_COLLECTION],
 )
-def test_a_word_that_may_name_a_collector_or_a_collection_settles_no_date_field(text, literal):
+def test_a_word_that_may_name_a_collector_or_a_collection_settles_no_date_field(
+    text, literal
+):
     for field in (None, "date_identified", *COLLECTING):
         result = date(literal, [text], field=field)
         assert result.status == LookupStatus.NO_MATCH, (field, result.as_dict())

@@ -1287,15 +1287,17 @@ row the settled value cites shows them.
   lower-case letter, or a word in capitals longer than six letters, is a name too
   (`coll. McRae`, `coll. HOOGSTRAAL`). After `ex` or a museum or collection word,
   before a museum or collection word (`Mus.`, `Museum`, `Musee` with or without its
-  accent, `Museo`, `Museu`, `Collection`, `Coll.`) or an acronym (two to six letters
-  without periods, beginning with two capitals, and not all capitals with a vowel:
-  `FMNH`, `IAvH`, `MCZ`), or with no name after them, they are a collection or
+  accent, `Museo`, `Museu`, `Collection`, `Coll.`) or an acronym written with a
+  lower-case letter (two to six letters without periods, beginning with two
+  capitals: `IAvH`, `INBio`), or with no name after them, they are a collection or
   provenance mark and no collector (the coordinator's ruling on the review of
   04bbe6936): `det. J. Smith 1950, coll. Mus. Paris`, `det. J. Smith 1950 ex coll.
-  Jones`, `Det. J. Perez 1950, Col. IAvH`, `det. J. Smith 25.IV.1950 Coll. FMNH`,
+  Jones`, `Det. J. Perez 1950, Col. IAvH`, `det. J. Smith 1950 coll. INBio`,
   `det. J. Smith 1950 coll. Coll. Oberthur`, `det. J. Smith 1950 coll.` and `det.
-  Bianchi ex coll. Rossi 1950` are Date Identified's, and so are `25.IV.1950 coll.
-  FMNH` and `25.IV.1950 ex coll. Jones` alone on their line under `det. J. Smith`.
+  Bianchi ex coll. Rossi 1950` are Date Identified's, and so are `25.IV.1950 Col.
+  IAvH` and `25.IV.1950 ex coll. Jones` alone on their line under `det. J. Smith`.
+  An acronym in capitals only (`FMNH`, `MCZ`) is no certain mark: it may be a
+  surname (below).
   A museum or collection word after the date is a mark too, with `coll.` or `col.`
   after it or not (Codex's review of 8a742bb6): under `det. J. Smith`,
   `25.IV.1950 Mus. coll. Jones`, `Museum coll. Jones`, `Collection col. Jones`,
@@ -1303,13 +1305,15 @@ row the settled value cites shows them.
   Identified's.
 
   Some words after `coll.` or `col.` may name a person or a collection: two to six
-  capitals with a vowel (a surname or an acronym: `JONES`, `USNM`), another
+  capitals (a surname or an acronym: `JONES`, `NG`, `USNM`, `FMNH`, `MCZ`), another
   lower-case word (`smith`), or initials with no name after them (`U.S.N.M.`). When
   the date is the determination's only if those words name a collection, no field
-  takes it (Codex's review of 8a742bb6): `det. J. Smith 25.IV.1950 coll. JONES`,
-  `det. J. Smith` above `25.IV.1950 coll. JONES`, `det. J. Smith 25.IV.1950 coll.
-  USNM`, `det. J. Smith` above `25.IV.1950 coll. smith`, `det. J. Smith 25.IV.1948
-  coll. U.S.N.M.` and `det. Bianchi coll. JONES 1950` are `no_match` with
+  takes it (Codex's reviews of 8a742bb6 and 7f27908a): `det. J. Smith 25.IV.1950
+  coll. JONES`, `det. J. Smith` above `25.IV.1950 coll. JONES`, `coll. NG` or
+  `coll. FMNH`, `det. J. Smith 25.IV.1950 coll. USNM`, `det. J. Smith 25.IV.1950
+  Coll. FMNH`, `det. J. Smith 1950 coll. MCZ`, `det. J. Smith` above `25.IV.1950
+  coll. smith`, `det. J. Smith 25.IV.1948 coll. U.S.N.M.` and `det. Bianchi coll.
+  JONES 1950` are `no_match` with
   `coll_may_name_a_collector_or_a_collection` for every field and for no field
   (`date_lines.determination_date` answers both ways and finds they differ). A
   collector beside them decides (`det. J. Smith` above `25.IV.1948 coll. JONES,

@@ -246,7 +246,7 @@ def _determination(line: str) -> bool:
 # "coll." and "col." also mark a collection or a provenance (the coordinator's ruling on
 # the review of #306 at 04bbe6936): they name a collector only before a person's name, never
 # after "ex" ("ex coll. Jones") or before a museum or collection word or an acronym
-# ("coll. Mus. Paris", "Coll. FMNH", "Col. IAvH"). After a museum or collection word they
+# ("coll. Mus. Paris", "Col. IAvH"). After a museum or collection word they
 # are the same mark ("coll. Coll. Oberthur", "Mus. coll. Jones"), and a museum or
 # collection word alone is a mark too ("Mus. Paris": Codex's review of 8a742bb6).
 _NAME_AFTER = frozenset({"coll", "col"})
@@ -254,8 +254,8 @@ _COLLECTION_WORDS = frozenset({"mus", "museum", "musee", "museo", "museu", "coll
 
 
 def _acronym(token: str) -> bool:
-    """An acronym: two to six letters, written without periods, at least two of them
-    capitals ("FMNH", "IAvH", "MCZ")."""
+    """An acronym's shape: two to six letters, written without periods, at least two of
+    them capitals ("FMNH", "IAvH", "MCZ")."""
     letters = token.rstrip(".")
     return (letters.isalpha() and 2 <= len(letters) <= 6
         and sum(letter.isupper() for letter in letters) >= 2)
@@ -266,7 +266,6 @@ def _acronym(token: str) -> bool:
 _INITIALS = re.compile(r"(?:[^\W\d_]\.)+")
 _PARTICLES = frozenset({"van", "von", "de", "der", "den", "del", "della", "di", "da", "du", "dos", "das",
     "la", "le", "ten", "ter"})
-_VOWELS = frozenset("AEIOUY")
 
 
 def _names_a_person(tokens: list[str]) -> bool | None:
@@ -276,11 +275,11 @@ def _names_a_person(tokens: list[str]) -> bool | None:
     True for a capitalised name, after initials or lower-case particles or not ("Jones",
     "McRae", "J. Jones", "R.D. Mitchell", "H. DYBAS", "van Dyke", "J. van Dyke").
     False for nothing, a museum or collection word, a marker word, or an acronym that
-    begins with two capitals and is no word in capitals with a vowel ("Mus. Paris",
-    "FMNH", "MCZ", "IAvH"). None when the words may be either: a word of two to six
-    capitals with a vowel may be a surname or an acronym ("JONES", "USNM"), another
-    lower-case word may be a name written in lower case ("smith"), and initials with no
-    name after them may be a dotted acronym ("U.S.N.M.")."""
+    begins with two capitals and holds a lower-case letter ("Mus. Paris", "IAvH",
+    "INBio"). None when the words may be either: a word of two to six capitals may be
+    a surname or an acronym ("JONES", "NG", "FMNH", "MCZ": Codex's review of 7f27908a),
+    another lower-case word may be a name written in lower case ("smith"), and initials
+    with no name after them may be a dotted acronym ("U.S.N.M.")."""
     words = [token for token in tokens if _word(token) not in _JOINED]
     if not words:
         return False
@@ -297,8 +296,7 @@ def _names_a_person(tokens: list[str]) -> bool | None:
     if not token[:1].isupper():
         return None
     if index == 0 and token[1:2].isupper() and _acronym(token):
-        letters = token.rstrip(".")
-        return None if letters.isupper() and _VOWELS & set(letters) else False
+        return None if token.rstrip(".").isupper() else False
     return True
 
 
@@ -333,7 +331,7 @@ _JOINED = _DETERMINATION_WORDS | {"et", "y", "e", "u", "und", "and"}
 def _collection_mark(text: str, doubt: bool) -> bool:
     """Whether the text begins with a collection or provenance mark that names no
     collector: a museum or collection word, or coll. or col., after "ex" or not ("Mus.
-    Paris", "coll. FMNH", "ex coll. Jones", "Mus. coll. Jones")."""
+    Paris", "Col. IAvH", "ex coll. Jones", "Mus. coll. Jones")."""
     words = [_word(token) for token in _TOKEN.findall(text)]
     start = 1 if words[:1] == ["ex"] else 0
     return len(words) > start and words[start] in _COLLECTION_WORDS | _NAME_AFTER and not _collector(text, doubt)
@@ -652,15 +650,15 @@ def determination_date(literal: str, text: str) -> bool | None:
     - a collector after the date on its line makes it a collecting date ("det. J.
       Smith" above "25.IV.1948 leg. Hoogstraal", "det. J. Smith 25.IV.1948 leg.
       Hoogstraal"); a collection mark is no collector ("det. J. Smith 1950 ex coll.
-      Jones", "det. J. Smith 25.IV.1950 Coll. FMNH": `_collector`);
+      Jones", "Det. J. Perez 1950, Col. IAvH": `_collector`);
     - a determination before the date on its line makes it the determination's when
       neither a collector nor a complete date (one with its year) stands between them
       ("det. J. Smith 1950", "det. 25.IV.1950", "leg. Rossi det. Bianchi 1950", "det.
       J. Smith, IV-25 1950" for "1950"; not "det. J. Smith 1952 / Guatemala
       IV-25-1948", "det. Bianchi leg. Rossi 1950");
     - a date whose line holds other text decides from its own line only; a collection
-      mark after it is no other text ("det. J. Smith" above "25.IV.1950 coll. FMNH" is
-      the determination's: `_collection_mark`);
+      mark after it is no other text ("det. J. Smith" above "25.IV.1950 ex coll. Jones"
+      is the determination's: `_collection_mark`);
     - a date on a line by itself takes the first line above it that is not blank and,
       when the date is a bare year, not a part of that date without a year, under the
       same rule ("det. J. Smith" above "25.IV.1952", "J. Smith det." above "1952",
@@ -673,7 +671,8 @@ def determination_date(literal: str, text: str) -> bool | None:
     (`_determination_ends`).
 
     None when the answer turns on words after coll. or col. that may name a person or a
-    collection (`_names_a_person`): "det. J. Smith 25.IV.1950 coll. JONES". With no
+    collection (`_names_a_person`): "det. J. Smith 25.IV.1950 coll. JONES" or "Coll.
+    FMNH". With no
     determination to claim the date, such words change nothing ("Guatemala 25.IV.1948
     coll. JONES" is a collecting date)."""
     spans = _spans(text)
