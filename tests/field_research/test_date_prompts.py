@@ -46,7 +46,7 @@ def emitted() -> dict[str, checks.DateCheck]:
         "one_line": run("IV-25 1948", "Guatemala, IV-25 1948"),
         "one_line_year_not_alone": run("IV-25 1948", "Guatemala, IV-25 1948 m"),
         "one_line_holds_another_date": run("IV-25 1948", "Guatemala, 3.VI, IV-25 1948"),
-        "one_line_year_may_be_a_measurement": run("IV-25 1948", "Alt. 1500 m, IV-25 1948"),
+        "one_line_year_may_be_a_measurement": run("25.IV 1900", "Bolivia, 25.IV 1900 m"),
         "split_lines_year_may_be_a_measurement": run("1900\nIV-25", "Alt.\n1900\nIV-25 Guatemala"),
         "split_lines_year_may_be_a_determination": run("1950\nIV-25", "det. J. Smith\n1950\nIV-25 x"),
         "split_lines_date_not_read": run("Davao\n1948", "Mindanao, Davao\n1948"),

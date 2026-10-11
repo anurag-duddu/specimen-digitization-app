@@ -241,6 +241,11 @@ def _date_run(literal: str, name: str, text: str, year_literal: str | None,
     if result.outcome == LookupStatus.NO_MATCH and not result.warnings and (
             one := date_lines.one_line_literal(literal)) is not None:
         return _one_line_run(literal, one, name, text, rules) or _run(name, result, ())
+    # A year the literal writes itself is no year when a unit is attached right after it,
+    # or an elevation word right before it ("25.IV 1900 m", "Alt. 1948"), whatever
+    # notation reads the date.
+    if result.parsed and not result.parsed["year_literal"] and date_lines.year_is_a_measurement(literal, text):
+        return _Run(name, LookupStatus.NO_MATCH, (), (date_lines.ONE_LINE_MEASUREMENT,))
     via = ("year_literal",) if year_literal and result.parsed and result.parsed["year_literal"] else ()
     if year_literal is None and "year_missing" in result.warnings:
         beside = date_lines.year_beside(literal, text)

@@ -58,10 +58,28 @@ READ = [
     # A determination's date written whole on its line reads too (Date Identified's).
     ("det. J. Smith, IV-25 1950", "IV-25 1950", "1950-04-25"),
     ("det. J. Smith\nIV-25 1950", "IV-25 1950", "1950-04-25"),
+    # A measurement with its own number on the line, or any marker on the line above, is not
+    # attached to the year (coordinator's ruling on PR #306; 5f2937c85 refused these).
+    ("Guatemala, Alt. 1500 m, IV-25 1948", "IV-25 1948", "1948-04-25"),
+    ("Guatemala, IV-25 1948, 4800 ft.", "IV-25 1948", "1948-04-25"),
+    ("Guatemala\nAlt.\nIV-25 1900", "IV-25 1900", "1900-04-25"),
+    ("Alt. 1500 m\nGuatemala, IV-25 1948", "IV-25 1948", "1948-04-25"),
+    ("Bolzano\nQuota 1900 m\n25.IV, 1948", "25.IV, 1948", "1948-04-25"),
+    # A collector right after the year (coordinator's ruling on PR #306).
+    ("Guatemala, IV-25 1948 leg. R.D. Mitchell", "IV-25 1948", "1948-04-25"),
+    ("Guatemala, IV-25 1948 leg R.D. Mitchell", "IV-25 1948", "1948-04-25"),
+    ("Guatemala, IV-25 1948 legit R.D. Mitchell", "IV-25 1948", "1948-04-25"),
+    ("Guatemala, IV-25 1948 coll. R.D. Mitchell", "IV-25 1948", "1948-04-25"),
+    ("Guatemala, IV-25 1948 Coll. R.D. Mitchell", "IV-25 1948", "1948-04-25"),
+    ("Guatemala, IV-25 1948 colr. R.D. Mitchell", "IV-25 1948", "1948-04-25"),
+    ("Guatemala, IV-25 1948 collector R.D. Mitchell", "IV-25 1948", "1948-04-25"),
+    ("Mexico, Veracruz, 25.IV, 1948 col. J. Perez", "25.IV, 1948", "1948-04-25"),
+    ("Mexico, Veracruz, 25.IV, 1948 colector J. Perez", "25.IV, 1948", "1948-04-25"),
+    ("Brasil, Bahia, IV-25 1948 coletor J. Silva", "IV-25 1948", "1948-04-25"),
 ]
 
 
-@pytest.mark.parametrize(("text", "literal", "iso"), READ, ids=[r[1] for r in READ])
+@pytest.mark.parametrize(("text", "literal", "iso"), READ, ids=[r[0] for r in READ])
 def test_a_day_and_month_then_their_year_on_one_line_read_as_one_date(
     text, literal, iso
 ):
@@ -72,7 +90,7 @@ def test_a_day_and_month_then_their_year_on_one_line_read_as_one_date(
     assert result.readings[0].via == ("one_line",)
 
 
-@pytest.mark.parametrize(("text", "literal", "iso"), READ, ids=[r[1] for r in READ])
+@pytest.mark.parametrize(("text", "literal", "iso"), READ, ids=[r[0] for r in READ])
 def test_the_step_keeps_a_check_row_for_a_one_line_date_and_names_how_it_was_read(
     text, literal, iso
 ):
@@ -133,30 +151,39 @@ def test_an_apostrophe_year_records_the_century_rule():
             "one_line_holds_another_date",
         ),
         ("Guatemala, IV-25 1948, 3 Sept.", "IV-25 1948", "one_line_holds_another_date"),
-        # A measurement on the line or on the line above, or a unit below.
+        # A determination right after the year is no collector: the year may be the
+        # determination's.
         (
-            "Guatemala, Alt. 1500 m, IV-25 1948",
+            "Guatemala, IV-25 1948 det R.D. Mitchell",
+            "IV-25 1948",
+            "one_line_year_not_alone",
+        ),
+        (
+            "Guatemala, IV-25 1948 identified by R.D. Mitchell",
+            "IV-25 1948",
+            "one_line_year_not_alone",
+        ),
+        (
+            "Guatemala, IV-25 1948 ident. R.D. Mitchell",
+            "IV-25 1948",
+            "one_line_year_not_alone",
+        ),
+        # A unit attached right after the year: after a period or a comma with no number of
+        # its own, or starting the line below.
+        (
+            "Guatemala, IV-25 1948. m",
             "IV-25 1948",
             "one_line_year_may_be_a_measurement",
         ),
+        ("Guatemala, IV-25 1948.m", "IV-25 1948", "one_line_year_may_be_a_measurement"),
         (
-            "Guatemala, IV-25 1948, 4800 ft.",
-            "IV-25 1948",
-            "one_line_year_may_be_a_measurement",
-        ),
-        (
-            "Guatemala\nAlt.\nIV-25 1900",
-            "IV-25 1900",
+            "Guatemala, IV-25, 1948, m",
+            "IV-25, 1948",
             "one_line_year_may_be_a_measurement",
         ),
         (
             "Guatemala, IV-25 1900\nm",
             "IV-25 1900",
-            "one_line_year_may_be_a_measurement",
-        ),
-        (
-            "Bolzano\nQuota 1900 m\n25.IV, 1948",
-            "25.IV, 1948",
             "one_line_year_may_be_a_measurement",
         ),
     ],
@@ -271,3 +298,63 @@ def test_a_one_line_date_inside_a_hyphen_joined_token_is_still_no_date(text):
         "part_of_hyphenated_token",
     )
     assert row("IV-25 1948", "1948-04-25", [text]) is None
+
+
+# A year a notation reads whole is no year when a unit is attached right after it or an
+# elevation word stands right before it (coordinator's ruling on PR #306): on 5f2937c85
+# "25.IV 1900" beside "m" settled 1900-04-25, an elevation.
+ATTACHED = [
+    ("Bolivia, Yungas, 25.IV 1900 m", "25.IV 1900", "1900-04-25"),
+    ("Bolivia, Yungas, 25 IV 1900 m", "25 IV 1900", "1900-04-25"),
+    ("Bolivia, Yungas, 25 IV 1900m", "25 IV 1900", "1900-04-25"),
+    ("Bolivia, Yungas, 25.IV 1900. m", "25.IV 1900", "1900-04-25"),
+    ("Bolivia, Yungas, 25 IV 1900\nm", "25 IV 1900", "1900-04-25"),
+    ("Peru, Cusco, 3 Sept. 1900 msnm", "3 Sept. 1900", "1900-09-03"),
+    ("Peru, Cusco, 25.IV.1900 m", "25.IV.1900", "1900-04-25"),
+    ("Peru, Cusco, IV-25-1900 ft.", "IV-25-1900", "1900-04-25"),
+    ("Peru, Cusco, Alt. 1948", "1948", "1948"),
+    ("Peru, Cusco, Alt. 1948 m", "1948", "1948"),
+    ("Peru, Cusco, Elev.: 1948 IV 25", "1948 IV 25", "1948-04-25"),
+]
+
+
+@pytest.mark.parametrize(
+    ("text", "literal", "iso"), ATTACHED, ids=[r[0] for r in ATTACHED]
+)
+def test_a_year_a_notation_reads_whole_is_no_year_with_a_unit_attached(
+    text, literal, iso
+):
+    result = date(literal, [text])
+
+    assert result.status == LookupStatus.NO_MATCH, result.as_dict()
+    assert result.notes == ("one_line_year_may_be_a_measurement",)
+    assert row(literal, iso, [text]) is None
+
+
+@pytest.mark.parametrize(
+    ("text", "literal", "iso"),
+    [
+        # The line above is not asked for a one-line date.
+        ("Alt. 1500 m\nBolivia, Yungas, 25 IV 1948", "25 IV 1948", "1948-04-25"),
+        ("Bolivia\nAlt.\n25.IV 1948", "25.IV 1948", "1948-04-25"),
+        # A measurement with its own number, on the line before or after the date.
+        ("Bolivia, Alt. 1500 m, 25 IV 1948", "25 IV 1948", "1948-04-25"),
+        ("Bolivia, Yungas, 25 IV 1948, 1900 m", "25 IV 1948", "1948-04-25"),
+        ("Bolivia, Yungas, 25.IV 1948 1900 m", "25.IV 1948", "1948-04-25"),
+        # The pilot's 105526325: an elevation in feet after the date, with its own number.
+        ("H. Hoogstraal\nIX-14-46 3300'\nCNHM", "IX-14-46", "1946-09-14"),
+        # A capital M. after the year is an initial; a determination before a year is no unit.
+        ("Bolivia, Yungas, 25 IV 1948, M. Smith", "25 IV 1948", "1948-04-25"),
+        ("Bolivia, Yungas, 25 IV 1948 M. Smith", "25 IV 1948", "1948-04-25"),
+        ("det. J. Smith 1948", "1948", "1948"),
+    ],
+)
+def test_a_year_a_notation_reads_whole_with_no_unit_attached_reads_as_before(
+    text, literal, iso
+):
+    result = date(literal, [text])
+
+    assert result.status == LookupStatus.SUCCESS and result.values == (iso,), (
+        result.as_dict()
+    )
+    assert row(literal, iso, [text]) is not None

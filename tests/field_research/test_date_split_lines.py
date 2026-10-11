@@ -179,6 +179,8 @@ def test_a_two_line_literal_with_another_date_on_its_lines_is_no_date(text):
         ("Guatemala, IV-25\n1948-2", "IV-25\n1948"),
         ("Guatemala, IV-25\n1948 5", "IV-25\n1948"),
         ("Guatemala, IV-25\n1950 det. J. Smith", "IV-25\n1950"),
+        # A collector after the year is allowed on one line only (coordinator, PR #306).
+        ("Guatemala, IV-25\n1948 leg. R.D. Mitchell", "IV-25\n1948"),
         # The year ends the line above the date and does not stand alone there.
         ("det. J. Smith 1950\nIV-25 Guatemala", "1950\nIV-25"),
         ("El. 1948\nIV-25 Guatemala", "1948\nIV-25"),
@@ -410,8 +412,10 @@ def test_a_reading_that_cannot_be_named_is_refused_not_dropped():
 
 # -- a bare number beside an elevation, a depth, a unit or a determination is not a year -----------
 # Review 297 (rounds 2 and 3): "Alt." ending the line above "1900" lent 1900 as the year of
-# "IV-25" below it. The year's line and the nearest line above it must hold no such marker,
-# and the nearest line below it must not start with a unit.
+# "IV-25" below it. Coordinator's ruling on PR #306 (2026-10-10): a marker counts only when
+# it is attached to the year (a unit right after it, here or starting the line below) or the
+# line above is only a marker waiting for its number; a measurement with its own number
+# elsewhere on these lines does not taint the year.
 
 O_UMLAUT = "\N{LATIN SMALL LETTER O WITH DIAERESIS}"
 MEASURE = "split_lines_year_may_be_a_measurement"
@@ -433,15 +437,17 @@ MARKED_YEARS = [
     (f"Tirol\nSeeh{O_UMLAUT}he\n1900\n25.IV Innsbruck", "1900\n25.IV", MEASURE),  # de
     ("Andes\nAltitudo\n1900\n25.IV", "1900\n25.IV", MEASURE),  # la
     ("Lago Titicaca\nProfundidad\n1900\n25.IV", "1900\n25.IV", MEASURE),  # es, a depth
-    # A unit starting the line below the year, after a number, or alone in lower case.
+    # A line above that ends in the marker, with no number of its own.
+    ("Guatemala, Alt.\n1900\nIV-25 Yepocapa", "1900\nIV-25", MEASURE),
+    ("Guatemala, Elev.:\n1900\nIV-25 Yepocapa", "1900\nIV-25", MEASURE),
+    # A unit attached right after the year: starting the line below, or after a period
+    # or a comma with no number of its own.
     ("Guatemala, IV-25\n1900\nm, R.D. Mitchell", "IV-25\n1900", MEASURE),
     ("Guatemala, IV-25\n1900\nmsnm", "IV-25\n1900", MEASURE),
-    ("Guatemala, IV-25\n1948, 1900m", "IV-25\n1948", MEASURE),
-    ("Guatemala, IV-25\n1948, 1,900 m", "IV-25\n1948", MEASURE),
-    ("Guatemala, IV-25\n1948, 4800 ft.", "IV-25\n1948", MEASURE),
-    ("Guatemala, IV-25\n1948, 6000 pies", "IV-25\n1948", MEASURE),
     ("Guatemala, IV-25\n1948. m", "IV-25\n1948", MEASURE),
-    ("Yepocapa, 4800 ft. IV-25\n1948", "IV-25\n1948", MEASURE),
+    ("Guatemala, IV-25\n1948.m", "IV-25\n1948", MEASURE),
+    ("Guatemala, IV-25\n1948.ft", "IV-25\n1948", MEASURE),
+    ("Guatemala, IV-25\n1948, m", "IV-25\n1948", MEASURE),
     # A determination on the year's line or above it.
     ("Guatemala\ndet. J. Smith\n1950\nIV-25 Yepocapa", "1950\nIV-25", DETERMINATION),
     ("Guatemala, IV-25\n1948, det. R.D. Mitchell", "IV-25\n1948", DETERMINATION),
@@ -473,12 +479,23 @@ def test_the_step_keeps_no_row_for_a_year_beside_a_measurement_or_a_determinatio
         # A marker two lines above the year, or with a number of its own on the line below it.
         ("Alt. 1500 m\nGuatemala, IV-25\n1948, R.D. Mitchell", "IV-25\n1948", "1948-04-25"),
         ("Guatemala, IV-25\n1948\nElev. 1500 m", "IV-25\n1948", "1948-04-25"),
+        # A measurement with its own number, after a comma on the year's line or on the line
+        # above, is not attached to the year (coordinator's ruling on PR #306; 5f2937c85
+        # refused these).
+        ("Guatemala, IV-25\n1948, 1,900 m", "IV-25\n1948", "1948-04-25"),
+        ("Guatemala, IV-25\n1948, 1900m", "IV-25\n1948", "1948-04-25"),
+        ("Guatemala, IV-25\n1948, 4800 ft.", "IV-25\n1948", "1948-04-25"),
+        ("Guatemala, IV-25\n1948, 6000 pies", "IV-25\n1948", "1948-04-25"),
+        ("Yepocapa, 4800 ft. IV-25\n1948", "IV-25\n1948", "1948-04-25"),
+        ("Alt. 1500 m\n1948\nIV-25 Guatemala", "1948\nIV-25", "1948-04-25"),
+        ("Guatemala, IV-25\n1948, Alt. 1500 m", "IV-25\n1948", "1948-04-25"),
         # Words that are no marker: "El" without its period (the article), "foot of", "Prof.",
         # a capital "M." (an initial), a distance in miles (review 297c, note 3, as documented).
         ("El Salvador\n1948\nIV-25 Chalatenango", "1948\nIV-25", "1948-04-25"),
         ("Guatemala, foot of Volcan Fuego, IV-25\n1948", "IV-25\n1948", "1948-04-25"),
         ("leg. Prof. J. Smith\n1948\nIV-25 Guatemala", "1948\nIV-25", "1948-04-25"),
         ("Guatemala, IV-25\n1948\nM. Smith", "IV-25\n1948", "1948-04-25"),
+        ("Guatemala, IV-25\n1948, M. Smith", "IV-25\n1948", "1948-04-25"),
         ("Guatemala, Sept. 3\n1948. 5 mi W", "Sept. 3\n1948.", "1948-09-03"),
         # A determination on the date's own line: the determination's date, written whole.
         ("det. J. Smith IV-25\n1950", "IV-25\n1950", "1950-04-25"),
