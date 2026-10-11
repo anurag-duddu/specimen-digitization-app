@@ -3,7 +3,10 @@
 One entry per paid call on the run, with its usage and its cost at the run's
 pinned price list. A call that reports usage, or a billed amount, settles the
 program ledger to what it cost; one that does not stays reserved in full
-(the coordinator's G30 ruling).
+(the coordinator's G30 ruling). The one exception is a call the provider
+refused before any work, an HTTP 429 answering its first request: nothing was
+generated or billed, so it is recorded at zero (cost basis `refused`) and its
+reservation is released.
 """
 
 from __future__ import annotations
@@ -157,6 +160,21 @@ def record_reserved(run, step, kind, *, outcome, **name):
     )
 
 
+def record_refused(run, step, kind, *, failure_code, **name):
+    """A call the provider refused before any work costs nothing.
+
+    Only a proven refusal: an HTTP 429 answering the call's first request
+    (reliability.AdapterFailure.refused). It is a known zero, so it settles and
+    releases its step's reservation; any other failure stays reserved in full.
+    """
+    if run.profile.execution.price_list is None:
+        return
+    _record(
+        run, step, kind, None, 0, "failed", None,
+        basis="refused", **name, failure_code=failure_code,
+    )
+
+
 def step_outcome(run, step):
     if run.blocker == "external_outcome_unknown":
         return "unknown"
@@ -169,8 +187,9 @@ def settle_step(repository, principal, specimen, step, reserved, clock=None):
     """Settle the run's budget and the program ledger to what the step's calls cost.
 
     Only when every call recorded for the attempt reported usage or a billed
-    amount. A reserved call, or a step whose calls nobody recorded, stays fully
-    reserved. A settled cost above the reservation counts in full.
+    amount, or was refused before any work (a known zero). A reserved call, or a
+    step whose calls nobody recorded, stays fully reserved. A settled cost above
+    the reservation counts in full.
     """
     from .lane_allowance import ProgramLedger
 
@@ -218,7 +237,7 @@ def settle_step(repository, principal, specimen, step, reserved, clock=None):
 
 def record_step(
     repository, principal, specimen, step, observations, seconds, reserved,
-    clock=None, failure=None,
+    clock=None, failure=None, refusal=None,
 ):
     """The workflow's hook after a paid step: record its calls, then settle.
 
@@ -229,6 +248,10 @@ def record_step(
     full. SAM request seconds are diagnostics only: they omit workflow warm-up,
     startup CPU boost and idle lifecycle billing, so the full service liability
     remains reserved unless an authoritative billed amount is supplied.
+
+    `refusal` is the code of a model call the provider refused before any work
+    (reliability.AdapterFailure.refused); that call is recorded at no cost
+    (record_refused), and its reservation is released.
     """
     run = specimen.run
     if run.profile.execution.price_list is None:
@@ -245,7 +268,11 @@ def record_step(
                 output_tokens=observation.output_tokens,
                 outcome=outcome,
             )
-        if not readings:
+        if not readings and refusal:
+            record_refused(
+                run, step, "model", route_id=step.split(":")[-1], failure_code=refusal
+            )
+        elif not readings:
             name = {"route_id": step.split(":")[-1]}
             if failure:
                 name["failure_code"] = failure
@@ -259,15 +286,23 @@ def record_step(
             record_model_usage(run, step, call.route_id,
                 input_tokens=call.input_tokens, output_tokens=call.output_tokens,
                 outcome=outcome)
+        elif refusal:
+            record_refused(run, step, "model",
+                route_id=run.profile.first_pass_route, failure_code=refusal)
         else:
             record_reserved(run, step, "model", outcome=outcome,
                 route_id=run.profile.first_pass_route)
     elif step in {"parse", "classify"}:
         # This ordinary ABI does not prove all billable request usage. Keep its
-        # whole liability held; tokens alone are not an authoritative bill.
+        # whole liability held; tokens alone are not an authoritative bill. A
+        # refusal of parse's one model call (extract_with_agent) is proof that
+        # nothing was billed.
         attempt = run.attempts.get(step, 1)
         if not any(c["step"] == step and c["attempt"] == attempt for c in run.paid_calls):
-            record_reserved(run, step, "model", outcome=outcome, route_id=step)
+            if refusal:
+                record_refused(run, step, "model", route_id=step, failure_code=refusal)
+            else:
+                record_reserved(run, step, "model", outcome=outcome, route_id=step)
     elif step == "segment":
         if outcome == "completed":
             measured = (run.segmentation or {}).get("elapsed_seconds")

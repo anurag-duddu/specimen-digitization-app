@@ -348,6 +348,7 @@ coordinator ruling on the mechanism:
   never capped, and once the allowance is spent further paid steps block. A
   retry reserves again, and nothing settled or held reserved is given back when
   a run fails or is retried.
+  - 2026-10-11 (harness session, PR #311): exception — a provider HTTP 429 refused before any response is recorded with basis `refused` at cost 0 and settles, releasing its reservation; a first pass or organiser call past its step deadline stays reserved in full (external_outcome_unknown), as does every other no-usage failure.
 - A worst case exists only where a request is bounded: every first-pass and
   harness model request carries a cap on output tokens, and each harness run a
   cap on its model requests, set from the lab's measured runs. A run that

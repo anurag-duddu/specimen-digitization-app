@@ -969,7 +969,10 @@ handover runs field research instead of the six specialists:
 8. **Budget.** Before every model call the step reserves that call's worst
    case (its input, the provider's chat template and the output cap) from
    what remains of the run's ceiling (the profile's `run_cost_limit_micros`,
-   USD 1 for the pilot), and settles to the real usage after. A call that
+   USD 1 for the pilot), and settles to the real usage after. A request the
+   provider refuses with HTTP 429 generated nothing and settles to nothing;
+   one sent that fails any other way keeps its worst case
+   (`budget.MeteredModel`). A call that
    would cross the ceiling is not sent: while other calls' reservations are
    held it waits for them to settle, each to its real cost (about a tenth
    of its worst case or less), and tries again; only when no other

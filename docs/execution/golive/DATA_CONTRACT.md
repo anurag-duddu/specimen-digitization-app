@@ -641,6 +641,23 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
     reservation, which is never released. Only `computed` or `billed` settles a
     call, and a settled cost above its reservation counts in full (coordinator
     ruling under G30; PLAN 4.3 and S5's brief in #124, 18958e0).
+  - The one exception is `refused`: the provider answered HTTP 429 to a model
+    call's first request, so nothing was generated or billed
+    (`reliability.run_agent_bounded`). The call costs 0, with `usage` null,
+    `outcome` `failed` and its `failure_code` (`model_rate_limited`).
+    `lane_costs.record_refused` records it, and `lane_costs.settle_step` settles
+    it as a known zero, which releases its whole reservation on the run and the
+    program ledger. A 429 after an answer in the same call (the agent's output
+    retry) stays `reserved`, as does every other failure without usage. A first
+    pass or the organiser that ends past its effect timeout has an unknown
+    outcome (the workflow's deadline override), so its 429 stays `reserved` too;
+    a reader (other than the evidence pilot's) keeps a refusal past its
+    deadline, as it keeps any known failure (HARNESS.md section 3).
+    Readers, the first pass and the organiser record it;
+    a field research request refused with 429 settles its meter at zero
+    (`budget.MeteredModel`). From the coordinator's brief of 2026-10-11, after
+    specimen 105526327's run blocked as `cost_budget_exhausted` behind two
+    first-pass 429s.
   - Each entry is passed through as S3 records it on the run (LANE.md T2c):
     `step`, `attempt`, `kind` and its target, `reserved_micros`, `usage`,
     `outcome`, `cost_micros`, `cost_basis`, `price_list {version, as_of}` and
@@ -648,7 +665,7 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
     - The target is `route_id` for kind `model`, `service` for kind `service`
       (`sam3`), and `tool_id` for kind `tool`.
     - `usage` is `{input_tokens, output_tokens}`, `{seconds, vcpus,
-      memory_gib}` or `{requests}`, and null for a reserved call.
+      memory_gib}` or `{requests}`, and null for a reserved or refused call.
     - `outcome` is `completed`, `failed` or `unknown`.
     - Keys S3 adds later reach the client unchanged.
 - `region_id` throughout is the domain region id (`LabelRegion.domainRegionId`),

@@ -135,7 +135,9 @@ observation, as for a cap hit, and the queue decision sends the record to review
 with `independent_observations_missing:{region}`; a region no reader could read
 keeps a transcript with no text and no readings. Every reading that gave no
 observation is recorded in `paid_calls` as `failed` with its `failure_code`, and
-its reservation stays held in full (`cost_basis: reserved`). An authentication or
+its reservation stays held in full (`cost_basis: reserved`), except an attempt
+the provider refused with HTTP 429 before any answer, which costs nothing and
+releases its reservation (`cost_basis: refused`, DATA_CONTRACT.md). An authentication or
 authorization error, and a request the provider refuses as invalid (HTTP 400,
 404, 413, 422: `model_request_rejected`), still block at once and name their
 cause, since asking again repeats them. A reviewer cannot record supported text
