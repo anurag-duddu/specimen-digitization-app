@@ -529,9 +529,10 @@ async def test_a_geolocate_turn_further_off_than_a_slot_wait_is_not_taken(tmp_pa
             if answer.status is LookupStatus.TIMEOUT] == [
         (queries[11], LookupStatus.TIMEOUT, "GEOLocate was busy; this lookup was not sent")]
     assert sorted(at for at, _ in server.requests) == [3.0 * n for n in range(11)]
+    # The line names no sender (NO_SENDER, #303): the request was never sent.
     assert unanswered(caplog) == [{"step": "field_research", "source": "geolocate", "host": "geo-locate.org",
                                    "http_status": "-", "error": "slot_busy", "retry_after": "absent",
-                                   "attempt": "1"}]
+                                   "attempt": "1", **NO_SENDER}]
     assert "Yepocapa" not in caplog.text
     await clock.sleep(3)
     late = await tools.lookup("geolocate", "Yepocapa late, Chimaltenango, Guatemala", field_key="precise_location")
@@ -679,9 +680,10 @@ async def test_a_lookup_that_waits_too_long_for_a_slot_gives_up_unsent(tmp_path,
     assert (answer.status, answer.evidence, answer.candidates) == (LookupStatus.TIMEOUT, None, ())
     assert answer.note == "Getty TGN was busy; this lookup was not sent"
     assert server.requests == [] and blobs.puts == []
+    # The line names no sender (NO_SENDER, #303): the request was never sent.
     assert unanswered(caplog) == [{"step": "field_research", "source": "tgn", "host": TGN_HOST,
                                    "http_status": "-", "error": "slot_busy", "retry_after": "absent",
-                                   "attempt": "1"}]
+                                   "attempt": "1", **NO_SENDER}]
     assert "Davao" not in caplog.text and "Philippines" not in caplog.text
     assert slots.in_flight("tgn") == 0
     async with asyncio.timeout(1), slots.slot("tgn"):
