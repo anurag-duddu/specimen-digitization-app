@@ -193,8 +193,9 @@ class ApiSpecimenRepository
             : await _readToken(appCheck, freshAppCheckToken, fresh: fresh);
       } catch (_) {
         // Both attempts failed inside this window. On the web the App Check
-        // SDK keeps a failed exchange's backoff (a full day after a 403) in
-        // page memory, so only a new page clears it.
+        // SDK keeps a failed exchange's backoff in page memory. Until it runs
+        // out (a full day after a 403) or the page reloads, every exchange
+        // fails without a request.
         throw _deny(
           const ApiFailure(
             'App verification stopped before collection access was checked. Reload or reopen the app to start it again.',
@@ -221,7 +222,8 @@ class ApiSpecimenRepository
     return {'Authorization': 'Bearer $bearer', 'X-Firebase-AppCheck': ?check};
   }
 
-  /// Sends a request, and sends a refused read once more on new tokens.
+  /// Sends a request, and sends a refused read once more on credentials read
+  /// afresh.
   ///
   /// [credentials] are the ones the caller read for the first send, so a
   /// failure to read them stays outside the caller's refusal handling. On the
