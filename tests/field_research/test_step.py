@@ -2580,6 +2580,215 @@ def test_a_precise_location_is_not_on_the_label_only_beside_a_settled_city_holdi
     assert ("precise_location" in cleared_as_not_on_label(run)) is not kept
 
 
+# ---- an administrative marker is no precise location (round 2, 2026-10-11) -----
+# 105526328's precise location was left ambiguous between "Yepocapa, Mun." and
+# "Yepocapa, Mum.": the label writes no place finer than the town (the settled
+# city), and the readers differ only inside the marker "Mun." (municipio).
+
+
+def settled_places(**places):
+    """A run that holds these places, settled."""
+    return SimpleNamespace(dependencies={}, fields={key: FieldValue(state=ValueState.SUPPORTED, literal=text,
+        layer="settled") for key, text in places.items()})
+
+
+MARKERS_ONLY = {
+    # 105526328's line, with and without its department.
+    "guatemala-mun": ({"city": "Yepocapa"}, ["Yepocapa, Mun."], '"Mun."'),
+    "guatemala-mun-and-department": ({"city": "Yepocapa", "province_state": "Chimaltenango"},
+        ["Yepocapa, Mun. Chimaltenango"], '"Mun."'),
+    # Its readers, who differ only in the marker; and a reader that leaves it out.
+    "guatemala-readers-mun-and-mum": ({"city": "Yepocapa"}, ["Yepocapa, Mun.", "Yepocapa, Mum."], '"Mun."'),
+    "guatemala-a-reader-without-it": ({"city": "Yepocapa"}, ["Yepocapa, Mun.", "Yepocapa"], '"Mun."'),
+    "germany-kreis": ({"county": "Ahrweiler"}, ["Kreis Ahrweiler"], '"Kreis"'),
+    "sri-lanka-distr": ({"county": "Kandy", "country": "Sri Lanka"}, ["Distr. Kandy, Sri Lanka"], '"Distr."'),
+    "mexico-mpio-and-edo": ({"city": "Xalapa", "province_state": "Veracruz"}, ["Mpio. Xalapa, Edo. Veracruz"],
+        '"Mpio.", "Edo."'),
+    "japan-pref": ({"province_state": "Nagano"}, ["Nagano Pref."], '"Pref."'),
+    "italy-comune": ({"city": "Trento"}, ["Comune Trento"], '"Comune"'),
+    "germany-gemeinde": ({"city": "Ahrweiler"}, ["Gemeinde Ahrweiler"], '"Gemeinde"'),
+    "us-county-after-its-name": ({"county": "Cook", "province_state": "Illinois"}, ["Cook Co., Illinois"], '"Co."'),
+}
+FINER_PLACES = {
+    # 105526321's locality beside its settled province.
+    "philippines-mckinley": ({"province_state": "Davao", "country": "P.I."}, ["E. slope Mt. McKinley, Davao Prov."]),
+    "a-distance": ({"city": "Yepocapa"}, ["5 km N of Yepocapa"]),
+    "a-farm": ({"city": "Yepocapa"}, ["Finca Moca, Mun. Yepocapa"]),
+    # "Co." before a name is the Spanish "Cerro", a hill.
+    "costa-rica-cerro": ({"county": "Chirripo"}, ["Co. Chirripo"]),
+    # Readers that differ in a word, not in the marker.
+    "readers-differ-in-a-word": ({"city": "Yepocapa"}, ["Yepocapa, Mun.", "Yepocapa, Moca"]),
+    # No marker: the town itself is rule A's own place check (_inside_a_settled_place).
+    "the-town-alone": ({"city": "Yepocapa"}, ["Yepocapa"]),
+    # Nothing settled to take the town's name as.
+    "no-place-settled": ({}, ["Yepocapa, Mun."]),
+}
+
+
+@pytest.mark.parametrize(("places", "texts", "markers"), MARKERS_ONLY.values(), ids=MARKERS_ONLY)
+def test_a_precise_location_giving_only_a_marker_beside_the_settled_places_names_it(places, texts, markers):
+    assert field_step._admin_markers(settled_places(**places), texts) == markers
+
+
+@pytest.mark.parametrize(("places", "texts"), FINER_PLACES.values(), ids=FINER_PLACES)
+def test_a_precise_location_naming_any_other_word_is_a_place(places, texts):
+    assert field_step._admin_markers(settled_places(**places), texts) is None
+
+
+def test_the_marker_list_is_folded_words():
+    """Each marker is a word as georef_locality.fold leaves it, so it
+    compares with a label's word whatever its case, accents or period."""
+    from specimen_digitization.application.georef_locality import fold
+    from specimen_digitization.field_research.admin_markers import ADMIN_MARKERS, AFTER_A_NAME
+
+    assert all(fold(marker) == marker and len(marker.split()) == 1 for marker in ADMIN_MARKERS)
+    assert AFTER_A_NAME <= ADMIN_MARKERS
+
+
+GUATEMALAN_MUN = GUATEMALAN_TOWN + "\nYepocapa, Mun. Chimaltenango"
+MUN_LINE = "Yepocapa, Mun. Chimaltenango"
+# How the precise location's expert answers on that label.
+MUN_ANSWERS = {
+    "label-lacks-value": LACKS,
+    "resolved": FieldAnswer(outcome="resolved", literal=MUN_LINE, reading_names=["1A", "1B"],
+        explanation="The municipality line."),
+    "several-possibilities": FieldAnswer(outcome="several_possibilities", options=[MUN_LINE, "Yepocapa"],
+        explanation="The municipality line or the town."),
+}
+
+
+@pytest.mark.parametrize("answer", MUN_ANSWERS.values(), ids=MUN_ANSWERS)
+def test_a_municipio_line_beside_the_settled_town_and_department_clears_the_precise_location(tmp_path, answer):
+    """The organiser offers "Yepocapa, Mun. Chimaltenango" as the precise
+    location; the town and the department settle. Whatever the precise
+    location's expert answers, the line gives no place finer than those: it
+    is not on the label (rule A). On 5332ce4e3 it went to review
+    (label_lacks_value: rule A declined, organiser_found_text;
+    several_possibilities: ambiguous), or settled as the line itself
+    (resolved)."""
+    rig = build_rig(tmp_path, GUATEMALAN_MUN, candidates=[*COLLECTORS,
+        *(("precise_location", name, MUN_LINE, MUN_LINE) for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    prepared, outcomes, calls = research(rig, lacking(*ABSENT, **IN_YEPOCAPA,
+        precise_location=answering(answer)), tools=Gazetteer(rig.blobs))
+    decisions: dict[str, dict] = {}
+    apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    finalize_fields(run, None, outcomes, specimen=rig.specimen, blobs=rig.blobs, today=TODAY)
+    assert {key: run.fields[key].state for key in ("province_state", "city")} == dict.fromkeys(
+        ("province_state", "city"), ValueState.SUPPORTED)
+    place = run.fields["precise_location"]
+    assert (place.state, place.literal) == (ValueState.NOT_PRESENT, None)
+    assert decisions["precise_location"]["rule"] == "A_not_on_label"
+    assert "precise_location" in cleared_as_not_on_label(run)
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+    [row] = not_on_label_rows(run, "precise_location")
+    if answer.outcome == "label_lacks_value":
+        assert place.reason.startswith(field_step.NOT_ON_LABEL_REASON)
+        assert "refusal" not in decisions["precise_location"]
+    else:
+        assert place.reason.startswith(field_step.NO_FINER_NOT_ON_LABEL.format(markers='"Mun."'))
+        assert decisions["precise_location"]["refusal"] == "admin_marker_only"
+        assert row.excerpt == field_step.not_on_label_excerpt("precise_location", field_step.run_readings(run),
+            markers=True)
+        assert json.loads(rig.blobs.get(row.raw_ref))["admin_markers"] == '"Mun."'
+        assert "transcript_literal:precise_location" not in [f.reason_code for f in run.findings]
+    verify_evidence(rig.specimen, rig.blobs)
+
+
+@pytest.mark.parametrize("answer", list(MUN_ANSWERS.values())[1:], ids=list(MUN_ANSWERS)[1:])
+def test_a_municipio_line_on_a_label_not_read_whole_goes_to_review(tmp_path, answer):
+    """The answer still gives no place finer than the town, but rule A
+    needs every label read whole: with a reader's unreadable span the
+    precise location is not present and waits for a person, its reason
+    naming the marker."""
+    rig = build_rig(tmp_path, GUATEMALAN_MUN, candidates=[*COLLECTORS,
+        *(("precise_location", name, MUN_LINE, MUN_LINE) for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    run.observations[1].unreadable_spans = ["0:3"]
+    prepared, outcomes, calls = research(rig, lacking(*ABSENT, **IN_YEPOCAPA,
+        precise_location=answering(answer)), tools=Gazetteer(rig.blobs))
+    decisions: dict[str, dict] = {}
+    apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    finalize_fields(run, None, outcomes, specimen=rig.specimen, blobs=rig.blobs, today=TODAY)
+    place = run.fields["precise_location"]
+    assert (place.state, place.literal) == (ValueState.NOT_PRESENT, None)
+    assert place.reason.startswith(field_step.NO_FINER_PLACE.format(markers='"Mun."'))
+    assert decisions["precise_location"] == {"refusal": "admin_marker_only",
+        "rule": "A_declined:label_not_read_whole"}
+    assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:precise_location" in run.reasons
+    assert not not_on_label_rows(run, "precise_location")
+
+
+def test_a_municipio_line_stays_in_review_where_the_profile_does_not_list_the_precise_location(
+        tmp_path, monkeypatch):
+    """Rule A applies only to the fields the profile lists: without the
+    precise location, its ambiguous answer stands, for review."""
+    from specimen_digitization.field_research import contracts
+
+    monkeypatch.setitem(contracts.NOT_ON_LABEL, ("zoology_insects_slides", "1.0.0"),
+        contracts.NOT_ON_LABEL[("zoology_insects_slides", "1.0.0")] - {"precise_location"})
+    rig = build_rig(tmp_path, GUATEMALAN_MUN, candidates=[*COLLECTORS,
+        *(("precise_location", name, MUN_LINE, MUN_LINE) for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    settle(rig, lacking(*ABSENT, **IN_YEPOCAPA, precise_location=answering(MUN_ANSWERS["several-possibilities"])),
+        tools=Gazetteer(rig.blobs))
+    assert run.fields["precise_location"].state == ValueState.AMBIGUOUS
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, unresolved("precise_location"))
+
+
+def a_county_settled_before(run, county):
+    """The county as an earlier attempt settled it."""
+    run.fields["county"] = FieldValue(state=ValueState.SUPPORTED, literal=county, layer="settled",
+        source_region_id=run.regions[0].id)
+
+
+@pytest.mark.parametrize(("line", "county", "kept"), [
+    ("Kreis Ahrweiler", "Ahrweiler", False),
+    ("Distr. Kandy", "Kandy", False),
+    ("Cook Co.", "Cook", False),
+    # Controls: a hill, and a distance from the town.
+    ("Co. Chirripo", "Chirripo", True),
+    ("5 km N of Kandy", "Kandy", True),
+], ids=["germany-kreis", "sri-lanka-distr", "us-co", "costa-rica-cerro", "a-distance"])
+def test_the_organisers_precise_location_that_only_marks_the_settled_county_is_not_on_the_label(
+        tmp_path, line, county, kept):
+    """Labels from other countries: the organiser offers the county's line,
+    with its marker, as the precise location, and the precise location's
+    expert finds none. On 5332ce4e3 each went to review (rule A declined,
+    organiser_found_text)."""
+    text = label_with(**dict.fromkeys(ABSENT, None), country=None, province_state=None, city=None) + "\n" + line
+    rig = build_rig(tmp_path, text, candidates=[*COLLECTORS,
+        *(("precise_location", name, line, line) for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    a_county_settled_before(run, county)
+    prepared, outcomes, calls = research(rig, lacking(*ABSENT))
+    decisions: dict[str, dict] = {}
+    apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    assert run.fields["precise_location"].state == ValueState.NOT_PRESENT
+    assert decisions["precise_location"]["rule"] == (
+        "A_declined:organiser_found_text" if kept else "A_not_on_label")
+
+
+def test_a_locality_beside_its_settled_province_keeps_its_precise_location(tmp_path):
+    """The control: 105526321's "E. slope Mt. McKinley, Davao Prov." beside
+    the settled province "Davao, Prov." names a place finer than it, and
+    settles as the precise location, as on 5332ce4e3."""
+    text = label_with(country=None, province_state=None, county=None, city=None, precise_location=None) + (
+        "\n" + MCKINLEY + ", Davao Prov.\nDavao, Prov. 3300'\nMindanao, P.I.")
+    rig = build_rig(tmp_path, text, candidates=[*COLLECTORS,
+        *(("country", name, "P.I.", "Mindanao, P.I.") for name in ("1A", "1B")),
+        *(("province_state", name, "Davao, Prov.", "Davao, Prov. 3300'") for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    settle(rig, Scripted({**ABBREVIATED_COUNTRY,
+        "province_state": from_tgn("Davao Province, Philippines", "Davao, Prov.", "Davao", "wikidata:Q15095071",
+            source="wikidata"),
+        "county": LACKS, "city": LACKS,
+        "precise_location": answering(resolved(MCKINLEY + ", Davao Prov."))}), tools=DavaoProvince(rig.blobs))
+    assert run.fields["province_state"].state == ValueState.SUPPORTED
+    place = run.fields["precise_location"]
+    assert (place.state, place.literal) == (ValueState.SUPPORTED, MCKINLEY + ", Davao Prov.")
+
+
 # ---- a taxon that names no genus (owner decision B, 2026-10-09) -----------------
 
 MORPHOCODE = "sp. 30 \N{FEMALE SIGN}"

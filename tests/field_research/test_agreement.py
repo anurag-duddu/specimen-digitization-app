@@ -792,10 +792,10 @@ def test_organiser_text_another_kind_of_field_settles_does_not_hold_back_rule_a(
     field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
     settled = run.fields[other]
     assert (settled.state, settled.literal) == (ValueState.SUPPORTED, answer.literal)
+    assert decisions[key] == {"rule": "A_not_on_label"}
     value = run.fields[key]
     assert (value.state, value.literal) == (ValueState.NOT_PRESENT, None)
     assert value.reason.startswith("Not on the label:")
-    assert decisions[key] == {"rule": "A_not_on_label"}
     assert key in cleared_as_not_on_label(run)
     verify_evidence(rig.specimen, rig.blobs)
 
@@ -818,6 +818,35 @@ def test_105526328s_method_settles_and_its_habitat_clears_as_not_on_the_label(tm
     assert (habitat.state, habitat.literal) == (ValueState.NOT_PRESENT, None)
     assert "habitat" in cleared_as_not_on_label(run)
     assert not [reason for reason in run.reasons if reason.endswith((":habitat", ":collection_method"))]
+    verify_evidence(rig.specimen, rig.blobs)
+
+
+def test_105526328s_precise_location_mun_or_mum_beside_the_settled_town_is_not_on_the_label(tmp_path):
+    """Round 2 of the production test, end to end with the real run's
+    readers: the precise location's expert offers "Yepocapa, Mun." (3A) and
+    "Yepocapa, Mum." (3B); the town "Yepocapa" settles. The label writes no
+    place finer than the town, and the readers differ only inside the
+    marker "Mun.": the precise location is not on the label (rule A). On
+    5332ce4e3 it was ambiguous, for review."""
+    from test_step import IN_YEPOCAPA, research
+
+    rig = label_3(tmp_path)
+    run = rig.specimen.run
+    prepared, outcomes, calls = research(rig, Scripted({**IN_YEPOCAPA,
+        "province_state": answering(FieldAnswer(outcome="several_possibilities",
+            options=["chimaltenango", "chimaltenago"], explanation="The readers differ.")),
+        "precise_location": answering(FieldAnswer(outcome="several_possibilities",
+            options=["Yepocapa, Mun.", "Yepocapa, Mum."], explanation="The readers differ: Mun. or Mum."))}),
+        tools=Gazetteer(rig.blobs))
+    decisions: dict[str, dict] = {}
+    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    assert (run.fields["city"].state, run.fields["city"].literal) == (ValueState.SUPPORTED, "Yepocapa")
+    place = run.fields["precise_location"]
+    assert (place.state, place.literal) == (ValueState.NOT_PRESENT, None)
+    assert place.reason == (field_step.NO_FINER_NOT_ON_LABEL.format(markers='"Mun."')
+        + " The readers differ: Mun. or Mum.")
+    assert decisions["precise_location"] == {"refusal": "admin_marker_only", "rule": "A_not_on_label"}
+    assert "precise_location" in cleared_as_not_on_label(run)
     verify_evidence(rig.specimen, rig.blobs)
 
 
