@@ -247,6 +247,53 @@ def test_invalid_item_ids_and_missing_labels_do_not_create_source_places():
     assert parse_labels(200, json.dumps(entities).encode()) == (LookupStatus.MALFORMED, {})
 
 
+READABLE_ENTITY = {"Q5": {"id": "Q5", "labels": {"en": {"value": "Five"}}}}
+UNREADABLE_ENTITIES = {
+    "no label": {"Q1": {"id": "Q1", "labels": {}}},
+    "a label that is not text": {"Q1": {"id": "Q1", "labels": {"en": {"value": 1}}}},
+    "filed under another item": {"Q1": {"id": "Q2", "labels": {"en": {"value": "Two"}}}},
+    "not an object": {"Q1": None},
+    "filed under no item id": {"1946": {"id": "1946", "labels": {"en": {"value": "A date"}}}},
+}
+
+
+@pytest.mark.parametrize("unreadable", list(UNREADABLE_ENTITIES))
+def test_an_entity_that_cannot_be_read_makes_the_entities_answer_malformed(unreadable):
+    """Wikidata answered the items it was asked for with something that cannot
+    be read: that is no answer that it holds none of them (NO_MATCH), alone or
+    beside an entity that can be read (the review of #299's stage-two probes)."""
+    for entities in (
+        UNREADABLE_ENTITIES[unreadable],
+        READABLE_ENTITY | UNREADABLE_ENTITIES[unreadable],
+    ):
+        assert parse_entities(200, json.dumps({"entities": entities}).encode()) == (
+            LookupStatus.MALFORMED,
+            (),
+        )
+
+
+@pytest.mark.parametrize(
+    "unreadable", ["filed under another item", "not an object", "filed under no item id"]
+)
+def test_an_entity_filed_wrongly_makes_the_labels_answer_malformed(unreadable):
+    entities = READABLE_ENTITY | UNREADABLE_ENTITIES[unreadable]
+    assert parse_labels(200, json.dumps({"entities": entities}).encode()) == (
+        LookupStatus.MALFORMED,
+        {},
+    )
+
+
+def test_an_item_without_a_label_or_reported_missing_names_no_reference():
+    entities = READABLE_ENTITY | {
+        "Q1": {"id": "Q1", "labels": {}},
+        "Q2": {"id": "Q2", "missing": ""},
+    }
+    assert parse_labels(200, json.dumps({"entities": entities}).encode()) == (
+        LookupStatus.SUCCESS,
+        {"Q5": "Five"},
+    )
+
+
 def test_bad_coordinates_and_coarse_or_invalid_dates_are_not_promoted():
     def statement(value):
         return {"rank": "normal", "mainsnak": {"datavalue": {"value": value}}}

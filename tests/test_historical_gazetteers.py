@@ -273,6 +273,92 @@ async def test_unrequested_auxiliary_id_is_rejected_after_third_call(source):
     assert len(result.exchanges) == len(calls) == 3
 
 
+def sparql_rows(*rows):
+    return body({"results": {"bindings": [
+        {variable: {"value": value} for variable, value in row.items()} for row in rows
+    ]}})
+
+
+def entities(**found):
+    return body({"entities": found})
+
+
+def features(*rows):
+    return body({"features": [{"attributes": row} for row in rows]})
+
+
+ONE_HIT = body({"q0": {"result": [{"id": "tgn/1", "name": "One"}]}})
+TWO_HITS = body({"q0": {"result": [{"id": "tgn/1", "name": "One"}, {"id": "tgn/2", "name": "Two"}]}})
+RECORD_ONE = {"place": tgn.TGN + "1", "name": "One"}
+WIKIDATA_ONE = {"id": "Q1", "labels": {"en": {"value": "One"}}}
+WIKIDATA_P31 = {**WIKIDATA_ONE, "claims": {"P31": [{
+    "rank": "normal", "mainsnak": {"datavalue": {"value": {"entity-type": "item", "id": "Q2"}}},
+}]}}
+NGA_ONE = {"ufi": 1, "full_name": "One", "nt": "N", "term_dt_f": None}
+NGA_SEARCH = features({"ufi": 1, "term_dt_f": None})
+
+# The search finds something; a later reply holds nothing the parser can use.
+# Each case: the source, the later request, and the replies in order.
+LATER_UNREAD = {
+    "tgn records: no rows": ("tgn", "record", [ONE_HIT, sparql_rows()]),
+    "tgn records: a row of another vocabulary": (
+        "tgn", "record", [ONE_HIT, sparql_rows({**RECORD_ONE, "place": tgn.AAT + "1"})]),
+    "tgn records: a record without a name": ("tgn", "record", [ONE_HIT, sparql_rows({"place": tgn.TGN + "1"})]),
+    "tgn records: one of two without a name": (
+        "tgn", "record", [TWO_HITS, sparql_rows(RECORD_ONE, {"place": tgn.TGN + "2", "lat": "1", "long": "2"})]),
+    "tgn records: no body": ("tgn", "record", [ONE_HIT, b""]),
+    "tgn names: no rows": ("tgn", "name", [ONE_HIT, sparql_rows(RECORD_ONE), sparql_rows()]),
+    "tgn names: a row of another vocabulary": (
+        "tgn", "name", [ONE_HIT, sparql_rows(RECORD_ONE), sparql_rows({**RECORD_ONE, "place": tgn.AAT + "1"})]),
+    "tgn names: no body": ("tgn", "name", [ONE_HIT, sparql_rows(RECORD_ONE), b" "]),
+    "wikidata entities: none": ("wikidata", "entity", [body({"search": [{"id": "Q1"}]}), entities()]),
+    "wikidata entities: missing": (
+        "wikidata", "entity", [body({"search": [{"id": "Q1"}]}), entities(Q1={"id": "Q1", "missing": ""})]),
+    "wikidata entities: no label": (
+        "wikidata", "entity", [body({"search": [{"id": "Q1"}]}), entities(Q1={"id": "Q1", "labels": {}})]),
+    "wikidata entities: one of two without a label": (
+        "wikidata", "entity", [body({"search": [{"id": "Q1"}, {"id": "Q2"}]}),
+                               entities(Q1=WIKIDATA_ONE, Q2={"id": "Q2", "labels": {}})]),
+    "wikidata entities: no such entity": (
+        "wikidata", "entity", [body({"search": [{"id": "Q1"}]}), body({"error": {"code": "no-such-entity"}})]),
+    "wikidata labels: none": (
+        "wikidata", "label", [body({"search": [{"id": "Q1"}]}), entities(Q1=WIKIDATA_P31), entities()]),
+    "wikidata labels: missing": (
+        "wikidata", "label", [body({"search": [{"id": "Q1"}]}), entities(Q1=WIKIDATA_P31),
+                              entities(Q2={"id": "Q2", "missing": ""})]),
+    "nga features: no rows": ("nga", "feature", [NGA_SEARCH, features()]),
+    "nga features: no name": ("nga", "feature", [NGA_SEARCH, features({**NGA_ONE, "full_name": None})]),
+    "nga features: one of two without a name": (
+        "nga", "feature", [features({"ufi": 1, "term_dt_f": None}, {"ufi": 2, "term_dt_f": None}),
+                           features(NGA_ONE, {**NGA_ONE, "ufi": 2, "full_name": ""})]),
+    "nga features: no body": ("nga", "feature", [NGA_SEARCH, b""]),
+    "nga units: no rows": ("nga", "unit", [NGA_SEARCH, features({**NGA_ONE, "adm1": "GT-04"}), features()]),
+    "nga units: no name": (
+        "nga", "unit", [NGA_SEARCH, features({**NGA_ONE, "adm1": "GT-04"}), features({"adm1": "GT-04"})]),
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("case", list(LATER_UNREAD))
+async def test_a_later_reply_with_nothing_readable_is_malformed_never_no_match(case):
+    """The review of #299's stage-two probes: once the search found something,
+    a later reply with no row, no body or a row that cannot be read was the
+    lookup's no match (or empty), so a reading could be ruled out on it. It is
+    malformed, an outage, naming the request whose reply could not be read."""
+    source, request, replies = LATER_UNREAD[case]
+    calls = []
+
+    async def fetch(url, params):
+        calls.append(url)
+        return 200, replies[len(calls) - 1]
+
+    result = await lookup(source, "Mount Apo", fetch)
+    assert result.status is LookupStatus.MALFORMED
+    assert (result.unread, result.places) == (request, ())
+    assert result.reason == f"the search found places but the {request} reply could not be read"
+    assert len(result.exchanges) == len(calls) == len(replies)
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("source", ["wikidata", "nga"])
 async def test_no_references_skips_auxiliary_call(source):

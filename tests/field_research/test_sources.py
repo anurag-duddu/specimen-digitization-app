@@ -1232,6 +1232,99 @@ async def test_a_gazetteer_answer_reporting_a_hit_it_cannot_read_is_an_outage(
     assert not agreement.ruled_out([answer], "Yepocapo")
 
 
+YEPOCAPO_RECORD = {"place": {"value": tgn.TGN + "7005560"}, "name": {"value": "Yepocapo"}}
+YEPOCAPO_NAME = {**YEPOCAPO_RECORD, "language": {"value": "en"}, "preferred": {"value": "true"}}
+YEPOCAPO_FEATURE = {"ufi": 1, "uni": 1, "full_name": "Yepocapo", "nt": "N", "term_dt_f": None}
+
+
+def tgn_chain(records, names):
+    """Getty TGN finds "Yepocapo" (YEPOCAPO_HIT), then answers its records and
+    names queries with these rows."""
+    def reply(request):
+        if f"https://{request.url.host}{request.url.path}" == tgn.RECONCILE:
+            return {"q0": {"result": [YEPOCAPO_HIT]}}
+        query = dict(request.url.params)["query"]
+        return {"results": {"bindings": records if "?ancestor" in query else names}}
+    return reply
+
+
+def nga_chain(features, units=()):
+    """NGA's name search finds feature 1; its features and units queries
+    answer these rows."""
+    def reply(request):
+        where = dict(request.url.params)["where"]
+        if f"https://{request.url.host}{request.url.path}" == nga.UNITS:
+            rows = units
+        elif where.startswith("ufi IN"):
+            rows = features
+        else:
+            rows = [{"ufi": 1, "full_name": "Yepocapo", "nt": "N", "term_dt_f": None}]
+        return {"features": [{"attributes": row} for row in rows]}
+    return reply
+
+
+def wikidata_chain(entities):
+    """Wikidata's search finds Q1; its entities query answers these entities."""
+    def reply(request):
+        params = dict(request.url.params)
+        if "search" in params:
+            return {"search": [{"id": "Q1", "label": "Yepocapo"}]}
+        return {"entities": entities}
+    return reply
+
+
+# The review of #299's stage-two probes (S1 to S3): the search finds one hit,
+# then a later reply holds no row, or none that can be read.
+LATER_UNREAD = {
+    "tgn records: a row of another vocabulary": ("tgn", "record", tgn_chain(
+        [{**YEPOCAPO_RECORD, "place": {"value": tgn.AAT + "1"}}], [YEPOCAPO_NAME])),
+    "tgn records: a record without a name": ("tgn", "record", tgn_chain(
+        [{"place": YEPOCAPO_RECORD["place"]}], [YEPOCAPO_NAME])),
+    "tgn records: no rows": ("tgn", "record", tgn_chain([], [YEPOCAPO_NAME])),
+    "tgn names: a row of another vocabulary": ("tgn", "name", tgn_chain(
+        [YEPOCAPO_RECORD], [{**YEPOCAPO_NAME, "place": {"value": tgn.AAT + "1"}}])),
+    "tgn names: no rows": ("tgn", "name", tgn_chain([YEPOCAPO_RECORD], [])),
+    "nga features: no name": ("nga", "feature", nga_chain([{"ufi": 1, "nt": "N", "term_dt_f": None}])),
+    "nga features: no rows": ("nga", "feature", nga_chain([])),
+    "nga units: no rows": ("nga", "unit", nga_chain([{**YEPOCAPO_FEATURE, "adm1": "GT-04"}], [])),
+    "wikidata entities: missing": ("wikidata", "entity", wikidata_chain({"Q1": {"id": "Q1", "missing": ""}})),
+    "wikidata entities: no label": ("wikidata", "entity", wikidata_chain({"Q1": {"id": "Q1", "labels": {}}})),
+    "wikidata entities: none": ("wikidata", "entity", wikidata_chain({})),
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("case", list(LATER_UNREAD))
+async def test_a_later_gazetteer_reply_with_nothing_readable_is_an_outage_never_no_match(tmp_path, case):
+    """Such a reply was the lookup's no_match, stored as evidence, and the
+    readers' rule ruled "Yepocapo" out on it. It is malformed_response, an
+    outage, whose note names the reply that could not be read."""
+    from specimen_digitization.field_research import agreement
+    from specimen_digitization.field_research.experts import SOURCE_OUTAGES
+
+    source, request, reply = LATER_UNREAD[case]
+    tools, _, _, blobs = make(tmp_path, reply)
+    answer = await tools.lookup(source, "Yepocapo, Chimaltenango, Guatemala", field_key="city")
+    assert answer.status is LookupStatus.MALFORMED and answer.status in SOURCE_OUTAGES
+    name = approved_sources.NAMES[source]
+    assert answer.note == f"{name} found places but its {request} reply could not be read"
+    assert answer.candidates == () and json.loads(stored(blobs, answer.evidence))["status"] == "malformed_response"
+    assert not agreement.ruled_out([answer], "Yepocapo")
+
+
+def geolocate_and_an_empty_tgn_records_reply(request):
+    """GEOLocate confirms "Yepocapa"; Getty TGN finds "Yepocapo" and then
+    answers its records query with no rows."""
+    if request.url.host == "geo-locate.org":
+        return geolocate_and_tgn(request)
+    return tgn_chain([], [])(request)
+
+
+@pytest.mark.asyncio
+async def test_readers_that_differ_never_settle_on_a_tgn_records_reply_it_could_not_read(tmp_path):
+    await readers_go_to_review(tmp_path, geolocate_and_an_empty_tgn_records_reply, "tgn")
+
+
 @pytest.mark.asyncio
 async def test_a_tgn_answer_of_other_getty_vocabularies_only_is_no_match(tmp_path):
     """A concept is no place: Getty TGN found none, and that rules the text out."""

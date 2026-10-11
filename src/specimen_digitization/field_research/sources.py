@@ -1344,6 +1344,8 @@ def _gazetteer_note(
         return f"{name} has no place for {query!r}"
     if status == LookupStatus.POLICY:
         return f"Nothing was sent to {name}: {outcome.reason or 'the place text was refused'}"
+    if status == LookupStatus.MALFORMED and outcome.unread:
+        return f"{name} found places but its {outcome.unread} reply could not be read"
     if status == LookupStatus.MALFORMED:
         return f"{name}'s answer could not be read" + (
             f": {outcome.reason}" if outcome.reason else ""

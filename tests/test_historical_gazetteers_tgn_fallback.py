@@ -149,6 +149,34 @@ async def test_an_unreadable_search_row_is_malformed_and_reads_no_records():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "records",
+    [
+        body({"results": {"bindings": []}}),
+        body({"results": {"bindings": [{"place": {"value": tgn.TGN + "1105587"}}]}}),
+        body({"results": {"bindings": [
+            {"place": {"value": tgn.AAT + "300008347"}, "name": {"value": "Mount"}}]}}),
+        b"",
+    ],
+    ids=["no rows", "a record without a name", "a row of another vocabulary", "no body"],
+)
+async def test_a_records_reply_with_nothing_readable_after_the_search_is_malformed(records):
+    """The search through the SPARQL endpoint found places; a records reply
+    with nothing that can be read is no answer that TGN holds none of them."""
+    found = search_rows(["1105587"])
+
+    async def fetch(url, params):
+        if url == tgn.RECONCILE:
+            return 403, b""
+        return 200, body({"results": {"bindings": found}}) if "luc:term" in params["query"] else records
+
+    result = await lookup("tgn", READING, fetch)
+    assert result.status is LookupStatus.MALFORMED and result.places == ()
+    assert (result.unread, result.fallback) == ("record", "refused the request (HTTP 403)")
+    assert len(result.exchanges) == MAX_CALLS
+
+
+@pytest.mark.asyncio
 async def test_records_beyond_the_searched_ids_are_malformed():
     class Extra(Refused):
         async def __call__(self, url, params):

@@ -224,31 +224,42 @@ def parse_reconcile(status: int, body: bytes) -> tuple[LookupStatus, tuple[Hit, 
 
 def parse_records(status: int, body: bytes) -> tuple[LookupStatus, tuple[Place, ...]]:
     """Places from a records answer, each with its GVP name only until
-    `with_names` adds the rest; an id TGN does not hold is skipped."""
+    `with_names` adds the rest; an id TGN does not hold has no rows, so no
+    place. A row that is not of a TGN place, or a record without a name, makes
+    the answer MALFORMED, even beside records that can be read: TGN reported
+    something there that cannot be read. An answer with no rows is no match."""
     outcome, rows = _bindings(status, body)
     if outcome is not None:
         return outcome, ()
     grouped: dict[str, list[dict[str, str]]] = {}
     for row in rows:
         record = _tgn_id(row.get("place"))
-        if record is not None:
-            grouped.setdefault(record, []).append(row)
-    places = tuple(
-        place for record, found in grouped.items() if (place := _place(record, found)) is not None
-    )
-    return (LookupStatus.SUCCESS if places else LookupStatus.NO_MATCH), places
+        if record is None:
+            return LookupStatus.MALFORMED, ()
+        grouped.setdefault(record, []).append(row)
+    places = []
+    for record, found in grouped.items():
+        place = _place(record, found)
+        if place is None:
+            return LookupStatus.MALFORMED, ()
+        places.append(place)
+    return (LookupStatus.SUCCESS if places else LookupStatus.NO_MATCH), tuple(places)
 
 
 def parse_names(status: int, body: bytes) -> tuple[LookupStatus, dict[str, tuple[Term, ...]]]:
+    """Every term of each record a names answer lists. A row that is not of a
+    TGN place or has no name makes the answer MALFORMED, even beside rows that
+    can be read; an answer with no rows is no match."""
     outcome, rows = _bindings(status, body)
     if outcome is not None:
         return outcome, {}
     names: dict[str, list[Term]] = {}
     for row in rows:
         record, name = _tgn_id(row.get("place")), row.get("name")
-        if record is not None and name:
-            term = Term(name, row.get("language"), row.get("preferred") == "true")
-            names.setdefault(record, []).append(term)
+        if record is None or not name:
+            return LookupStatus.MALFORMED, {}
+        term = Term(name, row.get("language"), row.get("preferred") == "true")
+        names.setdefault(record, []).append(term)
     found = {record: tuple(dict.fromkeys(terms)) for record, terms in names.items()}
     return (LookupStatus.SUCCESS if found else LookupStatus.NO_MATCH), found
 

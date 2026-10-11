@@ -105,54 +105,43 @@ def parse_search(status: int, body: bytes) -> tuple[LookupStatus, tuple[Hit, ...
 
 
 def parse_entities(status: int, body: bytes) -> tuple[LookupStatus, tuple[Place, ...]]:
-    """Places from a `wbgetentities` answer; an item reported missing is skipped.
-    Their references carry ids only until `name_refs` names them."""
+    """Places from a `wbgetentities` answer; an item reported missing has no
+    place. Their references carry ids only until `name_refs` names them. An
+    entity that is not the item it is filed under, or has no label in
+    LANGUAGES, makes the answer MALFORMED, even beside entities that can be
+    read: Wikidata reported something there that cannot be read. An answer
+    with no entity, or only missing ones, is no match."""
     outcome, entities = _entities(status, body)
     if outcome is not None:
         return outcome, ()
-    malformed = any(
-        not _item_id(item)
-        or not isinstance(entity, dict)
-        or entity.get("id") != item
-        for item, entity in entities.items()
-    )
-    places = tuple(
-        place
-        for item, entity in entities.items()
-        if isinstance(entity, dict)
-        and _item_id(item)
-        and entity.get("id") == item
-        and "missing" not in entity
-        if (place := _place(entity)) is not None
-    )
-    result = LookupStatus.SUCCESS if places else LookupStatus.MALFORMED
-    if not places and not malformed:
-        result = LookupStatus.NO_MATCH
-    return result, places
+    if not all(_filed(item, entity) for item, entity in entities.items()):
+        return LookupStatus.MALFORMED, ()
+    places = []
+    for entity in entities.values():
+        if "missing" in entity:
+            continue
+        place = _place(entity)
+        if place is None:
+            return LookupStatus.MALFORMED, ()
+        places.append(place)
+    return (LookupStatus.SUCCESS if places else LookupStatus.NO_MATCH), tuple(places)
 
 
 def parse_labels(status: int, body: bytes) -> tuple[LookupStatus, dict[str, str]]:
+    """The label of each item a labels answer holds, in NAME_ORDER's first
+    language that has one; an item with none, or reported missing, is left
+    out. An entity that is not
+    the item it is filed under makes the answer MALFORMED, even beside entities
+    that can be read; an answer with no label is no match."""
     outcome, entities = _entities(status, body)
     if outcome is not None:
         return outcome, {}
-    malformed = any(
-        not _item_id(item)
-        or not isinstance(entity, dict)
-        or entity.get("id") != item
-        for item, entity in entities.items()
-    )
+    if not all(_filed(item, entity) for item, entity in entities.items()):
+        return LookupStatus.MALFORMED, {}
     labels = {
-        item: name
-        for item, entity in entities.items()
-        if _item_id(item)
-        and isinstance(entity, dict)
-        and entity.get("id") == item
-        and (name := _label(entity.get("labels")))
+        item: name for item, entity in entities.items() if (name := _label(entity.get("labels")))
     }
-    result = LookupStatus.SUCCESS if labels else LookupStatus.MALFORMED
-    if not labels and not malformed:
-        result = LookupStatus.NO_MATCH
-    return result, labels
+    return (LookupStatus.SUCCESS if labels else LookupStatus.NO_MATCH), labels
 
 
 def referenced_ids(places: Iterable[Place]) -> set[str]:
@@ -221,6 +210,11 @@ def _answer(status: int, body: bytes) -> tuple[LookupStatus | None, dict]:
             return LookupStatus.NO_MATCH, {}
         return LookupStatus.PROVIDER, {}
     return None, data
+
+
+def _filed(item: object, entity: object) -> bool:
+    """An entity filed under its own item id, as `wbgetentities` files each."""
+    return _item_id(item) and isinstance(entity, dict) and entity.get("id") == item
 
 
 def _entities(status: int, body: bytes) -> tuple[LookupStatus | None, dict]:
