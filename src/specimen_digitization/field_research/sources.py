@@ -12,8 +12,12 @@ The rules that decide an answer stay where they are: GBIF's in
 application.taxonomy_tool.verify_taxon, GEOLocate's in research_harness.sources
 and the historical gazetteers' in research_harness.historical_gazetteers. A
 source problem is an answer with a plain note, never an exception; only a blob
-store failure raises. Each request a source leaves unanswered is logged in one
-WARNING line with its source, host and HTTP status or error, never its query.
+store failure raises. When Getty TGN's reconciliation service refuses a request
+or cannot be reached, TGN is searched through Getty's SPARQL endpoint instead
+(historical_gazetteers), and the note says so. Each request a source leaves
+unanswered is logged in one WARNING line with its source, host and HTTP status
+or error, and who sent the response (its Server and Via headers, whether it is
+an HTML page, the start of its body), never its query or a word of it.
 """
 
 from __future__ import annotations
@@ -22,6 +26,7 @@ import asyncio
 import concurrent.futures
 import dataclasses
 import hashlib
+import html
 import json
 import logging
 import re
@@ -33,10 +38,11 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequenc
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from functools import cache
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import parse_qsl, unquote, unquote_plus, urlencode, urlsplit
 
 import httpx
 
+from specimen_digitization.application import georef_tgn
 from specimen_digitization.application.domain import Evidence, Lookup, LookupStatus
 from specimen_digitization.application.georef_places import Place, Ref
 from specimen_digitization.application.harness_tools import SourceCall
@@ -87,6 +93,15 @@ EXCERPT_LIMIT = 2_000
 NOTE_LIMIT = 300  # of the note that heads an excerpt
 MAX_TAXA = 10
 MAX_KINDS = 3
+# A response that was no answer, as its log line shows it (_Sender): the first
+# BODY_READ bytes of the body are read, BODY_EXCERPT characters of them logged,
+# and at most HEADER_EXCERPT of the Server and Via headers.
+BODY_READ = 8192
+BODY_EXCERPT = 200
+HEADER_EXCERPT = 100
+HTML_PAGE = re.compile(r"<!doctype\s+html|<html", re.IGNORECASE)
+# The response headers a GET keeps: for its retries and its log line.
+KEPT_HEADERS = ("retry-after", "server", "via", "content-type")
 # What research_harness.sources.BoundedHTTPTransport sends.
 HEADERS = {
     "Accept": "application/json",
@@ -109,6 +124,12 @@ REFUSED = {
     403: LookupStatus.AUTHORIZATION,
     429: LookupStatus.RATE_LIMITED,
 }
+# A request that ended with no usable response: no answer in time, the host
+# could not be reached, or it kept failing (HTTP 5xx). For Getty TGN's
+# reconciliation request, the search then goes through the SPARQL endpoint,
+# except when the last request was not sent for a busy slot (_Unanswered.busy):
+# the SPARQL request would wait for the same slots.
+SEARCH_UNREACHED = frozenset({LookupStatus.TIMEOUT, LookupStatus.PROVIDER})
 
 
 @cache
@@ -303,6 +324,74 @@ def _evidence(
     )
 
 
+@dataclass(frozen=True)
+class _Sender:
+    """Who sent a response that was no answer, as its log line says: the
+    response's Server and Via headers, whether its body is an HTML page (as a
+    block page is), and the start of the body on one line, each without a
+    word of the request's query (`_sender`)."""
+
+    server: str | None
+    via: str | None
+    html_page: bool
+    body: str | None
+
+
+def _sender(url: str, headers: Mapping[str, str], body: bytes) -> _Sender:
+    """A response's sender, read from its headers and the first BODY_READ bytes
+    of its body. Every word the request's URL carries in its query parameters
+    or its path is cut out first (`_without_query`), so no specimen text
+    reaches the log."""
+    hidden = _query_words(url)
+    text = _plain(unquote_plus(body[:BODY_READ].decode("utf-8", errors="replace")))
+    content_type = (headers.get("content-type") or "").lower()
+    return _Sender(
+        server=_without_query(headers.get("server"), hidden, HEADER_EXCERPT),
+        via=_without_query(headers.get("via"), hidden, HEADER_EXCERPT),
+        html_page="html" in content_type or bool(HTML_PAGE.search(text[:1024])),
+        body=_without_query(text, hidden, BODY_EXCERPT),
+    )
+
+
+def _plain(text: str) -> str:
+    """Text as the log compares it with a query: HTML entities and JSON
+    \\uXXXX escapes read, accents dropped, case folded."""
+    text = re.sub(
+        r"\\u([0-9a-fA-F]{4})", lambda escape: chr(int(escape[1], 16)), html.unescape(text)
+    )
+    bare = "".join(
+        character
+        for character in unicodedata.normalize("NFKD", text)
+        if not unicodedata.combining(character)
+    )
+    return bare.casefold()
+
+
+def _query_words(url: str) -> frozenset[str]:
+    """Every word (run of letters and digits) of a URL's query parameters and
+    of its path, where Global Names Verifier carries a name."""
+    parts = urlsplit(url)
+    texts = [unquote(parts.path), *(value for _, value in parse_qsl(parts.query, keep_blank_values=True))]
+    return frozenset(word for text in texts for word in re.findall(r"[^\W_]+", _plain(text)))
+
+
+def _without_query(text: str | None, hidden: frozenset[str], limit: int) -> str | None:
+    """`text` on one line, at most `limit` characters, with each of the query's
+    words replaced by "[query]": a word of five characters or more wherever it
+    appears, even run into other words, a shorter one where it stands as a word
+    of its own (so "type" leaves "doctype" whole)."""
+    if not text:
+        return None
+    plain = _plain(text)
+    long = sorted((re.escape(word) for word in hidden if len(word) >= 5), key=len, reverse=True)
+    short = sorted((re.escape(word) for word in hidden if len(word) < 5), key=len, reverse=True)
+    if long:
+        plain = re.sub("|".join(long), "[query]", plain)
+    if short:
+        plain = re.sub(r"(?<![^\W_])(?:" + "|".join(short) + r")(?![^\W_])", "[query]", plain)
+    return " ".join(plain.split())[:limit] or None
+
+
 def _log_unanswered(
     source_id: str,
     url: str,
@@ -311,12 +400,16 @@ def _log_unanswered(
     http_status: int | None = None,
     error: str | None = None,
     retry_after: bool = False,
+    sender: _Sender | None = None,
 ) -> None:
     """One WARNING line for a lookup a source left unanswered, as the worker
     logs a failed step (workflow._log_step_failure: key=value pairs): the
     source id, the host, the HTTP status or the error's class, whether the
-    source sent a Retry-After, and the attempt the request ended on. Never
-    the query, a parameter or a body, so no specimen text."""
+    source sent a Retry-After, the attempt the request ended on, and who sent
+    the last response that was no answer (`_Sender`: server, via, html_page and
+    body, the two headers and the body quoted as JSON strings). Never the
+    query or a parameter, and no word of them in the body, so no specimen
+    text."""
     values = {
         "step": "field_research",
         "source": source_id,
@@ -325,6 +418,10 @@ def _log_unanswered(
         "error": error,
         "retry_after": "present" if retry_after else "absent",
         "attempt": attempt,
+        "server": None if sender is None or sender.server is None else json.dumps(sender.server),
+        "via": None if sender is None or sender.via is None else json.dumps(sender.via),
+        "html_page": None if sender is None else "yes" if sender.html_page else "no",
+        "body": None if sender is None or sender.body is None else json.dumps(sender.body),
     }
     LOGGER.warning(
         "Field research lookup unanswered: %s",
@@ -332,13 +429,46 @@ def _log_unanswered(
     )
 
 
-class _Unanswered(Exception):
-    """No usable answer came back: the status to return and its plain note."""
+def _geolocate_found_nothing(payload) -> bool:
+    """Whether a GEOLocate answer says it found nothing: its count of results
+    is the integer 0 and it carries no result set, or one with no features."""
+    if not isinstance(payload, dict):
+        return False
+    count = payload.get("numResults")
+    if type(count) is not int or count != 0:
+        return False
+    result_set = payload.get("resultSet")
+    return result_set is None or (isinstance(result_set, dict) and result_set.get("features") in (None, []))
 
-    def __init__(self, status: LookupStatus, note: str):
+
+def _log_unreadable(source_id: str, url: str, *, status: LookupStatus, error: str) -> None:
+    """One WARNING line for a 200 answer that could not be read, in
+    _log_unanswered's form: the source id, the host, the status it was read
+    as and the error's class. Never the query, a parameter or a body."""
+    values = {
+        "step": "field_research",
+        "source": source_id,
+        "host": urlsplit(url).hostname,
+        "http_status": 200,
+        "read_as": status.value,
+        "error": error,
+    }
+    LOGGER.warning(
+        "Field research lookup unreadable: %s",
+        " ".join(f"{key}={value}" for key, value in values.items()),
+    )
+
+
+class _Unanswered(Exception):
+    """No usable answer came back: the status to return and its plain note.
+    `busy` when the last request was not sent because no slot or turn came
+    free in time (SlotBusy, _get)."""
+
+    def __init__(self, status: LookupStatus, note: str, *, busy: bool = False):
         super().__init__(note)
         self.status = status
         self.note = note
+        self.busy = busy
 
 
 @dataclass(frozen=True)
@@ -379,6 +509,22 @@ class _Waiter:
             self.future.set_result(None)
 
 
+# How long a request waits for a slot (SourceSlots) before its lookup gives
+# up unsent. A request holds its slot only while it is read, at most
+# REQUEST_TIMEOUT_SECONDS (_read), so in two such bounds each slot of a
+# source frees at least twice: with two slots, a request with up to three
+# others waiting ahead of it is sent in time. It is a fifth of an expert's
+# 150 s (experts.make_resolver's field_timeout_seconds), so a field whose
+# lookup gives up still has the time to decide with its other sources.
+# GEOLocate's turn under its 3 s spacing (SOURCE_PACER) has the same bound:
+# a request with up to ten others ahead of it is sent in time (_get).
+SLOT_WAIT_SECONDS = 2 * REQUEST_TIMEOUT_SECONDS
+
+
+class SlotBusy(Exception):
+    """A request waited its SourceSlots' wait_seconds and got no slot."""
+
+
 class SourceSlots:
     """At most `limits[source_id]` requests in flight to each source at once;
     a source with no limit is not held.
@@ -389,10 +535,12 @@ class SourceSlots:
     and an asyncio.Semaphore belongs to one loop, so the count is kept under a
     threading lock and a waiting request is woken on its own loop, first come
     first served. A request cancelled while it waits takes no slot, or passes
-    on the one it was just given."""
+    on the one it was just given. A request that waits `wait_seconds` (None:
+    no bound) without a slot stops waiting the same way and raises SlotBusy."""
 
-    def __init__(self, limits: Mapping[str, int]):
+    def __init__(self, limits: Mapping[str, int], wait_seconds: float | None = SLOT_WAIT_SECONDS):
         self.limits = dict(limits)
+        self.wait_seconds = wait_seconds
         self._lock = threading.Lock()
         self._busy: dict[str, int] = {}
         self._waiting: dict[str, deque[_Waiter]] = {}
@@ -421,15 +569,20 @@ class SourceSlots:
                 return
             waiter = _Waiter(asyncio.get_running_loop())
             waiting.append(waiter)
+        wait = asyncio.timeout(self.wait_seconds)
         try:
-            await waiter.future
-        except BaseException:
+            async with wait:
+                await waiter.future
+        except BaseException as error:
             with self._lock:
                 granted, waiter.gone = waiter.granted, True
                 if not granted:
                     waiting.remove(waiter)
             if granted:
                 self._release(source_id)
+            # Only this wait's own bound; a cancellation stays one.
+            if isinstance(error, TimeoutError) and wait.expired():
+                raise SlotBusy(source_id) from None
             raise
 
     def _release(self, source_id: str) -> None:
@@ -535,6 +688,9 @@ class ApprovedSources:
         self._responses: dict[str, asyncio.Task[_Fetched]] = {}
         # verify_taxon's requests and waits on the loop, from its worker threads.
         self._running: set[concurrent.futures.Future] = set()
+        # Per host, who sent verify_taxon's last response that was no answer,
+        # for GBIF's log line (_log_unanswered).
+        self._senders: dict[str, _Sender] = {}
         self.closed = False
 
     def close(self) -> None:
@@ -619,6 +775,7 @@ class ApprovedSources:
                 attempt=last.attempt if last else 0,
                 error=status.value,
                 retry_after=last is not None and last.retry_after_seconds is not None,
+                sender=self._senders.get(urlsplit(GBIF_MATCH_URL).hostname or ""),
             )
             return _answer(
                 "gbif", query, status, _taxon_failure(status, asked), taxonomy_lookup=decided
@@ -690,6 +847,8 @@ class ApprovedSources:
                     await response.aclose()
         except TimeoutError as error:
             raise httpx.ReadTimeout("no answer in time", request=request) from error
+        if response.status_code != 200:
+            self._senders[request.url.host] = _sender(url, response.headers, bytes(body))
         kept = {
             name: value
             for name in ("content-type", "retry-after")
@@ -755,13 +914,30 @@ class ApprovedSources:
         if fetched.status_code != 200:
             return _refused("geolocate", query, fetched.status_code)
         try:
+            payload = parse_json(fetched.body)
+        except (ValueError, RecursionError):
+            payload = None
+        try:
             status, found, _count, note = geolocate_verdict(
                 policy,
                 SourceQuery(source_id="geolocate", field_key=key, query_text=text),
-                parse_json(fetched.body),
+                payload,
             )
-        except (ValueError, TypeError, KeyError, AttributeError, ArithmeticError, RecursionError):
-            status, found, note = LookupStatus.MALFORMED, [], "GEOLocate's answer could not be read"
+        except (ValueError, TypeError, KeyError, AttributeError, ArithmeticError, RecursionError) as error:
+            # GEOLocate's answer that it found nothing is no match, not an
+            # outage: asked about a country it does not know ("Central
+            # America"), it answers {"numResults": 0} with no result set. Any
+            # other answer that cannot be read stays unreadable, an outage, as
+            # for every other source: a body that is not GEOLocate's answer (an
+            # HTML page, a cut body), and an answer that reports a match the
+            # parser cannot read, so a reader's text GEOLocate found is never
+            # ruled out as no match (G20, G32).
+            nothing = _geolocate_found_nothing(payload)
+            status = LookupStatus.NO_MATCH if nothing else LookupStatus.MALFORMED
+            found = []
+            note = ("GEOLocate found no match (it answered no results)" if nothing
+                    else "GEOLocate's answer could not be read")
+            _log_unreadable("geolocate", fetched.url, status=status, error=type(error).__name__)
         candidates = tuple(
             SourceCandidate(
                 name=item["value"],
@@ -785,16 +961,31 @@ class ApprovedSources:
         source_id, name = policy.id, NAMES[policy.id]
         searched = place_name(query)
         fetched: list[_Fetched] = []
+        # Why Getty TGN's search went through its SPARQL endpoint, if it did.
+        fallback: list[str] = []
 
         async def fetch(url: str, params: dict[str, str]) -> tuple[int, bytes]:
-            response = await self._response(policy, url + "?" + urlencode(params))
+            try:
+                response = await self._response(policy, url + "?" + urlencode(params))
+            except _Unanswered as failure:
+                if url == georef_tgn.RECONCILE and failure.status in SEARCH_UNREACHED and not failure.busy:
+                    reason = failure.note.removeprefix(f"{name} ")
+                    fallback.append(reason)
+                    raise historical_gazetteers.SearchUnanswered(reason) from failure
+                raise
             fetched.append(response)
+            if (
+                url == georef_tgn.RECONCILE
+                and response.status_code in historical_gazetteers.SEARCH_REFUSALS
+            ):
+                fallback.append(f"refused the request (HTTP {response.status_code})")
             return response.status_code, response.body
 
         try:
             outcome = await historical_gazetteers.lookup(source_id, searched, fetch)
         except _Unanswered as failure:
-            return _answer(source_id, query, failure.status, failure.note)
+            note = _searched_instead(name, fallback[0] if fallback else None, failure.note)
+            return _answer(source_id, query, failure.status, note)
         status, places = outcome.status, outcome.places
         if status == LookupStatus.SUCCESS:
             status = (
@@ -805,7 +996,9 @@ class ApprovedSources:
                 else LookupStatus.AMBIGUOUS
             )
         candidates = tuple(_place(source_id, place) for place in places)
-        note = _gazetteer_note(name, searched, status, outcome, fetched)
+        note = _searched_instead(
+            name, outcome.fallback, _gazetteer_note(name, searched, status, outcome, fetched)
+        )
         if status not in ANSWERED or not fetched:
             return _answer(source_id, query, status, note)
         # Up to three responses answer one query: one record names each stored
@@ -871,17 +1064,30 @@ class ApprovedSources:
         jitter and never sooner than the provider's Retry-After. A Retry-After
         over RETRY_AFTER_LIMIT_SECONDS ends the retries; any other answer is final.
         A final answer other than 200 (a refusal, a redirect, which is never
-        followed) and a request that got none are logged (_log_unanswered)."""
+        followed) and a request that got none are logged (_log_unanswered),
+        with who sent the last response that was no answer (_sender)."""
         name = NAMES[policy.id]
         for attempt in range(1, ATTEMPTS + 1):
-            await self._pacer.wait(policy.id)
-            wait, retry, code, error = None, "", None, None
+            wait, retry, code, error, sender = None, "", None, None, None
             try:
+                # GEOLocate's turn (SOURCE_PACER) further off than a slot's
+                # wait is busy too; the request takes no turn.
+                if not await self._pacer.wait(policy.id, limit=SLOT_WAIT_SECONDS):
+                    raise SlotBusy(policy.id)
                 async with self._slots.slot(policy.id):
-                    code, body, retry = await self._read(url, policy.max_response_bytes, name)
+                    code, body, headers = await self._read(url, policy.max_response_bytes, name)
+                retry = headers.get("retry-after", "")
             except _Unanswered:
                 _log_unanswered(policy.id, url, attempt=attempt, error="response_too_large")
                 raise
+            except SlotBusy:
+                # No slot or turn within SLOT_WAIT_SECONDS: this request is
+                # not sent, and the lookup gives up rather than spend its
+                # field's time waiting.
+                _log_unanswered(policy.id, url, attempt=attempt, error="slot_busy")
+                sent = "" if attempt == 1 else f" again after {attempt - 1} attempt{'s' if attempt > 2 else ''}"
+                raise _Unanswered(LookupStatus.TIMEOUT, f"{name} was busy; this lookup was not sent{sent}",
+                    busy=True) from None
             except (httpx.TimeoutException, TimeoutError) as failure:
                 status, note = LookupStatus.TIMEOUT, f"{name} did not answer after {ATTEMPTS} attempts"
                 error = type(failure).__name__
@@ -892,10 +1098,13 @@ class ApprovedSources:
                 )
                 error = type(failure).__name__
             else:
+                if code != 200:
+                    sender = _sender(url, headers, body)
                 if code != 429 and code < 500:
                     if code != 200:
                         _log_unanswered(
-                            policy.id, url, attempt=attempt, http_status=code, retry_after=bool(retry)
+                            policy.id, url, attempt=attempt, http_status=code,
+                            retry_after=bool(retry), sender=sender,
                         )
                     return _Fetched(url, code, body)
                 status = LookupStatus.RATE_LIMITED if code == 429 else LookupStatus.PROVIDER
@@ -906,7 +1115,10 @@ class ApprovedSources:
                 )
                 wait = retry_after(retry)
                 if wait is not None and wait > RETRY_AFTER_LIMIT_SECONDS:
-                    _log_unanswered(policy.id, url, attempt=attempt, http_status=code, retry_after=True)
+                    _log_unanswered(
+                        policy.id, url, attempt=attempt, http_status=code, retry_after=True,
+                        sender=sender,
+                    )
                     raise _Unanswered(
                         status,
                         f"{name} asked to wait {wait} s before another request, "
@@ -915,11 +1127,13 @@ class ApprovedSources:
             if attempt < ATTEMPTS:
                 await self._sleep(retry_delay(attempt, wait))
         _log_unanswered(
-            policy.id, url, attempt=ATTEMPTS, http_status=code, error=error, retry_after=bool(retry)
+            policy.id, url, attempt=ATTEMPTS, http_status=code, error=error,
+            retry_after=bool(retry), sender=sender,
         )
         raise _Unanswered(status, note)
 
-    async def _read(self, url: str, limit: int, name: str) -> tuple[int, bytes, str]:
+    async def _read(self, url: str, limit: int, name: str) -> tuple[int, bytes, dict[str, str]]:
+        """A GET's status, body and KEPT_HEADERS."""
         async with asyncio.timeout(REQUEST_TIMEOUT_SECONDS):
             async with self.client.stream(
                 "GET",
@@ -936,7 +1150,12 @@ class ApprovedSources:
                             LookupStatus.MALFORMED,
                             f"{name}'s answer is longer than {limit:,} bytes",
                         )
-                return response.status_code, bytes(body), response.headers.get("Retry-After", "")
+                kept = {
+                    header: value
+                    for header in KEPT_HEADERS
+                    if (value := response.headers.get(header)) is not None
+                }
+                return response.status_code, bytes(body), kept
 
 
 def _approved(policy: SourcePolicy, url: str) -> bool:
@@ -1083,6 +1302,15 @@ def _place(source_id: str, place: Place) -> SourceCandidate:
         detail=detail or None,
         parents=tuple(parents),
     )
+
+
+def _searched_instead(name: str, fallback: str | None, note: str) -> str:
+    """The note of a Getty TGN search that went through the SPARQL endpoint
+    because the reconciliation service refused the request or got no answer
+    (`fallback`): that comes first, then what the search found."""
+    if fallback is None:
+        return note
+    return f"{name}'s search {fallback}; searched Getty's SPARQL endpoint instead. {note}"
 
 
 def _gazetteer_note(

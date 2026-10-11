@@ -12,9 +12,10 @@ the workflow saves the run once after it:
    parser read, on each reading that writes the line) and the tools its expert
    may call. A field is resolved to one of its candidates' literals, or to text
    its expert read in the readings (agreement.literal_basis).
-2. ``research_fields``: a field that is already an accurate read is finalized
-   with no model call; every other field's expert runs at once, inside one
-   ``field_research`` span. After step 4, each field's decision is its own
+2. ``research_fields``: every field's expert runs, all at once, inside one
+   ``field_research`` span, whatever the organiser's value (it may confirm
+   it); only the identified-by IRN, which no approved source supplies, gets
+   none. After step 4, each field's decision is its own
    ``field_research.field`` span inside it (``trace_fields``).
 3. ``apply_outcomes``: the outcomes become field values and evidence on the
    run, then the derived values (derive.py; G37, G41, G44), then the listed
@@ -26,7 +27,8 @@ the workflow saves the run once after it:
    with no blanket human approval (G1). A field that cannot be settled sends the
    record to Needs human review; an outage blocks the run with a retry, and
    every settled field is kept for it. On the step's last attempt a source
-   still unreachable sends its field to review instead (``last_attempt``).
+   still unreachable, or a field that ran out of time, sends its field to
+   review instead (``last_attempt``).
 
 Once the step has completed on a run it never runs there again: a later pass
 (a retry, or a reviewer's decision) applies the rules only (``refinalize``),
@@ -122,7 +124,6 @@ IRN_EXPLANATION = (
     "No approved source can supply a confirmed EMu parties IRN, and a name on the "
     "label is not one."
 )
-ACCURATE = "Accurate read: the organiser's value, exactly as the named readings write it."
 # Work states, as canonical_materialization_v2 names them (37-39).
 RESOLVED, WAITING_HUMAN, NONBLOCKING, FAILED = (
     "resolved", "waiting_human", "nonblocking_exception", "operational_failed")
@@ -135,6 +136,11 @@ RETRYABLE = {
     "timeout": ("field_research_timeout", LookupStatus.TIMEOUT),
 }
 BLOCKER_STATUS = dict(RETRYABLE.values())
+# The failures that, on the step's last attempt (last_attempt), send their
+# field to review instead of blocking: no retry follows that attempt. A
+# model error blocks on every attempt; a provider's outage is for a later
+# retry, never a finalized record.
+REVIEW_ON_LAST_ATTEMPT = frozenset({"source_unavailable", "timeout"})
 FIELD_REASONS = {
     "source_unavailable": "An approved source could not be reached. The record will be retried.",
     "model_error": "An error occurred while researching this field. The record will be retried.",
@@ -154,12 +160,23 @@ def last_attempt(run) -> bool:
     return run.attempts.get(STEP, 0) >= run.profile.execution.max_attempts
 
 
+def _attempts(run) -> str:
+    """The step's attempts so far, in words: "3 attempts"."""
+    attempts = run.attempts.get(STEP, 0)
+    return f"{attempts} attempt{'s' if attempts != 1 else ''}"
+
+
 def _unreachable_reason(run, outcome: FieldOutcome) -> str:
     """The reason of a field whose sources still could not be reached on the
     step's last attempt: it goes to review, naming them."""
-    attempts = run.attempts.get(STEP, 0)
     names = _source_names(outcome.unreachable) if outcome.unreachable else "An approved source"
-    return f"{names} could not be reached after {attempts} attempt{'s' if attempts != 1 else ''}."
+    return f"{names} could not be reached after {_attempts(run)}."
+
+
+def _timeout_reason(run) -> str:
+    """The reason of a field that ran out of time on the step's last attempt:
+    it goes to review."""
+    return f"Research on this field ran out of time after {_attempts(run)}."
 
 
 # ---- inputs ---------------------------------------------------------------
@@ -252,31 +269,6 @@ def build_tasks(run, profile: CollectionProfile | None = None):
     return readings, tuple(tasks), context
 
 
-def accurate_read(task: FieldTask) -> bool:
-    """A field with no source or check whose organiser value is supported."""
-    current = task.current
-    return (not task.tools and task.key not in NO_APPROVED_AUTHORITY
-        and current.state == ValueState.SUPPORTED and bool(current.literal and current.literal.strip()))
-
-
-def _current_reading_names(task: FieldTask, readings: Sequence[Reading], evidence) -> list[str]:
-    """The readings that write the organiser's literal, by its candidates and
-    rows; of a label with a decided transcript, only the decided reading (G19:
-    its other reader is evidence only)."""
-    literal = task.current.literal
-    names = [c.reading for c in task.candidates if c.literal == literal]
-    for evidence_id in task.current.evidence_ids:
-        row = evidence.get(evidence_id)
-        if row is None or row.kind != "literal" or literal not in row.excerpt:
-            continue
-        names += [r.name for r in readings
-            if r.region_id == row.region_id and r.observation_id in row.observation_ids]
-    by_name = {r.name: r for r in readings}
-    decided = {r.region_id: r.name for r in readings if r.input_source == "decided_transcript"}
-    return [n for n in dict.fromkeys(names) if n in by_name and literal in by_name[n].text
-        and decided.get(by_name[n].region_id, n) == n]
-
-
 # ---- research -------------------------------------------------------------
 
 @dataclass(frozen=True)
@@ -346,10 +338,11 @@ async def research_fields(run, profile: CollectionProfile | None = None, *, reso
         prepared=None, calls: list[SourceCall] | None = None, span=None) -> list[FieldOutcome]:
     """One outcome per task, in task order.
 
-    An accurate read finalizes with no model call; a field with no approved
-    authority (identified_by_irn) gets none either and keeps its nonblocking
-    exception; every other field's resolver runs, up to ``concurrency`` at once.
-    A field still running at ``deadline_seconds`` is cancelled as a timeout.
+    Every field's resolver runs, up to ``concurrency`` at once, whatever the
+    organiser's value (its expert may confirm it, or find it is not this
+    field's text). A field with no approved authority (identified_by_irn)
+    gets no model call and keeps its nonblocking exception. A field still
+    running at ``deadline_seconds`` is cancelled as a timeout.
     ``prepared`` is build_tasks' result; ``calls`` collects every lookup made.
     Its counts go on ``span``, the step's ``field_research`` span, or on a
     span of that name of its own when none is given.
@@ -357,17 +350,12 @@ async def research_fields(run, profile: CollectionProfile | None = None, *, reso
     profile = profile_of(run) if profile is None else profile
     readings, tasks, context = build_tasks(run, profile) if prepared is None else prepared
     recorded = _RecordedTools(tools, [] if calls is None else calls)
-    evidence = {item.id: item for item in run.evidence}
     outcomes: dict[str, FieldOutcome] = {}
     pending: list[FieldTask] = []
     for task in tasks:
         if task.key in NO_APPROVED_AUTHORITY:
             outcomes[task.key] = FieldOutcome(task.key, FieldAnswer(outcome="sources_cannot_resolve",
                 explanation=IRN_EXPLANATION), finalized_without_model=True)
-        elif accurate_read(task) and (names := _current_reading_names(task, readings, evidence)):
-            outcomes[task.key] = FieldOutcome(task.key, FieldAnswer(outcome="resolved",
-                literal=task.current.literal, reading_names=names, explanation=ACCURATE),
-                finalized_without_model=True)
         else:
             pending.append(task)
     with (logfire.span(SPAN) if span is None else nullcontext(span)) as span:
@@ -592,20 +580,36 @@ def _settling(task, answer, sources):
 TAKEN = "This text, read from the transcript, is also the value found for {other}."
 
 
+def _inside_a_token(text: str, index: int) -> bool:
+    """Whether `index` falls between two letters or between two digits of the
+    text: inside a word's letters ("trap" of "trapping") or a number's digits
+    ("2" of "24")."""
+    if not 0 < index < len(text):
+        return False
+    before, after = text[index - 1], text[index]
+    return (before.isalpha() and after.isalpha()) or (before.isdigit() and after.isdigit())
+
+
 def _occurrences(literal: str, readings: Iterable[Reading]) -> frozenset[tuple[str, int, int]]:
-    """Where the readings write the literal: (reading, start, end), each time."""
+    """Where the readings write the literal as whole tokens: (reading, start,
+    end), each time it neither starts nor ends inside a word's letters or a
+    number's digits (_inside_a_token). A settled "2" claims the "2" of "lot
+    #2", never the "2" of "IV-24-48" (PR #300's review, finding 2)."""
     found = set()
     for reading in readings:
         start = reading.text.find(literal)
         while start >= 0:
-            found.add((reading.name, start, start + len(literal)))
+            end = start + len(literal)
+            if not (_inside_a_token(reading.text, start) or _inside_a_token(reading.text, end)):
+                found.add((reading.name, start, end))
             start = reading.text.find(literal, start + 1)
     return frozenset(found)
 
 
 def _candidate_spans(reading: Reading, candidate: Candidate) -> frozenset[tuple[str, int, int]]:
     """Where an organiser candidate's literal stands in its reading: inside
-    each place its quote does, else wherever the reading writes it."""
+    each place its quote does, else wherever the reading writes it as whole
+    tokens (_occurrences)."""
     text, found = reading.text, set()
     at = text.find(candidate.quote) if candidate.quote else -1
     while at >= 0:
@@ -631,10 +635,11 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
     (agreement.verbatim_runs) in the readings of the labels its answer
     names; it is claimed when it overlaps, in the same reading, the literal
     of another field's answer of this attempt (resolved, or
-    sources_cannot_resolve quoting it), wherever that literal stands in the
-    readings of the labels that answer names, the literal of another
-    field's value settled before this attempt (or a person's), in the
-    readings of its labels, or another field's organiser candidate (the
+    sources_cannot_resolve quoting it), wherever that literal stands as
+    whole tokens (_occurrences) in the readings of the labels that answer
+    names, the literal of another field's value settled before this attempt
+    (or a person's), so, in the readings of its labels, or another field's
+    organiser candidate (the
     organiser's or the keyed-line parser's, _candidates) where its quote
     stands in its reading, whatever that field's expert did in this attempt
     (it may have failed). Which field such text belongs to is for a
@@ -833,9 +838,11 @@ def _settled(run, task, outcome, *, by_name, evidence, asset_id, blobs, date_rul
                 relations[row.id] = "supports"
     elif value is not None:
         normalized = value
+    # A field no source or check supplies is the label's text as written (G38's
+    # verbatim layer); any other is settled by its sources and checks.
     return FieldValue(state=ValueState.SUPPORTED, literal=literal, parsed=parsed, normalized=normalized,
         authority_id=answer.authority_id, evidence_ids=list(relations), evidence_relations=relations,
-        reason=answer.explanation, layer="verbatim" if outcome.finalized_without_model else "settled",
+        reason=answer.explanation, layer="settled" if task.tools else "verbatim",
         **_lineage(named, literal, others))
 
 
@@ -878,6 +885,9 @@ def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, b
         if final and outcome.failure == "source_unavailable":
             decision["rule"] = "unreachable_on_last_attempt"
             reason = _unreachable_reason(run, outcome)
+        elif final and outcome.failure == "timeout":
+            decision["rule"] = "timed_out_on_last_attempt"
+            reason = _timeout_reason(run)
         return _unsettled(task, ValueState.UNRESOLVED, literal=current.literal, cited=cited, reason=reason)
     if answer.outcome == "resolved":
         refused = _refusal(task, answer, readings=readings, by_name=by_name, sources=sources)
@@ -1290,9 +1300,10 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     sources_cannot_resolve: unresolved, except a taxon that names no genus,
     supported as written and unmatched (_unmatched_taxon); several_possibilities:
     ambiguous, the options in the reason; a failure: unresolved with a
-    retryable reason, except a source still unreachable on the step's last
-    attempt (last_attempt), whose reason names the sources not reached
-    (_unreachable_reason). Then the derived values, then the listed fields the
+    retryable reason, except on the step's last attempt (last_attempt) a
+    source still unreachable, whose reason names the sources not reached
+    (_unreachable_reason), and a field that ran out of time, whose reason
+    says so (_timeout_reason). Then the derived values, then the listed fields the
     label does not state (mark_not_on_label); the keys derived are returned.
     Last, a field whose expert's answer stood although a source it asked
     could not be reached (FieldOutcome.unreachable) ends its reason with a
@@ -1742,7 +1753,8 @@ def not_on_label(key: str, value: FieldValue, run, evidence: Mapping[str, Eviden
 # agreement's reasons for refusing a resolved answer, by constant name.
 REFUSALS = ("DIFFER", "LABELS_DIFFER", "NOT_DECIDED", "NOT_CANDIDATE", "PART_OF_NAME", "DOUBTFUL_GENUS",
     "NO_PLACE", "EXPANSIONS_DIFFER", "NO_PARENTS", "NO_COUNTRY", "NOT_IN_COUNTRY", "NOT_IN_PROVINCE", "NEAR_UNFIT",
-    "NOT_EVERY_READER", "PART_OF_RANGE")
+    "NOT_EVERY_READER", "PART_OF_RANGE", "UNIT_DIFFERS", "NO_UNIT", "HOLDS_AN_ELEVATION", "HOLDS_A_DATE",
+    "HOLDS_A_RANGE")
 # A lookup's status as a field's trace names it. Logfire's default scrubber
 # replaces any attribute whose value holds "auth" or "credential", so the two
 # refusals (HTTP 401 and 403) are renamed.
@@ -2102,12 +2114,13 @@ def work_states(run, profile: CollectionProfile, outcomes: Sequence[FieldOutcome
     """Each profile field's work state after this attempt.
 
     A field this attempt did not research (settled earlier, or a person's) and
-    a derived value are resolved; an outage or model failure is operational,
-    except a source still unreachable on the step's last attempt
-    (last_attempt), which no retry would follow; a field with no approved
-    authority is its nonblocking exception; anything else that did not settle
-    waits on a person (a spent budget and that last unreachable source too:
-    failures are graceful).
+    a derived value are resolved; an outage, a model failure or a timeout is
+    operational, except on the step's last attempt (last_attempt), which no
+    retry would follow, a source still unreachable and a field that ran out
+    of time (REVIEW_ON_LAST_ATTEMPT); a model failure is operational on every
+    attempt. A field with no approved authority is its nonblocking exception;
+    anything else that did not settle waits on a person (a spent budget, and
+    that last unreachable source or timeout too: failures are graceful).
     """
     by_key = {outcome.key: outcome for outcome in outcomes}
     final = last_attempt(run)
@@ -2116,7 +2129,7 @@ def work_states(run, profile: CollectionProfile, outcomes: Sequence[FieldOutcome
         outcome, value = by_key.get(key), run.fields.get(key) or FieldValue()
         if outcome is None or (value.state == ValueState.SUPPORTED and value.layer == "derived"):
             states[key] = RESOLVED
-        elif outcome.failure in RETRYABLE and not (final and outcome.failure == "source_unavailable"):
+        elif outcome.failure in RETRYABLE and not (final and outcome.failure in REVIEW_ON_LAST_ATTEMPT):
             states[key] = FAILED
         elif key in NO_APPROVED_AUTHORITY:
             states[key] = NONBLOCKING
@@ -2136,8 +2149,9 @@ def finalize_fields(run, profile: CollectionProfile | None, outcomes: Sequence[F
     rules satisfied: cleared. Anything for a person: needs human review, with a
     reason per field. Any outage or model failure: processing_blocked with the
     retryable blocker the workflow schedules a retry on, every settled field
-    kept; on the step's last attempt a source still unreachable is for a person
-    instead (work_states), and only a model failure or timeout blocks.
+    kept; on the step's last attempt a source still unreachable and a field
+    that ran out of time are for a person instead (work_states), and only a
+    model failure blocks.
     """
     profile = profile_of(run) if profile is None else profile
     if specimen is not None and blobs is not None:

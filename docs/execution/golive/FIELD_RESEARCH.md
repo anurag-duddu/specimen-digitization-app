@@ -96,11 +96,36 @@ handover runs field research instead of the six specialists:
    names them), the organiser's candidates and settled value for each field
    (a keyed line the parser read is a candidate of each reading that writes
    it), and the profile's field list.
-2. **Accurate reads finalize.** A field with no approved source or check whose
-   organiser value is supported is finalized as written, with no model call,
-   on the readings that write it (of a label with a decided transcript, only
-   the decided reading). The rules of step 5 apply to it.
-3. **One expert per field.** Every other field gets its own Pydantic AI agent
+2. **Every field gets its expert.** A field whose organiser value is
+   supported is researched like any other, whether or not an approved source
+   or check covers it: its expert may confirm the organiser's value or find
+   that it is not this field's text; an accurate read (spec point 4) is
+   finalized when its expert confirms it. (Until 2026-10-09 a field with no
+   source or check whose organiser value was supported was finalized as
+   written with no model call. In the real run of 2026-10-09 that cleared
+   105526328's habitat as "trap", the end of its collecting-method line "lot
+   #2 cut branch / trap".) Only the identified-by IRN, which no approved
+   source supplies, gets no expert (its nonblocking exception). A value
+   settled for a field with no source or check is the verbatim layer, any
+   other the settled layer. In that run the expert of a field with no source
+   or check made one request (once two), of about USD 0.0007 each; in this
+   change's real runs of 105526321, 105526326 and 105526327 the experts of
+   such fields whose organiser value was supported added USD 0.0014 to
+   0.0021 per specimen. The
+   briefs of those fields (collectors, collection code, habitat, collection
+   method, verbatim D/T/S) say that a label's decided transcript decides
+   its text and another reader's different text is evidence only, never a
+   reason for several_possibilities (G19), as the agreement rules of step 5
+   already let it: in this change's first real runs the verbatim D/T/S
+   experts of 105526321 and 105526326 answered several_possibilities
+   between their decided reading's text and the other reader's ("3 sept.
+   '46" and "3 Sept. '46"; "IX - 14 - 46" and "IX-14-46"). The habitat
+   brief says a collecting method or device (a trap, a net, beating, cut
+   branch and the like) is the collection method, never the habitat, and
+   that when the only text offered for the habitat is a method the label
+   lacks one: in the real run of 529f8033c 105526328's habitat expert still
+   confirmed the organiser's "trap".
+3. **One expert per field.** Every field gets its own Pydantic AI agent
    (`field_<key>`), its own instructions (shared rules plus the field's brief)
    and only its approved tools. All experts run at once. After the step has
    decided (steps 5 to 7), each field of the attempt is one
@@ -108,28 +133,140 @@ handover runs field research instead of the six specialists:
    (`step.trace_fields`): the expert's outcome, its failure and fallback,
    the value's state and layer, the run's reason codes for the field, the
    check that refused a resolved answer and the rule that decided the field
-   (rule A or B, a derivation, an unreachable source on the last attempt),
+   (rule A or B, a derivation, an unreachable source or a timeout on the
+   last attempt),
    and each lookup as source and status. These are codes; the literal,
    value, authority id and reason are added only when the worker captures
    approved content.
+
+   **Each expert's budget.** An expert has 6 model requests ("turns") and 12
+   tool calls (`experts.REQUEST_LIMIT`, `experts.TOOL_CALLS_LIMIT`). Once a
+   third of its tool calls or fewer are left (four of twelve), or its next
+   turn is its last, each tool result tells it to answer now
+   (`experts.ANSWER_NOW_NOTE`). A tool call identical to one the same expert
+   made before (the same tool and arguments) gets that call's answer,
+   marked as a repeat, and runs nothing again; a lookup whose source could
+   not be reached is the exception and is asked again (the record's sources
+   then answer it from their own cache). An expert that still runs out (a
+   turn that asks for more tool calls than are left, or a turn past its
+   last) is asked once more for its answer from the readings and the
+   answers it has (`_Expert.answer_now`): one request on the same meter,
+   under the same run ceiling, with its tools withheld and each tool call
+   the limit stopped answered "Not run". That answer is checked like any
+   other and is the expert's own. Only when its answer breaks its checks
+   does the resolver's fallback take its place: sources_cannot_resolve,
+   "The expert used all its attempts without settling this field." When the
+   run's ceiling or the input bound refuses that request, the field fails as
+   for any refused request (budget_exhausted, input_too_large) and goes to
+   review, its reason saying so. The shared brief has
+   the expert ask about the label's own text first, then, when no source
+   knows it, an abbreviation written out or another reading's variant, and
+   then stop: a place no gazetteer holds is not found by asking again with
+   other larger units after its name. (In the real run of 2026-10-09 on the
+   ten pilot specimens, twelve fields on seven specimens ran out, and the
+   fallback replaced their experts' answers. In this change's real runs of
+   105526321, 105526326 and 105526327, live and with Getty TGN down, no
+   expert ran out: eight tool results told an expert to answer now, and no
+   answer-now request was needed.) The briefs' examples are patterns
+   ("<Genus> sp. 1", "<Name> Prov.", "<n> ft"), never a real taxon, place,
+   person, year or slide code, and the shared brief says examples are never
+   text to look up or copy: in one of those runs 105526321's taxon expert
+   looked up "Epipsocus", the taxon brief's example genus, which no label
+   of that specimen writes. The notation table's line (step 5, P4) is a
+   rule, not an example, and keeps its names.
 4. **Sources.** GBIF (with Catalogue of Life and Global Names Verifier
    alongside), GEOLocate, Getty TGN, Wikidata and NGA, plus deterministic date,
    elevation and catalogue-number checks. One request per distinct query per
    record (shared cache), retries with backoff (three attempts, a Retry-After
    of at most 10 s honoured, a redirect never followed), GEOLocate spacing
    kept, and at most two requests at a time to each of Getty TGN, Wikidata
-   and NGA across the worker process (`sources.SOURCE_SLOTS`). Each source
+   and NGA across the worker process (`sources.SOURCE_SLOTS`). A request
+   that waits 30 s for one of those slots is not sent: its lookup gives up
+   at once as a timeout ("Getty TGN was busy; this lookup was not sent"),
+   logged like any unanswered request (`error=slot_busy`), so the expert
+   goes on with its other sources. A GEOLocate request whose turn under the
+   3 s spacing is more than 30 s off is busy the same way ("GEOLocate was
+   busy; this lookup was not sent"), and it takes no turn, so the requests
+   after it are not spaced behind it. Each source
    response is stored once as evidence. Each request a source leaves
    unanswered (a final status other than 200, or retries that ran out) is
    logged in one WARNING line with the source, the host, the HTTP status or
    the error's class, whether a Retry-After came back and the attempt it
    ended on, never the query; for GBIF, the status its verification ended on.
+   The line also says who sent the last response that was no answer: its
+   Server and Via headers, whether its body is an HTML page, and the first
+   200 characters of its body, with every word of the request's query and
+   path replaced by "[query]" (`sources._sender`).
+
+   **Getty TGN's search** goes through Getty's SPARQL endpoint
+   (vocab.getty.edu, already approved for TGN) when the reconciliation
+   service (services.getty.edu) answers 401 or 403, or times out, cannot be
+   connected to or keeps failing with HTTP 5xx; on 2026-10-10 it answered
+   every request from Cloud Run with 403. The search reads Getty's full-text
+   index (`luc:term`) for the place name, ranks places with a term in the
+   same words first, and reads the records of at most ten, so the candidates
+   have the reconciliation path's shape, and the chain keeps its cap of
+   three responses (`historical_gazetteers.MAX_CALLS`, `_tgn_search`). The
+   evidence record lists the refused response with its HTTP status and no
+   stored body, then the two stored SPARQL responses. The note starts with
+   "Getty TGN's search refused the request (HTTP 403); searched Getty's
+   SPARQL endpoint instead." If the SPARQL endpoint fails too, the lookup is
+   an outage as before.
+
+   **GEOLocate's answer that it found nothing.** A GEOLocate answer (HTTP
+   200) that the parser cannot read is no match, not an outage, only when
+   it says it found nothing: its count of results is 0 and it has no
+   result set, or one with no features (`sources._geolocate_found_nothing`).
+   Asked about a country it does not know ("Central America"), GEOLocate
+   answers `{"numResults": 0}` with no result set; in the real run of
+   2026-10-09 that answer was classed unreadable, an outage, and blocked
+   105526329 for a retry. Any other answer that cannot be read is still
+   unreadable, an outage: a body that is not GEOLocate's answer (an HTML
+   page, a cut body), and an answer that reports a match the parser cannot
+   read (a count above 0, or a feature of the wrong shape). So a reader's
+   text GEOLocate found is never ruled out as no match under the readers'
+   rule of step 5 (G20, G32; the review of #299, whose probe had readers
+   "Yepocapa" and "Yepocapo" settle on an unreadable match for "Yepocapo";
+   it now goes to review). Either is logged in one
+   WARNING line ("Field research lookup unreadable") with the source, the
+   host, the status it was read as and the error's class, never the query.
+   An unreadable answer of GBIF (with Catalogue of Life and Global Names
+   Verifier alongside), or an unreadable answer to the search request of
+   Getty TGN, Wikidata or NGA, stays an outage: a body that is not the
+   source's answer or breaks its shape, not an answer about the query; a
+   later attempt may read one. For the gazetteers' search requests these
+   answers that report a hit the parser cannot read are unreadable too,
+   never no match (the second review of #299: readers "Yepocapa" and
+   "Yepocapo" settled on such a Getty TGN answer for "Yepocapo"; the field
+   now goes to review): a Getty TGN reconciliation answer with a hit that
+   is not an object, has an id other than `tgn/<digits>` or has no name,
+   even beside hits that can be read (`georef_tgn.parse_reconcile`); an NGA
+   name search with a row that has no integer feature id (`ufi`) or no
+   termination field (`georef_nga.parse_search`; the feature read after it
+   checks the same, `parse_features`); and a Wikidata search none of whose
+   items can be read (`georef_wikidata.parse_search`). A TGN hit of
+   another Getty vocabulary (AAT, ULAN, CONA or IA: a concept, a person, a
+   work or a subject) is no place and is skipped, so an answer of such hits
+   only is no match.
+
+   **Not yet: the later requests of a Getty TGN, Wikidata or NGA lookup.**
+   Once the search request has found a hit, a reply to a later request
+   that holds no row the parser can use, or no row at all, is still read
+   as no match for the whole lookup and stored as its evidence, and the
+   readers' rule of step 5 can rule the reader's text out on it
+   (`research_harness.historical_gazetteers` ends the lookup with that
+   request's no match). That covers Getty TGN's records and names (a row
+   whose place is not a TGN id, a record with no name, no rows), Wikidata's
+   entities (an entity reported missing or with no label, none returned)
+   and NGA's features and units (a feature row with no name, no rows). The
+   fix is planned in a separate PR.
 
    **A source that cannot be reached** (a lookup whose last attempt was rate
    limited, timed out, was refused or redirected, failed on the server or
-   came back unreadable; a refused query is not one) does not void the
-   field when another of its expert's lookups answered. The expert's answer
-   then stands and is checked under the rules of step 5 like any other, and
+   came back unreadable, as above; a refused query is not one) does not
+   void the field when another of its expert's lookups answered. The
+   expert's answer then stands and is checked under the rules of step 5
+   like any other, and
    the field's reason ends by naming the source ("Getty TGN could not be
    reached; settled from Wikidata."). A place settles on a cited answer of
    any place source, so no Getty TGN answer is needed. Only when every
@@ -188,16 +325,42 @@ handover runs field research instead of the six specialists:
      that reading ("Sept. '46" beside the candidate "3 Sept. '46", "San
      Pedro Sacatepequez" beside the candidate "San Pedro"): the answer is
      then refused as above. A date or an elevation so read is never one end
-     of a range (`agreement._part_of_range`, PR #300's review): where a
-     reading it is read from writes it, the comma- or semicolon-separated
-     part of the line holding it may not join two words that each hold a
-     digit with "to", "-", an en dash or "a" (any case) standing as a word
-     of its own, unless the literal holds that joiner and both those words,
-     the whole range ("The label writes this value as one end of a range.":
-     "V-2-48" or "IV-24-48" of "IV-24-48 to V-2-48", "1500 m" of "1200 to
-     1500 m" or "1200 a 1500 m"; "1200 to 1500 m" whole keeps the rules a
-     candidate has). A range glued with a hyphen ("1200-1500 m") is one
-     word, which no run cuts. Every other rule
+     of a range (`agreement._part_of_range`, PR #300's review and finding 1
+     of its review of 6fd595b3b): where a reading it is read from writes
+     it, the comma- or semicolon-separated part of the line holding it may
+     write no range (`written.ranges`) unless the literal holds both its
+     ends, the whole range ("The label writes this value as one end of a
+     range."). A range is two ends, each a word holding a digit, joined by
+     a run of joiners: a dash of any form (a hyphen, an en or em dash, a
+     minus sign, a figure dash, a full-width hyphen, a wave dash and the
+     others `written.DASHES` pins by name), standing as a word of its own
+     or touching one end ("1200- 1500 m", "IV-24-48 -V-2-48"); a sign "&",
+     "/" or "~" standing alone; or a word of `written.RANGE_WORDS`, compared
+     with letter case and accents aside: English "to", "till", "until",
+     "thru", "through", "and"; Spanish "a", "al", "hasta", "y"; Portuguese
+     "a", "ao", "ate" (with its acute accent), "e"; French "a" (with its
+     grave accent), "au", "jusqu'a", "jusqu'au", "et"; German "bis", "und";
+     Italian "a", "al", "fino", "e"; Dutch "tot", "en", "t/m"; Latin "ad",
+     "usque" (a run of them, such as "fino a", is one joiner). Up to five
+     words that may stand beside a number (`written.BESIDE_A_NUMBER`) may
+     come between an end and the joiner: a unit's words ("1200 m to 1500
+     m", "1200 m a. s. l. to 1500 m"), a month in English, Spanish,
+     Portuguese, French, German, Italian or Dutch, a Roman numeral I to XII
+     in capitals ("April 24 to May 2, 1948", "24 avril au 2 mai 1948"), or
+     an approximate marker ("ca."). The two ends are written alike: in one
+     unit, or both dates (an end that writes letters, or has a month or a
+     Roman month beside it), or a bare number beside either. Ends in
+     different units are one elevation written in both, no range ("4800 ft.
+     / 1463 m": each settles its own unit's field), and a unit beside a
+     date is two fields ("Guatemala / 1200 m / 24.IV.1948"). A word of two
+     numbers joined by a dash or a "/" ("1200-1500 m", "10-12") is one word,
+     which no run cuts; standing right before or after the literal, it
+     makes the literal part of its range too ("Sept. 1946" of "10-12 Sept.
+     1946", "IV 1948" of "24/30 IV 1948"). So "1500 m" of "1200 bis 1500
+     m", "entre 1200 y 1500 msnm", "1200 - 1500 m" with an em dash, "1200-
+     1500 m" or "1200 m to 1500 m", "V-2-48" of "IV-24-48 au V-2-48" and
+     "May 2, 1948" of "April 24 to May 2, 1948" go to review; "1200 to 1500
+     m" whole keeps the rules a candidate has. Every other rule
      applies to it as to a candidate: G19's decided transcript, the readers'
      rules below, the place checks (the lookup of the label's own text, the
      level, the parents, the near spelling) and the doubtful genus. For the taxon, the
@@ -242,7 +405,14 @@ handover runs field research instead of the six specialists:
      field's organiser candidate (or keyed line the parser read), where its
      quote stands in its reading, whatever that field's expert did in this
      attempt (PR #300's review: the elevation's candidate "4800ft." claims
-     its text even when the elevation's expert failed). The field
+     its text even when the elevation's expert failed). An answer's or a
+     settled value's literal claims only where it stands as whole tokens:
+     each occurrence that neither starts nor ends between two letters or
+     between two digits (`step._occurrences`; finding 2 of the review of
+     6fd595b3b), so a collection code settled as "2" claims the "2" of "lot
+     #2" but not the "2" of "IV-24-48", and the date read from the
+     transcript settles; a code settled as "IV-24-48" still claims the
+     date's whole text. The field
      goes to review with the reason "This text, read from the transcript,
      is also the value found for <field>." The kinds are
      `agreement.FIELD_KINDS`: the place fields (precise location among
@@ -256,6 +426,68 @@ handover runs field research instead of the six specialists:
      "2000 msnm" settles. An organiser's candidate is never refused here,
      and two fields that both read the text from the transcript both go to
      review.
+   - **Text plainly of another kind** (the answer check and the step,
+     `agreement._holds_another_kind`; finding 2 of the review of
+     6fd595b3b). A place field (country, province or state, county, city,
+     precise location) or the collection code read from the transcript
+     never holds text that is plainly another kind of field's, whether or
+     not any field claims it (`written.other_kind`): an elevation, a number
+     with an elevation unit after it or before it ("4800ft.", "m 1200"; the
+     units below), unless a compass point or "of", "from", "de", "von" and
+     the like (`written.DISTANCE_AFTER`) follows it, which makes it a
+     distance ("500 m N of the church" is locality text); a date, any run
+     of up to five whole words the date parser reads as a date or as
+     several, with Roman months read and no century rule ("IV-24-48",
+     "24.VI.1952", "24 Apr 1948", a year from 1750 on such as "1948"; a
+     slide code is none); or a range of dates or elevations (`written.ranges`
+     with a unit, a month, a Roman month or letters at an end: "24 IV a 2
+     V"; a range of bare numbers, "km 12 a 15", is none). Such an answer is
+     sent back, telling the expert to leave that text out, and the step
+     sends the field to review ("This text holds an elevation, which is
+     another field's.", "...holds a date...", "...holds a range of dates or
+     elevations..."). So with no elevation candidate and the elevation's
+     expert failing, "Yepocapa, 4800ft." no longer settles as the locality
+     while "Yepocapa" does, and with no date candidate "IV-24-48" no longer
+     settles as the collection code; "Volcan Barva" beside "2000 msnm"
+     still settles. An organiser's candidate is not checked here.
+   - **The elevation's unit** (the answer check and the step,
+     `agreement._unit_refusal`, for an organiser's candidate and for text
+     read from the transcript alike; finding 5 of the review of 6fd595b3b,
+     pre-existing on main: "1500 m" from "alt. 1500 m" settled
+     elevation_from_ft as 1500). Each elevation field holds the unit
+     `application.derivations.UNITS` gives it (metres for elevation_from_m
+     and elevation_to_m, feet for elevation_from_ft and elevation_to_ft).
+     Wherever a reading the answer names (its label's decided reading, on a
+     label with one) writes the literal as whole numbers, the unit of each
+     of the literal's numbers is read on that line (`written.units_of`,
+     `written.numbers`): the unit written right after the number, glued or
+     after spaces, in any spelling of `written.ELEVATION_UNITS` (metres "m",
+     "mts", "metres", "meters", "metros", "metri", "msnm", "msm", "m.s.n.m.",
+     "m a.s.l.", "masl", "msl", "m s.l.m.", "m u. M." with its umlaut, "m
+     NN", "m alt."; feet "ft", "feet", "foot", a foot mark straight, curly
+     or a prime, "pies", "p.s.n.m.", "pes" with its accent, "Fuss" with or
+     without its sharp s, "pieds", "piedi", "voet"; letter case, accents,
+     periods and the spaces inside a unit aside), or right before it as
+     Italian labels write it ("m 1200"); or, for an end of a range that
+     writes none, the other end's unit ("1200" of "1200 to 1500 m" or of
+     "1200-1500 m"). "mt" may be Mount and is no unit, nor is "mm", and a
+     foot mark after a degree sign is a minute of arc. When any of those
+     units is the other unit the answer is refused ("The label writes this
+     elevation in the other unit.": "1500 m" or "1500" of "alt. 1500 m" as
+     feet, "6400'" or "6400 pies" as metres, "4800 ft. (1463 m)" as either);
+     when the reading writes none of its numbers with a unit, it is refused
+     too ("The label writes no elevation unit with this number.": "1500" of
+     "Elev. 1500", "1200 mt"), as a unit is never guessed (G41). Sent back,
+     the expert's brief has it answer label_lacks_value when the label
+     states the elevation only in the other unit, and the derivations
+     below then convert the settled one; refused at the step, the
+     field goes to review, and no elevation is derived while one is
+     unresolved (`derive._elevations`). The answer check's written rule
+     (`extraction_refusal`, a unit after a bare number) still applies
+     before this one. The experts' shared brief renders its range and
+     elevation-unit lines from the tables these rules read
+     (`written.range_line`, `written.unit_line`, folded to ASCII), as it
+     renders the place notations.
    - **A doubtful genus (taxon only).** The literal never settles the taxon
      when the label marks its genus as doubtful (`checks.genus_in_doubt`,
      through `agreement._genus_in_doubt`): wherever the quote of a candidate
@@ -319,7 +551,8 @@ handover runs field research instead of the six specialists:
      every distinct text its readers write, exactly one is confirmed by an
      answer about it, and every other has a captured no_match answer
      about it and no success or ambiguous one. An error, a timeout or a text
-     never asked about is not a no-match. For a place field (country,
+     never asked about is not a no-match; a later gazetteer reply that step
+     4 says is still read as no match is one. For a place field (country,
      province or state, county, city) such a label also settles when every
      text its readers write is confirmed and one authority_id confirms them
      all: the readers name that place ("Yepocapa," and "Yepocapa", both
@@ -384,7 +617,11 @@ handover runs field research instead of the six specialists:
      which it only repeats, so it confirms nothing there (asked "Yepocapa,
      Chimaltenango, Guatemala" for a province
      "Yepocapa", its candidate is "Chimaltenango", a province inferred from a
-     locality). So TGN's ambiguous
+     locality). The country and county experts therefore do not have
+     GEOLocate among their tools, only Getty TGN, Wikidata and NGA
+     (`contracts.GAZETTEERS`; in the real runs of 2026-10-09 all 22 of the
+     county experts' GEOLocate lookups were refused before they were sent,
+     and the country experts spent 51 lookups on it). So TGN's ambiguous
      answer for "Philippine Islands" (a ridge, the nation, a Dutch village, a
      sea, an island group) settles the country "P.I." as Philippines (on the
      abbreviation rule below, when another place of the label lies in the
@@ -642,18 +879,89 @@ handover runs field research instead of the six specialists:
    3 by default). On
    the step's last attempt a field whose sources still could not be reached
    goes to Needs human review instead, unresolved, its reason naming them
-   ("Getty TGN could not be reached after 3 attempts."), and the record
-   finalizes with its other fields. A model failure or timeout on the last
-   attempt still stops the automatic retries
-   (`retry_budget_exhausted:<code>`). The app's processing panel judges such
-   a blocker by its code: for `lookup_operational_failure` it says an
-   approved source could not be reached, never that a cost limit stopped
-   processing.
+   ("Getty TGN could not be reached after 3 attempts."), and so does a field
+   that ran out of time ("Research on this field ran out of time after 3
+   attempts."); the record finalizes with its other fields. A model failure
+   on the last attempt still stops the automatic retries
+   (`retry_budget_exhausted:<code>`). The app reads a blocker by its exact
+   code, from a table (`lib/src/blocker_words.dart` and the vocabulary table),
+   and never shows the code. A word inside a code decides nothing: the "budget"
+   in `retry_budget_exhausted:` says retries ran out, and a step limit, a
+   request limit and a time limit also say "budget" on the wire and are no cost
+   limit. A code the app has no name for reads "Needs an operator check".
+
+   For a run whose retries ran out, the app reads the cause after the colon:
+
+   | Cause after the colon | Name | Sentences |
+   | --- | --- | --- |
+   | `lookup_operational_failure` | Retries stopped, source not reachable | An approved source could not be reached after repeated attempts. Retry later, or ask an administrator. |
+   | `field_research_timeout` | Retries stopped, ran out of time | Field research ran out of time after repeated attempts. Retry later, or ask an administrator. |
+   | `field_research_model_error` | Retries stopped, no usable model answer | The model gave no usable answer after repeated attempts. Retry later, or ask an administrator. |
+   | any other cause | Automatic retries stopped | Processing stopped after repeated attempts. Retry later, or ask an administrator. |
+
+   A run stopped by a limit, or by the settings that carry one, reads by its
+   own code. Only a limit on money is called a cost limit or a spending
+   allowance:
+
+   | Code | Name | What the app says |
+   | --- | --- | --- |
+   | `step_budget_exhausted` | Step limit reached | The run reached its limit on processing steps. |
+   | `external_call_budget_exhausted` | External request limit reached | The run reached its limit on external requests. |
+   | `token_budget_exhausted` | Model unit limit reached | The run reached its limit on model units. |
+   | `active_time_budget_exhausted` | Active time limit reached | The run reached its limit on active processing time. |
+   | `evidence_harness_blocked:elapsed_budget_exhausted` | Evidence check time limit reached | An evidence check reached its time limit. |
+   | `cost_budget_exhausted` | Cost limit reached | Processing stopped at a cost limit. |
+   | `program_allowance_exhausted` | Spending allowance reached | Processing stopped at the program's spending allowance. |
+   | `pilot_launch_budget_exhausted` | Pilot cost limit reached | The pilot's cost limit would be crossed. |
+   | `pilot_cohort_reading_budget_insufficient` | Reading cost limit too low | The cost limit does not cover the planned readings. |
+   | `approved_cost_budget_unavailable` | Cost settings not available | The approved cost settings for this run are not available. |
+   | `research_budget_state_unavailable` | Saved cost totals not readable | The saved cost totals for this record could not be read. |
+   | `program_allowance_ledger_unavailable` | Allowance totals not readable | The program's spending totals could not be read. |
+   | `program_allowance_unavailable` | Spending allowance not set up | The program's spending allowance is not set up for this collection. |
+   | `pilot_run_budget_not_approved` | Run limits do not fit the pilot | The run's approved limits do not fit the pilot launch. |
+   | `pilot_stage_cost_reservations_mismatch` | Stage cost settings differ | The run's stage cost settings differ from the pilot launch. |
+   | `pilot_cohort_reader_cost_unknown` | Reading cost not set | The cost of a reading step is not set. |
+
+   Each limit's sentence is followed by what to do: an administrator must
+   review the approved limit, the allowance or the cost settings, or an
+   operator must check the totals. A test in the app reads the server source
+   files that set a run's limit blockers and fails when a quoted code it finds
+   there with "budget", "cost" or "allowance" in it is not in these tables. It
+   does not see a code passed on indirectly, nor the pilot launch's capacity
+   and time codes (for example `pilot_cohort_reading_capacity_insufficient` and
+   `pilot_cohort_reading_time_insufficient`); those are not in the tables and
+   read "Needs an operator check".
+
+   The processing panel's "Blocked:" line shows the name and a passage shows
+   the sentences. The workbench issue list shows the same sentence and next
+   step for every code in the two tables above. For a code the app has no
+   name for, the panel shows "Processing needs an operator check before it can
+   continue. Ask an administrator to review it." and the issue list shows the
+   first sentence with "Open processing details for the current state and
+   permitted actions." For a code in the two tables, the queue row, the
+   history, the blocker filter menu and the reason chips show the name alone
+   (the reason chips read a code whole before they split it at a colon). For a
+   code the app has no name for, the queue row, the history and the filter menu
+   read "Needs an operator check", and two such codes stay two entries in the
+   filter menu, numbered; the reason chips, which this change leaves alone for
+   other codes, read its plain-English words. The raw code stays in the
+   workbench's "Technical review details" drawer (inside the closed "Review
+   details" disclosure), which lists each issue's `reason_code`, and in the
+   history's "Retained version data" drawer, which holds a past version's raw
+   record. No line, sentence, row or menu above shows it.
 8. **Budget.** Before every model call the step reserves that call's worst
    case (its input, the provider's chat template and the output cap) from
    what remains of the run's ceiling (the profile's `run_cost_limit_micros`,
    USD 1 for the pilot), and settles to the real usage after. A call that
-   would cross the ceiling is not sent; that field goes to review. The step
+   would cross the ceiling is not sent: while other calls' reservations are
+   held it waits for them to settle, each to its real cost (about a tenth
+   of its worst case or less), and tries again; only when no other
+   reservation is held and it still does not fit is it refused, and its
+   field goes to review (`budget.CostMeter.reserve`). So every expert can
+   run under a cap its real spend fits, though the worst cases of all
+   experts' requests at once do not (in this branch's real runs, two of
+   105526321's fields were refused under a USD 0.080 cap its real spend of
+   about USD 0.035 fitted); the ceiling is never raised or crossed. The step
    holds no more of the shared program allowance than it has left: when that
    is less than the run's headroom, the meter's cap is what is left, and a
    field that does not fit goes to review. Only when the program allowance
@@ -662,7 +970,8 @@ handover runs field research instead of the six specialists:
    error, or a step that overran its deadline, settles to what the meter spent.
 9. **Time.** Research stops a minute before the step's deadline (210 s of the
    pilot's 270 s): a field still being researched becomes a timeout for the
-   retry, and every settled field is kept. The work after research measured
+   retry (on the last attempt, a field for review; step 7), and every settled
+   field is kept. The work after research measured
    4.3 s on a slide-sized record with a 50 ms storage round trip per blob, most
    of it the integrity check, so the minute is more than three times it. The
    record's sources close when research ends, so a GBIF check still running
@@ -835,12 +1144,22 @@ this one, gets its own entry.
 hold (`step.mark_not_on_label`, after the derived values, so a derivable
 elevation is derived first, and only for a field a person has not decided):
 1. Its expert itself answered that no reading states it
-   (label_lacks_value), with no failure, in this attempt. The field was not
-   finalized without a model call, so the answer is the model's; no lookup
-   is required, since a field such as the habitat has no source to search.
+   (label_lacks_value), with no failure, in this attempt. Every field but
+   the identified-by IRN gets its expert (step 2), so the answer is the
+   model's; no lookup is required, since a field such as the habitat has no
+   source to search. The shared brief has the expert answer
+   label_lacks_value for a value the labels do not write, a value it could
+   only infer or look up included (a town for labels that name only a
+   province or a mountain, an identification date for labels whose only
+   date is the collecting date), and never sources_cannot_resolve; the city
+   and date-identified briefs say so for their fields. (In the real run of
+   2026-10-09 105526326's city and 105526329's date identified were answered
+   sources_cannot_resolve where the labels lack them.)
    The resolver's fallback, put in place of an answer the expert never gave
-   (out of attempts, or answers that failed their checks), is
-   sources_cannot_resolve, so it never qualifies.
+   (out of attempts with no checked answer when asked once more, or answers
+   that failed their checks), is sources_cannot_resolve, so it never
+   qualifies. An expert's answer when asked once more is its own and
+   qualifies.
 2. Its value is still not present.
 3. Label coverage is confirmed, every label has two or more readings, and
    every reading has text.
@@ -917,7 +1236,8 @@ all of these hold:
 - its expert itself answered that GBIF cannot resolve it
   (sources_cannot_resolve), with no failure, not finalized without a model
   call, and not as the resolver's fallback (`FieldOutcome.fallback`: an expert out of
-  attempts, or whose answers kept failing their checks); its answer's
+  attempts with no checked answer when asked once more, or whose answers
+  kept failing their checks); its answer's
   literal is the code itself, compared with the organiser's literal as
   the GBIF query guard below compares a query (case, spaces, punctuation
   and sex signs aside), whether or not it asked GBIF, so an answer quoting
@@ -1239,7 +1559,8 @@ never clears on a re-check; only new research writes the row.
 
 A field research run that failed (a field whose expert reached no source, a
 model error, a timeout) is retried until its last allowed attempt, on which
-a source still unreachable sends its field to review (step 7 above), and
+a source still unreachable or a timeout sends its field to review (step 7
+above), and
 the retry researches only the fields that did not settle (a
 province, county or city that waited for a country that did not settle
 is among them). A field marked not on the label is not settled, so the

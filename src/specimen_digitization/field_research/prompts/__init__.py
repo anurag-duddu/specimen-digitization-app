@@ -1,7 +1,9 @@
 """Each field expert's instructions: the shared rules, then the field's own brief.
 
 The files ship inside the package (hatch includes every file under
-src/specimen_digitization), like research_harness/prompts.
+src/specimen_digitization), like research_harness/prompts. The shared rules'
+range and elevation-unit lines are rendered from field_research.written, the
+tables the range and unit rules read, so they cannot drift.
 """
 
 from __future__ import annotations
@@ -10,6 +12,7 @@ from functools import cache
 from pathlib import Path
 
 from ..contracts import FIELD_TOOLS
+from ..written import RANGE_MARKER, UNIT_MARKER, range_line, unit_line
 
 # The display names of PRD's mandatory-field table.
 FIELD_LABELS = {
@@ -44,5 +47,9 @@ def instructions(key: str) -> str:
     if key not in FIELD_TOOLS or key not in FIELD_LABELS:
         raise KeyError(f"no field brief for {key!r}")
     common = (_ROOT / "common.txt").read_text(encoding="utf-8").strip()
+    for marker, line in ((RANGE_MARKER, range_line()), (UNIT_MARKER, unit_line())):
+        if common.count(marker) != 1:
+            raise ValueError(f"common.txt must hold the marker {marker!r} once")
+        common = common.replace(marker, line)
     brief = (_ROOT / f"{key}.txt").read_text(encoding="utf-8").strip()
     return common + "\n\n" + brief + "\n"
