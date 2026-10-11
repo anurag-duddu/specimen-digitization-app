@@ -73,7 +73,7 @@ class IntakeManifest extends StatefulWidget {
   final bool scrollable;
 
   /// The pane's own title.
-  static const String title = 'Upload manifest';
+  static const String title = 'Intake queue';
 
   /// What an empty manifest is called.
   static const String emptyTitle = 'No photographs yet';
@@ -191,7 +191,17 @@ class _ManifestHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
-    final String summary = batchComplete(entries) && !busy
+    final bool hasProcessingRows = entries.any(
+      (ManifestEntry entry) =>
+          entry.state == UploadState.processing ||
+          entry.state == UploadState.processingBlocked ||
+          entry.state == UploadState.inMainQueue,
+    );
+    final String summary = entries.isEmpty
+        ? batchProgressLine(entries)
+        : hasProcessingRows
+        ? ingestionQueueLine(entries)
+        : batchComplete(entries) && !busy
         ? batchCompleteLine(entries)
         : batchProgressLine(entries);
     return Padding(
@@ -301,6 +311,7 @@ class IntakeManifestRow extends StatelessWidget {
   static bool announces(UploadState state) =>
       state == UploadState.failed ||
       state == UploadState.interrupted ||
+      state == UploadState.processingBlocked ||
       state == UploadState.skipped;
 
   /// What the server check control is called.
@@ -309,6 +320,17 @@ class IntakeManifestRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
+    final bool canDismiss = entry.removable || entry.dismissible;
+    final bool canRetryTransfer =
+        (entry.state == UploadState.failed ||
+            entry.state == UploadState.interrupted) &&
+        entry.file != null;
+    final bool canRetryProcessing =
+        entry.state == UploadState.processingBlocked &&
+        entry.specimen != null &&
+        (entry.specimen!.data['available_actions'] as List<dynamic>? ??
+                const <dynamic>[])
+            .contains('retry');
     // A determinate value is information, so it keeps its motion and its
     // linear curve under reduced motion (motion, rows 65 and 2.5).
     final Widget item = TweenAnimationBuilder<double>(
@@ -325,9 +347,11 @@ class IntakeManifestRow extends StatelessWidget {
         pixelHeight: entry.file?.height,
         progress: value,
         reason: entry.why == null ? entry.reason : null,
-        onRemove: entry.removable ? onRemove : null,
-        removeBlockedReason: entry.removable
+        onRemove: canDismiss ? onRemove : null,
+        removeBlockedReason: canDismiss
             ? null
+            : entry.state == UploadState.processing
+            ? 'This photograph stays here while processing is active.'
             : 'The server has taken this file, so it cannot be removed from '
                   'the batch.',
         // The per-row action and the per-row evidence live inside the
@@ -345,14 +369,13 @@ class IntakeManifestRow extends StatelessWidget {
           const UiHairline(),
           SizedBox(height: ui.space.s2),
           Semantics(liveRegion: announces(entry.state), child: item),
-          if ((entry.state == UploadState.failed ||
-                  entry.state == UploadState.interrupted) &&
-              entry.file != null &&
-              onRetry != null)
+          if ((canRetryTransfer || canRetryProcessing) && onRetry != null)
             Align(
               alignment: AlignmentDirectional.centerStart,
               child: UiButton(
-                label: 'Retry this file',
+                label: canRetryProcessing
+                    ? 'Retry processing'
+                    : 'Retry this file',
                 variant: UiButtonVariant.secondary,
                 onPressed: busy ? null : onRetry,
               ),

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show TextInputAction, TextInputType;
 import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
@@ -11,6 +12,33 @@ import 'magic_link_screen.dart';
 import 'administrator_contact.dart';
 import 'app/auth_layout.dart';
 import 'widgets/caveat_text.dart';
+
+const emailLinkAndroidPackageName = 'org.fieldmuseum.specimen_digitization';
+const emailLinkIosBundleId = 'org.fieldmuseum.specimenDigitization';
+
+/// Builds the hosted email-link request for the platform making the request.
+///
+/// Firebase chooses its default Hosting link domain because [linkDomain] stays
+/// unset. [emailLinkReturnUrl] remains the continue/fallback destination. Web
+/// keeps the existing hosted flow, while each mobile platform names the app
+/// registered for that platform so the link can return to the installed app.
+ActionCodeSettings emailLinkActionCodeSettings({
+  bool? web,
+  TargetPlatform? platform,
+}) {
+  final bool isWeb = web ?? kIsWeb;
+  final TargetPlatform target = platform ?? defaultTargetPlatform;
+  return ActionCodeSettings(
+    url: emailLinkReturnUrl,
+    handleCodeInApp: true,
+    androidPackageName: !isWeb && target == TargetPlatform.android
+        ? emailLinkAndroidPackageName
+        : null,
+    iOSBundleId: !isWeb && target == TargetPlatform.iOS
+        ? emailLinkIosBundleId
+        : null,
+  );
+}
 
 abstract class SessionAccess {
   Stream<bool> get changes;
@@ -86,10 +114,7 @@ class FirebaseSession
     if (normalized == null) throw const FormatException(staffEmailMessage);
     await auth.sendSignInLinkToEmail(
       email: normalized,
-      actionCodeSettings: ActionCodeSettings(
-        url: emailLinkReturnUrl,
-        handleCodeInApp: true,
-      ),
+      actionCodeSettings: emailLinkActionCodeSettings(),
     );
   }
 

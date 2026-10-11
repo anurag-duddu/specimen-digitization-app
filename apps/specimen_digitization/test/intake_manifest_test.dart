@@ -55,6 +55,7 @@ Future<void> pumpManifest(
   bool stopping = false,
   VoidCallback? onStop,
   void Function(ManifestEntry)? onRemove,
+  void Function(ManifestEntry)? onRetry,
   Size size = const Size(700, 1600),
 }) => pumpComponent(
   tester,
@@ -68,13 +69,14 @@ Future<void> pumpManifest(
       onStop: onStop ?? () {},
       onRemove: onRemove ?? (ManifestEntry _) {},
       onServerCheck: (ManifestEntry _) {},
+      onRetry: onRetry,
     ),
   ),
   size: size,
 );
 
 void main() {
-  group('the eight upload states each draw their own chip', () {
+  group('the Intake queue states each draw their own chip', () {
     for (final UploadState state in UploadState.values) {
       testWidgets('${state.name} renders as "${state.label}"', (
         WidgetTester tester,
@@ -144,7 +146,7 @@ void main() {
     );
   });
 
-  testWidgets('the remove control is live until the server takes the file', (
+  testWidgets('ready and finished Intake rows can be dismissed', (
     WidgetTester tester,
   ) async {
     final List<ManifestEntry> removed = <ManifestEntry>[];
@@ -167,10 +169,89 @@ void main() {
         .toList();
     expect(buttons.length, 2);
     expect(buttons.first.onPressed, isNotNull);
-    expect(buttons.last.onPressed, isNull);
+    expect(buttons.last.onPressed, isNotNull);
     await tester.tap(uiIconButton(UploadItem.removeLabel).first);
     await tester.pumpAndSettle();
     expect(removed, <ManifestEntry>[ready]);
+  });
+
+  testWidgets('completed processing can be dismissed from Intake', (
+    WidgetTester tester,
+  ) async {
+    final List<ManifestEntry> removed = <ManifestEntry>[];
+    final ManifestEntry handedOff = entryIn(
+      UploadState.inMainQueue,
+      name: 'finished.png',
+      digest: 'handoff-digest',
+      withFile: false,
+    );
+    await pumpManifest(tester, <ManifestEntry>[
+      handedOff,
+    ], onRemove: removed.add);
+
+    final UiIconButton button = tester.widget<UiIconButton>(
+      uiIconButton(UploadItem.removeLabel),
+    );
+    expect(button.onPressed, isNotNull);
+    await tester.tap(uiIconButton(UploadItem.removeLabel));
+    await tester.pumpAndSettle();
+    expect(removed, <ManifestEntry>[handedOff]);
+  });
+
+  testWidgets('blocked processing offers retry only when the server does', (
+    WidgetTester tester,
+  ) async {
+    final List<ManifestEntry> retried = <ManifestEntry>[];
+    final ManifestEntry blocked = entryIn(
+      UploadState.processingBlocked,
+      digest: 'blocked-digest',
+      withFile: false,
+    );
+    blocked.specimen = Specimen(<String, dynamic>{
+      'specimen_id': 'blocked-1',
+      'status': 'processing_blocked',
+      'available_actions': <String>['retry'],
+    });
+    await pumpManifest(tester, <ManifestEntry>[blocked], onRetry: retried.add);
+
+    expect(find.text('Retry processing'), findsOneWidget);
+    await tester.tap(find.text('Retry processing'));
+    await tester.pumpAndSettle();
+    expect(retried, <ManifestEntry>[blocked]);
+
+    blocked.specimen = Specimen(<String, dynamic>{
+      'specimen_id': 'blocked-1',
+      'status': 'processing_blocked',
+      'available_actions': <String>[],
+    });
+    await pumpManifest(tester, <ManifestEntry>[blocked], onRetry: retried.add);
+    expect(find.text('Retry processing'), findsNothing);
+  });
+
+  testWidgets('processing rows use the Intake queue summary', (
+    WidgetTester tester,
+  ) async {
+    await pumpManifest(tester, <ManifestEntry>[
+      entryIn(UploadState.processing, digest: 'processing-digest'),
+      entryIn(UploadState.inMainQueue, digest: 'handoff-digest'),
+      entryIn(UploadState.processingBlocked, digest: 'blocked-digest'),
+    ]);
+    expect(
+      find.text(
+        '3 photographs · 1 processing, 1 in main Queue, 1 need attention',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  test('the Intake queue summary keeps legacy uploaded rows explicit', () {
+    expect(
+      ingestionQueueLine(<ManifestEntry>[
+        entryIn(UploadState.accepted, digest: 'accepted-digest'),
+        entryIn(UploadState.processing, digest: 'processing-digest'),
+      ]),
+      '2 photographs · 1 uploaded, 1 processing',
+    );
   });
 
   testWidgets('Stop is offered only while a batch is running', (
@@ -313,14 +394,14 @@ void main() {
         batchCompleteLine(<ManifestEntry>[
           entryIn(UploadState.accepted, digest: 'a'),
         ]),
-        'Batch admission finished for 1 photograph. Check the queue for processing status.',
+        '1 photograph is in the Intake queue.',
       );
       expect(
         batchCompleteLine(<ManifestEntry>[
           entryIn(UploadState.accepted, digest: 'a'),
           entryIn(UploadState.duplicate, digest: 'b'),
         ]),
-        'Batch admission finished for 2 photographs. Check the queue for processing status.',
+        '2 photographs are in the Intake queue.',
       );
     });
   });

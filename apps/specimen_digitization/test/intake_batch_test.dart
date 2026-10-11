@@ -141,7 +141,7 @@ void main() {
     expect(repository.firstUploadStarted, isTrue);
     // One more frame, so the state the transfer just reached is drawn.
     await tester.pump();
-    expect(find.text('Uploading'), findsWidgets);
+    expect(find.text('Sending'), findsWidgets);
 
     await tester.ensureVisible(stopButton);
     await tester.pump();
@@ -214,7 +214,7 @@ void main() {
     expect(buttonEnabled(tester, uploadButton), isTrue);
     await chooseFiles(tester);
     expect(repository.created, isEmpty);
-    expect(find.text('Upload 2 photographs'), findsOneWidget);
+    expect(find.text('Send 2 for processing'), findsOneWidget);
     expect(confirmCheckbox, findsNothing);
     await submitBatch(tester);
     expect(repository.created, <String>['take-0.png', 'take-1.png']);
@@ -233,9 +233,9 @@ void main() {
     );
     expect(uploadButton, findsNothing);
     await chooseFiles(tester);
-    expect(find.text('Upload 1 photograph'), findsOneWidget);
+    expect(find.text('Send 1 for processing'), findsOneWidget);
     await chooseFiles(tester);
-    expect(find.text('Upload 2 photographs'), findsOneWidget);
+    expect(find.text('Send 2 for processing'), findsOneWidget);
   });
 
   testWidgets('removing a row takes it out of the batch', (

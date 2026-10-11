@@ -35,6 +35,11 @@ class TransferRepository implements SpecimenRepository {
   bool denyNext = false;
   int completions = 0;
   Json completionResponse = <String, dynamic>{'status': 'pending'};
+  final Map<String, Specimen> summaries = <String, Specimen>{};
+  final List<String> summaryRequests = <String>[];
+  int summaryAccessFailures = 0;
+  final List<String> retryRequests = <String>[];
+  Specimen? retryResponse;
 
   @override
   Future<Json> createIntake(
@@ -76,8 +81,49 @@ class TransferRepository implements SpecimenRepository {
   }
 
   @override
+  Future<SpecimenPage> specimenPage(
+    CollectionScope scope, {
+    Map<String, String> filters = const <String, String>{},
+    String? cursor,
+  }) async {
+    final String id = filters['specimen_id'] ?? '';
+    summaryRequests.add(id);
+    if (summaryAccessFailures > 0) {
+      summaryAccessFailures--;
+      throw const ApiFailure('Processing access expired.', status: 401);
+    }
+    final Specimen? specimen = summaries[id];
+    return SpecimenPage(<Specimen>[?specimen]);
+  }
+
+  @override
+  Future<Specimen> retry(
+    CollectionScope scope,
+    Specimen specimen,
+    String reason,
+    String key,
+  ) async {
+    retryRequests.add(specimen.id);
+    return retryResponse ?? specimen;
+  }
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
+
+Specimen processingSpecimen(
+  String id, {
+  String status = 'running',
+  String? disposition,
+  List<String> actions = const <String>[],
+  int revision = 1,
+}) => Specimen(<String, dynamic>{
+  'specimen_id': id,
+  'status': status,
+  'disposition': disposition,
+  'revision': revision,
+  'available_actions': actions,
+});
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
@@ -125,10 +171,311 @@ void main() {
     },
   );
 
+  test(
+    'completion enters Intake processing and persists safe restart identifiers',
+    () async {
+      final TransferRepository repository = TransferRepository()
+        ..holdFirst = false
+        ..completionResponse = <String, dynamic>{
+          'specimen_id': 'specimen-1',
+          'status': 'running',
+          'revision': 1,
+          'available_actions': <String>[],
+        };
+      final IntakeTransferSession session = IntakeTransferSession(
+        repository,
+        scope,
+        'tracking-operator',
+        processingPollInterval: Duration.zero,
+      );
+      final ManifestEntry photograph = entry('tracking');
+      session.entries.add(photograph);
+
+      await session.start();
+
+      expect(photograph.state, UploadState.processing);
+      expect(photograph.specimenId, 'specimen-1');
+      expect(photograph.file, isNull);
+      expect(session.needsProcessingPoll, isTrue);
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String saved = prefs.getString(
+        'upload-handles-v1:tracking-operator:${scope.key}',
+      )!;
+      expect(saved, contains('"upload_id"'));
+      expect(saved, contains('"specimen_id":"specimen-1"'));
+      expect(saved, isNot(contains('tracking.jpg')));
+      session.close();
+    },
+  );
+
+  test('refresh hands a completed record to the existing main Queue', () async {
+    final TransferRepository repository = TransferRepository()
+      ..holdFirst = false
+      ..completionResponse = <String, dynamic>{
+        'specimen_id': 'specimen-2',
+        'status': 'running',
+        'revision': 1,
+        'available_actions': <String>[],
+      };
+    final IntakeTransferSession session = IntakeTransferSession(
+      repository,
+      scope,
+      'handoff-operator',
+      processingPollInterval: Duration.zero,
+    );
+    final ManifestEntry photograph = entry('handoff');
+    session.entries.add(photograph);
+    await session.start();
+    var handoffs = 0;
+    session.attachHandoff(() => handoffs++);
+    repository.summaries['specimen-2'] = processingSpecimen(
+      'specimen-2',
+      status: 'completed',
+      disposition: 'needs_human_review',
+      revision: 2,
+    );
+
+    await session.refreshProcessingStatuses();
+
+    expect(repository.summaryRequests, <String>['specimen-2']);
+    expect(photograph.state, UploadState.inMainQueue);
+    expect(
+      photograph.reason,
+      'Processing finished. This photograph is now in the main Queue.',
+    );
+    expect(session.needsProcessingPoll, isFalse);
+    expect(handoffs, 1);
+    await session.refreshProcessingStatuses();
+    expect(handoffs, 1);
+    session.close();
+  });
+
+  test('one shared callback reports immediate handoff only once', () async {
+    final TransferRepository repository = TransferRepository()
+      ..holdFirst = false
+      ..completionResponse = <String, dynamic>{
+        'specimen_id': 'specimen-immediate',
+        'status': 'completed',
+        'disposition': 'needs_human_review',
+        'revision': 1,
+        'available_actions': <String>[],
+      };
+    final IntakeTransferSession session = IntakeTransferSession(
+      repository,
+      scope,
+      'immediate-handoff-operator',
+      processingPollInterval: Duration.zero,
+    );
+    final ManifestEntry photograph = entry('immediate');
+    session.entries.add(photograph);
+    var refreshes = 0;
+    void refresh() => refreshes++;
+    session.attachComplete(refresh);
+    session.attachHandoff(refresh);
+
+    await session.start();
+
+    expect(photograph.state, UploadState.inMainQueue);
+    expect(refreshes, 1);
+    session.close();
+  });
+
+  test(
+    'a shared callback reports upload and a later handoff separately',
+    () async {
+      final TransferRepository repository = TransferRepository()
+        ..holdFirst = false
+        ..completionResponse = <String, dynamic>{
+          'specimen_id': 'specimen-later',
+          'status': 'running',
+          'revision': 1,
+          'available_actions': <String>[],
+        };
+      final IntakeTransferSession session = IntakeTransferSession(
+        repository,
+        scope,
+        'later-handoff-operator',
+        processingPollInterval: Duration.zero,
+      );
+      final ManifestEntry photograph = entry('later');
+      session.entries.add(photograph);
+      var refreshes = 0;
+      void refresh() => refreshes++;
+      session.attachComplete(refresh);
+      session.attachHandoff(refresh);
+
+      await session.start();
+      expect(refreshes, 1);
+      repository.summaries['specimen-later'] = processingSpecimen(
+        'specimen-later',
+        status: 'completed',
+        disposition: 'needs_human_review',
+        revision: 2,
+      );
+
+      await session.refreshProcessingStatuses();
+
+      expect(photograph.state, UploadState.inMainQueue);
+      expect(refreshes, 2);
+      session.close();
+    },
+  );
+
+  test(
+    'processing polling pauses without observers and resumes on attach',
+    () async {
+      final TransferRepository repository = TransferRepository();
+      repository.summaries['specimen-observed'] = processingSpecimen(
+        'specimen-observed',
+        status: 'completed',
+        disposition: 'needs_human_review',
+      );
+      final IntakeTransferSession session = IntakeTransferSession(
+        repository,
+        scope,
+        'observed-operator',
+        processingPollInterval: const Duration(milliseconds: 10),
+      );
+      session.entries.add(
+        ManifestEntry.tracking(
+          digest: List<String>.filled(64, 'o').join(),
+          name: 'observed.jpg',
+          handle: <String, dynamic>{'upload_id': 'upload-observed'},
+          specimenId: 'specimen-observed',
+        ),
+      );
+      void observer() {}
+
+      session.addListener(observer);
+      session.removeListener(observer);
+      await Future<void>.delayed(const Duration(milliseconds: 35));
+      expect(repository.summaryRequests, isEmpty);
+
+      session.addListener(observer);
+      await Future<void>.delayed(const Duration(milliseconds: 35));
+      expect(repository.summaryRequests, <String>['specimen-observed']);
+      expect(session.entries.single.state, UploadState.inMainQueue);
+      session.removeListener(observer);
+      session.close();
+    },
+  );
+
+  test('reattaching restarts polling after an access failure', () async {
+    final TransferRepository repository = TransferRepository()
+      ..summaryAccessFailures = 1;
+    repository.summaries['specimen-access'] = processingSpecimen(
+      'specimen-access',
+      status: 'completed',
+      disposition: 'needs_human_review',
+    );
+    final IntakeTransferSession session = IntakeTransferSession(
+      repository,
+      scope,
+      'access-operator',
+      processingPollInterval: const Duration(milliseconds: 10),
+    );
+    session.entries.add(
+      ManifestEntry.tracking(
+        digest: List<String>.filled(64, 'x').join(),
+        name: 'access.jpg',
+        handle: <String, dynamic>{'upload_id': 'upload-access'},
+        specimenId: 'specimen-access',
+      ),
+    );
+    void observer() {}
+
+    session.addListener(observer);
+    await Future<void>.delayed(const Duration(milliseconds: 35));
+    expect(repository.summaryRequests, <String>['specimen-access']);
+    expect(session.entries.single.state, UploadState.processing);
+
+    session.removeListener(observer);
+    session.addListener(observer);
+    await Future<void>.delayed(const Duration(milliseconds: 35));
+    expect(repository.summaryRequests, <String>[
+      'specimen-access',
+      'specimen-access',
+    ]);
+    expect(session.entries.single.state, UploadState.inMainQueue);
+    session.removeListener(observer);
+    session.close();
+  });
+
+  test(
+    'restores a processing record and refreshes it without image bytes',
+    () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'upload-handles-v1:restored-operator:${scope.key}':
+            '[{"digest":"aaaaaaaaaaaaaaaa","upload_id":"upload-1",'
+            '"specimen_id":"specimen-3","state":"processing"}]',
+      });
+      final TransferRepository repository = TransferRepository();
+      repository.summaries['specimen-3'] = processingSpecimen(
+        'specimen-3',
+        status: 'running',
+      );
+      final IntakeTransferSession session = IntakeTransferSession(
+        repository,
+        scope,
+        'restored-operator',
+        processingPollInterval: Duration.zero,
+      );
+
+      await session.restore();
+
+      expect(session.entries, hasLength(1));
+      expect(session.entries.single.file, isNull);
+      expect(session.entries.single.specimenId, 'specimen-3');
+      expect(session.entries.single.state, UploadState.processing);
+      expect(repository.summaryRequests, <String>['specimen-3']);
+      session.close();
+    },
+  );
+
+  test(
+    'blocked processing retries only when the server offers retry',
+    () async {
+      final TransferRepository repository = TransferRepository();
+      final IntakeTransferSession session = IntakeTransferSession(
+        repository,
+        scope,
+        'retry-operator',
+        processingPollInterval: Duration.zero,
+      );
+      final ManifestEntry photograph = ManifestEntry.tracking(
+        digest: List<String>.filled(64, 'b').join(),
+        name: 'blocked.jpg',
+        handle: <String, dynamic>{'upload_id': 'upload-2'},
+        specimenId: 'specimen-4',
+        state: UploadState.processingBlocked,
+      );
+      photograph.specimen = processingSpecimen(
+        'specimen-4',
+        status: 'processing_blocked',
+        actions: <String>['retry'],
+      );
+      session.entries.add(photograph);
+      repository.retryResponse = processingSpecimen(
+        'specimen-4',
+        status: 'running',
+        revision: 2,
+      );
+
+      expect(session.canRetryProcessing(photograph), isTrue);
+      await session.retryProcessing(photograph);
+
+      expect(repository.retryRequests, <String>['specimen-4']);
+      expect(photograph.state, UploadState.processing);
+      expect(photograph.reason, 'Processing is underway.');
+      expect(session.needsProcessingPoll, isTrue);
+      session.close();
+    },
+  );
+
   test('completion copy does not mistake missing status for no processing', () {
     expect(
       intakeCompletionReason(<String, dynamic>{}),
-      'Uploaded to the collection. Check the queue for processing status.',
+      'Uploaded to Intake. Processing status is not available yet.',
     );
     expect(
       intakeCompletionReason(<String, dynamic>{

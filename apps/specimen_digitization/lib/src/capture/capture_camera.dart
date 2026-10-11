@@ -15,6 +15,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/widgets.dart';
 
 import '../capture_quality.dart';
@@ -94,7 +95,7 @@ abstract class CaptureCamera {
 /// Builds the camera the capture screen will use.
 typedef CaptureCameraFactory = Future<CaptureCamera> Function();
 
-/// The `camera` package implementation, used on Android and iOS.
+/// The `camera` package implementation, used on Android, iOS and web.
 ///
 /// Preview frames are read on a stride and reduced to a histogram in
 /// [CapturePreviewReading]; no frame is retained, copied to disk, or sent
@@ -177,13 +178,18 @@ class PlatformCaptureCamera implements CaptureCamera {
 
   Future<void> _startStream() async {
     final CameraController? controller = _controller;
-    if (controller == null || _streaming || _disposed) return;
+    // camera_web supports preview and still capture, but not image streaming.
+    // Skipping the stream keeps web capture usable and honestly leaves the
+    // live quality hint in its unmeasured state.
+    if (kIsWeb || controller == null || _streaming || _disposed) return;
     try {
       await controller.startImageStream(_onFrame);
       _streaming = true;
-    } on CameraException {
+    } on CameraException catch (_) {
       // A platform with no frame stream leaves the hint unmeasured, which the
       // screen states rather than hides.
+      _streaming = false;
+    } on UnsupportedError catch (_) {
       _streaming = false;
     }
   }
@@ -231,6 +237,9 @@ class PlatformCaptureCamera implements CaptureCamera {
 
   @override
   Future<bool> focusAt(Offset point) async {
+    // camera_web does not implement focus or exposure points. Preview and
+    // still capture remain available; the UI reports focus as unlocked.
+    if (kIsWeb) return false;
     final CameraController? controller = _controller;
     if (controller == null || !controller.value.isInitialized) return false;
     try {
@@ -239,7 +248,9 @@ class PlatformCaptureCamera implements CaptureCamera {
       await controller.setExposurePoint(point);
       await controller.setExposureMode(ExposureMode.locked);
       return true;
-    } on CameraException {
+    } on CameraException catch (_) {
+      return false;
+    } on UnsupportedError catch (_) {
       return false;
     }
   }

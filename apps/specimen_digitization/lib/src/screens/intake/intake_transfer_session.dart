@@ -20,6 +20,11 @@ import 'manifest_entry.dart';
 final Expando<Map<String, IntakeTransferSession>> _sessions =
     Expando<Map<String, IntakeTransferSession>>('intake transfer sessions');
 
+// Intake status is deliberately a little more responsive than the main
+// workspace queue: the operator may still be beside the camera waiting for a
+// just-taken photograph to clear processing.
+const int _processingPollMilliseconds = 5000;
+
 IntakeTransferSession intakeTransferSession(
   SpecimenRepository repository,
   CollectionScope scope,
@@ -50,7 +55,10 @@ class IntakeTransferSession extends ChangeNotifier {
     this.scope,
     this.userId, {
     this.beforePersist,
-  });
+    Duration? processingPollInterval,
+  }) : processingPollInterval =
+           processingPollInterval ??
+           const Duration(milliseconds: _processingPollMilliseconds);
 
   final SpecimenRepository repository;
   final CollectionScope scope;
@@ -58,12 +66,17 @@ class IntakeTransferSession extends ChangeNotifier {
 
   /// Test seam for a slow local preference write at the sign-out boundary.
   final Future<void> Function()? beforePersist;
+  final Duration processingPollInterval;
   final List<ManifestEntry> entries = <ManifestEntry>[];
   final Set<VoidCallback> _completed = <VoidCallback>{};
+  final Set<VoidCallback> _handedOff = <VoidCallback>{};
+  Timer? _processingPoll;
+  bool _refreshingProcessing = false;
   bool busy = false;
   bool stopping = false;
   bool _closed = false;
   bool _completionWhileDetached = false;
+  bool _handoffWhileDetached = false;
   String? restoreError;
 
   String get _storageKey => 'upload-handles-v1:$userId:${scope.key}';
@@ -79,6 +92,46 @@ class IntakeTransferSession extends ChangeNotifier {
   }
 
   void detachComplete(VoidCallback callback) => _completed.remove(callback);
+
+  /// Registers for a record moving from Intake into the existing Queue.
+  void attachHandoff(VoidCallback callback) {
+    _handedOff.add(callback);
+    if (_handoffWhileDetached) {
+      _handoffWhileDetached = false;
+      scheduleMicrotask(() {
+        if (!_closed && _handedOff.contains(callback)) callback();
+      });
+    }
+  }
+
+  void detachHandoff(VoidCallback callback) => _handedOff.remove(callback);
+
+  /// Whether at least one server-held photograph still needs status refreshes.
+  bool get needsProcessingPoll =>
+      !_closed && entries.any(_needsProcessingRefresh);
+
+  /// Processing checks are useful only while Intake or its camera route is
+  /// observing this session. Reattaching a listener restarts a poll that was
+  /// paused when the last route went away or after access was unavailable.
+  @override
+  void addListener(VoidCallback listener) {
+    super.addListener(listener);
+    _scheduleProcessingPoll();
+  }
+
+  @override
+  void removeListener(VoidCallback listener) {
+    super.removeListener(listener);
+    if (_closed || hasListeners) return;
+    _processingPoll?.cancel();
+    _processingPoll = null;
+  }
+
+  bool _needsProcessingRefresh(ManifestEntry entry) =>
+      entry.tracksProcessing ||
+      (entry.specimenId != null &&
+          entry.state == UploadState.processingBlocked &&
+          entry.specimen == null);
 
   void changed() {
     if (!_closed) notifyListeners();
@@ -102,14 +155,34 @@ class IntakeTransferSession extends ChangeNotifier {
             entries.any((entry) => entry.digest == digest)) {
           continue;
         }
-        entries.add(
-          ManifestEntry.restored(
-            digest: digest,
-            handle: <String, dynamic>{'upload_id': value['upload_id']},
-          ),
-        );
+        final Object? specimenId = value['specimen_id'];
+        if (specimenId is String && specimenId.isNotEmpty) {
+          final UploadState state = _restoredTrackingState(value['state']);
+          entries.add(
+            ManifestEntry.tracking(
+              digest: digest,
+              name: 'Photograph ${digest.substring(0, 12)}',
+              handle: <String, dynamic>{'upload_id': value['upload_id']},
+              specimenId: specimenId,
+              state: state,
+              reason: state == UploadState.inMainQueue
+                  ? 'Processing finished. This photograph is in the main Queue.'
+                  : state == UploadState.processingBlocked
+                  ? 'Processing needs attention.'
+                  : 'Checking processing status.',
+            ),
+          );
+        } else {
+          entries.add(
+            ManifestEntry.restored(
+              digest: digest,
+              handle: <String, dynamic>{'upload_id': value['upload_id']},
+            ),
+          );
+        }
       }
       changed();
+      await refreshProcessingStatuses();
     } catch (_) {
       restoreError =
           'Saved uploads could not be read. Select your files again to match them with the server.';
@@ -129,12 +202,18 @@ class IntakeTransferSession extends ChangeNotifier {
       jsonEncode(
         entries
             .where(
-              (entry) => entry.session?['upload_id'] != null && !entry.settled,
+              (entry) =>
+                  entry.session?['upload_id'] != null &&
+                  (!entry.settled || entry.specimenId != null),
             )
             .map(
               (entry) => <String, dynamic>{
                 'digest': entry.digest,
                 'upload_id': entry.session!['upload_id'],
+                if (entry.specimenId != null) ...<String, dynamic>{
+                  'specimen_id': entry.specimenId,
+                  'state': entry.state.name,
+                },
               },
             )
             .toList(),
@@ -143,7 +222,9 @@ class IntakeTransferSession extends ChangeNotifier {
   }
 
   void remove(ManifestEntry entry) {
-    if (entry.removable && entry.state != UploadState.uploading) {
+    if ((entry.removable || entry.dismissible) &&
+        entry.state != UploadState.uploading &&
+        entry.state != UploadState.processing) {
       entries.remove(entry);
       changed();
       unawaited(persist());
@@ -161,6 +242,9 @@ class IntakeTransferSession extends ChangeNotifier {
   /// Failed entries remain visible and are retried only by another action.
   Future<void> start({ManifestEntry? only}) async {
     if (_closed || busy) return;
+    if (only != null && canRetryProcessing(only)) {
+      return retryProcessing(only);
+    }
     busy = true;
     stopping = false;
     changed();
@@ -250,15 +334,44 @@ class IntakeTransferSession extends ChangeNotifier {
         'complete-${entry.digest}',
       );
       if (_closed) return false;
-      entry.state = UploadState.accepted;
-      entry.reason = intakeCompletionReason(completion);
-      entry.why = null;
+      if (completion['upload_state'] == 'duplicate') {
+        entry.state = UploadState.duplicate;
+        entry.reason =
+            'This photograph is already in the collection. No new record was created.';
+        entry.why = null;
+      } else if (completion['specimen_id'] is String &&
+          (completion['specimen_id'] as String).isNotEmpty) {
+        entry.specimenId = completion['specimen_id'] as String;
+        // Completion and an immediate Queue handoff are notified together
+        // after persistence below, so one shared listener cannot run twice.
+        _applyProcessingSummary(
+          entry,
+          Specimen(completion),
+          notifyHandoff: false,
+        );
+      } else {
+        // Compatibility with servers that acknowledge storage before returning
+        // the created record identifier. This row cannot claim processing.
+        entry.state = UploadState.accepted;
+        entry.reason = intakeCompletionReason(completion);
+        entry.why = null;
+      }
       entry.progress = 1;
       entry.file = null; // Release image bytes when the server holds them.
       changed();
       await persist();
+      _scheduleProcessingPoll();
+      if (entry.state == UploadState.inMainQueue) _notifyHandoff();
       if (_completed.isEmpty) _completionWhileDetached = true;
       for (final VoidCallback callback in _completed.toList()) {
+        // Intake may use the same refresh callback for both milestones. An
+        // upload whose completion response already contains a final Queue
+        // disposition handed off above, so that shared callback has already
+        // run. Complete-only listeners still keep their original contract.
+        if (entry.state == UploadState.inMainQueue &&
+            _handedOff.contains(callback)) {
+          continue;
+        }
         callback();
       }
       return true;
@@ -287,18 +400,188 @@ class IntakeTransferSession extends ChangeNotifier {
     }
   }
 
+  /// Refreshes only records still owned by the Intake queue. The existing
+  /// Queue remains unchanged and receives the record once a disposition exists.
+  Future<void> refreshProcessingStatuses() async {
+    if (_closed || _refreshingProcessing || !needsProcessingPoll) return;
+    _processingPoll?.cancel();
+    _processingPoll = null;
+    _refreshingProcessing = true;
+    var changedAny = false;
+    var scheduleNext = true;
+    try {
+      for (final ManifestEntry entry
+          in entries.where(_needsProcessingRefresh).toList()) {
+        if (_closed) return;
+        final String specimenId = entry.specimenId!;
+        try {
+          final SpecimenPage page = await repository.specimenPage(
+            scope,
+            filters: <String, String>{'specimen_id': specimenId},
+          );
+          if (_closed) return;
+          final Specimen? specimen = page.items
+              .where((Specimen item) => item.id == specimenId)
+              .firstOrNull;
+          if (specimen == null) {
+            entry.reason =
+                'The server record is not available yet. Checking again shortly.';
+          } else {
+            _applyProcessingSummary(entry, specimen);
+          }
+          changedAny = true;
+        } on ApiFailure catch (error) {
+          entry.reason = error.status == 401 || error.status == 403
+              ? 'Processing status cannot be checked with the current access.'
+              : 'Processing status is temporarily unavailable. Checking again shortly.';
+          changedAny = true;
+          if (error.status == 401 || error.status == 403) {
+            scheduleNext = false;
+            break;
+          }
+        } catch (_) {
+          entry.reason =
+              'Processing status is temporarily unavailable. Checking again shortly.';
+          changedAny = true;
+        }
+      }
+      if (changedAny && !_closed) {
+        changed();
+        await persist();
+      }
+    } finally {
+      _refreshingProcessing = false;
+      if (scheduleNext) _scheduleProcessingPoll();
+    }
+  }
+
+  /// True only when the server summary explicitly offers a retry action.
+  bool canRetryProcessing(ManifestEntry entry) =>
+      entry.state == UploadState.processingBlocked &&
+      entry.specimen != null &&
+      (entry.specimen!.data['available_actions'] as List<dynamic>? ??
+              const <dynamic>[])
+          .contains('retry');
+
+  /// Retries a blocked server run without re-uploading the photograph.
+  Future<void> retryProcessing(ManifestEntry entry) async {
+    if (_closed || busy || !canRetryProcessing(entry)) return;
+    busy = true;
+    entry.checking = true;
+    entry.reason = 'Asking the server to retry processing.';
+    changed();
+    try {
+      final Specimen current = entry.specimen!;
+      final Specimen refreshed = await repository.retry(
+        scope,
+        current,
+        'Retry processing from Intake.',
+        'intake-retry-${entry.digest}-${current.revision}',
+      );
+      if (_closed) return;
+      _applyProcessingSummary(entry, refreshed);
+      await persist();
+    } on ApiFailure catch (error) {
+      if (_closed) return;
+      entry.reason = error.message;
+    } catch (_) {
+      if (_closed) return;
+      entry.reason = 'Processing did not restart. Try again.';
+    } finally {
+      if (!_closed) {
+        entry.checking = false;
+        busy = false;
+        changed();
+        _scheduleProcessingPoll();
+      }
+    }
+  }
+
+  void _applyProcessingSummary(
+    ManifestEntry entry,
+    Specimen specimen, {
+    bool notifyHandoff = true,
+  }) {
+    final UploadState previous = entry.state;
+    entry.specimen = specimen;
+    entry.specimenId = specimen.id;
+    entry.why = null;
+    final String? disposition = specimen.disposition;
+    if (const <String>{
+      'cleared',
+      'needs_human_review',
+      'deferred',
+    }.contains(disposition)) {
+      entry.state = UploadState.inMainQueue;
+      entry.reason =
+          'Processing finished. This photograph is now in the main Queue.';
+      if (notifyHandoff && previous != UploadState.inMainQueue) {
+        _notifyHandoff();
+      }
+      return;
+    }
+    entry.state = switch (specimen.state) {
+      'processing_blocked' ||
+      'paused' ||
+      'cancelled' ||
+      'completed' => UploadState.processingBlocked,
+      _ => UploadState.processing,
+    };
+    entry.reason = switch (specimen.state) {
+      'pending' => 'Waiting for processing to start.',
+      'running' => 'Processing is underway.',
+      'retry_scheduled' => 'Processing will retry automatically.',
+      'paused' => 'Processing is paused.',
+      'cancelled' => 'Processing was cancelled.',
+      'processing_blocked' => 'Processing needs attention.',
+      'completed' =>
+        'Processing finished, but its main Queue outcome is not available.',
+      _ => 'Waiting for the latest processing status.',
+    };
+  }
+
+  void _notifyHandoff() {
+    if (_handedOff.isEmpty) _handoffWhileDetached = true;
+    for (final VoidCallback callback in _handedOff.toList()) {
+      callback();
+    }
+  }
+
+  void _scheduleProcessingPoll() {
+    _processingPoll?.cancel();
+    _processingPoll = null;
+    if (!hasListeners ||
+        !needsProcessingPoll ||
+        processingPollInterval == Duration.zero) {
+      return;
+    }
+    _processingPoll = Timer(
+      processingPollInterval,
+      () => unawaited(refreshProcessingStatuses()),
+    );
+  }
+
   void close() {
     _closed = true;
     stopping = true;
+    _processingPoll?.cancel();
+    _processingPoll = null;
     for (final ManifestEntry entry in entries) {
       entry.file = null;
     }
     entries.clear();
     _completed.clear();
+    _handedOff.clear();
     unawaited(persist());
     dispose();
   }
 }
+
+UploadState _restoredTrackingState(Object? value) => switch (value) {
+  'inMainQueue' => UploadState.inMainQueue,
+  'processingBlocked' => UploadState.processingBlocked,
+  _ => UploadState.processing,
+};
 
 /// Upload acceptance and processing are separate facts. The completion
 /// response is a snapshot; a pending run may still be waiting for a worker.
@@ -314,7 +597,7 @@ String intakeCompletionReason(Json completion) {
     if (completion['blocker'] == 'collection_processing_unconfigured') {
       return 'Uploaded to the collection. Processing awaits collection setup.';
     }
-    return 'Uploaded to the collection. Processing is blocked; check the queue.';
+    return 'Uploaded to the collection. Processing needs attention in Intake.';
   }
   if (status == 'running') {
     return 'Uploaded to the collection. Processing is running.';
@@ -322,5 +605,5 @@ String intakeCompletionReason(Json completion) {
   if (status == 'completed') {
     return 'Uploaded to the collection. Processing is complete.';
   }
-  return 'Uploaded to the collection. Check the queue for processing status.';
+  return 'Uploaded to Intake. Processing status is not available yet.';
 }

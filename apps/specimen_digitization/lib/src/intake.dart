@@ -103,6 +103,7 @@ class IntakeScreen extends StatefulWidget {
 
 class _IntakeScreenState extends State<IntakeScreen> {
   late IntakeTransferSession _session;
+  late final VoidCallback _transferRefresh;
   List<ManifestEntry> get _entries => _session.entries;
 
   /// The frame's slots, so the upload action goes where 13 section 3.3 puts a
@@ -118,12 +119,19 @@ class _IntakeScreenState extends State<IntakeScreen> {
   bool get _stopRequested => _session.stopping;
   bool _choosing = false;
   bool _pageDragging = false;
+  bool _autoIngest = false;
+  bool _autoIngestLoaded = false;
+  bool _transferRefreshScheduled = false;
   String? _error;
 
   String get _captureOwner => '${widget.userId}:${widget.scope.key}';
   static const String _captureKey = 'pending-camera-owner-v1';
+  String get _autoIngestKey =>
+      'camera-auto-ingest-v1:${widget.userId}:${widget.scope.key}';
 
-  /// This client offers an in-app camera only where it has one.
+  /// Camera availability is discovered by the camera itself. This keeps the
+  /// same real-time path available to browser and desktop webcams without
+  /// assuming that every device actually has one.
   bool get _isWeb => widget.webOverride ?? kIsWeb;
 
   bool get _nativeCameraAvailable =>
@@ -132,24 +140,37 @@ class _IntakeScreenState extends State<IntakeScreen> {
       (defaultTargetPlatform == TargetPlatform.android ||
           defaultTargetPlatform == TargetPlatform.iOS);
 
-  bool get _cameraAvailable =>
-      _nativeCameraAvailable ||
-      (kIsWeb &&
-          _isWeb &&
-          (defaultTargetPlatform == TargetPlatform.android ||
-              defaultTargetPlatform == TargetPlatform.iOS));
+  bool get _cameraAvailable => true;
 
   @override
   void initState() {
     super.initState();
+    _transferRefresh = _scheduleTransferRefresh;
     _session = intakeTransferSession(
       widget.repository,
       widget.scope,
       widget.userId,
     );
     _session.addListener(_sessionChanged);
-    _session.attachComplete(widget.onComplete);
+    // Preserve the existing Intake completion contract. The main Queue still
+    // decides what it can display, while Intake independently tracks the
+    // photograph until processing hands it over.
+    _session.attachComplete(_transferRefresh);
+    _session.attachHandoff(_transferRefresh);
+    unawaited(_loadAutoIngest());
     _recoverCamera();
+  }
+
+  /// Upload acceptance and the later main-Queue handoff both refresh the
+  /// workspace. Coalescing one event-loop turn prevents an immediate handoff
+  /// from issuing the same refresh twice, including after route reattachment.
+  void _scheduleTransferRefresh() {
+    if (_transferRefreshScheduled) return;
+    _transferRefreshScheduled = true;
+    scheduleMicrotask(() {
+      _transferRefreshScheduled = false;
+      if (mounted) widget.onComplete();
+    });
   }
 
   void _sessionChanged() {
@@ -163,7 +184,8 @@ class _IntakeScreenState extends State<IntakeScreen> {
     if (!identical(oldWidget.repository, widget.repository) ||
         oldWidget.scope.key != widget.scope.key ||
         oldWidget.userId != widget.userId) {
-      _session.detachComplete(oldWidget.onComplete);
+      _session.detachComplete(_transferRefresh);
+      _session.detachHandoff(_transferRefresh);
       _session.removeListener(_sessionChanged);
       _session = intakeTransferSession(
         widget.repository,
@@ -171,12 +193,13 @@ class _IntakeScreenState extends State<IntakeScreen> {
         widget.userId,
       );
       _session.addListener(_sessionChanged);
-      _session.attachComplete(widget.onComplete);
+      _session.attachComplete(_transferRefresh);
+      _session.attachHandoff(_transferRefresh);
       _sensitive = true;
+      _autoIngest = false;
+      _autoIngestLoaded = false;
       _error = null;
-    } else if (oldWidget.onComplete != widget.onComplete) {
-      _session.detachComplete(oldWidget.onComplete);
-      _session.attachComplete(widget.onComplete);
+      unawaited(_loadAutoIngest());
     }
   }
 
@@ -188,7 +211,8 @@ class _IntakeScreenState extends State<IntakeScreen> {
 
   @override
   void dispose() {
-    _session.detachComplete(widget.onComplete);
+    _session.detachComplete(_transferRefresh);
+    _session.detachHandoff(_transferRefresh);
     _session.removeListener(_sessionChanged);
     _slots?.release(this);
     super.dispose();
@@ -222,6 +246,25 @@ class _IntakeScreenState extends State<IntakeScreen> {
 
   Future<void> _takePhotograph() => _collect(camera: true, load: _capture);
 
+  Future<void> _loadAutoIngest() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final bool value = prefs.getBool(_autoIngestKey) ?? false;
+    if (!mounted) return;
+    setState(() {
+      _autoIngest = value;
+      _autoIngestLoaded = true;
+    });
+  }
+
+  Future<void> _setAutoIngest(bool value) async {
+    setState(() {
+      _autoIngest = value;
+      _autoIngestLoaded = true;
+    });
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_autoIngestKey, value);
+  }
+
   /// The capture route first, the device camera app second.
   ///
   /// `image_picker` stays as the fallback because it is the only path that
@@ -230,7 +273,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
   /// is shown as a plain sentence before the fallback runs.
   Future<List<XFile>> _capture() async {
     if (widget.pickImages != null) return widget.pickImages!(true);
-    if (_nativeCameraAvailable) {
+    if (_cameraAvailable) {
       final CaptureResult result = await _openCapture();
       if (!result.needsFallback) {
         return result.streamed ? <XFile>[] : result.files;
@@ -238,18 +281,30 @@ class _IntakeScreenState extends State<IntakeScreen> {
       if (mounted) {
         setState(() => _error = result.unavailable!.message);
       }
+      if (!_nativeCameraAvailable) return <XFile>[];
     }
     return _devicePicker();
   }
 
   Future<CaptureResult> _openCapture() async {
     if (widget.openCapture != null) return widget.openCapture!(context);
-    final CaptureResult? result = await Navigator.of(context).push(
-      CaptureScreen.route(
-        widget.cameraFactory ?? _platformCamera,
-        onAccepted: _acceptCameraPhoto,
-      ),
-    );
+    // Intake lives inside a stateful shell navigator. The camera must cover
+    // that shell as well as the branch page; otherwise the collection header
+    // and bottom navigation squeeze a phone-landscape viewfinder until its
+    // shutter and Done controls are off-screen.
+    final CaptureResult? result =
+        await Navigator.of(context, rootNavigator: true).push(
+          CaptureScreen.route(
+            widget.cameraFactory ?? _platformCamera,
+            onAccepted: _acceptCameraPhoto,
+            autoIngest: _autoIngest,
+            onAutoIngestChanged: (bool value) =>
+                unawaited(_setAutoIngest(value)),
+            activity: _session,
+            activitySnapshot: _captureActivity,
+            deviceFallbackAvailable: _nativeCameraAvailable,
+          ),
+        );
     return result ?? const CaptureResult();
   }
 
@@ -289,7 +344,10 @@ class _IntakeScreenState extends State<IntakeScreen> {
     });
     try {
       await _acceptFiles(await load(), camera: camera);
-      if (camera) unawaited(_session.start());
+      // The in-app camera streams only photographs the operator explicitly
+      // sent. A platform picker cannot host that review UI, so manual mode
+      // leaves its photograph ready in the Intake queue for the page action.
+      if (camera && _autoIngest) unawaited(_session.start());
     } catch (_) {
       if (mounted) {
         setState(
@@ -594,6 +652,51 @@ class _IntakeScreenState extends State<IntakeScreen> {
 
   Future<void> _send() => _session.start();
 
+  CaptureActivity _captureActivity() {
+    if (_entries.isEmpty) {
+      return const CaptureActivity(label: 'Intake queue · No photographs yet');
+    }
+    final int uploading = _entries
+        .where(
+          (ManifestEntry entry) =>
+              entry.state == UploadState.uploading || entry.checking,
+        )
+        .length;
+    final int processing = _entries
+        .where((ManifestEntry entry) => entry.state == UploadState.processing)
+        .length;
+    final int uploaded = _entries
+        .where((ManifestEntry entry) => entry.state == UploadState.accepted)
+        .length;
+    final int handedOff = _entries
+        .where((ManifestEntry entry) => entry.state == UploadState.inMainQueue)
+        .length;
+    final int attention = _entries
+        .where(
+          (ManifestEntry entry) =>
+              entry.state == UploadState.failed ||
+              entry.state == UploadState.interrupted ||
+              entry.state == UploadState.processingBlocked,
+        )
+        .length;
+    final ManifestEntry? active = _entries
+        .where((ManifestEntry entry) => entry.state == UploadState.uploading)
+        .firstOrNull;
+    final List<String> parts = <String>[
+      if (uploading > 0) '$uploading uploading',
+      if (uploaded > 0) '$uploaded uploaded',
+      if (processing > 0) '$processing processing',
+      if (handedOff > 0) '$handedOff in main Queue',
+      if (attention > 0) '$attention need attention',
+    ];
+    return CaptureActivity(
+      label:
+          'Intake queue · ${parts.isEmpty ? '${_entries.length} waiting' : parts.join(', ')}',
+      progress: active?.progress,
+      problem: attention > 0,
+    );
+  }
+
   // ---------------------------------------------------------------- drawing
 
   int get _pendingCount =>
@@ -667,6 +770,10 @@ class _IntakeScreenState extends State<IntakeScreen> {
     // The page owns the only drop target, including the manifest and gutters.
     onDropFiles: null,
     cameraAvailable: _cameraAvailable,
+    autoIngest: _autoIngest,
+    onAutoIngestChanged: !_autoIngestLoaded || _choosing
+        ? null
+        : (bool value) => unawaited(_setAutoIngest(value)),
     onBrowseSources: null,
     minDropHeight: _isWeb ? minDropHeight : 0,
     dragActive: _pageDragging,

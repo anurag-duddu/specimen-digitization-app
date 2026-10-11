@@ -433,24 +433,27 @@ def test_the_policy_deliberately_names_no_script_or_style_source():
         assert header not in applied
 
 
-def test_the_permissions_policy_denies_what_the_web_client_never_asks_for():
-    """The header denies camera, microphone and geolocation, and the reason it
-    can is that the web build asks for none of those browser APIs. Native
-    in-app capture is behind `!kIsWeb`; mobile web may offer the system file
-    picker capture attribute, which uses no getUserMedia stream. Nothing
-    reads a microphone or a location. A browser stream must revisit this header."""
+def test_the_permissions_policy_allows_only_same_origin_camera_capture():
+    """Intake may open a phone, tablet or attached desktop camera on web.
+
+    The grant stays limited to this origin; microphone and geolocation remain
+    unavailable because the client never requests them.
+    """
     config = MODULE.read_hosting_config(REPO_ROOT / "firebase.json")
     applied = lowercased(MODULE.headers_for(config, "/"))
-    for feature in ("camera", "microphone", "geolocation"):
+    assert "camera=(self)" in applied["permissions-policy"]
+    for feature in ("microphone", "geolocation"):
         assert f"{feature}=()" in applied["permissions-policy"]
 
     intake = (APP / "lib" / "src" / "intake.dart").read_text(encoding="utf-8")
-    assert re.search(r"_nativeCameraAvailable\s*=>\s*!kIsWeb\s*&&\s*!_isWeb", intake), (
-        "native in-app camera must remain web-excluded"
+    assert re.search(r"_cameraAvailable\s*=>\s*true", intake), (
+        "Intake must offer capability-checked capture on web as well as native"
     )
     capture = intake.split("Future<List<XFile>> _capture() async {", 1)[1].split(
         "Future<CaptureResult> _openCapture()", 1)[0]
-    assert capture.index("if (_nativeCameraAvailable)") < capture.index("await _openCapture()")
+    assert capture.index("await _openCapture()") < capture.index(
+        "if (!_nativeCameraAvailable)"
+    )
     assert "return _devicePicker();" in capture
     for root in (APP / "lib", APP / "web"):
         for path in sorted(root.rglob("*")):

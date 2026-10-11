@@ -90,10 +90,11 @@ MARKER_MIN_LENGTH = 16
 # isolation is not required by anything this client does, and turning it on
 # would break the reCAPTCHA Enterprise frame App Check depends on.
 #
-# `Permissions-Policy` denies all three: the web client asks for none of them.
-# The in app camera is behind `!kIsWeb` (`lib/src/intake.dart`,
-# `_cameraAvailable`), so the capture button is not drawn on the web at all,
-# and nothing under `lib/` or `web/` reads a microphone or a location.
+# `Permissions-Policy` allows only this site to use a camera. Intake discovers
+# the actual camera at runtime, so mobile browsers and desktop webcams can use
+# the same capture surface while a device with no camera gets the ordinary
+# recovery message. Nothing under `lib/` or `web/` reads a microphone or a
+# location, so both remain denied.
 SECURITY_HEADERS: dict[str, str] = {
     "x-content-type-options": "nosniff",
     "referrer-policy": "strict-origin-when-cross-origin",
@@ -101,7 +102,7 @@ SECURITY_HEADERS: dict[str, str] = {
     "content-security-policy": (
         "frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
     ),
-    "permissions-policy": "camera=(), microphone=(), geolocation=()",
+    "permissions-policy": "camera=(self), microphone=(), geolocation=()",
 }
 
 

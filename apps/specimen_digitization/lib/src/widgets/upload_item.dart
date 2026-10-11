@@ -38,6 +38,15 @@ enum UploadState {
   /// The server stored it. This does not mean processing has started.
   accepted('Uploaded'),
 
+  /// The server holds the photograph and its pipeline is active or waiting.
+  processing('Processing'),
+
+  /// Processing finished and the record entered the existing main Queue.
+  inMainQueue('In main Queue'),
+
+  /// Processing cannot continue without attention or an explicit retry.
+  processingBlocked('Needs attention'),
+
   /// The collection already holds these pixels.
   duplicate('Already in collection'),
 
@@ -64,6 +73,9 @@ enum UploadState {
     UploadState.checking => UiIcons.processing,
     UploadState.uploading => UiIcons.processing,
     UploadState.accepted => UiIcons.cleared,
+    UploadState.processing => UiIcons.processing,
+    UploadState.inMainQueue => UiIcons.queue,
+    UploadState.processingBlocked => UiIcons.blocked,
     UploadState.duplicate => UiIcons.copy,
     UploadState.interrupted => UiIcons.deferred,
     UploadState.skipped => UiIcons.unmeasured,
@@ -79,6 +91,9 @@ enum UploadState {
     UploadState.checking => ui.color.status.processing,
     UploadState.uploading => ui.color.status.processing,
     UploadState.accepted => ui.color.status.cleared,
+    UploadState.processing => ui.color.status.processing,
+    UploadState.inMainQueue => ui.color.status.cleared,
+    UploadState.processingBlocked => ui.color.status.blocked,
     UploadState.duplicate => ui.color.status.deferred,
     UploadState.interrupted => ui.color.status.needsReview,
     UploadState.skipped => ui.color.status.deferred,
@@ -89,7 +104,9 @@ enum UploadState {
   ///
   /// A settled disposition is drawn filled (09 section 7).
   bool get isSettled => switch (this) {
-    UploadState.checking || UploadState.uploading => false,
+    UploadState.checking ||
+    UploadState.uploading ||
+    UploadState.processing => false,
     _ => true,
   };
 
