@@ -1,9 +1,7 @@
 """Each field expert's instructions: the shared rules, then the field's own brief.
 
 The files ship inside the package (hatch includes every file under
-src/specimen_digitization), like research_harness/prompts. The shared rules'
-place-notation line is rendered from field_research.notations, the table the
-place rule reads, so the two cannot drift.
+src/specimen_digitization), like research_harness/prompts.
 """
 
 from __future__ import annotations
@@ -12,7 +10,6 @@ from functools import cache
 from pathlib import Path
 
 from ..contracts import FIELD_TOOLS
-from ..notations import MARKER, brief_line
 
 # The display names of PRD's mandatory-field table.
 FIELD_LABELS = {
@@ -47,8 +44,5 @@ def instructions(key: str) -> str:
     if key not in FIELD_TOOLS or key not in FIELD_LABELS:
         raise KeyError(f"no field brief for {key!r}")
     common = (_ROOT / "common.txt").read_text(encoding="utf-8").strip()
-    if common.count(MARKER) != 1:
-        raise ValueError("common.txt must hold the place-notation marker once")
-    common = common.replace(MARKER, brief_line())
     brief = (_ROOT / f"{key}.txt").read_text(encoding="utf-8").strip()
     return common + "\n\n" + brief + "\n"

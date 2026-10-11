@@ -26,6 +26,7 @@ from collections.abc import Iterable
 from specimen_digitization.application.derivations import RULES as ELEVATION_RULES
 from specimen_digitization.application.derivations import UNITS, elevation_derivations, settled_value
 from specimen_digitization.application.domain import Evidence, FieldValue, ValueState
+from specimen_digitization.application.field_validators import written_range
 
 RULES_VERSION = "field-research-derivations-v1"
 SOURCE = "field_research"
@@ -62,8 +63,9 @@ def fill(run, *, eligible: Iterable[str], asset_id: str | None, blobs=None) -> l
             inputs=dict(derivation.inputs), asset_id=asset_id, blobs=blobs)
         filled.append(key)
     start = fields.get("date_visited_from")
+    # A written range keeps both ends as written (G44): its start is never also its end.
     if ("date_visited_to" in targets and start is not None and start.state == ValueState.SUPPORTED
-            and (value := settled_value(start))):
+            and not written_range(start.literal or "") and (value := settled_value(start))):
         fields["date_visited_to"] = _derived(run, "date_visited_to", value, rule="single_collecting_date",
             detail=G44_DETAIL, inputs={"date_visited_from": value}, asset_id=asset_id, blobs=blobs,
             precision=start.precision, century_rule=start.century_rule)

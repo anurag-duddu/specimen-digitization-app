@@ -102,12 +102,41 @@ handover runs field research instead of the six specialists:
    the decided reading). The rules of step 5 apply to it.
 3. **One expert per field.** Every other field gets its own Pydantic AI agent
    (`field_<key>`), its own instructions (shared rules plus the field's brief)
-   and only its approved tools. All experts run at once.
+   and only its approved tools. All experts run at once. After the step has
+   decided (steps 5 to 7), each field of the attempt is one
+   `field_research.field` span inside the step's `field_research` span
+   (`step.trace_fields`): the expert's outcome, its failure and fallback,
+   the value's state and layer, the run's reason codes for the field, the
+   check that refused a resolved answer and the rule that decided the field
+   (rule A or B, a derivation, an unreachable source on the last attempt),
+   and each lookup as source and status. These are codes; the literal,
+   value, authority id and reason are added only when the worker captures
+   approved content.
 4. **Sources.** GBIF (with Catalogue of Life and Global Names Verifier
    alongside), GEOLocate, Getty TGN, Wikidata and NGA, plus deterministic date,
    elevation and catalogue-number checks. One request per distinct query per
-   record (shared cache), retries with backoff, GEOLocate spacing kept. Each
-   source response is stored once as evidence.
+   record (shared cache), retries with backoff (three attempts, a Retry-After
+   of at most 10 s honoured, a redirect never followed), GEOLocate spacing
+   kept, and at most two requests at a time to each of Getty TGN, Wikidata
+   and NGA across the worker process (`sources.SOURCE_SLOTS`). Each source
+   response is stored once as evidence. Each request a source leaves
+   unanswered (a final status other than 200, or retries that ran out) is
+   logged in one WARNING line with the source, the host, the HTTP status or
+   the error's class, whether a Retry-After came back and the attempt it
+   ended on, never the query; for GBIF, the status its verification ended on.
+
+   **A source that cannot be reached** (a lookup whose last attempt was rate
+   limited, timed out, was refused or redirected, failed on the server or
+   came back unreadable; a refused query is not one) does not void the
+   field when another of its expert's lookups answered. The expert's answer
+   then stands and is checked under the rules of step 5 like any other, and
+   the field's reason ends by naming the source ("Getty TGN could not be
+   reached; settled from Wikidata."). A place settles on a cited answer of
+   any place source, so no Getty TGN answer is needed. Only when every
+   lookup the expert made failed, at least one because its source could not
+   be reached, does an unresolved answer leave the field for a retry
+   (`source_unavailable`; see step 7). The place briefs tell the expert to
+   decide with the sources that answered and to say which did not.
 5. **Checked answers.** The expert's answer check (an answer that breaks it
    is sent back for correction) and, again, the step before a resolved answer
    becomes a value apply these rules (`field_research/agreement.py`, on the
@@ -122,8 +151,7 @@ handover runs field research instead of the six specialists:
      that takes a piece of a reading's candidate ("Danaus plexippus" where
      the candidate is "Danaus plexippus megalippe", "Sept. '46" where it is
      "3 Sept. '46", "San Pedro" where it is "San Pedro Sacatepequez") is
-     refused, and a field with no candidate is never resolved: it goes to
-     review. A candidate can itself be a piece of its reading, since the
+     refused. A candidate can itself be a piece of its reading, since the
      organiser's candidate need only lie inside its quote; for the taxon,
      the scientific-name parser reads the candidate's quote from the literal
      on, and, for a literal in which it reads no genus, with the word the
@@ -135,16 +163,118 @@ handover runs field research instead of the six specialists:
      A keyed line's "taxon:", an author and year, a sex sign or "sp. 1" are
      no longer name. Other fields' candidates are not checked against their
      quotes.
+   - **Or text read from the transcript** (the coordinator's ruling of
+     2026-10-09, after the real runs of that day: 105526328's collecting
+     date "IV-24-48", which both readers of its label write and parse_date
+     reads as 1948-04-24, could not settle because the organiser offered no
+     candidate; nor could its collection method "trap", or 105526329's and
+     105526330's precise location). When the literal is no whole candidate,
+     it may be text the expert read in the readings itself
+     (`agreement.literal_basis`, TRANSCRIPT): each reading the answer names
+     (on a label with a decided transcript, the decided reading) writes it
+     as a run of whole words within one line, or that whole line
+     (`agreement.verbatim_runs`). Words are split at spaces, and after a
+     comma or a semicolon that does not stand between two digits
+     ("Yepocapa,4800 ft." is two words, "1,200 m" is not); a run starts and
+     ends at a word's edge, or past any characters other than letters and
+     digits at its edge, which may be left off: punctuation, quotes,
+     brackets, a foot or minute mark or a "#" ("Yepocapa" of "Yepocapa,",
+     "Mindanao" of "(Mindanao)", "46" of "'46", "6400" of "6400'", "2" of
+     "#2"). It never starts or ends between two letters or digits of one
+     word ("24-48" is no run of "IV-24-48", nor "30" of "Sp.30", nor "200 m"
+     of "1,200 m"), and never crosses a line break. A unit left off is
+     still refused where a written rule reads it (`extraction_refusal`:
+     "6400" of "6400'" as metres). It may cut or extend no candidate of
+     that reading ("Sept. '46" beside the candidate "3 Sept. '46", "San
+     Pedro Sacatepequez" beside the candidate "San Pedro"): the answer is
+     then refused as above. A date or an elevation so read is never one end
+     of a range (`agreement._part_of_range`, PR #300's review): where a
+     reading it is read from writes it, the comma- or semicolon-separated
+     part of the line holding it may not join two words that each hold a
+     digit with "to", "-", an en dash or "a" (any case) standing as a word
+     of its own, unless the literal holds that joiner and both those words,
+     the whole range ("The label writes this value as one end of a range.":
+     "V-2-48" or "IV-24-48" of "IV-24-48 to V-2-48", "1500 m" of "1200 to
+     1500 m" or "1200 a 1500 m"; "1200 to 1500 m" whole keeps the rules a
+     candidate has). A range glued with a hyphen ("1200-1500 m") is one
+     word, which no run cuts. Every other rule
+     applies to it as to a candidate: G19's decided transcript, the readers'
+     rules below, the place checks (the lookup of the label's own text, the
+     level, the parents, the near spelling) and the doubtful genus. For the taxon, the
+     reading's text from the line above the literal on stands in for a
+     candidate's quote (`agreement._longer_written`, `checks.longer_name`),
+     so "Danaus plexippus" on a line that writes "Danaus plexippus
+     megalippe", or "sp. 1" below "Epipsocus", never settles it. On a label
+     with no decided transcript, each reader then writes the text as it
+     writes it, letter case and spacing aside (`agreement.agreeing_runs`),
+     beside any text the organiser found for it there; a reader that writes
+     it nowhere and has none is unread, its text for the field unknown, so
+     no lookup can have covered it and the label does not settle ("Not
+     every reader of the label writes this text.": 105526328's "Yepocapa,
+     Mun.", which its other reader writes "Mum."). Nor does it settle when
+     its readers write different text around it (PR #300's review): the
+     comma- or semicolon-separated part of each reader's line that holds
+     the text, else the whole line (`agreement.holding_clauses`), must be
+     the same in every reader, letter case and spacing aside, as a
+     candidate's whole text would be. So 1A "trap" beside 1B "light trap",
+     "Yepocapa" beside "near Yepocapa", "forest" beside "cloud forest" and
+     "IV-24-48" beside "IV-24-48 to V-2-48" go to review as readers that
+     differ, while "Yepocapa" in "Yepocapa, Mun." beside "Yepocapa, Mum."
+     agrees. A decided reading that
+     writes the text beside another candidate of the organiser's for the
+     field writes two texts and settles neither. Such a value is marked:
+     the label rows field research writes for it cite the literal's first
+     run of whole words and carry `"basis": "transcript"` in their stored
+     records, an info finding
+     `transcript_literal:<field>` beside the record cites them (it never
+     routes the record), and one Logfire event, "field_research literal
+     read from the transcript", names the field and the readings, never
+     their text (`step._from_the_transcript`). A place settled so is
+     written, for the parents check below, by each reading that writes its
+     literal as whole words (`step._misfit`).
+   - **Text another field holds** (the step only, `step._taken`, before
+     any value is made). A literal read from the transcript never settles
+     when the same text, overlapping in the same reading, is claimed for a
+     field of another kind: another field's answer of this attempt
+     (resolved, or sources_cannot_resolve quoting a literal), wherever its
+     literal stands in the readings of the labels it names; another
+     field's value settled before this attempt or by a person; or another
+     field's organiser candidate (or keyed line the parser read), where its
+     quote stands in its reading, whatever that field's expert did in this
+     attempt (PR #300's review: the elevation's candidate "4800ft." claims
+     its text even when the elevation's expert failed). The field
+     goes to review with the reason "This text, read from the transcript,
+     is also the value found for <field>." The kinds are
+     `agreement.FIELD_KINDS`: the place fields (precise location among
+     them) are one kind, so a town inside the locality is no conflict; the
+     dates are one, the elevations one, collectors and determiner one; any
+     other field is a kind of its own; and verbatim D/T/S shares text with
+     any field, as what it holds is an open museum question. So
+     105526329's precise location "Yepocapa, 4800ft.", read from the
+     transcript, goes to review beside the elevation "4800ft." (the brief
+     leaves elevations out of the locality), while "Volcan Barva" beside
+     "2000 msnm" settles. An organiser's candidate is never refused here,
+     and two fields that both read the text from the transcript both go to
+     review.
    - **A doubtful genus (taxon only).** The literal never settles the taxon
      when the label marks its genus as doubtful (`checks.genus_in_doubt`,
      through `agreement._genus_in_doubt`): wherever the quote of a candidate
-     of that literal, the text of a reading the answer names, or the text of
-     its label's decided reading writes the literal:
-     - a qualifier, read as the doubt signs read one (below, under B; a
-       person's initials such as "C.F." are none), stands in the
+     of that literal, the text of a reading the answer names, the text of
+     its label's decided reading, or, on a label with no decided transcript,
+     the text of any of its readers writes the literal (every reader is
+     then the label's text: 1A's "cf. Epipsocus sp. 1" holds back an answer
+     that names only 1B's "Epipsocus sp. 1"):
+     - a qualifier of the doubt signs' list (below, under B), in any case
+       except "vic", with or without its periods, stands in the
        whitespace-separated part holding the literal's first word
-       ("cfr.Epipsocus") or in the part just before it, across a line
-       break too ("cfr. Epipsocus", "cf." ending the line above); or
+       ("cfr.Epipsocus"), in the part just before it on its line ("cfr.
+       Epipsocus", "nr. Epipsocus", "NR Epipsocus", "C.F Epipsocus"), or
+       alone on the line above, the only part of that line ("cf." on a
+       line of its own above "Epipsocus sp. 1"). A person's initials with
+       the final period ("C.F.") are none. The doubt signs' other
+       exceptions under B (a nature reserve's "NR", "Nr." before a number,
+       "conf." before a person, initials without the final period, a
+       settled place beside "near", "nr." or "vic.") do not apply here; or
      - a question mark ("?", the full-width one, U+FF1F, or the inverted
        one, U+00BF: `checks.QUESTION_MARKS`) is on that word itself ("Epipsocus?",
        "?Epipsocus", "Epipsocus(?)"), or stands alone, a part with no letter
@@ -154,8 +284,11 @@ handover runs field research instead of the six specialists:
 
      A question mark on or beside another word ("Davao? Epipsocus",
      "Epipsocus sp. 1 ?"), any on the line above ("1946?" above "Epipsocus
-     sp. 1") or below ("?" under "Epipsocus"), and a qualifier after the
-     genus ("Epipsocus cf. sp. 1", G25) are none. The value goes to review ("The label marks this
+     sp. 1") or below ("?" under "Epipsocus"), a qualifier that ends a
+     longer line above ("Sabah, Danum Valley NR" or "Mindanao, Davao vic."
+     above "Epipsocus sp. 1": it belongs to that line; N2 of #289's sixth
+     review), and a qualifier after the genus ("Epipsocus cf. sp. 1", G25)
+     are none. The value goes to review ("The label marks this
      name's genus as doubtful."): GBIF may decide the bare genus the taxon
      brief has the expert look up, and an expert that then resolves the
      taxon as that genus ("Epipsocus" quoting "cfr. Epipsocus", or quoting
@@ -173,8 +306,15 @@ handover runs field research instead of the six specialists:
      organiser gave the field, each label that writes it settles on its own:
      a label with a decided transcript on its decided reading's one candidate
      literal (a label whose decided reading writes nothing for the field takes
-     no part); a label whose readers each write the same one literal on that
-     literal; any other label (readers that differ, or one that writes
+     no part); a label whose readers each write the same text, letter case
+     and spacing aside, on its first reader's spelling (readers that differ
+     only so agree, the coordinator's ruling of 2026-10-09: texts compare
+     after NFC, casefolding and removing every space and line break,
+     `agreement.agreement_key`, so "shrubs" and "Shrubs", "sp. 30" and
+     "Sp.30", "Mt." and "MT." agree, while "Mun." and "Mum." or "1200 m"
+     and "1200 m." do not; the answer's literal is then the first reader's
+     text, 2A before 2B, and an answer giving another reader's spelling is
+     sent back); any other label (readers that differ, or one that writes
      nothing) only when the expert asked the field's approved sources about
      every distinct text its readers write, exactly one is confirmed by an
      answer about it, and every other has a captured no_match answer
@@ -219,8 +359,9 @@ handover runs field research instead of the six specialists:
      to review, with each reader's candidate row still cited. So a field with no approved source (collectors,
      habitat, collection method, collection code, verbatim D/T/S), or only
      deterministic checks, goes to review when the readers of a label with no
-     decided transcript differ. This follows the native harness's G20 and G32
-     rules (`research_harness/evidence.py`); it is stricter than
+     decided transcript differ by more than letter case or spacing. This
+     follows the native harness's G20 and G32 rules
+     (`research_harness/evidence.py`); it is stricter than
      `application/field_resolution.py`, which clears readers that differ when
      every success names one value, unless they are a place's readers whose
      texts one candidate confirms (above).
@@ -244,8 +385,10 @@ handover runs field research instead of the six specialists:
      Chimaltenango, Guatemala" for a province
      "Yepocapa", its candidate is "Chimaltenango", a province inferred from a
      locality). So TGN's ambiguous
-     answer for "Philippines" (the nation, a Dutch village, a sea) settles
-     the country "P.I." as Philippines, and its answer for "Chimaltenango"
+     answer for "Philippine Islands" (a ridge, the nation, a Dutch village, a
+     sea, an island group) settles the country "P.I." as Philippines (on the
+     abbreviation rule below, when another place of the label lies in the
+     Philippines), and its answer for "Chimaltenango"
      (the department and its town) settles the province as the department
      and a city only as the town. Precise location stays the verbatim text.
    - **The label's own text (P3).** The answer that decides a place value
@@ -253,16 +396,126 @@ handover runs field research instead of the six specialists:
      the name the source searches, has the literal's comparison key (as
      above, case, accents, punctuation and notations such as "Prov." aside).
      For GEOLocate that part is the city it settles. There are two
-     exceptions. A place notation (P4): when the literal is a notation
-     of the table in `field_research/notations.py` for this field (compared
-     by the same key, so "P. I." is "P.I."), the query may be the expansion
-     the table gives it; the step then writes one evidence row of kind
-     "rule" naming the table entry (locator `notation:<field>:<notation>`, no
-     stored record, so it is never projected), and the value cites it as
-     support. The table holds G29's notations as the briefs state them:
-     "P.I." (country) is looked up as "Philippine Islands", "Guat." (country)
-     as "Guatemala"; the shared brief's notation line is rendered from the
-     same table. A near spelling: the query is the chosen candidate's own
+     exceptions. An abbreviation (P4): when the literal is written as an
+     abbreviation, the query's first part may be an expansion its letters
+     fit ("Philippine Islands" for "P.I.", "New South Wales" for "N.S.W.",
+     "Guatemala" for "Guat."). No table lists abbreviations: one letter
+     rule decides, for any place field and any language
+     (`field_research/abbreviations.py`, `fit`; the owner, 2026-10-09: "make
+     resolving and lasting changes that can handle big variance especially
+     as specimens can be anywhere not just insect parasites"):
+     - The literal is written as an abbreviation: it has a period, or its
+       letters are all capitals and at most four ("NSW", "UK"), or one of
+       its groups is one of the forms written without a period in
+       `abbreviations.PERIOD_FREE` (Mt, Mts, Mtn, Mtns, St, Ste, Sta, Sto,
+       Ft, Pt, Co, Is: "Mt Apo", "Falkland Is"). "Lima" is none, so
+       "Limassol" asked for it settles nothing.
+     - The expansion has more letters than the literal.
+     - The literal splits into letter groups at periods, spaces and
+       hyphens, and the expansion into words at the same. Letters and
+       digits compare casefolded with accents dropped ("GUAT." fits
+       "Guatemala", and "Mex." written with an acute accent on the e fits
+       "Mexico"); any other character is left out.
+     - The groups map in order onto consecutive words of the expansion,
+       which may skip only its minor words (of, the, and, de, del, la, le,
+       da, do, dos, das, van, von, y, et: "Edo. Mex." fits "Estado de
+       Mexico"). Every group maps onto one word, and every word left over is
+       minor, so "Mex." does not fit "Mexico City", nor "P.I." "Peru" or
+       "Philippines".
+     - Each group is its word written in full, or one of the two forms an
+       abbreviation takes, with at most 60% of the word's letters
+       (`abbreviations._form`, `MAX_SHARE`): a truncation, the word's first
+       letters ("Guat" for "Guatemala", "Prov" for "Province", "Ill" for
+       "Illinois", "P" for "Philippine"), or a contraction, the word's first
+       and last letters with letters of the word between them in order
+       ("Sta" for "Santa", "Ft" for "Fort", "Mts" for "Mountains", "Dpto"
+       for "Departamento", "Qld" for "Queensland", "Edo" for "Estado").
+       "Ill." does not fit "Iowa", nor "Mts." "Mount". A name with a letter
+       or two dropped is no abbreviation, period or not: "Chimaltenago."
+       (12 of 13 letters), "Chimaltango.", "Guatmala.", "Mindano." and
+       "Philipines." fit nothing, and each is a near spelling (below) or
+       nothing, as without the period.
+     - At least one group is a truncation or a contraction: "Rio Janeiro."
+       does not fit "Rio de Janeiro".
+     - A literal of four capitals or fewer with no period ("UK", "USA",
+       "NSW", "MALI") is read only as initials, one letter for each word of
+       an expansion of two or more words: "UK" fits "United Kingdom", never
+       "Ukraine"; "MALI" fits no "Malawi" and "IRAN" no "Ireland"; one
+       capital alone fits nothing.
+
+     An expansion may write out a unit word the label abbreviates after or
+     before the name ("Davao Province" for "Davao, Prov.", "Cook County" for
+     "Cook Co.", "Estado de Mexico" for "Edo. de Mexico", "Departamento
+     Cusco" for "Dpto. Cusco"). A query that fits is taken as an expansion
+     even when it also has the literal's comparison key, as a unit word
+     written out does ("Davao Province" and "Davao, Prov." are both
+     "davao"), so it gets the row and the rival check below; the literal
+     asked as written ("Davao Prov."), or the name before its comma
+     ("Davao"), is the label's own text. The province and county briefs
+     have the expert search with the unit word written out. In the parent
+     session's run of the pilots on 2026-10-09, Getty TGN's answer for
+     "Davao, Philippines" held two first-level units (Davao del Norte and
+     the special city of Davao), which settles nothing, and Wikidata's
+     answer for "Davao Province, Philippines" held one, the former province
+     of Davao.
+
+     The letters only allow an expansion; they do not choose one ("S.A."
+     fits "South Australia", "South Africa" and "Saudi Arabia", and a short
+     word with a trailing period reads as a truncation, so "Lima." fits
+     "Limassol"). Everything
+     else above still holds: the cited answer has exactly one candidate at
+     the field's level, and the place must fit the label's other place
+     fields (below). Two more checks stand behind the letters:
+     - **A rival** (`agreement.rival_expansion`, in the expert's check and
+       in the step). The field settles nothing and is ambiguous, for review
+       ("The sources found different places for the label's
+       abbreviation."), when one of the field's place sources (a success or
+       ambiguous answer, its evidence stored) was asked another name than
+       the settling expansion (compared folded: case, accents and
+       punctuation aside) and found another place at the field's level:
+       another expansion the literal fits, with any candidate at the level
+       that is another place; or the label's own text, with exactly one
+       candidate at the level, another place. Another place has another
+       record and another name: the same nation in two gazetteers (TGN's
+       and Wikidata's Philippines) is one place. So "S.A." looked up as
+       "South Africa" and as "Saudi Arabia", two nations, leaves the country
+       ambiguous, as does "Ga." looked up as "Georgia" when its own text was
+       found as one other nation; "South Australia", a state, is no rival
+       for a country, and an own text found as several nations, or as none,
+       is none either.
+     - **Initials** (`abbreviations.initialism`: every group one letter or
+       a minor word, as "P.I.", "S.A.", "N.S.W.", "B.C.", "UK"). The letters
+       of initials allow many places ("P.I." fits "Philippine Islands",
+       "Pacific Islands" and "Pitcairn Islands"), so a place settled on
+       initials stays settled only when a place field below it, settled in
+       the same attempt on its own evidence (anything but initials), lies
+       inside it: that field's settling candidate names it among its
+       parents, by record, or by its text, value or expansion
+       (`step._corroborate`, once every place is in, from the city up).
+       Otherwise the field is ambiguous, for review, with a reason naming
+       the initials ('The initials "P.I." fit "Philippine Islands", but no
+       other place on the label was found inside it, so the initials alone
+       do not decide.'), and the rows its settling wrote are dropped. Only
+       the step checks this. So "Mindanao, P.I." keeps the Philippines when
+       its province "Davao, Prov." settles on Wikidata's former province of
+       Davao, whose parent is the Philippines; with no other place on the
+       label, with a province that settles outside the Philippines, or with
+       a province written as initials itself ("D.P."), it goes to review. A
+       city is the lowest place field, so a city on initials always does.
+       Truncations and contractions need no such place.
+
+     When the value
+     settles, the step writes one evidence row of kind "rule" (locator
+     `abbreviation:<field>:<expansion>`, no stored record, so it is never
+     projected) naming the abbreviation, the expansion, the source asked
+     and how the letters fit (`country: "P.I." abbreviates "Philippine
+     Islands", the name tgn was asked: its letters fit the words in order
+     (P = Philippine, I = Islands; field_research.abbreviations)`), and the
+     value cites it as support. The shared brief has the expert look up an
+     abbreviation's expansion, with each abbreviated word written out, when
+     it knows what it stands for, and name the abbreviation it expanded in
+     its explanation. A near spelling: the
+     query is the chosen candidate's own
      name, and that name is one letter from the literal
      (`georef_locality.one_letter_apart`: both full names, their comparison
      keys one insertion, deletion or substitution apart). That is the
@@ -272,11 +525,14 @@ handover runs field research instead of the six specialists:
      never routes it. Any other lookup settles nothing, for decided and contested labels
      alike, in the expert's check and in the step: "Escuintla" asked for a
      label's "Chimaltenago", "Philippines" for "P.I." (a lookup of the modern
-     name is context only), a notation the table does not hold, or a name
-     two letters away ("Chimaltenango" for "Chimaltango"). So "P.I." settles
+     name is context only), a name the literal's letters do not spell
+     ("Peru" for "P.I."), or a name two letters away ("Chimaltenango" for
+     "Chimaltango", with or without a period after it). So "P.I." settles
      its country on Getty TGN's answer to "Philippine Islands", whose one
-     nation is the Philippines; TGN and NGA have no match for "P.I." itself
-     (the coordinator's lookup of 2026-10-09).
+     nation is the Philippines, when another place on its label lies in the
+     Philippines, as 105526326's province "Davao, Prov." does; TGN and NGA
+     have no match for "P.I." itself (the coordinator's lookup of
+     2026-10-09).
    - **The label's other place fields (B3, N1).** A place below the
      country settles only when its source names, among the places it lies
      in, the country (and province) settled from the reading the answer
@@ -300,8 +556,11 @@ handover runs field research instead of the six specialists:
      value is supported, the step has done with it, and the reading writes
      its literal (compared as place names). A parent is that field when it
      is the field's settled record (its authority_id), or when its name has
-     the comparison key of one of the field's texts, of the notation table's
-     expansion of one, or of the value the field settled on. Then:
+     the comparison key of one of the field's texts, of the value the field
+     settled on, or of the expansion it settled through (the one its
+     abbreviation row names: a GEOLocate city asked with the country
+     "Philippine Islands" lies in the country "Phil. Is." settled through
+     that expansion, `step._expansions`). Then:
      - a province, county or city settles only when its candidate has
        parents and one is the country settled for the reading, and, for a
        county or a city, one is also the province settled for it when one
@@ -315,16 +574,18 @@ handover runs field research instead of the six specialists:
        for a country whose research failed is researched again with it on
        the retry;
      - a near spelling, of any place field, settles only on G34's whole
-       condition: every other place field the reading writes, all of them
-       and at least one, is one of the candidate's parents. In Getty TGN a
-       province's parents are its country, so a near-spelled province with
-       a county or a city on its reading goes to review, unless that county
-       or city has the country's name. A country can settle: `sources._place` adds a
-       place's country to its parents, so Getty TGN's nation lists itself,
-       and a near-spelled country settles when every other place field on
-       its reading has the nation's name or record ("Guatamala" beside the
-       province "Guatemala" alone). Beside a county, a city or a province of
-       another name it goes to review.
+       condition, read on the larger places (the coordinator's ruling of
+       2026-10-09): every place field the reading writes above the field
+       (`agreement.PLACE_ORDER`: a province's country; a county's province
+       and country; a city's county, province and country), all of them and
+       at least one, is one of the candidate's parents. A place's parents
+       are only larger places, so a county or a city the reading writes
+       below a near-spelled province is never checked as its parent
+       (105526330's province, below). A country has no place field above
+       it, so a near-spelled country always goes to review, even beside a
+       province or a city of the nation's own name ("Guatamala" beside the
+       province "Guatemala", "Mexco" beside the city "Mexico"), which
+       settled it before.
 
      The check's limits (the fourth review's NB1): a parent counts by name
      even when it is another place of that name. Getty TGN names a US
@@ -340,9 +601,12 @@ handover runs field research instead of the six specialists:
      reader's "Chimaltenango" as its literal is refused (G19). An answer that
      keeps "Chimaltenago" as the literal, as written (G27), and takes TGN's
      department Chimaltenango, one letter from it, as the value, passes the
-     expert's check; but the reading also writes the city Yepocapa, which is
-     not one of the department's parents, so the step leaves the province
-     for review (G34's whole condition).
+     expert's check, and the step settles it with a `near_spelling`
+     warning: the one field the reading writes above the province, its
+     country Guatemala, is the department's parent (G34's whole condition).
+     The city Yepocapa the reading also writes lies below the province and
+     is not checked as its parent. Until 2026-10-09 it was, and the real run
+     of that day left the province for review.
    - **The taxon.** A taxon is GBIF's decision for the whole name its
      candidate literal writes: the cited success answer's query is the
      scientific-name parser's query for that literal (the genus, any
@@ -362,15 +626,29 @@ handover runs field research instead of the six specialists:
    settled.
 6. **Derived values** (G37, G41, G44) are filled deterministically afterwards
    from settled fields only: elevation copies and exact unit conversion, and
-   the collection date's end from its start. An elevation settled on a
+   the collection date's end from its start (G44: only for a single date; the
+   start of a written range is never copied, `derive.fill` through
+   `field_validators.written_range`, see "How dates are read" below). An elevation settled on a
    candidate that writes more than its number is read as its parsed value,
    the check's number. Then the listed fields the label does not state are
    marked so (see "Fields the label does not state" below).
 7. **One save.** Field values, evidence and reasons are written in one save
    at the end, through the existing record writer. Clearance uses the existing
    scientific rules without blanket human approval (G1). Anything unresolved
-   sends the record to Needs human review with a plain reason; a source or
-   model outage leaves the record blocked with retry.
+   sends the record to Needs human review with a plain reason. A field whose
+   expert reached no source (step 4), a model failure and a field's timeout
+   leave the record blocked with a retry, every settled field kept. The
+   workflow allows the run's `max_attempts` attempts (its execution policy,
+   3 by default). On
+   the step's last attempt a field whose sources still could not be reached
+   goes to Needs human review instead, unresolved, its reason naming them
+   ("Getty TGN could not be reached after 3 attempts."), and the record
+   finalizes with its other fields. A model failure or timeout on the last
+   attempt still stops the automatic retries
+   (`retry_budget_exhausted:<code>`). The app's processing panel judges such
+   a blocker by its code: for `lookup_operational_failure` it says an
+   approved source could not be reached, never that a cost limit stopped
+   processing.
 8. **Budget.** Before every model call the step reserves that call's worst
    case (its input, the provider's chat template and the output cap) from
    what remains of the run's ceiling (the profile's `run_cost_limit_micros`,
@@ -393,6 +671,141 @@ handover runs field research instead of the six specialists:
 At the harness route's prices (USD 0.20 per million input tokens, USD 0.60
 per million output), a typical record is expected to cost a few cents for
 field research. The ceiling cannot be crossed.
+
+## How dates are read (G24, G29, G44; 2026-10-09)
+
+The experts' `parse_date` is `field_research/checks.parse_date`, which wraps
+`application/field_validators.date_parser` (tool version `date-parser-v2`;
+the notations are `application/date_notations.py`, the month words
+`application/date_months.py`). It is deterministic and reads only by the
+named rules below. It never guesses beyond them: a form no rule reads is
+`no_match`, and a date a rule leaves open is `ambiguous` and goes to review.
+Each reading records the rule that matched (`order`), how a missing year was
+found (`via`) and the century rule it used (`century_rule`), so the check
+row the settled value cites shows them.
+
+- **Months.** A Roman numeral I to XII, when the profile enables Roman
+  months (G29), in any position: month first (`IX-14-46`, `IV-24-48`),
+  between day and year (`14.IX.1946`, `14 IX 1946`, `3.iv.1948`), year first
+  (`1946.IX.14`, `1946-IX-14`), month and year (`IX.1946`, `XI .46`), and
+  day and month with no year (`14.IX`). A lowercase numeral is read only
+  in three shapes, each joined by `.` or `-` (spaces around them allowed): after
+  a day and before a year of two or four digits (`3.iv.1948`, `3.ix.46`,
+  `3-ix-46`), after a four-digit year and before a day (`1946.ix.14`), and
+  after a day with no year (`3.iv`). It is never read month-first (`iv-23-48`),
+  as a month and year (`iv.1948`, `1946.ix`) or joined by spaces alone
+  (`12 vi 1946`, `12 x 46`). A month written by name in English, Spanish,
+  French, German, Portuguese, Italian or Latin, in full or abbreviated, with or
+  without its period and accents (`sept.`, `Sept`, `ene.`, `janv.`, `Mai`,
+  `mars`, `Okt.`, `agosto`, `Septembris`). A word two languages share means
+  the same month in both, and the table refuses to load otherwise
+  (`date_months`). A day may carry an ordinal (`3rd`, `1er`, `1o`), and `de`,
+  `del`, `of`, `di`, `da` or `do` may stand between a day and its month and
+  between a month and its year (`14 de septiembre de 1946`); a month name and
+  its year may be joined by a comma (`September, 1946` is September 1946).
+- **Years.** Four digits, or two digits after an apostrophe (`'46`) or bare
+  after a month or inside a date (`Sept. 46`, `14.IX.46`, `4-5-48`). The profile's
+  century rule reads a two-digit year as 19xx and the reading records it as
+  its `century_rule` (`date-rules-v1:two_digit_year_century=1900`); without
+  the rule the year stays open (`century_unresolved`) and the date goes to
+  review. The record's own mark of an inferred century is
+  `FieldValue.century_rule` (with `precision`), which field research does not
+  set today: the century rule is kept in the reading of the check row the
+  value cites (locator `check:date_parser`), as it was before this change.
+  A year alone is a date at year precision, four digits or `'46`.
+- **Numeric dates** (`4-5-48`, `3.9.1946`, `5/13/1948`, and with the year
+  written first `1946-04-05`). They are settled only when a part over 12 fixes
+  which number is the day (`13-5-48` is 13 May 1948); a written four-digit
+  year fixes the year. Otherwise both readings are returned and the check
+  names the ambiguity (the note `day_month_order_ambiguous`, after
+  `several_readings`), so the review reason can say that the label does not
+  say which number is the month. A year written first is not read as the ISO
+  order: `1946-04-05` is April 5 or May 4 until a part over 12 decides.
+- **A year literal.** A month and day alone take a year the same reading
+  writes elsewhere, when the expert passes it as `year_literal`. They are then
+  that date only: `IV-25` beside `1948` is 25 April 1948, no longer also April
+  1925 (the reading a bare two-digit number after a month would otherwise
+  take under the century rule). The reading's `via` is `year_literal`. Field
+  research asks the parser for this (`date_parser(..., year_literal_decides=True)`);
+  the parser's default still leaves both readings, because the six-specialist
+  harness's hash-pinned explicit-event rules (`research_harness/temporal_context.py`)
+  read the second one to refuse a year that "alone chooses" between a day and a
+  short year (`test_temporal_event_links.py`).
+- **A date split over two lines of one label** (`date_lines`; pilot
+  105526330: "Guatemala, IV-25" above "1948, R.D. Mitchell"). The date and the
+  year are one date only under all of these rules, none a guess: the two lines
+  are adjacent, with nothing between them but the line break (the date ends its
+  line and the year starts the next, or the year ends a line and the date
+  starts the next); nothing else on either line could be a date (no other year,
+  numeric date, Roman numeral beside a number, or month word of any language: a
+  wide test, `date_lines.could_be_a_date`); the date states no year of its own;
+  and the year is bare, never a measurement or a determination's year. Two
+  forms, with a different bareness rule because they have different authors:
+  - the literal is both lines, as the organiser quotes it (`"IV-25\n1948"`, or
+    the year first). The year line may carry the period, comma, semicolon or
+    colon a sentence leaves (`1948.`, `1948,`): it is the year alone, every rule
+    below applies to it, and the mark the literal quotes counts as following
+    the year (`"3 Sept.\n1948."` in a reading that goes on `1948.5 m` is
+    refused). Lines with a blank line between them are `no_match` with
+    `split_lines_not_adjacent`. The organiser has named the year, so it may be followed by
+    a comma, semicolon or period and then other text (`1948, R.D. Mitchell`),
+    but never by a unit (`1948 m`, `1948 ft.`, `1948 msnm`), an apostrophe
+    (`1948'`), a dash and a number (`1948-49`), a decimal or second number
+    (`1948.5`, `1948 5`) or a word (`1948 det. J. Smith`); a year that ends the
+    line above the date must stand alone on its line (`det. J. Smith 1950`
+    and `El. 1948` do not). `parse_date` then reads one date (`via`
+    `split_lines`). Another date on the lines is `no_match` with the note
+    `split_lines_hold_another_date`; a year that is marked or does not stand
+    alone is `no_match` with `split_lines_year_not_alone`; a date that already
+    states a year is `no_match` with `split_lines_state_two_years`;
+  - the literal is the day and month alone (`IV-25`): nobody has named a year,
+    so it takes one only from a line that holds nothing but a four-digit year,
+    optionally followed by a period or a comma, directly below it or directly
+    above it (`via` `year_on_next_line` or `year_on_previous_line`). A year with
+    any other text on its line (`1948, R.D. Mitchell`, `1948 m`, `1948'`,
+    `1948-49`, `1948-2`, `El. 1948`, `alt. 1948`, `det. J. Smith 1950`) is not
+    borrowed, nor is `'48`, a bare two-digit number or `4800`; and when the lines
+    above and below give two different years, neither is. In every such case the
+    date stays open (`year_missing`) and goes to review.
+- **A literal that spans a line break is judged only by those rules.** The
+  parser reads no notation across a line break: any such literal that is not
+  a date and its year as above (`3\nSept.\n1946`, `3 Sept.\n1946 leg.`,
+  `1948-\nIX-3`) is `no_match` with the note `literal_spans_a_line_break`, so
+  a notation's whitespace never joins two lines past the rules above.
+- **Readings of one label that disagree.** The check reads the literal in each
+  reading's own text. When those results are not all the same (one reader's
+  adjacent year is 1948 and the other's 1949; one has the year line and one has
+  dropped it; one year is marked and the other bare), the check is `ambiguous`
+  with the notes `readers_disagree_on_date` and one naming each reading and
+  its result (`1A: 1948-04-25; 1B: 1949-04-25`), whichever reading is listed
+  first. The first reading's result is never taken for the others, and
+  `step._check_row` keeps no row for it. `reading_names` must name every
+  reading (a mismatch is a `ValueError`, never a silently shorter list). A reading that shows the literal inside
+  a slide code or a hyphen-joined token still makes it no date, as before.
+- **Ranges** (`3-5.IX.1946`, `VIII-IX.46`, `3.IX-5.X.1946`, `10-12 Sept.
+  1946`, `Sept. 3-5, 1946`, `3 Sept.-5 Oct. 1946`, `Sept.-Oct. 1946`,
+  `3.IX.1946-5.X.1946`). The text is split at a dash (hyphen, en dash or em
+  dash) into two ends; each end must read as a date by itself, and the first
+  borrows only what it leaves out (the month, the year) from the second. The
+  reading has the start as `iso` and `precision` and the end as `end` and
+  `end_precision`; the rule is `range:<start kind>..<end kind>`. An end
+  before its start is no range (`range_end_before_start`), and a numeric
+  range is not read. Date Visited From takes the start; Date Visited To takes
+  the end (`checks.DATE_PART`: the check returns the end as that field's
+  value, and a single date is its own end, so an explicit end date written
+  whole still works). The literal for both fields is the whole range, one of
+  the organiser's candidates. The G44 copy never fills Date Visited To from a
+  range's start (`derive.fill`).
+
+Not read at all, each left for a person: a numeric range (`3.9-5.10.1946`), a
+year range (`1946-48`), a bare two-digit year alone (`46`), and a lowercase
+Roman numeral beside spaces (`12 vi 1946`). The tests
+are `tests/test_date_forms.py` (a table of more than 60 forms in seven
+languages, with start, end, precision and rule, and every date and code the ten
+pilot labels write), `tests/test_date_months.py`,
+`tests/field_research/test_date_split_lines.py`,
+`tests/field_research/test_date_lines.py` and the three date tests at the end
+of `tests/field_research/test_experts.py`.
 
 ## Fields the label does not state (owner, 2026-10-09)
 
@@ -438,10 +851,16 @@ elevation is derived first, and only for a field a person has not decided):
    placeholders are "[unreadable]" (the marker the reader prompt asks for
    in place of each unreadable span), "(unreadable)", "[illegible]",
    "(illegible)", "[illeg.]", "[illeg]", "(illeg.)", "[unclear]",
-   "(unclear)", "[?]", "???", "...", "[...]" and the ellipsis character, in
-   any case (`checks.DOUBT_PLACEHOLDERS`; "..." also inside "...."), and
-   the words "illegible" and "unreadable" standing alone, in any case
-   (`checks.PLACEHOLDER_WORDS`; never "illegibly").
+   "(unclear)", "[?]", "???", "[...]" and the ellipsis character, anywhere
+   in a text, in any case (`checks.DOUBT_PLACEHOLDERS`); the words
+   "illegible" and "unreadable" standing alone, in any case
+   (`checks.PLACEHOLDER_WORDS`; never "illegibly"); exactly three periods,
+   with no period right before or after them ("Mossy ...", "Mossy...",
+   "(...)"), unless right after the word "etc", in any case ("etc...");
+   and three or more periods in square or round brackets ("[....]").
+   Four or more periods outside brackets are a printed form's dot leader
+   ("Det. ..........", "Loc. ......"), never a placeholder (N3 of #289's
+   sixth review).
 5. The organiser found no text for it: no candidate, no literal, no
    reader's verbatim. For a county, a city or a precise location, a text
    counts as absent only when its whole words, compared by the place
@@ -550,7 +969,8 @@ all of these hold:
   same number or code, case, spacing, punctuation and sex signs aside, so a
   reader's "Sp.30" beside "sp. 30", never "sp. 39"). This compares the
   organiser's candidates. Readers of a label with no decided transcript
-  whose codes differ never settle (the readers' rule below). On a label
+  whose codes differ never settle (the readers' rule below), unless they
+  differ only in letter case or spacing. On a label
   with a decided transcript, the rule refuses another reader's different
   code only when the organiser gives that reader's text as a candidate;
   where it gives none, the decided transcript's code clears alone, as G19
@@ -566,33 +986,72 @@ all of these hold:
   own ("cf.Epipsocus", "c.f.Epipsocus" and "Conf.Epipsocus" are
   "Epipsocus"; a person's initials such as "C.F." keep their letters;
   `checks._token`); what then holds no letter or digit (a sex
-  sign, a "+", a lone "?" or "cf.") is no token. Two tokens are read: the one
-  written immediately before the code (the last before it on its line or,
-  when its line has none there, the last of the nearest line above that
-  has one), and the first after the code on its line. Either may be a
-  genus (`checks.may_be_genus`), judged with its first letter made a
-  capital, as the query check above judges a token: when it holds a letter
-  and no digit ("Epipsocus", "epipsocus?", "E.?", "cf.Epipsocus",
-  "R.D.mitchell", "legs", the reader's "[unreadable]"); when it is then a
-  capital followed by letters and digits ending in a letter, with an
-  optional final period ("Ep1psocus", "ep1psocus"); or when it holds three
-  letters or more and one digit at most, a genus misread with a digit
-  ("Epipsocu5", "3pipsocus"; with one digit, no date or number
-  punctuation stands between digits). Any other token is none: "V-4-67-1",
-  "6400'", "IX-14-46", "Epipsocu55". The token after the code is passed over
-  when it is, as written, one of `checks.NOT_GENERA`, the one list of
-  such words: legs, leg, wings, wing, head, terminalia, genitalia, slide,
-  mount and the two sex signs. On the taxon's keyed line ("taxon: sp.
-  30", as `Workflow.parse` reads key: value text) the key is no token;
-  when the nearest line above with a token is itself a keyed line
-  ("verbatim_dts: ..."), it is another field's, and no token before the
-  code is read. So "Epipsocus sp. 1", "Epipsocus", "Epipsocus?" or
+  sign, a "+", a lone "?" or "cf.") is no token. Two tokens are read
+  (`checks.genus_beside`), and words of `checks.NOT_GENERA` are passed
+  over on both sides (the real-model run of the ten pilots, 2026-10-09):
+  - before the code, the last token on its line that is not one of them;
+    when its line has none, the last such token of the nearest line above
+    that has any token; when every token of that line is one of them, none
+    ("Epipsocus" in "Epipsocus legs sp. 1" and above "<female sign> legs
+    Sp.#1"; none for "legs sp. 1" or for "wings + head" above "sp. 30");
+  - after the code, the first token on its line that is not one of them,
+    and none when every token there is one ("Epipsocus" in "sp. 1
+    <female sign> legs Epipsocus"; none for "sp. 1 legs").
+
+  `checks.NOT_GENERA` is the one list of such words, compared as written
+  (Unicode NFC): the parts a slide mounts, the slide or mount and the sex,
+  in English (head, leg, legs, wing, wings, abdomen, antenna, antennae,
+  genitalia, terminalia, slide, mount, male, males, female, females),
+  Spanish (cabeza, pata, patas, ala, alas, antena, antenas, lamina,
+  montaje, macho, machos, hembra, hembras), French (tete, patte, pattes,
+  aile, ailes, antenne, antennes, lame, montage, male, males, femelle,
+  femelles), German (Kopf, Bein, Beine, Fluegel, Fuehler, Praeparat,
+  Maennchen, Weibchen) and Portuguese (cabeca, pernas, asa, asas, lamina,
+  montagem, femea, femeas), and the two sex signs. This note is plain
+  ASCII: the list holds each word with its accents (the Spanish lamina
+  with an acute a, the Portuguese one with a circumflex a; tete, femea and
+  femeas with a circumflex e; the French male and males with a circumflex
+  a; cabeca with a c cedilla) and the German words with an umlaut (u
+  umlaut for "ue", a umlaut for "ae"); their ASCII spellings are not
+  listed, but for the English male and males. A genus is
+  written with a capital, so the lower-case words are listed only in lower
+  case ("Legs" and "Ala" may still be a genus), and "perna" is not
+  listed (Perna is a mussel genus). A token is none either when a
+  person's name written with initials ends with it (before the code) or
+  starts with it (after the code) (`checks._PERSON`): initials run into
+  the surname ("R.D.mitchell"), initials then a capitalised surname ("R.
+  D. Mitchell", "1948, R.D. Mitchell", "H. Hoogstraal"), a surname, a
+  comma and initials ("Mitchell, R.D.", "Mitchell, R. D."), or two or more
+  initials alone ("R.D."), unless the initials spell a qualifier of the
+  doubt signs' list ("C.F. Epipsocus" and "N.R. Epipsocus" may be "cf."
+  and "nr."). One capital and a period ("E.") abbreviates a genus.
+
+  The token read may be a genus (`checks.may_be_genus`), judged with its
+  first letter made a capital, as the query check above judges a token:
+  when it holds a letter and no digit ("Epipsocus", "epipsocus?", "E.?",
+  "cf.Epipsocus", "Mitchell", the reader's "[unreadable]"); when it is
+  then a capital followed by letters and digits ending in a letter, with
+  an optional final period ("Ep1psocus", "ep1psocus"); or when it holds
+  three letters or more and one digit at most, a genus misread with a
+  digit ("Epipsocu5", "3pipsocus"; with one digit, no date or number
+  punctuation stands between digits). Any other token is none:
+  "V-4-67-1", "6400'", "IX-14-46", "Epipsocu55". On the taxon's keyed line
+  ("taxon: sp. 30", as `Workflow.parse` reads key: value text) the key is
+  no token; when the nearest line above with a token is itself a keyed
+  line ("verbatim_dts: ..."), it is another field's, and no token before
+  the code is read. So "Epipsocus sp. 1", "Epipsocus", "Epipsocus?" or
   "[unreadable]" with "sp. 1" on the next line (as on 105526328), "E.?
-  sp. 1", "Epipsocu5 sp. 1" and "legs sp. 1" never clear as unmatched,
-  whatever the organiser's candidate is; the pilot's 105526321 ("Mossy
-  forest 6400'" above "sp. 30"), 105526326 ("Sp. 22" on a label of its
-  own) and 105526327 ("V-4-67-1" above "sp 22", "legs" on the line below)
-  clear;
+  sp. 1", "Epipsocu5 sp. 1", "C.F. Epipsocus" above "sp. 1" and "Legs sp.
+  1" never clear as unmatched, whatever the organiser's candidate is; the
+  pilot's 105526321 ("Mossy forest 6400'" above "sp. 30"), 105526326
+  ("Sp. 22" on a label of its own), 105526327 ("V-4-67-1" above "sp 22",
+  "legs" on the line below), 105526322 ("wings + head" above "sp. 30"),
+  105526323 ("genitalia + legs" above "Sp 30"), 105526329 ("R.D.mitchell"
+  above "sp #1") and 105526330 ("1948, R.D. Mitchell" above
+  "<female sign> legs Sp.#1") pass this check. 105526322 and 105526329
+  still go to review on the readers' rule below: their readers write
+  "sp. 30" and "Sp.30", "sp #1" and "Sp #1", and their labels have no
+  decided transcript;
 - no part of a label that writes the code is unreadable
   (`step._code_label_unreadable`): rule A's test (no reader's unreadable
   span, no transcript marked unreadable, no placeholder of rule A's list
@@ -618,16 +1077,43 @@ all of these hold:
     "cf" and "nr"), with no letter right before or after it: apart or
     against a word ("cf. Epipsocus", "CF.Epipsocus", "(cf) Epipsocus",
     "cfr. Epipsocus", "Epipsocus nr", "possibly Epipsocus"), never inside a
-    longer word ("Nearctic", "Staff", "Victoria", "Proper"). Two or more
-    capitals each followed by a period are a person's initials, never a
-    qualifier (`checks._initials`: "C.F." in "leg. C.F. Baker" or "Baker,
-    C.F.", "N.R. Smith");
+    longer word ("Nearctic", "Staff", "Victoria", "Proper"). These
+    ordinary label words, which say nothing about a name, are no sign
+    (`checks._qualifier_sign`; N3 of #289's sixth review):
+    - capitals with a period between each two, with or without the final
+      period: a person's initials ("C.F." in "leg. C.F. Baker", "Baker,
+      C.F", "C.F Baker", "N.R. Smith");
+    - "NR", all capitals with no period after it: a nature reserve
+      ("Sabah, Danum Valley NR");
+    - "Nr" or "NR", with or without its period, before a number on its
+      line: German "Nummer" ("Praep. Nr. 1234");
+    - "conf", in any case, with or without its period, before the word
+      "by" in any case, or before a person's initials (capitals each
+      followed by a period) and a capitalised surname, or two or more
+      initials alone, after spaces or a line break: "confirmed by"
+      ("conf. by J. Smith", "conf. K. Yoshizawa", "conf. E.L. Mockford",
+      "Conf. E.L.M."). A surname with no initials ("conf. Yoshizawa")
+      cannot be told from a genus and stays a sign;
+    - "near" or "nr" right before a place the label's place fields
+      settled, or "vic" right before or right after one, on its line:
+      the rest of the line after it (and its period) starts with that
+      place's whole name, or, for "vic", the line up to it ends with that
+      name, compared by the place comparison key ("5 mi near Chicago",
+      "nr. Chicago", "Chicago vic.", "Chicago, vic." beside the settled
+      city "Chicago"). The places are the country, province or state,
+      county and city settled on a place source's record (supported, with
+      a literal and an authority_id: `step._settled_places`).
+      `apply_outcomes` settles the places before the taxon, so the step
+      and the later re-check (`step.taxon_unmatched`) read the same
+      places. "near", "nr." and "vic." beside any other word, or beside a
+      place no place field settled ("5 km nr. Davao" when no place field
+      settled Davao, or "5 mi near Chicago" when the city did not settle),
+      stay signs;
   - a placeholder for an unread word, by rule A's own test
-    (`checks.shows_placeholder`): "[unreadable]", "(unreadable)",
-    "[illegible]", "(illegible)", "[illeg.]", "[illeg]", "(illeg.)",
-    "[unclear]", "(unclear)", "[?]", "???", "...", "[...]" or the ellipsis
-    character anywhere in a text, in any case, or the words "illegible"
-    and "unreadable" standing alone, in any case;
+    (`checks.shows_placeholder`, item 4 of rule A above): its listed
+    placeholders, the words "illegible" and "unreadable" standing alone,
+    exactly three periods (never after "etc"), and three or more periods in
+    brackets; never a dot leader of four or more periods;
   - a reader's unreadable span, or a transcript marked unreadable, on any
     label.
 
@@ -638,15 +1124,21 @@ all of these hold:
   "V-4-67-1" above the code, on the line after the code or on another
   label, and "cf. Epipsocus", "cfr. Epipsocus" or "c.f. Epipsocus"
   anywhere, a determination label of its own included, keep the taxon in
-  review, as does a locality's "near" or "nr." and a "?" beside any
-  word; a collector's "C.F. Baker" and a locality's "Melbourne, Vic." do
-  not. No reading of 105526321, 105526326 or 105526327 shows a sign.
+  review, as do "nr. Epipsocus", "NR. Epipsocus", "Nr. Epipsocus", "conf.
+  Epipsocus", a locality's "near", "nr." or "vic." beside a place no place
+  field settled, a "?" beside any word, "Mossy ..." and "[...]". A
+  collector's "C.F. Baker" or "Baker, C.F", a locality's "Melbourne,
+  Vic.", "Sabah, Danum Valley NR" or "5 mi near Chicago" beside the
+  settled city Chicago, "Praep. Nr. 1234", "conf. K. Yoshizawa" and a
+  printed form's "Loc. ........" do not. No reading of 105526321,
+  105526326 or 105526327 shows a sign.
   105526324's unreadable label, whose readers list the span and write
   "[unreadable]", holds back the "sp 22" another of its labels writes;
 - the readers settle on the literal by the rule for readers that disagree
   (step 5 above): with no successful lookup, that is a label's decided
   transcript, its other readers evidence only, or readers of a label with
-  none that each write exactly that text;
+  none that each write that text, letter case and spacing aside, the
+  first of them writing it exactly;
 - the value meets the agreement rules every resolved answer meets
   (`agreement.refusal`): among them, no candidate of it may quote a longer
   name around it, and no text may mark the literal's first word as a
@@ -679,19 +1171,28 @@ its brief has it look up (alone, any genus a label writes, doubtful or
 not, before it answers for a morphocode):
 - a genus written with no doubt sign where the label check does not count
   it (away from the code, as "Epipsocus" above "V-4-67-1" above the code,
-  on the line after the code's or on another label; or misread beside it
-  into a token the label check's test does not count, as "Epipsocu55"),
-  when the expert makes no GBIF lookup but of the code itself;
+  on the line after the code's or on another label; behind a line of
+  `checks.NOT_GENERA` words, as "Epipsocus" above "wings + head" or
+  "legs" above the code; right after a person's initials, as "R.D.
+  Epipsocus" above the code, read as a name; or misread beside it into a
+  token the label check's test does not count, as "Epipsocu55"), when the
+  expert makes no GBIF lookup but of the code itself;
 - a genus marked doubtful in a way the doubt signs do not read (a doubt
   word outside the qualifier list, as "sim. Epipsocus" above "V-4-67-1"
-  above the code), when the expert likewise makes no GBIF lookup but of
+  above the code; or a qualifier the signs read as an ordinary label word,
+  as "NR Epipsocus", a nature reserve to them, or "C.F Epipsocus",
+  initials to them), when the expert likewise makes no GBIF lookup but of
   the code itself.
 
-Each still clears as unmatched. Where the expert does look the genus up,
-as its brief says, the GBIF guard refuses rule B, since that query is not
-the code (`step._gbif_asked_another_name`;
+Each still clears as unmatched
+(`test_a_genus_the_label_checks_do_not_read_clears_when_the_expert_makes_no_lookup`
+for "sim. Epipsocus", "NR Epipsocus" and "C.F Epipsocus" above
+"V-4-67-1", and for "Epipsocus" above "wings + head" or "legs" and "R.D.
+Epipsocus" right above the code). Where the expert does look the genus up, as its brief says,
+the GBIF guard refuses rule B, since that query is not the code
+(`step._gbif_asked_another_name`;
 `test_the_real_resolver_looking_the_genus_up_as_its_brief_says_keeps_the_taxon_in_review`
-for "sim. Epipsocus" and "Epipsocus" above "V-4-67-1").
+for the same three and "Epipsocus" above "V-4-67-1").
 
 **Known limitation.** The canonical projection skips a field with no literal
 (`application/projection.py`, `_fields`), so the record in Data Connect does
@@ -736,8 +1237,10 @@ anything but the code. A not-present
 value with no such row, as every record researched before 2026-10-09 has,
 never clears on a re-check; only new research writes the row.
 
-A field research run that failed (an outage, a model error, a timeout) is
-retried, and the retry researches only the fields that did not settle (a
+A field research run that failed (a field whose expert reached no source, a
+model error, a timeout) is retried until its last allowed attempt, on which
+a source still unreachable sends its field to review (step 7 above), and
+the retry researches only the fields that did not settle (a
 province, county or city that waited for a country that did not settle
 is among them). A field marked not on the label is not settled, so the
 retry researches it again, and it then cites only the row the retry writes.

@@ -5,7 +5,8 @@ brief and only the tools that field may use, so each record and field starts
 with fresh context and shows in Logfire as its own agent. An answer is checked
 against the readings and against what this expert's own tools returned before
 it is accepted: the literal must occur in the readings it names and be a whole
-organiser candidate literal of each (agreement.literal_refusal), a value that
+organiser candidate literal of each, or text each writes as whole words within
+one line that cuts no candidate (agreement.literal_refusal), a value that
 differs from it must be a source candidate or a deterministic check's output, a
 taxon is GBIF's decision for the whole name that candidate writes, and the
 agreement rules hold (agreement.refusal). A field-level problem never raises;
@@ -285,7 +286,8 @@ class _Expert:
         """
         result = checks.parse_date(
             literal, reading_texts=self.texts, date_rules=self.date_rules,
-            year_literal=year_literal,
+            year_literal=year_literal, part=checks.DATE_PART.get(self.task.key),
+            reading_names=[r.name for r in self.readings],
         )
         self.checks.append(result)
         return result.as_dict()
@@ -405,8 +407,8 @@ class _Expert:
                 )
             names.append(reading.name)
         named = [self.by_label[_label(name)] for name in answer.reading_names]
-        # The literal is a whole organiser candidate of the readings it names
-        # (agreement.literal_refusal), never a piece of a reading.
+        # The literal is a whole organiser candidate of the readings it names,
+        # or whole words of one line of each (agreement.literal_refusal).
         refused = agreement.literal_refusal(self.task, self.readings, literal=literal, named=named)
         if refused is not None:
             raise ModelRetry(refused.retry)
@@ -437,9 +439,10 @@ class _Expert:
                     "check you ran on exactly this literal. Leave value empty or correct it."
                 )
         if key == "taxon":
-            # The whole name the label writes is the candidate's, not the answer's.
+            # The whole name the label writes is the candidate's, not the answer's;
+            # text read from the transcript passed literal_refusal as a whole name.
             self._validate_taxon(answer, cited,
-                agreement.candidate_literal(self.task, self.readings, literal, named) or "")
+                agreement.candidate_literal(self.task, self.readings, literal, named) or literal)
         refused = agreement.refusal(
             self.task,
             self.readings,
@@ -511,14 +514,32 @@ class _Expert:
 
     # Result ------------------------------------------------------------------
 
-    @property
-    def outage(self) -> bool:
-        """Whether a lookup's last attempt (per source and query) ended in an outage."""
+    def _last(self) -> dict[tuple[str, str], LookupStatus]:
+        """Each lookup's last status, per source and query, in first-call order."""
         last: dict[tuple[str, str], LookupStatus] = {}
         for call in self.calls:
             if call.status is not None:
                 last[(call.source, call.query)] = call.status
-        return any(status in SOURCE_OUTAGES for status in last.values())
+        return last
+
+    @property
+    def outage(self) -> bool:
+        """Whether a lookup's last attempt (per source and query) ended in an outage."""
+        return bool(self.unreachable)
+
+    @property
+    def unreachable(self) -> tuple[str, ...]:
+        """The sources a lookup's last attempt (per source and query) could not
+        reach (SOURCE_OUTAGES), in call order."""
+        return tuple(dict.fromkeys(
+            source for (source, _), status in self._last().items() if status in SOURCE_OUTAGES))
+
+    @property
+    def answered(self) -> bool:
+        """Whether a lookup's last attempt (per source and query) came back with
+        an answer: a status that is no operational failure (OPERATIONAL), so a
+        success, a no-match, an ambiguous or an empty answer."""
+        return any(status not in OPERATIONAL for status in self._last().values())
 
     def outcome(
         self,
@@ -548,6 +569,7 @@ class _Expert:
             cost_micros=model.cost_micros if model is not None else 0,
             model_calls=model.model_calls if model is not None else 0,
             fallback=fallback,
+            unreachable=self.unreachable,
         )
 
 
@@ -648,7 +670,14 @@ def make_resolver(
         finally:
             if model is not None:
                 await _close_client(model)
-        if answer is not None and answer.outcome != "resolved" and expert.outage:
+        # One source that could not be reached does not void the field (the
+        # owner's "failures are graceful"): when any of the expert's lookups
+        # answered, its answer stands and the step checks it as any other
+        # (a resolved one may settle; an unresolved one goes to review), its
+        # reason naming the unreachable source. Only an unresolved answer
+        # none of whose lookups answered waits for a retry.
+        if (answer is not None and answer.outcome != "resolved" and expert.outage
+                and not expert.answered):
             failure = "source_unavailable"
         return expert.outcome(answer, failure, model, fallback=fallback)
 

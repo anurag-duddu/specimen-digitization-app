@@ -198,6 +198,17 @@ class ProcessingDetail extends StatelessWidget {
       run['blocker'],
       textOf(specimen.data['blocker'], ''),
     );
+    // A run whose automatic retries ran out is blocked by
+    // `retry_budget_exhausted:<cause>`. It is judged by that cause, never by
+    // the word "budget" in the prefix: an unreachable source is no cost limit.
+    const String retriesStopped = 'retry_budget_exhausted:';
+    final bool retriesRanOut = blocker.startsWith(retriesStopped);
+    final String cause = retriesRanOut
+        ? blocker.substring(retriesStopped.length)
+        : blocker;
+    final bool costStop = cause.contains('budget') || cause.contains('cost');
+    final bool sourceStop =
+        retriesRanOut && cause == 'lookup_operational_failure';
     final List<String> actions =
         (specimen.data['available_actions'] as List? ?? <Object?>[])
             .map((Object? a) => a.toString())
@@ -239,7 +250,15 @@ class ProcessingDetail extends StatelessWidget {
           if (canOperate && actions.contains('reconcile'))
             _reconcileButton(context, run, activeLease: activeLease),
         ],
-        if (blocker.contains('budget') || blocker.contains('cost')) ...<Widget>[
+        if (sourceStop) ...<Widget>[
+          Text(
+            'An approved source could not be reached after repeated '
+            'attempts. Retry later, or ask an administrator.',
+            style: ui.type.body,
+          ),
+          const AdministratorContactLine(),
+        ],
+        if (costStop) ...<Widget>[
           Text('Processing stopped at a cost limit.', style: ui.type.body),
           const CaveatText(
             label:

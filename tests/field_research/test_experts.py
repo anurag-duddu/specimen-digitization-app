@@ -557,6 +557,62 @@ def test_a_source_outage_leaves_the_field_for_retry(failure):
     assert tool_returns(script.seen[1][0])[0]["status"] in {"timeout", "provider_error"}
 
 
+TGN_DOWN = SourceAnswer("tgn", "Davao", LookupStatus.AUTHORIZATION, (), None,
+                        "Getty TGN refused the request with HTTP 403")
+WIKIDATA_NONE = SourceAnswer("wikidata", "Davao", LookupStatus.NO_MATCH, (),
+                             Evidence(id="ev-wd-1", kind="lookup", source="wikidata", locator=None,
+                                      excerpt="Wikidata has no place for 'Davao'"),
+                             "Wikidata has no place for 'Davao'")
+
+
+@pytest.mark.parametrize("answer", [
+    dict(outcome="sources_cannot_resolve", literal="Davao", reading_names=["1A"],
+         explanation="Getty TGN did not answer; Wikidata has no town Davao."),
+    dict(outcome="label_lacks_value", explanation="No reading names a town."),
+    dict(outcome="several_possibilities", options=["Davao", "Mindanao"],
+         explanation="The town may be either."),
+])
+def test_one_source_down_among_several_leaves_the_experts_own_answer(answer):
+    """One dead source does not void the field: Wikidata answered, so the
+    expert's unresolved answer stands for review, naming Getty TGN."""
+    tools = FakeTools({("tgn", "Davao"): TGN_DOWN, ("wikidata", "Davao"): WIKIDATA_NONE})
+    script = Script(
+        lambda messages, info: ModelResponse(parts=[
+            ToolCallPart("lookup", {"source": "tgn", "query": "Davao"}),
+            ToolCallPart("lookup", {"source": "wikidata", "query": "Davao"})]),
+        answer,
+    )
+
+    outcome = resolve(script, task("city"), tools)
+
+    assert outcome.failure is None and outcome.answer.outcome == answer["outcome"]
+    assert outcome.unreachable == ("tgn",)
+    assert outcome.evidence == [WIKIDATA_NONE.evidence]
+
+
+@pytest.mark.parametrize("others", [
+    # Every lookup failed operationally: Wikidata timed out too.
+    {("wikidata", "Davao"): SourceAnswer("wikidata", "Davao", LookupStatus.TIMEOUT, (), None)},
+    # A refused query is no answer either.
+    {("geolocate", "Davao"): SourceAnswer("geolocate", "Davao", LookupStatus.POLICY, (), None)},
+])
+def test_an_expert_none_of_whose_lookups_answered_waits_for_a_retry(others):
+    tools = FakeTools({("tgn", "Davao"): TGN_DOWN, **others})
+    [(source, query)] = others
+    script = Script(
+        lambda messages, info: ModelResponse(parts=[
+            ToolCallPart("lookup", {"source": "tgn", "query": "Davao"}),
+            ToolCallPart("lookup", {"source": source, "query": query})]),
+        dict(outcome="sources_cannot_resolve", explanation="No source answered."),
+    )
+
+    outcome = resolve(script, task("city"), tools)
+
+    assert outcome.failure == "source_unavailable"
+    unreachable = ("tgn", "wikidata") if source == "wikidata" else ("tgn",)
+    assert outcome.unreachable == unreachable
+
+
 def test_a_query_that_later_succeeds_clears_its_outage():
     tools = FakeTools({("gbif", "Epipsocus"): GBIF_SUCCESS})
     script = Script(
@@ -710,24 +766,51 @@ def test_logfire_shows_each_expert_as_its_own_agent(monkeypatch):
         "Expert for Taxon. Settles it from the label readings and its approved sources.")
 
 
-def test_the_briefs_place_notations_are_the_tables():
-    """The shared brief's notation line is rendered from the table the place
-    rule reads (notations.NOTATIONS): every entry, and no other."""
+def test_the_briefs_have_a_place_abbreviation_looked_up_by_its_expansion():
+    """No table of notations: every brief has a place abbreviation the label
+    writes looked up by its expansion and named in the explanation, and the
+    place rule's examples are what the letter rule decides: the expansions it
+    names fit their abbreviations, the names it calls context only do not."""
     import re
 
-    from specimen_digitization.field_research import notations
+    from specimen_digitization.field_research.abbreviations import fits
     from specimen_digitization.field_research.prompts import _ROOT, instructions
 
-    assert (_ROOT / "common.txt").read_text(encoding="utf-8").count(notations.MARKER) == 1
+    assert "PLACE_NOTATIONS" not in (_ROOT / "common.txt").read_text(encoding="utf-8")
     for key in FIELD_TOOLS:
-        text = instructions(key)
-        [line] = [line for line in text.splitlines() if line.startswith('- "') and "look it up as" in line]
-        assert line == notations.brief_line() and notations.MARKER not in text
-        listed = re.findall(r'"([^"]+)": [^(]+\((\w+); look it up as "([^"]+)"\)', line)
-        assert listed == [(entry.notation, entry.field, entry.expansion) for entry in notations.NOTATIONS]
-    # A notation is matched by the place comparison key, for its own field only.
-    assert notations.expansion("P. I.", "country").expansion == "Philippine Islands"
-    assert notations.expansion("P.I.", "province_state") is None and notations.expansion("Phil.", "country") is None
+        [line] = [line for line in instructions(key).splitlines() if line.startswith("- A place abbreviation")]
+        assert "look up its expansion with each abbreviated word written out" in line
+        assert '"Davao Province"' in line and "name in your explanation the abbreviation you expanded" in line
+    # The unit word written out, where the label abbreviates it (105526326's "Davao, Prov.").
+    assert 'Search with the unit word written out ("Davao Province")' in instructions("province_state")
+    assert 'search with the unit word written out ("Cook County")' in instructions("county")
+    [rule] = [line for line in instructions("country").splitlines() if "whose words its letters fit in order" in line]
+    accepted, context = rule.split("when the literal is an abbreviation", 1)[1].split("A lookup of any other name", 1)
+    expansions = re.findall(r'"([^"]+)" for "([^"]+)"', accepted)
+    assert expansions == [("Philippine Islands", "P.I."), ("New South Wales", "N.S.W."),
+                          ("Davao Province", "Davao, Prov.")]
+    assert all(fits(abbreviation, expansion) for expansion, abbreviation in expansions)
+    others = re.findall(r'"([^"]+)" for "([^"]+)"', context)
+    assert ("Philippines", "P.I.") in others
+    assert not any(fits(written, name) for name, written in others)
+
+
+UNREACHABLE_LINE = (
+    "- If a source cannot be reached (an error status and no evidence_id), decide with the sources that "
+    "answered when they settle the field under these rules, and say in the explanation which source did "
+    "not answer.")
+
+
+def test_every_place_brief_has_its_expert_decide_with_the_sources_that_answered():
+    """One unreachable source does not void a field (experts.make_resolver):
+    every brief whose expert may ask Getty TGN says so, once."""
+    from specimen_digitization.field_research.prompts import instructions
+
+    places = [key for key, tools in FIELD_TOOLS.items() if "tgn" in tools]
+    assert places == ["country", "province_state", "county", "city", "precise_location"]
+    for key in FIELD_TOOLS:
+        lines = instructions(key).splitlines()
+        assert lines.count(UNREACHABLE_LINE) == (1 if key in places else 0), key
 
 
 def test_the_taxon_brief_has_a_doubtful_or_distant_genus_looked_up_alone():
@@ -1183,13 +1266,15 @@ PHILIPPINE_ISLANDS = tgn("Philippine Islands", "ev-pi", ("Philippine Islands", "
     ("province_state", "Chimaltango", CHIMALTENANGO, "Chimaltenango", "tgn:1000565", False),
     # A lookup that has nothing to do with what the label writes.
     ("province_state", "Chimaltenago", ESCUINTLA, "Escuintla", "tgn:1000566", False),
-    # "P.I." read as the Philippines: the query is neither the label's text, nor the name the
-    # notation table gives it, nor one letter from it.
+    # "P.I." read as the Philippines: the query is neither the label's text, nor a name its
+    # letters spell ("P" and "I" are two groups, "Philippines" one word), nor one letter from it.
     ("country", "P.I.", PHILIPPINES_BY_NAME, "Philippines", "tgn:1000135", False),
-    # The notation table's name for "P.I." (P4).
+    # An expansion of "P.I." by the letter rule (P4): "P" Philippine, "I" Islands.
     ("country", "P.I.", PHILIPPINE_ISLANDS, "Philippines", "tgn:1000135", True),
-    # A notation the table does not hold.
-    ("country", "Phil. Is.", PHILIPPINE_ISLANDS, "Philippines", "tgn:1000135", False),
+    # Another abbreviation of it, which the fixed table never held.
+    ("country", "Phil. Is.", PHILIPPINE_ISLANDS, "Philippines", "tgn:1000135", True),
+    # Not written as an abbreviation: "Philippine" is a word, not "P.I." shortened.
+    ("country", "Philippine", PHILIPPINE_ISLANDS, "Philippines", "tgn:1000135", False),
 ])
 def test_a_place_settles_only_on_a_lookup_of_the_labels_own_text(key, literal, received, value, authority,
                                                                   settles):
@@ -1210,6 +1295,183 @@ def test_a_place_settles_only_on_a_lookup_of_the_labels_own_text(key, literal, r
         made.validate(given)
 
 
+# Abbreviations from anywhere, looked up by an expansion (P4). The answers are
+# constructed in the sources' shapes (sources._place, sources._geolocate); the
+# authority ids are made up.
+STATE = "states (political divisions), first level subdivisions (political entities)"
+
+
+def answered(source: str, query: str, evidence_id: str, name: str, kind: str | None) -> SourceAnswer:
+    """`source`'s success answer for `query`: one place, `name`, of that kind."""
+    authority = f"{source}:{name.casefold().replace(' ', '-')}"
+    return SourceAnswer(source, query, LookupStatus.SUCCESS, (SourceCandidate(name, authority, kind),),
+                        Evidence(id=evidence_id, kind="authority", source=source, locator=authority,
+                                 excerpt=name), note="match")
+
+
+@pytest.mark.parametrize(("key", "literal", "received", "settles"), [
+    ("country", "Guat.", answered("tgn", "Guatemala", "ev-1", "Guatemala", NATION), True),
+    ("province_state", "N.S.W.", answered("tgn", "New South Wales", "ev-1", "New South Wales", STATE), True),
+    ("province_state", "Qld.", answered("tgn", "Queensland", "ev-1", "Queensland", STATE), True),
+    ("province_state", "Edo. M\u00e9x.", answered("wikidata", "Estado de M\u00e9xico", "ev-1", "State of Mexico",
+                                                  "state of Mexico"), True),
+    ("province_state", "B.C.", answered("nga", "British Columbia", "ev-1", "British Columbia", "A.ADM1"), True),
+    ("city", "Ft. Lauderdale", answered("geolocate", "Fort Lauderdale, Florida, United States", "ev-1",
+                                        "Fort Lauderdale", None), True),
+    ("city", "Sta. Cruz", answered("geolocate", "Santa Cruz, Bolivia", "ev-1", "Santa Cruz", None), True),
+    # A unit word written out. Wikidata's answer for "Davao Province" is the real one
+    # (2026-10-09); a search for "Davao" alone has several units at a province's level.
+    ("province_state", "Davao, Prov.", answered("wikidata", "Davao Province, Philippines", "ev-1", "Davao",
+                                                "former province of the Philippines, province of the Philippines"), True),
+    ("province_state", "Davao\nProv.", answered("wikidata", "Davao Province, Philippines", "ev-1", "Davao",
+                                                "former province of the Philippines, province of the Philippines"), True),
+    ("county", "Cook Co.", answered("tgn", "Cook County", "ev-1", "Cook",
+                                    "counties, second level subdivisions (political entities)"), True),
+    ("province_state", "Edo. de M\u00e9xico", answered("wikidata", "Estado de M\u00e9xico", "ev-1", "State of Mexico",
+                                                       "state of Mexico"), True),
+    ("province_state", "Dpto. Cusco", answered("tgn", "Departamento Cusco", "ev-1", "Cusco", FIRST), True),
+    # Names the letters do not spell: two groups never fit one word, and Iowa has no "l".
+    ("country", "P.I.", answered("tgn", "Peru", "ev-1", "Peru", NATION), False),
+    ("province_state", "Ill.", answered("tgn", "Iowa", "ev-1", "Iowa", STATE), False),
+    # Not written as an abbreviation.
+    ("city", "Lima", answered("geolocate", "Limassol, Cyprus", "ev-1", "Limassol", None), False),
+    # Capitals with no period are initials only (the review of #295's LIMIT cases): "UK" is
+    # "United Kingdom" (the step still needs another place inside it), never "Ukraine";
+    # "MALI" and "IRAN" spell no country.
+    ("country", "UK", answered("tgn", "United Kingdom", "ev-1", "United Kingdom", NATION), True),
+    ("country", "UK", answered("tgn", "Ukraine", "ev-1", "Ukraine", NATION), False),
+    ("country", "MALI", answered("tgn", "Malawi", "ev-1", "Malawi", NATION), False),
+    ("country", "IRAN", answered("tgn", "Ireland", "ev-1", "Ireland", NATION), False),
+])
+def test_a_place_abbreviation_settles_on_a_lookup_of_an_expansion_its_letters_fit(key, literal, received, settles):
+    readings = (Reading("1A", "region-1", "obs-1a", "raw_reading", f"{literal}\nleg. J. Smith"),
+                Reading("1B", "region-1", "obs-1b", "raw_reading", f"{literal}\nleg. J. Smith"))
+    made = experts._Expert(task(key, candidates=offered(("1A", literal), ("1B", literal))), readings,
+                           FakeTools(), PILOT_DATES)
+    made.calls.append(experts._Call(received.source_id, received.query, received.status, received))
+    [place] = received.candidates
+    given = answer(outcome="resolved", literal=literal, reading_names=["1A", "1B"], value=place.name,
+                   authority_id=place.authority_id, source_evidence_ids=["ev-1"])
+
+    if settles:
+        assert made.validate(given).value == place.name
+        assert agreement.place_basis(made.task, literal, place.name, place.authority_id,
+                                     [received]) == agreement.ABBREVIATION
+        return
+    with pytest.raises(ModelRetry, match="asked the label's own text"):
+        made.validate(given)
+
+
+@pytest.mark.parametrize(("literal", "query", "name", "kind", "basis"), [
+    # A letter dropped, a period after: a near spelling (G34's one-letter half), never
+    # an abbreviation (the review of #295, H1 and H3).
+    ("Chimaltenago.", "Chimaltenango", "Chimaltenango", FIRST, "near_spelling"),
+    ("Guatmala.", "Guatemala", "Guatemala", NATION, "near_spelling"),
+    # Two letters dropped: nothing (H2).
+    ("Chimaltango.", "Chimaltenango", "Chimaltenango", FIRST, None),
+])
+def test_a_name_with_letters_dropped_is_no_abbreviation(literal, query, name, kind, basis):
+    found = answered("tgn", query, "ev-1", name, kind)
+    key = "country" if kind == NATION else "province_state"
+    field = task(key, candidates=offered(("1A", literal)))
+    assert agreement.place_basis(field, literal, name, found.candidates[0].authority_id, [found]) == basis
+
+
+@pytest.mark.parametrize(("query", "basis"), [
+    # The unit word written out: an expansion (agreement.ABBREVIATION), though its
+    # comparison key is the literal's.
+    ("Davao Province, Philippines", "abbreviation"),
+    # The label's own text (agreement.ASKED): the name before the comma, or the
+    # literal with no more letters.
+    ("Davao, Philippines", "asked"),
+    ("Davao Prov., Philippines", "asked"),
+])
+def test_a_unit_word_written_out_is_an_expansion_and_the_labels_own_text_is_not(query, basis):
+    found = answered("wikidata", query, "ev-1", "Davao", "former province of the Philippines")
+    province = task("province_state", candidates=offered(("1A", "Davao, Prov.")))
+    assert agreement.place_basis(province, "Davao, Prov.", "Davao", "wikidata:davao", [found]) == basis
+
+
+SOUTH_AFRICA = answered("tgn", "South Africa", "ev-za", "South Africa", NATION)
+# Constructed: another nation whose name "P.I." spells.
+PACIFIC_ISLANDS = answered("tgn", "Pacific Islands", "ev-pac", "Pacific Islands", NATION)
+
+
+@pytest.mark.parametrize(("literal", "settling", "other", "rival"), [
+    # "S.A." spells both; Getty TGN finds each as a nation.
+    ("S.A.", SOUTH_AFRICA, answered("tgn", "Saudi Arabia", "ev-sa", "Saudi Arabia", NATION), "Saudi Arabia"),
+    # The fixed table's own "P.I.", beside another nation its letters spell.
+    ("P.I.", PHILIPPINE_ISLANDS, PACIFIC_ISLANDS, "Pacific Islands"),
+    # South Australia is a state: at the country's level only South Africa is found.
+    ("S.A.", SOUTH_AFRICA, answered("tgn", "South Australia", "ev-sau", "South Australia", STATE), None),
+    # Two expansions that find the same nation agree: the same record, or the same
+    # name under another source's record (Wikidata's Philippines beside TGN's).
+    ("P.I.", PHILIPPINE_ISLANDS, tgn("Philippine Is", "ev-pis", ("Philippines", "tgn:1000135", NATION)), None),
+    ("P.I.", PHILIPPINE_ISLANDS, answered("wikidata", "Philippine Is.", "ev-wd", "Philippines", "country"), None),
+    # A name the letters do not spell is no expansion of it.
+    ("P.I.", PHILIPPINE_ISLANDS, answered("tgn", "Peru", "ev-pe", "Peru", NATION), None),
+    # Nor is a lookup with nothing at the country's level, or nothing stored.
+    ("P.I.", PHILIPPINE_ISLANDS, nothing("Pacific Islands", "ev-none"), None),
+    ("P.I.", PHILIPPINE_ISLANDS, nothing("Pacific Islands", "", LookupStatus.PROVIDER), None),
+])
+def test_an_abbreviation_two_of_whose_expansions_are_found_as_different_places_settles_nothing(
+        literal, settling, other, rival):
+    readings = (Reading("1A", "region-1", "obs-1a", "raw_reading", f"{literal}\nleg. J. Smith"),
+                Reading("1B", "region-1", "obs-1b", "raw_reading", f"{literal}\nleg. J. Smith"))
+    made = experts._Expert(task("country", candidates=offered(("1A", literal), ("1B", literal))), readings,
+                           FakeTools(), PILOT_DATES)
+    for found in (settling, other):
+        made.calls.append(experts._Call(found.source_id, found.query, found.status, found))
+    place = agreement.placed("country", settling)
+    given = answer(outcome="resolved", literal=literal, reading_names=["1A"], value=place.name,
+                   authority_id=place.authority_id, source_evidence_ids=[settling.evidence.id])
+
+    if rival is None:
+        assert made.validate(given).authority_id == place.authority_id
+        return
+    with pytest.raises(ModelRetry, match=f"fits both '{settling.query}' and '{rival}'"):
+        made.validate(given)
+    # The step's check is the same: the field is ambiguous, for a person to choose.
+    refused = agreement.refusal(made.task, readings, literal=literal, named=readings[:1], value=place.name,
+                                authority_id=place.authority_id, cited=[settling], received=made.received)
+    assert (refused.reason, refused.differ) == (agreement.EXPANSIONS_DIFFER, True)
+
+
+GEORGIA = answered("tgn", "Georgia", "ev-ge", "Georgia", NATION)
+
+
+@pytest.mark.parametrize(("own", "rival"), [
+    # Constructed: the source finds the label's own text "Ga." as one nation, Gabon,
+    # while its expansion "Georgia" names another: the letters do not decide.
+    (answered("tgn", "Ga.", "ev-ga", "Gabon", NATION), "Ga."),
+    # The own text found as the same nation (by name, under another record) agrees.
+    (answered("wikidata", "Ga.", "ev-ga", "Georgia", "sovereign state"), None),
+    # Several nations, or none, at the level for the own text: it named no one place.
+    (tgn("Ga.", "ev-ga", ("Gabon", "tgn:gabon", NATION), ("Gambia", "tgn:gambia", NATION)), None),
+    (answered("tgn", "Ga.", "ev-ga", "Ga River", "rivers"), None),
+])
+def test_the_labels_own_text_found_as_another_place_is_a_rival(own, rival):
+    """The review of #295: rival_expansion no longer leaves the label's own
+    text out. Its answer counts when it has exactly one candidate at the
+    field's level, another place than the expansion's."""
+    readings = (Reading("1A", "region-1", "obs-1a", "raw_reading", "Ga.\nleg. J. Smith"),)
+    made = experts._Expert(task("country", candidates=offered(("1A", "Ga."))), readings, FakeTools(), PILOT_DATES)
+    for found in (GEORGIA, own):
+        made.calls.append(experts._Call(found.source_id, found.query, found.status, found))
+    [place] = GEORGIA.candidates
+    given = answer(outcome="resolved", literal="Ga.", reading_names=["1A"], value=place.name,
+                   authority_id=place.authority_id, source_evidence_ids=["ev-ge"])
+
+    if rival is None:
+        assert made.validate(given).authority_id == place.authority_id
+        return
+    with pytest.raises(ModelRetry, match="found the label's own text 'Ga.' as another place"):
+        made.validate(given)
+    refused = agreement.refusal(made.task, readings, literal="Ga.", named=readings, value=place.name,
+                                authority_id=place.authority_id, cited=[GEORGIA], received=made.received)
+    assert (refused.reason, refused.differ) == (agreement.EXPANSIONS_DIFFER, True)
+
+
 GUATEMALA = agreement.PlaceField(("Guatemala",), "tgn:7005493")
 PHILIPPINES_SETTLED = agreement.PlaceField(("P.I.", "Philippines"), "tgn:1000135")
 
@@ -1221,13 +1483,14 @@ PHILIPPINES_SETTLED = agreement.PlaceField(("P.I.", "Philippines"), "tgn:1000135
      {"country": GUATEMALA}, None),
     ("province_state", CHIMALTENANGO.candidates[1], agreement.NEAR_SPELLING, {"country": GUATEMALA},
      {"country": GUATEMALA}, None),
-    # The reading also writes a city, which no province lies in.
+    # The reading also writes a city, below the province: a place's parents are only larger
+    # places, so the city is not checked (105526330's province).
     ("province_state", CHIMALTENANGO.candidates[1], agreement.NEAR_SPELLING,
      {"country": GUATEMALA, "city": agreement.PlaceField(("Yepocapa",))}, {"country": GUATEMALA},
-     agreement.NEAR_UNFIT),
+     None),
     # No other place field at all (this file's earlier case): no country settled for it.
     ("province_state", CHIMALTENANGO.candidates[1], agreement.NEAR_SPELLING, {}, {}, agreement.NO_COUNTRY),
-    # A country one letter off needs another place field too, and none is its parent.
+    # A country one letter off has no larger place field to confirm it.
     ("country", tgn("Guatemala", "ev-gt", ("Guatemala", "tgn:7005493", NATION, IN_GUATEMALA)).candidates[0],
      agreement.NEAR_SPELLING, {}, {}, agreement.NEAR_UNFIT),
     # A Philippine label's country.
@@ -1320,3 +1583,106 @@ def test_a_resolved_elevation_in_its_own_unit_is_accepted():
     accepted = made.validate(answer(outcome="resolved", literal="1500", reading_names=["2a"]))
 
     assert accepted.reading_names == ["2A"]
+
+
+# -- dates split over lines, and ranges (the pilot's 105526330) ----------------------------------
+
+SPLIT_READINGS = (
+    Reading("1A", "region-1", "obs-1a", "decided_transcript",
+            "IV-29-68-2\nYepocapa,4800 ft.\nChimaltenago\nGuatemala,IV-25\n1948, R.D. Mitchell"),
+    Reading("1B", "region-1", "obs-1b", "raw_reading",
+            "IV-29-68-a\nYepocapa, 4800 ft.\nChimaltenango\nGuatemala, IV-25\n1948, R.D. Mitchell"),
+)
+RANGE_READINGS = (
+    Reading("1A", "region-1", "obs-1a", "decided_transcript", "Davao\n3-5.IX.1946\nH. Hoogstraal"),
+    Reading("1B", "region-1", "obs-1b", "raw_reading", "Davao\n3-5.IX.1946\nH. Hoogstraal"),
+)
+
+
+def resolve_on(readings, script, key, literal):
+    field = task(key, candidates=offered(("1A", literal), ("1B", literal)))
+    resolver = make_resolver(model_factory=script.model, meter=meter(), date_rules=PILOT_DATES)
+    return asyncio.run(resolver(field, readings, CONTEXT, tools=FakeTools()))
+
+
+def test_the_pilots_split_date_resolves_on_the_whole_literal_the_check_read():
+    # Before: parse_date("IV-25\n1948") was no_match and the field ran out of attempts.
+    script = Script(
+        call("parse_date", literal="IV-25\n1948"),
+        dict(outcome="resolved", literal="IV-25\n1948", reading_names=["1A", "1B"], value="1948-04-25",
+             explanation="IV-25 ends one line and 1948 starts the next."),
+    )
+
+    outcome = resolve_on(SPLIT_READINGS, script, "date_visited_from", "IV-25\n1948")
+
+    shown = tool_returns(script.seen[1][0])[0]
+    assert shown["status"] == "success"
+    assert [(r["iso"], r["order"], r["via"]) for r in shown["readings"]] == [
+        ("1948-04-25", "month-day", ("split_lines",))]
+    assert outcome.failure is None and outcome.answer.outcome == "resolved"
+    assert outcome.answer.value == "1948-04-25"
+
+
+BARE_YEAR_READINGS = (
+    Reading("1A", "region-1", "obs-1a", "decided_transcript", "Yepocapa,4800 ft.\nGuatemala,IV-25\n1948\nR.D. Mitchell"),
+    Reading("1B", "region-1", "obs-1b", "raw_reading", "Yepocapa, 4800 ft.\nGuatemala, IV-25\n1948\nR.D. Mitchell"),
+)
+DISAGREEING_READINGS = (
+    Reading("1A", "region-1", "obs-1a", "decided_transcript", "Guatemala,IV-25\n1948\nR.D. Mitchell"),
+    Reading("1B", "region-1", "obs-1b", "raw_reading", "Guatemala, IV-25\n1949\nR.D. Mitchell"),
+)
+
+
+def test_a_day_and_month_alone_resolve_with_a_year_alone_on_the_next_line():
+    script = Script(
+        call("parse_date", literal="IV-25"),
+        dict(outcome="resolved", literal="IV-25", reading_names=["1A", "1B"], value="1948-04-25"),
+    )
+
+    outcome = resolve_on(BARE_YEAR_READINGS, script, "date_visited_from", "IV-25")
+
+    assert tool_returns(script.seen[1][0])[0]["status"] == "success"
+    assert outcome.failure is None and outcome.answer.value == "1948-04-25"
+
+
+def test_a_range_is_two_dates_the_from_field_takes_its_start_and_the_to_field_its_end():
+    literal = "3-5.IX.1946"
+    from_script = Script(
+        call("parse_date", literal=literal),
+        dict(outcome="resolved", literal=literal, reading_names=["1A", "1B"], value="1946-09-05"),
+        dict(outcome="resolved", literal=literal, reading_names=["1A", "1B"], value="1946-09-03"),
+    )
+    to_script = Script(
+        call("parse_date", literal=literal),
+        dict(outcome="resolved", literal=literal, reading_names=["1A", "1B"], value="1946-09-03"),
+        dict(outcome="resolved", literal=literal, reading_names=["1A", "1B"], value="1946-09-05"),
+    )
+
+    start = resolve_on(RANGE_READINGS, from_script, "date_visited_from", literal)
+    end = resolve_on(RANGE_READINGS, to_script, "date_visited_to", literal)
+
+    # Each field is sent back once for the other end, then settles on its own.
+    assert "differs from the literal" in retries(from_script.seen[2][0])[0]
+    assert "differs from the literal" in retries(to_script.seen[2][0])[0]
+    assert (start.failure, start.answer.value) == (None, "1946-09-03")
+    assert (end.failure, end.answer.value) == (None, "1946-09-05")
+    shown = tool_returns(to_script.seen[1][0])[0]["readings"][0]
+    assert (shown["iso"], shown["end"], shown["order"]) == ("1946-09-03", "1946-09-05", "range:day..date")
+
+
+def test_readers_with_different_years_are_named_to_the_expert_and_settle_nothing():
+    # Review 297: the first reader's year used to settle "IV-25" for both.
+    script = Script(
+        call("parse_date", literal="IV-25"),
+        dict(outcome="resolved", literal="IV-25", reading_names=["1A", "1B"], value="1948-04-25"),
+        dict(outcome="several_possibilities", literal="IV-25", reading_names=["1A", "1B"],
+             options=["1948-04-25", "1949-04-25"], explanation="The readers give different years."),
+    )
+
+    outcome = resolve_on(DISAGREEING_READINGS, script, "date_visited_from", "IV-25")
+
+    shown = tool_returns(script.seen[1][0])[0]
+    assert shown["status"] == "ambiguous"
+    assert shown["notes"] == ["readers_disagree_on_date", "1A: 1948-04-25; 1B: 1949-04-25"]
+    assert "differs from the literal" in retries(script.seen[2][0])[0]
+    assert outcome.failure is None and outcome.answer.outcome == "several_possibilities"

@@ -21,6 +21,8 @@ from types import SimpleNamespace
 
 import pytest
 from PIL import Image
+from pydantic_ai.messages import ModelRequest, ModelResponse, ToolCallPart, ToolReturnPart, UserPromptPart
+from pydantic_ai.models.function import FunctionModel
 
 from specimen_digitization.application.collection_profiles import published_registry
 from specimen_digitization.application.domain import (
@@ -38,9 +40,11 @@ from specimen_digitization.application.workflow import (
 )
 from specimen_digitization.field_research import agreement
 from specimen_digitization.field_research import step as field_step
+from specimen_digitization.field_research.budget import CostMeter
 from specimen_digitization.field_research.contracts import (
     FIELD_TOOLS, Candidate, FieldAnswer, FieldOutcome, FieldTask, PlaceRef, Reading, SourceAnswer, SourceCandidate,
 )
+from specimen_digitization.field_research.experts import INPUT_PREFIX, make_resolver
 from specimen_digitization.field_research.step import (
     FieldResearchStep, apply_outcomes, build_tasks, finalize_fields, research_fields,
 )
@@ -778,18 +782,21 @@ def test_an_organiser_candidate_that_cuts_the_name_on_its_line_never_settles_the
     assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:taxon" in run.reasons
 
 
-def test_a_field_with_no_candidate_is_never_resolved(tmp_path):
+def test_a_field_with_no_candidate_settles_on_text_both_readers_write(tmp_path):
     """No reading is decided, so the keyed-line parser reads nothing, and the
-    organiser gave only the collectors: the taxon expert's answer, GBIF's
-    decision for the name both readers write, has no candidate to be."""
+    organiser gave only the collectors. The taxon expert's answer, GBIF's
+    decision for the name both readers write, quotes text it read in the
+    transcript itself (agreement.TRANSCRIPT): until 2026-10-09 it had no
+    candidate to be and went to review; it now settles, marked so."""
     rig = build_rig(tmp_path, TEXT, TEXT.replace("Synthetic grassland", "Synthetic grassIand"))
     run = rig.specimen.run
     [task] = [task for task in build_tasks(run)[1] if task.key == "taxon"]
     assert task.candidates == () and task.current.state == ValueState.UNKNOWN
     settle(rig, Scripted())
     taxon = run.fields["taxon"]
-    assert taxon.state == ValueState.UNRESOLVED and taxon.reason == agreement.NOT_CANDIDATE + " Settled."
-    assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:taxon" in run.reasons
+    assert (taxon.state, taxon.literal, taxon.authority_id) == (ValueState.SUPPORTED, "Danaus plexippus", GBIF_KEY)
+    assert "transcript_literal:taxon" in [f.reason_code for f in run.findings]
+    assert not [reason for reason in run.reasons if reason.endswith(":taxon") or reason.startswith("taxonomy")]
 
 
 # ---- readers that disagree (G19, G20, G27; the review's B1) --------------------
@@ -985,6 +992,24 @@ class Gazetteer(FakeSources):
         "Guatemala": [("Guatemala", "tgn:7422823", "inhabited places", (("Zacatecas", None), ("Mexico", None))),
             ("Guatemala", "tgn:7005493", "nations, colonies, independent political entities", GT),
             ("Guatemala", "tgn:1000621", FIRST, GT)],
+        # Constructed for the abbreviation rule, with made-up records: nations and a
+        # state that "S.A." or "P.I." spells, and a nation that neither spells.
+        "South Africa": [("South Africa", "tgn:south-africa", NATION, (("South Africa", "tgn:south-africa"),))],
+        "Saudi Arabia": [("Saudi Arabia", "tgn:saudi-arabia", NATION, (("Saudi Arabia", "tgn:saudi-arabia"),))],
+        "South Australia": [("South Australia", "tgn:south-australia", "states (political divisions), "
+            "first level subdivisions (political entities)", (("Australia", "tgn:australia"),))],
+        "Pacific Islands": [("Pacific Islands", "tgn:pacific-islands", NATION,
+            (("Pacific Islands", "tgn:pacific-islands"),))],
+        "Peru": [("Peru", "tgn:peru", NATION, (("Peru", "tgn:peru"),))],
+        # The review of #295's wrong expansions of capitals ("MALI" as Malawi), and
+        # "Ga." found itself as Gabon beside its expansion Georgia.
+        "Malawi": [("Malawi", "tgn:malawi", NATION, (("Malawi", "tgn:malawi"),))],
+        "Ukraine": [("Ukraine", "tgn:ukraine", NATION, (("Ukraine", "tgn:ukraine"),))],
+        "Ireland": [("Ireland", "tgn:ireland", NATION, (("Ireland", "tgn:ireland"),))],
+        "United Kingdom": [("United Kingdom", "tgn:united-kingdom", NATION,
+            (("United Kingdom", "tgn:united-kingdom"),))],
+        "Georgia": [("Georgia", "tgn:georgia", NATION, (("Georgia", "tgn:georgia"),))],
+        "Ga.": [("Gabon", "tgn:gabon", NATION, (("Gabon", "tgn:gabon"),))],
     }
 
     def _answer(self, source_id, query):
@@ -1112,7 +1137,7 @@ class InParaguay(Gazetteer):
 
 
 PHILIPPINE = label_with(country="P.I.", province_state="Chimaltenago", county="Davao", city="Mati")
-NOTATION_COUNTRY = {"country": from_tgn("Philippine Islands", "P.I.", "Philippines", "tgn:1000135")}
+ABBREVIATED_COUNTRY = {"country": from_tgn("Philippine Islands", "P.I.", "Philippines", "tgn:1000135")}
 
 
 @pytest.mark.parametrize(("text", "scripts", "key", "reason"), [
@@ -1127,7 +1152,7 @@ NOTATION_COUNTRY = {"country": from_tgn("Philippine Islands", "P.I.", "Philippin
      "province_state", agreement.NOT_IN_COUNTRY),
     # The review's case of G34's own kind: a Philippine label (P.I. settled as the
     # Philippines, Davao, Mati) whose province settles one letter away in Guatemala.
-    (PHILIPPINE, {**NOTATION_COUNTRY, "province_state": from_tgn(
+    (PHILIPPINE, {**ABBREVIATED_COUNTRY, "province_state": from_tgn(
         "Chimaltenango", "Chimaltenago", "Chimaltenango", "tgn:1000565"), "county": place_on("Davao"),
         "city": place_on("Mati")}, "province_state", agreement.NOT_IN_COUNTRY),
     # P1's "one candidate at the level" of a capped list: Wikidata's only department for
@@ -1135,10 +1160,6 @@ NOTATION_COUNTRY = {"country": from_tgn("Philippine Islands", "P.I.", "Philippin
     (label_with(**GUATEMALAN, province_state="San Pedro"), {**IN_GUATEMALA, "province_state": from_tgn(
         "San Pedro", "San Pedro", "San Pedro Department", "wikidata:San Pedro Department", source="wikidata")},
      "province_state", agreement.NOT_IN_COUNTRY),
-    # G34's whole condition: the reading also writes a city, which is no province's parent.
-    (label_with(**{**GUATEMALAN, "city": "Yepocapa"}, province_state="Chimaltenago"),
-     {**IN_GUATEMALA, "province_state": from_tgn("Chimaltenango", "Chimaltenago", "Chimaltenango", "tgn:1000565")},
-     "province_state", agreement.NEAR_UNFIT),
     # A candidate whose source names no parent: GEOLocate asked the city alone.
     (TEXT, {"city": place_on("Chicago")}, "city", agreement.NO_PARENTS),
     # A city in the country, but not in the province the label gives.
@@ -1149,7 +1170,7 @@ NOTATION_COUNTRY = {"country": from_tgn("Philippine Islands", "P.I.", "Philippin
     (TEXT, {"country": answering(FieldAnswer(outcome="sources_cannot_resolve", explanation="No match."))},
      "province_state", agreement.NO_COUNTRY),
 ], ids=["us-label-near-spelling", "us-label-asked", "philippine-label", "capped-list-paraguay",
-        "near-spelling-with-a-city", "no-parents", "not-in-province", "no-country"])
+        "no-parents", "not-in-province", "no-country"])
 def test_a_place_settles_only_inside_the_labels_country_and_province(tmp_path, text, scripts, key, reason):
     rig = build_rig(tmp_path, text)
     run = rig.specimen.run
@@ -1173,23 +1194,28 @@ def test_a_near_spelling_settles_when_every_other_place_field_is_among_its_paren
     assert [f.reason_code for f in run.findings] == ["near_spelling:city"]
 
 
-@pytest.mark.parametrize(("written", "query", "value", "authority_id", "settles"), [
-    # The table's expansion of "P.I.", with TGN's real ambiguous answer: one nation.
-    ("P.I.", "Philippine Islands", "Philippines", "tgn:1000135", True),
-    ("Guat.", "Guatemala", "Guatemala", "tgn:7005493", True),
+@pytest.mark.parametrize(("written", "query", "value", "authority_id", "fit"), [
+    ("Guat.", "Guatemala", "Guatemala", "tgn:7005493", "Guat = Guatemala"),
+    # Abbreviations the fixed table never held: truncations, which need no other place.
+    ("Guate.", "Guatemala", "Guatemala", "tgn:7005493", "Guate = Guatemala"),
+    ("Phil. Is.", "Philippine Islands", "Philippines", "tgn:1000135", "Phil = Philippine, Is = Islands"),
     # Another name for the place is context only.
-    ("P.I.", "Philippines", "Philippines", "tgn:1000135", False),
-    # A notation the table does not hold.
-    ("Guate.", "Guatemala", "Guatemala", "tgn:7005493", False),
+    ("P.I.", "Philippines", "Philippines", "tgn:1000135", None),
+    # A name the letters do not spell.
+    ("P.I.", "Peru", "Peru", "tgn:peru", None),
+    # Capitals with no period are initials only (the review of #295's LIMIT cases).
+    ("MALI", "Malawi", "Malawi", "tgn:malawi", None),
+    ("UK", "Ukraine", "Ukraine", "tgn:ukraine", None),
+    ("IRAN", "Ireland", "Ireland", "tgn:ireland", None),
 ])
-def test_a_place_notation_settles_on_a_lookup_of_the_name_the_table_gives_it(
-        tmp_path, written, query, value, authority_id, settles):
+def test_a_place_abbreviation_settles_on_a_lookup_of_an_expansion_its_letters_fit(
+        tmp_path, written, query, value, authority_id, fit):
     rig = build_rig(tmp_path, label_with(country=written))
     run = rig.specimen.run
     settle(rig, Scripted({"country": from_tgn(query, written, value, authority_id)}), tools=Gazetteer(rig.blobs))
     country = run.fields["country"]
     rules = [item for item in run.evidence if item.kind == "rule"]
-    if not settles:
+    if fit is None:
         assert (country.state, country.reason) == (ValueState.UNRESOLVED, agreement.NO_PLACE + " Settled.")
         assert run.disposition == Disposition.REVIEW and not rules
         return
@@ -1197,11 +1223,258 @@ def test_a_place_notation_settles_on_a_lookup_of_the_name_the_table_gives_it(
         ValueState.SUPPORTED, written, value, authority_id)
     # The synthetic label's US places do not lie in it; the country itself needs no parent.
     assert not reasons_for(run, "country")
-    # One rule row names the table entry; the value cites it as support. It has
-    # no stored record, so it is never projected.
+    # One rule row names the abbreviation, the expansion asked and how its letters
+    # fit; the value cites it as support. It has no stored record, so it is never
+    # projected.
     [rule] = rules
-    assert rule.locator == f"notation:country:{written}" and query in rule.excerpt
+    assert rule.locator == f"abbreviation:country:{query}"
+    assert rule.excerpt == (f'country: "{written}" abbreviates "{query}", the name tgn was asked: its letters '
+        f"fit the words in order ({fit}; field_research.abbreviations)")
     assert (rule.raw_ref, rule.digest) == (None, None) and country.evidence_relations[rule.id] == "supports"
+
+
+class DavaoProvince(Gazetteer):
+    """Wikidata's real answer for "Davao Province" (the parent session's run of
+    2026-10-09): one place, the former province of the Philippines."""
+
+    def _answer(self, source_id, query):
+        answer = super()._answer(source_id, query)
+        if source_id != "wikidata" or query != "Davao Province, Philippines":
+            return answer
+        candidate = SourceCandidate("Davao", "wikidata:Q15095071",
+            "former province of the Philippines, province of the Philippines", "in Philippines",
+            (PlaceRef("Philippines", "wikidata:Q928"),))
+        evidence = answer.evidence.model_copy(update={"locator": candidate.authority_id,
+            "excerpt": f"{candidate.name} | {candidate.authority_id} | {candidate.kind} | {candidate.detail}"})
+        return SourceAnswer("wikidata", query, LookupStatus.SUCCESS, (candidate,), evidence, note="match")
+
+
+def test_davao_prov_settles_on_a_lookup_with_the_unit_word_written_out_and_says_so(tmp_path):
+    """105526326's label writes "Davao, Prov. 3300'" above "Mindanao, P.I.".
+    The province is looked up as "Davao Province", the unit word written
+    out, which Wikidata finds as the one former province: the value settles,
+    and its rule row says how "Davao, Prov." became "Davao Province"."""
+    text = label_with(country=None, province_state=None, county=None, city=None) + (
+        "\nDavao, Prov. 3300'\nMindanao, P.I.")
+    rig = build_rig(tmp_path, text, candidates=[*COLLECTORS,
+        *(("country", name, "P.I.", "Mindanao, P.I.") for name in ("1A", "1B")),
+        *(("province_state", name, "Davao, Prov.", "Davao, Prov. 3300'") for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    lacks = answering(FieldAnswer(outcome="label_lacks_value", explanation="Not on the label."))
+    settle(rig, Scripted({**ABBREVIATED_COUNTRY,
+        "province_state": from_tgn("Davao Province, Philippines", "Davao, Prov.", "Davao", "wikidata:Q15095071",
+            source="wikidata"),
+        "county": lacks, "city": lacks}), tools=DavaoProvince(rig.blobs))
+    province = run.fields["province_state"]
+    assert (province.state, province.literal, province.normalized, province.authority_id) == (
+        ValueState.SUPPORTED, "Davao, Prov.", "Davao", "wikidata:Q15095071")
+    assert not reasons_for(run, "province_state")
+    rules = {row.locator: row for row in run.evidence if row.kind == "rule"}
+    assert sorted(rules) == ["abbreviation:country:Philippine Islands", "abbreviation:province_state:Davao Province"]
+    row = rules["abbreviation:province_state:Davao Province"]
+    assert row.excerpt == ('province_state: "Davao, Prov." abbreviates "Davao Province", the name wikidata was '
+        "asked: its letters fit the words in order (Davao = Davao, Prov = Province; field_research.abbreviations)")
+    assert province.evidence_relations[row.id] == "supports"
+    # The province, settled on its own lookup inside the Philippines, confirms the
+    # country's initials "P.I." (step._corroborate).
+    country = run.fields["country"]
+    assert (country.state, country.normalized, country.authority_id) == (
+        ValueState.SUPPORTED, "Philippines", "tgn:1000135")
+
+
+MINDANAO = label_with(country=None, province_state=None, county=None, city=None) + "\nMindanao, P.I."
+P_I = [*(("country", name, "P.I.", "Mindanao, P.I.") for name in ("1A", "1B"))]
+LACKING = answering(FieldAnswer(outcome="label_lacks_value", explanation="Not on the label."))
+
+
+@pytest.mark.parametrize(("province", "script", "province_state", "country_state"), [
+    # 105526321's and 105526326's labels: the province, settled on "Davao Province" inside
+    # the Philippines, confirms "P.I.".
+    ("Davao, Prov.", from_tgn("Davao Province, Philippines", "Davao, Prov.", "Davao", "wikidata:Q15095071",
+        source="wikidata"), ValueState.SUPPORTED, ValueState.SUPPORTED),
+    # No other place on the label: the initials alone do not decide.
+    (None, LACKING, ValueState.NOT_PRESENT, ValueState.AMBIGUOUS),
+    # A province settled only on initials itself confirms nothing, and nothing confirms it.
+    ("D.P.", from_tgn("Davao Province, Philippines", "D.P.", "Davao", "wikidata:Q15095071", source="wikidata"),
+        ValueState.AMBIGUOUS, ValueState.AMBIGUOUS),
+    # A province that does not settle inside the Philippines confirms nothing.
+    ("Chimaltenango", from_tgn("Chimaltenango", "Chimaltenango", None, "tgn:1000565"),
+        ValueState.UNRESOLVED, ValueState.AMBIGUOUS),
+])
+def test_initials_settle_a_place_only_when_another_place_on_the_label_lies_inside_it(
+        tmp_path, province, script, province_state, country_state):
+    """The review of #295: "P.I." fits "Philippine Islands", "Pacific
+    Islands" and "Pitcairn Islands" alike, so its lookup settles the country
+    only when a place field below it, settled on its own evidence, lies
+    inside the place found."""
+    text = MINDANAO + (f"\n{province} 3300'" if province else "")
+    rig = build_rig(tmp_path, text, candidates=[*COLLECTORS, *P_I, *(
+        ("province_state", name, province, f"{province} 3300'") for name in ("1A", "1B") if province)])
+    run = rig.specimen.run
+    settle(rig, Scripted({**ABBREVIATED_COUNTRY, "province_state": script, "county": LACKING, "city": LACKING}),
+        tools=DavaoProvince(rig.blobs))
+    country = run.fields["country"]
+    assert (run.fields["province_state"].state, country.state) == (province_state, country_state)
+    rules = sorted(row.locator for row in run.evidence if row.kind == "rule")
+    if country_state == ValueState.SUPPORTED:
+        assert (country.normalized, country.authority_id) == ("Philippines", "tgn:1000135")
+        assert rules == ["abbreviation:country:Philippine Islands", "abbreviation:province_state:Davao Province"]
+        return
+    assert country.reason == agreement.initialism_alone("P.I.", "Philippine Islands") + " Settled."
+    assert (country.literal, country.authority_id) == (None, None)
+    assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:country" in run.reasons
+    # The rows the initials' settling wrote are gone with it.
+    assert rules == []
+    if province == "D.P.":
+        assert run.fields["province_state"].reason == agreement.initialism_alone("D.P.", "Davao Province") + " Settled."
+
+
+@pytest.mark.parametrize(("written", "query", "value", "authority_id"), [
+    ("S.A.", "South Africa", "South Africa", "tgn:south-africa"),
+    ("UK", "United Kingdom", "United Kingdom", "tgn:united-kingdom"),
+    # The review of #295's LIMIT cases, which settled at 6be7bcd51.
+    ("S.A.", "Saudi Arabia", "Saudi Arabia", "tgn:saudi-arabia"),
+    ("P.I.", "Pacific Islands", "Pacific Islands", "tgn:pacific-islands"),
+])
+def test_initials_with_no_other_place_on_the_label_stay_ambiguous(tmp_path, written, query, value, authority_id):
+    rig = build_rig(tmp_path, label_with(country=written, province_state=None, county=None, city=None))
+    run = rig.specimen.run
+    settle(rig, Scripted({"country": from_tgn(query, written, value, authority_id),
+        "province_state": LACKING, "county": LACKING, "city": LACKING}), tools=Gazetteer(rig.blobs))
+    country = run.fields["country"]
+    assert (country.state, country.literal, country.authority_id) == (ValueState.AMBIGUOUS, None, None)
+    assert country.reason == agreement.initialism_alone(written, query) + " Settled."
+    assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:country" in run.reasons
+    assert not [row for row in run.evidence if row.kind == "rule"]
+
+
+def test_a_place_left_ambiguous_on_its_initials_alone_names_that_check_in_its_trace(tmp_path):
+    """The field's trace (trace_fields) names the check that refused a
+    resolved answer: for a place settled on initials that no place below it
+    confirms (_corroborate), "initialism_alone"."""
+    rig = build_rig(tmp_path, label_with(country="UK", province_state=None, county=None, city=None))
+    run = rig.specimen.run
+    prepared, outcomes, calls = research(rig, Scripted({
+        "country": from_tgn("United Kingdom", "UK", "United Kingdom", "tgn:united-kingdom"),
+        "province_state": LACKING, "county": LACKING, "city": LACKING}), tools=Gazetteer(rig.blobs))
+    decisions: dict[str, dict] = {}
+    apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    assert run.fields["country"].state == ValueState.AMBIGUOUS
+    assert decisions["country"] == {"refusal": "initialism_alone"}
+
+
+def test_a_place_from_the_transcript_left_ambiguous_on_its_initials_keeps_no_transcript_finding(tmp_path):
+    """_corroborate drops what settling a place it leaves ambiguous added: its
+    label rows and, for a literal its expert read in the transcript (the
+    readers differ on another line, so no keyed line is parsed and the
+    organiser offered no country), its transcript_literal finding, which
+    would otherwise mark an unsettled value and cite a dropped row."""
+    text = label_with(country="UK", province_state=None, county=None, city=None)
+    rig = build_rig(tmp_path, text, text.replace("J. Smith", "J. Smlth"))
+    run = rig.specimen.run
+    settle(rig, Scripted({"country": from_tgn("United Kingdom", "UK", "United Kingdom", "tgn:united-kingdom"),
+        "province_state": LACKING, "county": LACKING, "city": LACKING}), tools=Gazetteer(rig.blobs))
+    assert run.fields["country"].state == ValueState.AMBIGUOUS
+    codes = [finding.reason_code for finding in run.findings]
+    assert "transcript_literal:country" not in codes and "transcript_literal:taxon" in codes
+    ids = {item.id for item in run.evidence}
+    assert all(i in ids for finding in run.findings for i in finding.evidence_ids)
+
+
+def test_the_labels_own_text_found_as_another_nation_leaves_the_country_ambiguous(tmp_path):
+    """The review of #295: the expert looked up "Georgia" for "Ga." and also
+    "Ga." itself, which TGN (constructed) finds as one nation, Gabon. The own
+    text is a rival: the letters do not decide."""
+    rig = build_rig(tmp_path, label_with(country="Ga.", province_state=None, county=None, city=None))
+    run = rig.specimen.run
+
+    async def both(task, readings, tools):
+        found = [await tools.lookup("tgn", name, field_key=task.key) for name in ("Georgia", "Ga.")]
+        return FieldOutcome(task.key, resolved("Ga.", value="Georgia", authority_id="tgn:georgia",
+            cited=[found[0].evidence.id]), evidence=[item.evidence for item in found], model_calls=1)
+    settle(rig, Scripted({"country": both, "province_state": LACKING, "county": LACKING, "city": LACKING}),
+        tools=Gazetteer(rig.blobs))
+    country = run.fields["country"]
+    assert (country.state, country.reason) == (ValueState.AMBIGUOUS, agreement.EXPANSIONS_DIFFER + " Settled.")
+    assert not [row for row in run.evidence if row.kind == "rule"]
+
+
+@pytest.mark.parametrize(("text", "key", "written", "query", "authority_id", "reason"), [
+    # H1: the PR's own G34 case with a period after it, beside the city "Yepocapa".
+    # #300 checks a near spelling against the larger places only, so the city no
+    # longer holds the province back: it settles as a near spelling (reason None).
+    (label_with(**{**GUATEMALAN, "city": "Yepocapa"}, province_state="Chimaltenago."), "province_state",
+        "Chimaltenago.", "Chimaltenango", "tgn:1000565", None),
+    # H2: two letters dropped.
+    (label_with(**GUATEMALAN, province_state="Chimaltango."), "province_state", "Chimaltango.", "Chimaltenango",
+        "tgn:1000565", agreement.NO_PLACE),
+    # H3: a near-spelled country with nothing else on its reading.
+    (label_with(country="Guatmala.", province_state=None, county=None, city=None), "country", "Guatmala.",
+        "Guatemala", "tgn:7005493", agreement.NEAR_UNFIT),
+], ids=["h1-chimaltenago", "h2-chimaltango", "h3-guatmala"])
+def test_a_name_with_letters_dropped_and_a_period_after_is_no_abbreviation(
+        tmp_path, text, key, written, query, authority_id, reason):
+    """The review of #295, H1 to H3: each settled at 6be7bcd51 as an
+    abbreviation, skipping G34. A group keeping more than 60% of its word's
+    letters is no truncation or contraction, so each is a near spelling or
+    nothing, as on origin/main."""
+    rig = build_rig(tmp_path, text)
+    run = rig.specimen.run
+    scripts = {key: from_tgn(query, written, query, authority_id)}
+    if key == "country":
+        scripts.update({"province_state": LACKING, "county": LACKING, "city": LACKING})
+    settle(rig, guatemalan(**scripts) if key != "country" else Scripted(scripts), tools=InParaguay(rig.blobs))
+    field = run.fields[key]
+    assert not [row for row in run.evidence if row.kind == "rule"]
+    if reason is None:
+        # A near spelling (its warning finding), never an abbreviation (no rule row).
+        assert (field.state, field.literal, field.normalized, field.authority_id) == (
+            ValueState.SUPPORTED, written, query, authority_id)
+        assert [f.reason_code for f in run.findings if f.field_key == key] == [f"near_spelling:{key}"]
+        return
+    assert (field.state, field.reason) == (ValueState.UNRESOLVED, reason + " Settled.")
+    assert not [f for f in run.findings if f.reason_code == f"near_spelling:{key}"]
+
+
+@pytest.mark.parametrize(("written", "settled_by", "value", "authority_id", "rival"), [
+    ("S.A.", "South Africa", "South Africa", "tgn:south-africa", "Saudi Arabia"),
+    # The table's own "P.I.", which settled on origin/main whatever else was found.
+    ("P.I.", "Philippine Islands", "Philippines", "tgn:1000135", "Pacific Islands"),
+])
+def test_an_abbreviation_two_of_whose_expansions_are_found_as_different_places_stays_ambiguous(
+        tmp_path, written, settled_by, value, authority_id, rival):
+    rig = build_rig(tmp_path, label_with(country=written))
+    run = rig.specimen.run
+
+    async def both(task, readings, tools):
+        found = [await tools.lookup("tgn", name, field_key=task.key) for name in (settled_by, rival)]
+        return FieldOutcome(task.key, resolved(written, value=value, authority_id=authority_id,
+            cited=[found[0].evidence.id]), evidence=[item.evidence for item in found], model_calls=1)
+    settle(rig, Scripted({"country": both}), tools=Gazetteer(rig.blobs))
+    country = run.fields["country"]
+    assert (country.state, country.literal, country.authority_id) == (ValueState.AMBIGUOUS, None, None)
+    assert country.reason == agreement.EXPANSIONS_DIFFER + " Settled."
+    assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:country" in run.reasons
+    assert not [item for item in run.evidence if item.kind == "rule"]
+
+
+def test_a_place_lies_in_a_country_named_by_the_expansion_it_settled_through(tmp_path):
+    """The country "Phil. Is." settles as the Philippines through "Philippine
+    Islands". GEOLocate, asked for the city with that country, puts Mati in
+    "Philippine Islands" by name only, with no record: the country's
+    abbreviation row names that expansion, so the city lies in the country."""
+    rig = build_rig(tmp_path, label_with(country="Phil. Is.", province_state=None, county=None, city="Mati"))
+    run = rig.specimen.run
+    lacks = answering(FieldAnswer(outcome="label_lacks_value", explanation="Not on the label."))
+    settle(rig, Scripted({
+        "country": from_tgn("Philippine Islands", "Phil. Is.", "Philippines", "tgn:1000135"),
+        "city": from_tgn("Mati, Philippine Islands", "Mati", None, "geolocate:Mati, Philippine Islands",
+            source="geolocate"),
+        "province_state": lacks, "county": lacks}), tools=Gazetteer(rig.blobs))
+    city = run.fields["city"]
+    assert (city.state, city.literal, city.authority_id) == (
+        ValueState.SUPPORTED, "Mati", "geolocate:Mati, Philippine Islands")
+    assert not reasons_for(run, "city")
 
 
 def test_a_place_never_clears_without_a_place_sources_candidate(rig):
@@ -1321,6 +1594,92 @@ def test_an_outage_blocks_the_run_and_keeps_every_settled_field(rig):
         agreement.NO_COUNTRY + " Settled."}
 
 
+class TgnDown(FakeSources):
+    """Getty TGN cannot be reached (refused, as from Cloud Run on 2026-10-09);
+    Wikidata knows the synthetic label's country, state and county at their
+    levels, each in the places above it."""
+
+    WIKIDATA = {"United States": ("country", ()), "Illinois": ("state", ("United States",)),
+        "Cook": ("county", ("Illinois", "United States"))}
+
+    def __init__(self, blobs, down=()):
+        super().__init__(blobs)
+
+    def _answer(self, source_id, query):
+        if source_id == "tgn":
+            return SourceAnswer("tgn", query, LookupStatus.AUTHORIZATION, (), None,
+                note="Getty TGN refused the request with HTTP 403")
+        if source_id != "wikidata" or query not in self.WIKIDATA:
+            return super()._answer(source_id, query)
+        kind, within = self.WIKIDATA[query]
+        raw = json.dumps({"source": source_id, "query": query}).encode()
+        candidate = SourceCandidate(query, f"wikidata:{query}", kind, "in " + ", ".join(within) if within else None,
+            tuple(PlaceRef(name, f"wikidata:{name}") for name in within))
+        evidence = Evidence(kind="authority", source="wikidata", locator=candidate.authority_id,
+            excerpt=f"match\n{query} | {candidate.authority_id} | {kind} | {candidate.detail or ''}",
+            raw_ref=self.blobs.put(raw), digest=hashlib.sha256(raw).hexdigest())
+        return SourceAnswer("wikidata", query, LookupStatus.SUCCESS, (candidate,), evidence, note="match")
+
+
+def place_experts(county, scripts=None):
+    """The real experts (experts.make_resolver) for the country, state and
+    county, each asking Getty TGN and Wikidata about the label's text at once
+    and then resolving on Wikidata's candidate, the county answering `county`
+    instead when given; `scripts`, else test_step's, for every other field."""
+
+    def play(messages, info):
+        prompt = next(part.content for m in messages if isinstance(m, ModelRequest) for part in m.parts
+            if isinstance(part, UserPromptPart))
+        key = json.loads(prompt[len(INPUT_PREFIX):])["field"]["key"]
+        returns = [part.content for m in messages if isinstance(m, ModelRequest) for part in m.parts
+            if isinstance(part, ToolReturnPart)]
+        if not returns:
+            return ModelResponse(parts=[ToolCallPart("lookup", {"source": source, "query": LABEL[key]})
+                for source in ("tgn", "wikidata")])
+        [found] = [item for item in returns if item["source"] == "wikidata"]
+        answer = {"outcome": "resolved", "literal": LABEL[key], "reading_names": ["1A"],
+            "authority_id": found["candidates"][0]["authority_id"], "source_evidence_ids": [found["evidence_id"]],
+            "explanation": "Wikidata has the place at the field's level."}
+        if key == "county" and county is not None:
+            answer = county
+        return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, answer)])
+
+    expert = make_resolver(model_factory=lambda: FunctionModel(play),
+        meter=CostMeter(1_000_000, input_micros_per_million=1, output_micros_per_million=1))
+    scripted = Scripted(scripts)
+
+    async def resolver(task, readings, context, *, tools):
+        if task.key in ("country", "province_state", "county"):
+            return await expert(task, readings, context, tools=tools)
+        return await scripted(task, readings, context, tools=tools)
+    return resolver
+
+
+UNSETTLED_COUNTY = {"outcome": "sources_cannot_resolve", "literal": "Cook", "reading_names": ["1A"],
+    "explanation": "Getty TGN did not answer and Wikidata's Cook was not checked."}
+
+
+@pytest.mark.parametrize("county", [None, UNSETTLED_COUNTY])
+def test_one_source_down_among_several_settles_from_the_others_and_names_it(rig, county):
+    """Getty TGN never answers; Wikidata does. The places settle on Wikidata
+    under the same rules, each reason naming TGN, and an unresolved county goes
+    to review with its reason instead of blocking the record."""
+    run = rig.specimen.run
+    blocker = settle(rig, place_experts(county), tools=TgnDown(rig.blobs))
+    assert blocker is None and (run.stage, run.blocker) == ("finalized", None)
+    for key in ("country", "province_state") + (("county",) if county is None else ()):
+        value = run.fields[key]
+        assert (value.state, value.authority_id) == (ValueState.SUPPORTED, f"wikidata:{LABEL[key]}")
+        assert value.reason == ("Wikidata has the place at the field's level. "
+            "Getty TGN could not be reached; settled from Wikidata.")
+    if county is None:
+        assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+        return
+    assert run.fields["county"].state == ValueState.UNRESOLVED
+    assert run.fields["county"].reason == UNSETTLED_COUNTY["explanation"] + " Getty TGN could not be reached."
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["mandatory_unresolved:county"])
+
+
 # ---- through the workflow: one step, retry, cost -------------------------------
 
 def mounted(rig, resolver, tools_down=(), sources=None):
@@ -1371,6 +1730,140 @@ def test_a_blocked_run_retries_only_its_unsettled_fields_and_settles_its_cost(ri
     assert run.paid_calls[1]["reserved_micros"] == 1_000_000 - spent
     assert run.usage.reserved_cost_micros == spent + 50 * 4 <= run.profile.execution.approved_cost_limit_micros
     verify_evidence(done, rig.blobs)
+
+
+class TgnDownForTheCountry(FakeSources):
+    """Getty TGN never answers the country's lookup."""
+
+    def _answer(self, source_id, query):
+        if (source_id, query) == ("tgn", LABEL["country"]):
+            return SourceAnswer("tgn", query, LookupStatus.PROVIDER, (), None, note="unreachable")
+        return super()._answer(source_id, query)
+
+
+async def tgn_never_answers(task, readings, tools):
+    """An expert none of whose lookups answered: Getty TGN is down."""
+    answer = await tools.lookup("tgn", LABEL[task.key], field_key=task.key)
+    assert answer.status == LookupStatus.PROVIDER
+    outcome = FieldOutcome(task.key, FieldAnswer(outcome="sources_cannot_resolve", explanation="TGN is down."),
+        failure="source_unavailable", model_calls=1)
+    outcome.unreachable = ("tgn",)
+    return outcome
+
+
+def until_the_last_attempt(rig, resolver):
+    """The field research step, retried as the workflow schedules it, to its
+    last allowed attempt; each attempt's run."""
+    mounted(rig, resolver, sources=TgnDownForTheCountry)
+    runs = []
+    for _ in range(rig.specimen.run.profile.execution.max_attempts):
+        runs.append(rig.workflow.step(rig.principal, rig.specimen.id).run)
+        rig.clock.now += timedelta(hours=1)
+    return runs
+
+
+def test_a_source_still_unreachable_on_the_last_attempt_goes_to_review_and_the_run_finalizes(rig):
+    *early, last = until_the_last_attempt(rig, Scripted({"country": tgn_never_answers}))
+    # Earlier attempts retry: the outage may clear.
+    for attempt, run in enumerate(early, 1):
+        assert (run.stage, run.blocker, run.attempts[FIELD_RESEARCH]) == (
+            "retry_scheduled", "lookup_operational_failure", attempt)
+        assert run.fields["country"].reason == field_step.FIELD_REASONS["source_unavailable"]
+    # The last one sends the country to review, naming the source, and finalizes the rest.
+    assert (last.stage, last.blocker, last.dead_letter, last.disposition) == (
+        "finalized", None, False, Disposition.REVIEW)
+    assert last.attempts[FIELD_RESEARCH] == 3 and last.completed_steps[-1] == FIELD_RESEARCH
+    assert (last.fields["country"].state, last.fields["country"].reason) == (
+        ValueState.UNRESOLVED, "Getty TGN could not be reached after 3 attempts.")
+    assert "mandatory_unresolved:country" in last.reasons
+    assert not [reason for reason in last.reasons if reason.startswith("lookup_operational_failure")]
+    assert last.fields["taxon"].layer == "settled" and last.paid_calls[-1]["outcome"] == "completed"
+
+
+def test_a_model_error_on_the_last_attempt_still_stops_the_retries(rig):
+    """Only a source lookup's outage is graceful on the last attempt; a model
+    or provider failure keeps its block."""
+    *_, last = until_the_last_attempt(rig, Scripted({"country": failing("model_error")}))
+    assert (last.stage, last.dead_letter, last.blocker) == (
+        "processing_blocked", True, "retry_budget_exhausted:field_research_model_error")
+
+
+def field_spans(capfire):
+    """The step's field_research span and its field spans, by field key."""
+    spans = capfire.exporter.exported_spans_as_dict()
+    [step] = [span for span in spans if span["name"] == "field_research"]
+    fields = {span["attributes"]["field_key"]: span for span in spans if span["name"] == "field_research.field"}
+    return step, fields
+
+
+@pytest.mark.parametrize("content", [False, True])
+def test_each_fields_decision_is_its_own_span_inside_the_steps(rig, capfire, monkeypatch, content):
+    """A settled field (the taxon, on GBIF), a refused one (a city no place
+    source confirms) and one settled although a source could not be reached
+    (the state, on Wikidata with Getty TGN down): what the step decided after
+    each expert, as codes; the field's text only under approved content."""
+    from specimen_digitization import provider_privacy
+
+    monkeypatch.setattr(provider_privacy, "approved_content_configured", lambda: content)
+    mounted(rig, place_experts(None, {"city": answering(resolved(LABEL["city"]))}), sources=TgnDown)
+    run = rig.workflow.step(rig.principal, rig.specimen.id).run
+    assert (run.stage, run.disposition) == ("finalized", Disposition.REVIEW)
+    step, fields = field_spans(capfire)
+    assert set(fields) == set(field_step.field_keys(field_step.profile_of(run)))
+    assert all(span["parent"]["span_id"] == step["context"]["span_id"] for span in fields.values())
+    codes = ("expert_outcome", "failure", "fallback", "finalized_without_model", "state", "layer",
+        "reason_codes", "refusal", "rule", "lookups", "sources_answered", "sources_unreachable")
+    # Logfire exports a list attribute as its JSON text.
+    lists = {"reason_codes", "lookups", "sources_answered", "sources_unreachable"}
+    shown = {key: {name: json.loads(span["attributes"][name]) if name in lists else span["attributes"][name]
+        for name in codes} for key, span in fields.items()}
+    assert shown["taxon"] == {"expert_outcome": "resolved", "failure": "none", "fallback": False,
+        "finalized_without_model": False, "state": "supported", "layer": "settled", "reason_codes": [],
+        "refusal": "none", "rule": "none", "lookups": ["gbif:success"], "sources_answered": ["gbif"],
+        "sources_unreachable": []}
+    assert shown["city"] == {"expert_outcome": "resolved", "failure": "none", "fallback": False,
+        "finalized_without_model": False, "state": "unresolved", "layer": "none",
+        "reason_codes": ["mandatory_unresolved:city"], "refusal": "no_place", "rule": "none", "lookups": [],
+        "sources_answered": [], "sources_unreachable": []}
+    assert shown["province_state"] == {"expert_outcome": "resolved", "failure": "none", "fallback": False,
+        "finalized_without_model": False, "state": "supported", "layer": "settled", "reason_codes": [],
+        "refusal": "none", "rule": "none", "lookups": ["tgn:access_refused", "wikidata:success"],
+        "sources_answered": ["wikidata"], "sources_unreachable": ["tgn"]}
+    assert shown["collectors"]["finalized_without_model"] and shown["collectors"]["expert_outcome"] == "resolved"
+    assert shown["identified_by_irn"]["rule"] == "irn_nonblocking_exception"
+    # The label states one date; the step derives its end (G44).
+    assert (shown["date_visited_to"]["expert_outcome"], shown["date_visited_to"]["rule"]) == (
+        "label_lacks_value", "derived")
+    assert "Scrubbed" not in json.dumps([span["attributes"] for span in fields.values()])
+    text = json.dumps([span["attributes"] for span in fields.values()])
+    if not content:
+        assert not any(name in span["attributes"] for span in fields.values()
+            for name in ("literal", "value", "source_record", "reason"))
+        assert not any(value in text for value in (*LABEL.values(), GBIF_NAME, "J. Smith"))
+        return
+    taxon = fields["taxon"]["attributes"]
+    assert (taxon["literal"], taxon["value"], taxon["source_record"]) == (LABEL["taxon"], GBIF_NAME, GBIF_KEY)
+    assert fields["province_state"]["attributes"]["reason"].endswith(
+        "Getty TGN could not be reached; settled from Wikidata.")
+
+
+def test_every_reason_agreement_refuses_with_has_its_own_trace_code():
+    """A field's trace names the check that refused its answer by agreement's
+    constant (step.refusal_code), never "other", for every constant
+    agreement returns a Refusal with, the abbreviation rule's
+    EXPANSIONS_DIFFER among them."""
+    import ast
+    import inspect
+
+    from specimen_digitization.field_research import agreement
+
+    tree = ast.parse(inspect.getsource(agreement))
+    refused = {node.args[0].id for node in ast.walk(tree) if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name) and node.func.id == "Refusal"
+        and node.args and isinstance(node.args[0], ast.Name)}
+    assert "EXPANSIONS_DIFFER" in refused and "NO_PLACE" in refused
+    assert {name: field_step.refusal_code(getattr(agreement, name)) for name in refused} == {
+        name: name.lower() for name in refused}
 
 
 def test_a_run_without_a_harness_route_keeps_the_ordinary_plan_step(rig):
@@ -2193,6 +2686,13 @@ PILOT_CODES = {
     "105526326": ("", "Sp. 22", "\n\N{FEMALE SIGN} wings"),
     # 105526327's third label: a slide code, the code, then "legs".
     "105526327": ("V-4-67-1\n", "sp 22", "\nlegs"),
+    # The real-model run of the ten pilots (2026-10-09): body parts or a
+    # collector with initials right before the code, as a reader of each
+    # wrote them. Each was read as a genus before.
+    "105526322": ("shrubs, mostly forest\nwings + head\n", "sp. 30 \N{FEMALE SIGN}", ""),
+    "105526323": ("shrubs, mostly forest\ngenitalia + legs\n", "Sp 30 \N{FEMALE SIGN}", ""),
+    "105526329": ("IV-29-68-4\nR.D.mitchell\n", "sp #1 \N{MALE SIGN}", "\nhead & legs"),
+    "105526330": ("1948, R.D. Mitchell\n\N{FEMALE SIGN} legs ", "Sp.#1", ""),
 }
 
 
@@ -2211,6 +2711,45 @@ def test_the_pilots_codes_with_no_genus_beside_them_still_clear_as_unmatched(tmp
     assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
     assert field_step.taxon_unmatched(taxon, {item.id: item for item in run.evidence}, run.lookups,
         run=run)
+
+
+def test_readers_that_write_the_code_differently_with_no_decided_transcript_keep_it_in_review(tmp_path):
+    """105526329 as its two readers wrote it, with no decided transcript:
+    the label check finds no genus, but the readers write "sp #1" and
+    "Sp #1", and no source settles either (the readers' rule)."""
+    from specimen_digitization.field_research import checks
+
+    first, second = ("IV-29-68-4\nR.D.mitchell\n" + code + " \N{MALE SIGN}\nhead & legs" for code in ("sp #1", "Sp #1"))
+    assert checks.label_names_no_genus("1", [first, second])
+    rest = TEXT.replace("taxon: Danaus plexippus\n", "")
+    rig = build_rig(tmp_path, rest + "\n" + first, rest + "\n" + second, candidates=[*COLLECTORS,
+        ("taxon", "1A", "sp #1 \N{MALE SIGN}", "sp #1 \N{MALE SIGN}"),
+        ("taxon", "1B", "Sp #1 \N{MALE SIGN}", "Sp #1 \N{MALE SIGN}")])
+    settle(rig, Scripted({"taxon": cannot_resolve("sp #1 \N{MALE SIGN}")}), tools=NoGenus(rig.blobs))
+    taxon_held_back(rig.specimen.run)
+
+
+# A genus beside the code, or a doubtful one, in the same layouts: the text
+# before the code, the code and the text after it.
+STILL_A_GENUS = {
+    "genus-above-a-body-part-code-line": ("Epipsocus\n\N{FEMALE SIGN} legs ", "Sp.#1", ""),
+    "genus-before-a-body-part-on-the-code-line": ("Epipsocus legs ", "sp. 1", ""),
+    # Read as no genus before (after the code, "legs" stopped the reading).
+    "genus-past-a-body-part-after-the-code": ("V-4-67-1\n", "sp. 1", " \N{FEMALE SIGN} legs Epipsocus"),
+    "genus-after-cf-initials": ("C.F. Epipsocus\n", "sp. 1", ""),
+    "genus-right-before-the-code-under-a-collector": ("R.D. Mitchell\nEpipsocus ", "sp. 1", ""),
+    "doubtful-genus-above-a-body-part-code-line": ("R.D. Mitchell\nEpipsocus?\n\N{FEMALE SIGN} legs ", "Sp.#1", ""),
+    "qualified-genus-above-body-parts": ("cf. Epipsocus\ngenitalia + legs\n", "Sp 30 \N{FEMALE SIGN}", ""),
+}
+
+
+@pytest.mark.parametrize(("before", "code", "after"), STILL_A_GENUS.values(), ids=STILL_A_GENUS)
+def test_a_genus_beside_the_code_still_keeps_the_taxon_in_review(tmp_path, before, code, after):
+    """The expert quotes the code with no GBIF lookup."""
+    text = TEXT.replace("taxon: Danaus plexippus", before + code + after)
+    rig = build_rig(tmp_path, text, candidates=[*COLLECTORS, *(("taxon", name, code, code) for name in ("1A", "1B"))])
+    settle(rig, Scripted({"taxon": cannot_resolve(code)}), tools=NoGenus(rig.blobs))
+    taxon_held_back(rig.specimen.run)
 
 
 def test_a_later_pass_judges_the_label_of_an_unmatched_taxon_again(tmp_path):
@@ -2492,6 +3031,10 @@ LOOKED_UP_GENUS = {
     "unlisted-doubt-word": ("sim. Epipsocus\nV-4-67-1\n" + SP1, ()),
     "plain-genus-above-the-slide-number": ("Epipsocus\nV-4-67-1\n" + SP1, ()),
     "listed-qualifier": ("cfr. Epipsocus\nV-4-67-1\n" + SP1, ("qualifier",)),
+    # Words the doubt signs read as a nature reserve or as initials (N3 of
+    # #289's sixth review).
+    "capital-nr-before-the-genus": ("NR Epipsocus\nV-4-67-1\n" + SP1, ()),
+    "initials-without-the-final-period-before-the-genus": ("C.F Epipsocus\nV-4-67-1\n" + SP1, ()),
 }
 
 
@@ -2510,6 +3053,19 @@ def test_the_real_resolver_looking_the_genus_up_as_its_brief_says_keeps_the_taxo
     settle(rig, Scripted({"taxon": looking_the_genus_up_first("Epipsocus", SP1)}), tools=NoMatch(rig.blobs))
     taxon_held_back(run)
     assert [lookup.query.get("name") for lookup in run.lookups if lookup.provider == "gbif"] == ["Epipsocus"]
+
+
+@pytest.mark.parametrize("written", [*(line + "\nV-4-67-1\n" + SP1 for line in ("sim. Epipsocus", "NR Epipsocus",
+    "C.F Epipsocus")), "Epipsocus\nwings + head\n" + SP1, "Epipsocus\nlegs\n" + SP1, "R.D. Epipsocus\n" + SP1])
+def test_a_genus_the_label_checks_do_not_read_clears_when_the_expert_makes_no_lookup(tmp_path, written):
+    """The documented remaining cases (FIELD_RESEARCH.md, "Two cases
+    remain"): an expert that skips the lookup its brief asks for, quoting
+    the code, clears the taxon as unmatched."""
+    rig = build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", written),
+        candidates=[*COLLECTORS, *(("taxon", name, SP1, SP1) for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": cannot_resolve(SP1)}), tools=NoGenus(rig.blobs))
+    assert (run.fields["taxon"].state, run.fields["taxon"].reason) == (ValueState.SUPPORTED, field_step.UNMATCHED)
 
 
 def a_second_label(monkeypatch, text, spans=()):
@@ -2630,6 +3186,73 @@ def test_a_locality_in_victoria_is_no_qualifier_and_the_code_still_clears(tmp_pa
     settle(rig, Scripted({"taxon": cannot_resolve(MORPHOCODE)}), tools=NoGenus(rig.blobs))
     assert (run.fields["taxon"].state, run.fields["taxon"].reason) == (ValueState.SUPPORTED, field_step.UNMATCHED)
     assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+
+
+# N3 of #289's sixth review: ordinary label words that hold a qualifier's
+# letters or a run of periods, on a line of the code's label. Each held the
+# taxon back before.
+ORDINARY_LINES = {
+    "nature-reserve": "Sabah, Danum Valley NR",
+    "german-number": "Praep. Nr. 1234",
+    "confirmed-by-initials": "det. E. L. Mockford 1968, conf. K. Yoshizawa",
+    "confirmed-by": "conf. by J. Smith",
+    "initials-without-the-final-period": "leg. Baker, C.F",
+    "initials-before-a-surname": "C.F Baker",
+    "dot-leader": "Loc. ........ Chicago",
+    # The city the label's place fields settled (Chicago), after "near" or
+    # "nr." or before "vic.".
+    "near-the-settled-city": "5 mi near Chicago",
+    "nr-the-settled-city": "E. slope, nr. Chicago",
+    "vicinity-of-the-settled-city": "Chicago vic.",
+}
+
+
+@pytest.mark.parametrize("line", ORDINARY_LINES.values(), ids=ORDINARY_LINES)
+def test_ordinary_label_words_are_no_doubt_sign_and_the_code_still_clears(tmp_path, line):
+    """The expert quotes the code with no lookup; the later pass
+    (taxon_unmatched) reads the label's places the same way."""
+    rig = build_rig(tmp_path, morphocoded(MORPHOCODE) + "\n" + line)
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": cannot_resolve(MORPHOCODE)}), tools=NoGenus(rig.blobs))
+    taxon = run.fields["taxon"]
+    assert (taxon.state, taxon.reason) == (ValueState.SUPPORTED, field_step.UNMATCHED)
+    assert field_step.taxon_unmatched(taxon, {item.id: item for item in run.evidence}, run.lookups, run=run)
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+
+
+@pytest.mark.parametrize(("line", "city"), [
+    # A place the label's place fields did not settle.
+    ("5 mi near Davao", None),
+    ("Davao vic.", None),
+    # The city the line names did not settle.
+    ("5 mi near Chicago", NO_TOWN),
+], ids=["near-an-unsettled-place", "vicinity-of-an-unsettled-place", "near-a-city-that-did-not-settle"])
+def test_near_or_vicinity_beside_no_settled_place_keeps_the_taxon_in_review(tmp_path, line, city):
+    rig = build_rig(tmp_path, morphocoded(MORPHOCODE) + "\n" + line)
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": cannot_resolve(MORPHOCODE), **({"city": city} if city else {})}),
+        tools=NoGenus(rig.blobs))
+    taxon_held_back(run)
+
+
+# The doubtful genera the narrowing keeps out (N2 and N3 of #289's sixth
+# review), above 105526327's slide number, beside a label whose city
+# (Chicago) is settled.
+STILL_DOUBTFUL = {name: line + "\nV-4-67-1\n" + SP1 for name, line in {
+    "cf": "cf. Epipsocus", "cfr": "cfr. Epipsocus", "question": "Epipsocus?", "nr": "nr. Epipsocus",
+    "capital-nr-with-period": "NR. Epipsocus", "german-nr-before-a-word": "Nr. Epipsocus",
+    "conf-before-a-genus": "conf. Epipsocus", "near-before-a-genus-beside-a-place": "Chicago, near Epipsocus",
+    "ellipsis": "Mossy ...", "bracketed-ellipsis": "[...]"}.items()}
+
+
+@pytest.mark.parametrize("written", STILL_DOUBTFUL.values(), ids=STILL_DOUBTFUL)
+def test_a_doubtful_or_unread_genus_still_keeps_the_taxon_in_review(tmp_path, written):
+    rig = build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", written),
+        candidates=[*COLLECTORS, *(("taxon", name, SP1, SP1) for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": cannot_resolve(SP1)}), tools=NoGenus(rig.blobs))
+    assert run.fields["city"].state == ValueState.SUPPORTED
+    taxon_held_back(run)
 
 
 # N1 of #289's fourth review: a genus written with a placeholder other than
@@ -2935,6 +3558,10 @@ UNDOUBTED_GENUS = {
     # A "?" on another word, on the line above or on the genus's own line.
     "question-on-a-year-above": "1946?\nEpipsocus sp. 1",
     "question-on-a-place-before": "Davao? Epipsocus sp. 1",
+    # A locality line above that ends in a word of the qualifier list (N2 of
+    # #289's sixth review): a nature reserve, a vicinity.
+    "nature-reserve-ending-the-line-above": "Sabah, Danum Valley NR\nEpipsocus sp. 1",
+    "vicinity-ending-the-line-above": "Mindanao, Davao vic.\nEpipsocus sp. 1",
 }
 
 
@@ -2952,7 +3579,36 @@ def test_a_genus_with_no_doubt_written_on_it_still_settles_the_taxon(tmp_path, w
     assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
 
 
-EPIPSOCUS_HOMONYM = SourceCandidate(name="Epipsocus Hagen, 1866", authority_id="1045361", kind="GENUS")
+# A qualifier right before the genus on its line, or standing alone on the
+# line above it: the label marks the genus as doubtful.
+QUALIFIED_GENUS_LINE = {
+    "cf-alone-on-the-line-above": "cf.\nEpipsocus sp. 1",
+    "nr-alone-on-the-line-above": "Det. Mockford\nnr.\nEpipsocus sp. 1",
+    "capital-nr-alone-on-the-line-above": "NR\nEpipsocus sp. 1",
+    "cf-before-the-genus": "cf. Epipsocus sp. 1",
+    "cfr-before-the-genus": "cfr. Epipsocus sp. 1",
+    "nr-before-the-genus": "nr. Epipsocus sp. 1",
+    "capital-nr-before-the-genus": "Danum Valley NR Epipsocus sp. 1",
+}
+
+
+@pytest.mark.parametrize("written", QUALIFIED_GENUS_LINE.values(), ids=QUALIFIED_GENUS_LINE)
+def test_a_qualifier_right_before_the_genus_or_alone_on_the_line_above_never_settles_it(tmp_path, written):
+    """The expert breaks its brief and resolves "Epipsocus sp. 1" as GBIF's
+    genus; the organiser quotes the genus's own line."""
+    literal = "Epipsocus sp. 1"
+    rig = build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", written),
+        candidates=[*COLLECTORS, *(("taxon", name, literal, written.split("\n")[-1]) for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": taxon_on("Epipsocus", value=EPIPSOCUS_GENUS, authority_id=EPIPSOCUS_GENUS_KEY,
+        literal=literal)}), tools=EpipsocusGenus(rig.blobs))
+    taxon = run.fields["taxon"]
+    assert (taxon.state, taxon.normalized, taxon.authority_id) == (ValueState.UNRESOLVED, None, None)
+    assert taxon.reason.startswith(agreement.DOUBTFUL_GENUS)
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["mandatory_unresolved:taxon", "taxonomy_unresolved"])
+
+
+EPIPSOCUS_HOMONYM =SourceCandidate(name="Epipsocus Hagen, 1866", authority_id="1045361", kind="GENUS")
 
 
 @pytest.mark.parametrize(("status", "candidates", "asked", "genus"), [
@@ -3141,7 +3797,7 @@ def test_an_inline_unreadable_marker_with_no_span_listed_keeps_every_listed_fiel
 # (checks.shows_placeholder), in any case.
 PLACEHOLDERS = ["[unreadable]", "(unreadable)", "[illegible]", "(illegible)", "[illeg.]", "[illeg]", "(illeg.)",
     "[unclear]", "(unclear)", "illegible", "unreadable", "[?]", "???", "...", "[...]", "\N{HORIZONTAL ELLIPSIS}",
-    "ILLEGIBLE", "Unreadable", "[Unclear]"]
+    "ILLEGIBLE", "Unreadable", "[Unclear]", "(...)", "[....]"]
 
 
 @pytest.mark.parametrize("placeholder", PLACEHOLDERS)
@@ -3156,7 +3812,9 @@ def test_any_placeholder_with_no_span_listed_keeps_every_listed_field_in_review(
     assert not cleared_as_not_on_label(run) and not any(not_on_label_rows(run, key) for key in ABSENT)
 
 
-@pytest.mark.parametrize("line", ["V-4-67-1", "Legible label"])
+@pytest.mark.parametrize("line", ["V-4-67-1", "Legible label",
+    # A printed form's dot leaders and "etc..." (N3 of #289's sixth review).
+    "Det. ..........", "Loc. ......", "Coll. J. Smith etc..."])
 def test_a_line_with_no_placeholder_still_lets_the_listed_fields_clear(tmp_path, line):
     rig = build_rig(tmp_path, SPARSE + "\n" + line)
     run = rig.specimen.run
@@ -3270,21 +3928,18 @@ def test_readers_whose_place_texts_differ_by_a_unit_word_settle_on_the_place_con
     assert not reasons_for(run, "province_state")
 
 
-@pytest.mark.parametrize(("province", "authority_id", "settles"), [
-    # Getty TGN's nation lists itself as its parent: a province of the nation's own name.
-    ("Guatemala", "tgn:1000621", True),
-    ("Chimaltenango", "tgn:1000565", False),
+@pytest.mark.parametrize(("province", "authority_id"), [
+    # Getty TGN's nation lists itself as its parent, but a province is no parent of a
+    # country: a place's parents are only larger places, and a country has none.
+    ("Guatemala", "tgn:1000621"),
+    ("Chimaltenango", "tgn:1000565"),
 ])
-def test_a_near_spelled_country_settles_beside_places_of_the_nations_own_name_only(
-        tmp_path, province, authority_id, settles):
+def test_a_near_spelled_country_never_settles(tmp_path, province, authority_id):
     rig = build_rig(tmp_path, label_with(country="Guatamala", province_state=province, county=None, city=None))
     run = rig.specimen.run
     settle(rig, Scripted({"country": from_tgn("Guatemala", "Guatamala", "Guatemala", "tgn:7005493"),
         "province_state": from_tgn(province, province, None, authority_id),
         **dict.fromkeys(("county", "city"), answering(LACKS))}), tools=Gazetteer(rig.blobs))
     country = run.fields["country"]
-    if not settles:
-        assert (country.state, country.reason) == (ValueState.UNRESOLVED, agreement.NEAR_UNFIT + " Settled.")
-        return
-    assert (country.state, country.literal, country.normalized) == (ValueState.SUPPORTED, "Guatamala", "Guatemala")
-    assert "near_spelling:country" in [f.reason_code for f in run.findings] and not reasons_for(run, "country")
+    assert (country.state, country.reason) == (ValueState.UNRESOLVED, agreement.NEAR_UNFIT + " Settled.")
+    assert "near_spelling:country" not in [f.reason_code for f in run.findings]
