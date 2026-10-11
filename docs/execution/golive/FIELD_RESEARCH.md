@@ -159,16 +159,42 @@ handover runs field research instead of the six specialists:
      that reading ("Sept. '46" beside the candidate "3 Sept. '46", "San
      Pedro Sacatepequez" beside the candidate "San Pedro"): the answer is
      then refused as above. A date or an elevation so read is never one end
-     of a range (`agreement._part_of_range`, PR #300's review): where a
-     reading it is read from writes it, the comma- or semicolon-separated
-     part of the line holding it may not join two words that each hold a
-     digit with "to", "-", an en dash or "a" (any case) standing as a word
-     of its own, unless the literal holds that joiner and both those words,
-     the whole range ("The label writes this value as one end of a range.":
-     "V-2-48" or "IV-24-48" of "IV-24-48 to V-2-48", "1500 m" of "1200 to
-     1500 m" or "1200 a 1500 m"; "1200 to 1500 m" whole keeps the rules a
-     candidate has). A range glued with a hyphen ("1200-1500 m") is one
-     word, which no run cuts. Every other rule
+     of a range (`agreement._part_of_range`, PR #300's review and finding 1
+     of its review of 6fd595b3b): where a reading it is read from writes
+     it, the comma- or semicolon-separated part of the line holding it may
+     write no range (`written.ranges`) unless the literal holds both its
+     ends, the whole range ("The label writes this value as one end of a
+     range."). A range is two ends, each a word holding a digit, joined by
+     a run of joiners: a dash of any form (a hyphen, an en or em dash, a
+     minus sign, a figure dash, a full-width hyphen, a wave dash and the
+     others `written.DASHES` pins by name), standing as a word of its own
+     or touching one end ("1200- 1500 m", "IV-24-48 -V-2-48"); a sign "&",
+     "/" or "~" standing alone; or a word of `written.RANGE_WORDS`, compared
+     with letter case and accents aside: English "to", "till", "until",
+     "thru", "through", "and"; Spanish "a", "al", "hasta", "y"; Portuguese
+     "a", "ao", "ate" (with its acute accent), "e"; French "a" (with its
+     grave accent), "au", "jusqu'a", "jusqu'au", "et"; German "bis", "und";
+     Italian "a", "al", "fino", "e"; Dutch "tot", "en", "t/m"; Latin "ad",
+     "usque" (a run of them, such as "fino a", is one joiner). Up to five
+     words that may stand beside a number (`written.BESIDE_A_NUMBER`) may
+     come between an end and the joiner: a unit's words ("1200 m to 1500
+     m", "1200 m a. s. l. to 1500 m"), a month in English, Spanish,
+     Portuguese, French, German, Italian or Dutch, a Roman numeral I to XII
+     in capitals ("April 24 to May 2, 1948", "24 avril au 2 mai 1948"), or
+     an approximate marker ("ca."). The two ends are written alike: in one
+     unit, or both dates (an end that writes letters, or has a month or a
+     Roman month beside it), or a bare number beside either. Ends in
+     different units are one elevation written in both, no range ("4800 ft.
+     / 1463 m": each settles its own unit's field), and a unit beside a
+     date is two fields ("Guatemala / 1200 m / 24.IV.1948"). A word of two
+     numbers joined by a dash or a "/" ("1200-1500 m", "10-12") is one word,
+     which no run cuts; standing right before or after the literal, it
+     makes the literal part of its range too ("Sept. 1946" of "10-12 Sept.
+     1946", "IV 1948" of "24/30 IV 1948"). So "1500 m" of "1200 bis 1500
+     m", "entre 1200 y 1500 msnm", "1200 - 1500 m" with an em dash, "1200-
+     1500 m" or "1200 m to 1500 m", "V-2-48" of "IV-24-48 au V-2-48" and
+     "May 2, 1948" of "April 24 to May 2, 1948" go to review; "1200 to 1500
+     m" whole keeps the rules a candidate has. Every other rule
      applies to it as to a candidate: G19's decided transcript, the readers'
      rules below, the place checks (the lookup of the label's own text, the
      level, the parents, the near spelling) and the doubtful genus. For the taxon, the
@@ -213,7 +239,14 @@ handover runs field research instead of the six specialists:
      field's organiser candidate (or keyed line the parser read), where its
      quote stands in its reading, whatever that field's expert did in this
      attempt (PR #300's review: the elevation's candidate "4800ft." claims
-     its text even when the elevation's expert failed). The field
+     its text even when the elevation's expert failed). An answer's or a
+     settled value's literal claims only where it stands as whole tokens:
+     each occurrence that neither starts nor ends between two letters or
+     between two digits (`step._occurrences`; finding 2 of the review of
+     6fd595b3b), so a collection code settled as "2" claims the "2" of "lot
+     #2" but not the "2" of "IV-24-48", and the date read from the
+     transcript settles; a code settled as "IV-24-48" still claims the
+     date's whole text. The field
      goes to review with the reason "This text, read from the transcript,
      is also the value found for <field>." The kinds are
      `agreement.FIELD_KINDS`: the place fields (precise location among
@@ -227,6 +260,68 @@ handover runs field research instead of the six specialists:
      "2000 msnm" settles. An organiser's candidate is never refused here,
      and two fields that both read the text from the transcript both go to
      review.
+   - **Text plainly of another kind** (the answer check and the step,
+     `agreement._holds_another_kind`; finding 2 of the review of
+     6fd595b3b). A place field (country, province or state, county, city,
+     precise location) or the collection code read from the transcript
+     never holds text that is plainly another kind of field's, whether or
+     not any field claims it (`written.other_kind`): an elevation, a number
+     with an elevation unit after it or before it ("4800ft.", "m 1200"; the
+     units below), unless a compass point or "of", "from", "de", "von" and
+     the like (`written.DISTANCE_AFTER`) follows it, which makes it a
+     distance ("500 m N of the church" is locality text); a date, any run
+     of up to five whole words the date parser reads as a date or as
+     several, with Roman months read and no century rule ("IV-24-48",
+     "24.VI.1952", "24 Apr 1948", a year from 1750 on such as "1948"; a
+     slide code is none); or a range of dates or elevations (`written.ranges`
+     with a unit, a month, a Roman month or letters at an end: "24 IV a 2
+     V"; a range of bare numbers, "km 12 a 15", is none). Such an answer is
+     sent back, telling the expert to leave that text out, and the step
+     sends the field to review ("This text holds an elevation, which is
+     another field's.", "...holds a date...", "...holds a range of dates or
+     elevations..."). So with no elevation candidate and the elevation's
+     expert failing, "Yepocapa, 4800ft." no longer settles as the locality
+     while "Yepocapa" does, and with no date candidate "IV-24-48" no longer
+     settles as the collection code; "Volcan Barva" beside "2000 msnm"
+     still settles. An organiser's candidate is not checked here.
+   - **The elevation's unit** (the answer check and the step,
+     `agreement._unit_refusal`, for an organiser's candidate and for text
+     read from the transcript alike; finding 5 of the review of 6fd595b3b,
+     pre-existing on main: "1500 m" from "alt. 1500 m" settled
+     elevation_from_ft as 1500). Each elevation field holds the unit
+     `application.derivations.UNITS` gives it (metres for elevation_from_m
+     and elevation_to_m, feet for elevation_from_ft and elevation_to_ft).
+     Wherever a reading the answer names (its label's decided reading, on a
+     label with one) writes the literal as whole numbers, the unit of each
+     of the literal's numbers is read on that line (`written.units_of`,
+     `written.numbers`): the unit written right after the number, glued or
+     after spaces, in any spelling of `written.ELEVATION_UNITS` (metres "m",
+     "mts", "metres", "meters", "metros", "metri", "msnm", "msm", "m.s.n.m.",
+     "m a.s.l.", "masl", "msl", "m s.l.m.", "m u. M." with its umlaut, "m
+     NN", "m alt."; feet "ft", "feet", "foot", a foot mark straight, curly
+     or a prime, "pies", "p.s.n.m.", "pes" with its accent, "Fuss" with or
+     without its sharp s, "pieds", "piedi", "voet"; letter case, accents,
+     periods and the spaces inside a unit aside), or right before it as
+     Italian labels write it ("m 1200"); or, for an end of a range that
+     writes none, the other end's unit ("1200" of "1200 to 1500 m" or of
+     "1200-1500 m"). "mt" may be Mount and is no unit, nor is "mm", and a
+     foot mark after a degree sign is a minute of arc. When any of those
+     units is the other unit the answer is refused ("The label writes this
+     elevation in the other unit.": "1500 m" or "1500" of "alt. 1500 m" as
+     feet, "6400'" or "6400 pies" as metres, "4800 ft. (1463 m)" as either);
+     when the reading writes none of its numbers with a unit, it is refused
+     too ("The label writes no elevation unit with this number.": "1500" of
+     "Elev. 1500", "1200 mt"), as a unit is never guessed (G41). Sent back,
+     the expert's brief has it answer label_lacks_value when the label
+     states the elevation only in the other unit, and the derivations
+     below then convert the settled one; refused at the step, the
+     field goes to review, and no elevation is derived while one is
+     unresolved (`derive._elevations`). The answer check's written rule
+     (`extraction_refusal`, a unit after a bare number) still applies
+     before this one. The experts' shared brief renders its range and
+     elevation-unit lines from the tables these rules read
+     (`written.range_line`, `written.unit_line`, folded to ASCII), as it
+     renders the place notations.
    - **A doubtful genus (taxon only).** The literal never settles the taxon
      when the label marks its genus as doubtful (`checks.genus_in_doubt`,
      through `agreement._genus_in_doubt`): wherever the quote of a candidate

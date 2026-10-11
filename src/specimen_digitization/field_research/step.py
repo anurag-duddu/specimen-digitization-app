@@ -557,20 +557,36 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending):
 TAKEN = "This text, read from the transcript, is also the value found for {other}."
 
 
+def _inside_a_token(text: str, index: int) -> bool:
+    """Whether `index` falls between two letters or between two digits of the
+    text: inside a word's letters ("trap" of "trapping") or a number's digits
+    ("2" of "24")."""
+    if not 0 < index < len(text):
+        return False
+    before, after = text[index - 1], text[index]
+    return (before.isalpha() and after.isalpha()) or (before.isdigit() and after.isdigit())
+
+
 def _occurrences(literal: str, readings: Iterable[Reading]) -> frozenset[tuple[str, int, int]]:
-    """Where the readings write the literal: (reading, start, end), each time."""
+    """Where the readings write the literal as whole tokens: (reading, start,
+    end), each time it neither starts nor ends inside a word's letters or a
+    number's digits (_inside_a_token). A settled "2" claims the "2" of "lot
+    #2", never the "2" of "IV-24-48" (PR #300's review, finding 2)."""
     found = set()
     for reading in readings:
         start = reading.text.find(literal)
         while start >= 0:
-            found.add((reading.name, start, start + len(literal)))
+            end = start + len(literal)
+            if not (_inside_a_token(reading.text, start) or _inside_a_token(reading.text, end)):
+                found.add((reading.name, start, end))
             start = reading.text.find(literal, start + 1)
     return frozenset(found)
 
 
 def _candidate_spans(reading: Reading, candidate: Candidate) -> frozenset[tuple[str, int, int]]:
     """Where an organiser candidate's literal stands in its reading: inside
-    each place its quote does, else wherever the reading writes it."""
+    each place its quote does, else wherever the reading writes it as whole
+    tokens (_occurrences)."""
     text, found = reading.text, set()
     at = text.find(candidate.quote) if candidate.quote else -1
     while at >= 0:
@@ -596,10 +612,11 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
     (agreement.verbatim_runs) in the readings of the labels its answer
     names; it is claimed when it overlaps, in the same reading, the literal
     of another field's answer of this attempt (resolved, or
-    sources_cannot_resolve quoting it), wherever that literal stands in the
-    readings of the labels that answer names, the literal of another
-    field's value settled before this attempt (or a person's), in the
-    readings of its labels, or another field's organiser candidate (the
+    sources_cannot_resolve quoting it), wherever that literal stands as
+    whole tokens (_occurrences) in the readings of the labels that answer
+    names, the literal of another field's value settled before this attempt
+    (or a person's), so, in the readings of its labels, or another field's
+    organiser candidate (the
     organiser's or the keyed-line parser's, _candidates) where its quote
     stands in its reading, whatever that field's expert did in this attempt
     (it may have failed). Which field such text belongs to is for a

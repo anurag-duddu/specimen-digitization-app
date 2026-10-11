@@ -730,6 +730,29 @@ def test_the_briefs_place_notations_are_the_tables():
     assert notations.expansion("P.I.", "province_state") is None and notations.expansion("Phil.", "country") is None
 
 
+def test_the_briefs_range_and_unit_lines_are_the_tables():
+    """The shared brief's range and elevation-unit lines are rendered from the
+    tables the range and unit rules read (written.RANGE_WORDS, RANGE_SIGNS,
+    ELEVATION_UNITS), in ASCII: every range word of every language, folded,
+    and every unit spelling shown is one the rule reads."""
+    from specimen_digitization.field_research import written
+    from specimen_digitization.field_research.prompts import _ROOT, instructions
+
+    common = (_ROOT / "common.txt").read_text(encoding="utf-8")
+    assert common.count(written.RANGE_MARKER) == 1 and common.count(written.UNIT_MARKER) == 1
+    for key in FIELD_TOOLS:
+        lines = instructions(key).splitlines()
+        assert written.range_line() in lines and written.unit_line() in lines
+        assert written.RANGE_MARKER not in lines and written.UNIT_MARKER not in lines
+    line = written.range_line()
+    assert all(f'"{written.fold(word)}"' in line for words in written.RANGE_WORDS.values() for word in words)
+    assert all(f'"{sign}"' in line for sign in written.RANGE_SIGNS)
+    for unit, shown in written.SHOWN_UNITS.items():
+        for spelling in shown:
+            assert written.UNIT_OF[written._bare(spelling.replace(" ", ""))] == unit, spelling
+            assert f'"{spelling}"' in written.unit_line()
+
+
 def test_the_taxon_brief_has_a_doubtful_or_distant_genus_looked_up_alone():
     """B4 of #289's fifth review: the brief no longer withholds the lookup
     for a genus in doubt, whatever its qualifier's spelling, and has every

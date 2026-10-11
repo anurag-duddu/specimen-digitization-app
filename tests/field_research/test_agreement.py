@@ -319,9 +319,10 @@ ACCEPTED = {
     "328-collecting-date": (label(LABEL_3A, LABEL_3B), "date_visited_from",
         dict(literal="IV-24-48", value="1948-04-24"), [("parse_date", "IV-24-48")]),
     "328-collection-method": (label(LABEL_3A, LABEL_3B), "collection_method", dict(literal="trap"), []),
-    # 105526330's locality, from its decided transcript; the other reader is evidence only.
+    # 105526330's locality, from its decided transcript; the other reader is evidence only. The
+    # elevation after the comma is the elevation's text, not the locality's (the brief leaves it out).
     "330-precise-location": (label("Yepocapa,4800 ft.\nIV-25\n1948", "Yepocapa, 4800 ft.\nIV-25\n1948",
-        decided=True), "precise_location", dict(literal="Yepocapa,4800 ft."), []),
+        decided=True), "precise_location", dict(literal="Yepocapa"), []),
     # A Costa Rican label: the locality before its comma, the elevation after it.
     "spanish-locality": (label("Volc" + A_ACUTE + "n Barva, 2000 msnm\n15-VIII-1965"), "precise_location",
         dict(literal="Volc" + A_ACUTE + "n Barva"), []),
@@ -872,11 +873,347 @@ def test_the_experts_check_sends_a_range_end_back():
     ("elevation_from_ft", "Yepocapa, 4800 ft., IV-24-48 to V-2-48", "4800 ft."),
     # "a" that joins no two numbers (Spanish "at").
     ("elevation_from_m", "Mata a 1200 m", "1200 m"),
-    # A field that is no date or elevation.
-    ("collection_code", "IV-24-48 to V-2-48", "V-2-48"),
+    # A field that is no date or elevation, beside a range of plain numbers. (Its old case, the
+    # collection code "V-2-48" of "IV-24-48 to V-2-48", is now refused as holding a date:
+    # test_a_place_or_code_read_from_the_transcript_never_holds_another_kinds_text.)
+    ("collection_code", "lot 12 to 15", "15"),
 ], ids=["whole-range", "range-in-another-clause", "a-joining-no-numbers", "not-a-date-field"])
 def test_text_beside_or_holding_a_whole_range_is_not_cut_from_it(key, line, literal):
-    """The control: unchanged from 61c193e93."""
+    """The control: each settles, as on 6fd595b3b."""
     readings = label(line + "\nleg. J. Smith")
     assert agreement.refusal(uncandidated(key), readings, literal=literal, named=list(readings), value=None,
         authority_id=None, cited=[], received=[]) is None
+
+
+# PR #300's review of 6fd595b3b, finding 1: the range guard knew only "to",
+# "-", an en dash and "a" standing as words between two words with digits.
+# Ranges are written in many languages, with every form of dash, with a dash
+# touching one end, and with a unit or a month between a number and the
+# joiner (written.RANGE_WORDS, RANGE_SIGNS, DASHES, BESIDE_A_NUMBER).
+
+RANGES_IN_ANY_LANGUAGE = {
+    # Elevations: France, Germany, Spain and Latin America, Brazil, Italy, the Netherlands.
+    "french-a-grave": ("elevation_from_m", "1200 \N{LATIN SMALL LETTER A WITH GRAVE} 1500 m", "1500 m"),
+    "german-bis": ("elevation_from_m", "H\N{LATIN SMALL LETTER O WITH DIAERESIS}he 1200 bis 1500 m", "1500 m"),
+    "spanish-hasta": ("elevation_to_m", "desde 1200 hasta 1500 m", "1500 m"),
+    "spanish-entre-y": ("elevation_from_m", "entre 1200 y 1500 msnm", "1500 msnm"),
+    "portuguese-ate": ("elevation_from_m", "1200 at\N{LATIN SMALL LETTER E WITH ACUTE} 1500 m", "1500 m"),
+    "italian-fino-a": ("elevation_from_m", "da 1200 fino a 1500 m s.l.m.", "1500 m s.l.m."),
+    "dutch-tot": ("elevation_from_m", "van 1200 tot 1500 m", "1500 m"),
+    "latin-ad": ("elevation_from_m", "1200 ad 1500 m", "1500 m"),
+    "english-and": ("elevation_from_m", "between 1200 and 1500 m", "1500 m"),
+    "ampersand": ("elevation_from_m", "1200 & 1500 m", "1500 m"),
+    # Every dash, standing alone or touching one end.
+    "em-dash": ("elevation_from_m", "1200 \N{EM DASH} 1500 m", "1500 m"),
+    "minus-sign": ("elevation_from_m", "1200 \N{MINUS SIGN} 1500 m", "1500 m"),
+    "figure-dash": ("elevation_from_m", "1200 \N{FIGURE DASH} 1500 m", "1500 m"),
+    "fullwidth-hyphen": ("elevation_from_m", "1200 \N{FULLWIDTH HYPHEN-MINUS} 1500 m", "1500 m"),
+    "japanese-wave-dash": ("elevation_from_m", "1200 \N{WAVE DASH} 1500 m", "1500 m"),
+    "hyphen-touching-the-first": ("elevation_from_m", "1200- 1500 m", "1500 m"),
+    "hyphen-touching-the-second": ("elevation_from_m", "1200 -1500 m", "1500 m"),
+    # A unit on both ends, either end taken.
+    "units-on-both-ends": ("elevation_from_m", "1200 m to 1500 m", "1500 m"),
+    "units-on-both-ends-first": ("elevation_from_m", "1200 m - 1500 m", "1200 m"),
+    "feet-on-both-ends": ("elevation_from_ft", "4000 ft to 4800 ft", "4000 ft"),
+    # Dates: French, German, English and Spanish joiners, a slash, a dash touching one end.
+    "french-au": ("date_visited_from", "IV-24-48 au V-2-48", "V-2-48"),
+    "german-bis-date": ("date_visited_to", "24.IV.1948 bis 2.V.1948", "2.V.1948"),
+    "english-thru": ("date_visited_from", "IV-24-48 thru V-2-48", "V-2-48"),
+    "ampersand-date": ("date_visited_from", "IV-24-48 & V-2-48", "V-2-48"),
+    "slash-date": ("date_visited_from", "IV-24-48 / V-2-48", "V-2-48"),
+    "dash-touching-the-second-date": ("date_visited_from", "IV-24-48 -V-2-48", "V-2-48"),
+    "dash-touching-the-first-date": ("date_visited_from", "IV-24-48- V-2-48", "IV-24-48"),
+    "spanish-al-days": ("date_visited_from", "24 al 30-IV-1948", "30-IV-1948"),
+    # A month between the number and the joiner, in English and in French.
+    "english-month-names": ("date_visited_from", "April 24 to May 2, 1948", "May 2, 1948"),
+    "french-month-names": ("date_visited_from", "24 avril au 2 mai 1948", "2 mai 1948"),
+    # A day range glued in one word, right before the month and year.
+    "glued-day-range": ("date_visited_from", "10-12 Sept. 1946", "Sept. 1946"),
+    "glued-slash-day-range": ("date_visited_from", "24/30 IV 1948", "IV 1948"),
+}
+
+
+@pytest.mark.parametrize(("key", "line", "literal"), RANGES_IN_ANY_LANGUAGE.values(), ids=RANGES_IN_ANY_LANGUAGE)
+def test_one_end_of_a_range_in_any_language_is_never_read_from_the_transcript(key, line, literal):
+    """On 6fd595b3b each is accepted."""
+    readings = label(line + "\nleg. J. Smith")
+    refused = agreement.refusal(uncandidated(key), readings, literal=literal, named=list(readings), value=None,
+        authority_id=None, cited=[], received=[])
+    assert refused is not None and refused.reason == agreement.PART_OF_RANGE
+
+
+def test_the_experts_check_sends_back_a_range_end_joined_in_german():
+    """The expert's own check, with parse_date run on the end: on 6fd595b3b it
+    keeps "2.V.1948" as the start of "24.IV.1948 bis 2.V.1948"."""
+    readings = label("Bayern, 24.IV.1948 bis 2.V.1948\nleg. J. Schmidt")
+    with pytest.raises(ModelRetry, match="one end of a range"):
+        checked(uncandidated("date_visited_from"), readings, dict(outcome="resolved", literal="2.V.1948",
+            reading_names=["3A", "3B"], value="1948-05-02"), checks=[("parse_date", "2.V.1948")])
+
+
+@pytest.mark.parametrize(("key", "line", "literal"), [
+    # One elevation written in both units is no range.
+    ("elevation_from_ft", "4800 ft. / 1463 m", "4800 ft."),
+    ("elevation_from_m", "4800 ft. / 1463 m", "1463 m"),
+    # Dashes and slashes between fields of different kinds join no range.
+    ("elevation_from_m", "Guatemala / 1200 m / 24.IV.1948", "1200 m"),
+    ("date_visited_from", "Guatemala / 1200 m / 24.IV.1948", "24.IV.1948"),
+    ("date_visited_from", "Yepocapa - 1200 m - IV-24-48", "IV-24-48"),
+    # A range of the other field in another clause.
+    ("elevation_from_m", "alt. 1200 m, 24 al 30-IV-1948", "1200 m"),
+    # Spanish "a" and Italian "e" joining no two numbers.
+    ("elevation_from_m", "camino a Yepocapa, 1200 m", "1200 m"),
+    ("date_visited_from", "Lago di Garda e dintorni 24.VI.1952", "24.VI.1952"),
+    # Whole ranges, in Spanish and German, keep the rules a candidate has.
+    ("elevation_from_m", "1200 a 1500 m", "1200 a 1500 m"),
+    ("date_visited_from", "24.IV.1948 bis 2.V.1948", "24.IV.1948 bis 2.V.1948"),
+], ids=["feet-beside-metres", "metres-beside-feet", "slash-separated-elevation", "slash-separated-date",
+    "dash-separated-date", "range-in-another-clause", "spanish-a-before-a-word", "italian-e-between-words",
+    "whole-spanish-range", "whole-german-range"])
+def test_text_beside_a_joiner_that_joins_no_range_settles(key, line, literal):
+    """The control: each settles, as on 6fd595b3b."""
+    readings = label(line + "\nleg. J. Smith")
+    assert agreement.refusal(uncandidated(key), readings, literal=literal, named=list(readings), value=None,
+        authority_id=None, cited=[], received=[]) is None
+
+
+# PR #300's review of 6fd595b3b, finding 5 (pre-existing on main): "1500 m"
+# from "alt. 1500 m" settled elevation_from_ft as 1500. An elevation settles
+# only the fields of the unit the label writes it in (written.ELEVATION_UNITS),
+# and a number with no unit settles none: a unit is never guessed (G41).
+
+OTHER_UNIT = {
+    # The review's case: metres as the feet field, the unit in the literal or after it.
+    "metres-as-feet": ("elevation_from_ft", "alt. 1500 m", "1500 m"),
+    "metres-after-the-number": ("elevation_from_ft", "alt. 1500 m", "1500"),
+    # Spanish and Latin American metres above sea level.
+    "msnm": ("elevation_from_ft", "Volc\N{LATIN SMALL LETTER A WITH ACUTE}n Barva, 2000 msnm", "2000 msnm"),
+    "m-s-n-m": ("elevation_to_ft", "1500 m.s.n.m.", "1500 m.s.n.m."),
+    "metros": ("elevation_from_ft", "1200 metros", "1200 metros"),
+    # English, German and Italian metres above sea level, and a heading after the unit.
+    "m-a-s-l": ("elevation_from_ft", "Mt. Kinabalu, 1500 m a.s.l.", "1500 m a.s.l."),
+    "german-m-ue-M": ("elevation_from_ft", "800 m \N{LATIN SMALL LETTER U WITH DIAERESIS}. M.", "800 m \N{LATIN SMALL LETTER U WITH DIAERESIS}. M."),
+    "italian-unit-first": ("elevation_from_ft", "Alpi Apuane, m 1200", "m 1200"),
+    "m-alt": ("elevation_from_ft", "1500 m alt.", "1500 m alt."),
+    # Feet as the metres field: a foot mark, "ft.", Spanish "pies", Portuguese "pes", German "Fuss".
+    "foot-mark-as-metres": ("elevation_from_m", "Mossy forest 6400'", "6400'"),
+    "ft-as-metres": ("elevation_from_m", "Elev. 4800 ft.", "4800 ft."),
+    "pies": ("elevation_from_m", "6400 pies", "6400 pies"),
+    "pes": ("elevation_to_m", "1500 p\N{LATIN SMALL LETTER E WITH ACUTE}s", "1500 p\N{LATIN SMALL LETTER E WITH ACUTE}s"),
+    "fuss": ("elevation_from_m", "H\N{LATIN SMALL LETTER O WITH DIAERESIS}he 1500 Fu\N{LATIN SMALL LETTER SHARP S}",
+        "1500 Fu\N{LATIN SMALL LETTER SHARP S}"),
+    # Both units in one literal: never one field's.
+    "both-units": ("elevation_from_ft", "4800 ft. (1463 m)", "4800 ft. (1463 m)"),
+}
+
+
+@pytest.mark.parametrize(("key", "line", "literal"), OTHER_UNIT.values(), ids=OTHER_UNIT)
+def test_an_elevation_never_settles_a_field_of_the_other_unit(key, line, literal):
+    """On 6fd595b3b each is accepted by the agreement rules."""
+    readings = label(line + "\nleg. J. Smith")
+    refused = agreement.refusal(uncandidated(key), readings, literal=literal, named=list(readings), value=None,
+        authority_id=None, cited=[], received=[])
+    assert refused is not None and refused.reason == agreement.UNIT_DIFFERS
+
+
+NO_UNIT = {
+    "bare-number": ("elevation_from_m", "Elev. 1500", "1500"),
+    "heading-and-number": ("elevation_from_ft", "Alt. 4800", "Alt. 4800"),
+    # "mt" may be Mount, never read as metres.
+    "mt": ("elevation_from_m", "1200 mt", "1200 mt"),
+    # "mm" is no metre.
+    "millimetres": ("elevation_from_m", "1200 mm", "1200 mm"),
+}
+
+
+@pytest.mark.parametrize(("key", "line", "literal"), NO_UNIT.values(), ids=NO_UNIT)
+def test_a_number_with_no_unit_never_settles_an_elevation(key, line, literal):
+    """On 6fd595b3b each is accepted by the agreement rules."""
+    readings = label(line + "\nleg. J. Smith")
+    refused = agreement.refusal(uncandidated(key), readings, literal=literal, named=list(readings), value=None,
+        authority_id=None, cited=[], received=[])
+    assert refused is not None and refused.reason == agreement.NO_UNIT
+
+
+@pytest.mark.parametrize("basis", ["candidate", "transcript"])
+def test_the_experts_check_sends_metres_back_from_the_feet_field(basis):
+    """The review's probe: "1500 m" as elevation_from_ft, value 1500 from
+    parse_elevation, by candidate and from the transcript. On 6fd595b3b both
+    are kept."""
+    readings = label("alt. 1500 m\nleg. J. Smith")
+    task = uncandidated("elevation_from_ft", *((("3A", "1500 m"), ("3B", "1500 m")) if basis == "candidate" else ()))
+    with pytest.raises(ModelRetry, match="in metres, and this field holds feet"):
+        checked(task, readings, dict(outcome="resolved", literal="1500 m", value="1500", reading_names=["3A", "3B"]),
+            checks=[("parse_elevation", "1500 m")])
+
+
+@pytest.mark.parametrize("basis", ["candidate", "transcript"])
+def test_the_step_never_settles_metres_as_feet(tmp_path, basis):
+    """Through the step: on 6fd595b3b the feet field is supported as 1500 by
+    candidate, and from the transcript too. The metres field settles, and
+    the feet are left to review."""
+    text = "Mindanao, alt. 1500 m\nleg. J. Smith"
+    candidates = [("elevation_from_ft", name, "1500 m", "alt. 1500 m") for name in ("1A", "1B")] if (
+        basis == "candidate") else []
+    rig = label_3(tmp_path, text, text, candidates)
+    run = rig.specimen.run
+    settle(rig, Scripted({
+        "elevation_from_ft": answering(FieldAnswer(outcome="resolved", literal="1500 m", value="1500",
+            reading_names=["1A", "1B"], explanation="Read.")),
+        "elevation_from_m": answering(FieldAnswer(outcome="resolved", literal="1500 m", value="1500",
+            reading_names=["1A", "1B"], explanation="Read."))}))
+    feet = run.fields["elevation_from_ft"]
+    assert feet.state == ValueState.UNRESOLVED
+    assert feet.reason == agreement.UNIT_DIFFERS + " Read."
+    assert run.fields["elevation_from_m"].state == ValueState.SUPPORTED
+
+
+@pytest.mark.parametrize(("key", "line", "literal"), [
+    # The written unit, in any spelling, settles its own unit's field.
+    ("elevation_from_ft", "Elev. 4800 ft.", "4800 ft."),
+    ("elevation_from_ft", "Mossy forest 6400'", "6400'"),
+    ("elevation_from_ft", "Mossy forest 6400'", "6400"),
+    ("elevation_from_m", "alt. 1500 m", "1500 m"),
+    ("elevation_from_m", "alt. 1500 m", "1500"),
+    ("elevation_from_m", "Volc\N{LATIN SMALL LETTER A WITH ACUTE}n Barva, 2000 msnm", "2000 msnm"),
+    ("elevation_from_m", "Alpi Apuane, m 1200", "m 1200"),
+    ("elevation_from_ft", "6400 pies", "6400 pies"),
+    ("elevation_from_ft", "1500 Fu\N{LATIN SMALL LETTER SHARP S}", "1500 Fu\N{LATIN SMALL LETTER SHARP S}"),
+    # A range's trailing unit is both ends' unit; one elevation in both units settles each field.
+    ("elevation_from_m", "1200 to 1500 m", "1200 to 1500 m"),
+    ("elevation_from_m", "4800 ft. / 1463 m", "1463 m"),
+    ("elevation_from_ft", "4800 ft. / 1463 m", "4800 ft."),
+], ids=["feet", "foot-mark", "foot-mark-left-off", "metres", "metres-after-the-number", "msnm", "italian-unit-first",
+    "pies", "fuss", "range-with-a-trailing-unit", "metres-beside-feet", "feet-beside-metres"])
+def test_an_elevation_in_its_own_unit_still_settles(key, line, literal):
+    """The control: each settles, as on 6fd595b3b."""
+    readings = label(line + "\nleg. J. Smith")
+    assert agreement.refusal(uncandidated(key), readings, literal=literal, named=list(readings), value=None,
+        authority_id=None, cited=[], received=[]) is None
+
+
+# PR #300's review of 6fd595b3b, finding 2: the overlap guard needed another
+# field to claim the text. With no elevation or date candidate and that
+# expert failing, "Yepocapa, 4800ft." settled as the locality and "IV-24-48"
+# as the collection code. A place or a code read from the transcript never
+# holds text that is plainly an elevation, a date or a range of them
+# (written.other_kind), whoever claims it. And a short settled literal
+# claimed the digits inside longer tokens: a settled code "2" sent the date
+# "IV-24-48" to review.
+
+HOLDS_ANOTHER_KIND = {
+    # Elevations inside a locality: Guatemala, Italy (the unit first), Costa Rica, Borneo, Switzerland, Mexico.
+    "guatemala-feet": ("precise_location", "Yepocapa, 4800ft.", "HOLDS_AN_ELEVATION"),
+    "italy-unit-first": ("precise_location", "Alpi Apuane, m 1200", "HOLDS_AN_ELEVATION"),
+    "costa-rica-msnm": ("precise_location", "Volc\N{LATIN SMALL LETTER A WITH ACUTE}n Barva, 2000 msnm",
+        "HOLDS_AN_ELEVATION"),
+    "borneo-m-a-s-l": ("precise_location", "Mt. Kinabalu, 1500 m a.s.l.", "HOLDS_AN_ELEVATION"),
+    "swiss-m-ue-M": ("precise_location", "Val Bavona 800 m \N{LATIN SMALL LETTER U WITH DIAERESIS}. M.",
+        "HOLDS_AN_ELEVATION"),
+    "mexico-pies": ("precise_location", "Real de Catorce 9000 pies", "HOLDS_AN_ELEVATION"),
+    # Dates inside a code or a locality, as the date parser reads them.
+    "code-is-a-date": ("collection_code", "IV-24-48", "HOLDS_A_DATE"),
+    "code-is-a-range-end": ("collection_code", "V-2-48", "HOLDS_A_DATE"),
+    "german-locality-and-date": ("precise_location", "Lichtfang Bayern 24.VI.1952", "HOLDS_A_DATE"),
+    "english-month-name": ("precise_location", "Mindanao, Davao, 24 Apr 1948", "HOLDS_A_DATE"),
+    # A range of dates the parser does not read whole: days and Roman months, no year.
+    "spanish-day-range": ("precise_location", "R\N{LATIN SMALL LETTER I WITH ACUTE}o Negro, 24 IV a 2 V",
+        "HOLDS_A_RANGE"),
+}
+
+
+@pytest.mark.parametrize(("key", "literal", "reason"), HOLDS_ANOTHER_KIND.values(), ids=HOLDS_ANOTHER_KIND)
+def test_a_place_or_code_read_from_the_transcript_never_holds_another_kinds_text(key, literal, reason):
+    """No other field claims the text here. On 6fd595b3b each is accepted."""
+    readings = label(("IV-24-48 to V-2-48" if literal == "V-2-48" else literal) + "\nleg. J. Smith")
+    refused = agreement.refusal(uncandidated(key), readings, literal=literal, named=list(readings), value=None,
+        authority_id=None, cited=[], received=[])
+    assert refused is not None and refused.reason == getattr(agreement, reason)
+
+
+def test_the_experts_check_sends_the_locality_back_without_its_elevation():
+    """The expert is told to leave the elevation out, and "Yepocapa" then
+    settles. On 6fd595b3b "Yepocapa, 4800ft." is kept."""
+    readings = label("Yepocapa, 4800ft.\nIV-23-48")
+    with pytest.raises(ModelRetry, match="'4800ft.', which is an elevation"):
+        checked(uncandidated("precise_location"), readings, dict(outcome="resolved", literal="Yepocapa, 4800ft.",
+            reading_names=["3A", "3B"]))
+    kept = checked(uncandidated("precise_location"), readings, dict(outcome="resolved", literal="Yepocapa",
+        reading_names=["3A", "3B"]))
+    assert kept.literal == "Yepocapa"
+
+
+@pytest.mark.parametrize(("key", "literal"), [
+    ("precise_location", "Yepocapa"),
+    # A distance is no elevation: English, Spanish, German.
+    ("precise_location", "Yepocapa, 500 m N of church"),
+    ("precise_location", "2 km al S de Antigua, 300 m de la carretera"),
+    ("precise_location", "Schwarzwald, 800 m von Titisee"),
+    # Minutes of arc are no feet.
+    ("precise_location", "Mindanao, 7\N{DEGREE SIGN}30' N 125\N{DEGREE SIGN}15' E"),
+    # Plain numbers, and a range of plain numbers, are no dates.
+    ("precise_location", "Carretera km 12 a 15"),
+    ("collection_code", "lot #2"),
+    ("collection_code", "V-4-67-1-B"),
+], ids=["locality", "english-distance", "spanish-distance", "german-distance", "coordinates", "km-range",
+    "lot-number", "letter-coded"])
+def test_a_place_or_code_with_no_date_or_elevation_in_it_settles(key, literal):
+    """The control: each settles, as on 6fd595b3b."""
+    readings = label(literal + "\nleg. J. Smith")
+    assert agreement.refusal(uncandidated(key), readings, literal=literal, named=list(readings), value=None,
+        authority_id=None, cited=[], received=[]) is None
+
+
+@pytest.mark.parametrize("elevation", ["fails", "lacks"])
+def test_a_locality_holding_an_elevation_no_one_claims_goes_to_review(tmp_path, elevation):
+    """The review's probe: no elevation candidate, and the elevation's
+    expert fails or finds none. On 6fd595b3b the locality is supported."""
+    rig = label_3(tmp_path, SPANISH_LABEL, SPANISH_LABEL.replace("Mitchell", "mitchell"), [])
+    run = rig.specimen.run
+    settle(rig, Scripted({
+        "elevation_from_ft": failing("timeout") if elevation == "fails" else answering(LACKS),
+        "precise_location": answering(FieldAnswer(outcome="resolved", literal="Yepocapa, 4800ft.",
+            reading_names=["1A", "1B"], explanation="Both readers write it."))}))
+    place = run.fields["precise_location"]
+    assert place.state == ValueState.UNRESOLVED
+    assert place.reason == agreement.HOLDS_AN_ELEVATION + " Both readers write it."
+
+
+def test_a_date_as_the_collection_code_no_one_claims_goes_to_review(tmp_path):
+    """The review's probe: no date candidate, and the date's expert fails.
+    On 6fd595b3b the collection code is supported as "IV-24-48"."""
+    rig = label_3(tmp_path, LABEL_3A, LABEL_3B, [])
+    run = rig.specimen.run
+    settle(rig, Scripted({"date_visited_from": failing("timeout"), "collection_code": answering(FieldAnswer(
+        outcome="resolved", literal="IV-24-48", reading_names=["1A", "1B"], explanation="Read."))}))
+    code = run.fields["collection_code"]
+    assert code.state == ValueState.UNRESOLVED
+    assert code.reason == agreement.HOLDS_A_DATE + " Read."
+
+
+def test_a_short_settled_value_claims_only_whole_tokens(tmp_path):
+    """The review's probe: a collection code settled earlier as "2" claimed
+    the "2" inside "IV-24-48" and sent the date read from the transcript to
+    review. On 6fd595b3b the date is unresolved."""
+    rig = label_3(tmp_path, LABEL_3A, LABEL_3B, [])
+    run = rig.specimen.run
+    run.fields["collection_code"] = FieldValue(state=ValueState.SUPPORTED, literal="2", parsed="2",
+        layer="settled", source_region_id=run.regions[0].id)
+    settle(rig, Scripted({"date_visited_from": answering(FieldAnswer(outcome="resolved", literal="IV-24-48",
+        value="1948-04-24", reading_names=["1A", "1B"], explanation="Both write it."))}))
+    assert run.fields["date_visited_from"].state == ValueState.SUPPORTED
+
+
+def test_a_settled_value_still_claims_its_whole_tokens(tmp_path):
+    """The control: a collection code settled earlier as "IV-24-48" claims
+    the date's whole text, and the date read from the transcript goes to
+    review, as on 6fd595b3b."""
+    rig = label_3(tmp_path, LABEL_3A, LABEL_3B, [])
+    run = rig.specimen.run
+    run.fields["collection_code"] = FieldValue(state=ValueState.SUPPORTED, literal="IV-24-48", parsed="IV-24-48",
+        layer="settled", source_region_id=run.regions[0].id)
+    settle(rig, Scripted({"date_visited_from": answering(FieldAnswer(outcome="resolved", literal="IV-24-48",
+        value="1948-04-24", reading_names=["1A", "1B"], explanation="Both write it."))}))
+    date_value = run.fields["date_visited_from"]
+    assert date_value.state == ValueState.UNRESOLVED
+    assert date_value.reason.startswith(field_step.TAKEN.format(other="Collection Code"))

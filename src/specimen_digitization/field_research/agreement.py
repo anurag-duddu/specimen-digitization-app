@@ -19,8 +19,14 @@ fields' outcomes:
    writes the literal as a run of whole words within one line
    (verbatim_runs), and it cuts or extends none of that reading's
    candidates (_cut_candidate); a taxon so read must sit in no longer name
-   on its reading (_longer_written), and a date or an elevation so read is
-   never one end of a range its clause writes (_part_of_range). Points 1, 3
+   on its reading (_longer_written), a date or an elevation so read is
+   never one end of a range its clause writes, joined in any of the
+   languages and with any of the dashes field_research.written lists
+   (_part_of_range), and a place or the collection code so read never holds
+   a date, an elevation or a range of them (_holds_another_kind). An
+   elevation, a candidate or so read, settles only a field of the unit its
+   reading writes it in, and a number with no unit settles none
+   (_unit_refusal). Points 1, 3
    and 4 hold for it as for a candidate, its readers per point 3 as
    agreeing_runs reads them, and on a label with no decided transcript the
    clauses holding it agree in every reader (holding_clauses). For a
@@ -150,12 +156,16 @@ import unicodedata
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
+from specimen_digitization.application.derivations import UNITS
 from specimen_digitization.application.domain import LookupStatus
 from specimen_digitization.application.georef_locality import comparison_key, one_letter_apart
 
+from . import written
 from .checks import collapse, genus_in_doubt, longer_name, taxon_query_grounded
 from .contracts import PLACE_SOURCES, FieldTask, Reading, SourceAnswer, SourceCandidate
 from .notations import expansion
+from .written import separates as _separates
+from .written import words as _words
 
 DECIDED = "decided_transcript"
 # Place fields whose value a place source settles; precise_location is
@@ -202,6 +212,21 @@ DOUBTFUL_GENUS = "The label marks this name's genus as doubtful."
 NO_PLACE = "No approved place source confirms this value."
 NOT_EVERY_READER = "Not every reader of the label writes this text."
 PART_OF_RANGE = "The label writes this value as one end of a range."
+UNIT_DIFFERS = "The label writes this elevation in the other unit."
+NO_UNIT = "The label writes no elevation unit with this number."
+HOLDS_AN_ELEVATION = "This text holds an elevation, which is another field's."
+HOLDS_A_DATE = "This text holds a date, which is another field's."
+HOLDS_A_RANGE = "This text holds a range of dates or elevations, which is another field's."
+HOLDS = {written.ELEVATION: HOLDS_AN_ELEVATION, written.DATE: HOLDS_A_DATE, written.RANGE: HOLDS_A_RANGE}
+# The unit each elevation field holds (application.derivations.UNITS), and
+# its name in the experts' retry.
+FIELD_UNITS = {key: unit for unit, keys in UNITS.items() for key in keys}
+UNIT_NAMES = {"m": "metres", "ft": "feet"}
+# The fields whose text read from the transcript never holds a date, an
+# elevation or a range of them (_holds_another_kind): the place fields
+# (precise location among them) and the collection code.
+NO_DATES_OR_ELEVATIONS = frozenset({"country", "province_state", "county", "city", "precise_location",
+    "collection_code"})
 
 
 @dataclass(frozen=True)
@@ -273,9 +298,6 @@ def candidate_literal(task: FieldTask, readings: Sequence[Reading], literal: str
 # Where a resolved literal comes from (literal_basis): an organiser's whole
 # candidate, or text the expert read in the transcript itself.
 CANDIDATE, TRANSCRIPT = "candidate", "transcript"
-# A comma or a semicolon ends a word even with no space after it
-# ("Yepocapa,4800 ft."), except between two digits ("1,200 m").
-WORD_ENDS = frozenset(",;")
 
 
 def _lines(text: str) -> Iterable[tuple[int, str]]:
@@ -286,32 +308,12 @@ def _lines(text: str) -> Iterable[tuple[int, str]]:
         offset += len(line) + 1
 
 
-def _separates(line: str, index: int) -> bool:
-    """Whether the character at `index` is a comma or a semicolon that ends a
-    word and a clause: any but one between two digits ("1,200 m")."""
-    return line[index] in WORD_ENDS and not (0 < index < len(line) - 1 and line[index - 1].isdigit()
-        and line[index + 1].isdigit())
-
-
-def _words(line: str) -> list[tuple[int, int]]:
-    """The words of one line, as (start, end): split at spaces, and after a
-    comma or a semicolon that does not stand between two digits."""
-    words: list[tuple[int, int]] = []
-    start = None
-    for index, char in enumerate(line):
-        if char.isspace():
-            if start is not None:
-                words.append((start, index))
-            start = None
-            continue
-        if start is None:
-            start = index
-        if _separates(line, index):
-            words.append((start, index + 1))
-            start = None
-    if start is not None:
-        words.append((start, len(line)))
-    return words
+def _line_of(text: str, start: int, end: int) -> tuple[int, str]:
+    """The line of the text that holds the span [start, end), with the offset
+    it starts at."""
+    line_start = text.rfind("\n", 0, start) + 1
+    line_end = text.find("\n", end)
+    return line_start, text[line_start:len(text) if line_end < 0 else line_end]
 
 
 def _clause(line: str, start: int, end: int) -> tuple[int, int]:
@@ -325,27 +327,23 @@ def _clause(line: str, start: int, end: int) -> tuple[int, int]:
     return first, last
 
 
-# The words that join two dates or two numbers into a range ("IV-24-48 to
-# V-2-48", "1200 a 1500 m", "1200 - 1500 m"), standing as words of their own.
-RANGE_JOINERS = frozenset({"to", "-", "\N{EN DASH}", "a"})
-
-
 def _in_a_range(line: str, start: int, end: int) -> bool:
     """Whether the span [start, end) of the line is part of a range: the
-    clause holding it (_clause) has a joiner (RANGE_JOINERS, any case) as a
-    word between two words that each hold a digit, and the span does not
-    hold that joiner and both those words (the whole range)."""
+    clause holding it (_clause) writes a range (written.ranges: two ends that
+    each hold a digit, written alike, joined by a dash of any form standing
+    alone or at a word's edge, or by a joiner of written.RANGE_WORDS or
+    written.RANGE_SIGNS, in any of the languages listed, with a unit, a month
+    or an approximate marker allowed between a number and the joiner), and
+    the span does not hold both its ends (the whole range); or a word of two
+    numbers joined by a dash or a "/" (written.glued_range: "10-12") stands
+    right before or after the span ("Sept. 1946" of "10-12 Sept. 1946")."""
     first, last = _clause(line, start, end)
-    words = [(a, b) for a, b in _words(line) if first <= a and b <= last]
-
-    def has_a_digit(word: tuple[int, int]) -> bool:
-        return any(char.isdigit() for char in line[word[0]:word[1]])
-
-    for before, joiner, after in zip(words, words[1:], words[2:]):
-        if (line[joiner[0]:joiner[1]].casefold() in RANGE_JOINERS and has_a_digit(before)
-                and has_a_digit(after) and not (start <= before[0] and after[1] <= end)):
+    spans = written.pieces(line, [(a, b) for a, b in _words(line) if first <= a and b <= last])
+    for found in written.ranges(line, spans):
+        if not found.glued and not (start <= found.start and found.end <= end):
             return True
-    return False
+    beside = [(a, b) for a, b in spans if b <= start][-1:] + [(a, b) for a, b in spans if a >= end][:1]
+    return any(written.glued_range(line[a:b]) for a, b in beside)
 
 
 def _edges(line: str) -> tuple[frozenset[int], frozenset[int]]:
@@ -471,7 +469,12 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
     candidate whose quote writes a longer name from it on is such a piece too
     (_part_of_name), as is text read from a reading that writes a longer
     name around it (_longer_written), and a literal whose genus the label
-    marks as doubtful never settles (_genus_in_doubt)."""
+    marks as doubtful never settles (_genus_in_doubt). An elevation, by
+    candidate or read from the transcript, settles only a field of the unit
+    the reading writes it in (_unit_refusal). Text read from the transcript
+    is never one end of a range for a date or an elevation (_part_of_range),
+    and never holds a date, an elevation or a range of them for a place or
+    the collection code (_holds_another_kind)."""
     for reading in named:
         chosen = _deciding(reading, readings)
         if chosen.input_source == DECIDED and literal not in chosen.text:
@@ -481,9 +484,11 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
                 f"{chosen.name}, or answer several_possibilities or sources_cannot_resolve."))
     basis = literal_basis(task, readings, literal, named)
     if basis == CANDIDATE:
-        return _part_of_name(task, readings, literal, named) or _genus_in_doubt(task, readings, literal, named)
+        return (_unit_refusal(task, readings, literal, named) or _part_of_name(task, readings, literal, named)
+            or _genus_in_doubt(task, readings, literal, named))
     if basis == TRANSCRIPT:
-        return (_part_of_range(task, readings, literal, named) or _longer_written(task, readings, literal, named)
+        return (_part_of_range(task, readings, literal, named) or _unit_refusal(task, readings, literal, named)
+            or _holds_another_kind(task, literal) or _longer_written(task, readings, literal, named)
             or _genus_in_doubt(task, readings, literal, named))
     allowed = candidates_by_reading(task, readings)
     offered = [f"{source.name}: {text!r}" for source in dict.fromkeys(_deciding(r, readings) for r in named)
@@ -513,9 +518,7 @@ def _part_of_range(task: FieldTask, readings: Sequence[Reading], literal: str,
         return None
     for reading in dict.fromkeys(_deciding(r, readings) for r in named):
         for start, end in verbatim_runs(reading.text, literal):
-            line_start = reading.text.rfind("\n", 0, start) + 1
-            line_end = reading.text.find("\n", end)
-            line = reading.text[line_start:len(reading.text) if line_end < 0 else line_end]
+            line_start, line = _line_of(reading.text, start, end)
             if _in_a_range(line, start - line_start, end - line_start):
                 return Refusal(PART_OF_RANGE, (
                     f"Reading {reading.name} writes {literal!r} as one end of a range ({line!r}). Text "
@@ -523,6 +526,61 @@ def _part_of_range(task: FieldTask, readings: Sequence[Reading], literal: str,
                     "literal and take the end your brief names from a check run on exactly it, or answer "
                     "several_possibilities or sources_cannot_resolve."))
     return None
+
+
+def _unit_refusal(task: FieldTask, readings: Sequence[Reading], literal: str,
+        named: Sequence[Reading]) -> Refusal | None:
+    """For an elevation field, why the literal cannot settle it, by candidate
+    or read from the transcript (PR #300's review, finding 5): a reading it
+    names (its label's decided reading, on a label with one) writes its
+    numbers in the other unit anywhere it writes it (written.units_of: the
+    unit after a number, glued or after spaces, or a range's trailing unit,
+    in any spelling of written.ELEVATION_UNITS: "1500 m" or "1500" of "alt.
+    1500 m", "2000 msnm" or "6400 pies" in the wrong field); or with no unit
+    anywhere (a bare number: a unit is never guessed, G41). Each field holds
+    the unit application.derivations.UNITS gives it; the other unit's field
+    is filled by its exact conversion afterwards (derive). None otherwise,
+    and for any other field."""
+    unit = FIELD_UNITS.get(task.key)
+    if unit is None:
+        return None
+    for reading in dict.fromkeys(_deciding(r, readings) for r in named):
+        found = written.units_of(reading.text, literal)
+        other = sorted(frozenset().union(*found) - {unit})
+        if other:
+            return Refusal(UNIT_DIFFERS, (
+                f"Reading {reading.name} writes {literal!r} in {UNIT_NAMES[other[0]]}, and this field holds "
+                f"{UNIT_NAMES[unit]}. An elevation settles only the fields of the unit the label writes it "
+                "in: never convert it yourself. When the label states this elevation only in the other "
+                "unit, answer label_lacks_value (the step converts it exactly); otherwise copy the "
+                f"elevation the label writes in {UNIT_NAMES[unit]}."))
+        if not any(found):
+            return Refusal(NO_UNIT, (
+                f"Reading {reading.name} writes {literal!r} with no unit ({', '.join(UNIT_NAMES.values())}"
+                " in any spelling). A unit is never guessed from the magnitude, the place or a map: answer "
+                "sources_cannot_resolve and quote it."))
+    return None
+
+
+def _holds_another_kind(task: FieldTask, literal: str) -> Refusal | None:
+    """For a place field or the collection code read from the transcript
+    (TRANSCRIPT), why it cannot settle: the literal holds text that is plainly
+    another kind of field's (written.other_kind; PR #300's review, finding
+    2), whether or not another field's expert claimed that text: an
+    elevation ("Yepocapa, 4800ft."), a date the date parser reads
+    ("IV-24-48" as the collection code) or a range of dates or elevations.
+    A distance ("500 m N of the bridge") is no elevation. None otherwise,
+    and for any other field."""
+    if task.key not in NO_DATES_OR_ELEVATIONS:
+        return None
+    found = written.other_kind(literal)
+    if found is None:
+        return None
+    kind, text = found
+    return Refusal(HOLDS[kind], (
+        f"{literal!r} holds {text!r}, which is {('an ' if kind == written.ELEVATION else 'a ') + kind}: "
+        "another field's text, never this one's. Copy only this field's own text, leaving that out, or "
+        "answer several_possibilities or sources_cannot_resolve."))
 
 
 def _longer_written(task: FieldTask, readings: Sequence[Reading], literal: str,
