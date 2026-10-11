@@ -1432,6 +1432,11 @@ class WorkspaceController extends ChangeNotifier {
         failure != null && (failure.status == 401 || failure.status == 403);
     if (denied) {
       _deferredPage = null;
+      // A refusal answers the collection list too. It can arrive through the
+      // access failure stream while the first check is still in flight, and
+      // the generation bump below then makes that check drop its own answer.
+      // Without this the setup screen would wait on a check that has ended.
+      _scopesLoaded = true;
       // Do not retain an editable workspace after current access is denied.
       _scopesVerified = false;
       _scopes = <CollectionScope>[];
