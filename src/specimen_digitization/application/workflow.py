@@ -457,6 +457,9 @@ class Workflow:
         )
         # The code a reading that gave no observation failed with, for its record.
         reading_failure = None
+        # The code of a model call the provider refused before any work (an HTTP
+        # 429 to its first request): it is recorded at no cost (lane_costs).
+        refusal = None
         observed = len(run.observations)
         try:
             if step == "pin_dependencies":
@@ -552,6 +555,7 @@ class Workflow:
                     # reliability.reader_failure_is_recoverable): end the reading
                     # with no observation, and the record goes to review.
                     reading_failure = failure.code
+                    refusal = failure.code if failure.refused else None
                     circuit_failure = failure.status.value
                     circuit_retry_after = failure.retry_after_seconds
                     _log_step_failure(
@@ -840,6 +844,7 @@ class Workflow:
             outcome_unknown = exc.outcome_unknown and not recoverable
             if recoverable:
                 reading_failure = exc.code
+            refusal = exc.code if exc.refused else None
             circuit_failure = exc.status.value
             circuit_retry_after = exc.retry_after_seconds
             run.blocker = "external_outcome_unknown" if outcome_unknown else exc.code
@@ -917,6 +922,11 @@ class Workflow:
         elapsed = max(0, self.monotonic() - started)
         if external and elapsed > effect_timeout and not repeatable:
             circuit_failure = "timeout"
+            # Past its deadline this step's outcome is unknown, so even a refusal
+            # releases nothing. A reader whose failure is recoverable never comes
+            # here (`repeatable`): it keeps a refusal past its deadline, as it
+            # keeps any known failure.
+            refusal = None
             # Field research's meter knows what its calls cost even when the
             # step overran: its paid call stays, so the settlement below frees
             # the rest of its reservation.
@@ -968,6 +978,7 @@ class Workflow:
                 cost,
                 self.clock,
                 failure=reading_failure,
+                refusal=refusal,
             )
         if billable and not run.profile.synthetic:
             if self.settle_retained_cost is not None:

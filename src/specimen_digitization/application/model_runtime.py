@@ -120,6 +120,8 @@ def _model_child(payload):
                 "lookup_status": exc.status.value,
                 "retry_after_seconds": exc.retry_after_seconds,
                 "outcome_unknown": exc.outcome_unknown,
+                # A refusal before any work (reliability.AdapterFailure) costs nothing.
+                "refused": exc.refused,
             }
         ).encode()
     except OperationalBlock as exc:
@@ -218,6 +220,7 @@ def invoke_model(
             LookupStatus(body["lookup_status"]),
             retry_after_seconds=body["retry_after_seconds"],
             outcome_unknown=body["outcome_unknown"],
+            refused=body.get("refused") is True,
         )
     if body["status"] == "blocked":
         raise OperationalBlock(body["code"])
