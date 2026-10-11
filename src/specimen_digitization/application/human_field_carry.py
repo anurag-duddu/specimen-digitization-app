@@ -209,26 +209,69 @@ def _latest(repository, specimen, proofs):
 
 
 def human_regions(repository, specimen, proofs):
-    """The proved regions decision whose regions the active run still holds, or None.
+    """The proved regions decision the active run's regions descend from, or None.
 
-    A ``review_regions`` decision starts a run on the reviewer's own regions. While
-    the active run holds exactly those regions (its own, or a copy an earlier fresh
-    run kept), a fresh run keeps them instead of segmenting again, so a person's
-    geometry is never replaced by a model's. A run that has not segmented yet, or
-    that segmented again after a classification change, holds no person's regions.
+    A ``review_regions`` decision starts a run on the reviewer's own regions. A
+    fresh run keeps them, so a person's geometry is never replaced by a model's,
+    when the active run has segmented and is either that decision's own run
+    holding exactly its regions, or a run that kept them (``keep_regions``) by a
+    chain of fresh runs proved save by save (``_kept_chain``). Equal regions
+    alone prove nothing: a restored model run can hold the regions a person
+    confirmed unchanged later, and it is segmented again.
     """
     run = specimen.run
     if "segment" not in run.completed_steps:
         return None
+    decisions = {p.event.id: p for p in proofs
+        if p.event.action == "review_regions" and isinstance(p.event.after, dict)}
+    if REGIONS in run.dependencies:
+        return _kept_chain(repository, specimen, decisions)
     found = None
-    for p in proofs:
-        if p.event.action != "review_regions" or not isinstance(p.event.after, dict):
-            continue
+    for p in decisions.values():
         original = repository.version(specimen.scope, specimen.id, p.resulting_revision)
-        if (p.event.after.get("run_id") == original.run.id and original.run.regions == run.regions
+        if (p.event.after.get("run_id") == original.run.id == run.id and original.run.regions == run.regions
                 and (found is None or p.resulting_revision > found.resulting_revision)):
             found = p
     return found
+
+
+def _kept_chain(repository, specimen, decisions):
+    """Prove a kept run's regions back to the decision's own run, one fresh run at a time.
+
+    Each kept run names its origin decision and the run and revision it was
+    started from (``keep_regions``). The save that started it must be that
+    ``reprocess`` and hold this run with these regions; the run it started from
+    must hold the same regions, and be the decision's own run or a kept run
+    proved the same way. A marker that does not prove out is refused.
+    """
+    run, target, marker = specimen.run, specimen.run.id, specimen.run.dependencies[REGIONS]
+    for _ in range(20):
+        if not isinstance(marker, dict) or set(marker) != {
+                "origin_event_id", "origin_revision", "source_run_id", "source_revision"}:
+            _fail()
+        proof = decisions.get(marker["origin_event_id"])
+        revision = marker["source_revision"]
+        if proof is None or proof.resulting_revision != marker["origin_revision"] or type(revision) is not int:
+            _fail()
+        started = repository.version(specimen.scope, specimen.id, revision + 1)
+        source = repository.version(specimen.scope, specimen.id, revision)
+        events = [e for e in started.audit if e.action == "reprocess" and e.before == {
+            "source_run_id": marker["source_run_id"], "source_revision": revision}]
+        if (started.run.id != target or started.run.regions != run.regions
+                or started.run.dependencies.get(REGIONS) != marker or len(events) != 1
+                or events[0].after.get("target_run_id") != target
+                or events[0].after.get(REGIONS) != {"origin_event_id": proof.event.id,
+                    "origin_revision": proof.resulting_revision}
+                or source.run.id != marker["source_run_id"] or source.run.regions != run.regions):
+            _fail()
+        prior = source.run.dependencies.get(REGIONS)
+        if prior is None:
+            original = repository.version(specimen.scope, specimen.id, proof.resulting_revision)
+            if not proof.event.after.get("run_id") == original.run.id == source.run.id:
+                _fail()
+            return proof
+        target, marker = source.run.id, prior
+    _fail()
 
 
 def _source(repository, specimen, blobs):
@@ -375,6 +418,8 @@ def keep_regions(event, source, target):
     target.regions = [region.model_copy(deep=True) for region in source.regions]
     target.coverage_confirmed = True
     target.completed_steps = ["segment"]
+    # The lineage the next fresh run proves (_kept_chain); pinning keeps it.
+    target.dependencies[REGIONS] = {**event.after[REGIONS], **event.before}
 
 
 def reprocess_hold(specimen):

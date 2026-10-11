@@ -494,6 +494,14 @@ def test_http_new_run_after_a_regions_decision_reads_the_persons_regions(case, m
     assert done["run"]["regions"] == regions
     assert {o["region_id"] for o in done["run"]["observations"]} == {r["id"] for r in regions}
 
+    # Pinning kept the lineage, so the next new run keeps the regions again.
+    assert done["run"]["dependencies"]["preserved_human_regions"]["source_run_id"] == finished["active_run_id"]
+    again = case.reprocess(key="reprocess-after-kept-regions")
+    assert again.status_code == 200, again.text
+    kept = case.workspace().json()
+    assert kept["run"]["regions"] == regions and kept["run"]["completed_steps"] == ["segment"]
+    assert kept["run"]["dependencies"]["preserved_human_regions"]["source_run_id"] == fresh["active_run_id"]
+
 
 def test_summary_does_not_offer_a_new_run_the_server_refuses(case):
     _finished_classified_run(case)
