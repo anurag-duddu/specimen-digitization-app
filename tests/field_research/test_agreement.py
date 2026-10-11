@@ -22,6 +22,7 @@ from test_step import (
     answering,
     build_rig,
     cited_rows,
+    cleared_as_not_on_label,
     confirming,
     every_field,
     failing,
@@ -744,6 +745,140 @@ def test_text_no_other_field_settles_never_holds_a_method_read_from_the_transcri
     assert sorted(len(row.observation_ids) for row in rows) == [1, 1] and all(row.excerpt == "trap" for row in rows)
     assert [f.reason_code for f in run.findings].count("transcript_literal:collection_method") == 1
     verify_evidence(rig.specimen, rig.blobs)
+
+
+# ---- round 2 of the production test: organiser text another field settled ---
+# 105526328's label 3 (2026-10-11): the organiser offered "trap" as the
+# habitat, whose expert found that the label states no habitat; the method's
+# expert read "trap" from the transcript. Rule A judges the organiser's text
+# against what settled: text a field of another kind settled is no text for
+# the habitat.
+
+SPANISH_TRAP = "Finca Moca, 1200 msnm\n15-VIII-1965\ntrampa de luz\nleg. J. Ramirez"
+# A field's organiser text that another kind of field settles, on labels from
+# Guatemala and Costa Rica: (label, the field, its organiser text, the field
+# that settles the text, that field's answer).
+HELD_ELSEWHERE = {
+    "328-trap-as-habitat": (LABEL_3A, "habitat", "trap", "collection_method",
+        FieldAnswer(outcome="resolved", literal="trap", reading_names=["1A", "1B"], explanation="A trap.")),
+    "a-date-as-collection-code": (LABEL_3A, "collection_code", "IV-24-48", "date_visited_from",
+        FieldAnswer(outcome="resolved", literal="IV-24-48", reading_names=["1A", "1B"], value="1948-04-24",
+            explanation="The collecting date.")),
+    "spanish-light-trap-as-habitat": (SPANISH_TRAP, "habitat", "trampa de luz", "collection_method",
+        FieldAnswer(outcome="resolved", literal="trampa de luz", reading_names=["1A", "1B"],
+            explanation="A light trap.")),
+}
+
+
+def organiser_offers(key, text):
+    return [(key, name, text, text) for name in ("1A", "1B")]
+
+
+@pytest.mark.parametrize(("text", "key", "offered", "other", "answer"), HELD_ELSEWHERE.values(), ids=HELD_ELSEWHERE)
+def test_organiser_text_another_kind_of_field_settles_does_not_hold_back_rule_a(
+        tmp_path, text, key, offered, other, answer):
+    """The field's expert finds that the label states no value for it, and
+    the organiser's only text for it is text another kind of field settles
+    in the same attempt: the field clears as not on the label (rule A),
+    beside the other field's value. On 5332ce4e3 the other field went to
+    review as text the organiser's candidate claimed, and rule A declined
+    the field as organiser_found_text."""
+    from test_step import research
+
+    rig = label_3(tmp_path, text, text, organiser_offers(key, offered))
+    run = rig.specimen.run
+    prepared, outcomes, calls = research(rig, Scripted({key: answering(LACKS), other: answering(answer)}))
+    decisions: dict[str, dict] = {}
+    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    settled = run.fields[other]
+    assert (settled.state, settled.literal) == (ValueState.SUPPORTED, answer.literal)
+    value = run.fields[key]
+    assert (value.state, value.literal) == (ValueState.NOT_PRESENT, None)
+    assert value.reason.startswith("Not on the label:")
+    assert decisions[key] == {"rule": "A_not_on_label"}
+    assert key in cleared_as_not_on_label(run)
+    verify_evidence(rig.specimen, rig.blobs)
+
+
+def test_105526328s_method_settles_and_its_habitat_clears_as_not_on_the_label(tmp_path):
+    """Round 2 of the production test, end to end through the step with the
+    real run's readers ("Mum.", "chimaltenago", "lot #a" in 3B): the method
+    settles "trap" from the transcript, and the habitat, whose expert found
+    none, is not present by rule A. On 5332ce4e3 the method was unresolved
+    ("This text, read from the transcript, is also the value found for
+    Habitat.") and the habitat's rule A declined (organiser_found_text)."""
+    rig = label_3(tmp_path, candidates=TRAP_HABITAT)
+    run = rig.specimen.run
+    settle(rig, Scripted({"habitat": answering(FieldAnswer(outcome="label_lacks_value",
+            explanation='"trap" is a collecting method, not a habitat.')),
+        "collection_method": answering(FieldAnswer(outcome="resolved", literal="trap", reading_names=["1A", "1B"],
+            explanation="The method is a trap."))}))
+    method, habitat = run.fields["collection_method"], run.fields["habitat"]
+    assert (method.state, method.literal) == (ValueState.SUPPORTED, "trap")
+    assert (habitat.state, habitat.literal) == (ValueState.NOT_PRESENT, None)
+    assert "habitat" in cleared_as_not_on_label(run)
+    assert not [reason for reason in run.reasons if reason.endswith((":habitat", ":collection_method"))]
+    verify_evidence(rig.specimen, rig.blobs)
+
+
+def test_organiser_text_a_method_settled_by_an_earlier_attempt_holds_lets_rule_a_apply(tmp_path):
+    """A retry: the method settled "trap" in an earlier attempt and is not
+    researched again; the habitat, researched again, is judged against it as
+    against a value settled in this attempt. On 5332ce4e3 rule A declined the
+    habitat (organiser_found_text)."""
+    rig = label_3(tmp_path, candidates=TRAP_HABITAT)
+    run = rig.specimen.run
+    first, second = run.observations
+    run.fields["collection_method"] = FieldValue(state=ValueState.SUPPORTED, literal="trap", layer="verbatim",
+        source_region_id=run.regions[0].id, verbatim_by_observation={first.id: "trap", second.id: "trap"},
+        settled_observation_ids=[first.id, second.id])
+    resolver = Scripted({"habitat": answering(LACKS)})
+    settle(rig, resolver)
+    assert "collection_method" not in resolver.calls
+    assert run.fields["habitat"].state == ValueState.NOT_PRESENT and "habitat" in cleared_as_not_on_label(run)
+
+
+# The method's expert leaves "trap" unsettled.
+METHOD_UNSETTLED = {
+    "lacks": answering(LACKS),
+    "quotes-unsettled": answering(FieldAnswer(outcome="sources_cannot_resolve", literal="trap",
+        reading_names=["1A", "1B"], explanation="It may be the habitat.")),
+    "fails": failing("timeout"),
+}
+
+
+@pytest.mark.parametrize("method", METHOD_UNSETTLED.values(), ids=METHOD_UNSETTLED)
+def test_a_habitat_whose_trap_no_method_settles_stays_in_review(tmp_path, method):
+    """The control: the organiser's habitat is "trap" and no field settles
+    that text, so it may be the habitat: rule A keeps declining, and the
+    habitat goes to review, as on 5332ce4e3."""
+    from test_step import research
+
+    rig = label_3(tmp_path, candidates=TRAP_HABITAT)
+    run = rig.specimen.run
+    prepared, outcomes, calls = research(rig, Scripted({"habitat": answering(LACKS), "collection_method": method}))
+    decisions: dict[str, dict] = {}
+    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    assert run.fields["collection_method"].state != ValueState.SUPPORTED
+    assert decisions["habitat"] == {"rule": "A_declined:organiser_found_text"}
+    assert "habitat" not in cleared_as_not_on_label(run)
+
+
+def test_organiser_text_with_more_than_the_settled_text_stays_in_review(tmp_path):
+    """The control: the organiser's habitat "trap, cloud forest" holds more
+    than the method's settled "trap", so the habitat may be on the label."""
+    from test_step import research
+
+    text = "trap, cloud forest\nIV-24-48\nR.D. Mitchell"
+    rig = label_3(tmp_path, text, text, organiser_offers("habitat", "trap, cloud forest"))
+    run = rig.specimen.run
+    prepared, outcomes, calls = research(rig, Scripted({"habitat": answering(LACKS),
+        "collection_method": answering(FieldAnswer(outcome="resolved", literal="trap", reading_names=["1A", "1B"],
+            explanation="A trap."))}))
+    decisions: dict[str, dict] = {}
+    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    assert run.fields["collection_method"].state == ValueState.SUPPORTED
+    assert decisions["habitat"] == {"rule": "A_declined:organiser_found_text"}
 
 
 def test_a_province_read_from_the_transcript_one_letter_off_settles_on_g34(tmp_path):

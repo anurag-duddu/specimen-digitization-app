@@ -1636,12 +1636,51 @@ def _doubt_on_the_labels(run, readings: Sequence[Reading]) -> tuple[str, ...]:
     return doubt_signs(texts, unreadable=unreadable, places=_settled_places(run))
 
 
-def _organiser_texts(task: FieldTask) -> list[str]:
-    """What the organiser found for the field: its candidates' literals, and
-    its value's literal and readers' verbatims."""
-    texts = [c.literal for c in task.candidates]
-    texts += [task.current.literal, *task.current.verbatim_by_observation.values()]
-    return [text for text in texts if text and text.strip()]
+def _organiser_texts(task: FieldTask, readings: Sequence[Reading]) -> list[tuple[str, frozenset]]:
+    """What the organiser found for the field, each text with where it stands
+    in the readings: its candidates' literals, where their quotes stand in
+    their readings (_candidate_spans); its value's literal, wherever the
+    readings of its label write it as whole tokens (_occurrences); and each
+    reader's verbatim, wherever that reader's reading writes it so."""
+    by_name = {reading.name: reading for reading in readings}
+    found = []
+    for candidate in task.candidates:
+        reading = by_name.get(candidate.reading)
+        found.append((candidate.literal, _candidate_spans(reading, candidate) if reading is not None else frozenset()))
+    current = task.current
+    if current.literal:
+        found.append((current.literal, _occurrences(current.literal,
+            [r for r in readings if current.source_region_id in (None, r.region_id)])))
+    for observation, text in current.verbatim_by_observation.items():
+        found.append((text, _occurrences(text, [r for r in readings if r.observation_id == observation])))
+    return [(text, spans) for text, spans in found if text and text.strip()]
+
+
+def _settled_claims(run, readings: Sequence[Reading]) -> list[tuple[str, frozenset]]:
+    """Each settled value's field, with where its literal stands
+    (_claims_text, _value_spans): the text the run's settled values hold."""
+    evidence = {item.id: item for item in run.evidence}
+    human = human_keys(run)
+    return [(key, _value_spans(value, readings, evidence)) for key, value in run.fields.items()
+        if _claims_text(key, value, human)]
+
+
+def _held_by_another_kind(key: str, spans: frozenset, claims: Sequence[tuple[str, frozenset]]) -> str | None:
+    """The field of another kind (agreement.may_share_text) whose settled
+    value holds the organiser's text for this field wherever it stands:
+    every place the text stands (`spans`; at least one) lies inside where
+    that value's literal stands, in the same reading. None otherwise."""
+    from .agreement import may_share_text
+
+    if not spans:
+        return None
+    for other, theirs in claims:
+        if other != key and not may_share_text(key, other) and all(
+                any(name == theirs_name and theirs_start <= start and end <= theirs_end
+                    for theirs_name, theirs_start, theirs_end in theirs)
+                for name, start, end in spans):
+            return other
+    return None
 
 
 def _inside_a_settled_place(run, key: str, text: str) -> bool:
@@ -1712,11 +1751,16 @@ def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask
     3. label coverage is confirmed, every label has two or more readings and
        every reading has text (_whole_label_read);
     4. no part of any label is unreadable (_whole_label_read);
-    5. the organiser found no text for it (_organiser_texts); for a county,
-       a city or a precise location, a text counts as absent only when its
-       whole words, by the place comparison key, are a run of the words of
-       another supported place field's literal, and it writes no unit word
-       of its own (_inside_a_settled_place);
+    5. the organiser found no text for it (_organiser_texts), judged after
+       every value of this attempt is made: a text counts as absent when,
+       wherever it stands, it lies inside the text a field of another kind
+       settled (_held_by_another_kind: this attempt's, an earlier attempt's
+       or a person's value; _claims_text), so 105526328's "trap", which the
+       organiser offered as the habitat, is absent once the collecting method
+       settles on it; for a county, a city or a precise location, a text also
+       counts as absent when its whole words, by the place comparison key,
+       are a run of the words of another supported place field's literal,
+       and it writes no unit word of its own (_inside_a_settled_place);
     6. for an elevation, no reading writes an elevation (_elevation_written);
     7. for a precise location, a city or a county is supported.
     The value then cites one check row (kind "derived", locator
@@ -1746,7 +1790,7 @@ def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask
     if not allowed or not _whole_label_read(run, readings):
         why.update(dict.fromkeys(lacking, "label_not_read_whole" if allowed else "not_listed"))
         return []
-    elevation = None
+    elevation = claims = None
     marked = []
     for key in field_keys(profile):
         outcome, value = by_key.get(key), run.fields.get(key)
@@ -1761,8 +1805,10 @@ def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask
                 value.authority_id, value.authority_identity, value.verbatim_by_observation)):
             why[key] = "value_present"
             continue
+        claims = _settled_claims(run, readings) if claims is None else claims
         if any(not (key in INSIDE_A_PLACE and _inside_a_settled_place(run, key, text))
-                for text in _organiser_texts(tasks_by_key[key])):
+                and _held_by_another_kind(key, spans, claims) is None
+                for text, spans in _organiser_texts(tasks_by_key[key], readings)):
             why[key] = "organiser_found_text"
             continue
         if key in ELEVATION_FIELDS:
