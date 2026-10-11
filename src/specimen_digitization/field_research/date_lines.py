@@ -106,18 +106,18 @@ _ELEVATION_WORDS = frozenset({
 })
 _UNITS = frozenset({"m", "mt", "mts", "metro", "metros", "metre", "metres", "meter", "meters", "metri",
     "ft", "feet", "foot", "pies", "pes", "pieds", "piedi", "fuss", "fu\N{LATIN SMALL LETTER SHARP S}"})
-# The short marks a line may start with, or hold alone, in lower case.
-_SHORT_UNITS = frozenset({"m", "mts", "ft"})
 TICKS = APOSTROPHES + "\N{PRIME}"
 # An elevation or depth word at the end of a text, perhaps with "ca." after it: the
 # number after it is the measurement ("Alt. 1900", "Elev.: 1900", "Altitud ca. 1900").
 _WORD_AT_END = re.compile(
     r"(?<![^\W\d_])(?:" + "|".join(sorted(_ELEVATION_WORDS, key=len, reverse=True)) + r"|el\.)"
     r"(?:[\s.:]*(?:ca|c|circa|approx|aprox))?[\s.:]*$")
-# A determination: det., determ., determinavit, determined (en), determino (es),
-# determinou (pt), determine (fr, accent folded).
+# A determination: det., determ., determinavit, determined, ident., identified (en),
+# determino, identificado (es, pt), determinou (pt), determine, identifie (fr, accents
+# folded).
 _DETERMINATION_WORDS = frozenset({
-    "det", "determ", "determinavit", "determined", "determino", "determinou", "determine"})
+    "det", "determ", "determinavit", "determined", "determino", "determinou", "determine",
+    "ident", "identified", "identificado", "identifie"})
 # A collector right after a year on one line: leg., legit, coll., col., colr., collector,
 # and the Spanish and Portuguese colector and coletor ("IV-25 1948 leg. Smith").
 _COLLECTOR_WORDS = frozenset({"leg", "legit", "coll", "col", "colr", "collector", "colector", "coletor"})
@@ -132,20 +132,43 @@ def _first_word(text: str) -> str:
     return token.group().replace(".", "") if token else ""
 
 
+_UNIT_WORDS = _UNITS | _SEA_LEVEL
+
+
+def _unit_here(text: str, *, line_start: bool = False) -> bool:
+    """Whether `text` starts with a unit that belongs to a number before it: a unit or a
+    height above sea level, in any case and with or without its periods ("m",
+    "Metros", "FT.", "MTS.", "M.S.N.M.", "pes"), that is followed neither by a number
+    of its own ("m 1200", "mt 1800": the unit written before its number, as Italian
+    labels do) nor by a capitalised name ("Mt. Apo", "Ft. Collins", "Mts. Rwenzori",
+    "Metro Manila", "M. Smith"). At the start of a line (`line_start`) a bare capital
+    "M" counts only when nothing else follows it there, or a number does."""
+    folded = fold(text)
+    token = _TOKEN.match(folded)
+    if token is None:
+        return False
+    word = token.group().replace(".", "")
+    if word.lower() not in _UNIT_WORDS:
+        return False
+    rest = folded[token.end() :].lstrip(" \t.)]")
+    if line_start and word == "M":
+        return not rest.strip(" .,;:)]") or rest[:1].isdigit()
+    if rest[:1].isdigit():
+        return False
+    name = _TOKEN.match(rest)
+    return not (name and name.group()[0].isupper() and name.group().replace(".", "").lower() not in _UNIT_WORDS)
+
+
 def _unit_after(after: str) -> bool:
     """Whether a unit is attached right after a year, `after` being what follows the
-    year on its line: a tick at once (1948'), or, after nothing but spaces, periods and
-    commas, a unit or a height above sea level, with no number of its own between
-    (1900 m, 1900m, 1948. m, 1948.ft, 1948, m, 1948 msnm). A lone "m" counts in lower
-    case or written against the digits (1900M): in "1948, M. Smith" it is an initial.
-    A measurement with a number of its own does not ("1948, 1900m", "1948, 1,900 m")."""
+    year on its line: a tick at once (1948'), or, after nothing but spaces, periods,
+    commas or an opening bracket, a unit with no number of its own between (1900 m,
+    1900m, 1948. m, 1948.ft, 1948, m, 1948 msnm, 1900 M., 1900 (m)) that `_unit_here`
+    counts: "1948, M. Smith", "1948 Mt. Apo" and "1948, m 1200" leave the year a year.
+    A measurement with a number of its own does not count ("1948, 1900m")."""
     if after and after[0] in TICKS:
         return True
-    rest = after.lstrip(" \t.,")
-    word = _first_word(rest)
-    if word.lower() == "m":
-        return word == "m" or len(rest) == len(after)
-    return word.lower() in _UNITS or word.lower() in _SEA_LEVEL
+    return _unit_here(after.lstrip(" \t.,(["))
 
 
 def _word_before(before: str) -> bool:
@@ -157,17 +180,17 @@ def _word_before(before: str) -> bool:
 def _awaits_its_number(line: str) -> bool:
     """Whether a line is only a measurement marker, its number on the next line: it
     ends in an elevation or depth word ("Alt.", "Guatemala, Elev.:"), or it holds no
-    digit and an elevation or depth word, a height above sea level or a short unit
-    in lower case ("m.s.n.m.", "Alt. aprox."). A line whose marker has its own number
+    digit and an elevation or depth word or a unit that `_unit_here` counts at the
+    start of a line ("m.s.n.m.", "Metros", "Alt. aprox."; not "E. slope Mt. McKinley"). A line whose marker has its own number
     ("Alt. 1500 m", "Yepocapa, 4800 ft. IV-25") does not."""
     if _word_before(line):
         return True
     if any(ch.isdigit() for ch in line):
         return False
-    for token in _TOKEN.findall(fold(line)):
-        word = token.lower().replace(".", "")
-        if (word in _ELEVATION_WORDS or word in _SEA_LEVEL or token.lower() == "el."
-                or (word in _SHORT_UNITS and token.islower())):
+    folded = fold(line)
+    for token in _TOKEN.finditer(folded):
+        word = token.group().lower().replace(".", "")
+        if word in _ELEVATION_WORDS or token.group().lower() == "el." or _unit_here(folded[token.start() :], line_start=True):
             return True
     return False
 
@@ -177,10 +200,12 @@ def _determination(line: str) -> bool:
 
 
 def _starts_with_a_unit(line: str) -> bool:
-    """Whether a line begins with a short unit or a height above sea level in lower
-    case ("m", "ft.", "msnm", "m.s.n.m."): the unit of a number that ends the line above."""
-    word = _first_word(line.lstrip())
-    return word.islower() and (word in _SHORT_UNITS or word in _SEA_LEVEL)
+    """Whether a line begins with a unit of the number that ends the line above, in any
+    spelling the unit table holds and in any case ("m", "metros", "Metros", "FT.",
+    "MSNM", "M.S.N.M.", "pes"), by `_unit_here`'s rules: "m 1200" is a measurement of
+    its own, "Mt. Apo" and "M. Smith" are names, and a capital "M" counts alone or
+    before a number."""
+    return _unit_here(line.lstrip(" \t(["), line_start=True)
 
 
 def _neighbour(lines: list[str], line: int, step: int) -> int | None:
@@ -230,8 +255,25 @@ def _year_marker(text: str, spans: list[tuple[int, int]], line: int, dated: rang
 
 
 # The line breaks str.splitlines() splits at: one definition of a line for the date
-# parser (`literal_spans_a_line_break`), these rules, the checks and the step.
+# parser (`literal_spans_a_line_break`) and these rules. (step._excerpt_span and the
+# taxon helpers checks.word_before, token_before and token_after find a quote's own
+# line by "\n" alone; they read no date.)
 _BREAK = re.compile("\r\n|[\n\r\v\f\x1c\x1d\x1e\x85\N{LINE SEPARATOR}\N{PARAGRAPH SEPARATOR}]")
+
+
+def places(literal: str, text: str) -> list[re.Match]:
+    """Where the literal stands in the text as a token of its own: not glued to a
+    letter or a digit before its first character or after its last, when that
+    character is one ("IV-25 1948" stands in "Lot IV-25 1948", not in "XIV-25 1948";
+    "25.IV.1948" not in "125.IV.1948" or "25.IV.19489")."""
+    found = []
+    for hit in re.finditer(re.escape(literal), text):
+        before = text[hit.start() - 1] if hit.start() else ""
+        after = text[hit.end()] if hit.end() < len(text) else ""
+        if (literal[:1].isalnum() and before.isalnum()) or (literal[-1:].isalnum() and after.isalnum()):
+            continue
+        found.append(hit)
+    return found
 
 
 def _lines(literal: str) -> list[str]:
@@ -336,7 +378,7 @@ def split_problem(literal: str, text: str) -> str | None:
     tail = lines[1][len(_unmarked(lines[1])) :] if not year_first else ""
     found = set()
     spans = _spans(text)
-    for hit in re.finditer(re.escape(literal), text):
+    for hit in places(literal, text):
         first, last, line_start, line_end = _around(spans, hit.start(), hit.end())
         before, after = text[line_start : hit.start()], tail + text[hit.end() : line_end]
         if year_first:
@@ -361,9 +403,10 @@ _ONE_LINE = re.compile(rf"(?P<date>.*?[^\s,;:])(?:\s*[,.]\s*|\s+)(?P<year>{YEAR_
 ONE_LINE_OTHER_DATE = "one_line_holds_another_date"
 ONE_LINE_NOT_ALONE = "one_line_year_not_alone"
 ONE_LINE_MEASUREMENT = "one_line_year_may_be_a_measurement"
-# No determination note: a year on its date's line is that date's, whoever's date it is.
+# A determination after the year on its line, for a collecting date only.
+ONE_LINE_DETERMINATION = "one_line_year_may_be_a_determination"
 _ONE_LINE_NOTES = {"alone": ONE_LINE_NOT_ALONE, MEASUREMENT: ONE_LINE_MEASUREMENT,
-    "other": ONE_LINE_OTHER_DATE}
+    DETERMINATION: ONE_LINE_DETERMINATION, "other": ONE_LINE_OTHER_DATE}
 
 
 def one_line_literal(literal: str) -> tuple[str, str] | None:
@@ -379,28 +422,32 @@ def one_line_literal(literal: str) -> tuple[str, str] | None:
     return (hit["date"], hit["year"]) if hit else None
 
 
-def one_line_problem(literal: str, text: str) -> str | None:
+def one_line_problem(literal: str, text: str, *, collection: bool = True) -> str | None:
     """Why the one-line literal, a date and then its year, is not one date where it
     stands in the text (a note: `one_line_year_not_alone`,
-    `one_line_year_may_be_a_measurement` or `one_line_holds_another_date`), or None
-    when some place of it is clear. The rules are those of a year on the line below
-    its date (`split_problem`), with two differences: nothing else on the line could
-    be a date; the year may be followed by a comma, semicolon or period and other
-    text, or by a collector ("1948 leg. Smith"), never by a unit, an apostrophe, a
-    dash and a number, a second number, another word (a determination included) or
-    a colon; and no unit is attached right after it (`_unit_follows`: "IV-25 1948. m").
-    The line above is not asked ("Alt. 1500 m" above "IV-25 1948" reads), and a
-    determination on the line makes it the determination's date, which reads."""
+    `one_line_year_may_be_a_measurement`, `one_line_year_may_be_a_determination` or
+    `one_line_holds_another_date`), or None when some place of it is clear. The rules
+    are those of a year on the line below its date (`split_problem`), with these
+    differences: nothing else on the line could be a date; the year may be followed by
+    a comma, semicolon or period and other text, or by a collector ("1948 leg.
+    Smith"), never by a unit, an apostrophe, a dash and a number, a second number,
+    another word or a colon; no unit is attached right after it (`_unit_follows`:
+    "IV-25 1948. m"); and, for a collecting date (`collection`), no determination
+    stands anywhere after the year on its line ("1948 leg. et det. Smith", "1948, det.
+    Smith"). The line above is not asked ("Alt. 1500 m" above "IV-25 1948" reads), and
+    a determination before the date makes it the determination's date, which reads."""
     quoted = literal.strip()
     tail = quoted[len(_unmarked(quoted)) :]
     found = set()
     spans = _spans(text)
     lines = [text[start:end] for start, end in spans]
-    for hit in re.finditer(re.escape(literal), text):
+    for hit in places(literal, text):
         _, last, line_start, line_end = _around(spans, hit.start(), hit.end())
         before, after = text[line_start : hit.start()], tail + text[hit.end() : line_end]
-        reason = _year_after(before, after, collectors=True) or (
-            MEASUREMENT if _unit_follows(after, lines, last) else None)
+        reason = _year_after(before, after, collectors=True)
+        if collection and reason in (None, "alone") and _determination(after):
+            reason = DETERMINATION
+        reason = reason or (MEASUREMENT if _unit_follows(after, lines, last) else None)
         if reason is None:
             return None
         found.add(reason)
@@ -413,31 +460,37 @@ _YEAR_AT_END = re.compile(rf"(?<![0-9])(?:[{APOSTROPHES}]?[0-9]{{2}}|[0-9]{{4}})
 _YEAR_AT_START = re.compile(r"[0-9]{4}(?![0-9])")
 
 
-def year_is_a_measurement(literal: str, text: str) -> bool:
-    """Whether the year a one-line literal ends or starts with is a measurement at
-    every place the literal stands in the text: a unit attached right after it
-    (`_unit_follows`: "25.IV 1900 m", "25 IV 1900m"), or an elevation or depth word
-    right before it (`_word_before`: "Alt. 1948"). This holds for any one-line date,
-    whatever notation reads it. The line above is not asked: "Alt. 1500 m" above
-    "25 IV 1948" leaves 1948 a year."""
+def one_line_year_problem(literal: str, text: str, *, collection: bool = True) -> str | None:
+    """Why the year a one-line literal ends or starts with is no year of the date at
+    every place the literal stands in the text, whatever notation reads it, or None:
+    `one_line_year_may_be_a_measurement` for a unit attached right after it
+    (`_unit_follows`: "25.IV 1900 m", "25 IV 1900 M.", "25 IV 1900 (m)") or an
+    elevation or depth word right before it (`_word_before`: "Alt. 1948"); for a
+    collecting date (`collection`), `one_line_year_may_be_a_determination` for a
+    determination anywhere after the literal on its line ("25 IV 1948 det. Smith").
+    The line above is not asked: "Alt. 1500 m" above "25 IV 1948" leaves 1948 a year."""
     quoted = literal.strip()
     if not quoted or len(quoted.splitlines()) != 1:
-        return False
+        return None
     unmarked = _unmarked(quoted)
     at_end, at_start = bool(_YEAR_AT_END.search(unmarked)), bool(_YEAR_AT_START.match(unmarked))
     if not (at_end or at_start):
-        return False
+        return None
     tail = quoted[len(unmarked) :]
     spans = _spans(text)
     lines = [text[start:end] for start, end in spans]
-    places = 0
-    for hit in re.finditer(re.escape(literal), text):
-        places += 1
+    found = set()
+    for hit in places(literal, text):
         _, last, line_start, line_end = _around(spans, hit.start(), hit.end())
         before, after = text[line_start : hit.start()], tail + text[hit.end() : line_end]
-        if not ((at_end and _unit_follows(after, lines, last)) or (at_start and _word_before(before))):
-            return False
-    return places > 0
+        if (at_end and _unit_follows(after, lines, last)) or (at_start and _word_before(before)):
+            found.add(MEASUREMENT)
+        elif collection and _determination(after):
+            found.add(DETERMINATION)
+        else:
+            return None
+    notes = {MEASUREMENT: ONE_LINE_MEASUREMENT, DETERMINATION: ONE_LINE_DETERMINATION, "other": ONE_LINE_MEASUREMENT}
+    return _note(found, notes) if found else None
 
 
 def written_range(literal: str) -> bool:
@@ -472,7 +525,7 @@ def year_beside(literal: str, text: str) -> tuple[str, str] | None:
     or a determination's year (`_year_marker`: "Alt." above "1900")."""
     found: dict[str, str] = {}
     spans = _spans(text)
-    for hit in re.finditer(re.escape(literal), text):
+    for hit in places(literal, text):
         first, last, line_start, line_end = _around(spans, hit.start(), hit.end())
         before, after = text[line_start : hit.start()], text[hit.end() : line_end]
         if not after.strip() and last + 1 < len(spans) and not could_be_a_date(before):

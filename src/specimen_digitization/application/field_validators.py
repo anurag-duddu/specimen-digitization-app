@@ -84,8 +84,8 @@ def date_parser(
     if len(text.splitlines()) > 1:
         # A notation never reads across a line break: any break str.splitlines()
         # splits at (\n, \r\n, \r, VT, FF, NEL, U+2028, U+2029 and the file, group
-        # and record separators), the lines the checks and the step split texts
-        # into. A date split over two lines is the research harness's rule
+        # and record separators), the lines field_research/date_lines judges a
+        # split date by. A date split over two lines is the research harness's rule
         # (field_research/date_lines.py), which hands this parser one line and the
         # year beside it.
         return _date_result(

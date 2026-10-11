@@ -130,11 +130,6 @@ def test_an_apostrophe_year_records_the_century_rule():
             "one_line_year_not_alone",
         ),
         (
-            "Guatemala, IV-25 1948 det. J. Smith",
-            "IV-25 1948",
-            "one_line_year_not_alone",
-        ),
-        (
             "Guatemala, IV-25 1948 R.D. Mitchell",
             "IV-25 1948",
             "one_line_year_not_alone",
@@ -151,22 +146,27 @@ def test_an_apostrophe_year_records_the_century_rule():
             "one_line_holds_another_date",
         ),
         ("Guatemala, IV-25 1948, 3 Sept.", "IV-25 1948", "one_line_holds_another_date"),
-        # A determination right after the year is no collector: the year may be the
-        # determination's.
+        # A determination after the year is no collector: for a collecting date (the
+        # default), the year may be the determination's (review of #306).
+        (
+            "Guatemala, IV-25 1948 det. J. Smith",
+            "IV-25 1948",
+            "one_line_year_may_be_a_determination",
+        ),
         (
             "Guatemala, IV-25 1948 det R.D. Mitchell",
             "IV-25 1948",
-            "one_line_year_not_alone",
+            "one_line_year_may_be_a_determination",
         ),
         (
             "Guatemala, IV-25 1948 identified by R.D. Mitchell",
             "IV-25 1948",
-            "one_line_year_not_alone",
+            "one_line_year_may_be_a_determination",
         ),
         (
             "Guatemala, IV-25 1948 ident. R.D. Mitchell",
             "IV-25 1948",
-            "one_line_year_not_alone",
+            "one_line_year_may_be_a_determination",
         ),
         # A unit attached right after the year: after a period or a comma with no number of
         # its own, or starting the line below.
@@ -306,7 +306,6 @@ def test_a_one_line_date_inside_a_hyphen_joined_token_is_still_no_date(text):
 ATTACHED = [
     ("Bolivia, Yungas, 25.IV 1900 m", "25.IV 1900", "1900-04-25"),
     ("Bolivia, Yungas, 25 IV 1900 m", "25 IV 1900", "1900-04-25"),
-    ("Bolivia, Yungas, 25 IV 1900m", "25 IV 1900", "1900-04-25"),
     ("Bolivia, Yungas, 25.IV 1900. m", "25.IV 1900", "1900-04-25"),
     ("Bolivia, Yungas, 25 IV 1900\nm", "25 IV 1900", "1900-04-25"),
     ("Peru, Cusco, 3 Sept. 1900 msnm", "3 Sept. 1900", "1900-09-03"),

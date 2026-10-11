@@ -405,7 +405,7 @@ def _check_row(key: str, tools: Sequence[str], literal: str, value: str, *, text
 
     runs = {
         "date_parser": lambda: checks.parse_date(literal, reading_texts=texts, date_rules=date_rules,
-            part=checks.DATE_PART.get(key)),
+            part=checks.DATE_PART.get(key), field=key),
         "elevation_parser": lambda: checks.parse_elevation(literal, reading_texts=texts),
         "catalog_number_validator": lambda: checks.check_catalog_number(literal, reading_texts=texts),
     }
