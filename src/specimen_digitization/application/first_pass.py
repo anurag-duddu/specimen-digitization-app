@@ -33,6 +33,7 @@ from .domain import (
     Observation,
     ReaderHandoff,
     ReadingSpan,
+    RunFinding,
 )
 
 _TOKEN = re.compile(r"\w+|[^\w\s]")
@@ -56,6 +57,10 @@ _TASK = (
 CAP_RATIONALE = (
     "The first pass reached its token cap before an answer; no reading was selected."
 )
+# A first pass given up on after its last attempt failed (HARNESS.md section 3,
+# Failures): a warning beside the record, `first_pass_given_up:<region>:<code>`.
+GIVEN_UP = "first_pass_given_up"
+GIVEN_UP_RULES = "first-pass-given-up-v1"
 
 
 def _span(text: str, tokens: list[re.Match], start: int, end: int) -> ReadingSpan:
@@ -422,6 +427,35 @@ def synthetic_decision(blobs, region, readings) -> FirstPassDecision:
             raw_sha256=hashlib.sha256(raw).hexdigest(),
         ),
     )
+
+
+def give_up(run, region_id: str, code: str) -> None:
+    """Record that the run gave up on a label's first pass, and the code its last
+    attempt failed with: one warning finding per label. A finding never routes
+    the record by itself; the label's transcript stays unresolved, which does."""
+    run.findings = [
+        f for f in run.findings if not (f.rule_id == GIVEN_UP and _region(f) == region_id)
+    ] + [
+        RunFinding(
+            rule_id=GIVEN_UP,
+            rule_version=GIVEN_UP_RULES,
+            severity="warning",
+            reason_code=f"{GIVEN_UP}:{region_id}:{code}",
+        )
+    ]
+
+
+def given_up_regions(run) -> frozenset[str]:
+    """The labels whose first pass the run gave up on (``give_up``) and holds no
+    decision for."""
+    decided = {d.region_id for d in run.first_pass_decisions}
+    return frozenset(
+        _region(f) for f in run.findings if f.rule_id == GIVEN_UP
+    ) - decided
+
+
+def _region(finding) -> str:
+    return finding.reason_code.split(":")[1]
 
 
 def adjudication_record(readings, texts, resolved, decision):

@@ -455,7 +455,8 @@ class Workflow:
         repeatable = step.startswith("transcribe:") and reader_failure_is_recoverable(
             run, step
         )
-        # The code a reading that gave no observation failed with, for its record.
+        # The code a reading that gave no observation, or a first pass that was
+        # given up on, failed with, for its record (lane_costs.record_step).
         reading_failure = None
         # The code of a model call the provider refused before any work (an HTTP
         # 429 to its first request): it is recorded at no cost (lane_costs).
@@ -574,29 +575,58 @@ class Workflow:
             elif step.startswith("first_pass:"):
                 region = next(r for r in run.regions if r.id == step.split(":", 1)[1])
                 readings = [o for o in run.observations if o.region_id == region.id]
-                decision = self.adapters.first_pass(specimen, region, readings)
-                from .first_pass import UNRESOLVED_VERDICTS, g19_pick, is_material
+                from .first_pass import (
+                    UNRESOLVED_VERDICTS,
+                    g19_pick,
+                    give_up,
+                    is_material,
+                )
 
-                ids = {o.id for o in readings}
-                selected = decision.selected_observation_id
-                if (
-                    decision.region_id != region.id
-                    or decision.call.region_id != region.id
-                    or selected not in ids | {None}
-                    or any(
-                        set(d.spans) != ids
-                        or d.verdict not in ids | UNRESOLVED_VERDICTS
-                        or d.material != is_material(d.spans.values())
-                        for d in decision.differences
+                try:
+                    decision = self.adapters.first_pass(specimen, region, readings)
+                except AdapterFailure as failure:
+                    if not self.first_pass_has_no_attempt_left(run, step, failure):
+                        raise  # Retried, or a block that names its cause (below).
+                    # The last attempt failed too, with a known failure that is
+                    # retried (a rate limit, a timeout, a provider error): end
+                    # the first pass with no decision, as a reader is given up
+                    # on. The label keeps its readings, unresolved, and the
+                    # record goes to review (HARNESS.md section 3, Failures).
+                    give_up(run, region.id, failure.code)
+                    reading_failure = failure.code
+                    refusal = failure.code if failure.refused else None
+                    circuit_failure = failure.status.value
+                    circuit_retry_after = failure.retry_after_seconds
+                    _log_step_failure(
+                        run,
+                        step,
+                        "first_pass_given_up",
+                        error=failure,
+                        status=failure.status.value,
+                        code=log_code(failure.code),
                     )
-                    or g19_pick(selected, decision.differences) != selected
-                ):
-                    raise OperationalBlock("first_pass_contract_invalid")
-                run.first_pass_decisions = [
-                    d for d in run.first_pass_decisions if d.region_id != region.id
-                ] + [decision]
-                call = decision.call
-                run.usage.tokens += call.input_tokens + call.output_tokens
+                    decision = None
+                if decision is not None:
+                    ids = {o.id for o in readings}
+                    selected = decision.selected_observation_id
+                    if (
+                        decision.region_id != region.id
+                        or decision.call.region_id != region.id
+                        or selected not in ids | {None}
+                        or any(
+                            set(d.spans) != ids
+                            or d.verdict not in ids | UNRESOLVED_VERDICTS
+                            or d.material != is_material(d.spans.values())
+                            for d in decision.differences
+                        )
+                        or g19_pick(selected, decision.differences) != selected
+                    ):
+                        raise OperationalBlock("first_pass_contract_invalid")
+                    run.first_pass_decisions = [
+                        d for d in run.first_pass_decisions if d.region_id != region.id
+                    ] + [decision]
+                    call = decision.call
+                    run.usage.tokens += call.input_tokens + call.output_tokens
             elif step == "adjudicate":
                 run.transcripts = []
                 decisions = {d.region_id: d for d in run.first_pass_decisions}
@@ -851,7 +881,12 @@ class Workflow:
             run.stage = "processing_blocked"
             run.disposition = None
             if not outcome_unknown and failure_is_retryable(run, step, exc.status):
-                self.schedule_retry(run, step, exc.retry_after_seconds)
+                self.schedule_retry(
+                    run,
+                    step,
+                    exc.retry_after_seconds,
+                    rate_limited=exc.status == LookupStatus.RATE_LIMITED,
+                )
             # The SAM 3 service answers a repeat of a run's request from the
             # response it stored (sam3_server.RunSegmenter). A reader's known
             # failure stays known past the deadline override (set above).
@@ -1027,10 +1062,19 @@ class Workflow:
                 circuit.record_failure(permit, failure, circuit_retry_after)
         return saved
 
-    def schedule_retry(self, run, step, provider_seconds=None):
+    def schedule_retry(self, run, step, provider_seconds=None, *, rate_limited=False):
+        """Wait before the step's next attempt, or end its retries.
+
+        A rate-limited step waits at least ``reliability.RATE_LIMIT_FLOORS``.
+        The run holds no lease while it waits, and ``step`` returns it unchanged
+        until ``next_retry_at``.
+        """
         if run.attempts.get(step, 0) < run.profile.execution.max_attempts:
             delay = retry_delay(
-                run.attempts.get(step, 1), provider_seconds, self.random_value
+                run.attempts.get(step, 1),
+                provider_seconds,
+                self.random_value,
+                rate_limited=rate_limited,
             )
             run.next_retry_at = (self.clock() + timedelta(seconds=delay)).isoformat()
             run.stage = "retry_scheduled"
@@ -1049,6 +1093,29 @@ class Workflow:
         """
         return (
             reader_failure_is_recoverable(run, step)
+            and failure_is_retryable(run, step, failure.status)
+            and run.attempts.get(step, 0) >= run.profile.execution.max_attempts
+        )
+
+    @staticmethod
+    def first_pass_has_no_attempt_left(run, step, failure) -> bool:
+        """Whether a first pass's failed attempt was its last one, and is given up on.
+
+        The reader's test (``reading_has_no_attempt_left``) where it applies: a
+        failure that is retried (``failure_is_retryable``: a rate limit, a
+        timeout or a provider error, HTTP 402 included) on the attempt that used
+        up ``max_attempts``. A failure that is not retried still blocks and names
+        its cause (a credential or permission error, a request the provider
+        rejects, a malformed answer). A first pass is not a reader
+        (``reader_failure_is_recoverable``), so an outcome that may follow a
+        billed answer (``external_outcome_unknown``: a server error, a deadline)
+        still blocks too, and so does a first pass of the evidence pilot, whose
+        readers are never given up on either.
+        """
+        return (
+            step.startswith("first_pass:")
+            and "evidence_pilot" not in run.dependencies
+            and not failure.outcome_unknown
             and failure_is_retryable(run, step, failure.status)
             and run.attempts.get(step, 0) >= run.profile.execution.max_attempts
         )
