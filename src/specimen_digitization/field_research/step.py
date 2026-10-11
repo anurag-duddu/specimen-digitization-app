@@ -67,6 +67,7 @@ from specimen_digitization.application.domain import (
 )
 from specimen_digitization.application.field_harness import labelled
 from specimen_digitization.application.field_validators import CATALOG
+from specimen_digitization.application.first_pass import given_up_regions
 from specimen_digitization.application.human_field_carry import KEY as CARRY_KEY
 from specimen_digitization.application.integrity import (
     EvidenceIntegrityError,
@@ -2438,6 +2439,9 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
       mandatory_unresolved (owner decision A, 2026-10-09).
     - 254-260: a taxon that names no genus, cleared as written and unmatched
       (taxon_unmatched), is not taxonomy_unresolved (owner decision B).
+    - 203-217: a label whose first pass the workflow gave up on
+      (first_pass.given_up_regions) is unresolved_transcription however its
+      fields settle: no first pass compared its readings.
     """
     reasons: list[str] = []
     # 198-199
@@ -2448,6 +2452,7 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
         if label.get("review_required") and not run.human_approved:
             reasons.extend(f"{reason}:{label['region_id']}" for reason in label["reasons"])
     # 203-217
+    given_up = given_up_regions(run)
     for region in run.regions:
         readings = [item for item in run.observations if item.region_id == region.id]
         if len({item.route_id for item in readings}) < 2 or len({item.model_id for item in readings}) < 2:
@@ -2460,7 +2465,10 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
             drawn = [key for key, value in run.fields.items() if key != IRN and (
                 value.source_region_id == region.id or any(identifier in ids for identifier in value.verbatim_by_observation)
                 or any(item.id in value.evidence_ids and item.region_id == region.id for item in run.evidence))]
-            if not drawn or any(run.fields[key].state != ValueState.SUPPORTED
+            # A label whose first pass was given up on (workflow, first_pass.give_up)
+            # was never compared: its transcript stays for a person to resolve,
+            # however its fields settle.
+            if region.id in given_up or not drawn or any(run.fields[key].state != ValueState.SUPPORTED
                     or not _raw_grounded(run.fields[key], run) and key not in qualified
                     for key in drawn if latest_work.get(key) in TERMINAL):
                 reasons.append(f"unresolved_transcription:{region.id}")
