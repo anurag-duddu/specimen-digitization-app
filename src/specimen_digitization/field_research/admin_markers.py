@@ -13,11 +13,12 @@ accents and punctuation aside, so "Mun.", "MUN" and "mun." are all "mun").
 ADMIN_MARKERS maps each marker to the fields of the level it marks. A
 municipality marker marks the municipio, which this schema holds as the city
 or the county; a county marker the county; a province marker the province or
-state. Units below the county or the municipio are left off, as they name a
-place of their own inside it: township ("Twp."), parish ("Parish", "Parr.",
-"Parroquia", "Freguesia", "Socken", "Sogn"), corregimiento, gmina, district of
-a province ("Distrito"), sub-district ("Taluk", "Tehsil"), borough
-("Bezirk"), arrondissement and comuna. So are words that are part of a
+state. Units that, at least in some countries, lie below the county or the
+municipio are left off, as there they name a place of their own inside it:
+township ("Twp."), parish ("Parish", "Parr.", "Parroquia", "Freguesia",
+"Socken", "Sogn"), corregimiento, gmina, district of a province
+("Distrito"), sub-district ("Taluk", "Tehsil"), borough ("Bezirk"),
+arrondissement and comuna. So are words that are part of a
 place's name or name a feature ("St.", "Mt.", "Lk.", "Arr.", "Brgy.",
 "Frazione"), words whose level differs between countries ("Cant.", "Amt",
 "Fylke", "Okrug"), words a label may use for something else ("Dep.", "Par.",

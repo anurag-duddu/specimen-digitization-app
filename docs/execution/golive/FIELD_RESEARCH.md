@@ -1203,16 +1203,26 @@ elevation is derived first, and only for a field a person has not decided):
 5. The organiser found no text for it: no candidate, no literal, no
    reader's verbatim. This is judged after every value of the attempt is
    made, so against what settled (`step._organiser_texts`, each text with
-   where it stands in the readings). A text counts as absent when,
-   wherever it stands, it lies inside the text a field of another kind
-   (`agreement.FIELD_KINDS`) settled, in this attempt, an earlier one or by
-   a person (`step._held_by_another_kind`, settled as `step._claims_text`
-   says): 105526328's "trap", which the organiser offered as the habitat,
-   once the collecting method settles on "trap"; "IV-24-48" offered as the
-   collection code once the date settles on it; "trampa de luz" offered as
-   the habitat once the method settles on it. A text no other field
-   settled, or one holding more than the settled text ("trap, cloud
-   forest" beside the method "trap"), still counts. For a county, a city
+   where it stands in the readings). A text counts as absent when it is
+   the literal a field of another kind (`agreement.FIELD_KINDS`) settled,
+   in this attempt, an earlier one or by a person, letter case and the
+   punctuation around it aside, and stands, less that punctuation, where
+   that literal stands (`step._held_by_another_kind`, `step._bare`;
+   settled as `step._claims_text` says): 105526328's "trap", which the
+   organiser offered as the habitat, once the collecting method settles
+   on "trap"; "IV-24-48" offered as the collection code once the date
+   settles on it; "trampa de luz" (or "Trampa de luz." beside the settled
+   "Trampa de luz") offered as the habitat once the method settles on it.
+   The mirror case clears the same way, and this is accepted behaviour
+   (the coordinator's ruling on PR #309's review): the organiser offers
+   "trap" as the collecting method, the habitat's expert settles "trap",
+   and the method's expert finds no method, so the method clears as not
+   on the label beside the habitat "trap" (on 5332ce4e3 both went to
+   review). A text no other field settled still counts, and so does one
+   only inside a longer settled literal: "trap, cloud forest" beside the
+   method "trap", or the organiser's precise location "nr. Finca Moca"
+   beside a habitat settled as the whole line "cloud forest nr. Finca
+   Moca" (PR #309's review, finding 3). For a county, a city
    or a precise location, a text also counts as absent when its whole
    words, compared by the place comparison key (case, accents and
    punctuation aside, "Mt." read as "mount"), are a run of the words of
@@ -1224,9 +1234,12 @@ elevation is derived first, and only for a field a person has not decided):
    city "Leesburg", or "Cook County" inside the precise location "Cook
    County Forest Preserve", does not count. For a precise location, the
    texts still left count as absent when, beside the places settled, they
-   write only an administrative marker, or readers differ only in one
-   (below): the organiser's "Yepocapa, Mun. Chimaltenango", "Kreis
-   Ahrweiler", "Distr. Kandy" or "Cook Co." beside those places settled.
+   write only an administrative marker next to the settled place of its
+   level, or readers differ only in one (below): the organiser's
+   "Yepocapa, Mun. Chimaltenango" beside the settled city and province,
+   or "Kreis Ahrweiler", "Distr. Kandy" or "Cook Co." beside the settled
+   county. The organiser's "Ionia Twp." beside the settled county "Ionia"
+   counts (a township is a place inside the county).
 6. For an elevation, no reading writes an elevation
    (`step._elevation_written`, on every reading's and every reader's text).
    That is, none of:
@@ -1272,42 +1285,66 @@ the readers differ only inside "Mun." (municipio). Once every place is in
 (after the initials check, `step._no_finer_place`), a precise location
 researched in this attempt is not present when all of these hold:
 - the profile lists the precise location among the fields that may clear
-  as not on the label (`zoology_insects_slides` 1.0.0 does); otherwise its
-  answer's value stands, for review;
+  as not on the label (`zoology_insects_slides` 1.0.0 does); otherwise the
+  answer is applied as before this check: a resolved answer settles as its
+  text and the record may clear, and an unsettled one stays for review;
 - its expert answered resolved, several_possibilities or
   sources_cannot_resolve, with no failure, not as the resolver's fallback
   and not finalized without a model call;
 - every text the answer cites (its literal and its options) is written by
   a reading;
 - those texts give nothing beyond the settled places but an
-  administrative marker (`step._admin_markers`): each text's words, folded
-  as the place tool folds them (letter case, accents and punctuation
-  aside), less every run of words that is the whole text of a settled
-  country, province or state, county or city (its literal, its value and
-  each reader's verbatim it keeps). What is left of at least one text is
-  markers only, and what is left of every other text is nothing, markers
-  only, or the same words with one letter apart in the marker's place (a
-  reader's misreading: "Mum." for "Mun.").
-The markers are a data list (`field_research/admin_markers.py`), in
-English, Spanish and Portuguese, French, Italian, German and Dutch, the
-Nordic languages, transliterated Slavic languages and South Asian usage:
-"Mun.", "Mpio.", "Municipio", "Dept.", "Depto.", "Prov.", "Distr.", "Pref.",
-"Kreis", "Comune", "Gemeinde" and others. Words that are part of a place's
-name or name a finer place are left off ("St.", "Mt.", "Lk.", "Arr.",
-"Brgy.", "Frazione"), as are "Canton" and words a label uses for something
-else. "Co." counts only right after a settled name ("Cook Co."): before a
-name it is also the Spanish "Cerro", a hill ("Co. Chirripo"). Any other
-word keeps the text a place: "E. slope Mt. McKinley, Davao Prov." beside
-the settled province "Davao, Prov." still settles as the precise location;
-"5 km N of Yepocapa" and "Finca Moca, Mun. Yepocapa" beside the settled
-town are places; and the organiser's "5 km N of Kandy" or "Co. Chirripo"
-beside the settled county keeps the precise location in review.
+  administrative marker next to the settled place of its level
+  (`step._admin_markers`): each text's words, folded as the place tool
+  folds them (letter case, accents and punctuation aside), less every run
+  of words that is the whole text of a settled country, province or
+  state, county or city (its literal, its value and each reader's
+  verbatim it keeps). What is left of at least one text is markers only,
+  each with the settled place of the level it marks right before or right
+  after it (`step._marks_a_settled_place`), and what is left of every
+  other text is nothing, markers only, or the same words with, in a
+  marker's place, a word that may be a misreading of it
+  (`step._misread_marker`: letters only, as long as the marker, one
+  letter different, and no word or abbreviation for a place's feature).
+  So 3B's "Mum." beside 3A's "Mun." clears, but "Mtn." (a mountain), "Run"
+  (a stream), "Cr." or "Ck." (a creek) or "Mt." beside "Kt." keeps the
+  readers apart, for review.
+The markers are a data list (`field_research/admin_markers.py`), each with
+the fields of the level it marks: a municipality marker ("Mun.", "Mpio.",
+"Municipio", "Comune", "Gemeinde", "Commune", "Kommune") the city or the
+county, which hold the municipio; a county marker ("Co.", "County",
+"Kreis", "Distr.", "District", "Powiat", "Okres") the county; a province
+marker ("Prov.", "Dept.", "Depto.", "Departamento", "State", "Estado",
+"Edo.", "Pref.", "Region", "Oblast", "Kanton", "Kt.") the province or
+state. "Boulder, Co." beside the settled city "Boulder", "Kreis Ahrweiler"
+beside a settled city only, or "Mun. Cuenca" beside a settled province
+only, marks no settled level and gives no marker. Units that, at least in
+some countries, lie below the county or the municipio are not markers, as
+there they name a place of their own inside it: "Twp." (township), "Parr."/"Parroquia", "Freguesia", "Socken", "Sogn",
+"Corregimiento", "Gmina", "Distrito", "Taluk", "Tehsil", "Bezirk",
+"Arrondissement", "Comuna" and "Parish"; nor are words that are part of a
+place's name or name a feature ("St.", "Mt.", "Lk.", "Arr.", "Brgy.",
+"Frazione"), words whose level differs between countries ("Cant.", "Amt",
+"Fylke", "Okrug"), "Canton" and words a label uses for something else.
+"Co." counts only right after a settled name ("Cook Co."): before a name
+it is also the Spanish "Cerro", a hill ("Co. Chirripo"). The feature words
+are a second data list (`admin_markers.PLACE_FEATURE_WORDS`): Mt, Mtn,
+Mte, Mts, Cr, Ck, Cerro, Run, R, Rio, L, Lago, Lac, Is, Isla, Pt, Pta,
+Punta, Pk, Peak, Vol, Volcan, Fca, Finca, Hda, Hacienda, Sta, Sto, San, B,
+Bay, Kt and others, compared folded ("Rio" and "Volcan" with or without
+their accents). Any other word keeps the text a place: "E. slope Mt.
+McKinley, Davao Prov." beside the settled province "Davao, Prov." still
+settles as the precise location; "Ionia Twp." beside the settled county
+"Ionia" settles when its expert resolves it and stays in review when its
+expert finds none (as on 5332ce4e3); "5 km N of Yepocapa" and "Finca
+Moca, Mun. Yepocapa" beside the settled town are places; and the
+organiser's "5 km N of Kandy" or "Co. Chirripo" beside the settled county
+keeps the precise location in review.
 When the conditions hold, the value is not present, its reason "The
 readings give no place finer than the places settled: beside them, they
 write only the administrative marker "Mun."." followed by the expert's
-explanation, and
-the rows a settled answer added, with its transcript_literal finding, are
-dropped; its trace names "admin_marker_only". Rule A then judges it as a
+explanation, and the rows a settled answer added, with its
+transcript_literal finding, are dropped; its trace names "admin_marker_only". Rule A then judges it as a
 field whose expert found no value (condition 1). When it clears, its
 reason starts "Not on the label: beside the places settled, the readings
 write only the administrative marker "Mun.", no finer place.", and its
