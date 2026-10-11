@@ -126,7 +126,9 @@ REFUSED = {
 }
 # A request that ended with no usable response: no answer in time, the host
 # could not be reached, or it kept failing (HTTP 5xx). For Getty TGN's
-# reconciliation request, the search then goes through the SPARQL endpoint.
+# reconciliation request, the search then goes through the SPARQL endpoint,
+# except when the last request was not sent for a busy slot (_Unanswered.busy):
+# the SPARQL request would wait for the same slots.
 SEARCH_UNREACHED = frozenset({LookupStatus.TIMEOUT, LookupStatus.PROVIDER})
 
 
@@ -428,12 +430,15 @@ def _log_unanswered(
 
 
 class _Unanswered(Exception):
-    """No usable answer came back: the status to return and its plain note."""
+    """No usable answer came back: the status to return and its plain note.
+    `busy` when the last request was not sent because no slot or turn came
+    free in time (SlotBusy, _get)."""
 
-    def __init__(self, status: LookupStatus, note: str):
+    def __init__(self, status: LookupStatus, note: str, *, busy: bool = False):
         super().__init__(note)
         self.status = status
         self.note = note
+        self.busy = busy
 
 
 @dataclass(frozen=True)
@@ -916,7 +921,7 @@ class ApprovedSources:
             try:
                 response = await self._response(policy, url + "?" + urlencode(params))
             except _Unanswered as failure:
-                if url == georef_tgn.RECONCILE and failure.status in SEARCH_UNREACHED:
+                if url == georef_tgn.RECONCILE and failure.status in SEARCH_UNREACHED and not failure.busy:
                     reason = failure.note.removeprefix(f"{name} ")
                     fallback.append(reason)
                     raise historical_gazetteers.SearchUnanswered(reason) from failure
@@ -1034,7 +1039,8 @@ class ApprovedSources:
                 # field's time waiting.
                 _log_unanswered(policy.id, url, attempt=attempt, error="slot_busy")
                 sent = "" if attempt == 1 else f" again after {attempt - 1} attempt{'s' if attempt > 2 else ''}"
-                raise _Unanswered(LookupStatus.TIMEOUT, f"{name} was busy; this lookup was not sent{sent}") from None
+                raise _Unanswered(LookupStatus.TIMEOUT, f"{name} was busy; this lookup was not sent{sent}",
+                    busy=True) from None
             except (httpx.TimeoutException, TimeoutError) as failure:
                 status, note = LookupStatus.TIMEOUT, f"{name} did not answer after {ATTEMPTS} attempts"
                 error = type(failure).__name__
