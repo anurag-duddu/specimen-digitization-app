@@ -205,7 +205,9 @@ def parse_date(
     (`reading_names` names them, in the order of `reading_texts`; the default is
     their numbers). `part` is "end" for the field that takes a range's last date.
     `field` is the field asking. A date that a determination stands before on its line
-    ("det. J. Smith 1950", "det. 25.IV.1950") is the determination's: Date Identified
+    ("det. J. Smith 1950", "det. 25.IV.1950"), or that stands on a line by itself under
+    a determination ("det. J. Smith" above "25.IV.1952"), is the determination's
+    (`date_lines.determination_date`): Date Identified
     (`DETERMINATION_FIELD`) settles only from such a date, and every other field, or no
     field, takes no such date (`date_follows_a_determination`,
     `date_follows_no_determination`). A determination after the date ("25.IV.1948 leg. et
@@ -261,7 +263,7 @@ def _field_rule(run: _Run, literal: str, text: str, collection: bool) -> _Run:
     its line is no collecting date, and Date Identified takes no other date."""
     if not run.readings:
         return run
-    if collection == date_lines.determination_before(literal, text):
+    if collection == date_lines.determination_date(literal, text):
         note = AFTER_A_DETERMINATION if collection else AFTER_NO_DETERMINATION
         return _Run(run.name, LookupStatus.NO_MATCH, (), (note,))
     return run

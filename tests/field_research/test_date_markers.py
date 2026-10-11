@@ -1,14 +1,17 @@
 """Measurement markers, determinations and literals inside longer tokens (the reviews of
-PR #306 at d305db77e and f89292766, and the coordinator's rulings on them).
+PR #306 at d305db77e, f89292766 and d0707cca, and the coordinator's rulings on them).
 
 A unit belongs to the year only when it is attached to it. A unit followed by a number
 of its own ("m 1200", "M 1200": the unit written before its number, as Italian labels
 do) is a measurement of its own. Only a Title-case Mt., Mts., Ft., Mte. or Pto., or the
 initial M., before a capitalised name is a place or a person ("Mt. Apo", "M. Smith"); a
-unit in lower case or capitals stays a unit whatever follows it. A unit starting the
-next line counts in every spelling and case. A date a determination stands before on
-its line is the determination's: Date Identified settles only from such a date, and the
-collecting date never does. A literal counts only where it stands as a token of its own.
+capitalised marker word after it is no name ("Ft. Coll. Smith"), and a unit in lower
+case or capitals stays a unit whatever follows it. A unit starting the next line counts
+in every spelling and case. A date a determination stands before on its line, or a date
+alone on its line under a determination, is the determination's: Date Identified
+settles only from such a date, and the collecting date never does. A collector after
+the date on its line keeps it the collecting date. A literal counts only where it
+stands as a token of its own.
 """
 
 from __future__ import annotations
@@ -88,6 +91,59 @@ def test_mount_and_fort_in_title_case_before_a_name_are_no_unit_and_the_date_rea
 )
 def test_a_name_beside_the_year_on_other_lines_still_reads(text, literal):
     assert date(literal, [text]).status == LookupStatus.SUCCESS
+
+
+# A capitalised marker word after the abbreviation is no name (the coordinator's ruling on
+# the review of d0707cca: "The waiver is for names, never for marker words"): a collector,
+# a determination, an elevation word, a unit, a lot or "ex.". The year beside it stays a
+# measurement, on its line and on the next.
+MARKER_AFTER = [
+    ("25 IV 1900 Ft. Coll. Smith", "25 IV 1900", ONE_LINE_MEASURE),
+    ("25 IV 1900 M. Leg. Smith", "25 IV 1900", ONE_LINE_MEASURE),
+    ("25 IV 1900 M. Det. Smith", "25 IV 1900", ONE_LINE_MEASURE),
+    ("25 IV 1900 Mts. Col. J. Perez", "25 IV 1900", ONE_LINE_MEASURE),
+    ("25 IV 1900 Mts. Alt.", "25 IV 1900", ONE_LINE_MEASURE),
+    ("25 IV 1900 Mt. Lot 5", "25 IV 1900", ONE_LINE_MEASURE),
+    ("25 IV 1900 Ft. Ex. Coll. Smith", "25 IV 1900", ONE_LINE_MEASURE),
+    ("25 IV 1900 M. No. 12", "25 IV 1900", ONE_LINE_MEASURE),
+    ("25 IV 1900 Ft. Nr. 12", "25 IV 1900", ONE_LINE_MEASURE),
+    ("25 IV 1900 Mt. Cat. 12", "25 IV 1900", ONE_LINE_MEASURE),
+    ("25 IV 1900 Mts. Num. 3", "25 IV 1900", ONE_LINE_MEASURE),
+    ("Guatemala 25 IV 1900\nFt. Coll. Smith", "25 IV 1900", ONE_LINE_MEASURE),
+    ("Guatemala IV-25\n1900\nFt. Coll. Smith", "IV-25\n1900", SPLIT_MEASURE),
+    ("Guatemala IV-25\n1900, Ft. Coll. Smith", "IV-25\n1900", SPLIT_MEASURE),
+]
+
+
+@pytest.mark.parametrize(
+    ("text", "literal", "notes"), MARKER_AFTER, ids=[r[0] for r in MARKER_AFTER]
+)
+def test_a_marker_word_after_mount_or_fort_is_no_name_and_the_year_stays_a_measurement(
+    text, literal, notes
+):
+    for field in (None, *COLLECTING, "date_identified"):
+        result = date(literal, [text], field=field)
+        assert result.status == LookupStatus.NO_MATCH and result.notes == notes, (
+            field,
+            result.as_dict(),
+        )
+    assert row(literal, "1900-04-25", [text]) is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Guatemala IV-25\n1900\nFt. Coll. Smith",
+        "Guatemala IV-25\n1900, Ft. Coll. Smith",
+    ],
+)
+def test_a_bare_month_and_day_take_no_year_a_marker_word_after_fort_follows(text):
+    result = date("IV-25", [text])
+
+    assert result.status == LookupStatus.AMBIGUOUS and "year_missing" in result.notes, (
+        result.as_dict()
+    )
+    assert row("IV-25", "1900-04-25", [text]) is None
 
 
 # A unit in lower case or in capitals right after the year stays a unit, whatever follows
@@ -345,6 +401,15 @@ DETERMINATION_BEFORE = [
     ("det. J. Smith, IV-25 1950", "IV-25 1950", "1950-04-25"),
     ("det. J. Smith IV-25\n1950", "IV-25\n1950", "1950-04-25"),
     ("Det. E. L. Mockford 1952", "1952", "1952"),
+    # The first date after the determination is its own; "Ident." before a name or "by"
+    # is a determination; a collector before the determination does not count.
+    ("det. J. Smith 1952 / Guatemala IV-25-1948", "1952", "1952"),
+    ("Ident. by J. Smith 1952", "1952", "1952"),
+    ("Ident. J. Smith 1952", "1952", "1952"),
+    ("Ident. por J. Perez 1952", "1952", "1952"),
+    ("Ident. par J. Dupont 1952", "1952", "1952"),
+    ("Ident. von H. Weber 1952", "1952", "1952"),
+    ("leg. Rossi det. Bianchi 1950", "1950", "1950"),
 ]
 
 
@@ -370,16 +435,87 @@ def test_a_date_a_determination_stands_before_is_date_identified_s_only(
         assert row(literal, iso, [text], key=key) is None
 
 
-def test_a_determination_on_another_line_makes_no_date_the_determination_s():
-    # Date Identified settles only from a date that follows a determination on its line.
-    text = "det. J. Smith\n25.IV.1950"
+# A date alone on its line takes the line above it (the coordinator's ruling on the review
+# of d0707cca: "A date on a line by itself inherits the line above"): under a
+# determination it is the determination's. A chain of lines that hold only the date's
+# parts takes the first line above them that holds something else.
+DETERMINATION_ABOVE = [
+    ("det. J. Smith\n25.IV.1952", "25.IV.1952", "1952-04-25"),
+    ("det. J. Smith\n1952", "1952", "1952"),
+    ("J. Smith det.\n1952", "1952", "1952"),
+    ("Det. by H. Dybas\nSept. 3, 1952", "Sept. 3, 1952", "1952-09-03"),
+    ("Det. J. Smith\nIV-25 1952", "IV-25 1952", "1952-04-25"),
+    ("det. J. Smith\nIV-25\n1952", "IV-25\n1952", "1952-04-25"),
+    ("det. J. Smith\nIV-25\n1952", "IV-25", "1952-04-25"),
+    ("det. J. Smith\n\n25.IV.1952", "25.IV.1952", "1952-04-25"),
+    ("det. J. Smith\n(25.IV.1952)", "25.IV.1952", "1952-04-25"),
+    ("det. J. Smith\n25.IV.1952.", "25.IV.1952", "1952-04-25"),
+    ("Ident. J. Smith\n25.IV.1952", "25.IV.1952", "1952-04-25"),
+    ("Identified by J. Smith\n25.IV.1952", "25.IV.1952", "1952-04-25"),
+    ("leg. Rossi det. Bianchi\n1950", "1950", "1950"),
+]
 
-    assert date("25.IV.1950", [text], field="date_identified").notes == (
-        "date_follows_no_determination",
+
+@pytest.mark.parametrize(
+    ("text", "literal", "iso"),
+    DETERMINATION_ABOVE,
+    ids=[r[0] for r in DETERMINATION_ABOVE],
+)
+def test_a_date_alone_on_its_line_under_a_determination_is_date_identified_s_only(
+    text, literal, iso
+):
+    test_a_date_a_determination_stands_before_is_date_identified_s_only(
+        text, literal, iso
     )
-    assert date("25.IV.1950", [text], field="date_visited_from").values == (
-        "1950-04-25",
+
+
+# The collecting date, which Date Identified does not take: a collector after the date on
+# its line; a determination with another date or a collector between it and the date
+# (a determination claims the first date after it only); a date whose line holds other
+# text, under a determination; a line above that is no determination; and "Ident." before
+# a number ("Ident. No. 5"), which counts only before a name or "by".
+COLLECTING_DATE = [
+    ("det. J. Smith\n25.IV.1948 leg. Hoogstraal", "25.IV.1948", "1948-04-25"),
+    ("det. J. Smith 25.IV.1948 leg. Hoogstraal", "25.IV.1948", "1948-04-25"),
+    ("det. J. Smith 1952 / Guatemala IV-25-1948", "IV-25-1948", "1948-04-25"),
+    ("det. J. Smith 1950\n25.IV.1948", "25.IV.1948", "1948-04-25"),
+    ("det. Bianchi leg. Rossi 1950", "1950", "1950"),
+    ("det. J. Smith\nleg. Rossi\n25.IV.1948", "25.IV.1948", "1948-04-25"),
+    ("det. J. Smith\nGuatemala 25.IV.1948", "25.IV.1948", "1948-04-25"),
+    ("det. J. Smith\n25.IV.1948 Guatemala", "25.IV.1948", "1948-04-25"),
+    ("Guatemala\n25.IV.1948", "25.IV.1948", "1948-04-25"),
+    ("Ident. No. 5, Davao, 25.IV.1948", "25.IV.1948", "1948-04-25"),
+    ("Ident. No. 5\n25.IV.1948", "25.IV.1948", "1948-04-25"),
+    ("Ident. Nr. 12\n25.IV.1948", "25.IV.1948", "1948-04-25"),
+]
+
+
+@pytest.mark.parametrize(
+    ("text", "literal", "iso"), COLLECTING_DATE, ids=[r[0] for r in COLLECTING_DATE]
+)
+def test_a_date_no_determination_claims_is_the_collecting_date(text, literal, iso):
+    test_a_determination_after_the_date_leaves_it_the_collecting_date(
+        text, literal, iso
     )
+    test_date_identified_takes_no_date_a_determination_follows(text, literal, iso)
+
+
+@pytest.mark.parametrize(
+    ("literal", "iso"), [("1948\nIV-25", "1948-04-25"), ("IV-25", "1948-04-25")]
+)
+def test_ident_before_a_number_makes_no_year_the_determination_s(literal, iso):
+    # "Ident. No. 5" above the year is no determination: the year is the date's, on both
+    # routes. "Ident. by" or "det." above it still is.
+    result = date(literal, ["Ident. No. 5\n1948\nIV-25"])
+
+    assert result.status == LookupStatus.SUCCESS and result.values == (iso,), (
+        result.as_dict()
+    )
+    assert row(literal, iso, ["Ident. No. 5\n1948\nIV-25"]) is not None
+    for marker in ("Ident. by J. Smith", "det. J. Smith"):
+        assert date("1950\nIV-25", [f"{marker}\n1950\nIV-25"]).notes == (
+            "split_lines_year_may_be_a_determination",
+        )
 
 
 # -- 5. A literal inside a longer token ----------------------------------------------------------

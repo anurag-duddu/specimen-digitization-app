@@ -35,7 +35,8 @@ rules, none of them a guess (a line is what str.splitlines() gives):
     1948") makes it a measurement whatever notation reads the date
     (`one_line_year_problem`), and the line above is not asked. A determination
     before the date on its line makes it Date Identified's
-    (`determination_before`, `checks.parse_date`'s field rule);
+    (`determination_date`, `checks.parse_date`'s field rule; a date on a line by itself
+    takes the line above);
 - nothing else on either line could be a date: no other year, Roman or written
   month, or numeric date (`could_be_a_date`);
 - the date states no year of its own (the date parser says so);
@@ -137,6 +138,11 @@ def _first_word(text: str) -> str:
 
 
 _UNIT_WORDS = _UNITS | _SEA_LEVEL
+# Every marker word the rules know: collectors, determinations, elevation and depth words,
+# units, and the marks of a lot or catalogue number or a provenance ("Lot", "No.", "Nr.",
+# "Cat.", "ex"). A capitalised marker word is never a name.
+_MARKER_WORDS = (_COLLECTOR_WORDS | _DETERMINATION_WORDS | _ELEVATION_WORDS | _UNIT_WORDS
+    | {"lot", "no", "nr", "num", "cat", "ex"})
 # The Title-case abbreviations of a place name (Mount, Mounts, Fort, Monte, Puerto),
 # written with or without their period, and the initial "M.": before a capitalised name
 # they are no unit ("Mt. Apo", "Ft. Collins", "M. Smith").
@@ -150,7 +156,8 @@ def _unit_here(text: str) -> bool:
     own follows it ("m 1200", "M. 1200", "mt 1800": the unit written before its number,
     as Italian labels do). One waiver: a Title-case Mt., Mts., Ft., Mte. or Pto., or the
     initial M., before a capitalised name is a place or a person ("Mt. Apo", "Ft.
-    Collins", "Mts. Rwenzori", "M. Smith"). A unit in lower case or in capitals stays a
+    Collins", "Mts. Rwenzori", "M. Smith"); a capitalised marker word is no name ("Ft.
+    Coll. Smith", "M. Leg. Smith", "M. Det. Smith", "Mts. Alt."). A unit in lower case or in capitals stays a
     unit whatever follows it ("m R.D. Mitchell", "ft. Coll. Smith", "FT. COLL. SMITH",
     "MT. APO"), and so does a Title-case unit word ("Metro Manila", "Metros San Pedro")."""
     folded = fold(text)
@@ -165,7 +172,7 @@ def _unit_here(text: str) -> bool:
         return False
     name = _TOKEN.match(rest)
     return not (_PLACE_ABBREVIATIONS.fullmatch(written) and name and name.group()[0].isupper()
-        and name.group().replace(".", "").lower() not in _UNIT_WORDS)
+        and name.group().replace(".", "").lower() not in _MARKER_WORDS)
 
 
 def _unit_after(after: str) -> bool:
@@ -204,8 +211,56 @@ def _awaits_its_number(line: str) -> bool:
     return False
 
 
+# The words after "Ident." that make it a determination: "by" and its Spanish, French and
+# German forms; otherwise a capitalised name ("Ident. J. Smith"), never "Ident. No. 5".
+_BY_WORDS = frozenset({"by", "por", "par", "von"})
+
+
+def _word(token: str) -> str:
+    return fold(token).lower().replace(".", "")
+
+
+def _determination_ends(line: str) -> list[int]:
+    """Where each determination marker of a line ends: det., determ., determinavit,
+    determined, identified and the other determination words; "Ident." only before
+    "by" or a capitalised name that is no marker word."""
+    tokens = list(_TOKEN.finditer(line))
+    ends = []
+    for index, token in enumerate(tokens):
+        word = _word(token.group())
+        if word not in _DETERMINATION_WORDS:
+            continue
+        if word == "ident":
+            following = tokens[index + 1].group() if index + 1 < len(tokens) else ""
+            if not (_word(following) in _BY_WORDS
+                    or (following[:1].isupper() and _word(following) not in _MARKER_WORDS)):
+                continue
+        ends.append(token.end())
+    return ends
+
+
 def _determination(line: str) -> bool:
-    return any(token.lower().replace(".", "") in _DETERMINATION_WORDS for token in _TOKEN.findall(fold(line)))
+    return bool(_determination_ends(line))
+
+
+def _collector(line: str) -> bool:
+    return any(_word(token) in _COLLECTOR_WORDS for token in _TOKEN.findall(line))
+
+
+# The words a line that holds only a date may have: month words, Roman numerals, "de",
+# "of" and the like, and a day's ordinal.
+_DATE_LINE_WORDS = frozenset({"de", "del", "of", "di", "da", "do", "st", "nd", "rd", "th", "er", "o"})
+_ROMAN_SET = frozenset(ROMAN)
+
+
+def _date_only(line: str) -> bool:
+    """Whether a line holds nothing but a date: something that could be one, and no word
+    but month words, Roman numerals, "de", "of" and ordinals ("IV-25", "1952",
+    "Sept. 3, 1952", "25 de abril")."""
+    if not could_be_a_date(line):
+        return False
+    return all(_word(word) in MONTH_WORDS or _word(word) in _DATE_LINE_WORDS
+        or word.upper() in _ROMAN_SET for word in _WORD.findall(line))
 
 
 def _starts_with_a_unit(line: str) -> bool:
@@ -350,7 +405,7 @@ def _year_after(before: str, after: str, collectors: bool = False) -> str | None
     other text); None when neither. With `collectors` (one line), a collector or a
     determination after a space is like a comma ("IV-25 1948 leg. Smith", "IV-25 1948
     det. Smith"): which date the line is, collecting or determination, is
-    `checks.parse_date`'s field rule (`determination_before`)."""
+    `checks.parse_date`'s field rule (`determination_date`)."""
     if could_be_a_date(before):
         return "other"
     if not after.strip() or (after[0] in ",;." and not after[1:2].isdigit()):
@@ -491,15 +546,59 @@ def one_line_year_problem(literal: str, text: str) -> str | None:
     return ONE_LINE_MEASUREMENT if found else None
 
 
-def determination_before(literal: str, text: str) -> bool:
-    """Whether a determination stands before the literal on its (first) line at every
-    place it stands in the text ("det. J. Smith 1950", "det. 25.IV.1950", "det. J.
-    Smith, IV-25 1950"): the date is then the determination's. A determination after
-    the date ("25.IV.1948 leg. et det. J. Smith") or on another line does not count."""
+_PUNCTUATION = " \t.,;:()[]"
+
+
+def determination_date(literal: str, text: str) -> bool:
+    """Whether the literal is a determination's date at every place it stands in the text
+    (the coordinator's rulings on the reviews of #306 at f89292766 and d0707cca):
+
+    - a collector after the date on its line makes it a collecting date ("det. J.
+      Smith" above "25.IV.1948 leg. Hoogstraal", "det. J. Smith 25.IV.1948 leg.
+      Hoogstraal");
+    - a determination before the date on its line makes it the determination's when
+      neither a collector nor another date stands between them ("det. J. Smith 1950",
+      "det. 25.IV.1950", "leg. Rossi det. Bianchi 1950"; not "det. J. Smith 1952 /
+      Guatemala IV-25-1948", "det. Bianchi leg. Rossi 1950");
+    - a date whose line holds other text decides from its own line only;
+    - a date on a line by itself takes the first line above it that is not blank and
+      not itself only a date, under the same rule ("det. J. Smith" above
+      "25.IV.1952", "J. Smith det." above "1952", "det. J. Smith" above "IV-25" above
+      "1952"; not "det. J. Smith 1950" above "25.IV.1952").
+
+    A determination after the date ("25.IV.1948 leg. et det. J. Smith", "Bolivia, 25
+    IV 1948 det. Smith") does not count, and "Ident." counts only before "by" or a name
+    (`_determination_ends`)."""
     spans = _spans(text)
+    lines = [text[start:end] for start, end in spans]
     found = places(literal, text)
-    return bool(found) and all(
-        _determination(text[spans[_line_of(spans, hit.start())][0] : hit.start()]) for hit in found)
+    return bool(found) and all(_determination_place(text, lines, spans, hit) for hit in found)
+
+
+def _claims(text: str) -> bool:
+    """Whether a determination in `text` claims the date that comes after the text: its
+    last marker has no collector and no date after it."""
+    ends = _determination_ends(text)
+    if not ends:
+        return False
+    between = text[ends[-1] :]
+    return not _collector(between) and not could_be_a_date(between)
+
+
+_PUNCTUATION = " \t.,;:()[]"
+
+
+def _determination_place(text: str, lines: list[str], spans: list[tuple[int, int]], hit: re.Match) -> bool:
+    first, _, line_start, line_end = _around(spans, hit.start(), hit.end())
+    before, after = text[line_start : hit.start()], text[hit.end() : line_end]
+    if _collector(after):
+        return False
+    if before.strip(_PUNCTUATION) or after.strip(_PUNCTUATION):
+        return _claims(before)
+    index = first - 1
+    while index >= 0 and (not lines[index].strip() or _date_only(lines[index])):
+        index -= 1
+    return index >= 0 and _claims(lines[index])
 
 
 def written_range(literal: str) -> bool:

@@ -55,8 +55,6 @@ READ = [
     (f"Espa{N_TILDE}a, Madrid, IV-25. 1948. leg. Lopez", "IV-25. 1948.", "1948-04-25"),
     ("Peru, Cusco, 3.XII,1946", "3.XII,1946", "1946-12-03"),
     ("Colombia, Cali, IV-25 '48", "IV-25 '48", "1948-04-25"),
-    # A determination's date written whole on its line reads too (Date Identified's).
-    ("det. J. Smith\nIV-25 1950", "IV-25 1950", "1950-04-25"),
     # A measurement with its own number on the line, or any marker on the line above, is not
     # attached to the year (coordinator's ruling on PR #306; 5f2937c85 refused these).
     ("Guatemala, Alt. 1500 m, IV-25 1948", "IV-25 1948", "1948-04-25"),
@@ -97,6 +95,19 @@ def test_the_step_keeps_a_check_row_for_a_one_line_date_and_names_how_it_was_rea
 
     assert kept is not None and f"{literal} reads as {iso}" in kept.excerpt
     assert '"via": ["one_line"]' in kept.excerpt
+
+
+def test_a_one_line_date_alone_under_a_determination_reads_for_date_identified_only():
+    # A date alone on its line under a determination is the determination's (the
+    # coordinator's ruling on the review of #306 at d0707cca); it still reads as one date.
+    text = "det. J. Smith\nIV-25 1950"
+    identified = date("IV-25 1950", [text], field="date_identified")
+
+    assert identified.values == ("1950-04-25",)
+    assert identified.readings[0].via == ("one_line",)
+    assert row("IV-25 1950", "1950-04-25", [text], key="date_identified") is not None
+    assert date("IV-25 1950", [text]).notes == ("date_follows_a_determination",)
+    assert row("IV-25 1950", "1950-04-25", [text]) is None
 
 
 def test_a_month_and_a_bare_number_read_as_a_day_once_the_year_is_on_their_line():
