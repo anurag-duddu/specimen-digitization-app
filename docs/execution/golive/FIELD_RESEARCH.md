@@ -596,32 +596,60 @@ row the settled value cites shows them.
 
   **A determination before the date makes it the determination's date**
   (`date_lines.determination_date`, `checks.parse_date(..., field=...)`, which the
-  experts and `step._check_row` pass; the reviews of f89292766 and d0707cca and the
-  coordinator's rulings). A date that a determination stands before on its own
-  line, with no collector and no other date between them (`det. J. Smith 1950`,
-  `det. 25.IV.1950`, `det. J. Smith, IV-25 1950`, `"det. J. Smith IV-25\n1950"`,
-  `Ident. by J. Smith 1952`, `leg. Rossi det. Bianchi 1950`), settles only Date
-  Identified; for Date Visited From and To, or with no field, it is `no_match` with
-  `date_follows_a_determination`. A determination claims the first date after it
-  only: in `det. J. Smith 1952 / Guatemala IV-25-1948`, 1952 is the
-  determination's date and IV-25-1948 the collecting date; in `det. Bianchi leg.
-  Rossi 1950` the collector stands between, and 1950 is the collecting date.
+  experts and `step._check_row` pass; the reviews of f89292766, d0707cca and
+  04bbe6936 and the coordinator's rulings). A date that a determination stands
+  before on its own line, with no collector and no complete date (one with its
+  year) between them (`det. J. Smith 1950`, `det. 25.IV.1950`,
+  `det. J. Smith, IV-25 1950`, `"det. J. Smith IV-25\n1950"`, and `1950` alone in
+  either; `Ident. by J. Smith 1952`, `leg. Rossi det. Bianchi 1950`), settles only
+  Date Identified; for Date Visited From and To, or with no field, it is `no_match`
+  with `date_follows_a_determination`. A determination claims the first complete
+  date after it only: in `det. J. Smith 1952 / Guatemala IV-25-1948` and
+  `det. J. Smith 1952 25.IV.1948`, 1952 is the determination's date and 1948 the
+  collecting date; in `det. Bianchi leg. Rossi 1950` the collector stands between,
+  and 1950 is the collecting date.
 
-  A date alone on its line, with nothing else on it but punctuation, takes the
-  first line above it that is not blank and holds more than a date's parts, under
-  the same rule: `det. J. Smith` above `25.IV.1952`, `(25.IV.1952)` or
-  `IV-25 1952`, `det. J. Smith` above a blank line above `25.IV.1952`, `J. Smith det.`
-  above `1952`, `Det. by H. Dybas` above `Sept. 3, 1952`, `Ident. J. Smith` above
-  `25.IV.1952`, `leg. Rossi det. Bianchi` above `1950`, and `det. J. Smith` above
-  `IV-25` above `1952` (as a literal over both lines, or `IV-25` alone) give
-  Date Identified's date. `det. J. Smith 1950` above `25.IV.1948` does not (the
-  determination's first date is 1950), nor `det. J. Smith` above `leg. Rossi` above
-  `25.IV.1948`, nor `Guatemala` above `25.IV.1948`. A date whose line holds other
-  text decides from its own line only: `det. J. Smith` above `Guatemala
-  25.IV.1948` or `25.IV.1948 Guatemala` is the collecting date. A collector after
-  the date on its line keeps the collecting date, whatever stands before it
-  (`det. J. Smith` above `25.IV.1948 leg. Hoogstraal`, and `det. J. Smith
-  25.IV.1948 leg. Hoogstraal` on one line). `Ident.` is a determination only before
+  A date alone on its line, with nothing else on it but punctuation or a
+  collection mark (below), takes the first line above it that is not blank, under
+  the same rule. Only a bare year passes over more: the lines just above it that
+  hold the parts of its date without a year (`IV-25`, `Sept.`, `3`). So
+  `det. J. Smith` above `25.IV.1952`, `(25.IV.1952)` or `IV-25 1952`,
+  `det. J. Smith` above a blank line above `25.IV.1952`, `J. Smith det.` above
+  `1952`, `Det. by H. Dybas` above `Sept. 3, 1952`, `Ident. J. Smith` above
+  `25.IV.1952`, `leg. Rossi det. Bianchi` above `1950`, `det. J. Smith` above
+  `IV-25` above `1952` (as a literal over both lines, `IV-25` alone or `1952`
+  alone), and `det. J. Smith` above `3` above `Sept.` above `1952` give Date
+  Identified's date. A line that holds a complete date of its own stops the search
+  (the coordinator's ruling on the review of 04bbe6936: a date inherits only across
+  its own parts): `det. J. Smith` above `1952` above `25.IV.1948` (with or without a
+  blank line between), `Det. J. Smith` above `25.IV.1952` above `IV-25-1948`,
+  `det. J. Smith` above `1952` above `IV-25` above `1948` (as a literal over the two
+  lines, `IV-25` alone or `1948` alone), and `det. J. Smith` above `IV-25` above
+  `25.IV.1948` leave 1948 a collecting date; in the first three, 1952 is the
+  determination's date.
+  `det. J. Smith 1950` above `25.IV.1948` does not give Date Identified's date
+  either (the determination's first date is 1950), nor `det. J. Smith` above
+  `leg. Rossi` above `25.IV.1948`, nor `Guatemala` above `25.IV.1948`. A date whose
+  line holds other text decides from its own line only: `det. J. Smith` above
+  `Guatemala 25.IV.1948` or `25.IV.1948 Guatemala` is the collecting date.
+
+  A collector after the date on its line keeps the collecting date, whatever stands
+  before it (`det. J. Smith` above `25.IV.1948 leg. Hoogstraal`, and `det. J. Smith
+  25.IV.1948 leg. Hoogstraal` on one line). `leg.`, `legit`, `colr.`, `collector`,
+  `colector` and `coletor` always name a collector; `coll.` and `col.` only before a
+  person's name, perhaps after a determination joined to them (`25.IV.1948 coll. J.
+  Smith`, `coll. R.D. Mitchell`, `Coll. Jones`, `coll. & det. J. Jones`, `col. y
+  det. J. Perez`). After `ex` or a museum or collection word, before a museum or
+  collection word (`Mus.`, `Museum`, `Musee` with or without its accent, `Museo`,
+  `Museu`, `Collection`, `Coll.`) or an acronym (two to six letters without
+  periods, two or more of them capitals: `FMNH`, `IAvH`, `MCZ`), or with no name
+  after them, they are a collection or provenance mark and no collector (the
+  coordinator's ruling on the review of 04bbe6936): `det. J. Smith 1950, coll. Mus.
+  Paris`, `det. J. Smith 1950 ex coll. Jones`, `Det. J. Perez 1950, Col. IAvH`,
+  `det. J. Smith 25.IV.1950 Coll. FMNH`, `det. J. Smith 1950 coll. Coll.
+  Oberthur`, `det. J. Smith 1950 coll.` and `det. Bianchi ex coll. Rossi 1950` are
+  Date Identified's, and so are `25.IV.1950 coll. FMNH` and `25.IV.1950 ex coll.
+  Jones` alone on their line under `det. J. Smith`. `Ident.` is a determination only before
   `by`, `por`, `par`, `von` or a capitalised name that is no marker word:
   `Ident. No. 5, Davao, 25.IV.1948`, and `Ident. No. 5` or `Ident. Nr. 12` above
   `25.IV.1948`, are collecting dates.
