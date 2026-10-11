@@ -555,8 +555,8 @@ def range_line() -> str:
     signs = ", ".join(f'"{sign}"' for sign in RANGE_SIGNS)
     return ("- A range joins two numbers or dates with a dash of any form (a hyphen, an en or em dash, a minus "
         f"sign), standing alone or touching one end, with {signs}, or with a word: {by_language} (letter case "
-        'and accents aside). A unit or a month may stand between a number and the joiner ("1200 m to 1500 m", '
-        '"April 24 to May 2, 1948").')
+        'and accents aside). A unit or a month may stand between a number and the joiner ("<n1> m to <n2> m", '
+        '"<Month> <d1> to <Month> <d2>, <yyyy>").')
 
 
 def unit_line() -> str:
