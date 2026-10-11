@@ -63,6 +63,9 @@ FIELD_RESEARCH = "field_research"
 # A run field research has completed reaches the handover again: the clearance
 # rules only, nothing researched, external or paid (FieldResearchStep.recheck).
 FIELD_RECHECK = "field_research_recheck"
+# A reading whose worker stopped after saving its intent and before saving its
+# result (Workflow._settle_lost_reading).
+LOST_READING = "reading_result_lost"
 
 
 class OperationalBlock(RuntimeError):
@@ -255,6 +258,13 @@ class Workflow:
                 and datetime.fromisoformat(run.lease_until) > self.clock()
             ):
                 return specimen
+            if (
+                step.startswith("transcribe:")
+                and reader_failure_is_recoverable(run, step)
+                and run.attempts.get(step, 0) >= 1
+            ):
+                # A reading is the exception: asking again is safe (G6).
+                return self._settle_lost_reading(principal, specimen, revision, step)
             run.stage = "processing_blocked"
             return self.repository.save(
                 principal,
@@ -1061,6 +1071,77 @@ class Workflow:
                     circuit_retry_after = run.lookups[-1].retry_after_seconds
                 circuit.record_failure(permit, failure, circuit_retry_after)
         return saved
+
+    def _settle_lost_reading(self, principal, specimen, revision, step):
+        """End a reading whose worker stopped before saving it, as a failed reading.
+
+        The reading's intent was saved (``external_outcome_unknown`` and a lease)
+        and the lease ran out with no result saved: the worker that sent it
+        stopped. A reading is a pure read (``reader_failure_is_recoverable``), so
+        this is a known failure, not a block for an administrator. The attempt is
+        recorded failed with its reservation held in full, as any failed reading
+        is (``lane_costs.record_step``). The reading is asked again within
+        ``max_attempts``; after the last attempt it ends with no observation and
+        the record goes to review (G6), as ``reading_has_no_attempt_left`` does.
+        """
+        run = specimen.run
+        policy = run.profile.execution
+        run.lease_until = None
+        run.disposition = None
+        run.usage.reserved_active_seconds = max(
+            0, run.usage.reserved_active_seconds - policy.effect_timeout_for_step(step)
+        )
+        if run.attempts.get(step, 0) >= policy.max_attempts:
+            run.blocker = None
+            run.completed_steps.append(step)
+            run.stage = self.next_step(run).split(":")[0]
+        else:
+            run.blocker = LOST_READING
+            run.stage = "processing_blocked"
+            self.schedule_retry(run, step)
+        _log_step_failure(
+            run,
+            step,
+            "reading_result_lost",
+            code=LOST_READING,
+            blocker=run.blocker,  # LOST_READING, or None once given up
+            stage=run.stage,
+        )
+        if not run.profile.synthetic:
+            from .lane_costs import record_step
+            from .lane_reservations import step_reservation
+
+            record_step(
+                self.repository,
+                principal,
+                specimen,
+                step,
+                [],
+                0,
+                step_reservation(run, step),
+                self.clock,
+                failure=LOST_READING,
+            )
+            if self.settle_retained_cost is not None:
+                self.settle_retained_cost(principal, specimen, step)
+        specimen.audit.append(
+            AuditEvent(
+                actor=principal.user_id,
+                action="workflow_step",
+                reason=step,
+                after={"stage": run.stage, "blocker": run.blocker},
+            )
+        )
+        from .active_graph import save_recoverably
+
+        return save_recoverably(
+            self.repository,
+            principal,
+            specimen,
+            revision,
+            f"lost-reading:{revision}",
+            digest({"lost_reading": step, "run": run.id}),
+        )
 
     def schedule_retry(self, run, step, provider_seconds=None, *, rate_limited=False):
         """Wait before the step's next attempt, or end its retries.
