@@ -275,6 +275,20 @@ def test_known_ordinary_settlement_releases_only_its_unused_hold(rig):
     assert rig.store.budget(rig.scope)["settled_micro_usd"] == 283_321
 
 
+def test_a_call_refused_before_any_work_settles_its_hold_at_zero(rig):
+    # lane_costs.record_refused: an HTTP 429 to the call's first request is a
+    # known zero, never an unknown basis that would block the run.
+    from specimen_digitization.research_harness.program_budget import settle_ordinary_liability
+    principal, specimen, _ = liability_input(rig)
+    step = "first_pass:region-1"
+    specimen.run.attempts = {step: 1}
+    specimen.run.paid_calls = [{"step": step, "attempt": 1, "cost_basis": "refused", "cost_micros": 0}]
+    rig.store.reserve_ordinary(rig.scope, step + ":1", 318_670, 100_000)
+    assert rig.store.budget(rig.scope)["settled_micro_usd"] == 100_000 + 318_670
+    settle_ordinary_liability(None, principal, specimen, step, state_backend=rig.store.backend)
+    assert rig.store.budget(rig.scope)["settled_micro_usd"] == 100_000
+
+
 def test_production_context_bounds_settle_then_leave_two_role_headroom(rig):
     from specimen_digitization.application.collection_profiles import published_registry
     from specimen_digitization.application.lane_reservations import call_micros
