@@ -9,6 +9,7 @@ resolver and sources of test_step.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 from types import SimpleNamespace
 
@@ -33,7 +34,7 @@ from test_step import (
     settle,
 )
 
-from specimen_digitization.application.domain import Evidence, FieldValue, LookupStatus, ValueState
+from specimen_digitization.application.domain import Disposition, Evidence, FieldValue, LookupStatus, ValueState
 from specimen_digitization.application.integrity import verify_evidence
 from specimen_digitization.field_research import agreement, experts
 from specimen_digitization.field_research import step as field_step
@@ -1606,3 +1607,406 @@ def test_a_settled_value_still_claims_its_whole_tokens(tmp_path):
     date_value = run.fields["date_visited_from"]
     assert date_value.state == ValueState.UNRESOLVED
     assert date_value.reason.startswith(field_step.TAKEN.format(other="Collection Code"))
+
+
+# ---- a country a source names only by its code (round 4, 2026-10-11) --------
+# 105526329 (run 4d5fb467, release fe4163fa9): the country settled on
+# Wikidata's Guatemala, Q774, whose record carries the ISO code "GT" (P297).
+# The province's expert cited NGA's department Chimaltenango, one letter from
+# the label's "Chimaltenago", which NGA puts "in GT": NGA names a country only
+# by its code, which is neither the name "Guatemala" nor the record
+# wikidata:Q774, so the province went to review (NOT_IN_COUNTRY).
+
+def recorded_places(tmp_path):
+    """The approved sources answering from the recorded gazetteer answers
+    (test_sources.gazetteers), with Wikidata's searches for "Guatemala" and
+    "Philippine Islands" cut to their one recorded hit (test_sources.first_hits)."""
+    from test_sources import first_hits, gazetteers, make
+
+    tools, _, _, _ = make(tmp_path, first_hits(gazetteers(), "Guatemala", "Philippine Islands"))
+    return tools
+
+
+# The recorded answers hold none of GBIF's: the taxon's expert asks nothing.
+NO_GBIF = {"taxon": answering(LACKS)}
+
+
+def test_105526329s_province_settles_on_ngas_department_in_the_iso_code_of_the_country(tmp_path):
+    """The real run's shape, through the real source adapters on recorded
+    answers: Wikidata settles the country, NGA's department settles the
+    province one letter off (its country, the one field above it, is the
+    department's parent by the code, G34's whole condition), and NGA's town
+    settles the city inside both. On f800c656 the province and the city go
+    to review (NOT_IN_COUNTRY)."""
+    rig = build_rig(tmp_path, label_with(country="Guatemala", province_state="Chimaltenago", county=None,
+        city="Yepocapa"))
+    run = rig.specimen.run
+    settle(rig, Scripted({**NO_GBIF, "country": from_tgn("Guatemala", "Guatemala", None, "wikidata:Q774",
+            source="wikidata"),
+        "province_state": from_tgn("Chimaltenango", "Chimaltenago", "Chimaltenango", "nga:-1132765",
+            source="nga"),
+        "county": answering(LACKS),
+        "city": from_tgn("Yepocapa", "Yepocapa", None, "nga:-1143757", source="nga")}),
+        tools=recorded_places(tmp_path))
+    assert (run.fields["country"].state, run.fields["country"].authority_id) == (
+        ValueState.SUPPORTED, "wikidata:Q774")
+    province = run.fields["province_state"]
+    assert (province.state, province.literal, province.normalized, province.authority_id) == (
+        ValueState.SUPPORTED, "Chimaltenago", "Chimaltenango", "nga:-1132765")
+    assert [f.reason_code for f in run.findings] == ["near_spelling:province_state"]
+    assert (run.fields["city"].state, run.fields["city"].authority_id) == (ValueState.SUPPORTED, "nga:-1143757")
+    assert not reasons_for(run, "province_state") and not reasons_for(run, "city")
+    verify_evidence(rig.specimen, rig.blobs)
+
+
+def test_ngas_department_in_another_countrys_code_still_is_not_in_the_country(tmp_path):
+    """The control: the label's country settles on Wikidata's Philippines
+    (Q928, "PH"); NGA's department Chimaltenango lies in "GT", so the
+    province goes to review, as on f800c656."""
+    rig = build_rig(tmp_path, label_with(country="Philippine Islands", province_state="Chimaltenago", county=None,
+        city=None))
+    run = rig.specimen.run
+    settle(rig, Scripted({**NO_GBIF, "country": from_tgn("Philippine Islands", "Philippine Islands", "Philippines",
+            "wikidata:Q928", source="wikidata"),
+        "province_state": from_tgn("Chimaltenango", "Chimaltenago", "Chimaltenango", "nga:-1132765",
+            source="nga"),
+        "county": answering(LACKS), "city": answering(LACKS)}), tools=recorded_places(tmp_path))
+    assert (run.fields["country"].state, run.fields["country"].authority_id) == (
+        ValueState.SUPPORTED, "wikidata:Q928")
+    province = run.fields["province_state"]
+    assert (province.state, province.reason) == (ValueState.UNRESOLVED, agreement.NOT_IN_COUNTRY + " Settled.")
+    assert not [f for f in run.findings if f.reason_code == "near_spelling:province_state"]
+
+
+def test_initials_settle_beside_a_province_ngas_code_puts_in_their_country(tmp_path):
+    """"Mindanao, P.I." with "Davao, Prov.": Wikidata finds "Philippine
+    Islands" as the Philippines (Q928, "PH"), and NGA finds "Davao Province"
+    as Davao del Norte, which it puts "in PH". The province lies in the
+    country by the code, so it settles, and it confirms the initials
+    (step._corroborate). On f800c656 the province goes to review
+    (NOT_IN_COUNTRY) and the country stays ambiguous."""
+    from test_step import COLLECTORS, LACKING, MINDANAO, P_I
+
+    rig = build_rig(tmp_path, MINDANAO + "\nDavao, Prov. 3300'", candidates=[*COLLECTORS, *P_I,
+        *(("province_state", name, "Davao, Prov.", "Davao, Prov. 3300'") for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    settle(rig, Scripted({**NO_GBIF, "country": from_tgn("Philippine Islands", "P.I.", "Philippines", "wikidata:Q928",
+            source="wikidata"),
+        "province_state": from_tgn("Davao Province", "Davao, Prov.", "Davao del Norte", "nga:-2424067",
+            source="nga"),
+        "county": LACKING, "city": LACKING}), tools=recorded_places(tmp_path))
+    country, province = run.fields["country"], run.fields["province_state"]
+    assert (country.state, country.normalized, country.authority_id) == (
+        ValueState.SUPPORTED, "Philippines", "wikidata:Q928")
+    assert (province.state, province.authority_id) == (ValueState.SUPPORTED, "nga:-2424067")
+    assert sorted(row.locator for row in run.evidence if row.kind == "rule") == [
+        "abbreviation:country:Philippine Islands", "abbreviation:province_state:Davao Province"]
+
+
+GUATEMALA_Q774 = field("Guatemala", authority_id="wikidata:Q774")
+
+
+@pytest.mark.parametrize(("parent", "iso_code", "settles"), [
+    # NGA's code (the parent's name, record and code), and the code the settled
+    # country's record carries.
+    (("GT", None, "GT"), "GT", True),
+    # Another country's code.
+    (("HN", None, "HN"), "GT", False),
+    # A parent named "GT" whose source gives it as no code: no code is guessed from a name.
+    (("GT", None, None), "GT", False),
+    # The settled country's record carries no code (Getty TGN's records).
+    (("GT", None, "GT"), None, False),
+    # ISO's user-assigned codes are compared by no one.
+    (("XK", None, "XK"), "XK", False),
+    # Only two capital letters, exactly as written.
+    (("GT", None, "GT"), "gt", False),
+    (("GTM", None, "GTM"), "GTM", False),
+], ids=["same-code", "other-code", "name-only", "record-without-code", "user-assigned", "lower-case",
+        "three-letters"])
+def test_a_parent_named_by_a_country_code_is_the_country_whose_record_carries_that_code(parent, iso_code, settles):
+    """Both checks read the code: the country the place must lie in, and, for
+    a near spelling, every place field above it."""
+    country = agreement.PlaceField(GUATEMALA_Q774.texts, GUATEMALA_Q774.authority_id, iso_code)
+    candidate = SourceCandidate("Chimaltenango", "nga:-1132765", "A.ADM1", None, (PlaceRef(*parent),))
+    refused = agreement.parents_refusal("province_state", candidate, agreement.NEAR_SPELLING,
+        written={"country": country}, settled={"country": country})
+    assert refused is None if settles else refused.reason == agreement.NOT_IN_COUNTRY
+
+
+# The review of #312 (issue comment 6113525852): the adapters set a code on any
+# record that carries one (Wikidata's P297 on any item, NGA's on any PCL
+# feature), and live Wikidata gives P297 to former colonies whose codes ISO has
+# since given to other countries (Q1450765, the French Territory of the Afars and
+# the Issas: "AI", now Anguilla's).
+
+def a_candidate(source_id, record_id, name, kind, *, iso_code=None, valid_to=None, country=None, parents=()):
+    """A source's candidate as the real adapter shapes it (sources._place)."""
+    from specimen_digitization.application.georef_places import Place, Ref
+    from specimen_digitization.field_research import sources as field_sources
+
+    return field_sources._place(source_id, Place(source=source_id, record_id=record_id, name=name,
+        kinds=(Ref(kind, kind),), country=Ref(*country) if country else None, iso_code=iso_code,
+        parents=tuple(Ref(*parent) for parent in parents), valid_to=valid_to))
+
+
+def test_a_record_that_names_an_end_date_carries_no_code():
+    """A former colony's record, in the shape of Wikidata's Q1450765, keeps no
+    code; a nation with no end date keeps its own."""
+    colony = a_candidate("wikidata", "Q1450765", "French Territory of the Afars and the Issas", "colony",
+        iso_code="AI", valid_to="1977-06-27")
+    nation = a_candidate("wikidata", "Q774", "Guatemala", "country", iso_code="GT")
+    assert (colony.iso_code, nation.iso_code) == (None, "GT")
+
+
+def test_a_colony_carrying_a_code_settles_no_country():
+    """A record of a colony's kind is at no country's level, so it never
+    settles the country field and never supplies the code its record carries
+    (step._record_code reads only the record the country settled on)."""
+    colony = SourceCandidate("Gilbert and Ellice Islands", "wikidata:Q1050859", "colony", None, (),
+        iso_code="GE")
+    answer = SourceAnswer("wikidata", "Gilbert and Ellice Islands", LookupStatus.SUCCESS, (colony,),
+        Evidence(kind="authority", source="wikidata", locator="wikidata:Q1050859", excerpt="match"))
+    assert agreement.at_level("country", answer) == [] and agreement.placed("country", answer) is None
+
+
+class Constructed:
+    """The recorded sources (recorded_places), with constructed answers in front
+    of them for some queries."""
+
+    sources = ("gbif", "geolocate", "tgn", "wikidata", "nga")
+
+    def __init__(self, tmp_path, blobs, answers):
+        self.recorded, self.blobs, self.answers = recorded_places(tmp_path), blobs, answers
+
+    async def lookup(self, source_id, query, *, field_key):
+        if (source_id, query) not in self.answers:
+            return await self.recorded.lookup(source_id, query, field_key=field_key)
+        candidates = tuple(self.answers[source_id, query])
+        raw = json.dumps({"source": source_id, "query": query}).encode()
+        evidence = Evidence(kind="authority", source=source_id, locator=candidates[0].authority_id,
+            excerpt="\n".join(["match", *(f"{c.name} | {c.authority_id} | {c.kind} | {c.detail}" for c in candidates)]),
+            raw_ref=self.blobs.put(raw), digest=hashlib.sha256(raw).hexdigest())
+        return SourceAnswer(source_id, query, LookupStatus.SUCCESS, candidates, evidence, note="match")
+
+
+def test_only_the_country_supplies_a_code_to_the_place_check(tmp_path):
+    """A province settled on a record that carries the country's code (a
+    constructed department record with P297 "GT") is no parent of NGA's town
+    in another department, "in Escuintla, GT": the city goes to review
+    (NOT_IN_PROVINCE). At 9a71f4bd the province's record code matched the
+    town's country code and the city settled; on f800c656 the city is not in
+    the country (no code at all)."""
+    rig = build_rig(tmp_path, label_with(country="Guatemala", province_state="Chimaltenango", county=None,
+        city="Yepocapa"))
+    run = rig.specimen.run
+    department = a_candidate("wikidata", "Q765975", "Chimaltenango", "department of Guatemala", iso_code="GT",
+        country=("Q774", "Guatemala"), parents=(("Q774", "Guatemala"),))
+    town = a_candidate("nga", "-99", "Yepocapa", "P.PPL", country=("GT",), parents=(("GT-05", "Escuintla"),))
+    tools = Constructed(tmp_path, rig.blobs, {("wikidata", "Chimaltenango"): [department], ("nga", "Yepocapa"): [town]})
+    settle(rig, Scripted({**NO_GBIF, "country": from_tgn("Guatemala", "Guatemala", None, "wikidata:Q774",
+            source="wikidata"),
+        "province_state": from_tgn("Chimaltenango", "Chimaltenango", None, "wikidata:Q765975", source="wikidata"),
+        "county": answering(LACKS),
+        "city": from_tgn("Yepocapa", "Yepocapa", None, "nga:-99", source="nga")}), tools=tools)
+    assert [run.fields[key].state for key in ("country", "province_state")] == [ValueState.SUPPORTED] * 2
+    city = run.fields["city"]
+    assert (city.state, city.reason) == (ValueState.UNRESOLVED, agreement.NOT_IN_PROVINCE + " Settled.")
+
+
+# ---- a precise location that is only a settled place's text (round 4) -------
+# 105526329's precise location settled as "Yepocapa", the text of the settled
+# city of the same reading; its brief asks label_lacks_value when no reading
+# writes a locality finer than the other place fields.
+
+def yepocapa_rig(tmp_path, line=None):
+    """A town-only Guatemalan label (test_step.GUATEMALAN_TOWN), with `line`
+    added below it."""
+    from test_step import COLLECTORS, GUATEMALAN_TOWN
+
+    return build_rig(tmp_path, GUATEMALAN_TOWN + (f"\n{line}" if line else ""), candidates=COLLECTORS)
+
+
+def precise(literal):
+    return answering(FieldAnswer(outcome="resolved", literal=literal, reading_names=["1A", "1B"],
+        explanation="Read."))
+
+
+@pytest.mark.parametrize(("literal", "field_name"), [
+    # 105526329: the town itself, the settled city's text.
+    ("Yepocapa", "City"),
+    # The department, the settled province's text.
+    ("Chimaltenango", "Province/State"),
+], ids=["the-city", "the-province"])
+def test_a_precise_location_that_is_only_a_settled_places_text_is_not_on_the_label(tmp_path, literal, field_name):
+    """The answer settles nothing finer than the places: the precise location
+    is not present, as label_lacks_value would make it, and clears as not on
+    the label (rule A), its reason and check row saying why. On f800c656 it
+    settles as the place's text."""
+    from test_step import ABSENT, IN_YEPOCAPA, TODAY, lacking, not_on_label_rows, research
+
+    rig = yepocapa_rig(tmp_path)
+    run = rig.specimen.run
+    prepared, outcomes, calls = research(rig, lacking(*(set(ABSENT) - {"precise_location"}), **IN_YEPOCAPA,
+        precise_location=precise(literal)), tools=Gazetteer(rig.blobs))
+    decisions: dict[str, dict] = {}
+    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    field_step.finalize_fields(run, None, outcomes, specimen=rig.specimen, blobs=rig.blobs, today=TODAY)
+    assert {key: run.fields[key].state for key in ("province_state", "city")} == dict.fromkeys(
+        ("province_state", "city"), ValueState.SUPPORTED)
+    place = run.fields["precise_location"]
+    assert (place.state, place.literal) == (ValueState.NOT_PRESENT, None)
+    assert place.reason == field_step.REPEATS_NOT_ON_LABEL.format(literal=literal, field=field_name) + " Read."
+    assert decisions["precise_location"] == {"refusal": "place_text_only", "rule": "A_not_on_label"}
+    assert "precise_location" in cleared_as_not_on_label(run)
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+    [row] = not_on_label_rows(run, "precise_location")
+    assert row.excerpt == field_step.not_on_label_excerpt("precise_location", field_step.run_readings(run),
+        place=True)
+    assert json.loads(rig.blobs.get(row.raw_ref))["place_field"] == field_name
+    assert "transcript_literal:precise_location" not in [f.reason_code for f in run.findings]
+    verify_evidence(rig.specimen, rig.blobs)
+
+
+@pytest.mark.parametrize("line", ["E. slope Mt. McKinley", "5 km N of Yepocapa", "nr. Yepocapa"])
+def test_a_precise_location_that_adds_anything_to_the_places_still_settles(tmp_path, line):
+    """The controls, as on f800c656: a direction, a distance or "nr." is a
+    locality finer than the settled town."""
+    from test_step import ABSENT, IN_YEPOCAPA, lacking
+
+    rig = yepocapa_rig(tmp_path, line)
+    run = rig.specimen.run
+    settle(rig, lacking(*(set(ABSENT) - {"precise_location"}), **IN_YEPOCAPA, precise_location=precise(line)),
+        tools=Gazetteer(rig.blobs))
+    place = run.fields["precise_location"]
+    assert (place.state, place.literal) == (ValueState.SUPPORTED, line)
+    assert run.fields["city"].state == ValueState.SUPPORTED
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+
+
+def test_a_precise_location_whose_town_did_not_settle_is_unchanged(tmp_path):
+    """The control, as on f800c656: with the city unresolved, no settled
+    place holds "Yepocapa", so it settles as the precise location."""
+    from test_step import ABSENT, IN_YEPOCAPA, NO_TOWN, lacking
+
+    rig = yepocapa_rig(tmp_path)
+    run = rig.specimen.run
+    settle(rig, lacking(*(set(ABSENT) - {"precise_location"}), **{**IN_YEPOCAPA, "city": NO_TOWN},
+        precise_location=precise("Yepocapa")), tools=Gazetteer(rig.blobs))
+    assert run.fields["city"].state == ValueState.UNRESOLVED
+    place = run.fields["precise_location"]
+    assert (place.state, place.literal) == (ValueState.SUPPORTED, "Yepocapa")
+
+
+def test_a_precise_location_that_is_only_the_towns_text_waits_for_a_person_where_rule_a_declines(tmp_path):
+    """Rule A needs every label read whole: with a reader's unreadable span the
+    precise location stays not present, for review, its reason naming the
+    city, as label_lacks_value would leave it."""
+    from test_step import ABSENT, IN_YEPOCAPA, TODAY, lacking, not_on_label_rows, research
+
+    rig = yepocapa_rig(tmp_path)
+    run = rig.specimen.run
+    run.observations[1].unreadable_spans = ["0:3"]
+    prepared, outcomes, calls = research(rig, lacking(*(set(ABSENT) - {"precise_location"}), **IN_YEPOCAPA,
+        precise_location=precise("Yepocapa")), tools=Gazetteer(rig.blobs))
+    decisions: dict[str, dict] = {}
+    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    field_step.finalize_fields(run, None, outcomes, specimen=rig.specimen, blobs=rig.blobs, today=TODAY)
+    place = run.fields["precise_location"]
+    assert (place.state, place.literal) == (ValueState.NOT_PRESENT, None)
+    assert place.reason == field_step.REPEATS_A_PLACE.format(literal="Yepocapa", field="City") + " Read."
+    assert decisions["precise_location"] == {"refusal": "place_text_only",
+        "rule": "A_declined:label_not_read_whole"}
+    assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:precise_location" in run.reasons
+    assert not not_on_label_rows(run, "precise_location")
+
+
+def test_a_precise_location_that_is_only_the_towns_text_is_not_present_off_the_profiles_list(
+        tmp_path, monkeypatch):
+    """Off the profile's not-on-the-label list the value is still what
+    label_lacks_value makes it, not present, and the record waits for a
+    person (rule A applies only to the fields the profile lists)."""
+    from test_step import ABSENT, IN_YEPOCAPA, lacking
+
+    from specimen_digitization.field_research import contracts
+
+    monkeypatch.setitem(contracts.NOT_ON_LABEL, ("zoology_insects_slides", "1.0.0"),
+        contracts.NOT_ON_LABEL[("zoology_insects_slides", "1.0.0")] - {"precise_location"})
+    rig = yepocapa_rig(tmp_path)
+    run = rig.specimen.run
+    settle(rig, lacking(*(set(ABSENT) - {"precise_location"}), **IN_YEPOCAPA, precise_location=precise("Yepocapa")),
+        tools=Gazetteer(rig.blobs))
+    place = run.fields["precise_location"]
+    assert (place.state, place.literal) == (ValueState.NOT_PRESENT, None)
+    assert place.reason == field_step.REPEATS_A_PLACE.format(literal="Yepocapa", field="City") + " Read."
+    assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:precise_location" in run.reasons
+
+
+# The review of #312 (issue comment 6113525852): the check compared place names,
+# which drop unit words anywhere ("co", "region", "mun"), so a literal that adds
+# such a word to the place's text was taken for the place itself. Each of these
+# settles as on f800c656; at 9a71f4bd each was not present.
+
+def test_a_hill_beside_the_settled_county_of_its_name_still_settles(tmp_path):
+    """"Co. Chirripo" is a hill (Cerro) beside the county Chirripo, settled
+    before; its expert resolves the line."""
+    from test_step import ABSENT, COLLECTORS, a_county_settled_before, lacking, research
+
+    line = "Co. Chirripo"
+    text = label_with(**dict.fromkeys(ABSENT, None), country=None, province_state=None, city=None) + "\n" + line
+    rig = build_rig(tmp_path, text, candidates=[*COLLECTORS,
+        *(("precise_location", name, line, line) for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    a_county_settled_before(run, "Chirripo")
+    prepared, outcomes, calls = research(rig, lacking(*(set(ABSENT) - {"precise_location"}),
+        precise_location=precise(line)))
+    decisions: dict[str, dict] = {}
+    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    place = run.fields["precise_location"]
+    assert (place.state, place.literal) == (ValueState.SUPPORTED, line)
+    assert decisions["precise_location"] == {}
+    assert "precise_location" not in cleared_as_not_on_label(run)
+
+
+def test_a_town_with_a_unit_word_after_it_still_settles(tmp_path):
+    """"Yepocapa region" beside the settled town: a word beyond the town's
+    text, so a locality of its own."""
+    from test_step import ABSENT, IN_YEPOCAPA, lacking
+
+    rig = yepocapa_rig(tmp_path, "Yepocapa region")
+    run = rig.specimen.run
+    settle(rig, lacking(*(set(ABSENT) - {"precise_location"}), **IN_YEPOCAPA,
+        precise_location=precise("Yepocapa region")), tools=Gazetteer(rig.blobs))
+    place = run.fields["precise_location"]
+    assert (place.state, place.literal) == (ValueState.SUPPORTED, "Yepocapa region")
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+
+
+@pytest.mark.parametrize("listed", [False, True], ids=["off-the-list", "listed"])
+def test_a_town_and_its_marker_are_the_marker_checks_alone(tmp_path, monkeypatch, listed):
+    """"Yepocapa, Mun." beside the settled town. Off the profile's list the
+    step does not look for a marker (_no_finer_place), so the resolved line
+    settles as its text and the record clears, as PR #309's review (finding
+    4) established; listed, the marker check makes it not present and it
+    clears as not on the label. Both as on f800c656."""
+    from test_step import ABSENT, IN_YEPOCAPA, TODAY, lacking, research
+
+    from specimen_digitization.field_research import contracts
+
+    if not listed:
+        monkeypatch.setitem(contracts.NOT_ON_LABEL, ("zoology_insects_slides", "1.0.0"),
+            contracts.NOT_ON_LABEL[("zoology_insects_slides", "1.0.0")] - {"precise_location"})
+    rig = yepocapa_rig(tmp_path, "Yepocapa, Mun.")
+    run = rig.specimen.run
+    prepared, outcomes, calls = research(rig, lacking(*(set(ABSENT) - {"precise_location"}), **IN_YEPOCAPA,
+        precise_location=precise("Yepocapa, Mun.")), tools=Gazetteer(rig.blobs))
+    decisions: dict[str, dict] = {}
+    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    field_step.finalize_fields(run, None, outcomes, specimen=rig.specimen, blobs=rig.blobs, today=TODAY)
+    place = run.fields["precise_location"]
+    if listed:
+        assert (place.state, place.literal) == (ValueState.NOT_PRESENT, None)
+        assert decisions["precise_location"] == {"refusal": "admin_marker_only", "rule": "A_not_on_label"}
+    else:
+        assert (place.state, place.literal) == (ValueState.SUPPORTED, "Yepocapa, Mun.")
+        assert decisions.get("precise_location", {}) == {}
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])

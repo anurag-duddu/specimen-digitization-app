@@ -1270,20 +1270,29 @@ def _taxon_failure(status: LookupStatus, asked: Sequence[SourceCall]) -> str:
     return f"GBIF {what} ({count} attempt{'s' if count != 1 else ''})"
 
 
-def _parent(source_id: str, ref: Ref) -> PlaceRef:
+# A country code as NGA gives it: two capital letters.
+COUNTRY_CODE = re.compile(r"[A-Z]{2}")
+
+
+def _parent(source_id: str, ref: Ref, *, country: bool = False) -> PlaceRef:
     """A parent place as the gazetteer names it. Getty TGN and Wikidata name a
     parent by its own record (a TGN subject, a Wikidata item), so it carries
     that record's authority_id; NGA names a first-order unit code and a
-    country code, which are no NGA record."""
+    country code, which are no NGA record. NGA's country code is the parent's
+    iso_code too (georef_nga._place: the first two letters of its first-order
+    unit code, which its answers write in ISO 3166-1 alpha-2, "CR-L" for
+    Costa Rica's Limon, "HN-YO" for Honduras's Yoro, "PH-DVC" for the
+    Philippines' Davao: tests/fixtures/georeferencing/nga_units.json)."""
     record = f"{source_id}:{ref.id}" if source_id in ("tgn", "wikidata") and ref.id else None
-    return PlaceRef(ref.name or ref.id, record)
+    code = ref.id if country and source_id == "nga" and COUNTRY_CODE.fullmatch(ref.id or "") else None
+    return PlaceRef(ref.name or ref.id, record, code)
 
 
 def _place(source_id: str, place: Place) -> SourceCandidate:
     kinds = [kind.name or kind.id for kind in place.kinds if kind.name or kind.id]
     parents = [_parent(source_id, parent) for parent in place.parents]
     if place.country and (place.country.name or place.country.id) not in [p.name for p in parents]:
-        parents.append(_parent(source_id, place.country))
+        parents.append(_parent(source_id, place.country, country=True))
     detail = "in " + ", ".join(parent.name for parent in parents) if parents else ""
     valid = " ".join(
         part
@@ -1301,6 +1310,10 @@ def _place(source_id: str, place: Place) -> SourceCandidate:
         kind=", ".join(kinds[:MAX_KINDS]) or None,
         detail=detail or None,
         parents=tuple(parents),
+        # A record that names an end date (a dissolved state, a former colony)
+        # carries no code: ISO may have given its code to another country
+        # since ("AI", "GE" and "BQ" of three former colonies on Wikidata).
+        iso_code=place.iso_code if place.valid_to is None else None,
     )
 
 
