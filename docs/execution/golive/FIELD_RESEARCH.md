@@ -521,30 +521,43 @@ row the settled value cites shows them.
     its period (`El` alone is the Spanish article: `El Salvador` above `1948`
     still lends it);
   - a unit or a height above sea level, which stands after its number: `m`,
-    `mts`, `metros`, `metres`, `meters`, `metri`, `ft`, `feet`, `pies`, `pieds`,
-    `piedi`, `Fuss`, `msnm`, `m.s.n.m.`, `snm`, `s.l.m.`, `a.s.l.`, `m.a.s.l.`,
-    or a tick (`4800'`). A distance is no marker (`5 mi W`).
+    `mt`, `mts`, `metros`, `metres`, `meters`, `metri`, `ft`, `feet`, `pies`,
+    `pes` (with or without its accent), `pieds`, `piedi`, `Fuss`, `msnm`, `m.s.n.m.`, `snm`,
+    `s.l.m.`, `a.s.l.`, `m.a.s.l.`, in any case and with or without its periods
+    (`Metros`, `FT.`, `MTS.`, `MSNM`, `M.S.N.M.`), or a tick (`4800'`). A
+    distance is no marker (`5 mi W`).
+
+  A unit belongs to a number before it only when it is attached to it
+  (`date_lines._unit_here`; the review of #306 at d305db77e). It does not when a
+  number of its own follows it (`m 1200`, `m. 1200`, `mt 1800`: the unit written
+  before its number, as Italian labels do), nor when a capitalised name follows
+  it: `Mt. Apo`, `Mt. Rainier`, `Ft. Collins`, `Ft. Sherman`, `Mts. Rwenzori`,
+  `Metro Manila` and `M. Smith` are names, as in the pilot's `E. slope Mt.
+  McKinley`.
 
   A year on a line of its own (split lines, or a year a day and month borrow) is
   no year when a unit is attached right after it: after nothing but spaces,
-  periods or a comma, with no number of its own between (`1948. m`, `1948.m`,
-  `1948.ft`, `1948, m`; a lone `m` counts in lower case or written against the
-  digits, so `1948, M. Smith` is an initial), or at the start of the nearest
-  line below that is not blank (`1900` above `m` or `msnm`); or when the
-  nearest line above it that is not blank is only a marker waiting for its
-  number: it ends in an elevation or depth word (`Alt.` or `Guatemala, Alt.`
-  above `1900`) or holds no digit and a marker (`m.s.n.m.` above `1900`). A
-  measurement with its own number elsewhere does not count, after a comma on
-  the year's line or on the line above: `"IV-25\n1948, 1,900 m"`,
+  periods, a comma or an opening bracket, with no number of its own between
+  (`1948. m`, `1948.m`, `1948.ft`, `1948, m`), or at the start of the nearest
+  line below that is not blank (`1900` above `m`, `msnm`, `metros`, `Metros`,
+  `meters`, `feet`, `pies`, `FT.`, `MTS.`, `MSNM` or `M.S.N.M.`; a bare capital
+  `M` or `M.` there counts only when nothing else follows it on that line or a
+  number does, so `1948` above `M. Smith` still reads); or when the nearest line
+  above it that is not blank is only a marker waiting for its number: it ends in
+  an elevation or depth word (`Alt.` or `Guatemala, Alt.` above `1900`) or holds
+  no digit and a marker (`m.s.n.m.` or `Metros` above `1900`). A measurement with
+  its own number elsewhere does not count, after a comma on the year's line, on
+  the line above or on the line below: `"IV-25\n1948, 1,900 m"`,
   `"IV-25\n1948, 1900m"`, `"IV-25\n1948, Alt. 1500 m"`,
-  `"4800 ft. IV-25\n1948"` and `Alt. 1500 m` above `1948` above `IV-25` read.
-  A unit or an elevation word written against the year on its own line
-  (`1948 m`, `El. 1948`) already leaves the year not alone. A determination
-  (`det.`, `determ.`, `determinavit`, `determined`, and the Spanish, Portuguese
-  and French `determino`, `determinou`, `determine`, accents dropped) counts
-  anywhere on the year's own line or on the line above it, for a year on a line
-  of its own, and only on a line that does not hold the date: `det. J. Smith`
-  above `1950` above `IV-25 Guatemala` is refused, but
+  `"VI-25\n1948, m 1200"`, `"4800 ft. IV-25\n1948"`, `Alt. 1500 m` above `1948`
+  above `IV-25`, and `1948` above `m 1200` read. A unit or an elevation word
+  written against the year on its own line (`1948 m`, `El. 1948`) already leaves
+  the year not alone. A determination (`det.`, `determ.`, `determinavit`,
+  `determined`, `ident.`, `identified`, and the Spanish, Portuguese and French
+  `determino`, `determinou`, `determine`, `identificado`, `identifie`, accents
+  dropped) counts anywhere on the year's own line or on the line above it, for a
+  year on a line of its own, and only on a line that does not hold the date:
+  `det. J. Smith` above `1950` above `IV-25 Guatemala` is refused, but
   `"det. J. Smith IV-25\n1950"` and `det. J. Smith, IV-25 1950` read, being the
   determination's date written whole (Date Identified's, by the experts'
   briefs). A two-line literal is then `no_match` with
@@ -552,16 +565,25 @@ row the settled value cites shows them.
   `split_lines_year_may_be_a_determination`; a day and month alone borrow no
   year and stay open (`year_missing`).
 
-  On one line, whatever notation reads the date (`date_lines.year_is_a_measurement`),
+  On one line, whatever notation reads the date (`date_lines.one_line_year_problem`),
   the year the literal ends with is no year when a unit is attached right after
-  it as above (`25.IV 1900 m`, `25 IV 1900m`, `25.IV 1900. m`, `3 Sept. 1900 msnm`,
-  `25.IV.1900 m`, `IV-25-1900 ft.`, or `25 IV 1900` above `m`), and the year a
-  literal starts with is no year when an elevation or depth word stands right
-  before it (`Alt. 1948`, `Elev.: 1948 IV 25`): `no_match` with
-  `one_line_year_may_be_a_measurement`. The line above is not asked for a
-  one-line date (`Alt. 1500 m` above `25 IV 1948` reads 1948-04-25), nor does a
-  measurement with its own number on the line count (`25 IV 1948, 1900 m`,
-  `25.IV 1948 1900 m`, and the pilot's `IX-14-46 3300'` read).
+  it as above (`25.IV 1900 m`, `25.IV 1900. m`, `25 IV 1900 M.`, `25 IV 1900 (m)`,
+  `3 Sept. 1900 msnm`, `25.IV.1900 m`, `IV-25-1900 ft.`, or `25 IV 1900` above
+  `m` or `metros`), and the year a literal starts with is no year when an
+  elevation or depth word stands right before it (`Alt. 1948`,
+  `Elev.: 1948 IV 25`): `no_match` with `one_line_year_may_be_a_measurement`. The
+  line above is not asked for a one-line date (`Alt. 1500 m` above `25 IV 1948`
+  reads 1948-04-25), nor does a measurement with its own number on the line
+  count (`25 IV 1948, 1900 m`, `25.IV 1948 1900 m`, `25.VI.1948 m 1200`,
+  `25 giugno 1948, m 1800`, `3-IX-1946, m 1200`, and the pilot's
+  `IX-14-46 3300'` read), nor a name (`3.IX.1946 Mt. Apo`,
+  `Aug. 3, 1948 Mt. Rainier Nat. Pk.`, `VII-3-1948 Ft. Collins, Colo.`,
+  `25 IV 1948, Ft. Sherman, Canal Zone` read). For a collecting date, a
+  determination anywhere after the literal on its line makes the year the
+  determination's: `25 IV 1948 det. Smith` and `25.IV.1948 det. Smith` are
+  `no_match` with `one_line_year_may_be_a_determination` for Date Visited From
+  and To, and read for Date Identified (`checks.parse_date(..., field=...)`,
+  which the experts and `step._check_row` pass; with no field the rule applies).
 - **A day and month, then their year, on one line** (`date_lines.one_line_literal`,
   `one_line_problem`; review 297c, note 5). When no notation reads a one-line
   literal whole and it ends in a year (four digits, or two after an
@@ -578,12 +600,15 @@ row the settled value cites shows them.
   `colector` and `coletor`: `IV-25 1948 leg. R.D. Mitchell` reads as the date
   written with its collector), never by a unit, an apostrophe, a dash and a
   number, a second number, any other word or a colon
-  (`one_line_year_not_alone`; a determination after the year, `det.`, `det`,
-  `identified`, `ident.`, stays refused, since the year may be the
-  determination's); no unit attached right after the year
+  (`one_line_year_not_alone`); no unit attached right after the year
   (`one_line_year_may_be_a_measurement`: `IV-25 1948. m`, `IV-25, 1948, m`);
-  readers that disagree leave it ambiguous. A determination elsewhere on the
-  line makes it the determination's date, which reads. A collector after the
+  for a collecting date, no determination anywhere after the year on its line
+  (`one_line_year_may_be_a_determination`: `IV-25 1948 det. Smith`,
+  `IV-25 1948 leg. et det. R.D. Mitchell`, `IV-25 1948 coll. Jones det. Smith`,
+  `IV-25 1948, det. Smith`; for Date Identified the collector forms read and a
+  determination right after the year is `one_line_year_not_alone`); readers that
+  disagree leave it ambiguous. A determination before the date makes it the
+  determination's date, which reads. A collector after the
   year is allowed on one line only: a year on the line below its date followed
   by `leg.` is still `split_lines_year_not_alone`. A date part the calendar refuses
   says so (`31.IV, 1948` is `invalid_calendar_date`). Not read this way: a
@@ -593,16 +618,28 @@ row the settled value cites shows them.
   number is the month is never picked. A form a notation reads whole is read
   by its notation, under the one-line marker rule only (`25 IV 1948`,
   `25.IV 1948`, `3 Sept. 1948`, `25.4. 1948`, where 25 is no month).
-- **A literal that spans a line break is judged only by those rules.** A line
-  is what `str.splitlines()` gives, the same lines `checks.py` and `step.py`
-  split texts into: a break is `\n`, `\r\n`, `\r`, VT, FF, NEL (U+0085),
-  U+2028, U+2029 or the file, group and record separators. The parser reads no
+- **A literal that spans a line break is judged only by those rules.** For the
+  date check (the date parser and `date_lines`), a line is what
+  `str.splitlines()` gives: a break is `\n`, `\r\n`, `\r`, VT, FF, NEL (U+0085),
+  U+2028, U+2029 or the file, group and record separators. (`step._excerpt_span`,
+  which cuts the excerpt a label row shows, and the taxon helpers
+  `checks.word_before`, `token_before` and `token_after` find a quote's own line
+  by `\n` alone; none of them reads a date.) The parser reads no
   notation across one: any such literal that is not a date and its year as
   above (`3\nSept.\n1946`, `3 Sept.\n1946 leg.`, `1948-\nIX-3`, `3 Sept.`
   U+2028 `1946`) is `no_match` with the note `literal_spans_a_line_break`, so
   a notation's whitespace never joins two lines past the rules above, and
   `date_lines` finds a literal's line, and the lines beside it, by the same
   breaks.
+- **A literal inside a longer token is no date.** A reading counts only where the
+  literal stands as a token of its own, not glued to a letter or a digit before
+  its first character or after its last when that character is one
+  (`date_lines.places`): `III-25 1948` in `VIII-25 1948`, `IV-25-1948` in
+  `Lot XIV-25-1948`, `25.IV.1948` in `125.IV.1948` or `25.IV.19489`, and
+  `25 IV 1900` in `25 IV 1900m` are `no_match` with
+  `literal_inside_a_longer_token`; `IV-25-1948` in `Lot IV-25-1948` and
+  `25.IV.1948` in `Davao (25.IV.1948)` read. A reader that writes the literal only
+  inside a longer token is not asked, as a reader without it is not.
 - **Readings of one label that disagree.** The check reads the literal in each
   reading's own text. When those results are not all the same (one reader's
   adjacent year is 1948 and the other's 1949; one has the year line and one has
