@@ -1085,6 +1085,31 @@ def test_a_provider_error_is_a_model_error_logged_by_class_only(caplog):
     assert "ModelHTTPError" in caplog.text and "Epipsocus" not in caplog.text
 
 
+@pytest.mark.parametrize("status, refused", [(429, True), (503, False), (402, False)])
+def test_a_request_refused_with_429_costs_the_meter_nothing(status, refused):
+    # An HTTP 429 refuses the request before any work, so nothing is billed;
+    # any other provider error keeps the request's worst case (MeteredModel).
+    # The model is wrapped as field research wraps the harness route's.
+    from specimen_digitization.provider_privacy import PrivateProviderModel
+
+    cost, held = meter(), []
+
+    def provider(messages, info):
+        held.append(cost.outstanding_micros)
+        raise ModelHTTPError(status, "deepseek", body="provider_request_failed")
+
+    resolver = make_resolver(
+        model_factory=lambda: PrivateProviderModel(FunctionModel(provider)), meter=cost,
+        date_rules=PILOT_DATES,
+    )
+    outcome = asyncio.run(resolver(task("taxon"), READINGS, CONTEXT, tools=FakeTools()))
+
+    assert outcome.failure == "model_error" and outcome.answer is None
+    [worst] = held
+    assert worst > 0 and cost.outstanding_micros == 0
+    assert cost.spent_micros == (0 if refused else worst)
+
+
 def test_logfire_shows_each_expert_as_its_own_agent(monkeypatch):
     exporter = InMemorySpanExporter()
     provider = TracerProvider()

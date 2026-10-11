@@ -17,6 +17,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
+from pydantic_ai.exceptions import ModelHTTPError
 from pydantic_ai.messages import ModelMessage, ModelMessagesTypeAdapter, ModelRequest
 from pydantic_ai.models import Model, ModelRequestParameters, StreamedResponse
 from pydantic_ai.models.wrapper import WrapperModel
@@ -175,7 +176,9 @@ class MeteredModel(WrapperModel):
     TEMPLATE_TOKENS, so the usage a provider reports cannot exceed it. Settled
     from the provider's reported usage; a request that reports none, or that
     fails or is cancelled after it may have been sent, keeps its worst case as
-    spent. `model_calls` and `cost_micros` count this instance's own requests.
+    spent. A request the provider refused with HTTP 429 generated nothing and
+    is billed nothing, so it settles at zero. `model_calls` and `cost_micros`
+    count this instance's own requests.
     """
 
     def __init__(
@@ -221,6 +224,12 @@ class MeteredModel(WrapperModel):
         ticket = await self.meter.reserve(input_bound, output_bound)
         try:
             response = await self.wrapped.request(messages, settings, model_request_parameters)
+        except ModelHTTPError as error:
+            if error.status_code == 429:
+                self._settle(ticket, 0, 0)
+            else:
+                self._settle(ticket, input_bound, output_bound)
+            raise
         except BaseException:
             self._settle(ticket, input_bound, output_bound)
             raise
