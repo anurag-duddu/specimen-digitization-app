@@ -450,8 +450,12 @@ handover runs field research instead of the six specialists:
    Each limit's sentence is followed by what to do: an administrator must
    review the approved limit, the allowance or the cost settings, or an
    operator must check the totals. A test in the app reads the server source
-   files that set a run's limit blockers and fails when a code it finds there
-   is not in these tables.
+   files that set a run's limit blockers and fails when a quoted code it finds
+   there with "budget", "cost" or "allowance" in it is not in these tables. It
+   does not see a code passed on indirectly, nor the pilot launch's capacity
+   and time codes (for example `pilot_cohort_reading_capacity_insufficient` and
+   `pilot_cohort_reading_time_insufficient`); those are not in the tables and
+   read "Needs an operator check".
 
    The processing panel's "Blocked:" line shows the name and a passage shows
    the sentences. The workbench issue list shows the same sentence and next
@@ -459,9 +463,13 @@ handover runs field research instead of the six specialists:
    name for, the panel shows "Processing needs an operator check before it can
    continue. Ask an administrator to review it." and the issue list shows the
    first sentence with "Open processing details for the current state and
-   permitted actions." The queue row, the history, the blocker filter menu and
-   the reason chips show the name alone; two codes the app has no name for stay
-   two entries in the filter menu, numbered. The raw code stays in the
+   permitted actions." For a code in the two tables, the queue row, the
+   history, the blocker filter menu and the reason chips show the name alone
+   (the reason chips read a code whole before they split it at a colon). For a
+   code the app has no name for, the queue row, the history and the filter menu
+   read "Needs an operator check", and two such codes stay two entries in the
+   filter menu, numbered; the reason chips, which this change leaves alone for
+   other codes, read its plain-English words. The raw code stays in the
    workbench's "Technical review details" drawer (inside the closed "Review
    details" disclosure), which lists each issue's `reason_code`, and in the
    history's "Retained version data" drawer, which holds a past version's raw
