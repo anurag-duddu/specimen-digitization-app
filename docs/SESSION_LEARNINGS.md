@@ -19248,6 +19248,7 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
   - Not run: the Flutter gates of `scripts/ci/verify.sh` (no Dart changed). Hosted CI: Not confirmed at this entry.
 - Reusable learnings: (1) `asyncio.timeout` schedules its cancel on `loop.time()`, so a loop subclass that overrides `time()`, run through `asyncio.Runner(loop_factory=...)`, controls the deadline without touching production code or the global event loop. (2) To make a fake model "take" N seconds on such a clock, call `call_soon(advance)` and then `await asyncio.sleep(N)`. The clock moves after the sleep's timer is set, so the deadline and the sleep both fire on the next turn. With the deadline gone, the sleep still ends, so a mutant fails instead of hanging.
 - Unresolved: the other wall-time deadline tests above (`test_worker_cleanup_cutoff`, `test_model_runtime`'s whole-model deadline, `test_sam3_runtime`'s total deadline, `test_bounded_effect`'s drip, and the reader deadline tests) can fail under heavy local load. Only `test_worker_cleanup_cutoff`'s failure was reproduced on rerun.
+
 ## 2026-10-11 - Dates PR #306: Codex's review of 8a742bb6, and main merged in
 
 - Task: a takeover session finishing #306 (the owner's words: "technical decision you dont need my approval as I'm not technical"). Codex (`codex exec -s read-only`) reviewed 476d4d0d and 8a742bb6 and asked for changes; main abe9dde1a was merged in with `--no-ff` (34398393).
