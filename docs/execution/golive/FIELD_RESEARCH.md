@@ -1241,8 +1241,9 @@ elevation is derived first, and only for a field a person has not decided):
    organiser's "Ionia Twp." beside the settled county "Ionia" counts (a
    township is a place inside the county), as do "Dist. Turrialba" beside
    the settled canton "Turrialba" (a Costa Rican district lies inside its
-   canton) and "Distr. Kandy" beside the settled county "Kandy" (the
-   conservative outcome the coordinator accepted).
+   canton) and "Distr. Kandy" beside the settled county "Kandy": with the
+   precise location's expert finding none, each stays in review (for
+   "Distr. Kandy", the conservative outcome the coordinator accepted).
 6. For an elevation, no reading writes an elevation
    (`step._elevation_written`, on every reading's and every reader's text).
    That is, none of:
@@ -1309,9 +1310,11 @@ researched in this attempt is not present when all of these hold:
   marker's place, a word that may be a misreading of it
   (`step._misread_marker`: letters only, as long as the marker, one
   letter different, and no word or abbreviation for a place's feature).
-  So 3B's "Mum." beside 3A's "Mun." clears, but "Mtn." (a mountain), "Run"
-  (a stream), "Cr." or "Ck." (a creek), "Cv." (a cove), "Min." (a mine) or
-  "Mt." beside "Kt." keeps the readers apart, for review.
+  So 3B's "Mum." beside 3A's "Mun." is taken as the marker, but "Mtn." (a
+  mountain), "Run" (a stream), "Cr." or "Ck." (a creek), "Cv." (a cove),
+  "Min." (a mine) or "Mt." beside "Kt." is not: the check gives no marker,
+  and the answer is applied as it is (105526328's options "Yepocapa, Mun."
+  and "Yepocapa, Mtn." leave the precise location ambiguous, for review).
 The markers are a data list (`field_research/admin_markers.py`), each with
 the fields of the level it marks: a municipality marker ("Mun.", "Mpio.",
 "Municipio", "Comune", "Gemeinde", "Commune", "Kommune") the city or the
@@ -1328,9 +1331,12 @@ or the municipio, a place of its own inside it: "Twp." (township),
 "Gmina", "Dist.", "Distr.", "District", "Distrito" and "Raion" (a Costa
 Rican district lies inside its canton, a Peruvian one inside its
 province), "Taluk", "Tehsil", "Bezirk", "Arrondissement", "Comuna" and
-"Parish". So "Dist. Turrialba", "Distr. Turrialba", "Turrialba District"
-and "Dist. Chanchamayo" beside a settled county of that name are places,
-and "Distr. Kandy" goes to review. Nor are words that are part of a
+"Parish". So "Dist. Turrialba", "Distr. Turrialba", "Turrialba District",
+"Dist. Chanchamayo", "Distr. Kandy" and "Bila Tserkva Raion" beside a
+settled county of that name give no marker. Resolved by the precise
+location's expert, each settles as the precise location, as on 5332ce4e3.
+Offered by the organiser, with the expert finding none, "Dist. Turrialba"
+and "Distr. Kandy" stay in review. Nor are words that are part of a
 place's name or name a feature ("St.", "Mt.", "Lk.", "Arr.", "Brgy.",
 "Frazione"), words whose level differs between countries ("Cant.", "Amt",
 "Fylke", "Okrug"), "Canton" and words a label uses for something else.
@@ -1339,13 +1345,14 @@ it is also the Spanish "Cerro", a hill ("Co. Chirripo"). The feature words
 are a second data list (`admin_markers.PLACE_FEATURE_WORDS`): Mt, Mtn,
 Mte, Mts, Cr, Ck, Cerro, Run, R, Rio, L, Lago, Lac, Is, Isla, Pt, Pta,
 Punta, Pk, Peak, Vol, Volcan, Fca, Finca, Hda, Hacienda, Sta, Sto, San, B,
-Bay, Kt, Cv, Cove, Min, Mina, Mine and others, compared folded ("Rio" and "Volcan" with or without
-their accents). Any other word keeps the text a place: "E. slope Mt.
+Bay, Kt, Cv, Cove, Min, Mina, Mine and others, compared folded ("Rio" and
+"Volcan" with or without their accents). Any other word keeps the text a
+place: "E. slope Mt.
 McKinley, Davao Prov." beside the settled province "Davao, Prov." still
 settles as the precise location; "Ionia Twp." beside the settled county
 "Ionia" settles when its expert resolves it and stays in review when its
 expert finds none (as on 5332ce4e3); "5 km N of Yepocapa" and "Finca
-Moca, Mun. Yepocapa" beside the settled town are places; and the
+Moca, Mun. Yepocapa" beside the settled town give no marker; and the
 organiser's "5 km N of Kandy" or "Co. Chirripo" beside the settled county
 keeps the precise location in review.
 When the conditions hold, the value is not present, its reason "The

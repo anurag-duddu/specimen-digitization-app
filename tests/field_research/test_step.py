@@ -2919,6 +2919,29 @@ def test_a_costa_rican_district_beside_its_settled_canton_is_a_precise_location(
     assert "precise_location" not in cleared_as_not_on_label(run)
 
 
+@pytest.mark.parametrize(("line", "county"), [
+    ("Distr. Kandy", "Kandy"), ("Dist. Chanchamayo", "Chanchamayo"), ("Bila Tserkva Raion", "Bila Tserkva")],
+    ids=["sri-lanka-distr", "peru-dist", "ukraine-raion"])
+def test_a_district_line_its_expert_resolves_settles_as_the_precise_location(tmp_path, line, county):
+    """PR #309's review of e6f8c7d2: a district word is no marker, so a
+    district line its expert resolves beside the settled county of that
+    name settles as the precise location, as on 5332ce4e3; only the
+    organiser's line with the expert finding none stays in review (the
+    organiser cases above). On 2b1312ed "Distr." and "Dist." cleared it."""
+    text = label_with(**dict.fromkeys(ABSENT, None), country=None, province_state=None, city=None) + "\n" + line
+    rig = build_rig(tmp_path, text, candidates=[*COLLECTORS,
+        *(("precise_location", name, line, line) for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    a_county_settled_before(run, county)
+    prepared, outcomes, calls = research(rig, lacking(*(set(ABSENT) - {"precise_location"}),
+        precise_location=answering(resolved(line))))
+    decisions: dict[str, dict] = {}
+    apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    place = run.fields["precise_location"]
+    assert (place.state, place.literal) == (ValueState.SUPPORTED, line)
+    assert decisions["precise_location"] == {}
+
+
 def test_a_locality_beside_its_settled_province_keeps_its_precise_location(tmp_path):
     """The control: 105526321's "E. slope Mt. McKinley, Davao Prov." beside
     the settled province "Davao, Prov." names a place finer than it, and
