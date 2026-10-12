@@ -95,6 +95,7 @@ class HostApi extends ApiSpecimenRepository {
     dynamic bytes,
     Map<String, String>? headers,
     int? verificationEpoch,
+    bool freshCredentials = false,
   }) {
     paths.add('$method $path');
     calls.add({'method': method, 'path': path, 'body': body, 'key': key});

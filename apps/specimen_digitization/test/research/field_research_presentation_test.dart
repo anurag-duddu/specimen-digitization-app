@@ -35,6 +35,7 @@ class _FieldHostApi extends ApiSpecimenRepository {
     dynamic bytes,
     Map<String, String>? headers,
     int? verificationEpoch,
+    bool freshCredentials = false,
   }) {
     paths.add('$method $path');
     return respond(path);
