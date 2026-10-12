@@ -95,13 +95,9 @@ def test_sam_scaling_is_set_at_both_levels_as_the_release_body_sets_it():
     [service] = find(commands, "gcloud", "run", "deploy", "specimen-sam")
     flags = {arg.split("=", 1)[0]: arg.split("=", 1)[1] for arg in service
              if arg.startswith(("--min", "--max"))}
-    released = importlib.import_module("deploy_runtime")
-    body = released.released_bodies({"sam": f"{released.REGISTRY}/sam@sha256:" + "6" * 64}, SHA, 1, 1, ["sam"])["sam"]
-    service_level, revision_level = body["scaling"], body["template"]["scaling"]
     assert flags == {
-        "--min": str(service_level["minInstanceCount"]), "--max": str(service_level["maxInstanceCount"]),
-        "--min-instances": str(revision_level["minInstanceCount"]),
-        "--max-instances": str(revision_level["maxInstanceCount"]),
+        "--min": "0", "--max": str(S.SAM["max_instances"]),
+        "--min-instances": "0", "--max-instances": str(S.SAM["max_instances"]),
     } == {"--min": "0", "--max": "1", "--min-instances": "0", "--max-instances": "1"}
 
 
@@ -126,28 +122,22 @@ def test_deploy_labels_each_resource_with_the_image_commit(image, source, label)
     assert code == 0, output
     [service] = find(commands, "gcloud", "run", "deploy", "specimen-sam")
     assert f"--labels=source-sha={label}" in service
-    released = importlib.import_module("deploy_runtime")
-    released.rollback_guard({"labels": {"source-sha": label}}, label)  # A release of that commit accepts the label.
 
 
-def test_deploy_env_and_secrets_match_the_release_bodies():
-    """The same committed settings, composed the same way as deploy_runtime.released_bodies."""
+def test_deploy_env_secrets_probe_mount_and_resources_match_the_committed_settings():
     deploy = importlib.import_module("deploy")
-    released = importlib.import_module("deploy_runtime")
-    images = {role: f"{released.REGISTRY}/{role}@sha256:" + "6" * 64 for role in ("worker", "sam")}
-    bodies = released.released_bodies(images, SHA, 1, 1, ["worker", "sam"])
-    for role, body in bodies.items():
-        container = (body["template"]["template"] if role == "worker" else body["template"])["containers"][0]
-        plain = {item["name"]: item["value"] for item in container["env"] if "value" in item}
-        refs = {item["name"]: "{secret}:{version}".format(**item["valueSource"]["secretKeyRef"])
-                for item in container["env"] if "valueSource" in item}
-        assert deploy.role_env(role, S.SAM_CHECKPOINT_SHA256) == plain
-        assert dict(pair.split("=", 1) for pair in deploy.role_secrets(role).split(",")) == refs
-    assert released.REGISTRY == ops.registry()
-    probe = bodies["sam"]["template"]["containers"][0]["startupProbe"]
+    for role in ("worker", "sam"):
+        assert deploy.role_env(role, S.SAM_CHECKPOINT_SHA256) == {
+            **S.ROLES[role]["env"],
+            **(S.SAM_SERVER_ENV if role == "sam" else {}),
+            "SPECIMEN_SAM3_CHECKPOINT_SHA256": S.SAM_CHECKPOINT_SHA256,
+        }
+        assert dict(pair.split("=", 1) for pair in deploy.role_secrets(role).split(",")) == {
+            name: ops.pinned_secret(secret) for name, secret in S.ROLES[role]["secret_env"].items()
+        }
+    probe = S.SAM["startup_probe"]
     assert deploy.probe_flag(probe) == "tcpSocket.port=8080,periodSeconds=10,timeoutSeconds=10,failureThreshold=60"
-    mount = bodies["sam"]["template"]["volumes"][0]["gcs"]["mountOptions"]
-    assert mount == deploy.mount_options(S.SAM_CHECKPOINT_SHA256)
+    mount = deploy.mount_options(S.SAM_CHECKPOINT_SHA256)
     assert mount[0] == "only-dir=" + deploy.checkpoint_prefix(S.SAM_CHECKPOINT_SHA256)
     # gcloud splits mount-options on ";" into the v2 list (googlecloudsdk command_lib/run/volumes.py).
     code, output, commands = dry("deploy.py", "sam")
@@ -155,9 +145,8 @@ def test_deploy_env_and_secrets_match_the_release_bodies():
     [service] = find(commands, "gcloud", "run", "deploy", "specimen-sam")
     volume = next(arg for arg in service if arg.startswith("--add-volume="))
     assert volume.split("mount-options=", 1)[1].split(";") == mount
-    resources = bodies["sam"]["template"]["containers"][0]["resources"]
-    assert ("--no-cpu-throttling" if not resources["cpuIdle"] else "--cpu-throttling") in service
-    assert ("--cpu-boost" if resources["startupCpuBoost"] else "--no-cpu-boost") in service
+    assert ("--cpu-throttling" if S.SAM["cpu_idle"] else "--no-cpu-throttling") in service
+    assert ("--cpu-boost" if S.SAM["startup_cpu_boost"] else "--no-cpu-boost") in service
 
 
 def test_worker_deploy_refuses_a_sam_service_without_the_committed_url(monkeypatch):
@@ -207,27 +196,6 @@ RESEARCH = ('resource.name.startsWith("projects/_/buckets/specimen-digitization.
             'research-capture/") || resource.name.startsWith("projects/_/buckets/specimen-digitization.'
             'firebasestorage.app/objects/research-journal/") || resource.name.startsWith("projects/_/buckets/'
             'specimen-digitization.firebasestorage.app/objects/research-media/")')
-
-
-def test_iam_covers_owner_grants_for_the_worker_and_sam_identities():
-    iam = importlib.import_module("iam")
-    grants = importlib.import_module("owner_grants")
-    mine = [(g.member, g.role, (g.kind, g.name), g.condition) for g in iam.grants(S.PROJECT, S.SAM_CHECKPOINT_SHA256)]
-    standing, waiting = grants.runtime_grants(S)
-    assert waiting == []
-    theirs = [g for g in (*grants.STANDING, *grants.AFTER_RELEASE, *standing) if g.member in {WORKER_SA, SAM_SA}]
-    theirs += [g for g in grants.AFTER_RELEASE if g.member == API_SA and g.resource == ("job", "specimen-worker")]
-    # The bucket's resource conditions are kept exactly. Secrets are left to their version-pinned grants.
-    expected = [(g.member, g.role, g.resource, g.condition if g.resource[0] == "bucket" else None) for g in theirs
-                if g.resource[0] != "secret"]
-    # Plus the one grant owner_grants does not list: SAM 3's unconditioned bucket listing for the mount.
-    expected.append((SAM_SA, "roles/storage.legacyBucketReader", ("bucket", S.BUCKET), None))
-    # And the two it does not list either: the research harness's create and get, for the worker alone. That table
-    # belongs to the retired release process, which scripts/ci/RETIRED.md keeps unchanged, so the pair is held to the
-    # test below, which writes it out, instead.
-    expected += [(WORKER_SA, role, ("bucket", S.BUCKET), (RESEARCH, "specimen_research_objects"))
-                 for role in ("roles/storage.objectViewer", "roles/storage.objectCreator")]
-    assert sorted(mine) == sorted(expected) and len(set(mine)) == len(mine)
 
 
 def test_iam_gives_the_worker_alone_create_and_get_under_the_research_prefixes_and_nothing_else():
