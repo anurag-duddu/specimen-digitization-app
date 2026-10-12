@@ -2,9 +2,11 @@
 // access again never recovered it. These tests hold the client to what the
 // live API saw on 2026-10-11: one read refused with 403 in the middle of a
 // queue poll, then nothing from that tab for hours.
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -43,6 +45,36 @@ http.Response _refused() => http.Response(
   }),
   403,
 );
+
+/// A raw reading, as the evidence route returns it.
+final List<int> _raw = utf8.encode('Raw reading, as the model returned it.');
+
+final Specimen _record = const Specimen({
+  'specimen_id': 'sample',
+  'revision': 1,
+});
+
+final ArtifactRequest _reading = ArtifactRequest(
+  ArtifactKind.observationRaw,
+  'reading',
+  sha256: sha256.convert(_raw).toString(),
+);
+
+/// When a late refusal arrives: halfway through the one wait a request has.
+final Duration _late = apiRequestTimeout ~/ 2;
+
+/// Refuses the first read of [path] late, on the token the client holds, and
+/// never answers the resend on minted tokens.
+Future<http.Response?> Function(http.Request) _refusedLateThenSilent(
+  String path,
+) => (http.Request r) async {
+  if (!r.url.path.endsWith(path)) return null;
+  if (r.headers['Authorization'] != 'Bearer id-0') {
+    return Completer<http.Response>().future;
+  }
+  await Future<void>.delayed(_late);
+  return _refused();
+};
 
 /// A collection API with one assigned collection and an empty queue.
 class _Server {
@@ -176,6 +208,26 @@ void main() {
       expect(denials, isEmpty);
     });
 
+    test('refused raw evidence is sent again on minted tokens', () async {
+      server.intercept = (http.Request r) async {
+        if (!r.url.path.endsWith('/observations/reading/raw')) return null;
+        return r.headers['Authorization'] == 'Bearer id-0'
+            ? _refused()
+            : http.Response.bytes(_raw, 200);
+      };
+      final Json evidence = await repository.artifact(
+        _scope,
+        _record,
+        _reading,
+      );
+      expect(utf8.encode(evidence['text'] as String), _raw);
+      expect(evidence['sha256'], _reading.sha256);
+      expect(server.count('/raw'), 2);
+      expect(server.sent.last.headers['Authorization'], 'Bearer id-1');
+      expect(server.sent.last.headers['X-Firebase-AppCheck'], 'check-1');
+      expect(denials, isEmpty);
+    });
+
     test('a refused write is not sent again', () async {
       server.intercept = (http.Request r) async => _refused();
       await expectLater(
@@ -224,6 +276,94 @@ void main() {
       // The collection list after it reads the token just minted.
       expect(server.sent.last.headers['Authorization'], 'Bearer id-2');
       expect(id.minted, 2);
+    });
+
+    /// Starts [read] against a late refusal whose resend never answers, and
+    /// returns what it came to one [apiRequestTimeout] after its first send.
+    Future<Object?> outcomeAtTimeout(
+      WidgetTester tester,
+      Future<Object?> Function() read,
+    ) async {
+      Object? outcome;
+      var settled = false;
+      unawaited(
+        read().then(
+          (Object? value) {
+            outcome = value;
+            settled = true;
+          },
+          onError: (Object error) {
+            outcome = error;
+            settled = true;
+          },
+        ),
+      );
+      await tester.pump(_late);
+      expect(settled, isFalse);
+      await tester.pump(apiRequestTimeout - _late);
+      expect(
+        settled,
+        isTrue,
+        reason: 'the refusal, the minting and the resend share one wait',
+      );
+      // The abandoned resend's own timeout.
+      await tester.pump(apiRequestTimeout);
+      return outcome;
+    }
+
+    testWidgets('a resend that cannot answer in time is a timeout', (
+      tester,
+    ) async {
+      server.intercept = _refusedLateThenSilent('/specimens');
+      final Object? outcome = await outcomeAtTimeout(
+        tester,
+        () => repository.specimenPage(_scope),
+      );
+      expect(
+        outcome,
+        isA<ApiFailure>().having((f) => f.code, 'code', 'timeout'),
+      );
+      expect(server.count('/specimens'), 2);
+      expect(server.sent.last.headers['Authorization'], 'Bearer id-1');
+      expect(denials, isEmpty);
+    });
+
+    testWidgets('a source image resend ends at the same wait', (tester) async {
+      final refuse = _refusedLateThenSilent('/content');
+      server.intercept = (http.Request r) async =>
+          r.url.path.endsWith('/workspace')
+          ? http.Response(jsonEncode(_wire['workspace_response']), 200)
+          : refuse(r);
+      final Object? outcome = await outcomeAtTimeout(
+        tester,
+        () => repository.specimen(_scope, 'sample'),
+      );
+      expect(
+        outcome,
+        isA<Specimen>().having(
+          (s) => s.assets.single['preview_error'],
+          'preview error',
+          'Image request interrupted. Refresh to retry.',
+        ),
+      );
+      expect(server.count('/content'), 2);
+      expect(server.sent.last.headers['Authorization'], 'Bearer id-1');
+      expect(denials, isEmpty);
+    });
+
+    testWidgets('a raw evidence resend ends at the same wait', (tester) async {
+      server.intercept = _refusedLateThenSilent('/raw');
+      final Object? outcome = await outcomeAtTimeout(
+        tester,
+        () => repository.artifact(_scope, _record, _reading),
+      );
+      expect(
+        outcome,
+        isA<ApiFailure>().having((f) => f.code, 'code', 'timeout'),
+      );
+      expect(server.count('/raw'), 2);
+      expect(server.sent.last.headers['Authorization'], 'Bearer id-1');
+      expect(denials, isEmpty);
     });
   });
 
