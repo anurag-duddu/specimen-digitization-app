@@ -158,11 +158,14 @@ its result after it. If the worker stops between the two (a job's time limit, a
 lost instance), the lease runs out with no result saved. The next drain after
 the lease settles that attempt as a failed reading, `reading_result_lost`,
 instead of parking the run (`Workflow._settle_lost_reading`):
-- It is recorded `failed` in `paid_calls` at its full reservation, which stays
-  held.
+- On a priced run, it is recorded `failed` in `paid_calls` at its full
+  reservation, which stays held.
 - One exception: the program ledger may show that the stopped worker had
   already settled that attempt. Then the attempt is recorded at that settled
-  cost, and the run's budget is settled to it, so the two agree.
+  cost, and the run's budget is settled to it, so the two agree. That needs
+  the ledger's envelope for the attempt to match the run: the same reservation
+  and allowance, read back as exact integers. Otherwise the attempt stays held
+  in full.
 - Its effect timeout counts as spent active time.
 - The reading is asked again within `max_attempts`. After the last attempt its
   step completes with no observation and the record goes to review as above.

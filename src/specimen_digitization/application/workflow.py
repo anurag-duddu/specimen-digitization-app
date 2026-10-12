@@ -1114,7 +1114,7 @@ class Workflow:
             from .lane_reservations import step_reservation
 
             reserved = step_reservation(run, step)
-            settled = self._ledger_settlement(principal, specimen, step)
+            settled = self._ledger_settlement(principal, specimen, step, reserved)
             if settled is None:
                 record_step(
                     self.repository,
@@ -1162,18 +1162,23 @@ class Workflow:
             digest({"lost_reading": step, "run": run.id}),
         )
 
-    def _ledger_settlement(self, principal, specimen, step):
+    def _ledger_settlement(self, principal, specimen, step, reserved):
         """What the program ledger settled for the step's current attempt, or None.
 
+        Only an envelope this run reserved exactly as ``settle_step`` would
+        settle it: the same reservation and allowance, its numbers read back as
+        exact integers (``stored_integer``: the transport may return doubles).
         None when the run has no program allowance, the ledger cannot be read,
-        or the attempt is reserved there but not settled.
+        the envelope differs, or the attempt is reserved but not settled; the
+        lost attempt then stays held in full.
         """
         from .domain import Scope
         from .lane_allowance import ProgramLedger
+        from .lane_worker import stored_integer
 
         run = specimen.run
         policy = run.profile.execution
-        if policy.program_allowance_micros is None:
+        if policy.program_allowance_micros is None or not reserved:
             return None
         try:
             ledger = ProgramLedger(
@@ -1188,10 +1193,17 @@ class Workflow:
                 specimen.id, run.id, step, run.attempts.get(step, 0)
             )
             entry = ledger.read().get("ordinary_effects", {}).get(key)
+            if not isinstance(entry, dict) or entry.get("settled_micros") is None:
+                return None
+            if (
+                stored_integer(entry.get("reserved_micros")) != reserved
+                or stored_integer(entry.get("allowance_micros"))
+                != policy.program_allowance_micros
+            ):
+                return None
+            return stored_integer(entry["settled_micros"])
         except Exception:  # noqa: BLE001 - an unreadable ledger proves no settlement
             return None
-        settled = entry.get("settled_micros") if isinstance(entry, dict) else None
-        return settled if type(settled) is int and settled >= 0 else None
 
     def schedule_retry(self, run, step, provider_seconds=None, *, rate_limited=False):
         """Wait before the step's next attempt, or end its retries.

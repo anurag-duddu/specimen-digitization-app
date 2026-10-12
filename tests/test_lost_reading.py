@@ -57,12 +57,14 @@ def dying_lab(tmp_path, monkeypatch, *, reading_deaths=0, segment_deaths=0):
     return app, principal, row["specimen_id"], calls
 
 
-def drain_days(app, principal, specimen_id, days=12):
+def drain_days(app, principal, specimen_id, days=12, after_first=None, until_stopped=True):
     """Drain once a day, as a worker that keeps being stopped would; the stored runs."""
     workflow = app.state.workflow
     now = datetime.now(timezone.utc)
     runs = []
     for day in range(days):
+        if day == 1 and after_first is not None:
+            after_first()
         workflow.clock = lambda later=now + timedelta(days=day): later
         try:
             run = workflow.drain(principal, specimen_id).run
@@ -72,6 +74,8 @@ def drain_days(app, principal, specimen_id, days=12):
         runs.append(run)
         if run.stage in {"finalized", "processing_blocked"}:
             return runs
+    if not until_stopped:
+        return runs
     raise AssertionError("the run did not stop: " + str(run.blocker))
 
 
@@ -155,12 +159,10 @@ def test_a_reconciled_reading_that_keeps_timing_out_ends_and_the_run_goes_on(tmp
     assert repo.get(SCOPE, blocked.id).run.blocker != UNKNOWN
 
 
-def test_a_reading_the_ledger_settled_before_its_worker_stopped_keeps_that_cost(tmp_path, monkeypatch):
-    # The worker read the label, settled the program ledger to the reading's
-    # cost, and stopped before saving the run (review of c15d4f73).
+def stopped_after_settling(monkeypatch):
+    """The worker reads the Muse label, settles the ledger, and stops before saving."""
     from specimen_digitization.application import active_graph
 
-    app, principal, specimen_id, calls = dying_lab(tmp_path, monkeypatch)
     kept_save, stopped = active_graph.save_recoverably, []
 
     def save(repository, principal, specimen, revision, key, value):
@@ -171,7 +173,34 @@ def test_a_reading_the_ledger_settled_before_its_worker_stopped_keeps_that_cost(
         return kept_save(repository, principal, specimen, revision, key, value)
 
     monkeypatch.setattr(active_graph, "save_recoverably", save)
-    runs = drain_days(app, principal, specimen_id)
+    return stopped
+
+
+def edit_muse_envelope(app, change):
+    """Rewrite the ledger's envelopes for the Muse reading, as a transport might return them."""
+    from specimen_digitization.application.lane_allowance import LEDGER_KIND, ProgramLedger
+    from test_lane_costs import SCOPE
+
+    repository = app.state.workflow.repository
+    ledger = ProgramLedger(repository, SCOPE)
+    current = ledger.read()
+    effects = {k: (change(dict(v)) if MUSE in k else v) for k, v in current["ordinary_effects"].items()}
+    assert repr(effects) != repr(current["ordinary_effects"])  # 900.0 == 900 in Python
+    stored = {k: v for k, v in current.items() if k != "revision"}
+    repository.put_document(SCOPE, LEDGER_KIND, ledger.ident,
+        {**stored, "ordinary_effects": effects}, current["revision"])
+
+
+@pytest.mark.parametrize("envelope", ["as_stored", "integral_doubles"])
+def test_a_reading_the_ledger_settled_before_its_worker_stopped_keeps_that_cost(tmp_path, monkeypatch, envelope):
+    # The worker read the label, settled the program ledger to the reading's
+    # cost, and stopped before saving the run (review of c15d4f73). SQL
+    # Connect may return the envelope's integers as doubles (review of 2d256917).
+    app, principal, specimen_id, calls = dying_lab(tmp_path, monkeypatch)
+    stopped = stopped_after_settling(monkeypatch)
+    doubles = lambda e: {k: float(v) if type(v) is int else v for k, v in e.items()}
+    after_first = (lambda: edit_muse_envelope(app, doubles)) if envelope == "integral_doubles" else None
+    runs = drain_days(app, principal, specimen_id, after_first=after_first)
     settled, done = runs[1], runs[-1]
     step = step_of(done, 1)
     assert stopped and calls["muse"] == 2
@@ -182,3 +211,28 @@ def test_a_reading_the_ledger_settled_before_its_worker_stopped_keeps_that_cost(
     assert first["cost_micros"] == 900  # The Muse reading's cost in this lab.
     assert done.stage == "finalized" and done.attempts[step] == 2
     assert ledger_total(app) == done.usage.reserved_cost_micros
+
+
+@pytest.mark.parametrize("ledger", ["other_reservation", "other_allowance", "unreadable"])
+def test_a_settlement_that_does_not_match_the_run_keeps_the_attempt_held(tmp_path, monkeypatch, ledger):
+    # Only an envelope the run reserved exactly as settle_step settles it is
+    # trusted; otherwise the run is not refunded (review of 2d256917).
+    from specimen_digitization.application.lane_allowance import ProgramLedger
+
+    app, principal, specimen_id, _ = dying_lab(tmp_path, monkeypatch)
+    stopped_after_settling(monkeypatch)
+    def after_first():
+        if ledger == "unreadable":
+            monkeypatch.setattr(ProgramLedger, "read", lambda self: (_ for _ in ()).throw(OSError("down")))
+        else:
+            name = "reserved_micros" if ledger == "other_reservation" else "allowance_micros"
+            edit_muse_envelope(app, lambda e: {**e, name: e[name] + 1})
+    runs = drain_days(app, principal, specimen_id, days=2, after_first=after_first, until_stopped=False)
+    settled = runs[1]
+    step = step_of(settled, 1)
+    assert settled.stage == "retry_scheduled" and settled.blocker == LOST_READING
+    assert muse_calls(settled) == [(1, "failed", LOST_READING, "reserved")]
+    lost = [c for c in settled.paid_calls if c["step"] == step][0]
+    assert lost["cost_micros"] == step_reservation(settled, step)
+    # The run's budget still holds the attempt's whole reservation.
+    assert runs[0].usage.reserved_cost_micros == settled.usage.reserved_cost_micros
