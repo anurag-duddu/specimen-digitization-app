@@ -220,7 +220,7 @@ PLACE_LEVELS = {
     "wikidata": {
         "country": ("country", "sovereign state"),
         "province_state": ("province", "former province", "department", "state",
-            "first-level administrative country subdivision"),
+            "U.S. state", "first-level administrative division", "first-level administrative country subdivision"),
         "county": ("county", "second-level administrative division",
             "second-level administrative country subdivision"),
         "city": ("city", "town", "village", "human settlement", "municipality"),

@@ -47,7 +47,7 @@ import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import asynccontextmanager, nullcontext
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 
@@ -1472,7 +1472,7 @@ def _location_proposals(tasks_by_key: Mapping[str, FieldTask],
         received: Mapping[str, Sequence[SourceAnswer]], readings: Sequence[Reading],
         outcomes_by_key: Mapping[str, FieldOutcome]) -> dict[str, list[_LocationProposal]]:
     """Source-confirmed place interpretations pooled across location fields."""
-    from .agreement import about, placed, place_name
+    from .agreement import about, at_level, place_name
 
     proposals: dict[str, list[_LocationProposal]] = {key: [] for key in LOCATION_RECONCILE_KEYS}
     for source_key in LOCATION_RECONCILE_KEYS:
@@ -1491,26 +1491,36 @@ def _location_proposals(tasks_by_key: Mapping[str, FieldTask],
                 if not about(answer, literal):
                     continue
                 for key in LOCATION_RECONCILE_KEYS:
-                    if key == source_key:
-                        continue
-                    candidate = placed(key, answer)
-                    if candidate is None or place_name(candidate.name) != place_name(literal):
-                        continue
-                    proposals[key].append(_LocationProposal(key, literal, names, source_key, answer, candidate))
+                    for candidate in at_level(key, answer):
+                        if place_name(candidate.name) != place_name(literal):
+                            continue
+                        proposals[key].append(_LocationProposal(key, literal, names, source_key, answer, candidate))
     return proposals
 
 
 def _answer_levels_for_literal(answer: SourceAnswer, literal: str) -> set[str]:
     """Location levels one source answer confirms for the written literal."""
-    from .agreement import place_name, placed
+    from .agreement import at_level, place_name
 
     levels: set[str] = set()
     literal_name = place_name(literal)
     for key in LOCATION_RECONCILE_KEYS:
-        candidate = placed(key, answer)
-        if candidate is not None and place_name(candidate.name) == literal_name:
+        if any(place_name(candidate.name) == literal_name for candidate in at_level(key, answer)):
             levels.add(key)
     return levels
+
+
+def _narrowed_location_answer(proposal: _LocationProposal) -> SourceAnswer:
+    """The cited answer as the normal place-settling check should see it.
+
+    Gazetteer answers may hold several same-level places with the same name,
+    such as the United States' many Clark Counties. Reconciliation first filters
+    those candidates against the label's other place text. Once only one
+    hierarchy-compatible proposal remains, pass that single candidate through
+    the ordinary field-value checks so the field still settles only by a cited
+    source answer at its own level.
+    """
+    return replace(proposal.answer, candidates=(proposal.candidate,))
 
 
 def _usable_location_proposals(run, proposals: Mapping[str, Sequence[_LocationProposal]], *,
@@ -1574,16 +1584,17 @@ def _reconcile_location_outcomes(run, tasks_by_key: Mapping[str, FieldTask],
         if len(identities) != 1:
             continue
         proposal = usable[0]
+        source_answer = _narrowed_location_answer(proposal)
         answer = FieldAnswer(outcome="resolved", literal=proposal.literal,
             reading_names=list(proposal.reading_names),
             value=proposal.candidate.name if proposal.candidate.name != proposal.literal else None,
             authority_id=proposal.candidate.authority_id,
-            source_evidence_ids=[proposal.answer.evidence.id],
+            source_evidence_ids=[source_answer.evidence.id],
             explanation=("Resolved by location reconciliation: the shared location lookup identified "
                 f"this label text as {key.replace('_', ' ')}."))
-        by_key[key] = FieldOutcome(key, answer, evidence=[proposal.answer.evidence],
+        by_key[key] = FieldOutcome(key, answer, evidence=[source_answer.evidence],
             finalized_without_model=True)
-        received.setdefault(key, []).append(proposal.answer)
+        received.setdefault(key, []).append(source_answer)
     return tuple(by_key.get(outcome.key, outcome) for outcome in outcomes)
 
 
