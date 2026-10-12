@@ -301,8 +301,12 @@ and `test_the_organisers_refused_call_costs_nothing`.
   the step go, and a new attempt's intent drops the earlier ones too: an
   attempt starts only after the one before it ended, so a path that replaced
   an unknown blocker without settling its attempt (the active graph's
-  size-limit block, then a person's retry) leaves nothing behind. An
-  administrator's reconcile drops every kind of the reconciled step. So the
+  size-limit block, then a person's retry) leaves nothing behind. Every
+  step that ends passes through `workflow.end_step`, which drops every kind
+  of that step (a step that has ended has no unresolved unknown outcome), and
+  giving the extraction up drops the kinds of `parse`. An administrator's
+  reconcile drops every kind of the reconciled step. The recovery tests check
+  every save for a kind left on an ended step (`tests/conftest.py`). So the
   kinds add no drift of their own to the pins of the append-once pipeline-run
   row (#146; `tests/test_projection_writer.py`). Other records already
   change `run.dependencies` after it is written: `ordinary_cost_settlements`

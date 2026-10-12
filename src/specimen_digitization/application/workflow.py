@@ -166,6 +166,22 @@ def resolve_step_unknown_outcomes(run, step) -> None:
     _keep_kinds(run, lambda key: key.rpartition(":")[0] != step)
 
 
+def end_step(run, step) -> None:
+    """Complete the step. Every step that ends passes here, and a step that has
+    ended has no unresolved unknown outcome: every kind of it goes."""
+    run.completed_steps.append(step)
+    resolve_step_unknown_outcomes(run, step)
+
+
+def give_up_the_extraction(run, code) -> None:
+    """Give the organiser's extraction up (``harness.give_up_extraction``). Its
+    call is over, though parse still runs without it: every kind of parse goes."""
+    from .harness import give_up_extraction
+
+    give_up_extraction(run, code)
+    resolve_step_unknown_outcomes(run, "parse")
+
+
 def unknown_outcome_kind(run, step) -> str | None:
     return run.dependencies.get(UNKNOWN_OUTCOME_KINDS, {}).get(unknown_key(run, step))
 
@@ -878,9 +894,7 @@ class Workflow:
                         # it was stopped by its limits: the run goes on without
                         # the extraction's candidates; the deterministic parse
                         # above stands, and what does not settle goes to review.
-                        from .harness import give_up_extraction
-
-                        give_up_extraction(run, failure.code)
+                        give_up_the_extraction(run, failure.code)
                         reading_failure = failure.code
                         status = {}
                         if isinstance(failure, AdapterFailure):
@@ -1069,7 +1083,7 @@ class Workflow:
                 run.blocker = None
             run.lease_until = None
             if step != FIELD_RECHECK:
-                run.completed_steps.append(step)
+                end_step(run, step)
             if step not in {"finalize", FIELD_RESEARCH, FIELD_RECHECK}:
                 run.stage = self.next_step(run).split(":")[0]
         except AdapterFailure as exc:
@@ -1339,11 +1353,9 @@ class Workflow:
             if extraction:
                 # The extraction is given up on; parse itself still runs, next,
                 # without the call (its deterministic parse and phase).
-                from .harness import give_up_extraction
-
-                give_up_extraction(run, code)
+                give_up_the_extraction(run, code)
             else:
-                run.completed_steps.append(step)
+                end_step(run, step)
             run.stage = self.next_step(run).split(":")[0]
         else:
             run.blocker = code
@@ -1425,7 +1437,7 @@ class Workflow:
         run.next_retry_at = None
         run.dead_letter = False
         run.disposition = None
-        run.completed_steps.append(step)
+        end_step(run, step)
         run.stage = self.next_step(run).split(":")[0]
         _log_step_failure(run, step, "first_pass_unaffordable", code=code, stage=run.stage)
         specimen.audit.append(
@@ -1449,10 +1461,8 @@ class Workflow:
         afford another call (``UNAFFORDABLE``). Nothing is reserved or recorded;
         earlier attempts keep what they hold. The next step runs parse without
         the call, and the record goes on to field research and review."""
-        from .harness import give_up_extraction
-
         run = specimen.run
-        give_up_extraction(run, code)
+        give_up_the_extraction(run, code)
         run.blocker = None
         run.next_retry_at = None
         run.dead_letter = False
@@ -1517,7 +1527,7 @@ class Workflow:
             return False
         step = self.next_step(run)
         blocker = run.blocker or ""
-        from .harness import extraction_given_up, give_up_extraction
+        from .harness import extraction_given_up
 
         first_pass = step.startswith("first_pass:") and first_pass_failure_is_recoverable(
             run, step
@@ -1573,10 +1583,10 @@ class Workflow:
             code = blocker.removeprefix("retry_budget_exhausted:")
             if first_pass:
                 give_up(run, step.split(":", 1)[1], code)
-                run.completed_steps.append(step)
+                end_step(run, step)
             else:
                 # parse runs next, without the call it gave up on.
-                give_up_extraction(run, code)
+                give_up_the_extraction(run, code)
             run.blocker = None
             run.dead_letter = False
             run.next_retry_at = None

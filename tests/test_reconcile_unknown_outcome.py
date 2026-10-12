@@ -738,3 +738,40 @@ def test_resolving_an_attempt_settles_every_earlier_attempt_of_its_step():
     assert run.dependencies["unknown_outcome_kinds"] == {f"{other}:1": "unanswered"}
     resolve_unknown_outcome(run, other)
     assert "unknown_outcome_kinds" not in run.dependencies
+
+
+def test_a_size_limit_then_a_retry_the_budget_gives_up_leaves_no_kind(tmp_path):
+    # As above, but the run has no room left for another comparison when the
+    # person retries: the first pass is given up on unsent
+    # (Workflow._give_up_first_pass) and the step ends with no kind left.
+    from specimen_digitization.application.storage import SnapshotTooLarge
+
+    repo, blobs, blocked = blocked_run(tmp_path, "first_pass", synthetic=True)
+    step = f"first_pass:{blocked.run.regions[0].id}"
+    pins = {k: v for k, v in blocked.run.dependencies.items() if k != "unknown_outcome_kinds"}
+    assert reconcile(admin(tmp_path), blocked.run, blocked.version).status_code == 200
+    save, refused = repo.save, []
+
+    def overflowing(principal, specimen, revision, key, request_digest):
+        if key.startswith("result:") and not refused:
+            refused.append(key)
+            raise SnapshotTooLarge("snapshot_limit_exceeded")
+        return save(principal, specimen, revision, key, request_digest)
+
+    repo.save = overflowing
+    limited = Workflow(repo, blobs, Readers(blobs)).step(operator(), blocked.id)
+    repo.save = save
+    assert limited.run.dependencies["unknown_outcome_kinds"] == {f"{step}:2": "unanswered"}
+
+    def no_calls_left(run):
+        run.usage.external_calls = run.profile.execution.max_external_calls
+
+    mutate(repo, blocked.id, no_calls_left, "no-calls-left")
+    assert act(admin(tmp_path), blocked.id, "retry", "retry-without-budget").status_code == 200
+    readers = Readers(blobs)
+    drained = Workflow(repo, blobs, readers).step(operator(), blocked.id)
+
+    assert readers.calls == []  # Given up unsent.
+    assert step in drained.run.completed_steps and drained.run.attempts[step] == 2
+    assert any(f.rule_id == "first_pass_given_up" for f in drained.run.findings)
+    assert drained.run.dependencies == pins
