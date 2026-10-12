@@ -122,6 +122,20 @@ def mark_unknown_outcome(run, step, kind) -> None:
     }
 
 
+def resolve_unknown_outcome(run, step) -> None:
+    """Drop the attempt's kind once its outcome is known: the kinds live in the
+    run's pinned dependencies only while an attempt is unresolved, so a run whose
+    calls all resolved keeps exactly the pins it was written with (the
+    append-once pipeline-run row, #146)."""
+    kinds = dict(run.dependencies.get(UNKNOWN_OUTCOME_KINDS, {}))
+    if kinds.pop(unknown_key(run, step), None) is None:
+        return
+    if kinds:
+        run.dependencies[UNKNOWN_OUTCOME_KINDS] = kinds
+    else:
+        run.dependencies.pop(UNKNOWN_OUTCOME_KINDS, None)
+
+
 def unknown_outcome_kind(run, step) -> str | None:
     return run.dependencies.get(UNKNOWN_OUTCOME_KINDS, {}).get(unknown_key(run, step))
 
@@ -1131,6 +1145,9 @@ class Workflow:
             # confirmed, an unexpected exception). It is held for a person:
             # recorded so that recover_blocked never makes it due again.
             mark_unknown_outcome(run, step, HELD)
+        elif run.blocker != "external_outcome_unknown":
+            # Known now (completed, retried or given up): no longer recorded.
+            resolve_unknown_outcome(run, step)
         elapsed = max(0, self.monotonic() - started)
         if external and elapsed > effect_timeout and not repeatable:
             circuit_failure = "timeout"
@@ -1279,6 +1296,8 @@ class Workflow:
         if not recorded:
             run.usage.active_seconds += min(timeout, run.usage.reserved_active_seconds)
         run.usage.reserved_active_seconds = max(0, run.usage.reserved_active_seconds - timeout)
+        # The lost attempt is settled: its outcome is known (a failed attempt).
+        resolve_unknown_outcome(run, step)
         if attempt >= policy.max_attempts:
             if first_pass:
                 from .first_pass import give_up

@@ -114,6 +114,8 @@ def test_a_failed_extraction_is_retried_and_the_run_reaches_its_disposition(
     run = last.run
     assert (run.stage, run.blocker, run.disposition) == ("finalized", None, Disposition.REVIEW)
     assert run.attempts["parse"] == 2 and sent(tmp_path, failure, 1)
+    # Every attempt resolved: the run keeps exactly its pins (#146).
+    assert "unknown_outcome_kinds" not in run.dependencies
     assert extraction_findings(run) == []
     # The uncertain first attempt keeps its whole reservation.
     assert parse_calls(run)[0] == (1, "failed", "reserved", PARSE_RESERVATION, failure_code(failure))
@@ -638,8 +640,12 @@ def test_every_unknown_outcome_this_code_saves_at_the_extraction_has_a_kind(tmp_
     drain_worker(workflow, principal)  # Saves again: recovery, settlement, or nothing.
 
     run = workflow.repository.get(principal.scope, ident).run
-    expected = "unanswered" if path == "stopped" else "held"
-    assert run.dependencies["unknown_outcome_kinds"]["parse:1"] == expected
+    kinds = run.dependencies.get("unknown_outcome_kinds", {})
+    if path == "stopped":
+        # Settled as a lost attempt: known now, so no longer recorded.
+        assert "unanswered" in seen and "parse:1" not in kinds
+    else:
+        assert kinds["parse:1"] == "held"
     assert seen and set(seen) <= {"unanswered", "held"}
 
 

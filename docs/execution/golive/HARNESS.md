@@ -295,6 +295,14 @@ and `test_the_organisers_refused_call_costs_nothing`.
   unexpected exception in the parent) is saved as `held` and never recovered
   automatically; it stays blocked for a person. Provider and deadline failures
   of these reads are known failures now, never unknown outcomes.
+  A kind is kept only while its attempt is unresolved: it is removed once the
+  attempt's outcome is known (completed, retried, given up, or settled as
+  lost), so a run whose calls all resolved keeps exactly the pinned
+  dependencies of its append-once pipeline-run row (#146;
+  `tests/test_projection_writer.py`). The `automatic_recoveries` and
+  `route_repins` records (2026-10-12, #315) are also kept in
+  `run.dependencies`, so a recovered or re-pinned run's dependencies differ
+  from that row; not changed here.
 - Legacy rows (the coordinator's decision of 2026-10-12, the owner having
   delegated technical decisions; replaces the second review round's stricter
   rule). An unknown attempt with no kind was saved by code before this record
