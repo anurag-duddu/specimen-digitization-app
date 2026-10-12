@@ -62,3 +62,49 @@ def owned_process_logging():
             logger.handlers[:] = handlers
             logger.propagate = propagate
             logger.setLevel(logger_level)
+
+
+# The recovery fixtures whose every save is checked for an unknown-outcome kind
+# left on a step that has ended (workflow.end_step; HARNESS.md section 3).
+_KIND_CHECKED_MODULES = frozenset({
+    "test_extraction_recovery",
+    "test_first_pass_stuck_recovery",
+    "test_first_pass_transient_recovery",
+    "test_first_pass_given_up",
+    "test_rate_limit_refusal",
+    "test_reader_failures_recoverable",
+    "test_reconcile_unknown_outcome",
+    "test_lane_drain",
+    "test_lane_routes",
+    "test_pending_processing_restart",
+    "test_camera_intake_worker_journey",
+    "test_step_outcome",
+    "test_step_failure_logging",
+})
+
+
+@pytest.fixture(autouse=True)
+def no_kind_outlives_its_step(request, monkeypatch):
+    """A step that has ended cannot have an unresolved unknown outcome: no save
+    in the recovery fixtures may keep a kind for a completed step.
+
+    Its limits: it sees only saves through SQLiteRepository (not the SQL Connect
+    repository or a test's own stub), only in the modules listed above, and only
+    the states those fixtures reach; it checks completed steps, not a kind left
+    on a step that has not ended (the per-attempt rules cover those)."""
+    if request.module.__name__.rpartition(".")[2] not in _KIND_CHECKED_MODULES:
+        yield
+        return
+    from specimen_digitization.application.storage import SQLiteRepository
+
+    save = SQLiteRepository.save
+
+    def checked(self, principal, specimen, *args, **kwargs):
+        run = specimen.run
+        kinds = run.dependencies.get("unknown_outcome_kinds", {})
+        ended = [key for key in kinds if key.rpartition(":")[0] in run.completed_steps]
+        assert not ended, f"unknown-outcome kinds left on ended steps: {ended}"
+        return save(self, principal, specimen, *args, **kwargs)
+
+    monkeypatch.setattr(SQLiteRepository, "save", checked)
+    yield
