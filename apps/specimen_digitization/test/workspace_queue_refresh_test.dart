@@ -81,8 +81,18 @@ class KeysetRepository extends TestRepository {
     String key,
   ) async => heldReview!.future;
 
+  /// How many open-record reads fail before one answers.
+  int detailFailures = 0;
+
   @override
   Future<Specimen> specimen(CollectionScope scope, String id) async {
+    if (detailFailures > 0) {
+      detailFailures--;
+      throw const ApiFailure(
+        'The service could not be reached.',
+        code: 'network',
+      );
+    }
     final Completer<void>? gate = detailGate;
     detailGate = null;
     if (gate != null) await gate.future;
@@ -555,4 +565,54 @@ void main() {
       await session.controller.close();
     }
   });
+
+  testWidgets(
+    'an open record that keeps failing while pages answer is reported once',
+    (WidgetTester tester) async {
+      final KeysetRepository repository = KeysetRepository(<Specimen>[
+        row('a'),
+      ]);
+      final TestSession session = TestSession();
+      final WorkspaceController controller = await started(
+        tester,
+        repository,
+        session,
+      );
+      try {
+        await controller.openSpecimen('a');
+        repository.detailFailures = 3;
+        final int asked = repository.pageReads;
+        await tester.pump(queuePollInterval);
+        await tester.pump();
+        final WorkspaceError? first = controller.error;
+        expect(first, isNotNull);
+
+        await tester.pump(queuePollInterval);
+        await tester.pump();
+        expect(repository.pageReads, asked + 2, reason: 'pages still answer');
+        expect(
+          identical(controller.error, first),
+          isTrue,
+          reason: 'one continuous record outage is announced once',
+        );
+
+        controller.clearError();
+        await tester.pump(queuePollInterval);
+        await tester.pump();
+        expect(controller.error, isNull, reason: 'Dismiss is respected');
+
+        // The record answers again; a later outage is a new one.
+        await tester.pump(queuePollInterval);
+        await tester.pump();
+        expect(controller.error, isNull);
+        repository.detailFailures = 1;
+        await tester.pump(queuePollInterval);
+        await tester.pump();
+        expect(controller.error, isNotNull);
+      } finally {
+        controller.dispose();
+        await session.controller.close();
+      }
+    },
+  );
 }

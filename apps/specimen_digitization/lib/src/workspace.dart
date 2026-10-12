@@ -816,13 +816,13 @@ class WorkspaceController extends ChangeNotifier {
           page = SpecimenPage(items, nextCursor: next.nextCursor);
         }
       }
-      // The service answered, so any outage a poll reported is over, whether
-      // or not this answer is applied now (a held list defers it, a newer
-      // page supersedes it).
-      _quietFailureReported = false;
       // A page appended while the reread was in flight is the reviewer's.
-      // Keep it; the next tick rereads the deeper list.
-      if (quiet && pagesEpoch != _pagesEpoch) return;
+      // Keep it; the next tick rereads the deeper list. Every read this
+      // refresh made succeeded, so any outage a poll reported is over.
+      if (quiet && pagesEpoch != _pagesEpoch) {
+        _quietFailureReported = false;
+        return;
+      }
       // A route opened while the list was loading owns its own detail request.
       // Check that ownership before dispatch, rather than fetching and merely
       // rejecting the duplicate response afterwards.
@@ -837,6 +837,11 @@ class WorkspaceController extends ChangeNotifier {
           ? null
           : await _readSelected(scope, openId);
       if (!_ownsQueueRead(read)) return;
+      // The pages and the open record both answered, so any outage a poll
+      // reported is over, whether or not this answer is applied now (a held
+      // list defers it, a newer page supersedes it). Clearing it any earlier
+      // would let a record read that keeps failing announce every tick.
+      _quietFailureReported = false;
       // The open record is the record load's to own. A refresh only carries
       // it along when nothing opened or closed a record meanwhile.
       // An acknowledged save (including a partial batch) replaces the record
