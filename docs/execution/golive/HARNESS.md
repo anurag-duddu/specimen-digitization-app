@@ -284,34 +284,40 @@ and `test_the_organisers_refused_call_costs_nothing`.
   first pass left blocked as `retry_budget_exhausted:<code>` or
   `model_malformed_response` (19f0f1f6). It reads the first pass's blocker
   list for the extraction too, a moved pin aside.
-- Since these reads' provider and deadline failures are now known failures,
-  an `external_outcome_unknown` that a first pass or an extraction step saves
-  is a result the parent could not accept (for example an invalid child result
-  such as `invalid_json_input`, or extraction fields that do not match the
-  run's; tests in `tests/test_extraction_recovery.py`). The attempt is kept
-  in `run.dependencies["held_unknown_outcomes"]`, and neither the drain's
-  recovery nor the lease's end makes it due again: it stays blocked for a
-  person.
-- More generally (second review round; this narrows the
-  `external_outcome_unknown` item of "Stuck first passes go on by themselves"
-  above), the drain makes a first pass's or an extraction's
-  `external_outcome_unknown` due only when the run durably shows a cause
-  asking again can mend (`workflow.unknown_outcome_recoverable`): the
-  attempt's result was never saved (a priced run records every saved result in
-  `paid_calls`, so no row means the worker stopped after its intent), or the
-  step saved `external_stage_deadline_exceeded` in its reasons. Any other
-  saved unknown outcome stays blocked. This includes the five runs above: the
-  code before this change (a6b72f6f) saved their HTTP 504 as the blocker, a
-  `paid_calls` row with outcome `unknown` and no failure code, a lease and an
-  audit entry, exactly what it saved for an invalid child result (compared
-  field by field), so nothing on those runs shows the provider's failure and
-  they are not recovered automatically. So does a first pass that the code
-  before e52503c5 saved as unknown after an HTTP 5xx. Tests:
-  `test_a_504_left_unknown_at_the_extraction_by_the_old_code_stays_blocked`,
-  `test_an_extraction_the_old_code_saw_overrun_its_deadline_is_carried_on`,
-  `test_an_extraction_whose_worker_stopped_after_its_intent_is_carried_on`
-  and, in `tests/test_first_pass_stuck_recovery.py`,
-  `test_a_blocked_unknown_comparison_with_its_attempt_recorded_stays_blocked`.
+- Every `external_outcome_unknown` this code saves at an ordinary first pass
+  or extraction says what it is, in
+  `run.dependencies["unknown_outcome_kinds"]["<step>:<attempt>"]`
+  (`workflow.UNKNOWN_OUTCOME_KINDS`). The call's intent is saved as
+  `unanswered`: a worker that stops before the result leaves it so, and the
+  lease's end or the drain carries it on. A result the parent could not accept
+  (an invalid child result such as `invalid_json_input`, extraction fields
+  that do not match the run's, a child whose cleanup is not confirmed, an
+  unexpected exception in the parent) is saved as `held` and never recovered
+  automatically; it stays blocked for a person. Provider and deadline failures
+  of these reads are known failures now, never unknown outcomes.
+- Legacy rows (the coordinator's decision of 2026-10-12, the owner having
+  delegated technical decisions; replaces the second review round's stricter
+  rule). An unknown attempt with no kind was saved by code before this record
+  existed, which saved a provider's HTTP 5xx and an invalid child result
+  alike, so its cause cannot be read from the run. Logfire (2026-10-12
+  13:00Z-13:34Z) shows the known stuck rows, the five runs above, were HTTP
+  504s, and the recovery is bounded: the existing path (`max_attempts`, three
+  automatic recoveries per step, every attempt reserved in full under the run's
+  USD 1 limit), ending at worst with the call given up and the record in
+  review. It never publishes. So a legacy row is recovered, and its automatic
+  recovery is recorded with `"rule": "legacy_unknown_recovered"`; a rare
+  legacy contract failure ends visibly in review instead of stranded. The
+  same holds for a first pass saved as unknown after a 5xx before e52503c5.
+- Tests (`tests/test_extraction_recovery.py`):
+  `test_a_504_left_unknown_at_the_extraction_by_the_old_code_is_recovered_as_legacy`
+  (built from a6b72f6f's own save by switching the extraction's
+  recoverability off for the first drain),
+  `test_an_extraction_result_the_parent_cannot_accept_stays_blocked_after_its_lease`,
+  `test_a_call_left_unanswered_by_a_stopped_worker_is_marked_and_carried_on`,
+  and `test_every_unknown_outcome_this_code_saves_at_the_extraction_has_a_kind` and
+  `..._at_a_first_pass_has_a_kind`, which check every save; in
+  `tests/test_first_pass_stuck_recovery.py`,
+  `test_a_blocked_unknown_comparison_is_retried_by_the_drain`.
 - An authentication or authorization error and a request the provider rejects
   still block with their cause, and the evidence pilot is excluded, as for the
   first pass.

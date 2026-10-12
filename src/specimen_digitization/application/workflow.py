@@ -96,54 +96,51 @@ RECOVERABLE_FIRST_PASS_PREFIXES = ("retry_budget_exhausted:", "provider_circuit:
 # A model read whose answer stayed malformed after its output retry: given up
 # on when the run is recovered (a run blocked by it before 2026-10-12).
 MALFORMED_ANSWER = "model_malformed_response"
-# The attempts of a first pass or an extraction whose unknown outcome is a result
-# the parent could not accept, not a provider's or a deadline's failure: never
-# recovered automatically (Workflow.recover_blocked). Kept in run.dependencies
-# as [{"step", "attempt"}].
-HELD_UNKNOWN_OUTCOMES = "held_unknown_outcomes"
+# What each unknown outcome of an ordinary first pass or extraction is, saved
+# with the run as {"<step>:<attempt>": kind} in run.dependencies (2026-10-12).
+# Every save of such an unknown outcome writes one (Workflow._step):
+# UNANSWERED when the call's intent is saved (a worker that stops then leaves
+# the call unanswered: asking again can mend it), HELD when the step saves a
+# result the parent could not accept (an invalid child result, mismatched
+# fields, a child whose cleanup is not confirmed, an unexpected exception: it
+# stays for a person). An unknown attempt with no kind was saved by code
+# before this record existed (LEGACY_UNKNOWN).
+UNKNOWN_OUTCOME_KINDS = "unknown_outcome_kinds"
+UNANSWERED, HELD = "unanswered", "held"
+# The rule recorded with an automatic recovery of such a legacy row.
+LEGACY_UNKNOWN = "legacy_unknown_recovered"
 
 
-def hold_unknown_outcome(run, step) -> None:
-    entry = {"step": step, "attempt": run.attempts.get(step, 0)}
-    held = run.dependencies.get(HELD_UNKNOWN_OUTCOMES, [])
-    if entry not in held:
-        run.dependencies[HELD_UNKNOWN_OUTCOMES] = [*held, entry]
+def unknown_key(run, step) -> str:
+    return f"{step}:{run.attempts.get(step, 0)}"
 
 
-def unknown_outcome_held(run, step) -> bool:
-    return {"step": step, "attempt": run.attempts.get(step, 0)} in run.dependencies.get(
-        HELD_UNKNOWN_OUTCOMES, []
-    )
+def mark_unknown_outcome(run, step, kind) -> None:
+    run.dependencies[UNKNOWN_OUTCOME_KINDS] = {
+        **run.dependencies.get(UNKNOWN_OUTCOME_KINDS, {}),
+        unknown_key(run, step): kind,
+    }
 
 
-# The reason a step whose call overran its effect timeout saves (Workflow._step).
-DEADLINE_EXCEEDED = "external_stage_deadline_exceeded"
+def unknown_outcome_kind(run, step) -> str | None:
+    return run.dependencies.get(UNKNOWN_OUTCOME_KINDS, {}).get(unknown_key(run, step))
 
 
 def unknown_outcome_recoverable(run, step) -> bool:
     """Whether a first pass's or an extraction's saved ``external_outcome_unknown``
-    durably shows a cause that asking again can mend; only then does the drain
-    make it due (``Workflow.recover_blocked``). Either:
+    may be made due again (``Workflow.recover_blocked``, and the step's
+    lost-attempt settlement).
 
-    - the attempt's result was never saved: on a priced run every saved result
-      records the attempt in ``paid_calls`` (``lane_costs.record_step``), so an
-      attempt with no row is one whose worker stopped after its intent; or
-    - the step saved that its call overran its effect timeout
-      (``DEADLINE_EXCEEDED`` in ``run.reasons``).
-
-    An attempt held as a result the parent could not accept never is, and no
-    other saved unknown outcome is: the run does not record what caused it
-    (before 2026-10-12 a provider's HTTP 5xx and an invalid child result were
-    saved alike), so it stays blocked for a person.
+    A kind written by this code decides: an ``UNANSWERED`` call may be asked
+    again, a ``HELD`` result never is. An attempt with no kind is a legacy row:
+    the code before 2026-10-12 saved a provider's HTTP 5xx and an invalid child
+    result alike, so its cause cannot be read from the run. Logfire (2026-10-12
+    13:00Z-13:34Z) shows the known stuck rows were HTTP 504s, and recovery is
+    bounded (max_attempts, three automatic recoveries, each attempt reserved in
+    full under the run's limit) and ends at worst in review, so a legacy row is
+    recovered and recorded as ``LEGACY_UNKNOWN``.
     """
-    if unknown_outcome_held(run, step):
-        return False
-    attempt = run.attempts.get(step, 0)
-    unrecorded = run.profile.execution.price_list is not None and not any(
-        call.get("step") == step and call.get("attempt") == attempt
-        for call in run.paid_calls
-    )
-    return unrecorded or DEADLINE_EXCEEDED in run.reasons
+    return unknown_outcome_kind(run, step) in {None, UNANSWERED}
 
 
 # Each recovery is recorded here; a step is recovered at most this many times.
@@ -367,7 +364,7 @@ class Workflow:
                 )
                 or (
                     (ordinary_first_pass or ordinary_extraction)
-                    and not unknown_outcome_held(run, step)
+                    and unknown_outcome_recoverable(run, step)
                 )
             ) and run.attempts.get(step, 0) >= 1:
                 # A reading or an ordinary first pass is the exception: asking
@@ -557,6 +554,9 @@ class Workflow:
                 self.clock() + timedelta(seconds=policy.lease_seconds)
             ).isoformat()
             run.attempts[step] = run.attempts.get(step, 0) + 1
+            if ordinary_first_pass or ordinary_extraction:
+                # Until its result is saved, this call is unanswered.
+                mark_unknown_outcome(run, step, UNANSWERED)
             specimen = self.repository.save(
                 principal,
                 specimen,
@@ -1130,7 +1130,7 @@ class Workflow:
             # not accept (an invalid child result, a child whose cleanup is not
             # confirmed, an unexpected exception). It is held for a person:
             # recorded so that recover_blocked never makes it due again.
-            hold_unknown_outcome(run, step)
+            mark_unknown_outcome(run, step, HELD)
         elapsed = max(0, self.monotonic() - started)
         if external and elapsed > effect_timeout and not repeatable:
             circuit_failure = "timeout"
@@ -1435,12 +1435,10 @@ class Workflow:
         the normal workflow with no action:
 
         - ``external_outcome_unknown`` (lease ended): due, kept as it is; the
-          step settles it as a lost attempt (``_settle_lost_reading``). Only
-          when the run durably shows a cause asking again can mend
-          (``unknown_outcome_recoverable``: the attempt's result was never
-          saved, or its call overran its deadline); any other, and one held as
-          a result the parent could not accept (``HELD_UNKNOWN_OUTCOMES``),
-          stays blocked for a person.
+          step settles it as a lost attempt (``_settle_lost_reading``). Only an
+          unanswered call or a legacy row (``unknown_outcome_recoverable``); a
+          result the parent could not accept (``HELD``) stays blocked for a
+          person.
         - ``retry_budget_exhausted:<code>``: its attempts are used up, so the
           first pass (or the extraction) is given up on with ``<code>``. So is
           one blocked by an answer that stayed malformed (``MALFORMED_ANSWER``),
@@ -1514,6 +1512,12 @@ class Workflow:
                 "blocker": blocker,
                 "attempt": run.attempts.get(step, 0),
                 "at": at.isoformat(),
+                **(
+                    {"rule": LEGACY_UNKNOWN}
+                    if blocker == "external_outcome_unknown"
+                    and unknown_outcome_kind(run, step) is None
+                    else {}
+                ),
             },
         ]
         if blocker.startswith("retry_budget_exhausted:") or blocker == MALFORMED_ANSWER:

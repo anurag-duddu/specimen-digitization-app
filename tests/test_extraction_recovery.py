@@ -244,14 +244,17 @@ def as_before_this_change(monkeypatch):
     return undo
 
 
-def test_a_504_left_unknown_at_the_extraction_by_the_old_code_stays_blocked(tmp_path, monkeypatch):
+def test_a_504_left_unknown_at_the_extraction_by_the_old_code_is_recovered_as_legacy(
+    tmp_path, monkeypatch
+):
     # 66a72095, b191ed67, 1d842828, 74efda01 and 3781e440: an HTTP 504 at the
-    # extraction, saved by a6b72f6f as external_outcome_unknown. The attempt's
-    # row (outcome "unknown", no failure code), the blocker, the lease and the
-    # audit are what an invalid child result leaves too (compared field by
-    # field on a6b72f6f), so nothing durable shows the provider's failure and
-    # the run stays for a person (review of ba542159).
-    workflow, principal, ident, backend, _ = extraction_lab(tmp_path, monkeypatch, "http_504", 1)
+    # extraction, saved by a6b72f6f as external_outcome_unknown. That row is what
+    # an invalid child result leaves too (compared field by field on a6b72f6f),
+    # and it has no unknown-outcome kind: a legacy row. The coordinator's ruling
+    # of 2026-10-12: recover it on the bounded path, record the rule, end in
+    # review at worst. Here the provider keeps answering 504: the extraction is
+    # retried, then given up on.
+    workflow, principal, ident, backend, _ = extraction_lab(tmp_path, monkeypatch, "http_504", 3)
     undo = as_before_this_change(monkeypatch)
     first = workflow.drain(principal, ident).run
     undo()
@@ -260,15 +263,31 @@ def test_a_504_left_unknown_at_the_extraction_by_the_old_code_stays_blocked(tmp_
     )
     [row] = [c for c in first.paid_calls if c["step"] == "parse"]
     assert (row["outcome"], row.get("failure_code")) == ("unknown", None)
-    assert "held_unknown_outcomes" not in first.dependencies
+    assert "parse:1" not in first.dependencies.get("unknown_outcome_kinds", {})
     later(workflow, 2)
 
     summary = drain_worker(workflow, principal)
+    for hours in (3, 4, 5):
+        run = workflow.repository.get(principal.scope, ident).run
+        if run.stage == "finalized":
+            break
+        later(workflow, hours)
+        drain_worker(workflow, principal)
 
     run = workflow.repository.get(principal.scope, ident).run
-    assert summary["recovered"] == 0
-    assert (run.stage, run.blocker) == ("processing_blocked", "external_outcome_unknown")
-    assert run.attempts["parse"] == 1 and requests(tmp_path, "extract") == 1
+    assert summary["recovered"] == 1
+    [recovery] = run.dependencies["automatic_recoveries"]
+    assert (recovery["step"], recovery["blocker"], recovery["rule"]) == (
+        "parse", "external_outcome_unknown", "legacy_unknown_recovered"
+    )
+    assert (run.stage, run.blocker, run.disposition) == ("finalized", None, Disposition.REVIEW)
+    assert run.attempts["parse"] == 3 and requests(tmp_path, "extract") == 3
+    assert extraction_findings(run) == ["extraction_given_up:model_provider_error"]
+    # Every attempt is held in full, and the run stays within its limit.
+    assert [(c[0], c[2], c[3]) for c in parse_calls(run)] == [
+        (n, "reserved", PARSE_RESERVATION) for n in (1, 2, 3)
+    ]
+    assert run.usage.reserved_cost_micros <= run.profile.execution.approved_cost_limit_micros
 
 
 def test_an_extraction_the_old_code_saw_overrun_its_deadline_is_carried_on(tmp_path, monkeypatch):
@@ -327,6 +346,7 @@ def test_an_extraction_whose_worker_stopped_after_its_intent_is_carried_on(tmp_p
     del adapters.extract
     assert (parked.stage, parked.blocker) == ("processing_blocked", "external_outcome_unknown")
     assert parked.attempts["parse"] == 1 and parse_calls(parked) == []
+    assert "parse:1" not in parked.dependencies.get("unknown_outcome_kinds", {})  # A legacy row.
     later(workflow, 2)
 
     summary = drain_worker(workflow, principal)
@@ -493,7 +513,7 @@ def test_an_extraction_result_the_parent_cannot_accept_stays_blocked_after_its_l
         "processing_blocked", "external_outcome_unknown", None
     )
     assert run.attempts["parse"] == 1 and extraction_findings(run) == []
-    assert run.dependencies["held_unknown_outcomes"] == [{"step": "parse", "attempt": 1}]
+    assert run.dependencies["unknown_outcome_kinds"]["parse:1"] == "held"
     assert workflow.recover_blocked(principal, ident) is False
 
 
@@ -517,3 +537,132 @@ def test_a_first_pass_result_the_parent_cannot_accept_stays_blocked_after_its_le
     assert (run.stage, run.blocker) == ("processing_blocked", "external_outcome_unknown")
     assert run.attempts[step] == 1 and given_up_findings(run) == []
     assert workflow.recover_blocked(principal, ident) is False
+
+
+# ---- every unknown outcome this code saves says what it is (2026-10-12) -------
+
+def test_a_call_left_unanswered_by_a_stopped_worker_is_marked_and_carried_on(tmp_path, monkeypatch):
+    # The new code's recoverable unknown: the intent is saved as unanswered,
+    # the worker stops, and the drain carries the run on once the lease ends,
+    # even when something left it processing_blocked.
+    workflow, principal, ident, backend, adapters = extraction_lab(tmp_path, monkeypatch, "http_504", 0)
+
+    def stop(specimen):
+        raise Stopped()
+
+    adapters.extract = stop
+    with pytest.raises(Stopped):
+        workflow.drain(principal, ident)
+    del adapters.extract
+    left = workflow.repository.get(principal.scope, ident).run
+    assert left.blocker == "external_outcome_unknown"
+    assert left.dependencies["unknown_outcome_kinds"]["parse:1"] == "unanswered"
+    blocked_at_parse(workflow, principal, ident, blocker="external_outcome_unknown")
+    later(workflow, 2)
+
+    summary = drain_worker(workflow, principal)
+    for hours in (3, 4):
+        run = workflow.repository.get(principal.scope, ident).run
+        if run.stage == "finalized":
+            break
+        later(workflow, hours)
+        drain_worker(workflow, principal)
+
+    run = workflow.repository.get(principal.scope, ident).run
+    assert summary["recovered"] == 1
+    assert "rule" not in run.dependencies["automatic_recoveries"][0]  # Not a legacy row.
+    assert (run.stage, run.blocker, run.disposition) == ("finalized", None, Disposition.REVIEW)
+    assert run.attempts["parse"] == 2
+
+
+def kind_checking(workflow):
+    """Fail on any save of an ordinary first pass's or extraction's unknown
+    outcome that does not say what it is."""
+    from specimen_digitization.application.workflow import Workflow
+
+    save = workflow.repository.save
+    seen = []
+
+    def checked(principal, specimen, *args, **kwargs):
+        run = specimen.run
+        step = Workflow.next_step(run)
+        if run.blocker == "external_outcome_unknown" and (
+            step.startswith("first_pass:") or step == "parse"
+        ):
+            kind = run.dependencies.get("unknown_outcome_kinds", {}).get(
+                f"{step}:{run.attempts.get(step, 0)}"
+            )
+            assert kind in {"unanswered", "held"}, (step, kind)
+            seen.append(kind)
+        return save(principal, specimen, *args, **kwargs)
+
+    workflow.repository.save = checked
+    return seen
+
+
+def cleanup_incomplete():
+    from specimen_digitization.application.bounded_effect import IsolatedResult
+
+    return IsolatedResult(
+        status="deadline_exceeded", value=None, elapsed_seconds=1, input_bytes=1,
+        result_bytes=0, reason="deadline_exceeded", cleanup_complete=False,
+    )
+
+
+@pytest.mark.parametrize(
+    "path", ["invalid_json_input", "mismatched_fields", "cleanup_incomplete", "parent_exception", "stopped"]
+)
+def test_every_unknown_outcome_this_code_saves_at_the_extraction_has_a_kind(tmp_path, monkeypatch, path):
+    workflow, principal, ident, backend, adapters = extraction_lab(tmp_path, monkeypatch, "http_504", 1)
+    seen = kind_checking(workflow)
+    if path in {"invalid_json_input", "mismatched_fields"}:
+        monkeypatch.setattr(model_runtime, "run_isolated", lambda *a, **k: invalid_result(path))
+    elif path == "cleanup_incomplete":
+        monkeypatch.setattr(model_runtime, "run_isolated", lambda *a, **k: cleanup_incomplete())
+    elif path == "parent_exception":
+        def broken(specimen):
+            raise RuntimeError("a defect in the parent")
+
+        adapters.extract = broken
+    else:
+        def stop(specimen):
+            raise Stopped()
+
+        adapters.extract = stop
+
+    try:
+        workflow.drain(principal, ident)
+    except Stopped:
+        del adapters.extract  # The next worker runs normally.
+    later(workflow, 2)
+    drain_worker(workflow, principal)  # Saves again: recovery, settlement, or nothing.
+
+    run = workflow.repository.get(principal.scope, ident).run
+    expected = "unanswered" if path == "stopped" else "held"
+    assert run.dependencies["unknown_outcome_kinds"]["parse:1"] == expected
+    assert seen and set(seen) <= {"unanswered", "held"}
+
+
+@pytest.mark.parametrize("path", ["invalid_json_input", "cleanup_incomplete", "parent_exception"])
+def test_every_unknown_outcome_this_code_saves_at_a_first_pass_has_a_kind(tmp_path, monkeypatch, path):
+
+    workflow, principal, ident, _, adapters = comparison_lab(tmp_path, monkeypatch, "http_503", 1)
+    seen = kind_checking(workflow)
+    if path == "invalid_json_input":
+        monkeypatch.setattr(model_runtime, "run_isolated", lambda *a, **k: invalid_result(path))
+    elif path == "cleanup_incomplete":
+        monkeypatch.setattr(model_runtime, "run_isolated", lambda *a, **k: cleanup_incomplete())
+    else:
+        def broken(specimen, region, readings):
+            raise RuntimeError("a defect in the parent")
+
+        adapters.first_pass = broken
+
+    run = workflow.drain(principal, ident).run
+    step = comparison_step(run)
+
+    assert (run.stage, run.blocker) == ("processing_blocked", "external_outcome_unknown")
+    assert run.dependencies["unknown_outcome_kinds"][f"{step}:1"] == "held"
+    assert "unanswered" in seen and "held" in seen
+    later(workflow, 2)
+    assert drain_worker(workflow, principal)["recovered"] == 0
