@@ -19566,6 +19566,18 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
 - Second review round (Codex, head b9f42db6, CHANGES REQUESTED): a period after a whole place word still kept the year in the place ("Fazenda. 1948", "Ruta. 1960", "Route. 1960", "Berg. 1960", "Calle. 1960" settled precise_location). `_after_a_place_word` now takes a period after the word as the end of its clause unless the word is an abbreviation (`written.PLACE_ABBREVIATIONS`: "Hwy. 1960", "Rte. 1960", "km. 1850", "Rd. 1800" keep the number in the place). The 5 cases fail against b9f42db6's src; the 4 controls pass on both.
 - Third review round (Codex, head 1b997582, CHANGES REQUESTED): a complete date after a place word settled as the place ("Hwy. 24.IV.1948", "Hwy 24.IV.1948", "H.W.Y. 24.IV.1948", "Route IV-1948"), and a period inside closing punctuation was missed ('"Fazenda." 1948 collector J. Smith', "(Fazenda.) 1948 ..."). A run right after a place word is now the place's only when the date parser reads it as a bare year or a month and a day with `year_missing` (`written._a_place_number`), and the period check strips closing punctuation first. The 6 cases fail against 1b997582's src; the controls ("Hwy I-5", "Calle 5 de Mayo", "Hill 1800", "Hwy. 1960", and "Finca Sept. 3, 1948", already refused there) pass on both.
 
+## 2026-10-12 - Main queue refreshes on resume and while paginated
+
+- Branch `claude/queue-live-refresh`, base a6b72f6f. The owner reported that the iPhone and the Nothing Phone showed different main queues until the app was reopened.
+- Root causes in `apps/specimen_digitization/lib/src/workspace.dart`:
+  - Resuming only flipped `_foreground`, so the first refresh waited up to one 20 s tick.
+  - Once a second page was loaded, the poll reread only the open record, so arrivals, changes and departures never reached the list.
+  - A failing background poll replaced its banner every tick, and the "last loaded N s ago" text made screen readers announce it again each time.
+- A merge from page one cannot work with this API. The queue is ordered oldest first and each cursor is pinned to the time page one was read (`application/search.py`, `dataconnect/connector/search.gql`), so new records land at the end.
+- Change: a background refresh (poll, resume, Intake handoff) re-reads the loaded depth from page one, then swaps the list in one step. It keeps the selection and the scroll position. A Load more that lands mid-read wins over the refresh.
+- Resuming runs one quiet poll and restarts the timer. A transient outage is reported once, a Dismiss is respected, and every tick retries.
+- Cost: each tick costs one request per loaded page, and only while the app is in the foreground. Newest-first order or a "changed since" query would be cheaper, but either one is a server change and needs an owner decision.
+- Tests: `test/workspace_queue_refresh_test.dart` (4) and the paginated-handoff test in `test/intake_transfer_session_test.dart`. All 5 fail on origin/main and pass on the branch.
 ## 2026-10-12 - Field research: County settles on the country's second-level unit (105526329's municipio)
 
 - Task: Claude subagent for the coordinator (worktree `.claude/worktrees/agent-ae8229cab3e1fb9c6`), branch `claude/county-local-government-unit` from origin/main 6cb6de8e3f3e512213f686521c39d5197e6fa8a8, PR against main. Commits 0f85b057 (a county's Wikidata lookup reads the level from the class chain), 79046e47 (agreement, step and briefs) and the one holding FIELD_RESEARCH.md and this entry. No merge, deploy, `gcloud` or `firebase` command.
