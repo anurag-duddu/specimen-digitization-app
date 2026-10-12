@@ -122,6 +122,12 @@ fields' outcomes:
    (point 5) and then records a near_spelling warning finding, which never
    routes the record (place_settling). A lookup of any other name settles
    nothing ("Escuintla" for "Chimaltenago", "Philippines" for "P.I.").
+   A county is the country's second-level unit, whatever the country calls
+   it (a municipio of Guatemala is one: the owner's ruling of 2026-10-11),
+   and settles on no literal for which an answer about it, of one of its
+   place sources, has a candidate of the literal's name at a province's
+   level, unless the literal writes a county or municipality unit word
+   (first_level_namesake): the label may name that first-level unit.
 5. The place fits the label's other place fields (B3 and N1 of the third
    review; parents_refusal). The step checks it once every field's outcome
    is in, the country first and then the province, county and city
@@ -146,6 +152,9 @@ fields' outcomes:
      province settled for it too, when one is. No country settled for the
      reading, no parents, or none that is that country or province: the
      field goes to review with the reason. A country needs no parent;
+   - a county also needs the province its reading writes to be settled,
+     and is never that province itself: its record, or one of its texts
+     with letter case, accents and punctuation aside and unit words kept;
    - a near spelling, of any place field, settles only when every place
      field the reading writes above it (PLACE_ORDER: a province's country; a
      county's province and country; a city's county, province and country),
@@ -174,6 +183,7 @@ from typing import NamedTuple
 from specimen_digitization.application.derivations import UNITS
 from specimen_digitization.application.domain import LookupStatus
 from specimen_digitization.application.georef_locality import comparison_key, fold, one_letter_apart
+from specimen_digitization.application.georef_wikidata import FIRST_LEVEL, LEVEL_NAMES
 
 from . import written
 from .abbreviations import fit, fits, initialism
@@ -193,6 +203,13 @@ SOURCE_IDS = frozenset({"gbif", *PLACE_SOURCES})
 # ("A.ADM1"). A TGN type matches whole; a Wikidata label matches whole or
 # followed by " of " ("province of the Philippines"); an NGA code matches by
 # its start. GEOLocate's candidates are at a city's level only (at_level).
+# A county is the country's second-level unit, whatever the country calls it
+# (the owner, 2026-10-11, on a Guatemalan municipio: "however the local
+# government does it so if that is the equivalent then yes"): TGN's second
+# level subdivisions, NGA's A.ADM2, and for Wikidata a place whose classes
+# reach its second-level administrative division (sources._levels names
+# that class among a county lookup's kinds; "second-level administrative
+# country subdivision" is the class's former label).
 PLACE_LEVELS = {
     "tgn": {
         "country": ("nations",),
@@ -204,7 +221,8 @@ PLACE_LEVELS = {
         "country": ("country", "sovereign state"),
         "province_state": ("province", "former province", "department", "state",
             "first-level administrative country subdivision"),
-        "county": ("county", "second-level administrative country subdivision"),
+        "county": ("county", "second-level administrative division",
+            "second-level administrative country subdivision"),
         "city": ("city", "town", "village", "human settlement", "municipality"),
     },
     "nga": {
@@ -226,6 +244,8 @@ PART_OF_NAME = "The label writes a longer scientific name than this value."
 DOUBTFUL_GENUS = "The label marks this name's genus as doubtful."
 NO_PLACE = "No approved place source confirms this value."
 EXPANSIONS_DIFFER = "The sources found different places for the label's abbreviation."
+FIRST_LEVEL_TOO = ("The sources also find this name as a province or state, so they cannot tell which the "
+    "label means.")
 NOT_EVERY_READER = "Not every reader of the label writes this text."
 PART_OF_RANGE = "The label writes this value as one end of a range."
 UNIT_DIFFERS = "The label writes this elevation in the other unit."
@@ -742,9 +762,17 @@ def at_level(key: str, answer: SourceAnswer) -> list[SourceCandidate]:
     if answer.source_id == "geolocate":
         return list(answer.candidates) if key == "city" else []
     levels = PLACE_LEVELS.get(answer.source_id, {}).get(key, ())
-    return [candidate for candidate in answer.candidates
+    found = [candidate for candidate in answer.candidates
         if any(_kind_matches(answer.source_id, kind, level)
             for kind in (candidate.kind or "").split(",") for level in levels)]
+    if key == "county" and answer.source_id == "wikidata":
+        # A Wikidata place whose classes reach the first-level division is
+        # never a county, whatever its other kinds say (sources._place names
+        # that class among its kinds; Codex's review of #325 at 9f5319ca).
+        first = LEVEL_NAMES[FIRST_LEVEL]
+        found = [candidate for candidate in found
+            if first not in (kind.strip().casefold() for kind in (candidate.kind or "").split(","))]
+    return found
 
 
 def placed(key: str, answer: SourceAnswer) -> SourceCandidate | None:
@@ -1171,6 +1199,8 @@ NOT_IN_COUNTRY = "The place found is not in the country the label gives."
 NOT_IN_PROVINCE = "The place found is not in the province the label gives."
 NEAR_UNFIT = ("The place found is one letter from the label's spelling, and the larger places the label "
     "gives do not confirm it.")
+NO_PROVINCE = "The province the label gives is not settled, so this county cannot be confirmed inside it."
+IS_THE_PROVINCE = "The label gives this place as the province, and a province is never also the county."
 PLACE_ORDER = ("country", "province_state", "county", "city")
 
 
@@ -1224,17 +1254,28 @@ def lies_in(candidate: SourceCandidate, key: str, field: PlaceField) -> bool:
 
 
 def parents_refusal(key: str, candidate: SourceCandidate, basis: str, *,
-        written: Mapping[str, PlaceField], settled: Mapping[str, PlaceField]) -> Refusal | None:
+        written: Mapping[str, PlaceField], settled: Mapping[str, PlaceField],
+        literal: str | None = None, unsettled: frozenset[str] = frozenset()) -> Refusal | None:
     """Why the candidate a place value settles on does not fit the label's
     other place fields of one reading (B3 and N1 of #284's third review), or
     None. `written` is every other place field that reading writes; `settled`
-    those of them settled from that reading's text.
+    those of them settled from that reading's text; `unsettled` those of them
+    whose field has no settled value at all; `literal` the value's literal.
     - Below the country, the candidate has parents (SourceCandidate.parents),
       the country settled for the reading is one of them, and for a county or
       a city, the province settled for the reading too when one is. A
       candidate with no parents, or none of whose parents is that country,
       does not settle; nor does any place when no country is settled for the
       reading. A country needs no parent.
+    - A county also needs the province its reading writes to be settled
+      (NO_PROVINCE, when that field has no settled value: `unsettled`): a
+      second-level unit's parent chain is confirmed only inside a settled
+      province. And it is never the settled province
+      itself (IS_THE_PROVINCE): neither that province's record nor, letter
+      case, accents and punctuation aside (georef_locality.fold, unit words
+      kept), one of its texts, values or expansions, so "<Province>" or
+      "<Province> Prov." written once as the province is no county, while
+      "<Name> Co." in the state "<Name>" may be.
     - A near spelling (NEAR_SPELLING) settles only on G34's whole condition,
       on the larger places: every place field the reading writes above the
       field's own (PLACE_ORDER), all of them and at least one, names a
@@ -1250,6 +1291,12 @@ def parents_refusal(key: str, candidate: SourceCandidate, basis: str, *,
         if not lies_in(candidate, "country", country):
             return Refusal(NOT_IN_COUNTRY, NOT_IN_COUNTRY)
         province = settled.get("province_state")
+        if key == "county" and "province_state" in unsettled:
+            return Refusal(NO_PROVINCE, NO_PROVINCE)
+        if key == "county" and province is not None and (
+                (province.authority_id is not None and candidate.authority_id == province.authority_id)
+                or (literal is not None and fold(literal) in {fold(text) for text in province.texts})):
+            return Refusal(IS_THE_PROVINCE, IS_THE_PROVINCE)
         if key in ("county", "city") and province is not None and not lies_in(
                 candidate, "province_state", province):
             return Refusal(NOT_IN_PROVINCE, NOT_IN_PROVINCE)
@@ -1307,4 +1354,49 @@ def refusal(task: FieldTask, readings: Sequence[Reading], *, literal: str,
             return Refusal(EXPANSIONS_DIFFER, (
                 f"{told[0].upper()}{told[1:]}. The letters do not decide between them: answer "
                 "several_possibilities, or sources_cannot_resolve."), differ=True)
+        if task.key == "county" and (first := first_level_namesake(task, literal, received)) is not None:
+            return Refusal(FIRST_LEVEL_TOO, (
+                f"Your sources also found {first!r}, a first-level unit (a province, state or department), "
+                f"for the label's text {literal!r}, which writes no county or municipality unit word: the "
+                "label may name that unit, and the sources cannot tell which it means. A first-level "
+                "unit is never the county: answer several_possibilities, or sources_cannot_resolve."),
+                differ=True)
+    return None
+
+
+def writes_county_unit(literal: str) -> bool:
+    """Whether the literal writes a unit word that marks a county or a
+    municipality (admin_markers.ADMIN_MARKERS: "Co.", "County", "Kreis",
+    "Mun.", "Municipio" and the others), as a word of its own; one of
+    admin_markers.AFTER_A_NAME ("Co.") only after a name ("<County> Co.",
+    never "Co. <Name>", a hill)."""
+    from .admin_markers import ADMIN_MARKERS, AFTER_A_NAME
+
+    words = fold(literal).split()
+    return any("county" in ADMIN_MARKERS.get(word, ()) and (word not in AFTER_A_NAME or index > 0)
+        for index, word in enumerate(words))
+
+
+def first_level_namesake(task: FieldTask, literal: str, received: Iterable[SourceAnswer]) -> str | None:
+    """For a county, a first-level unit its place sources found for the label's
+    own text, or None: a candidate at a province's or state's level (at_level)
+    with the literal's name (place_name), in a success or ambiguous answer of
+    one of the field's place sources asked about the literal (about), with
+    its evidence stored. Such a text may name the first-level unit rather
+    than a county ("<Province>", or a Philippine "<Province> Prov.", which
+    Getty TGN, NGA and Wikidata hold at the first level), and the sources
+    cannot tell which the label means. None too when the literal writes a
+    county or municipality unit word (writes_county_unit: "<Name> Co.",
+    "Mun. <Name>"), which says which it means."""
+    if writes_county_unit(literal):
+        return None
+    sources = frozenset(task.tools) & frozenset(PLACE_SOURCES)
+    want = place_name(literal)
+    for answer in received:
+        if (answer.source_id not in sources or answer.status not in PLACE_ANSWERED or answer.evidence is None
+                or not about(answer, collapse(literal))):
+            continue
+        for candidate in at_level("province_state", answer):
+            if place_name(candidate.name) == want:
+                return candidate.name
     return None

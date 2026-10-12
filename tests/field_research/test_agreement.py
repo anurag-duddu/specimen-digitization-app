@@ -13,8 +13,10 @@ import hashlib
 import json
 from types import SimpleNamespace
 
+import httpx
 import pytest
 from pydantic_ai import ModelRetry
+from test_sources import GEOREF, Clock, Server, county_gazetteers
 from test_step import (
     LACKS,
     TEXT,
@@ -49,6 +51,7 @@ from specimen_digitization.field_research.contracts import (
     SourceAnswer,
     SourceCandidate,
 )
+from specimen_digitization.field_research.sources import ApprovedSources
 
 E_ACUTE, E_GRAVE, U_UMLAUT, A_ACUTE, A_CIRCUMFLEX, E_CIRCUMFLEX, SHARP_S = (
     "\N{LATIN SMALL LETTER E WITH ACUTE}", "\N{LATIN SMALL LETTER E WITH GRAVE}",
@@ -2010,3 +2013,220 @@ def test_a_town_and_its_marker_are_the_marker_checks_alone(tmp_path, monkeypatch
         assert (place.state, place.literal) == (ValueState.SUPPORTED, "Yepocapa, Mun.")
         assert decisions.get("precise_location", {}) == {}
     assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+
+
+# ---- County: the country's second-level unit (owner, 2026-10-11) ------------
+# Asked whether County should hold the municipio for Latin American labels
+# (Yepocapa, Guatemala), the owner answered: "however the local government
+# does it so if that is the equivalent then yes". 105526329's label reads
+# "Yepocapa, 4800ft / Chimaltenago, / Guatemala": in production its city
+# settled as Yepocapa and its county was absent (the run table of
+# ~/specimen-golive/status/schema-harness-plan.md). These run the step on the
+# recorded answers of Getty TGN, Wikidata and NGA as field_research.sources
+# reads them.
+
+def recorded_names() -> dict[str, frozenset[str]]:
+    """The names each gazetteer's recordings answer (tests/fixtures/georeferencing)."""
+    names: dict[str, set[str]] = {}
+    for source, file, key in (("wikidata", "wikidata_search.json", "responses"),
+            ("wikidata", "wikidata_county.json", "search"), ("nga", "nga_search.json", "responses"),
+            ("tgn", "tgn_reconcile.json", "responses")):
+        names.setdefault(source, set()).update(json.loads((GEOREF / file).read_text(encoding="utf-8"))[key])
+    return {source: frozenset(found) for source, found in names.items()}
+
+
+class Recorded(Gazetteer):
+    """Getty TGN, Wikidata and NGA as field_research.sources reads their
+    recorded answers (test_sources.county_gazetteers) for the names they
+    record, each answer in `made` instead of its lookup; anything else as
+    test_step's Gazetteer answers it."""
+
+    NAMES = recorded_names()
+
+    def __init__(self, blobs, made=()):
+        super().__init__(blobs)
+        clock = Clock()
+        self.recorded = ApprovedSources(blobs=blobs, sleep=clock.sleep, clock=clock,
+            client=httpx.AsyncClient(transport=httpx.MockTransport(Server(county_gazetteers(), clock))))
+        self.made = {(source, query): candidates for source, query, candidates in made}
+
+    async def lookup(self, source_id, query, *, field_key):
+        if (source_id, query) in self.made:
+            return self.made_answer(source_id, query, self.made[(source_id, query)])
+        if query.split(",")[0].strip() in self.NAMES.get(source_id, ()):
+            return await self.recorded.lookup(source_id, query, field_key=field_key)
+        return await super().lookup(source_id, query, field_key=field_key)
+
+    def made_answer(self, source_id, query, candidates):
+        """A made-up answer of `candidates` ((name, authority_id, kind, parents)),
+        stored as the sources store an answer."""
+        raw = json.dumps({"source": source_id, "query": query, "made": True}).encode()
+        found = tuple(SourceCandidate(name, key, kind, "in " + ", ".join(parent for parent, *_ in parents),
+            tuple(PlaceRef(*parent) for parent in parents)) for name, key, kind, parents in candidates)
+        evidence = Evidence(kind="authority", source=source_id, locator=None, raw_ref=self.blobs.put(raw),
+            digest=hashlib.sha256(raw).hexdigest(), excerpt="\n".join(
+                f"{c.name} | {c.authority_id} | {c.kind} | {c.detail}" for c in found))
+        status = LookupStatus.SUCCESS if len(found) == 1 else LookupStatus.AMBIGUOUS
+        return SourceAnswer(source_id, query, status, found, evidence, note=str(status))
+
+
+LABEL_329 = "Yepocapa, 4800ft\nChimaltenago,\nGuatemala"
+TEXT_329 = label_with(country=None, province_state=None, county=None, city=None) + "\n" + LABEL_329
+# 105526329's country, province and city as production settled them on
+# 2026-10-11: NGA's nation (its record's code GT), its department
+# Chimaltenango one letter from the label's "Chimaltenago" (a near
+# spelling), and its town Yepocapa.
+PLACES_329 = {
+    "country": from_tgn("Guatemala", "Guatemala", None, "nga:-1135822", source="nga"),
+    "province_state": from_tgn("Chimaltenango", "Chimaltenago", "Chimaltenango", "nga:-1132765", source="nga"),
+    "city": from_tgn("Yepocapa", "Yepocapa", None, "nga:-1143757", source="nga"),
+}
+
+
+@pytest.mark.parametrize(("source", "authority"), [
+    ("wikidata", "wikidata:Q1523937"),
+    ("nga", "nga:-1143758"),
+], ids=["wikidata-municipio", "nga-municipio"])
+def test_105526329s_county_settles_on_the_municipio_beside_its_town(tmp_path, source, authority):
+    """The county settles on the municipio Yepocapa, inside the settled
+    department and nation, and the city still settles on the town of that
+    name: one text of the label, two places at two levels. On origin/main
+    6cb6de8e Wikidata's municipio is at a city's level only, and its county
+    goes to review (NO_PLACE); NGA's A.ADM2 already settled it there."""
+    rig = build_rig(tmp_path, TEXT_329)
+    run = rig.specimen.run
+    settle(rig, Scripted({**PLACES_329, "county": from_tgn("Yepocapa", "Yepocapa", None, authority, source=source)}),
+        tools=Recorded(rig.blobs))
+    county, city = run.fields["county"], run.fields["city"]
+    assert (county.state, county.literal, county.authority_id) == (ValueState.SUPPORTED, "Yepocapa", authority)
+    assert (city.state, city.literal, city.authority_id) == (ValueState.SUPPORTED, "Yepocapa", "nga:-1143757")
+    assert run.fields["province_state"].state == ValueState.SUPPORTED
+    assert not reasons_for(run, "county") and not reasons_for(run, "city")
+
+
+# A department written alone: its name is also a municipio's (NGA's A.ADM2
+# Chimaltenango, Wikidata's Q1002552), never a county the label names.
+DEPARTMENT_ALONE = label_with(country="Guatemala", province_state="Chimaltenango", county=None, city=None)
+SECOND_ONLY = ("Chimaltenango", "tgn:municipio-chimaltenango", "municipalities, second level subdivisions "
+    "(political entities)", (("Chimaltenango", "tgn:1000565"), ("Guatemala", "tgn:7005493")))
+
+
+@pytest.mark.parametrize(("source", "query", "authority", "made", "reason"), [
+    # NGA's answer also holds the department (A.ADM1): the expert's check.
+    ("nga", "Chimaltenango", "nga:-1132766", (), "FIRST_LEVEL_TOO"),
+    # A made-up answer with the municipio alone: it is the settled province's text.
+    ("tgn", "Chimaltenango", "tgn:municipio-chimaltenango", [("tgn", "Chimaltenango", [SECOND_ONLY])],
+        "IS_THE_PROVINCE"),
+], ids=["nga-department-too", "the-provinces-text"])
+def test_a_department_written_alone_invents_no_county(tmp_path, source, query, authority, made, reason):
+    """On 6cb6de8e the county settles on the municipio in both cases."""
+    rig = build_rig(tmp_path, DEPARTMENT_ALONE)
+    run = rig.specimen.run
+    settle(rig, Scripted({
+        "country": PLACES_329["country"],
+        "province_state": from_tgn("Chimaltenango, Guatemala", "Chimaltenango", None, "tgn:1000565"),
+        "county": from_tgn(query, "Chimaltenango", None, authority, source=source),
+        "city": answering(LACKS)}), tools=Recorded(rig.blobs, made))
+    assert run.fields["province_state"].state == ValueState.SUPPORTED
+    county = run.fields["county"]
+    assert county.state != ValueState.SUPPORTED and county.reason.startswith(getattr(agreement, reason))
+
+
+# A Philippine province written with its unit word stays the province.
+PHILIPPINE_PROVINCE = label_with(country="Philippines", province_state="Davao Prov.", county=None, city=None)
+DAVAO_SECOND = ("Davao", "nga:davao-second", "A.ADM2", (("Davao", None), ("PH", None, "PH")))
+
+
+@pytest.mark.parametrize(("county", "made", "reason"), [
+    # The expert finds no second-level unit: the label names no county.
+    (answering(LACKS), (), None),
+    # Wikidata's province: its class is a first-level administrative division.
+    (from_tgn("Davao Province", "Davao Prov.", "Davao", "wikidata:Q15095071", source="wikidata"), (),
+        "NO_PLACE"),
+    # A source that also held the province at the second level (as GeoNames codes
+    # Philippine provinces ADM2, tests/fixtures/georeferencing/geonames_PH.txt)
+    # still finds the province's own text: no county.
+    (from_tgn("Davao Province", "Davao Prov.", "Davao", "nga:davao-second", source="nga"),
+        [("nga", "Davao Province", [DAVAO_SECOND])], "IS_THE_PROVINCE"),
+], ids=["lacks", "wikidata-first-level", "a-second-level-record"])
+def test_a_philippine_province_with_its_unit_word_is_never_a_county(tmp_path, county, made, reason):
+    """The province "Davao Prov." settles on Wikidata's province of Davao,
+    asked as "Davao Province", inside the nation NGA settles. On 6cb6de8e
+    the third county settles."""
+    rig = build_rig(tmp_path, PHILIPPINE_PROVINCE)
+    run = rig.specimen.run
+    settle(rig, Scripted({
+        "country": from_tgn("Philippines", "Philippines", None, "nga:-2445615", source="nga"),
+        "province_state": from_tgn("Davao Province", "Davao Prov.", "Davao", "wikidata:Q15095071",
+            source="wikidata"),
+        "county": county, "city": answering(LACKS)}), tools=Recorded(rig.blobs, made))
+    province = run.fields["province_state"]
+    assert (province.state, province.literal, province.normalized) == (ValueState.SUPPORTED, "Davao Prov.", "Davao")
+    found = run.fields["county"]
+    if reason is None:
+        assert found.state == ValueState.NOT_PRESENT
+        return
+    assert found.state != ValueState.SUPPORTED and found.reason.startswith(getattr(agreement, reason))
+
+
+# A US county under its state still settles, with its unit word written out.
+COOK_COUNTY = [("tgn", "Cook County", [("Cook", "tgn:Cook", "counties, second level subdivisions (political "
+    "entities)", (("Illinois", "tgn:Illinois"), ("United States", "tgn:United States")))])]
+
+
+def test_a_us_county_under_its_state_still_settles(tmp_path):
+    rig = build_rig(tmp_path, label_with(county="Cook Co."))
+    run = rig.specimen.run
+    settle(rig, Scripted({"county": from_tgn("Cook County", "Cook Co.", "Cook", "tgn:Cook")}),
+        tools=Recorded(rig.blobs, COOK_COUNTY))
+    county = run.fields["county"]
+    assert (county.state, county.literal, county.normalized, county.authority_id) == (
+        ValueState.SUPPORTED, "Cook Co.", "Cook", "tgn:Cook")
+    assert not reasons_for(run, "county")
+
+
+# A municipio of the label's text that lies in another department, beside a
+# town of that name in the label's own: with the label's department not
+# settled, nothing confirms the municipio's parent.
+SAN_LUCAS = label_with(country="Guatemala", province_state="Escuintla", county=None, city="San Lucas")
+SAN_LUCAS_ANSWER = [("tgn", "San Lucas", [
+    ("San Lucas", "tgn:san-lucas-municipio", "municipalities, second level subdivisions (political entities)",
+        (("Sacatepequez", "tgn:sacatepequez"), ("Guatemala", "tgn:7005493"))),
+    ("San Lucas", "tgn:san-lucas-town", "inhabited places", (("Escuintla", "tgn:1000566"),
+        ("Guatemala", "tgn:7005493")))])]
+
+
+@pytest.mark.parametrize(("province", "reason"), [
+    (answering(FieldAnswer(outcome="several_possibilities", options=["Escuintla", "Escuintla Department"],
+        explanation="Two places.")), "NO_PROVINCE"),
+    (from_tgn("Escuintla", "Escuintla", None, "tgn:1000566"), "NOT_IN_PROVINCE"),
+], ids=["province-unsettled", "province-settled"])
+def test_a_municipio_whose_department_is_not_confirmed_never_settles(tmp_path, province, reason):
+    """On 6cb6de8e the first county settles: with no province settled, only
+    its country was checked."""
+    rig = build_rig(tmp_path, SAN_LUCAS)
+    run = rig.specimen.run
+    settle(rig, Scripted({
+        "country": PLACES_329["country"],
+        "province_state": province,
+        "county": from_tgn("San Lucas", "San Lucas", None, "tgn:san-lucas-municipio"),
+        "city": answering(LACKS)}), tools=Recorded(rig.blobs, SAN_LUCAS_ANSWER))
+    county = run.fields["county"]
+    assert county.state != ValueState.SUPPORTED and county.reason.startswith(getattr(agreement, reason))
+
+
+def test_a_town_no_second_level_unit_holds_leaves_the_county_not_present(tmp_path):
+    """The expert asks about the town and finds no second-level unit: the
+    label names no county, and the town settles the city."""
+    town = [("tgn", "Finca Moca", [("Finca Moca", "tgn:finca-moca", "inhabited places",
+        (("Escuintla", "tgn:1000566"), ("Guatemala", "tgn:7005493")))])]
+    rig = build_rig(tmp_path, label_with(country="Guatemala", province_state="Escuintla", county=None,
+        city="Finca Moca"))
+    run = rig.specimen.run
+    settle(rig, Scripted({
+        "country": PLACES_329["country"],
+        "province_state": from_tgn("Escuintla", "Escuintla", None, "tgn:1000566"),
+        "county": answering(LACKS),
+        "city": from_tgn("Finca Moca", "Finca Moca", None, "tgn:finca-moca")}), tools=Recorded(rig.blobs, town))
+    assert run.fields["county"].state == ValueState.NOT_PRESENT
+    assert run.fields["city"].state == ValueState.SUPPORTED
