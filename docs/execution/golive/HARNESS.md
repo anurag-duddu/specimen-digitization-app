@@ -295,15 +295,19 @@ and `test_the_organisers_refused_call_costs_nothing`.
   unexpected exception in the parent) is saved as `held` and never recovered
   automatically; it stays blocked for a person. Provider and deadline failures
   of these reads are known failures now, never unknown outcomes.
-  A kind is kept only while its attempt is unresolved: it is removed once the
-  attempt's outcome is known (completed, retried, given up, settled as
-  lost, or reconciled by an administrator, which drops every kind of the
-  reconciled step), so a run whose calls all resolved keeps exactly the pinned
-  dependencies of its append-once pipeline-run row (#146;
-  `tests/test_projection_writer.py`). The `automatic_recoveries` and
-  `route_repins` records (2026-10-12, #315) are also kept in
-  `run.dependencies`, so a recovered or re-pinned run's dependencies differ
-  from that row; not changed here.
+  A kind is kept only while its attempt is unresolved. When an attempt's
+  outcome is known (completed, a known failure that is retried, given up,
+  settled as lost) the kinds of that attempt and of every earlier attempt of
+  the step go, and a new attempt's intent drops the earlier ones too: an
+  attempt starts only after the one before it ended, so a path that replaced
+  an unknown blocker without settling its attempt (the active graph's
+  size-limit block, then a person's retry) leaves nothing behind. An
+  administrator's reconcile drops every kind of the reconciled step. So the
+  kinds add no drift of their own to the pins of the append-once pipeline-run
+  row (#146; `tests/test_projection_writer.py`). Other records already
+  change `run.dependencies` after it is written: `ordinary_cost_settlements`
+  for priced calls, and `automatic_recoveries` and `route_repins` (#315) for
+  recovered or re-pinned runs; not changed here.
 - Legacy rows (the coordinator's decision of 2026-10-12, the owner having
   delegated technical decisions; replaces the second review round's stricter
   rule). An unknown attempt with no kind was saved by code before this record

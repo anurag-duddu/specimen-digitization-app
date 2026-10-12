@@ -114,7 +114,7 @@ def test_a_failed_extraction_is_retried_and_the_run_reaches_its_disposition(
     run = last.run
     assert (run.stage, run.blocker, run.disposition) == ("finalized", None, Disposition.REVIEW)
     assert run.attempts["parse"] == 2 and sent(tmp_path, failure, 1)
-    # Every attempt resolved: the run keeps exactly its pins (#146).
+    # Every attempt resolved: no unknown-outcome kind is left behind (#146).
     assert "unknown_outcome_kinds" not in run.dependencies
     assert extraction_findings(run) == []
     # The uncertain first attempt keeps its whole reservation.

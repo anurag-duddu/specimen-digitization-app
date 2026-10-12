@@ -682,3 +682,59 @@ def test_a_reconciled_first_pass_leaves_the_runs_pins_as_they_were(tmp_path, kin
     # Attempt 1's kind went with the reconcile and attempt 2's with its result:
     # the run's dependencies are its pins again (#146).
     assert drained.run.dependencies == pins
+
+
+def test_a_size_limit_then_a_retry_leaves_the_runs_pins_as_they_were(tmp_path):
+    # active_graph.save_recoverably: the first pass's result is too large to
+    # save, so the intent is reloaded and blocked with the size limit, keeping
+    # attempt 1's kind; a person's retry runs attempt 2, which succeeds.
+    from specimen_digitization.application.storage import SnapshotTooLarge
+
+    repo, blobs, blocked = blocked_run(tmp_path, "first_pass", synthetic=True)
+    step = f"first_pass:{blocked.run.regions[0].id}"
+    pins = {k: v for k, v in blocked.run.dependencies.items() if k != "unknown_outcome_kinds"}
+    # Back to before that attempt, then let its result overflow once.
+    assert reconcile(admin(tmp_path), blocked.run, blocked.version).status_code == 200
+    save, refused = repo.save, []
+
+    def overflowing(principal, specimen, revision, key, request_digest):
+        if key.startswith("result:") and not refused:
+            refused.append(key)
+            raise SnapshotTooLarge("snapshot_limit_exceeded")
+        return save(principal, specimen, revision, key, request_digest)
+
+    repo.save = overflowing
+    limited = Workflow(repo, blobs, Readers(blobs)).step(operator(), blocked.id)
+    repo.save = save
+    assert refused and limited.run.blocker == "snapshot_limit_exceeded"
+    assert limited.run.dependencies["unknown_outcome_kinds"] == {f"{step}:2": "unanswered"}
+    c = admin(tmp_path)
+
+    assert act(c, blocked.id, "retry", "retry-after-limit").status_code == 200
+    drained = Workflow(repo, blobs, Readers(blobs)).step(operator(), blocked.id)
+
+    assert step in drained.run.completed_steps and drained.run.attempts[step] == 3
+    assert drained.run.dependencies == pins
+
+
+def test_resolving_an_attempt_settles_every_earlier_attempt_of_its_step():
+    from specimen_digitization.application.workflow import (
+        mark_unknown_outcome,
+        resolve_unknown_outcome,
+    )
+
+    run = Run(profile=Profile())
+    other = "first_pass:other"
+    for step in ("first_pass:r", other):
+        run.attempts[step] = 1
+        mark_unknown_outcome(run, step, "unanswered")
+    # A stale entry an interrupted path left, two attempts back.
+    run.dependencies["unknown_outcome_kinds"]["first_pass:r:0"] = "held"
+    run.attempts["first_pass:r"] = 3
+    run.dependencies["unknown_outcome_kinds"]["first_pass:r:3"] = "unanswered"
+
+    resolve_unknown_outcome(run, "first_pass:r")
+
+    assert run.dependencies["unknown_outcome_kinds"] == {f"{other}:1": "unanswered"}
+    resolve_unknown_outcome(run, other)
+    assert "unknown_outcome_kinds" not in run.dependencies

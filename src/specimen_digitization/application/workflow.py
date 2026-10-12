@@ -115,7 +115,35 @@ def unknown_key(run, step) -> str:
     return f"{step}:{run.attempts.get(step, 0)}"
 
 
+def _keep_kinds(run, keep) -> None:
+    kinds = {
+        key: kind
+        for key, kind in run.dependencies.get(UNKNOWN_OUTCOME_KINDS, {}).items()
+        if keep(key)
+    }
+    if kinds:
+        run.dependencies[UNKNOWN_OUTCOME_KINDS] = kinds
+    else:
+        run.dependencies.pop(UNKNOWN_OUTCOME_KINDS, None)
+
+
+def _settled(step, attempt):
+    """A key of the step whose attempt is at or before ``attempt``: settled once
+    that attempt is (an attempt starts only after the one before it ended)."""
+
+    def match(key):
+        name, _, number = key.rpartition(":")
+        return name == step and number.isdigit() and int(number) <= attempt
+
+    return match
+
+
 def mark_unknown_outcome(run, step, kind) -> None:
+    """Record what the step's current attempt's unknown outcome is. Earlier
+    attempts of the step are settled by now: their kinds go (``_settled``)."""
+    attempt = run.attempts.get(step, 0)
+    settled = _settled(step, attempt - 1)
+    _keep_kinds(run, lambda key: not settled(key))
     run.dependencies[UNKNOWN_OUTCOME_KINDS] = {
         **run.dependencies.get(UNKNOWN_OUTCOME_KINDS, {}),
         unknown_key(run, step): kind,
@@ -123,31 +151,19 @@ def mark_unknown_outcome(run, step, kind) -> None:
 
 
 def resolve_unknown_outcome(run, step) -> None:
-    """Drop the attempt's kind once its outcome is known: the kinds live in the
-    run's pinned dependencies only while an attempt is unresolved, so a run whose
-    calls all resolved keeps exactly the pins it was written with (the
-    append-once pipeline-run row, #146)."""
-    kinds = dict(run.dependencies.get(UNKNOWN_OUTCOME_KINDS, {}))
-    if kinds.pop(unknown_key(run, step), None) is None:
-        return
-    if kinds:
-        run.dependencies[UNKNOWN_OUTCOME_KINDS] = kinds
-    else:
-        run.dependencies.pop(UNKNOWN_OUTCOME_KINDS, None)
+    """Drop the kinds of the step's current attempt and of every earlier one once
+    its outcome is known (completed, a known failure, given up, settled as lost).
+    The kinds live in the run's dependencies only while an attempt is
+    unresolved, so they add no drift of their own to the pins the append-once
+    pipeline-run row holds (#146)."""
+    settled = _settled(step, run.attempts.get(step, 0))
+    _keep_kinds(run, lambda key: not settled(key))
 
 
 def resolve_step_unknown_outcomes(run, step) -> None:
     """Drop every kind of the step's attempts: a person's reconcile settles the
     unknown outcome it clears (api.py, action "reconcile")."""
-    kinds = {
-        key: kind
-        for key, kind in run.dependencies.get(UNKNOWN_OUTCOME_KINDS, {}).items()
-        if key.rsplit(":", 1)[0] != step
-    }
-    if kinds:
-        run.dependencies[UNKNOWN_OUTCOME_KINDS] = kinds
-    else:
-        run.dependencies.pop(UNKNOWN_OUTCOME_KINDS, None)
+    _keep_kinds(run, lambda key: key.rpartition(":")[0] != step)
 
 
 def unknown_outcome_kind(run, step) -> str | None:
