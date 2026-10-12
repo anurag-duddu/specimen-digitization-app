@@ -175,6 +175,22 @@ def record_refused(run, step, kind, *, failure_code, **name):
     )
 
 
+def record_settled(run, step, kind, *, cost_micros, failure_code, **name):
+    """A call whose result was lost after the program ledger settled its cost.
+
+    The worker that sent it settled the shared ledger (``settle_step``) and then
+    stopped before saving the run, so the ledger's settled amount is the call's
+    known cost. It is recorded ``failed`` at that cost, so ``settle_step`` brings
+    the run's budget to the same amount the ledger holds.
+    """
+    if run.profile.execution.price_list is None:
+        return
+    _record(
+        run, step, kind, None, cost_micros, "failed", None,
+        basis="computed", **name, failure_code=failure_code,
+    )
+
+
 def step_outcome(run, step):
     if run.blocker == "external_outcome_unknown":
         return "unknown"
