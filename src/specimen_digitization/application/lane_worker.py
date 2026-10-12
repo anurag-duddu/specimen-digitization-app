@@ -29,7 +29,8 @@ FENCE_KIND = "worker_cursor"  # The worker's own state documents, one actor only
 CLOSING_SECONDS = 600  # No new run starts this close to the task deadline.
 QUEUE_CLOCK_MARGIN_SECONDS = 1  # Keep connector cutoffs behind its own clock.
 # The continuation's own start call (lane_dispatch.CloudRunJobDispatcher's
-# timeout). The exit handshake waits only when both still fit the deadline.
+# timeout). The exit handshake waits only when the wait and this call both fit
+# before the deadline; otherwise it skips the wait and starts the call at once.
 CONTINUATION_START_SECONDS = 10
 MAX_CONFLICTS = 3  # Consecutive save conflicts on one run before moving on.
 MAX_IDLE_HANDOVERS = 3  # Consecutive hand-overs without progress, then stop.
@@ -390,9 +391,11 @@ class DrainWorker:
         # dispatch. This is one bounded check, never an idle polling loop.
         remaining = (self.deadline_at - self.clock()).total_seconds()
         if remaining < QUEUE_CLOCK_MARGIN_SECONDS + CONTINUATION_START_SECONDS:
-            # A long final step used the task's grace window. Keep what is left
-            # for the continuation's start call, not the handshake: hand off
-            # once. The next worker owns acquisition, deduplication and admission.
+            # A long final step used the task's grace window. Skip the wait and
+            # hand off once with whatever time is left. If the step already ran
+            # past the deadline the start is late and best effort: the platform
+            # may stop it, but skipping it would strand the request for certain.
+            # The next worker owns acquisition, deduplication and admission.
             return True
         self._pause(QUEUE_CLOCK_MARGIN_SECONDS, stop)
         if self._stopped(stop):

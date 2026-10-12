@@ -394,6 +394,7 @@ def test_a_stop_before_a_collection_is_reached_hands_off_its_requests(lane):
     other = "collection-other"
     stop = threading.Event()
     queued(lane.repository, "first-collection", minutes=5)
+    queued(lane.repository, "other-collection", minutes=5, scope=Scope(organization_id=ORG, collection_id=other))
     continuation = Continuation()
 
     class StopsDuringItsStep(ScriptedWorkflow):
@@ -408,6 +409,12 @@ def test_a_stop_before_a_collection_is_reached_hands_off_its_requests(lane):
     ).run(stop)
     assert summary["status"] == "stopped"
     assert (continuation.calls, summary["continuation"]) == (1, "requested")
+    assert workflow.steps == ["first-collection"]
+    worker(
+        lane.repository, lane.workflow, lane.clock, execution="exec-next",
+        continuation=continuation, collections=(COLLECTION, other),
+    ).run()
+    assert lane.workflow.steps == ["other-collection"]
 
 
 def test_the_handshake_keeps_the_continuation_start_inside_the_deadline(lane):
