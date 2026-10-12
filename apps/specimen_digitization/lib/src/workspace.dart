@@ -778,6 +778,10 @@ class WorkspaceController extends ChangeNotifier {
           page = SpecimenPage(items, nextCursor: next.nextCursor);
         }
       }
+      // The service answered, so any outage a poll reported is over, whether
+      // or not this answer is applied now (a held list defers it, a newer
+      // page supersedes it).
+      _quietFailureReported = false;
       // A page appended while the reread was in flight is the reviewer's.
       // Keep it; the next tick rereads the deeper list.
       if (quiet && pagesEpoch != _pagesEpoch) return;
@@ -806,6 +810,15 @@ class WorkspaceController extends ChangeNotifier {
           !_mutating &&
           (!quiet || _foreground && _pollPauses.isEmpty) &&
           identical(recordAtStart, _selected);
+      // The open record's read is another await: a page appended during it
+      // also outranks this answer. The record itself is still current.
+      if (quiet && pagesEpoch != _pagesEpoch) {
+        if (ownsRecord && selected != null) {
+          _acceptSelected(selected);
+          _notify();
+        }
+        return;
+      }
       if (quiet && _holds > 0) {
         // A row has focus or a sheet is open. Keep the answer until it does
         // not, rather than moving the list under the reviewer.
@@ -817,7 +830,6 @@ class WorkspaceController extends ChangeNotifier {
       }
       _applyPage(page, cursors);
       if (ownsRecord && selected != null) _acceptSelected(selected);
-      _quietFailureReported = false;
       _loading = false;
       // A quiet poll is a background process. It may not clear a message the
       // reviewer has not read: that is what the banner's own Dismiss is for

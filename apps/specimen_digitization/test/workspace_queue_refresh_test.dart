@@ -65,9 +65,16 @@ class KeysetRepository extends TestRepository {
     );
   }
 
+  /// Holds the next open-record read until completed.
+  Completer<void>? detailGate;
+
   @override
-  Future<Specimen> specimen(CollectionScope scope, String id) async =>
-      server.firstWhere((Specimen s) => s.id == id);
+  Future<Specimen> specimen(CollectionScope scope, String id) async {
+    final Completer<void>? gate = detailGate;
+    detailGate = null;
+    if (gate != null) await gate.future;
+    return server.firstWhere((Specimen s) => s.id == id);
+  }
 }
 
 Future<WorkspaceController> started(
@@ -295,4 +302,90 @@ void main() {
       }
     },
   );
+
+  testWidgets(
+    'a page loaded while the open record is reread outranks the reread',
+    (WidgetTester tester) async {
+      final KeysetRepository repository = KeysetRepository(<Specimen>[
+        row('a'),
+        row('b'),
+        row('c'),
+        row('d'),
+      ]);
+      final TestSession session = TestSession();
+      final WorkspaceController controller = await started(
+        tester,
+        repository,
+        session,
+      );
+      try {
+        await controller.openSpecimen('a');
+        expect(ids(controller), <String>['a', 'b']);
+        // Page one answers at once; the open record's read is slow.
+        final Completer<void> slowDetail = Completer<void>();
+        repository.detailGate = slowDetail;
+        repository.server = <Specimen>[
+          row('a', revision: 2),
+          row('b'),
+          row('c'),
+          row('d'),
+        ];
+        final Future<void> reread = controller.refresh(quiet: true);
+        await tester.pump();
+        // The reviewer loads the next page in that later window.
+        await controller.loadMore();
+        expect(ids(controller), <String>['a', 'b', 'c', 'd']);
+        slowDetail.complete();
+        await reread;
+        expect(
+          ids(controller),
+          <String>['a', 'b', 'c', 'd'],
+          reason: 'the older one-page snapshot must not replace two pages',
+        );
+        expect(controller.nextCursor, 'after:d');
+        expect(controller.selected?.revision, 2);
+        expect(controller.error, isNull);
+      } finally {
+        controller.dispose();
+        await session.controller.close();
+      }
+    },
+  );
+
+  testWidgets('a recovery answered while the list is held ends the outage', (
+    WidgetTester tester,
+  ) async {
+    final KeysetRepository repository = KeysetRepository(<Specimen>[row('a')]);
+    final TestSession session = TestSession();
+    final WorkspaceController controller = await started(
+      tester,
+      repository,
+      session,
+    );
+    try {
+      repository.failures = 1;
+      await tester.pump(queuePollInterval);
+      await tester.pump();
+      expect(controller.error, isNotNull);
+      controller.clearError();
+
+      // The service recovers while a selection holds the list.
+      controller.holdList();
+      repository.server = <Specimen>[row('a'), row('b')];
+      await tester.pump(queuePollInterval);
+      await tester.pump();
+      expect(ids(controller), <String>['a']);
+      controller.releaseList();
+      expect(ids(controller), <String>['a', 'b']);
+
+      // A later outage is a new one and is reported.
+      repository.failures = 1;
+      await tester.pump(queuePollInterval);
+      await tester.pump();
+      expect(controller.error, isNotNull);
+    } finally {
+      controller.dispose();
+      await session.controller.close();
+    }
+  });
 }
