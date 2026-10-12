@@ -31,8 +31,9 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
 
+import httpx
 from pydantic_ai import Agent, ModelRetry, RunContext, capture_run_messages
-from pydantic_ai.exceptions import UnexpectedModelBehavior, UsageLimitExceeded
+from pydantic_ai.exceptions import ModelHTTPError, UnexpectedModelBehavior, UsageLimitExceeded
 from pydantic_ai.messages import (
     ModelMessage,
     ModelRequest,
@@ -79,6 +80,10 @@ LOGGER = logging.getLogger(__name__)
 SOURCE_OUTAGES = OPERATIONAL - {LookupStatus.POLICY}
 EXHAUSTED = "The expert used all its attempts without settling this field."
 UNCHECKED = "The expert's answer could not be checked against the readings and sources."
+# A provider's answer that says the request ran out of time: 408 Request
+# Timeout and 504 Gateway Timeout. Its field is a timeout (timed_out); every
+# other status is a model error.
+TIMEOUT_STATUSES = frozenset({408, 504})
 # One expert's budget (make_resolver): model requests ("turns") and tool calls.
 REQUEST_LIMIT = 6
 TOOL_CALLS_LIMIT = 12
@@ -693,6 +698,42 @@ def _answer_now_history(messages: Sequence[ModelMessage]) -> list[ModelMessage]:
     return [*history, ModelRequest(parts=[*parts, UserPromptPart(ANSWER_NOW_PROMPT)])]
 
 
+def timed_out(error: BaseException) -> bool:
+    """Whether a model request failed because it ran out of time, and nothing
+    else. Exactly these count:
+
+    - a TimeoutError: asyncio's, huggingface_hub's InferenceTimeoutError, and
+      the "provider_request_timeout" PrivateProviderModel raises for either;
+    - an httpx.TimeoutException (ConnectTimeout, ReadTimeout, WriteTimeout,
+      PoolTimeout): what the inference client raises when the gateway's own
+      bound on one request (step.MODEL_TIMEOUT_SECONDS) runs out, which
+      ClientTimeouts turns into a TimeoutError before PrivateProviderModel;
+    - a ModelHTTPError whose status is 408 or 504 (TIMEOUT_STATUSES).
+
+    Any other failure (an auth error, any other 4xx or 5xx, a connection
+    error, a malformed answer, a refusal) is not a timeout."""
+    if isinstance(error, ModelHTTPError):
+        return error.status_code in TIMEOUT_STATUSES
+    return isinstance(error, TimeoutError | httpx.TimeoutException)
+
+
+class ClientTimeouts(WrapperModel):
+    """A model whose inference client's own timeout comes back as a TimeoutError.
+
+    httpx raises its own timeout classes (httpx.TimeoutException), which are no
+    TimeoutError, and PrivateProviderModel turns every error it does not know
+    into RuntimeError("provider_request_failed"), a model error. Wrapped by
+    PrivateProviderModel, this keeps the gateway's bound on one request a
+    timeout: TimeoutError("provider_request_timeout"), which says nothing of
+    the request or its answer. Every other error passes through unchanged."""
+
+    async def request(self, messages, model_settings, model_request_parameters):
+        try:
+            return await self.wrapped.request(messages, model_settings, model_request_parameters)
+        except httpx.TimeoutException:
+            raise TimeoutError("provider_request_timeout") from None
+
+
 async def _close_client(model: Model) -> None:
     """Close the inference client of the model an expert used: the gateway makes
     one per model (model_gateway.HuggingFaceModelGateway.model_for). A model
@@ -728,7 +769,10 @@ def make_resolver(
     `request_limit` or `tool_calls_limit` is asked once more, on the same
     meter, for its answer (_Expert.answer_now); when that answer fails its
     checks the resolver's fallback (EXHAUSTED) is its answer, and when the
-    ceiling refuses that request the field fails as budget_exhausted.
+    ceiling refuses that request the field fails as budget_exhausted. A field
+    whose expert runs past `field_timeout_seconds`, or one of whose model
+    requests runs out of time (timed_out), fails as a timeout; any other
+    failure of the model fails it as a model_error.
     """
     for key in FIELD_TOOLS:
         instructions(key)  # Every brief loads before the first record, not mid-run.
@@ -777,30 +821,35 @@ def make_resolver(
         except UnexpectedModelBehavior as error:
             # The model kept breaking its answer's checks (or its tools') after
             # its retries. Asking again would not help: a person reads the field.
-            # A provider's own failure reaches here as RuntimeError or
-            # ModelHTTPError (provider_privacy.PrivateProviderModel), a model error.
+            # A provider's own failure reaches the handler below, as
+            # TimeoutError, ModelHTTPError or RuntimeError
+            # (provider_privacy.PrivateProviderModel).
             LOGGER.warning(
                 "field_research expert answer unchecked: field=%s error=%s",
                 task.key, type(error).__name__,
             )
             answer = FieldAnswer(outcome="sources_cannot_resolve", explanation=UNCHECKED)
             fallback = True
-        except TimeoutError as error:
-            # Only the field's own deadline is a timeout; a provider's is a model error.
-            failure = "timeout" if deadline.expired() else "model_error"
-            if failure == "model_error":
+        except Exception as error:
+            # Never the message text, which can quote label content or a
+            # provider's body. A request that ran out of time is a timeout,
+            # whether the field's own deadline or the provider's (timed_out):
+            # the step retries it and, on its last attempt, sends the field to
+            # review. Any other provider error, and anything else, is a model
+            # error, which blocks on every attempt.
+            if timed_out(error):
+                failure = "timeout"
+                if not deadline.expired():
+                    LOGGER.warning(
+                        "field_research expert's model request ran out of time: field=%s error=%s",
+                        task.key, type(error).__name__,
+                    )
+            else:
                 LOGGER.warning(
                     "field_research expert failed: field=%s error=%s",
                     task.key, type(error).__name__,
                 )
-        except Exception as error:
-            # Provider errors and anything else: never the message text, which
-            # can quote label content or a provider's body.
-            LOGGER.warning(
-                "field_research expert failed: field=%s error=%s",
-                task.key, type(error).__name__,
-            )
-            failure = "model_error"
+                failure = "model_error"
         finally:
             if model is not None:
                 await _close_client(model)
