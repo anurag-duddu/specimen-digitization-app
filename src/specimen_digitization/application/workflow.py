@@ -73,6 +73,9 @@ LOST_READING = "reading_result_lost"
 LOST_FIRST_PASS = "first_pass_result_lost"
 # The same for the organiser's extraction, parse's model call.
 LOST_EXTRACTION = "extraction_result_lost"
+# An ordinary first pass or extraction whose attempts are used up when its step
+# comes round again: given up on unsent (Workflow._step).
+ATTEMPTS_USED = "max_attempts_used"
 # A run's own budgets that leave no room for another call. At an ordinary first
 # pass the run gives the comparison up instead of blocking (HARNESS.md 3).
 UNAFFORDABLE = frozenset(
@@ -438,6 +441,19 @@ class Workflow:
                 f"unknown:{revision}",
                 digest({"unknown": step}),
             )
+        if (
+            (ordinary_first_pass or ordinary_extraction)
+            and run.attempts.get(step, 0) >= run.profile.execution.max_attempts
+        ):
+            # Its attempts are used up, as the saved intent of the last one
+            # records. Its result was then lost (the active graph's size limit
+            # reloads that intent, without the give-up the attempt had
+            # recorded), or a person retried a block on its last attempt: it
+            # is given up on unsent, never sent beyond max_attempts. Nothing
+            # is reserved or released; earlier attempts keep what they hold.
+            if ordinary_first_pass:
+                return self._give_up_first_pass(principal, specimen, revision, step, ATTEMPTS_USED)
+            return self._give_up_extraction_unsent(principal, specimen, revision, step, ATTEMPTS_USED)
         external = (
             step.startswith(("transcribe:", "first_pass:"))
             or step in {"segment", "lookup", FIELD_RESEARCH}

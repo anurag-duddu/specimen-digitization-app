@@ -346,6 +346,16 @@ and `test_the_organisers_refused_call_costs_nothing`.
   and without a person's preserved fields).
   A first-pass retry adds nothing either: its decision replaces the region's,
   and its tokens are counted only when it answers.
+- A first pass or extraction whose attempts are used up (`run.attempts`, which
+  the call's intent saves, at `max_attempts`) is given up on unsent when its
+  step comes round again, with `max_attempts_used`; it is never sent a fourth
+  time. That happens when the last attempt's result is lost to the active
+  graph's size limit (which reloads that attempt's intent without the give-up
+  it had recorded) and a person retries, or when a person retries a block on
+  the last attempt. The lost attempt keeps its whole reservation; nothing is
+  released or reserved again
+  (`tests/test_extraction_recovery.py::test_a_last_extraction_whose_result_was_lost_is_not_sent_again`,
+  `::test_a_last_first_pass_whose_result_was_lost_is_not_sent_again`).
 - An authentication or authorization error and a request the provider rejects
   still block with their cause, and the evidence pilot is excluded, as for the
   first pass.

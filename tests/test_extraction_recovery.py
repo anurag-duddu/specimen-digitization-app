@@ -672,3 +672,117 @@ def test_every_unknown_outcome_this_code_saves_at_a_first_pass_has_a_kind(tmp_pa
     assert "unanswered" in seen and "held" in seen
     later(workflow, 2)
     assert drain_worker(workflow, principal)["recovered"] == 0
+
+
+# ---- the last attempt's result lost to the size limit (review of 28ef083a) -----
+
+def overflow_once_at(repository, step, attempt):
+    """The result save of the step's `attempt` raises the snapshot size limit
+    once; active_graph.save_recoverably then reloads that attempt's intent."""
+    from specimen_digitization.application.storage import SnapshotTooLarge
+
+    save, refused = repository.save, []
+
+    def overflowing(principal, specimen, revision, key, request_digest):
+        if (
+            key.startswith("result:")
+            and specimen.run.attempts.get(step) == attempt
+            and not refused
+        ):
+            refused.append(key)
+            raise SnapshotTooLarge("snapshot_limit_exceeded")
+        return save(principal, specimen, revision, key, request_digest)
+
+    repository.save = overflowing
+    return refused
+
+
+def a_person_retries(workflow, principal, ident):
+    """The run action "retry" (api.py): blocker and disposition cleared, the
+    run's next step due."""
+    from specimen_digitization.application.workflow import Workflow
+
+    specimen = workflow.repository.get(principal.scope, ident)
+    run = specimen.run
+    run.blocker, run.disposition = None, None
+    run.stage = Workflow.next_step(run).split(":")[0]
+    return workflow.repository.save(
+        principal, specimen, specimen.version, "person-retry", digest({"retry": run.id})
+    )
+
+
+def test_a_last_extraction_whose_result_was_lost_is_not_sent_again(tmp_path, monkeypatch):
+    workflow, principal, ident, backend, _ = extraction_lab(tmp_path, monkeypatch, "http_504", 3)
+    refused = overflow_once_at(workflow.repository, "parse", 3)
+
+    drains(workflow, principal, ident, backend)
+
+    blocked = workflow.repository.get(principal.scope, ident).run
+    assert refused and blocked.blocker == "snapshot_limit_exceeded"
+    # The reloaded intent: the give-up of attempt 3 was not saved with it.
+    assert blocked.attempts["parse"] == 3 and extraction_findings(blocked) == []
+    held = blocked.usage.reserved_cost_micros
+    later(workflow, 5)
+    a_person_retries(workflow, principal, ident)
+
+    run = workflow.drain(principal, ident).run
+
+    # Before: a fourth extraction call was sent (max_attempts is 3).
+    assert requests(tmp_path, "extract") == 3 and run.attempts["parse"] == 3
+    assert (run.stage, run.blocker, run.disposition) == ("finalized", None, Disposition.REVIEW)
+    assert extraction_findings(run) == ["extraction_given_up:max_attempts_used"]
+    # The lost attempt keeps its reservation: nothing was released or added.
+    assert run.usage.reserved_cost_micros >= held
+    assert run.usage.reserved_cost_micros <= run.profile.execution.approved_cost_limit_micros
+    calls = [c for c in run.paid_calls if c["step"] == "parse"]
+    assert [c["attempt"] for c in calls] == [1, 2]
+
+
+def test_a_last_first_pass_whose_result_was_lost_is_not_sent_again(tmp_path, monkeypatch):
+    workflow, principal, ident, backend, _ = comparison_lab(
+        tmp_path, monkeypatch, "http_503", 3, small_prices=True
+    )
+    # The comparison's step is known once segmentation has run; overflow its third.
+    first = workflow.drain(principal, ident).run
+    step = comparison_step(first)
+    refused = overflow_once_at(workflow.repository, step, 3)
+    later(workflow, 1)
+    workflow.drain(principal, ident)
+    later(workflow, 2)
+    workflow.drain(principal, ident)
+
+    blocked = workflow.repository.get(principal.scope, ident).run
+    assert refused and blocked.blocker == "snapshot_limit_exceeded"
+    assert blocked.attempts[step] == 3 and given_up_findings(blocked) == []
+    later(workflow, 5)
+    a_person_retries(workflow, principal, ident)
+
+    run = workflow.drain(principal, ident).run
+
+    assert requests(tmp_path, "first_pass") == 3 and run.attempts[step] == 3
+    assert (run.stage, run.blocker, run.disposition) == ("finalized", None, Disposition.REVIEW)
+    assert given_up_findings(run) == [
+        ("first_pass_given_up", "warning", f"first_pass_given_up:{run.regions[0].id}:max_attempts_used")
+    ]
+
+
+def test_a_person_retrying_a_block_on_the_last_attempt_does_not_send_it_again(tmp_path, monkeypatch):
+    # The third comparison is refused as unauthenticated and blocks with its
+    # cause; a person's retry then gives it up unsent (max_attempts is 3).
+    from test_first_pass_given_up import until_the_last_attempt
+
+    workflow, principal, ident, _ = until_the_last_attempt(tmp_path, monkeypatch)
+    monkeypatch.setenv(FAILURE, "http_401")
+    blocked = workflow.drain(principal, ident).run
+    step = comparison_step(blocked)
+    assert (blocked.blocker, blocked.attempts[step]) == ("model_authentication_error", 3)
+    later(workflow, 5)
+    a_person_retries(workflow, principal, ident)
+
+    run = workflow.drain(principal, ident).run
+
+    assert requests(tmp_path, "first_pass") == 3 and run.attempts[step] == 3
+    assert (run.stage, run.disposition) == ("finalized", Disposition.REVIEW)
+    assert given_up_findings(run) == [
+        ("first_pass_given_up", "warning", f"first_pass_given_up:{run.regions[0].id}:max_attempts_used")
+    ]
