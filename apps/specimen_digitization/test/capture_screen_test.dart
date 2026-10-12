@@ -747,7 +747,7 @@ void main() {
         1,
         reason: 'upload completion preserves the existing refresh contract',
       );
-      expect(find.text('Uploaded'), findsOneWidget);
+      expect(find.text('Waiting to start'), findsOneWidget);
     },
   );
 
