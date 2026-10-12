@@ -5,7 +5,7 @@ import pytest
 
 from specimen_digitization.application.domain import AuditEvent, FieldValue, Principal, Run
 from specimen_digitization.application.human_field_carry import (
-    KEY, INVALID, active_value, adapt_projection, install, manifests, prepare, verify,
+    KEY, INVALID, REGIONS, active_value, adapt_projection, install, keep_regions, manifests, prepare, verify,
 )
 from specimen_digitization.application.production import SqlConnectRepository, actor_uid
 from specimen_digitization.application.storage import LocalBlobs, digest
@@ -53,6 +53,7 @@ class CarryCase:
         new = Run(profile=value.run.profile, classification_selection=value.run.classification_selection)
         event = AuditEvent(actor="B", action="reprocess", reason="fresh research, preserve saved decisions")
         carries = prepare(self.repo, value, new.id, event, self.blobs)
+        keep_regions(event, value.run, new)
         value.previous_runs.append(value.run)
         value.run = new
         install(value, carries, self.blobs)
@@ -134,19 +135,117 @@ def _save_region_review(case):
     value = case.current.model_copy(deep=True)
     old = value.run
     value.previous_runs.append(old)
+    # As api.regions saves it: the person's regions, coverage confirmed, segmented.
     value.run = Run(profile=old.profile, regions=[Region(asset_id=value.asset.id, x=0, y=0,
-        width=1, height=1, order=0, method="human_review", version="synthetic-v1")])
-    value.audit.append(AuditEvent(actor="A", action="review_regions", reason="Human corrected geometry",
-        before={"run_id": old.id}, after={"run_id": value.run.id}))
+        width=1, height=1, order=0, method="human", version="review-v1")],
+        coverage_confirmed=True, completed_steps=["classify", "segment"], stage="transcribe")
+    event = AuditEvent(actor="A", action="review_regions", reason="Human corrected geometry",
+        before={"run_id": old.id}, after={"run_id": value.run.id})
+    value.audit.append(event)
     case.current = save(case.repo, value, "A", "actual-region-review")
+    return event
 
 
-def test_still_current_human_regions_hold_before_reprocess_cas(case):
+def _last_reprocess(case):
+    return [e for e in case.current.audit if e.action == "reprocess"][-1]
+
+
+def test_still_current_human_regions_are_kept_by_the_fresh_run(case):
+    event = _save_region_review(case)
+    revision, regions = case.current.version, case.current.run.regions
+    assert case.reprocess().outcomes == {}
+    run = case.current.run
+    assert case.current.version == revision + 1 and case.current.previous_runs[-1].regions == regions
+    assert run.regions == regions and run.coverage_confirmed and run.completed_steps == ["segment"]
+    assert _last_reprocess(case).after[REGIONS] == {"origin_event_id": event.id, "origin_revision": revision}
+
+
+def test_kept_regions_are_kept_again_by_a_later_fresh_run(case):
+    event = _save_region_review(case)
+    revision, regions = case.current.version, case.current.run.regions
+    case.reprocess()
+    first = case.current
+    assert first.run.dependencies[REGIONS] == {"origin_event_id": event.id, "origin_revision": revision,
+        "source_run_id": first.previous_runs[-1].id, "source_revision": revision}
+    case.reprocess()
+    assert case.current.run.regions == regions and case.current.run.completed_steps == ["segment"]
+    assert _last_reprocess(case).after[REGIONS] == {"origin_event_id": event.id, "origin_revision": revision}
+    assert case.current.run.dependencies[REGIONS]["source_run_id"] == first.run.id
+
+
+def test_a_long_lineage_of_new_runs_keeps_the_regions_with_bounded_reads(case, monkeypatch):
+    from specimen_digitization.application import human_field_carry
+    event = _save_region_review(case)
+    revision, regions = case.current.version, case.current.run.regions
+    widest = []
+    kept_chain = human_field_carry._kept_chain
+    def counted(repository, specimen, decisions):
+        before = len(repository.cache)
+        result = kept_chain(repository, specimen, decisions)
+        widest.append(len(repository.cache) - before)
+        return result
+    monkeypatch.setattr(human_field_carry, "_kept_chain", counted)
+    for _ in range(25):
+        case.reprocess()
+        assert case.current.run.regions == regions and case.current.run.completed_steps == ["segment"]
+        assert _last_reprocess(case).after[REGIONS] == {"origin_event_id": event.id, "origin_revision": revision}
+    assert len(widest) == 24 and max(widest) <= 2
+
+
+def test_a_restored_model_run_with_the_regions_a_person_confirmed_is_segmented_again(case):
+    # Equal regions are not ancestry (review of d52a04f6): a model run, a
+    # person confirming its regions unchanged, then the model run restored.
+    from specimen_digitization.application.domain import Region
+    value = case.current.model_copy(deep=True)
+    value.previous_runs.append(value.run)
+    value.run = Run(profile=value.run.profile, completed_steps=["classify", "segment"],
+        regions=[Region(asset_id=value.asset.id, x=0, y=0, width=1, height=1, order=0,
+            method="sam3", version="sam3-v1")])
+    model = value.run
+    case.current = case.repo.save(case.principal, value, value.version, "model-run", digest("model-run"))
+    value = case.current.model_copy(deep=True)
+    value.previous_runs.append(value.run)
+    value.run = Run(profile=model.profile, regions=copy.deepcopy(model.regions),
+        coverage_confirmed=True, completed_steps=["classify", "segment"])
+    value.audit.append(AuditEvent(actor="A", action="review_regions", reason="Regions are right",
+        before={"run_id": model.id}, after={"run_id": value.run.id}))
+    case.current = save(case.repo, value, "A", "confirmed-unchanged")
+    value = case.current.model_copy(deep=True)
+    value.previous_runs.append(value.run)
+    value.run = model.model_copy(deep=True)  # history_restore keeps the run's id
+    value.audit.append(AuditEvent(actor="A", action="review_restore_version", reason="Back to the model run"))
+    case.current = save(case.repo, value, "A", "restored-model-run")
+    case.reprocess()
+    assert REGIONS not in _last_reprocess(case).after
+    assert case.current.run.regions == [] and case.current.run.completed_steps == []
+
+
+def test_a_kept_run_whose_lineage_does_not_prove_out_is_refused(case):
     _save_region_review(case)
+    case.reprocess()
+    value = case.current.model_copy(deep=True)
+    value.run.dependencies[REGIONS]["source_revision"] -= 1
+    case.current = case.repo.save(case.principal, value, value.version, "bent-lineage", digest("bent-lineage"))
     revision = case.current.version
     with pytest.raises(ValueError, match=INVALID):
         case.reprocess()
     assert max(case.session.snapshots) == revision
+
+
+def test_regions_segmented_again_are_not_a_persons(case):
+    from specimen_digitization.application.domain import Region
+    _save_region_review(case)
+    value = case.current.model_copy(deep=True)
+    value.previous_runs.append(value.run)
+    # A classification change starts a run that segments again (api.classification).
+    value.run = Run(profile=value.run.profile, completed_steps=["classify", "segment"],
+        regions=[Region(asset_id=value.asset.id, x=0, y=0, width=1, height=1, order=0,
+            method="sam3", version="sam3-v1")])
+    value.audit.append(AuditEvent(actor="B", action="review_classification", reason="Other collection"))
+    case.current = save(case.repo, value, "B", "segmented-again")
+    case.reprocess()
+    assert case.current.run.regions == [] and case.current.run.completed_steps == []
+    assert REGIONS not in _last_reprocess(case).after
 
 
 def test_obsolete_historical_region_review_is_not_a_global_hold(case):

@@ -64,6 +64,9 @@ FIELD_RESEARCH = "field_research"
 # A run field research has completed reaches the handover again: the clearance
 # rules only, nothing researched, external or paid (FieldResearchStep.recheck).
 FIELD_RECHECK = "field_research_recheck"
+# A reading whose worker stopped after saving its intent and before saving its
+# result (Workflow._settle_lost_reading).
+LOST_READING = "reading_result_lost"
 
 
 class OperationalBlock(RuntimeError):
@@ -218,7 +221,7 @@ class Workflow:
         if run.stage in {"finalized", "paused", "cancelled", "processing_blocked"}:
             return specimen
         revision = specimen.version
-        from .human_field_carry import KEY as CARRY_KEY, verify as verify_carries
+        from .human_field_carry import KEY as CARRY_KEY, REGIONS as CARRY_REGIONS, verify as verify_carries
         if run.dependencies.get(CARRY_KEY) or any(e.kind == "ordinary_human_field_carry" for e in run.evidence):
             try:
                 # specimen is still the authoritative persisted base here; later
@@ -256,6 +259,13 @@ class Workflow:
                 and datetime.fromisoformat(run.lease_until) > self.clock()
             ):
                 return specimen
+            if (
+                step.startswith("transcribe:")
+                and reader_failure_is_recoverable(run, step)
+                and run.attempts.get(step, 0) >= 1
+            ):
+                # A reading is the exception: asking again is safe (G6).
+                return self._settle_lost_reading(principal, specimen, revision, step)
             run.stage = "processing_blocked"
             return self.repository.save(
                 principal,
@@ -467,7 +477,8 @@ class Workflow:
         try:
             if step == "pin_dependencies":
                 retained_carries = copy.deepcopy(run.dependencies.get(CARRY_KEY, {}))
-                run.dependencies = (
+                retained_regions = copy.deepcopy(run.dependencies.get(CARRY_REGIONS))
+                pinned = (
                     self.adapters.pin_dependencies(run)
                     if hasattr(self.adapters, "pin_dependencies")
                     else {
@@ -475,10 +486,16 @@ class Workflow:
                         "synthetic": run.profile.synthetic,
                     }
                 )
-                if CARRY_KEY in run.dependencies and run.dependencies[CARRY_KEY] != retained_carries:
+                # Checked before the pins replace anything: a block saves the
+                # run, and must keep the carries and the regions lineage intact.
+                if (CARRY_KEY in pinned and pinned[CARRY_KEY] != retained_carries
+                        or CARRY_REGIONS in pinned):
                     raise OperationalBlock("preserved_human_field_provenance_unavailable")
+                run.dependencies = pinned
                 if retained_carries:
                     run.dependencies[CARRY_KEY] = retained_carries
+                if retained_regions is not None:
+                    run.dependencies[CARRY_REGIONS] = retained_regions
                 if self.classifier is not None and hasattr(self.classifier, "pin"):
                     run.dependencies["classifier"] = self.classifier.pin(run)
                 run.dependencies["authority_pins"] = self.authority_pins()
@@ -1068,6 +1085,139 @@ class Workflow:
                     circuit_retry_after = run.lookups[-1].retry_after_seconds
                 circuit.record_failure(permit, failure, circuit_retry_after)
         return saved
+
+    def _settle_lost_reading(self, principal, specimen, revision, step):
+        """End a reading whose worker stopped before saving it, as a failed reading.
+
+        The reading's intent was saved (``external_outcome_unknown`` and a lease)
+        and the lease ran out with no result saved: the worker that sent it
+        stopped. A reading is a pure read (``reader_failure_is_recoverable``), so
+        this is a known failure, not a block for an administrator. The attempt is
+        recorded failed with its reservation held in full, as any failed reading
+        is (``lane_costs.record_step``). The reading is asked again within
+        ``max_attempts``; after the last attempt it ends with no observation and
+        the record goes to review (G6), as ``reading_has_no_attempt_left`` does.
+        """
+        run = specimen.run
+        policy = run.profile.execution
+        run.lease_until = None
+        run.disposition = None
+        # The call may have run to its effect timeout: that time is spent, not
+        # released, so the run's active-time budget still counts it.
+        timeout = policy.effect_timeout_for_step(step)
+        run.usage.active_seconds += min(timeout, run.usage.reserved_active_seconds)
+        run.usage.reserved_active_seconds = max(0, run.usage.reserved_active_seconds - timeout)
+        if run.attempts.get(step, 0) >= policy.max_attempts:
+            run.blocker = None
+            run.completed_steps.append(step)
+            run.stage = self.next_step(run).split(":")[0]
+        else:
+            run.blocker = LOST_READING
+            run.stage = "processing_blocked"
+            self.schedule_retry(run, step)
+        _log_step_failure(
+            run,
+            step,
+            "reading_result_lost",
+            code=LOST_READING,
+            blocker=run.blocker,  # LOST_READING, or None once given up
+            stage=run.stage,
+        )
+        if not run.profile.synthetic:
+            from .lane_costs import record_settled, record_step, settle_step
+            from .lane_reservations import step_reservation
+
+            reserved = step_reservation(run, step)
+            settled = self._ledger_settlement(principal, specimen, step, reserved)
+            if settled is None:
+                record_step(
+                    self.repository,
+                    principal,
+                    specimen,
+                    step,
+                    [],
+                    0,
+                    reserved,
+                    self.clock,
+                    failure=LOST_READING,
+                )
+            else:
+                # The stopped worker had settled the ledger before saving: the
+                # run's budget is settled to the same known cost.
+                record_settled(
+                    run,
+                    step,
+                    "model",
+                    cost_micros=settled,
+                    failure_code=LOST_READING,
+                    route_id=step.split(":")[-1],
+                )
+                settle_step(
+                    self.repository, principal, specimen, step, reserved, self.clock
+                )
+            if self.settle_retained_cost is not None:
+                self.settle_retained_cost(principal, specimen, step)
+        specimen.audit.append(
+            AuditEvent(
+                actor=principal.user_id,
+                action="workflow_step",
+                reason=step,
+                after={"stage": run.stage, "blocker": run.blocker},
+            )
+        )
+        from .active_graph import save_recoverably
+
+        return save_recoverably(
+            self.repository,
+            principal,
+            specimen,
+            revision,
+            f"lost-reading:{revision}",
+            digest({"lost_reading": step, "run": run.id}),
+        )
+
+    def _ledger_settlement(self, principal, specimen, step, reserved):
+        """What the program ledger settled for the step's current attempt, or None.
+
+        Only an envelope this run reserved exactly as ``settle_step`` would
+        settle it: the same reservation and allowance, its numbers read back as
+        exact integers (``stored_integer``: the transport may return doubles).
+        None when the run has no program allowance, the ledger cannot be read,
+        the envelope differs, or the attempt is reserved but not settled; the
+        lost attempt then stays held in full.
+        """
+        from .domain import Scope
+        from .lane_allowance import ProgramLedger
+        from .lane_worker import stored_integer
+
+        run = specimen.run
+        policy = run.profile.execution
+        if policy.program_allowance_micros is None or not reserved:
+            return None
+        try:
+            ledger = ProgramLedger(
+                self.repository,
+                Scope(
+                    organization_id=principal.scope.organization_id,
+                    collection_id=policy.program_ledger_collection,
+                ),
+                clock=self.clock,
+            )
+            key = ProgramLedger._ordinary_key(
+                specimen.id, run.id, step, run.attempts.get(step, 0)
+            )
+            entry = ledger.read().get("ordinary_effects", {}).get(key)
+            if not isinstance(entry, dict) or entry.get("settled_micros") is None:
+                return None
+            if (
+                stored_integer(entry.get("reserved_micros")) != reserved
+                or stored_integer(entry.get("allowance_micros"))
+                != policy.program_allowance_micros
+            ):
+                return None
+            return stored_integer(entry["settled_micros"])
+        except Exception:  # noqa: BLE001 - an unreadable ledger proves no settlement
+            return None
 
     def schedule_retry(self, run, step, provider_seconds=None, *, rate_limited=False):
         """Wait before the step's next attempt, or end its retries.

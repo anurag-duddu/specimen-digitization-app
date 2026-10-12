@@ -153,6 +153,33 @@ reservations and zero retries never replay a paid call (a pilot reader that is
 stopped by its limits ends as `external_outcome_unknown` too). A run that was
 already blocked as `external_outcome_unknown` stays so.
 
+**A reading whose worker stopped** (G6, 2026-10-11). The workflow saves a
+reading's intent (`external_outcome_unknown` and a lease) before the call and
+its result after it. If the worker stops between the two (a job's time limit, a
+lost instance), the lease runs out with no result saved. The next drain after
+the lease settles that attempt as a failed reading, `reading_result_lost`,
+instead of parking the run (`Workflow._settle_lost_reading`):
+- On a priced run, it is recorded `failed` in `paid_calls` at its full
+  reservation, which stays held.
+- One exception: the program ledger may show that the stopped worker had
+  already settled that attempt. Then the attempt is recorded at that settled
+  cost, and the run's budget is settled to it, so the two agree. That needs
+  the ledger's envelope for the attempt to match the run: the same reservation
+  and allowance, read back as exact integers. Otherwise the attempt stays held
+  in full.
+- Its effect timeout counts as spent active time.
+- The reading is asked again within `max_attempts`. After the last attempt its
+  step completes with no observation and the record goes to review as above.
+
+Any other step whose worker stopped after saving its intent, and a reader of
+the evidence pilot, still parks as `external_outcome_unknown`. So does a
+reading during which the worker's own code (not the child) raises an
+unexpected exception. A run already parked that way stays parked until an
+administrator reconciles it. Specimen 105526322 is one: a release before the
+reader rules blocked it on 2026-10-09. Reconciling reads the label again, and a
+failure of that reading follows the reader rules above, so a reading that keeps
+timing out ends and the run goes on.
+
 **A first pass given up on** (G6, 2026-10-11, specimen 105526323, whose first
 pass was answered HTTP 429 on all three attempts and dead-lettered the run as
 `retry_budget_exhausted:model_rate_limited`). When the last attempt
@@ -805,6 +832,14 @@ harness settles which one the evidence supports (G29):
   day and month with no year (`14.IX`), and ranges (`3-5.IX.1946`,
   `VIII-IX.46`, `3.IX-5.X.1946`), whose reading has the start in `iso` and the
   end in `end`. A reading's `order` names the notation rule that matched.
+  Added 2026-10-10 (same tool version): a literal of more than one
+  `str.splitlines()` line is `no_match` with `literal_spans_a_line_break` (NEL,
+  U+2028, U+2029, VT and FF too, not only `\n` and `\r`); a Roman numeral is
+  read only in ASCII letters (the dotless i, U+0131, is no `I`); two Roman
+  months and a bare two-digit number all joined by hyphens (`III-V-46`) are
+  `no_match` with `range_shaped_like_a_code`; and a range that states no year
+  takes the year literal only when the caller passes `year_literal_decides`
+  (field research), so other callers read ranges as before.
 - A two-digit year becomes 19xx only under the profile's
   `date_rules.two_digit_year_century` (G24; `century_rule` records it); without
   the rule the year is missing. A bare number after a month is its day, or under

@@ -26,7 +26,8 @@ from collections.abc import Iterable
 from specimen_digitization.application.derivations import RULES as ELEVATION_RULES
 from specimen_digitization.application.derivations import UNITS, elevation_derivations, settled_value
 from specimen_digitization.application.domain import Evidence, FieldValue, ValueState
-from specimen_digitization.application.field_validators import written_range
+
+from .date_lines import written_range
 
 RULES_VERSION = "field-research-derivations-v1"
 SOURCE = "field_research"

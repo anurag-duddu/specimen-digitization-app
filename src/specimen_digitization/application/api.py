@@ -376,7 +376,9 @@ def summary(specimen: Specimen, role: str = "viewer") -> dict:
         # cannot repeat an effect (workflow.reconcilable_step).
         if role == RECONCILE_ROLE and reconcilable_step(run) is not None:
             result["available_actions"].append("reconcile")
-    if run.dependencies.get("human_review_field_locks"):
+    from .human_field_carry import reprocess_hold
+
+    if run.dependencies.get("human_review_field_locks") or reprocess_hold(specimen):
         result["available_actions"] = [action for action in result["available_actions"] if action != "reprocess"]
     if has_active_lease(run):
         result["available_actions"] = [
@@ -2670,11 +2672,12 @@ def create_app(
                 elif body.action == "reprocess":
                     if s.run.dependencies.get("human_review_field_locks"):
                         raise Conflict("Reprocessing cannot discard retained human field selections")
-                    from .human_field_carry import prepare, install
+                    from .human_field_carry import prepare, install, keep_regions
                     next_run = Run(profile=s.run.profile,
                         classification_selection=s.run.classification_selection)
                     action_event = AuditEvent(actor=user, action=body.action, reason=body.reason)
                     carries = prepare(repository, s, next_run.id, action_event, blobs)
+                    keep_regions(action_event, s.run, next_run)
                     s.previous_runs.append(s.run)
                     s.run = next_run
                     install(s, carries, blobs)

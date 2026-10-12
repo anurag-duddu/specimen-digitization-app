@@ -1432,6 +1432,11 @@ class WorkspaceController extends ChangeNotifier {
         failure != null && (failure.status == 401 || failure.status == 403);
     if (denied) {
       _deferredPage = null;
+      // A refusal answers the collection list too. It can arrive through the
+      // access failure stream while the first check is still in flight, and
+      // the generation bump below then makes that check drop its own answer.
+      // Without this the setup screen would wait on a check that has ended.
+      _scopesLoaded = true;
       // Do not retain an editable workspace after current access is denied.
       // A protected request may publish this denial synchronously while
       // checkAccess is awaiting scopes(). The denial invalidates that read
@@ -1464,7 +1469,11 @@ class WorkspaceController extends ChangeNotifier {
             ? 'The local server did not authorize this request. Your collection '
                   'access is unverified, so sign out and sign in with the '
                   'current fixture token.'
-            : '${failure!.message} Your collection access could not be verified.',
+            // App verification's messages already say access was not
+            // checked. Another sentence would break the banner budget.
+            : failure!.code == 'app_check_unavailable'
+            ? failure.message
+            : '${failure.message} Your collection access could not be verified.',
         actionLabel: 'Check access again',
         action: checkAccess,
         clearsAccess: true,

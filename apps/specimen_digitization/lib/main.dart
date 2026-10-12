@@ -81,7 +81,9 @@ Future<void> main() async {
           expectedMode: 'production',
           expectedUserId: () => session.userId,
           token: session.token,
+          freshToken: session is FirebaseSession ? session.freshToken : null,
           appCheckToken: () => FirebaseAppCheck.instance.getToken(),
+          freshAppCheckToken: () => FirebaseAppCheck.instance.getToken(true),
         ),
       );
       session = startup.session;

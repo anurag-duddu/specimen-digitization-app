@@ -369,7 +369,7 @@ class _Expert:
         return await self._once(("parse_date", literal, year_literal), lambda: self._check(
             checks.parse_date(literal, reading_texts=self.texts, date_rules=self.date_rules,
                               year_literal=year_literal, part=checks.DATE_PART.get(self.task.key),
-                              reading_names=[r.name for r in self.readings])))
+                              field=self.task.key, reading_names=[r.name for r in self.readings])))
 
     async def parse_elevation(self, literal: str) -> dict[str, Any]:
         """Read a written elevation: its number or range, its unit and any approximate marker.
