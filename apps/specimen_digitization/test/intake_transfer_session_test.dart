@@ -143,6 +143,31 @@ class QueueTransferRepository extends TransferRepository {
   }
 }
 
+/// The Queue list as the server pages it: oldest first, two to a page.
+class PagedQueueTransferRepository extends QueueTransferRepository {
+  @override
+  Future<SpecimenPage> specimenPage(
+    CollectionScope scope, {
+    Map<String, String> filters = const <String, String>{},
+    String? cursor,
+  }) async {
+    final SpecimenPage all = await super.specimenPage(
+      scope,
+      filters: filters,
+      cursor: cursor,
+    );
+    if (filters.containsKey('specimen_id')) return all;
+    final int start = cursor == null
+        ? 0
+        : all.items.indexWhere((Specimen s) => 'after:${s.id}' == cursor) + 1;
+    final List<Specimen> page = all.items.skip(start).take(2).toList();
+    return SpecimenPage(
+      page,
+      nextCursor: page.length == 2 ? 'after:${page.last.id}' : null,
+    );
+  }
+}
+
 class QueueTestSession implements SessionAccess {
   @override
   bool get signedIn => true;
@@ -384,6 +409,63 @@ void main() {
     session.close();
     workspace.dispose();
   });
+
+  test(
+    'handoff refresh adds the photograph to a paginated Queue without dropping loaded pages',
+    () async {
+      final PagedQueueTransferRepository repository =
+          PagedQueueTransferRepository();
+      for (final String id in <String>['older-1', 'older-2', 'older-3']) {
+        repository.summaries[id] = processingSpecimen(
+          id,
+          status: 'completed',
+          disposition: 'needs_human_review',
+        );
+      }
+      final WorkspaceController workspace = WorkspaceController(
+        repository: repository,
+        session: QueueTestSession(),
+      );
+      await workspace.checkAccess();
+      await workspace.loadMore();
+      expect(workspace.items.map((Specimen item) => item.id), <String>[
+        'older-1',
+        'older-2',
+        'older-3',
+      ]);
+      final IntakeTransferSession session = IntakeTransferSession(
+        repository,
+        scope,
+        'queue-test-operator',
+        processingPollInterval: Duration.zero,
+      );
+      session.entries.add(trackedPhotograph('paged-handoff'));
+      final List<Future<void>> workspaceRefreshes = <Future<void>>[];
+      // The refresh _IntakeRoute wires to Intake's handoff (app_router.dart).
+      session.attachHandoff(() {
+        workspaceRefreshes.add(workspace.refresh(quiet: true));
+      });
+      repository.summaries['paged-handoff'] = processingSpecimen(
+        'paged-handoff',
+        status: 'completed',
+        disposition: 'needs_human_review',
+      );
+
+      await session.refreshProcessingStatuses();
+      await Future.wait(workspaceRefreshes);
+
+      expect(workspaceRefreshes, hasLength(1));
+      expect(workspace.items.map((Specimen item) => item.id), <String>[
+        'older-1',
+        'older-2',
+        'older-3',
+        'paged-handoff',
+      ]);
+      expect(workspace.error, isNull);
+      session.close();
+      workspace.dispose();
+    },
+  );
 
   test(
     'a shared callback reports upload and a later handoff separately',
