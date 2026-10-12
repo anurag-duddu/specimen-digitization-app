@@ -109,7 +109,7 @@ void main() {
       expect(
         find.descendant(
           of: find.byType(IntakeManifestRow),
-          matching: find.text('Uploaded'),
+          matching: find.text('Waiting to start'),
         ),
         findsNothing,
       );
