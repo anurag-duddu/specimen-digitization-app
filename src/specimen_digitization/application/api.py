@@ -321,6 +321,8 @@ def classify_error(exc) -> tuple[int, str, str, str]:
 
 
 def summary(specimen: Specimen, role: str = "viewer") -> dict:
+    from .intake_progress import intake_progress
+
     run = specimen.run
     status = run_status(run)
     result = {
@@ -337,6 +339,7 @@ def summary(specimen: Specimen, role: str = "viewer") -> dict:
         "record_version_id": f"{run.id}:{specimen.version}",
         "status": status,
         "stage": run.stage,
+        "intake_progress": intake_progress(run),
         "disposition": run.disposition,
         "reason_codes": run.reasons,
         "blocker": run.blocker,

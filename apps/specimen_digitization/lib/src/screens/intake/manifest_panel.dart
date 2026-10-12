@@ -24,6 +24,7 @@ import '../../widgets/motion_reveal.dart';
 import '../../widgets/upload_item.dart';
 import 'manifest_entry.dart';
 import 'intake_transfer_session.dart';
+import 'stage_progress.dart';
 
 /// The manifest header and its rows.
 class IntakeManifest extends StatefulWidget {
@@ -313,13 +314,6 @@ class IntakeManifestRow extends StatelessWidget {
   final VoidCallback onServerCheck;
   final VoidCallback? onRetry;
 
-  /// States whose reason is a failure a screen reader should hear at once.
-  static bool announces(UploadState state) =>
-      state == UploadState.failed ||
-      state == UploadState.interrupted ||
-      state == UploadState.processingBlocked ||
-      state == UploadState.skipped;
-
   /// What the server check control is called.
   static const String serverCheckLabel = 'Send for server check';
 
@@ -338,34 +332,29 @@ class IntakeManifestRow extends StatelessWidget {
         entry.state == UploadState.processingBlocked ||
         canRetryProcessing ||
         (entry.state == UploadState.processing && entry.specimen == null);
-    // A determinate value is information, so it keeps its motion and its
-    // linear curve under reduced motion (motion, rows 65 and 2.5).
-    final Widget item = TweenAnimationBuilder<double>(
-      tween: Tween<double>(begin: entry.progress, end: entry.progress),
-      duration: ui.motion.meaningful(MotionTokens.standardRaw),
-      curve: MotionTokens.progressCurve,
-      builder: (BuildContext context, double value, Widget? _) => UploadItem(
-        name: entry.label,
-        concise: true,
-        state: entry.displayState,
-        thumbnail: entry.file?.bytes,
-        sizeBytes: entry.file?.bytes.length,
-        pixelWidth: entry.file?.width,
-        pixelHeight: entry.file?.height,
-        progress: value,
-        reason: entry.why == null ? entry.reason : null,
-        onRemove: canDismiss ? onRemove : null,
-        removeBlockedReason: canDismiss
-            ? null
-            : entry.state == UploadState.processing
-            ? 'This photograph stays here while processing is active.'
-            : 'The server has taken this file, so it cannot be removed from '
-                  'the batch.',
-        // The per-row action and the per-row evidence live inside the
-        // component rather than in a column around it, so a manifest row is
-        // one thing a reviewer learns once.
-        details: _details(context, ui),
-      ),
+    // The stage track owns progress interpolation and status announcements.
+    final Widget item = UploadItem(
+      name: entry.label,
+      concise: true,
+      stageProgress: IntakeStageProgress(entry: entry),
+      state: entry.displayState,
+      thumbnail: entry.file?.bytes,
+      sizeBytes: entry.file?.bytes.length,
+      pixelWidth: entry.file?.width,
+      pixelHeight: entry.file?.height,
+      progress: entry.progress,
+      reason: entry.why == null ? entry.reason : null,
+      onRemove: canDismiss ? onRemove : null,
+      removeBlockedReason: canDismiss
+          ? null
+          : entry.state == UploadState.processing
+          ? 'This photograph stays here while processing is active.'
+          : 'The server has taken this file, so it cannot be removed from '
+                'the batch.',
+      // The per-row action and the per-row evidence live inside the
+      // component rather than in a column around it, so a manifest row is
+      // one thing a reviewer learns once.
+      details: _details(context, ui),
     );
 
     return Padding(
@@ -375,7 +364,7 @@ class IntakeManifestRow extends StatelessWidget {
         children: <Widget>[
           const UiHairline(),
           SizedBox(height: ui.space.s2),
-          Semantics(liveRegion: announces(entry.state), child: item),
+          item,
           if ((canRetryTransfer || canRetryProcessing) && onRetry != null)
             Align(
               alignment: AlignmentDirectional.centerStart,

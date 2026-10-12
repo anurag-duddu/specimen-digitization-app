@@ -148,6 +148,7 @@ class UploadItem extends StatelessWidget {
     this.removeBlockedReason,
     this.details,
     this.concise = false,
+    this.stageProgress,
   });
 
   /// The file name, as the operator's machine spells it.
@@ -192,6 +193,10 @@ class UploadItem extends StatelessWidget {
 
   /// Keeps the transfer state primary when measurements live in a disclosure.
   final bool concise;
+
+  /// Intake's journey track, which owns its status label and live semantics.
+  /// Other uses keep the shared upload presentation.
+  final Widget? stageProgress;
 
   /// The remove control's name, fixed so the tests and the copy cannot drift.
   static const String removeLabel = 'Remove from this batch';
@@ -275,13 +280,17 @@ class UploadItem extends StatelessWidget {
     final Widget row = Semantics(
       container: true,
       label: concise
-          ? <String>[name, state.semanticsLabel, ?reason].join(', ')
+          ? <String>[
+              name,
+              if (stageProgress == null) state.semanticsLabel,
+              ?reason,
+            ].join(', ')
           : _semanticsLabel(line),
       excludeSemantics: true,
       child: UiListRow(
         size: concise ? UiSize.sm : UiSize.md,
         title: name,
-        subtitle: concise ? state.label : line,
+        subtitle: concise ? (stageProgress == null ? state.label : null) : line,
         leading: SpecimenThumbnail(bytes: thumbnail),
         trailing: beside
             ? ConstrainedBox(
@@ -334,7 +343,15 @@ class UploadItem extends StatelessWidget {
               ),
             ),
           ),
-        if (concise && state == UploadState.uploading)
+        if (stageProgress != null)
+          Padding(
+            padding: EdgeInsetsDirectional.only(
+              start: _textInset(ui),
+              bottom: ui.space.s2,
+            ),
+            child: stageProgress,
+          ),
+        if (stageProgress == null && concise && state == UploadState.uploading)
           Padding(
             padding: EdgeInsetsDirectional.only(
               start: _textInset(ui),
