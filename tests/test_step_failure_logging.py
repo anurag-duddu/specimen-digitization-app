@@ -145,16 +145,17 @@ def test_malformed_response_logs_status_and_code(tmp_path, monkeypatch, caplog):
     )
     _, _, result = drain_to_parse_failure(tmp_path, monkeypatch, None)
 
-    assert result.run.blocker == "model_malformed_response"
+    # Since 2026-10-12 a malformed extraction is given up on, not a block
+    # (HARNESS.md section 3): the run has no blocker, and the log line names
+    # the branch, status and code.
+    assert result.run.blocker is None
     fields = only_failure(caplog)
     assert fields["run"] == result.run.id
     assert fields["step"] == "parse"
-    assert fields["branch"] == "adapter_failure"
+    assert fields["branch"] == "extraction_given_up"
     assert fields["status"] == "malformed_response"
     assert fields["code"] == "model_malformed_response"
-    assert fields["blocker"] == "model_malformed_response"
     assert fields["error_class"] == "AdapterFailure"
-    assert fields["outcome_unknown"] == "False"
 
 
 def test_ambiguous_provider_failure_logs_the_code_the_blocker_hides(
@@ -177,14 +178,16 @@ def test_ambiguous_provider_failure_logs_the_code_the_blocker_hides(
     )
     _, _, result = drain_to_parse_failure(tmp_path, monkeypatch, None)
 
-    # The stored blocker says only "unknown"; the log says why.
-    assert result.run.blocker == "external_outcome_unknown"
+    # Since 2026-10-12 the extraction's 5xx is a known failure that is retried
+    # (reliability.extraction_failure_is_recoverable), so the stored blocker
+    # names the code too; the log still carries the cause and HTTP status.
+    assert result.run.blocker == "model_provider_error"
     fields = only_failure(caplog)
     assert fields["branch"] == "adapter_failure"
-    assert fields["blocker"] == "external_outcome_unknown"
+    assert fields["blocker"] == "model_provider_error"
     assert fields["code"] == "model_provider_error"
     assert fields["status"] == "provider_error"
-    assert fields["outcome_unknown"] == "True"
+    assert fields["outcome_unknown"] == "False"
     assert fields["cause_class"] == "ModelHTTPError"
     assert fields["http_status"] == "502"
 
@@ -206,11 +209,12 @@ def test_model_step_failure_rebuilt_in_the_parent_logs_the_code_without_a_cause(
     )
     _, _, result = drain_to_parse_failure(tmp_path, monkeypatch, None)
 
-    assert result.run.blocker == "external_outcome_unknown"
+    # Retried since 2026-10-12 (see above), so the blocker is the code.
+    assert result.run.blocker == "model_provider_error"
     fields = only_failure(caplog)
     assert fields["code"] == "model_provider_error"
-    assert fields["blocker"] == "external_outcome_unknown"
-    assert fields["outcome_unknown"] == "True"
+    assert fields["blocker"] == "model_provider_error"
+    assert fields["outcome_unknown"] == "False"
     assert fields["cause_class"] == "-"
     assert fields["http_status"] == "-"
 

@@ -838,16 +838,19 @@ class Workflow:
 
                         give_up_extraction(run, failure.code)
                         reading_failure = failure.code
+                        status = {}
                         if isinstance(failure, AdapterFailure):
                             refusal = failure.code if failure.refused else None
                             circuit_failure = failure.status.value
                             circuit_retry_after = failure.retry_after_seconds
+                            status = {"status": failure.status.value}
                         _log_step_failure(
                             run,
                             step,
                             "extraction_given_up",
                             error=failure,
                             code=log_code(failure.code),
+                            **status,
                         )
                 if proposal is not specimen:
                     from .human_field_carry import manifests
