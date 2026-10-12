@@ -181,7 +181,7 @@ void main() {
     await chooseFiles(tester);
 
     expect(find.text('0 of 3 uploaded, 2 skipped'), findsOneWidget);
-    expect(find.text('Skipped'), findsNWidgets(2));
+    expect(find.text('Not uploaded'), findsNWidgets(2));
     expect(find.text('empty.png'), findsOneWidget);
     expect(find.text('notes.txt'), findsOneWidget);
     expect(
