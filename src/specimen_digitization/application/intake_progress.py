@@ -56,6 +56,9 @@ def intake_progress(run: Run) -> dict:
         "next_step": next_step,
         "completed_stages": stages,
         "next_retry_at": run.next_retry_at if run.stage == "retry_scheduled" else None,
+        # Always present, so every reply has one shape. Only the API, which can
+        # see the collection's other runs, sets it for a pending run (api.in_line).
+        "waiting_in_line": False,
     }
 
 

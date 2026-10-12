@@ -19673,3 +19673,13 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
   - `flutter analyze`: no issues.
   - `TZ=America/Chicago flutter test` on the same intake, wording and theme files: 322 passed.
   - The full Python suite and `scripts/ci/verify.sh`: Not confirmed.
+- CI round (PR #333, head bcd3af1f, Python shard 5): three cases of `test_camera_intake_worker_journey.py::test_camera_photo_recovers_a_503_and_enters_review_without_administrator_recovery` failed. Each failing case replays its upload completion after the run has finalized and expects the original reply.
+  - Cause: the first reply was pending, so `in_line` added `waiting_in_line: False`. The replay found the run no longer pending, so it returned the stored summary, which had no such key.
+  - Decision: the test's expectation still holds (a replay returns the original receipt), so the shape was fixed and the test was kept. `intake_progress` now always carries `waiting_in_line`, defaulting to False in the pure summary, and the API sets it only for a pending run. The stored reply, a replay, and the fail-open path therefore have the same keys, and the stored reply never holds a derived True.
+  - Tests: `test_a_replay_after_the_run_moves_on_keeps_the_original_reply_shape[transcribe|finalized]` and the three camera journey cases fail against bcd3af1f's `src` and pass on the fix. `test_intake_progress.py`'s exact-dict assertion gains the default key. The fail-open test now expects the stored default False instead of no key.
+- Validation at the fix commit:
+  - pytest on every test file that completes an upload, plus the lane and intake files: 262 passed, 10 skipped. The files are `test_camera_intake_worker_journey`, `test_pending_processing_restart`, `test_intake_progress`, `test_lane_trigger`, `test_lane_drain`, `test_application`, `test_decisions_batch`, `test_upload_completion_http`, `test_hardening_concurrency`, `test_codec_runtime` and `test_sensitivity_runtime`.
+  - `scripts/ci/python_shards.py run --index 4 --count 6` (CI's shard 5): 2939 passed, 6 skipped.
+  - `flutter analyze`: no issues.
+  - `TZ=America/Chicago flutter test` on the same intake, wording and theme files: 322 passed.
+  - The other five shards and `scripts/ci/verify.sh`: Not confirmed.

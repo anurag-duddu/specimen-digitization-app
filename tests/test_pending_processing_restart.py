@@ -342,6 +342,21 @@ def test_an_upload_completed_with_nothing_ahead_still_offers_a_start(tmp_path):
     assert replay().json() == completed
 
 
+@pytest.mark.parametrize("stage", ["transcribe", "finalized"])
+def test_a_replay_after_the_run_moves_on_keeps_the_original_reply_shape(tmp_path, stage):
+    # The camera journey replays its completion after the run has finished.
+    # A run no longer pending is not re-derived, so the replay is the stored
+    # reply, and that reply already carries `waiting_in_line` as the first
+    # reply did.
+    completed, replay = recorded_intake(
+        lane.lane_client(tmp_path, dispatcher=lane.RecordingDispatcher())
+    )
+    lane.force_stage(tmp_path, completed["specimen_id"], stage)
+    again = replay()
+    assert again.status_code == 200, again.text
+    assert again.json() == completed
+
+
 @pytest.mark.parametrize("failure", ["operational_block", "connection"])
 def test_a_failed_reread_after_an_accepted_upload_returns_the_stored_reply(
     tmp_path, monkeypatch, failure
@@ -378,7 +393,8 @@ def test_a_failed_reread_after_an_accepted_upload_returns_the_stored_reply(
     completed, replay = recorded_intake(client)
     assert len(armed) == 1
     assert completed == armed[0]  # The stored summary, unchanged.
-    assert "waiting_in_line" not in completed["intake_progress"]
+    # The stored summary carries the default, never a derived in-line state.
+    assert completed["intake_progress"]["waiting_in_line"] is False
     again = replay()
     assert again.status_code == 200, again.text
     assert again.json() == armed[0]
