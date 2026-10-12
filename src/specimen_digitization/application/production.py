@@ -484,6 +484,38 @@ class SqlConnectRepository:
                 return results
             after = str(UUID(rows[-1]["id"]))
 
+    def blocked_ids(self, scope):
+        """Blocked, non-sensitive records with no disposition, by id
+        (lane_worker.DrainWorker._recover_blocked). ListSpecimenPage's metadata
+        rows only: no snapshot is read here. Yielded one page at a time, an
+        empty page too, so the caller can stop between any two pages."""
+        from datetime import datetime, timedelta
+
+        # A second behind, so it is never later than the connector's clock.
+        cutoff = (datetime.fromisoformat(now()) - timedelta(seconds=1)).isoformat()
+        after = ""
+        while True:
+            rows = self.execute(
+                "ListSpecimenPage",
+                dict(
+                    self.variables(scope),
+                    cutoff=cutoff,
+                    afterId=after,
+                    limit=100,
+                    includeSensitive=False,
+                ),
+            ).get("specimens", [])
+            yield [
+                str(UUID(row["id"]))
+                for row in rows
+                if row.get("state") == "processing_blocked"
+                and not row.get("disposition")
+                and not row.get("sensitive")
+            ]
+            if len(rows) < 100:
+                return
+            after = str(UUID(rows[-1]["id"]))
+
     def version_info(self, scope, ident, revision):
         row = self.execute(
             "GetSnapshot", dict(self.variables(scope), id=ident, revision=revision)

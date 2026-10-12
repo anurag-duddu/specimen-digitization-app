@@ -73,7 +73,7 @@ as the reader. The recorded answers are in
 
 | Route | Model | Provider | Intended use |
 |---|---|---|---|
-| `first-pass-glm` | `zai-org/GLM-5.3-Flash` | `deepinfra` | The LLM first pass: which reader's raw transcript the harness runs on (text and image) |
+| `first-pass-glm` | `zai-org/GLM-5.3-Flash` | `novita` | The LLM first pass: which reader's raw transcript the harness runs on (text and image) |
 | `harness-deepseek` | `deepseek-ai/DeepSeek-V4.1-Flash` | `deepinfra` | The agentic harness's tool calling (text); provisional until the acceptance lab re-measures it with the real harness and G29's prompt |
 
 Chosen on 2026-09-23 from measurements on the ten pilot slides, recorded in

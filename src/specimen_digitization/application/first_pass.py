@@ -429,6 +429,63 @@ def synthetic_decision(blobs, region, readings) -> FirstPassDecision:
     )
 
 
+# A run's pinned first-pass route moved to another provider of the same model
+# (HARNESS.md section 3, Failures): `run.dependencies[ROUTE_REPINS]` keeps each move.
+ROUTE_REPINS = "route_repins"
+ROUTE_REPIN_RULES = "first-pass-same-model-provider-repin-v1"
+
+
+def repinnable_first_pass_route(run):
+    """The current registered first-pass route when the run's pin names the same
+    model at another provider; else None.
+
+    Only the provider may differ: a pin of another model, a malformed pin, a
+    route that is no longer registered or no longer serves the first pass with
+    images is never moved, so its step still blocks as
+    ``pinned_model_route_unavailable``. The price list is keyed by route, so the
+    step's reservation and the run's cap are unchanged.
+    """
+    from ..model_gateway import HUGGINGFACE_ROUTES
+
+    route_id = run.profile.first_pass_route
+    pins = run.dependencies.get("routes")
+    if route_id is None or not isinstance(pins, dict):
+        return None
+    pinned, current = pins.get(route_id), HUGGINGFACE_ROUTES.get(route_id)
+    if (
+        current is None
+        or not current.serves_with_images("transcription_first_pass")
+        or not isinstance(pinned, dict)
+        or set(pinned) != {"model_id", "provider"}
+        or pinned["model_id"] != current.model_id
+        or pinned["provider"] == current.provider
+    ):
+        return None
+    return current
+
+
+def repin_first_pass_route(run, at) -> bool:
+    """Move the run's first-pass pin to the registered provider of the same model,
+    recording the move (old and new provider, when) in ``ROUTE_REPINS``."""
+    current = repinnable_first_pass_route(run)
+    if current is None:
+        return False
+    pins = run.dependencies["routes"]
+    previous = pins[current.route_id]["provider"]
+    pins[current.route_id] = {"model_id": current.model_id, "provider": current.provider}
+    run.dependencies.setdefault(ROUTE_REPINS, []).append(
+        {
+            "route_id": current.route_id,
+            "model_id": current.model_id,
+            "from_provider": previous,
+            "to_provider": current.provider,
+            "at": at.isoformat(),
+            "rule": ROUTE_REPIN_RULES,
+        }
+    )
+    return True
+
+
 def give_up(run, region_id: str, code: str) -> None:
     """Record that the run gave up on a label's first pass, and the code its last
     attempt failed with: one warning finding per label. A finding never routes

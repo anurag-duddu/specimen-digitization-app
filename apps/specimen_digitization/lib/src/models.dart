@@ -241,6 +241,23 @@ abstract interface class SpecimenHistoryRepository {
   });
 }
 
+/// Small scoped status reads and explicit recovery for server-held Intake rows.
+/// Reading status never starts processing or loads the full review workspace.
+abstract interface class IntakeProcessingRepository {
+  Future<Specimen> intakeProcessingStatus(CollectionScope scope, String id);
+  Future<Json> startIntakeProcessing(
+    CollectionScope scope,
+    Specimen specimen,
+    String idempotencyKey,
+  );
+  Future<Specimen> retryIntakeProcessing(
+    CollectionScope scope,
+    Specimen specimen,
+    String reason,
+    String idempotencyKey,
+  );
+}
+
 abstract class SpecimenRepository {
   String get mode;
   List<dynamic> get blockers;

@@ -48,7 +48,11 @@ class CaptureIntakeRepository extends TestRepository {
 
 /// A camera that answers from memory. Records what the screen asked it to do.
 class FakeCaptureCamera implements CaptureCamera {
-  FakeCaptureCamera({this.unavailable, this.locksFocus = true});
+  FakeCaptureCamera({
+    this.unavailable,
+    this.locksFocus = true,
+    Uint8List? captureBytes,
+  }) : captureBytes = captureBytes ?? frame;
 
   /// When set, [start] refuses with this reason.
   final CaptureUnavailable? unavailable;
@@ -56,6 +60,8 @@ class FakeCaptureCamera implements CaptureCamera {
   /// Whether [focusAt] reports a lock. A camera that cannot lock is a fact
   /// the screen shows rather than hides.
   final bool locksFocus;
+
+  final Uint8List captureBytes;
 
   final StreamController<CapturePreviewReading> _readings =
       StreamController<CapturePreviewReading>.broadcast();
@@ -96,7 +102,7 @@ class FakeCaptureCamera implements CaptureCamera {
   @override
   Future<XFile> capture() async {
     final XFile file = XFile.fromData(
-      frame,
+      captureBytes,
       path: 'capture-${taken.length + 1}.png',
       name: 'capture-${taken.length + 1}.png',
     );
@@ -112,6 +118,56 @@ class FakeCaptureCamera implements CaptureCamera {
 
   /// Pushes one preview reading, as the frame stream would.
   void emit(CapturePreviewReading reading) => _readings.add(reading);
+}
+
+/// A camera whose capture and disposal can be held across lifecycle changes.
+class ControlledCaptureCamera implements CaptureCamera {
+  ControlledCaptureCamera({this.captureGate, this.disposeGate});
+
+  final Completer<XFile>? captureGate;
+  final Completer<void>? disposeGate;
+  final StreamController<CapturePreviewReading> _readings =
+      StreamController<CapturePreviewReading>.broadcast();
+  bool started = false;
+  bool disposeStarted = false;
+  bool disposed = false;
+
+  @override
+  double get aspectRatio => 1;
+
+  @override
+  bool get ready => started && !disposed;
+
+  @override
+  Stream<CapturePreviewReading> get readings => _readings.stream;
+
+  @override
+  Future<XFile> capture() async =>
+      captureGate?.future ??
+      XFile.fromData(
+        FakeCaptureCamera.frame,
+        path: 'controlled-capture.png',
+        name: 'controlled-capture.png',
+      );
+
+  @override
+  Future<void> dispose() async {
+    disposeStarted = true;
+    await disposeGate?.future;
+    if (disposed) return;
+    disposed = true;
+    await _readings.close();
+  }
+
+  @override
+  Future<bool> focusAt(Offset point) async => true;
+
+  @override
+  Widget preview(BuildContext context) =>
+      const SizedBox.expand(key: ValueKey<String>('controlled-preview'));
+
+  @override
+  Future<void> start() async => started = true;
 }
 
 Future<CaptureResult?> pumpCapture(
@@ -148,7 +204,40 @@ Future<CaptureResult?> pumpCapture(
 
 Future<void> takeOne(WidgetTester tester) async {
   await tester.tap(find.byKey(const ValueKey<String>('capture-shutter')));
+  await tester.pump();
+  await tester.runAsync(() async {
+    for (var attempt = 0; attempt < 200; attempt++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      await tester.pump();
+      if (find
+              .byKey(const ValueKey<String>('capture-send'))
+              .evaluate()
+              .isNotEmpty ||
+          find.text(CaptureUnavailable.failed.message).evaluate().isNotEmpty ||
+          find
+              .text(
+                'The photograph could not be read. Take it again, or return to Intake and choose the file.',
+              )
+              .evaluate()
+              .isNotEmpty) {
+        break;
+      }
+    }
+  });
   await tester.pumpAndSettle();
+}
+
+Future<void> waitForCameraCondition(
+  WidgetTester tester,
+  bool Function() condition,
+) async {
+  await tester.runAsync(() async {
+    for (var attempt = 0; attempt < 200 && !condition(); attempt++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      await tester.pump();
+    }
+  });
+  await tester.pump();
 }
 
 void main() {
@@ -268,7 +357,7 @@ void main() {
 
     await takeOne(tester);
     expect(find.text('Retake'), findsOneWidget);
-    expect(find.text('Use photograph'), findsOneWidget);
+    expect(find.text('Send for processing'), findsOneWidget);
     expect(find.byKey(const ValueKey<String>('fake-preview')), findsNothing);
 
     await tester.tap(find.text('Retake'));
@@ -281,6 +370,26 @@ void main() {
     );
   });
 
+  testWidgets('an unreadable photo stays in the camera with a useful message', (
+    WidgetTester tester,
+  ) async {
+    final FakeCaptureCamera camera = FakeCaptureCamera(
+      captureBytes: Uint8List.fromList(<int>[1, 2, 3]),
+    );
+    await pumpCapture(tester, camera);
+
+    await takeOne(tester);
+
+    expect(find.byKey(const ValueKey<String>('fake-preview')), findsOneWidget);
+    expect(
+      find.text(
+        'The photograph could not be read. Take it again, or return to Intake and choose the file.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text(CaptureUnavailable.failed.message), findsNothing);
+  });
+
   testWidgets('batch mode returns to the viewfinder after each accept', (
     WidgetTester tester,
   ) async {
@@ -288,13 +397,13 @@ void main() {
     await pumpCapture(tester, camera);
 
     await takeOne(tester);
-    await tester.tap(find.text('Use photograph'));
+    await tester.tap(find.text('Send for processing'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey<String>('fake-preview')), findsOneWidget);
     expect(find.text('1 photograph in this batch'), findsOneWidget);
 
     await takeOne(tester);
-    await tester.tap(find.text('Use photograph'));
+    await tester.tap(find.text('Send for processing'));
     await tester.pumpAndSettle();
     expect(find.text('2 photographs in this batch'), findsOneWidget);
     expect(camera.taken, hasLength(2));
@@ -331,7 +440,7 @@ void main() {
       await tester.pumpAndSettle();
 
       await takeOne(tester);
-      await tester.tap(find.text('Use photograph'));
+      await tester.tap(find.text('Send for processing'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Done'));
       await tester.pumpAndSettle();
@@ -339,11 +448,191 @@ void main() {
       expect(result, isNotNull);
       expect(result!.needsFallback, isFalse);
       expect(result!.files, hasLength(1));
+      await waitForCameraCondition(tester, () => camera.disposed);
       expect(camera.disposed, isTrue);
     },
   );
 
-  testWidgets('a camera that will not start explains itself and falls back', (
+  testWidgets('closing during auto-ingest capture does not accept late bytes', (
+    WidgetTester tester,
+  ) async {
+    final SemanticsHandle semantics = tester.ensureSemantics();
+    final Completer<XFile> captureGate = Completer<XFile>();
+    final ControlledCaptureCamera camera = ControlledCaptureCamera(
+      captureGate: captureGate,
+    );
+    final List<XFile> accepted = <XFile>[];
+    CaptureResult? result;
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(500, 900);
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Builder(
+          builder: (BuildContext context) => Scaffold(
+            body: ElevatedButton(
+              onPressed: () async {
+                result = await Navigator.of(context).push(
+                  CaptureScreen.route(
+                    () async => camera,
+                    autoIngest: true,
+                    onAccepted: accepted.add,
+                  ),
+                );
+              },
+              child: const Text('Open camera'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Open camera'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey<String>('capture-shutter')));
+    await tester.pump();
+
+    await tester.tap(find.bySemanticsLabel(CaptureScreen.closeLabel));
+    await tester.pumpAndSettle();
+    expect(result?.streamed, isTrue);
+
+    captureGate.complete(
+      XFile.fromData(
+        FakeCaptureCamera.frame,
+        path: 'late-capture.png',
+        name: 'late-capture.png',
+      ),
+    );
+    await waitForCameraCondition(tester, () => camera.disposed);
+    expect(accepted, isEmpty);
+    expect(tester.takeException(), isNull);
+    semantics.dispose();
+  });
+
+  testWidgets('streamed captures are counted without being returned again', (
+    WidgetTester tester,
+  ) async {
+    final FakeCaptureCamera camera = FakeCaptureCamera();
+    final List<XFile> accepted = <XFile>[];
+    CaptureResult? result;
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(500, 900);
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Builder(
+          builder: (BuildContext context) => Scaffold(
+            body: ElevatedButton(
+              onPressed: () async {
+                result = await Navigator.of(context).push(
+                  CaptureScreen.route(
+                    () async => camera,
+                    autoIngest: true,
+                    onAccepted: accepted.add,
+                  ),
+                );
+              },
+              child: const Text('Open camera'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Open camera'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey<String>('capture-shutter')));
+    await tester.pumpAndSettle();
+    expect(find.text('1 photograph in this batch'), findsOneWidget);
+    await tester.tap(find.text(CaptureScreen.doneLabel));
+    await tester.pumpAndSettle();
+
+    expect(accepted, hasLength(1));
+    expect(result?.streamed, isTrue);
+    expect(result?.files, isEmpty);
+  });
+
+  testWidgets('an unsent review stays visible across a failed resume', (
+    WidgetTester tester,
+  ) async {
+    final FakeCaptureCamera first = FakeCaptureCamera();
+    final FakeCaptureCamera failedResume = FakeCaptureCamera(
+      unavailable: CaptureUnavailable.failed,
+    );
+    var factories = 0;
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(500, 900);
+    addTearDown(tester.view.reset);
+    addTearDown(
+      () => tester.binding.handleAppLifecycleStateChanged(
+        AppLifecycleState.resumed,
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: CaptureScreen(
+          camera: () async => factories++ == 0 ? first : failedResume,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await takeOne(tester);
+    expect(find.text('Send for processing'), findsOneWidget);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await waitForCameraCondition(tester, () => first.disposed);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await waitForCameraCondition(tester, () => factories == 2);
+    await tester.pumpAndSettle();
+
+    expect(failedResume.disposed, isTrue);
+    expect(find.text('Send for processing'), findsOneWidget);
+    expect(find.text('Retake'), findsOneWidget);
+    expect(find.text(CaptureUnavailable.failed.message), findsNothing);
+  });
+
+  testWidgets('resume waits for the previous controller to finish disposing', (
+    WidgetTester tester,
+  ) async {
+    final Completer<void> disposeGate = Completer<void>();
+    final ControlledCaptureCamera first = ControlledCaptureCamera(
+      disposeGate: disposeGate,
+    );
+    final ControlledCaptureCamera second = ControlledCaptureCamera();
+    var factories = 0;
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(500, 900);
+    addTearDown(tester.view.reset);
+    addTearDown(
+      () => tester.binding.handleAppLifecycleStateChanged(
+        AppLifecycleState.resumed,
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: CaptureScreen(
+          camera: () async => factories++ == 0 ? first : second,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await waitForCameraCondition(tester, () => first.disposeStarted);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(factories, 1);
+    expect(second.started, isFalse);
+
+    disposeGate.complete();
+    await waitForCameraCondition(tester, () => second.started);
+    expect(factories, 2);
+    expect(first.disposed, isTrue);
+  });
+
+  testWidgets('a camera that will not start returns cleanly to Intake', (
     WidgetTester tester,
   ) async {
     final FakeCaptureCamera camera = FakeCaptureCamera(
@@ -380,16 +669,20 @@ void main() {
       findsOneWidget,
       reason: 'the reason is a plain sentence, never a code',
     );
-    await tester.tap(find.text('Use device camera'));
+    expect(find.text('Use device camera'), findsNothing);
+    expect(find.text('Back to Intake'), findsOneWidget);
+    await tester.tap(find.text('Back to Intake'));
     await tester.pumpAndSettle();
-    expect(result!.needsFallback, isTrue);
-    expect(result!.unavailable, CaptureUnavailable.permission);
+    expect(result!.needsFallback, isFalse);
+    expect(result!.unavailable, isNull);
   });
 
   testWidgets(
     'accepted captures land in the same manifest a file picker fills',
     (WidgetTester tester) async {
-      SharedPreferences.setMockInitialValues(<String, Object>{});
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'camera-auto-ingest-v1:owner:org/insects': true,
+      });
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(1100, 2400);
       addTearDown(tester.view.reset);
@@ -445,11 +738,15 @@ void main() {
 
       expect(find.byType(IntakeManifestRow), findsOneWidget);
       expect(find.text('from-camera.png'), findsOneWidget);
-      // Accepting a camera photograph releases it to continuous intake.
+      // Accepting a camera photograph releases it to continuous Intake.
       expect(repository.captured, hasLength(1));
       expect(repository.captured.single.method, 'camera');
       expect(repository.captured.single.sensitive, isTrue);
-      expect(completed, 1);
+      expect(
+        completed,
+        1,
+        reason: 'upload completion preserves the existing refresh contract',
+      );
       expect(find.text('Uploaded'), findsOneWidget);
     },
   );
@@ -542,7 +839,7 @@ void main() {
     FlutterError.onError = previous;
     expect(errors, isEmpty, reason: 'the capture route at 200 percent text');
     expect(tester.takeException(), isNull);
-    expect(find.text('Use photograph'), findsOneWidget);
+    expect(find.text('Send for processing'), findsOneWidget);
     expect(find.text('Retake'), findsOneWidget);
   });
 

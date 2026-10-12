@@ -1438,7 +1438,15 @@ class WorkspaceController extends ChangeNotifier {
       // Without this the setup screen would wait on a check that has ended.
       _scopesLoaded = true;
       // Do not retain an editable workspace after current access is denied.
+      // A protected request may publish this denial synchronously while
+      // checkAccess is awaiting scopes(). The denial invalidates that read
+      // below, so settle its visible state here before its catch observes the
+      // generation change and correctly discards the stale result.
+      _scopesLoaded = true;
       _scopesVerified = false;
+      _loading = false;
+      _loadingMore = false;
+      _recordLoading = false;
       _scopes = <CollectionScope>[];
       _scope = null;
       _items = <Specimen>[];

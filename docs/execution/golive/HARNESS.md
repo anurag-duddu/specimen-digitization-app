@@ -145,9 +145,10 @@ cause, since asking again repeats them. A reviewer cannot record supported text
 for a region no reader read (the decision is refused, 422, and the record is
 unchanged: verification would refuse text with no reading to trace to); an
 abstention still can be recorded.
-The rule is `reliability.reader_failure_is_recoverable`; the first pass, the
-organiser, field research and every effectful step keep their unknown outcome as
-a block, and so does a reader of the evidence pilot, whose exact cohort
+The rule is `reliability.reader_failure_is_recoverable`; ordinary first-pass
+comparisons have the narrower recovery rule below. The organiser, field research
+and every effectful step keep their unknown outcome as a block, and so does a
+reader of the evidence pilot, whose exact cohort
 reservations and zero retries never replay a paid call (a pilot reader that is
 stopped by its limits ends as `external_outcome_unknown` too). A run that was
 already blocked as `external_outcome_unknown` stays so.
@@ -183,8 +184,8 @@ timing out ends and the run goes on.
 pass was answered HTTP 429 on all three attempts and dead-lettered the run as
 `retry_budget_exhausted:model_rate_limited`). When the last attempt
 (`max_attempts`) of a first pass fails with a failure the workflow retries
-(`reliability.failure_is_retryable`: a rate limit or a provider error, HTTP 402
-included) and whose outcome is known, the first pass is given up on as a reader
+(`reliability.failure_is_retryable`: a rate limit, timeout or provider error,
+HTTP 402 included), the ordinary first pass is given up on as a reader
 is: its step completes with no decision and the run goes on through
 `adjudicate`, `parse` and field research. The label's transcript has no text and
 no `decision_kind`, and keeps both readings as its alternatives. A warning
@@ -195,10 +196,58 @@ however its fields settle: no first pass compared its readings. A 429 refused
 before any answer still costs nothing (`cost_basis: refused`); any other
 given-up attempt stays reserved in full and is recorded `failed` with its
 `failure_code`. An authentication or authorization error,
-`model_request_rejected`, `model_malformed_response`, an unknown outcome (a
-server error, or an attempt past its effect timeout) and a first pass of the
-evidence pilot still block and name their cause. The rule is
+`model_request_rejected`, `model_malformed_response`, an invalid child result,
+incomplete child cleanup and a first pass of the evidence pilot still block
+and name their cause. The rule is
 `Workflow.first_pass_has_no_attempt_left`.
+
+**Ordinary first-pass transient recovery** (camera intake, 2026-10-11).
+`reliability.first_pass_failure_is_recoverable` permits the existing bounded
+retry policy after a provider 5xx or a terminated child's deadline. This
+comparison is tool-free: it reads retained observations and a crop; the parent
+saves one decision per region. It does not publish or create a specimen.
+Uncertain billing still holds the entire original reservation, and each new
+attempt reserves again against all existing limits. A known first-request 429
+refusal remains zero-cost even if the elapsed deadline was exceeded. The
+published run cap can stop processing before all attempts are used; that is an
+operational budget block, not a final review disposition. Historical persisted
+unknown outcomes are not automatically unblocked, and this exception does not
+apply to the organiser, research, publication, the evidence pilot or a child
+whose termination cannot be confirmed. Offline regressions exercise the real
+isolated child and dispatched worker; they are not live-device acceptance.
+
+**Stuck first passes go on by themselves** (2026-10-12; replaces the run-cap
+and historical-unknown sentences above for an ordinary first pass). The owner:
+"the ones stuck in intake should all successfuly end up in the main specimen
+queue based on how the pipeline+harness resolve them". Tests:
+`tests/test_first_pass_stuck_recovery.py`.
+- A pin that names the registered first-pass model at another provider is moved
+  to the registered provider before the step's call, and the move (route,
+  model, old and new provider, time) is kept in `run.dependencies["route_repins"]`
+  (`first_pass.repin_first_pass_route`). A pin of another model is never moved
+  and still blocks as `pinned_model_route_unavailable`. The price list is keyed
+  by route, so the reservation and the USD 1 cap do not change.
+- A first pass the run cannot afford under its own limits (`cost_budget_exhausted`
+  and the token, call and active-time budgets) is given up on unsent, with that
+  code in its `first_pass_given_up` finding; earlier attempts stay held.
+- A first pass whose worker stopped after its intent is settled as
+  `first_pass_result_lost`, as a reading is (above); after its last attempt it is
+  given up on. An attempt already recorded is not recorded or counted again.
+- Each drain execution, when it takes a collection, lists its blocked records
+  and makes due a blocked ordinary first pass whose blocker is
+  `external_outcome_unknown` (lease ended), `pinned_model_route_unavailable`
+  (when the pin can be moved), a budget above, `provider_circuit:*`,
+  `lane_run_not_progressing` or `lane_handover_without_progress`; one blocked as
+  `retry_budget_exhausted:<code>` is given up on with `<code>`
+  (`Workflow.recover_blocked`). At most three recoveries per step, each kept in
+  `run.dependencies["automatic_recoveries"]`. It makes no call. Evidence-pilot
+  runs, sensitive records and runs with a disposition are left alone. The
+  listing is read page by page and the scan ends at a stop signal or at the
+  window's close, so the drain keeps its time to release the fence and hand
+  the rest on; the next execution scans again.
+- What wakes them is the next worker execution: any upload, process request or
+  run action starts one (LANE.md T1), and an execution hands left work to the
+  next. Nothing new is scheduled, and a deploy alone starts no execution.
 
 **Waiting after a rate limit** (2026-10-11). A step that fails with an
 `AdapterFailure` whose status is `rate_limited` (a model call's HTTP 429 is
@@ -347,12 +396,17 @@ report. Neither pick changes.
 
 | Route | Model | Provider | Input | Use |
 |---|---|---|---|---|
-| `first-pass-glm` | `zai-org/GLM-5.3-Flash` | `deepinfra` | text, image | the first pass (sections 3 and 4) |
+| `first-pass-glm` | `zai-org/GLM-5.3-Flash` | `novita` | text, image | the first pass (sections 3 and 4) |
 | `harness-deepseek` | `deepseek-ai/DeepSeek-V4.1-Flash` | `deepinfra` | text | the harness; provisional until the acceptance lab re-measures it with the real harness and G29's prompt |
 
-Both use DeepInfra, which the `handwriting-muse` reader already uses, so no
-new provider enters the data-policy review; neither shares a model family
-with a reader.
+The harness uses DeepInfra, which the `handwriting-muse` reader already uses,
+and the first pass uses Novita, which the `handwriting-qwen` reader already
+uses, so no new provider enters the data-policy review; neither shares a
+model family with a reader. The first pass moved from DeepInfra to Novita on
+2026-10-12: DeepInfra refused 22 of 29 live first-pass calls on 2026-10-11 and
+2026-10-12 (16 HTTP 429, 6 HTTP 503, each within a second), and a probe of 8
+image calls with a forced tool answer got 8 of 8 from Novita, 4 of 8 from
+DeepInfra, at the same listed price.
 They are a separate stage route set: the reader routes stay the gateway's
 initial set, which the pilot launch, its stage list and the release check
 compare a profile's readers against; the gateway resolves either set.

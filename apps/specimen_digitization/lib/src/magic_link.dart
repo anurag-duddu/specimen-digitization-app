@@ -11,6 +11,72 @@ import 'email_link_source.dart';
 const staffEmailMessage = 'Use your fieldmuseum.org email address.';
 const emailLinkReturnUrl = 'https://specimen-digitization.web.app/';
 const emailLinkCooldown = Duration(seconds: 60);
+const _emailLinkWebHost = 'specimen-digitization.web.app';
+const _emailLinkNativeHost = 'specimen-digitization.firebaseapp.com';
+const _emailLinkNativePath = '/__/auth/links';
+const _emailLinkNativeActionPath = '/__/auth/action';
+
+bool _hasExactAuthority(Uri uri, String host) {
+  final value = uri.toString();
+  const prefix = 'https://';
+  if (!value.startsWith(prefix)) return false;
+  final separator = value.indexOf(RegExp(r'[/?#]'), prefix.length);
+  final end = separator < 0 ? value.length : separator;
+  return value.substring(prefix.length, end) == host;
+}
+
+String? _trustedEmailLink(Uri uri, Map<String, List<String>> parameters) {
+  if (uri.scheme != 'https' ||
+      uri.hasPort ||
+      uri.userInfo.isNotEmpty ||
+      uri.fragment.isNotEmpty ||
+      uri.toString().length > 8192 ||
+      parameters.values.any((values) => values.length != 1)) {
+    return null;
+  }
+
+  if (uri.host == _emailLinkWebHost &&
+      _hasExactAuthority(uri, _emailLinkWebHost) &&
+      (uri.path == '/' || uri.path.isEmpty)) {
+    return parameters['mode']?.singleOrNull == 'signIn' &&
+            (parameters['oobCode']?.singleOrNull?.isNotEmpty ?? false)
+        ? uri.toString()
+        : null;
+  }
+
+  if (uri.host != _emailLinkNativeHost ||
+      !_hasExactAuthority(uri, _emailLinkNativeHost) ||
+      uri.path != _emailLinkNativePath ||
+      parameters.length != 1) {
+    return null;
+  }
+
+  // Firebase Hosting wraps the action URL in one `link` parameter for native
+  // delivery. Constrain both URLs so the trusted Hosting origin cannot become
+  // an open redirect, then give Firebase Auth only the validated action URL to
+  // parse and verify.
+  final String? actionValue = parameters['link']?.singleOrNull;
+  if (actionValue == null || actionValue.isEmpty) return null;
+  final Uri? action = Uri.tryParse(actionValue);
+  if (action == null ||
+      action.scheme != 'https' ||
+      action.host != _emailLinkNativeHost ||
+      action.hasPort ||
+      action.userInfo.isNotEmpty ||
+      !_hasExactAuthority(action, _emailLinkNativeHost) ||
+      action.path != _emailLinkNativeActionPath ||
+      action.fragment.isNotEmpty) {
+    return null;
+  }
+  final actionParameters = action.queryParametersAll;
+  if (actionParameters.values.any((values) => values.length != 1) ||
+      actionParameters['mode']?.singleOrNull != 'signIn' ||
+      !(actionParameters['oobCode']?.singleOrNull?.isNotEmpty ?? false) ||
+      actionParameters['continueUrl']?.singleOrNull != emailLinkReturnUrl) {
+    return null;
+  }
+  return action.toString();
+}
 
 /// ASCII mailbox syntax, the museum domain or exact authorized owner mailbox,
 /// and no whitespace/control characters.
@@ -162,6 +228,30 @@ class MagicLinkController extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
+  /// Accepts a link the person explicitly pasted, through the same strict
+  /// origin, shape and Firebase checks as a browser or native delivery.
+  /// The action code remains in memory only and the clipboard is unchanged.
+  bool acceptPastedLink(String rawLink) {
+    if (_disposed || !initialized || busy) return false;
+    final String value = rawLink.trim();
+    final Uri? uri = value.isEmpty ? null : Uri.tryParse(value);
+    if (uri == null) {
+      message =
+          'No usable sign-in link was found. Copy the full link from the email and try again.';
+      _changed();
+      return false;
+    }
+    final String? previousMessage = message;
+    final bool accepted = _ingestLink(uri, () {});
+    if (!accepted && _link == null && message == previousMessage) {
+      message =
+          'This sign-in link cannot be used. Copy the full link from the email or request a new one.';
+    }
+    _changed();
+    if (accepted && email.isNotEmpty) unawaited(complete(email));
+    return accepted;
+  }
+
   Future<void> _remember({bool clearEmail = false}) async {
     try {
       await storage.write(
@@ -248,19 +338,8 @@ class MagicLinkController extends ChangeNotifier {
           uri.fragment.contains('oobCode') ||
           parameters.containsKey('link');
       if (candidate) {
-        final validShape =
-            uri.scheme == 'https' &&
-            uri.host == 'specimen-digitization.web.app' &&
-            !uri.hasPort &&
-            uri.userInfo.isEmpty &&
-            (uri.path == '/' || uri.path.isEmpty) &&
-            uri.fragment.isEmpty &&
-            parameters['mode']?.singleOrNull == 'signIn' &&
-            (parameters['oobCode']?.singleOrNull?.isNotEmpty ?? false) &&
-            uri.toString().length <= 8192 &&
-            parameters.values.every((values) => values.length == 1);
-        if (validShape && access.isSignInWithEmailLink(uri.toString())) {
-          final value = uri.toString();
+        final value = _trustedEmailLink(uri, parameters);
+        if (value != null && access.isSignInWithEmailLink(value)) {
           final digest = crypto.sha256.convert(utf8.encode(value)).toString();
           if (_consumedLinks.contains(digest)) {
             _acknowledge(acknowledge);

@@ -22,6 +22,8 @@ class IntakeCaptureCard extends StatefulWidget {
     required this.onTakePhotograph,
     required this.onDropFiles,
     required this.cameraAvailable,
+    this.autoIngest = false,
+    this.onAutoIngestChanged,
     this.onBrowseSources,
     this.minDropHeight = 0,
     this.dragActive = false,
@@ -41,6 +43,12 @@ class IntakeCaptureCard extends StatefulWidget {
 
   /// Whether the native app can offer camera capture.
   final bool cameraAvailable;
+
+  /// Whether taking a photograph skips review and enters Intake immediately.
+  final bool autoIngest;
+
+  /// Changes and persists the camera-only submission preference.
+  final ValueChanged<bool>? onAutoIngestChanged;
 
   /// Opens registered storage, alongside the local file choices.
   final VoidCallback? onBrowseSources;
@@ -108,6 +116,36 @@ class _IntakeCaptureCardState extends State<IntakeCaptureCard> {
               children: <Widget>[
                 Text(IntakeCaptureCard.cameraTitle, style: ui.type.label),
                 SizedBox(height: ui.space.s2),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text('Auto-ingest', style: ui.type.body),
+                          Text(
+                            widget.autoIngest
+                                ? 'Photos enter the Intake queue as soon as you take them.'
+                                : 'Review, rotate or crop each photo before sending it.',
+                            style: ui.type.bodySmall.copyWith(
+                              color: ui.color.inkSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(width: ui.space.s3),
+                    UiSwitch(
+                      key: const ValueKey<String>('intake-auto-ingest'),
+                      label: 'Auto-ingest',
+                      showLabel: false,
+                      value: widget.autoIngest,
+                      onChanged: widget.onAutoIngestChanged,
+                    ),
+                  ],
+                ),
+                SizedBox(height: ui.space.s4),
                 UiButton(
                   key: const ValueKey<String>('intake-take-photograph'),
                   label: 'Take photos',
@@ -179,9 +217,9 @@ class _IntakeCaptureCardState extends State<IntakeCaptureCard> {
   );
 }
 
-/// The upload button names the count it will admit.
+/// The action names the processing handoff rather than its transport detail.
 String intakeUploadLabel({required bool uploading, required int pending}) {
-  if (uploading) return 'Uploading';
-  if (pending == 1) return 'Upload 1 photograph';
-  return 'Upload $pending photographs';
+  if (uploading) return 'Sending';
+  if (pending == 1) return 'Send 1 for processing';
+  return 'Send $pending for processing';
 }

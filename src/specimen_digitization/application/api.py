@@ -381,7 +381,10 @@ def summary(specimen: Specimen, role: str = "viewer") -> dict:
     if run.dependencies.get("human_review_field_locks") or reprocess_hold(specimen):
         result["available_actions"] = [action for action in result["available_actions"] if action != "reprocess"]
     if has_active_lease(run):
-        result["available_actions"] = [action for action in result["available_actions"] if action != "restore_version"]
+        result["available_actions"] = [
+            action for action in result["available_actions"]
+            if action not in {"retry", "resume", "reprocess", "restore_version"}
+        ]
     if "evidence_pilot" in run.dependencies:
         result["available_actions"] = (
             ["field", "transcription", "reading_metadata", "coverage"]
@@ -390,6 +393,18 @@ def summary(specimen: Specimen, role: str = "viewer") -> dict:
             and not specimen.asset.processing_derivative
             else []
         )
+    if (
+        role in {"operator", "reviewer", "manager", "admin"}
+        and run.stage == "pending"
+        and not specimen.asset.sensitive
+        and "evidence_pilot" not in run.dependencies
+        and run.blocker is None
+        and run.disposition is None
+        and not has_active_lease(run)
+    ):
+        # A user may retry a worker start without resetting the existing run.
+        # This names POST /specimens/{id}/process, not the run's retry action.
+        result["available_actions"].append("start_processing")
     return result
 
 

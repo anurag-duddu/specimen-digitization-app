@@ -275,6 +275,203 @@ def test_the_worker_drains_one_run_at_a_time_in_request_order(lane):
     assert (continuation.calls, summary["continuation"]) == (0, None)
 
 
+def test_a_request_inside_the_clock_margin_gets_one_automatic_continuation(lane):
+    queued(lane.repository, "just-requested", minutes=0)
+    continuation = Continuation()
+    summary = worker(
+        lane.repository, lane.workflow, lane.clock, continuation=continuation
+    ).run()
+
+    # The initial cutoff excludes this request. The exit handshake waits only
+    # the clock margin, observes it, and starts a normal fenced execution.
+    assert lane.workflow.steps == []
+    assert lane.clock.now == START + timedelta(seconds=1)
+    assert (continuation.calls, summary["continuation"]) == (1, "requested")
+    assert fence(lane).read()["holder"] is None
+
+    summary = worker(
+        lane.repository, lane.workflow, lane.clock,
+        execution="exec-next", continuation=continuation,
+    ).run()
+    assert lane.workflow.steps == ["just-requested"]
+    assert summary["continuation"] is None
+    assert continuation.calls == 1
+
+
+def test_an_enqueue_between_empty_read_and_release_cannot_lose_its_wakeup(lane):
+    continuation = Continuation()
+    original = lane.repository.oldest_due
+    raced = False
+    competing = []
+
+    def enqueue_after_empty_read(scope, cutoff, limit=1):
+        nonlocal raced
+        rows = original(scope, cutoff, limit)
+        if not raced:
+            raced = True
+            assert rows == []
+            queued(lane.repository, "arrival-during-exit", minutes=0)
+            competing.append(worker(
+                lane.repository, lane.workflow, lane.clock,
+                execution="exec-racing", continuation=continuation,
+            ).run())
+        return rows
+
+    lane.repository.oldest_due = enqueue_after_empty_read
+    summary = worker(
+        lane.repository, lane.workflow, lane.clock, continuation=continuation
+    ).run()
+    assert competing[0]["skipped_collections"] == [COLLECTION]
+    assert competing[0]["continuation"] is None
+    assert lane.workflow.steps == []
+    assert (continuation.calls, summary["continuation"]) == (1, "requested")
+
+    # No direct workflow invocation or replay: the ordinary next execution
+    # acquires the now-free collection and processes this record exactly once.
+    worker(
+        lane.repository, lane.workflow, lane.clock,
+        execution="exec-next", continuation=continuation,
+    ).run()
+    assert lane.workflow.steps == ["arrival-during-exit"]
+    assert continuation.calls == 1
+
+
+def test_exit_handshake_releases_the_fence_before_waiting(lane):
+    continuation = Continuation()
+    execution = worker(
+        lane.repository, lane.workflow, lane.clock, continuation=continuation
+    )
+
+    def pause(seconds):
+        assert fence(lane).read()["holder"] is None
+        lane.clock.sleep(seconds)
+        queued(lane.repository, "after-release", minutes=1)
+        worker(
+            lane.repository, lane.workflow, lane.clock,
+            execution="exec-arrival", continuation=continuation,
+        ).run()
+
+    execution.sleep = pause
+    summary = execution.run()
+    assert lane.workflow.steps == ["after-release"]
+    assert summary["continuation"] is None
+    assert continuation.calls == 0
+
+
+def test_a_stop_during_the_exit_handshake_still_hands_off_once(lane):
+    import threading
+
+    stop = threading.Event()
+    queued(lane.repository, "just-requested", minutes=0)
+    continuation = Continuation()
+    execution = worker(
+        lane.repository, lane.workflow, lane.clock, continuation=continuation
+    )
+
+    def pause(seconds):
+        assert seconds == 1
+        stop.set()
+
+    execution.sleep = pause
+    summary = execution.run(stop)
+    assert summary["status"] == "stopped"
+    assert lane.workflow.steps == []
+    # SIGTERM cut the final read short: the request, whose own worker may have
+    # found this fence held, is handed to the next execution, not lost.
+    assert (continuation.calls, summary["continuation"]) == (1, "requested")
+    assert fence(lane).read()["holder"] is None
+    lane.clock.sleep(1)  # The next execution starts after the clock margin.
+    worker(
+        lane.repository, lane.workflow, lane.clock,
+        execution="exec-next", continuation=continuation,
+    ).run()
+    assert lane.workflow.steps == ["just-requested"]
+
+
+def test_a_stop_before_a_collection_is_reached_hands_off_its_requests(lane):
+    import threading
+
+    other = "collection-other"
+    stop = threading.Event()
+    queued(lane.repository, "first-collection", minutes=5)
+    queued(lane.repository, "other-collection", minutes=5, scope=Scope(organization_id=ORG, collection_id=other))
+    continuation = Continuation()
+
+    class StopsDuringItsStep(ScriptedWorkflow):
+        def step(self, principal, ident):
+            stop.set()
+            return super().step(principal, ident)
+
+    workflow = StopsDuringItsStep(lane.repository, lane.clock)
+    summary = worker(
+        lane.repository, workflow, lane.clock,
+        continuation=continuation, collections=(COLLECTION, other),
+    ).run(stop)
+    assert summary["status"] == "stopped"
+    assert (continuation.calls, summary["continuation"]) == (1, "requested")
+    assert workflow.steps == ["first-collection"]
+    worker(
+        lane.repository, lane.workflow, lane.clock, execution="exec-next",
+        continuation=continuation, collections=(COLLECTION, other),
+    ).run()
+    assert lane.workflow.steps == ["other-collection"]
+
+
+def test_the_handshake_keeps_the_continuation_start_inside_the_deadline(lane):
+    from specimen_digitization.application.lane_worker import (
+        CONTINUATION_START_SECONDS,
+        QUEUE_CLOCK_MARGIN_SECONDS,
+    )
+
+    queued(lane.repository, "nearly-at-the-deadline", minutes=1)
+    left = QUEUE_CLOCK_MARGIN_SECONDS + CONTINUATION_START_SECONDS - 1
+
+    class EndsNearTheDeadline(ScriptedWorkflow):
+        def step(self, principal, ident):
+            self.clock.sleep(3600 - left)
+            return super().step(principal, ident)
+
+    workflow = EndsNearTheDeadline(lane.repository, lane.clock)
+    continuation = Continuation()
+    execution = worker(lane.repository, workflow, lane.clock, continuation=continuation)
+    pauses = []
+    execution.sleep = pauses.append
+    summary = execution.run()
+    assert workflow.steps == ["nearly-at-the-deadline"]
+    # Too little time for the wait and the start call: hand off at once.
+    assert pauses == []
+    assert (continuation.calls, summary["continuation"]) == (1, "requested")
+
+
+def test_a_long_final_step_hands_off_without_waiting_past_the_task_deadline(lane):
+    queued(lane.repository, "slow-final-step", minutes=1)
+
+    class LongFinalStep(ScriptedWorkflow):
+        def step(self, principal, ident):
+            self.clock.sleep(3600)
+            return super().step(principal, ident)
+
+    workflow = LongFinalStep(lane.repository, lane.clock)
+    continuation = Continuation()
+    summary = worker(
+        lane.repository, workflow, lane.clock, continuation=continuation
+    ).run()
+    assert workflow.steps == ["slow-final-step"]
+    assert lane.clock.now == START + timedelta(seconds=3600)
+    assert (continuation.calls, summary["continuation"]) == (1, "requested")
+    assert fence(lane).read()["holder"] is None
+
+    # The extra execution performs its bounded check and ends; it does not
+    # create a chain of empty executions or repeat the completed paid step.
+    summary = worker(
+        lane.repository, workflow, lane.clock,
+        execution="exec-next", continuation=continuation,
+    ).run()
+    assert workflow.steps == ["slow-final-step"]
+    assert continuation.calls == 1
+    assert summary["continuation"] is None
+
+
 def test_the_fence_is_written_as_not_sensitive(lane):
     assert fence(lane).acquire() == {"revision": 0, "holder": None}
     stored = fence(lane).read()
@@ -599,7 +796,13 @@ def test_a_stop_signal_ends_the_drain_and_releases_the_fence(lane):
     assert stopping.steps == ["a-oldest"]
     assert summary["status"] == "stopped"
     assert fence(lane).read()["holder"] is None
-    assert continuation.calls == 0
+    # b-next is still requested: the stop hands it to the next execution.
+    assert (continuation.calls, summary["continuation"]) == (1, "requested")
+    worker(
+        lane.repository, lane.workflow, lane.clock,
+        execution="exec-next", continuation=continuation,
+    ).run(stop=None)
+    assert lane.workflow.steps == ["b-next"]
 
 
 def test_viewer_memberships_are_not_drained(lane):

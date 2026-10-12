@@ -47,6 +47,9 @@ dependencies:
   crypto: ^3.0.7
   desktop_drop: ^0.8.4
   file_selector: ^1.1.0
+  # Camera review edits are applied locally before an operator submits the
+  # photograph. The server still receives one ordinary intake image.
+  image: ^4.10.1
   image_picker: ^1.2.3
   shared_preferences: ^2.5.5
   # Local 7.0.0 removes raw Android intent/URL logging; see its PROVENANCE.md.

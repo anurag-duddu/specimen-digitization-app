@@ -228,6 +228,7 @@ void main() {
       expect(repository.checks, 0);
       expect(repository.uploads, 0);
       await tester.ensureVisible(find.text('File details'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('File details'));
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('Send for server check'));

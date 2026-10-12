@@ -20,6 +20,7 @@
 library;
 
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:camera/camera.dart' show XFile;
@@ -34,6 +35,22 @@ import 'package:specimen_ui/specimen_ui.dart';
 import '../capture_quality.dart';
 import '../widgets/not_calibrated_chip.dart';
 import 'capture_camera.dart';
+import 'capture_orientation.dart';
+import 'capture_photo_editor.dart';
+
+/// The compact intake-queue update shown while the camera remains open.
+@immutable
+class CaptureActivity {
+  const CaptureActivity({
+    required this.label,
+    this.progress,
+    this.problem = false,
+  });
+
+  final String label;
+  final double? progress;
+  final bool problem;
+}
 
 /// What the capture route hands back to the intake screen.
 @immutable
@@ -60,7 +77,16 @@ class CaptureResult {
 
 /// The viewfinder, review step and batch counter.
 class CaptureScreen extends StatefulWidget {
-  const CaptureScreen({super.key, required this.camera, this.onAccepted});
+  const CaptureScreen({
+    super.key,
+    required this.camera,
+    this.onAccepted,
+    this.autoIngest = false,
+    this.onAutoIngestChanged,
+    this.activity,
+    this.activitySnapshot,
+    this.deviceFallbackAvailable = true,
+  });
 
   /// Builds the camera. Injected so a widget test runs against a fake, since
   /// neither the emulator nor CI has a camera.
@@ -69,13 +95,41 @@ class CaptureScreen extends StatefulWidget {
   /// Called for each accepted image without waiting for the whole batch.
   final ValueChanged<XFile>? onAccepted;
 
+  /// When true, the shutter sends the photograph to Intake immediately.
+  final bool autoIngest;
+
+  /// Persists a change made from inside the camera.
+  final ValueChanged<bool>? onAutoIngestChanged;
+
+  /// The intake transfer session, used only as a repaint signal.
+  final Listenable? activity;
+
+  /// Reads a plain, camera-safe summary of the intake queue.
+  final CaptureActivity Function()? activitySnapshot;
+
+  /// Whether a separate operating-system camera app is a meaningful fallback.
+  /// Browser and desktop webcams have no second camera path to offer.
+  final bool deviceFallbackAvailable;
+
   /// The route the intake screen pushes.
   static Route<CaptureResult> route(
     CaptureCameraFactory camera, {
     ValueChanged<XFile>? onAccepted,
+    bool autoIngest = false,
+    ValueChanged<bool>? onAutoIngestChanged,
+    Listenable? activity,
+    CaptureActivity Function()? activitySnapshot,
+    bool deviceFallbackAvailable = true,
   }) => MaterialPageRoute<CaptureResult>(
-    builder: (BuildContext context) =>
-        CaptureScreen(camera: camera, onAccepted: onAccepted),
+    builder: (BuildContext context) => CaptureScreen(
+      camera: camera,
+      onAccepted: onAccepted,
+      autoIngest: autoIngest,
+      onAutoIngestChanged: onAutoIngestChanged,
+      activity: activity,
+      activitySnapshot: activitySnapshot,
+      deviceFallbackAvailable: deviceFallbackAvailable,
+    ),
     fullscreenDialog: true,
   );
 
@@ -103,52 +157,162 @@ class CaptureScreen extends StatefulWidget {
   State<CaptureScreen> createState() => _CaptureScreenState();
 }
 
-class _CaptureScreenState extends State<CaptureScreen> {
+class _CaptureScreenState extends State<CaptureScreen>
+    with WidgetsBindingObserver {
   final List<XFile> _accepted = <XFile>[];
   CaptureCamera? _camera;
   StreamSubscription<CapturePreviewReading>? _subscription;
+  Future<void> _cameraLifecycle = Future<void>.value();
   CaptureUnavailable? _unavailable;
   CapturePreviewReading? _reading;
   Offset? _focusPoint;
   bool _focusLocked = false;
   bool _starting = true;
   bool _capturing = false;
+  bool _editing = false;
+  bool _autoIngest = false;
+  bool _cropping = false;
+  bool _foreground = true;
+  int _cameraGeneration = 0;
+  int _acceptedCount = 0;
+  Rect _crop = const Rect.fromLTWH(0.06, 0.06, 0.88, 0.88);
   XFile? _review;
   Uint8List? _reviewBytes;
+  CaptureDimensions? _reviewDimensions;
+  String? _editError;
+  String? _captureError;
 
   @override
   void initState() {
     super.initState();
-    _start();
+    WidgetsBinding.instance.addObserver(this);
+    _autoIngest = widget.autoIngest;
+    _requestCameraStart();
   }
 
-  Future<void> _start() async {
+  @override
+  void didUpdateWidget(covariant CaptureScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.autoIngest != widget.autoIngest && !_capturing) {
+      _autoIngest = widget.autoIngest;
+    }
+  }
+
+  void _queueCameraLifecycle(Future<void> Function() transition) {
+    final Future<void> previous = _cameraLifecycle;
+    _cameraLifecycle = () async {
+      try {
+        await previous;
+      } catch (_) {
+        // A failed controller must never prevent the next lifecycle request.
+      }
+      try {
+        await transition();
+      } catch (_) {
+        // Start reports its own user-facing failure. Suspend is best-effort.
+      }
+    }();
+  }
+
+  void _requestCameraStart() {
+    final int generation = ++_cameraGeneration;
+    if (mounted && !_starting) setState(() => _starting = true);
+    _queueCameraLifecycle(() => _start(generation));
+  }
+
+  Future<void> _start(int generation) async {
+    if (!mounted ||
+        !_foreground ||
+        generation != _cameraGeneration ||
+        _camera != null) {
+      return;
+    }
     try {
       final CaptureCamera camera = await widget.camera();
-      await camera.start();
-      if (!mounted) {
-        await camera.dispose();
+      try {
+        await camera.start();
+      } catch (error, stackTrace) {
+        await _releaseCamera(null, camera);
+        Error.throwWithStackTrace(error, stackTrace);
+      }
+      if (!mounted || !_foreground || generation != _cameraGeneration) {
+        await _releaseCamera(null, camera);
         return;
       }
       _subscription = camera.readings.listen(_onReading);
       setState(() {
         _camera = camera;
+        _unavailable = null;
         _starting = false;
       });
     } on CaptureCameraUnavailable catch (error) {
-      if (mounted) {
+      if (mounted && _foreground && generation == _cameraGeneration) {
         setState(() {
           _unavailable = error.kind;
           _starting = false;
         });
       }
     } catch (_) {
-      if (mounted) {
+      if (mounted && _foreground && generation == _cameraGeneration) {
         setState(() {
           _unavailable = CaptureUnavailable.failed;
           _starting = false;
         });
       }
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.resumed:
+        if (_foreground && _camera != null) return;
+        // Android marks the activity inactive while its runtime camera
+        // permission sheet is on top. In that case the original start is
+        // still waiting for the permission result; starting a second camera
+        // on resume would ask twice and can leave CameraX waiting forever
+        // after "Don't ask again". A real background transition reaches
+        // hidden/paused below and sets _foreground to false.
+        if (_foreground && _starting && _camera == null) return;
+        _foreground = true;
+        _requestCameraStart();
+        break;
+      case AppLifecycleState.inactive:
+        // See the resumed case above. Keep the pending start alive for a
+        // transient system overlay, but continue to release an initialized
+        // camera immediately and let hidden/paused handle real backgrounding.
+        if (_starting && _camera == null) return;
+        if (!_foreground) return;
+        _foreground = false;
+        _requestCameraSuspend();
+        break;
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.paused:
+      case AppLifecycleState.detached:
+        if (!_foreground) return;
+        _foreground = false;
+        _requestCameraSuspend();
+        break;
+    }
+  }
+
+  void _requestCameraSuspend() {
+    final int generation = ++_cameraGeneration;
+    _queueCameraLifecycle(() => _suspendCamera(generation));
+  }
+
+  Future<void> _suspendCamera(int generation) async {
+    final StreamSubscription<CapturePreviewReading>? subscription =
+        _subscription;
+    final CaptureCamera? camera = _camera;
+    _subscription = null;
+    _camera = null;
+    await _releaseCamera(subscription, camera);
+    if (mounted &&
+        !_foreground &&
+        generation == _cameraGeneration &&
+        _reviewBytes == null) {
+      setState(() => _starting = true);
     }
   }
 
@@ -184,27 +348,117 @@ class _CaptureScreenState extends State<CaptureScreen> {
   Future<void> _capture() async {
     final CaptureCamera? camera = _camera;
     if (camera == null || _capturing) return;
-    setState(() => _capturing = true);
+    final int generation = _cameraGeneration;
+    setState(() {
+      _capturing = true;
+      _captureError = null;
+    });
     try {
       final XFile file = await camera.capture();
-      final Uint8List bytes = await readCapture(file);
+      if (!mounted) return;
+      // Android CameraX can return upright JPEG pixels with the undefined
+      // EXIF orientation value zero. Repair only that metadata value in an
+      // in-memory copy before either submission path sees it; the camera's
+      // temporary original remains untouched.
+      final Uint8List capturedBytes = await readCapture(file);
+      if (!mounted) return;
+      final Uint8List bytes = normalizeCameraExifOrientation(capturedBytes);
+      if (_autoIngest) {
+        final XFile normalized = await _normalizeCameraCapture(
+          file,
+          bytes: bytes,
+        );
+        if (!mounted) return;
+        if (!_foreground ||
+            generation != _cameraGeneration ||
+            !identical(camera, _camera)) {
+          return;
+        }
+        _accept(normalized);
+        return;
+      }
+      final CaptureDimensions dimensions = await captureDimensions(bytes);
+      if (!mounted) return;
+      // Review owns an in-memory copy. The camera package's temporary path is
+      // no longer retained, while these bytes remain available until Intake
+      // accepts them or the operator retakes the photograph.
+      final XFile review = await _normalizeCameraCapture(file, bytes: bytes);
       if (!mounted) return;
       setState(() {
-        _review = file;
+        _review = review;
         _reviewBytes = bytes;
+        _reviewDimensions = dimensions;
+        _cropping = false;
+        _editError = null;
       });
+    } on FormatException {
+      if (mounted && _foreground) {
+        setState(
+          () => _captureError =
+              'The photograph could not be read. Take it again, or return to Intake and choose the file.',
+        );
+      }
     } on CaptureCameraUnavailable catch (error) {
-      if (mounted) setState(() => _unavailable = error.kind);
+      if (mounted && _foreground) setState(() => _unavailable = error.kind);
     } catch (_) {
-      if (mounted) setState(() => _unavailable = CaptureUnavailable.failed);
+      if (mounted && _foreground) {
+        setState(() => _unavailable = CaptureUnavailable.failed);
+      }
     } finally {
       if (mounted) setState(() => _capturing = false);
     }
   }
 
+  /// Camera Web can return a Blob-backed [XFile] without a filename or MIME
+  /// type. Intake deliberately admits images by filename extension, so give
+  /// camera output stable image metadata before either submission path sees
+  /// it. Native captures that already carry matching metadata keep their
+  /// original file handle and avoid an unnecessary byte copy.
+  Future<XFile> _normalizeCameraCapture(XFile file, {Uint8List? bytes}) async {
+    final String originalName = file.name.trim();
+    String? extension = _supportedCameraExtension(originalName);
+    extension ??= _cameraExtensionForMime(file.mimeType);
+
+    Uint8List? capturedBytes = bytes;
+    if (extension == null) {
+      capturedBytes ??= await readCapture(file);
+      extension = _cameraExtensionForBytes(capturedBytes);
+    }
+    if (extension == null) {
+      throw const FormatException('Unsupported camera image format.');
+    }
+
+    final String mimeType = _cameraMimeForExtension(extension);
+    final bool keepOriginalName =
+        _isSafeCameraFilename(originalName) &&
+        _supportedCameraExtension(originalName) != null;
+    final String name = keepOriginalName
+        ? originalName
+        : 'camera-photo-${_acceptedCount + 1}.$extension';
+    final String? originalMimeType = file.mimeType?.trim().toLowerCase();
+    if (capturedBytes == null &&
+        name == file.name &&
+        (originalMimeType == null ||
+            originalMimeType.isEmpty ||
+            originalMimeType == mimeType)) {
+      return file;
+    }
+
+    capturedBytes ??= await readCapture(file);
+    return XFile.fromData(
+      capturedBytes,
+      path: name,
+      name: name,
+      mimeType: mimeType,
+    );
+  }
+
   void _retake() => setState(() {
     _review = null;
     _reviewBytes = null;
+    _reviewDimensions = null;
+    _cropping = false;
+    _editError = null;
   });
 
   /// Batch mode: accepting returns straight to the viewfinder for the next
@@ -212,12 +466,76 @@ class _CaptureScreenState extends State<CaptureScreen> {
   void _use() {
     final XFile? file = _review;
     if (file == null) return;
+    _accept(file);
+  }
+
+  void _accept(XFile file) {
+    final ValueChanged<XFile>? onAccepted = widget.onAccepted;
     setState(() {
-      _accepted.add(file);
+      _acceptedCount++;
+      // A streamed photograph is owned by Intake as soon as the callback
+      // returns. Keeping it here would retain image bytes for the whole batch.
+      if (onAccepted == null) _accepted.add(file);
       _review = null;
       _reviewBytes = null;
+      _reviewDimensions = null;
+      _cropping = false;
+      _editError = null;
     });
-    widget.onAccepted?.call(file);
+    onAccepted?.call(file);
+  }
+
+  void _setAutoIngest(bool value) {
+    setState(() => _autoIngest = value);
+    widget.onAutoIngestChanged?.call(value);
+  }
+
+  Future<void> _rotate() => _edit(quarterTurns: 1);
+
+  Future<void> _applyCrop() => _edit(crop: _crop);
+
+  Future<void> _edit({int quarterTurns = 0, Rect? crop}) async {
+    final Uint8List? bytes = _reviewBytes;
+    if (bytes == null || _editing) return;
+    setState(() {
+      _editing = true;
+      _editError = null;
+    });
+    try {
+      final CaptureEditResult result = await applyCaptureEdit(
+        CaptureEditRequest(
+          bytes: bytes,
+          quarterTurns: quarterTurns,
+          crop: crop,
+        ),
+      );
+      if (!mounted) return;
+      final String original = _review?.name ?? 'camera-photo';
+      final String stem = original.replaceFirst(RegExp(r'\.[^.]+$'), '');
+      setState(() {
+        _reviewBytes = result.bytes;
+        _reviewDimensions = CaptureDimensions(result.width, result.height);
+        _review = XFile.fromData(
+          result.bytes,
+          path: '$stem-edited.png',
+          name: '$stem-edited.png',
+          mimeType: 'image/png',
+        );
+        _cropping = false;
+        _crop = const Rect.fromLTWH(0.06, 0.06, 0.88, 0.88);
+      });
+    } on CaptureEditSizeException catch (error) {
+      if (mounted) setState(() => _editError = error.message);
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => _editError =
+              'This edit could not be applied. Retake the photograph or send it unchanged.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _editing = false);
+    }
   }
 
   void _finish() {
@@ -230,22 +548,47 @@ class _CaptureScreenState extends State<CaptureScreen> {
     );
   }
 
-  void _fallback() {
-    if (!mounted) return;
-    Navigator.of(context).pop(
-      CaptureResult(
-        files: List<XFile>.unmodifiable(_accepted),
-        unavailable: _unavailable,
-        streamed: widget.onAccepted != null,
-      ),
-    );
-  }
-
   @override
   void dispose() {
-    _subscription?.cancel();
-    _camera?.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    _foreground = false;
+    ++_cameraGeneration;
+    final StreamSubscription<CapturePreviewReading>? subscription =
+        _subscription;
+    final CaptureCamera? camera = _camera;
+    _subscription = null;
+    _camera = null;
+    unawaited(_disposeAfterLifecycle(_cameraLifecycle, subscription, camera));
     super.dispose();
+  }
+
+  Future<void> _disposeAfterLifecycle(
+    Future<void> lifecycle,
+    StreamSubscription<CapturePreviewReading>? subscription,
+    CaptureCamera? camera,
+  ) async {
+    try {
+      await lifecycle;
+    } catch (_) {
+      // Continue releasing the controller even after a failed transition.
+    }
+    await _releaseCamera(subscription, camera);
+  }
+
+  Future<void> _releaseCamera(
+    StreamSubscription<CapturePreviewReading>? subscription,
+    CaptureCamera? camera,
+  ) async {
+    try {
+      await subscription?.cancel();
+    } catch (_) {
+      // The stream may already be closed by a platform controller failure.
+    }
+    try {
+      await camera?.dispose();
+    } catch (_) {
+      // Route disposal cannot surface an asynchronous controller error.
+    }
   }
 
   /// "1 photograph in this batch", pluralised, so the operator can leave the
@@ -260,8 +603,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
     onPopInvokedWithResult: (bool didPop, CaptureResult? _) {
       if (didPop) return;
       // A back gesture keeps what was already accepted. Nothing the
-      // operator confirmed is thrown away by leaving. Only the explicit
-      // fallback action may open another camera.
+      // operator confirmed is thrown away by leaving.
       _finish();
     },
     // No sky and no navigation: the preview is the evidence and it fills the
@@ -273,6 +615,10 @@ class _CaptureScreenState extends State<CaptureScreen> {
   );
 
   Widget _body() {
+    // An operator's unsent photograph wins over controller restart state. A
+    // background/resume cycle may restart or fail the camera behind it, but
+    // neither is allowed to replace the evidence they are still reviewing.
+    if (_reviewBytes != null) return _reviewBody();
     if (_starting) {
       return Center(
         child: UiProgress.ring(
@@ -282,7 +628,6 @@ class _CaptureScreenState extends State<CaptureScreen> {
       );
     }
     if (_unavailable != null) return _unavailableBody();
-    if (_reviewBytes != null) return _reviewBody();
     return _viewfinder();
   }
 
@@ -307,15 +652,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
               ),
               SizedBox(height: ui.space.s6),
               UiButtonRow(
-                primary: UiButton(
-                  label: 'Use device camera',
-                  onPressed: _fallback,
-                ),
-                secondary: UiButton(
-                  label: 'Cancel',
-                  variant: UiButtonVariant.secondary,
-                  onPressed: _finish,
-                ),
+                primary: UiButton(label: 'Back to Intake', onPressed: _finish),
               ),
             ],
           ),
@@ -332,44 +669,187 @@ class _CaptureScreenState extends State<CaptureScreen> {
           child: Surface(
             role: SurfaceRole.matte,
             radius: ui.shape.sheet,
-            child: Center(
-              child: Image.memory(
-                _reviewBytes!,
-                fit: BoxFit.contain,
-                gaplessPlayback: true,
-                semanticLabel: 'The photograph you took',
-              ),
+            child: LayoutBuilder(
+              builder: (BuildContext context, BoxConstraints constraints) {
+                final CaptureDimensions? dimensions = _reviewDimensions;
+                if (!_cropping || dimensions == null) {
+                  return Center(
+                    child: Image.memory(
+                      _reviewBytes!,
+                      fit: BoxFit.contain,
+                      gaplessPlayback: true,
+                      semanticLabel: 'The photograph you took',
+                    ),
+                  );
+                }
+                final double scale = math.min(
+                  constraints.maxWidth / dimensions.width,
+                  constraints.maxHeight / dimensions.height,
+                );
+                final Size shown = Size(
+                  dimensions.width * scale,
+                  dimensions.height * scale,
+                );
+                return Stack(
+                  fit: StackFit.expand,
+                  children: <Widget>[
+                    Center(
+                      child: Image.memory(
+                        _reviewBytes!,
+                        width: shown.width,
+                        height: shown.height,
+                        fit: BoxFit.fill,
+                        gaplessPlayback: true,
+                        semanticLabel: 'The photograph you took',
+                      ),
+                    ),
+                    Center(
+                      child: SizedBox.fromSize(
+                        size: shown,
+                        child: _CropSelection(
+                          value: _crop,
+                          onChanged: (Rect value) =>
+                              setState(() => _crop = value),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
           ),
         ),
-        Padding(
-          padding: EdgeInsetsDirectional.all(ui.space.s4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              Text(
-                'Check the smallest text, the glare and that every label is '
-                'inside the frame.',
-                style: ui.type.body.copyWith(color: ui.color.ink),
-              ),
-              SizedBox(height: ui.space.s4),
-              UiButtonRow(
-                primary: UiButton(
-                  label: 'Use photograph',
-                  leading: UiIcons.check,
-                  onPressed: _use,
+        ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: ui.space.readingMax),
+          child: SingleChildScrollView(
+            padding: EdgeInsetsDirectional.all(ui.space.s4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                Text(
+                  _cropping
+                      ? 'Drag the frame to keep only the specimen and labels you need.'
+                      : 'Check the smallest text, the glare and that every label is inside the frame.',
+                  style: ui.type.body.copyWith(color: ui.color.ink),
                 ),
-                secondary: UiButton(
-                  label: 'Retake',
-                  variant: UiButtonVariant.secondary,
-                  leading: UiIcons.retry,
-                  onPressed: _retake,
-                ),
-              ),
-            ],
+                if (_editError != null) ...<Widget>[
+                  SizedBox(height: ui.space.s3),
+                  UiBanner(message: _editError!, tone: UiBannerTone.blocked),
+                ],
+                SizedBox(height: ui.space.s4),
+                if (_cropping)
+                  UiButtonRow(
+                    primary: UiButton(
+                      key: const ValueKey<String>('capture-apply-crop'),
+                      label: _editing ? 'Applying crop' : 'Apply crop',
+                      leading: UiIcons.check,
+                      onPressed: _editing ? null : _applyCrop,
+                    ),
+                    secondary: UiButton(
+                      label: 'Cancel crop',
+                      variant: UiButtonVariant.secondary,
+                      onPressed: _editing
+                          ? null
+                          : () => setState(() => _cropping = false),
+                    ),
+                  )
+                else ...<Widget>[
+                  Wrap(
+                    spacing: ui.space.s2,
+                    runSpacing: ui.space.s2,
+                    children: <Widget>[
+                      UiButton(
+                        key: const ValueKey<String>('capture-rotate'),
+                        label: _editing ? 'Rotating' : 'Rotate',
+                        variant: UiButtonVariant.secondary,
+                        leading: UiIcons.rotateView,
+                        onPressed: _editing ? null : _rotate,
+                      ),
+                      UiButton(
+                        key: const ValueKey<String>('capture-crop'),
+                        label: 'Crop',
+                        variant: UiButtonVariant.secondary,
+                        leading: UiIcons.correctRegions,
+                        onPressed: _editing
+                            ? null
+                            : () => setState(() {
+                                _crop = const Rect.fromLTWH(
+                                  0.06,
+                                  0.06,
+                                  0.88,
+                                  0.88,
+                                );
+                                _cropping = true;
+                              }),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: ui.space.s4),
+                  UiButtonRow(
+                    primary: UiButton(
+                      key: const ValueKey<String>('capture-send'),
+                      label: 'Send for processing',
+                      leading: UiIcons.check,
+                      onPressed: _editing ? null : _use,
+                    ),
+                    secondary: UiButton(
+                      label: 'Retake',
+                      variant: UiButtonVariant.secondary,
+                      leading: UiIcons.retry,
+                      onPressed: _editing ? null : _retake,
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _activityBar(BuildContext context) {
+    final Listenable? activity = widget.activity;
+    final CaptureActivity Function()? snapshot = widget.activitySnapshot;
+    if (activity == null || snapshot == null) return const SizedBox.shrink();
+    return AnimatedBuilder(
+      animation: activity,
+      builder: (BuildContext context, Widget? _) {
+        final UiThemeData ui = context.ui;
+        final CaptureActivity current = snapshot();
+        return Surface(
+          key: const ValueKey<String>('capture-intake-activity'),
+          role: SurfaceRole.ground,
+          hairline: true,
+          radius: ui.shape.inner,
+          padding: EdgeInsetsDirectional.all(ui.space.s3),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Semantics(
+                container: true,
+                liveRegion: true,
+                child: Text(
+                  current.label,
+                  style: ui.type.bodySmall.copyWith(
+                    color: current.problem
+                        ? ui.color.status.blocked.content
+                        : ui.color.inkSecondary,
+                  ),
+                ),
+              ),
+              if (current.progress != null) ...<Widget>[
+                SizedBox(height: ui.space.s2),
+                UiProgress.bar(
+                  value: current.progress,
+                  semanticsLabel: 'Current Intake upload progress',
+                ),
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -474,11 +954,52 @@ class _CaptureScreenState extends State<CaptureScreen> {
                   ],
                 ),
               ),
+              if (_captureError != null) ...<Widget>[
+                SizedBox(height: ui.space.s3),
+                UiBanner(
+                  message: _captureError!,
+                  tone: UiBannerTone.blocked,
+                  dismissLabel: 'Dismiss message',
+                  onDismiss: () => setState(() => _captureError = null),
+                ),
+              ],
               SizedBox(height: ui.space.s2),
               Text(
                 'Framing, focus and label coverage are not checked here.',
                 style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
               ),
+              SizedBox(height: ui.space.s3),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text('Auto-ingest', style: ui.type.label),
+                        Text(
+                          _autoIngest
+                              ? 'Each photo is sent to the Intake queue immediately.'
+                              : 'Review and adjust each photo before sending it.',
+                          style: ui.type.bodySmall.copyWith(
+                            color: ui.color.inkSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(width: ui.space.s3),
+                  UiSwitch(
+                    key: const ValueKey<String>('capture-auto-ingest'),
+                    label: 'Auto-ingest',
+                    showLabel: false,
+                    value: _autoIngest,
+                    onChanged: _capturing ? null : _setAutoIngest,
+                  ),
+                ],
+              ),
+              SizedBox(height: ui.space.s3),
+              _activityBar(context),
               SizedBox(height: ui.space.s4),
               Row(
                 children: <Widget>[
@@ -487,7 +1008,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
                       container: true,
                       liveRegion: true,
                       child: Text(
-                        counterLabel(_accepted.length),
+                        counterLabel(_acceptedCount),
                         style: ui.type.body.copyWith(color: ui.color.ink),
                       ),
                     ),
@@ -511,6 +1032,244 @@ class _CaptureScreenState extends State<CaptureScreen> {
       ],
     );
   }
+}
+
+const Set<String> _supportedCameraExtensions = <String>{
+  'jpg',
+  'jpeg',
+  'png',
+  'heic',
+  'heif',
+  'tif',
+  'tiff',
+  'dng',
+};
+
+String? _supportedCameraExtension(String name) {
+  final int dot = name.lastIndexOf('.');
+  if (dot <= 0 || dot == name.length - 1) return null;
+  final String extension = name.substring(dot + 1).toLowerCase();
+  return _supportedCameraExtensions.contains(extension) ? extension : null;
+}
+
+bool _isSafeCameraFilename(String name) {
+  if (name.isEmpty || name.contains('/') || name.contains(r'\')) return false;
+  return !name.codeUnits.any((int unit) => unit < 0x20 || unit == 0x7f);
+}
+
+String? _cameraExtensionForMime(String? mimeType) =>
+    switch (mimeType?.trim().toLowerCase()) {
+      'image/jpeg' || 'image/jpg' => 'jpg',
+      'image/png' => 'png',
+      'image/heic' => 'heic',
+      'image/heif' => 'heif',
+      'image/tiff' => 'tif',
+      'image/dng' || 'image/x-adobe-dng' => 'dng',
+      _ => null,
+    };
+
+String? _cameraExtensionForBytes(Uint8List bytes) {
+  if (bytes.length >= 3 &&
+      bytes[0] == 0xff &&
+      bytes[1] == 0xd8 &&
+      bytes[2] == 0xff) {
+    return 'jpg';
+  }
+  const List<int> png = <int>[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+  if (bytes.length >= png.length) {
+    var matches = true;
+    for (var index = 0; index < png.length; index++) {
+      if (bytes[index] != png[index]) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) return 'png';
+  }
+  return null;
+}
+
+String _cameraMimeForExtension(String extension) => switch (extension) {
+  'jpg' || 'jpeg' => 'image/jpeg',
+  'png' => 'image/png',
+  'heic' || 'heif' => 'image/heic',
+  'tif' || 'tiff' => 'image/tiff',
+  'dng' => 'image/x-adobe-dng',
+  _ => throw const FormatException('Unsupported camera image format.'),
+};
+
+enum _CropDrag { move, topLeft, topRight, bottomLeft, bottomRight }
+
+/// A deliberately small cropper: one visible frame, four large corner
+/// handles, and drag-to-move. The normalized value survives phone/tablet
+/// resizing and maps directly to the pixels the operator sees.
+class _CropSelection extends StatefulWidget {
+  const _CropSelection({required this.value, required this.onChanged});
+
+  final Rect value;
+  final ValueChanged<Rect> onChanged;
+
+  @override
+  State<_CropSelection> createState() => _CropSelectionState();
+}
+
+class _CropSelectionState extends State<_CropSelection> {
+  _CropDrag? _drag;
+  Offset? _last;
+
+  static const double _minimum = 0.16;
+  static const double _handleRadius = 28;
+
+  Rect _pixels(Size size) => Rect.fromLTRB(
+    widget.value.left * size.width,
+    widget.value.top * size.height,
+    widget.value.right * size.width,
+    widget.value.bottom * size.height,
+  );
+
+  void _start(DragStartDetails details, Size size) {
+    final Rect crop = _pixels(size);
+    final Offset point = details.localPosition;
+    final List<(_CropDrag, Offset)> corners = <(_CropDrag, Offset)>[
+      (_CropDrag.topLeft, crop.topLeft),
+      (_CropDrag.topRight, crop.topRight),
+      (_CropDrag.bottomLeft, crop.bottomLeft),
+      (_CropDrag.bottomRight, crop.bottomRight),
+    ];
+    _drag = corners
+        .where((item) => (item.$2 - point).distance <= _handleRadius)
+        .map((item) => item.$1)
+        .firstOrNull;
+    if (_drag == null && crop.contains(point)) _drag = _CropDrag.move;
+    _last = point;
+  }
+
+  void _update(DragUpdateDetails details, Size size) {
+    final _CropDrag? drag = _drag;
+    final Offset? previous = _last;
+    if (drag == null || previous == null || size.isEmpty) return;
+    final Offset delta = Offset(
+      (details.localPosition.dx - previous.dx) / size.width,
+      (details.localPosition.dy - previous.dy) / size.height,
+    );
+    _last = details.localPosition;
+    Rect crop = widget.value;
+    switch (drag) {
+      case _CropDrag.move:
+        final double dx = delta.dx.clamp(-crop.left, 1 - crop.right);
+        final double dy = delta.dy.clamp(-crop.top, 1 - crop.bottom);
+        crop = crop.shift(Offset(dx, dy));
+        break;
+      case _CropDrag.topLeft:
+        crop = Rect.fromLTRB(
+          (crop.left + delta.dx).clamp(0.0, crop.right - _minimum),
+          (crop.top + delta.dy).clamp(0.0, crop.bottom - _minimum),
+          crop.right,
+          crop.bottom,
+        );
+        break;
+      case _CropDrag.topRight:
+        crop = Rect.fromLTRB(
+          crop.left,
+          (crop.top + delta.dy).clamp(0.0, crop.bottom - _minimum),
+          (crop.right + delta.dx).clamp(crop.left + _minimum, 1.0),
+          crop.bottom,
+        );
+        break;
+      case _CropDrag.bottomLeft:
+        crop = Rect.fromLTRB(
+          (crop.left + delta.dx).clamp(0.0, crop.right - _minimum),
+          crop.top,
+          crop.right,
+          (crop.bottom + delta.dy).clamp(crop.top + _minimum, 1.0),
+        );
+        break;
+      case _CropDrag.bottomRight:
+        crop = Rect.fromLTRB(
+          crop.left,
+          crop.top,
+          (crop.right + delta.dx).clamp(crop.left + _minimum, 1.0),
+          (crop.bottom + delta.dy).clamp(crop.top + _minimum, 1.0),
+        );
+        break;
+    }
+    widget.onChanged(crop);
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (BuildContext context, BoxConstraints constraints) {
+      final Size size = constraints.biggest;
+      return Semantics(
+        label:
+            'Crop selection. Drag inside to move it, or drag a corner to resize it.',
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onPanStart: (DragStartDetails details) => _start(details, size),
+          onPanUpdate: (DragUpdateDetails details) => _update(details, size),
+          onPanEnd: (_) {
+            _drag = null;
+            _last = null;
+          },
+          child: CustomPaint(
+            key: const ValueKey<String>('capture-crop-selection'),
+            painter: _CropSelectionPainter(
+              crop: _pixels(size),
+              boundary: context.ui.color.paper,
+              shade: context.ui.color.ink.withValues(alpha: 0.58),
+              strokeWidth: context.ui.shape.stroke.emphasis,
+            ),
+          ),
+        ),
+      );
+    },
+  );
+}
+
+class _CropSelectionPainter extends CustomPainter {
+  const _CropSelectionPainter({
+    required this.crop,
+    required this.boundary,
+    required this.shade,
+    required this.strokeWidth,
+  });
+
+  final Rect crop;
+  final Color boundary;
+  final Color shade;
+  final double strokeWidth;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Path shadePath = Path()
+      ..fillType = PathFillType.evenOdd
+      ..addRect(Offset.zero & size)
+      ..addRect(crop);
+    canvas.drawPath(shadePath, Paint()..color = shade);
+    final Paint line = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..color = boundary;
+    canvas.drawRect(crop, line);
+    final Paint handle = Paint()
+      ..style = PaintingStyle.fill
+      ..color = boundary;
+    for (final Offset corner in <Offset>[
+      crop.topLeft,
+      crop.topRight,
+      crop.bottomLeft,
+      crop.bottomRight,
+    ]) {
+      canvas.drawCircle(corner, 7, handle);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_CropSelectionPainter old) =>
+      old.crop != crop ||
+      old.boundary != boundary ||
+      old.shade != shade ||
+      old.strokeWidth != strokeWidth;
 }
 
 /// The shutter: an `ink` disc inside a `paper` ring (07 section 5).

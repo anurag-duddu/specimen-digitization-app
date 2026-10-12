@@ -229,16 +229,30 @@ def test_a_reader_that_answers_past_its_budget_keeps_its_observation(tmp_path):
     assert run.lease_until is None
 
 
-def test_a_first_pass_past_its_budget_still_waits_for_reconciliation(tmp_path):
-    # A reader past its budget does not (below): only a reading is a pure read.
-    adapters = LateReader(LocalBlobs(tmp_path / "blobs"), "first_pass")
+@pytest.mark.parametrize(
+    "failure",
+    [
+        AdapterFailure("provider_timeout", LookupStatus.TIMEOUT),
+        AdapterFailure(
+            "sam3_timeout", LookupStatus.TIMEOUT, retry_after_seconds=SAM3_RETRY_SECONDS
+        ),
+    ],
+    ids=["provider-timeout", "sam3-code"],
+)
+def test_a_first_pass_past_its_budget_is_retried_not_held_for_reconciliation(
+    tmp_path, failure
+):
+    # A first pass compares retained readings and publishes nothing itself
+    # (reliability.first_pass_failure_is_recoverable), so like a reader its
+    # failure past the budget is retried; it no longer waits for an operator.
+    adapters = LateReader(LocalBlobs(tmp_path / "blobs"), "first_pass", failure)
     workflow, principal, ident = start(tmp_path, adapters)
     workflow.monotonic = lambda: adapters.elapsed[0]
     run = workflow.drain(principal, ident).run
     assert run.completed_steps[-1].startswith("transcribe:")
-    assert (run.stage, run.blocker) == ("processing_blocked", "external_outcome_unknown")
-    assert run.reasons == ["external_stage_deadline_exceeded"]
-    assert run.next_retry_at is None and run.lease_until is not None
+    assert (run.stage, run.blocker) == ("retry_scheduled", failure.code)
+    assert "external_stage_deadline_exceeded" not in run.reasons
+    assert run.next_retry_at and run.lease_until is None
 
 
 @pytest.mark.parametrize(
@@ -288,21 +302,14 @@ def test_a_reader_past_its_budget_is_retried_and_never_waits_for_reconciliation(
     [
         # Another failure on the segment step,
         ("segment", AdapterFailure("provider_timeout", LookupStatus.TIMEOUT)),
-        # a SAM 3 failure whose outcome is unknown,
+        # and a SAM 3 failure whose outcome is unknown. (A reader or first
+        # pass keeps its retry whatever its code: tests above and below.)
         (
             "segment",
             AdapterFailure("sam3_timeout", LookupStatus.TIMEOUT, outcome_unknown=True),
         ),
-        # and a SAM 3 code on another paid step (a first pass; a reader's
-        # known failure keeps its retry whatever its code, test below).
-        (
-            "first_pass",
-            AdapterFailure(
-                "sam3_timeout", LookupStatus.TIMEOUT, retry_after_seconds=SAM3_RETRY_SECONDS
-            ),
-        ),
     ],
-    ids=["segment-other-code", "segment-outcome-unknown", "first-pass-sam3-code"],
+    ids=["segment-other-code", "segment-outcome-unknown"],
 )
 def test_only_a_known_sam3_failure_on_segment_keeps_its_retry_past_the_budget(
     tmp_path, late, failure
