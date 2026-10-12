@@ -468,6 +468,111 @@ void main() {
     repository.close();
   });
 
+  // A queued photo waits behind the collection's processing (G13); a start
+  // cannot move it forward, so the row is calm and offers no Retry start.
+  Json inLine({List<String> actions = const <String>['pause', 'cancel']}) =>
+      <String, dynamic>{
+        ..._summary(status: 'pending', actions: actions),
+        'intake_progress': <String, dynamic>{
+          'next_step': 'pin_dependencies',
+          'completed_stages': <String>[],
+          'waiting_in_line': true,
+        },
+      };
+
+  for (final ({Size size, TargetPlatform platform}) device
+      in <({Size size, TargetPlatform platform})>[
+        (size: const Size(390, 844), platform: TargetPlatform.android),
+        (size: const Size(834, 1194), platform: TargetPlatform.iOS),
+      ]) {
+    testWidgets(
+      'a photo in line reads as queued without Retry start on ${device.platform.name}',
+      (WidgetTester tester) async {
+        tester.platformDispatcher.accessibilityFeaturesTestValue =
+            const FakeAccessibilityFeatures(disableAnimations: true);
+        addTearDown(
+          tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+        );
+        var posts = 0;
+        final ApiSpecimenRepository repository = _repository((
+          http.Request request,
+        ) async {
+          if (request.method == 'POST') posts++;
+          return _response(inLine());
+        });
+        final IntakeTransferSession session = _session(repository);
+        await session.refreshProcessingStatuses();
+        await _pumpRecovery(
+          tester,
+          session,
+          size: device.size,
+          platform: device.platform,
+        );
+        final ManifestEntry photograph = session.entries.single;
+        expect(IntakeProgress.of(photograph).label, IntakeProgress.inLine);
+        expect(IntakeProgress.rolls(photograph), isFalse);
+        expect(find.text(IntakeProgress.inLine), findsOneWidget);
+        expect(find.text(intakeInLineReason), findsOneWidget);
+        expect(find.text('Retry start'), findsNothing);
+        expect(find.textContaining('Retry start asks'), findsNothing);
+        expect(find.text('Waiting for processing to start.'), findsNothing);
+        expect(find.text('Needs attention'), findsNothing);
+        expect(session.canRetryProcessing(photograph), isFalse);
+        expect(photograph.state, UploadState.processing);
+        expect(tester.takeException(), isNull);
+        await expectAccessible(tester);
+        expect(posts, 0);
+        await tester.pumpWidget(const SizedBox());
+        session.close();
+        repository.close();
+      },
+    );
+  }
+
+  test('a start offered beside an in-line report is still withheld', () async {
+    final ApiSpecimenRepository repository = _repository(
+      (_) async => _response(
+        inLine(actions: <String>['pause', 'cancel', 'start_processing']),
+      ),
+    );
+    final IntakeTransferSession session = _session(repository);
+    await session.refreshProcessingStatuses();
+    expect(intakeProcessingRetryAction(session.entries.single), isNull);
+    expect(session.entries.single.reason, intakeInLineReason);
+    session.close();
+    repository.close();
+  });
+
+  test(
+    'a start that did not go through yields to the line it joined',
+    () async {
+      final ApiSpecimenRepository repository = _repository((
+        http.Request request,
+      ) async {
+        if (request.method == 'POST') {
+          return _response(<String, dynamic>{
+            ...inLine(),
+            'dispatch': <String, dynamic>{'status': 'failed'},
+          }, 202);
+        }
+        return _response(
+          _summary(status: 'pending', actions: <String>['start_processing']),
+        );
+      });
+      final IntakeTransferSession session = _session(repository);
+      await session.refreshProcessingStatuses();
+      final ManifestEntry photograph = session.entries.single;
+      expect(intakeProcessingRetryAction(photograph), 'start_processing');
+
+      await session.start(only: photograph);
+
+      expect(photograph.reason, intakeInLineReason);
+      expect(intakeProcessingRetryAction(photograph), isNull);
+      session.close();
+      repository.close();
+    },
+  );
+
   for (final ({String status, String? blocker, String guidance}) hold
       in <({String status, String? blocker, String guidance})>[
         (

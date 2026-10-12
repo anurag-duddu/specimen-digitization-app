@@ -1708,6 +1708,49 @@ def create_app(
             p.scope, filters, cutoff or now(), after_created, after_id, limit, sensitive
         )
 
+    def in_line(p, specimen, result):
+        """Mark a pending run waiting behind its collection's live drain (G13).
+
+        One execution steps a collection's runs one at a time behind the
+        collection fence; a pending run then waits for its turn, and another
+        worker start cannot move it forward (that execution skips the held
+        fence). Such a run is reported as waiting in line and is not offered
+        `start_processing`. When no other run is being processed, or the
+        listing cannot be read, the summary stays as it was.
+        """
+        from datetime import datetime, timezone
+
+        from .domain import now
+        from .intake_progress import lane_busy
+        from .search import SearchFilters
+
+        run = specimen.run
+        if (
+            mode == "synthetic"
+            or run.stage != "pending"
+            or specimen.asset.sensitive
+            or run.blocker is not None
+            or run.disposition is not None
+            or "evidence_pilot" in run.dependencies
+        ):
+            return result
+        try:
+            # The drain never takes a sensitive record, so the non-sensitive
+            # listing holds every run it can be stepping.
+            rows = repository.search(
+                p.scope, SearchFilters(state="running"), now(), None, "", 100, False
+            )
+            busy = lane_busy(rows, specimen.id, datetime.now(timezone.utc))
+        except Exception:  # noqa: BLE001 - a projection never fails the read
+            return result
+        result["intake_progress"]["waiting_in_line"] = busy
+        if busy:
+            result["available_actions"] = [
+                action for action in result["available_actions"]
+                if action != "start_processing"
+            ]
+        return result
+
     def render_workspace(specimen, p, mutation_committed=False):
         from .search import SearchFilters
 
@@ -1800,7 +1843,7 @@ def create_app(
         p, s = find(user, organization_id, specimen_id)
         from .search import SearchFilters
 
-        result = summary(s, p.role)
+        result = in_line(p, s, summary(s, p.role))
         metadata = search_metadata(p, user, SearchFilters(specimen_id=s.id), limit=1)
         if not metadata:
             raise Missing(specimen_id)
@@ -2773,7 +2816,8 @@ def create_app(
                 f"The run is {run_status(s.run)}; a run action continues it",
             )
         response.status_code = 202
-        return dict(summary(s, p.role), dispatch=start_worker().model_dump())
+        dispatch = start_worker().model_dump()
+        return dict(in_line(p, s, summary(s, p.role)), dispatch=dispatch)
 
     # Research uses the same verifier and current membership source as the
     # host, with an async lifetime so ContextVar state reaches every await and

@@ -201,3 +201,89 @@ def test_process_still_refuses_sensitive_or_pilot_records(tmp_path, restriction)
     assert response.status_code == 409, response.text
     assert lane.stored(tmp_path, before.id).model_dump() == before.model_dump()
     assert dispatcher.calls == previous_dispatches
+
+
+# A pending run behind the collection's live drain is in line (G13): one
+# execution steps the collection's runs one at a time, and another worker
+# start skips the held fence, so it cannot move the run forward.
+
+
+def another_running_record(root, stage="transcribe"):
+    from specimen_digitization.application.domain import Asset
+
+    repository = SQLiteRepository(root / "state.sqlite3")
+    other = Specimen(
+        scope=lane.SCOPE,
+        asset=Asset(
+            sensitive=False,
+            sha256="1" * 64,
+            blob_ref="1" * 64,
+            media_type="image/png",
+            size_bytes=1,
+            width=1,
+            height=1,
+            filename="ahead.png",
+            uploader=lane.USER,
+        ),
+        run=Run(stage=stage, profile=Profile(synthetic=False)),
+    )
+    return repository.create(
+        Principal(user_id=lane.USER, scope=lane.SCOPE, role="reviewer"),
+        other,
+        "running-ahead-fixture",
+        digest(other.model_dump(mode="json")),
+    )
+
+
+def test_a_pending_run_behind_a_running_one_is_in_line_without_a_start(tmp_path):
+    dispatcher = lane.RecordingDispatcher()
+    client = lane.lane_client(tmp_path, dispatcher=dispatcher)
+    uploaded = lane.intake(client)
+    another_running_record(tmp_path)
+    detail = client.get(lane.PREFIX + f"/specimens/{uploaded['specimen_id']}", headers=lane.HEADERS)
+    assert detail.status_code == 200, detail.text
+    body = detail.json()
+    assert body["status"] == "pending"
+    assert "start_processing" not in body["available_actions"]
+    assert body["intake_progress"]["waiting_in_line"] is True
+    assert {"pause", "cancel"}.issubset(body["available_actions"])
+    # The explicit start still answers, and reports the run as in line.
+    response = lane.process(client, uploaded["specimen_id"], key="in-line-start")
+    assert response.status_code == 202, response.text
+    assert response.json()["intake_progress"]["waiting_in_line"] is True
+    assert "start_processing" not in response.json()["available_actions"]
+
+
+@pytest.mark.parametrize("other", [None, "ingested", "waiting_for_review"])
+def test_a_pending_run_with_no_live_work_ahead_still_offers_a_start(tmp_path, other):
+    client = lane.lane_client(tmp_path, dispatcher=lane.RecordingDispatcher())
+    uploaded = lane.intake(client)
+    if other:
+        another_running_record(tmp_path, other)
+    detail = client.get(lane.PREFIX + f"/specimens/{uploaded['specimen_id']}", headers=lane.HEADERS)
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["intake_progress"]["waiting_in_line"] is False
+    assert "start_processing" in detail.json()["available_actions"]
+
+
+def test_lane_busy_counts_only_recent_running_work_by_another_record():
+    from specimen_digitization.application.intake_progress import LIVE_DRAIN_SECONDS, lane_busy
+
+    current = datetime(2026, 10, 12, 18, 0, tzinfo=timezone.utc)
+    recent = (current - timedelta(minutes=2)).isoformat()
+    stale = (current - timedelta(seconds=LIVE_DRAIN_SECONDS + 1)).isoformat()
+
+    def row(ident="other", status="running", stage="transcribe", updated_at=recent):
+        return {"specimen_id": ident, "status": status, "stage": stage, "updated_at": updated_at}
+
+    assert lane_busy([row()], "self", current)
+    # SQL Connect's nanosecond, Z-suffixed timestamps read as the same instant.
+    assert lane_busy([row(updated_at="2026-10-12T17:59:00.123456789Z")], "self", current)
+    assert lane_busy([row(updated_at=None)], "self", current)  # SQLite has no save time.
+    assert not lane_busy([], "self", current)
+    assert not lane_busy([row(ident="self")], "self", current)
+    assert not lane_busy([row(updated_at=stale)], "self", current)
+    assert not lane_busy([row(updated_at="not a time")], "self", current)
+    assert not lane_busy([row(status="pending")], "self", current)
+    assert not lane_busy([row(stage="ingested"), row(stage="waiting_for_review")], "self", current)
+    assert lane_busy([row(updated_at=stale), row(ident="third")], "self", current)

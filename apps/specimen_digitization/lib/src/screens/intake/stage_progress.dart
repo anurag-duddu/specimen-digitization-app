@@ -53,6 +53,9 @@ class IntakeProgress {
   /// The words for preparation steps that precede finding labels.
   static const String preparing = 'Preparing photo';
 
+  /// The status of a saved photo waiting behind another in its collection.
+  static const String inLine = 'In line';
+
   static const Set<String> _preparation = <String>{
     'pin_dependencies',
     'classify',
@@ -197,6 +200,9 @@ class IntakeProgress {
         stage,
         IntakeStageState.attention,
       );
+    }
+    if (specimen?.state == 'pending' && progress['waiting_in_line'] == true) {
+      return at(inLine, stage, IntakeStageState.waiting);
     }
     if (specimen?.state == 'pending' || entry.state == UploadState.accepted) {
       return at('Waiting to start', stage, IntakeStageState.waiting);

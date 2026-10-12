@@ -4,6 +4,9 @@ Stage completion describes work accounted for, not scientific acceptance or
 elapsed time. No provider calls, artifact reads or mutations belong here.
 """
 
+import re
+from datetime import datetime, timedelta, timezone
+
 from .domain import Run
 from .workflow import Workflow
 
@@ -54,3 +57,48 @@ def intake_progress(run: Run) -> dict:
         "completed_stages": stages,
         "next_retry_at": run.next_retry_at if run.stage == "retry_scheduled" else None,
     }
+
+
+# A live drain saves the run it steps after every step, and one execution
+# steps a collection's runs one at a time (lane_worker.DrainWorker, G13). Its
+# collection fence lease is the task deadline plus 60 s, so a running row
+# saved within that bound is a drain still at work in the collection.
+LIVE_DRAIN_SECONDS = 3600 + 60
+# Stages whose wire status is `running` but that no drain is stepping.
+NOT_LANE_WORK = frozenset({"ingested", "waiting_for_review"})
+
+
+def _saved_at(value: str) -> datetime:
+    # SQL Connect timestamps may carry more than microsecond precision.
+    value = re.sub(r"(\.\d{6})\d+", r"\1", value.replace("Z", "+00:00"))
+    moment = datetime.fromisoformat(value)
+    return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+
+
+def lane_busy(rows, specimen_id: str, current: datetime) -> bool:
+    """True when another run in the collection is being processed now.
+
+    `rows` are the collection's metadata rows with status `running`. The
+    collection fence itself is a worker-only document the API cannot read
+    (GetDocumentV2 limits `worker_cursor` reads to the actor that wrote it),
+    so the run the drain is stepping stands in for it. A row with no save
+    time (the local SQLite listing has none) counts as live; a row whose
+    save time cannot be read, or is older than the fence lease, does not.
+    """
+    oldest = current - timedelta(seconds=LIVE_DRAIN_SECONDS)
+    for row in rows:
+        if (
+            row.get("specimen_id") == specimen_id
+            or row.get("status") != "running"
+            or row.get("stage") in NOT_LANE_WORK
+        ):
+            continue
+        saved = row.get("updated_at")
+        if saved is None:
+            return True
+        try:
+            if _saved_at(str(saved)) >= oldest:
+                return True
+        except ValueError:
+            continue
+    return False
