@@ -1174,6 +1174,10 @@ class ApiSpecimenRepository
       'latest_record_version_id': result['record_version_id'],
       'fields': fieldMap.entries.map((e) {
         final f = Map<String, dynamic>.from(e.value);
+        final state = f['value_state'] ?? f['state'];
+        final resolvedValue = state == 'supported'
+            ? f['normalized'] ?? f['parsed'] ?? f['literal']
+            : null;
         return <String, dynamic>{
           ...f,
           'field_key': e.key,
@@ -1185,10 +1189,10 @@ class ApiSpecimenRepository
                   e.key,
                 )
               : true,
-          'state': f['value_state'] ?? f['state'],
+          'state': state,
           'literal_value': f['literal'],
           'parsed_value': f['parsed'],
-          'resolved_value': f['normalized'] ?? f['parsed'] ?? f['literal'],
+          'resolved_value': resolvedValue,
         };
       }).toList(),
       'validation_findings': objects(result['validations']),
