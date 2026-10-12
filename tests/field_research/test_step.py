@@ -19,6 +19,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
+import httpx
 import pytest
 from PIL import Image
 from pydantic_ai.messages import ModelRequest, ModelResponse, ToolCallPart, ToolReturnPart, UserPromptPart
@@ -1933,6 +1934,118 @@ def test_a_field_still_running_at_the_last_attempts_deadline_goes_to_review(rig)
         ValueState.UNRESOLVED, f"Research on this field ran out of time after {run.attempts[FIELD_RESEARCH]} attempts.")
     assert run.fields["county"].layer == "settled"
     assert not [reason for reason in run.reasons if reason.startswith("field_research_timeout")]
+
+
+def production_country(rig, monkeypatch, answer):
+    """The country's expert as production runs it (step._production_resolver:
+    the harness route through the Hugging Face gateway), every request it
+    sends to the provider answered by `answer(request)` (httpx.MockTransport):
+    nothing leaves the process. Every other field's expert is scripted."""
+    from huggingface_hub.hf_api import InferenceProviderMapping
+    from huggingface_hub.inference._providers._common import HARDCODED_MODEL_INFERENCE_MAPPING
+    from huggingface_hub.utils import _http as hf_http
+
+    from specimen_digitization.model_gateway import HUGGINGFACE_ROUTES
+
+    route = HUGGINGFACE_ROUTES[rig.specimen.run.profile_snapshot["harness_route"]]
+    monkeypatch.setenv("SPECIMEN_APPROVED_INFERENCE", "true")
+    monkeypatch.setenv("HF_TOKEN", "hf_synthetic_offline")
+    monkeypatch.setitem(HARDCODED_MODEL_INFERENCE_MAPPING, route.provider, {
+        route.model_id: InferenceProviderMapping(provider=route.provider, hf_model_id=route.model_id,
+            providerId=route.model_id, status="live", task="conversational")})
+    monkeypatch.setattr(hf_http, "_GLOBAL_ASYNC_CLIENT_FACTORY",
+        lambda: httpx.AsyncClient(transport=httpx.MockTransport(answer)))
+    others = Scripted()
+
+    def resolver_factory(run, profile, meter):
+        production = field_step._production_resolver(run, profile, meter)
+
+        async def resolve(task, readings, context, *, tools):
+            expert = production if task.key == "country" else others
+            return await expert(task, readings, context, tools=tools)
+        return resolve
+
+    @asynccontextmanager
+    async def tools_factory(run, profile, blobs):
+        yield FakeSources(blobs)
+
+    rig.workflow.field_research = FieldResearchStep(resolver_factory=resolver_factory, tools_factory=tools_factory)
+
+
+def every_attempt(rig):
+    """The field research step, retried as the workflow schedules it, to its
+    last allowed attempt; each attempt's run."""
+    runs = []
+    for _ in range(rig.specimen.run.profile.execution.max_attempts):
+        runs.append(rig.workflow.step(rig.principal, rig.specimen.id).run)
+        rig.clock.now += timedelta(hours=1)
+    return runs
+
+
+def read_timeout(request):
+    """What the inference client raises when the gateway's bound on one
+    request (step.MODEL_TIMEOUT_SECONDS) runs out with no answer."""
+    assert request.extensions["timeout"]["read"] == field_step.MODEL_TIMEOUT_SECONDS
+    raise httpx.ReadTimeout("synthetic: no answer in time", request=request)
+
+
+def status(code):
+    def answer(request):
+        return httpx.Response(code, json={"error": "synthetic"})
+    answer.__name__ = str(code)
+    return answer
+
+
+# A model request that ran out of time: the gateway's own timeout, and a
+# provider's 504 Gateway Timeout or 408 Request Timeout (experts.timed_out).
+RAN_OUT_OF_TIME = [read_timeout, status(504), status(408)]
+
+
+@pytest.mark.parametrize("answer", RAN_OUT_OF_TIME, ids=lambda answer: answer.__name__)
+def test_a_model_request_that_runs_out_of_time_on_an_earlier_attempt_retries_as_a_field_timeout(
+        rig, monkeypatch, answer):
+    production_country(rig, monkeypatch, answer)
+    run = rig.workflow.step(rig.principal, rig.specimen.id).run
+    assert (run.stage, run.blocker, run.dead_letter, run.attempts[FIELD_RESEARCH]) == (
+        "retry_scheduled", "field_research_timeout", False, 1)
+    assert run.next_retry_at and FIELD_RESEARCH not in run.completed_steps
+    assert run.fields["country"].reason == field_step.FIELD_REASONS["timeout"]
+    assert run.fields["taxon"].layer == "settled"
+
+
+@pytest.mark.parametrize("answer", RAN_OUT_OF_TIME, ids=lambda answer: answer.__name__)
+def test_a_model_request_that_runs_out_of_time_on_the_last_attempt_goes_to_review_and_the_run_finalizes(
+        rig, monkeypatch, answer):
+    """The owner's "failures are graceful": the country's model request runs
+    out of time on every attempt. Earlier attempts retry; the last sends the
+    country to review and finalizes the record. Before this, the request was
+    a model error, and the last attempt dead-lettered the run."""
+    production_country(rig, monkeypatch, answer)
+    *early, last = every_attempt(rig)
+    assert (last.stage, last.blocker, last.dead_letter, last.disposition) == (
+        "finalized", None, False, Disposition.REVIEW)
+    for attempt, run in enumerate(early, 1):
+        assert (run.stage, run.blocker, run.attempts[FIELD_RESEARCH]) == (
+            "retry_scheduled", "field_research_timeout", attempt)
+    assert last.attempts[FIELD_RESEARCH] == 3 and last.completed_steps[-1] == FIELD_RESEARCH
+    assert (last.fields["country"].state, last.fields["country"].reason) == (
+        ValueState.UNRESOLVED, "Research on this field ran out of time after 3 attempts.")
+    assert "mandatory_unresolved:country" in last.reasons
+    assert not [reason for reason in last.reasons if reason.startswith("field_research_")]
+    assert last.fields["taxon"].layer == "settled" and last.paid_calls[-1]["outcome"] == "completed"
+
+
+@pytest.mark.parametrize("answer", [status(500), status(401)], ids=lambda answer: answer.__name__)
+def test_any_other_model_error_on_the_last_attempt_still_stops_the_retries(rig, monkeypatch, answer):
+    """A server error or an auth error is no timeout: it blocks on every
+    attempt, and after the last the run's retries stop."""
+    production_country(rig, monkeypatch, answer)
+    *early, last = every_attempt(rig)
+    for attempt, run in enumerate(early, 1):
+        assert (run.stage, run.blocker, run.attempts[FIELD_RESEARCH]) == (
+            "retry_scheduled", "field_research_model_error", attempt)
+    assert (last.stage, last.dead_letter, last.blocker) == (
+        "processing_blocked", True, "retry_budget_exhausted:field_research_model_error")
 
 
 def field_spans(capfire):

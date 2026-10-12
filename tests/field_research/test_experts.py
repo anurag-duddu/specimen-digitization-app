@@ -10,7 +10,9 @@ import asyncio
 import json
 import logging
 from collections.abc import Callable
+from types import SimpleNamespace
 
+import httpx
 import pytest
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
@@ -1083,6 +1085,163 @@ def test_a_provider_error_is_a_model_error_logged_by_class_only(caplog):
 
     assert outcome.failure == "model_error" and outcome.answer is None
     assert "ModelHTTPError" in caplog.text and "Epipsocus" not in caplog.text
+
+
+def production_resolver(monkeypatch, answer, cost):
+    """Field research's production resolver (step._production_resolver: the
+    harness route through the Hugging Face gateway, wrapped as production
+    wraps it) on `cost`, every request it sends to the provider answered by
+    `answer(request)` (httpx.MockTransport): nothing leaves the process. With
+    it, the timeout each request carried, in order."""
+    from huggingface_hub.hf_api import InferenceProviderMapping
+    from huggingface_hub.inference._providers._common import HARDCODED_MODEL_INFERENCE_MAPPING
+    from huggingface_hub.utils import _http as hf_http
+
+    from specimen_digitization.field_research import step as field_step
+    from specimen_digitization.model_gateway import HUGGINGFACE_ROUTES
+
+    route = HUGGINGFACE_ROUTES["harness-deepseek"]
+    monkeypatch.setenv("SPECIMEN_APPROVED_INFERENCE", "true")
+    monkeypatch.setenv("HF_TOKEN", "hf_synthetic_offline")
+    monkeypatch.setitem(HARDCODED_MODEL_INFERENCE_MAPPING, route.provider, {
+        route.model_id: InferenceProviderMapping(provider=route.provider, hf_model_id=route.model_id,
+                                                 providerId=route.model_id, status="live", task="conversational")})
+    timeouts = []
+
+    def handler(request):
+        timeouts.append(request.extensions["timeout"])
+        return answer(request)
+
+    monkeypatch.setattr(hf_http, "_GLOBAL_ASYNC_CLIENT_FACTORY",
+                        lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    profile = SimpleNamespace(harness_route=route.route_id, date_rules=PILOT_DATES)
+    return field_step._production_resolver(None, profile, cost), timeouts
+
+
+def raising(error):
+    """A provider answer: the client raises `error` (an httpx error class, or TimeoutError)."""
+    def answer(request):
+        if issubclass(error, httpx.HTTPError):
+            raise error("synthetic: Epipsocus sp. 1", request=request)
+        raise error("synthetic: Epipsocus sp. 1")
+    answer.__name__ = error.__name__
+    return answer
+
+
+def status(code):
+    """A provider answer with HTTP status `code` and a body quoting label text."""
+    def answer(request):
+        return httpx.Response(code, json={"error": "synthetic: Epipsocus sp. 1"})
+    answer.__name__ = str(code)
+    return answer
+
+
+def malformed(request):
+    """A provider answer with HTTP 200 and a body that is no completion."""
+    return httpx.Response(200, text="<html>synthetic: Epipsocus sp. 1</html>")
+
+
+# A model request that ran out of time (experts.timed_out): the inference
+# client's own timeout (httpx's four classes, asyncio's TimeoutError), and a
+# provider's 504 or 408.
+TIMED_OUT = [raising(httpx.ReadTimeout), raising(httpx.ConnectTimeout), raising(httpx.WriteTimeout),
+             raising(httpx.PoolTimeout), raising(TimeoutError), status(504), status(408)]
+# Every other provider failure: a server error, an auth error, a refusal, a
+# rate limit, a connection that failed at once, an answer that is no completion.
+NOT_TIMED_OUT = [status(500), status(502), status(503), status(401), status(403), status(400),
+                 status(422), status(429), raising(httpx.ConnectError), malformed]
+
+
+@pytest.mark.parametrize("answer", TIMED_OUT, ids=lambda answer: answer.__name__)
+def test_a_model_request_that_ran_out_of_time_is_the_fields_timeout(monkeypatch, caplog, answer):
+    """The gateway's own bound on one request (step.MODEL_TIMEOUT_SECONDS),
+    and a provider that says the request ran out of time, are the field's
+    timeout, which the step retries and, on its last attempt, sends to
+    review. Before this, each was a model error, which blocks the run."""
+    from specimen_digitization.field_research import step as field_step
+
+    cost = meter()
+    resolver, timeouts = production_resolver(monkeypatch, answer, cost)
+    with caplog.at_level(logging.WARNING, logger="specimen_digitization.field_research.experts"):
+        outcome = asyncio.run(resolver(task("taxon"), READINGS, CONTEXT, tools=FakeTools()))
+
+    assert outcome.failure == "timeout" and outcome.answer is None
+    # One request, sent with the gateway's own bound on each of its phases.
+    bound = field_step.MODEL_TIMEOUT_SECONDS
+    assert timeouts == [{"connect": bound, "read": bound, "write": bound, "pool": bound}]
+    # Logged by class only, never the provider's text.
+    assert "ran out of time: field=taxon" in caplog.text and "Epipsocus" not in caplog.text
+    # The request may have been billed: it keeps its worst case.
+    assert cost.outstanding_micros == 0 and cost.spent_micros == outcome.cost_micros > 0
+
+
+class ToLocalServer(httpx.AsyncBaseTransport):
+    """A real HTTP transport that sends every request to a local server instead."""
+
+    def __init__(self, port: int) -> None:
+        self.port, self.inner = port, httpx.AsyncHTTPTransport()
+
+    async def handle_async_request(self, request):
+        request.url = request.url.copy_with(scheme="http", host="127.0.0.1", port=self.port)
+        return await self.inner.handle_async_request(request)
+
+    async def aclose(self) -> None:
+        await self.inner.aclose()
+
+
+def test_a_provider_that_never_answers_is_the_fields_timeout_at_the_gateways_bound(monkeypatch):
+    """A real socket to a server that takes the request and never answers: the
+    gateway's own bound (step.MODEL_TIMEOUT_SECONDS, made 0.2 s here) runs out
+    in the inference client, which raises httpx.ReadTimeout, and the field is
+    a timeout well inside the expert's own deadline."""
+    from huggingface_hub.utils import _http as hf_http
+    from pydantic_ai import Agent
+
+    from specimen_digitization.field_research import step as field_step
+    from specimen_digitization.model_gateway import HuggingFaceModelGateway
+
+    monkeypatch.setattr(field_step, "MODEL_TIMEOUT_SECONDS", 0.2)
+    cost = meter()
+    resolver, _ = production_resolver(monkeypatch, malformed, cost)
+    received = []
+
+    async def scenario():
+        async def never_answers(reader, writer):
+            received.append(await reader.read(65536))
+            await asyncio.sleep(30)
+
+        server = await asyncio.start_server(never_answers, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+        monkeypatch.setattr(hf_http, "_GLOBAL_ASYNC_CLIENT_FACTORY",
+                            lambda: httpx.AsyncClient(transport=ToLocalServer(port)))
+        try:
+            # The gateway's model alone: its client raises httpx's own class,
+            # no TimeoutError (experts.ClientTimeouts).
+            raw = HuggingFaceModelGateway(timeout_seconds=field_step.MODEL_TIMEOUT_SECONDS)
+            with pytest.raises(httpx.ReadTimeout) as raised:
+                await Agent(raw.model_for("harness-deepseek")).run("synthetic")
+            assert not isinstance(raised.value, TimeoutError)
+            return await resolver(task("taxon"), READINGS, CONTEXT, tools=FakeTools())
+        finally:
+            server.close()
+
+    outcome = asyncio.run(scenario())
+
+    assert outcome.failure == "timeout" and outcome.answer is None
+    assert len(received) == 2 and all(request.startswith(b"POST ") for request in received)
+
+
+@pytest.mark.parametrize("answer", NOT_TIMED_OUT, ids=lambda answer: answer.__name__)
+def test_any_other_provider_failure_is_still_a_model_error(monkeypatch, caplog, answer):
+    cost = meter()
+    resolver, timeouts = production_resolver(monkeypatch, answer, cost)
+    with caplog.at_level(logging.WARNING, logger="specimen_digitization.field_research.experts"):
+        outcome = asyncio.run(resolver(task("taxon"), READINGS, CONTEXT, tools=FakeTools()))
+
+    assert outcome.failure == "model_error" and outcome.answer is None
+    assert len(timeouts) == 1
+    assert "expert failed: field=taxon" in caplog.text and "ran out of time" not in caplog.text
+    assert "Epipsocus" not in caplog.text
 
 
 @pytest.mark.parametrize("status, refused", [(429, True), (503, False), (402, False)])

@@ -186,7 +186,10 @@ handover runs field research instead of the six specialists:
    that waits 30 s for one of those slots is not sent: its lookup gives up
    at once as a timeout ("Getty TGN was busy; this lookup was not sent"),
    logged like any unanswered request (`error=slot_busy`), so the expert
-   goes on with its other sources. A GEOLocate request whose turn under the
+   goes on with its other sources. Like any unanswered request, that answer
+   is kept for the rest of the record's research: the same lookup, asked
+   again, is answered from the record's cache and not sent. A GEOLocate
+   request whose turn under the
    3 s spacing is more than 30 s off is busy the same way ("GEOLocate was
    busy; this lookup was not sent"), and it takes no turn, so the requests
    after it are not spaced behind it. Each source
@@ -972,17 +975,27 @@ handover runs field research instead of the six specialists:
    scientific rules without blanket human approval (G1). Anything unresolved
    sends the record to Needs human review with a plain reason. A field whose
    expert reached no source (step 4), a model failure and a field's timeout
-   leave the record blocked with a retry, every settled field kept. The
+   leave the record blocked with a retry, every settled field kept. A
+   field's timeout is its expert's own 150 s deadline, the step's deadline
+   (step 9), or a model request that ran out of time (`experts.timed_out`):
+   the gateway's own bound on one request (120 s,
+   `step.MODEL_TIMEOUT_SECONDS`), which the inference client raises as an
+   httpx timeout (connect, read, write or pool) and `experts.ClientTimeouts`
+   keeps a `TimeoutError`; a `TimeoutError` from the client (asyncio's or
+   huggingface_hub's `InferenceTimeoutError`); or a provider's answer with
+   HTTP 408 (Request Timeout) or 504 (Gateway Timeout). Nothing else is a
+   timeout: an auth error, any other HTTP status, a connection that failed,
+   an answer that is no completion and any defect are model failures. The
    workflow allows the run's `max_attempts` attempts (its execution policy,
    3 by default). On
    the step's last attempt a field whose sources still could not be reached
    goes to Needs human review instead, unresolved, its reason naming them
    ("Getty TGN could not be reached after 3 attempts."), and so does a field
    that ran out of time ("Research on this field ran out of time after 3
-   attempts."); the record finalizes with its other fields. A model failure
-   on the last attempt still stops the automatic retries
-   (`retry_budget_exhausted:<code>`). The app reads a blocker by its exact
-   code, from a table (`lib/src/blocker_words.dart` and the vocabulary table),
+   attempts."), whichever of those timeouts it was; the record finalizes
+   with its other fields. A model failure on the last attempt still stops
+   the automatic retries (`retry_budget_exhausted:<code>`). The app reads a
+   blocker by its exact code, from a table (`lib/src/blocker_words.dart` and the vocabulary table),
    and never shows the code. A word inside a code decides nothing: the "budget"
    in `retry_budget_exhausted:` says retries ran out, and a step limit, a
    request limit and a time limit also say "budget" on the wire and are no cost
@@ -1072,7 +1085,9 @@ handover runs field research instead of the six specialists:
 9. **Time.** Research stops a minute before the step's deadline (210 s of the
    pilot's 270 s): a field still being researched becomes a timeout for the
    retry (on the last attempt, a field for review; step 7), and every settled
-   field is kept. The work after research measured
+   field is kept. Inside it, each expert has 150 s and each of its model
+   requests 120 s (the gateway's bound); running out of either is the
+   field's timeout too. The work after research measured
    4.3 s on a slide-sized record with a 50 ms storage round trip per blob, most
    of it the integrity check, so the minute is more than three times it. The
    record's sources close when research ends, so a GBIF check still running
@@ -2079,8 +2094,8 @@ never clears on a re-check; only new research writes the row.
 
 A field research run that failed (a field whose expert reached no source, a
 model error, a timeout) is retried until its last allowed attempt, on which
-a source still unreachable or a timeout sends its field to review (step 7
-above), and
+a source still unreachable or a timeout (a model request that ran out of
+time among them) sends its field to review (step 7 above), and
 the retry researches only the fields that did not settle (a
 province, county or city that waited for a country that did not settle
 is among them). A field marked not on the label is not settled, so the
