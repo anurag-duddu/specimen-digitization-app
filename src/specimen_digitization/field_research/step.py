@@ -526,7 +526,9 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending, r
     not `pending`) and the reading writes its literal, compared as place
     names; a settled country carries the ISO code of the record it settled
     on (_record_code, from the answers the country field received,
-    `received`), and no other field carries one. A place settled on
+    `received`), and no other field carries one. One the reading writes is
+    unsettled when its field has no supported value with a literal, or this
+    attempt has not done with it (a county needs its province settled). A place settled on
     text its expert read in the transcript (transcript_code) is written by
     each reading that writes that text as whole words
     (agreement.verbatim_runs)."""
@@ -550,7 +552,7 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending, r
     rows = {item.id: item for item in run.evidence}
     codes = {finding.reason_code for finding in run.findings}
     for reading in dict.fromkeys(decided.get(r.region_id, r) for r in named):
-        written, settled = {}, {}
+        written, settled, unsettled = {}, {}, set()
         for key in PLACE_ORDER:
             texts = places[key].get(reading.name, frozenset())
             value = run.fields.get(key)
@@ -568,7 +570,10 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending, r
                 written[key] = settled[key] = PlaceField(tuple(dict.fromkeys(names)), value.authority_id, code)
             else:
                 written[key] = PlaceField(tuple(sorted(texts)))
-        refused = parents_refusal(task.key, candidate, basis, written=written, settled=settled)
+                if key in pending or value is None or value.state != ValueState.SUPPORTED or not value.literal:
+                    unsettled.add(key)
+        refused = parents_refusal(task.key, candidate, basis, written=written, settled=settled,
+            literal=answer.literal, unsettled=frozenset(unsettled))
         if refused is not None:
             return refused
     return None
@@ -2215,7 +2220,7 @@ def not_on_label(key: str, value: FieldValue, run, evidence: Mapping[str, Eviden
 REFUSALS = ("DIFFER", "LABELS_DIFFER", "NOT_DECIDED", "NOT_CANDIDATE", "PART_OF_NAME", "DOUBTFUL_GENUS",
     "NO_PLACE", "EXPANSIONS_DIFFER", "NO_PARENTS", "NO_COUNTRY", "NOT_IN_COUNTRY", "NOT_IN_PROVINCE", "NEAR_UNFIT",
     "NOT_EVERY_READER", "PART_OF_RANGE", "UNIT_DIFFERS", "NO_UNIT", "A_DISTANCE", "HOLDS_AN_ELEVATION",
-    "HOLDS_A_DATE", "HOLDS_A_RANGE")
+    "HOLDS_A_DATE", "HOLDS_A_RANGE", "FIRST_LEVEL_TOO", "NO_PROVINCE", "IS_THE_PROVINCE")
 # A lookup's status as a field's trace names it. Logfire's default scrubber
 # replaces any attribute whose value holds "auth" or "credential", so the two
 # refusals (HTTP 401 and 403) are renamed.

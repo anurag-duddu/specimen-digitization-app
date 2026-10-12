@@ -310,6 +310,39 @@ handover runs field research instead of the six specialists:
    GVP name, as before; a reply that leaves out all of it is malformed, as
    above.
 
+   **A county's Wikidata lookup reads its places' classes** (the owner's
+   ruling below, "County: the country's second-level unit"). After the
+   search, the entities and their labels, it reads the subclass-of (P279)
+   statements of its places' instance-of (P31) classes, then of the
+   classes those name, in at most two more requests of up to 50 classes
+   each, each sent once and never retried (`sources.CLASS_READS`,
+   `CLASS_READ_ATTEMPTS`, `ApprovedSources._levels`; a refused read was
+   sent three times before Codex's review of 9f5319ca;
+   `georef_wikidata.classes_params`, `parse_superclasses`,
+   `unread_classes`, `levels_reached`). A chain ends at Wikidata's
+   first-level (Q10864048) or second-level (Q12357832) administrative
+   division; Q13220204, the second-level class's former id, redirects to
+   Q12357832, and `wbgetentities` files the target under the id asked,
+   which is read as that class. A place whose chains reach the second-level
+   division and not the first-level one has "second-level administrative
+   division" among its kinds (`sources._place`). One whose chains reach the
+   first-level division, alone or with the second, has "first-level
+   administrative division" among its kinds instead, and is at no county's
+   level whatever its other kinds say (`agreement.at_level`; a place
+   labelled "county" whose class reaches the first level settled County
+   before Codex's review of 9f5319ca); a province stays at a province's
+   level. Probed on 2026-10-12:
+   Yepocapa's "municipality of Guatemala" reaches it in one read; Cook
+   County's "county of Illinois", through "county of the United States",
+   in two; the Philippines' "province of the Philippines" reaches the
+   first-level division. A longer chain is not followed. Each response read
+   is stored with the lookup's others, and one evidence record names them
+   all. A read with no usable answer (a refusal, a body that is not the
+   classes asked) ends the reading: the lookup stands on its other
+   responses and no place gets a level from it. Only the county's lookup
+   reads classes; its answer is cached apart from another field's answer
+   to the same query, whose responses it shares.
+
    **A source that cannot be reached** (a lookup whose last attempt was rate
    limited, timed out, was refused or redirected, failed on the server or
    came back unreadable, as above; a refused query is not one) does not
@@ -777,9 +810,14 @@ handover runs field research instead of the six specialists:
      (political entities)" or "counties"; "inhabited places", "cities",
      "towns" or "villages"), Wikidata's instance-of labels ("country",
      "sovereign state"; "province", "former province", "department", "state";
-     "county"; "city", "town", "village", "human settlement",
-     "municipality", each also as "... of ..."), NGA's feature codes
-     ("A.PCL..."; "A.ADM1"; "A.ADM2"; "P...."). GEOLocate settles only a
+     "county", "second-level administrative division"; "city", "town",
+     "village", "human settlement", "municipality", each also as "... of
+     ..."), NGA's feature codes ("A.PCL..."; "A.ADM1"; "A.ADM2"; "P....").
+     A county's Wikidata lookup names "second-level administrative
+     division" among a place's kinds when its classes reach that class
+     (step 4), so Wikidata's municipio Yepocapa, "municipality of
+     Guatemala", is at a city's level and, for a county, at a county's
+     level too. GEOLocate settles only a
      city, with all its candidates at a city's level: for a country, a
      province or state, or a county its candidate is a part of the query
      itself (its country, its state or county part, or else its place part),
@@ -980,6 +1018,21 @@ handover runs field research instead of the six specialists:
        a Guatemalan province. A country needs no parent. A place that waits
        for a country whose research failed is researched again with it on
        the retry;
+     - a county also needs the province its reading writes to have a
+       settled value ("The province the label gives is not settled, so
+       this county cannot be confirmed inside it.", `agreement.NO_PROVINCE`;
+       the step passes the place fields the reading writes whose field has
+       no supported value as `unsettled`), and is never that settled
+       province itself: not its record, and its literal is none of the
+       province's texts, values or expansions compared with letter case,
+       accents and punctuation aside and unit words kept
+       (`georef_locality.fold`; "The label gives this place as the
+       province, and a province is never also the county.",
+       `agreement.IS_THE_PROVINCE`). So "Chimaltenango" written once as the
+       department, or "Davao Prov." as the province, is no county, while
+       "Iowa Co." in the state Iowa may be. A province settled from another
+       reader's spelling of the same label is settled, and is not checked
+       as that reading's province, as before;
      - a near spelling, of any place field, settles only on G34's whole
        condition, read on the larger places (the coordinator's ruling of
        2026-10-09): every place field the reading writes above the field
@@ -1049,6 +1102,53 @@ handover runs field research instead of the six specialists:
      The city Yepocapa the reading also writes lies below the province and
      is not checked as its parent. Until 2026-10-09 it was, and the real run
      of that day left the province for review.
+   - **County: the country's second-level unit (owner, 2026-10-11).** Asked
+     whether County should hold the municipio for Latin American labels
+     (Yepocapa, Guatemala), the owner answered: "however the local
+     government does it so if that is the equivalent then yes"
+     (schema-harness-plan.md, "What the owner has said"). A county is the
+     place a source puts at its country's second level, whatever the
+     country calls it: Getty TGN's "second level subdivisions (political
+     entities)" or "counties", NGA's A.ADM2, Wikidata's "county" or
+     "second-level administrative division" (step 4). No table of
+     countries says which unit that is. The county brief says so, and that
+     a town and the second-level unit around it often share a name: the
+     county settles on that unit when a source confirms it inside the
+     label's province and country, and the city still settles on the town
+     (the city brief says so too). Before, the brief said "A
+     municipality, a city, an island or a province is not a county", and
+     105526329's county ("Yepocapa, 4800ft / Chimaltenago, / Guatemala")
+     was absent while its city settled as Yepocapa. On the recorded
+     answers that label's county settles on Wikidata's municipio Yepocapa
+     (Q1523937) or NGA's (A.ADM2), and its city on NGA's town (P.PPLA2):
+     one text, two places at two levels; two place fields may share text
+     (`agreement.may_share_text`, unchanged). The rules that keep a county
+     from being invented:
+     - its place settles only as any place does (above): one candidate at
+       a county's level in a cited answer about the label's own text, with
+       the parents rule, which for a county also needs the province its
+       reading writes settled and never takes that province itself;
+     - a literal for which an answer of one of the county's sources, asked
+       about it, has a candidate of its name at a province's level settles
+       no county, unless the literal writes a county or municipality unit
+       word ("<Name> Co.", "Mun. <Name>"; `agreement.writes_county_unit`,
+       the words of `admin_markers.ADMIN_MARKERS` that mark a county): the
+       label may name that first-level unit, and the sources cannot tell
+       which ("The sources also find this name as a province or state, so
+       they cannot tell which the label means.",
+       `agreement.first_level_namesake`, `FIRST_LEVEL_TOO`, ambiguous). NGA
+       holds Chimaltenango as a department (A.ADM1) and as a municipio
+       (A.ADM2), so on a label that writes only the department a county
+       answer that cites NGA's municipio is refused;
+     - a Philippine "Davao Prov." stays the province: NGA's recorded answer
+       for "Davao Province" is Davao del Norte at the first level (A.ADM1),
+       Getty TGN's recorded record of it types it "provinces, first level
+       subdivisions (political entities)", and Wikidata's class "province
+       of the Philippines" is a first-level administrative division, so in
+       NGA's and Wikidata's recorded answers for "Davao Province" no
+       candidate is at a county's level; an answer that held it at the
+       second level too would still meet the province's own text
+       (`IS_THE_PROVINCE`).
    - **The taxon.** A taxon is GBIF's decision for the whole name its
      candidate literal writes: the cited success answer's query is the
      scientific-name parser's query for that literal (the genus, any
