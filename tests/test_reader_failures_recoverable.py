@@ -447,9 +447,11 @@ def dying_child(payload):
 def test_only_repeatable_model_children_that_die_are_known_failures(
     tmp_path, monkeypatch, operation
 ):
-    # The same killed child. A reader and an ordinary tool-free comparison may
-    # retry; their billing uncertainty is still retained. The organiser may
-    # have changed something, so it stays blocked as unknown.
+    # The same killed child. A reader, an ordinary tool-free comparison and the
+    # organiser's extraction may retry; the comparison's and the extraction's
+    # billing uncertainty is still retained (2026-10-12: the extraction's child
+    # writes only content-addressed provenance, and the parent applies its
+    # candidates after it returns).
     from specimen_digitization.application.model_runtime import invoke_model
     from specimen_digitization.application.reliability import AdapterFailure
     from specimen_digitization.application.workflow import OperationalBlock
@@ -478,6 +480,13 @@ def test_only_repeatable_model_children_that_die_are_known_failures(
         assert known.value.code == "first_pass_worker_process_exit"
         assert known.value.outcome_unknown is True
     else:
+        with pytest.raises(AdapterFailure) as known:
+            invoke_model(adapters, specimen, operation, **arguments)
+        assert known.value.code == "extract_worker_process_exit"
+        assert known.value.outcome_unknown is True
+    run.dependencies["evidence_pilot"] = {}
+    if operation != "transcribe":
+        # The evidence pilot never repeats a paid call.
         with pytest.raises(OperationalBlock, match="external_outcome_unknown"):
             invoke_model(adapters, specimen, operation, **arguments)
 

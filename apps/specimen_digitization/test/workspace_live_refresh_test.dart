@@ -203,11 +203,9 @@ void main() {
         await tester.pumpAndSettle();
         expect(controller.selected?.revision, 4);
         expect(repository.detailReads, 2);
-        expect(
-          repository.pageReads,
-          2,
-          reason: 'the paginated queue must stay intact',
-        );
+        // The poll rereads both loaded pages rather than only the record, so
+        // the paginated queue stays intact and still follows the server.
+        expect(repository.pageReads, 4);
         expect(controller.items.map((row) => row.id), rows);
       } finally {
         controller.dispose();

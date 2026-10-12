@@ -48,8 +48,10 @@ from .storage import BlobStore, Repository, digest
 from .reliability import (
     AdapterFailure,
     ReadingStopped,
+    extraction_failure_is_recoverable,
     failure_is_retryable,
     first_pass_failure_is_recoverable,
+    model_read_is_recoverable,
     reader_failure_is_recoverable,
     retry_delay,
 )
@@ -69,6 +71,11 @@ FIELD_RECHECK = "field_research_recheck"
 LOST_READING = "reading_result_lost"
 # The same for an ordinary first pass (Workflow._settle_lost_reading).
 LOST_FIRST_PASS = "first_pass_result_lost"
+# The same for the organiser's extraction, parse's model call.
+LOST_EXTRACTION = "extraction_result_lost"
+# An ordinary first pass or extraction whose attempts are used up when its step
+# comes round again: given up on unsent (Workflow._step).
+ATTEMPTS_USED = "max_attempts_used"
 # A run's own budgets that leave no room for another call. At an ordinary first
 # pass the run gives the comparison up instead of blocking (HARNESS.md 3).
 UNAFFORDABLE = frozenset(
@@ -89,6 +96,116 @@ RECOVERABLE_FIRST_PASS_BLOCKERS = UNAFFORDABLE | {
     "lane_handover_without_progress",
 }
 RECOVERABLE_FIRST_PASS_PREFIXES = ("retry_budget_exhausted:", "provider_circuit:")
+# A model read whose answer stayed malformed after its output retry: given up
+# on when the run is recovered (a run blocked by it before 2026-10-12).
+MALFORMED_ANSWER = "model_malformed_response"
+# What each unknown outcome of an ordinary first pass or extraction is, saved
+# with the run as {"<step>:<attempt>": kind} in run.dependencies (2026-10-12).
+# Every save of such an unknown outcome writes one (Workflow._step):
+# UNANSWERED when the call's intent is saved (a worker that stops then leaves
+# the call unanswered: asking again can mend it), HELD when the step saves a
+# result the parent could not accept (an invalid child result, mismatched
+# fields, a child whose cleanup is not confirmed, an unexpected exception: it
+# stays for a person). An unknown attempt with no kind was saved by code
+# before this record existed (LEGACY_UNKNOWN).
+UNKNOWN_OUTCOME_KINDS = "unknown_outcome_kinds"
+UNANSWERED, HELD = "unanswered", "held"
+# The rule recorded with an automatic recovery of such a legacy row.
+LEGACY_UNKNOWN = "legacy_unknown_recovered"
+
+
+def unknown_key(run, step) -> str:
+    return f"{step}:{run.attempts.get(step, 0)}"
+
+
+def _keep_kinds(run, keep) -> None:
+    kinds = {
+        key: kind
+        for key, kind in run.dependencies.get(UNKNOWN_OUTCOME_KINDS, {}).items()
+        if keep(key)
+    }
+    if kinds:
+        run.dependencies[UNKNOWN_OUTCOME_KINDS] = kinds
+    else:
+        run.dependencies.pop(UNKNOWN_OUTCOME_KINDS, None)
+
+
+def _settled(step, attempt):
+    """A key of the step whose attempt is at or before ``attempt``: settled once
+    that attempt is (an attempt starts only after the one before it ended)."""
+
+    def match(key):
+        name, _, number = key.rpartition(":")
+        return name == step and number.isdigit() and int(number) <= attempt
+
+    return match
+
+
+def mark_unknown_outcome(run, step, kind) -> None:
+    """Record what the step's current attempt's unknown outcome is. Earlier
+    attempts of the step are settled by now: their kinds go (``_settled``)."""
+    attempt = run.attempts.get(step, 0)
+    settled = _settled(step, attempt - 1)
+    _keep_kinds(run, lambda key: not settled(key))
+    run.dependencies[UNKNOWN_OUTCOME_KINDS] = {
+        **run.dependencies.get(UNKNOWN_OUTCOME_KINDS, {}),
+        unknown_key(run, step): kind,
+    }
+
+
+def resolve_unknown_outcome(run, step) -> None:
+    """Drop the kinds of the step's current attempt and of every earlier one once
+    its outcome is known (completed, a known failure, given up, settled as lost).
+    The kinds live in the run's dependencies only while an attempt is
+    unresolved, so they add no drift of their own to the pins the append-once
+    pipeline-run row holds (#146)."""
+    settled = _settled(step, run.attempts.get(step, 0))
+    _keep_kinds(run, lambda key: not settled(key))
+
+
+def resolve_step_unknown_outcomes(run, step) -> None:
+    """Drop every kind of the step's attempts: a person's reconcile settles the
+    unknown outcome it clears (api.py, action "reconcile")."""
+    _keep_kinds(run, lambda key: key.rpartition(":")[0] != step)
+
+
+def end_step(run, step) -> None:
+    """Complete the step. Every step that ends passes here, and a step that has
+    ended has no unresolved unknown outcome: every kind of it goes."""
+    run.completed_steps.append(step)
+    resolve_step_unknown_outcomes(run, step)
+
+
+def give_up_the_extraction(run, code) -> None:
+    """Give the organiser's extraction up (``harness.give_up_extraction``). Its
+    call is over, though parse still runs without it: every kind of parse goes."""
+    from .harness import give_up_extraction
+
+    give_up_extraction(run, code)
+    resolve_step_unknown_outcomes(run, "parse")
+
+
+def unknown_outcome_kind(run, step) -> str | None:
+    return run.dependencies.get(UNKNOWN_OUTCOME_KINDS, {}).get(unknown_key(run, step))
+
+
+def unknown_outcome_recoverable(run, step) -> bool:
+    """Whether a first pass's or an extraction's saved ``external_outcome_unknown``
+    may be made due again (``Workflow.recover_blocked``, and the step's
+    lost-attempt settlement).
+
+    A kind written by this code decides: an ``UNANSWERED`` call may be asked
+    again, a ``HELD`` result never is. An attempt with no kind is a legacy row:
+    the code before 2026-10-12 saved a provider's HTTP 5xx and an invalid child
+    result alike, so its cause cannot be read from the run. Logfire (2026-10-12
+    13:00Z-13:34Z) shows the known stuck rows were HTTP 504s, and recovery is
+    bounded (max_attempts, three automatic recoveries, each attempt reserved in
+    full under the run's limit) and ends at worst in review, so a legacy row is
+    recovered and recorded as ``LEGACY_UNKNOWN``.
+    """
+    return unknown_outcome_kind(run, step) in {None, UNANSWERED}
+
+
 # Each recovery is recorded here; a step is recovered at most this many times.
 AUTOMATIC_RECOVERIES = "automatic_recoveries"
 MAX_AUTOMATIC_RECOVERIES = 3
@@ -285,6 +402,16 @@ class Workflow:
             # A pin whose provider the registry moved, same model and price: the
             # move is saved with the step's next save (HARNESS.md 3, Failures).
             repin_first_pass_route(run, self.clock())
+        from .harness import extraction_given_up
+
+        # parse's model call (the organiser's extraction), while the run has not
+        # given it up; once given up, parse runs without it (HARNESS.md 3).
+        extracting = (
+            step == "parse"
+            and hasattr(self.adapters, "extract")
+            and not extraction_given_up(run)
+        )
+        ordinary_extraction = extracting and extraction_failure_is_recoverable(run, step)
         # Persist intent before network/model work. Crash with intent but no result is
         # blocked for explicit replay: provider calls may not support deduplication.
         if run.blocker == "external_outcome_unknown":
@@ -298,7 +425,10 @@ class Workflow:
                     step.startswith("transcribe:")
                     and reader_failure_is_recoverable(run, step)
                 )
-                or ordinary_first_pass
+                or (
+                    (ordinary_first_pass or ordinary_extraction)
+                    and unknown_outcome_recoverable(run, step)
+                )
             ) and run.attempts.get(step, 0) >= 1:
                 # A reading or an ordinary first pass is the exception: asking
                 # again is safe (G6; reliability.first_pass_failure_is_recoverable).
@@ -311,11 +441,24 @@ class Workflow:
                 f"unknown:{revision}",
                 digest({"unknown": step}),
             )
+        if (
+            (ordinary_first_pass or ordinary_extraction)
+            and run.attempts.get(step, 0) >= run.profile.execution.max_attempts
+        ):
+            # Its attempts are used up, as the saved intent of the last one
+            # records. Its result was then lost (the active graph's size limit
+            # reloads that intent, without the give-up the attempt had
+            # recorded), or a person retried a block on its last attempt: it
+            # is given up on unsent, never sent beyond max_attempts. Nothing
+            # is reserved or released; earlier attempts keep what they hold.
+            if ordinary_first_pass:
+                return self._give_up_first_pass(principal, specimen, revision, step, ATTEMPTS_USED)
+            return self._give_up_extraction_unsent(principal, specimen, revision, step, ATTEMPTS_USED)
         external = (
             step.startswith(("transcribe:", "first_pass:"))
             or step in {"segment", "lookup", FIELD_RESEARCH}
             or step.startswith("authority:")
-            or (step == "parse" and hasattr(self.adapters, "extract"))
+            or extracting
             or (
                 step == "classify"
                 and self.classifier is not None
@@ -408,6 +551,10 @@ class Workflow:
             # No room for another comparison under the run's limits: give it up
             # unsent, as a first pass whose last attempt failed is given up on.
             return self._give_up_first_pass(principal, specimen, revision, step, issue)
+        if issue in UNAFFORDABLE and ordinary_extraction:
+            # The same for the organiser's extraction: given up on unsent, and
+            # the next step runs parse without it.
+            return self._give_up_extraction_unsent(principal, specimen, revision, step, issue)
         if issue:
             run.blocker = issue
             run.stage = "processing_blocked"
@@ -483,6 +630,9 @@ class Workflow:
                 self.clock() + timedelta(seconds=policy.lease_seconds)
             ).isoformat()
             run.attempts[step] = run.attempts.get(step, 0) + 1
+            if ordinary_first_pass or ordinary_extraction:
+                # Until its result is saved, this call is unanswered.
+                mark_unknown_outcome(run, step, UNANSWERED)
             specimen = self.repository.save(
                 principal,
                 specimen,
@@ -504,9 +654,9 @@ class Workflow:
         # a reader or an ordinary first-pass comparison: neither publishes a
         # result itself. A late answer is retained and a transient failure is
         # retried with its old cost reservation still held.
-        repeatable = (
-            reader_failure_is_recoverable(run, step)
-            or first_pass_failure_is_recoverable(run, step)
+        # The organiser's extraction is such a read too.
+        repeatable = model_read_is_recoverable(run, step) and (
+            step != "parse" or extracting
         )
         # The code a reading that gave no observation, or a first pass that was
         # given up on, failed with, for its record (lane_costs.record_step).
@@ -515,6 +665,9 @@ class Workflow:
         # 429 to its first request): it is recorded at no cost (lane_costs).
         refusal = None
         observed = len(run.observations)
+        # The run's fields, evidence and usage before parse touches them; put
+        # back when parse does not end (below).
+        parse_base = None
         try:
             if step == "pin_dependencies":
                 retained_carries = copy.deepcopy(run.dependencies.get(CARRY_KEY, {}))
@@ -746,11 +899,50 @@ class Workflow:
                         )
                     )
             elif step == "parse":
-                proposal = specimen.model_copy(deep=True) if run.dependencies.get(CARRY_KEY) else specimen
+                # Parse and extract into a working copy, applied to the run only
+                # when the step ends: an attempt whose extraction fails and is
+                # retried leaves no fields or evidence behind, so a retry does
+                # not add a second evidence row per parsed line.
+                proposal = specimen.model_copy(deep=True)
+                parse_base = (
+                    copy.deepcopy(run.fields),
+                    copy.deepcopy(run.evidence),
+                    run.usage.model_copy(deep=True),
+                )
                 self.parse(proposal.run, specimen.asset.id, self.blobs)
-                if hasattr(self.adapters, "extract"):
-                    self.adapters.extract(proposal)
-                if proposal is not specimen:
+                # Asked again here, as before: offline adapters that hide their
+                # extract from the first check (unmetered) still extract.
+                if hasattr(self.adapters, "extract") and not extraction_given_up(run):
+                    try:
+                        self.adapters.extract(proposal)
+                    except (AdapterFailure, ReadingStopped) as failure:
+                        if not self.extraction_has_no_attempt_left(run, step, failure):
+                            raise  # Retried, or a block that names its cause (below).
+                        # Its last attempt failed, its answer stayed malformed or
+                        # it was stopped by its limits: the run goes on without
+                        # the extraction's candidates; the deterministic parse
+                        # above stands, and what does not settle goes to review.
+                        give_up_the_extraction(run, failure.code)
+                        reading_failure = failure.code
+                        status = {}
+                        if isinstance(failure, AdapterFailure):
+                            refusal = failure.code if failure.refused else None
+                            circuit_failure = failure.status.value
+                            circuit_retry_after = failure.retry_after_seconds
+                            status = {"status": failure.status.value}
+                        _log_step_failure(
+                            run,
+                            step,
+                            "extraction_given_up",
+                            error=failure,
+                            code=log_code(failure.code),
+                            **status,
+                        )
+                if not run.dependencies.get(CARRY_KEY):
+                    run.fields = proposal.run.fields
+                    run.evidence = proposal.run.evidence
+                    run.usage = proposal.run.usage
+                else:
                     from .human_field_carry import manifests
                     protected = set(manifests(specimen))
                     run.fields.update({k: v for k, v in proposal.run.fields.items() if k not in protected})
@@ -923,20 +1115,19 @@ class Workflow:
                 run.blocker = None
             run.lease_until = None
             if step != FIELD_RECHECK:
-                run.completed_steps.append(step)
+                end_step(run, step)
             if step not in {"finalize", FIELD_RESEARCH, FIELD_RECHECK}:
                 run.stage = self.next_step(run).split(":")[0]
         except AdapterFailure as exc:
             # These model reads cannot duplicate a specimen or publication.
             # Their unknown billing remains reserved, independently of whether
             # the workflow can safely retry; other effects keep the block.
-            recoverable = (
-                reader_failure_is_recoverable(run, step)
-                or first_pass_failure_is_recoverable(run, step)
+            recoverable = model_read_is_recoverable(run, step) and (
+                step != "parse" or extracting
             )
             outcome_unknown = exc.outcome_unknown and not recoverable
             if reader_failure_is_recoverable(run, step) or (
-                first_pass_failure_is_recoverable(run, step) and exc.outcome_unknown
+                recoverable and (step == "parse" or exc.outcome_unknown)
             ):
                 reading_failure = exc.code
             refusal = exc.code if exc.refused else None
@@ -1019,6 +1210,27 @@ class Workflow:
                 stage=run.stage,
                 outcome_unknown=outcome_unknown,
             )
+        if parse_base is not None and step not in run.completed_steps:
+            # parse did not end (a retried extraction, an integrity failure
+            # after it, a human-field check that refused): none of this
+            # attempt's fields, evidence or token usage stays, so the next
+            # attempt does not add them again. Its reservations were made
+            # before the snapshot and stay.
+            run.fields, run.evidence, run.usage = parse_base
+        if (
+            (ordinary_first_pass or ordinary_extraction)
+            and run.stage == "processing_blocked"
+            and run.blocker == "external_outcome_unknown"
+        ):
+            # A provider or deadline failure of these reads is a known failure
+            # (above), so an unknown outcome here is a result the parent could
+            # not accept (an invalid child result, a child whose cleanup is not
+            # confirmed, an unexpected exception). It is held for a person:
+            # recorded so that recover_blocked never makes it due again.
+            mark_unknown_outcome(run, step, HELD)
+        elif run.blocker != "external_outcome_unknown":
+            # Known now (completed, retried or given up): no longer recorded.
+            resolve_unknown_outcome(run, step)
         elapsed = max(0, self.monotonic() - started)
         if external and elapsed > effect_timeout and not repeatable:
             circuit_failure = "timeout"
@@ -1149,7 +1361,10 @@ class Workflow:
         run = specimen.run
         policy = run.profile.execution
         first_pass = step.startswith("first_pass:")
-        code = LOST_FIRST_PASS if first_pass else LOST_READING
+        extraction = step == "parse"
+        code = (
+            LOST_FIRST_PASS if first_pass else LOST_EXTRACTION if extraction else LOST_READING
+        )
         attempt = run.attempts.get(step, 0)
         recorded = any(
             call.get("step") == step and call.get("attempt") == attempt
@@ -1164,6 +1379,8 @@ class Workflow:
         if not recorded:
             run.usage.active_seconds += min(timeout, run.usage.reserved_active_seconds)
         run.usage.reserved_active_seconds = max(0, run.usage.reserved_active_seconds - timeout)
+        # The lost attempt is settled: its outcome is known (a failed attempt).
+        resolve_unknown_outcome(run, step)
         if attempt >= policy.max_attempts:
             if first_pass:
                 from .first_pass import give_up
@@ -1172,7 +1389,12 @@ class Workflow:
             run.blocker = None
             run.next_retry_at = None
             run.dead_letter = False
-            run.completed_steps.append(step)
+            if extraction:
+                # The extraction is given up on; parse itself still runs, next,
+                # without the call (its deterministic parse and phase).
+                give_up_the_extraction(run, code)
+            else:
+                end_step(run, step)
             run.stage = self.next_step(run).split(":")[0]
         else:
             run.blocker = code
@@ -1254,7 +1476,7 @@ class Workflow:
         run.next_retry_at = None
         run.dead_letter = False
         run.disposition = None
-        run.completed_steps.append(step)
+        end_step(run, step)
         run.stage = self.next_step(run).split(":")[0]
         _log_step_failure(run, step, "first_pass_unaffordable", code=code, stage=run.stage)
         specimen.audit.append(
@@ -1273,24 +1495,61 @@ class Workflow:
             digest({"first_pass_unaffordable": step, "run": run.id, "code": code}),
         )
 
+    def _give_up_extraction_unsent(self, principal, specimen, revision, step, code):
+        """Give the organiser's extraction up without sending it: the run cannot
+        afford another call (``UNAFFORDABLE``). Nothing is reserved or recorded;
+        earlier attempts keep what they hold. The next step runs parse without
+        the call, and the record goes on to field research and review."""
+        run = specimen.run
+        give_up_the_extraction(run, code)
+        run.blocker = None
+        run.next_retry_at = None
+        run.dead_letter = False
+        run.disposition = None
+        run.stage = self.next_step(run).split(":")[0]
+        _log_step_failure(run, step, "extraction_unaffordable", code=code, stage=run.stage)
+        specimen.audit.append(
+            AuditEvent(
+                actor=principal.user_id,
+                action="workflow_step",
+                reason=step,
+                after={"stage": run.stage, "blocker": run.blocker},
+            )
+        )
+        return self.repository.save(
+            principal,
+            specimen,
+            revision,
+            f"extraction-unaffordable:{revision}",
+            digest({"extraction_unaffordable": step, "run": run.id, "code": code}),
+        )
+
     def recover_blocked(self, principal: Principal, specimen_id: str) -> bool:
-        """Make a blocked ordinary first pass due again; whether it did.
+        """Make a blocked ordinary first pass or extraction due again; whether it did.
 
         The drain calls this for each blocked record when it takes a collection
-        (lane_worker.DrainWorker), so a run blocked at its first pass by a
-        transient cause goes on through the normal workflow with no action:
+        (lane_worker.DrainWorker), so a run blocked at its first pass, or at the
+        organiser's extraction (``parse``), by a transient cause goes on through
+        the normal workflow with no action:
 
         - ``external_outcome_unknown`` (lease ended): due, kept as it is; the
-          step settles it as a lost attempt (``_settle_lost_reading``).
+          step settles it as a lost attempt (``_settle_lost_reading``). Only an
+          unanswered call or a legacy row (``unknown_outcome_recoverable``); a
+          result the parent could not accept (``HELD``) stays blocked for a
+          person.
         - ``retry_budget_exhausted:<code>``: its attempts are used up, so the
-          first pass is given up on with ``<code>``.
+          first pass (or the extraction) is given up on with ``<code>``. So is
+          one blocked by an answer that stayed malformed (``MALFORMED_ANSWER``),
+          which the step now gives up on at once.
         - A budget the run cannot afford (``UNAFFORDABLE``), a pin whose provider
-          moved (``first_pass.repinnable_first_pass_route``), a provider circuit,
-          or a lane stall: due; the step gives the first pass up, moves the pin,
-          or asks the circuit again.
+          moved (``first_pass.repinnable_first_pass_route``, a first pass only),
+          a provider circuit, or a lane stall: due; the step gives the call up,
+          moves the pin, or asks the circuit again.
 
-        Only an ordinary first pass (``first_pass_failure_is_recoverable``), on a
-        record that is not sensitive, has no disposition and holds no live lease.
+        Only an ordinary first pass (``first_pass_failure_is_recoverable``) or
+        extraction (``extraction_failure_is_recoverable``), on a record that is
+        not sensitive, has no disposition and holds no live lease. An extraction
+        given up on leaves parse due without its call.
         Each recovery is recorded in ``run.dependencies[AUTOMATIC_RECOVERIES]``,
         at most ``MAX_AUTOMATIC_RECOVERIES`` per step. No call is made here, and
         no reservation is released or added.
@@ -1307,12 +1566,29 @@ class Workflow:
             return False
         step = self.next_step(run)
         blocker = run.blocker or ""
+        from .harness import extraction_given_up
+
+        first_pass = step.startswith("first_pass:") and first_pass_failure_is_recoverable(
+            run, step
+        )
+        extraction = (
+            step == "parse"
+            and hasattr(self.adapters, "extract")
+            and extraction_failure_is_recoverable(run, step)
+            and not extraction_given_up(run)
+        )
         if (
-            not step.startswith("first_pass:")
-            or not first_pass_failure_is_recoverable(run, step)
+            not (first_pass or extraction)
             or has_active_lease(run, self.clock())
+            # Only an unknown outcome whose cause the run durably shows can be
+            # mended by asking again; any other stays for a person.
+            or (
+                blocker == "external_outcome_unknown"
+                and not unknown_outcome_recoverable(run, step)
+            )
             or not (
                 blocker in RECOVERABLE_FIRST_PASS_BLOCKERS
+                or blocker == MALFORMED_ANSWER
                 or blocker.startswith(RECOVERABLE_FIRST_PASS_PREFIXES)
             )
         ):
@@ -1320,7 +1596,7 @@ class Workflow:
         from .first_pass import give_up, repinnable_first_pass_route
 
         if blocker == "pinned_model_route_unavailable" and (
-            repinnable_first_pass_route(run) is None
+            not first_pass or repinnable_first_pass_route(run) is None
         ):
             return False  # Another model, or no route: not a provider move.
         history = run.dependencies.get(AUTOMATIC_RECOVERIES, [])
@@ -1334,14 +1610,25 @@ class Workflow:
                 "blocker": blocker,
                 "attempt": run.attempts.get(step, 0),
                 "at": at.isoformat(),
+                **(
+                    {"rule": LEGACY_UNKNOWN}
+                    if blocker == "external_outcome_unknown"
+                    and unknown_outcome_kind(run, step) is None
+                    else {}
+                ),
             },
         ]
-        if blocker.startswith("retry_budget_exhausted:"):
-            give_up(run, step.split(":", 1)[1], blocker.split(":", 1)[1])
+        if blocker.startswith("retry_budget_exhausted:") or blocker == MALFORMED_ANSWER:
+            code = blocker.removeprefix("retry_budget_exhausted:")
+            if first_pass:
+                give_up(run, step.split(":", 1)[1], code)
+                end_step(run, step)
+            else:
+                # parse runs next, without the call it gave up on.
+                give_up_the_extraction(run, code)
             run.blocker = None
             run.dead_letter = False
             run.next_retry_at = None
-            run.completed_steps.append(step)
             run.stage = self.next_step(run).split(":")[0]
         else:
             # Due now. An unknown outcome keeps its blocker for the step to settle.
@@ -1450,17 +1737,52 @@ class Workflow:
         The reader's test (``reading_has_no_attempt_left``) where it applies: a
         failure that is retried (``failure_is_retryable``: a rate limit, a
         timeout or a provider error, HTTP 402 included) on the attempt that used
-        up ``max_attempts``. A failure that is not retried still blocks and names
+        up ``max_attempts``. A malformed answer (still invalid after the agent's
+        one output retry, so at most two requests) is given up on at once and is
+        not asked again: bounded by that one call, and recorded as the
+        ``first_pass_given_up`` finding with its code and a ``failed`` cost row
+        that keeps the whole reservation; the label's readings go to review
+        unresolved. Any other failure that is not retried still blocks and names
         its cause (a credential or permission error, a request the provider
-        rejects, a malformed answer). An ordinary first pass's transient failure
-        can be given up on even if its bill is unknown: every attempt keeps its
-        reservation and no transcript is selected. The evidence pilot stays
-        excluded, as it does from reader recovery.
+        rejects). An ordinary first pass's transient failure can be given up on
+        even if its bill is unknown: every attempt keeps its reservation and no
+        transcript is selected. The evidence pilot stays excluded, as it does
+        from reader recovery.
         """
         return (
             step.startswith("first_pass:")
             and first_pass_failure_is_recoverable(run, step)
-            and failure_is_retryable(run, step, failure.status)
+            and (
+                # A malformed answer (still invalid after the agent's output
+                # retry) is a known outcome: given up on at once, never retried
+                # (2026-10-12, specimen 19f0f1f6).
+                failure.status == LookupStatus.MALFORMED
+                or (
+                    failure_is_retryable(run, step, failure.status)
+                    and run.attempts.get(step, 0) >= run.profile.execution.max_attempts
+                )
+            )
+        )
+
+    @staticmethod
+    def extraction_has_no_attempt_left(run, step, failure) -> bool:
+        """Whether the organiser's extraction is given up on after this failure.
+
+        The first pass's rule (``first_pass_has_no_attempt_left``): a failure
+        that is retried (a rate limit, a timeout, a provider error, an unknown
+        outcome after an HTTP 5xx or a child's deadline) on the attempt that
+        used up ``max_attempts``, or a malformed answer. An extraction stopped by
+        its token limits (``ReadingStopped``) is given up on at once, as a
+        reading is (#153). A credential or permission error and a request the
+        provider rejects still block and name their cause; so does the evidence
+        pilot (``reliability.extraction_failure_is_recoverable``).
+        """
+        if step != "parse" or not extraction_failure_is_recoverable(run, step):
+            return False
+        if isinstance(failure, ReadingStopped):
+            return True
+        return failure.status == LookupStatus.MALFORMED or (
+            failure_is_retryable(run, step, failure.status)
             and run.attempts.get(step, 0) >= run.profile.execution.max_attempts
         )
 

@@ -98,10 +98,17 @@ class _QueueRead {
 }
 
 class _DeferredPage {
-  const _DeferredPage(this.read, this.page);
+  const _DeferredPage(this.read, this.page, this.cursors, this.pagesEpoch);
 
   final _QueueRead read;
   final SpecimenPage page;
+
+  /// The cursors that fetched the pages after the first, in order.
+  final List<String> cursors;
+
+  /// The loaded pages this answer replaces. A page appended while the list
+  /// was held makes it stale.
+  final int pagesEpoch;
 }
 
 class _AwaitingBatchReadback {
@@ -183,6 +190,17 @@ class WorkspaceController extends ChangeNotifier {
   final Set<String> _seenCursors = <String>{};
   DateTime? _updatedAt;
 
+  /// Counts every change to which pages are loaded: a page applied by a
+  /// refresh or appended by `loadMore`. A quiet reread of the loaded pages and
+  /// a `loadMore` that overlap would otherwise each apply an answer built on a
+  /// list the other has already replaced.
+  int _pagesEpoch = 0;
+
+  /// True once a background poll has reported that the service could not be
+  /// answered, until a poll succeeds. One outage is one banner, announced
+  /// once, however many ticks retry it.
+  bool _quietFailureReported = false;
+
   String _query = '';
   String _disposition = 'needs_human_review';
   Map<String, String> _filters = <String, String>{};
@@ -211,6 +229,13 @@ class WorkspaceController extends ChangeNotifier {
   StreamSubscription<ApiFailure>? _accessSubscription;
   Timer? _poll;
   bool _polling = false;
+
+  /// True when the app returned and no poll has started since. It is
+  /// cleared only by a poll that actually starts, and drained by
+  /// [_drainPollAgain] whenever a guard that blocked the poll lifts. One
+  /// latch, so at most one follow-up poll.
+  bool _pollAgain = false;
+  bool _drainScheduled = false;
   final Set<Object> _pollPauses = <Object>{};
   Future<Specimen>? _selectedRead;
   Object? _selectedReadKey;
@@ -282,6 +307,7 @@ class WorkspaceController extends ChangeNotifier {
       _pollPauses.add(owner);
     } else {
       _pollPauses.remove(owner);
+      _drainPollAgain();
     }
   }
 
@@ -379,7 +405,7 @@ class WorkspaceController extends ChangeNotifier {
             _loading = false;
             _loadingMore = false;
             _recordFailure(failure);
-            notifyListeners();
+            _notify();
           });
     }
     unawaited(checkAccess());
@@ -390,39 +416,75 @@ class WorkspaceController extends ChangeNotifier {
     final lifecycleState = WidgetsBinding.instance.lifecycleState;
     _foreground =
         lifecycleState == null || lifecycleState == AppLifecycleState.resumed;
-    _lifecycle = AppLifecycleListener(
-      onStateChange: (AppLifecycleState state) =>
-          _foreground = state == AppLifecycleState.resumed,
-    );
+    _lifecycle = AppLifecycleListener(onStateChange: _lifecycleChanged);
+    _startPollTimer();
+  }
+
+  void _startPollTimer() {
+    _poll?.cancel();
     _poll = Timer.periodic(pollInterval, (_) => unawaited(_pollWorkspace()));
   }
 
+  /// Coming back to the app asks what changed while it was away at once,
+  /// rather than leaving the list another device has moved on from until the
+  /// next tick. The timer restarts so that answer is not asked twice.
+  void _lifecycleChanged(AppLifecycleState state) {
+    final bool returning = !_foreground && state == AppLifecycleState.resumed;
+    _foreground = state == AppLifecycleState.resumed;
+    if (!returning || _disposed || _poll == null) return;
+    _startPollTimer();
+    // A poll still in flight was asked before the app left, and a load or a
+    // save may be blocking a new one. Either way the return is owed one poll
+    // that starts after it, as soon as nothing blocks it.
+    _pollAgain = true;
+    _drainPollAgain();
+  }
+
+  /// Every reason a quiet poll may not start now. The one list both the poll
+  /// and the drain of [_pollAgain] read, so a new guard cannot strand it.
+  bool get _pollBlocked =>
+      _disposed ||
+      _poll == null ||
+      !_foreground ||
+      _polling ||
+      _mutating ||
+      _pollPauses.isNotEmpty ||
+      _loading ||
+      _loadingMore ||
+      _recordLoading ||
+      !_scopesVerified ||
+      _scope == null;
+
+  /// Starts the owed poll once nothing blocks it. Called from [_notify],
+  /// which every guard's completion path reaches, and from the guard changes
+  /// that do not notify.
+  void _drainPollAgain() {
+    if (!_pollAgain || _drainScheduled || _pollBlocked) return;
+    _drainScheduled = true;
+    scheduleMicrotask(() {
+      _drainScheduled = false;
+      unawaited(_pollWorkspace());
+    });
+  }
+
   Future<void> _pollWorkspace() async {
-    if (_disposed ||
-        !_foreground ||
-        _polling ||
-        _mutating ||
-        _pollPauses.isNotEmpty ||
-        _loading ||
-        _loadingMore ||
-        _recordLoading ||
-        !_scopesVerified ||
-        _scope == null) {
-      return;
-    }
+    if (_pollBlocked) return;
+    _pollAgain = false;
     _polling = true;
     try {
-      if (_seenCursors.isEmpty) {
-        await refresh(quiet: true);
-      } else {
-        // Replacing page one would erase the reviewer's paginated queue.
-        // The open canonical record remains independently refreshable.
-        await refreshSelected(quiet: true);
-      }
+      // A quiet refresh rereads every loaded page, so a paginated queue keeps
+      // its depth and still learns of records that arrived, changed or left.
+      // It also rereads the open record.
+      await refresh(quiet: true);
     } finally {
       _polling = false;
     }
+    _drainPollAgain();
   }
+
+  /// True while the app owes a poll for a return to the foreground.
+  @visibleForTesting
+  bool get pollOwed => _pollAgain;
 
   Future<Specimen> _readSelected(CollectionScope scope, String id) {
     final key = (scope, id, _recordGeneration, _mutationEpoch, session.userId);
@@ -538,6 +600,9 @@ class WorkspaceController extends ChangeNotifier {
     _deferredPage = null;
     _mutationKeys.clear();
     _pollPauses.clear();
+    _pollAgain = false;
+    _drainScheduled = false;
+    _quietFailureReported = false;
     _awaitingBatchReadback = null;
     _loading = true;
     _loadingMore = false;
@@ -573,7 +638,9 @@ class WorkspaceController extends ChangeNotifier {
   }
 
   void _notify() {
-    if (!_disposed) notifyListeners();
+    if (_disposed) return;
+    notifyListeners();
+    _drainPollAgain();
   }
 
   /// Holds the list still while a row has focus or a sheet is open, so a quiet
@@ -586,8 +653,8 @@ class WorkspaceController extends ChangeNotifier {
     final _DeferredPage? deferred = _deferredPage;
     if (_holds == 0 && deferred != null) {
       _deferredPage = null;
-      if (_ownsQueueRead(deferred.read)) {
-        _applyPage(deferred.page);
+      if (_ownsQueueRead(deferred.read) && deferred.pagesEpoch == _pagesEpoch) {
+        _applyPage(deferred.page, deferred.cursors);
         _notify();
       }
     }
@@ -605,6 +672,8 @@ class WorkspaceController extends ChangeNotifier {
     _scopes = <CollectionScope>[];
     _scope = null;
     _items = <Specimen>[];
+    _nextCursor = null;
+    _seenCursors.clear();
     _selected = null;
     _awaitingBatchReadback = null;
     _listGeneration++;
@@ -671,6 +740,13 @@ class WorkspaceController extends ChangeNotifier {
   }
 
   /// Replaces the list with the current filters.
+  ///
+  /// A refresh the reviewer asked for starts again at the first page. A quiet
+  /// one (the poll, a return to the app, an Intake handoff) rereads as many
+  /// pages as are loaded, from a fresh first page: the server orders the
+  /// queue oldest first and pins each cursor to the moment its first page was
+  /// read, so a new record joins the end of the list and is never reachable
+  /// from a cursor the list already holds.
   Future<void> refresh({bool quiet = false}) async {
     final CollectionScope? scope = _scope;
     if (scope == null ||
@@ -691,8 +767,14 @@ class WorkspaceController extends ChangeNotifier {
     final Specimen? recordAtStart = _selected;
     final selectedEpoch = _selectedRefreshEpoch;
     final bool refreshOpenRecord = !_recordLoading;
-    _nextCursor = null;
-    _seenCursors.clear();
+    final int depth = quiet ? _seenCursors.length + 1 : 1;
+    final int pagesEpoch = _pagesEpoch;
+    if (!quiet) {
+      // A quiet reread keeps the loaded pages and their Load more until its
+      // answer replaces them, so a failed poll takes nothing away.
+      _nextCursor = null;
+      _seenCursors.clear();
+    }
     _loadingMore = false;
     if (!quiet) {
       _loading = true;
@@ -700,11 +782,47 @@ class WorkspaceController extends ChangeNotifier {
       _notify();
     }
     try {
-      final SpecimenPage page = await repository.specimenPage(
+      SpecimenPage page = await repository.specimenPage(
         scope,
         filters: read.filters,
       );
       if (!_ownsQueueRead(read)) return;
+      final List<String> cursors = <String>[];
+      if (depth > 1) {
+        final List<Specimen> items = <Specimen>[...page.items];
+        final Set<String> ids = items.map((Specimen s) => s.id).toSet();
+        while (cursors.length < depth - 1 && page.nextCursor != null) {
+          final String cursor = page.nextCursor!;
+          if (cursors.contains(cursor)) {
+            throw const ApiFailure(
+              'Page cursor repeated. Refresh the queue.',
+              code: 'pagination',
+            );
+          }
+          final SpecimenPage next = await repository.specimenPage(
+            scope,
+            filters: read.filters,
+            cursor: cursor,
+          );
+          if (!_ownsQueueRead(read)) return;
+          if (next.items.any((Specimen s) => !ids.add(s.id))) {
+            throw const ApiFailure(
+              'Records changed across pages. Refresh the queue.',
+              code: 'pagination',
+            );
+          }
+          cursors.add(cursor);
+          items.addAll(next.items);
+          page = SpecimenPage(items, nextCursor: next.nextCursor);
+        }
+      }
+      // A page appended while the reread was in flight is the reviewer's.
+      // Keep it; the next tick rereads the deeper list. Every read this
+      // refresh made succeeded, so any outage a poll reported is over.
+      if (quiet && pagesEpoch != _pagesEpoch) {
+        _quietFailureReported = false;
+        return;
+      }
       // A route opened while the list was loading owns its own detail request.
       // Check that ownership before dispatch, rather than fetching and merely
       // rejecting the duplicate response afterwards.
@@ -719,6 +837,11 @@ class WorkspaceController extends ChangeNotifier {
           ? null
           : await _readSelected(scope, openId);
       if (!_ownsQueueRead(read)) return;
+      // The pages and the open record both answered, so any outage a poll
+      // reported is over, whether or not this answer is applied now (a held
+      // list defers it, a newer page supersedes it). Clearing it any earlier
+      // would let a record read that keeps failing announce every tick.
+      _quietFailureReported = false;
       // The open record is the record load's to own. A refresh only carries
       // it along when nothing opened or closed a record meanwhile.
       // An acknowledged save (including a partial batch) replaces the record
@@ -730,16 +853,25 @@ class WorkspaceController extends ChangeNotifier {
           !_mutating &&
           (!quiet || _foreground && _pollPauses.isEmpty) &&
           identical(recordAtStart, _selected);
+      // The open record's read is another await: a page appended during it
+      // also outranks this answer. The record itself is still current.
+      if (quiet && pagesEpoch != _pagesEpoch) {
+        if (ownsRecord && selected != null) {
+          _acceptSelected(selected);
+          _notify();
+        }
+        return;
+      }
       if (quiet && _holds > 0) {
         // A row has focus or a sheet is open. Keep the answer until it does
         // not, rather than moving the list under the reviewer.
-        _deferredPage = _DeferredPage(read, page);
+        _deferredPage = _DeferredPage(read, page, cursors, pagesEpoch);
         if (ownsRecord && selected != null) _acceptSelected(selected);
         _loading = false;
         _notify();
         return;
       }
-      _applyPage(page);
+      _applyPage(page, cursors);
       if (ownsRecord && selected != null) _acceptSelected(selected);
       _loading = false;
       // A quiet poll is a background process. It may not clear a message the
@@ -751,9 +883,32 @@ class WorkspaceController extends ChangeNotifier {
     } catch (error) {
       if (!_ownsQueueRead(read)) return;
       _loading = false;
+      if (quiet && _isTransient(error)) {
+        // The next tick, or the next return to the app, retries. Report the
+        // outage once rather than replacing the banner on every tick: its
+        // sentence names the age of the list, so each replacement would be
+        // announced again (06 section 4, background refresh).
+        if (_quietFailureReported) {
+          _notify();
+          return;
+        }
+        _quietFailureReported = true;
+      }
       _recordFailure(error);
       _notify();
     }
+  }
+
+  /// A failure a later read may not repeat: the service did not answer.
+  bool _isTransient(Object error) {
+    if (error is! ApiFailure) return true;
+    if (error.status == 401 || error.status == 403) return false;
+    return const <String>{
+          'network',
+          'timeout',
+          'unavailable',
+        }.contains(error.code) ||
+        (error.status ?? 0) >= 500;
   }
 
   bool _ownsQueueRead(_QueueRead read) =>
@@ -765,9 +920,13 @@ class WorkspaceController extends ChangeNotifier {
       read.generation == _listGeneration &&
       mapEquals(read.filters, activeFilters);
 
-  void _applyPage(SpecimenPage page) {
+  void _applyPage(SpecimenPage page, List<String> cursors) {
     _items = page.items;
     _nextCursor = page.nextCursor;
+    _seenCursors
+      ..clear()
+      ..addAll(cursors);
+    _pagesEpoch++;
     _updatedAt = DateTime.now();
   }
 
@@ -782,6 +941,7 @@ class WorkspaceController extends ChangeNotifier {
       userId: session.userId,
       filters: activeFilters,
     );
+    final int pagesEpoch = _pagesEpoch;
     _loadingMore = true;
     _error = null;
     _notify();
@@ -792,6 +952,10 @@ class WorkspaceController extends ChangeNotifier {
         cursor: cursor,
       );
       if (!_ownsQueueRead(read)) return;
+      // A quiet reread replaced the loaded pages meanwhile, so this cursor
+      // belongs to a list that is gone. Its answer is already in that reread
+      // or behind the new Load more.
+      if (pagesEpoch != _pagesEpoch) return;
       if (_seenCursors.contains(cursor) ||
           page.nextCursor == cursor ||
           (page.nextCursor != null && _seenCursors.contains(page.nextCursor))) {
@@ -809,6 +973,7 @@ class WorkspaceController extends ChangeNotifier {
       }
       _items = <Specimen>[..._items, ...page.items];
       _seenCursors.add(cursor);
+      _pagesEpoch++;
       _nextCursor = page.nextCursor;
       _updatedAt = DateTime.now();
     } catch (error) {

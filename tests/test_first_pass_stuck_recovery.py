@@ -151,10 +151,16 @@ def test_a_blocked_old_provider_pin_is_recovered_by_the_drain(tmp_path, monkeypa
 def test_a_blocked_unknown_comparison_is_retried_by_the_drain(tmp_path, monkeypatch):
     # (b) processing_blocked as external_outcome_unknown, as the code before
     # e52503c5 saved a first-pass HTTP 503: the attempt recorded and held, its
-    # lease left set.
+    # lease left set, no unknown-outcome kind. A legacy row: recovered on the
+    # bounded path and recorded as such (workflow.unknown_outcome_recoverable).
     workflow, principal, ident, adapter = one_failed_comparison(tmp_path, monkeypatch)
+    # That code wrote no unknown-outcome kinds.
+    legacy = {
+        k: v for k, v in workflow.repository.get(principal.scope, ident).run.dependencies.items()
+        if k != "unknown_outcome_kinds"
+    }
     before = leave(workflow, principal, ident, stage="processing_blocked",
-                   blocker="external_outcome_unknown", next_retry_at=None,
+                   blocker="external_outcome_unknown", next_retry_at=None, dependencies=legacy,
                    lease_until=datetime.now(timezone.utc).isoformat())
     step = comparison_step(before.run)
     later(workflow, 1)
@@ -163,6 +169,7 @@ def test_a_blocked_unknown_comparison_is_retried_by_the_drain(tmp_path, monkeypa
 
     run = workflow.repository.get(principal.scope, ident).run
     assert summary["recovered"] == 1
+    assert run.dependencies[AUTOMATIC_RECOVERIES][0]["rule"] == "legacy_unknown_recovered"
     assert_compared(run, adapter, step)
     assert run.attempts[step] == 2 and requests(tmp_path, "first_pass") == 1
     calls = [(c["attempt"], c["outcome"], c["cost_basis"]) for c in run.paid_calls if c["step"] == step]
