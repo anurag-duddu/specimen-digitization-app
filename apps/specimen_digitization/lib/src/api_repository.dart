@@ -33,6 +33,8 @@ class ApiSpecimenRepository
     this.expectedMode,
     this.appCheckToken,
     this.expectedUserId,
+    this.freshToken,
+    this.freshAppCheckToken,
   }) : _client = client ?? http.Client() {
     if (baseUrl.host.isEmpty ||
         baseUrl.userInfo.isNotEmpty ||
@@ -57,6 +59,14 @@ class ApiSpecimenRepository
   final String Function()? expectedUserId;
   final Uri baseUrl;
   final Future<String?> Function() token;
+
+  /// Mints a new sign-in token rather than reading the cached one. Without it
+  /// the sign-in token is read once per request, and a refusal stands.
+  final Future<String?> Function()? freshToken;
+
+  /// Mints a new App Check token rather than reading the cached one. Without
+  /// it the App Check token is read once per request, and a refusal stands.
+  final Future<String?> Function()? freshAppCheckToken;
   final http.Client _client;
   @override
   String mode = 'production';
@@ -110,15 +120,48 @@ class ApiSpecimenRepository
 
   String _root(CollectionScope scope) =>
       '/v1/organizations/${Uri.encodeComponent(scope.organizationId)}';
+
+  /// Reads one token. A token that can be minted gets one second attempt
+  /// before the read counts as a failure.
+  ///
+  /// Normally the cached token is read first, and a new one is minted only
+  /// when that read throws or comes back empty. With [fresh], a new token is
+  /// minted first and the cached read is the fallback, because App Check on
+  /// the web throws from a forced refresh it cannot finish even while it still
+  /// holds a valid token. Both attempts share one [apiRequestTimeout], so a
+  /// source that hangs is not waited on twice.
+  static Future<String?> _readToken(
+    Future<String?> Function() cached,
+    Future<String?> Function()? minted, {
+    required bool fresh,
+  }) async {
+    if (minted == null) return cached().timeout(apiRequestTimeout);
+    final first = fresh ? minted : cached;
+    final second = fresh ? cached : minted;
+    final elapsed = Stopwatch()..start();
+    try {
+      final value = await first().timeout(apiRequestTimeout);
+      if (value != null && value.isNotEmpty) return value;
+    } catch (_) {
+      // The second attempt decides.
+    }
+    return second().timeout(apiRequestTimeout - elapsed.elapsed);
+  }
+
+  /// The headers that prove who is asking and from which app.
+  ///
+  /// [fresh] mints new tokens instead of reading the cached ones: the server
+  /// refused the cached ones, or an access check follows a refusal.
   Future<Map<String, String>> _credentials(
     int epoch,
     String? userId, {
     bool verification = false,
+    bool fresh = false,
   }) async {
     _checkAccess(epoch, userId, verification: verification);
     String? bearer;
     try {
-      bearer = await token().timeout(apiRequestTimeout);
+      bearer = await _readToken(token, freshToken, fresh: fresh);
     } catch (_) {
       throw _deny(
         const ApiFailure(
@@ -142,13 +185,20 @@ class ApiSpecimenRepository
       );
     }
     String? check;
-    if (appCheckToken != null || expectedMode == 'production') {
+    final appCheck = appCheckToken;
+    if (appCheck != null || expectedMode == 'production') {
       try {
-        check = await appCheckToken?.call().timeout(apiRequestTimeout);
+        check = appCheck == null
+            ? null
+            : await _readToken(appCheck, freshAppCheckToken, fresh: fresh);
       } catch (_) {
+        // Both attempts failed inside this window. On the web the App Check
+        // SDK keeps a failed exchange's backoff in page memory. Until it runs
+        // out (a full day after a 403) or the page reloads, every exchange
+        // fails without a request.
         throw _deny(
           const ApiFailure(
-            'App verification could not be completed. Check your connection and retry. If it persists, ask your administrator to check App Check for this app.',
+            'App verification stopped before collection access was checked. Reload or reopen the app to start it again.',
             code: 'app_check_unavailable',
             status: 403,
           ),
@@ -172,6 +222,50 @@ class ApiSpecimenRepository
     return {'Authorization': 'Bearer $bearer', 'X-Firebase-AppCheck': ?check};
   }
 
+  /// Sends a request, and sends a refused read once more on credentials read
+  /// afresh.
+  ///
+  /// [credentials] are the ones the caller read for the first send, so a
+  /// failure to read them stays outside the caller's refusal handling. On the
+  /// web the App Check SDK does not refresh ahead of expiry, and it stamps a
+  /// token's expiry when the exchange answers, after the server issued it. In
+  /// the last moments of a token's life it can hand out one the API already
+  /// refuses with 403. So a GET refused once is sent again on credentials
+  /// read with `fresh`: each token that can be minted is minted, and one whose
+  /// mint throws falls back to its cached token. What reaches [_deny] is the
+  /// answer to that second send, or a failure to read its credentials. Writes
+  /// are never resent here, nor is a send whose tokens were [minted] already,
+  /// nor one from a repository that has nothing to mint with.
+  Future<http.StreamedResponse> _send(
+    http.BaseRequest Function(Map<String, String> credentials) build,
+    Map<String, String> credentials,
+    int epoch,
+    String? userId, {
+    bool verification = false,
+    bool minted = false,
+  }) async {
+    final first = build(credentials);
+    final response = await _client.send(first).timeout(apiRequestTimeout);
+    if (minted ||
+        (freshToken == null && freshAppCheckToken == null) ||
+        first.method != 'GET' ||
+        (response.statusCode != 401 && response.statusCode != 403)) {
+      return response;
+    }
+    await response.stream.drain<void>().timeout(apiRequestTimeout);
+    final renewed = await _credentials(
+      epoch,
+      userId,
+      verification: verification,
+      fresh: true,
+    );
+    return _client.send(build(renewed)).timeout(apiRequestTimeout);
+  }
+
+  /// Sends one JSON request to the API.
+  ///
+  /// [freshCredentials] mints new tokens for the first send. The access check
+  /// sets it when it follows a refusal.
   Future<Json> request(
     String method,
     String path, {
@@ -181,37 +275,52 @@ class ApiSpecimenRepository
     Uint8List? bytes,
     Map<String, String>? headers,
     int? verificationEpoch,
+    bool freshCredentials = false,
   }) async {
     final epoch = verificationEpoch ?? _accessEpoch;
     final userId = expectedUserId?.call();
+    final verification = verificationEpoch != null;
     final uri = baseUrl.replace(
       path: '${baseUrl.path.replaceFirst(RegExp(r'/$'), '')}$path',
       queryParameters: query,
     );
-    final request = http.Request(method, uri)..followRedirects = false;
-    request.headers.addAll({
-      ...await _credentials(
-        epoch,
-        userId,
-        verification: verificationEpoch != null,
-      ),
-      'Accept': 'application/json',
-      'Idempotency-Key': ?key,
-      ...?headers,
-    });
-    if (bytes != null) {
-      request.bodyBytes = bytes;
-      request.headers['Content-Type'] =
-          headers?['Content-Type'] ?? 'application/octet-stream';
-    } else if (body != null) {
-      request.headers['Content-Type'] = 'application/json';
-      request.body = jsonEncode(body);
+    http.Request build(Map<String, String> credentials) {
+      final request = http.Request(method, uri)..followRedirects = false;
+      request.headers.addAll({
+        ...credentials,
+        'Accept': 'application/json',
+        'Idempotency-Key': ?key,
+        ...?headers,
+      });
+      if (bytes != null) {
+        request.bodyBytes = bytes;
+        request.headers['Content-Type'] =
+            headers?['Content-Type'] ?? 'application/octet-stream';
+      } else if (body != null) {
+        request.headers['Content-Type'] = 'application/json';
+        request.body = jsonEncode(body);
+      }
+      return request;
     }
+
+    final credentials = await _credentials(
+      epoch,
+      userId,
+      verification: verification,
+      fresh: freshCredentials,
+    );
     try {
       final response = await http.Response.fromStream(
-        await _client.send(request).timeout(apiRequestTimeout),
+        await _send(
+          build,
+          credentials,
+          epoch,
+          userId,
+          verification: verification,
+          minted: freshCredentials,
+        ),
       ).timeout(apiRequestTimeout);
-      _checkAccess(epoch, userId, verification: verificationEpoch != null);
+      _checkAccess(epoch, userId, verification: verification);
       Json result = {};
       try {
         if (response.body.isNotEmpty) {
@@ -333,22 +442,25 @@ class ApiSpecimenRepository
     }
     final epoch = _accessEpoch;
     final userId = expectedUserId?.call();
-    final req = http.Request(
-      'GET',
-      baseUrl.replace(
-        path: '${baseUrl.path.replaceFirst(RegExp(r'/$'), '')}$path',
-        queryParameters: query,
-      ),
-    )..followRedirects = false;
-    req.headers.addAll({
-      ...await _credentials(epoch, userId),
-      'Accept': artifact.kind == ArtifactKind.activeGraph
-          ? 'application/json'
-          : 'text/plain',
-    });
+    http.Request build(Map<String, String> credentials) =>
+        http.Request(
+            'GET',
+            baseUrl.replace(
+              path: '${baseUrl.path.replaceFirst(RegExp(r'/$'), '')}$path',
+              queryParameters: query,
+            ),
+          )
+          ..followRedirects = false
+          ..headers.addAll({
+            ...credentials,
+            'Accept': artifact.kind == ArtifactKind.activeGraph
+                ? 'application/json'
+                : 'text/plain',
+          });
+    final credentials = await _credentials(epoch, userId);
     try {
       return await (() async {
-        final response = await _client.send(req);
+        final response = await _send(build, credentials, epoch, userId);
         _checkAccess(epoch, userId);
         if (response.statusCode == 401 || response.statusCode == 403) {
           await response.stream.listen(null).cancel();
@@ -445,12 +557,17 @@ class ApiSpecimenRepository
   Future<List<CollectionScope>> scopes() async {
     final epoch = ++_accessEpoch;
     final userId = expectedUserId?.call();
+    // A check that follows a refusal mints new tokens for its first request.
+    // Reading the cache again would send the token that was just refused, or
+    // repeat the read that just failed.
+    final fresh = _accessFailure != null;
     _rechecking = true;
     try {
       final result = await request(
         'GET',
         '/v1/session',
         verificationEpoch: epoch,
+        freshCredentials: fresh,
       );
       bool nonempty(dynamic value) =>
           value is String && value.trim().isNotEmpty;
@@ -928,10 +1045,12 @@ class ApiSpecimenRepository
           path:
               '${baseUrl.path.replaceFirst(RegExp(r'/$'), '')}${_root(scope)}/assets/${Uri.encodeComponent(asset['id'])}/content',
         );
-        final req = http.Request('GET', uri)..followRedirects = false;
-        req.headers.addAll(await _credentials(epoch, userId));
+        http.Request build(Map<String, String> credentials) =>
+            http.Request('GET', uri)
+              ..followRedirects = false
+              ..headers.addAll(credentials);
         final response = await http.Response.fromStream(
-          await _client.send(req).timeout(apiRequestTimeout),
+          await _send(build, await _credentials(epoch, userId), epoch, userId),
         ).timeout(apiRequestTimeout);
         _checkAccess(epoch, userId);
         if (response.statusCode == 401 || response.statusCode == 403) {

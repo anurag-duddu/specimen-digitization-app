@@ -43,6 +43,18 @@ class FirebaseSession
   String get displayName => auth.currentUser?.email ?? 'Signed in';
   @override
   Future<String?> token() async {
+    _requireStaffAccess();
+    return auth.currentUser?.getIdToken();
+  }
+
+  /// A newly minted sign-in token, for a request the server refused or for
+  /// the access check that follows a refusal.
+  Future<String?> freshToken() async {
+    _requireStaffAccess();
+    return auth.currentUser?.getIdToken(true);
+  }
+
+  void _requireStaffAccess() {
     if (!staffEmailAllowed) {
       throw const ApiFailure(
         staffEmailMessage,
@@ -57,7 +69,6 @@ class FirebaseSession
         status: 403,
       );
     }
-    return auth.currentUser?.getIdToken();
   }
 
   @override
