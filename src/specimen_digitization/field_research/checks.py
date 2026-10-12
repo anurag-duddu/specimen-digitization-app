@@ -32,6 +32,19 @@ from specimen_digitization.research_harness.taxonomy import taxonomy_scientific_
 from . import date_lines
 
 NOT_IN_SOURCE = "literal_not_in_source"
+# A two-line literal whose line beside the year is no date the parser reads with it.
+SPLIT_DATE_NOT_READ = "split_lines_date_not_read"
+# A literal found only inside longer tokens of the readings ("III-25 1948" in "VIII-25 1948").
+INSIDE_A_TOKEN = "literal_inside_a_longer_token"
+# The field that takes a determination's date; every other date field is a collecting date.
+DETERMINATION_FIELD = "date_identified"
+# A date a determination stands before on its line is the determination's, no collecting
+# date; Date Identified settles only from such a date.
+AFTER_A_DETERMINATION = "date_follows_a_determination"
+AFTER_NO_DETERMINATION = "date_follows_no_determination"
+# Words after coll. or col. that may name the collector or a collection ("coll. JONES"),
+# when the date is the determination's only if they name a collection: no field settles.
+COLLECTOR_OR_COLLECTION = "coll_may_name_a_collector_or_a_collection"
 # The date parser's notes for a literal that is (part of) a hyphen-joined code.
 _CODE_NOTES = frozenset({"slide_code", "part_of_hyphenated_token"})
 # The part of a date literal a field takes: Date Visited To takes a range's end
@@ -67,7 +80,8 @@ class DateReading:
     end_precision: Literal["day", "month", "year"] | None = None
     # How the year was found when the notation gives none: "year_literal" (the
     # year the expert passed), "year_on_next_line" or "year_on_previous_line"
-    # (the adjacent line, date_lines), "split_lines" (a literal of two lines).
+    # (the adjacent line, date_lines), "split_lines" (a literal of two lines),
+    # "one_line" (a day and month, then their year, on one line).
     via: tuple[str, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
@@ -176,6 +190,7 @@ def parse_date(
     year_literal: str | None = None,
     part: Literal["start", "end"] | None = None,
     reading_names: Sequence[str] | None = None,
+    field: str | None = None,
 ) -> DateCheck:
     """Every reading a date literal's notation allows (G24, G29; HARNESS.md section 8).
 
@@ -185,26 +200,48 @@ def parse_date(
     alone can take. A month and day with no year also take the year of a line
     just above or below that holds nothing but the year (`date_lines`), and a
     literal of two lines (the date, then its year, or the reverse) is read as one
-    date, under the rules of that module. A literal that is part of a
+    date, under the rules of that module, as is a day and month followed on the
+    same line by their year that no notation reads whole ("IV-25 1948",
+    "25.IV, 1948"). A literal that is part of a
     slide-preparation code, or of any other hyphen-joined token, in any reading is
     no date. Each reading that holds the literal is read by its own text, and
     readings that give different results leave the date ambiguous, naming them
     (`reading_names` names them, in the order of `reading_texts`; the default is
     their numbers). `part` is "end" for the field that takes a range's last date.
+    `field` is the field asking. A date that a determination stands before on its line
+    ("det. J. Smith 1950", "det. 25.IV.1950"), or that stands on a line by itself under
+    a determination ("det. J. Smith" above "25.IV.1952"), is the determination's
+    (`date_lines.determination_date`): Date Identified
+    (`DETERMINATION_FIELD`) settles only from such a date, and every other field, or no
+    field, takes no such date (`date_follows_a_determination`,
+    `date_follows_no_determination`). A determination after the date ("25.IV.1948 leg. et
+    det. J. Smith") leaves it the collecting date. When the date is the determination's
+    only if the words after coll. or col. name a collection, and they may name a person
+    ("det. J. Smith 25.IV.1950 coll. JONES"), no field takes it
+    (`coll_may_name_a_collector_or_a_collection`). A reading counts only where the
+    literal stands as a token of its own
+    (`date_lines.places`); a literal found only inside longer tokens is no date
+    (`literal_inside_a_longer_token`).
     """
     if not literal or not literal.strip():
         return DateCheck(literal, LookupStatus.POLICY, notes=(NOT_IN_SOURCE,), part=part)
     names = list(reading_names) if reading_names is not None else [
         str(number) for number in range(1, len(reading_texts) + 1)]
-    texts = [(name, text) for name, text in zip(names, reading_texts, strict=True) if literal in text]
+    named = list(zip(names, reading_texts, strict=True))
+    texts = [(name, text) for name, text in named if date_lines.places(literal, text)]
     if not texts:
-        return DateCheck(literal, LookupStatus.POLICY, notes=(NOT_IN_SOURCE,), part=part)
+        inside = any(literal in text for _, text in named)
+        return DateCheck(literal, LookupStatus.NO_MATCH if inside else LookupStatus.POLICY,
+            notes=(INSIDE_A_TOKEN if inside else NOT_IN_SOURCE,), part=part)
     rules = _date_rules(date_rules)
+    collection = field != DETERMINATION_FIELD
     split = date_lines.split_literal(literal)
     if split is not None:
         runs = [_split_run(literal, split, name, text, rules) for name, text in texts]
     else:
         runs = [_date_run(literal, name, text, year_literal, rules) for name, text in texts]
+    runs = [_field_rule(run, literal, text, collection) for run, (_, text) in zip(runs, texts, strict=True)]
+    if split is None:
         # A year literal must be in the same reading as the date it completes.
         runs = [run for run in runs if run.outcome != LookupStatus.POLICY]
     if not runs:
@@ -228,12 +265,35 @@ def _run(name: str, result: Any, via: tuple[str, ...]) -> _Run:
     return _Run(name, result.outcome, readings, tuple(result.warnings))
 
 
+def _field_rule(run: _Run, literal: str, text: str, collection: bool) -> _Run:
+    """The run as the asking field may take it: a date a determination stands before on
+    its line is no collecting date, and Date Identified takes no other date."""
+    if not run.readings:
+        return run
+    owner = date_lines.determination_date(literal, text)
+    if owner is None:
+        return _Run(run.name, LookupStatus.NO_MATCH, (), (COLLECTOR_OR_COLLECTION,))
+    if collection == owner:
+        note = AFTER_A_DETERMINATION if collection else AFTER_NO_DETERMINATION
+        return _Run(run.name, LookupStatus.NO_MATCH, (), (note,))
+    return run
+
+
 def _date_run(literal: str, name: str, text: str, year_literal: str | None,
         rules: dict | None) -> _Run:
     """The date parser on one reading's text, with the year the line beside the
     literal gives when the literal itself and the expert give none."""
     result = date_parser(literal, source_text=text, year_literal=year_literal, date_rules=rules,
         year_literal_decides=True)
+    if result.outcome == LookupStatus.NO_MATCH and not result.warnings and (
+            one := date_lines.one_line_literal(literal)) is not None:
+        return _one_line_run(literal, one, name, text, rules) or _run(name, result, ())
+    # A year the literal writes itself is no year when a unit is attached right after it,
+    # or an elevation word right before it ("25.IV 1900 m", "Alt. 1948"), whatever
+    # notation reads the date.
+    if result.parsed and not result.parsed["year_literal"] and (
+            problem := date_lines.one_line_year_problem(literal, text)):
+        return _Run(name, LookupStatus.NO_MATCH, (), (problem,))
     via = ("year_literal",) if year_literal and result.parsed and result.parsed["year_literal"] else ()
     if year_literal is None and "year_missing" in result.warnings:
         beside = date_lines.year_beside(literal, text)
@@ -246,6 +306,25 @@ def _date_run(literal: str, name: str, text: str, year_literal: str | None,
     return _run(name, result, via)
 
 
+def _one_line_run(literal: str, one: tuple[str, str], name: str, text: str,
+        rules: dict | None) -> _Run | None:
+    """A day and month, then their year on the same line, that no notation reads
+    whole ("IV-25 1948", "IV-25, 1948", "25.IV, 1948"): one date under the rules of
+    a year on the line below its date (`date_lines.one_line_problem`). None when the
+    first part is no date that states no year: the literal is then no date."""
+    date_part, year = one
+    result = date_parser(date_part, source_text=text, year_literal=year, date_rules=rules,
+        year_literal_decides=True)
+    if not (result.parsed and result.parsed["year_literal"]):
+        # A day and month the calendar refuses, or a range that ends before it
+        # starts, say so; anything else the parser does not read is no date.
+        return None if result.parsed or not result.warnings else _Run(
+            name, LookupStatus.NO_MATCH, (), tuple(result.warnings))
+    if (problem := date_lines.one_line_problem(literal, text)) is not None:
+        return _Run(name, LookupStatus.NO_MATCH, (), (problem,))
+    return _run(name, result, ("one_line",))
+
+
 def _split_run(literal: str, split: tuple[str, str], name: str, text: str, rules: dict | None) -> _Run:
     """A literal of two lines, the date and its year, as one date in one reading."""
     date_part, year = split
@@ -253,9 +332,13 @@ def _split_run(literal: str, split: tuple[str, str], name: str, text: str, rules
         return _Run(name, LookupStatus.NO_MATCH, (), (problem,))
     result = date_parser(date_part, source_text=text, year_literal=year, date_rules=rules,
         year_literal_decides=True)
-    # A date that states a year of its own is not a date split from its year.
+    # A date that states a year of its own is not a date split from its year. A
+    # line the parser does not read with the year says why: the parser's own note
+    # (a range that ends before it starts, a day the calendar refuses), or
+    # split_lines_date_not_read.
     if not (result.parsed and result.parsed["year_literal"]):
-        notes = ("split_lines_state_two_years",) if result.parsed else ()
+        notes = ("split_lines_state_two_years",) if result.parsed else (
+            tuple(result.warnings) or (SPLIT_DATE_NOT_READ,))
         return _Run(name, LookupStatus.NO_MATCH, (), notes)
     return _run(name, result, ("split_lines",))
 
