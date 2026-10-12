@@ -226,7 +226,7 @@ class CollectionFence:
 
 
 def blocked_ids(repository, scope):
-    """Blocked, non-sensitive records with no disposition, by id.
+    """Blocked, non-sensitive records with no disposition, by id, in pages.
 
     The production repository lists them from its metadata rows
     (SqlConnectRepository.blocked_ids). The local SQLite repository is read
@@ -235,12 +235,13 @@ def blocked_ids(repository, scope):
     """
     listing = getattr(repository, "blocked_ids", None)
     if callable(listing):
-        return listing(scope)
+        yield from listing(scope)
+        return
     from .lane import SQLITE_STATUS
     from .storage import SQLiteRepository
 
     if not isinstance(repository, SQLiteRepository):
-        return []
+        return
     with repository.connect() as db:
         rows = db.execute(
             "SELECT id FROM records WHERE org=? AND collection=? AND "
@@ -249,7 +250,7 @@ def blocked_ids(repository, scope):
             + "='processing_blocked' ORDER BY id",
             (scope.organization_id, scope.collection_id),
         ).fetchall()
-    return [row[0] for row in rows]
+    yield [row[0] for row in rows]
 
 
 def waiting_until(run):
@@ -486,15 +487,18 @@ class DrainWorker:
             return 0
         recovered = 0
         try:
-            for ident in blocked_ids(self.repository, principal.scope):
+            for page in blocked_ids(self.repository, principal.scope):
+                for ident in page:
+                    if self._stopped(stop) or self.clock() >= self.close_at:
+                        return recovered
+                    try:
+                        if recover(principal, ident):
+                            recovered += 1
+                            drain.retries[ident] = self.clock()
+                    except (Conflict, Missing):
+                        continue  # Changed meanwhile; the next execution looks again.
                 if self._stopped(stop) or self.clock() >= self.close_at:
-                    break
-                try:
-                    if recover(principal, ident):
-                        recovered += 1
-                        drain.retries[ident] = self.clock()
-                except (Conflict, Missing):
-                    continue  # Changed meanwhile; the next execution looks again.
+                    break  # Checked after every page, an empty one too.
         except Exception as exc:  # noqa: BLE001 - recovery never stops the drain
             LOGGER.warning("blocked-run recovery skipped: %s", type(exc).__name__)
         return recovered

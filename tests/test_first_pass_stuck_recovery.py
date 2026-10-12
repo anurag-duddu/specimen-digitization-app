@@ -329,7 +329,7 @@ def test_the_connector_listing_names_only_blocked_unfinished_records():
 
     repository.execute = execute
 
-    found = list(repository.blocked_ids(None))
+    found = [ident for page in repository.blocked_ids(None) for ident in page]
 
     assert found == ["00000000-0000-0000-0000-000000000099", "00000000-0000-0000-0000-000000000101"]
     assert calls == [
@@ -349,7 +349,7 @@ class ScanFixture:
     def blocked_ids(self, scope):
         for page in self.pages:
             self.read += 1
-            yield from page
+            yield page
 
     def recover_blocked(self, principal, ident):
         self.recovered.append(ident)
@@ -393,3 +393,21 @@ def test_the_blocked_scan_ends_at_the_window_close():
     fixture = ScanFixture([["a", "b", "c"], ["d"]])
     assert fixture.worker()._recover_blocked(scan_drain()) == 2
     assert fixture.recovered == ["a", "b"] and fixture.read == 1
+
+
+def test_the_blocked_scan_stops_after_a_page_with_no_blocked_record():
+    # A full page of running or finished records lists no candidate; the scan
+    # still checks the window between pages, so a collection of such records
+    # cannot run it past the close.
+    fixture = ScanFixture([[], [], ["a"]])
+    worker = fixture.worker()
+    worker.close_at = fixture.now
+    assert worker._recover_blocked(scan_drain()) == 0
+    assert fixture.read == 1
+
+    fixture = ScanFixture([[], [], ["a"]])
+    stop = threading.Event()
+    stop.set()
+    worker = fixture.worker()
+    assert worker._recover_blocked(scan_drain(), stop) == 0
+    assert fixture.read == 1
