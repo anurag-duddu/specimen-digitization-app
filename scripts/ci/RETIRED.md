@@ -8,22 +8,20 @@ releases" in `docs/DEPLOYMENT.md` describes the current process and its
 authority.
 
 - No workflow calls these scripts any more.
-- They stay in the tree, byte for byte unchanged, until a follow-up pull
-  request deletes them together with their tests. Some are pinned by digest:
-  the plan templates under `infra/release/` hold their SHA-256 and tests
-  compare it, so an edit fails CI.
-- Do not extend them, and do not call or import them from new code. New
+- They were deleted together with their tests in the CI merge-latency cleanup.
+  The names remain below as the auditable boundary of what was removed.
+- Do not restore them, and do not call or import them from new code. New
   release code goes in `scripts/release/` (run by the workflows) and
   `scripts/ops/` (run by the owner).
 
-A name without a directory is a file in `scripts/ci/`. Every file in this
-directory appears in exactly one of lists 1 to 4.
+A name without a directory was a file in `scripts/ci/`. Every remaining
+release-related file in this directory appears in list 3 or 4.
 
 ## 1. Retired scripts
 
-Nothing that runs in a release calls these: no workflow, not the local gate,
-no script under `scripts/release/` or `scripts/ops/`. No script in lists 3 and
-4 loads one of them when it is imported.
+These paths no longer exist. Nothing that runs in a release called them: no
+workflow, not the local gate, and no script under `scripts/release/` or
+`scripts/ops/`.
 
 - Release entry points: `deploy_data.py`, `deploy_runtime.py`
 - Gate and packets: `release_gate.py`, `mint_release_packet.py`
@@ -45,21 +43,15 @@ Retired with them, outside this directory:
 `.github/actions/runtime-publication/` (the action that ran
 `release_publication_deadline.py`).
 
-Two tests of the new code compare against a list 1 file, so the deletion pull
-request handles them first. `scripts/release/test_simple_data_release.py`
-reads `initialize_database.sql`. `scripts/ops/test_simple_owner_setup.py`
-loads `owner_grants.py` and skips that comparison once the file is gone.
-The policy test `tests/test_deployment_policy.py` reads list 1 from this file
-and keeps `deploy_data.py` and `deploy_runtime.py` among its approved deploy
-scripts while they exist, so the deletion pull request updates it too.
+The current SQL, runtime-settings and operator tests now assert their active
+contracts directly. The obsolete cross-comparison to `owner_grants.py` was
+removed. The policy test reads this historical list and requires every listed
+path to stay absent.
 
 ## 2. Tests of the retired scripts
 
-These still run in CI (`uv run pytest -q` collects them) until the follow-up
-pull request deletes them with list 1. Each one loads or reads a file from
-list 1, or imports another test in this list. Two reach list 1 only through
-`admit` (see list 4): `test_release_cost_ledger_v2.py` and
-`test_release_verified_bytes.py`.
+These were deleted with list 1. Each loaded or read a file from list 1, or
+imported another test in this list.
 
 - Gate, admission inputs and packets: `test_release_gate.py`,
   `test_mint_release_packet.py`, `test_release_cost_ledger_v2.py`,
@@ -95,10 +87,7 @@ list 1, or imports another test in this list. Two reach list 1 only through
 - Owner helpers: `test_data_setup_window.py`, `test_owner_grants.py`,
   `test_worker_trace_setup.py`
 
-Their fixture: `fixtures/publication_auth_transport.cjs`.
-
-Some of these tests also read the retired documents in list 5 and the plan
-templates under `infra/release/`.
+Their fixture `fixtures/publication_auth_transport.cjs` was deleted too.
 
 ## 3. Still in use by CI and Hosting
 
@@ -146,10 +135,12 @@ row comparison and artifact validation in `release_bootstrap.py` and
 second group and `release_bootstrap.py` join list 1. Until then do not add
 callers.
 
-Three functions in the second group import a list 1 module when they are
-called: `admit` in `release_admission.py`, `qualified_prior` in
-`release_recovery_window.py` and `validate_evidence_recipient` in
-`bootstrap_release.py`. The data release calls none of them.
+Three legacy-only functions in the second group still name a removed list 1
+module behind a lazy import: `admit` in `release_admission.py`,
+`qualified_prior` in `release_recovery_window.py` and
+`validate_evidence_recipient` in `bootstrap_release.py`. The current release
+calls none of them; they remain only because extracting the active helpers is
+a separate code-ownership change.
 
 ## 5. Retired documents
 

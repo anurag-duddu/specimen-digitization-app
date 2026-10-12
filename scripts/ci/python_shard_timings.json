@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "source": {
+    "workflow_run": 38280958547,
+    "measured_at": "2026-10-12",
+    "note": "Sum of each module's entries in pytest --durations=25 across six protected shards; lower bounds only."
+  },
+  "module_seconds": {
+    "tests/research_harness/test_parallel_roles.py": 602.49,
+    "tests/research_harness/test_run_budget_ceiling.py": 276.21,
+    "tests/research_harness/test_production_e2e.py": 274.46,
+    "tests/research_harness/test_native_retry_work_queue.py": 272.08,
+    "tests/research_harness/test_unkeyed_label_reading_citation.py": 265.18,
+    "tests/research_harness/test_public_source_retry_api.py": 244.50,
+    "tests/research_harness/test_organiser_handover_composer.py": 187.11,
+    "tests/research_harness/test_unkeyed_label_review.py": 138.68,
+    "tests/research_harness/test_published_blocked_workflow.py": 137.98,
+    "tests/research_harness/test_final_progress_carrier.py": 133.77,
+    "tests/research_harness/test_people_publication.py": 130.73,
+    "tests/research_harness/test_taxonomy_automatic_publication.py": 105.50,
+    "tests/research_harness/test_agent_visibility.py": 101.93,
+    "tests/research_harness/test_agent_tools_sequential.py": 101.45,
+    "tests/research_harness/test_composed_queue_outcomes.py": 99.82,
+    "tests/research_harness/test_geography_hierarchy_publication.py": 94.98,
+    "tests/research_harness/test_organiser_raw_reading_composer.py": 93.42,
+    "tests/research_harness/test_temporal_composer.py": 83.01,
+    "tests/test_reader_failures_recoverable.py": 74.22,
+    "tests/research_harness/test_production_e2e_sam3_regions.py": 73.15,
+    "tests/test_first_pass_given_up.py": 64.54,
+    "tests/test_hosting_smoke.py": 54.09,
+    "tests/research_harness/test_collection_workflow.py": 46.39,
+    "tests/test_first_pass_transient_recovery.py": 32.72
+  }
+}

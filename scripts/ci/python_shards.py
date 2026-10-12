@@ -3,6 +3,7 @@
 import argparse
 from collections import Counter
 import json
+import math
 import os
 from pathlib import Path
 import subprocess
@@ -10,17 +11,45 @@ import sys
 import tempfile
 
 
-def partition(nodeids, count):
-    """Keep module fixtures and their original item order together."""
+TIMINGS = Path(__file__).with_name("python_shard_timings.json")
+
+
+def load_timings(path=TIMINGS):
+    """Load conservative whole-module runtime hints measured by protected CI."""
+    try:
+        raw = json.loads(Path(path).read_text(encoding="utf-8"))
+        if raw.get("schema") != 1 or type(raw.get("module_seconds")) is not dict:
+            raise ValueError("unsupported timing schema")
+        timings = raw["module_seconds"]
+        for module, seconds in timings.items():
+            if (not isinstance(module, str) or not module.endswith(".py")
+                    or Path(module).is_absolute() or ".." in Path(module).parts
+                    or type(seconds) not in (int, float) or seconds <= 0
+                    or not math.isfinite(seconds)):
+                raise ValueError("invalid module timing")
+        return timings
+    except (OSError, ValueError, TypeError, json.JSONDecodeError) as error:
+        raise ValueError(f"invalid Python shard timings: {error}") from error
+
+
+def partition(nodeids, count, timings=None):
+    """Keep modules together while balancing measured time plus collection size."""
     if type(count) is not int or count < 1 or len(set(nodeids)) != len(nodeids):
         raise ValueError("invalid shard count or duplicate collected node IDs")
     sizes = Counter(node.split("::", 1)[0] for node in nodeids)
-    loads = [0] * count
+    timings = timings or {}
+    loads = [0.0] * count
     owners = {}
-    for module in sorted(sizes, key=lambda name: (-sizes[name], name)):
+    # One tenth of a second per item closely matches the fastest protected
+    # shard and keeps unmeasured modules balanced. Slow-duration hints are a
+    # measured lower bound, added rather than substituted so every item keeps
+    # a cost. Only whole modules move; module fixtures and item order remain.
+    weights = {module: sizes[module] / 10 + timings.get(module, 0)
+               for module in sizes}
+    for module in sorted(sizes, key=lambda name: (-weights[name], name)):
         index = min(range(count), key=lambda shard: (loads[shard], shard))
         owners[module] = index
-        loads[index] += sizes[module]
+        loads[index] += weights[module]
     return [[node for node in nodeids if owners[node.split("::", 1)[0]] == index]
             for index in range(count)]
 
@@ -31,14 +60,15 @@ def identity():
 
 
 class Shard:
-    def __init__(self, index, count, output):
+    def __init__(self, index, count, output, timings=None):
         self.index, self.count, self.output = index, count, Path(output)
+        self.timings = timings or {}
         self.collected, self.selected, self.reports = [], [], {}
         self.collection_errors = 0
 
     def pytest_collection_modifyitems(self, session, config, items):
         self.collected = [item.nodeid for item in items]
-        self.selected = partition(self.collected, self.count)[self.index]
+        self.selected = partition(self.collected, self.count, self.timings)[self.index]
         selected = set(self.selected)
         kept = [item for item in items if item.nodeid in selected]
         removed = [item for item in items if item.nodeid not in selected]
@@ -69,7 +99,7 @@ class Shard:
         temporary.replace(self.output)
 
 
-def verify(results, count, expected_identity):
+def verify(results, count, expected_identity, timings=None):
     """A green aggregate means every collected test completed exactly once."""
     if len(results) != count:
         raise ValueError("missing or extra shard results")
@@ -78,7 +108,7 @@ def verify(results, count, expected_identity):
     collected = results[0]["collected"]
     if not collected or not all(isinstance(node, str) for node in collected):
         raise ValueError("empty or malformed complete collection")
-    assignments = partition(collected, count)
+    assignments = partition(collected, count, timings)
     observed = []
     for result in results:
         index = result["index"]
@@ -121,6 +151,7 @@ def main():
     local = commands.add_parser("local")
     local.add_argument("--count", type=int, default=6)
     args = parser.parse_args()
+    timings = load_timings()
     if args.command == "local":
         if not 1 <= args.count <= 6:
             parser.error("local shard count must be between one and six")
@@ -173,10 +204,11 @@ def main():
             sys.argv.append("--collect-only")
         import pytest
 
-        return pytest.main(sys.argv[1:], plugins=[Shard(args.index, args.count, args.output)])
+        return pytest.main(sys.argv[1:], plugins=[Shard(
+            args.index, args.count, args.output, timings)])
     try:
         results = [json.loads(Path(path).read_text(encoding="utf-8")) for path in args.results]
-        total = verify(results, args.count, identity())
+        total = verify(results, args.count, identity(), timings)
     except (OSError, ValueError, KeyError, TypeError, IndexError) as error:
         print(f"Python shard verification failed: {error}", file=sys.stderr)
         return 1
