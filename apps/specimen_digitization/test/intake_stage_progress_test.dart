@@ -120,6 +120,34 @@ List<String> liveRegions() => <String>[
 ];
 
 void main() {
+  testWidgets('progress details expose the saved stages in readable words', (
+    tester,
+  ) async {
+    await pumpRow(tester, processing());
+    await tester.tap(find.text('Progress details'));
+    await tester.pumpAndSettle();
+    expect(find.text('Upload: Done'), findsOneWidget);
+    expect(find.text('Find labels: Done'), findsOneWidget);
+    expect(find.text('Read labels: In progress'), findsOneWidget);
+    expect(find.text('Compare readings: Waiting'), findsOneWidget);
+    expect(find.text('Main Queue: Waiting'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'progress details preserve absent milestones from an old server',
+    (tester) async {
+      await pumpRow(tester, processing(legacy: true));
+      await tester.tap(find.text('Progress details'));
+      await tester.pumpAndSettle();
+      expect(find.text('Find labels: Not recorded'), findsOneWidget);
+      expect(find.text('Compare readings: Waiting'), findsOneWidget);
+      expect(find.text('Main Queue: Waiting'), findsOneWidget);
+      expect(find.text('Main Queue: Done'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   for (final (step, label) in <(String, String)>[
     ('pin_dependencies', 'Preparing photo'),
     ('segment', 'Finding labels'),

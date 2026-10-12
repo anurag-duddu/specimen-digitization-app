@@ -7,6 +7,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_ui/specimen_ui.dart';
+import 'package:specimen_digitization/src/screens/intake/capture_card.dart';
 
 /// The file picker button.
 final Finder chooseFilesButton = find.byKey(
@@ -67,6 +68,12 @@ Future<void> selectSensitivity(WidgetTester tester, String label) async {
 /// Presses the file picker and waits for every chosen file to be read,
 /// hashed and measured.
 Future<void> chooseFiles(WidgetTester tester) async {
+  if (chooseFilesButton.evaluate().isEmpty) {
+    final addPhotos = find.byKey(const ValueKey<String>('intake-add-photos'));
+    await tester.ensureVisible(addPhotos);
+    await tester.tap(addPhotos);
+    await tester.pumpAndSettle();
+  }
   await tester.ensureVisible(chooseFilesButton);
   await tester.pumpAndSettle();
   await tester.runAsync(() async {
@@ -75,7 +82,10 @@ Future<void> chooseFiles(WidgetTester tester) async {
     for (var attempt = 0; attempt < 200; attempt++) {
       await Future<void>.delayed(const Duration(milliseconds: 25));
       await tester.pump();
-      if (buttonEnabled(tester, chooseFilesButton)) {
+      if (tester
+              .widget<IntakeCaptureCard>(find.byType(IntakeCaptureCard))
+              .onChooseFiles !=
+          null) {
         finished = true;
         break;
       }

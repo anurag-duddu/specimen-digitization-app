@@ -723,28 +723,25 @@ class _IntakeScreenState extends State<IntakeScreen> {
     onDismiss: () => setState(() => _error = null),
   );
 
-  Widget _batchHeader(BuildContext context) => Row(
+  Widget _batchHeader(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
     children: <Widget>[
-      Expanded(
-        child: Semantics(
-          header: true,
-          child: Text(
-            intakeTitle,
-            style: context.ui.type.headline.copyWith(
-              color: context.ui.color.ink,
-            ),
-          ),
+      Semantics(
+        header: true,
+        child: Text(
+          intakeTitle,
+          style: context.ui.type.headline.copyWith(color: context.ui.color.ink),
         ),
       ),
-      SizedBox(width: context.ui.space.s2),
-      UiIconButton(
-        key: const ValueKey<String>('intake-import-from-link'),
-        icon: UiIcons.sourceImport,
-        semanticsLabel: 'Import from link',
-        tooltip: 'Import from link',
-        variant: UiIconButtonVariant.secondary,
-        onPressed: _openLinkImport,
-      ),
+      if (_entries.isEmpty) ...[
+        SizedBox(height: context.ui.space.s2),
+        Text(
+          intakePurpose,
+          style: context.ui.type.body.copyWith(
+            color: context.ui.color.inkSecondary,
+          ),
+        ),
+      ],
     ],
   );
 
@@ -784,8 +781,10 @@ class _IntakeScreenState extends State<IntakeScreen> {
         ? null
         : (bool value) => unawaited(_setAutoIngest(value)),
     onBrowseSources: null,
+    onImportFromLink: _openLinkImport,
     minDropHeight: _isWeb ? minDropHeight : 0,
     dragActive: _pageDragging,
+    hasPhotos: _entries.isNotEmpty,
   );
 
   /// True while the frame's action bar is the one drawing the upload action.
@@ -903,17 +902,6 @@ class _IntakeScreenState extends State<IntakeScreen> {
             constraints,
             textScaler: MediaQuery.textScalerOf(context),
           );
-          final double textScale =
-              MediaQuery.textScalerOf(context).scale(16) / 16;
-          // Reserve scaled room for the title and classification control so
-          // both remain visible before scrolling when the window permits it.
-          final double dropHeight = constraints.hasBoundedHeight
-              ? (constraints.maxHeight -
-                        layout.gutter * 2 -
-                        ui.space.s16 * (2 + textScale) -
-                        (_cameraAvailable ? ui.space.s16 * 2 : 0))
-                    .clamp(240.0, double.infinity)
-              : 360;
           // One scroll keeps capture, classification and file errors reachable
           // at enlarged text sizes and short viewport heights.
           return CustomScrollView(
@@ -928,11 +916,16 @@ class _IntakeScreenState extends State<IntakeScreen> {
                       _errorSlot(context),
                       _batchHeader(context),
                       SizedBox(height: layout.gap),
-                      _captureCard(context, minDropHeight: dropHeight),
+                      _captureCard(context, minDropHeight: 0),
                       SizedBox(height: layout.gap),
                       _sensitivityControl(context),
                       if (_entries.isNotEmpty) ...[
                         SizedBox(height: layout.sectionGap),
+                        Semantics(
+                          header: true,
+                          child: Text('Photos', style: ui.type.title),
+                        ),
+                        SizedBox(height: ui.space.s2),
                         Align(
                           alignment: AlignmentDirectional.topStart,
                           child: ConstrainedBox(
