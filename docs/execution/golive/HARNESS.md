@@ -249,6 +249,64 @@ queue based on how the pipeline+harness resolve them". Tests:
   run action starts one (LANE.md T1), and an execution hands left work to the
   next. Nothing new is scheduled, and a deploy alone starts no execution.
 
+**The organiser's extraction, and a malformed first pass** (2026-10-12;
+replaces, for these two calls, the sentences above that keep the organiser's
+unknown outcome and a first pass's `model_malformed_response` as blocks).
+Production, 13:00Z-13:34Z, collection 200d7057: `parse`'s one model call (the
+organiser's extraction, agent `insects_bounded_extractor`, on the profile's
+first reader route, `handwriting-qwen`) was answered HTTP 504
+`provider_request_failed` after 120 s for five of six camera-intake runs, and
+each blocked as `external_outcome_unknown` with nothing to carry it on.
+Specimen 19f0f1f6's first pass answered malformed after its output retry and
+blocked as `model_malformed_response`, also for good. Tests:
+`tests/test_extraction_recovery.py`, and in `tests/test_rate_limit_refusal.py`
+`test_a_malformed_first_pass_is_given_up_at_once_and_the_record_goes_to_review`
+and `test_the_organisers_refused_call_costs_nothing`.
+- The extraction is a tool-free model read, as the first pass is
+  (`reliability.extraction_failure_is_recoverable`): it reads the run's
+  readings, its child writes only content-addressed provenance, and the parent
+  applies its candidates after the call returns. A rate limit, a timeout, a
+  provider error (an HTTP 5xx's unknown outcome included) or a killed child's
+  deadline is retried within `max_attempts`; every uncertain attempt is
+  recorded `failed` with its `failure_code` and keeps its whole reservation.
+- After its last attempt, on an answer still malformed after the output retry,
+  or when stopped by its token limits (`extraction_usage_limit`), the
+  extraction is given up on: a warning finding `extraction_given_up:<code>`,
+  `parse` completes with the deterministic parse alone, and the run goes on to
+  field research and its disposition. An extraction the run cannot afford is
+  given up on unsent with the budget's code; a worker that stopped after the
+  call's intent settles it as `extraction_result_lost`, retried, then given up.
+- A first pass whose answer stays malformed is given up on at once with
+  `model_malformed_response` (not asked again).
+- `Workflow.recover_blocked` makes due a run left blocked at its extraction as
+  `external_outcome_unknown` (the five runs above), which then settles that
+  attempt as lost and retries or gives up, and gives up an extraction or a
+  first pass left blocked as `retry_budget_exhausted:<code>` or
+  `model_malformed_response` (19f0f1f6). It reads the first pass's blocker
+  list for the extraction too, a moved pin aside.
+- Since these reads' provider and deadline failures are now known failures,
+  an `external_outcome_unknown` that a first pass or an extraction step saves
+  is a result the parent could not accept (for example an invalid child result
+  such as `invalid_json_input`, or extraction fields that do not match the
+  run's; tests in `tests/test_extraction_recovery.py`). The attempt is kept
+  in `run.dependencies["held_unknown_outcomes"]`, and neither the drain's
+  recovery nor the lease's end makes it due again: it stays blocked for a
+  person. A run left as `external_outcome_unknown` before this change has no
+  such record, and the record cannot tell its cause (the five runs above were
+  HTTP 504s, by Logfire), so it is recovered.
+- An authentication or authorization error and a request the provider rejects
+  still block with their cause, and the evidence pilot is excluded, as for the
+  first pass.
+- The route stays on Novita. Two probe rounds on 2026-10-12, sequential, the organiser's real agent and output type on two synthetic
+  label readings with production's limits, and a forced-tool image read of one
+  label: Novita extraction 0 of 3 (HTTP 504 at 120 s each); DeepInfra, which
+  lists the same model cheaper (USD 0.15/0.60 per million tokens against
+  0.20/0.70), extraction 3 of 3 (32-101 s, 368-523 output tokens) and then 0 of
+  5 (HTTP 504 at 120 s each). Image reads: Novita 3 of 3 at 55-73 s, then 5 of 5
+  at 4-5 s; DeepInfra 3 of 3 at 2-4 s, then 5 of 5 at 3-81 s. Neither provider
+  was reliably better; the 504 at 120 s is the Hugging Face router's own limit
+  on one request, which a slow extraction reaches on either provider.
+
 **Waiting after a rate limit** (2026-10-11). A step that fails with an
 `AdapterFailure` whose status is `rate_limited` (a model call's HTTP 429 is
 `model_rate_limited`) waits at least 30 seconds before its second attempt and at

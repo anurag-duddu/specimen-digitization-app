@@ -96,6 +96,26 @@ RECOVERABLE_FIRST_PASS_PREFIXES = ("retry_budget_exhausted:", "provider_circuit:
 # A model read whose answer stayed malformed after its output retry: given up
 # on when the run is recovered (a run blocked by it before 2026-10-12).
 MALFORMED_ANSWER = "model_malformed_response"
+# The attempts of a first pass or an extraction whose unknown outcome is a result
+# the parent could not accept, not a provider's or a deadline's failure: never
+# recovered automatically (Workflow.recover_blocked). Kept in run.dependencies
+# as [{"step", "attempt"}].
+HELD_UNKNOWN_OUTCOMES = "held_unknown_outcomes"
+
+
+def hold_unknown_outcome(run, step) -> None:
+    entry = {"step": step, "attempt": run.attempts.get(step, 0)}
+    held = run.dependencies.get(HELD_UNKNOWN_OUTCOMES, [])
+    if entry not in held:
+        run.dependencies[HELD_UNKNOWN_OUTCOMES] = [*held, entry]
+
+
+def unknown_outcome_held(run, step) -> bool:
+    return {"step": step, "attempt": run.attempts.get(step, 0)} in run.dependencies.get(
+        HELD_UNKNOWN_OUTCOMES, []
+    )
+
+
 # Each recovery is recorded here; a step is recovered at most this many times.
 AUTOMATIC_RECOVERIES = "automatic_recoveries"
 MAX_AUTOMATIC_RECOVERIES = 3
@@ -315,8 +335,10 @@ class Workflow:
                     step.startswith("transcribe:")
                     and reader_failure_is_recoverable(run, step)
                 )
-                or ordinary_first_pass
-                or ordinary_extraction
+                or (
+                    (ordinary_first_pass or ordinary_extraction)
+                    and not unknown_outcome_held(run, step)
+                )
             ) and run.attempts.get(step, 0) >= 1:
                 # A reading or an ordinary first pass is the exception: asking
                 # again is safe (G6; reliability.first_pass_failure_is_recoverable).
@@ -770,7 +792,9 @@ class Workflow:
             elif step == "parse":
                 proposal = specimen.model_copy(deep=True) if run.dependencies.get(CARRY_KEY) else specimen
                 self.parse(proposal.run, specimen.asset.id, self.blobs)
-                if extracting:
+                # Asked again here, as before: offline adapters that hide their
+                # extract from the first check (unmetered) still extract.
+                if hasattr(self.adapters, "extract") and not extraction_given_up(run):
                     try:
                         self.adapters.extract(proposal)
                     except (AdapterFailure, ReadingStopped) as failure:
@@ -1063,6 +1087,17 @@ class Workflow:
                 stage=run.stage,
                 outcome_unknown=outcome_unknown,
             )
+        if (
+            (ordinary_first_pass or ordinary_extraction)
+            and run.stage == "processing_blocked"
+            and run.blocker == "external_outcome_unknown"
+        ):
+            # A provider or deadline failure of these reads is a known failure
+            # (above), so an unknown outcome here is a result the parent could
+            # not accept (an invalid child result, a child whose cleanup is not
+            # confirmed, an unexpected exception). It is held for a person:
+            # recorded so that recover_blocked never makes it due again.
+            hold_unknown_outcome(run, step)
         elapsed = max(0, self.monotonic() - started)
         if external and elapsed > effect_timeout and not repeatable:
             circuit_failure = "timeout"
@@ -1367,7 +1402,11 @@ class Workflow:
         the normal workflow with no action:
 
         - ``external_outcome_unknown`` (lease ended): due, kept as it is; the
-          step settles it as a lost attempt (``_settle_lost_reading``).
+          step settles it as a lost attempt (``_settle_lost_reading``). Not one
+          held as a result the parent could not accept
+          (``HELD_UNKNOWN_OUTCOMES``: an invalid child result, a child whose
+          cleanup is not confirmed, an unexpected exception): it stays blocked
+          for a person.
         - ``retry_budget_exhausted:<code>``: its attempts are used up, so the
           first pass (or the extraction) is given up on with ``<code>``. So is
           one blocked by an answer that stayed malformed (``MALFORMED_ANSWER``),
@@ -1411,6 +1450,8 @@ class Workflow:
         if (
             not (first_pass or extraction)
             or has_active_lease(run, self.clock())
+            # A result the parent could not accept stays for a person.
+            or (blocker == "external_outcome_unknown" and unknown_outcome_held(run, step))
             or not (
                 blocker in RECOVERABLE_FIRST_PASS_BLOCKERS
                 or blocker == MALFORMED_ANSWER
@@ -1556,12 +1597,17 @@ class Workflow:
         The reader's test (``reading_has_no_attempt_left``) where it applies: a
         failure that is retried (``failure_is_retryable``: a rate limit, a
         timeout or a provider error, HTTP 402 included) on the attempt that used
-        up ``max_attempts``. A failure that is not retried still blocks and names
+        up ``max_attempts``. A malformed answer (still invalid after the agent's
+        one output retry, so at most two requests) is given up on at once and is
+        not asked again: bounded by that one call, and recorded as the
+        ``first_pass_given_up`` finding with its code and a ``failed`` cost row
+        that keeps the whole reservation; the label's readings go to review
+        unresolved. Any other failure that is not retried still blocks and names
         its cause (a credential or permission error, a request the provider
-        rejects, a malformed answer). An ordinary first pass's transient failure
-        can be given up on even if its bill is unknown: every attempt keeps its
-        reservation and no transcript is selected. The evidence pilot stays
-        excluded, as it does from reader recovery.
+        rejects). An ordinary first pass's transient failure can be given up on
+        even if its bill is unknown: every attempt keeps its reservation and no
+        transcript is selected. The evidence pilot stays excluded, as it does
+        from reader recovery.
         """
         return (
             step.startswith("first_pass:")

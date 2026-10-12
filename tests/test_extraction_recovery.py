@@ -79,6 +79,14 @@ def failure_code(failure):
     return "extract_deadline_exceeded" if failure == "deadline" else "model_provider_error"
 
 
+def sent(tmp_path, failure, calls):
+    """Whether the fixture provider was sent `calls` extraction requests. A
+    stalled child writes its line before it waits, but under load the parent's
+    3 s cutoff can stop it first: the attempts and the cost rows count those."""
+    made = requests(tmp_path, "extract")
+    return made <= calls if failure == "deadline" else made == calls
+
+
 def extraction_findings(run):
     return [f.reason_code for f in run.findings if f.rule_id == "extraction_given_up"]
 
@@ -104,7 +112,7 @@ def test_a_failed_extraction_is_retried_and_the_run_reaches_its_disposition(
     assert first.run.lease_until is None
     run = last.run
     assert (run.stage, run.blocker, run.disposition) == ("finalized", None, Disposition.REVIEW)
-    assert run.attempts["parse"] == 2 and requests(tmp_path, "extract") == 1
+    assert run.attempts["parse"] == 2 and sent(tmp_path, failure, 1)
     assert extraction_findings(run) == []
     # The uncertain first attempt keeps its whole reservation.
     assert parse_calls(run)[0] == (1, "failed", "reserved", PARSE_RESERVATION, failure_code(failure))
@@ -124,7 +132,7 @@ def test_an_extraction_that_keeps_failing_is_given_up_and_the_record_goes_to_rev
     run = last.run
     assert [d.run.stage for d in retried] == ["retry_scheduled"] * 2
     assert (run.stage, run.blocker, run.disposition) == ("finalized", None, Disposition.REVIEW)
-    assert run.attempts["parse"] == 3 and requests(tmp_path, "extract") == 3
+    assert run.attempts["parse"] == 3 and sent(tmp_path, failure, 3)
     assert extraction_findings(run) == [f"extraction_given_up:{failure_code(failure)}"]
     assert "parse" in run.completed_steps and "finalize" in run.completed_steps
     assert parse_calls(run) == [
@@ -237,6 +245,25 @@ def test_a_run_left_blocked_as_unknown_at_its_extraction_is_carried_on_by_the_dr
     assert run.dependencies["automatic_recoveries"][0]["step"] == "parse"
 
 
+def test_a_lost_last_extraction_is_given_up_by_the_drain(tmp_path, monkeypatch):
+    # The worker stopped after the last attempt's intent: settled as lost, then
+    # given up on, without another call.
+    workflow, principal, ident, backend, _ = extraction_lab(tmp_path, monkeypatch, "http_504", 1)
+    first = workflow.drain(principal, ident).run
+    attempts = {**first.attempts, "parse": first.profile.execution.max_attempts}
+    blocked_at_parse(workflow, principal, ident, blocker="external_outcome_unknown", attempts=attempts)
+    later(workflow, 1)
+
+    summary = drain_worker(workflow, principal)
+
+    run = workflow.repository.get(principal.scope, ident).run
+    assert summary["recovered"] == 1
+    assert (run.stage, run.blocker, run.disposition) == ("finalized", None, Disposition.REVIEW)
+    assert extraction_findings(run) == ["extraction_given_up:extraction_result_lost"]
+    assert requests(tmp_path, "extract") == 1
+    assert parse_calls(run)[-1] == (3, "failed", "reserved", PARSE_RESERVATION, "extraction_result_lost")
+
+
 @pytest.mark.parametrize(
     "blocker", ["retry_budget_exhausted:model_rate_limited", "model_malformed_response"]
 )
@@ -304,12 +331,90 @@ def test_a_run_left_blocked_at_a_malformed_first_pass_is_given_up_by_the_drain(t
     assert requests(tmp_path, "first_pass") == 1 and run.attempts[comparison_step(run)] == 1
 
 
-def test_a_credential_failure_at_the_extraction_still_blocks_with_its_cause(tmp_path, monkeypatch):
-    workflow, principal, ident, backend, _ = extraction_lab(tmp_path, monkeypatch, "http_401", 1)
+@pytest.mark.parametrize(
+    ("failure", "blocker"),
+    [
+        ("http_401", "model_authentication_error"),
+        ("http_403", "model_authorization_error"),
+        ("http_400", "model_request_rejected"),
+    ],
+)
+def test_a_failure_asking_again_would_not_mend_still_blocks_with_its_cause(
+    tmp_path, monkeypatch, failure, blocker
+):
+    workflow, principal, ident, backend, _ = extraction_lab(tmp_path, monkeypatch, failure, 1)
 
     run = workflow.drain(principal, ident).run
 
-    assert (run.stage, run.blocker) == ("processing_blocked", "model_authentication_error")
+    assert (run.stage, run.blocker) == ("processing_blocked", blocker)
     assert extraction_findings(run) == []
     later(workflow, 1)
+    assert workflow.recover_blocked(principal, ident) is False
+
+
+# ---- a result the parent could not accept stays blocked (review of f8e7c73d) --
+
+def invalid_result(kind):
+    """What the isolated child hands back when its result is not acceptable:
+    an invalid IPC input, or an extraction whose fields do not match the run's."""
+    import json
+
+    from specimen_digitization.application.bounded_effect import IsolatedResult
+
+    if kind == "invalid_json_input":
+        return IsolatedResult(
+            status="worker_failed", value=None, elapsed_seconds=1, input_bytes=1,
+            result_bytes=0, reason="invalid_json_input", cleanup_complete=True,
+        )
+    body = json.dumps({"status": "completed", "value": {"fields": {}, "evidence": [], "tokens": 0}})
+    return IsolatedResult(
+        status="completed", value=body.encode(), elapsed_seconds=1, input_bytes=1,
+        result_bytes=len(body), reason=None, cleanup_complete=True,
+    )
+
+
+@pytest.mark.parametrize("kind", ["invalid_json_input", "mismatched_fields"])
+def test_an_extraction_result_the_parent_cannot_accept_stays_blocked_after_its_lease(
+    tmp_path, monkeypatch, kind
+):
+    workflow, principal, ident, backend, _ = extraction_lab(tmp_path, monkeypatch, "http_504", 1)
+    monkeypatch.setattr(model_runtime, "run_isolated", lambda *args, **kwargs: invalid_result(kind))
+
+    first = workflow.drain(principal, ident).run
+    assert (first.stage, first.blocker) == ("processing_blocked", "external_outcome_unknown")
+    assert first.attempts["parse"] == 1
+    later(workflow, 2)  # Well past the lease.
+
+    summary = drain_worker(workflow, principal)
+
+    run = workflow.repository.get(principal.scope, ident).run
+    # On f8e7c73d the drain made it due, settled it as lost and asked again.
+    assert summary["recovered"] == 0
+    assert (run.stage, run.blocker, run.disposition) == (
+        "processing_blocked", "external_outcome_unknown", None
+    )
+    assert run.attempts["parse"] == 1 and extraction_findings(run) == []
+    assert run.dependencies["held_unknown_outcomes"] == [{"step": "parse", "attempt": 1}]
+    assert workflow.recover_blocked(principal, ident) is False
+
+
+def test_a_first_pass_result_the_parent_cannot_accept_stays_blocked_after_its_lease(
+    tmp_path, monkeypatch
+):
+    workflow, principal, ident, _, _ = comparison_lab(tmp_path, monkeypatch, "http_503", 1)
+    monkeypatch.setattr(
+        model_runtime, "run_isolated", lambda *args, **kwargs: invalid_result("invalid_json_input")
+    )
+
+    first = workflow.drain(principal, ident).run
+    step = comparison_step(first)
+    assert (first.stage, first.blocker) == ("processing_blocked", "external_outcome_unknown")
+    later(workflow, 2)
+
+    summary = drain_worker(workflow, principal)
+
+    run = workflow.repository.get(principal.scope, ident).run
+    assert summary["recovered"] == 0
+    assert (run.stage, run.blocker) == ("processing_blocked", "external_outcome_unknown")
+    assert run.attempts[step] == 1 and given_up_findings(run) == []
     assert workflow.recover_blocked(principal, ident) is False
