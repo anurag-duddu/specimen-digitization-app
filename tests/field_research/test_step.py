@@ -633,6 +633,159 @@ def test_derived_values_fill_what_the_label_leaves_out(rig):
     assert (stated.literal, stated.parsed, stated.layer) == ("1500 ft", "1500", "settled")
 
 
+def test_state_line_misplaced_as_country_is_recovered_and_country_is_derived(tmp_path):
+    text = label_with(country=None, province_state="Illinois", county=None, city=None)
+    candidates = [
+        *COLLECTORS,
+        *(("country", name, "Illinois", "province_state: Illinois") for name in ("1A", "1B")),
+    ]
+    rig = build_rig(tmp_path, text, candidates=candidates)
+
+    async def country_lookup_finds_state(task, readings, tools):
+        answer = await tools.lookup("tgn", "Illinois", field_key=task.key)
+        return FieldOutcome(task.key, FieldAnswer(outcome="sources_cannot_resolve", literal="Illinois",
+            reading_names=["1A"], source_evidence_ids=[answer.evidence.id],
+            explanation="Illinois is a state, not a country."), evidence=[answer.evidence], model_calls=1)
+
+    settle(rig, Scripted({
+        "country": country_lookup_finds_state,
+        "province_state": LACKING,
+        "county": LACKING,
+        "city": LACKING,
+    }))
+    fields = rig.specimen.run.fields
+    assert (fields["province_state"].state, fields["province_state"].literal,
+        fields["province_state"].authority_id) == (ValueState.SUPPORTED, "Illinois", "tgn:Illinois")
+    country = fields["country"]
+    assert (country.state, country.literal, country.parsed, country.authority_id, country.layer) == (
+        ValueState.SUPPORTED, None, "United States", "tgn:United States", "derived")
+    assert country.derived_from == ["province_state"]
+    evidence = {item.id: item for item in rig.specimen.run.evidence}
+    [derived] = [evidence[item] for item in country.evidence_ids if evidence[item].locator
+        == "derivation:country_from_province_state"]
+    assert "country = United States (tgn:United States)" in derived.excerpt
+
+
+class DavaoAtTwoLevels(FakeSources):
+    """A gazetteer answer with the same written name at two admin levels."""
+
+    FIRST = "states (political divisions), first level subdivisions (political entities)"
+    SECOND = "counties, second level subdivisions (political entities)"
+
+    def _answer(self, source_id, query):
+        answer = super()._answer(source_id, query)
+        if source_id != "tgn" or query != "Davao":
+            return answer
+        candidates = (
+            SourceCandidate("Davao", "tgn:DavaoProvince", self.FIRST, "in Philippines",
+                (PlaceRef("Philippines", "tgn:Philippines"),)),
+            SourceCandidate("Davao", "tgn:DavaoCounty", self.SECOND, "in Davao, Philippines",
+                (PlaceRef("Davao", "tgn:DavaoProvince"), PlaceRef("Philippines", "tgn:Philippines"))),
+        )
+        evidence = answer.evidence.model_copy(update={"kind": "authority", "locator": "tgn:Davao",
+            "excerpt": "\n".join(f"{c.name} | {c.authority_id} | {c.kind} | {c.detail}" for c in candidates)})
+        return SourceAnswer("tgn", query, LookupStatus.AMBIGUOUS, candidates, evidence, note="ambiguous")
+
+
+def test_location_reconciliation_keeps_same_literal_cross_level_ambiguity_reviewable(tmp_path):
+    text = label_with(country="Davao", province_state=None, county=None, city=None)
+    candidates = [
+        *COLLECTORS,
+        *(("country", name, "Davao", "country: Davao") for name in ("1A", "1B")),
+    ]
+    rig = build_rig(tmp_path, text, candidates=candidates)
+
+    async def country_lookup_finds_two_levels(task, readings, tools):
+        answer = await tools.lookup("tgn", "Davao", field_key=task.key)
+        return FieldOutcome(task.key, FieldAnswer(outcome="sources_cannot_resolve", literal="Davao",
+            reading_names=["1A"], source_evidence_ids=[answer.evidence.id],
+            explanation="Davao is found at more than one location level."),
+            evidence=[answer.evidence], model_calls=1)
+
+    settle(rig, Scripted({
+        "country": country_lookup_finds_two_levels,
+        "province_state": LACKING,
+        "county": LACKING,
+        "city": LACKING,
+    }), tools=DavaoAtTwoLevels(rig.blobs))
+    fields = rig.specimen.run.fields
+    assert (fields["country"].state, fields["country"].literal) == (ValueState.UNRESOLVED, "Davao")
+    assert fields["province_state"].state != ValueState.SUPPORTED
+    assert fields["county"].state != ValueState.SUPPORTED
+    assert rig.specimen.run.disposition == Disposition.REVIEW
+
+
+def test_location_reconciliation_counts_the_source_field_level_when_literal_is_ambiguous(tmp_path):
+    text = label_with(country=None, province_state="Davao", county=None, city=None)
+    candidates = [
+        *COLLECTORS,
+        *(("province_state", name, "Davao", "province_state: Davao") for name in ("1A", "1B")),
+    ]
+    rig = build_rig(tmp_path, text, candidates=candidates)
+
+    async def province_lookup_finds_two_levels(task, readings, tools):
+        answer = await tools.lookup("tgn", "Davao", field_key=task.key)
+        return FieldOutcome(task.key, FieldAnswer(outcome="sources_cannot_resolve", literal="Davao",
+            reading_names=["1A"], source_evidence_ids=[answer.evidence.id],
+            explanation="Davao is found at more than one location level."),
+            evidence=[answer.evidence], model_calls=1)
+
+    settle(rig, Scripted({
+        "country": LACKING,
+        "province_state": province_lookup_finds_two_levels,
+        "county": LACKING,
+        "city": LACKING,
+    }), tools=DavaoAtTwoLevels(rig.blobs))
+    fields = rig.specimen.run.fields
+    assert (fields["province_state"].state, fields["province_state"].literal) == (
+        ValueState.UNRESOLVED, "Davao")
+    assert fields["county"].state != ValueState.SUPPORTED
+    assert fields["country"].state != ValueState.SUPPORTED
+    assert rig.specimen.run.disposition == Disposition.REVIEW
+
+
+def test_location_reconciliation_reclassifies_shared_place_evidence(tmp_path):
+    text = label_with(country="Illinois", province_state="Cook", county=None, city="Chicago")
+    candidates = [
+        *COLLECTORS,
+        *(("country", name, "Illinois", "country: Illinois") for name in ("1A", "1B")),
+        *(("province_state", name, "Cook", "province_state: Cook") for name in ("1A", "1B")),
+        *(("city", name, "Chicago", "city: Chicago") for name in ("1A", "1B")),
+    ]
+    rig = build_rig(tmp_path, text, candidates=candidates)
+
+    async def country_lookup_finds_state(task, readings, tools):
+        answer = await tools.lookup("tgn", "Illinois", field_key=task.key)
+        return FieldOutcome(task.key, FieldAnswer(outcome="sources_cannot_resolve", literal="Illinois",
+            reading_names=["1A"], source_evidence_ids=[answer.evidence.id],
+            explanation="Illinois is a state, not a country."), evidence=[answer.evidence], model_calls=1)
+
+    async def province_lookup_finds_county(task, readings, tools):
+        answer = await tools.lookup("tgn", "Cook", field_key=task.key)
+        return FieldOutcome(task.key, FieldAnswer(outcome="sources_cannot_resolve", literal="Cook",
+            reading_names=["1A"], source_evidence_ids=[answer.evidence.id],
+            explanation="Cook is a county, not a state."), evidence=[answer.evidence], model_calls=1)
+
+    settle(rig, Scripted({
+        "country": country_lookup_finds_state,
+        "province_state": province_lookup_finds_county,
+        "county": LACKING,
+        "city": from_tgn("Chicago", "Chicago", None, "tgn:Chicago"),
+    }))
+    fields = rig.specimen.run.fields
+    assert (fields["county"].state, fields["county"].literal,
+        fields["county"].authority_id) == (ValueState.SUPPORTED, "Cook", "tgn:Cook")
+    assert (fields["province_state"].state, fields["province_state"].literal,
+        fields["province_state"].authority_id, fields["province_state"].layer) == (
+            ValueState.SUPPORTED, "Illinois", "tgn:Illinois", "settled")
+    assert (fields["country"].state, fields["country"].parsed,
+        fields["country"].authority_id, fields["country"].layer) == (
+            ValueState.SUPPORTED, "United States", "tgn:United States", "derived")
+    assert (fields["city"].state, fields["city"].literal,
+        fields["city"].authority_id, fields["city"].layer) == (
+            ValueState.SUPPORTED, "Chicago", "tgn:Chicago", "settled")
+
+
 def test_several_possibilities_keep_the_readers_verbatim_and_its_lineage(rig):
     run = rig.specimen.run
     raw = run.observations[1]
@@ -1263,11 +1416,8 @@ ABBREVIATED_COUNTRY = {"country": from_tgn("Philippine Islands", "P.I.", "Philip
     (TEXT, {"city": from_tgn("Chicago, Cook, Wisconsin, United States", "Chicago", None,
         "geolocate:Chicago, Cook, Wisconsin, United States", source="geolocate")}, "city",
      agreement.NOT_IN_PROVINCE),
-    # No country is settled for the reading: none of the places below it settles.
-    (TEXT, {"country": answering(FieldAnswer(outcome="sources_cannot_resolve", explanation="No match."))},
-     "province_state", agreement.NO_COUNTRY),
 ], ids=["us-label-near-spelling", "us-label-asked", "philippine-label", "capped-list-paraguay",
-        "no-parents", "not-in-province", "no-country"])
+        "no-parents", "not-in-province"])
 def test_a_place_settles_only_inside_the_labels_country_and_province(tmp_path, text, scripts, key, reason):
     rig = build_rig(tmp_path, text)
     run = rig.specimen.run
@@ -1276,6 +1426,29 @@ def test_a_place_settles_only_inside_the_labels_country_and_province(tmp_path, t
     assert (place.state, place.reason) == (ValueState.UNRESOLVED, reason + " Settled.")
     assert run.disposition == Disposition.REVIEW and f"mandatory_unresolved:{key}" in run.reasons
     assert not [f for f in run.findings if f.reason_code == f"near_spelling:{key}"]
+
+
+def test_exact_place_matches_can_derive_missing_location_ancestors(tmp_path):
+    text = label_with(country=None, province_state=None, county=None, city="Chicago")
+    candidates = [*COLLECTORS, *(("city", name, "Chicago", "city: Chicago") for name in ("1A", "1B"))]
+    rig = build_rig(tmp_path, text, candidates=candidates)
+
+    settle(rig, lacking("country", "province_state", "county",
+        city=from_tgn("Chicago", "Chicago", None, "tgn:Chicago")))
+    fields = rig.specimen.run.fields
+    assert (fields["city"].state, fields["city"].literal,
+        fields["city"].authority_id, fields["city"].layer) == (
+            ValueState.SUPPORTED, "Chicago", "tgn:Chicago", "settled")
+    assert (fields["county"].state, fields["county"].parsed,
+        fields["county"].authority_id, fields["county"].layer, fields["county"].derived_from) == (
+            ValueState.SUPPORTED, "Cook", "tgn:Cook", "derived", ["city"])
+    assert (fields["province_state"].state, fields["province_state"].parsed,
+        fields["province_state"].authority_id, fields["province_state"].layer,
+        fields["province_state"].derived_from) == (
+            ValueState.SUPPORTED, "Illinois", "tgn:Illinois", "derived", ["city"])
+    assert (fields["country"].state, fields["country"].parsed,
+        fields["country"].authority_id, fields["country"].layer, fields["country"].derived_from) == (
+            ValueState.SUPPORTED, "United States", "tgn:United States", "derived", ["city"])
 
 
 def test_a_near_spelling_settles_when_every_other_place_field_is_among_its_parents(tmp_path):

@@ -1009,6 +1009,7 @@ def test_the_default_prompt_asks_for_readings_quotes_and_several_candidates():
         "differ",
         "Never normalize",
         "Every value needs a quote",
+        "Do not shift a state into country",
     ):
         assert needle in text, needle
     assert "{{collection_name}}" in text and "{{schema_version}}" in text
