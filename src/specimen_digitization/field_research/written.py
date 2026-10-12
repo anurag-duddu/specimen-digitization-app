@@ -287,6 +287,11 @@ PLACE_WORDS = {
         "granja", "chacra", "quinta", "plantation"),
 }
 PLACE_WORD = frozenset(word for words in PLACE_WORDS.values() for word in words)
+# The place words that are abbreviations: a period after one is its own
+# ("Hwy. 1960", "km. 1850"); after a whole word it ends the clause, and the
+# number after it is no part of the place ("Fazenda. 1948": Codex's review
+# of #324 at b9f42db6).
+PLACE_ABBREVIATIONS = frozenset({"rd", "rte", "rt", "hwy", "fwy", "fm", "av", "str", "km", "kms"})
 # What makes a place word a person's surname instead ("Hill", "Berg",
 # "Calle"): initials or a collector's or a determiner's mark right before
 # it ("J. Hill 1948", "R.D. Hill 1948", "leg. Berg 1948"), folded, periods
@@ -702,10 +707,15 @@ def _after_a_place_word(text: str, found_words: Sequence[tuple[int, int]], first
     PLACE_WORDS that no initials or person's mark stand right before
     (PERSON_MARKS: "Hill 1800", but not "J. Hill 1948" or "leg. Berg
     1948"), with no comma or semicolon between them ("Ruta, 1960" and "Hill; 1800"
-    hold a date: Codex's review of #324 at 77fdaeba)."""
+    hold a date: Codex's review of #324 at 77fdaeba) and no period after a
+    whole word (PLACE_ABBREVIATIONS: "Fazenda. 1948" holds a date, "Hwy.
+    1960" none)."""
     if first == 0 or _bare(text[found_words[first - 1][0]:found_words[first - 1][1]]) not in PLACE_WORD:
         return False
     if any(separates(text, index) for index in range(found_words[first - 1][1] - 1, found_words[first][0])):
+        return False
+    word = text[found_words[first - 1][0]:found_words[first - 1][1]].rstrip()
+    if word.endswith(".") and _bare(word) not in PLACE_ABBREVIATIONS:
         return False
     if first == 1:
         return True

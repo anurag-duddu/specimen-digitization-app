@@ -523,3 +523,24 @@ def test_a_joiner_that_is_also_a_compass_point_before_a_number_is_no_distance():
     # The control: a compass point before the place it is measured from is a distance, as on 77fdaeba.
     assert refused("precise_location", "Yepocapa, 500 m E of the bridge", "Yepocapa, 500 m E of the bridge") is None
     assert refused("elevation_from_m", "Yepocapa, 500 m E of the bridge", "500 m") == agreement.A_DISTANCE
+
+
+PLACE_WORD_THEN_A_PERIOD = {
+    "farm-period-year": "Fazenda. 1948",
+    "road-period-year": "Ruta. 1960",
+    "route-period-year": "Route. 1960",
+    "hill-period-year": "Berg. 1960",
+    "street-period-year": "Calle. 1960",
+}
+
+
+@pytest.mark.parametrize("literal", PLACE_WORD_THEN_A_PERIOD.values(), ids=PLACE_WORD_THEN_A_PERIOD)
+def test_a_period_after_a_whole_place_word_leaves_the_date_a_date(literal):
+    """Codex's review of b9f42db6: on b9f42db6 each settles the locality."""
+    assert refused("precise_location", literal, literal) == agreement.HOLDS_A_DATE
+
+
+@pytest.mark.parametrize("literal", ["Hwy. 1960", "Rte. 1960", "km. 1850", "Rd. 1800"])
+def test_the_period_of_an_abbreviated_place_word_is_its_own(literal):
+    """The control: as on b9f42db6, the number is part of the place."""
+    assert refused("precise_location", literal, literal) is None
