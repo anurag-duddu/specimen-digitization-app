@@ -1057,6 +1057,11 @@ def test_a_sparql_query_hides_the_reading_and_its_ids_not_the_query_text():
     hostile = 'Manila" } } SELECT * WHERE { ?s ?p ?o } #'
     assert approved_sources._query_words(sparql_url(tgn.search_params(hostile))) == {
         "manila", "select", "where", "s", "p", "o"}
+    # Any other request keeps every word of its parameters, a fixed one too.
+    search = wikidata.API + "?" + urlencode(wikidata.search_params("Lima"))
+    assert {"lima", "wbsearchentities", "json", "en"} <= approved_sources._query_words(search)
+    assert approved_sources._sender(search, {}, b'{"error": "rate limit", "format": "json"}').body == (
+        "[body withheld]")
 
 
 def test_a_sparql_refusal_body_stays_readable_without_the_reading():

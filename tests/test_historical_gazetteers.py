@@ -359,6 +359,66 @@ async def test_a_later_reply_with_nothing_readable_is_malformed_never_no_match(c
     assert len(result.exchanges) == len(calls) == len(replies)
 
 
+WIKIDATA_TWO_REFS = {**WIKIDATA_ONE, "claims": {
+    prop: [{"rank": "normal", "mainsnak": {"datavalue": {"value": {"entity-type": "item", "id": item}}}}]
+    for prop, item in (("P31", "Q2"), ("P17", "Q3"))
+}}
+
+# The search finds something; a later reply leaves out some of what was asked,
+# each part it holds readable. Each case: the source, the replies in order,
+# and the lookup's reason.
+LATER_INCOMPLETE = {
+    "tgn records": ("tgn", [TWO_HITS, sparql_rows(RECORD_ONE)], "requested TGN records were incomplete"),
+    "wikidata entities": (
+        "wikidata", [body({"search": [{"id": "Q1"}, {"id": "Q2"}]}),
+                     entities(Q1=WIKIDATA_ONE, Q2={"id": "Q2", "missing": ""})],
+        "requested Wikidata entities were incomplete"),
+    "wikidata labels": (
+        "wikidata", [body({"search": [{"id": "Q1"}]}), entities(Q1=WIKIDATA_TWO_REFS),
+                     entities(Q2={"id": "Q2", "labels": {"en": {"value": "Two"}}}, Q3={"id": "Q3", "labels": {}})],
+        "requested Wikidata labels were incomplete"),
+    "nga features": (
+        "nga", [features({"ufi": 1, "term_dt_f": None}, {"ufi": 2, "term_dt_f": None}), features(NGA_ONE)],
+        "requested GNS features were incomplete"),
+    "nga units": (
+        "nga", [features({"ufi": 1, "term_dt_f": None}, {"ufi": 2, "term_dt_f": None}),
+                features({**NGA_ONE, "adm1": "GT-04"}, {**NGA_ONE, "ufi": 2, "adm1": "PH-DVC"}),
+                features({"adm1": "GT-04", "adm1_name": "Chimaltenango"}, {"adm1": "PH-DVC"})],
+        "requested GNS units were incomplete"),
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("case", list(LATER_INCOMPLETE))
+async def test_a_later_reply_that_leaves_out_some_of_what_was_asked_stays_incomplete(case):
+    """Unchanged: what a source does not return is no row it cannot read."""
+    source, replies, reason = LATER_INCOMPLETE[case]
+
+    async def fetch(url, params):
+        fetch.calls += 1
+        return 200, replies[fetch.calls - 1]
+
+    fetch.calls = 0
+    result = await lookup(source, "Mount Apo", fetch)
+    assert (result.status, result.reason, result.places) == (LookupStatus.AMBIGUOUS, reason, ())
+    assert fetch.calls == len(replies)
+
+
+@pytest.mark.asyncio
+async def test_a_place_a_names_reply_leaves_out_keeps_its_gvp_name():
+    replies = [TWO_HITS, sparql_rows(RECORD_ONE, {"place": tgn.TGN + "2", "name": "Two"}),
+               sparql_rows({**RECORD_ONE, "name": "Uno", "preferred": "true"})]
+
+    async def fetch(url, params):
+        fetch.calls += 1
+        return 200, replies[fetch.calls - 1]
+
+    fetch.calls = 0
+    result = await lookup("tgn", "Mount Apo", fetch)
+    assert result.status is LookupStatus.SUCCESS
+    assert [(place.record_id, place.name) for place in result.places] == [("1", "One"), ("2", "Two")]
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("source", ["wikidata", "nga"])
 async def test_no_references_skips_auxiliary_call(source):
