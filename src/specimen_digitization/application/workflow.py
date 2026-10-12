@@ -136,6 +136,20 @@ def resolve_unknown_outcome(run, step) -> None:
         run.dependencies.pop(UNKNOWN_OUTCOME_KINDS, None)
 
 
+def resolve_step_unknown_outcomes(run, step) -> None:
+    """Drop every kind of the step's attempts: a person's reconcile settles the
+    unknown outcome it clears (api.py, action "reconcile")."""
+    kinds = {
+        key: kind
+        for key, kind in run.dependencies.get(UNKNOWN_OUTCOME_KINDS, {}).items()
+        if key.rsplit(":", 1)[0] != step
+    }
+    if kinds:
+        run.dependencies[UNKNOWN_OUTCOME_KINDS] = kinds
+    else:
+        run.dependencies.pop(UNKNOWN_OUTCOME_KINDS, None)
+
+
 def unknown_outcome_kind(run, step) -> str | None:
     return run.dependencies.get(UNKNOWN_OUTCOME_KINDS, {}).get(unknown_key(run, step))
 

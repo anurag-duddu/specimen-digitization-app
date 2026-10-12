@@ -632,3 +632,53 @@ def test_a_reading_the_run_already_holds_is_not_read_twice(monkeypatch):
     other = held.model_copy(update={"route_id": "handwriting-qwen"})
     assert reconcilable_step(stored_run(step, observations=[held])) is None
     assert reconcilable_step(stored_run(step, observations=[other])) == step
+
+
+# ---- a reconciled run keeps its pins (2026-10-12, review of 6bf5c495) ---------
+
+class WorkerStopped(BaseException):
+    """The worker process stopping mid-call, after the call's intent was saved."""
+
+
+def stopped_mid_comparison(root):
+    """A run whose worker stopped during its first pass: the intent is saved
+    (unknown outcome, the attempt's kind "unanswered") and the lease has ended."""
+
+    class Stopping(Readers):
+        def first_pass(self, specimen, region, readings):
+            self.calls.append("first_pass")
+            raise WorkerStopped()
+
+
+    original = Readers.first_pass
+    Readers.first_pass = Stopping.first_pass
+    try:
+        with pytest.raises(WorkerStopped):
+            blocked_run(root, None, synthetic=True)
+    finally:
+        Readers.first_pass = original
+    repo = SQLiteRepository(root / "state.sqlite3")
+    blobs = LocalBlobs(root / "blobs")
+    [specimen] = repo.list(SCOPE)
+    return repo, blobs, specimen
+
+
+@pytest.mark.parametrize("kind", ["held", "unanswered"])
+def test_a_reconciled_first_pass_leaves_the_runs_pins_as_they_were(tmp_path, kind):
+    if kind == "held":
+        repo, blobs, blocked = blocked_run(tmp_path, "first_pass", synthetic=True)
+    else:
+        repo, blobs, blocked = stopped_mid_comparison(tmp_path)
+    step = f"first_pass:{blocked.run.regions[0].id}"
+    assert blocked.run.blocker == UNKNOWN
+    assert blocked.run.dependencies["unknown_outcome_kinds"] == {f"{step}:1": kind}
+    pins = {k: v for k, v in blocked.run.dependencies.items() if k != "unknown_outcome_kinds"}
+    c = admin(tmp_path)
+
+    assert reconcile(c, blocked.run, blocked.version).status_code == 200
+    drained = Workflow(repo, blobs, Readers(blobs)).step(operator(), blocked.id)
+
+    assert step in drained.run.completed_steps and drained.run.attempts[step] == 2
+    # Attempt 1's kind went with the reconcile and attempt 2's with its result:
+    # the run's dependencies are its pins again (#146).
+    assert drained.run.dependencies == pins

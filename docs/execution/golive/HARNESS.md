@@ -296,8 +296,9 @@ and `test_the_organisers_refused_call_costs_nothing`.
   automatically; it stays blocked for a person. Provider and deadline failures
   of these reads are known failures now, never unknown outcomes.
   A kind is kept only while its attempt is unresolved: it is removed once the
-  attempt's outcome is known (completed, retried, given up, or settled as
-  lost), so a run whose calls all resolved keeps exactly the pinned
+  attempt's outcome is known (completed, retried, given up, settled as
+  lost, or reconciled by an administrator, which drops every kind of the
+  reconciled step), so a run whose calls all resolved keeps exactly the pinned
   dependencies of its append-once pipeline-run row (#146;
   `tests/test_projection_writer.py`). The `automatic_recoveries` and
   `route_repins` records (2026-10-12, #315) are also kept in
