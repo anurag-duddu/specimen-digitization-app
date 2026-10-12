@@ -202,9 +202,8 @@ def test_a_row_without_a_readable_feature_id_makes_the_answer_malformed(unreadab
         assert parse_features(200, answer(*rows)) == (LookupStatus.MALFORMED, ())
 
 
-def test_rows_without_a_usable_name_or_point():
+def test_a_row_without_a_usable_point_or_unit():
     body = answer(
-        {"ufi": 7, "full_name": "", "nt": "N", "term_dt_f": None},
         {
             "ufi": 8,
             "full_name": "Out of range",
@@ -219,6 +218,30 @@ def test_rows_without_a_usable_name_or_point():
     assert [(place.record_id, place.point, place.country) for place in found] == [
         ("8", None, None)
     ]
+
+
+@pytest.mark.parametrize("name", ["", None, 7])
+def test_a_current_feature_without_a_name_makes_the_features_answer_malformed(name):
+    """GNS answered the feature it was asked for with no name that can be read:
+    that is no answer that it holds none (NO_MATCH), alone or beside a feature
+    that can be read (the review of #299's stage-two probes)."""
+    readable = {"ufi": 8, "full_name": "Eight", "nt": "N", "term_dt_f": None}
+    nameless = {"ufi": 7, "full_name": name, "nt": "N", "term_dt_f": None}
+    for rows in ([nameless], [readable, nameless]):
+        assert parse_features(200, answer(*rows)) == (LookupStatus.MALFORMED, ())
+
+
+@pytest.mark.parametrize("code", [None, "PH-DVC') OR ('1'='1", 1])
+def test_a_unit_row_without_a_first_order_code_makes_the_units_answer_malformed(code):
+    readable = {"adm1": "PH-DVC", "adm1_name": "Davao"}
+    for rows in ([{"adm1": code, "adm1_name": "Bad"}], [readable, {"adm1": code, "adm1_name": "Bad"}]):
+        assert parse_units(200, answer(*rows)) == (LookupStatus.MALFORMED, {})
+
+
+def test_a_unit_without_a_name_is_left_out():
+    rows = [{"adm1": "PH-DVC", "adm1_name": "Davao"}, {"adm1": "GT-04", "adm1_name": " "}]
+    assert parse_units(200, answer(*rows)) == (LookupStatus.SUCCESS, {"PH-DVC": "Davao"})
+    assert parse_units(200, answer(rows[1])) == (LookupStatus.NO_MATCH, {})
 
 
 def test_unit_codes_are_what_the_units_request_named():
@@ -301,7 +324,7 @@ def test_nonfinite_coordinates_and_unstated_kind_are_not_invented():
 
 def test_invalid_or_incomplete_unit_answer_does_not_claim_success():
     assert parse_units(200, answer({"adm1": "PH-DVC') OR ('1'='1", "adm1_name": "Bad"})) == (
-        LookupStatus.NO_MATCH,
+        LookupStatus.MALFORMED,
         {},
     )
     assert parse_units(

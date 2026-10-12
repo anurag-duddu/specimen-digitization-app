@@ -123,14 +123,18 @@ async def test_the_places_named_as_asked_are_the_ten_read():
 
 
 @pytest.mark.asyncio
-async def test_an_empty_search_is_no_match_after_two_exchanges():
+async def test_an_empty_search_rules_nothing_out_after_two_exchanges():
+    """The review of #303, note 1: Getty's index matches a name as written, so
+    "Solola" finds no place named with an accent. Finding nothing is then no
+    answer that TGN has no such place: ambiguous, never no match."""
     async def fetch(url, params):
         if url == tgn.RECONCILE:
             return 403, b""
         return 200, body({"results": {"bindings": []}})
 
     result = await lookup("tgn", "Yepocapa", fetch)
-    assert result.status is LookupStatus.NO_MATCH and result.places == ()
+    assert result.status is LookupStatus.AMBIGUOUS and result.places == ()
+    assert result.reason == "the SPARQL search found no place, which rules nothing out"
     assert len(result.exchanges) == 2 and result.fallback == "refused the request (HTTP 403)"
 
 
@@ -146,6 +150,34 @@ async def test_an_unreadable_search_row_is_malformed_and_reads_no_records():
     result = await lookup("tgn", READING, fetch)
     assert result.status is LookupStatus.MALFORMED and result.places == ()
     assert len(result.exchanges) == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "records",
+    [
+        body({"results": {"bindings": []}}),
+        body({"results": {"bindings": [{"place": {"value": tgn.TGN + "1105587"}}]}}),
+        body({"results": {"bindings": [
+            {"place": {"value": tgn.AAT + "300008347"}, "name": {"value": "Mount"}}]}}),
+        b"",
+    ],
+    ids=["no rows", "a record without a name", "a row of another vocabulary", "no body"],
+)
+async def test_a_records_reply_with_nothing_readable_after_the_search_is_malformed(records):
+    """The search through the SPARQL endpoint found places; a records reply
+    with nothing that can be read is no answer that TGN holds none of them."""
+    found = search_rows(["1105587"])
+
+    async def fetch(url, params):
+        if url == tgn.RECONCILE:
+            return 403, b""
+        return 200, body({"results": {"bindings": found}}) if "luc:term" in params["query"] else records
+
+    result = await lookup("tgn", READING, fetch)
+    assert result.status is LookupStatus.MALFORMED and result.places == ()
+    assert (result.unread, result.fallback) == ("record", "refused the request (HTTP 403)")
+    assert len(result.exchanges) == MAX_CALLS
 
 
 @pytest.mark.asyncio

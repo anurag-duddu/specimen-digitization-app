@@ -17,6 +17,7 @@ from .storage import ReviewDecisionProof, canonical_json, digest
 from ..research_harness.contracts import FieldKey, FrozenRecord
 
 KEY = "preserved_human_fields"
+REGIONS = "preserved_human_regions"
 INVALID = "preserved_human_field_provenance_unavailable"
 LIMIT = 1024 * 1024
 
@@ -184,12 +185,7 @@ def _latest(repository, specimen, proofs):
             snapshots[p.resulting_revision] = repository.version(specimen.scope, specimen.id, p.resulting_revision)
         original = snapshots[p.resulting_revision]
         if event.action == "review_regions":
-            # This field-only carry has no authority to recreate a still-current
-            # human geometry decision as a fresh default/model segmentation.
-            if (original.run.id == specimen.run.id
-                    and event.after.get("run_id") == original.run.id
-                    and original.run.regions == specimen.run.regions):
-                _fail()
+            # Geometry, not a field: a fresh run keeps it (human_regions).
             continue
         if event.action == "review_transcription":
             # Only a still-current correction would be erased. An obsolete
@@ -210,6 +206,74 @@ def _latest(repository, specimen, proofs):
         if key not in latest or order > latest[key][0]:
             latest[key] = (order, p, original)
     return latest
+
+
+def human_regions(repository, specimen, proofs):
+    """The proved regions decision the active run's regions descend from, or None.
+
+    A ``review_regions`` decision starts a run on the reviewer's own regions. A
+    fresh run keeps them, so a person's geometry is never replaced by a model's,
+    when the active run has segmented and is either that decision's own run
+    holding exactly its regions, or a run that kept them (``keep_regions``),
+    proved from the saves that started it (``_kept_chain``). Equal regions
+    alone prove nothing: a restored model run can hold the regions a person
+    confirmed unchanged later, and it is segmented again.
+    """
+    run = specimen.run
+    if "segment" not in run.completed_steps:
+        return None
+    decisions = {p.event.id: p for p in proofs
+        if p.event.action == "review_regions" and isinstance(p.event.after, dict)}
+    if REGIONS in run.dependencies:
+        return _kept_chain(repository, specimen, decisions)
+    found = None
+    for p in decisions.values():
+        original = repository.version(specimen.scope, specimen.id, p.resulting_revision)
+        if (p.event.after.get("run_id") == original.run.id == run.id and original.run.regions == run.regions
+                and (found is None or p.resulting_revision > found.resulting_revision)):
+            found = p
+    return found
+
+
+def _kept_chain(repository, specimen, decisions):
+    """Prove a kept run's regions descend from the decision, from two immutable saves.
+
+    A kept run names its origin decision and the run and revision it was started
+    from (``keep_regions``). Only the ``reprocess`` action creates that marker on
+    a new run, and only after proving its source the same way; the pin step and
+    a history restore keep it unchanged. So one step back proves the whole
+    lineage: the save that started this run must be that ``reprocess``,
+    holding this run, these regions and this marker; the run it started from
+    must hold the same regions and be the decision's own run, or a kept run
+    naming the same decision. The reads do not grow with the lineage. A marker
+    that does not prove out is refused.
+    """
+    run, marker = specimen.run, specimen.run.dependencies[REGIONS]
+    if not isinstance(marker, dict) or set(marker) != {
+            "origin_event_id", "origin_revision", "source_run_id", "source_revision"}:
+        _fail()
+    proof = decisions.get(marker["origin_event_id"])
+    revision = marker["source_revision"]
+    if proof is None or proof.resulting_revision != marker["origin_revision"] or type(revision) is not int:
+        _fail()
+    started = repository.version(specimen.scope, specimen.id, revision + 1)
+    source = repository.version(specimen.scope, specimen.id, revision)
+    original = repository.version(specimen.scope, specimen.id, proof.resulting_revision)
+    events = [e for e in started.audit if e.action == "reprocess" and e.before == {
+        "source_run_id": marker["source_run_id"], "source_revision": revision}]
+    prior = source.run.dependencies.get(REGIONS)
+    if (started.run.id != run.id or started.run.regions != run.regions
+            or started.run.dependencies.get(REGIONS) != marker or len(events) != 1
+            or events[0].after.get("target_run_id") != run.id
+            or events[0].after.get(REGIONS) != {"origin_event_id": proof.event.id,
+                "origin_revision": proof.resulting_revision}
+            or source.run.id != marker["source_run_id"] or source.run.regions != run.regions
+            or original.run.regions != run.regions
+            or not (proof.event.after.get("run_id") == original.run.id == source.run.id
+                or isinstance(prior, dict) and (prior.get("origin_event_id"), prior.get("origin_revision"))
+                == (proof.event.id, proof.resulting_revision))):
+        _fail()
+    return proof
 
 
 def _source(repository, specimen, blobs):
@@ -333,10 +397,45 @@ def prepare(repository, specimen, target_run_id, event, blobs):
         result[key] = carry.model_copy(update={"transitions": (*carry.transitions, transition)})
     if result and set(result) == set(specimen.run.fields):
         raise ValueError("preserved_human_fields_no_new_research_work")
+    regions = human_regions(repository, specimen, proofs)
     event.before = {"source_run_id": specimen.run.id, "source_revision": specimen.version}
     event.after = {"target_run_id": target_run_id,
         "preserved_human_fields": {k: digest(v.model_dump(mode="json")) for k, v in sorted(result.items())}}
+    if regions is not None:
+        # The caller starts the fresh run on the active run's regions (keep_regions).
+        event.after[REGIONS] = {"origin_event_id": regions.event.id,
+            "origin_revision": regions.resulting_revision}
     return result
+
+
+def keep_regions(event, source, target):
+    """Start ``target`` on ``source``'s human regions when prepare kept them.
+
+    The fresh run is pinned and classified afresh, then skips segmentation and
+    reads from those regions, as the run a regions decision starts does
+    (api.regions). Their coverage stays as the active run holds it: confirmed by
+    the regions decision, unless a person's coverage decision withdrew it.
+    """
+    if REGIONS not in event.after:
+        return
+    target.regions = [region.model_copy(deep=True) for region in source.regions]
+    # A person's later coverage decision on the active run stands (review_coverage).
+    target.coverage_confirmed = source.coverage_confirmed
+    target.completed_steps = ["segment"]
+    # The lineage the next fresh run proves (_kept_chain); pinning keeps it.
+    target.dependencies[REGIONS] = {**event.after[REGIONS], **event.before}
+
+
+def reprocess_hold(specimen):
+    """The refusal prepare gives, when the record alone shows it; otherwise None.
+
+    A person's transcript correction in the active run is never erased by a fresh
+    run (_latest), so prepare refuses. summary() reads this, so it does not offer
+    a fresh run the server refuses. Refusals that need proofs stay the server's.
+    """
+    if any(t.actor is not None for t in specimen.run.transcripts):
+        return INVALID
+    return None
 
 
 def _transition(repository, specimen, carry, t, index):
