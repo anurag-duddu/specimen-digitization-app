@@ -28,6 +28,9 @@ FINISHED = {"finalized", "processing_blocked", "paused", "cancelled", "waiting_f
 FENCE_KIND = "worker_cursor"  # The worker's own state documents, one actor only.
 CLOSING_SECONDS = 600  # No new run starts this close to the task deadline.
 QUEUE_CLOCK_MARGIN_SECONDS = 1  # Keep connector cutoffs behind its own clock.
+# The continuation's own start call (lane_dispatch.CloudRunJobDispatcher's
+# timeout). The exit handshake waits only when both still fit the deadline.
+CONTINUATION_START_SECONDS = 10
 MAX_CONFLICTS = 3  # Consecutive save conflicts on one run before moving on.
 MAX_IDLE_HANDOVERS = 3  # Consecutive hand-overs without progress, then stop.
 RUN_STALLED = "lane_run_not_progressing"
@@ -303,6 +306,9 @@ class DrainWorker:
                 continue
             if summary["status"] == "stopped" or self._stopped(stop):
                 summary["status"] = "stopped"
+                # Collections not reached may hold requests whose own worker
+                # found this execution's fence held and exited.
+                wanted = True
                 break
             scope = Scope(
                 organization_id=member["organization_id"],
@@ -340,7 +346,7 @@ class DrainWorker:
                 status = "stopped"
             if status != "drained":
                 summary["status"] = status
-        if self.continuation and wanted and summary["status"] != "stopped":
+        if self.continuation and wanted:
             summary["continuation"] = self.continuation().status
         return summary
 
@@ -348,7 +354,12 @@ class DrainWorker:
         """Release the fence; whether the collection wants the next execution.
 
         It does when requested work remains after release, or a retry falls
-        within the next execution's reach. A stop wants none. After
+        within the next execution's reach. A stop (SIGTERM: the task's timeout,
+        a scale-down or a cancel) always wants one: it cannot finish the read
+        below, and a request committed just before release may have lost its
+        own worker to this fence. The next execution finds nothing and exits
+        when nothing is due; a run paused or cancelled by its own action is
+        never due. After
         MAX_IDLE_HANDOVERS in a row without progress, the waiting run is blocked
         where people can see it instead. The final read follows release and the
         cutoff margin, so a request cannot lose its wake-up to the old fence.
@@ -370,7 +381,7 @@ class DrainWorker:
         fence.release(first and (first[0], first[1].isoformat()), idle)
         summary["pending_retries"] += len(drain.retries)
         if status == "stopped" or self._stopped(stop):
-            return False
+            return True
         # Close the enqueue/exit race *after* freeing the fence. A request may
         # have committed after our last empty read, while its newly dispatched
         # worker found this fence held and exited. Waiting one cutoff margin
@@ -378,14 +389,14 @@ class DrainWorker:
         # Later arrivals can acquire the released fence through their normal
         # dispatch. This is one bounded check, never an idle polling loop.
         remaining = (self.deadline_at - self.clock()).total_seconds()
-        if remaining < QUEUE_CLOCK_MARGIN_SECONDS:
-            # A long final step used the task's grace window. Do not extend the
-            # execution to perform the handshake; hand off once instead. The
-            # next worker still owns acquisition, deduplication and admission.
+        if remaining < QUEUE_CLOCK_MARGIN_SECONDS + CONTINUATION_START_SECONDS:
+            # A long final step used the task's grace window. Keep what is left
+            # for the continuation's start call, not the handshake: hand off
+            # once. The next worker owns acquisition, deduplication and admission.
             return True
         self._pause(QUEUE_CLOCK_MARGIN_SECONDS, stop)
         if self._stopped(stop):
-            return False
+            return True
         return (
             waiting is not None
             or self._next_due(drain.principal, drain.stalled) is not None
