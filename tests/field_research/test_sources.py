@@ -15,6 +15,7 @@ import threading
 import time
 from collections import Counter
 from pathlib import Path
+from urllib.parse import urlencode
 
 import httpx
 import pytest
@@ -949,8 +950,7 @@ async def test_a_refusal_log_says_who_refused_without_a_word_of_the_query(tmp_pa
     (line,) = unanswered(caplog)
     assert (line["host"], line["http_status"]) == (TGN_HOST, "403")
     assert (line["server"], line["via"], line["html_page"]) == ("envoy", "1.1 google", "yes")
-    assert line["body"].startswith("<!doctype html><html><head><title>403 forbidden</title>")
-    assert len(line["body"]) <= 200 and "[query]" in line["body"]
+    assert line["body"] == "[body withheld]"
     assert len(caplog.records) == 1 and "\n" not in caplog.records[0].getMessage()
     for word in ("davao", "province", "vao", "dav"):
         assert word not in caplog.text.lower()
@@ -971,22 +971,115 @@ def test_a_block_page_is_told_by_its_type_or_its_markup(headers, body, html_page
 
 
 def test_a_sender_without_any_word_of_the_query_keeps_the_rest():
+    # A query to the SPARQL endpoint that georef_tgn did not write: every word
+    # of it is the query's.
     url = tgn.SPARQL + "?query=" + "Mount%20Apo%20of%20Davao"
     sender = approved_sources._sender(
         url,
         {"server": "nginx/1.29.8 (Davao)", "via": "1.1 Mount-Apo-proxy"},
         b'MALFORMED QUERY: luc:term "mount apo" of davao; of-course offline\x00\r\nline two',
     )
+    # In a header a short word goes only where it stands alone; a long one
+    # wherever it appears.
     assert sender.server == "nginx/1.29.8 ([query])"
     assert sender.via == "1.1 [query]-[query]-proxy"
-    # A short word goes only where it stands alone; a long one wherever it appears.
-    assert sender.body == 'malformed query: luc:term "[query] [query]" [query] [query]; [query]-course offline\x00 line two'
+    assert sender.body == "[body withheld]"
+    kept = approved_sources._sender(url, {}, b"Request refused\x00\r\nline two")
+    assert kept.body == "request refused\x00 line two"
     # Global Names Verifier carries the name in the path.
     gnv = approved_sources._sender(
         "https://verifier.globalnames.org/api/v1/verifications/Apis%20mellifera", {},
         b"<html>No verification for Apis mellifera</html>",
     )
-    assert gnv.body == "<html>no verification for [query] [query]</html>"
+    assert gnv.body == "[body withheld]"
+
+
+def asked(name):
+    """Getty TGN's reconciliation request for `name`, as the gazetteer sends it."""
+    return tgn.RECONCILE + "?" + urlencode(tgn.reconcile_params(name))
+
+
+def latin1(text):
+    return text.encode("latin-1")
+
+
+# The review of #303, note 2: a short word of the query run into other text
+# was logged in full. Each: the query, a body that echoes it.
+ECHOES = {
+    "run into a word": ("San Jose", b"request sanjose blocked"),
+    "run into digits": ("Lima", b"request lima2 blocked"),
+    "inside text of its own script": (
+        "".join(map(chr, (0x5317, 0x4EAC))),
+        "".join(map(chr, (0x8BF7, 0x6C42, 0x5317, 0x4EAC, 0x5E02, 0x88AB, 0x62D2, 0x7EDD))).encode(),
+    ),
+    "percent-encoded twice": ("Davao", b"request %2544avao blocked"),
+    "spaced out": ("Peru", b"request p e r u blocked"),
+    "in HTML entities": ("Oslo", b"request &#79;&#115;&#108;&#111; blocked"),
+    # Codex's review of #320 at 2bfd7530: a character past U+FFFF, which the
+    # reconciliation request carries as a JSON surrogate pair, was logged.
+    "past U+FFFF": (chr(0x20BB7), ("request " + chr(0x20BB7) + " blocked").encode()),
+    "past U+FFFF, as JSON escapes": (
+        chr(0x20BB7), ("request " + chr(92) + "ud842" + chr(92) + "udfb7 blocked").encode()),
+}
+
+
+@pytest.mark.parametrize("echo", list(ECHOES))
+def test_a_body_that_holds_a_word_of_the_query_is_withheld(echo):
+    name, body = ECHOES[echo]
+    assert approved_sources._sender(asked(name), {"server": "envoy"}, body) == approved_sources._Sender(
+        server="envoy", via=None, html_page=False, body="[body withheld]")
+    # The same body for another place is logged: its words are not that place's.
+    assert approved_sources._sender(asked("Mount McKinley"), {}, body).body not in (None, "[body withheld]")
+
+
+def test_a_body_that_is_not_utf8_is_withheld():
+    """A Latin-1 page writes "Krakow" with an accented o as bytes no UTF-8
+    reading can compare with the query, so it is withheld for any query."""
+    accented = "Krak" + chr(0xF3) + "w"
+    for name in (accented, "Mount McKinley"):
+        assert approved_sources._sender(asked(name), {}, latin1(f"request {accented} blocked")).body == (
+            "[body withheld]")
+    # A UTF-8 body cut inside its last character is still read.
+    cut = b"refused " + ("x" * (approved_sources.BODY_READ - 9)).encode() + chr(0xF3).encode()
+    assert approved_sources._sender(asked("Mount McKinley"), {}, cut).body.startswith("refused xxx")
+
+
+def sparql_url(params):
+    return tgn.SPARQL + "?" + urlencode(params)
+
+
+def test_a_sparql_query_hides_the_reading_and_its_ids_not_the_query_text():
+    """The review of #303, note 3: every word of a SPARQL query was hidden, so
+    the 59 words of its fixed text (select, getty, place, ...) made a
+    vocab.getty.edu refusal unreadable. Only a reading's words (the search's
+    string) and the TGN ids are the query's."""
+    assert approved_sources._query_words(sparql_url(tgn.search_params("Mount McKinley"))) == {
+        "mount", "mckinley"}
+    assert approved_sources._query_words(sparql_url(tgn.records_params(["1105587", "2502238"]))) == {
+        "1105587", "2502238"}
+    assert approved_sources._query_words(sparql_url(tgn.names_params(["1105587"]))) == {"1105587"}
+    # A name that tries to close the string is still all the reading's.
+    hostile = 'Manila" } } SELECT * WHERE { ?s ?p ?o } #'
+    assert approved_sources._query_words(sparql_url(tgn.search_params(hostile))) == {
+        "manila", "select", "where", "s", "p", "o"}
+    # Any other request keeps every word of its parameters, a fixed one too.
+    search = wikidata.API + "?" + urlencode(wikidata.search_params("Lima"))
+    assert {"lima", "wbsearchentities", "json", "en"} <= approved_sources._query_words(search)
+    assert approved_sources._sender(search, {}, b'{"error": "rate limit", "format": "json"}').body == (
+        "[body withheld]")
+
+
+def test_a_sparql_refusal_body_stays_readable_without_the_reading():
+    url = sparql_url(tgn.search_params("Mount Apo"))
+    refusal = b"<html>403 Forbidden: this SPARQL SELECT is not allowed at vocab.getty.edu</html>"
+    sender = approved_sources._sender(url, {"server": "nginx (getty)"}, refusal)
+    assert (sender.server, sender.html_page) == ("nginx (getty)", True)
+    assert sender.body == "<html>403 forbidden: this sparql select is not allowed at vocab.getty.edu</html>"
+    echoed = refusal.replace(b"SELECT", b'SELECT luc:term "mount apo"')
+    assert approved_sources._sender(url, {}, echoed).body == "[body withheld]"
+    records = sparql_url(tgn.records_params(["1105587"]))
+    assert approved_sources._sender(records, {}, refusal).body == sender.body
+    assert approved_sources._sender(records, {}, refusal + b" tgn:1105587").body == "[body withheld]"
 
 
 @pytest.mark.asyncio
@@ -1005,7 +1098,7 @@ async def test_a_gbif_refusal_log_says_who_refused_without_the_name(tmp_path, ca
     (line,) = unanswered(caplog)
     assert (line["source"], line["server"], line["via"], line["html_page"]) == (
         "gbif", "cloudflare", "-", "yes")
-    assert line["body"].startswith("<html><body>blocked: https://")
+    assert line["body"] == "[body withheld]"
     assert "apis" not in caplog.text.lower() and "mellifera" not in caplog.text.lower()
 
 
@@ -1232,6 +1325,99 @@ async def test_a_gazetteer_answer_reporting_a_hit_it_cannot_read_is_an_outage(
     assert not agreement.ruled_out([answer], "Yepocapo")
 
 
+YEPOCAPO_RECORD = {"place": {"value": tgn.TGN + "7005560"}, "name": {"value": "Yepocapo"}}
+YEPOCAPO_NAME = {**YEPOCAPO_RECORD, "language": {"value": "en"}, "preferred": {"value": "true"}}
+YEPOCAPO_FEATURE = {"ufi": 1, "uni": 1, "full_name": "Yepocapo", "nt": "N", "term_dt_f": None}
+
+
+def tgn_chain(records, names):
+    """Getty TGN finds "Yepocapo" (YEPOCAPO_HIT), then answers its records and
+    names queries with these rows."""
+    def reply(request):
+        if f"https://{request.url.host}{request.url.path}" == tgn.RECONCILE:
+            return {"q0": {"result": [YEPOCAPO_HIT]}}
+        query = dict(request.url.params)["query"]
+        return {"results": {"bindings": records if "?ancestor" in query else names}}
+    return reply
+
+
+def nga_chain(features, units=()):
+    """NGA's name search finds feature 1; its features and units queries
+    answer these rows."""
+    def reply(request):
+        where = dict(request.url.params)["where"]
+        if f"https://{request.url.host}{request.url.path}" == nga.UNITS:
+            rows = units
+        elif where.startswith("ufi IN"):
+            rows = features
+        else:
+            rows = [{"ufi": 1, "full_name": "Yepocapo", "nt": "N", "term_dt_f": None}]
+        return {"features": [{"attributes": row} for row in rows]}
+    return reply
+
+
+def wikidata_chain(entities):
+    """Wikidata's search finds Q1; its entities query answers these entities."""
+    def reply(request):
+        params = dict(request.url.params)
+        if "search" in params:
+            return {"search": [{"id": "Q1", "label": "Yepocapo"}]}
+        return {"entities": entities}
+    return reply
+
+
+# The review of #299's stage-two probes (S1 to S3): the search finds one hit,
+# then a later reply holds no row, or none that can be read.
+LATER_UNREAD = {
+    "tgn records: a row of another vocabulary": ("tgn", "record", tgn_chain(
+        [{**YEPOCAPO_RECORD, "place": {"value": tgn.AAT + "1"}}], [YEPOCAPO_NAME])),
+    "tgn records: a record without a name": ("tgn", "record", tgn_chain(
+        [{"place": YEPOCAPO_RECORD["place"]}], [YEPOCAPO_NAME])),
+    "tgn records: no rows": ("tgn", "record", tgn_chain([], [YEPOCAPO_NAME])),
+    "tgn names: a row of another vocabulary": ("tgn", "name", tgn_chain(
+        [YEPOCAPO_RECORD], [{**YEPOCAPO_NAME, "place": {"value": tgn.AAT + "1"}}])),
+    "tgn names: no rows": ("tgn", "name", tgn_chain([YEPOCAPO_RECORD], [])),
+    "nga features: no name": ("nga", "feature", nga_chain([{"ufi": 1, "nt": "N", "term_dt_f": None}])),
+    "nga features: no rows": ("nga", "feature", nga_chain([])),
+    "nga units: no rows": ("nga", "unit", nga_chain([{**YEPOCAPO_FEATURE, "adm1": "GT-04"}], [])),
+    "wikidata entities: missing": ("wikidata", "entity", wikidata_chain({"Q1": {"id": "Q1", "missing": ""}})),
+    "wikidata entities: no label": ("wikidata", "entity", wikidata_chain({"Q1": {"id": "Q1", "labels": {}}})),
+    "wikidata entities: none": ("wikidata", "entity", wikidata_chain({})),
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("case", list(LATER_UNREAD))
+async def test_a_later_gazetteer_reply_with_nothing_readable_is_an_outage_never_no_match(tmp_path, case):
+    """Such a reply was the lookup's no_match, stored as evidence, and the
+    readers' rule ruled "Yepocapo" out on it. It is malformed_response, an
+    outage, whose note names the reply that could not be read."""
+    from specimen_digitization.field_research import agreement
+    from specimen_digitization.field_research.experts import SOURCE_OUTAGES
+
+    source, request, reply = LATER_UNREAD[case]
+    tools, _, _, blobs = make(tmp_path, reply)
+    answer = await tools.lookup(source, "Yepocapo, Chimaltenango, Guatemala", field_key="city")
+    assert answer.status is LookupStatus.MALFORMED and answer.status in SOURCE_OUTAGES
+    name = approved_sources.NAMES[source]
+    assert answer.note == f"{name} found places but its {request} reply could not be read"
+    assert answer.candidates == () and json.loads(stored(blobs, answer.evidence))["status"] == "malformed_response"
+    assert not agreement.ruled_out([answer], "Yepocapo")
+
+
+def geolocate_and_an_empty_tgn_records_reply(request):
+    """GEOLocate confirms "Yepocapa"; Getty TGN finds "Yepocapo" and then
+    answers its records query with no rows."""
+    if request.url.host == "geo-locate.org":
+        return geolocate_and_tgn(request)
+    return tgn_chain([], [])(request)
+
+
+@pytest.mark.asyncio
+async def test_readers_that_differ_never_settle_on_a_tgn_records_reply_it_could_not_read(tmp_path):
+    await readers_go_to_review(tmp_path, geolocate_and_an_empty_tgn_records_reply, "tgn")
+
+
 @pytest.mark.asyncio
 async def test_a_tgn_answer_of_other_getty_vocabularies_only_is_no_match(tmp_path):
     """A concept is no place: Getty TGN found none, and that rules the text out."""
@@ -1419,7 +1605,8 @@ async def test_a_refused_tgn_search_finds_the_same_places_through_sparql(
     assert answer.status is expected.status is LookupStatus.AMBIGUOUS
     assert answer.candidates == expected.candidates and len(answer.candidates) > 1
     assert answer.note == (
-        f"Getty TGN's search {reason}; searched Getty's SPARQL endpoint instead. {expected.note}"
+        f"Getty TGN's search {reason}; searched Getty's SPARQL endpoint instead, "
+        f"whose search does not match accents or word stems. {expected.note}"
     )
     assert server.urls()[-2:] == [SPARQL_HOST + "/sparql.json"] * 2
     # One record names every response that came back, the refused one too; each
@@ -1456,8 +1643,62 @@ async def test_when_the_sparql_endpoint_fails_too_the_tgn_lookup_stays_an_outage
     assert answer.evidence is None and answer.candidates == () and blobs.puts == []
     assert answer.note == (
         "Getty TGN's search refused the request (HTTP 403); searched Getty's SPARQL "
-        f"endpoint instead. {outcome}"
+        f"endpoint instead, whose search does not match accents or word stems. {outcome}"
     )
+
+
+SEARCHED_INSTEAD = (
+    "Getty TGN's search refused the request (HTTP 403); searched Getty's SPARQL endpoint "
+    "instead, whose search does not match accents or word stems. "
+)
+
+
+@pytest.mark.asyncio
+async def test_a_tgn_search_through_sparql_that_finds_nothing_rules_nothing_out(tmp_path):
+    """The review of #303, note 1: Getty's index matches a name as written, so
+    "Solola" finds neither Guatemalan place whose name ends in an accented a.
+    Finding nothing there was no_match, captured, and could rule the text out;
+    it is ambiguous, and the note says why."""
+    from specimen_digitization.field_research import agreement
+
+    empty = {"results": {"bindings": []}}
+    tools, _, _, blobs = make(tmp_path, tgn_refused(httpx.Response(403), empty))
+    answer = await tools.lookup("tgn", "Solola, Guatemala", field_key="province_state")
+    assert answer.status is LookupStatus.AMBIGUOUS and answer.candidates == ()
+    assert answer.note == SEARCHED_INSTEAD + (
+        "Getty TGN cannot settle 'Solola': the SPARQL search found no place, which rules nothing out"
+    )
+    assert json.loads(stored(blobs, answer.evidence))["status"] == "ambiguous"
+    assert not agreement.ruled_out([answer], "Solola")
+
+
+@pytest.mark.asyncio
+async def test_one_place_a_tgn_search_through_sparql_finds_is_never_a_success(tmp_path):
+    """The review of #303, note 1: the SPARQL search may have missed the place
+    the name means, so the one place it finds is no success as the
+    reconciliation service's one hit is: no candidate is the deciding one.
+    The place rules still take the one candidate at a field's level."""
+    from specimen_digitization.field_research import agreement
+
+    recorded_answers, terms = gazetteers(), recorded("tgn_names.json")["bindings"]
+
+    def reply(request):
+        if f"https://{request.url.host}{request.url.path}" == tgn.RECONCILE:
+            return httpx.Response(403)
+        if "luc:term" not in dict(request.url.params)["query"]:
+            return recorded_answers(request)
+        rows = [row for row in terms if row["place"]["value"] == tgn.TGN + "1016636"]
+        return {"results": {"bindings": rows}}
+
+    plain, _, _, _ = make(tmp_path / "plain", gazetteers(tgn_hits=1))
+    expected = await plain.lookup("tgn", "Chimaltenango", field_key="city")
+    assert expected.status is LookupStatus.SUCCESS and expected.evidence.locator == "tgn:1016636"
+    tools, _, _, _ = make(tmp_path, reply)
+    answer = await tools.lookup("tgn", "Chimaltenango", field_key="city")
+    assert answer.status is LookupStatus.AMBIGUOUS and answer.evidence.locator is None
+    assert answer.candidates == expected.candidates
+    assert answer.note == SEARCHED_INSTEAD + expected.note
+    assert agreement.placed("city", answer) == agreement.placed("city", expected) is not None
 
 
 @pytest.mark.asyncio

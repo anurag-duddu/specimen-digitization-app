@@ -106,7 +106,8 @@ def parse_search(status: int, body: bytes) -> tuple[LookupStatus, tuple[str, ...
 def parse_features(status: int, body: bytes) -> tuple[LookupStatus, tuple[Place, ...]]:
     """Places from a features answer, their first-order units unnamed until
     `name_units` names them; features GNS marks terminated are skipped. A row
-    without a readable feature id or termination field makes it MALFORMED."""
+    without a readable feature id or termination field, or a current feature
+    without a name, makes it MALFORMED, even beside features that can be read."""
     outcome, rows, more = _rows(status, body)
     if outcome is None and more:
         outcome = LookupStatus.MALFORMED  # the adapter asked for more than one answer holds
@@ -118,23 +119,32 @@ def parse_features(status: int, body: bytes) -> tuple[LookupStatus, tuple[Place,
     for row in rows:
         if _current(row):
             grouped.setdefault(row["ufi"], []).append(row)
-    places = tuple(place for ufi, found in grouped.items() if (place := _place(ufi, found)))
-    return (LookupStatus.SUCCESS if places else LookupStatus.NO_MATCH), places
+    places = []
+    for ufi, found in grouped.items():
+        place = _place(ufi, found)
+        if place is None:
+            return LookupStatus.MALFORMED, ()
+        places.append(place)
+    return (LookupStatus.SUCCESS if places else LookupStatus.NO_MATCH), tuple(places)
 
 
 def parse_units(status: int, body: bytes) -> tuple[LookupStatus, dict[str, str]]:
+    """The name of each first-order unit a units answer holds; a unit without a
+    name is left out. A row without a first-order code makes the answer
+    MALFORMED, even beside rows that can be read; no named unit is no match."""
     outcome, rows, more = _rows(status, body)
     if outcome is None and more:
+        outcome = LookupStatus.MALFORMED
+    if outcome is None and not all(
+        isinstance(row.get("adm1"), str) and UNIT_CODE.fullmatch(row["adm1"]) for row in rows
+    ):
         outcome = LookupStatus.MALFORMED
     if outcome is not None:
         return outcome, {}
     units = {
         row["adm1"]: row["adm1_name"]
         for row in rows
-        if isinstance(row.get("adm1"), str)
-        and UNIT_CODE.fullmatch(row["adm1"])
-        and isinstance(row.get("adm1_name"), str)
-        and row["adm1_name"].strip()
+        if isinstance(row.get("adm1_name"), str) and row["adm1_name"].strip()
     }
     return (LookupStatus.SUCCESS if units else LookupStatus.NO_MATCH), units
 

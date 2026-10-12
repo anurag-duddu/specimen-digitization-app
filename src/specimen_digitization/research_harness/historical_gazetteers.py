@@ -27,6 +27,20 @@ MAX_BODY_BYTES = 2_000_000
 SOURCES = frozenset({tgn.SOURCE, wikidata.SOURCE, nga.SOURCE})
 # Getty TGN reconciliation answers that send its search to the SPARQL endpoint.
 SEARCH_REFUSALS = frozenset({401, 403})
+# What a later request's parser says of a reply that holds nothing it can use:
+# no body (EMPTY), no row or none to use (NO_MATCH), or a body that is not the
+# answer or holds a row it cannot read, even beside readable ones (MALFORMED).
+# Once the search has found something, such a reply is no answer about the
+# query, so the lookup is MALFORMED (`_later`), never NO_MATCH, which would
+# rule a reading out.
+UNREAD = frozenset({LookupStatus.EMPTY, LookupStatus.NO_MATCH, LookupStatus.MALFORMED})
+# Why a Getty TGN search through the SPARQL endpoint that found no place is
+# AMBIGUOUS, never NO_MATCH: Getty's full-text index matches a name's words as
+# written, not across accents or word stems ("Solola" finds neither Guatemalan
+# place whose name ends in an accented a, tgn:1016724 and tgn:1000765, and
+# "Chimaltenangos" finds no Chimaltenango; probed 2026-10-11), so the place
+# the name means may be there under another spelling.
+SPARQL_FOUND_NOTHING = "the SPARQL search found no place, which rules nothing out"
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
 
@@ -77,13 +91,19 @@ class HistoricalLookup:
     # Why Getty TGN's search went through the SPARQL endpoint, when it did:
     # "refused the request (HTTP 403)", or a SearchUnanswered's reason.
     fallback: str | None = None
+    # The later request whose reply could not be read once the search had found
+    # something, when the lookup is MALFORMED for it (`_later`): "record" or
+    # "name" (Getty TGN), "entity" or "label" (Wikidata), "feature" or "unit" (NGA).
+    unread: str | None = None
 
 
 async def lookup(source_id: str, filtered_name: str, fetch: Fetch) -> HistoricalLookup:
     """Search one source by filtered place text, then read only its returned IDs.
 
-    Every stage is capped and a non-success result ends the chain. The broker
-    owns source registration, place-text filtering, durable fetch receipts,
+    Every stage is capped and a non-success result ends the chain. Only the
+    search can answer NO_MATCH: once it has found something, a later reply
+    with nothing its parser can use makes the lookup MALFORMED (`_later`).
+    The broker owns source registration, place-text filtering, durable fetch receipts,
     retries and the decision about whether a returned place is qualified.
     Fetch, capture, and receipt exceptions propagate to that owner; this
     parser cannot declare an uncertain effect settled or refund its cost.
@@ -121,6 +141,24 @@ def _result(
     reason: str | None = None,
 ) -> HistoricalLookup:
     return HistoricalLookup(status, places, tuple(calls), reason)
+
+
+def _later(outcome: LookupStatus, calls: list[Exchange], request: str) -> HistoricalLookup:
+    """The end of a lookup whose search found something, at a later request
+    (`request`: "record", "name", "entity", "label", "feature" or "unit") that
+    did not succeed. A reply that holds nothing its parser can use (UNREAD) is
+    MALFORMED, an outage: the search reported something there, so it never
+    rules a reading out as NO_MATCH would. Any other outcome (a refusal, a
+    rate limit, a server error) ends the lookup as it is."""
+    if outcome not in UNREAD:
+        return _result(outcome, calls)
+    return HistoricalLookup(
+        LookupStatus.MALFORMED,
+        (),
+        tuple(calls),
+        f"the search found places but the {request} reply could not be read",
+        unread=request,
+    )
 
 
 async def _request(
@@ -167,7 +205,7 @@ async def _tgn(filtered_name: str, fetch: Fetch, calls: list[Exchange]) -> Histo
         return _result(failure, calls)
     outcome, places = _source_value(tgn.parse_records, status, body)
     if outcome != LookupStatus.SUCCESS:
-        return _result(outcome, calls)
+        return _later(outcome, calls, "record")
     returned = {place.record_id for place in places}
     if len(places) > tgn.LIMIT or returned - set(ids):
         return _result(LookupStatus.MALFORMED, calls, reason="records exceeded requested TGN ids")
@@ -181,7 +219,7 @@ async def _tgn(filtered_name: str, fetch: Fetch, calls: list[Exchange]) -> Histo
         return _result(failure, calls)
     outcome, names = _source_value(tgn.parse_names, status, body)
     if outcome != LookupStatus.SUCCESS:
-        return _result(outcome, calls)
+        return _later(outcome, calls, "name")
     if set(names) - set(place_ids):
         return _result(LookupStatus.MALFORMED, calls, reason="names exceeded requested TGN ids")
     return _result(LookupStatus.SUCCESS, calls, _source_value(tgn.with_names, places, names))
@@ -195,7 +233,8 @@ async def _tgn_search(
     places come back as the reconciliation path returns them, in two more
     requests, so the chain stays within MAX_CALLS: one name search
     (tgn.SEARCH), which also returns every term of each place it finds, then
-    the records of at most ten of those places (tgn.search_ids)."""
+    the records of at most ten of those places (tgn.search_ids). A name
+    search that finds no place is AMBIGUOUS (SPARQL_FOUND_NOTHING)."""
     try:
         result = await _tgn_sparql(filtered_name, fetch, calls)
     except _MalformedSource:
@@ -214,6 +253,8 @@ async def _tgn_sparql(
     if failure is not None:
         return _result(failure, calls)
     outcome, found = _source_value(tgn.parse_search, status, body)
+    if outcome == LookupStatus.NO_MATCH:
+        return _result(LookupStatus.AMBIGUOUS, calls, reason=SPARQL_FOUND_NOTHING)
     if outcome != LookupStatus.SUCCESS:
         return _result(outcome, calls)
     ids = tgn.search_ids(filtered_name, found)
@@ -224,7 +265,7 @@ async def _tgn_sparql(
         return _result(failure, calls)
     outcome, places = _source_value(tgn.parse_records, status, body)
     if outcome != LookupStatus.SUCCESS:
-        return _result(outcome, calls)
+        return _later(outcome, calls, "record")
     returned = {place.record_id for place in places}
     if len(places) > tgn.LIMIT or returned - set(ids):
         return _result(LookupStatus.MALFORMED, calls, reason="records exceeded requested TGN ids")
@@ -253,7 +294,7 @@ async def _wikidata(filtered_name: str, fetch: Fetch, calls: list[Exchange]) -> 
         return _result(failure, calls)
     outcome, places = _source_value(wikidata.parse_entities, status, body)
     if outcome != LookupStatus.SUCCESS:
-        return _result(outcome, calls)
+        return _later(outcome, calls, "entity")
     returned = {place.record_id for place in places}
     if len(places) > wikidata.MAX_SEARCH or returned - set(ids):
         return _result(
@@ -275,7 +316,7 @@ async def _wikidata(filtered_name: str, fetch: Fetch, calls: list[Exchange]) -> 
         return _result(failure, calls)
     outcome, labels = _source_value(wikidata.parse_labels, status, body)
     if outcome != LookupStatus.SUCCESS:
-        return _result(outcome, calls)
+        return _later(outcome, calls, "label")
     if set(labels) - set(references):
         return _result(
             LookupStatus.MALFORMED, calls, reason="labels exceeded requested Wikidata ids"
@@ -303,7 +344,7 @@ async def _nga(filtered_name: str, fetch: Fetch, calls: list[Exchange]) -> Histo
         return _result(failure, calls)
     outcome, places = _source_value(nga.parse_features, status, body)
     if outcome != LookupStatus.SUCCESS:
-        return _result(outcome, calls)
+        return _later(outcome, calls, "feature")
     returned = {place.record_id for place in places}
     if len(places) > nga.MAX_IDS or returned - set(ids):
         return _result(LookupStatus.MALFORMED, calls, reason="features exceeded requested GNS ids")
@@ -321,7 +362,7 @@ async def _nga(filtered_name: str, fetch: Fetch, calls: list[Exchange]) -> Histo
         return _result(failure, calls)
     outcome, units = _source_value(nga.parse_units, status, body)
     if outcome != LookupStatus.SUCCESS:
-        return _result(outcome, calls)
+        return _later(outcome, calls, "unit")
     if set(units) - set(codes):
         return _result(LookupStatus.MALFORMED, calls, reason="units exceeded requested GNS codes")
     if set(units) != set(codes):

@@ -196,9 +196,21 @@ handover runs field research instead of the six specialists:
    the error's class, whether a Retry-After came back and the attempt it
    ended on, never the query; for GBIF, the status its verification ended on.
    The line also says who sent the last response that was no answer: its
-   Server and Via headers, whether its body is an HTML page, and the first
-   200 characters of its body, with every word of the request's query and
-   path replaced by "[query]" (`sources._sender`).
+   Server and Via headers, with every word of the request's query and path
+   replaced by "[query]", whether its body is an HTML page, and the first
+   200 characters of its body (`sources._sender`). The body is logged only
+   when none of the query's words is in it, compared with letter case,
+   accents and every space aside, as written and with its percent-encoding
+   read up to three times; a body that is not UTF-8 is never logged. Any
+   other body is logged as "[body withheld]" (`sources._body_excerpt`), so
+   a short word run into others ("sanjose" for "San Jose", "lima2") is not
+   logged either (the review of #303, note 2). For a query `georef_tgn`
+   writes to Getty TGN's SPARQL endpoint the query's words are only those
+   of its quoted string (the place name searched) and its TGN ids, not the
+   query's fixed text (`sources._query_words`; note 3), so a vocab.getty.edu
+   refusal stays readable. For any other request every word of its
+   parameters and path counts, a fixed one too (Wikidata's "json" and
+   "en"), so a body that repeats one is withheld.
 
    **Getty TGN's search** goes through Getty's SPARQL endpoint
    (vocab.getty.edu, already approved for TGN) when the reconciliation
@@ -212,8 +224,25 @@ handover runs field research instead of the six specialists:
    evidence record lists the refused response with its HTTP status and no
    stored body, then the two stored SPARQL responses. The note starts with
    "Getty TGN's search refused the request (HTTP 403); searched Getty's
-   SPARQL endpoint instead." If the SPARQL endpoint fails too, the lookup is
-   an outage as before.
+   SPARQL endpoint instead, whose search does not match accents or word
+   stems." If the SPARQL endpoint fails too, the lookup is an outage as
+   before.
+
+   That index matches a name's words as written (the review of #303, note
+   1; probed 2026-10-11): "Solola" finds a Somali Solola and a Solola Valley
+   in North Carolina, not the Guatemalan city and department whose names
+   end in an accented a, and "Chimaltenangos" finds nothing. So the answer
+   of a search through it never claims the reconciliation service's
+   certainty: one place it finds is ambiguous, not success, and its
+   evidence names no deciding candidate (`sources._gazetteer`); the place
+   rules of step 5 still take the one candidate at a field's level, as for
+   any ambiguous answer. A search through it that finds no place is
+   ambiguous too, never no match, its note ending "Getty TGN cannot settle
+   '<name>': the SPARQL search found no place, which rules nothing out"
+   (`historical_gazetteers.SPARQL_FOUND_NOTHING`), so it rules no reader's
+   text out. A search with an accent-tolerant term (`luc:term "solola~"`)
+   was probed and not added: it took 8.9 s against 0.5 s and returned 50
+   places, the two Guatemalan ones 14th and 15th.
 
    **GEOLocate's answer that it found nothing.** A GEOLocate answer (HTTP
    200) that the parser cannot read is no match, not an outage, only when
@@ -233,8 +262,8 @@ handover runs field research instead of the six specialists:
    WARNING line ("Field research lookup unreadable") with the source, the
    host, the status it was read as and the error's class, never the query.
    An unreadable answer of GBIF (with Catalogue of Life and Global Names
-   Verifier alongside), or an unreadable answer to the search request of
-   Getty TGN, Wikidata or NGA, stays an outage: a body that is not the
+   Verifier alongside), or an unreadable answer to any request of a Getty
+   TGN, Wikidata or NGA lookup, stays an outage: a body that is not the
    source's answer or breaks its shape, not an answer about the query; a
    later attempt may read one. For the gazetteers' search requests these
    answers that report a hit the parser cannot read are unreadable too,
@@ -251,17 +280,32 @@ handover runs field research instead of the six specialists:
    work or a subject) is no place and is skipped, so an answer of such hits
    only is no match.
 
-   **Not yet: the later requests of a Getty TGN, Wikidata or NGA lookup.**
-   Once the search request has found a hit, a reply to a later request
-   that holds no row the parser can use, or no row at all, is still read
-   as no match for the whole lookup and stored as its evidence, and the
-   readers' rule of step 5 can rule the reader's text out on it
-   (`research_harness.historical_gazetteers` ends the lookup with that
-   request's no match). That covers Getty TGN's records and names (a row
-   whose place is not a TGN id, a record with no name, no rows), Wikidata's
-   entities (an entity reported missing or with no label, none returned)
-   and NGA's features and units (a feature row with no name, no rows). The
-   fix is planned in a separate PR.
+   **The later requests of a Getty TGN, Wikidata or NGA lookup** never
+   answer no match: only the search request can. Once the search has found
+   something, a later reply with no body, no row, or no row its parser can
+   use makes the lookup malformed_response, an outage, stored as evidence
+   with a note that names the reply ("Getty TGN found places but its record
+   reply could not be read"; `historical_gazetteers._later`), so the
+   readers' rule of step 5 never rules a reader's text out on it (the
+   review of #299's probes S1 to S3). The later requests are Getty TGN's
+   records and names (on the SPARQL path, its records), Wikidata's entities
+   and the labels of the items they point to, and NGA's features and their
+   first-order units. A row the parser cannot read makes the reply
+   malformed even beside rows it can read, as for the search: a records row
+   whose place is not a TGN id or a record with no name
+   (`georef_tgn.parse_records`), a names row with no TGN place or no name
+   (`parse_names`), an entity not filed under its own item id or with no
+   label (`georef_wikidata.parse_entities`; for labels, an entity not filed
+   under its own id, `parse_labels`), a current NGA feature with no name
+   (`georef_nga.parse_features`) and a unit row with no first-order code
+   (`parse_units`). What a source does not return at all is left out, as
+   before: an id with no rows, a Wikidata item reported missing, a
+   referenced item with no label, a unit with no name. A records,
+   entities, labels, features or units reply that leaves out some of what
+   was asked keeps the lookup ambiguous, as before ("requested TGN records
+   were incomplete"); a names reply that leaves out a place leaves it its
+   GVP name, as before; a reply that leaves out all of it is malformed, as
+   above.
 
    **A source that cannot be reached** (a lookup whose last attempt was rate
    limited, timed out, was refused or redirected, failed on the server or
