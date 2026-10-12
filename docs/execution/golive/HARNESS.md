@@ -249,6 +249,126 @@ queue based on how the pipeline+harness resolve them". Tests:
   run action starts one (LANE.md T1), and an execution hands left work to the
   next. Nothing new is scheduled, and a deploy alone starts no execution.
 
+**The organiser's extraction, and a malformed first pass** (2026-10-12;
+replaces, for these two calls, the sentences above that keep the organiser's
+unknown outcome and a first pass's `model_malformed_response` as blocks).
+Production, 13:00Z-13:34Z, collection 200d7057: `parse`'s one model call (the
+organiser's extraction, agent `insects_bounded_extractor`, on the profile's
+first reader route, `handwriting-qwen`) was answered HTTP 504
+`provider_request_failed` after 120 s for five of six camera-intake runs, and
+each blocked as `external_outcome_unknown` with nothing to carry it on.
+Specimen 19f0f1f6's first pass answered malformed after its output retry and
+blocked as `model_malformed_response`, also for good. Tests:
+`tests/test_extraction_recovery.py`, and in `tests/test_rate_limit_refusal.py`
+`test_a_malformed_first_pass_is_given_up_at_once_and_the_record_goes_to_review`
+and `test_the_organisers_refused_call_costs_nothing`.
+- The extraction is a tool-free model read, as the first pass is
+  (`reliability.extraction_failure_is_recoverable`): it reads the run's
+  readings, its child writes only content-addressed provenance, and the parent
+  applies its candidates after the call returns. A rate limit, a timeout, a
+  provider error (an HTTP 5xx's unknown outcome included) or a killed child's
+  deadline is retried within `max_attempts`; every uncertain attempt is
+  recorded `failed` with its `failure_code` and keeps its whole reservation.
+- After its last attempt, on an answer still malformed after the output retry,
+  or when stopped by its token limits (`extraction_usage_limit`), the
+  extraction is given up on: a warning finding `extraction_given_up:<code>`,
+  `parse` completes with the deterministic parse alone, and the run goes on to
+  field research and its disposition. An extraction the run cannot afford is
+  given up on unsent with the budget's code; a worker that stopped after the
+  call's intent settles it as `extraction_result_lost`, retried, then given up.
+- A first pass whose answer stays malformed is given up on at once with
+  `model_malformed_response` (not asked again).
+- `Workflow.recover_blocked` makes due a run left blocked at its extraction as
+  `external_outcome_unknown` (the five runs above), which then settles that
+  attempt as lost and retries or gives up, and gives up an extraction or a
+  first pass left blocked as `retry_budget_exhausted:<code>` or
+  `model_malformed_response` (19f0f1f6). It reads the first pass's blocker
+  list for the extraction too, a moved pin aside.
+- Every `external_outcome_unknown` this code saves at an ordinary first pass
+  or extraction says what it is, in
+  `run.dependencies["unknown_outcome_kinds"]["<step>:<attempt>"]`
+  (`workflow.UNKNOWN_OUTCOME_KINDS`). The call's intent is saved as
+  `unanswered`: a worker that stops before the result leaves it so, and the
+  lease's end or the drain carries it on. A result the parent could not accept
+  (an invalid child result such as `invalid_json_input`, extraction fields
+  that do not match the run's, a child whose cleanup is not confirmed, an
+  unexpected exception in the parent) is saved as `held` and never recovered
+  automatically; it stays blocked for a person. Provider and deadline failures
+  of these reads are known failures now, never unknown outcomes.
+  A kind is kept only while its attempt is unresolved. When an attempt's
+  outcome is known (completed, a known failure that is retried, given up,
+  settled as lost) the kinds of that attempt and of every earlier attempt of
+  the step go, and a new attempt's intent drops the earlier ones too: an
+  attempt starts only after the one before it ended, so a path that replaced
+  an unknown blocker without settling its attempt (the active graph's
+  size-limit block, then a person's retry) leaves nothing behind. Every
+  step that ends passes through `workflow.end_step`, which drops every kind
+  of that step (a step that has ended has no unresolved unknown outcome), and
+  giving the extraction up drops the kinds of `parse`. An administrator's
+  reconcile drops every kind of the reconciled step. The recovery tests check
+  every save for a kind left on an ended step (`tests/conftest.py`). So the
+  kinds add no drift of their own to the pins of the append-once pipeline-run
+  row (#146; `tests/test_projection_writer.py`). Other records already
+  change `run.dependencies` after it is written: `ordinary_cost_settlements`
+  for priced calls, and `automatic_recoveries` and `route_repins` (#315) for
+  recovered or re-pinned runs; not changed here.
+- Legacy rows (the coordinator's decision of 2026-10-12, the owner having
+  delegated technical decisions; replaces the second review round's stricter
+  rule). An unknown attempt with no kind was saved by code before this record
+  existed, which saved a provider's HTTP 5xx and an invalid child result
+  alike, so its cause cannot be read from the run. Logfire (2026-10-12
+  13:00Z-13:34Z) shows the known stuck rows, the five runs above, were HTTP
+  504s, and the recovery is bounded: the existing path (`max_attempts`, three
+  automatic recoveries per step, every attempt reserved in full under the run's
+  USD 1 limit), ending at worst with the call given up and the record in
+  review. It never publishes. So a legacy row is recovered, and its automatic
+  recovery is recorded with `"rule": "legacy_unknown_recovered"`; a rare
+  legacy contract failure ends visibly in review instead of stranded. The
+  same holds for a first pass saved as unknown after a 5xx before e52503c5.
+- Tests (`tests/test_extraction_recovery.py`):
+  `test_a_504_left_unknown_at_the_extraction_by_the_old_code_is_recovered_as_legacy`
+  (built from a6b72f6f's own save by switching the extraction's
+  recoverability off for the first drain),
+  `test_an_extraction_result_the_parent_cannot_accept_stays_blocked_after_its_lease`,
+  `test_a_call_left_unanswered_by_a_stopped_worker_is_marked_and_carried_on`,
+  and `test_every_unknown_outcome_this_code_saves_at_the_extraction_has_a_kind` and
+  `..._at_a_first_pass_has_a_kind`, which check every save; in
+  `tests/test_first_pass_stuck_recovery.py`,
+  `test_a_blocked_unknown_comparison_is_retried_by_the_drain`.
+- `parse` parses and extracts into a working copy of the record. When the
+  step does not end (a retried extraction, an evidence integrity failure
+  after it, a refused human-field check), the run's fields, evidence and
+  token usage are put back as they were before the attempt (its reservations
+  stay), so a retried or given-up `parse` keeps one evidence row per parsed
+  line
+  (`tests/test_step_outcome.py::test_a_retried_parse_keeps_one_evidence_row_per_parsed_line`,
+  `::test_integrity_failure_after_extraction_is_a_known_retryable_block`, with
+  and without a person's preserved fields).
+  A first-pass retry adds nothing either: its decision replaces the region's,
+  and its tokens are counted only when it answers.
+- A first pass or extraction whose attempts are used up (`run.attempts`, which
+  the call's intent saves, at `max_attempts`) is given up on unsent when its
+  step comes round again, with `max_attempts_used`; it is never sent a fourth
+  time. That happens when the last attempt's result is lost to the active
+  graph's size limit (which reloads that attempt's intent without the give-up
+  it had recorded) and a person retries, or when a person retries a block on
+  the last attempt. The lost attempt keeps its whole reservation; nothing is
+  released or reserved again
+  (`tests/test_extraction_recovery.py::test_a_last_extraction_whose_result_was_lost_is_not_sent_again`,
+  `::test_a_last_first_pass_whose_result_was_lost_is_not_sent_again`).
+- An authentication or authorization error and a request the provider rejects
+  still block with their cause, and the evidence pilot is excluded, as for the
+  first pass.
+- The route stays on Novita. Two probe rounds on 2026-10-12, sequential, the organiser's real agent and output type on two synthetic
+  label readings with production's limits, and a forced-tool image read of one
+  label: Novita extraction 0 of 3 (HTTP 504 at 120 s each); DeepInfra, which
+  lists the same model cheaper (USD 0.15/0.60 per million tokens against
+  0.20/0.70), extraction 3 of 3 (32-101 s, 368-523 output tokens) and then 0 of
+  5 (HTTP 504 at 120 s each). Image reads: Novita 3 of 3 at 55-73 s, then 5 of 5
+  at 4-5 s; DeepInfra 3 of 3 at 2-4 s, then 5 of 5 at 3-81 s. Neither provider
+  was reliably better; the 504 at 120 s is the Hugging Face router's own limit
+  on one request, which a slow extraction reaches on either provider.
+
 **Waiting after a rate limit** (2026-10-11). A step that fails with an
 `AdapterFailure` whose status is `rate_limited` (a model call's HTTP 429 is
 `model_rate_limited`) waits at least 30 seconds before its second attempt and at

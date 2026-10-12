@@ -163,7 +163,6 @@ def until_the_last_attempt(tmp_path, monkeypatch, *, late=False):
         ("http_403", "model_authorization_error"),
         # A request the provider refuses as invalid is refused every time.
         ("http_400", "model_request_rejected"),
-        ("malformed", "model_malformed_response"),
     ],
 )
 def test_a_last_attempt_that_asking_again_would_not_mend_still_blocks_with_its_cause(
@@ -294,7 +293,6 @@ def last_specimen(workflow, principal, ident):
         (AdapterFailure("model_authentication_error", LookupStatus.AUTHENTICATION), False),
         (AdapterFailure("model_authorization_error", LookupStatus.AUTHORIZATION), False),
         (AdapterFailure("model_request_rejected", LookupStatus.POLICY), False),
-        (AdapterFailure("model_malformed_response", LookupStatus.MALFORMED), False),
     ],
 )
 def test_which_last_attempts_are_given_up_on(failure, given_up):

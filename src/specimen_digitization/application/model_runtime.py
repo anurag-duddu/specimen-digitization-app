@@ -23,6 +23,7 @@ from .organiser import extraction_readings
 from .reliability import (
     AdapterFailure,
     ReadingStopped,
+    extraction_failure_is_recoverable,
     first_pass_failure_is_recoverable,
     reader_failure_is_recoverable,
 )
@@ -148,18 +149,19 @@ def child_without_answer(run, operation, reason):
     from .domain import LookupStatus
     from .workflow import OperationalBlock
 
+    comparison = first_pass_failure_is_recoverable(run, operation) or (
+        extraction_failure_is_recoverable(run, operation)
+    )
     if not (
         reader_failure_is_recoverable(run, operation)
-        or (
-            first_pass_failure_is_recoverable(run, operation)
-            and reason in {"deadline_exceeded", "worker_process_exit"}
-        )
+        or (comparison and reason in {"deadline_exceeded", "worker_process_exit"})
     ):
         return OperationalBlock("external_outcome_unknown")
+    prefix = {"first_pass": "first_pass_", "extract": "extract_"}.get(operation, "reader_")
     return AdapterFailure(
-        ("first_pass_" if operation == "first_pass" else "reader_") + reason,
+        prefix + reason,
         LookupStatus.TIMEOUT if reason == "deadline_exceeded" else LookupStatus.PROVIDER,
-        outcome_unknown=operation == "first_pass",
+        outcome_unknown=comparison,
     )
 
 
@@ -219,12 +221,16 @@ def invoke_model(
         max_input_bytes=4 * 1024 * 1024,
         trace_required=True,
     )
-    if not result.cleanup_complete and first_pass_failure_is_recoverable(run, operation):
-        # No automatic comparison retry while its old child might still run.
+    comparison = first_pass_failure_is_recoverable(run, operation) or (
+        extraction_failure_is_recoverable(run, operation)
+    )
+    if not result.cleanup_complete and comparison:
+        # No automatic comparison or extraction retry while its old child might
+        # still run.
         raise OperationalBlock("external_outcome_unknown")
     if result.status != "completed" or not result.cleanup_complete:
         reason = result.status if result.status != "completed" else "cleanup_incomplete"
-        if operation == "first_pass" and result.status == "worker_failed":
+        if operation in {"first_pass", "extract"} and result.status == "worker_failed":
             # The broad status also includes malformed input and invalid IPC.
             # Only a child that exited after starting gets first-pass recovery;
             # do not turn an opaque call/contract failure into a provider retry.

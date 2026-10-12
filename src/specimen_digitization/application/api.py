@@ -2668,6 +2668,11 @@ def create_app(
                     # A paused run stays paused: the blocker and the lease are
                     # cleared and nothing is queued, so a person resumes it later.
                     keep_paused = s.run.stage == "paused"
+                    from .workflow import resolve_step_unknown_outcomes
+
+                    # The person settled the unknown outcome: its kind is no
+                    # longer recorded, so the run keeps its pins (#146).
+                    resolve_step_unknown_outcomes(s.run, step)
                     s.run.blocker = None
                     s.run.lease_until = None
                     s.run.disposition = None
