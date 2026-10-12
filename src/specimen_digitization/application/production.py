@@ -487,12 +487,13 @@ class SqlConnectRepository:
     def blocked_ids(self, scope):
         """Blocked, non-sensitive records with no disposition, by id
         (lane_worker.DrainWorker._recover_blocked). ListSpecimenPage's metadata
-        rows only: no snapshot is read here."""
+        rows only: no snapshot is read here. Yielded page by page, so the
+        caller can stop between pages."""
         from datetime import datetime, timedelta
 
         # A second behind, so it is never later than the connector's clock.
         cutoff = (datetime.fromisoformat(now()) - timedelta(seconds=1)).isoformat()
-        found, after = [], ""
+        after = ""
         while True:
             rows = self.execute(
                 "ListSpecimenPage",
@@ -504,7 +505,7 @@ class SqlConnectRepository:
                     includeSensitive=False,
                 ),
             ).get("specimens", [])
-            found.extend(
+            yield from (
                 str(UUID(row["id"]))
                 for row in rows
                 if row.get("state") == "processing_blocked"
@@ -512,7 +513,7 @@ class SqlConnectRepository:
                 and not row.get("sensitive")
             )
             if len(rows) < 100:
-                return found
+                return
             after = str(UUID(rows[-1]["id"]))
 
     def version_info(self, scope, ident, revision):

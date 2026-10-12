@@ -241,7 +241,10 @@ queue based on how the pipeline+harness resolve them". Tests:
   `retry_budget_exhausted:<code>` is given up on with `<code>`
   (`Workflow.recover_blocked`). At most three recoveries per step, each kept in
   `run.dependencies["automatic_recoveries"]`. It makes no call. Evidence-pilot
-  runs, sensitive records and runs with a disposition are left alone.
+  runs, sensitive records and runs with a disposition are left alone. The
+  listing is read page by page and the scan ends at a stop signal or at the
+  window's close, so the drain keeps its time to release the fence and hand
+  the rest on; the next execution scans again.
 - What wakes them is the next worker execution: any upload, process request or
   run action starts one (LANE.md T1), and an execution hands left work to the
   next. Nothing new is scheduled, and a deploy alone starts no execution.

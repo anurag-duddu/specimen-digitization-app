@@ -9,7 +9,9 @@ reach a provider go through the real isolated model child with an offline
 fixture provider (test_rate_limit_refusal); no live model request is made.
 """
 
+import threading
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 from specimen_digitization.application.domain import Disposition
 from specimen_digitization.application.lane_worker import DrainWorker
@@ -287,6 +289,23 @@ def test_evidence_pilot_and_other_steps_are_never_recovered(tmp_path, monkeypatc
     assert (after.stage, after.blocker) == ("processing_blocked", "model_authentication_error")
 
 
+def test_sensitive_and_finished_records_are_never_recovered(tmp_path, monkeypatch):
+    workflow, principal, ident, _ = one_failed_comparison(tmp_path, monkeypatch)
+    blocked = dict(stage="processing_blocked", blocker="external_outcome_unknown", next_retry_at=None)
+    leave(workflow, principal, ident, disposition=list(Disposition)[0], **blocked)
+    later(workflow, 1)
+    assert workflow.recover_blocked(principal, ident) is False
+
+    leave(workflow, principal, ident, disposition=None)
+    specimen = workflow.repository.get(principal.scope, ident)
+    specimen.asset.sensitive = True
+    workflow.repository.save(principal, specimen, specimen.version, "sensitive", digest({"sensitive": True}))
+    assert workflow.recover_blocked(principal, ident) is False
+    after = workflow.repository.get(principal.scope, ident).run
+    assert (after.stage, after.blocker) == ("processing_blocked", "external_outcome_unknown")
+    assert AUTOMATIC_RECOVERIES not in after.dependencies
+
+
 def test_the_connector_listing_names_only_blocked_unfinished_records():
     pages = [
         [{"id": f"00000000-0000-0000-0000-{n:012d}", "state": "running", "disposition": None,
@@ -310,10 +329,67 @@ def test_the_connector_listing_names_only_blocked_unfinished_records():
 
     repository.execute = execute
 
-    found = repository.blocked_ids(None)
+    found = list(repository.blocked_ids(None))
 
     assert found == ["00000000-0000-0000-0000-000000000099", "00000000-0000-0000-0000-000000000101"]
     assert calls == [
         ("ListSpecimenPage", "", False, 100),
         ("ListSpecimenPage", "00000000-0000-0000-0000-000000000099", False, 100),
     ]
+
+
+class ScanFixture:
+    """A collection of blocked records listed page by page, and a workflow
+    that recovers each one it is given."""
+
+    def __init__(self, pages):
+        self.pages, self.read, self.recovered = pages, 0, []
+        self.now = datetime(2026, 10, 12, tzinfo=timezone.utc)
+
+    def blocked_ids(self, scope):
+        for page in self.pages:
+            self.read += 1
+            yield from page
+
+    def recover_blocked(self, principal, ident):
+        self.recovered.append(ident)
+        self.now += timedelta(seconds=30)
+        return True
+
+    def worker(self):
+        worker = DrainWorker(
+            self, self, "u", lambda user: [],
+            execution_id="scan-fixture", clock=lambda: self.now, sleep=lambda s: None,
+        )
+        worker.close_at = self.now + timedelta(seconds=45)
+        return worker
+
+
+def scan_drain():
+    return SimpleNamespace(principal=SimpleNamespace(scope=None), retries={})
+
+
+def test_the_blocked_scan_ends_at_a_stop_and_reads_no_further_page():
+    # A SIGTERM during the scan must leave the drain time to release its fence
+    # and hand the rest on, so the scan stops before the next record or page.
+    fixture = ScanFixture([["a", "b"], ["c"]])
+    worker = fixture.worker()
+    worker.close_at = fixture.now + timedelta(hours=1)
+    stop = threading.Event()
+    original = fixture.recover_blocked
+
+    def recover_then_stop(principal, ident):
+        stop.set()
+        return original(principal, ident)
+
+    fixture.recover_blocked = recover_then_stop
+    assert worker._recover_blocked(scan_drain(), stop) == 1
+    assert fixture.recovered == ["a"] and fixture.read == 1
+
+
+def test_the_blocked_scan_ends_at_the_window_close():
+    # Each recovery here takes 30 s and the window closes 45 s in: two are
+    # recovered, the rest wait for the next execution, the last page unread.
+    fixture = ScanFixture([["a", "b", "c"], ["d"]])
+    assert fixture.worker()._recover_blocked(scan_drain()) == 2
+    assert fixture.recovered == ["a", "b"] and fixture.read == 1

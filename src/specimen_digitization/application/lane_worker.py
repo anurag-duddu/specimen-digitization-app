@@ -466,7 +466,7 @@ class DrainWorker:
             return None
         return ident
 
-    def _recover_blocked(self, drain):
+    def _recover_blocked(self, drain, stop=None):
         """Make the collection's recoverable blocked runs due (Workflow.recover_blocked).
 
         Once per collection per execution, under its fence, before any run is
@@ -475,6 +475,10 @@ class DrainWorker:
         Each recovered run is waited for as a retry is, since the queue's cutoff
         stays a margin behind the clock. It reads the records' listing and makes
         no call. A failure here is logged by class and never stops the drain.
+        The listing is read lazily and the scan ends at a stop or at the
+        window's close, so a long collection never eats the time the drain
+        needs to release its fence and hand the rest on; the next execution
+        scans again.
         """
         principal = drain.principal
         recover = getattr(self.workflow, "recover_blocked", None)
@@ -483,6 +487,8 @@ class DrainWorker:
         recovered = 0
         try:
             for ident in blocked_ids(self.repository, principal.scope):
+                if self._stopped(stop) or self.clock() >= self.close_at:
+                    break
                 try:
                     if recover(principal, ident):
                         recovered += 1
@@ -495,7 +501,7 @@ class DrainWorker:
 
     def _drain(self, drain, fence, previous, stop, summary):
         principal = drain.principal
-        summary["recovered"] += self._recover_blocked(drain)
+        summary["recovered"] += self._recover_blocked(drain, stop)
         resume = self._resume(drain, previous)
         while True:
             if self._stopped(stop):
