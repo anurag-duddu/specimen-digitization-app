@@ -229,6 +229,10 @@ class WorkspaceController extends ChangeNotifier {
   StreamSubscription<ApiFailure>? _accessSubscription;
   Timer? _poll;
   bool _polling = false;
+
+  /// True when the app returned while a poll was in flight: one more poll
+  /// runs as soon as that one ends, and never more than one.
+  bool _pollAgain = false;
   final Set<Object> _pollPauses = <Object>{};
   Future<Specimen>? _selectedRead;
   Object? _selectedReadKey;
@@ -425,6 +429,12 @@ class WorkspaceController extends ChangeNotifier {
     _foreground = state == AppLifecycleState.resumed;
     if (!returning || _disposed || _poll == null) return;
     _startPollTimer();
+    // A poll still in flight was asked before the app left, so its answer
+    // may predate what changed meanwhile. Ask once more when it ends.
+    if (_polling) {
+      _pollAgain = true;
+      return;
+    }
     unawaited(_pollWorkspace());
   }
 
@@ -449,6 +459,10 @@ class WorkspaceController extends ChangeNotifier {
       await refresh(quiet: true);
     } finally {
       _polling = false;
+    }
+    if (_pollAgain) {
+      _pollAgain = false;
+      await _pollWorkspace();
     }
   }
 
@@ -566,6 +580,7 @@ class WorkspaceController extends ChangeNotifier {
     _deferredPage = null;
     _mutationKeys.clear();
     _pollPauses.clear();
+    _pollAgain = false;
     _quietFailureReported = false;
     _awaitingBatchReadback = null;
     _loading = true;

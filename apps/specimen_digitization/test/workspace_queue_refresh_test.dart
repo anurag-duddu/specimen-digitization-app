@@ -47,8 +47,9 @@ class KeysetRepository extends TestRepository {
         code: 'network',
       );
     }
+    // The answer is the server as it stood when asked; a gate delays only
+    // its arrival, like a slow network.
     final Completer<void>? gate = gates.remove(cursor ?? '');
-    if (gate != null) await gate.future;
     final String? disposition = filters['disposition'];
     final List<Specimen> matching = server
         .where(
@@ -59,6 +60,7 @@ class KeysetRepository extends TestRepository {
         ? 0
         : matching.indexWhere((Specimen s) => 'after:${s.id}' == cursor) + 1;
     final List<Specimen> page = matching.skip(start).take(pageSize).toList();
+    if (gate != null) await gate.future;
     return SpecimenPage(
       page,
       nextCursor: page.length == pageSize ? 'after:${page.last.id}' : null,
@@ -388,4 +390,61 @@ void main() {
       await session.controller.close();
     }
   });
+
+  for (final bool held in <bool>[false, true]) {
+    testWidgets(
+      'returning while a poll is in flight asks once more when it ends'
+      '${held ? ' (held list)' : ''}',
+      (WidgetTester tester) async {
+        final KeysetRepository repository = KeysetRepository(<Specimen>[
+          row('a'),
+        ]);
+        final TestSession session = TestSession();
+        final WorkspaceController controller = await started(
+          tester,
+          repository,
+          session,
+        );
+        try {
+          if (held) controller.holdList();
+          final Completer<void> slow = Completer<void>();
+          repository.gates[''] = slow;
+          await tester.pump(queuePollInterval);
+          final int asked = repository.pageReads;
+          move(tester, <AppLifecycleState>[
+            AppLifecycleState.inactive,
+            AppLifecycleState.hidden,
+            AppLifecycleState.paused,
+          ]);
+          // Another device adds a record while this one is away.
+          repository.server = <Specimen>[row('a'), row('b')];
+          move(tester, <AppLifecycleState>[
+            AppLifecycleState.hidden,
+            AppLifecycleState.inactive,
+            AppLifecycleState.resumed,
+          ]);
+          await tester.pump();
+          expect(repository.pageReads, asked, reason: 'no overlapping poll');
+          slow.complete();
+          await tester.pump();
+          await tester.pump();
+          expect(
+            repository.pageReads,
+            asked + 1,
+            reason: 'exactly one follow-up poll',
+          );
+          if (held) {
+            expect(ids(controller), <String>['a']);
+            controller.releaseList();
+          }
+          expect(ids(controller), <String>['a', 'b']);
+          await tester.pump(const Duration(seconds: 1));
+          expect(repository.pageReads, asked + 1);
+        } finally {
+          controller.dispose();
+          await session.controller.close();
+        }
+      },
+    );
+  }
 }
