@@ -335,6 +335,13 @@ and `test_the_organisers_refused_call_costs_nothing`.
   `..._at_a_first_pass_has_a_kind`, which check every save; in
   `tests/test_first_pass_stuck_recovery.py`,
   `test_a_blocked_unknown_comparison_is_retried_by_the_drain`.
+- `parse` parses and extracts into a working copy of the record and applies
+  its fields, evidence and usage to the run only when the step ends, so an
+  attempt whose extraction fails and is retried leaves nothing behind: a
+  retried or given-up `parse` keeps one evidence row per parsed line
+  (`tests/test_step_outcome.py::test_a_retried_parse_keeps_one_evidence_row_per_parsed_line`).
+  A first-pass retry adds nothing either: its decision replaces the region's,
+  and its tokens are counted only when it answers.
 - An authentication or authorization error and a request the provider rejects
   still block with their cause, and the evidence pilot is excluded, as for the
   first pass.

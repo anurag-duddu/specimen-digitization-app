@@ -86,7 +86,12 @@ _KIND_CHECKED_MODULES = frozenset({
 @pytest.fixture(autouse=True)
 def no_kind_outlives_its_step(request, monkeypatch):
     """A step that has ended cannot have an unresolved unknown outcome: no save
-    in the recovery fixtures may keep a kind for a completed step."""
+    in the recovery fixtures may keep a kind for a completed step.
+
+    Its limits: it sees only saves through SQLiteRepository (not the SQL Connect
+    repository or a test's own stub), only in the modules listed above, and only
+    the states those fixtures reach; it checks completed steps, not a kind left
+    on a step that has not ended (the per-attempt rules cover those)."""
     if request.module.__name__.rpartition(".")[2] not in _KIND_CHECKED_MODULES:
         yield
         return

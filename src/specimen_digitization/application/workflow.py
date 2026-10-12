@@ -880,7 +880,11 @@ class Workflow:
                         )
                     )
             elif step == "parse":
-                proposal = specimen.model_copy(deep=True) if run.dependencies.get(CARRY_KEY) else specimen
+                # Parse and extract into a working copy, applied to the run only
+                # when the step ends: an attempt whose extraction fails and is
+                # retried leaves no fields or evidence behind, so a retry does
+                # not add a second evidence row per parsed line.
+                proposal = specimen.model_copy(deep=True)
                 self.parse(proposal.run, specimen.asset.id, self.blobs)
                 # Asked again here, as before: offline adapters that hide their
                 # extract from the first check (unmetered) still extract.
@@ -910,7 +914,11 @@ class Workflow:
                             code=log_code(failure.code),
                             **status,
                         )
-                if proposal is not specimen:
+                if not run.dependencies.get(CARRY_KEY):
+                    run.fields = proposal.run.fields
+                    run.evidence = proposal.run.evidence
+                    run.usage = proposal.run.usage
+                else:
                     from .human_field_carry import manifests
                     protected = set(manifests(specimen))
                     run.fields.update({k: v for k, v in proposal.run.fields.items() if k not in protected})
