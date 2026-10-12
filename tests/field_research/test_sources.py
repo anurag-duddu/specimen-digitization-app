@@ -1015,6 +1015,11 @@ ECHOES = {
     "percent-encoded twice": ("Davao", b"request %2544avao blocked"),
     "spaced out": ("Peru", b"request p e r u blocked"),
     "in HTML entities": ("Oslo", b"request &#79;&#115;&#108;&#111; blocked"),
+    # Codex's review of #320 at 2bfd7530: a character past U+FFFF, which the
+    # reconciliation request carries as a JSON surrogate pair, was logged.
+    "past U+FFFF": (chr(0x20BB7), ("request " + chr(0x20BB7) + " blocked").encode()),
+    "past U+FFFF, as JSON escapes": (
+        chr(0x20BB7), ("request " + chr(92) + "ud842" + chr(92) + "udfb7 blocked").encode()),
 }
 
 

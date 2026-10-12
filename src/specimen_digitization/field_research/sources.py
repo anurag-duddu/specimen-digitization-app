@@ -402,6 +402,10 @@ def _plain(text: str) -> str:
     text = re.sub(
         r"\\u([0-9a-fA-F]{4})", lambda escape: chr(int(escape[1], 16)), html.unescape(text)
     )
+    # JSON writes a character past U+FFFF as two escapes, a surrogate pair:
+    # join each pair into its character, as a body that writes it raw has it
+    # (Codex's review of #320 at 2bfd7530). A lone surrogate becomes U+FFFD.
+    text = text.encode("utf-16", "surrogatepass").decode("utf-16", "replace")
     bare = "".join(
         character
         for character in unicodedata.normalize("NFKD", text)
