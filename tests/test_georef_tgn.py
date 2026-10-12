@@ -247,18 +247,49 @@ def test_a_hit_that_cannot_be_read_makes_the_whole_reply_malformed(unreadable):
         assert parse_reconcile(200, body) == (LookupStatus.MALFORMED, ())
 
 
-def test_an_id_tgn_does_not_hold_is_skipped_and_a_bad_point_is_not_read():
+def test_a_bad_point_is_not_read():
     body = sparql(
-        {"place": "http://vocab.getty.edu/tgn/1", "lat": "1", "long": "2"},
         {"place": "http://vocab.getty.edu/tgn/2", "name": "Two"},
         {"place": "http://vocab.getty.edu/tgn/2", "lat": "95", "long": "10"},
         {"place": "http://vocab.getty.edu/tgn/3", "name": "Three"},
         {"place": "http://vocab.getty.edu/tgn/3", "lat": "north", "long": "10"},
-        {"place": "http://vocab.getty.edu/aat/4", "name": "not a place"},
     )
     outcome, found = parse_records(200, body)
     assert outcome is LookupStatus.SUCCESS
     assert [(place.record_id, place.point) for place in found] == [("2", None), ("3", None)]
+
+
+READABLE_RECORD = {"place": "http://vocab.getty.edu/tgn/2", "name": "Two"}
+UNREADABLE_RECORD_ROWS = {
+    "a record without a name": [{"place": "http://vocab.getty.edu/tgn/1", "lat": "1", "long": "2"}],
+    "a row of another vocabulary": [{"place": "http://vocab.getty.edu/aat/4", "name": "not a place"}],
+    "a row without a place": [{"name": "Somewhere"}],
+}
+
+
+@pytest.mark.parametrize("unreadable", list(UNREADABLE_RECORD_ROWS))
+def test_a_record_that_cannot_be_read_makes_the_records_answer_malformed(unreadable):
+    """TGN answered the ids it was asked for with something that cannot be
+    read: that is no answer that it holds none of them (NO_MATCH), alone or
+    beside a record that can be read (the review of #299's stage-two probes).
+    An id TGN does not hold has no rows at all, and only that is left out."""
+    rows = UNREADABLE_RECORD_ROWS[unreadable]
+    for bindings in (rows, [READABLE_RECORD, *rows]):
+        assert parse_records(200, sparql(*bindings)) == (LookupStatus.MALFORMED, ())
+
+
+UNREADABLE_NAME_ROWS = {
+    "a row of another vocabulary": {"place": "http://vocab.getty.edu/aat/1", "name": "Yepocapo"},
+    "a row without a name": {"place": "http://vocab.getty.edu/tgn/1", "language": "en"},
+    "a row without a place": {"name": "Yepocapo"},
+}
+
+
+@pytest.mark.parametrize("unreadable", list(UNREADABLE_NAME_ROWS))
+def test_a_name_row_that_cannot_be_read_makes_the_names_answer_malformed(unreadable):
+    readable = {"place": "http://vocab.getty.edu/tgn/2", "name": "Two", "preferred": "true"}
+    for bindings in ([UNREADABLE_NAME_ROWS[unreadable]], [readable, UNREADABLE_NAME_ROWS[unreadable]]):
+        assert parse_names(200, sparql(*bindings)) == (LookupStatus.MALFORMED, {})
 
 
 def test_nonfinite_points_and_scores_do_not_enter_places_or_hits():

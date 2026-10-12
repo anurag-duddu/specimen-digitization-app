@@ -14,15 +14,19 @@ and the historical gazetteers' in research_harness.historical_gazetteers. A
 source problem is an answer with a plain note, never an exception; only a blob
 store failure raises. When Getty TGN's reconciliation service refuses a request
 or cannot be reached, TGN is searched through Getty's SPARQL endpoint instead
-(historical_gazetteers), and the note says so. Each request a source leaves
+(historical_gazetteers), and the note says so and that this search does not
+match accents or word stems; its answer is then never a success, and a search
+that found nothing is ambiguous, never no match. Each request a source leaves
 unanswered is logged in one WARNING line with its source, host and HTTP status
-or error, and who sent the response (its Server and Via headers, whether it is
-an HTML page, the start of its body), never its query or a word of it.
+or error, and who sent the response (its Server and Via headers with the
+query's words cut out, whether it is an HTML page, the start of its body
+unless a word of the query is in it), never its query.
 """
 
 from __future__ import annotations
 
 import asyncio
+import codecs
 import concurrent.futures
 import dataclasses
 import hashlib
@@ -95,11 +99,20 @@ MAX_TAXA = 10
 MAX_KINDS = 3
 # A response that was no answer, as its log line shows it (_Sender): the first
 # BODY_READ bytes of the body are read, BODY_EXCERPT characters of them logged,
-# and at most HEADER_EXCERPT of the Server and Via headers.
+# or BODY_WITHHELD when they may hold a word of the query (_body_excerpt), and
+# at most HEADER_EXCERPT of the Server and Via headers.
 BODY_READ = 8192
 BODY_EXCERPT = 200
+BODY_WITHHELD = "[body withheld]"
+# How many times a body's percent-encoding is read again before its words are
+# compared with the query's: a body may echo a request encoded twice.
+DECODE_ROUNDS = 3
 HEADER_EXCERPT = 100
 HTML_PAGE = re.compile(r"<!doctype\s+html|<html", re.IGNORECASE)
+# The string literals and TGN ids of a SPARQL query georef_tgn wrote: the only
+# parts of it that come from a reading (`_query_words`).
+SPARQL_LITERAL = re.compile(r'"((?:[^"\\]|\\.)*)"', re.DOTALL)
+SPARQL_TGN_ID = re.compile(r"\btgn:([0-9]+)")
 # The response headers a GET keeps: for its retries and its log line.
 KEPT_HEADERS = ("retry-after", "server", "via", "content-type")
 # What research_harness.sources.BoundedHTTPTransport sends.
@@ -328,8 +341,9 @@ def _evidence(
 class _Sender:
     """Who sent a response that was no answer, as its log line says: the
     response's Server and Via headers, whether its body is an HTML page (as a
-    block page is), and the start of the body on one line, each without a
-    word of the request's query (`_sender`)."""
+    block page is), and the start of the body on one line: the headers with
+    the request's query words cut out, the body BODY_WITHHELD when one of
+    them is in it (`_sender`)."""
 
     server: str | None
     via: str | None
@@ -339,9 +353,9 @@ class _Sender:
 
 def _sender(url: str, headers: Mapping[str, str], body: bytes) -> _Sender:
     """A response's sender, read from its headers and the first BODY_READ bytes
-    of its body. Every word the request's URL carries in its query parameters
-    or its path is cut out first (`_without_query`), so no specimen text
-    reaches the log."""
+    of its body: the headers with the request's query words (`_query_words`)
+    cut out (`_without_query`), and the body only when none of those words is
+    in it (`_body_excerpt`)."""
     hidden = _query_words(url)
     text = _plain(unquote_plus(body[:BODY_READ].decode("utf-8", errors="replace")))
     content_type = (headers.get("content-type") or "").lower()
@@ -349,8 +363,37 @@ def _sender(url: str, headers: Mapping[str, str], body: bytes) -> _Sender:
         server=_without_query(headers.get("server"), hidden, HEADER_EXCERPT),
         via=_without_query(headers.get("via"), hidden, HEADER_EXCERPT),
         html_page="html" in content_type or bool(HTML_PAGE.search(text[:1024])),
-        body=_without_query(text, hidden, BODY_EXCERPT),
+        body=_body_excerpt(body, hidden),
     )
+
+
+def _body_excerpt(body: bytes, hidden: frozenset[str]) -> str | None:
+    """The start of a body for the log line: its first BODY_READ bytes as
+    `_plain` text on one line, cut to BODY_EXCERPT characters; None when it is
+    blank. It is BODY_WITHHELD instead when it may hold a word of the query
+    (`hidden`): when it is not UTF-8 (a Latin-1 page, whose words cannot be
+    compared), or when any of those words is in it anywhere, compared case-
+    and accent-blind with every space removed, so a short word run into
+    others ("sanjose" for "San Jose", "lima2") counts too; the body is
+    compared as written and with its percent-encoding read up to
+    DECODE_ROUNDS times, and its HTML entities and JSON escapes each time."""
+    head = body[:BODY_READ]
+    if not head.strip():
+        return None
+    try:
+        # A body cut at BODY_READ may end inside a character.
+        text = codecs.getincrementaldecoder("utf-8")().decode(head, final=len(body) <= BODY_READ)
+    except UnicodeDecodeError:
+        return BODY_WITHHELD
+    forms = [_plain(text)]
+    for _ in range(DECODE_ROUNDS):
+        read = _plain(unquote_plus(forms[-1]))
+        if read == forms[-1]:
+            break
+        forms.append(read)
+    if any(word in "".join(form.split()) for form in forms for word in hidden):
+        return BODY_WITHHELD
+    return " ".join(_plain(unquote_plus(text)).split())[:BODY_EXCERPT] or None
 
 
 def _plain(text: str) -> str:
@@ -359,6 +402,10 @@ def _plain(text: str) -> str:
     text = re.sub(
         r"\\u([0-9a-fA-F]{4})", lambda escape: chr(int(escape[1], 16)), html.unescape(text)
     )
+    # JSON writes a character past U+FFFF as two escapes, a surrogate pair:
+    # join each pair into its character, as a body that writes it raw has it
+    # (Codex's review of #320 at 2bfd7530). A lone surrogate becomes U+FFFD.
+    text = text.encode("utf-16", "surrogatepass").decode("utf-16", "replace")
     bare = "".join(
         character
         for character in unicodedata.normalize("NFKD", text)
@@ -368,18 +415,32 @@ def _plain(text: str) -> str:
 
 
 def _query_words(url: str) -> frozenset[str]:
-    """Every word (run of letters and digits) of a URL's query parameters and
-    of its path, where Global Names Verifier carries a name."""
+    """The words (runs of letters and digits) a URL carries that the log must
+    not show. For a query to Getty TGN's SPARQL endpoint as georef_tgn writes
+    one (its only parameter, `query`, starts with georef_tgn.PREFIXES), the
+    words of its string literals, where `search_params` puts a reading's name,
+    and its TGN ids, not the words of the query's fixed text (SELECT, PREFIX,
+    the vocabularies' addresses). For any other URL every word of its query
+    parameters and of its path, where Global Names Verifier carries a name."""
     parts = urlsplit(url)
-    texts = [unquote(parts.path), *(value for _, value in parse_qsl(parts.query, keep_blank_values=True))]
+    pairs = parse_qsl(parts.query, keep_blank_values=True)
+    if (
+        f"{parts.scheme}://{parts.netloc}{parts.path}" == georef_tgn.SPARQL
+        and [key for key, _ in pairs] == ["query"]
+        and pairs[0][1].startswith(georef_tgn.PREFIXES)
+    ):
+        query = pairs[0][1]
+        texts = [*SPARQL_LITERAL.findall(query), *SPARQL_TGN_ID.findall(query)]
+    else:
+        texts = [unquote(parts.path), *(value for _, value in pairs)]
     return frozenset(word for text in texts for word in re.findall(r"[^\W_]+", _plain(text)))
 
 
 def _without_query(text: str | None, hidden: frozenset[str], limit: int) -> str | None:
-    """`text` on one line, at most `limit` characters, with each of the query's
-    words replaced by "[query]": a word of five characters or more wherever it
-    appears, even run into other words, a shorter one where it stands as a word
-    of its own (so "type" leaves "doctype" whole)."""
+    """A header (`text`) on one line, at most `limit` characters, with each of
+    the query's words replaced by "[query]": a word of five characters or more
+    wherever it appears, even run into other words, a shorter one where it
+    stands as a word of its own (so "type" leaves "doctype" whole)."""
     if not text:
         return None
     plain = _plain(text)
@@ -408,8 +469,9 @@ def _log_unanswered(
     source sent a Retry-After, the attempt the request ended on, and who sent
     the last response that was no answer (`_Sender`: server, via, html_page and
     body, the two headers and the body quoted as JSON strings). Never the
-    query or a parameter, and no word of them in the body, so no specimen
-    text."""
+    query or a parameter: the headers with the query's words (`_query_words`)
+    cut out (`_without_query`), the body only when none of them is in it
+    (`_body_excerpt`)."""
     values = {
         "step": "field_research",
         "source": source_id,
@@ -988,11 +1050,15 @@ class ApprovedSources:
             return _answer(source_id, query, failure.status, note)
         status, places = outcome.status, outcome.places
         if status == LookupStatus.SUCCESS:
+            # One place is a success only from the reconciliation service: the
+            # SPARQL endpoint's search (outcome.fallback) does not match accents
+            # or word stems, so the place the name means may be missing from it
+            # (historical_gazetteers.SPARQL_FOUND_NOTHING).
             status = (
                 LookupStatus.NO_MATCH
                 if not places
                 else LookupStatus.SUCCESS
-                if len(places) == 1
+                if len(places) == 1 and outcome.fallback is None
                 else LookupStatus.AMBIGUOUS
             )
         candidates = tuple(_place(source_id, place) for place in places)
@@ -1320,10 +1386,14 @@ def _place(source_id: str, place: Place) -> SourceCandidate:
 def _searched_instead(name: str, fallback: str | None, note: str) -> str:
     """The note of a Getty TGN search that went through the SPARQL endpoint
     because the reconciliation service refused the request or got no answer
-    (`fallback`): that comes first, then what the search found."""
+    (`fallback`): that comes first, with what that search cannot match, then
+    what the search found."""
     if fallback is None:
         return note
-    return f"{name}'s search {fallback}; searched Getty's SPARQL endpoint instead. {note}"
+    return (
+        f"{name}'s search {fallback}; searched Getty's SPARQL endpoint instead, "
+        f"whose search does not match accents or word stems. {note}"
+    )
 
 
 def _gazetteer_note(
@@ -1334,7 +1404,7 @@ def _gazetteer_note(
     fetched: Sequence[_Fetched],
 ) -> str:
     places = outcome.places
-    if status == LookupStatus.SUCCESS:
+    if status in (LookupStatus.SUCCESS, LookupStatus.AMBIGUOUS) and len(places) == 1:
         return f"{name} has one place for {query!r}: {places[0].name}"
     if status == LookupStatus.AMBIGUOUS and places:
         return f"{name} has {len(places)} places for {query!r}"
@@ -1344,6 +1414,8 @@ def _gazetteer_note(
         return f"{name} has no place for {query!r}"
     if status == LookupStatus.POLICY:
         return f"Nothing was sent to {name}: {outcome.reason or 'the place text was refused'}"
+    if status == LookupStatus.MALFORMED and outcome.unread:
+        return f"{name} found places but its {outcome.unread} reply could not be read"
     if status == LookupStatus.MALFORMED:
         return f"{name}'s answer could not be read" + (
             f": {outcome.reason}" if outcome.reason else ""
