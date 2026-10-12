@@ -195,7 +195,6 @@ void main() {
     tester,
   ) async {
     final semantics = tester.ensureSemantics();
-    addTearDown(semantics.dispose);
     final entry = ManifestEntry(
       digest: 'photo',
       name: 'photo.jpg',
@@ -222,13 +221,13 @@ void main() {
     expect(changed.id, statusId);
     expect(changed.label, 'Uploading photo');
     expect(changed.value, isEmpty);
+    semantics.dispose();
   });
 
   testWidgets(
     'status semantics change once, never on a tick or identical poll',
     (tester) async {
       final semantics = tester.ensureSemantics();
-      addTearDown(semantics.dispose);
       await pumpRow(tester, processing(), reduced: false);
       final finder = find.byKey(const ValueKey('intake-stage-status'));
       final before = tester.getSemantics(finder);
@@ -246,6 +245,7 @@ void main() {
         find.bySemanticsLabel('Read labels: not recorded'),
         findsOneWidget,
       );
+      semantics.dispose();
     },
   );
 
