@@ -1500,6 +1500,33 @@ def _location_proposals(tasks_by_key: Mapping[str, FieldTask],
     return proposals
 
 
+def _usable_location_proposals(run, proposals: Mapping[str, Sequence[_LocationProposal]], *,
+        evidence: Mapping[str, Evidence], received: Mapping[str, Sequence[SourceAnswer]]) -> dict[str, list[_LocationProposal]]:
+    """Usable proposals, excluding one written place name claimed at several levels.
+
+    Reconciliation moves evidence between fields only when the shared lookup
+    proves one administrative level for the label text. A gazetteer answer that
+    contains the same written name as both a province/state and a county is real
+    evidence, but not enough to choose both fields from one label literal.
+    """
+    from .agreement import place_name
+
+    usable: dict[str, list[_LocationProposal]] = {}
+    levels_by_literal: dict[str, set[str]] = {}
+    for key, items in proposals.items():
+        accepted = [proposal for proposal in items
+            if _candidate_fits_existing_chain(run, key, proposal.literal, proposal.candidate,
+                evidence=evidence, received=received)]
+        usable[key] = accepted
+        for proposal in accepted:
+            levels_by_literal.setdefault(place_name(proposal.literal), set()).add(key)
+    ambiguous = {literal for literal, keys in levels_by_literal.items() if len(keys) > 1}
+    if not ambiguous:
+        return usable
+    return {key: [proposal for proposal in items if place_name(proposal.literal) not in ambiguous]
+        for key, items in usable.items()}
+
+
 def _reconcile_location_outcomes(run, tasks_by_key: Mapping[str, FieldTask],
         outcomes: Sequence[FieldOutcome], *, readings: Sequence[Reading],
         received: dict[str, list[SourceAnswer]], evidence: Mapping[str, Evidence],
@@ -1512,7 +1539,8 @@ def _reconcile_location_outcomes(run, tasks_by_key: Mapping[str, FieldTask],
     application sees a resolved outcome for that level.
     """
     by_key = {outcome.key: outcome for outcome in outcomes}
-    proposals = _location_proposals(tasks_by_key, received, readings, by_key)
+    proposals = _usable_location_proposals(run,
+        _location_proposals(tasks_by_key, received, readings, by_key), evidence=evidence, received=received)
     for key in LOCATION_RECONCILE_KEYS:
         task = tasks_by_key.get(key)
         value = run.fields.get(key)
@@ -1521,9 +1549,7 @@ def _reconcile_location_outcomes(run, tasks_by_key: Mapping[str, FieldTask],
                 or (value is not None and value.state == ValueState.SUPPORTED and value.layer in RESEARCHED)
                 or (existing is not None and existing.answer is not None and existing.answer.outcome == "resolved")):
             continue
-        usable = [proposal for proposal in proposals.get(key, ())
-            if _candidate_fits_existing_chain(run, key, proposal.literal, proposal.candidate,
-                evidence=evidence, received=received)]
+        usable = list(proposals.get(key, ()))
         identities = {_proposal_identity(proposal) for proposal in usable}
         if len(identities) != 1:
             continue

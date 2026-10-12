@@ -666,6 +666,55 @@ def test_state_line_misplaced_as_country_is_recovered_and_country_is_derived(tmp
     assert "country = United States (tgn:United States)" in derived.excerpt
 
 
+class DavaoAtTwoLevels(FakeSources):
+    """A gazetteer answer with the same written name at two admin levels."""
+
+    FIRST = "states (political divisions), first level subdivisions (political entities)"
+    SECOND = "counties, second level subdivisions (political entities)"
+
+    def _answer(self, source_id, query):
+        answer = super()._answer(source_id, query)
+        if source_id != "tgn" or query != "Davao":
+            return answer
+        candidates = (
+            SourceCandidate("Davao", "tgn:DavaoProvince", self.FIRST, "in Philippines",
+                (PlaceRef("Philippines", "tgn:Philippines"),)),
+            SourceCandidate("Davao", "tgn:DavaoCounty", self.SECOND, "in Davao, Philippines",
+                (PlaceRef("Davao", "tgn:DavaoProvince"), PlaceRef("Philippines", "tgn:Philippines"))),
+        )
+        evidence = answer.evidence.model_copy(update={"kind": "authority", "locator": "tgn:Davao",
+            "excerpt": "\n".join(f"{c.name} | {c.authority_id} | {c.kind} | {c.detail}" for c in candidates)})
+        return SourceAnswer("tgn", query, LookupStatus.AMBIGUOUS, candidates, evidence, note="ambiguous")
+
+
+def test_location_reconciliation_keeps_same_literal_cross_level_ambiguity_reviewable(tmp_path):
+    text = label_with(country="Davao", province_state=None, county=None, city=None)
+    candidates = [
+        *COLLECTORS,
+        *(("country", name, "Davao", "country: Davao") for name in ("1A", "1B")),
+    ]
+    rig = build_rig(tmp_path, text, candidates=candidates)
+
+    async def country_lookup_finds_two_levels(task, readings, tools):
+        answer = await tools.lookup("tgn", "Davao", field_key=task.key)
+        return FieldOutcome(task.key, FieldAnswer(outcome="sources_cannot_resolve", literal="Davao",
+            reading_names=["1A"], source_evidence_ids=[answer.evidence.id],
+            explanation="Davao is found at more than one location level."),
+            evidence=[answer.evidence], model_calls=1)
+
+    settle(rig, Scripted({
+        "country": country_lookup_finds_two_levels,
+        "province_state": LACKING,
+        "county": LACKING,
+        "city": LACKING,
+    }), tools=DavaoAtTwoLevels(rig.blobs))
+    fields = rig.specimen.run.fields
+    assert (fields["country"].state, fields["country"].literal) == (ValueState.UNRESOLVED, "Davao")
+    assert fields["province_state"].state != ValueState.SUPPORTED
+    assert fields["county"].state != ValueState.SUPPORTED
+    assert rig.specimen.run.disposition == Disposition.REVIEW
+
+
 def test_location_reconciliation_reclassifies_shared_place_evidence(tmp_path):
     text = label_with(country="Illinois", province_state="Cook", county=None, city="Chicago")
     candidates = [
