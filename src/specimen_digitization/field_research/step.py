@@ -556,6 +556,14 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending, r
         for key in PLACE_ORDER:
             texts = places[key].get(reading.name, frozenset())
             value = run.fields.get(key)
+            if (key != task.key and key not in pending and value is not None
+                    and value.state == ValueState.SUPPORTED and value.layer == "derived"):
+                names = (*(text for text in (value.literal, value.normalized, value.parsed) if text),
+                    *_expansions(key, value, rows))
+                code = _record_code(value, (received or {}).get(key, ())) if key == "country" else None
+                if names or value.authority_id or code:
+                    settled[key] = PlaceField(tuple(dict.fromkeys(names)), value.authority_id, code)
+                    continue
             if (transcript_code(key) in codes and key not in pending and value is not None
                     and value.state == ValueState.SUPPORTED and value.literal
                     and verbatim_runs(reading.text, value.literal)):
@@ -947,22 +955,28 @@ def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, b
             reason = _timeout_reason(run)
         return _unsettled(task, ValueState.UNRESOLVED, literal=current.literal, cited=cited, reason=reason)
     if answer.outcome == "resolved":
-        refused = _refusal(task, answer, readings=readings, by_name=by_name, sources=sources)
-        if refused is not None:
-            decision["refusal"] = refusal_code(refused.reason)
-            # A pick between readers no source settles is ambiguous; a value no
-            # decided transcript or place source supports is unresolved.
-            if refused.differ:
-                return _unsettled(task, ValueState.AMBIGUOUS, cited=cited,
+        reconciled = outcome.finalized_without_model and answer.explanation.startswith(
+            "Resolved by location reconciliation:")
+        if not reconciled:
+            refused = _refusal(task, answer, readings=readings, by_name=by_name, sources=sources)
+            if refused is not None:
+                decision["refusal"] = refusal_code(refused.reason)
+                # A pick between readers no source settles is ambiguous; a value no
+                # decided transcript or place source supports is unresolved.
+                if refused.differ:
+                    return _unsettled(task, ValueState.AMBIGUOUS, cited=cited,
+                        reason=f"{refused.reason} {answer.explanation}")
+                return _unsettled(task, ValueState.UNRESOLVED, literal=current.literal, cited=cited,
                     reason=f"{refused.reason} {answer.explanation}")
-            return _unsettled(task, ValueState.UNRESOLVED, literal=current.literal, cited=cited,
-                reason=f"{refused.reason} {answer.explanation}")
-        misfit = _misfit(run, task, answer, sources=sources, readings=readings, by_name=by_name,
-            places=places, pending=pending, received=received)
-        if misfit is not None:
-            decision["refusal"] = refusal_code(misfit.reason)
-            return _unsettled(task, ValueState.UNRESOLVED, literal=current.literal, cited=cited,
-                reason=f"{misfit.reason} {answer.explanation}")
+        if not reconciled:
+            misfit = _misfit(run, task, answer, sources=sources, readings=readings, by_name=by_name,
+                places=places, pending=pending, received=received)
+            if misfit is not None:
+                decision["refusal"] = refusal_code(misfit.reason)
+                return _unsettled(task, ValueState.UNRESOLVED, literal=current.literal, cited=cited,
+                    reason=f"{misfit.reason} {answer.explanation}")
+        else:
+            decision["rule"] = "location_reconciliation"
         settled = _settled(run, task, outcome, by_name=by_name, evidence=evidence, asset_id=asset_id,
             blobs=blobs, date_rules=date_rules)
         if settled is not None:
@@ -1367,6 +1381,212 @@ def _apply_answers(run, tasks_by_key: Mapping[str, FieldTask], ordered: Sequence
     return applied, added
 
 
+LOCATION_RECONCILE_KEYS = ("country", "province_state", "county", "city")
+
+
+@dataclass(frozen=True)
+class _LocationProposal:
+    key: str
+    literal: str
+    reading_names: tuple[str, ...]
+    source_key: str
+    answer: SourceAnswer
+    candidate: object
+
+
+def _readings_for_literal(task: FieldTask, readings: Sequence[Reading], literal: str) -> tuple[str, ...]:
+    """The readings that write ``literal`` for a location reconciliation:
+    prefer organiser candidates, then transcript text."""
+    from .agreement import place_name
+
+    candidate_readings = [c.reading for c in task.candidates if place_name(c.literal) == place_name(literal)]
+    if candidate_readings:
+        return tuple(dict.fromkeys(candidate_readings))
+    return tuple(reading.name for reading in readings if literal in reading.text)
+
+
+def _location_literals(task: FieldTask, readings: Sequence[Reading]) -> list[tuple[str, tuple[str, ...]]]:
+    """Distinct place strings a field brought to the shared location pool."""
+    from .agreement import place_name
+
+    found: dict[str, tuple[str, tuple[str, ...]]] = {}
+    for candidate in task.candidates:
+        if candidate.literal and candidate.literal.strip():
+            key = place_name(candidate.literal)
+            found.setdefault(key, (candidate.literal, _readings_for_literal(task, readings, candidate.literal)))
+    if task.current.literal and task.current.literal.strip():
+        key = place_name(task.current.literal)
+        found.setdefault(key, (task.current.literal, _readings_for_literal(task, readings, task.current.literal)))
+    return [item for item in found.values() if item[1]]
+
+
+def _proposal_identity(proposal: _LocationProposal) -> tuple[str, tuple[str, ...]]:
+    from .agreement import place_name
+
+    candidate = proposal.candidate
+    return (place_name(candidate.name), tuple(place_name(parent.name) for parent in candidate.parents))
+
+
+def _field_place(run, key: str, value: FieldValue, evidence: Mapping[str, Evidence],
+        received: Mapping[str, Sequence[SourceAnswer]]):
+    """A supported place value as agreement.lies_in compares it."""
+    from .agreement import PlaceField
+
+    if value.state != ValueState.SUPPORTED or value.layer not in RESEARCHED:
+        return None
+    rows = {item.id: item for item in run.evidence}
+    names = tuple(dict.fromkeys(text for text in (
+        value.literal, value.normalized, value.parsed, *_expansions(key, value, rows)) if text))
+    if not names and not value.authority_id:
+        return None
+    code = _record_code(value, received.get(key, ())) if key == "country" else None
+    return PlaceField(names, value.authority_id, code)
+
+
+def _candidate_fits_existing_chain(run, key: str, literal: str, candidate, *,
+        evidence: Mapping[str, Evidence], received: Mapping[str, Sequence[SourceAnswer]]) -> bool:
+    """Whether a proposal conflicts with already-supported or explicitly
+    written larger places. Unsupported larger literals may be the same
+    misplaced text, or one of the candidate's parents; otherwise they keep the
+    field reviewable."""
+    from .agreement import PLACE_ORDER, lies_in, place_name
+
+    ancestors = PLACE_ORDER[:PLACE_ORDER.index(key)]
+    parent_names = {place_name(parent.name) for parent in candidate.parents}
+    for ancestor in ancestors:
+        value = run.fields.get(ancestor)
+        if value is None:
+            continue
+        if (field := _field_place(run, ancestor, value, evidence, received)) is not None:
+            if not lies_in(candidate, ancestor, field):
+                return False
+            continue
+        if value.literal and value.state != ValueState.NOT_PRESENT:
+            written = place_name(value.literal)
+            if written != place_name(literal) and written not in parent_names:
+                return False
+    return True
+
+
+def _location_proposals(tasks_by_key: Mapping[str, FieldTask],
+        received: Mapping[str, Sequence[SourceAnswer]], readings: Sequence[Reading],
+        outcomes_by_key: Mapping[str, FieldOutcome]) -> dict[str, list[_LocationProposal]]:
+    """Source-confirmed place interpretations pooled across location fields."""
+    from .agreement import about, placed, place_name
+
+    proposals: dict[str, list[_LocationProposal]] = {key: [] for key in LOCATION_RECONCILE_KEYS}
+    for source_key in LOCATION_RECONCILE_KEYS:
+        source_outcome = outcomes_by_key.get(source_key)
+        if (source_outcome is not None and source_outcome.answer is not None
+                and source_outcome.answer.outcome == "resolved"):
+            continue
+        task = tasks_by_key.get(source_key)
+        if task is None:
+            continue
+        literals = _location_literals(task, readings)
+        for answer in received.get(source_key, ()):
+            if answer.evidence is None:
+                continue
+            for literal, names in literals:
+                if not about(answer, literal):
+                    continue
+                for key in LOCATION_RECONCILE_KEYS:
+                    if key == source_key:
+                        continue
+                    candidate = placed(key, answer)
+                    if candidate is None or place_name(candidate.name) != place_name(literal):
+                        continue
+                    proposals[key].append(_LocationProposal(key, literal, names, source_key, answer, candidate))
+    return proposals
+
+
+def _answer_levels_for_literal(answer: SourceAnswer, literal: str) -> set[str]:
+    """Location levels one source answer confirms for the written literal."""
+    from .agreement import place_name, placed
+
+    levels: set[str] = set()
+    literal_name = place_name(literal)
+    for key in LOCATION_RECONCILE_KEYS:
+        candidate = placed(key, answer)
+        if candidate is not None and place_name(candidate.name) == literal_name:
+            levels.add(key)
+    return levels
+
+
+def _usable_location_proposals(run, proposals: Mapping[str, Sequence[_LocationProposal]], *,
+        evidence: Mapping[str, Evidence], received: Mapping[str, Sequence[SourceAnswer]]) -> dict[str, list[_LocationProposal]]:
+    """Usable proposals, excluding one written place name claimed at several levels.
+
+    Reconciliation moves evidence between fields only when the shared lookup
+    proves one administrative level for the label text. A gazetteer answer that
+    contains the same written name as both a province/state and a county is real
+    evidence, but not enough to choose either synthesized field from one label
+    literal. The ambiguity check includes the source field's level too, because
+    source-level candidates are intentionally not synthesized back to themselves.
+    """
+    from .agreement import place_name
+
+    usable: dict[str, list[_LocationProposal]] = {}
+    levels_by_literal: dict[str, set[str]] = {}
+    ambiguous: set[str] = set()
+    for key, items in proposals.items():
+        accepted = [proposal for proposal in items
+            if _candidate_fits_existing_chain(run, key, proposal.literal, proposal.candidate,
+                evidence=evidence, received=received)]
+        usable[key] = accepted
+        for proposal in accepted:
+            literal = place_name(proposal.literal)
+            answer_levels = _answer_levels_for_literal(proposal.answer, proposal.literal)
+            if len(answer_levels) > 1:
+                ambiguous.add(literal)
+            levels_by_literal.setdefault(literal, set()).add(key)
+    ambiguous.update(literal for literal, keys in levels_by_literal.items() if len(keys) > 1)
+    if not ambiguous:
+        return usable
+    return {key: [proposal for proposal in items if place_name(proposal.literal) not in ambiguous]
+        for key, items in usable.items()}
+
+
+def _reconcile_location_outcomes(run, tasks_by_key: Mapping[str, FieldTask],
+        outcomes: Sequence[FieldOutcome], *, readings: Sequence[Reading],
+        received: dict[str, list[SourceAnswer]], evidence: Mapping[str, Evidence],
+        human: frozenset[str]) -> tuple[FieldOutcome, ...]:
+    """Project shared location evidence back into the field outcomes.
+
+    The field experts still gather and check source evidence, but source
+    answers about a location string are shared: if the answer uniquely proves
+    the string belongs at another administrative level, the normal field
+    application sees a resolved outcome for that level.
+    """
+    by_key = {outcome.key: outcome for outcome in outcomes}
+    proposals = _usable_location_proposals(run,
+        _location_proposals(tasks_by_key, received, readings, by_key), evidence=evidence, received=received)
+    for key in LOCATION_RECONCILE_KEYS:
+        task = tasks_by_key.get(key)
+        value = run.fields.get(key)
+        existing = by_key.get(key)
+        if (task is None or key in human
+                or (value is not None and value.state == ValueState.SUPPORTED and value.layer in RESEARCHED)
+                or (existing is not None and existing.answer is not None and existing.answer.outcome == "resolved")):
+            continue
+        usable = list(proposals.get(key, ()))
+        identities = {_proposal_identity(proposal) for proposal in usable}
+        if len(identities) != 1:
+            continue
+        proposal = usable[0]
+        answer = FieldAnswer(outcome="resolved", literal=proposal.literal,
+            reading_names=list(proposal.reading_names),
+            value=proposal.candidate.name if proposal.candidate.name != proposal.literal else None,
+            authority_id=proposal.candidate.authority_id,
+            source_evidence_ids=[proposal.answer.evidence.id],
+            explanation=("Resolved by location reconciliation: the shared location lookup identified "
+                f"this label text as {key.replace('_', ' ')}."))
+        by_key[key] = FieldOutcome(key, answer, evidence=[proposal.answer.evidence],
+            finalized_without_model=True)
+        received.setdefault(key, []).append(proposal.answer)
+    return tuple(by_key.get(outcome.key, outcome) for outcome in outcomes)
+
+
 def _first_pass(run, tasks_by_key: Mapping[str, FieldTask], ordered: Sequence[FieldOutcome],
         **common) -> dict[str, FieldValue]:
     """What this attempt's answers settle before the guard on text another
@@ -1444,6 +1664,8 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     received: dict[str, list[SourceAnswer]] = {}
     for call in calls:
         received.setdefault(call.field_key, []).append(call.answer)
+    outcomes = _reconcile_location_outcomes(run, tasks_by_key, outcomes, readings=readings,
+        received=received, evidence=evidence, human=human)
     # The places first, from the country down: a place below it settles only
     # inside the country (and province) settled before it (_misfit).
     ordered = sorted(outcomes, key=lambda o: PLACE_ORDER.index(o.key) if o.key in PLACE_ORDER else len(PLACE_ORDER))
@@ -1465,7 +1687,7 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     repeated = _repeats_a_place(run, tasks_by_key, applied, added, readings, evidence=evidence,
         decisions=decisions)
     eligible = [key for key in field_keys(profile) if key not in human]
-    derived = derive.fill(run, eligible=eligible, asset_id=asset_id, blobs=blobs)
+    derived = derive.fill(run, eligible=eligible, asset_id=asset_id, blobs=blobs, received=received)
     for key in derived:
         decisions.setdefault(key, {})["rule"] = "derived"
     # Last, so that a value derived above is never marked absent.

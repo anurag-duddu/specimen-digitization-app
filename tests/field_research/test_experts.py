@@ -1060,6 +1060,7 @@ def test_the_shared_brief_has_the_expert_stop_when_the_sources_have_answered():
     assert "Keep going until" not in text
     assert 'try its abbreviations written out ("<Name> Province" for "<Name> Prov.")' in text
     assert 'about the unit written out ("<Name> Province, <Country>")' in instructions("province_state")
+    assert "the state line is this field's literal" in instructions("province_state")
     assert "Then stop and answer: when the sources have answered what they can" in text
     assert "the same name with other larger units after it is the same lookup" in text
     assert "when a tool result says to answer now, answer" in text

@@ -69,6 +69,11 @@ Organise what the readings state into field-value candidates:
   to be filled because it is listed. Put text only under the kind of field it
   is: a place name under a place field, a person's name under collectors, a date
   under a date field; a code, number or mark that is none of these under none.
+  For places, keep the administrative level: a country is a nation, a
+  province_state is a first-level unit such as a state, province or department,
+  a county is a second-level unit such as a county or district, and a city is
+  an inhabited place. Do not shift a state into country just because the label
+  omits the country.
   identified_by_irn is the number of a record in another system and no label
   states it: give no candidate for it.
 - Where a field is stated, give a candidate for each reading that states it.
