@@ -73,10 +73,24 @@ Future<void> pumpManifest(
     ),
   ),
   size: size,
+  reduceMotion: true,
 );
 
 void main() {
-  group('the Intake queue states each draw their own chip', () {
+  group('the Intake queue states each name their progress', () {
+    const labels = <UploadState, String>{
+      UploadState.ready: 'Waiting to upload',
+      UploadState.checking: 'Checking photo',
+      UploadState.uploading: 'Uploading photo',
+      UploadState.accepted: 'Waiting to start',
+      UploadState.processing: 'Checking processing status',
+      UploadState.inMainQueue: 'In main Queue',
+      UploadState.processingBlocked: 'Needs attention',
+      UploadState.duplicate: 'Already in collection',
+      UploadState.interrupted: 'Needs attention',
+      UploadState.skipped: 'Not uploaded',
+      UploadState.failed: 'Needs attention',
+    };
     for (final UploadState state in UploadState.values) {
       testWidgets('${state.name} renders as "${state.label}"', (
         WidgetTester tester,
@@ -89,7 +103,7 @@ void main() {
         expect(
           find.descendant(
             of: find.byType(IntakeManifestRow),
-            matching: find.text(state.label),
+            matching: find.text(labels[state]!),
           ),
           findsOneWidget,
         );
@@ -108,7 +122,9 @@ void main() {
     expect(ring.value, closeTo(0.42, 0.0001));
   });
 
-  testWidgets('no other state draws a ring', (WidgetTester tester) async {
+  testWidgets('no other state claims a measured fraction', (
+    WidgetTester tester,
+  ) async {
     for (final UploadState state in UploadState.values.where(
       (UploadState s) => s != UploadState.uploading,
     )) {
@@ -116,8 +132,10 @@ void main() {
         entryIn(state, progress: 0.42),
       ]);
       expect(
-        find.byType(UiProgress),
-        findsNothing,
+        tester
+            .widgetList<UiProgress>(find.byType(UiProgress))
+            .where((indicator) => indicator.value != null),
+        isEmpty,
         reason: '${state.name} must not claim a measured fraction',
       );
     }
@@ -134,7 +152,7 @@ void main() {
       ),
     ]);
     expect(find.text('huge.tif'), findsOneWidget);
-    expect(find.text('Skipped'), findsOneWidget);
+    expect(find.text('Not uploaded'), findsOneWidget);
     expect(find.text('This file is over 25 MB.'), findsOneWidget);
     // The reason belongs to the file, not to a screen level banner.
     expect(

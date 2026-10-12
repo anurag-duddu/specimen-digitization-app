@@ -11,6 +11,7 @@ import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/screens/intake/intake_transfer_session.dart';
 import 'package:specimen_digitization/src/screens/intake/manifest_entry.dart';
 import 'package:specimen_digitization/src/screens/intake/manifest_panel.dart';
+import 'package:specimen_digitization/src/screens/intake/stage_progress.dart';
 import 'package:specimen_digitization/src/widgets/upload_item.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
@@ -97,6 +98,43 @@ Future<void> _pumpRecovery(
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
+
+  test(
+    'polled milestones reach the track and survive a processing hold',
+    () async {
+      Json current = <String, dynamic>{
+        ..._summary(status: 'running'),
+        'intake_progress': <String, dynamic>{
+          'next_step': 'transcribe',
+          'completed_stages': <String>['segment'],
+        },
+      };
+      final repository = _repository((request) async {
+        expect(request.method, 'GET');
+        expect(request.url.path, _detail);
+        return _response(current);
+      });
+      final session = _session(repository);
+      await session.refreshProcessingStatuses();
+      var progress = IntakeProgress.of(session.entries.single);
+      expect(progress.label, 'Reading the label');
+      expect(progress.states[IntakeStage.segment.index], IntakeStageState.done);
+      current = <String, dynamic>{
+        ...current,
+        'status': 'processing_blocked',
+        'revision': 3,
+      };
+      await session.refreshProcessingStatuses();
+      progress = IntakeProgress.of(session.entries.single);
+      expect(progress.label, 'Needs attention');
+      expect(
+        progress.states[IntakeStage.read.index],
+        IntakeStageState.attention,
+      );
+      expect(progress.states[IntakeStage.segment.index], IntakeStageState.done);
+      session.close();
+    },
+  );
 
   test(
     'Intake reads authoritative actions without a workspace or mutation',
