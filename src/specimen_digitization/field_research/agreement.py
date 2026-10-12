@@ -352,14 +352,15 @@ def _in_a_range(line: str, start: int, end: int) -> bool:
     or an approximate marker allowed between a number and the joiner), and
     the span does not hold both its ends (the whole range); or a word of two
     numbers joined by a dash or a "/" (written.glued_range: "10-12") stands
-    right before or after the span ("Sept. 1946" of "10-12 Sept. 1946")."""
+    right before or after the span ("Sept. 1946" of "10-12 Sept. 1946").
+    Either is written alike with the span (written.part_of_a_range): a range
+    of another kind is another field's ("24.IV.1948" of "24.IV.1948 10-12
+    h", "1200 m" of "1200 m 10-12 Sept. 1946"). The clause's words are its
+    line's words cut at its comma or semicolon, so the word that ends in it
+    stays in it ("V-2-48" of "IV-24-48 to V-2-48, Yepocapa")."""
     first, last = _clause(line, start, end)
-    spans = written.pieces(line, [(a, b) for a, b in _words(line) if first <= a and b <= last])
-    for found in written.ranges(line, spans):
-        if not found.glued and not (start <= found.start and found.end <= end):
-            return True
-    beside = [(a, b) for a, b in spans if b <= start][-1:] + [(a, b) for a, b in spans if a >= end][:1]
-    return any(written.glued_range(line[a:b]) for a, b in beside)
+    spans = written.pieces(line, [(max(a, first), min(b, last)) for a, b in _words(line) if a < last and b > first])
+    return written.part_of_a_range(line, spans, start, end)
 
 
 def _edges(line: str) -> tuple[frozenset[int], frozenset[int]]:
@@ -585,11 +586,14 @@ def _holds_another_kind(task: FieldTask, literal: str) -> Refusal | None:
     2), whether or not another field's expert claimed that text: an
     elevation ("Yepocapa, 4800ft."), a date the date parser reads
     ("IV-24-48" as the collection code) or a range of dates or elevations.
-    A distance ("500 m N of the bridge") is no elevation. None otherwise,
-    and for any other field."""
+    A distance ("500 m N of the bridge", "200 m upstream of the ford") is no
+    elevation, and in a place, a number right after a road, km, hill, farm
+    or estate word is part of the place, no date ("Hill <yyyy>", "km
+    <yyyy>"; written.PLACE_WORDS); in the collection code it is still a date.
+    None otherwise, and for any other field."""
     if task.key not in NO_DATES_OR_ELEVATIONS:
         return None
-    found = written.other_kind(literal)
+    found = written.other_kind(literal, place=task.key != "collection_code")
     if found is None:
         return None
     kind, text = found
