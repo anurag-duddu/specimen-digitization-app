@@ -217,7 +217,7 @@ class Workflow:
         if run.stage in {"finalized", "paused", "cancelled", "processing_blocked"}:
             return specimen
         revision = specimen.version
-        from .human_field_carry import KEY as CARRY_KEY, verify as verify_carries
+        from .human_field_carry import KEY as CARRY_KEY, REGIONS as CARRY_REGIONS, verify as verify_carries
         if run.dependencies.get(CARRY_KEY) or any(e.kind == "ordinary_human_field_carry" for e in run.evidence):
             try:
                 # specimen is still the authoritative persisted base here; later
@@ -465,7 +465,8 @@ class Workflow:
         try:
             if step == "pin_dependencies":
                 retained_carries = copy.deepcopy(run.dependencies.get(CARRY_KEY, {}))
-                run.dependencies = (
+                retained_regions = copy.deepcopy(run.dependencies.get(CARRY_REGIONS))
+                pinned = (
                     self.adapters.pin_dependencies(run)
                     if hasattr(self.adapters, "pin_dependencies")
                     else {
@@ -473,10 +474,16 @@ class Workflow:
                         "synthetic": run.profile.synthetic,
                     }
                 )
-                if CARRY_KEY in run.dependencies and run.dependencies[CARRY_KEY] != retained_carries:
+                # Checked before the pins replace anything: a block saves the
+                # run, and must keep the carries and the regions lineage intact.
+                if (CARRY_KEY in pinned and pinned[CARRY_KEY] != retained_carries
+                        or CARRY_REGIONS in pinned):
                     raise OperationalBlock("preserved_human_field_provenance_unavailable")
+                run.dependencies = pinned
                 if retained_carries:
                     run.dependencies[CARRY_KEY] = retained_carries
+                if retained_regions is not None:
+                    run.dependencies[CARRY_REGIONS] = retained_regions
                 if self.classifier is not None and hasattr(self.classifier, "pin"):
                     run.dependencies["classifier"] = self.classifier.pin(run)
                 run.dependencies["authority_pins"] = self.authority_pins()
