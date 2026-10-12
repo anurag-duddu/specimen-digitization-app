@@ -1,4 +1,4 @@
-Field: County (county). The country's second-level administrative unit where the specimen was collected, as the labels write it: a county, or the unit the country's local government holds at that level instead (a municipio, a municipality, a district).
+Field: County (county). The country's second-level administrative unit where the specimen was collected, as the labels write it: a county, or whatever unit the country's local government holds at that level instead (a municipio, where that is the second level).
 
 Your sources: lookup with tgn (Getty Thesaurus of Geographic Names), wikidata or nga (the US gazetteer of foreign names). A query is place words only, comma separated, from the county out to its country ("<County>, <State>, <Country>"). The gazetteers search the first name of a query and return its parents. Never send collectors, dates, elevations, numbers or whole label text.
 - If a source cannot be reached (an error status and no evidence_id), decide with the sources that answered when they settle the field under these rules, and say in the explanation which source did not answer.

@@ -17,15 +17,15 @@ CLASS_READS more requests, the subclass chains of its places' classes, and a
 place whose chains reach Wikidata's second-level administrative division
 (and not its first-level one) has that class among its kinds
 (ApprovedSources._levels); that answer is cached apart from other fields'
-answers to the same query. When Getty TGN's reconciliation service refuses a request
-or cannot be reached, TGN is searched through Getty's SPARQL endpoint instead
-(historical_gazetteers), and the note says so and that this search does not
-match accents or word stems; its answer is then never a success, and a search
-that found nothing is ambiguous, never no match. Each request a source leaves
-unanswered is logged in one WARNING line with its source, host and HTTP status
-or error, and who sent the response (its Server and Via headers with the
-query's words cut out, whether it is an HTML page, the start of its body
-unless a word of the query is in it), never its query.
+answers to the same query. When Getty TGN's reconciliation service refuses a
+request or cannot be reached, TGN is searched through Getty's SPARQL endpoint
+instead (historical_gazetteers), and the note says so and that this search
+does not match accents or word stems; its answer is then never a success, and
+a search that found nothing is ambiguous, never no match. Each request a
+source leaves unanswered is logged in one WARNING line with its source, host
+and HTTP status or error, and who sent the response (its Server and Via
+headers with the query's words cut out, whether it is an HTML page, the start
+of its body unless a word of the query is in it), never its query.
 """
 
 from __future__ import annotations
@@ -196,7 +196,7 @@ def cache_key(source_id: str, query: str, field_key: str) -> str:
     object with sorted keys, and its field too, because geolocate_verdict
     checks the claimed value against the field. A county's Wikidata query
     carries its field too: only its answer reads the classes' levels
-    (`levels`)."""
+    (ApprovedSources._levels)."""
     text = query
     if source_id == "geolocate":
         try:
@@ -722,7 +722,8 @@ class ApprovedSources:
     field's place out to its country, or the JSON interpretation itself
     (`interpretation`); a "tgn", "wikidata" or "nga" query is a place name,
     searched up to its first comma (`place_name`). A county's Wikidata
-    answer also names the second-level unit among its places (`_levels`).
+    answer also gives each place its classes put at the second level that
+    level's kind (`_levels`).
 
     `blobs` is the application's blob store (application.storage.BlobStore),
     `client` the AsyncClient every request goes through. `place_text` is the

@@ -2355,7 +2355,7 @@ def test_the_county_brief_settles_the_countrys_second_level_unit():
     assert "A municipality, a city, an island or a province is not a county" not in brief
     assert "Most labels outside the United States name no county" not in brief
     assert brief.startswith(". The country's second-level administrative unit")
-    assert "(a municipio, a municipality, a district)" in brief
+    assert "(a municipio, where that is the second level)" in brief
     [level] = [line for line in brief.splitlines() if line.startswith("- The level comes from the sources")]
     assert all(kind in level for kind in ('"second level subdivisions (political entities)"', "A.ADM2",
                                           '"second-level administrative division"'))
