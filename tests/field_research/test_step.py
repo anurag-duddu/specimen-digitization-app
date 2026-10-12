@@ -687,6 +687,51 @@ class DavaoAtTwoLevels(FakeSources):
         return SourceAnswer("tgn", query, LookupStatus.AMBIGUOUS, candidates, evidence, note="ambiguous")
 
 
+class LiveIllinoisSources(FakeSources):
+    """The live Illinois trace shape: TGN refused, Wikidata was ambiguous, but
+    its candidates and the other location text identify Illinois and Clark County."""
+
+    CLARKS = ("Nevada", "Washington", "Idaho", "Wisconsin", "Arkansas", "Indiana", "Illinois")
+
+    def _authority(self, source_id, query, candidates):
+        raw = json.dumps({"source": source_id, "query": query}).encode()
+        ref, sha = self.blobs.put(raw), hashlib.sha256(raw).hexdigest()
+        evidence = Evidence(kind="authority", source=source_id, locator=None,
+            excerpt="\n".join(f"{c.name} | {c.authority_id} | {c.kind} | {c.detail or ''}" for c in candidates),
+            raw_ref=ref, digest=sha)
+        return SourceAnswer(source_id, query, LookupStatus.AMBIGUOUS, tuple(candidates), evidence, note="ambiguous")
+
+    def _answer(self, source_id, query):
+        if source_id == "tgn":
+            return SourceAnswer("tgn", query, LookupStatus.AUTHORIZATION, (), None,
+                note="Getty TGN refused the request with HTTP 403")
+        if source_id == "wikidata" and query == "ILLINOIS":
+            return self._authority(source_id, query, (
+                SourceCandidate("Illinois", "wikidata:Q1204", "U.S. state",
+                    "in United States; valid from 1818-12-03", (PlaceRef("United States", "wikidata:Q30"),)),
+                SourceCandidate("Illinois", "wikidata:synthetic-university", "public university",
+                    "in United States", (PlaceRef("United States", "wikidata:Q30"),)),
+            ))
+        if source_id == "wikidata" and query == "Clark County, Illinois, United States":
+            candidates = tuple(SourceCandidate("Clark County", f"wikidata:synthetic-clark-{state.casefold()}",
+                    f"county of {state}, second-level administrative division",
+                    f"in {state}, United States; valid from 1819",
+                    (PlaceRef(state, f"wikidata:synthetic-{state.casefold()}"),
+                        PlaceRef("United States", "wikidata:Q30")))
+                for state in self.CLARKS)
+            return self._authority(source_id, query, candidates)
+        return super()._answer(source_id, query)
+
+
+def unresolved_lookup(source_id, query, literal, explanation):
+    async def script(task, readings, tools):
+        answer = await tools.lookup(source_id, query, field_key=task.key)
+        return FieldOutcome(task.key, FieldAnswer(outcome="sources_cannot_resolve", literal=literal,
+            reading_names=["1A"], source_evidence_ids=[answer.evidence.id],
+            explanation=explanation), evidence=[answer.evidence], model_calls=1)
+    return script
+
+
 def test_location_reconciliation_keeps_same_literal_cross_level_ambiguity_reviewable(tmp_path):
     text = label_with(country="Davao", province_state=None, county=None, city=None)
     candidates = [
@@ -742,6 +787,47 @@ def test_location_reconciliation_counts_the_source_field_level_when_literal_is_a
     assert fields["county"].state != ValueState.SUPPORTED
     assert fields["country"].state != ValueState.SUPPORTED
     assert rig.specimen.run.disposition == Disposition.REVIEW
+
+
+def test_live_illinois_reconciliation_recovers_state_county_and_city(tmp_path):
+    places = {
+        "country": "ILLINOIS",
+        "province_state": "ILLINOIS",
+        "county": "Clark County",
+        "city": "Rocky Branch",
+        "precise_location": "Rocky Branch",
+    }
+    candidates = every_field(*((
+        key, name, literal, f"{key}: {literal}") for key, literal in places.items() for name in ("1A", "1B")))
+    rig = build_rig(tmp_path, label_with(**places), candidates=candidates)
+    run = rig.specimen.run
+
+    settle(rig, Scripted({
+        "country": unresolved_lookup("wikidata", "ILLINOIS", "ILLINOIS", "Illinois is a state, not a country."),
+        "province_state": unresolved_lookup("wikidata", "ILLINOIS", "ILLINOIS",
+            "The source answer needs field-level reconciliation."),
+        "county": unresolved_lookup("wikidata", "Clark County, Illinois, United States", "Clark County",
+            "Several Clark Counties share the name."),
+        "city": from_tgn("Rocky Branch, Clark, Illinois, United States", "Rocky Branch", None,
+            "geolocate:Rocky Branch, Clark, Illinois, United States", source="geolocate"),
+        "precise_location": from_tgn("Rocky Branch, Clark, Illinois, United States", "Rocky Branch", None,
+            "geolocate:Rocky Branch, Clark, Illinois, United States", source="geolocate"),
+    }), tools=LiveIllinoisSources(rig.blobs))
+
+    fields = run.fields
+    assert (fields["province_state"].state, fields["province_state"].literal,
+        fields["province_state"].normalized, fields["province_state"].authority_id) == (
+            ValueState.SUPPORTED, "ILLINOIS", "Illinois", "wikidata:Q1204")
+    assert (fields["county"].state, fields["county"].literal, fields["county"].authority_id) == (
+        ValueState.SUPPORTED, "Clark County", "wikidata:synthetic-clark-illinois")
+    assert (fields["country"].state, fields["country"].literal, fields["country"].parsed,
+        fields["country"].authority_id, fields["country"].layer, fields["country"].derived_from) == (
+            ValueState.SUPPORTED, None, "United States", "wikidata:Q30", "derived", ["province_state"])
+    assert (fields["city"].state, fields["city"].literal,
+        fields["city"].authority_id) == (
+            ValueState.SUPPORTED, "Rocky Branch", "geolocate:Rocky Branch, Clark, Illinois, United States")
+    assert not any(agreement.NO_COUNTRY in (fields[key].reason or "")
+        for key in ("province_state", "county", "city", "precise_location"))
 
 
 def test_location_reconciliation_reclassifies_shared_place_evidence(tmp_path):
@@ -1932,8 +2018,9 @@ UNSETTLED_COUNTY = {"outcome": "sources_cannot_resolve", "literal": "Cook", "rea
 @pytest.mark.parametrize("county", [None, UNSETTLED_COUNTY])
 def test_one_source_down_among_several_settles_from_the_others_and_names_it(rig, county):
     """Getty TGN never answers; Wikidata does. The places settle on Wikidata
-    under the same rules, each reason naming TGN, and an unresolved county goes
-    to review with its reason instead of blocking the record."""
+    under the same rules, each reason naming TGN. A county whose expert gives up
+    still self-resolves from its captured Wikidata evidence when the hierarchy
+    leaves only one place."""
     run = rig.specimen.run
     blocker = settle(rig, place_experts(county), tools=TgnDown(rig.blobs))
     assert blocker is None and (run.stage, run.blocker) == ("finalized", None)
@@ -1945,9 +2032,11 @@ def test_one_source_down_among_several_settles_from_the_others_and_names_it(rig,
     if county is None:
         assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
         return
-    assert run.fields["county"].state == ValueState.UNRESOLVED
-    assert run.fields["county"].reason == UNSETTLED_COUNTY["explanation"] + " Getty TGN could not be reached."
-    assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["mandatory_unresolved:county"])
+    value = run.fields["county"]
+    assert (value.state, value.authority_id) == (ValueState.SUPPORTED, f"wikidata:{LABEL['county']}")
+    assert value.reason == (
+        "Resolved by location reconciliation: the shared location lookup identified this label text as county.")
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
 
 
 # ---- through the workflow: one step, retry, cost -------------------------------
