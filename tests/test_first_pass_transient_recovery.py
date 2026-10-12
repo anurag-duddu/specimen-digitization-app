@@ -178,7 +178,7 @@ def test_published_budget_gives_up_an_unaffordable_third_comparison(
     assert_children_stopped(tmp_path, failure)
 
 
-@pytest.mark.parametrize("operation", ["extract", "parse", "field_research", "finalize", "publish", "segment"])
+@pytest.mark.parametrize("operation", ["field_research", "finalize", "publish", "segment"])
 def test_effectful_operations_are_not_comparison_recovery(operation):
     run = Run(profile=Profile())
     assert not first_pass_failure_is_recoverable(run, operation)

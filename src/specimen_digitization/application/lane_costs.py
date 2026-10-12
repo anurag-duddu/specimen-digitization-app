@@ -323,6 +323,13 @@ def record_step(
         if not any(c["step"] == step and c["attempt"] == attempt for c in run.paid_calls):
             if refusal:
                 record_refused(run, step, "model", route_id=step, failure_code=refusal)
+            elif failure:
+                # An extraction that failed, or was given up on (its step then
+                # completes): recorded failed with its code, held in full.
+                outcome = "failed" if outcome == "completed" else outcome
+                record_reserved(
+                    run, step, "model", outcome=outcome, route_id=step, failure_code=failure
+                )
             else:
                 record_reserved(run, step, "model", outcome=outcome, route_id=step)
     elif step == "segment":
