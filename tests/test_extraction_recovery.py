@@ -1,0 +1,315 @@
+"""The organiser's extraction recovers, or is given up on, by itself.
+
+Production, 2026-10-12 13:00Z-13:34Z, collection 200d7057: the extraction call
+of `parse` (agent insects_bounded_extractor, Qwen3-VL-30B-A3B-Instruct on the
+handwriting-qwen route) was answered HTTP 504 `provider_request_failed` after
+120 s for five of six camera-intake runs (66a72095, b191ed67, 1d842828,
+74efda01, 3781e440). A 5xx is an unknown outcome, and before this change any
+failure of that call blocked the run as `external_outcome_unknown` with no
+retry and no recovery: the run stayed in intake. Specimen 19f0f1f6's first pass
+answered malformed twice ("Exceeded maximum output retries (1)") and blocked as
+`model_malformed_response`, also with no way on.
+
+These tests drive the real isolated model child (`model_runtime.invoke_model`)
+with the offline fixture provider of `test_rate_limit_refusal.py`, in the lab of
+`test_lane_routes.py` (the published pilot profile's prices and pins, both
+ledgers wired as production wires them). No live model request is made.
+"""
+
+import os
+import time
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+import pytest
+
+from specimen_digitization.application import model_runtime
+from specimen_digitization.application.domain import Disposition
+from specimen_digitization.application.production import ProductionAdapters
+from specimen_digitization.application.storage import LocalBlobs, digest
+
+from test_first_pass_given_up import given_up_findings
+from test_first_pass_stuck_recovery import drain_worker, later
+from test_first_pass_transient_recovery import comparison_lab, comparison_step
+from test_lane_routes import PARSE_RESERVATION
+from test_rate_limit_refusal import FAILURE, ChildLab, drains, lab, requests
+
+
+class ExtractionLab(ChildLab):
+    """The lab whose first `extracts` extraction calls go to the real model child
+    and its fixture provider; a later call answers with no candidates."""
+
+    def __init__(self, blobs, *, extracts=0):
+        super().__init__(blobs)
+        self.child_extracts = extracts
+
+    def extract(self, specimen):
+        if self.child_extracts:
+            self.child_extracts -= 1
+            return ProductionAdapters.extract(self, specimen)
+        return None
+
+
+def stalled_extraction_child(payload):
+    """A child that has entered its extraction but never returns before cutoff."""
+    root = Path(payload["storage"]["root"]).parent
+    with (root / "requests-extract").open("a") as sent:
+        sent.write(str(os.getpid()) + "\n")
+    time.sleep(60)
+    raise AssertionError("the parent must terminate this child")
+
+
+def extraction_lab(tmp_path, monkeypatch, failure, extracts):
+    adapters = ExtractionLab(LocalBlobs(tmp_path / "blobs"), extracts=extracts)
+    if failure == "deadline":
+        adapters.model_effect = stalled_extraction_child
+        real_isolated = model_runtime.run_isolated
+
+        def shortened(effect, payload, timeout, *args, **kwargs):
+            return real_isolated(effect, payload, 3, *args, **kwargs)
+
+        monkeypatch.setattr(model_runtime, "run_isolated", shortened)
+    workflow, principal, ident, backend = lab(
+        tmp_path, monkeypatch, adapters, "http_504" if failure == "deadline" else failure
+    )
+    return workflow, principal, ident, backend, adapters
+
+
+def failure_code(failure):
+    return "extract_deadline_exceeded" if failure == "deadline" else "model_provider_error"
+
+
+def extraction_findings(run):
+    return [f.reason_code for f in run.findings if f.rule_id == "extraction_given_up"]
+
+
+def parse_calls(run):
+    return [
+        (c["attempt"], c["outcome"], c["cost_basis"], c["cost_micros"], c.get("failure_code"))
+        for c in run.paid_calls
+        if c["step"] == "parse"
+    ]
+
+
+@pytest.mark.parametrize("failure", ["http_504", "deadline"])
+def test_a_failed_extraction_is_retried_and_the_run_reaches_its_disposition(
+    tmp_path, monkeypatch, failure
+):
+    workflow, principal, ident, backend, _ = extraction_lab(tmp_path, monkeypatch, failure, 1)
+
+    first, last = drains(workflow, principal, ident, backend)
+
+    # Before: processing_blocked as external_outcome_unknown, with no retry.
+    assert (first.run.stage, first.run.blocker) == ("retry_scheduled", failure_code(failure))
+    assert first.run.lease_until is None
+    run = last.run
+    assert (run.stage, run.blocker, run.disposition) == ("finalized", None, Disposition.REVIEW)
+    assert run.attempts["parse"] == 2 and requests(tmp_path, "extract") == 1
+    assert extraction_findings(run) == []
+    # The uncertain first attempt keeps its whole reservation.
+    assert parse_calls(run)[0] == (1, "failed", "reserved", PARSE_RESERVATION, failure_code(failure))
+    assert last.research["ordinary_reservations"]["parse:1"] == {
+        "reserved_micros": PARSE_RESERVATION, "settled_micros": None
+    }
+
+
+@pytest.mark.parametrize("failure", ["http_504", "deadline"])
+def test_an_extraction_that_keeps_failing_is_given_up_and_the_record_goes_to_review(
+    tmp_path, monkeypatch, failure
+):
+    workflow, principal, ident, backend, _ = extraction_lab(tmp_path, monkeypatch, failure, 3)
+
+    *retried, last = drains(workflow, principal, ident, backend)
+
+    run = last.run
+    assert [d.run.stage for d in retried] == ["retry_scheduled"] * 2
+    assert (run.stage, run.blocker, run.disposition) == ("finalized", None, Disposition.REVIEW)
+    assert run.attempts["parse"] == 3 and requests(tmp_path, "extract") == 3
+    assert extraction_findings(run) == [f"extraction_given_up:{failure_code(failure)}"]
+    assert "parse" in run.completed_steps and "finalize" in run.completed_steps
+    assert parse_calls(run) == [
+        (n, "failed", "reserved", PARSE_RESERVATION, failure_code(failure)) for n in (1, 2, 3)
+    ]
+    for attempt in (1, 2, 3):
+        assert last.research["ordinary_reservations"][f"parse:{attempt}"]["settled_micros"] is None
+    assert run.usage.reserved_cost_micros <= run.profile.execution.approved_cost_limit_micros
+
+
+def test_a_malformed_extraction_is_given_up_at_once(tmp_path, monkeypatch):
+    workflow, principal, ident, backend, _ = extraction_lab(tmp_path, monkeypatch, "malformed", 1)
+
+    specimen = workflow.drain(principal, ident)
+
+    run = specimen.run
+    # Before: processing_blocked as model_malformed_response, with no retry.
+    assert (run.stage, run.blocker, run.disposition) == ("finalized", None, Disposition.REVIEW)
+    assert run.attempts["parse"] == 1 and requests(tmp_path, "extract") == 2
+    assert extraction_findings(run) == ["extraction_given_up:model_malformed_response"]
+    assert parse_calls(run) == [(1, "failed", "reserved", PARSE_RESERVATION, "model_malformed_response")]
+
+
+def test_an_extraction_stopped_by_its_limits_is_given_up_at_once(tmp_path, monkeypatch):
+    from pydantic_ai.exceptions import UsageLimitExceeded
+
+    from specimen_digitization.application import harness
+
+    def stopped(agent, prompt, **_):
+        raise UsageLimitExceeded("The answer was cut off at its output cap")
+
+    # The organiser's call, in this process: the child's mapping is shown by
+    # test_reader_failures_recoverable for a reader's `stopped` status.
+    monkeypatch.setattr(harness, "run_agent_bounded", stopped)
+    workflow, principal, ident, backend, adapters = extraction_lab(tmp_path, monkeypatch, "http_504", 0)
+    monkeypatch.setattr(
+        type(adapters), "extract", lambda self, specimen: ProductionAdapters._extract_direct(self, specimen)
+    )
+    monkeypatch.setattr(
+        "specimen_digitization.application.production.HuggingFaceModelGateway", _NoCallGateway
+    )
+
+    run = workflow.drain(principal, ident).run
+
+    # Before: an exception the workflow did not know, so external_outcome_unknown.
+    assert (run.stage, run.blocker, run.disposition) == ("finalized", None, Disposition.REVIEW)
+    assert run.attempts["parse"] == 1
+    assert extraction_findings(run) == ["extraction_given_up:extraction_usage_limit"]
+    assert parse_calls(run) == [(1, "failed", "reserved", PARSE_RESERVATION, "extraction_usage_limit")]
+
+
+class _NoCallGateway:
+    """The production gateway's pins, with a model that is never asked."""
+
+    def __init__(self, timeout_seconds=None):
+        from specimen_digitization.model_gateway import HUGGINGFACE_ROUTES
+
+        self.routes = dict(HUGGINGFACE_ROUTES)
+
+    def route(self, route_id):
+        return self.routes[route_id]
+
+    def model_for(self, route_id):
+        from pydantic_ai.models.test import TestModel
+
+        return TestModel()
+
+
+def blocked_at_parse(workflow, principal, ident, **state):
+    """Save the run as the code before 2026-10-12 left it after its extraction
+    failed: blocked at parse, its lease over."""
+    specimen = workflow.repository.get(principal.scope, ident)
+    run = specimen.run
+    run.stage, run.next_retry_at, run.lease_until, run.disposition = (
+        "processing_blocked", None, None, None
+    )
+    for key, value in state.items():
+        setattr(run, key, value)
+    return workflow.repository.save(
+        principal, specimen, specimen.version, "left-at-parse", digest({"left": sorted(state)})
+    )
+
+
+def test_a_run_left_blocked_as_unknown_at_its_extraction_is_carried_on_by_the_drain(
+    tmp_path, monkeypatch
+):
+    # 66a72095 and four others: blocked at parse as external_outcome_unknown.
+    workflow, principal, ident, backend, _ = extraction_lab(tmp_path, monkeypatch, "http_504", 1)
+    first = workflow.drain(principal, ident).run
+    assert first.attempts["parse"] == 1
+    blocked_at_parse(workflow, principal, ident, blocker="external_outcome_unknown")
+    later(workflow, 1)
+    # Stepping it alone changes nothing; the drain's recovery does.
+    assert workflow.drain(principal, ident).run.stage == "processing_blocked"
+
+    summary = drain_worker(workflow, principal)
+    assert summary["recovered"] == 1
+    for hours in (2, 3):
+        run = workflow.repository.get(principal.scope, ident).run
+        if run.stage == "finalized":
+            break
+        later(workflow, hours)
+        drain_worker(workflow, principal)
+    run = workflow.repository.get(principal.scope, ident).run
+
+    assert (run.stage, run.blocker, run.disposition) == ("finalized", None, Disposition.REVIEW)
+    # The lost attempt was recorded once, by the step that saved it.
+    assert run.attempts["parse"] == 2 and requests(tmp_path, "extract") == 1
+    assert [c[0] for c in parse_calls(run)] == [1, 2]
+    assert run.dependencies["automatic_recoveries"][0]["step"] == "parse"
+
+
+@pytest.mark.parametrize(
+    "blocker", ["retry_budget_exhausted:model_rate_limited", "model_malformed_response"]
+)
+def test_a_run_left_dead_at_its_extraction_is_given_up_by_the_drain(tmp_path, monkeypatch, blocker):
+    workflow, principal, ident, backend, _ = extraction_lab(tmp_path, monkeypatch, "http_504", 1)
+    workflow.drain(principal, ident)
+    blocked_at_parse(workflow, principal, ident, blocker=blocker, dead_letter=True)
+    later(workflow, 1)
+
+    summary = drain_worker(workflow, principal)
+
+    run = workflow.repository.get(principal.scope, ident).run
+    assert summary["recovered"] == 1
+    assert (run.stage, run.blocker, run.disposition) == ("finalized", None, Disposition.REVIEW)
+    assert not run.dead_letter
+    assert extraction_findings(run) == [
+        "extraction_given_up:" + blocker.removeprefix("retry_budget_exhausted:")
+    ]
+    # Given up, not asked again: parse ran without its call.
+    assert requests(tmp_path, "extract") == 1 and run.attempts["parse"] == 1
+    assert "parse" in run.completed_steps
+
+
+def test_an_unaffordable_extraction_is_given_up_unsent(tmp_path, monkeypatch):
+    workflow, principal, ident, backend, _ = extraction_lab(tmp_path, monkeypatch, "http_504", 1)
+    first = workflow.drain(principal, ident).run
+    assert first.stage == "retry_scheduled"
+    specimen = workflow.repository.get(principal.scope, ident)
+    # Leave the run with no room for another extraction under its USD 1 limit.
+    specimen.run.usage.reserved_cost_micros = (
+        specimen.run.profile.execution.approved_cost_limit_micros - PARSE_RESERVATION + 1
+    )
+    workflow.repository.save(principal, specimen, specimen.version, "full", digest({"full": 1}))
+    later(workflow, 1)
+
+    run = workflow.drain(principal, ident).run
+
+    # Before: processing_blocked as cost_budget_exhausted.
+    assert (run.stage, run.blocker, run.disposition) == ("finalized", None, Disposition.REVIEW)
+    assert extraction_findings(run) == ["extraction_given_up:cost_budget_exhausted"]
+    assert run.attempts["parse"] == 1 and requests(tmp_path, "extract") == 1
+    assert "parse" in run.completed_steps
+    assert [c[0] for c in parse_calls(run)] == [1]
+
+
+def test_a_run_left_blocked_at_a_malformed_first_pass_is_given_up_by_the_drain(tmp_path, monkeypatch):
+    # 19f0f1f6: blocked at its first pass as model_malformed_response.
+    workflow, principal, ident, backend, _ = comparison_lab(tmp_path, monkeypatch, "http_503", 1)
+    workflow.drain(principal, ident)
+    specimen = workflow.repository.get(principal.scope, ident)
+    run = specimen.run
+    run.stage, run.blocker, run.next_retry_at = "processing_blocked", "model_malformed_response", None
+    workflow.repository.save(principal, specimen, specimen.version, "malformed", digest({"m": 1}))
+    later(workflow, 1)
+
+    summary = drain_worker(workflow, principal)
+
+    run = workflow.repository.get(principal.scope, ident).run
+    assert summary["recovered"] == 1
+    assert (run.stage, run.blocker, run.disposition) == ("finalized", None, Disposition.REVIEW)
+    assert given_up_findings(run) == [
+        ("first_pass_given_up", "warning",
+         f"first_pass_given_up:{run.regions[0].id}:model_malformed_response")
+    ]
+    assert requests(tmp_path, "first_pass") == 1 and run.attempts[comparison_step(run)] == 1
+
+
+def test_a_credential_failure_at_the_extraction_still_blocks_with_its_cause(tmp_path, monkeypatch):
+    workflow, principal, ident, backend, _ = extraction_lab(tmp_path, monkeypatch, "http_401", 1)
+
+    run = workflow.drain(principal, ident).run
+
+    assert (run.stage, run.blocker) == ("processing_blocked", "model_authentication_error")
+    assert extraction_findings(run) == []
+    later(workflow, 1)
+    assert workflow.recover_blocked(principal, ident) is False

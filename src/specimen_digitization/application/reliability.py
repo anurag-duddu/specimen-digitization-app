@@ -90,6 +90,39 @@ def first_pass_failure_is_recoverable(run, step: str) -> bool:
     )
 
 
+def extraction_failure_is_recoverable(run, step: str) -> bool:
+    """Whether the organiser's extraction call (``parse``'s one model call,
+    ``harness.extract_with_agent``) may recover a failed call.
+
+    Like the first pass, it is a tool-free model read: it reads the run's
+    retained readings, its child writes only content-addressed provenance, and
+    the parent applies the candidates after the call returns. Repeating it
+    cannot duplicate a specimen or publish a result. It can bill again: every
+    uncertain attempt keeps its full reservation and each retry reserves anew.
+    When its attempts are used up, or its answer stays malformed, the
+    extraction is given up on and the run goes on without its candidates
+    (``Workflow.extraction_has_no_attempt_left``).
+
+    ``step`` is the workflow step (``parse``) or the model operation
+    (``extract``). The evidence pilot is excluded, as it is from reader and
+    first-pass recovery.
+    """
+    return (
+        step.split(":", 1)[0] in {"parse", "extract"}
+        and "evidence_pilot" not in run.dependencies
+    )
+
+
+def model_read_is_recoverable(run, step: str) -> bool:
+    """A reader, an ordinary first pass or the organiser's extraction: the model
+    reads whose failed calls the workflow repeats and, at the end, gives up on."""
+    return (
+        reader_failure_is_recoverable(run, step)
+        or first_pass_failure_is_recoverable(run, step)
+        or extraction_failure_is_recoverable(run, step)
+    )
+
+
 def failure_is_retryable(run, step: str, status: LookupStatus) -> bool:
     """Whether a known failure of this step is scheduled for another attempt.
 
