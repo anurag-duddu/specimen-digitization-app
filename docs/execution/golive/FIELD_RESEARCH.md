@@ -186,7 +186,10 @@ handover runs field research instead of the six specialists:
    that waits 30 s for one of those slots is not sent: its lookup gives up
    at once as a timeout ("Getty TGN was busy; this lookup was not sent"),
    logged like any unanswered request (`error=slot_busy`), so the expert
-   goes on with its other sources. A GEOLocate request whose turn under the
+   goes on with its other sources. Like any unanswered request, that answer
+   is kept for the rest of the record's research: the same lookup, asked
+   again, is answered from the record's cache and not sent. A GEOLocate
+   request whose turn under the
    3 s spacing is more than 30 s off is busy the same way ("GEOLocate was
    busy; this lookup was not sent"), and it takes no turn, so the requests
    after it are not spaced behind it. Each source
@@ -376,37 +379,71 @@ handover runs field research instead of the six specialists:
      it, the comma- or semicolon-separated part of the line holding it may
      write no range (`written.ranges`) unless the literal holds both its
      ends, the whole range ("The label writes this value as one end of a
-     range."). A range is two ends, each a word holding a digit, joined by
-     a run of joiners: a dash of any form (a hyphen, an en or em dash, a
-     minus sign, a figure dash, a full-width hyphen, a wave dash and the
-     others `written.DASHES` pins by name), standing as a word of its own
-     or touching one end ("1200- 1500 m", "IV-24-48 -V-2-48"); a sign "&",
-     "/" or "~" standing alone; or a word of `written.RANGE_WORDS`, compared
-     with letter case and accents aside: English "to", "till", "until",
-     "thru", "through", "and"; Spanish "a", "al", "hasta", "y"; Portuguese
-     "a", "ao", "ate" (with its acute accent), "e"; French "a" (with its
-     grave accent), "au", "jusqu'a", "jusqu'au", "et"; German "bis", "und";
-     Italian "a", "al", "fino", "e"; Dutch "tot", "en", "t/m"; Latin "ad",
-     "usque" (a run of them, such as "fino a", is one joiner). Up to five
-     words that may stand beside a number (`written.BESIDE_A_NUMBER`) may
-     come between an end and the joiner: a unit's words ("1200 m to 1500
-     m", "1200 m a. s. l. to 1500 m"), a month in English, Spanish,
-     Portuguese, French, German, Italian or Dutch, a Roman numeral I to XII
-     in capitals ("April 24 to May 2, 1948", "24 avril au 2 mai 1948"), or
-     an approximate marker ("ca."). The two ends are written alike: in one
-     unit, or both dates (an end that writes letters, or has a month or a
-     Roman month beside it), or a bare number beside either. Ends in
-     different units are one elevation written in both, no range ("4800 ft.
-     / 1463 m": each settles its own unit's field), and a unit beside a
-     date is two fields ("Guatemala / 1200 m / 24.IV.1948"). A word of two
-     numbers joined by a dash or a "/" ("1200-1500 m", "10-12") is one word,
-     which no run cuts; standing right before or after the literal, it
-     makes the literal part of its range too ("Sept. 1946" of "10-12 Sept.
-     1946", "IV 1948" of "24/30 IV 1948"). So "1500 m" of "1200 bis 1500
-     m", "entre 1200 y 1500 msnm", "1200 - 1500 m" with an em dash, "1200-
-     1500 m" or "1200 m to 1500 m", "V-2-48" of "IV-24-48 au V-2-48" and
-     "May 2, 1948" of "April 24 to May 2, 1948" go to review; "1200 to 1500
-     m" whole keeps the rules a candidate has. Every other rule
+     range."). That part's words are the line's words cut at its comma or
+     semicolon, so the word the comma ends stays in it: "V-2-48" and
+     "IV-24-48" of "IV-24-48 to V-2-48, Yepocapa" go to review (before the
+     follow-up to the review of #305 that word was left out, and both ends
+     settled). A range is two ends, each a word holding a digit, joined by
+     a run of joiners: a dash of any form, standing as a word of its own,
+     alone or in a run of any length ("1200 --- 1500 m"), or touching one
+     end ("1200- 1500 m", "IV-24-48 -V-2-48"); a sign "&", "/" or "~"
+     standing alone; or a word of `written.RANGE_WORDS`, compared with
+     letter case and accents aside: English "to", "till", "until", "thru",
+     "through", "and"; Spanish "a", "al", "hasta", "hasta el", "y";
+     Portuguese "a", "ao", "ate" (with its acute accent), "e"; French "a"
+     (with its grave accent), "au", "jusqu'a", "jusqu'au", "et"; German
+     "bis", "bis zum", "und"; Italian "a", "al", "fino", "e"; Dutch "tot",
+     "tot en met", "en", "t/m"; Latin "ad", "usque" (a run of them, such as
+     "fino a", is one joiner; the later word of a joiner of several, "el",
+     "zum" or "met", joins only right after another joiner's word,
+     `written.CONTINUATIONS`). The dashes are every character of Unicode's
+     dash punctuation category, which `written.PD_DASHES` pins by name
+     (the same 26 in Unicode 14.0, 15.0 and 15.1: a hyphen, an en or em
+     dash, a figure dash, the Armenian hyphen, the Hebrew maqaf, the two-
+     and three-em dashes, a full-width hyphen, a wave dash and the others;
+     a later Unicode's new dash is not added by reading the category), and
+     the minus sign, the swung dash, the full-width tilde, the hyphen
+     bullet and the tilde operator (`written.DASHES`). Up to four pieces
+     (words, or dashes split from a word's edge) that may stand beside a
+     number (`written.BESIDE_A_NUMBER`) may come between an end and the
+     joiner, as the window of `written.BESIDE_WORDS` is five pieces and
+     counts the end's own: a unit's words ("1200 m to 1500 m", "1200 m a.
+     s. l. to 1500 m"), a month in English, Spanish, Portuguese, French,
+     German, Italian or Dutch, a Roman numeral I to XII in capitals
+     ("April 24 to May 2, 1948", "24 avril au 2 mai 1948"), or an
+     approximate marker ("ca."); with a fifth ("1200 m a. s. l. ca. to 1500
+     m") the first end is outside the window and the joiner joins no
+     range. The two ends are written alike, of one kind (`written._kind`,
+     `written._alike`; the review of #305, note 1): in one unit, or both
+     dates (an end that writes letters, or has a month or a Roman month
+     beside it or as the next word: "24 IV", "2 V 1948"), or both of
+     another kind (`written.OTHER_UNITS`, written right after the end's
+     number, glued to it or as the next word: a distance "km" or "mi", a
+     count "ex." or "others", the male or female sign, an hour "h"), or a
+     bare number beside any of these ("1200 to 1500 m", "24 al 30-IV-1948",
+     "5 to 7 May 1948"). Ends in different units are one elevation written in both, no range
+     ("4800 ft. / 1463 m": each settles its own unit's field); a unit
+     beside a date is two fields ("Guatemala / 1200 m / 24.IV.1948"); and
+     an elevation or a date beside a distance or a count is no range
+     either, so "1500 m" of "1500 m - 5 km W of Coban" (with its accent),
+     of "1500 m and 5 km W" or of "Berg 1200 m und 3 km N" settles, as
+     does "24.IV.1948" of "24.IV.1948 en 2 ex." or "IV-24-48" of "IV-24-48
+     and 2 others". A word of two numbers joined by a dash or a "/"
+     ("1200-1500 m", "10-12") is one word, which no run cuts; its kind is
+     read as an end's, from its unit or the word after it. A range in the
+     clause, or such a word standing right before or after the literal,
+     makes the literal part of a range only when it is written alike with
+     the literal (`written.part_of_a_range`): "Sept. 1946" of "10-12
+     Sept. 1946", "IV 1948" of "24/30 IV 1948" and "24.IV.1948" of
+     "24.IV.1948 10-12" (a bare word of two numbers) go to review, while
+     "24.IV.1948" of "24.IV.1948 10-12 h" (hours), "IV-24-48" of "IV-24-48
+     1200-1500 m" or of "IV-24-48 1200 to 1500 m" (an elevation range) and
+     "1200 m" of "1200 m 10-12 Sept. 1946" (a day range) settle. So "1500
+     m" of "1200 bis 1500 m", "entre 1200 y 1500 msnm", "1200 - 1500 m"
+     with an em dash, "1200- 1500 m" or "1200 m to 1500 m", "V-2-48" of
+     "IV-24-48 au V-2-48", "2.V.1948" of "vom 24.IV.1948 bis zum 2.V.1948"
+     and "May 2, 1948" of "April 24 to May 2, 1948" go to review; "1200 to
+     1500 m" whole keeps the rules a candidate has. Every other rule
      applies to it as to a candidate: G19's decided transcript, the readers'
      rules below, the place checks (the lookup of the label's own text, the
      level, the parents, the near spelling) and the doubtful genus. For the taxon, the
@@ -495,15 +532,68 @@ handover runs field research instead of the six specialists:
      never holds text that is plainly another kind of field's, whether or
      not any field claims it (`written.other_kind`): an elevation, a number
      with an elevation unit after it or before it ("4800ft.", "m 1200"; the
-     units below), unless a compass point or "of", "from", "de", "von" and
-     the like (`written.DISTANCE_AFTER`) follows it, which makes it a
-     distance ("500 m N of the church" is locality text); a date, any run
-     of up to five whole words the date parser reads as a date or as
-     several, with Roman months read and no century rule ("IV-24-48",
-     "24.VI.1952", "24 Apr 1948", a year from 1750 on such as "1948"; a
-     slide code is none); or a range of dates or elevations (`written.ranges`
-     with a unit, a month, a Roman month or letters at an end: "24 IV a 2
-     V"; a range of bare numbers, "km 12 a 15", is none). Such an answer is
+     units below), unless the words after its unit, in its own clause, make
+     it a distance (`written._distance`; the review of #305, notes 2 and 5):
+     a compass point ("500 m N of the church", "Yepocapa, 500 m N") that no
+     word of a mountain's side follows (`written.ASPECTS`: "1500 m N slope"
+     and, with its accent, "Volcan Barva 2600 m S ladera" are elevations);
+     or a word of `written.RELATIONS` ("of", "from", "de", "von", "al" and
+     the like; "along", "above", "below", "past", "beyond", "before",
+     "after", "upstream", "downstream", "inland"; Spanish "arriba",
+     "abajo", Portuguese "acima", "abaixo", German "oberhalb",
+     "unterhalb": "500 m along road to Coban", "Rio Negro, 200 m upstream
+     of ford", "100 m above the bridge" are locality text) with a word
+     after it in its clause, the place it is measured from (only "inland",
+     "upstream" and "downstream" may stand alone: "Rio Negro, 500 m
+     upstream"; "Finca Moca, 1500 m above" holds an elevation), and no word
+     of sea level or altitude within three words after it
+     (`written.ELEVATION_WORDS`: "1500 m above sea level", "1500 m de
+     altitud", "900 m acima do nivel do mar" with its accent are
+     elevations). A word that is also a joiner, before a number, makes no
+     distance ("Serra, 1200 m e 2 ex." holds an elevation: Portuguese "e"
+     is "and", not east; Codex's review of 77fdaeba). A comma or a
+     semicolon after the unit ends its clause,
+     so "Finca Moca, 1500 m, N slope" holds an elevation, and a heading
+     right before the number (`written.HEADINGS`: "alt.", "elev.", "Hohe"
+     with its umlaut, "cota", and "el." with its period) makes it an
+     elevation whatever follows ("Finca Moca, alt. 1500 m E side"). A
+     number with no unit is an elevation here too when a heading stands
+     right before it ("Coban, alt. 1200", "Finca Moca, elev. 1200",
+     "Coban, alt. 1800", which was read as a year before) or a capital "M"
+     that may be a person's initial follows it ("Trap 4800 M. Smith"),
+     though it settles no elevation field (below). A capital "M" alone
+     before a number is no unit, so "M 12" and "M. 12" settle as a code;
+     in a place field's text it may still be metres, and the place is
+     refused ("Alpi Apuane, M 1200"). Nor is a capital "M" a unit in a
+     count of males and females ("Finca Moca, 3 M. 2 F." settles), also
+     with a joiner word between or a sex word ("Finca Moca, 3 M. and 5
+     females" and "Finca Moca, 5 females y 3 M." settle; Codex's review of
+     77fdaeba).
+     A date: any run of up to five whole words the date parser reads as a
+     date or as several, with Roman months read and no century rule
+     ("IV-24-48", "24.VI.1952", "24 Apr 1948", a year from 1750 on such as
+     "1948"; a slide code is none); in a place field's text, not the
+     collection code's, a run that starts right after a road, km, hill,
+     farm or estate word (`written.PLACE_WORDS`, by language), with no
+     comma or semicolon between them and no period after a whole word
+     (closing quotes or brackets aside), is part of the place when it is a
+     bare number or a month and a day with no year (`written._a_place_number`:
+     "Hill 1800", "FM 1960, Harris Co.", "BR-116 km 1850", "Hwy I-5",
+     "Calle 5 de Mayo", and after an abbreviation's period,
+     `written.PLACE_ABBREVIATIONS`, "Hwy. 1960" or "km. 1850"; "Ruta,
+     1960", "Hill; 1800", "Fazenda, 1948", "Route, IV-1948", "Fazenda.
+     1948", "Ruta. 1960", '"Fazenda." 1948', "Hwy. 24.IV.1948" and "Route
+     IV-1948" hold a date: Codex's reviews of 77fdaeba, b9f42db6 and
+     1b997582), unless initials or a collector's or
+     determiner's mark stand before that word, which makes it a surname
+     (`written.PERSON_MARKS`: "J. Hill 1948", "leg. Berg 1948" hold a
+     date); a date with any other word before it still holds one ("Finca
+     Moca 1948" may be the farm and the year collected; "Route 66 1948",
+     "May 5 Camp", and the codes "FM 1960", "X-12" and "IV-1948" are
+     refused as before). Or a range of dates or
+     elevations (`written.ranges` with a unit, a month, a Roman month or
+     letters at an end: "24 IV a 2 V"; a range of bare numbers, "km 12 a
+     15", or of distances, "2 to 5 km N", is none). Such an answer is
      sent back, telling the expert to leave that text out, and the step
      sends the field to review ("This text holds an elevation, which is
      another field's.", "...holds a date...", "...holds a range of dates or
@@ -530,10 +620,27 @@ handover runs field research instead of the six specialists:
      or a prime, "pies", "p.s.n.m.", "pes" with its accent, "Fuss" with or
      without its sharp s, "pieds", "piedi", "voet"; letter case, accents,
      periods and the spaces inside a unit aside), or right before it as
-     Italian labels write it ("m 1200"); or, for an end of a range that
-     writes none, the other end's unit ("1200" of "1200 to 1500 m" or of
-     "1200-1500 m"). "mt" may be Mount and is no unit, nor is "mm", and a
-     foot mark after a degree sign is a minute of arc. When any of those
+     Italian labels write it ("m 1200", never a capital "M" alone: "M
+     1200" and "M. 1200" are a code's letter or a person's initial); or,
+     for an end of a range that writes none, the other end's unit ("1200"
+     of "1200 to 1500 m" or of "1200-1500 m"). "mt" may be Mount and is no
+     unit, nor is "mm", and a foot mark after a degree sign is a minute of
+     arc. A capital "M" alone after a number is no unit when a person's
+     name or initial follows it, in capitals too ("1200" of "lot 1200 M.
+     Smith" or "lot 1200 M. SMITH" and "4800" of "Trap 4800 M. Smith" have
+     none; before the review of #305's follow-up the first settled
+     elevation_from_m, and before Codex's review of 77fdaeba the second)
+     or when it counts males beside a count of another sex ("3 M. 2 F.",
+     "3 M. and 5 females"); "ALT. 1500 M" is still metres. A number the
+     reading writes as a distance, by the rule for place text above
+     (`written.written_as_a_distance`: "1200 m" of "Finca Moca, 1200 m
+     along road", "300 m" of "Rio Negro, 300 m arriba del puente", "500 m"
+     of "Yepocapa, 500 m E of the bridge", "1500 ft" of "Trail, 1500 ft
+     past the bridge"), settles no elevation field ("The label writes this
+     number as a distance, not an elevation."; on main before this PR and
+     at 77fdaeba each settled); "1500 m" of "Finca Moca, 1500 m above sea
+     level", "Finca Moca, 1500 m above" or "Finca Moca, 1500 m, N slope"
+     still settles. When any of those
      units is the other unit the answer is refused ("The label writes this
      elevation in the other unit.": "1500 m" or "1500" of "alt. 1500 m" as
      feet, "6400'" or "6400 pies" as metres, "4800 ft. (1463 m)" as either);
@@ -972,17 +1079,27 @@ handover runs field research instead of the six specialists:
    scientific rules without blanket human approval (G1). Anything unresolved
    sends the record to Needs human review with a plain reason. A field whose
    expert reached no source (step 4), a model failure and a field's timeout
-   leave the record blocked with a retry, every settled field kept. The
+   leave the record blocked with a retry, every settled field kept. A
+   field's timeout is its expert's own 150 s deadline, the step's deadline
+   (step 9), or a model request that ran out of time (`experts.timed_out`):
+   the gateway's own bound on one request (120 s,
+   `step.MODEL_TIMEOUT_SECONDS`), which the inference client raises as an
+   httpx timeout (connect, read, write or pool) and `experts.ClientTimeouts`
+   keeps a `TimeoutError`; a `TimeoutError` from the client (asyncio's or
+   huggingface_hub's `InferenceTimeoutError`); or a provider's answer with
+   HTTP 408 (Request Timeout) or 504 (Gateway Timeout). Nothing else is a
+   timeout: an auth error, any other HTTP status, a connection that failed,
+   an answer that is no completion and any defect are model failures. The
    workflow allows the run's `max_attempts` attempts (its execution policy,
    3 by default). On
    the step's last attempt a field whose sources still could not be reached
    goes to Needs human review instead, unresolved, its reason naming them
    ("Getty TGN could not be reached after 3 attempts."), and so does a field
    that ran out of time ("Research on this field ran out of time after 3
-   attempts."); the record finalizes with its other fields. A model failure
-   on the last attempt still stops the automatic retries
-   (`retry_budget_exhausted:<code>`). The app reads a blocker by its exact
-   code, from a table (`lib/src/blocker_words.dart` and the vocabulary table),
+   attempts."), whichever of those timeouts it was; the record finalizes
+   with its other fields. A model failure on the last attempt still stops
+   the automatic retries (`retry_budget_exhausted:<code>`). The app reads a
+   blocker by its exact code, from a table (`lib/src/blocker_words.dart` and the vocabulary table),
    and never shows the code. A word inside a code decides nothing: the "budget"
    in `retry_budget_exhausted:` says retries ran out, and a step limit, a
    request limit and a time limit also say "budget" on the wire and are no cost
@@ -1072,7 +1189,9 @@ handover runs field research instead of the six specialists:
 9. **Time.** Research stops a minute before the step's deadline (210 s of the
    pilot's 270 s): a field still being researched becomes a timeout for the
    retry (on the last attempt, a field for review; step 7), and every settled
-   field is kept. The work after research measured
+   field is kept. Inside it, each expert has 150 s and each of its model
+   requests 120 s (the gateway's bound); running out of either is the
+   field's timeout too. The work after research measured
    4.3 s on a slide-sized record with a 50 ms storage round trip per blob, most
    of it the integrity check, so the minute is more than three times it. The
    record's sources close when research ends, so a GBIF check still running
@@ -2079,8 +2198,8 @@ never clears on a re-check; only new research writes the row.
 
 A field research run that failed (a field whose expert reached no source, a
 model error, a timeout) is retried until its last allowed attempt, on which
-a source still unreachable or a timeout sends its field to review (step 7
-above), and
+a source still unreachable or a timeout (a model request that ran out of
+time among them) sends its field to review (step 7 above), and
 the retry researches only the fields that did not settle (a
 province, county or city that waited for a country that did not settle
 is among them). A field marked not on the label is not settled, so the
