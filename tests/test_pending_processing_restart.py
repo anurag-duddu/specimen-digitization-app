@@ -340,3 +340,46 @@ def test_an_upload_completed_with_nothing_ahead_still_offers_a_start(tmp_path):
     assert completed["intake_progress"]["waiting_in_line"] is False
     assert "start_processing" in completed["available_actions"]
     assert replay().json() == completed
+
+
+@pytest.mark.parametrize("failure", ["operational_block", "connection"])
+def test_a_failed_reread_after_an_accepted_upload_returns_the_stored_reply(
+    tmp_path, monkeypatch, failure
+):
+    """The upload is accepted, stored and dispatched before the in-line re-read.
+
+    A read that fails then (a SQL Connect hold, a dropped connection) leaves
+    the stored summary as the reply, first time and on replay.
+    """
+    from specimen_digitization.application.workflow import OperationalBlock
+
+    armed = []
+    get, put_document = SQLiteRepository.get, SQLiteRepository.put_document
+
+    def put_and_arm(self, scope, kind, ident, payload, expected):
+        stored = put_document(self, scope, kind, ident, payload, expected)
+        if kind == "upload" and payload.get("state") == "accepted":
+            armed.append(payload["completion_response"])
+        return stored
+
+    def failing_get(self, scope, ident):
+        if armed:
+            raise (
+                OperationalBlock("sql_connect_unavailable")
+                if failure == "operational_block"
+                else ConnectionError("connection reset")
+            )
+        return get(self, scope, ident)
+
+    monkeypatch.setattr(SQLiteRepository, "put_document", put_and_arm)
+    monkeypatch.setattr(SQLiteRepository, "get", failing_get)
+    dispatcher = lane.RecordingDispatcher()
+    client = lane.lane_client(tmp_path, dispatcher=dispatcher)
+    completed, replay = recorded_intake(client)
+    assert len(armed) == 1
+    assert completed == armed[0]  # The stored summary, unchanged.
+    assert "waiting_in_line" not in completed["intake_progress"]
+    again = replay()
+    assert again.status_code == 200, again.text
+    assert again.json() == armed[0]
+    assert dispatcher.calls == 1

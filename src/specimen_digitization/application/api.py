@@ -1756,16 +1756,17 @@ def create_app(
 
         The accepted upload stores the summary as it was saved. Waiting in
         line is transient, so it is never stored: each reply, a replay too,
-        reads it again from the record's current run.
+        reads it again from the record's current run. The upload is already
+        accepted, stored and dispatched here, so this optional re-read fails
+        open as `in_line` does: any error returns the stored summary.
         """
         import copy
 
-        response = copy.deepcopy(response)
         try:
             specimen = repository.get(p.scope, response["specimen_id"])
-        except (KeyError, Missing):
-            return response
-        return in_line(p, specimen, response)
+            return in_line(p, specimen, copy.deepcopy(response))
+        except Exception:  # noqa: BLE001 - a projection never fails the reply
+            return copy.deepcopy(response)
 
     def render_workspace(specimen, p, mutation_committed=False):
         from .search import SearchFilters
