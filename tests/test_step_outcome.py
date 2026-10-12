@@ -34,7 +34,7 @@ class ExtractingAdapters(SyntheticAdapters):
             raise RuntimeError("connection dropped before the provider answered")
 
 
-def drain_to_parse_failure(tmp_path, monkeypatch, phase_error, **adapter_options):
+def drain_to_parse_failure(tmp_path, monkeypatch, phase_error, *, carry=False, **adapter_options):
     c = client(tmp_path)
     row = intake(c)
     repo = SQLiteRepository(tmp_path / "state.sqlite3")
@@ -43,6 +43,12 @@ def drain_to_parse_failure(tmp_path, monkeypatch, phase_error, **adapter_options
     principal = Principal(user_id="synthetic-reviewer", scope=scope, role="reviewer")
     specimen = repo.get(scope, row["specimen_id"])
     specimen.run = Run(profile=specimen.run.profile)
+    if carry:
+        # A person's preserved field (human_field_carry), checked by the tests'
+        # stand-ins for its proof.
+        from specimen_digitization.application.human_field_carry import KEY
+
+        specimen.run.dependencies[KEY] = {"carried": True}
     repo.save(principal, specimen, specimen.version, "new-run", digest({"new": True}))
     real_execute_phase = workflow_module.execute_phase
 
@@ -57,17 +63,48 @@ def drain_to_parse_failure(tmp_path, monkeypatch, phase_error, **adapter_options
     return c, adapters, result
 
 
+TOKENS = 7  # What each extraction call reports, in the tests below.
+
+
+def counting_extract(self, specimen):
+    self.extractions += 1
+    specimen.run.usage.tokens += TOKENS
+
+
+@pytest.mark.parametrize("carry", [False, True])
 def test_integrity_failure_after_extraction_is_a_known_retryable_block(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, carry
 ):
+    # 2026-10-12 review: the parse step must not keep a blocked attempt's
+    # fields, evidence or tokens; its retry would add them again. With a
+    # person's preserved fields (carry), the same through that path's merge.
+    if carry:
+        from specimen_digitization.application import human_field_carry
+        from types import SimpleNamespace
+
+        monkeypatch.setattr(human_field_carry, "verify", lambda *a, **k: SimpleNamespace(outcomes={}))
+        monkeypatch.setattr(human_field_carry, "manifests", lambda specimen: {})
+    monkeypatch.setattr(ExtractingAdapters, "extract", counting_extract)
+    real_execute_phase = workflow_module.execute_phase
     c, adapters, result = drain_to_parse_failure(
-        tmp_path, monkeypatch, EvidenceIntegrityError("evidence_integrity_failure")
+        tmp_path, monkeypatch, EvidenceIntegrityError("evidence_integrity_failure"),
+        carry=carry,
     )
 
     assert adapters.extractions == 1
     assert result.run.stage == "processing_blocked"
     assert result.run.blocker == "evidence_integrity_failure"
     assert result.run.lease_until is None
+    assert "parse" not in result.run.completed_steps
+    assert not [e for e in result.run.evidence if e.source == "label"]
+    before = result.run.usage.tokens
+    # The blocked attempt's extraction tokens were not kept: the run counts
+    # only its readings' and its first pass's.
+    assert before == sum(o.input_tokens + o.output_tokens for o in result.run.observations) + sum(
+        d.call.input_tokens + d.call.output_tokens for d in result.run.first_pass_decisions
+    )
+    # The integrity cause is fixed; the retry completes the run.
+    monkeypatch.setattr(workflow_module, "execute_phase", real_execute_phase)
     retry = c.post(
         PREFIX + f"/runs/{result.run.id}/actions",
         headers=HEADERS,
@@ -78,6 +115,14 @@ def test_integrity_failure_after_extraction_is_a_known_retryable_block(
         },
     )
     assert retry.status_code == 200, retry.text
+
+    # The application's worker ran the retried parse with its own adapters
+    # (no extraction call): the run completes on that attempt alone.
+    done = SQLiteRepository(tmp_path / "state.sqlite3").get(result.scope, result.id)
+    assert done.run.stage == "finalized" and "parse" in done.run.completed_steps
+    lines = [e.excerpt for e in done.run.evidence if e.kind == "literal" and e.source == "label"]
+    assert lines and len(lines) == len(set(lines))
+    assert done.run.usage.tokens == before
 
 
 def test_unexpected_failure_after_extraction_is_a_known_block(tmp_path, monkeypatch):

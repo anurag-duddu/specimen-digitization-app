@@ -649,6 +649,9 @@ class Workflow:
         # 429 to its first request): it is recorded at no cost (lane_costs).
         refusal = None
         observed = len(run.observations)
+        # The run's fields, evidence and usage before parse touches them; put
+        # back when parse does not end (below).
+        parse_base = None
         try:
             if step == "pin_dependencies":
                 retained_carries = copy.deepcopy(run.dependencies.get(CARRY_KEY, {}))
@@ -885,6 +888,11 @@ class Workflow:
                 # retried leaves no fields or evidence behind, so a retry does
                 # not add a second evidence row per parsed line.
                 proposal = specimen.model_copy(deep=True)
+                parse_base = (
+                    copy.deepcopy(run.fields),
+                    copy.deepcopy(run.evidence),
+                    run.usage.model_copy(deep=True),
+                )
                 self.parse(proposal.run, specimen.asset.id, self.blobs)
                 # Asked again here, as before: offline adapters that hide their
                 # extract from the first check (unmetered) still extract.
@@ -1186,6 +1194,13 @@ class Workflow:
                 stage=run.stage,
                 outcome_unknown=outcome_unknown,
             )
+        if parse_base is not None and step not in run.completed_steps:
+            # parse did not end (a retried extraction, an integrity failure
+            # after it, a human-field check that refused): none of this
+            # attempt's fields, evidence or token usage stays, so the next
+            # attempt does not add them again. Its reservations were made
+            # before the snapshot and stay.
+            run.fields, run.evidence, run.usage = parse_base
         if (
             (ordinary_first_pass or ordinary_extraction)
             and run.stage == "processing_blocked"
