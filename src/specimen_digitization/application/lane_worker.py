@@ -225,6 +225,33 @@ class CollectionFence:
             pass  # Taken over after expiry; the new holder owns it now.
 
 
+def blocked_ids(repository, scope):
+    """Blocked, non-sensitive records with no disposition, by id.
+
+    The production repository lists them from its metadata rows
+    (SqlConnectRepository.blocked_ids). The local SQLite repository is read
+    here, so storage.py, whose source digest the research harness pins
+    (native_canonical), stays as it is. Any other repository lists none.
+    """
+    listing = getattr(repository, "blocked_ids", None)
+    if callable(listing):
+        return listing(scope)
+    from .lane import SQLITE_STATUS
+    from .storage import SQLiteRepository
+
+    if not isinstance(repository, SQLiteRepository):
+        return []
+    with repository.connect() as db:
+        rows = db.execute(
+            "SELECT id FROM records WHERE org=? AND collection=? AND "
+            "COALESCE(json_extract(payload,'$.asset.sensitive'),1)=0 AND "
+            + SQLITE_STATUS
+            + "='processing_blocked' ORDER BY id",
+            (scope.organization_id, scope.collection_id),
+        ).fetchall()
+    return [row[0] for row in rows]
+
+
 def waiting_until(run):
     """When a run the workflow waits on becomes due again; None when it is due now."""
     if run.blocker == "external_outcome_unknown" and run.lease_until:
@@ -299,6 +326,7 @@ class DrainWorker:
             "skipped_collections": [],
             "withheld_collections": [],
             "pending_retries": 0,
+            "recovered": 0,
             "continuation": None,
         }
         wanted = False
@@ -438,8 +466,36 @@ class DrainWorker:
             return None
         return ident
 
+    def _recover_blocked(self, drain):
+        """Make the collection's recoverable blocked runs due (Workflow.recover_blocked).
+
+        Once per collection per execution, under its fence, before any run is
+        stepped: a run blocked at an ordinary first pass by a transient cause
+        goes on with the normal drain, with no action and no scheduled service.
+        Each recovered run is waited for as a retry is, since the queue's cutoff
+        stays a margin behind the clock. It reads the records' listing and makes
+        no call. A failure here is logged by class and never stops the drain.
+        """
+        principal = drain.principal
+        recover = getattr(self.workflow, "recover_blocked", None)
+        if not callable(recover):
+            return 0
+        recovered = 0
+        try:
+            for ident in blocked_ids(self.repository, principal.scope):
+                try:
+                    if recover(principal, ident):
+                        recovered += 1
+                        drain.retries[ident] = self.clock()
+                except (Conflict, Missing):
+                    continue  # Changed meanwhile; the next execution looks again.
+        except Exception as exc:  # noqa: BLE001 - recovery never stops the drain
+            LOGGER.warning("blocked-run recovery skipped: %s", type(exc).__name__)
+        return recovered
+
     def _drain(self, drain, fence, previous, stop, summary):
         principal = drain.principal
+        summary["recovered"] += self._recover_blocked(drain)
         resume = self._resume(drain, previous)
         while True:
             if self._stopped(stop):

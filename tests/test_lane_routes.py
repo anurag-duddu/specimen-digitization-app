@@ -277,19 +277,28 @@ def test_removing_the_payload_bound_keeps_the_full_context_retry_liability(tmp_p
     assert adapters.reserved[:2] == [("external_outcome_unknown", CONTEXT_RESERVATION)] * 2
 
 
-def test_the_run_limit_blocks_a_retry_whose_reservation_would_cross_it(tmp_path):
+def test_the_run_limit_gives_up_a_retry_whose_reservation_would_cross_it(tmp_path):
     # The same hazard at the limit USD 1 sets: a first-pass route with a
     # 2,097,152-token context and no request bound reserves its whole context on
     # both requests, 633,242 a call. The first call fits under the limit; it fails
     # and holds that, and its retry needs as much again, past the run's limit.
+    # The retry is not sent: each label's first pass is given up on unsent
+    # (2026-10-12, HARNESS.md section 3), so the run reaches review, not a block.
     assert LONG_CONTEXT_RESERVATION < RUN_CAP < 2 * LONG_CONTEXT_RESERVATION
     registry = with_models(
         published_registry({SYNTHETIC_COLLECTION: "insects"}), **LONG_CONTEXT
     )
     run, adapters = four_regions_and_a_retried_first_pass(tmp_path, registry)
-    assert run.blocker == "cost_budget_exhausted"
+    assert run.blocker is None and run.stage == "finalized"
     assert adapters.reserved == [("external_outcome_unknown", LONG_CONTEXT_RESERVATION)]
-    assert not any(step.startswith("first_pass:") for step in run.completed_steps)
-    assert run.usage.reserved_cost_micros == SAM_RESERVATION + LONG_CONTEXT_RESERVATION == 815_563
+    steps = [f"first_pass:{region.id}" for region in run.regions]
+    assert set(steps) <= set(run.completed_steps) and not run.first_pass_decisions
+    assert sorted(f.reason_code for f in run.findings if f.rule_id == "first_pass_given_up") == sorted(
+        f"first_pass_given_up:{region.id}:cost_budget_exhausted" for region in run.regions
+    )
+    first_passes = [c for c in run.paid_calls if c["step"].startswith("first_pass:")]
+    assert [(c["outcome"], c["cost_basis"]) for c in first_passes] == [("failed", "reserved")]
+    assert run.usage.reserved_cost_micros >= SAM_RESERVATION + LONG_CONTEXT_RESERVATION == 815_563
+    assert run.usage.reserved_cost_micros <= RUN_CAP
     assert run.usage.actual_cost_micros is None
     assert run.usage.reserved_cost_micros + LONG_CONTEXT_RESERVATION > RUN_CAP

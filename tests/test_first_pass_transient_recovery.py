@@ -152,21 +152,28 @@ def test_exhausted_transient_comparison_keeps_readings_unresolved_for_review(
 
 
 @pytest.mark.parametrize("failure", ["http_503", "deadline"])
-def test_published_budget_stops_before_an_unaffordable_third_comparison(
+def test_published_budget_gives_up_an_unaffordable_third_comparison(
     tmp_path, monkeypatch, failure
 ):
+    # 2026-10-12: a third comparison that does not fit the USD 1 limit is not
+    # sent and the run does not block; the first pass is given up on, and the
+    # record goes to review with both earlier attempts still held in full.
     workflow, principal, ident, backend, _ = comparison_lab(tmp_path, monkeypatch, failure, 3)
 
     *retried, last = drains(workflow, principal, ident, backend)
 
     run, step = last.run, comparison_step(last.run)
     assert len(retried) == 2
-    assert (run.stage, run.blocker, run.disposition) == ("processing_blocked", "cost_budget_exhausted", None)
+    assert (run.stage, run.blocker, run.disposition) == ("finalized", None, Disposition.REVIEW)
     assert run.attempts[step] == 2 and requests(tmp_path, "first_pass") == 2
-    assert run.usage.reserved_cost_micros == SAM_RESERVATION + 2 * FIRST_PASS_RESERVATION
-    assert run.usage.reserved_cost_micros + FIRST_PASS_RESERVATION > run.profile.execution.approved_cost_limit_micros
-    assert given_up_findings(run) == []
-    assert last.program == run.usage.reserved_cost_micros
+    assert given_up_findings(run) == [
+        ("first_pass_given_up", "warning", f"first_pass_given_up:{run.regions[0].id}:cost_budget_exhausted")
+    ]
+    calls = [call for call in run.paid_calls if call["step"] == step]
+    assert [(c["attempt"], c["outcome"], c["cost_basis"]) for c in calls] == [
+        (1, "failed", "reserved"), (2, "failed", "reserved")
+    ]
+    assert run.usage.reserved_cost_micros <= run.profile.execution.approved_cost_limit_micros
     assert all(last.research["ordinary_reservations"][f"{step}:{attempt}"]["settled_micros"] is None for attempt in (1, 2))
     assert_children_stopped(tmp_path, failure)
 
@@ -209,20 +216,41 @@ def test_invalid_isolated_result_is_not_retried_via_generic_worker_failed(tmp_pa
     assert run.usage.reserved_cost_micros == SAM_RESERVATION + FIRST_PASS_RESERVATION
 
 
-@pytest.mark.parametrize("stage", ["first_pass", "processing_blocked"])
-def test_uncertain_existing_comparison_stays_blocked(tmp_path, monkeypatch, stage):
-    workflow, principal, ident, _, _ = comparison_lab(tmp_path, monkeypatch, "http_503", 2)
+def old_unknown(workflow, principal, ident, stage):
     specimen = workflow.drain(principal, ident)
     specimen.run.stage = stage
     specimen.run.blocker = "external_outcome_unknown"
-    specimen = workflow.repository.save(principal, specimen, specimen.version, "old-unknown", digest({"old": True}))
+    return workflow.repository.save(principal, specimen, specimen.version, "old-unknown", digest({"old": True}))
+
+
+def test_uncertain_existing_blocked_comparison_waits_for_the_drain(tmp_path, monkeypatch):
+    # Stepping a blocked run changes nothing; the drain's recovery
+    # (Workflow.recover_blocked, tests/test_first_pass_stuck_recovery.py) does.
+    workflow, principal, ident, _, _ = comparison_lab(tmp_path, monkeypatch, "http_503", 2)
+    specimen = old_unknown(workflow, principal, ident, "processing_blocked")
 
     after = workflow.drain(principal, ident)
 
     assert (after.run.stage, after.run.blocker) == ("processing_blocked", "external_outcome_unknown")
     assert after.run.attempts == specimen.run.attempts
+    assert after.run.paid_calls == specimen.run.paid_calls
+    assert requests(tmp_path, "first_pass") == 1
+
+
+def test_uncertain_existing_comparison_is_a_failed_attempt_retried(tmp_path, monkeypatch):
+    # 2026-10-12: an ordinary comparison whose unknown outcome is due again is
+    # settled as a failed attempt and asked again; its recorded attempt is not
+    # recorded or counted a second time, and stays held in full.
+    workflow, principal, ident, _, _ = comparison_lab(tmp_path, monkeypatch, "http_503", 2)
+    specimen = old_unknown(workflow, principal, ident, "first_pass")
+
+    after = workflow.drain(principal, ident)
+
+    assert (after.run.stage, after.run.blocker) == ("retry_scheduled", "first_pass_result_lost")
+    assert after.run.attempts == specimen.run.attempts
     assert after.run.observations == specimen.run.observations
     assert after.run.paid_calls == specimen.run.paid_calls
+    assert after.run.usage.reserved_cost_micros == specimen.run.usage.reserved_cost_micros
     assert requests(tmp_path, "first_pass") == 1
 
 
