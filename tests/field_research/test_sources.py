@@ -2055,9 +2055,11 @@ SECOND_LEVEL_KIND = "second-level administrative division"
             "wikidata:Q12109474": "film",
             "wikidata:Q6237101": "hospital",
         }, ["wikidata:Q108418", "wikidata:Q156619", "wikidata:Q156431", "wikidata:Q5166896"], 5),
-        # A Philippine province: its class is a first-level administrative division.
+        # A Philippine province: its class is a first-level administrative division,
+        # which its kinds name (Codex's review of 9f5319ca).
         ("Davao Province", {
-            "wikidata:Q15095071": "former province of the Philippines, province of the Philippines",
+            "wikidata:Q15095071": "former province of the Philippines, province of the Philippines, "
+            "first-level administrative division",
         }, [], 5),
     ],
 )
@@ -2130,9 +2132,13 @@ def test_a_redirected_class_is_read_as_the_class_it_redirects_to():
     assert wikidata.parse_superclasses(200, wrong) == (LookupStatus.MALFORMED, {})
 
 
+FIRST_LEVEL_KIND = "first-level administrative division"
+
+
 def test_a_place_whose_classes_reach_both_levels_is_at_neither():
     """A place whose classes reach the first-level and the second-level
-    division alike is given no county's kind: its level is not one."""
+    division alike is given no county's kind: its level is not one. It is
+    named with the first-level class instead (Codex's review of 9f5319ca)."""
     from specimen_digitization.application.georef_places import Place, Ref
 
     superclasses = {"Q1": ("Q2", wikidata.SECOND_LEVEL), "Q2": (wikidata.FIRST_LEVEL,)}
@@ -2140,4 +2146,54 @@ def test_a_place_whose_classes_reach_both_levels_is_at_neither():
     place = Place(source="wikidata", record_id="Q9", name="Somewhere", kinds=(Ref("Q1", "unit of somewhere"),))
     both = approved_sources._place("wikidata", place, wikidata.levels_reached(["Q1"], superclasses))
     one = approved_sources._place("wikidata", place, frozenset({wikidata.SECOND_LEVEL}))
-    assert (both.kind, one.kind) == ("unit of somewhere", "unit of somewhere, " + SECOND_LEVEL_KIND)
+    assert (both.kind, one.kind) == ("unit of somewhere, " + FIRST_LEVEL_KIND,
+        "unit of somewhere, " + SECOND_LEVEL_KIND)
+
+
+@pytest.mark.parametrize("levels", [
+    frozenset({wikidata.FIRST_LEVEL, wikidata.SECOND_LEVEL}), frozenset({wikidata.FIRST_LEVEL})],
+    ids=["both-levels", "first-level-only"])
+def test_a_county_kind_whose_classes_reach_the_first_level_is_at_no_county_s_level(levels):
+    """Codex's review of 9f5319ca: a Wikidata place labelled "county" whose
+    classes reach the first-level division (alone or with the second) kept
+    its "county" kind, and settled County. It is at no county's level now."""
+    from types import SimpleNamespace
+
+    from specimen_digitization.application.georef_places import Place, Ref
+    from specimen_digitization.field_research import agreement
+
+    place = Place(source="wikidata", record_id="Q9", name="Somewhere", kinds=(Ref("Q1", "county"),))
+    answer = SimpleNamespace(source_id="wikidata", candidates=[approved_sources._place("wikidata", place, levels)])
+    assert agreement.at_level("county", answer) == []
+    # The control: the same kind with only the second level, or with no class read, is a county's.
+    for read in (frozenset({wikidata.SECOND_LEVEL}), frozenset()):
+        answer = SimpleNamespace(source_id="wikidata", candidates=[approved_sources._place("wikidata", place, read)])
+        assert [c.authority_id for c in agreement.at_level("county", answer)] == ["wikidata:Q9"]
+
+
+def test_a_first_level_class_leaves_a_province_at_its_level():
+    """The control: the first-level class's name does not move a province
+    off a province's level (as on 9f5319ca)."""
+    from types import SimpleNamespace
+
+    from specimen_digitization.application.georef_places import Place, Ref
+    from specimen_digitization.field_research import agreement
+
+    place = Place(source="wikidata", record_id="Q8", name="Davao", kinds=(Ref("Q2", "province of the Philippines"),))
+    candidate = approved_sources._place("wikidata", place, frozenset({wikidata.FIRST_LEVEL}))
+    answer = SimpleNamespace(source_id="wikidata", candidates=[candidate])
+    assert [c.authority_id for c in agreement.at_level("province_state", answer)] == ["wikidata:Q8"]
+    assert agreement.at_level("county", answer) == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [httpx.Response(503, text="unavailable"), httpx.Response(429)],
+    ids=["server-error", "rate-limited"])
+async def test_a_refused_class_read_is_sent_once(tmp_path, failure):
+    """Codex's review of 9f5319ca: a read of classes answered 503 was sent
+    three times (ATTEMPTS), six requests in all; a county's lookup sends at
+    most CLASS_READS more than its three, and a refused read ends them."""
+    tools, server, _, _ = make(tmp_path, county_gazetteers(classes=lambda request: failure))
+    answer = await tools.lookup("wikidata", "Yepocapa", field_key="county")
+    assert answer.status is LookupStatus.AMBIGUOUS
+    assert len(server.requests) == 4

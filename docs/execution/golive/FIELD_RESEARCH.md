@@ -315,7 +315,9 @@ handover runs field research instead of the six specialists:
    search, the entities and their labels, it reads the subclass-of (P279)
    statements of its places' instance-of (P31) classes, then of the
    classes those name, in at most two more requests of up to 50 classes
-   each (`sources.CLASS_READS`, `ApprovedSources._levels`;
+   each, each sent once and never retried (`sources.CLASS_READS`,
+   `CLASS_READ_ATTEMPTS`, `ApprovedSources._levels`; a refused read was
+   sent three times before Codex's review of 9f5319ca;
    `georef_wikidata.classes_params`, `parse_superclasses`,
    `unread_classes`, `levels_reached`). A chain ends at Wikidata's
    first-level (Q10864048) or second-level (Q12357832) administrative
@@ -323,7 +325,13 @@ handover runs field research instead of the six specialists:
    Q12357832, and `wbgetentities` files the target under the id asked,
    which is read as that class. A place whose chains reach the second-level
    division and not the first-level one has "second-level administrative
-   division" among its kinds (`sources._place`). Probed on 2026-10-12:
+   division" among its kinds (`sources._place`). One whose chains reach the
+   first-level division, alone or with the second, has "first-level
+   administrative division" among its kinds instead, and is at no county's
+   level whatever its other kinds say (`agreement.at_level`; a place
+   labelled "county" whose class reaches the first level settled County
+   before Codex's review of 9f5319ca); a province stays at a province's
+   level. Probed on 2026-10-12:
    Yepocapa's "municipality of Guatemala" reaches it in one read; Cook
    County's "county of Illinois", through "county of the United States",
    in two; the Philippines' "province of the Philippines" reaches the

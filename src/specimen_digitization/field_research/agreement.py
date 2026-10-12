@@ -183,6 +183,7 @@ from typing import NamedTuple
 from specimen_digitization.application.derivations import UNITS
 from specimen_digitization.application.domain import LookupStatus
 from specimen_digitization.application.georef_locality import comparison_key, fold, one_letter_apart
+from specimen_digitization.application.georef_wikidata import FIRST_LEVEL, LEVEL_NAMES
 
 from . import written
 from .abbreviations import fit, fits, initialism
@@ -761,9 +762,17 @@ def at_level(key: str, answer: SourceAnswer) -> list[SourceCandidate]:
     if answer.source_id == "geolocate":
         return list(answer.candidates) if key == "city" else []
     levels = PLACE_LEVELS.get(answer.source_id, {}).get(key, ())
-    return [candidate for candidate in answer.candidates
+    found = [candidate for candidate in answer.candidates
         if any(_kind_matches(answer.source_id, kind, level)
             for kind in (candidate.kind or "").split(",") for level in levels)]
+    if key == "county" and answer.source_id == "wikidata":
+        # A Wikidata place whose classes reach the first-level division is
+        # never a county, whatever its other kinds say (sources._place names
+        # that class among its kinds; Codex's review of #325 at 9f5319ca).
+        first = LEVEL_NAMES[FIRST_LEVEL]
+        found = [candidate for candidate in found
+            if first not in (kind.strip().casefold() for kind in (candidate.kind or "").split(","))]
+    return found
 
 
 def placed(key: str, answer: SourceAnswer) -> SourceCandidate | None:
