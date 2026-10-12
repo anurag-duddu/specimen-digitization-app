@@ -88,11 +88,19 @@ class ApiFailure implements Exception {
     this.code = 'unavailable',
     this.status,
     this.details = const {},
+    this.fromServer = false,
   });
   final String message;
   final String code;
   final int? status;
   final Json details;
+
+  /// True when this failure stands for an answer the server sent, so
+  /// [message] is the server's own text, or a generic fallback where the
+  /// answer carried none. The server words a refusal for its log ("Access
+  /// denied") or sends a bare code, so a surface held to the writing
+  /// guidelines says it in this app's words instead.
+  final bool fromServer;
   bool get artifactRequired =>
       status == 413 && code == 'workspace_artifact_required';
   bool get conflict => status == 409 || status == 412;
