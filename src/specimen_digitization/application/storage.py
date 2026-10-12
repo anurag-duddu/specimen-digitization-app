@@ -621,6 +621,20 @@ class SQLiteRepository:
             for r in rows
         ]
 
+    def blocked_ids(self, scope):
+        """Blocked, non-sensitive records with no disposition, by id
+        (lane_worker.DrainWorker._recover_blocked)."""
+        from .lane import SQLITE_STATUS
+
+        with self.connect() as db:
+            rows = db.execute(
+                "SELECT id FROM records WHERE org=? AND collection=? AND COALESCE(json_extract(payload,'$.asset.sensitive'),1)=0 AND "
+                + SQLITE_STATUS
+                + "='processing_blocked' ORDER BY id",
+                (scope.organization_id, scope.collection_id),
+            ).fetchall()
+        return [r[0] for r in rows]
+
     def due_page(self, scope, cutoff, after_id=None, limit=50):
         if not 1 <= limit <= 100:
             raise ValueError("Work page limit must be 1..100")

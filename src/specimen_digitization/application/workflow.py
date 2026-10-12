@@ -67,6 +67,31 @@ FIELD_RECHECK = "field_research_recheck"
 # A reading whose worker stopped after saving its intent and before saving its
 # result (Workflow._settle_lost_reading).
 LOST_READING = "reading_result_lost"
+# The same for an ordinary first pass (Workflow._settle_lost_reading).
+LOST_FIRST_PASS = "first_pass_result_lost"
+# A run's own budgets that leave no room for another call. At an ordinary first
+# pass the run gives the comparison up instead of blocking (HARNESS.md 3).
+UNAFFORDABLE = frozenset(
+    {
+        "cost_budget_exhausted",
+        "token_budget_exhausted",
+        "external_call_budget_exhausted",
+        "active_time_budget_exhausted",
+    }
+)
+# Blockers of an ordinary first pass that the drain recovers on its own
+# (Workflow.recover_blocked). The two lane codes are lane_worker's RUN_STALLED
+# and HANDOVER_STALLED.
+RECOVERABLE_FIRST_PASS_BLOCKERS = UNAFFORDABLE | {
+    "external_outcome_unknown",
+    "pinned_model_route_unavailable",
+    "lane_run_not_progressing",
+    "lane_handover_without_progress",
+}
+RECOVERABLE_FIRST_PASS_PREFIXES = ("retry_budget_exhausted:", "provider_circuit:")
+# Each recovery is recorded here; a step is recovered at most this many times.
+AUTOMATIC_RECOVERIES = "automatic_recoveries"
+MAX_AUTOMATIC_RECOVERIES = 3
 
 
 class OperationalBlock(RuntimeError):
@@ -251,6 +276,15 @@ class Workflow:
             and self.field_research.handles(run)
         ):
             step = FIELD_RECHECK if FIELD_RESEARCH in run.completed_steps else FIELD_RESEARCH
+        ordinary_first_pass = step.startswith("first_pass:") and first_pass_failure_is_recoverable(
+            run, step
+        )
+        if ordinary_first_pass:
+            from .first_pass import repin_first_pass_route
+
+            # A pin whose provider the registry moved, same model and price: the
+            # move is saved with the step's next save (HARNESS.md 3, Failures).
+            repin_first_pass_route(run, self.clock())
         # Persist intent before network/model work. Crash with intent but no result is
         # blocked for explicit replay: provider calls may not support deduplication.
         if run.blocker == "external_outcome_unknown":
@@ -260,11 +294,14 @@ class Workflow:
             ):
                 return specimen
             if (
-                step.startswith("transcribe:")
-                and reader_failure_is_recoverable(run, step)
-                and run.attempts.get(step, 0) >= 1
-            ):
-                # A reading is the exception: asking again is safe (G6).
+                (
+                    step.startswith("transcribe:")
+                    and reader_failure_is_recoverable(run, step)
+                )
+                or ordinary_first_pass
+            ) and run.attempts.get(step, 0) >= 1:
+                # A reading or an ordinary first pass is the exception: asking
+                # again is safe (G6; reliability.first_pass_failure_is_recoverable).
                 return self._settle_lost_reading(principal, specimen, revision, step)
             run.stage = "processing_blocked"
             return self.repository.save(
@@ -367,6 +404,10 @@ class Workflow:
                 self.reserve_retained_cost(principal, specimen, step, cost)
             except OperationalBlock as error:
                 issue = str(error)
+        if issue in UNAFFORDABLE and ordinary_first_pass:
+            # No room for another comparison under the run's limits: give it up
+            # unsent, as a first pass whose last attempt failed is given up on.
+            return self._give_up_first_pass(principal, specimen, revision, step, issue)
         if issue:
             run.blocker = issue
             run.stage = "processing_blocked"
@@ -1097,33 +1138,55 @@ class Workflow:
         is (``lane_costs.record_step``). The reading is asked again within
         ``max_attempts``; after the last attempt it ends with no observation and
         the record goes to review (G6), as ``reading_has_no_attempt_left`` does.
+
+        An ordinary first pass (``first_pass_failure_is_recoverable``) is settled
+        the same way, with ``LOST_FIRST_PASS``: after its last attempt it is given
+        up on (``first_pass.give_up``) and the label keeps its readings,
+        unresolved. So is one whose unknown outcome a step already saved, with
+        its attempt recorded and held (``recover_blocked`` makes it due): that
+        attempt is not recorded or counted again.
         """
         run = specimen.run
         policy = run.profile.execution
+        first_pass = step.startswith("first_pass:")
+        code = LOST_FIRST_PASS if first_pass else LOST_READING
+        attempt = run.attempts.get(step, 0)
+        recorded = any(
+            call.get("step") == step and call.get("attempt") == attempt
+            for call in run.paid_calls
+        )
         run.lease_until = None
         run.disposition = None
         # The call may have run to its effect timeout: that time is spent, not
-        # released, so the run's active-time budget still counts it.
+        # released, so the run's active-time budget still counts it. A recorded
+        # attempt already counted the time it took.
         timeout = policy.effect_timeout_for_step(step)
-        run.usage.active_seconds += min(timeout, run.usage.reserved_active_seconds)
+        if not recorded:
+            run.usage.active_seconds += min(timeout, run.usage.reserved_active_seconds)
         run.usage.reserved_active_seconds = max(0, run.usage.reserved_active_seconds - timeout)
-        if run.attempts.get(step, 0) >= policy.max_attempts:
+        if attempt >= policy.max_attempts:
+            if first_pass:
+                from .first_pass import give_up
+
+                give_up(run, step.split(":", 1)[1], code)
             run.blocker = None
+            run.next_retry_at = None
+            run.dead_letter = False
             run.completed_steps.append(step)
             run.stage = self.next_step(run).split(":")[0]
         else:
-            run.blocker = LOST_READING
+            run.blocker = code
             run.stage = "processing_blocked"
             self.schedule_retry(run, step)
         _log_step_failure(
             run,
             step,
-            "reading_result_lost",
-            code=LOST_READING,
-            blocker=run.blocker,  # LOST_READING, or None once given up
+            code,
+            code=code,
+            blocker=run.blocker,  # The code, or None once given up
             stage=run.stage,
         )
-        if not run.profile.synthetic:
+        if not run.profile.synthetic and not recorded:
             from .lane_costs import record_settled, record_step, settle_step
             from .lane_reservations import step_reservation
 
@@ -1139,7 +1202,7 @@ class Workflow:
                     0,
                     reserved,
                     self.clock,
-                    failure=LOST_READING,
+                    failure=code,
                 )
             else:
                 # The stopped worker had settled the ledger before saving: the
@@ -1149,8 +1212,10 @@ class Workflow:
                     step,
                     "model",
                     cost_micros=settled,
-                    failure_code=LOST_READING,
-                    route_id=step.split(":")[-1],
+                    failure_code=code,
+                    route_id=run.profile.first_pass_route
+                    if first_pass
+                    else step.split(":")[-1],
                 )
                 settle_step(
                     self.repository, principal, specimen, step, reserved, self.clock
@@ -1175,6 +1240,130 @@ class Workflow:
             f"lost-reading:{revision}",
             digest({"lost_reading": step, "run": run.id}),
         )
+
+    def _give_up_first_pass(self, principal, specimen, revision, step, code):
+        """Give an ordinary first pass up without sending it: the run cannot
+        afford another call (``UNAFFORDABLE``). Nothing is reserved or recorded;
+        earlier attempts keep what they hold. The label keeps its readings,
+        unresolved, and the record goes on to review (HARNESS.md 3, Failures)."""
+        from .first_pass import give_up
+
+        run = specimen.run
+        give_up(run, step.split(":", 1)[1], code)
+        run.blocker = None
+        run.next_retry_at = None
+        run.dead_letter = False
+        run.disposition = None
+        run.completed_steps.append(step)
+        run.stage = self.next_step(run).split(":")[0]
+        _log_step_failure(run, step, "first_pass_unaffordable", code=code, stage=run.stage)
+        specimen.audit.append(
+            AuditEvent(
+                actor=principal.user_id,
+                action="workflow_step",
+                reason=step,
+                after={"stage": run.stage, "blocker": run.blocker},
+            )
+        )
+        return self.repository.save(
+            principal,
+            specimen,
+            revision,
+            f"first-pass-unaffordable:{revision}",
+            digest({"first_pass_unaffordable": step, "run": run.id, "code": code}),
+        )
+
+    def recover_blocked(self, principal: Principal, specimen_id: str) -> bool:
+        """Make a blocked ordinary first pass due again; whether it did.
+
+        The drain calls this for each blocked record when it takes a collection
+        (lane_worker.DrainWorker), so a run blocked at its first pass by a
+        transient cause goes on through the normal workflow with no action:
+
+        - ``external_outcome_unknown`` (lease ended): due, kept as it is; the
+          step settles it as a lost attempt (``_settle_lost_reading``).
+        - ``retry_budget_exhausted:<code>``: its attempts are used up, so the
+          first pass is given up on with ``<code>``.
+        - A budget the run cannot afford (``UNAFFORDABLE``), a pin whose provider
+          moved (``first_pass.repinnable_first_pass_route``), a provider circuit,
+          or a lane stall: due; the step gives the first pass up, moves the pin,
+          or asks the circuit again.
+
+        Only an ordinary first pass (``first_pass_failure_is_recoverable``), on a
+        record that is not sensitive, has no disposition and holds no live lease.
+        Each recovery is recorded in ``run.dependencies[AUTOMATIC_RECOVERIES]``,
+        at most ``MAX_AUTOMATIC_RECOVERIES`` per step. No call is made here, and
+        no reservation is released or added.
+        """
+        from .reliability import has_active_lease
+
+        specimen = self.repository.get(principal.scope, specimen_id)
+        run = specimen.run
+        if (
+            run.stage != "processing_blocked"
+            or run.disposition is not None
+            or specimen.asset.sensitive
+        ):
+            return False
+        step = self.next_step(run)
+        blocker = run.blocker or ""
+        if (
+            not step.startswith("first_pass:")
+            or not first_pass_failure_is_recoverable(run, step)
+            or has_active_lease(run, self.clock())
+            or not (
+                blocker in RECOVERABLE_FIRST_PASS_BLOCKERS
+                or blocker.startswith(RECOVERABLE_FIRST_PASS_PREFIXES)
+            )
+        ):
+            return False
+        from .first_pass import give_up, repinnable_first_pass_route
+
+        if blocker == "pinned_model_route_unavailable" and (
+            repinnable_first_pass_route(run) is None
+        ):
+            return False  # Another model, or no route: not a provider move.
+        history = run.dependencies.get(AUTOMATIC_RECOVERIES, [])
+        if sum(1 for item in history if item.get("step") == step) >= MAX_AUTOMATIC_RECOVERIES:
+            return False
+        at = self.clock()
+        run.dependencies[AUTOMATIC_RECOVERIES] = [
+            *history,
+            {
+                "step": step,
+                "blocker": blocker,
+                "attempt": run.attempts.get(step, 0),
+                "at": at.isoformat(),
+            },
+        ]
+        if blocker.startswith("retry_budget_exhausted:"):
+            give_up(run, step.split(":", 1)[1], blocker.split(":", 1)[1])
+            run.blocker = None
+            run.dead_letter = False
+            run.next_retry_at = None
+            run.completed_steps.append(step)
+            run.stage = self.next_step(run).split(":")[0]
+        else:
+            # Due now. An unknown outcome keeps its blocker for the step to settle.
+            run.stage = "retry_scheduled"
+            run.next_retry_at = at.isoformat()
+        _log_step_failure(run, step, "automatic_recovery", blocker=log_code(blocker), stage=run.stage)
+        specimen.audit.append(
+            AuditEvent(
+                actor=principal.user_id,
+                action="automatic_recovery",
+                reason=step,
+                after={"stage": run.stage, "blocker": run.blocker},
+            )
+        )
+        self.repository.save(
+            principal,
+            specimen,
+            specimen.version,
+            f"automatic-recovery:{specimen.version}",
+            digest({"automatic_recovery": step, "run": run.id, "blocker": blocker}),
+        )
+        return True
 
     def _ledger_settlement(self, principal, specimen, step, reserved):
         """What the program ledger settled for the step's current attempt, or None.
