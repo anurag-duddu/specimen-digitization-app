@@ -2237,3 +2237,131 @@ def test_readers_with_different_years_are_named_to_the_expert_and_settle_nothing
     assert shown["notes"] == ["readers_disagree_on_date", "1A: 1948-04-25; 1B: 1949-04-25"]
     assert "differs from the literal" in retries(script.seen[2][0])[0]
     assert outcome.failure is None and outcome.answer.outcome == "several_possibilities"
+
+
+# ---- County: the country's second-level unit, whatever the country calls it ----
+# The owner, 2026-10-11, asked whether County should hold the municipio for
+# Latin American labels (Yepocapa, Guatemala): "however the local government
+# does it so if that is the equivalent then yes". 105526329's county was
+# absent in production, and its brief said a municipality is never a county.
+
+LABEL_329 = "Yepocapa, 4800ft\nChimaltenago,\nGuatemala"
+
+
+def recorded_answers(tmp_path, *lookups) -> list[SourceAnswer]:
+    """The recorded answers (test_sources.county_gazetteers) to these
+    (source, query, field) lookups, as field_research.sources reads them."""
+    from test_sources import county_gazetteers, make
+
+    tools, _, _, _ = make(tmp_path, county_gazetteers())
+
+    async def ask():
+        return [await tools.lookup(source, query, field_key=key) for source, query, key in lookups]
+
+    return asyncio.run(ask())
+
+
+def county_expert(text: str, literal: str, received) -> experts._Expert:
+    """A county expert on one label two readers write as `text`, the
+    organiser offering `literal` from both, that received these answers."""
+    readings = (Reading("1A", "region-1", "obs-1a", "raw_reading", text),
+                Reading("1B", "region-1", "obs-1b", "raw_reading", text))
+    made = experts._Expert(task("county", candidates=offered(("1A", literal), ("1B", literal))), readings,
+                           FakeTools(), PILOT_DATES)
+    for found in received:
+        made.calls.append(experts._Call(found.source_id, found.query, found.status, found))
+    return made
+
+
+@pytest.mark.parametrize(("source", "authority", "settles"), [
+    # Wikidata's municipio, whose class is a second-level administrative division.
+    ("wikidata", "wikidata:Q1523937", True),
+    # NGA's municipio (A.ADM2), which already settled a county.
+    ("nga", "nga:-1143758", True),
+    # NGA's town of the name (P.PPLA2) is the city's, never the county's.
+    ("nga", "nga:-1143757", False),
+])
+def test_105526329s_county_settles_on_the_municipio_its_sources_confirm(tmp_path, source, authority, settles):
+    [received] = recorded_answers(tmp_path, (source, "Yepocapa", "county"))
+    made = county_expert(LABEL_329, "Yepocapa", [received])
+    given = answer(outcome="resolved", literal="Yepocapa", reading_names=["1A", "1B"], authority_id=authority,
+                   source_evidence_ids=[received.evidence.id])
+
+    if settles:
+        assert made.validate(given).authority_id == authority
+        return
+    with pytest.raises(ModelRetry, match="exactly one candidate at this field's level"):
+        made.validate(given)
+
+
+STATE = "states (political divisions), first level subdivisions (political entities)"
+COUNTY = "counties, second level subdivisions (political entities)"
+IN_IOWA = (("Iowa", "tgn:iowa"), ("United States", "tgn:united-states"))
+
+
+def iowa(query: str, evidence_id: str, *places) -> SourceAnswer:
+    """A made-up Getty TGN answer for a US state and a county of its name."""
+    return SourceAnswer("tgn", query, LookupStatus.AMBIGUOUS if len(places) > 1 else LookupStatus.SUCCESS,
+                        tuple(SourceCandidate(name, key, kind, None, tuple(PlaceRef(*p) for p in parents))
+                              for name, key, kind, parents in places),
+                        Evidence(id=evidence_id, kind="authority", source="tgn", locator=None, excerpt=query),
+                        note="answer")
+
+
+IOWA_STATE = ("Iowa", "tgn:iowa", STATE, (("United States", "tgn:united-states"),))
+IOWA_COUNTY = ("Iowa", "tgn:iowa-county", COUNTY, IN_IOWA)
+
+
+@pytest.mark.parametrize(("text", "literal", "received", "cited", "authority", "settles"), [
+    # 105526329's department, written alone: NGA holds the department (A.ADM1),
+    # its municipio (A.ADM2) and towns of the name. The label may name the
+    # department, never a county.
+    ("Chimaltenango,\nGuatemala", "Chimaltenango", "nga:Chimaltenango", 0, "nga:-1132766", False),
+    # A county a US state's name: the label writes the county's unit word.
+    ("Iowa Co., Iowa", "Iowa Co.", "iowa", 0, "tgn:iowa-county", True),
+    # The same name with no unit word: the state or the county.
+    ("Iowa, U.S.A.", "Iowa", "iowa", 1, "tgn:iowa-county", False),
+])
+def test_a_county_never_settles_on_text_its_sources_also_find_at_the_first_level(
+        tmp_path, text, literal, received, cited, authority, settles):
+    if received == "iowa":
+        received = [iowa("Iowa County", "ev-iowa-county", IOWA_COUNTY),
+                    iowa("Iowa", "ev-iowa", IOWA_STATE, IOWA_COUNTY)]
+    else:
+        received = recorded_answers(tmp_path, ("nga", "Chimaltenango", "county"))
+    made = county_expert(text, literal, received)
+    given = answer(outcome="resolved", literal=literal, reading_names=["1A", "1B"],
+                   value="Iowa" if literal == "Iowa Co." else None, authority_id=authority,
+                   source_evidence_ids=[received[cited].evidence.id])
+
+    if settles:
+        assert made.validate(given).authority_id == authority
+        return
+    with pytest.raises(ModelRetry, match="a first-level unit"):
+        made.validate(given)
+    refused = agreement.refusal(made.task, made.readings, literal=literal, named=made.readings, value=given.value,
+                                authority_id=authority, cited=[received[cited]], received=received)
+    assert (refused.reason, refused.differ) == (agreement.FIRST_LEVEL_TOO, True)
+
+
+def test_the_county_brief_settles_the_countrys_second_level_unit():
+    """The county brief says what the code does: the county is the
+    country's second-level unit, read from the sources, and may be the
+    municipio of the town the city settles on; a first-level unit is never
+    the county. The old rule, that a municipality is never a county, is gone."""
+    from specimen_digitization.field_research.prompts import FIELD_LABELS, instructions
+
+    brief = instructions("county").split(f"Field: {FIELD_LABELS['county']} (county)", 1)[1]
+    assert "A municipality, a city, an island or a province is not a county" not in brief
+    assert "Most labels outside the United States name no county" not in brief
+    assert brief.startswith(". The country's second-level administrative unit")
+    assert "(a municipio, a municipality, a district)" in brief
+    [level] = [line for line in brief.splitlines() if line.startswith("- The level comes from the sources")]
+    assert all(kind in level for kind in ('"second level subdivisions (political entities)"', "A.ADM2",
+                                          '"second-level administrative division"'))
+    assert "A first-level unit (a province, a state, a department) is never the county." in level
+    assert ("settle the county on it, even though the city settles on the town of that name" in brief)
+    assert "the county settles only inside it once it is settled" in brief
+    assert '("<Province>", "<Province> Prov.") is the province, never the county' in brief
+    city = instructions("city").split(f"Field: {FIELD_LABELS['city']} (city)", 1)[1]
+    assert "the county may settle on that unit, and the city still settles on the town" in city
