@@ -105,7 +105,7 @@ class ApiSpecimenRepository
       if (_accessFailure != null) throw _accessFailure!;
       if (_rechecking || (_hasVerifiedSession && _verifiedUserId != userId)) {
         throw const ApiFailure(
-          'Collection access must be verified before continuing.',
+          "This account's access has not been checked yet. Check access again.",
           code: 'access_not_verified',
           status: 403,
         );
@@ -165,7 +165,7 @@ class ApiSpecimenRepository
     } catch (_) {
       throw _deny(
         const ApiFailure(
-          'Your sign-in could not be refreshed. Check your connection or sign in again.',
+          'The sign-in could not be refreshed. Check the connection, or sign in again.',
           code: 'unauthenticated',
           status: 401,
         ),
@@ -176,7 +176,7 @@ class ApiSpecimenRepository
     if (bearer == null || bearer.isEmpty) {
       throw _deny(
         const ApiFailure(
-          'Your session expired. Sign in again.',
+          'The session expired. Sign in again.',
           code: 'unauthenticated',
           status: 401,
         ),
@@ -209,7 +209,7 @@ class ApiSpecimenRepository
       if (check == null || check.isEmpty) {
         throw _deny(
           const ApiFailure(
-            'App verification is unavailable. Retry or contact your administrator. Collection access has not been verified.',
+            'App verification is unavailable. Reload the app, or ask an administrator to check App Check.',
             code: 'app_check_unavailable',
             status: 403,
           ),
@@ -331,6 +331,7 @@ class ApiSpecimenRepository
           'The service returned an unreadable response. Retry or contact your administrator.',
           code: 'invalid_response',
           status: response.statusCode,
+          fromServer: true,
         );
       }
       if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -349,6 +350,7 @@ class ApiSpecimenRepository
           details: error['details'] is Map
               ? Map<String, dynamic>.from(error['details'])
               : const {},
+          fromServer: true,
         );
       }
       return result;
@@ -466,7 +468,7 @@ class ApiSpecimenRepository
           await response.stream.listen(null).cancel();
           throw _deny(
             ApiFailure(
-              'Evidence access was denied. Check your account and collection access.',
+              'Evidence access was denied. Check access again, or ask an administrator.',
               code: 'access_denied',
               status: response.statusCode,
             ),
@@ -590,7 +592,7 @@ class ApiSpecimenRepository
                         (row['permissions'] as List).any((p) => !nonempty(p)))),
           )) {
         throw const ApiFailure(
-          'The server could not verify your account and collection roles. Sign in again or contact your administrator.',
+          "The server could not confirm this account's collection roles. Sign in again, or ask an administrator.",
           code: 'invalid_session',
           status: 403,
         );
@@ -610,7 +612,7 @@ class ApiSpecimenRepository
         (m) => !keys.add('${m['organization_id']}/${m['collection_id']}'),
       )) {
         throw const ApiFailure(
-          'The server returned conflicting collection roles. Ask your administrator.',
+          'The server returned conflicting collection roles. Ask an administrator to correct them.',
           code: 'invalid_session',
           status: 403,
         );
@@ -643,7 +645,7 @@ class ApiSpecimenRepository
         ),
       )) {
         throw const ApiFailure(
-          'An assigned collection is unavailable. Ask your administrator to check collection access.',
+          'An assigned collection is unavailable. Ask an administrator to check collection access.',
           code: 'invalid_collections',
           status: 403,
         );
@@ -678,7 +680,7 @@ class ApiSpecimenRepository
         _rechecking = false;
         _deny(
           const ApiFailure(
-            'Collection access could not be verified. Check access again.',
+            'The access check stopped. Check access again, or ask an administrator.',
             code: 'access_not_verified',
             status: 403,
           ),
@@ -1056,7 +1058,7 @@ class ApiSpecimenRepository
         if (response.statusCode == 401 || response.statusCode == 403) {
           throw _deny(
             ApiFailure(
-              'Source image access was denied. Check your account and collection access.',
+              'Source image access was denied. Check access again, or ask an administrator.',
               code: 'access_denied',
               status: response.statusCode,
             ),
@@ -1618,6 +1620,7 @@ class ApiSpecimenRepository
             textOf(error['message'], 'The review decision was refused.'),
             code: error['code'] as String,
             status: error['status'] is int ? error['status'] as int : null,
+            fromServer: true,
           );
           refused++;
           break;
