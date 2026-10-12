@@ -140,8 +140,10 @@ RETRYABLE = {
 BLOCKER_STATUS = dict(RETRYABLE.values())
 # The failures that, on the step's last attempt (last_attempt), send their
 # field to review instead of blocking: no retry follows that attempt. A
-# model error blocks on every attempt; a provider's outage is for a later
-# retry, never a finalized record.
+# timeout is the field's own deadline, the step's, or a model request that
+# ran out of time (experts.timed_out). A model error (any other provider
+# failure, or a defect) blocks on every attempt; a provider's outage is for
+# a later retry, never a finalized record.
 REVIEW_ON_LAST_ATTEMPT = frozenset({"source_unavailable", "timeout"})
 FIELD_REASONS = {
     "source_unavailable": "An approved source could not be reached. The record will be retried.",
@@ -151,7 +153,9 @@ FIELD_REASONS = {
     "input_too_large": "The readings and sources for this field were too long to send for checking.",
     None: "No answer was produced for this field.",
 }
-# The model gateway's own bound on one provider request.
+# The model gateway's own bound on one provider request, under the expert's
+# 150 s deadline. A request it stops is the field's timeout, not a model
+# error (experts.ClientTimeouts, experts.timed_out).
 MODEL_TIMEOUT_SECONDS = 120
 
 
@@ -2210,8 +2214,8 @@ def not_on_label(key: str, value: FieldValue, run, evidence: Mapping[str, Eviden
 # agreement's reasons for refusing a resolved answer, by constant name.
 REFUSALS = ("DIFFER", "LABELS_DIFFER", "NOT_DECIDED", "NOT_CANDIDATE", "PART_OF_NAME", "DOUBTFUL_GENUS",
     "NO_PLACE", "EXPANSIONS_DIFFER", "NO_PARENTS", "NO_COUNTRY", "NOT_IN_COUNTRY", "NOT_IN_PROVINCE", "NEAR_UNFIT",
-    "NOT_EVERY_READER", "PART_OF_RANGE", "UNIT_DIFFERS", "NO_UNIT", "HOLDS_AN_ELEVATION", "HOLDS_A_DATE",
-    "HOLDS_A_RANGE")
+    "NOT_EVERY_READER", "PART_OF_RANGE", "UNIT_DIFFERS", "NO_UNIT", "A_DISTANCE", "HOLDS_AN_ELEVATION",
+    "HOLDS_A_DATE", "HOLDS_A_RANGE")
 # A lookup's status as a field's trace names it. Logfire's default scrubber
 # replaces any attribute whose value holds "auth" or "credential", so the two
 # refusals (HTTP 401 and 403) are renamed.
@@ -2868,18 +2872,21 @@ class FieldResearchStep:
 
 def _production_resolver(run, profile, meter):
     """The harness route's model through the Hugging Face gateway, as the
-    ordinary extraction call builds its model (production.py _extract_direct)."""
+    ordinary extraction call builds its model (production.py _extract_direct).
+    Under PrivateProviderModel, ClientTimeouts keeps the gateway's own
+    timeout (MODEL_TIMEOUT_SECONDS) a TimeoutError, so a request it stops is
+    the field's timeout."""
     if os.getenv("SPECIMEN_APPROVED_INFERENCE") != "true":
         raise OperationalBlock("provider_data_policy_and_spending_approval_required")
     from specimen_digitization.model_gateway import HuggingFaceModelGateway
     from specimen_digitization.provider_privacy import PrivateProviderModel
 
-    from .experts import make_resolver
+    from .experts import ClientTimeouts, make_resolver
 
     gateway = HuggingFaceModelGateway(timeout_seconds=MODEL_TIMEOUT_SECONDS)
     route = profile.harness_route
     gateway.route(route)  # An unknown route fails here, before any request.
-    return make_resolver(model_factory=lambda: PrivateProviderModel(gateway.model_for(route)),
+    return make_resolver(model_factory=lambda: PrivateProviderModel(ClientTimeouts(gateway.model_for(route))),
         meter=meter, date_rules=profile.date_rules)
 
 
