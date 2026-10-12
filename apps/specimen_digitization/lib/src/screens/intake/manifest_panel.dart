@@ -152,16 +152,20 @@ class _IntakeManifestState extends State<IntakeManifest> {
     ];
     final EdgeInsetsGeometry padding =
         widget.padding ?? EdgeInsetsDirectional.all(ui.space.s6);
-    return widget.scrollable
-        ? ListView(padding: padding, children: children)
-        : Padding(
-            padding: padding,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: children,
+    // One ticker for every rolling row, however long the manifest is.
+    return IntakeStageCycle(
+      active: entries.any(IntakeProgress.rolls),
+      child: widget.scrollable
+          ? ListView(padding: padding, children: children)
+          : Padding(
+              padding: padding,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: children,
+              ),
             ),
-          );
+    );
   }
 }
 
@@ -212,10 +216,12 @@ class _ManifestHeader extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          // One account of the batch, visually and in announcements.
+          // One account of the batch, read in place but never announced:
+          // each row's stage status is the one live region for a photo's
+          // change, so one transition is heard once (06 section 2.1).
           Semantics(
+            key: const ValueKey<String>('intake-batch-summary'),
             container: true,
-            liveRegion: true,
             child: Text(
               summary,
               style: ui.type.body.copyWith(color: ui.color.inkSecondary),

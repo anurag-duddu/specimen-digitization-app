@@ -170,6 +170,7 @@ class UiProgress extends StatefulWidget {
     this.size = UiProgressSize.medium,
     this.color,
     this.announce = false,
+    this.cycle,
   }) : form = UiProgressForm.ring;
 
   /// A 4 dp capsule bar, as wide as the space it is given.
@@ -179,6 +180,7 @@ class UiProgress extends StatefulWidget {
     this.value,
     this.color,
     this.announce = false,
+    this.cycle,
   }) : form = UiProgressForm.bar,
        size = UiProgressSize.medium;
 
@@ -206,6 +208,14 @@ class UiProgress extends StatefulWidget {
   /// reviewer for the length of a batch upload. The one indicator a screen
   /// reader user is waiting on sets it (06 section 3.1).
   final bool announce;
+
+  /// A shared indeterminate cycle, 0 to 1, driven by an ancestor.
+  ///
+  /// When given, this indicator holds no ticker of its own and follows
+  /// [cycle], so a list of many indeterminate indicators costs one ticker.
+  /// The owner of [cycle] applies the reduced-motion policy by stopping it;
+  /// this indicator still draws the still frame under reduced motion.
+  final Animation<double>? cycle;
 
   @override
   State<UiProgress> createState() => _UiProgressState();
@@ -262,7 +272,7 @@ class _UiProgressState extends State<UiProgress>
   /// An indeterminate indicator turns; a determinate one has nothing to
   /// repeat, so it holds no ticker at all.
   void _syncTicker() {
-    if (_value == null && !_reduced) {
+    if (_value == null && !_reduced && widget.cycle == null) {
       if (!_turn.isAnimating) _turn.repeat();
     } else if (_turn.isAnimating) {
       _turn.stop();
@@ -338,11 +348,12 @@ class _UiProgressState extends State<UiProgress>
   /// The unmeasured form: it turns, or remains still under reduced motion.
   Widget _indeterminate(UiThemeData ui, UiProgressStyle style) {
     final bool reduced = ui.motion.reduced;
+    final Animation<double> turn = widget.cycle ?? _turn;
     return AnimatedBuilder(
-      animation: _turn,
+      animation: turn,
       builder: (BuildContext context, Widget? child) {
         final UiProgressPhase phase = UiProgressPhase.at(
-          _turn.value,
+          turn.value,
           reduced: reduced,
           pulseFloor: style.pulseFloor,
         );

@@ -58,10 +58,34 @@ def test_no_regions_does_not_claim_reading_and_pilot_does_not_infer_ordinary_ste
     assert intake_progress(run)["next_step"] is None
 
 
-@pytest.mark.parametrize("marker", ["validate", "field_research", "field_recheck"])
+@pytest.mark.parametrize("marker", ["validate", "field_research"])
 def test_both_research_paths_report_saved_completion(marker):
     run = Run(stage="finalized", completed_steps=[marker], disposition=Disposition.REVIEW)
     assert intake_progress(run)["completed_stages"] == ["research", "finalize"]
+
+
+def specimen_for(run):
+    return Specimen(scope=Scope(organization_id="org", collection_id="collection"), run=run,
+        asset=Asset(sha256="a" * 64, blob_ref="photo", media_type="image/png", size_bytes=1,
+                    width=1, height=1, filename="photo.png", uploader="operator"))
+
+
+ALL_BEFORE_AUTHORITY = PREP + ["adjudicate", "parse", "plan", "lookup"]
+
+
+@pytest.mark.parametrize("plan", [[{}], [{"tool": "gbif"}]])
+@pytest.mark.parametrize("stage", ["paused", "cancelled", "finalized", "processing_blocked"])
+def test_malformed_legacy_terminal_run_still_summarises(stage, plan):
+    # Legacy runs can carry an authority plan the workflow cannot walk.
+    run = Run(stage=stage, completed_steps=ALL_BEFORE_AUTHORITY.copy(), authority_plan=plan)
+    specimen = specimen_for(run)
+    before = specimen.model_dump_json()
+    result = summary(specimen, "operator")
+    assert result["stage"] == stage
+    progress = result["intake_progress"]
+    assert progress["next_step"] is None
+    assert progress["completed_stages"][:3] == ["segment", "compare", "extract"]
+    assert specimen.model_dump_json() == before
 
 
 def test_summary_adds_bounded_projection_without_altering_actions_or_old_fields():

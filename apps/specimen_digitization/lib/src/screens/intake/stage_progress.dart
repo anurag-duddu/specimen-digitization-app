@@ -39,11 +39,38 @@ enum IntakeStageState {
 /// Immutable display snapshot: mutable manifest entries must not be retained
 /// as the previous value when deciding whether a status has changed.
 class IntakeProgress {
-  const IntakeProgress(this.label, this.current, this.states);
+  const IntakeProgress(this.label, this.current, this.states, {this.detail});
 
   final String label;
   final IntakeStage? current;
   final List<IntakeStageState> states;
+
+  /// The precise step inside [current], where the stage name alone would
+  /// misreport it. Preparation shares the first processing segment, but a
+  /// classifier failure did not happen while finding labels.
+  final String? detail;
+
+  /// The words for preparation steps that precede finding labels.
+  static const String preparing = 'Preparing photo';
+
+  static const Set<String> _preparation = <String>{
+    'pin_dependencies',
+    'classify',
+    'quality_check',
+  };
+
+  /// True when this row draws an indeterminate, rolling segment.
+  ///
+  /// Upload has a measured denominator once bytes move, so it never rolls
+  /// while uploading.
+  static bool rolls(ManifestEntry entry) {
+    final IntakeProgress progress = IntakeProgress.of(entry);
+    final IntakeStage? stage = progress.current;
+    if (stage == null) return false;
+    if (progress.states[stage.index] != IntakeStageState.active) return false;
+    return !(stage == IntakeStage.upload &&
+        entry.state == UploadState.uploading);
+  }
 
   static IntakeStage? _stage(Object? step) => switch (step) {
     'pin_dependencies' ||
@@ -59,8 +86,7 @@ class IntakeProgress {
     'resolve' ||
     'normalize' ||
     'validate' ||
-    'field_research' ||
-    'field_recheck' => IntakeStage.research,
+    'field_research' => IntakeStage.research,
     'finalize' => IntakeStage.finalize,
     'finalized' => IntakeStage.queue,
     _ => null,
@@ -71,13 +97,14 @@ class IntakeProgress {
       IntakeStage.values.length,
       IntakeStageState.waiting,
     );
+    String? detail;
     IntakeProgress at(
       String label,
       IntakeStage? stage,
       IntakeStageState state,
     ) {
       if (stage != null) states[stage.index] = state;
-      return IntakeProgress(label, stage, states);
+      return IntakeProgress(label, stage, states, detail: detail);
     }
 
     final saved = entry.specimenId != null || entry.settled;
@@ -143,6 +170,7 @@ class IntakeProgress {
     }
     final step = progress['next_step'] ?? specimen?.data['stage'];
     final stage = _stage(step);
+    if (_preparation.contains(step)) detail = preparing;
     if (stage != null) {
       for (final earlier in IntakeStage.values.skip(1).take(stage.index - 1)) {
         if (states[earlier.index] != IntakeStageState.done) {
@@ -176,18 +204,90 @@ class IntakeProgress {
     if (stage == null) {
       return at('Checking processing status', null, IntakeStageState.waiting);
     }
-    return at(
-      const <String>{
-            'pin_dependencies',
-            'classify',
-            'quality_check',
-          }.contains(step)
-          ? 'Preparing photo'
-          : stage.activeLabel,
-      stage,
-      IntakeStageState.active,
-    );
+    return at(detail ?? stage.activeLabel, stage, IntakeStageState.active);
   }
+}
+
+/// One rolling cycle shared by every active stage track below it.
+///
+/// A manifest can hold hundreds of photos in processing. Each row owning a
+/// repeating controller would schedule hundreds of tickers per frame, so the
+/// manifest owns one and every active segment follows it. The cycle runs only
+/// while [active] is true and motion is allowed; under reduced motion it is
+/// stopped and every segment draws its still frame.
+class IntakeStageCycle extends StatefulWidget {
+  const IntakeStageCycle({
+    super.key,
+    required this.active,
+    required this.child,
+  });
+
+  /// True while at least one row below draws a rolling segment.
+  final bool active;
+
+  final Widget child;
+
+  /// The shared cycle, or null where no manifest provides one.
+  static Animation<double>? maybeOf(BuildContext context) => context
+      .dependOnInheritedWidgetOfExactType<_IntakeStageCycleScope>()
+      ?.cycle;
+
+  @override
+  State<IntakeStageCycle> createState() => _IntakeStageCycleState();
+}
+
+class _IntakeStageCycleState extends State<IntakeStageCycle>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _cycle = AnimationController(
+    vsync: this,
+    // A repeating controller is not compressed by `disableAnimations`; the
+    // policy is applied by hand in [_sync], as `UiProgress` does.
+    animationBehavior: AnimationBehavior.preserve,
+    duration: MotionTokens.slowRaw * 2,
+  );
+  bool _reduced = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _reduced =
+        context.ui.motion.reduced || MediaQuery.disableAnimationsOf(context);
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(IntakeStageCycle oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _sync();
+  }
+
+  void _sync() {
+    if (widget.active && !_reduced) {
+      if (!_cycle.isAnimating) _cycle.repeat();
+    } else if (_cycle.isAnimating) {
+      _cycle.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _cycle.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      _IntakeStageCycleScope(cycle: _cycle, child: widget.child);
+}
+
+class _IntakeStageCycleScope extends InheritedWidget {
+  const _IntakeStageCycleScope({required this.cycle, required super.child});
+
+  final Animation<double> cycle;
+
+  @override
+  bool updateShouldNotify(_IntakeStageCycleScope oldWidget) =>
+      cycle != oldWidget.cycle;
 }
 
 /// Eight equal milestones. Width conveys order only, never relative duration.
@@ -196,6 +296,17 @@ class IntakeStageProgress extends StatelessWidget {
   const IntakeStageProgress({super.key, required this.entry});
 
   final ManifestEntry entry;
+
+  /// Transferred and total megabytes, as 02 section 4.8 asks of a file row.
+  /// Null when the total is unknown: a percentage alone is never shown.
+  static String? transferred(ManifestEntry entry) {
+    final int? total = entry.file?.bytes.length;
+    if (total == null || total <= 0) return null;
+    const int unit = UploadItem.bytesPerMegabyte;
+    final double sent = entry.progress.clamp(0, 1) * total / unit;
+    return '${sent.toStringAsFixed(1)} of '
+        '${(total / unit).toStringAsFixed(1)} MB';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -226,9 +337,12 @@ class IntakeStageProgress extends StatelessWidget {
             (state == IntakeStageState.retrying ||
                 state == IntakeStageState.attention ||
                 state == IntakeStageState.waiting)
-        ? progress.current!.label
+        ? progress.detail ?? progress.current!.label
         : null;
     final unrecorded = progress.states.contains(IntakeStageState.unknown);
+    final uploading = entry.state == UploadState.uploading;
+    final bytes = uploading ? transferred(entry) : null;
+    final cycle = IntakeStageCycle.maybeOf(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
@@ -261,17 +375,28 @@ class IntakeStageProgress extends StatelessWidget {
                 child: _StageSegment(
                   stage: stage,
                   state: progress.states[stage.index],
+                  detail: stage == progress.current ? progress.detail : null,
                   // Only upload has a measured denominator.
-                  bytes:
-                      stage == IntakeStage.upload &&
-                          entry.state == UploadState.uploading
+                  fraction: stage == IntakeStage.upload && uploading
                       ? entry.progress
                       : null,
+                  bytes: stage == IntakeStage.upload ? bytes : null,
+                  cycle: cycle,
                 ),
               ),
             ],
           ],
         ),
+        if (bytes != null) ...<Widget>[
+          SizedBox(height: ui.space.s1),
+          // The upload segment already speaks these counts as its value.
+          ExcludeSemantics(
+            child: Text(
+              bytes,
+              style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+            ),
+          ),
+        ],
         if (contextLabel != null) ...<Widget>[
           SizedBox(height: ui.space.s1),
           ExcludeSemantics(
@@ -294,10 +419,20 @@ class IntakeStageProgress extends StatelessWidget {
 }
 
 class _StageSegment extends StatelessWidget {
-  const _StageSegment({required this.stage, required this.state, this.bytes});
+  const _StageSegment({
+    required this.stage,
+    required this.state,
+    this.detail,
+    this.fraction,
+    this.bytes,
+    this.cycle,
+  });
   final IntakeStage stage;
   final IntakeStageState state;
-  final double? bytes;
+  final String? detail;
+  final double? fraction;
+  final String? bytes;
+  final Animation<double>? cycle;
 
   @override
   Widget build(BuildContext context) {
@@ -309,12 +444,16 @@ class _StageSegment extends StatelessWidget {
       IntakeStageState.done => ui.color.inkSecondary,
       _ => ui.color.boundary,
     };
+    final String? precise = detail?.toLowerCase();
     return Semantics(
       container: true,
-      label: '${stage.label}: ${state.label.toLowerCase()}',
+      label: [
+        '${stage.label}: ${state.label.toLowerCase()}',
+        ?precise,
+      ].join(', '),
       value: bytes == null
           ? null
-          : '${(bytes! * 100).round()} percent uploaded',
+          : '${bytes!.replaceFirst(' MB', ' megabytes')} uploaded',
       excludeSemantics: true,
       child: Container(
         key: ValueKey<String>('stage-${stage.name}-${state.name}'),
@@ -333,8 +472,9 @@ class _StageSegment extends StatelessWidget {
             ? Center(
                 child: UiProgress.bar(
                   semanticsLabel: stage.activeLabel,
-                  value: bytes,
+                  value: fraction,
                   color: color,
+                  cycle: cycle,
                 ),
               )
             : state == IntakeStageState.retrying

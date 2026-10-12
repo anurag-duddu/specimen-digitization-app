@@ -8,6 +8,16 @@ from .domain import Run
 from .workflow import Workflow
 
 
+def _next_step(run: Run) -> str | None:
+    # Fail closed: a legacy run whose saved plan the workflow cannot walk
+    # (for example an authority task without a tool_id) reports no next step,
+    # and the client falls back to the run's stage. It never breaks a summary.
+    try:
+        return Workflow.next_step(run).split(":")[0]
+    except (KeyError, TypeError):
+        return None
+
+
 def intake_progress(run: Run) -> dict:
     completed = set(run.completed_steps)
     # A single reader/region finishing is not the end of the reading stage.
@@ -24,7 +34,8 @@ def intake_progress(run: Run) -> dict:
     for stage, markers in (
         ("compare", {"adjudicate"}),
         ("extract", {"parse"}),
-        ("research", {"validate", "field_research", "field_recheck"}),
+        # A recheck is never appended to completed_steps, so it has no marker.
+        ("research", {"validate", "field_research"}),
         ("finalize", {"finalize"}),
     ):
         if completed & markers:
@@ -33,7 +44,7 @@ def intake_progress(run: Run) -> dict:
     # alone is insufficient: a record can be deferred before processing.
     if run.stage == "finalized" and "finalize" not in stages:
         stages.append("finalize")
-    next_step = None if run.disposition else Workflow.next_step(run).split(":")[0]
+    next_step = None if run.disposition else _next_step(run)
     if "evidence_pilot" in run.dependencies:
         # The pilot has its own abbreviated workflow. Do not infer ordinary
         # work from its missing dependency/classification milestones.

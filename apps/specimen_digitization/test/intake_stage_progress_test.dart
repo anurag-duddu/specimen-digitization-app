@@ -1,4 +1,7 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/screens/intake/manifest_entry.dart';
@@ -9,6 +12,7 @@ import 'package:specimen_digitization/src/widgets/upload_item.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 ManifestEntry processing({
+  String digest = 'photo',
   String step = 'transcribe',
   String status = 'running',
   UploadState state = UploadState.processing,
@@ -16,10 +20,10 @@ ManifestEntry processing({
   String? retryAt,
   bool legacy = false,
 }) => ManifestEntry(
-  digest: 'photo',
+  digest: digest,
   name: 'photo.jpg',
   state: state,
-  specimenId: 'photo',
+  specimenId: digest,
   specimen: Specimen(<String, dynamic>{
     'stage': legacy ? step : status,
     'status': status,
@@ -68,6 +72,52 @@ Future<void> pumpRow(
   );
   await tester.pump();
 }
+
+Future<void> pumpManifest(
+  WidgetTester tester,
+  List<ManifestEntry> entries, {
+  bool reduced = true,
+}) async {
+  tester.view.physicalSize = const Size(390, 1000);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: AppTheme.light(),
+      home: Builder(
+        builder: (context) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(disableAnimations: reduced),
+          child: Scaffold(
+            // The phone layout: the manifest is one section of one scroll.
+            body: SingleChildScrollView(
+              child: IntakeManifest(
+                entries: entries,
+                busy: false,
+                stopping: false,
+                onStop: null,
+                onRemove: (_) {},
+                onServerCheck: (_) {},
+                scrollable: false,
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pump();
+}
+
+/// Every live region's spoken text, label and value.
+List<String> liveRegions() => <String>[
+  for (final node
+      in find.semantics
+          .byPredicate(
+            (node) => node.getSemanticsData().flagsCollection.isLiveRegion,
+          )
+          .evaluate())
+    '${node.getSemanticsData().label}|${node.getSemanticsData().value}',
+];
 
 void main() {
   for (final (step, label) in <(String, String)>[
@@ -199,21 +249,30 @@ void main() {
       digest: 'photo',
       name: 'photo.jpg',
       state: UploadState.uploading,
-      progress: .42,
+      progress: .5,
+      file: IntakeFile(
+        name: 'photo.jpg',
+        bytes: Uint8List(4200000),
+        mimeType: 'image/jpeg',
+        sha256: 'photo',
+        method: 'files',
+      ),
     );
     await pumpRow(tester, entry);
-    expect(tester.widget<UiProgress>(find.byType(UiProgress)).value, .42);
+    expect(tester.widget<UiProgress>(find.byType(UiProgress)).value, .5);
     final upload = tester.getSemantics(
       find.bySemanticsLabel('Upload: in progress'),
     );
-    expect(upload.value, '42 percent uploaded');
+    // 02 section 4.8: transferred and total, never a percentage alone.
+    expect(upload.value, '2.1 of 4.2 megabytes uploaded');
+    expect(find.text('2.1 of 4.2 MB'), findsOneWidget);
     expect(upload.getSemanticsData().flagsCollection.isLiveRegion, isFalse);
     final status = tester.getSemantics(
       find.byKey(const ValueKey('intake-stage-status')),
     );
     final statusId = status.id;
     expect(status.label, 'Uploading photo');
-    entry.progress = .73;
+    entry.progress = .75;
     await pumpRow(tester, entry);
     final changed = tester.getSemantics(
       find.byKey(const ValueKey('intake-stage-status')),
@@ -303,4 +362,114 @@ void main() {
       });
     }
   }
+
+  for (final step in ['pin_dependencies', 'classify', 'quality_check']) {
+    testWidgets('$step blocked names preparation, not finding labels', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await pumpRow(
+        tester,
+        processing(
+          step: step,
+          status: 'processing_blocked',
+          state: UploadState.processingBlocked,
+          completed: [],
+        ),
+      );
+      final status = find.byKey(const ValueKey('intake-stage-status'));
+      expect(
+        tester.getSemantics(status).label,
+        'Needs attention. Preparing photo',
+      );
+      expect(find.text('Preparing photo'), findsOneWidget);
+      expect(find.text('Find labels'), findsNothing);
+      expect(
+        find.bySemanticsLabel('Find labels: needs attention, preparing photo'),
+        findsOneWidget,
+      );
+      semantics.dispose();
+    });
+
+    testWidgets('$step retry names preparation, not finding labels', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await pumpRow(
+        tester,
+        processing(step: step, status: 'retry_scheduled', completed: []),
+      );
+      final status = find.byKey(const ValueKey('intake-stage-status'));
+      expect(
+        tester.getSemantics(status).label,
+        'Retry scheduled. Preparing photo',
+      );
+      expect(find.text('Preparing photo'), findsOneWidget);
+      expect(find.text('Find labels'), findsNothing);
+      semantics.dispose();
+    });
+  }
+
+  testWidgets(
+    '200 rolling rows share one ticker, and reduced motion stops it',
+    (tester) async {
+      final entries = [
+        for (var i = 0; i < 200; i++) processing(digest: 'photo-$i'),
+      ];
+      await pumpManifest(tester, entries, reduced: false);
+      expect(find.byType(UiProgress, skipOffstage: false), findsNWidgets(200));
+      // One-shot entrance work settles; what remains is what repeats.
+      await tester.pump(const Duration(seconds: 3));
+      expect(tester.binding.transientCallbackCount, 1);
+      Iterable<AlignmentGeometry> phases() => tester
+          .widgetList<FractionallySizedBox>(
+            find.descendant(
+              of: find.byType(UiProgress, skipOffstage: false),
+              matching: find.byType(FractionallySizedBox, skipOffstage: false),
+              skipOffstage: false,
+            ),
+          )
+          .map((box) => box.alignment);
+      final start = phases().first;
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(phases().first, isNot(start));
+      expect(phases().toSet(), hasLength(1));
+
+      await pumpManifest(tester, entries);
+      await tester.pumpAndSettle();
+      expect(tester.binding.transientCallbackCount, 0);
+      final frozen = phases().first;
+      await tester.pump(const Duration(seconds: 2));
+      expect(phases().first, frozen);
+      expect(tester.binding.hasScheduledFrame, isFalse);
+      expect(SchedulerBinding.instance.transientCallbackCount, 0);
+    },
+  );
+
+  testWidgets('a processing to blocked transition is announced once', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    final other = processing(digest: 'other');
+    await pumpManifest(tester, [processing(), other]);
+    final before = liveRegions();
+    expect(before, contains('Reading the label|'));
+    await pumpManifest(tester, [
+      processing(
+        status: 'processing_blocked',
+        state: UploadState.processingBlocked,
+      ),
+      other,
+    ]);
+    final after = liveRegions();
+    final changed = after.where((spoken) => !before.contains(spoken));
+    expect(changed, ['Needs attention. Read labels|']);
+    // The batch summary still reads in place; it is not a second channel.
+    final summary = tester.getSemantics(
+      find.byKey(const ValueKey('intake-batch-summary')),
+    );
+    expect(summary.label, contains('need attention'));
+    expect(summary.getSemanticsData().flagsCollection.isLiveRegion, isFalse);
+    semantics.dispose();
+  });
 }
