@@ -47,7 +47,7 @@ from test_lane_reservations import with_models
 from test_lane_trigger import RecordingDispatcher, intake
 
 SCOPE = Scope(organization_id=SYNTHETIC_ORG, collection_id=SYNTHETIC_COLLECTION)
-GLM = {"model_id": "zai-org/GLM-5.3-Flash", "provider": "deepinfra"}
+GLM = {"model_id": "zai-org/GLM-5.3-Flash", "provider": "novita"}
 # The configured payload estimate would price each request at 6,964 microUSD.
 # That estimate is not a qualified provider-token liability bound.
 BOUNDED_CALL = 2 * 6_964

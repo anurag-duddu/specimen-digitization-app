@@ -363,12 +363,17 @@ report. Neither pick changes.
 
 | Route | Model | Provider | Input | Use |
 |---|---|---|---|---|
-| `first-pass-glm` | `zai-org/GLM-5.3-Flash` | `deepinfra` | text, image | the first pass (sections 3 and 4) |
+| `first-pass-glm` | `zai-org/GLM-5.3-Flash` | `novita` | text, image | the first pass (sections 3 and 4) |
 | `harness-deepseek` | `deepseek-ai/DeepSeek-V4.1-Flash` | `deepinfra` | text | the harness; provisional until the acceptance lab re-measures it with the real harness and G29's prompt |
 
-Both use DeepInfra, which the `handwriting-muse` reader already uses, so no
-new provider enters the data-policy review; neither shares a model family
-with a reader.
+The harness uses DeepInfra, which the `handwriting-muse` reader already uses,
+and the first pass uses Novita, which the `handwriting-qwen` reader already
+uses, so no new provider enters the data-policy review; neither shares a
+model family with a reader. The first pass moved from DeepInfra to Novita on
+2026-10-12: DeepInfra refused 22 of 29 live first-pass calls on 2026-10-11 and
+2026-10-12 (16 HTTP 429, 6 HTTP 503, each within a second), and a probe of 8
+image calls with a forced tool answer got 8 of 8 from Novita, 4 of 8 from
+DeepInfra, at the same listed price.
 They are a separate stage route set: the reader routes stay the gateway's
 initial set, which the pilot launch, its stage list and the release check
 compare a profile's readers against; the gateway resolves either set.

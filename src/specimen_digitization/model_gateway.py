@@ -81,7 +81,10 @@ STAGE_HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxy
             route_id="first-pass-glm",
             logical_capability="transcription_first_pass",
             model_id="zai-org/GLM-5.3-Flash",
-            provider="deepinfra",
+            # Moved from DeepInfra on 2026-10-12: it refused 22 of 29 live
+            # first-pass calls (HTTP 429/503); Novita answered 8 of 8 at the
+            # same price and already serves the handwriting-qwen reader.
+            provider="novita",
         ),
         "harness-deepseek": HuggingFaceInferenceRoute(
             route_id="harness-deepseek",

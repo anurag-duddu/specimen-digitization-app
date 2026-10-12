@@ -210,7 +210,7 @@ def test_pydantic_ai_still_maps_tool_calls_through_the_overridden_hook() -> None
     assert isinstance(vars(HuggingFaceModel)["_map_tool_call"], staticmethod)
 
 
-def test_first_pass_and_harness_routes_are_pinned_on_the_reader_provider() -> None:
+def test_first_pass_and_harness_routes_are_pinned_on_reader_providers() -> None:
     gateway = HuggingFaceModelGateway(token="hf_test")
 
     first_pass = gateway.route("first-pass-glm")
@@ -218,7 +218,7 @@ def test_first_pass_and_harness_routes_are_pinned_on_the_reader_provider() -> No
 
     assert (first_pass.model_id, first_pass.provider) == (
         "zai-org/GLM-5.3-Flash",
-        "deepinfra",
+        "novita",
     )
     assert first_pass.required_input_modalities == ("text", "image")
     assert (harness.model_id, harness.provider) == (
@@ -247,13 +247,13 @@ def test_a_route_serves_a_role_with_images_only_in_that_role_with_image_input() 
 def test_preflight_accepts_the_new_routes_when_the_catalog_serves_them() -> None:
     from specimen_digitization.huggingface_preflight import validate_route
 
-    def served(model_id, modalities):
+    def served(model_id, modalities, provider):
         return {
             "id": model_id,
             "architecture": {"input_modalities": list(modalities)},
             "providers": [
                 {
-                    "provider": "deepinfra",
+                    "provider": provider,
                     "status": "live",
                     "supports_tools": True,
                     "supports_structured_output": True,
@@ -262,8 +262,8 @@ def test_preflight_accepts_the_new_routes_when_the_catalog_serves_them() -> None
         }
 
     catalog = [
-        served("zai-org/GLM-5.3-Flash", ("text", "image")),
-        served("deepseek-ai/DeepSeek-V4.1-Flash", ("text", "image")),
+        served("zai-org/GLM-5.3-Flash", ("text", "image"), "novita"),
+        served("deepseek-ai/DeepSeek-V4.1-Flash", ("text", "image"), "deepinfra"),
     ]
 
     for route_id in ("first-pass-glm", "harness-deepseek"):
