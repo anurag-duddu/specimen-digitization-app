@@ -36,6 +36,7 @@ Future<void> pumpIntake(
   Size size, {
   bool selectedFile = false,
   double textScale = 1,
+  bool dark = false,
 }) async {
   SharedPreferences.setMockInitialValues(<String, Object>{});
   tester.view.devicePixelRatio = 1;
@@ -48,7 +49,7 @@ Future<void> pumpIntake(
       : null;
   await tester.pumpWidget(
     MaterialApp(
-      theme: AppTheme.light(),
+      theme: dark ? AppTheme.dark() : AppTheme.light(),
       home: Scaffold(
         body: IntakeScreen(
           repository: TestRepository(),

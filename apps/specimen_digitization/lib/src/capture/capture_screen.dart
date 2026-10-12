@@ -33,6 +33,8 @@ import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import '../capture_quality.dart';
+import '../screens/intake/capture_card.dart'
+    show cameraSendImmediatelyLabel, cameraSendImmediatelyBody;
 import '../widgets/not_calibrated_chip.dart';
 import 'capture_camera.dart';
 import 'capture_orientation.dart';
@@ -142,6 +144,10 @@ class CaptureScreen extends StatefulWidget {
 
   /// How wide the label guide is, as a fraction of the specimen guide.
   static const double labelGuideWidth = 0.55;
+
+  // A normalized crop adjustment, independent of image dimensions.
+  static const double cropAdjustment = 0.02;
+  static const double minimumCropExtent = 0.16;
 
   /// What the control that leaves the camera is called.
   static const String closeLabel = 'Close the camera';
@@ -494,6 +500,59 @@ class _CaptureScreenState extends State<CaptureScreen>
 
   Future<void> _applyCrop() => _edit(crop: _crop);
 
+  void _adjustCrop({double dx = 0, double dy = 0, double grow = 0}) {
+    final shifted = _crop.shift(
+      Offset(
+        dx.clamp(-_crop.left, 1 - _crop.right),
+        dy.clamp(-_crop.top, 1 - _crop.bottom),
+      ),
+    );
+    final change = grow < 0
+        ? math.max(
+            grow,
+            -math.max(
+                  0,
+                  math.min(shifted.width, shifted.height) -
+                      CaptureScreen.minimumCropExtent,
+                ) /
+                2,
+          )
+        : grow;
+    setState(() {
+      _crop = Rect.fromLTRB(
+        (shifted.left - change).clamp(0, 1),
+        (shifted.top - change).clamp(0, 1),
+        (shifted.right + change).clamp(0, 1),
+        (shifted.bottom + change).clamp(0, 1),
+      );
+    });
+  }
+
+  Widget _cropControls(BuildContext context) => Wrap(
+    spacing: context.ui.space.s2,
+    runSpacing: context.ui.space.s2,
+    children: [
+      for (final (label, dx, dy, grow) in <(String, double, double, double)>[
+        ('Move left', -CaptureScreen.cropAdjustment, 0, 0),
+        ('Move right', CaptureScreen.cropAdjustment, 0, 0),
+        ('Move up', 0, -CaptureScreen.cropAdjustment, 0),
+        ('Move down', 0, CaptureScreen.cropAdjustment, 0),
+        ('Expand frame', 0, 0, CaptureScreen.cropAdjustment),
+        ('Reduce frame', 0, 0, -CaptureScreen.cropAdjustment),
+      ])
+        UiButton(
+          label: label,
+          variant: UiButtonVariant.secondary,
+          onPressed: _editing
+              ? null
+              : () => _adjustCrop(dx: dx, dy: dy, grow: grow),
+          disabledReason: _editing
+              ? 'Wait for this photo edit to finish.'
+              : null,
+        ),
+    ],
+  );
+
   Future<void> _edit({int quarterTurns = 0, Rect? crop}) async {
     final Uint8List? bytes = _reviewBytes;
     if (bytes == null || _editing) return;
@@ -720,7 +779,12 @@ class _CaptureScreenState extends State<CaptureScreen>
           ),
         ),
         ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: ui.space.readingMax),
+          constraints: BoxConstraints(
+            maxHeight: math.min(
+              ui.space.readingMax,
+              MediaQuery.sizeOf(context).height / 2,
+            ),
+          ),
           child: SingleChildScrollView(
             padding: EdgeInsetsDirectional.all(ui.space.s4),
             child: Column(
@@ -737,6 +801,8 @@ class _CaptureScreenState extends State<CaptureScreen>
                   UiBanner(message: _editError!, tone: UiBannerTone.blocked),
                 ],
                 SizedBox(height: ui.space.s4),
+                if (_cropping) _cropControls(context),
+                if (_cropping) SizedBox(height: ui.space.s4),
                 if (_cropping)
                   UiButtonRow(
                     primary: UiButton(
@@ -976,10 +1042,10 @@ class _CaptureScreenState extends State<CaptureScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
-                        Text('Auto-ingest', style: ui.type.label),
+                        Text(cameraSendImmediatelyLabel, style: ui.type.label),
                         Text(
                           _autoIngest
-                              ? 'Each photo is sent to the Intake queue immediately.'
+                              ? cameraSendImmediatelyBody
                               : 'Review and adjust each photo before sending it.',
                           style: ui.type.bodySmall.copyWith(
                             color: ui.color.inkSecondary,
@@ -991,7 +1057,7 @@ class _CaptureScreenState extends State<CaptureScreen>
                   SizedBox(width: ui.space.s3),
                   UiSwitch(
                     key: const ValueKey<String>('capture-auto-ingest'),
-                    label: 'Auto-ingest',
+                    label: cameraSendImmediatelyLabel,
                     showLabel: false,
                     value: _autoIngest,
                     onChanged: _capturing ? null : _setAutoIngest,
@@ -1117,7 +1183,7 @@ class _CropSelectionState extends State<_CropSelection> {
   _CropDrag? _drag;
   Offset? _last;
 
-  static const double _minimum = 0.16;
+  static const double _minimum = CaptureScreen.minimumCropExtent;
   static const double _handleRadius = 28;
 
   Rect _pixels(Size size) => Rect.fromLTRB(
@@ -1203,6 +1269,11 @@ class _CropSelectionState extends State<_CropSelection> {
       return Semantics(
         label:
             'Crop selection. Drag inside to move it, or drag a corner to resize it.',
+        value:
+            'Left ${(widget.value.left * 100).round()} percent, '
+            'top ${(widget.value.top * 100).round()} percent, '
+            'width ${(widget.value.width * 100).round()} percent, '
+            'height ${(widget.value.height * 100).round()} percent',
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onPanStart: (DragStartDetails details) => _start(details, size),
