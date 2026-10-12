@@ -116,6 +116,36 @@ def unknown_outcome_held(run, step) -> bool:
     )
 
 
+# The reason a step whose call overran its effect timeout saves (Workflow._step).
+DEADLINE_EXCEEDED = "external_stage_deadline_exceeded"
+
+
+def unknown_outcome_recoverable(run, step) -> bool:
+    """Whether a first pass's or an extraction's saved ``external_outcome_unknown``
+    durably shows a cause that asking again can mend; only then does the drain
+    make it due (``Workflow.recover_blocked``). Either:
+
+    - the attempt's result was never saved: on a priced run every saved result
+      records the attempt in ``paid_calls`` (``lane_costs.record_step``), so an
+      attempt with no row is one whose worker stopped after its intent; or
+    - the step saved that its call overran its effect timeout
+      (``DEADLINE_EXCEEDED`` in ``run.reasons``).
+
+    An attempt held as a result the parent could not accept never is, and no
+    other saved unknown outcome is: the run does not record what caused it
+    (before 2026-10-12 a provider's HTTP 5xx and an invalid child result were
+    saved alike), so it stays blocked for a person.
+    """
+    if unknown_outcome_held(run, step):
+        return False
+    attempt = run.attempts.get(step, 0)
+    unrecorded = run.profile.execution.price_list is not None and not any(
+        call.get("step") == step and call.get("attempt") == attempt
+        for call in run.paid_calls
+    )
+    return unrecorded or DEADLINE_EXCEEDED in run.reasons
+
+
 # Each recovery is recorded here; a step is recovered at most this many times.
 AUTOMATIC_RECOVERIES = "automatic_recoveries"
 MAX_AUTOMATIC_RECOVERIES = 3
@@ -1402,11 +1432,12 @@ class Workflow:
         the normal workflow with no action:
 
         - ``external_outcome_unknown`` (lease ended): due, kept as it is; the
-          step settles it as a lost attempt (``_settle_lost_reading``). Not one
-          held as a result the parent could not accept
-          (``HELD_UNKNOWN_OUTCOMES``: an invalid child result, a child whose
-          cleanup is not confirmed, an unexpected exception): it stays blocked
-          for a person.
+          step settles it as a lost attempt (``_settle_lost_reading``). Only
+          when the run durably shows a cause asking again can mend
+          (``unknown_outcome_recoverable``: the attempt's result was never
+          saved, or its call overran its deadline); any other, and one held as
+          a result the parent could not accept (``HELD_UNKNOWN_OUTCOMES``),
+          stays blocked for a person.
         - ``retry_budget_exhausted:<code>``: its attempts are used up, so the
           first pass (or the extraction) is given up on with ``<code>``. So is
           one blocked by an answer that stayed malformed (``MALFORMED_ANSWER``),
@@ -1450,8 +1481,12 @@ class Workflow:
         if (
             not (first_pass or extraction)
             or has_active_lease(run, self.clock())
-            # A result the parent could not accept stays for a person.
-            or (blocker == "external_outcome_unknown" and unknown_outcome_held(run, step))
+            # Only an unknown outcome whose cause the run durably shows can be
+            # mended by asking again; any other stays for a person.
+            or (
+                blocker == "external_outcome_unknown"
+                and not unknown_outcome_recoverable(run, step)
+            )
             or not (
                 blocker in RECOVERABLE_FIRST_PASS_BLOCKERS
                 or blocker == MALFORMED_ANSWER

@@ -291,9 +291,27 @@ and `test_the_organisers_refused_call_costs_nothing`.
   run's; tests in `tests/test_extraction_recovery.py`). The attempt is kept
   in `run.dependencies["held_unknown_outcomes"]`, and neither the drain's
   recovery nor the lease's end makes it due again: it stays blocked for a
-  person. A run left as `external_outcome_unknown` before this change has no
-  such record, and the record cannot tell its cause (the five runs above were
-  HTTP 504s, by Logfire), so it is recovered.
+  person.
+- More generally (second review round; this narrows the
+  `external_outcome_unknown` item of "Stuck first passes go on by themselves"
+  above), the drain makes a first pass's or an extraction's
+  `external_outcome_unknown` due only when the run durably shows a cause
+  asking again can mend (`workflow.unknown_outcome_recoverable`): the
+  attempt's result was never saved (a priced run records every saved result in
+  `paid_calls`, so no row means the worker stopped after its intent), or the
+  step saved `external_stage_deadline_exceeded` in its reasons. Any other
+  saved unknown outcome stays blocked. This includes the five runs above: the
+  code before this change (a6b72f6f) saved their HTTP 504 as the blocker, a
+  `paid_calls` row with outcome `unknown` and no failure code, a lease and an
+  audit entry, exactly what it saved for an invalid child result (compared
+  field by field), so nothing on those runs shows the provider's failure and
+  they are not recovered automatically. So does a first pass that the code
+  before e52503c5 saved as unknown after an HTTP 5xx. Tests:
+  `test_a_504_left_unknown_at_the_extraction_by_the_old_code_stays_blocked`,
+  `test_an_extraction_the_old_code_saw_overrun_its_deadline_is_carried_on`,
+  `test_an_extraction_whose_worker_stopped_after_its_intent_is_carried_on`
+  and, in `tests/test_first_pass_stuck_recovery.py`,
+  `test_a_blocked_unknown_comparison_with_its_attempt_recorded_stays_blocked`.
 - An authentication or authorization error and a request the provider rejects
   still block with their cause, and the evidence pilot is excluded, as for the
   first pass.

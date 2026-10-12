@@ -46,6 +46,7 @@ class ExtractionLab(ChildLab):
     def extract(self, specimen):
         if self.child_extracts:
             self.child_extracts -= 1
+            self.overrun(specimen, "parse")
             return ProductionAdapters.extract(self, specimen)
         return None
 
@@ -216,33 +217,131 @@ def blocked_at_parse(workflow, principal, ident, **state):
     )
 
 
-def test_a_run_left_blocked_as_unknown_at_its_extraction_is_carried_on_by_the_drain(
-    tmp_path, monkeypatch
-):
-    # 66a72095 and four others: blocked at parse as external_outcome_unknown.
+def as_before_this_change(monkeypatch):
+    """The extraction as a6b72f6f ran it: not a recoverable model read, so a
+    provider's 5xx is saved as external_outcome_unknown with nothing to say so.
+    Returns the undo."""
+    from specimen_digitization.application import model_runtime as runtime, workflow as flow
+
+    old = lambda run, step: False  # noqa: E731
+    saved = (flow.extraction_failure_is_recoverable, runtime.extraction_failure_is_recoverable)
+    reliability = __import__(
+        "specimen_digitization.application.reliability", fromlist=["model_read_is_recoverable"]
+    )
+    read = reliability.model_read_is_recoverable
+
+    def read_before(run, step):
+        return step.split(":", 1)[0] not in {"parse", "extract"} and read(run, step)
+
+    monkeypatch.setattr(flow, "extraction_failure_is_recoverable", old)
+    monkeypatch.setattr(runtime, "extraction_failure_is_recoverable", old)
+    monkeypatch.setattr(flow, "model_read_is_recoverable", read_before)
+
+    def undo():
+        flow.extraction_failure_is_recoverable, runtime.extraction_failure_is_recoverable = saved
+        flow.model_read_is_recoverable = read
+
+    return undo
+
+
+def test_a_504_left_unknown_at_the_extraction_by_the_old_code_stays_blocked(tmp_path, monkeypatch):
+    # 66a72095, b191ed67, 1d842828, 74efda01 and 3781e440: an HTTP 504 at the
+    # extraction, saved by a6b72f6f as external_outcome_unknown. The attempt's
+    # row (outcome "unknown", no failure code), the blocker, the lease and the
+    # audit are what an invalid child result leaves too (compared field by
+    # field on a6b72f6f), so nothing durable shows the provider's failure and
+    # the run stays for a person (review of ba542159).
     workflow, principal, ident, backend, _ = extraction_lab(tmp_path, monkeypatch, "http_504", 1)
+    undo = as_before_this_change(monkeypatch)
     first = workflow.drain(principal, ident).run
-    assert first.attempts["parse"] == 1
-    blocked_at_parse(workflow, principal, ident, blocker="external_outcome_unknown")
-    later(workflow, 1)
-    # Stepping it alone changes nothing; the drain's recovery does.
-    assert workflow.drain(principal, ident).run.stage == "processing_blocked"
+    undo()
+    assert (first.stage, first.blocker, first.reasons) == (
+        "processing_blocked", "external_outcome_unknown", []
+    )
+    [row] = [c for c in first.paid_calls if c["step"] == "parse"]
+    assert (row["outcome"], row.get("failure_code")) == ("unknown", None)
+    assert "held_unknown_outcomes" not in first.dependencies
+    later(workflow, 2)
 
     summary = drain_worker(workflow, principal)
-    assert summary["recovered"] == 1
-    for hours in (2, 3):
+
+    run = workflow.repository.get(principal.scope, ident).run
+    assert summary["recovered"] == 0
+    assert (run.stage, run.blocker) == ("processing_blocked", "external_outcome_unknown")
+    assert run.attempts["parse"] == 1 and requests(tmp_path, "extract") == 1
+
+
+def test_an_extraction_the_old_code_saw_overrun_its_deadline_is_carried_on(tmp_path, monkeypatch):
+    # A call that overran the step's effect timeout: a6b72f6f saved the unknown
+    # outcome with the reason external_stage_deadline_exceeded, durable
+    # evidence of a deadline; the drain makes it due and the run goes on.
+    workflow, principal, ident, backend, adapters = extraction_lab(tmp_path, monkeypatch, "http_504", 1)
+    adapters.late = True
+    workflow.monotonic = lambda: adapters.elapsed[0]
+    undo = as_before_this_change(monkeypatch)
+    first = workflow.drain(principal, ident).run
+    undo()
+    adapters.late = False
+    assert (first.stage, first.blocker, first.reasons) == (
+        "processing_blocked", "external_outcome_unknown", ["external_stage_deadline_exceeded"]
+    )
+    later(workflow, 2)
+
+    summary = drain_worker(workflow, principal)
+    for hours in (3, 4):
         run = workflow.repository.get(principal.scope, ident).run
         if run.stage == "finalized":
             break
         later(workflow, hours)
         drain_worker(workflow, principal)
-    run = workflow.repository.get(principal.scope, ident).run
 
+    run = workflow.repository.get(principal.scope, ident).run
+    assert summary["recovered"] == 1
     assert (run.stage, run.blocker, run.disposition) == ("finalized", None, Disposition.REVIEW)
     # The lost attempt was recorded once, by the step that saved it.
     assert run.attempts["parse"] == 2 and requests(tmp_path, "extract") == 1
     assert [c[0] for c in parse_calls(run)] == [1, 2]
     assert run.dependencies["automatic_recoveries"][0]["step"] == "parse"
+
+
+class Stopped(BaseException):
+    """The worker process stopping mid-call (a job's time limit, a lost instance)."""
+
+
+def test_an_extraction_whose_worker_stopped_after_its_intent_is_carried_on(tmp_path, monkeypatch):
+    # The intent was saved and the worker stopped before its result: no row for
+    # the attempt. a6b72f6f then saved the run blocked as unknown; that missing
+    # row is durable evidence that no result, valid or not, was ever seen.
+    workflow, principal, ident, backend, adapters = extraction_lab(tmp_path, monkeypatch, "http_504", 0)
+
+    def stop(specimen):
+        raise Stopped()
+
+    adapters.extract = stop
+    undo = as_before_this_change(monkeypatch)
+    with pytest.raises(Stopped):
+        workflow.drain(principal, ident)
+    later(workflow, 1)  # The lease ends; the old code parks the run.
+    parked = workflow.drain(principal, ident).run
+    undo()
+    del adapters.extract
+    assert (parked.stage, parked.blocker) == ("processing_blocked", "external_outcome_unknown")
+    assert parked.attempts["parse"] == 1 and parse_calls(parked) == []
+    later(workflow, 2)
+
+    summary = drain_worker(workflow, principal)
+    for hours in (3, 4):
+        run = workflow.repository.get(principal.scope, ident).run
+        if run.stage == "finalized":
+            break
+        later(workflow, hours)
+        drain_worker(workflow, principal)
+
+    run = workflow.repository.get(principal.scope, ident).run
+    assert summary["recovered"] == 1
+    assert (run.stage, run.blocker, run.disposition) == ("finalized", None, Disposition.REVIEW)
+    assert run.attempts["parse"] == 2
+    assert [(c[0], c[1], c[4]) for c in parse_calls(run)][0] == (1, "failed", "extraction_result_lost")
 
 
 def test_a_lost_last_extraction_is_given_up_by_the_drain(tmp_path, monkeypatch):
