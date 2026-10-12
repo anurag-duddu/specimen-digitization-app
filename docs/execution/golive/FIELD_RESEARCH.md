@@ -549,7 +549,10 @@ handover runs field research instead of the six specialists:
      of sea level or altitude within three words after it
      (`written.ELEVATION_WORDS`: "1500 m above sea level", "1500 m de
      altitud", "900 m acima do nivel do mar" with its accent are
-     elevations). A comma or a semicolon after the unit ends its clause,
+     elevations). A word that is also a joiner, before a number, makes no
+     distance ("Serra, 1200 m e 2 ex." holds an elevation: Portuguese "e"
+     is "and", not east; Codex's review of 77fdaeba). A comma or a
+     semicolon after the unit ends its clause,
      so "Finca Moca, 1500 m, N slope" holds an elevation, and a heading
      right before the number (`written.HEADINGS`: "alt.", "elev.", "Hohe"
      with its umlaut, "cota", and "el." with its period) makes it an
@@ -562,15 +565,20 @@ handover runs field research instead of the six specialists:
      before a number is no unit, so "M 12" and "M. 12" settle as a code;
      in a place field's text it may still be metres, and the place is
      refused ("Alpi Apuane, M 1200"). Nor is a capital "M" a unit in a
-     count of males and females ("Finca Moca, 3 M. 2 F." settles).
+     count of males and females ("Finca Moca, 3 M. 2 F." settles), also
+     with a joiner word between or a sex word ("Finca Moca, 3 M. and 5
+     females" and "Finca Moca, 5 females y 3 M." settle; Codex's review of
+     77fdaeba).
      A date: any run of up to five whole words the date parser reads as a
      date or as several, with Roman months read and no century rule
      ("IV-24-48", "24.VI.1952", "24 Apr 1948", a year from 1750 on such as
      "1948"; a slide code is none); in a place field's text, not the
      collection code's, a run that starts right after a road, km, hill,
-     farm or estate word (`written.PLACE_WORDS`, by language) is part of
-     the place ("Hill 1800", "FM 1960, Harris Co.", "BR-116 km 1850", "Hwy
-     I-5", "Calle 5 de Mayo"), unless initials or a collector's or
+     farm or estate word (`written.PLACE_WORDS`, by language), with no
+     comma or semicolon between them, is part of the place ("Hill 1800",
+     "FM 1960, Harris Co.", "BR-116 km 1850", "Hwy I-5", "Calle 5 de
+     Mayo"; "Ruta, 1960", "Hill; 1800", "Fazenda, 1948" and "Route,
+     IV-1948" hold a date: Codex's review of 77fdaeba), unless initials or a collector's or
      determiner's mark stand before that word, which makes it a surname
      (`written.PERSON_MARKS`: "J. Hill 1948", "leg. Berg 1948" hold a
      date); a date with any other word before it still holds one ("Finca
@@ -612,11 +620,21 @@ handover runs field research instead of the six specialists:
      of "1200 to 1500 m" or of "1200-1500 m"). "mt" may be Mount and is no
      unit, nor is "mm", and a foot mark after a degree sign is a minute of
      arc. A capital "M" alone after a number is no unit when a person's
-     name or initial follows it ("1200" of "lot 1200 M. Smith" and "4800"
-     of "Trap 4800 M. Smith" have none; before the review of #305's
-     follow-up the first settled elevation_from_m) or when it counts males
-     beside a count of females ("3 M. 2 F."); "ALT. 1500 M" is still
-     metres. When any of those
+     name or initial follows it, in capitals too ("1200" of "lot 1200 M.
+     Smith" or "lot 1200 M. SMITH" and "4800" of "Trap 4800 M. Smith" have
+     none; before the review of #305's follow-up the first settled
+     elevation_from_m, and before Codex's review of 77fdaeba the second)
+     or when it counts males beside a count of another sex ("3 M. 2 F.",
+     "3 M. and 5 females"); "ALT. 1500 M" is still metres. A number the
+     reading writes as a distance, by the rule for place text above
+     (`written.written_as_a_distance`: "1200 m" of "Finca Moca, 1200 m
+     along road", "300 m" of "Rio Negro, 300 m arriba del puente", "500 m"
+     of "Yepocapa, 500 m E of the bridge", "1500 ft" of "Trail, 1500 ft
+     past the bridge"), settles no elevation field ("The label writes this
+     number as a distance, not an elevation."; on main before this PR and
+     at 77fdaeba each settled); "1500 m" of "Finca Moca, 1500 m above sea
+     level", "Finca Moca, 1500 m above" or "Finca Moca, 1500 m, N slope"
+     still settles. When any of those
      units is the other unit the answer is refused ("The label writes this
      elevation in the other unit.": "1500 m" or "1500" of "alt. 1500 m" as
      feet, "6400'" or "6400 pies" as metres, "4800 ft. (1463 m)" as either);

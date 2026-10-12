@@ -453,3 +453,73 @@ def test_the_briefs_say_what_the_rules_read():
     locality = instructions("precise_location")
     assert '"<n> m upstream of <Place>"' in locality and '"<Place>, alt. <n>"' in locality
     assert '"<Place>, <n> m, N slope"' in locality and '("km <n>", "Hill <n>")' in locality
+
+
+# ---- Codex's review of 77fdaeba ------------------------------------------------
+# Three wrong settles: an elevation field took a distance as an elevation (on
+# d0df94b97 too); a place word followed by a comma or a semicolon kept the date
+# after it in the place; a capital "M" before a count of females, across a
+# joiner word, or before a name in capitals, was read as metres.
+
+DISTANCES_FOR_AN_ELEVATION_FIELD = {
+    "along-road": ("elevation_from_m", "Finca Moca, 1200 m along road", "1200 m"),
+    "spanish-arriba": ("elevation_from_m", "Rio Negro, 300 m arriba del puente", "300 m"),
+    "upstream-of": ("elevation_from_m", "Rio Negro, 200 m upstream of ford", "200 m"),
+    "above-the-bridge": ("elevation_from_m", "5 km S of Yepocapa, 100 m above the bridge", "100 m"),
+    "feet-past": ("elevation_from_ft", "Trail, 1500 ft past the bridge", "1500 ft"),
+}
+
+
+@pytest.mark.parametrize(("key", "line", "literal"), DISTANCES_FOR_AN_ELEVATION_FIELD.values(),
+    ids=DISTANCES_FOR_AN_ELEVATION_FIELD)
+def test_an_elevation_field_never_takes_a_distance(key, line, literal):
+    """On 77fdaeba each settles its elevation field."""
+    assert refused(key, line, literal) == agreement.A_DISTANCE
+
+
+def test_an_elevation_above_sea_level_or_by_a_comma_is_still_an_elevation_field_s():
+    """The control: as on 77fdaeba."""
+    assert refused("elevation_from_m", "Finca Moca, 1500 m above sea level", "1500 m") is None
+    assert refused("elevation_from_m", "Finca Moca, 1500 m above", "1500 m") is None
+    assert refused("elevation_from_m", "Finca Moca, 1500 m, N slope", "1500 m") is None
+    assert refused("elevation_from_m", COBAN + ", 1500 m de altitud", "1500 m") is None
+
+
+PLACE_WORD_THEN_A_COMMA = {
+    "road-comma-year": "Ruta, 1960",
+    "hill-semicolon-year": "Hill; 1800",
+    "farm-comma-year": "Fazenda, 1948",
+    "route-comma-roman-month-year": "Route, IV-1948",
+}
+
+
+@pytest.mark.parametrize("literal", PLACE_WORD_THEN_A_COMMA.values(), ids=PLACE_WORD_THEN_A_COMMA)
+def test_a_comma_or_a_semicolon_after_a_place_word_leaves_the_date_a_date(literal):
+    """On 77fdaeba each settles the locality."""
+    assert refused("precise_location", literal, literal) == agreement.HOLDS_A_DATE
+
+
+def test_a_count_of_males_beside_females_across_a_joiner_is_no_elevation():
+    """On 77fdaeba "3 M." settles elevation_from_m as 3 metres, and each
+    locality is refused as holding an elevation."""
+    assert refused("elevation_from_m", "Finca Moca, 3 M. and 5 females", "3 M.") is not None
+    assert refused("precise_location", "Finca Moca, 3 M. and 5 females", "Finca Moca, 3 M. and 5 females") is None
+    assert refused("precise_location", "Finca Moca, 5 females y 3 M.", "Finca Moca, 5 females y 3 M.") is None
+
+
+def test_a_capital_m_before_a_name_in_capitals_is_no_unit():
+    """On 77fdaeba "1200" settles elevation_from_m as metres."""
+    assert refused("elevation_from_m", "lot 1200 M. SMITH", "1200") == agreement.NO_UNIT
+    # The control: a marker word in capitals after it is no name ("ALT"), as on 77fdaeba.
+    assert refused("elevation_from_m", "ALT. 1500 M", "1500 M") is None
+
+
+def test_a_joiner_that_is_also_a_compass_point_before_a_number_is_no_distance():
+    """Portuguese and Italian "e" ("and") is also East: before a number it
+    joins, so the elevation is an elevation. On 77fdaeba the locality holding
+    it settled, the elevation read as a distance east."""
+    assert refused("elevation_from_m", "1200 m e 2 ex.", "1200 m") is None
+    assert refused("precise_location", "Serra, 1200 m e 2 ex.", "Serra, 1200 m e 2 ex.") == agreement.HOLDS_AN_ELEVATION
+    # The control: a compass point before the place it is measured from is a distance, as on 77fdaeba.
+    assert refused("precise_location", "Yepocapa, 500 m E of the bridge", "Yepocapa, 500 m E of the bridge") is None
+    assert refused("elevation_from_m", "Yepocapa, 500 m E of the bridge", "500 m") == agreement.A_DISTANCE

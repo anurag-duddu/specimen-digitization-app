@@ -230,6 +230,7 @@ NOT_EVERY_READER = "Not every reader of the label writes this text."
 PART_OF_RANGE = "The label writes this value as one end of a range."
 UNIT_DIFFERS = "The label writes this elevation in the other unit."
 NO_UNIT = "The label writes no elevation unit with this number."
+A_DISTANCE = "The label writes this number as a distance, not an elevation."
 HOLDS_AN_ELEVATION = "This text holds an elevation, which is another field's."
 HOLDS_A_DATE = "This text holds a date, which is another field's."
 HOLDS_A_RANGE = "This text holds a range of dates or elevations, which is another field's."
@@ -554,7 +555,9 @@ def _unit_refusal(task: FieldTask, readings: Sequence[Reading], literal: str,
     unit after a number, glued or after spaces, or a range's trailing unit,
     in any spelling of written.ELEVATION_UNITS: "1500 m" or "1500" of "alt.
     1500 m", "2000 msnm" or "6400 pies" in the wrong field); or with no unit
-    anywhere (a bare number: a unit is never guessed, G41). Each field holds
+    anywhere (a bare number: a unit is never guessed, G41); or as a distance
+    anywhere it writes it (written.written_as_a_distance: "1200 m" of "1200 m
+    along road"). Each field holds
     the unit application.derivations.UNITS gives it; the other unit's field
     is filled by its exact conversion afterwards (derive). None otherwise,
     and for any other field."""
@@ -562,6 +565,11 @@ def _unit_refusal(task: FieldTask, readings: Sequence[Reading], literal: str,
     if unit is None:
         return None
     for reading in dict.fromkeys(_deciding(r, readings) for r in named):
+        if written.written_as_a_distance(reading.text, literal):
+            return Refusal(A_DISTANCE, (
+                f"Reading {reading.name} writes {literal!r} as a distance: a relation word or a compass point "
+                "follows it in its clause ('<n> m along', '<n> m N of'). A distance is no elevation: copy "
+                "the elevation the label writes, or answer label_lacks_value when it writes none."))
         found = written.units_of(reading.text, literal)
         other = sorted(frozenset().union(*found) - {unit})
         if other:

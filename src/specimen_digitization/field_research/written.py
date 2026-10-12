@@ -445,14 +445,16 @@ TABLE_WORDS = (frozenset(UNIT_OF) | UNIT_PARTS | MONTH_WORDS | APPROXIMATE | COM
 
 def _a_name(text: str) -> bool:
     """Whether a piece may be a person's name or initial: letters only, the
-    first a capital and another in lower case ("Smith", "McRae"), or one
+    first a capital and another in lower case ("Smith", "McRae"), all of two
+    or more in capitals ("SMITH": Codex's review of #324 at 77fdaeba), or one
     capital and a period ("R."), and no word of the tables ("Elev.", "N.",
-    "Above" are none)."""
+    "Above", "ALT" are none)."""
     word = text.strip(EDGE)
     letters = word.rstrip(".")
     if not letters.isalpha() or not letters[0].isupper() or _bare(word) in TABLE_WORDS:
         return False
-    return (len(letters) == 1 and word.endswith(".")) or any(char.islower() for char in letters[1:])
+    return ((len(letters) == 1 and word.endswith(".")) or any(char.islower() for char in letters[1:])
+        or len(letters) >= 2 and letters.isupper())
 
 
 def _capital(text: str, letter: str) -> bool:
@@ -461,17 +463,30 @@ def _capital(text: str, letter: str) -> bool:
     return text.strip(EDGE).replace(".", "") == letter
 
 
+def _a_sex(text: str) -> bool:
+    """Whether a piece names a sex: a capital "F" alone, its period aside, or
+    a word or sign of OTHER_UNITS' "sex" ("females", "hembras", the female
+    sign)."""
+    return _capital(text, CAPITAL_F) or OTHER_OF.get(_bare(text)) == "sex"
+
+
 def _counts_sexes(line: str, spans: Sequence[tuple[int, int]], number: int, unit_end: int) -> bool:
     """Whether the capital "M" after the number in the piece spans[number],
-    ending at `unit_end`, counts males beside a count of females: a number
-    and a capital "F" follow it ("3 M. 2 F.") or stand right before the
-    number ("2 F. 3 M.")."""
+    ending at `unit_end`, counts males beside a count of another sex: a
+    number and a sex (_a_sex) follow it ("3 M. 2 F.") or stand right before
+    the number ("2 F. 3 M."), with at most a joiner word between ("3 M. and
+    5 females", "5 females y 3 M.": Codex's review of #324 at 77fdaeba)."""
     texts = [line[a:b] for a, b in spans]
-    after = [index for index, (start, _) in enumerate(spans) if start >= unit_end][:2]
-    if len(after) == 2 and NUMBER.fullmatch(texts[after[0]].strip(EDGE)) and _capital(texts[after[1]], CAPITAL_F):
+    after = [index for index, (start, _) in enumerate(spans) if start >= unit_end][:3]
+    if after and _bare(texts[after[0]]) in JOINERS:
+        after = after[1:]
+    if len(after) >= 2 and NUMBER.fullmatch(texts[after[0]].strip(EDGE)) and _a_sex(texts[after[1]]):
         return True
-    return (number >= 2 and _capital(texts[number - 1], CAPITAL_F)
-        and NUMBER.fullmatch(texts[number - 2].strip(EDGE)) is not None)
+    before = number - 1
+    if before >= 0 and _bare(texts[before]) in JOINERS:
+        before -= 1
+    return (before >= 1 and _a_sex(texts[before])
+        and NUMBER.fullmatch(texts[before - 1].strip(EDGE)) is not None)
 
 
 def _unit_after(line: str, spans: Sequence[tuple[int, int]], index: int, end: int) -> tuple[str | None, int] | None:
@@ -560,7 +575,8 @@ def _distance(line: str, spans: Sequence[tuple[int, int]], number_end: int, unit
     """Whether the words after a number's unit, ending at `unit_end`, make it
     a distance (COMPASS_POINTS, RELATIONS): only within its clause, so a
     comma or a semicolon after the unit makes what follows another part of
-    the line ("1500 m, N slope" is an elevation)."""
+    the line ("1500 m, N slope" is an elevation), and never a joiner word
+    before a number ("1200 m e 2 ex.": "e" is no east there)."""
     after = [(a, b) for a, b in spans if a >= unit_end]
     if not after or any(separates(line, index) for index in range(number_end, after[0][0])):
         return False
@@ -570,6 +586,11 @@ def _distance(line: str, spans: Sequence[tuple[int, int]], number_end: int, unit
         if separates(line, stop - 1):
             break
     first, rest = following[0], following[1:]
+    # A word that is also a joiner ("e", "al") before a number joins two
+    # values, no distance: "1200 m e 2 ex.", "1200 m al 1500 m" (Codex's
+    # review of #324 at 77fdaeba).
+    if first in JOINERS and rest and rest[0][:1].isdigit():
+        return False
     if first in RELATIONS:
         return bool(rest or first in RELATIONS_ALONE) and not any(part in ELEVATION_WORDS for word in rest
             for part in (word, *word.split("-")))
@@ -634,13 +655,10 @@ def numbers(line: str, spans: Sequence[tuple[int, int]] | None = None) -> list[N
     return [by_start[number.start] for number in found]
 
 
-def units_of(text: str, literal: str) -> list[frozenset[str]]:
-    """The units the text writes the literal's numbers in, one set for each
-    place it writes the literal as whole numbers (never the tail of "11500"
-    or the head of "1500.5"): the units `numbers` reads on that line for
-    the numbers that start inside the literal ("1500 m" and "1500" of "alt.
-    1500 m" are metres, "1200" of "1200 to 1500 m" too, "6400" of "6400'"
-    feet). An empty set where it writes none of them with a unit."""
+def _numbers_at(text: str, literal: str) -> list[list[Number]]:
+    """The numbers (`numbers`) that start inside the literal, one list for
+    each place the text writes the literal as whole numbers (never the tail
+    of "11500" or the head of "1500.5"), each read on its own line."""
     found = []
     pattern = re.compile(r"(?<!\d)(?<!\d[.,])" + re.escape(literal) + r"(?!\d|[.,]\d)")
     for hit in pattern.finditer(text) if literal else ():
@@ -648,8 +666,26 @@ def units_of(text: str, literal: str) -> list[frozenset[str]]:
         line_end = text.find("\n", hit.end())
         line = text[line_start:len(text) if line_end < 0 else line_end]
         start, end = hit.start() - line_start, hit.end() - line_start
-        found.append(frozenset(n.unit for n in numbers(line) if start <= n.start < end and n.unit))
+        found.append([n for n in numbers(line) if start <= n.start < end])
     return found
+
+
+def written_as_a_distance(text: str, literal: str) -> bool:
+    """Whether the text writes one of the literal's numbers, anywhere it
+    writes the literal, as a distance (Number.distance, _distance: "1200 m"
+    of "Finca Moca, 1200 m along road", "300 m" of "300 m arriba del
+    puente"): no elevation (Codex's review of #324 at 77fdaeba)."""
+    return any(number.distance for place in _numbers_at(text, literal) for number in place)
+
+
+def units_of(text: str, literal: str) -> list[frozenset[str]]:
+    """The units the text writes the literal's numbers in, one set for each
+    place it writes the literal as whole numbers (never the tail of "11500"
+    or the head of "1500.5"): the units `numbers` reads on that line for
+    the numbers that start inside the literal ("1500 m" and "1500" of "alt.
+    1500 m" are metres, "1200" of "1200 to 1500 m" too, "6400" of "6400'"
+    feet). An empty set where it writes none of them with a unit."""
+    return [frozenset(n.unit for n in place if n.unit) for place in _numbers_at(text, literal)]
 
 
 # How dates are found inside other text (other_kind): as the date parser
@@ -665,8 +701,11 @@ def _after_a_place_word(text: str, found_words: Sequence[tuple[int, int]], first
     """Whether the word found_words[first] stands right after a word of
     PLACE_WORDS that no initials or person's mark stand right before
     (PERSON_MARKS: "Hill 1800", but not "J. Hill 1948" or "leg. Berg
-    1948")."""
+    1948"), with no comma or semicolon between them ("Ruta, 1960" and "Hill; 1800"
+    hold a date: Codex's review of #324 at 77fdaeba)."""
     if first == 0 or _bare(text[found_words[first - 1][0]:found_words[first - 1][1]]) not in PLACE_WORD:
+        return False
+    if any(separates(text, index) for index in range(found_words[first - 1][1] - 1, found_words[first][0])):
         return False
     if first == 1:
         return True
