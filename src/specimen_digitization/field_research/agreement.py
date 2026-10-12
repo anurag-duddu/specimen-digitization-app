@@ -193,6 +193,13 @@ SOURCE_IDS = frozenset({"gbif", *PLACE_SOURCES})
 # ("A.ADM1"). A TGN type matches whole; a Wikidata label matches whole or
 # followed by " of " ("province of the Philippines"); an NGA code matches by
 # its start. GEOLocate's candidates are at a city's level only (at_level).
+# A county is the country's second-level unit, whatever the country calls it
+# (the owner, 2026-10-11, on a Guatemalan municipio: "however the local
+# government does it so if that is the equivalent then yes"): TGN's second
+# level subdivisions, NGA's A.ADM2, and for Wikidata a place whose classes
+# reach its second-level administrative division (sources._levels names
+# that class among a county lookup's kinds; "second-level administrative
+# country subdivision" is the class's former label).
 PLACE_LEVELS = {
     "tgn": {
         "country": ("nations",),
@@ -204,7 +211,8 @@ PLACE_LEVELS = {
         "country": ("country", "sovereign state"),
         "province_state": ("province", "former province", "department", "state",
             "first-level administrative country subdivision"),
-        "county": ("county", "second-level administrative country subdivision"),
+        "county": ("county", "second-level administrative division",
+            "second-level administrative country subdivision"),
         "city": ("city", "town", "village", "human settlement", "municipality"),
     },
     "nga": {

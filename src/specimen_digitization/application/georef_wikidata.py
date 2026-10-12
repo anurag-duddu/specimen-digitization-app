@@ -40,6 +40,18 @@ RATE_ERRORS = frozenset({"maxlag", "ratelimited"})
 STARTS = ("P571", "P580")
 ENDS = ("P576", "P582")
 RANKS = {"preferred": 0, "normal": 1}  # deprecated statements are ignored
+# The classes a place's administrative level is read from, through the
+# subclass-of (P279) chain of its instance-of (P31) classes (`levels_reached`):
+# Wikidata's first-level and second-level administrative division, as
+# Wikidata names them (probed 2026-10-12). Q13220204, once the second-level
+# class ("second-level administrative country subdivision"), now redirects
+# to Q12357832.
+FIRST_LEVEL = "Q10864048"
+SECOND_LEVEL = "Q12357832"
+LEVEL_CLASSES = frozenset({FIRST_LEVEL, SECOND_LEVEL, "Q13220204"})
+LEVEL_NAMES = {FIRST_LEVEL: "first-level administrative division",
+    SECOND_LEVEL: "second-level administrative division"}
+REDIRECTED = {"Q13220204": SECOND_LEVEL}
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,6 +101,63 @@ def entities_params(ids: Iterable[str]) -> dict[str, str]:
 def labels_params(ids: Iterable[str]) -> dict[str, str]:
     """Parameters for naming the items that statements point to."""
     return _get(ids, "labels", ("en", "mul"))
+
+
+def classes_params(ids: Iterable[str]) -> dict[str, str]:
+    """Parameters for reading up to 50 classes' statements, of which
+    `parse_superclasses` reads only subclass of (P279)."""
+    return _get(ids, "claims", ("en",))
+
+
+def parse_superclasses(status: int, body: bytes) -> tuple[LookupStatus, dict[str, tuple[str, ...]]]:
+    """Each class a `wbgetentities` answer holds, with the classes it is a
+    subclass of (P279, preferred and normal statements). A class Wikidata
+    redirects to another comes back filed under the id asked, as that other
+    class, and is read so; a class reported missing is left out. An entity
+    that is neither the class it is filed under nor a redirect from it makes
+    the answer MALFORMED; an answer with no class is no match."""
+    outcome, entities = _entities(status, body)
+    if outcome is not None:
+        return outcome, {}
+    found: dict[str, tuple[str, ...]] = {}
+    for item, entity in entities.items():
+        if not (_filed(item, entity) or _redirected(item, entity)):
+            return LookupStatus.MALFORMED, {}
+        if "missing" in entity:
+            continue
+        claims = entity.get("claims") if isinstance(entity.get("claims"), dict) else {}
+        found[item] = tuple(ref.id for ref in _refs_of(claims, "P279"))
+    return (LookupStatus.SUCCESS if found else LookupStatus.NO_MATCH), found
+
+
+def unread_classes(kinds: Iterable[str], superclasses: Mapping[str, Iterable[str]]) -> list[str]:
+    """The classes reached from the kinds through the subclass chains read so
+    far (`superclasses`) whose own superclasses are not read yet, in sorted
+    order. A level class (LEVEL_CLASSES) ends its chain and is never read."""
+    reached = _reached(kinds, superclasses)
+    return sorted(kind for kind in reached if kind not in superclasses and kind not in LEVEL_CLASSES)
+
+
+def levels_reached(kinds: Iterable[str], superclasses: Mapping[str, Iterable[str]]) -> frozenset[str]:
+    """The level classes (FIRST_LEVEL, SECOND_LEVEL) a place's instance-of
+    classes (`kinds`) are, or reach through the subclass chains read
+    (`superclasses`). A chain not read is not followed."""
+    return frozenset(REDIRECTED.get(kind, kind) for kind in _reached(kinds, superclasses) if kind in LEVEL_CLASSES)
+
+
+def _reached(kinds: Iterable[str], superclasses: Mapping[str, Iterable[str]]) -> set[str]:
+    """The kinds and every class their chains in `superclasses` reach, up to
+    and including a level class (LEVEL_CLASSES), where a chain ends."""
+    reached: set[str] = set()
+    waiting = [kind for kind in kinds if _item_id(kind)]
+    while waiting:
+        kind = waiting.pop()
+        if kind in reached:
+            continue
+        reached.add(kind)
+        if kind not in LEVEL_CLASSES:
+            waiting.extend(superclasses.get(kind, ()))
+    return reached
 
 
 def parse_search(status: int, body: bytes) -> tuple[LookupStatus, tuple[Hit, ...]]:
@@ -215,6 +284,16 @@ def _answer(status: int, body: bytes) -> tuple[LookupStatus | None, dict]:
 def _filed(item: object, entity: object) -> bool:
     """An entity filed under its own item id, as `wbgetentities` files each."""
     return _item_id(item) and isinstance(entity, dict) and entity.get("id") == item
+
+
+def _redirected(item: object, entity: object) -> bool:
+    """An entity `wbgetentities` filed under an item id that redirects to it:
+    it names that redirect, from the id asked to its own id (Q13220204 to
+    Q12357832, probed 2026-10-12)."""
+    if not (_item_id(item) and isinstance(entity, dict) and _item_id(entity.get("id"))):
+        return False
+    redirect = entity.get("redirects")
+    return isinstance(redirect, dict) and redirect.get("from") == item and redirect.get("to") == entity["id"]
 
 
 def _entities(status: int, body: bytes) -> tuple[LookupStatus | None, dict]:

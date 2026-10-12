@@ -12,7 +12,12 @@ The rules that decide an answer stay where they are: GBIF's in
 application.taxonomy_tool.verify_taxon, GEOLocate's in research_harness.sources
 and the historical gazetteers' in research_harness.historical_gazetteers. A
 source problem is an answer with a plain note, never an exception; only a blob
-store failure raises. When Getty TGN's reconciliation service refuses a request
+store failure raises. A county's Wikidata lookup also reads, in at most
+CLASS_READS more requests, the subclass chains of its places' classes, and a
+place whose chains reach Wikidata's second-level administrative division
+(and not its first-level one) has that class among its kinds
+(ApprovedSources._levels); that answer is cached apart from other fields'
+answers to the same query. When Getty TGN's reconciliation service refuses a request
 or cannot be reached, TGN is searched through Getty's SPARQL endpoint instead
 (historical_gazetteers), and the note says so and that this search does not
 match accents or word stems; its answer is then never a success, and a search
@@ -47,6 +52,7 @@ from urllib.parse import parse_qsl, unquote, unquote_plus, urlencode, urlsplit
 import httpx
 
 from specimen_digitization.application import georef_tgn
+from specimen_digitization.application import georef_wikidata as wikidata
 from specimen_digitization.application.domain import Evidence, Lookup, LookupStatus
 from specimen_digitization.application.georef_places import Place, Ref
 from specimen_digitization.application.harness_tools import SourceCall
@@ -97,6 +103,11 @@ EXCERPT_LIMIT = 2_000
 NOTE_LIMIT = 300  # of the note that heads an excerpt
 MAX_TAXA = 10
 MAX_KINDS = 3
+# How many requests a county's Wikidata lookup may spend reading its places' classes
+# (ApprovedSources._levels): a Guatemalan municipio's class reaches the
+# second-level administrative division in one, a US county's in two (probed
+# 2026-10-12).
+CLASS_READS = 2
 # A response that was no answer, as its log line shows it (_Sender): the first
 # BODY_READ bytes of the body are read, BODY_EXCERPT characters of them logged,
 # or BODY_WITHHELD when they may hold a word of the query (_body_excerpt), and
@@ -183,7 +194,9 @@ def cache_key(source_id: str, query: str, field_key: str) -> str:
     except for GBIF, where case is part of a scientific name ("apis" names no
     genus, and verify_taxon reads them apart). A GEOLocate query is its JSON
     object with sorted keys, and its field too, because geolocate_verdict
-    checks the claimed value against the field."""
+    checks the claimed value against the field. A county's Wikidata query
+    carries its field too: only its answer reads the classes' levels
+    (`levels`)."""
     text = query
     if source_id == "geolocate":
         try:
@@ -192,6 +205,8 @@ def cache_key(source_id: str, query: str, field_key: str) -> str:
             parsed = None
         if isinstance(parsed, dict):
             text = json.dumps(parsed, sort_keys=True, ensure_ascii=False)
+        text = f"{field_key}\n{text}"
+    elif source_id == "wikidata" and field_key == FieldKey.COUNTY:
         text = f"{field_key}\n{text}"
     text = " ".join(unicodedata.normalize("NFC", text).split())
     return text if source_id == "gbif" else text.casefold()
@@ -706,7 +721,8 @@ class ApprovedSources:
     A "gbif" query is a taxon name; a "geolocate" query is place words from the
     field's place out to its country, or the JSON interpretation itself
     (`interpretation`); a "tgn", "wikidata" or "nga" query is a place name,
-    searched up to its first comma (`place_name`).
+    searched up to its first comma (`place_name`). A county's Wikidata
+    answer also names the second-level unit among its places (`_levels`).
 
     `blobs` is the application's blob store (application.storage.BlobStore),
     `client` the AsyncClient every request goes through. `place_text` is the
@@ -815,7 +831,7 @@ class ApprovedSources:
             return await self._taxon(query)
         if source_id == "geolocate":
             return await self._geolocate(policy, query, field_key)
-        return await self._gazetteer(policy, query)
+        return await self._gazetteer(policy, query, field_key)
 
     # --- GBIF, with Catalogue of Life and Global Names Verifier alongside ---
 
@@ -1019,7 +1035,7 @@ class ApprovedSources:
 
     # --- Getty TGN, Wikidata and NGA ---
 
-    async def _gazetteer(self, policy: SourcePolicy, query: str) -> SourceAnswer:
+    async def _gazetteer(self, policy: SourcePolicy, query: str, field_key: str) -> SourceAnswer:
         source_id, name = policy.id, NAMES[policy.id]
         searched = place_name(query)
         fetched: list[_Fetched] = []
@@ -1061,14 +1077,20 @@ class ApprovedSources:
                 if len(places) == 1 and outcome.fallback is None
                 else LookupStatus.AMBIGUOUS
             )
-        candidates = tuple(_place(source_id, place) for place in places)
         note = _searched_instead(
             name, outcome.fallback, _gazetteer_note(name, searched, status, outcome, fetched)
         )
         if status not in ANSWERED or not fetched:
             return _answer(source_id, query, status, note)
-        # Up to three responses answer one query: one record names each stored
-        # response and its digest, and that record is the evidence.
+        levels: Mapping[str, frozenset[str]] = {}
+        if source_id == "wikidata" and field_key == FieldKey.COUNTY and places:
+            levels = await self._levels(policy, places, fetched)
+        candidates = tuple(
+            _place(source_id, place, levels.get(place.record_id, frozenset())) for place in places
+        )
+        # Up to three responses answer one query, and for a county's Wikidata
+        # lookup up to CLASS_READS more (`_levels`): one record names each
+        # stored response and its digest, and that record is the evidence.
         record = json.dumps(
             {
                 "source": source_id,
@@ -1093,6 +1115,44 @@ class ApprovedSources:
             source_id, status, note, candidates, raw_ref, hashlib.sha256(record).hexdigest()
         )
         return _answer(source_id, query, status, note, candidates, evidence)
+
+    async def _levels(
+        self, policy: SourcePolicy, places: Sequence[Place], fetched: list[_Fetched]
+    ) -> dict[str, frozenset[str]]:
+        """The level classes (georef_wikidata.levels_reached: the first-level
+        and the second-level administrative division) each Wikidata place's
+        instance-of classes reach through their subclass-of chains, read in
+        at most CLASS_READS requests of up to 50 classes each, the classes
+        nearest the places first (georef_wikidata.unread_classes). A chain
+        longer than that is not followed. Each response read is appended to
+        `fetched`, so the answer's evidence names it. A request that gets no
+        usable answer ends the reading, and the places keep only what was
+        read before it: a level is never inferred, and the lookup itself
+        stands."""
+        kinds = {place.record_id: [kind.id for kind in place.kinds] for place in places}
+        superclasses: dict[str, tuple[str, ...]] = {}
+        for _ in range(CLASS_READS):
+            wanted = wikidata.unread_classes(
+                [kind for found in kinds.values() for kind in found], superclasses
+            )[: wikidata.MAX_IDS]
+            if not wanted:
+                break
+            url = wikidata.API + "?" + urlencode(wikidata.classes_params(wanted))
+            try:
+                response = await self._response(policy, url)
+            except _Unanswered:
+                break
+            if response.status_code != 200:
+                break
+            outcome, read = wikidata.parse_superclasses(response.status_code, response.body)
+            if outcome not in (LookupStatus.SUCCESS, LookupStatus.NO_MATCH):
+                break
+            fetched.append(response)
+            # A class asked and not returned (missing) has no superclass to read.
+            superclasses |= dict.fromkeys(wanted, ()) | read
+        return {
+            record: wikidata.levels_reached(found, superclasses) for record, found in kinds.items()
+        }
 
     # --- HTTP ---
 
@@ -1354,8 +1414,16 @@ def _parent(source_id: str, ref: Ref, *, country: bool = False) -> PlaceRef:
     return PlaceRef(ref.name or ref.id, record, code)
 
 
-def _place(source_id: str, place: Place) -> SourceCandidate:
-    kinds = [kind.name or kind.id for kind in place.kinds if kind.name or kind.id]
+def _place(source_id: str, place: Place, levels: frozenset[str] = frozenset()) -> SourceCandidate:
+    """A gazetteer place as a candidate: its name, record, kinds (at most
+    MAX_KINDS), parents and the ISO code of its own record. A Wikidata place
+    whose classes reach the second-level administrative division and not the
+    first-level one (`levels`, ApprovedSources._levels) also has that class's
+    name among its kinds, which agreement.PLACE_LEVELS reads as a county's
+    level; one whose classes reach both has neither."""
+    kinds = [kind.name or kind.id for kind in place.kinds if kind.name or kind.id][:MAX_KINDS]
+    if levels == {wikidata.SECOND_LEVEL}:
+        kinds = list(dict.fromkeys([*kinds, wikidata.LEVEL_NAMES[wikidata.SECOND_LEVEL]]))
     parents = [_parent(source_id, parent) for parent in place.parents]
     if place.country and (place.country.name or place.country.id) not in [p.name for p in parents]:
         parents.append(_parent(source_id, place.country, country=True))
@@ -1373,7 +1441,7 @@ def _place(source_id: str, place: Place) -> SourceCandidate:
     return SourceCandidate(
         name=place.name,
         authority_id=f"{source_id}:{place.record_id}",
-        kind=", ".join(kinds[:MAX_KINDS]) or None,
+        kind=", ".join(kinds) or None,
         detail=detail or None,
         parents=tuple(parents),
         # A record that names an end date (a dissolved state, a former colony)
