@@ -228,6 +228,30 @@ class MagicLinkController extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
+  /// Accepts a link the person explicitly pasted, through the same strict
+  /// origin, shape and Firebase checks as a browser or native delivery.
+  /// The action code remains in memory only and the clipboard is unchanged.
+  bool acceptPastedLink(String rawLink) {
+    if (_disposed || !initialized || busy) return false;
+    final String value = rawLink.trim();
+    final Uri? uri = value.isEmpty ? null : Uri.tryParse(value);
+    if (uri == null) {
+      message =
+          'No usable sign-in link was found. Copy the full link from the email and try again.';
+      _changed();
+      return false;
+    }
+    final String? previousMessage = message;
+    final bool accepted = _ingestLink(uri, () {});
+    if (!accepted && _link == null && message == previousMessage) {
+      message =
+          'This sign-in link cannot be used. Copy the full link from the email or request a new one.';
+    }
+    _changed();
+    if (accepted && email.isNotEmpty) unawaited(complete(email));
+    return accepted;
+  }
+
   Future<void> _remember({bool clearEmail = false}) async {
     try {
       await storage.write(

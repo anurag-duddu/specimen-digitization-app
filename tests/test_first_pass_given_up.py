@@ -12,7 +12,9 @@ A first pass given up on now ends as a reader given up on does
 decision, the label's transcript stays unresolved with both readings, a warning
 finding names the failure, and the run goes on to its queue decision, which
 sends the record to review. A failure that is not retried, or whose outcome is
-unknown, still blocks and names its cause.
+unknown on an effectful step, still blocks and names its cause. An ordinary
+first-pass comparison now safely retries transient failures even when billing
+is unknown; its full reservation stays held.
 
 The lab is tests/test_rate_limit_refusal.py's: the real isolated model child
 with a fixture provider, the published pilot profile's prices and pins, and
@@ -162,8 +164,6 @@ def until_the_last_attempt(tmp_path, monkeypatch, *, late=False):
         # A request the provider refuses as invalid is refused every time.
         ("http_400", "model_request_rejected"),
         ("malformed", "model_malformed_response"),
-        # A server error may follow a billed answer: its outcome is unknown.
-        ("http_503", "external_outcome_unknown"),
     ],
 )
 def test_a_last_attempt_that_asking_again_would_not_mend_still_blocks_with_its_cause(
@@ -181,7 +181,7 @@ def test_a_last_attempt_that_asking_again_would_not_mend_still_blocks_with_its_c
     assert given_up_findings(run) == []
 
 
-def test_a_last_attempt_refused_after_its_deadline_still_blocks_as_unknown(
+def test_a_last_attempt_refused_after_its_deadline_keeps_its_known_refusal(
     tmp_path, monkeypatch
 ):
     workflow, principal, ident, _ = until_the_last_attempt(tmp_path, monkeypatch, late=True)
@@ -190,10 +190,15 @@ def test_a_last_attempt_refused_after_its_deadline_still_blocks_as_unknown(
 
     step = first_pass_step(run)
     assert run.attempts[step] == 3
-    assert (run.stage, run.blocker) == ("processing_blocked", "external_outcome_unknown")
-    assert run.reasons == ["external_stage_deadline_exceeded"]
-    assert step not in run.completed_steps and not run.transcripts
-    assert given_up_findings(run) == []
+    assert (run.stage, run.disposition, run.blocker) == ("finalized", Disposition.REVIEW, None)
+    assert "external_stage_deadline_exceeded" not in run.reasons
+    assert step in run.completed_steps and run.transcripts
+    assert given_up_findings(run) == [
+        (GIVEN_UP, "warning", f"{GIVEN_UP}:{run.regions[0].id}:model_rate_limited")
+    ]
+    assert [(c["cost_basis"], c["cost_micros"]) for c in run.paid_calls if c["step"] == step] == [
+        ("refused", 0), ("refused", 0), ("refused", 0)
+    ]
 
 
 def test_a_first_pass_given_up_on_a_provider_error_stays_reserved_and_names_its_code(
@@ -277,13 +282,13 @@ def last_specimen(workflow, principal, ident):
                 LookupStatus.TIMEOUT,
                 outcome_unknown=True,
             ),
-            False,
+            True,
         ),
         (
             AdapterFailure(
                 "model_provider_error", LookupStatus.PROVIDER, outcome_unknown=True
             ),
-            False,
+            True,
         ),
         (AdapterFailure("model_authentication_error", LookupStatus.AUTHENTICATION), False),
         (AdapterFailure("model_authorization_error", LookupStatus.AUTHORIZATION), False),

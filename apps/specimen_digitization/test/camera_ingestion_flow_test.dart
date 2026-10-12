@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as image;
 import 'package:specimen_digitization/src/capture/capture_camera.dart';
 import 'package:specimen_digitization/src/capture/capture_screen.dart';
 import 'package:specimen_digitization/src/capture_quality.dart';
@@ -14,9 +15,17 @@ import 'package:specimen_ui/specimen_ui.dart';
 import 'widgets/harness.dart' show expectAccessible;
 
 class _FakeCamera implements CaptureCamera {
-  _FakeCamera({this.emptyCaptureMetadata = false});
+  _FakeCamera({
+    this.emptyCaptureMetadata = false,
+    Uint8List? captureBytes,
+    this.captureName,
+    this.captureMimeType,
+  }) : captureBytes = captureBytes ?? frame;
 
   final bool emptyCaptureMetadata;
+  final Uint8List captureBytes;
+  final String? captureName;
+  final String? captureMimeType;
   final StreamController<CapturePreviewReading> _readings =
       StreamController<CapturePreviewReading>.broadcast();
   final List<XFile> captures = <XFile>[];
@@ -38,9 +47,11 @@ class _FakeCamera implements CaptureCamera {
   @override
   Future<XFile> capture() async {
     final XFile file = XFile.fromData(
-      frame,
-      name: emptyCaptureMetadata ? '' : 'camera-${captures.length + 1}.png',
-      mimeType: emptyCaptureMetadata ? '' : 'image/png',
+      captureBytes,
+      name: emptyCaptureMetadata
+          ? ''
+          : captureName ?? 'camera-${captures.length + 1}.png',
+      mimeType: emptyCaptureMetadata ? '' : captureMimeType ?? 'image/png',
     );
     captures.add(file);
     return file;
@@ -58,6 +69,40 @@ class _FakeCamera implements CaptureCamera {
 
   @override
   Future<void> start() async => started = true;
+}
+
+({Uint8List bytes, int orientationOffset}) _jpegWithZeroOrientation() {
+  final Uint8List jpeg = Uint8List.fromList(
+    image.encodeJpg(image.Image(width: 3, height: 2), quality: 90),
+  );
+  final ByteData tiff = ByteData(26)
+    ..setUint8(0, 0x49)
+    ..setUint8(1, 0x49)
+    ..setUint16(2, 42, Endian.little)
+    ..setUint32(4, 8, Endian.little)
+    ..setUint16(8, 1, Endian.little)
+    ..setUint16(10, 0x0112, Endian.little)
+    ..setUint16(12, 3, Endian.little)
+    ..setUint32(14, 1, Endian.little)
+    ..setUint16(18, 0, Endian.little);
+  final Uint8List tiffBytes = tiff.buffer.asUint8List();
+  final int app1Length = 2 + 6 + tiffBytes.lengthInBytes;
+  final Uint8List bytes = Uint8List.fromList(<int>[
+    ...jpeg.sublist(0, 2),
+    0xff,
+    0xe1,
+    app1Length >> 8,
+    app1Length & 0xff,
+    0x45,
+    0x78,
+    0x69,
+    0x66,
+    0,
+    0,
+    ...tiffBytes,
+    ...jpeg.sublist(2),
+  ]);
+  return (bytes: bytes, orientationOffset: 30);
 }
 
 Future<void> _pumpCamera(
@@ -144,6 +189,56 @@ void main() {
     expect(find.text('Retake'), findsNothing);
     expect(find.text('1 photograph in this batch'), findsOne);
   });
+
+  for (final bool autoIngest in <bool>[true, false]) {
+    testWidgets(
+      '${autoIngest ? 'auto-ingest' : 'manual send'} repairs camera EXIF zero without changing pixels',
+      (WidgetTester tester) async {
+        final capture = _jpegWithZeroOrientation();
+        final _FakeCamera camera = _FakeCamera(
+          captureBytes: capture.bytes,
+          captureName: 'camera.jpg',
+          captureMimeType: 'image/jpeg',
+        );
+        final List<XFile> accepted = <XFile>[];
+        await _pumpCamera(
+          tester,
+          camera: camera,
+          autoIngest: autoIngest,
+          onAccepted: accepted.add,
+        );
+
+        await _takePhotograph(tester, waitForReview: !autoIngest);
+        if (!autoIngest) {
+          await tester.tap(find.byKey(const ValueKey<String>('capture-send')));
+          await tester.pumpAndSettle();
+        }
+
+        expect(accepted, hasLength(1));
+        final Uint8List submitted = await accepted.single.readAsBytes();
+        final Uint8List original = await camera.captures.single.readAsBytes();
+        expect(original[capture.orientationOffset], 0);
+        expect(submitted[capture.orientationOffset], 1);
+        expect(
+          <int>[
+            for (int index = 0; index < original.lengthInBytes; index++)
+              if (original[index] != submitted[index]) index,
+          ],
+          <int>[capture.orientationOffset],
+        );
+        final image.Image originalPixels = image.decodeImage(original)!;
+        final image.Image submittedPixels = image.decodeImage(submitted)!;
+        expect(submittedPixels.width, originalPixels.width);
+        expect(submittedPixels.height, originalPixels.height);
+        expect(
+          submittedPixels.getBytes(order: image.ChannelOrder.rgba),
+          orderedEquals(
+            originalPixels.getBytes(order: image.ChannelOrder.rgba),
+          ),
+        );
+      },
+    );
+  }
 
   testWidgets('auto-ingest names a web capture with empty metadata', (
     WidgetTester tester,

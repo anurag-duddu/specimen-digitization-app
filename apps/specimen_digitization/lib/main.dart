@@ -35,6 +35,12 @@ Future<void> main() async {
   String? setupMessage;
   const apiUrl = String.fromEnvironment('SPECIMEN_API_BASE_URL');
   const localSynthetic = bool.fromEnvironment('SPECIMEN_LOCAL_SYNTHETIC');
+  const androidAppCheckDebug = bool.fromEnvironment(
+    'SPECIMEN_ANDROID_APP_CHECK_DEBUG',
+  );
+  const appleAppCheckDebug = bool.fromEnvironment(
+    'SPECIMEN_APPLE_APP_CHECK_DEBUG',
+  );
   const config = ConnectionConfig(
     apiUrl: apiUrl,
     siteKey: String.fromEnvironment('SPECIMEN_RECAPTCHA_SITE_KEY'),
@@ -63,7 +69,13 @@ Future<void> main() async {
           await Firebase.initializeApp(options: options);
           return FirebaseSession(FirebaseAuth.instance);
         },
-        activateAppCheck: () => activateProductionAppCheck(config, web: kIsWeb),
+        activateAppCheck: () => activateProductionAppCheck(
+          config,
+          web: kIsWeb,
+          debugBuild: kDebugMode,
+          androidDebugRequested: androidAppCheckDebug,
+          appleDebugRequested: appleAppCheckDebug,
+        ),
         createRepository: (uri, session) => ApiSpecimenRepository(
           baseUrl: uri,
           expectedMode: 'production',

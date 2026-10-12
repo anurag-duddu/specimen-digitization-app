@@ -35,6 +35,7 @@ import 'package:specimen_ui/specimen_ui.dart';
 import '../capture_quality.dart';
 import '../widgets/not_calibrated_chip.dart';
 import 'capture_camera.dart';
+import 'capture_orientation.dart';
 import 'capture_photo_editor.dart';
 
 /// The compact intake-queue update shown while the camera remains open.
@@ -355,8 +356,18 @@ class _CaptureScreenState extends State<CaptureScreen>
     try {
       final XFile file = await camera.capture();
       if (!mounted) return;
+      // Android CameraX can return upright JPEG pixels with the undefined
+      // EXIF orientation value zero. Repair only that metadata value in an
+      // in-memory copy before either submission path sees it; the camera's
+      // temporary original remains untouched.
+      final Uint8List capturedBytes = await readCapture(file);
+      if (!mounted) return;
+      final Uint8List bytes = normalizeCameraExifOrientation(capturedBytes);
       if (_autoIngest) {
-        final XFile normalized = await _normalizeCameraCapture(file);
+        final XFile normalized = await _normalizeCameraCapture(
+          file,
+          bytes: bytes,
+        );
         if (!mounted) return;
         if (!_foreground ||
             generation != _cameraGeneration ||
@@ -366,8 +377,6 @@ class _CaptureScreenState extends State<CaptureScreen>
         _accept(normalized);
         return;
       }
-      final Uint8List bytes = await readCapture(file);
-      if (!mounted) return;
       final CaptureDimensions dimensions = await captureDimensions(bytes);
       if (!mounted) return;
       // Review owns an in-memory copy. The camera package's temporary path is

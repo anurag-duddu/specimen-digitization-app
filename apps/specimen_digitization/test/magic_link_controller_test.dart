@@ -433,6 +433,42 @@ void main() {
     },
   );
 
+  test(
+    'an explicitly pasted link uses the strict path and is never persisted',
+    () async {
+      final c = controller();
+      await c.initialize();
+
+      expect(c.acceptPastedLink('  $testLink\n'), isTrue);
+
+      expect(access.checked, [testLink]);
+      expect(access.completed, isEmpty);
+      expect(c.handlingLink, isTrue);
+      expect(browser.clearCount, 0);
+      expect(storage.writes, 0);
+      expect(storage.value.email, isNull);
+    },
+  );
+
+  test('a pasted foreign link is rejected without reaching Firebase', () async {
+    final c = controller();
+    await c.initialize();
+
+    expect(
+      c.acceptPastedLink(
+        'https://evil.test/?mode=signIn&oobCode=private-action-code',
+      ),
+      isFalse,
+    );
+
+    expect(access.checked, isEmpty);
+    expect(access.completed, isEmpty);
+    expect(c.handlingLink, isFalse);
+    expect(c.message, contains('cannot be used'));
+    expect(c.message, isNot(contains('private-action-code')));
+    expect(storage.writes, 0);
+  });
+
   for (final link in [
     'http://specimen-digitization.web.app/?mode=signIn&oobCode=x',
     'https://other.test/?mode=signIn&oobCode=x',

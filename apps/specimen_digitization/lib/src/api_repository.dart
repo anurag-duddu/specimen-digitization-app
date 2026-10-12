@@ -22,6 +22,7 @@ const Duration apiRequestTimeout = Duration(seconds: 30);
 class ApiSpecimenRepository
     implements
         SpecimenRepository,
+        IntakeProcessingRepository,
         CandidateReviewBatchRepository,
         SpecimenHistoryRepository,
         SourceRepository,
@@ -734,6 +735,75 @@ class ApiSpecimenRepository
       _checkAccess(epoch, userId);
       return _artifactSummary(scope, id, e);
     }
+  }
+
+  Specimen _intakeProcessingSummary(
+    CollectionScope scope,
+    String id,
+    Json data,
+  ) {
+    if (data['specimen_id'] != id ||
+        data['organization_id'] != scope.organizationId ||
+        data['collection_id'] != scope.collectionId ||
+        data['revision'] is! num ||
+        data['status'] is! String ||
+        data['available_actions'] is! List ||
+        (data['available_actions'] as List).any(
+          (Object? item) => item is! String,
+        )) {
+      throw const ApiFailure(
+        'This photograph’s processing status could not be verified.',
+        code: 'invalid_response',
+      );
+    }
+    return Specimen(data);
+  }
+
+  @override
+  Future<Specimen> intakeProcessingStatus(
+    CollectionScope scope,
+    String id,
+  ) async {
+    final Json data = await request(
+      'GET',
+      '${_root(scope)}/specimens/${Uri.encodeComponent(id)}',
+    );
+    return _intakeProcessingSummary(scope, id, data);
+  }
+
+  @override
+  Future<Json> startIntakeProcessing(
+    CollectionScope scope,
+    Specimen specimen,
+    String idempotencyKey,
+  ) async {
+    final Json data = await request(
+      'POST',
+      '${_root(scope)}/specimens/${Uri.encodeComponent(specimen.id)}/process',
+      key: idempotencyKey,
+    );
+    _intakeProcessingSummary(scope, specimen.id, data);
+    return data;
+  }
+
+  @override
+  Future<Specimen> retryIntakeProcessing(
+    CollectionScope scope,
+    Specimen specimen,
+    String reason,
+    String idempotencyKey,
+  ) async {
+    final Json data = await request(
+      'POST',
+      '${_root(scope)}/runs/${Uri.encodeComponent(specimen.data['active_run_id'])}/actions',
+      key: idempotencyKey,
+      body: <String, dynamic>{
+        'expected_revision': specimen.revision,
+        'action': 'retry',
+        'reason': reason,
+      },
+    );
+    return _intakeProcessingSummary(scope, specimen.id, data);
   }
 
   @override

@@ -1,12 +1,15 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:specimen_digitization/src/auth.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/screens/intake/intake_transfer_session.dart';
 import 'package:specimen_digitization/src/screens/intake/manifest_entry.dart';
 import 'package:specimen_digitization/src/widgets/upload_item.dart';
+import 'package:specimen_digitization/src/workspace.dart';
 
 const CollectionScope scope = CollectionScope(
   organizationId: 'fixture-org',
@@ -38,6 +41,7 @@ class TransferRepository implements SpecimenRepository {
   final Map<String, Specimen> summaries = <String, Specimen>{};
   final List<String> summaryRequests = <String>[];
   int summaryAccessFailures = 0;
+  int summaryUnavailableFailures = 0;
   final List<String> retryRequests = <String>[];
   Specimen? retryResponse;
 
@@ -92,6 +96,10 @@ class TransferRepository implements SpecimenRepository {
       summaryAccessFailures--;
       throw const ApiFailure('Processing access expired.', status: 401);
     }
+    if (summaryUnavailableFailures > 0) {
+      summaryUnavailableFailures--;
+      throw const ApiFailure('Status service unavailable.', status: 503);
+    }
     final Specimen? specimen = summaries[id];
     return SpecimenPage(<Specimen>[?specimen]);
   }
@@ -111,19 +119,63 @@ class TransferRepository implements SpecimenRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+class QueueTransferRepository extends TransferRepository {
+  final List<Map<String, String>> queueReads = <Map<String, String>>[];
+
+  @override
+  Future<List<CollectionScope>> scopes() async => <CollectionScope>[scope];
+
+  @override
+  Future<SpecimenPage> specimenPage(
+    CollectionScope scope, {
+    Map<String, String> filters = const <String, String>{},
+    String? cursor,
+  }) async {
+    if (filters.containsKey('specimen_id')) {
+      return super.specimenPage(scope, filters: filters, cursor: cursor);
+    }
+    queueReads.add(Map<String, String>.from(filters));
+    return SpecimenPage(
+      summaries.values
+          .where((Specimen item) => item.disposition == filters['disposition'])
+          .toList(),
+    );
+  }
+}
+
+class QueueTestSession implements SessionAccess {
+  @override
+  bool get signedIn => true;
+
+  @override
+  String get userId => 'queue-test-operator';
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 Specimen processingSpecimen(
   String id, {
   String status = 'running',
+  String? blocker,
   String? disposition,
   List<String> actions = const <String>[],
   int revision = 1,
 }) => Specimen(<String, dynamic>{
   'specimen_id': id,
   'status': status,
+  'blocker': ?blocker,
   'disposition': disposition,
   'revision': revision,
   'available_actions': actions,
 });
+
+ManifestEntry trackedPhotograph(String id) => ManifestEntry.tracking(
+  digest: id.padRight(64, 'a'),
+  name: '$id.jpg',
+  handle: <String, dynamic>{'upload_id': 'upload-$id'},
+  specimenId: id,
+);
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
@@ -280,6 +332,59 @@ void main() {
     session.close();
   });
 
+  test('handoff refresh loads the real Needs review Queue list', () async {
+    final QueueTransferRepository repository = QueueTransferRepository();
+    final WorkspaceController workspace = WorkspaceController(
+      repository: repository,
+      session: QueueTestSession(),
+    );
+    await workspace.checkAccess();
+    expect(workspace.items, isEmpty);
+    expect(workspace.disposition, 'needs_human_review');
+    final IntakeTransferSession session = IntakeTransferSession(
+      repository,
+      scope,
+      'queue-test-operator',
+      processingPollInterval: Duration.zero,
+    );
+    session.entries.add(trackedPhotograph('real-queue-handoff'));
+    final List<Future<void>> workspaceRefreshes = <Future<void>>[];
+    // This is the same read-only refresh contract wired by _IntakeRoute.
+    session.attachHandoff(() {
+      workspaceRefreshes.add(workspace.refresh(quiet: true));
+    });
+    repository.summaries['real-queue-handoff'] = processingSpecimen(
+      'real-queue-handoff',
+      status: 'processing_blocked',
+    );
+    await session.refreshProcessingStatuses();
+    expect(workspaceRefreshes, isEmpty);
+    expect(workspace.items, isEmpty);
+    repository.summaries['real-queue-handoff'] = processingSpecimen(
+      'real-queue-handoff',
+      status: 'completed',
+      disposition: 'needs_human_review',
+    );
+
+    await session.refreshProcessingStatuses();
+    await Future.wait(workspaceRefreshes);
+
+    expect(workspaceRefreshes, hasLength(1));
+    expect(workspace.items.map((Specimen item) => item.id), <String>[
+      'real-queue-handoff',
+    ]);
+    expect(workspace.needsReview, 1);
+    expect(workspace.selected, isNull);
+    expect(repository.queueReads, <Map<String, String>>[
+      <String, String>{'disposition': 'needs_human_review'},
+      <String, String>{'disposition': 'needs_human_review'},
+    ]);
+    expect(repository.started, isEmpty);
+    expect(repository.retryRequests, isEmpty);
+    session.close();
+    workspace.dispose();
+  });
+
   test(
     'a shared callback reports upload and a later handoff separately',
     () async {
@@ -401,6 +506,252 @@ void main() {
     session.close();
   });
 
+  for (final String disposition in <String>[
+    'cleared',
+    'needs_human_review',
+    'deferred',
+  ]) {
+    test(
+      'server recovery reaches $disposition without resending or restarting',
+      () async {
+        final TransferRepository repository = TransferRepository();
+        final IntakeTransferSession session = IntakeTransferSession(
+          repository,
+          scope,
+          'recovery-operator',
+          processingPollInterval: Duration.zero,
+        );
+        final ManifestEntry photograph = trackedPhotograph('recovering');
+        session.entries.add(photograph);
+        var handoffs = 0;
+        session.attachHandoff(() => handoffs++);
+
+        // A stored blocked summary must not make the app abandon this record.
+        // Nor may a running/completed status invent its final Queue outcome.
+        for (final String status in <String>[
+          'pending',
+          'running',
+          'processing_blocked',
+          'retry_scheduled',
+          'paused',
+          'running',
+          'completed',
+        ]) {
+          repository.summaries['recovering'] = processingSpecimen(
+            'recovering',
+            status: status,
+          );
+          await session.refreshProcessingStatuses();
+
+          expect(photograph.specimen!.state, status);
+          expect(photograph.state, isNot(UploadState.inMainQueue));
+          expect(session.needsProcessingPoll, isTrue);
+          expect(handoffs, 0);
+        }
+
+        repository.summaries['recovering'] = processingSpecimen(
+          'recovering',
+          status: 'completed',
+          disposition: disposition,
+          revision: 8,
+        );
+        await session.refreshProcessingStatuses();
+        await session.refreshProcessingStatuses();
+
+        expect(photograph.state, UploadState.inMainQueue);
+        expect(repository.summaryRequests, hasLength(8));
+        expect(handoffs, 1);
+        expect(session.needsProcessingPoll, isFalse);
+        expect(repository.started, isEmpty);
+        expect(repository.completions, 0);
+        expect(repository.retryRequests, isEmpty);
+        session.close();
+      },
+    );
+  }
+
+  test(
+    'status outage preserves a blocked record until read recovery',
+    () async {
+      final TransferRepository repository = TransferRepository();
+      final IntakeTransferSession session = IntakeTransferSession(
+        repository,
+        scope,
+        'outage-operator',
+        processingPollInterval: Duration.zero,
+      );
+      final ManifestEntry photograph = trackedPhotograph('outage');
+      session.entries.add(photograph);
+      repository.summaries['outage'] = processingSpecimen(
+        'outage',
+        status: 'processing_blocked',
+      );
+      await session.refreshProcessingStatuses();
+      repository.summaryUnavailableFailures = 1;
+
+      await session.refreshProcessingStatuses();
+
+      expect(photograph.state, UploadState.processingBlocked);
+      expect(photograph.reason, contains('temporarily unavailable'));
+      expect(session.needsProcessingPoll, isTrue);
+      repository.summaries['outage'] = processingSpecimen(
+        'outage',
+        status: 'completed',
+        disposition: 'needs_human_review',
+      );
+      await session.refreshProcessingStatuses();
+      expect(photograph.state, UploadState.inMainQueue);
+      expect(repository.started, isEmpty);
+      expect(repository.completions, 0);
+      expect(repository.retryRequests, isEmpty);
+      session.close();
+    },
+  );
+
+  test('route reattach immediately checks a known blocked summary', () async {
+    final TransferRepository repository = TransferRepository();
+    final IntakeTransferSession session = IntakeTransferSession(
+      repository,
+      scope,
+      'reattach-blocked-operator',
+      processingPollInterval: const Duration(hours: 1),
+    );
+    final ManifestEntry photograph = trackedPhotograph('reattach-blocked');
+    session.entries.add(photograph);
+    repository.summaries['reattach-blocked'] = processingSpecimen(
+      'reattach-blocked',
+      status: 'processing_blocked',
+    );
+    await session.refreshProcessingStatuses();
+    void observer() {}
+    session.addListener(observer);
+    session.removeListener(observer);
+    repository.summaries['reattach-blocked'] = processingSpecimen(
+      'reattach-blocked',
+      status: 'completed',
+      disposition: 'needs_human_review',
+    );
+
+    session.addListener(observer);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(repository.summaryRequests, hasLength(2));
+    expect(photograph.state, UploadState.inMainQueue);
+    expect(repository.started, isEmpty);
+    expect(repository.retryRequests, isEmpty);
+    session.removeListener(observer);
+    session.close();
+  });
+
+  test(
+    'app resume reads after access recovery and stops background reads',
+    () async {
+      final TestWidgetsFlutterBinding binding =
+          TestWidgetsFlutterBinding.ensureInitialized();
+      final TransferRepository repository = TransferRepository()
+        ..summaryAccessFailures = 1;
+      final IntakeTransferSession session = IntakeTransferSession(
+        repository,
+        scope,
+        'resumed-operator',
+        processingPollInterval: const Duration(milliseconds: 10),
+      );
+      final ManifestEntry photograph = trackedPhotograph('resumed');
+      session.entries.add(photograph);
+      repository.summaries['resumed'] = processingSpecimen(
+        'resumed',
+        status: 'completed',
+        disposition: 'needs_human_review',
+      );
+      void observer() {}
+      try {
+        session.addListener(observer);
+        await Future<void>.delayed(const Duration(milliseconds: 35));
+        expect(repository.summaryRequests, hasLength(1));
+        expect(photograph.state, UploadState.processing);
+
+        binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        await Future<void>.delayed(const Duration(milliseconds: 35));
+        expect(repository.summaryRequests, hasLength(1));
+
+        binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        await Future<void>.delayed(Duration.zero);
+        expect(repository.summaryRequests, hasLength(2));
+        expect(photograph.state, UploadState.inMainQueue);
+        expect(repository.started, isEmpty);
+        expect(repository.completions, 0);
+        expect(repository.retryRequests, isEmpty);
+      } finally {
+        session.removeListener(observer);
+        session.close();
+        binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      }
+    },
+  );
+
+  test(
+    'a cancelled run stops refresh without claiming a Queue handoff',
+    () async {
+      final TransferRepository repository = TransferRepository();
+      final IntakeTransferSession session = IntakeTransferSession(
+        repository,
+        scope,
+        'cancelled-operator',
+        processingPollInterval: Duration.zero,
+      );
+      session.entries.add(trackedPhotograph('cancelled'));
+      repository.summaries['cancelled'] = processingSpecimen(
+        'cancelled',
+        status: 'cancelled',
+      );
+      var handoffs = 0;
+      session.attachHandoff(() => handoffs++);
+
+      await session.refreshProcessingStatuses();
+
+      expect(session.entries.single.state, UploadState.processingBlocked);
+      expect(session.needsProcessingPoll, isFalse);
+      expect(handoffs, 0);
+      session.close();
+    },
+  );
+
+  test(
+    'detached handoff survives a route that leaves before delivery',
+    () async {
+      final TransferRepository repository = TransferRepository();
+      final IntakeTransferSession session = IntakeTransferSession(
+        repository,
+        scope,
+        'detached-handoff-operator',
+        processingPollInterval: Duration.zero,
+      );
+      session.entries.add(trackedPhotograph('detached-handoff'));
+      repository.summaries['detached-handoff'] = processingSpecimen(
+        'detached-handoff',
+        status: 'completed',
+        disposition: 'needs_human_review',
+      );
+      await session.refreshProcessingStatuses();
+      var refreshes = 0;
+      void refreshQueue() => refreshes++;
+
+      session.attachHandoff(refreshQueue);
+      session.detachHandoff(refreshQueue);
+      await Future<void>.delayed(Duration.zero);
+      expect(refreshes, 0);
+
+      session.attachHandoff(refreshQueue);
+      await Future<void>.delayed(Duration.zero);
+      expect(refreshes, 1);
+      session.detachHandoff(refreshQueue);
+      session.attachHandoff(refreshQueue);
+      await Future<void>.delayed(Duration.zero);
+      expect(refreshes, 1);
+      session.close();
+    },
+  );
+
   test(
     'restores a processing record and refreshes it without image bytes',
     () async {
@@ -467,6 +818,42 @@ void main() {
       expect(repository.retryRequests, <String>['specimen-4']);
       expect(photograph.state, UploadState.processing);
       expect(photograph.reason, 'Processing is underway.');
+      expect(session.needsProcessingPoll, isTrue);
+      session.close();
+    },
+  );
+
+  test(
+    'rate-limited processing stays active and explains the wait safely',
+    () async {
+      final TransferRepository repository = TransferRepository();
+      final IntakeTransferSession session = IntakeTransferSession(
+        repository,
+        scope,
+        'rate-limited-operator',
+        processingPollInterval: Duration.zero,
+      );
+      final ManifestEntry photograph = ManifestEntry.tracking(
+        digest: List<String>.filled(64, 'r').join(),
+        name: 'rate-limited.jpg',
+        handle: <String, dynamic>{'upload_id': 'upload-rate-limited'},
+        specimenId: 'specimen-rate-limited',
+      );
+      session.entries.add(photograph);
+      repository.summaries['specimen-rate-limited'] = processingSpecimen(
+        'specimen-rate-limited',
+        status: 'retry_scheduled',
+        blocker: 'model_rate_limited',
+      );
+
+      await session.refreshProcessingStatuses();
+
+      expect(photograph.state, UploadState.processing);
+      expect(
+        photograph.reason,
+        'The processing service is busy. This photograph is waiting for another processing attempt.',
+      );
+      expect(photograph.reason, isNot(contains('model_rate_limited')));
       expect(session.needsProcessingPoll, isTrue);
       session.close();
     },

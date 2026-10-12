@@ -9,24 +9,28 @@ const configured = ConnectionConfig(
 );
 
 void main() {
-  test(
-    'configured website activates the registered Enterprise provider',
-    () async {
-      var activations = 0;
-      await activateProductionAppCheck(
-        configured,
-        web: true,
-        activate: ({providerWeb}) async {
-          activations++;
-          // The locked FlutterFire web adapter dispatches on these real types.
-          // A v3 provider would use the wrong attestation for our registration.
-          expect(providerWeb, isA<ReCaptchaEnterpriseProvider>());
-          expect(providerWeb!.siteKey, configured.siteKey);
-        },
-      );
-      expect(activations, 1);
-    },
-  );
+  test('configured website activates the registered Enterprise provider', () async {
+    var activations = 0;
+    await activateProductionAppCheck(
+      configured,
+      web: true,
+      activate:
+          ({
+            providerWeb,
+            required providerAndroid,
+            required providerApple,
+          }) async {
+            activations++;
+            // The locked FlutterFire web adapter dispatches on these real types.
+            // A v3 provider would use the wrong attestation for our registration.
+            expect(providerWeb, isA<ReCaptchaEnterpriseProvider>());
+            expect(providerWeb!.siteKey, configured.siteKey);
+            expect(providerAndroid, isA<AndroidPlayIntegrityProvider>());
+            expect(providerApple, isA<AppleDeviceCheckProvider>());
+          },
+    );
+    expect(activations, 1);
+  });
 
   test(
     'native activation preserves default providers without a web key',
@@ -35,10 +39,17 @@ void main() {
       await activateProductionAppCheck(
         ConnectionConfig(apiUrl: configured.apiUrl, siteKey: ''),
         web: false,
-        activate: ({providerWeb}) async {
-          activations++;
-          expect(providerWeb, isNull);
-        },
+        activate:
+            ({
+              providerWeb,
+              required providerAndroid,
+              required providerApple,
+            }) async {
+              activations++;
+              expect(providerWeb, isNull);
+              expect(providerAndroid, isA<AndroidPlayIntegrityProvider>());
+              expect(providerApple, isA<AppleDeviceCheckProvider>());
+            },
       );
       expect(activations, 1);
     },
@@ -60,7 +71,12 @@ void main() {
         activateProductionAppCheck(
           config,
           web: true,
-          activate: ({providerWeb}) async => activations++,
+          activate:
+              ({
+                providerWeb,
+                required providerAndroid,
+                required providerApple,
+              }) async => activations++,
         ),
         throwsFormatException,
       );
@@ -78,13 +94,138 @@ void main() {
       activateProductionAppCheck(
         configured,
         web: true,
-        activate: ({providerWeb}) async {
-          activations++;
-          throw failure;
-        },
+        activate:
+            ({
+              providerWeb,
+              required providerAndroid,
+              required providerApple,
+            }) async {
+              activations++;
+              throw failure;
+            },
       ),
       throwsA(same(failure)),
     );
     expect(activations, 1);
   });
+
+  test(
+    'explicit native debug build uses only Android debug provider',
+    () async {
+      await activateProductionAppCheck(
+        ConnectionConfig(apiUrl: configured.apiUrl, siteKey: ''),
+        web: false,
+        debugBuild: true,
+        androidDebugRequested: true,
+        activate:
+            ({
+              providerWeb,
+              required providerAndroid,
+              required providerApple,
+            }) async {
+              expect(providerWeb, isNull);
+              expect(providerAndroid, isA<AndroidDebugProvider>());
+              expect(providerApple, isA<AppleDeviceCheckProvider>());
+            },
+      );
+    },
+  );
+
+  test('explicit native debug build uses only Apple debug provider', () async {
+    await activateProductionAppCheck(
+      ConnectionConfig(apiUrl: configured.apiUrl, siteKey: ''),
+      web: false,
+      debugBuild: true,
+      appleDebugRequested: true,
+      activate:
+          ({
+            providerWeb,
+            required providerAndroid,
+            required providerApple,
+          }) async {
+            expect(providerWeb, isNull);
+            expect(providerAndroid, isA<AndroidPlayIntegrityProvider>());
+            expect(providerApple, isA<AppleDebugProvider>());
+          },
+    );
+  });
+
+  test('Android and Apple debug requests are independent', () async {
+    await activateProductionAppCheck(
+      ConnectionConfig(apiUrl: configured.apiUrl, siteKey: ''),
+      web: false,
+      debugBuild: true,
+      androidDebugRequested: true,
+      appleDebugRequested: true,
+      activate:
+          ({
+            providerWeb,
+            required providerAndroid,
+            required providerApple,
+          }) async {
+            expect(providerWeb, isNull);
+            expect(providerAndroid, isA<AndroidDebugProvider>());
+            expect(providerApple, isA<AppleDebugProvider>());
+          },
+    );
+  });
+
+  test('release, profile, and web builds ignore debug requests', () async {
+    for (final values in [
+      (name: 'release', web: false, debugBuild: false),
+      (name: 'profile', web: false, debugBuild: false),
+      (name: 'web debug', web: true, debugBuild: true),
+    ]) {
+      await activateProductionAppCheck(
+        configured,
+        web: values.web,
+        debugBuild: values.debugBuild,
+        androidDebugRequested: true,
+        appleDebugRequested: true,
+        activate:
+            ({
+              providerWeb,
+              required providerAndroid,
+              required providerApple,
+            }) async {
+              expect(
+                providerAndroid,
+                isA<AndroidPlayIntegrityProvider>(),
+                reason: values.name,
+              );
+              expect(
+                providerApple,
+                isA<AppleDeviceCheckProvider>(),
+                reason: values.name,
+              );
+              expect(
+                providerWeb,
+                values.web ? isA<ReCaptchaEnterpriseProvider>() : isNull,
+                reason: values.name,
+              );
+            },
+      );
+    }
+  });
+
+  test(
+    'native debug build keeps production providers unless requested',
+    () async {
+      await activateProductionAppCheck(
+        ConnectionConfig(apiUrl: configured.apiUrl, siteKey: ''),
+        web: false,
+        debugBuild: true,
+        activate:
+            ({
+              providerWeb,
+              required providerAndroid,
+              required providerApple,
+            }) async {
+              expect(providerWeb, isNull);
+              expect(providerAndroid, isA<AndroidPlayIntegrityProvider>());
+              expect(providerApple, isA<AppleDeviceCheckProvider>());
+            },
+      );
+    },
+  );
 }

@@ -145,9 +145,10 @@ cause, since asking again repeats them. A reviewer cannot record supported text
 for a region no reader read (the decision is refused, 422, and the record is
 unchanged: verification would refuse text with no reading to trace to); an
 abstention still can be recorded.
-The rule is `reliability.reader_failure_is_recoverable`; the first pass, the
-organiser, field research and every effectful step keep their unknown outcome as
-a block, and so does a reader of the evidence pilot, whose exact cohort
+The rule is `reliability.reader_failure_is_recoverable`; ordinary first-pass
+comparisons have the narrower recovery rule below. The organiser, field research
+and every effectful step keep their unknown outcome as a block, and so does a
+reader of the evidence pilot, whose exact cohort
 reservations and zero retries never replay a paid call (a pilot reader that is
 stopped by its limits ends as `external_outcome_unknown` too). A run that was
 already blocked as `external_outcome_unknown` stays so.
@@ -156,8 +157,8 @@ already blocked as `external_outcome_unknown` stays so.
 pass was answered HTTP 429 on all three attempts and dead-lettered the run as
 `retry_budget_exhausted:model_rate_limited`). When the last attempt
 (`max_attempts`) of a first pass fails with a failure the workflow retries
-(`reliability.failure_is_retryable`: a rate limit or a provider error, HTTP 402
-included) and whose outcome is known, the first pass is given up on as a reader
+(`reliability.failure_is_retryable`: a rate limit, timeout or provider error,
+HTTP 402 included), the ordinary first pass is given up on as a reader
 is: its step completes with no decision and the run goes on through
 `adjudicate`, `parse` and field research. The label's transcript has no text and
 no `decision_kind`, and keeps both readings as its alternatives. A warning
@@ -168,10 +169,25 @@ however its fields settle: no first pass compared its readings. A 429 refused
 before any answer still costs nothing (`cost_basis: refused`); any other
 given-up attempt stays reserved in full and is recorded `failed` with its
 `failure_code`. An authentication or authorization error,
-`model_request_rejected`, `model_malformed_response`, an unknown outcome (a
-server error, or an attempt past its effect timeout) and a first pass of the
-evidence pilot still block and name their cause. The rule is
+`model_request_rejected`, `model_malformed_response`, an invalid child result,
+incomplete child cleanup and a first pass of the evidence pilot still block
+and name their cause. The rule is
 `Workflow.first_pass_has_no_attempt_left`.
+
+**Ordinary first-pass transient recovery** (camera intake, 2026-10-11).
+`reliability.first_pass_failure_is_recoverable` permits the existing bounded
+retry policy after a provider 5xx or a terminated child's deadline. This
+comparison is tool-free: it reads retained observations and a crop; the parent
+saves one decision per region. It does not publish or create a specimen.
+Uncertain billing still holds the entire original reservation, and each new
+attempt reserves again against all existing limits. A known first-request 429
+refusal remains zero-cost even if the elapsed deadline was exceeded. The
+published run cap can stop processing before all attempts are used; that is an
+operational budget block, not a final review disposition. Historical persisted
+unknown outcomes are not automatically unblocked, and this exception does not
+apply to the organiser, research, publication, the evidence pilot or a child
+whose termination cannot be confirmed. Offline regressions exercise the real
+isolated child and dispatched worker; they are not live-device acceptance.
 
 **Waiting after a rate limit** (2026-10-11). A step that fails with an
 `AdapterFailure` whose status is `rate_limited` (a model call's HTTP 429 is

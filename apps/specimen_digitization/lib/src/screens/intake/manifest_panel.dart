@@ -23,6 +23,7 @@ import '../../widgets/evidence_drawer.dart';
 import '../../widgets/motion_reveal.dart';
 import '../../widgets/upload_item.dart';
 import 'manifest_entry.dart';
+import 'intake_transfer_session.dart';
 
 /// The manifest header and its rows.
 class IntakeManifest extends StatefulWidget {
@@ -219,7 +220,12 @@ class _ManifestHeader extends StatelessWidget {
               style: ui.type.body.copyWith(color: ui.color.inkSecondary),
             ),
           ),
-          if (busy) ...<Widget>[
+          if (busy &&
+              entries.any(
+                (ManifestEntry entry) =>
+                    entry.state == UploadState.uploading ||
+                    (entry.checking && entry.file != null),
+              )) ...<Widget>[
             SizedBox(height: ui.space.s4),
             Align(
               alignment: AlignmentDirectional.centerStart,
@@ -320,17 +326,18 @@ class IntakeManifestRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
-    final bool canDismiss = entry.removable || entry.dismissible;
+    final bool canDismiss =
+        !entry.checking && (entry.removable || entry.dismissible);
     final bool canRetryTransfer =
         (entry.state == UploadState.failed ||
             entry.state == UploadState.interrupted) &&
         entry.file != null;
-    final bool canRetryProcessing =
-        entry.state == UploadState.processingBlocked &&
-        entry.specimen != null &&
-        (entry.specimen!.data['available_actions'] as List<dynamic>? ??
-                const <dynamic>[])
-            .contains('retry');
+    final String? processingAction = intakeProcessingRetryAction(entry);
+    final bool canRetryProcessing = processingAction != null;
+    final bool showProcessingGuidance =
+        entry.state == UploadState.processingBlocked ||
+        canRetryProcessing ||
+        (entry.state == UploadState.processing && entry.specimen == null);
     // A determinate value is information, so it keeps its motion and its
     // linear curve under reduced motion (motion, rows 65 and 2.5).
     final Widget item = TweenAnimationBuilder<double>(
@@ -373,13 +380,35 @@ class IntakeManifestRow extends StatelessWidget {
             Align(
               alignment: AlignmentDirectional.centerStart,
               child: UiButton(
-                label: canRetryProcessing
+                key: ValueKey<String>('intake-retry-${entry.digest}'),
+                label: entry.checking
+                    ? 'Retrying…'
+                    : processingAction == 'start_processing'
+                    ? 'Retry start'
+                    : canRetryProcessing
                     ? 'Retry processing'
                     : 'Retry this file',
-                variant: UiButtonVariant.secondary,
-                onPressed: busy ? null : onRetry,
+                variant: UiButtonVariant.primary,
+                onPressed: busy || entry.checking ? null : onRetry,
+                disabledReason: busy && !entry.checking
+                    ? 'Finish the current upload or retry first.'
+                    : null,
               ),
             ),
+          if (showProcessingGuidance) ...<Widget>[
+            SizedBox(height: ui.space.s2),
+            Text(
+              intakeProcessingRecoveryGuidance(entry),
+              style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+            ),
+            if (entry.specimen != null &&
+                !canRetryProcessing &&
+                const <String>{
+                  'processing_blocked',
+                  'paused',
+                }.contains(entry.specimen!.state))
+              AdministratorContactLine(specimenId: entry.specimenId),
+          ],
           if (entry.why != null)
             CaveatText(label: entry.reason ?? '', why: entry.why!),
           UiDisclosure(

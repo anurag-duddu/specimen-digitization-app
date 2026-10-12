@@ -49,6 +49,7 @@ from .reliability import (
     AdapterFailure,
     ReadingStopped,
     failure_is_retryable,
+    first_pass_failure_is_recoverable,
     reader_failure_is_recoverable,
     retry_delay,
 )
@@ -449,11 +450,12 @@ class Workflow:
         # is deterministic and its outcome known (issue #80, HARNESS.md 2).
         effect_settled = False
         # A SAM 3 failure keeps its retry even past the budget (below). So does
-        # a reader, whatever its call did: a reading is a pure read, so a failed
-        # one is a known failure and a late answer keeps its observation, where
-        # the deadline override would stamp the unknown outcome and drop it.
-        repeatable = step.startswith("transcribe:") and reader_failure_is_recoverable(
-            run, step
+        # a reader or an ordinary first-pass comparison: neither publishes a
+        # result itself. A late answer is retained and a transient failure is
+        # retried with its old cost reservation still held.
+        repeatable = (
+            reader_failure_is_recoverable(run, step)
+            or first_pass_failure_is_recoverable(run, step)
         )
         # The code a reading that gave no observation, or a first pass that was
         # given up on, failed with, for its record (lane_costs.record_step).
@@ -867,12 +869,17 @@ class Workflow:
             if step not in {"finalize", FIELD_RESEARCH, FIELD_RECHECK}:
                 run.stage = self.next_step(run).split(":")[0]
         except AdapterFailure as exc:
-            # The provider may have billed, but a reader is a pure read: its
-            # failure is a known one that is asked again (reliability.py). The
-            # flag still decides every other step.
-            recoverable = reader_failure_is_recoverable(run, step)
+            # These model reads cannot duplicate a specimen or publication.
+            # Their unknown billing remains reserved, independently of whether
+            # the workflow can safely retry; other effects keep the block.
+            recoverable = (
+                reader_failure_is_recoverable(run, step)
+                or first_pass_failure_is_recoverable(run, step)
+            )
             outcome_unknown = exc.outcome_unknown and not recoverable
-            if recoverable:
+            if reader_failure_is_recoverable(run, step) or (
+                first_pass_failure_is_recoverable(run, step) and exc.outcome_unknown
+            ):
                 reading_failure = exc.code
             refusal = exc.code if exc.refused else None
             circuit_failure = exc.status.value
@@ -888,8 +895,8 @@ class Workflow:
                     rate_limited=exc.status == LookupStatus.RATE_LIMITED,
                 )
             # The SAM 3 service answers a repeat of a run's request from the
-            # response it stored (sam3_server.RunSegmenter). A reader's known
-            # failure stays known past the deadline override (set above).
+            # response it stored (sam3_server.RunSegmenter). These repeatable
+            # model failures stay known past the deadline override (set above).
             repeatable = recoverable or (
                 step == "segment"
                 and exc.code.startswith("sam3_")
@@ -958,9 +965,9 @@ class Workflow:
         if external and elapsed > effect_timeout and not repeatable:
             circuit_failure = "timeout"
             # Past its deadline this step's outcome is unknown, so even a refusal
-            # releases nothing. A reader whose failure is recoverable never comes
-            # here (`repeatable`): it keeps a refusal past its deadline, as it
-            # keeps any known failure.
+            # releases nothing. A repeatable reader or first-pass comparison
+            # never comes here: a known refusal stays known past its deadline,
+            # while an unknown bill remains fully reserved.
             refusal = None
             # Field research's meter knows what its calls cost even when the
             # step overran: its paid call stays, so the settlement below frees
@@ -1106,16 +1113,14 @@ class Workflow:
         timeout or a provider error, HTTP 402 included) on the attempt that used
         up ``max_attempts``. A failure that is not retried still blocks and names
         its cause (a credential or permission error, a request the provider
-        rejects, a malformed answer). A first pass is not a reader
-        (``reader_failure_is_recoverable``), so an outcome that may follow a
-        billed answer (``external_outcome_unknown``: a server error, a deadline)
-        still blocks too, and so does a first pass of the evidence pilot, whose
-        readers are never given up on either.
+        rejects, a malformed answer). An ordinary first pass's transient failure
+        can be given up on even if its bill is unknown: every attempt keeps its
+        reservation and no transcript is selected. The evidence pilot stays
+        excluded, as it does from reader recovery.
         """
         return (
             step.startswith("first_pass:")
-            and "evidence_pilot" not in run.dependencies
-            and not failure.outcome_unknown
+            and first_pass_failure_is_recoverable(run, step)
             and failure_is_retryable(run, step, failure.status)
             and run.attempts.get(step, 0) >= run.profile.execution.max_attempts
         )

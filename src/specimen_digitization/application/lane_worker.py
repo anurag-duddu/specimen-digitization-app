@@ -27,6 +27,7 @@ STOPPED = {"finalized", "processing_blocked", "paused", "cancelled", "retry_sche
 FINISHED = {"finalized", "processing_blocked", "paused", "cancelled", "waiting_for_review"}
 FENCE_KIND = "worker_cursor"  # The worker's own state documents, one actor only.
 CLOSING_SECONDS = 600  # No new run starts this close to the task deadline.
+QUEUE_CLOCK_MARGIN_SECONDS = 1  # Keep connector cutoffs behind its own clock.
 MAX_CONFLICTS = 3  # Consecutive save conflicts on one run before moving on.
 MAX_IDLE_HANDOVERS = 3  # Consecutive hand-overs without progress, then stop.
 RUN_STALLED = "lane_run_not_progressing"
@@ -264,6 +265,7 @@ class DrainWorker:
         self.sleep = sleep
         # Starts the next execution of the job, with no overrides.
         self.continuation = continuation
+        self.deadline_seconds = deadline_seconds
         self.window_seconds = deadline_seconds - CLOSING_SECONDS
         # A native research step spans multiple bounded role windows. The
         # collection fence must outlive the whole task, not only one window,
@@ -284,7 +286,9 @@ class DrainWorker:
             time.sleep(seconds)
 
     def run(self, stop=None) -> dict:
-        self.close_at = self.clock() + timedelta(seconds=self.window_seconds)
+        started = self.clock()
+        self.close_at = started + timedelta(seconds=self.window_seconds)
+        self.deadline_at = started + timedelta(seconds=self.deadline_seconds)
         summary = {
             "status": "drained",
             "processed": [],
@@ -331,20 +335,23 @@ class DrainWorker:
             except BaseException:
                 fence.release()
                 raise
-            wanted = self._release(drain, fence, previous, status, summary) or wanted
+            wanted = self._release(drain, fence, previous, status, summary, stop) or wanted
+            if self._stopped(stop):
+                status = "stopped"
             if status != "drained":
                 summary["status"] = status
         if self.continuation and wanted and summary["status"] != "stopped":
             summary["continuation"] = self.continuation().status
         return summary
 
-    def _release(self, drain, fence, previous, status, summary) -> bool:
+    def _release(self, drain, fence, previous, status, summary, stop=None) -> bool:
         """Release the fence; whether the collection wants the next execution.
 
-        It does when requested work is due at the window's close, or a retry
-        falls within the next execution's reach. A stop wants none. After
+        It does when requested work remains after release, or a retry falls
+        within the next execution's reach. A stop wants none. After
         MAX_IDLE_HANDOVERS in a row without progress, the waiting run is blocked
-        where people can see it instead.
+        where people can see it instead. The final read follows release and the
+        cutoff margin, so a request cannot lose its wake-up to the old fence.
         """
         first = min(drain.retries.items(), key=lambda item: item[1], default=None)
         reach = self.clock() + timedelta(seconds=self.window_seconds)
@@ -362,11 +369,31 @@ class DrainWorker:
                 waiting, idle = None, 0
         fence.release(first and (first[0], first[1].isoformat()), idle)
         summary["pending_retries"] += len(drain.retries)
-        return waiting is not None
+        if status == "stopped" or self._stopped(stop):
+            return False
+        # Close the enqueue/exit race *after* freeing the fence. A request may
+        # have committed after our last empty read, while its newly dispatched
+        # worker found this fence held and exited. Waiting one cutoff margin
+        # makes every request committed before release visible to this read.
+        # Later arrivals can acquire the released fence through their normal
+        # dispatch. This is one bounded check, never an idle polling loop.
+        remaining = (self.deadline_at - self.clock()).total_seconds()
+        if remaining < QUEUE_CLOCK_MARGIN_SECONDS:
+            # A long final step used the task's grace window. Do not extend the
+            # execution to perform the handshake; hand off once instead. The
+            # next worker still owns acquisition, deduplication and admission.
+            return True
+        self._pause(QUEUE_CLOCK_MARGIN_SECONDS, stop)
+        if self._stopped(stop):
+            return False
+        return (
+            waiting is not None
+            or self._next_due(drain.principal, drain.stalled) is not None
+        )
 
     def _next_due(self, principal, skip=()):
         # A cutoff a second behind keeps it no later than the database's clock.
-        cutoff = (self.clock() - timedelta(seconds=1)).isoformat()
+        cutoff = (self.clock() - timedelta(seconds=QUEUE_CLOCK_MARGIN_SECONDS)).isoformat()
         due = self.repository.oldest_due(
             principal.scope, cutoff, limit=min(100, len(skip) + 1)
         )

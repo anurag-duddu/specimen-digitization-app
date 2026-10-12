@@ -326,8 +326,8 @@ def test_two_first_pass_refusals_cost_nothing_and_the_third_attempt_is_sent(
 @pytest.mark.parametrize(
     ("failure", "blocker", "outcome", "sent"),
     [
-        # A server error may follow a billed answer: its outcome is unknown.
-        ("http_503", "external_outcome_unknown", "unknown", 1),
+        # A comparison is safe to retry; its unknown bill remains fully held.
+        ("http_503", "model_provider_error", "failed", 1),
         # HTTP 402 is a transient provider failure, not a refusal.
         ("http_402", "model_provider_error", "failed", 1),
         ("malformed", "model_malformed_response", "failed", 2),
@@ -347,7 +347,8 @@ def test_a_first_pass_failure_other_than_a_refusal_holds_its_whole_reservation(
     step = "first_pass:" + run.regions[0].id
     assert run.blocker == blocker and requests(tmp_path, "first_pass") == sent
     [call] = [c for c in run.paid_calls if c["step"] == step]
-    assert ledger_rows([call]) == [(1, outcome, "reserved", FIRST_PASS_RESERVATION, None, None)]
+    failure_code = "model_provider_error" if failure == "http_503" else None
+    assert ledger_rows([call]) == [(1, outcome, "reserved", FIRST_PASS_RESERVATION, None, failure_code)]
     assert run.usage.reserved_cost_micros == SAM_RESERVATION + FIRST_PASS_RESERVATION
     assert ProgramLedger(workflow.repository, SCOPE).read()["reserved_total_micros"] == (
         run.usage.reserved_cost_micros
@@ -359,10 +360,10 @@ def test_a_first_pass_failure_other_than_a_refusal_holds_its_whole_reservation(
     }
 
 
-def test_a_first_pass_refused_after_its_deadline_stays_reserved(tmp_path, monkeypatch):
-    # Past its effect timeout a first pass's outcome is unknown (the deadline
-    # override), so even a 429 releases nothing: the run, the program ledger
-    # and the research state all keep its whole reservation.
+def test_a_first_pass_refused_after_its_deadline_keeps_its_known_refusal(tmp_path, monkeypatch):
+    # The comparison is repeatable. A known first-request 429 still proves a
+    # zero bill past its elapsed deadline, as it does for a reader. A 503 has
+    # no such proof and remains fully reserved in the test above.
     adapters = ChildLab(LocalBlobs(tmp_path / "blobs"), first_passes=1, late=True)
     workflow, principal, ident, backend = lab(tmp_path, monkeypatch, adapters, "http_429")
     workflow.monotonic = lambda: adapters.elapsed[0]
@@ -372,17 +373,17 @@ def test_a_first_pass_refused_after_its_deadline_stays_reserved(tmp_path, monkey
     run = specimen.run
     step = "first_pass:" + run.regions[0].id
     assert requests(tmp_path, "first_pass") == 1
-    assert (run.stage, run.blocker) == ("processing_blocked", "external_outcome_unknown")
-    assert run.reasons == ["external_stage_deadline_exceeded"]
+    assert (run.stage, run.blocker) == ("retry_scheduled", "model_rate_limited")
+    assert "external_stage_deadline_exceeded" not in run.reasons
     [call] = [c for c in run.paid_calls if c["step"] == step]
-    assert ledger_rows([call]) == [(1, "unknown", "reserved", FIRST_PASS_RESERVATION, None, None)]
-    assert run.usage.reserved_cost_micros == SAM_RESERVATION + FIRST_PASS_RESERVATION
+    assert ledger_rows([call]) == [(1, "failed", "refused", 0, None, "model_rate_limited")]
+    assert run.usage.reserved_cost_micros == SAM_RESERVATION
     assert ProgramLedger(workflow.repository, SCOPE).read()["reserved_total_micros"] == (
-        SAM_RESERVATION + FIRST_PASS_RESERVATION
+        SAM_RESERVATION
     )
     assert research_state(backend, specimen)["ordinary_reservations"][f"{step}:1"] == {
         "reserved_micros": FIRST_PASS_RESERVATION,
-        "settled_micros": None,
+        "settled_micros": 0,
     }
 
 

@@ -58,15 +58,34 @@ def reader_failure_is_recoverable(run, step: str) -> bool:
     (G6). It never blocks the run as ``external_outcome_unknown``.
 
     ``step`` is a workflow step (``transcribe:<region>:<route>``) or a model
-    operation (``transcribe``). Every other step keeps its unknown outcome as a
-    block: a first pass, the organiser, field research and every effectful step
-    may have changed something that a repeat would change again. So does a
-    reader of the evidence pilot, whose exact cohort reservations and zero
+    operation (``transcribe``). The first pass has its own narrower policy below;
+    the organiser, field research and every effectful step keep their unknown
+    outcome as a block. So does a reader of the evidence pilot, whose exact
+    cohort reservations and zero
     retries never replay a paid call. This is the one place that rule lives;
     widening or narrowing it is this line.
     """
     return (
         step.split(":", 1)[0] == "transcribe"
+        and "evidence_pilot" not in run.dependencies
+    )
+
+
+def first_pass_failure_is_recoverable(run, step: str) -> bool:
+    """Whether a first-pass comparison may recover a transient failed call.
+
+    This tool-free model call compares retained readings and a retained crop.
+    Its child only writes content-addressed provenance; the parent records one
+    decision per region after the call returns. Repeating a failed comparison
+    cannot duplicate a specimen or publish a result. It can bill again: every
+    uncertain attempt keeps its full reservation and each retry reserves anew.
+
+    This does not make malformed answers or contract failures retryable, does
+    not clear an already persisted unknown outcome, and does not cover the
+    evidence pilot or any organiser, research, or publication operation.
+    """
+    return (
+        step.split(":", 1)[0] == "first_pass"
         and "evidence_pilot" not in run.dependencies
     )
 
@@ -216,7 +235,8 @@ def run_agent_bounded(agent, prompt, *, timeout_seconds: float, usage_limits):
             429: LookupStatus.RATE_LIMITED,
         }.get(exc.status_code, LookupStatus.PROVIDER)
         # A gateway/server failure may follow an accepted billable effect.
-        # A workflow retry must never turn an ambiguous 5xx into duplicate spend.
+        # Preserve that uncertainty. Only the workflow's explicitly repeatable
+        # model reads may retry, reserving again without releasing this cost.
         # A 429 that answers the call's first request is a refusal before any
         # work: no answer came back, so nothing was generated or billed. One
         # after an answer (the agent's output retry) is not: that answer was.

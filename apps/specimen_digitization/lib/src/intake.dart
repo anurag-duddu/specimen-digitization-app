@@ -20,6 +20,7 @@ import 'package:specimen_ui/specimen_ui.dart';
 import 'capture/capture_camera.dart';
 import 'capture/capture_screen.dart';
 import 'capture_quality.dart';
+import 'intake_image_dimensions.dart';
 import 'models.dart';
 import 'screens/intake/capture_card.dart';
 import 'screens/intake/manifest_entry.dart';
@@ -46,6 +47,11 @@ const int intakeMaximumPixels = 40000000;
 
 /// The largest single dimension this client will try to decode locally.
 const int intakeMaximumSide = 20000;
+
+bool _exceedsLocalResolutionLimit(int width, int height) =>
+    width > intakeMaximumSide ||
+    height > intakeMaximumSide ||
+    width * height > intakeMaximumPixels;
 
 /// The way from intake to the photographs a collection already holds.
 ///
@@ -483,54 +489,57 @@ class _IntakeScreenState extends State<IntakeScreen> {
           );
           continue;
         }
-        int? width;
-        int? height;
+        final EncodedImageDimensions? encodedDimensions =
+            readEncodedImageDimensions(bytes, mimeType: mime);
         CaptureQuality? quality;
-        bool excessiveResolution = false;
-        try {
-          final ui.ImmutableBuffer buffer =
-              await ui.ImmutableBuffer.fromUint8List(bytes);
-          final ui.Codec codec = await ui.instantiateImageCodecWithSize(
-            buffer,
-            getTargetSize: (int w, int h) {
-              width = w;
-              height = h;
-              if (w > intakeMaximumSide ||
-                  h > intakeMaximumSide ||
-                  w * h > intakeMaximumPixels) {
-                excessiveResolution = true;
-                throw const FormatException(
-                  'Image exceeds local decode limits',
-                );
-              }
-              final double scale = w > h ? 256 / w : 256 / h;
-              return ui.TargetImageSize(
-                width: scale < 1 ? (w * scale).round().clamp(1, 256) : w,
-                height: scale < 1 ? (h * scale).round().clamp(1, 256) : h,
-              );
-            },
-          );
+        bool excessiveResolution =
+            encodedDimensions != null &&
+            _exceedsLocalResolutionLimit(
+              encodedDimensions.width,
+              encodedDimensions.height,
+            );
+        if (!excessiveResolution) {
           try {
-            final ui.FrameInfo frame = await codec.getNextFrame();
-            try {
-              final ByteData? pixels = await frame.image.toByteData(
-                format: ui.ImageByteFormat.rawRgba,
-              );
-              if (pixels != null) {
-                quality = CaptureQuality.measure(
-                  pixels.buffer.asUint8List(),
-                  frame.image.width,
-                  frame.image.height,
+            final ui.ImmutableBuffer buffer =
+                await ui.ImmutableBuffer.fromUint8List(bytes);
+            final ui.Codec codec = await ui.instantiateImageCodecWithSize(
+              buffer,
+              getTargetSize: (int w, int h) {
+                if (_exceedsLocalResolutionLimit(w, h)) {
+                  excessiveResolution = true;
+                  throw const FormatException(
+                    'Image exceeds local decode limits',
+                  );
+                }
+                final double scale = w > h ? 256 / w : 256 / h;
+                return ui.TargetImageSize(
+                  width: scale < 1 ? (w * scale).round().clamp(1, 256) : w,
+                  height: scale < 1 ? (h * scale).round().clamp(1, 256) : h,
                 );
+              },
+            );
+            try {
+              final ui.FrameInfo frame = await codec.getNextFrame();
+              try {
+                final ByteData? pixels = await frame.image.toByteData(
+                  format: ui.ImageByteFormat.rawRgba,
+                );
+                if (pixels != null) {
+                  quality = CaptureQuality.measure(
+                    pixels.buffer.asUint8List(),
+                    frame.image.width,
+                    frame.image.height,
+                  );
+                }
+              } finally {
+                frame.image.dispose();
               }
             } finally {
-              frame.image.dispose();
+              codec.dispose();
             }
-          } finally {
-            codec.dispose();
+          } catch (_) {
+            /* An unsupported decoder or unavailable measurement is not a quality pass. */
           }
-        } catch (_) {
-          /* An unsupported decoder or unavailable measurement is not a quality pass. */
         }
         if (excessiveResolution) {
           _skip(
@@ -573,8 +582,8 @@ class _IntakeScreenState extends State<IntakeScreen> {
           // New selections use the visible declaration, sensitive by default.
           // Resumed server uploads retain their existing classification.
           sensitive: old?.file?.sensitive ?? _sensitive,
-          width: width,
-          height: height,
+          width: encodedDimensions?.width,
+          height: encodedDimensions?.height,
         );
         if (!mounted) return;
         setState(() {

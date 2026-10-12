@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 import 'email_link_browser.dart';
@@ -6,6 +8,25 @@ import 'app/auth_layout.dart';
 import 'magic_link.dart';
 import 'widgets/motion_reveal.dart';
 import 'widgets/caveat_text.dart';
+
+const bool _applePersonalDemoConfigured = bool.fromEnvironment(
+  'SPECIMEN_APPLE_PERSONAL_DEMO',
+);
+
+/// The manual-paste seam exists only for an opted-in debug iPhone demo.
+/// Optional inputs let source tests prove every gate without weakening the
+/// release-build [kDebugMode] requirement.
+bool applePersonalDemoPasteEnabled({
+  @visibleForTesting bool? debug,
+  bool? configured,
+  bool? web,
+  TargetPlatform? platform,
+}) =>
+    kDebugMode &&
+    (debug ?? true) &&
+    !(web ?? kIsWeb) &&
+    (platform ?? defaultTargetPlatform) == TargetPlatform.iOS &&
+    (configured ?? _applePersonalDemoConfigured);
 
 class EmailLinkEntry extends StatefulWidget {
   const EmailLinkEntry({
@@ -62,9 +83,15 @@ class MagicLinkSignInScreen extends StatefulWidget {
     super.key,
     required this.access,
     this.controller,
+    @visibleForTesting this.applePersonalDemoConfigured,
+    @visibleForTesting this.platform,
+    @visibleForTesting this.clipboardReader,
   });
   final EmailLinkAccess access;
   final MagicLinkController? controller;
+  final bool? applePersonalDemoConfigured;
+  final TargetPlatform? platform;
+  final Future<String?> Function()? clipboardReader;
   @override
   State<MagicLinkSignInScreen> createState() => _MagicLinkSignInScreenState();
 }
@@ -74,6 +101,7 @@ class _MagicLinkSignInScreenState extends State<MagicLinkSignInScreen> {
   String? _emailError;
   late final MagicLinkController controller;
   Timer? _timer;
+  bool _readingClipboard = false;
   String? _lastRemembered;
   int _lastCooldown = 0;
   @override
@@ -131,6 +159,31 @@ class _MagicLinkSignInScreenState extends State<MagicLinkSignInScreen> {
     );
   }
 
+  Future<void> _pasteSignInLink() async {
+    if (_readingClipboard || controller.busy || !controller.initialized) return;
+    final String startingEmail = controller.email;
+    final bool startingSent = controller.sent;
+    setState(() => _readingClipboard = true);
+    String? link;
+    try {
+      link = widget.clipboardReader != null
+          ? await widget.clipboardReader!()
+          : (await Clipboard.getData(Clipboard.kTextPlain))?.text;
+    } catch (_) {
+      // Clipboard errors can include private platform details. The controller
+      // presents the same safe guidance as an empty clipboard.
+    } finally {
+      if (mounted) setState(() => _readingClipboard = false);
+    }
+    if (!mounted ||
+        controller.busy ||
+        controller.email != startingEmail ||
+        controller.sent != startingSent) {
+      return;
+    }
+    controller.acceptPastedLink(link ?? '');
+  }
+
   /// The primary button's label for the state the controller is in.
   ///
   /// One function, so the `AnimatedSwitcher`'s key and the text it draws can
@@ -148,6 +201,10 @@ class _MagicLinkSignInScreenState extends State<MagicLinkSignInScreen> {
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
     final bool confirm = controller.handlingLink;
+    final bool pasteDemo = applePersonalDemoPasteEnabled(
+      configured: widget.applePersonalDemoConfigured,
+      platform: widget.platform,
+    );
     final int cooldown = controller.cooldownSeconds;
     final bool disabled =
         !controller.initialized ||
@@ -209,15 +266,38 @@ class _MagicLinkSignInScreenState extends State<MagicLinkSignInScreen> {
                   ),
                 ),
               ),
+            if (pasteDemo && controller.sent && !confirm) ...<Widget>[
+              SizedBox(height: ui.space.s3),
+              Text(
+                'For this iPhone demo, copy the full sign-in link from the email, then paste it here.',
+                style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+              ),
+              UiButton(
+                label: 'Paste link from email',
+                variant: UiButtonVariant.ghost,
+                loading: _readingClipboard,
+                onPressed: controller.busy || _readingClipboard
+                    ? null
+                    : () => unawaited(_pasteSignInLink()),
+                disabledReason: controller.busy
+                    ? 'Sign-in is already in progress.'
+                    : _readingClipboard
+                    ? 'Reading the sign-in link from the clipboard.'
+                    : null,
+              ),
+            ],
             if (controller.sent || confirm || controller.message != null)
               Align(
                 alignment: AlignmentDirectional.centerStart,
                 child: UiButton(
                   label: confirm ? 'Cancel sign-in' : 'Use a different email',
                   variant: UiButtonVariant.ghost,
-                  onPressed: controller.busy
+                  onPressed: controller.busy || _readingClipboard
                       ? null
                       : () => unawaited(controller.changeEmail()),
+                  disabledReason: _readingClipboard
+                      ? 'Finish reading the sign-in link before changing email.'
+                      : null,
                 ),
               ),
             SizedBox(height: ui.space.s4),
