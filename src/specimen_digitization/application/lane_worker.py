@@ -224,6 +224,33 @@ class CollectionFence:
             pass  # Taken over after expiry; the new holder owns it now.
 
 
+def blocked_ids(repository, scope):
+    """Blocked, non-sensitive records with no disposition, by id.
+
+    The production repository lists them from its metadata rows
+    (SqlConnectRepository.blocked_ids). The local SQLite repository is read
+    here, so storage.py, whose source digest the research harness pins
+    (native_canonical), stays as it is. Any other repository lists none.
+    """
+    listing = getattr(repository, "blocked_ids", None)
+    if callable(listing):
+        return listing(scope)
+    from .lane import SQLITE_STATUS
+    from .storage import SQLiteRepository
+
+    if not isinstance(repository, SQLiteRepository):
+        return []
+    with repository.connect() as db:
+        rows = db.execute(
+            "SELECT id FROM records WHERE org=? AND collection=? AND "
+            "COALESCE(json_extract(payload,'$.asset.sensitive'),1)=0 AND "
+            + SQLITE_STATUS
+            + "='processing_blocked' ORDER BY id",
+            (scope.organization_id, scope.collection_id),
+        ).fetchall()
+    return [row[0] for row in rows]
+
+
 def waiting_until(run):
     """When a run the workflow waits on becomes due again; None when it is due now."""
     if run.blocker == "external_outcome_unknown" and run.lease_until:
@@ -448,12 +475,11 @@ class DrainWorker:
         """
         principal = drain.principal
         recover = getattr(self.workflow, "recover_blocked", None)
-        listing = getattr(self.repository, "blocked_ids", None)
-        if not callable(recover) or not callable(listing):
+        if not callable(recover):
             return 0
         recovered = 0
         try:
-            for ident in listing(principal.scope):
+            for ident in blocked_ids(self.repository, principal.scope):
                 try:
                     if recover(principal, ident):
                         recovered += 1

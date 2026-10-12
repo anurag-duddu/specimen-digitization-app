@@ -216,6 +216,36 @@ apply to the organiser, research, publication, the evidence pilot or a child
 whose termination cannot be confirmed. Offline regressions exercise the real
 isolated child and dispatched worker; they are not live-device acceptance.
 
+**Stuck first passes go on by themselves** (2026-10-12; replaces the run-cap
+and historical-unknown sentences above for an ordinary first pass). The owner:
+"the ones stuck in intake should all successfuly end up in the main specimen
+queue based on how the pipeline+harness resolve them". Tests:
+`tests/test_first_pass_stuck_recovery.py`.
+- A pin that names the registered first-pass model at another provider is moved
+  to the registered provider before the step's call, and the move (route,
+  model, old and new provider, time) is kept in `run.dependencies["route_repins"]`
+  (`first_pass.repin_first_pass_route`). A pin of another model is never moved
+  and still blocks as `pinned_model_route_unavailable`. The price list is keyed
+  by route, so the reservation and the USD 1 cap do not change.
+- A first pass the run cannot afford under its own limits (`cost_budget_exhausted`
+  and the token, call and active-time budgets) is given up on unsent, with that
+  code in its `first_pass_given_up` finding; earlier attempts stay held.
+- A first pass whose worker stopped after its intent is settled as
+  `first_pass_result_lost`, as a reading is (above); after its last attempt it is
+  given up on. An attempt already recorded is not recorded or counted again.
+- Each drain execution, when it takes a collection, lists its blocked records
+  and makes due a blocked ordinary first pass whose blocker is
+  `external_outcome_unknown` (lease ended), `pinned_model_route_unavailable`
+  (when the pin can be moved), a budget above, `provider_circuit:*`,
+  `lane_run_not_progressing` or `lane_handover_without_progress`; one blocked as
+  `retry_budget_exhausted:<code>` is given up on with `<code>`
+  (`Workflow.recover_blocked`). At most three recoveries per step, each kept in
+  `run.dependencies["automatic_recoveries"]`. It makes no call. Evidence-pilot
+  runs, sensitive records and runs with a disposition are left alone.
+- What wakes them is the next worker execution: any upload, process request or
+  run action starts one (LANE.md T1), and an execution hands left work to the
+  next. Nothing new is scheduled, and a deploy alone starts no execution.
+
 **Waiting after a rate limit** (2026-10-11). A step that fails with an
 `AdapterFailure` whose status is `rate_limited` (a model call's HTTP 429 is
 `model_rate_limited`) waits at least 30 seconds before its second attempt and at
