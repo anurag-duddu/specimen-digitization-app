@@ -72,6 +72,35 @@ void main() {
   );
 
   test(
+    'unresolved field literals are not exposed as resolved values',
+    () async {
+      final response =
+          jsonDecode(jsonEncode(fixture['workspace_response'])) as Json;
+      final fields = response['fields'] as Json;
+      fields['country'] = <String, dynamic>{
+        ...(fields['country'] as Json),
+        'state': 'unresolved',
+        'value_state': 'unresolved',
+        'literal': 'ILLINOIS',
+        'parsed': null,
+        'normalized': null,
+      };
+      final repo = repository((r) async {
+        if (r.url.path.endsWith('/content')) {
+          return http.Response.bytes([1, 2, 3], 200);
+        }
+        return http.Response(jsonEncode(response), 200);
+      });
+      final s = await repo.specimen(scope, 'sample');
+      final country = s.fields.singleWhere(
+        (field) => field['field_key'] == 'country',
+      );
+      expect(country['literal_value'], 'ILLINOIS');
+      expect(country['resolved_value'], isNull);
+    },
+  );
+
+  test(
     'interrupted upload resumes from acknowledged byte offset without replaying prefix',
     () async {
       final offsets = <int>[];

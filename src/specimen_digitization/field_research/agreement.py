@@ -1253,6 +1253,55 @@ def lies_in(candidate: SourceCandidate, key: str, field: PlaceField) -> bool:
         or (code is not None and country_code(parent.iso_code) == code) for parent in candidate.parents)
 
 
+def _written_ancestor_fits(field: PlaceField, literal: str | None) -> bool:
+    """Whether an unsettled larger field is the same misplaced literal.
+
+    An unsettled larger field may be the same misplaced text that is being
+    moved to its real level ("Illinois" written under country, then settled
+    as province/state). If it is merely a candidate parent ("United States"
+    above "Illinois"), the larger field's own failure must not be hidden by a
+    lower field.
+    """
+    names = place_keys(field.texts)
+    return literal is not None and place_name(literal) in names
+
+
+def _written_ancestor_is_settled_lower(key: str, ancestor: str, candidate: SourceCandidate,
+        field: PlaceField, settled: Mapping[str, PlaceField]) -> bool:
+    """Whether an unsettled ancestor's text has already settled lower down.
+
+    Example: Country writes "Illinois", Province/State has been reconciled to
+    Illinois, and a city candidate lies in Illinois. The written country is not
+    a country failure to hide; it is the same misfiled state text.
+    """
+    names = place_keys(field.texts)
+    for lower in PLACE_ORDER[PLACE_ORDER.index(ancestor) + 1:PLACE_ORDER.index(key)]:
+        lower_field = settled.get(lower)
+        if lower_field is not None and names & place_keys(lower_field.texts) and lies_in(
+                candidate, lower, lower_field):
+            return True
+    return False
+
+
+def _can_derive_ancestor(key: str, ancestor: str, candidate: SourceCandidate, basis: str,
+        written: Mapping[str, PlaceField], settled: Mapping[str, PlaceField],
+        literal: str | None) -> bool:
+    """Whether an exact place match can stand while an ancestor is filled later.
+
+    Near spellings still need already-settled ancestors; otherwise a typo could
+    silently move a label into the wrong hierarchy.
+    """
+    if basis == NEAR_SPELLING:
+        return False
+    if ancestor == "country" and not candidate.parents:
+        return False
+    if ancestor == "province_state" and key in ("county", "city") and len(candidate.parents) < 2:
+        return False
+    field = written.get(ancestor)
+    return (field is None or _written_ancestor_fits(field, literal)
+        or _written_ancestor_is_settled_lower(key, ancestor, candidate, field, settled))
+
+
 def parents_refusal(key: str, candidate: SourceCandidate, basis: str, *,
         written: Mapping[str, PlaceField], settled: Mapping[str, PlaceField],
         literal: str | None = None, unsettled: frozenset[str] = frozenset()) -> Refusal | None:
@@ -1286,12 +1335,19 @@ def parents_refusal(key: str, candidate: SourceCandidate, basis: str, *,
         if not candidate.parents:
             return Refusal(NO_PARENTS, NO_PARENTS)
         country = settled.get("country")
-        if country is None:
+        if country is None and not _can_derive_ancestor(
+                key, "country", candidate, basis, written, settled, literal):
             return Refusal(NO_COUNTRY, NO_COUNTRY)
-        if not lies_in(candidate, "country", country):
+        if country is not None and not lies_in(candidate, "country", country):
             return Refusal(NOT_IN_COUNTRY, NOT_IN_COUNTRY)
         province = settled.get("province_state")
-        if key == "county" and "province_state" in unsettled:
+        if (key == "county" and "province_state" in unsettled
+                and not _can_derive_ancestor(
+                    key, "province_state", candidate, basis, written, settled, literal)):
+            return Refusal(NO_PROVINCE, NO_PROVINCE)
+        if (key == "city" and "province_state" in unsettled
+                and not _can_derive_ancestor(
+                    key, "province_state", candidate, basis, written, settled, literal)):
             return Refusal(NO_PROVINCE, NO_PROVINCE)
         if key == "county" and province is not None and (
                 (province.authority_id is not None and candidate.authority_id == province.authority_id)
