@@ -16,7 +16,9 @@ import 'vocabulary.dart';
 /// evidence stream and the source photograph. A reviewer waiting on any of
 /// them is waiting on the same collection service, and a wire that timed out
 /// at seven different moments would report seven different waits for one
-/// failure.
+/// failure. A request waits it once, from its first send to the last byte of
+/// its answer, the resend of a refused read included. Each token read before
+/// that first send has a wait of its own.
 const Duration apiRequestTimeout = Duration(seconds: 30);
 
 class ApiSpecimenRepository
@@ -236,6 +238,13 @@ class ApiSpecimenRepository
   /// answer to that second send, or a failure to read its credentials. Writes
   /// are never resent here, nor is a send whose tokens were [minted] already,
   /// nor one from a repository that has nothing to mint with.
+  ///
+  /// Every caller waits one [apiRequestTimeout] from the first send to the
+  /// last byte of the answer it reads. The drain of a refused answer, the
+  /// fresh credentials and the resend all spend from that one wait, so a
+  /// resend that cannot answer in time ends the request as a timeout, which
+  /// does not withdraw access. Each step here also keeps a timeout of its own,
+  /// so a step the caller has stopped waiting for still ends.
   Future<http.StreamedResponse> _send(
     http.BaseRequest Function(Map<String, String> credentials) build,
     Map<String, String> credentials,
@@ -310,16 +319,14 @@ class ApiSpecimenRepository
       fresh: freshCredentials,
     );
     try {
-      final response = await http.Response.fromStream(
-        await _send(
-          build,
-          credentials,
-          epoch,
-          userId,
-          verification: verification,
-          minted: freshCredentials,
-        ),
-      ).timeout(apiRequestTimeout);
+      final response = await _send(
+        build,
+        credentials,
+        epoch,
+        userId,
+        verification: verification,
+        minted: freshCredentials,
+      ).then(http.Response.fromStream).timeout(apiRequestTimeout);
       _checkAccess(epoch, userId, verification: verification);
       Json result = {};
       try {
@@ -1049,9 +1056,12 @@ class ApiSpecimenRepository
             http.Request('GET', uri)
               ..followRedirects = false
               ..headers.addAll(credentials);
-        final response = await http.Response.fromStream(
-          await _send(build, await _credentials(epoch, userId), epoch, userId),
-        ).timeout(apiRequestTimeout);
+        final response = await _send(
+          build,
+          await _credentials(epoch, userId),
+          epoch,
+          userId,
+        ).then(http.Response.fromStream).timeout(apiRequestTimeout);
         _checkAccess(epoch, userId);
         if (response.statusCode == 401 || response.statusCode == 403) {
           throw _deny(
