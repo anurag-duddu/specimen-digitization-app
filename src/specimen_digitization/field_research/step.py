@@ -1500,6 +1500,19 @@ def _location_proposals(tasks_by_key: Mapping[str, FieldTask],
     return proposals
 
 
+def _answer_levels_for_literal(answer: SourceAnswer, literal: str) -> set[str]:
+    """Location levels one source answer confirms for the written literal."""
+    from .agreement import place_name, placed
+
+    levels: set[str] = set()
+    literal_name = place_name(literal)
+    for key in LOCATION_RECONCILE_KEYS:
+        candidate = placed(key, answer)
+        if candidate is not None and place_name(candidate.name) == literal_name:
+            levels.add(key)
+    return levels
+
+
 def _usable_location_proposals(run, proposals: Mapping[str, Sequence[_LocationProposal]], *,
         evidence: Mapping[str, Evidence], received: Mapping[str, Sequence[SourceAnswer]]) -> dict[str, list[_LocationProposal]]:
     """Usable proposals, excluding one written place name claimed at several levels.
@@ -1507,20 +1520,27 @@ def _usable_location_proposals(run, proposals: Mapping[str, Sequence[_LocationPr
     Reconciliation moves evidence between fields only when the shared lookup
     proves one administrative level for the label text. A gazetteer answer that
     contains the same written name as both a province/state and a county is real
-    evidence, but not enough to choose both fields from one label literal.
+    evidence, but not enough to choose either synthesized field from one label
+    literal. The ambiguity check includes the source field's level too, because
+    source-level candidates are intentionally not synthesized back to themselves.
     """
     from .agreement import place_name
 
     usable: dict[str, list[_LocationProposal]] = {}
     levels_by_literal: dict[str, set[str]] = {}
+    ambiguous: set[str] = set()
     for key, items in proposals.items():
         accepted = [proposal for proposal in items
             if _candidate_fits_existing_chain(run, key, proposal.literal, proposal.candidate,
                 evidence=evidence, received=received)]
         usable[key] = accepted
         for proposal in accepted:
-            levels_by_literal.setdefault(place_name(proposal.literal), set()).add(key)
-    ambiguous = {literal for literal, keys in levels_by_literal.items() if len(keys) > 1}
+            literal = place_name(proposal.literal)
+            answer_levels = _answer_levels_for_literal(proposal.answer, proposal.literal)
+            if len(answer_levels) > 1:
+                ambiguous.add(literal)
+            levels_by_literal.setdefault(literal, set()).add(key)
+    ambiguous.update(literal for literal, keys in levels_by_literal.items() if len(keys) > 1)
     if not ambiguous:
         return usable
     return {key: [proposal for proposal in items if place_name(proposal.literal) not in ambiguous]

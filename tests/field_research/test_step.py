@@ -715,6 +715,35 @@ def test_location_reconciliation_keeps_same_literal_cross_level_ambiguity_review
     assert rig.specimen.run.disposition == Disposition.REVIEW
 
 
+def test_location_reconciliation_counts_the_source_field_level_when_literal_is_ambiguous(tmp_path):
+    text = label_with(country=None, province_state="Davao", county=None, city=None)
+    candidates = [
+        *COLLECTORS,
+        *(("province_state", name, "Davao", "province_state: Davao") for name in ("1A", "1B")),
+    ]
+    rig = build_rig(tmp_path, text, candidates=candidates)
+
+    async def province_lookup_finds_two_levels(task, readings, tools):
+        answer = await tools.lookup("tgn", "Davao", field_key=task.key)
+        return FieldOutcome(task.key, FieldAnswer(outcome="sources_cannot_resolve", literal="Davao",
+            reading_names=["1A"], source_evidence_ids=[answer.evidence.id],
+            explanation="Davao is found at more than one location level."),
+            evidence=[answer.evidence], model_calls=1)
+
+    settle(rig, Scripted({
+        "country": LACKING,
+        "province_state": province_lookup_finds_two_levels,
+        "county": LACKING,
+        "city": LACKING,
+    }), tools=DavaoAtTwoLevels(rig.blobs))
+    fields = rig.specimen.run.fields
+    assert (fields["province_state"].state, fields["province_state"].literal) == (
+        ValueState.UNRESOLVED, "Davao")
+    assert fields["county"].state != ValueState.SUPPORTED
+    assert fields["country"].state != ValueState.SUPPORTED
+    assert rig.specimen.run.disposition == Disposition.REVIEW
+
+
 def test_location_reconciliation_reclassifies_shared_place_evidence(tmp_path):
     text = label_with(country="Illinois", province_state="Cook", county=None, city="Chicago")
     candidates = [
