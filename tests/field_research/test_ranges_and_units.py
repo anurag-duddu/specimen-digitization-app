@@ -544,3 +544,33 @@ def test_a_period_after_a_whole_place_word_leaves_the_date_a_date(literal):
 def test_the_period_of_an_abbreviated_place_word_is_its_own(literal):
     """The control: as on b9f42db6, the number is part of the place."""
     assert refused("precise_location", literal, literal) is None
+
+
+PLACE_WORD_THEN_A_DATE_WITH_ITS_YEAR = {
+    "abbreviation-period-full-date": "Hwy. 24.IV.1948",
+    "abbreviation-full-date": "Hwy 24.IV.1948",
+    "dotted-abbreviation-full-date": "H.W.Y. 24.IV.1948",
+    "route-month-year": "Route IV-1948",
+    "farm-month-day-year": "Finca Sept. 3, 1948",
+}
+
+
+@pytest.mark.parametrize("literal", PLACE_WORD_THEN_A_DATE_WITH_ITS_YEAR.values(),
+    ids=PLACE_WORD_THEN_A_DATE_WITH_ITS_YEAR)
+def test_a_date_with_its_year_after_a_place_word_is_still_a_date(literal):
+    """Codex's review of 1b997582: on 1b997582 each settles the locality but
+    the last, which a later word's run already refused. Only a bare number or
+    a month and a day with no year is the place's."""
+    assert refused("precise_location", literal, literal) == agreement.HOLDS_A_DATE
+
+
+@pytest.mark.parametrize("literal", ['"Fazenda." 1948 collector J. Smith', "(Fazenda.) 1948 collector J. Smith"])
+def test_a_period_inside_closing_punctuation_still_ends_the_place_word_s_clause(literal):
+    """Codex's review of 1b997582: on 1b997582 each settles the locality."""
+    assert refused("precise_location", literal, literal) == agreement.HOLDS_A_DATE
+
+
+@pytest.mark.parametrize("literal", ["Hwy I-5", "Calle 5 de Mayo", "Hill 1800", "Hwy. 1960"])
+def test_a_bare_number_or_a_month_and_day_after_a_place_word_is_still_the_place_s(literal):
+    """The control: as on 1b997582."""
+    assert refused("precise_location", literal, literal) is None

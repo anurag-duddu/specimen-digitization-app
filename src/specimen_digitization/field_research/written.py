@@ -714,7 +714,7 @@ def _after_a_place_word(text: str, found_words: Sequence[tuple[int, int]], first
         return False
     if any(separates(text, index) for index in range(found_words[first - 1][1] - 1, found_words[first][0])):
         return False
-    word = text[found_words[first - 1][0]:found_words[first - 1][1]].rstrip()
+    word = text[found_words[first - 1][0]:found_words[first - 1][1]].strip(EDGE)
     if word.endswith(".") and _bare(word) not in PLACE_ABBREVIATIONS:
         return False
     if first == 1:
@@ -742,8 +742,10 @@ def other_kind(text: str, *, place: bool = False) -> tuple[str, str] | None:
       "24.IV.1948", "May 2, 1948", "Sept. 1946", a year "1948"), the longest
       such run from the first word where one starts; a slide code
       ("V-4-67-1") is none, and in a `place`'s text so is a run that starts
-      right after a word of PLACE_WORDS ("Hill 1800", "FM 1960", "km 1850",
-      "Hwy I-5"; a code "FM 1960" still holds a date)."""
+      right after a word of PLACE_WORDS when it is a bare number or a month
+      and a day with no year ("Hill 1800", "FM 1960", "km 1850", "Hwy
+      I-5"; _a_place_number; "Hwy. 24.IV.1948" still holds a date, and a
+      code "FM 1960" does too)."""
     spans = pieces(text, words(text))
     for number in numbers(text, spans):
         if number.unit is not None and number.whole is not None and not number.distance:
@@ -757,20 +759,32 @@ def other_kind(text: str, *, place: bool = False) -> tuple[str, str] | None:
             return RANGE, text[found.start:found.end]
     found_words = words(text)
     for first in range(len(found_words)):
-        if place and _after_a_place_word(text, found_words, first):
-            continue
         # The longest run from the first word where one starts: the parser
         # also reads a shorter run, "24 Apr" of "24 Apr 1948", as a date
         # (ambiguous, with no year).
-        dated = None
+        dated, read = None, None
         for last in range(first, min(len(found_words), first + DATE_WORDS)):
             run = text[found_words[first][0]:found_words[last][1]].strip(EDGE).rstrip(".,;:")
-            if _has_digit(run) and date_parser(run, source_text=text, date_rules=FINDING_DATES).outcome in (
-                    LookupStatus.SUCCESS, LookupStatus.AMBIGUOUS):
-                dated = run
-        if dated is not None:
-            return DATE, dated
+            if not _has_digit(run):
+                continue
+            result = date_parser(run, source_text=text, date_rules=FINDING_DATES)
+            if result.outcome in (LookupStatus.SUCCESS, LookupStatus.AMBIGUOUS):
+                dated, read = run, result
+        if dated is None or (place and _after_a_place_word(text, found_words, first) and _a_place_number(read)):
+            continue
+        return DATE, dated
     return None
+
+
+def _a_place_number(read) -> bool:
+    """Whether what the date parser read right after a place word may be the
+    place's number, no date: a bare number it reads as a year ("Hill 1800",
+    "FM 1960") or a month and a day with no year ("Hwy I-5", "Calle 5 de
+    Mayo"). A date that writes a year beside its month ("Hwy. 24.IV.1948",
+    "Route IV-1948") stays a date (Codex's review of #324 at 1b997582)."""
+    readings = (read.parsed or {}).get("readings", ())
+    return "year_missing" in read.warnings or (bool(readings) and all(
+        reading["precision"] == "year" for reading in readings))
 
 
 @dataclass(frozen=True)

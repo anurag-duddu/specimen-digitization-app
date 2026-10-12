@@ -575,13 +575,16 @@ handover runs field research instead of the six specialists:
      "1948"; a slide code is none); in a place field's text, not the
      collection code's, a run that starts right after a road, km, hill,
      farm or estate word (`written.PLACE_WORDS`, by language), with no
-     comma or semicolon between them and no period after a whole word, is
-     part of the place ("Hill 1800", "FM 1960, Harris Co.", "BR-116 km
-     1850", "Hwy I-5", "Calle 5 de Mayo", and after an abbreviation's
-     period, `written.PLACE_ABBREVIATIONS`, "Hwy. 1960" or "km. 1850";
-     "Ruta, 1960", "Hill; 1800", "Fazenda, 1948", "Route, IV-1948",
-     "Fazenda. 1948" and "Ruta. 1960" hold a date: Codex's reviews of
-     77fdaeba and b9f42db6), unless initials or a collector's or
+     comma or semicolon between them and no period after a whole word
+     (closing quotes or brackets aside), is part of the place when it is a
+     bare number or a month and a day with no year (`written._a_place_number`:
+     "Hill 1800", "FM 1960, Harris Co.", "BR-116 km 1850", "Hwy I-5",
+     "Calle 5 de Mayo", and after an abbreviation's period,
+     `written.PLACE_ABBREVIATIONS`, "Hwy. 1960" or "km. 1850"; "Ruta,
+     1960", "Hill; 1800", "Fazenda, 1948", "Route, IV-1948", "Fazenda.
+     1948", "Ruta. 1960", '"Fazenda." 1948', "Hwy. 24.IV.1948" and "Route
+     IV-1948" hold a date: Codex's reviews of 77fdaeba, b9f42db6 and
+     1b997582), unless initials or a collector's or
      determiner's mark stand before that word, which makes it a surname
      (`written.PERSON_MARKS`: "J. Hill 1948", "leg. Berg 1948" hold a
      date); a date with any other word before it still holds one ("Finca
