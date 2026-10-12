@@ -424,6 +424,33 @@ class IntakeStageProgress extends StatelessWidget {
   }
 }
 
+// The same saved projection in words, readable without hover or colour.
+class IntakeProgressDetails extends StatelessWidget {
+  const IntakeProgressDetails({super.key, required this.entry});
+
+  final ManifestEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = IntakeProgress.of(entry);
+    final ui = context.ui;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final stage in IntakeStage.values)
+          Padding(
+            padding: EdgeInsetsDirectional.only(bottom: ui.space.s2),
+            child: Text(
+              '${stage.label}: ${progress.states[stage.index].label}',
+              style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 class _StageSegment extends StatelessWidget {
   const _StageSegment({
     required this.stage,

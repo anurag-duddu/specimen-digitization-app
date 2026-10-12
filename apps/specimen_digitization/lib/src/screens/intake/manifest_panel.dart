@@ -371,6 +371,11 @@ class IntakeManifestRow extends StatelessWidget {
           const UiHairline(),
           SizedBox(height: ui.space.s2),
           item,
+          UiDisclosure(
+            key: ValueKey<String>('intake-progress-details-${entry.digest}'),
+            title: 'Progress details',
+            child: IntakeProgressDetails(entry: entry),
+          ),
           if ((canRetryTransfer || canRetryProcessing) && onRetry != null)
             Align(
               alignment: AlignmentDirectional.centerStart,

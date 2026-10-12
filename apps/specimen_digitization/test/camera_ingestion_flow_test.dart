@@ -315,7 +315,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(changes, <bool>[true]);
     expect(
-      find.text('Each photo is sent to the Intake queue immediately.'),
+      find.text('Camera photos skip review and send as soon as you take them.'),
       findsOne,
     );
 
@@ -410,7 +410,7 @@ void main() {
             find.byKey(const ValueKey<String>('capture-auto-ingest')),
           )
           .label,
-      'Auto-ingest',
+      'Send immediately',
     );
     await expectAccessible(tester);
 
