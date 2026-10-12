@@ -87,3 +87,20 @@ GitHub environments, or production, read `docs/DEPLOYMENT.md` completely.
 
 If a production release is blocked, report the exact failing step and fix
 forward through a pull request. Do not substitute a hand deployment.
+
+## Cursor Cloud specific instructions
+
+Cloud Agent machines for this repository pin the same tools
+`scripts/ci/verify.sh` checks: Flutter 3.38.5, Dart 3.10.4, uv 0.12.5, and
+Firebase CLI 15.8.0. After boot, the synthetic API listens on port 8000 and
+the Flutter web client on port 3000. The gitignored
+`apps/specimen_digitization/lib/firebase_options.dart` is copied from
+`firebase_options.ci.dart` when it is missing. The local bearer is in
+`/tmp/specimen-synthetic-token`. Sign in at http://127.0.0.1:3000 with any
+test email and that token. The product check is
+`uv run specimen-demo --url http://127.0.0.1:8000` with
+`SPECIMEN_SYNTHETIC_TOKEN` set from that file.
+
+`scripts/data/serve-local.sh` is not part of boot. It needs PostgreSQL
+binaries and the SQL Connect emulator, and its default paths are Homebrew
+locations. The synthetic API uses SQLite.
