@@ -173,17 +173,18 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('desktop offers files and does not offer unavailable camera', (
+  testWidgets('desktop offers files and a capability-checked webcam path', (
     WidgetTester tester,
   ) async {
     final previousPlatform = debugDefaultTargetPlatformOverride;
     try {
       debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
       await pumpIntake(tester, const Size(1200, 1400));
-      expect(
-        find.byKey(const ValueKey<String>('intake-take-photograph')),
-        findsNothing,
+      final Finder camera = find.byKey(
+        const ValueKey<String>('intake-take-photograph'),
       );
+      expect(camera.hitTestable(), findsOneWidget);
+      expect(tester.widget<UiButton>(camera).onPressed, isNotNull);
       final Finder files = find.byKey(
         const ValueKey<String>('intake-choose-files'),
       );

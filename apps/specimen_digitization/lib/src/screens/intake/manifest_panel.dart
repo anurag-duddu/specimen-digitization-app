@@ -23,6 +23,7 @@ import '../../widgets/evidence_drawer.dart';
 import '../../widgets/motion_reveal.dart';
 import '../../widgets/upload_item.dart';
 import 'manifest_entry.dart';
+import 'intake_transfer_session.dart';
 
 /// The manifest header and its rows.
 class IntakeManifest extends StatefulWidget {
@@ -73,7 +74,7 @@ class IntakeManifest extends StatefulWidget {
   final bool scrollable;
 
   /// The pane's own title.
-  static const String title = 'Upload manifest';
+  static const String title = 'Intake queue';
 
   /// What an empty manifest is called.
   static const String emptyTitle = 'No photographs yet';
@@ -191,7 +192,17 @@ class _ManifestHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
-    final String summary = batchComplete(entries) && !busy
+    final bool hasProcessingRows = entries.any(
+      (ManifestEntry entry) =>
+          entry.state == UploadState.processing ||
+          entry.state == UploadState.processingBlocked ||
+          entry.state == UploadState.inMainQueue,
+    );
+    final String summary = entries.isEmpty
+        ? batchProgressLine(entries)
+        : hasProcessingRows
+        ? ingestionQueueLine(entries)
+        : batchComplete(entries) && !busy
         ? batchCompleteLine(entries)
         : batchProgressLine(entries);
     return Padding(
@@ -209,7 +220,12 @@ class _ManifestHeader extends StatelessWidget {
               style: ui.type.body.copyWith(color: ui.color.inkSecondary),
             ),
           ),
-          if (busy) ...<Widget>[
+          if (busy &&
+              entries.any(
+                (ManifestEntry entry) =>
+                    entry.state == UploadState.uploading ||
+                    (entry.checking && entry.file != null),
+              )) ...<Widget>[
             SizedBox(height: ui.space.s4),
             Align(
               alignment: AlignmentDirectional.centerStart,
@@ -301,6 +317,7 @@ class IntakeManifestRow extends StatelessWidget {
   static bool announces(UploadState state) =>
       state == UploadState.failed ||
       state == UploadState.interrupted ||
+      state == UploadState.processingBlocked ||
       state == UploadState.skipped;
 
   /// What the server check control is called.
@@ -309,6 +326,18 @@ class IntakeManifestRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
+    final bool canDismiss =
+        !entry.checking && (entry.removable || entry.dismissible);
+    final bool canRetryTransfer =
+        (entry.state == UploadState.failed ||
+            entry.state == UploadState.interrupted) &&
+        entry.file != null;
+    final String? processingAction = intakeProcessingRetryAction(entry);
+    final bool canRetryProcessing = processingAction != null;
+    final bool showProcessingGuidance =
+        entry.state == UploadState.processingBlocked ||
+        canRetryProcessing ||
+        (entry.state == UploadState.processing && entry.specimen == null);
     // A determinate value is information, so it keeps its motion and its
     // linear curve under reduced motion (motion, rows 65 and 2.5).
     final Widget item = TweenAnimationBuilder<double>(
@@ -325,9 +354,11 @@ class IntakeManifestRow extends StatelessWidget {
         pixelHeight: entry.file?.height,
         progress: value,
         reason: entry.why == null ? entry.reason : null,
-        onRemove: entry.removable ? onRemove : null,
-        removeBlockedReason: entry.removable
+        onRemove: canDismiss ? onRemove : null,
+        removeBlockedReason: canDismiss
             ? null
+            : entry.state == UploadState.processing
+            ? 'This photograph stays here while processing is active.'
             : 'The server has taken this file, so it cannot be removed from '
                   'the batch.',
         // The per-row action and the per-row evidence live inside the
@@ -345,18 +376,39 @@ class IntakeManifestRow extends StatelessWidget {
           const UiHairline(),
           SizedBox(height: ui.space.s2),
           Semantics(liveRegion: announces(entry.state), child: item),
-          if ((entry.state == UploadState.failed ||
-                  entry.state == UploadState.interrupted) &&
-              entry.file != null &&
-              onRetry != null)
+          if ((canRetryTransfer || canRetryProcessing) && onRetry != null)
             Align(
               alignment: AlignmentDirectional.centerStart,
               child: UiButton(
-                label: 'Retry this file',
-                variant: UiButtonVariant.secondary,
-                onPressed: busy ? null : onRetry,
+                key: ValueKey<String>('intake-retry-${entry.digest}'),
+                label: entry.checking
+                    ? 'Retrying…'
+                    : processingAction == 'start_processing'
+                    ? 'Retry start'
+                    : canRetryProcessing
+                    ? 'Retry processing'
+                    : 'Retry this file',
+                variant: UiButtonVariant.primary,
+                onPressed: busy || entry.checking ? null : onRetry,
+                disabledReason: busy && !entry.checking
+                    ? 'Finish the current upload or retry first.'
+                    : null,
               ),
             ),
+          if (showProcessingGuidance) ...<Widget>[
+            SizedBox(height: ui.space.s2),
+            Text(
+              intakeProcessingRecoveryGuidance(entry),
+              style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+            ),
+            if (entry.specimen != null &&
+                !canRetryProcessing &&
+                const <String>{
+                  'processing_blocked',
+                  'paused',
+                }.contains(entry.specimen!.state))
+              AdministratorContactLine(specimenId: entry.specimenId),
+          ],
           if (entry.why != null)
             CaveatText(label: entry.reason ?? '', why: entry.why!),
           UiDisclosure(

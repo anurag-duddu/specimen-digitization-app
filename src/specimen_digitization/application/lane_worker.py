@@ -27,6 +27,11 @@ STOPPED = {"finalized", "processing_blocked", "paused", "cancelled", "retry_sche
 FINISHED = {"finalized", "processing_blocked", "paused", "cancelled", "waiting_for_review"}
 FENCE_KIND = "worker_cursor"  # The worker's own state documents, one actor only.
 CLOSING_SECONDS = 600  # No new run starts this close to the task deadline.
+QUEUE_CLOCK_MARGIN_SECONDS = 1  # Keep connector cutoffs behind its own clock.
+# The continuation's own start call (lane_dispatch.CloudRunJobDispatcher's
+# timeout). The exit handshake waits only when the wait and this call both fit
+# before the deadline; otherwise it skips the wait and starts the call at once.
+CONTINUATION_START_SECONDS = 10
 MAX_CONFLICTS = 3  # Consecutive save conflicts on one run before moving on.
 MAX_IDLE_HANDOVERS = 3  # Consecutive hand-overs without progress, then stop.
 RUN_STALLED = "lane_run_not_progressing"
@@ -220,6 +225,34 @@ class CollectionFence:
             pass  # Taken over after expiry; the new holder owns it now.
 
 
+def blocked_ids(repository, scope):
+    """Blocked, non-sensitive records with no disposition, by id, in pages.
+
+    The production repository lists them from its metadata rows
+    (SqlConnectRepository.blocked_ids). The local SQLite repository is read
+    here, so storage.py, whose source digest the research harness pins
+    (native_canonical), stays as it is. Any other repository lists none.
+    """
+    listing = getattr(repository, "blocked_ids", None)
+    if callable(listing):
+        yield from listing(scope)
+        return
+    from .lane import SQLITE_STATUS
+    from .storage import SQLiteRepository
+
+    if not isinstance(repository, SQLiteRepository):
+        return
+    with repository.connect() as db:
+        rows = db.execute(
+            "SELECT id FROM records WHERE org=? AND collection=? AND "
+            "COALESCE(json_extract(payload,'$.asset.sensitive'),1)=0 AND "
+            + SQLITE_STATUS
+            + "='processing_blocked' ORDER BY id",
+            (scope.organization_id, scope.collection_id),
+        ).fetchall()
+    yield [row[0] for row in rows]
+
+
 def waiting_until(run):
     """When a run the workflow waits on becomes due again; None when it is due now."""
     if run.blocker == "external_outcome_unknown" and run.lease_until:
@@ -264,6 +297,7 @@ class DrainWorker:
         self.sleep = sleep
         # Starts the next execution of the job, with no overrides.
         self.continuation = continuation
+        self.deadline_seconds = deadline_seconds
         self.window_seconds = deadline_seconds - CLOSING_SECONDS
         # A native research step spans multiple bounded role windows. The
         # collection fence must outlive the whole task, not only one window,
@@ -284,13 +318,16 @@ class DrainWorker:
             time.sleep(seconds)
 
     def run(self, stop=None) -> dict:
-        self.close_at = self.clock() + timedelta(seconds=self.window_seconds)
+        started = self.clock()
+        self.close_at = started + timedelta(seconds=self.window_seconds)
+        self.deadline_at = started + timedelta(seconds=self.deadline_seconds)
         summary = {
             "status": "drained",
             "processed": [],
             "skipped_collections": [],
             "withheld_collections": [],
             "pending_retries": 0,
+            "recovered": 0,
             "continuation": None,
         }
         wanted = False
@@ -299,6 +336,9 @@ class DrainWorker:
                 continue
             if summary["status"] == "stopped" or self._stopped(stop):
                 summary["status"] = "stopped"
+                # Collections not reached may hold requests whose own worker
+                # found this execution's fence held and exited.
+                wanted = True
                 break
             scope = Scope(
                 organization_id=member["organization_id"],
@@ -331,20 +371,28 @@ class DrainWorker:
             except BaseException:
                 fence.release()
                 raise
-            wanted = self._release(drain, fence, previous, status, summary) or wanted
+            wanted = self._release(drain, fence, previous, status, summary, stop) or wanted
+            if self._stopped(stop):
+                status = "stopped"
             if status != "drained":
                 summary["status"] = status
-        if self.continuation and wanted and summary["status"] != "stopped":
+        if self.continuation and wanted:
             summary["continuation"] = self.continuation().status
         return summary
 
-    def _release(self, drain, fence, previous, status, summary) -> bool:
+    def _release(self, drain, fence, previous, status, summary, stop=None) -> bool:
         """Release the fence; whether the collection wants the next execution.
 
-        It does when requested work is due at the window's close, or a retry
-        falls within the next execution's reach. A stop wants none. After
+        It does when requested work remains after release, or a retry falls
+        within the next execution's reach. A stop (SIGTERM: the task's timeout,
+        a scale-down or a cancel) always wants one: it cannot finish the read
+        below, and a request committed just before release may have lost its
+        own worker to this fence. The next execution finds nothing and exits
+        when nothing is due; a run paused or cancelled by its own action is
+        never due. After
         MAX_IDLE_HANDOVERS in a row without progress, the waiting run is blocked
-        where people can see it instead.
+        where people can see it instead. The final read follows release and the
+        cutoff margin, so a request cannot lose its wake-up to the old fence.
         """
         first = min(drain.retries.items(), key=lambda item: item[1], default=None)
         reach = self.clock() + timedelta(seconds=self.window_seconds)
@@ -362,11 +410,33 @@ class DrainWorker:
                 waiting, idle = None, 0
         fence.release(first and (first[0], first[1].isoformat()), idle)
         summary["pending_retries"] += len(drain.retries)
-        return waiting is not None
+        if status == "stopped" or self._stopped(stop):
+            return True
+        # Close the enqueue/exit race *after* freeing the fence. A request may
+        # have committed after our last empty read, while its newly dispatched
+        # worker found this fence held and exited. Waiting one cutoff margin
+        # makes every request committed before release visible to this read.
+        # Later arrivals can acquire the released fence through their normal
+        # dispatch. This is one bounded check, never an idle polling loop.
+        remaining = (self.deadline_at - self.clock()).total_seconds()
+        if remaining < QUEUE_CLOCK_MARGIN_SECONDS + CONTINUATION_START_SECONDS:
+            # A long final step used the task's grace window. Skip the wait and
+            # hand off once with whatever time is left. If the step already ran
+            # past the deadline the start is late and best effort: the platform
+            # may stop it, but skipping it would strand the request for certain.
+            # The next worker owns acquisition, deduplication and admission.
+            return True
+        self._pause(QUEUE_CLOCK_MARGIN_SECONDS, stop)
+        if self._stopped(stop):
+            return True
+        return (
+            waiting is not None
+            or self._next_due(drain.principal, drain.stalled) is not None
+        )
 
     def _next_due(self, principal, skip=()):
         # A cutoff a second behind keeps it no later than the database's clock.
-        cutoff = (self.clock() - timedelta(seconds=1)).isoformat()
+        cutoff = (self.clock() - timedelta(seconds=QUEUE_CLOCK_MARGIN_SECONDS)).isoformat()
         due = self.repository.oldest_due(
             principal.scope, cutoff, limit=min(100, len(skip) + 1)
         )
@@ -397,8 +467,45 @@ class DrainWorker:
             return None
         return ident
 
+    def _recover_blocked(self, drain, stop=None):
+        """Make the collection's recoverable blocked runs due (Workflow.recover_blocked).
+
+        Once per collection per execution, under its fence, before any run is
+        stepped: a run blocked at an ordinary first pass by a transient cause
+        goes on with the normal drain, with no action and no scheduled service.
+        Each recovered run is waited for as a retry is, since the queue's cutoff
+        stays a margin behind the clock. It reads the records' listing and makes
+        no call. A failure here is logged by class and never stops the drain.
+        The listing is read lazily and the scan ends at a stop or at the
+        window's close, so a long collection never eats the time the drain
+        needs to release its fence and hand the rest on; the next execution
+        scans again.
+        """
+        principal = drain.principal
+        recover = getattr(self.workflow, "recover_blocked", None)
+        if not callable(recover):
+            return 0
+        recovered = 0
+        try:
+            for page in blocked_ids(self.repository, principal.scope):
+                for ident in page:
+                    if self._stopped(stop) or self.clock() >= self.close_at:
+                        return recovered
+                    try:
+                        if recover(principal, ident):
+                            recovered += 1
+                            drain.retries[ident] = self.clock()
+                    except (Conflict, Missing):
+                        continue  # Changed meanwhile; the next execution looks again.
+                if self._stopped(stop) or self.clock() >= self.close_at:
+                    break  # Checked after every page, an empty one too.
+        except Exception as exc:  # noqa: BLE001 - recovery never stops the drain
+            LOGGER.warning("blocked-run recovery skipped: %s", type(exc).__name__)
+        return recovered
+
     def _drain(self, drain, fence, previous, stop, summary):
         principal = drain.principal
+        summary["recovered"] += self._recover_blocked(drain, stop)
         resume = self._resume(drain, previous)
         while True:
             if self._stopped(stop):

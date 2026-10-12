@@ -349,6 +349,7 @@ coordinator ruling on the mechanism:
   retry reserves again, and nothing settled or held reserved is given back when
   a run fails or is retried.
   - 2026-10-11 (harness session, PR #311): exception — a provider HTTP 429 refused before any response is recorded with basis `refused` at cost 0 and settles, releasing its reservation; a first pass or organiser call past its step deadline stays reserved in full (external_outcome_unknown), as does every other no-usage failure.
+  - 2026-10-11 (camera intake recovery, PR #315): ordinary tool-free first-pass comparisons may retry transient provider/deadline failures within existing attempt and financial limits. Unknown billing stays fully reserved; only a proved first-request 429 refusal settles to zero, including one received past the elapsed deadline. The organiser and effectful stages retain their unknown-outcome block. This narrow recovery does not release held spend, raise a cap, or automatically unblock historical records; see HARNESS.md's ordinary first-pass transient recovery rule.
 - A worst case exists only where a request is bounded: every first-pass and
   harness model request carries a cap on output tokens, and each harness run a
   cap on its model requests, set from the lab's measured runs. A run that

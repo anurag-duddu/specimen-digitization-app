@@ -23,6 +23,8 @@ class ManifestEntry {
     this.why,
     this.progress = 0,
     this.quality,
+    this.specimenId,
+    this.specimen,
   });
 
   /// A restored upload handle, read back from local storage after a restart.
@@ -35,7 +37,24 @@ class ManifestEntry {
       reason = restoredReason,
       why = null,
       progress = 0,
-      quality = null;
+      quality = null,
+      specimenId = null,
+      specimen = null;
+
+  /// A server-held photograph restored for processing tracking after restart.
+  ManifestEntry.tracking({
+    required this.digest,
+    required this.name,
+    required Json handle,
+    required this.specimenId,
+    this.state = UploadState.processing,
+    this.reason = 'Checking processing status.',
+  }) : file = null,
+       session = handle,
+       why = null,
+       progress = 1,
+       quality = null,
+       specimen = null;
 
   /// A file this client refused before any byte reached the server.
   ///
@@ -48,6 +67,8 @@ class ManifestEntry {
       reason = why,
       progress = 0,
       quality = null,
+      specimenId = null,
+      specimen = null,
       why = null;
 
   /// What a restored handle can say for itself.
@@ -83,6 +104,12 @@ class ManifestEntry {
   /// image at all.
   CaptureQuality? quality;
 
+  /// The record created by upload completion, once the server returns it.
+  String? specimenId;
+
+  /// The most recent summary used for processing progress and retry.
+  Specimen? specimen;
+
   /// The server's decode check, once the operator has asked for one.
   Json? preflight;
 
@@ -101,7 +128,22 @@ class ManifestEntry {
 
   /// True once the server holds these pixels, by either route.
   bool get settled =>
-      state == UploadState.accepted || state == UploadState.duplicate;
+      state == UploadState.accepted ||
+      state == UploadState.processing ||
+      state == UploadState.inMainQueue ||
+      state == UploadState.processingBlocked ||
+      state == UploadState.duplicate;
+
+  /// True while Intake should refresh the server's processing summary.
+  bool get tracksProcessing =>
+      specimenId != null && state == UploadState.processing;
+
+  /// A finished Intake row can be removed without affecting the server.
+  bool get dismissible =>
+      state == UploadState.accepted ||
+      state == UploadState.inMainQueue ||
+      state == UploadState.processingBlocked ||
+      state == UploadState.duplicate;
 
   /// True for a row a batch should try to send.
   bool get sendable =>
@@ -139,8 +181,39 @@ bool batchComplete(Iterable<ManifestEntry> entries) {
 String batchCompleteLine(Iterable<ManifestEntry> entries) {
   final int count = entries.length;
   return count == 1
-      ? 'Batch admission finished for 1 photograph. Check the queue for processing status.'
-      : 'Batch admission finished for $count photographs. Check the queue for processing status.';
+      ? '1 photograph is in the Intake queue.'
+      : '$count photographs are in the Intake queue.';
+}
+
+/// A compact account of the new Intake queue. This deliberately stops before
+/// the existing post-processing Queue's three outcomes.
+String ingestionQueueLine(Iterable<ManifestEntry> entries) {
+  final List<ManifestEntry> all = entries.toList(growable: false);
+  if (all.isEmpty) return 'No photographs in the Intake queue';
+  int count(UploadState state) =>
+      all.where((ManifestEntry entry) => entry.state == state).length;
+  final int ready = count(UploadState.ready);
+  final int sending =
+      count(UploadState.checking) + count(UploadState.uploading);
+  final int uploaded = count(UploadState.accepted);
+  final int processing = count(UploadState.processing);
+  final int handedOff = count(UploadState.inMainQueue);
+  final int attention =
+      count(UploadState.processingBlocked) +
+      count(UploadState.failed) +
+      count(UploadState.interrupted);
+  final int other = count(UploadState.duplicate) + count(UploadState.skipped);
+  final List<String> parts = <String>[
+    if (ready > 0) '$ready ready',
+    if (sending > 0) '$sending uploading',
+    if (uploaded > 0) '$uploaded uploaded',
+    if (processing > 0) '$processing processing',
+    if (handedOff > 0) '$handedOff in main Queue',
+    if (attention > 0) '$attention need attention',
+    if (other > 0) '$other not sent',
+  ];
+  final String noun = all.length == 1 ? 'photograph' : 'photographs';
+  return '${all.length} $noun · ${parts.join(', ')}';
 }
 
 String batchProgressLine(Iterable<ManifestEntry> entries) {
@@ -155,9 +228,15 @@ String batchProgressLine(Iterable<ManifestEntry> entries) {
   final int duplicate = count(UploadState.duplicate);
   final int failed = count(UploadState.failed);
   final int interrupted = count(UploadState.interrupted);
+  final int processing = count(UploadState.processing);
+  final int handedOff = count(UploadState.inMainQueue);
+  final int processingBlocked = count(UploadState.processingBlocked);
   if (skipped > 0) line.write(', $skipped skipped');
   if (duplicate > 0) line.write(', $duplicate already in collection');
   if (interrupted > 0) line.write(', $interrupted interrupted');
   if (failed > 0) line.write(', $failed failed');
+  if (processing > 0) line.write(', $processing processing');
+  if (handedOff > 0) line.write(', $handedOff in main Queue');
+  if (processingBlocked > 0) line.write(', $processingBlocked need attention');
   return line.toString();
 }

@@ -444,11 +444,12 @@ def dying_child(payload):
 @pytest.mark.parametrize(
     "operation", ["transcribe", "first_pass", "extract"]
 )
-def test_only_a_reader_child_that_dies_is_a_known_failure(
+def test_only_repeatable_model_children_that_die_are_known_failures(
     tmp_path, monkeypatch, operation
 ):
-    # The same killed child. A reader's is asked again; a first pass's and the
-    # organiser's may have changed something, and still block as unknown.
+    # The same killed child. A reader and an ordinary tool-free comparison may
+    # retry; their billing uncertainty is still retained. The organiser may
+    # have changed something, so it stays blocked as unknown.
     from specimen_digitization.application.model_runtime import invoke_model
     from specimen_digitization.application.reliability import AdapterFailure
     from specimen_digitization.application.workflow import OperationalBlock
@@ -471,6 +472,11 @@ def test_only_a_reader_child_that_dies_is_a_known_failure(
             invoke_model(adapters, specimen, operation, **arguments)
         assert known.value.code == "reader_worker_failed"
         assert known.value.outcome_unknown is False
+    elif operation == "first_pass":
+        with pytest.raises(AdapterFailure) as known:
+            invoke_model(adapters, specimen, operation, **arguments)
+        assert known.value.code == "first_pass_worker_process_exit"
+        assert known.value.outcome_unknown is True
     else:
         with pytest.raises(OperationalBlock, match="external_outcome_unknown"):
             invoke_model(adapters, specimen, operation, **arguments)

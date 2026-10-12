@@ -148,8 +148,11 @@ deploy.
 `/deployment.json`. The `**` block sets `X-Content-Type-Options: nosniff`,
 `Referrer-Policy: strict-origin-when-cross-origin`, `X-Frame-Options: DENY`,
 `Content-Security-Policy: frame-ancestors 'none'; object-src 'none';
-base-uri 'self'` and `Permissions-Policy: camera=(), microphone=(),
-geolocation=()`. `SECURITY_HEADERS` in `scripts/ci/smoke_web_routes.py` is the
+base-uri 'self'` and `Permissions-Policy: camera=(self), microphone=(),
+geolocation=()`. The camera grant is limited to this site's own origin so
+Intake can discover a phone, tablet or attached desktop camera at runtime;
+microphone and location remain unavailable. `SECURITY_HEADERS` in
+`scripts/ci/smoke_web_routes.py` is the
 same table, and the smoke asks every response for it, so a header dropped from
 the configuration fails the build rather than the site.
 
@@ -159,10 +162,9 @@ Three omissions are deliberate. The policy names no `script-src` or
 source list narrow enough to be worth having would have to track the engine's
 own hosts. There is no COOP or COEP: nothing this client does needs cross
 origin isolation, and it would break the reCAPTCHA Enterprise frame App Check
-uses. And `Permissions-Policy` grants nothing to `self`, because the web build
-asks for nothing: the in-app camera is behind `!kIsWeb`, so a web reviewer is
-offered the file picker rather than a capture button. Adding a web capture
-flow means revisiting the header and the test that holds it.
+uses. Camera access is the one explicit same-origin capability; a reviewer may
+still use file selection, and a device without an available camera follows the
+camera recovery path.
 
 ### Pushes to `main`
 

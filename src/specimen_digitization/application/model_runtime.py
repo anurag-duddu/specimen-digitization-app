@@ -20,7 +20,12 @@ from .domain import (
 )
 from .field_resolution import Reading
 from .organiser import extraction_readings
-from .reliability import AdapterFailure, ReadingStopped, reader_failure_is_recoverable
+from .reliability import (
+    AdapterFailure,
+    ReadingStopped,
+    first_pass_failure_is_recoverable,
+    reader_failure_is_recoverable,
+)
 from .storage import LocalBlobs
 
 
@@ -135,19 +140,26 @@ def child_without_answer(run, operation, reason):
 
     Whatever ended it (a deadline, a kill, a transport error or any exception
     the child does not map, whose text never crosses the process boundary), the
-    parent cannot tell whether the provider answered. For a reader that is a
-    known, retryable failure (``reader_failure_is_recoverable``): the workflow
-    asks again, then ends the reading. For any other operation it stays an
-    unknown outcome that blocks the run.
+    parent cannot tell whether the provider answered. A reader or ordinary
+    first-pass comparison is safe to repeat within its existing attempt and
+    financial limits; its uncertain cost stays reserved. Other operations
+    retain an unknown outcome that blocks the run.
     """
     from .domain import LookupStatus
     from .workflow import OperationalBlock
 
-    if not reader_failure_is_recoverable(run, operation):
+    if not (
+        reader_failure_is_recoverable(run, operation)
+        or (
+            first_pass_failure_is_recoverable(run, operation)
+            and reason in {"deadline_exceeded", "worker_process_exit"}
+        )
+    ):
         return OperationalBlock("external_outcome_unknown")
     return AdapterFailure(
-        "reader_" + reason,
+        ("first_pass_" if operation == "first_pass" else "reader_") + reason,
         LookupStatus.TIMEOUT if reason == "deadline_exceeded" else LookupStatus.PROVIDER,
+        outcome_unknown=operation == "first_pass",
     )
 
 
@@ -207,11 +219,20 @@ def invoke_model(
         max_input_bytes=4 * 1024 * 1024,
         trace_required=True,
     )
+    if not result.cleanup_complete and first_pass_failure_is_recoverable(run, operation):
+        # No automatic comparison retry while its old child might still run.
+        raise OperationalBlock("external_outcome_unknown")
     if result.status != "completed" or not result.cleanup_complete:
+        reason = result.status if result.status != "completed" else "cleanup_incomplete"
+        if operation == "first_pass" and result.status == "worker_failed":
+            # The broad status also includes malformed input and invalid IPC.
+            # Only a child that exited after starting gets first-pass recovery;
+            # do not turn an opaque call/contract failure into a provider retry.
+            reason = result.reason
         raise child_without_answer(
             run,
             operation,
-            result.status if result.status != "completed" else "cleanup_incomplete",
+            reason,
         )
     body = json.loads(result.value)
     if body["status"] == "adapter_failure":
