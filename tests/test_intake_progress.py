@@ -101,6 +101,6 @@ def test_summary_adds_bounded_projection_without_altering_actions_or_old_fields(
     assert result["available_actions"] == ["retry", "resume", "pause", "cancel", "reprocess"]
     assert result["intake_progress"] == {
         "next_step": "transcribe", "completed_stages": ["segment"],
-        "next_retry_at": run.next_retry_at,
+        "next_retry_at": run.next_retry_at, "waiting_in_line": False,
     }
     assert specimen.model_dump_json() == before
