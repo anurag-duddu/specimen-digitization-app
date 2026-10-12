@@ -287,3 +287,56 @@ def test_lane_busy_counts_only_recent_running_work_by_another_record():
     assert not lane_busy([row(status="pending")], "self", current)
     assert not lane_busy([row(stage="ingested"), row(stage="waiting_for_review")], "self", current)
     assert lane_busy([row(updated_at=stale), row(ident="third")], "self", current)
+
+
+def recorded_intake(client):
+    """Upload one photo; its completion reply and a way to send it again."""
+    sent = []
+    post = client.post
+
+    def recording(url, **kwargs):
+        sent.append((url, kwargs))
+        return post(url, **kwargs)
+
+    client.post = recording
+    try:
+        completed = lane.intake(client)
+    finally:
+        client.post = post
+    url, kwargs = next((u, k) for u, k in sent if u.endswith("/complete"))
+    return completed, lambda: client.post(url, **kwargs)
+
+
+def test_an_upload_completed_behind_a_running_record_is_in_line_and_replays_fresh(tmp_path):
+    dispatcher = lane.RecordingDispatcher()
+    client = lane.lane_client(tmp_path, dispatcher=dispatcher)
+    ahead = another_running_record(tmp_path)
+    completed, replay = recorded_intake(client)
+    assert completed["status"] == "pending"
+    assert "start_processing" not in completed["available_actions"]
+    assert completed["intake_progress"]["waiting_in_line"] is True
+    assert dispatcher.calls == 1  # The upload still asks for a worker.
+
+    again = replay()
+    assert again.status_code == 200, again.text
+    assert again.json()["specimen_id"] == completed["specimen_id"]
+    assert again.json()["intake_progress"]["waiting_in_line"] is True
+    assert "start_processing" not in again.json()["available_actions"]
+
+    # The record ahead stops: a replay derives the state again, so the
+    # stored reply never froze the transient in-line state.
+    lane.force_stage(tmp_path, ahead.id, "paused")
+    later = replay()
+    assert later.status_code == 200, later.text
+    assert later.json()["intake_progress"]["waiting_in_line"] is False
+    assert "start_processing" in later.json()["available_actions"]
+    assert dispatcher.calls == 1  # A replay dispatches nothing.
+
+
+def test_an_upload_completed_with_nothing_ahead_still_offers_a_start(tmp_path):
+    completed, replay = recorded_intake(
+        lane.lane_client(tmp_path, dispatcher=lane.RecordingDispatcher())
+    )
+    assert completed["intake_progress"]["waiting_in_line"] is False
+    assert "start_processing" in completed["available_actions"]
+    assert replay().json() == completed

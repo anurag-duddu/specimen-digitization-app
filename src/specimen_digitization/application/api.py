@@ -1252,7 +1252,7 @@ def create_app(
                 raise Conflict(
                     "Upload completion request differs from accepted request"
                 )
-            return doc["completion_response"]
+            return completed_upload(p, doc["completion_response"])
         if doc["revision"] != body.expected_revision:
             raise Conflict("Stale upload revision")
         if doc["offset"] != doc["size_bytes"]:
@@ -1395,7 +1395,7 @@ def create_app(
             background_tasks.add_task(process_background, p, specimen.id)
         elif not duplicate and specimen.run.stage == "pending":
             start_worker()
-        return response
+        return completed_upload(p, response)
 
     def history_access(user, organization_id, specimen_id):
         p, current = find(user, organization_id, specimen_id)
@@ -1743,13 +1743,29 @@ def create_app(
             busy = lane_busy(rows, specimen.id, datetime.now(timezone.utc))
         except Exception:  # noqa: BLE001 - a projection never fails the read
             return result
-        result["intake_progress"]["waiting_in_line"] = busy
+        result.setdefault("intake_progress", {})["waiting_in_line"] = busy
         if busy:
             result["available_actions"] = [
                 action for action in result["available_actions"]
                 if action != "start_processing"
             ]
         return result
+
+    def completed_upload(p, response):
+        """An upload completion's reply, its in-line state derived now.
+
+        The accepted upload stores the summary as it was saved. Waiting in
+        line is transient, so it is never stored: each reply, a replay too,
+        reads it again from the record's current run.
+        """
+        import copy
+
+        response = copy.deepcopy(response)
+        try:
+            specimen = repository.get(p.scope, response["specimen_id"])
+        except (KeyError, Missing):
+            return response
+        return in_line(p, specimen, response)
 
     def render_workspace(specimen, p, mutation_committed=False):
         from .search import SearchFilters
