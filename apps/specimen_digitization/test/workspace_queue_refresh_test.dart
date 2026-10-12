@@ -70,6 +70,17 @@ class KeysetRepository extends TestRepository {
   /// Holds the next open-record read until completed.
   Completer<void>? detailGate;
 
+  /// Holds the next review save until completed with the saved record.
+  Completer<Specimen>? heldReview;
+
+  @override
+  Future<Specimen> review(
+    CollectionScope scope,
+    Specimen specimen,
+    Json change,
+    String key,
+  ) async => heldReview!.future;
+
   @override
   Future<Specimen> specimen(CollectionScope scope, String id) async {
     final Completer<void>? gate = detailGate;
@@ -447,4 +458,101 @@ void main() {
       },
     );
   }
+
+  void leaveAndReturn(WidgetTester tester, void Function() meanwhile) {
+    move(tester, <AppLifecycleState>[
+      AppLifecycleState.inactive,
+      AppLifecycleState.hidden,
+      AppLifecycleState.paused,
+    ]);
+    meanwhile();
+    move(tester, <AppLifecycleState>[
+      AppLifecycleState.hidden,
+      AppLifecycleState.inactive,
+      AppLifecycleState.resumed,
+    ]);
+  }
+
+  testWidgets(
+    'a record opened before a stale poll ends still gets the owed poll',
+    (WidgetTester tester) async {
+      final KeysetRepository repository = KeysetRepository(<Specimen>[
+        row('a'),
+      ]);
+      final TestSession session = TestSession();
+      final WorkspaceController controller = await started(
+        tester,
+        repository,
+        session,
+      );
+      try {
+        final Completer<void> slowPage = Completer<void>();
+        repository.gates[''] = slowPage;
+        await tester.pump(queuePollInterval);
+        final int asked = repository.pageReads;
+        leaveAndReturn(tester, () {
+          repository.server = <Specimen>[row('a'), row('b')];
+        });
+        // The reviewer opens a record before the stale poll answers.
+        final Completer<void> slowDetail = Completer<void>();
+        repository.detailGate = slowDetail;
+        final Future<void> opening = controller.openSpecimen('a');
+        await tester.pump();
+        slowPage.complete();
+        await tester.pump();
+        await tester.pump();
+        expect(ids(controller), <String>['a'], reason: 'the stale answer');
+        expect(repository.pageReads, asked, reason: 'the open record blocks');
+        slowDetail.complete();
+        await opening;
+        await tester.pump();
+        await tester.pump();
+        expect(repository.pageReads, asked + 1);
+        expect(ids(controller), <String>['a', 'b']);
+        await tester.pump(const Duration(seconds: 1));
+        expect(repository.pageReads, asked + 1, reason: 'one follow-up');
+      } finally {
+        controller.dispose();
+        await session.controller.close();
+      }
+    },
+  );
+
+  testWidgets('a return during a save polls once the save ends', (
+    WidgetTester tester,
+  ) async {
+    final KeysetRepository repository = KeysetRepository(<Specimen>[row('a')]);
+    final TestSession session = TestSession();
+    final WorkspaceController controller = await started(
+      tester,
+      repository,
+      session,
+    );
+    try {
+      await controller.openSpecimen('a');
+      final Completer<Specimen> saving = Completer<Specimen>();
+      repository.heldReview = saving;
+      final Future<bool> saved = controller.mutate(<String, dynamic>{
+        'kind': 'field',
+      }, null);
+      await tester.pump();
+      final int asked = repository.pageReads;
+      leaveAndReturn(tester, () {
+        repository.server = <Specimen>[row('a'), row('b')];
+      });
+      await tester.pump();
+      expect(repository.pageReads, asked, reason: 'the save blocks the poll');
+      saving.complete(row('a', revision: 2));
+      expect(await saved, isTrue);
+      await tester.pump();
+      await tester.pump();
+      expect(repository.pageReads, asked + 1);
+      expect(ids(controller), <String>['a', 'b']);
+      await tester.pump(const Duration(seconds: 1));
+      expect(repository.pageReads, asked + 1, reason: 'one follow-up');
+    } finally {
+      controller.dispose();
+      await session.controller.close();
+    }
+  });
 }

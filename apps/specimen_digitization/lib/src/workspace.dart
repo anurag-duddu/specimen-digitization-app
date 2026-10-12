@@ -230,9 +230,12 @@ class WorkspaceController extends ChangeNotifier {
   Timer? _poll;
   bool _polling = false;
 
-  /// True when the app returned while a poll was in flight: one more poll
-  /// runs as soon as that one ends, and never more than one.
+  /// True when the app returned and no poll has started since. It is
+  /// cleared only by a poll that actually starts, and drained by
+  /// [_drainPollAgain] whenever a guard that blocked the poll lifts. One
+  /// latch, so at most one follow-up poll.
   bool _pollAgain = false;
+  bool _drainScheduled = false;
   final Set<Object> _pollPauses = <Object>{};
   Future<Specimen>? _selectedRead;
   Object? _selectedReadKey;
@@ -304,6 +307,7 @@ class WorkspaceController extends ChangeNotifier {
       _pollPauses.add(owner);
     } else {
       _pollPauses.remove(owner);
+      _drainPollAgain();
     }
   }
 
@@ -401,7 +405,7 @@ class WorkspaceController extends ChangeNotifier {
             _loading = false;
             _loadingMore = false;
             _recordFailure(failure);
-            notifyListeners();
+            _notify();
           });
     }
     unawaited(checkAccess());
@@ -429,28 +433,43 @@ class WorkspaceController extends ChangeNotifier {
     _foreground = state == AppLifecycleState.resumed;
     if (!returning || _disposed || _poll == null) return;
     _startPollTimer();
-    // A poll still in flight was asked before the app left, so its answer
-    // may predate what changed meanwhile. Ask once more when it ends.
-    if (_polling) {
-      _pollAgain = true;
-      return;
-    }
-    unawaited(_pollWorkspace());
+    // A poll still in flight was asked before the app left, and a load or a
+    // save may be blocking a new one. Either way the return is owed one poll
+    // that starts after it, as soon as nothing blocks it.
+    _pollAgain = true;
+    _drainPollAgain();
+  }
+
+  /// Every reason a quiet poll may not start now. The one list both the poll
+  /// and the drain of [_pollAgain] read, so a new guard cannot strand it.
+  bool get _pollBlocked =>
+      _disposed ||
+      _poll == null ||
+      !_foreground ||
+      _polling ||
+      _mutating ||
+      _pollPauses.isNotEmpty ||
+      _loading ||
+      _loadingMore ||
+      _recordLoading ||
+      !_scopesVerified ||
+      _scope == null;
+
+  /// Starts the owed poll once nothing blocks it. Called from [_notify],
+  /// which every guard's completion path reaches, and from the guard changes
+  /// that do not notify.
+  void _drainPollAgain() {
+    if (!_pollAgain || _drainScheduled || _pollBlocked) return;
+    _drainScheduled = true;
+    scheduleMicrotask(() {
+      _drainScheduled = false;
+      unawaited(_pollWorkspace());
+    });
   }
 
   Future<void> _pollWorkspace() async {
-    if (_disposed ||
-        !_foreground ||
-        _polling ||
-        _mutating ||
-        _pollPauses.isNotEmpty ||
-        _loading ||
-        _loadingMore ||
-        _recordLoading ||
-        !_scopesVerified ||
-        _scope == null) {
-      return;
-    }
+    if (_pollBlocked) return;
+    _pollAgain = false;
     _polling = true;
     try {
       // A quiet refresh rereads every loaded page, so a paginated queue keeps
@@ -460,11 +479,12 @@ class WorkspaceController extends ChangeNotifier {
     } finally {
       _polling = false;
     }
-    if (_pollAgain) {
-      _pollAgain = false;
-      await _pollWorkspace();
-    }
+    _drainPollAgain();
   }
+
+  /// True while the app owes a poll for a return to the foreground.
+  @visibleForTesting
+  bool get pollOwed => _pollAgain;
 
   Future<Specimen> _readSelected(CollectionScope scope, String id) {
     final key = (scope, id, _recordGeneration, _mutationEpoch, session.userId);
@@ -581,6 +601,7 @@ class WorkspaceController extends ChangeNotifier {
     _mutationKeys.clear();
     _pollPauses.clear();
     _pollAgain = false;
+    _drainScheduled = false;
     _quietFailureReported = false;
     _awaitingBatchReadback = null;
     _loading = true;
@@ -617,7 +638,9 @@ class WorkspaceController extends ChangeNotifier {
   }
 
   void _notify() {
-    if (!_disposed) notifyListeners();
+    if (_disposed) return;
+    notifyListeners();
+    _drainPollAgain();
   }
 
   /// Holds the list still while a row has focus or a sheet is open, so a quiet
