@@ -241,6 +241,37 @@ Future<void> waitForCameraCondition(
 }
 
 void main() {
+  testWidgets(
+    'crop controls move the frame without dragging and cancel keeps pixels',
+    (tester) async {
+      final camera = FakeCaptureCamera();
+      final semantics = tester.ensureSemantics();
+      await pumpCapture(tester, camera);
+      await takeOne(tester);
+      await tester.tap(find.byKey(const ValueKey('capture-crop')));
+      await tester.pumpAndSettle();
+      final move = find.byWidgetPredicate(
+        (widget) => widget is UiButton && widget.label == 'Move left',
+      );
+      await tester.ensureVisible(move);
+      await tester.tap(move);
+      await tester.pumpAndSettle();
+      final crop = find.bySemanticsLabel(RegExp('Crop selection\\.'));
+      expect(tester.getSemantics(crop).value, startsWith('Left 4 percent'));
+      final cancel = find.byWidgetPredicate(
+        (widget) => widget is UiButton && widget.label == 'Cancel crop',
+      );
+      await tester.ensureVisible(cancel);
+      await tester.tap(cancel);
+      await tester.pumpAndSettle();
+      final image = tester.widget<Image>(find.byType(Image));
+      expect((image.image as MemoryImage).bytes, camera.captureBytes);
+      expect(find.byKey(const ValueKey('capture-send')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      semantics.dispose();
+    },
+  );
+
   testWidgets('the viewfinder draws framing guides and an honest hint', (
     WidgetTester tester,
   ) async {

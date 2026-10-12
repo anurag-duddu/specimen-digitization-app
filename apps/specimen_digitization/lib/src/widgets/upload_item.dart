@@ -23,6 +23,7 @@ import 'package:specimen_ui/specimen_ui.dart';
 import 'specimen_status.dart';
 import 'status_chip.dart';
 import 'thumbnail.dart';
+import 'intake_photo.dart';
 
 /// The states one file passes through on its way into a collection.
 enum UploadState {
@@ -259,6 +260,9 @@ class UploadItem extends StatelessWidget {
   );
 
   Widget _item(BuildContext context, double available) {
+    if (concise && stageProgress != null) {
+      return _photoItem(context, available);
+    }
     final UiThemeData ui = context.ui;
     final String? blocked = removeBlockedReason;
     final String line = measurements(
@@ -383,6 +387,78 @@ class UploadItem extends StatelessWidget {
             ),
             child: details!,
           ),
+      ],
+    );
+  }
+
+  Widget _photoItem(BuildContext context, double available) {
+    final ui = context.ui;
+    final layout = UiLayoutMetrics.fromConstraints(
+      BoxConstraints(maxWidth: available),
+      textScaler: MediaQuery.textScalerOf(context),
+    );
+    final side = available >= layout.minColumnWidth + ui.space.s16
+        ? ui.space.s10 * 4
+        : ui.space.s12 * 2;
+    final beside =
+        available - side - ui.space.s4 - ui.space.targetMin >=
+        layout.minColumnWidth / 2;
+    final summary = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Semantics(
+                container: true,
+                label: <String>[name, ?reason].join(', '),
+                excludeSemantics: true,
+                child: Text(name, style: ui.type.body),
+              ),
+            ),
+            if (onRemove != null || removeBlockedReason != null)
+              UiIconButton(
+                icon: UiIcons.close,
+                semanticsLabel: removeLabel,
+                tooltip: removeLabel,
+                onPressed: onRemove,
+                disabledReason: removeBlockedReason,
+              ),
+          ],
+        ),
+        stageProgress!,
+        if (reason != null) ...[
+          SizedBox(height: ui.space.s2),
+          ExcludeSemantics(
+            child: Text(
+              reason!,
+              style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+            ),
+          ),
+        ],
+        if (details != null) ...[SizedBox(height: ui.space.s2), details!],
+      ],
+    );
+    final photo = IntakePhoto(bytes: thumbnail, side: side);
+    if (!beside) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Align(alignment: AlignmentDirectional.centerStart, child: photo),
+          SizedBox(height: ui.space.s4),
+          summary,
+        ],
+      );
+    }
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        photo,
+        SizedBox(width: ui.space.s4),
+        Expanded(child: summary),
       ],
     );
   }
