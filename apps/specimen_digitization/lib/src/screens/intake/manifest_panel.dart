@@ -39,7 +39,18 @@ class IntakeManifest extends StatefulWidget {
     this.onRetry,
     this.padding,
     this.scrollable = true,
+    this.onExitsSettled,
+    this.hostHandlesEmptyFocus = false,
   });
+
+  /// True when the host moves focus itself once the list is empty, because
+  /// it closes the manifest then. The manifest then hands focus over only
+  /// between rows; when false, an emptied list's focus goes to its summary.
+  final bool hostHandlesEmptyFocus;
+
+  /// Called after a frame in which no row is leaving, so a host that kept
+  /// the manifest mounted for a final exit knows it may let it go.
+  final VoidCallback? onExitsSettled;
 
   /// Every row, in the order the operator chose them.
   final List<ManifestEntry> entries;
@@ -97,16 +108,140 @@ class _IntakeManifestState extends State<IntakeManifest> {
   /// manifest for it to join (motion catalog, row 62).
   final Set<String> _drawn = <String>{};
 
+  /// The rows drawn last frame, in order, including any still leaving.
+  List<ManifestEntry> _shown = const <ManifestEntry>[];
+
+  /// Rows the main Queue has taken that are collapsing out of the list.
+  /// Drawn in place, out of the semantics tree and out of focus traversal,
+  /// until their exit finishes (motion catalog, section 2.4: permanent exits
+  /// are `quick` on the `exit` curve, and nothing under reduced motion).
+  final Set<String> _leaving = <String>{};
+
+  /// One focus container per row, so a row that leaves while it holds focus
+  /// can hand focus to a neighbour instead of dropping it (06 section 3).
+  final Map<String, FocusNode> _rowFocus = <String, FocusNode>{};
+
+  /// Where focus lands when the last row leaves while it held focus.
+  final FocusNode _landing = FocusNode(
+    debugLabel: 'Intake manifest summary',
+    skipTraversal: true,
+  );
+
   @override
   void initState() {
     super.initState();
     // The first manifest did not arrive; it was there when the screen was.
     _drawn.addAll(widget.entries.map((ManifestEntry e) => e.digest));
+    _shown = List<ManifestEntry>.of(widget.entries);
+  }
+
+  @override
+  void dispose() {
+    for (final FocusNode node in _rowFocus.values) {
+      node.dispose();
+    }
+    _landing.dispose();
+    super.dispose();
+  }
+
+  FocusNode _focusFor(String digest) => _rowFocus.putIfAbsent(
+    digest,
+    () => FocusNode(debugLabel: 'Intake row $digest', skipTraversal: true),
+  );
+
+  /// Works out which rows left since the last frame, keeps the ones the main
+  /// Queue took on screen while they collapse, and moves focus out of any
+  /// row that held it.
+  List<ManifestEntry> _reconcile(List<ManifestEntry> entries, bool reduced) {
+    final Set<String> present = <String>{
+      for (final ManifestEntry entry in entries) entry.digest,
+    };
+    _leaving.removeAll(present);
+    FocusNode? focusTarget;
+    for (final (int index, ManifestEntry gone) in _shown.indexed) {
+      if (present.contains(gone.digest) || _leaving.contains(gone.digest)) {
+        continue;
+      }
+      if (_rowFocus[gone.digest]?.hasFocus ?? false) {
+        focusTarget =
+            _neighbourFocus(index, present) ??
+            (widget.hostHandlesEmptyFocus ? null : _landing);
+      }
+      if (!reduced && gone.state == UploadState.inMainQueue) {
+        _leaving.add(gone.digest);
+      }
+    }
+    final List<ManifestEntry> display = List<ManifestEntry>.of(entries);
+    for (final (int index, ManifestEntry gone) in _shown.indexed) {
+      if (!_leaving.contains(gone.digest)) continue;
+      var at = 0;
+      for (var before = index - 1; before >= 0; before--) {
+        final String digest = _shown[before].digest;
+        final int found = display.indexWhere(
+          (ManifestEntry e) => e.digest == digest,
+        );
+        if (found >= 0) {
+          at = found + 1;
+          break;
+        }
+      }
+      display.insert(at, gone);
+    }
+    _shown = display;
+    final Set<String> drawn = <String>{
+      for (final ManifestEntry entry in display) entry.digest,
+    };
+    final List<String> stale = _rowFocus.keys
+        .where((String digest) => !drawn.contains(digest))
+        .toList();
+    final FocusNode? target = focusTarget;
+    if (target != null || stale.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        // The departed rows' focus widgets are gone by now, so their nodes
+        // can be released without detaching anything still mounted.
+        for (final String digest in stale) {
+          if (drawn.contains(digest)) continue;
+          if (_shown.any((ManifestEntry e) => e.digest == digest)) continue;
+          _rowFocus.remove(digest)?.dispose();
+        }
+        if (!mounted || target == null) return;
+        if (!identical(target, _landing) && target.context == null) {
+          _landing.requestFocus();
+          return;
+        }
+        (target.traversalDescendants.firstOrNull ?? target).requestFocus();
+      });
+    }
+    return display;
+  }
+
+  /// The row after [index] that is still in the list, else the one before.
+  FocusNode? _neighbourFocus(int index, Set<String> present) {
+    for (final ManifestEntry entry in _shown.skip(index + 1)) {
+      if (present.contains(entry.digest)) return _focusFor(entry.digest);
+    }
+    for (final ManifestEntry entry in _shown.take(index).toList().reversed) {
+      if (present.contains(entry.digest)) return _focusFor(entry.digest);
+    }
+    return null;
+  }
+
+  void _gone(String digest) {
+    if (!mounted || !_leaving.contains(digest)) return;
+    setState(() {
+      _leaving.remove(digest);
+      _shown = <ManifestEntry>[
+        for (final ManifestEntry entry in _shown)
+          if (entry.digest != digest) entry,
+      ];
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
+    final bool reduced =
+        ui.motion.reduced || MediaQuery.disableAnimationsOf(context);
     final List<ManifestEntry> entries = widget.entries;
     final bool hadCards = _drawn.isNotEmpty;
     final Set<String> arriving = <String>{
@@ -114,38 +249,57 @@ class _IntakeManifestState extends State<IntakeManifest> {
         if (hadCards && !_drawn.contains(entry.digest)) entry.digest,
     };
     _drawn.addAll(entries.map((ManifestEntry e) => e.digest));
+    final List<ManifestEntry> display = _reconcile(entries, reduced);
+    if (_leaving.isEmpty && widget.onExitsSettled != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _leaving.isEmpty) widget.onExitsSettled?.call();
+      });
+    }
 
     final List<Widget> children = <Widget>[
-      _ManifestHeader(
-        entries: entries,
-        busy: widget.busy,
-        stopping: widget.stopping,
-        onStop: widget.onStop,
+      Focus(
+        focusNode: _landing,
+        includeSemantics: false,
+        child: _ManifestHeader(
+          entries: entries,
+          busy: widget.busy,
+          stopping: widget.stopping,
+          onStop: widget.onStop,
+        ),
       ),
       SizedBox(height: ui.space.s4),
-      if (entries.isEmpty)
+      if (entries.isEmpty && _leaving.isEmpty)
         EmptyState(
           icon: UiIcons.intake.defaultGlyph,
           title: IntakeManifest.emptyTitle,
           body: IntakeManifest.emptyBody,
         ),
-      for (final ManifestEntry entry in entries)
-        Padding(
+      for (final ManifestEntry entry in display)
+        KeyedSubtree(
           key: ValueKey<String>('manifest-slot-${entry.digest}'),
-          padding: EdgeInsetsDirectional.only(bottom: ui.space.s4),
           // Fade and size, never a slide: the card did not come from
-          // anywhere, the operator made it (motion catalog, row 62).
-          child: _ArrivingCard(
+          // anywhere, the operator made it (motion catalog, row 62). Leaving
+          // is the same motion in reverse, faster (section 2.4).
+          child: _ManifestSlot(
             arriving: arriving.contains(entry.digest),
-            child: IntakeManifestRow(
-              key: ValueKey<String>(entry.digest),
-              entry: entry,
-              busy: widget.busy,
-              onRemove: () => widget.onRemove(entry),
-              onServerCheck: () => widget.onServerCheck(entry),
-              onRetry: widget.onRetry == null
-                  ? null
-                  : () => widget.onRetry!(entry),
+            leaving: _leaving.contains(entry.digest),
+            onGone: () => _gone(entry.digest),
+            child: Padding(
+              padding: EdgeInsetsDirectional.only(bottom: ui.space.s4),
+              child: Focus(
+                focusNode: _focusFor(entry.digest),
+                includeSemantics: false,
+                child: IntakeManifestRow(
+                  key: ValueKey<String>(entry.digest),
+                  entry: entry,
+                  busy: widget.busy,
+                  onRemove: () => widget.onRemove(entry),
+                  onServerCheck: () => widget.onServerCheck(entry),
+                  onRetry: widget.onRetry == null
+                      ? null
+                      : () => widget.onRetry!(entry),
+                ),
+              ),
             ),
           ),
         ),
@@ -266,33 +420,100 @@ class _ManifestHeader extends StatelessWidget {
   }
 }
 
-/// One manifest card, revealed on the frame it is added and static after
-/// that (motion catalog, row 62).
-class _ArrivingCard extends StatefulWidget {
-  const _ArrivingCard({required this.arriving, required this.child});
+/// One manifest card, revealed on the frame it is added, static after that
+/// (motion catalog, row 62), and collapsed when the main Queue takes it.
+class _ManifestSlot extends StatefulWidget {
+  const _ManifestSlot({
+    required this.arriving,
+    required this.leaving,
+    required this.onGone,
+    required this.child,
+  });
 
   final bool arriving;
+
+  /// True once the row has left the Intake list and is only collapsing.
+  final bool leaving;
+
+  /// Called when the collapse has finished.
+  final VoidCallback onGone;
   final Widget child;
 
   @override
-  State<_ArrivingCard> createState() => _ArrivingCardState();
+  State<_ManifestSlot> createState() => _ManifestSlotState();
 }
 
-class _ArrivingCardState extends State<_ArrivingCard> {
+class _ManifestSlotState extends State<_ManifestSlot>
+    with SingleTickerProviderStateMixin {
   late bool _revealed = !widget.arriving;
+  final GlobalKey _content = GlobalKey();
+
+  /// 1 while the row is in the list, running to 0 as it leaves.
+  late final AnimationController _exit;
+  late final Animation<double> _exitCurve;
 
   @override
   void initState() {
     super.initState();
-    if (_revealed) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) setState(() => _revealed = true);
+    _exit = AnimationController(
+      vsync: this,
+      value: 1,
+      duration: MotionTokens.quickRaw,
+    );
+    _exitCurve = CurvedAnimation(parent: _exit, curve: MotionTokens.exitCurve);
+    if (!_revealed) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _revealed = true);
+      });
+    }
+    if (widget.leaving) _leave();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ManifestSlot oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.leaving && !oldWidget.leaving) _leave();
+    if (!widget.leaving && oldWidget.leaving) _exit.value = 1;
+  }
+
+  void _leave() {
+    _exit.reverse().whenCompleteOrCancel(() {
+      if (mounted && widget.leaving) widget.onGone();
     });
   }
 
   @override
-  Widget build(BuildContext context) =>
-      MotionReveal(visible: _revealed, child: widget.child);
+  void dispose() {
+    _exit.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool leaving = widget.leaving;
+    final Widget content = KeyedSubtree(
+      key: _content,
+      child: ExcludeFocus(
+        excluding: leaving,
+        child: ExcludeSemantics(
+          excluding: leaving,
+          child: IgnorePointer(
+            ignoring: leaving,
+            child: MotionReveal(visible: _revealed, child: widget.child),
+          ),
+        ),
+      ),
+    );
+    // The collapse wraps the row only while it leaves: a size transition
+    // loosens its child's width, which a settled row must never feel. The
+    // global key carries the row's state across, so it does not redraw.
+    if (!leaving) return content;
+    return SizeTransition(
+      sizeFactor: _exitCurve,
+      axisAlignment: -1,
+      child: FadeTransition(opacity: _exitCurve, child: content),
+    );
+  }
 }
 
 /// One manifest row: transfer state and server-check outcomes stay visible;

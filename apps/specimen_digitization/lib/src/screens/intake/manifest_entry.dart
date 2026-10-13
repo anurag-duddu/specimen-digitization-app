@@ -185,6 +185,12 @@ String batchCompleteLine(Iterable<ManifestEntry> entries) {
       : '$count photographs are in the Intake queue.';
 }
 
+/// What a screen reader hears when finished photos leave Intake for the main
+/// Queue. Spoken once, politely; the rows themselves leave without a sound.
+String movedToQueueLine(int count) => count == 1
+    ? 'Photo moved to the main Queue.'
+    : '$count photos moved to the main Queue.';
+
 /// A compact account of the new Intake queue. This deliberately stops before
 /// the existing post-processing Queue's three outcomes.
 String ingestionQueueLine(Iterable<ManifestEntry> entries) {

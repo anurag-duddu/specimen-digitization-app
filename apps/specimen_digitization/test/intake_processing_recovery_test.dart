@@ -422,7 +422,9 @@ void main() {
       );
       await session.refreshProcessingStatuses();
       await tester.pumpAndSettle();
-      expect(find.text('In main Queue'), findsOneWidget);
+      // In the main Queue, the photo leaves Intake (owner, 2026-10-12).
+      expect(session.entries, isEmpty);
+      expect(find.text('saved-photo.jpg'), findsNothing);
       expect(posts, hasLength(1));
       await tester.pumpWidget(const SizedBox());
       session.close();
