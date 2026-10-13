@@ -392,8 +392,15 @@ approved limit." Nothing carried it on. Tests:
   review with a warning finding `field_research_given_up:<code>`
   (`test_a_retry_the_model_unit_limit_leaves_no_room_for_goes_to_review_unsent`).
 - The run's cost ceiling and the program's allowance are limits on money
-  and still block (FIELD_RESEARCH.md, step 8)
-  (`test_a_retry_over_the_money_ceiling_still_blocks`).
+  and still block (FIELD_RESEARCH.md, step 8), and they come first: a run
+  whose model units (or another limit above) are spent too keeps the money
+  block. Before giving up, the step checks the cost settings, the saved cost
+  totals and the ceiling, then reads the program's ledger
+  (`lane_allowance.admits`, read only, nothing reserved); an allowance that
+  cannot pay for one expert request, or a ledger that cannot be read, blocks
+  with its own code
+  (`test_a_retry_over_the_money_ceiling_still_blocks[money_and_model_units]`,
+  `test_the_program_allowance_comes_before_the_model_unit_limit`).
 - `Workflow.recover_blocked` makes due a run left blocked at field research
   by one of those limits, within the same three recoveries per step; the step
   then gives it up as above

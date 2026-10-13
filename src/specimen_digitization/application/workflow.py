@@ -524,6 +524,24 @@ class Workflow:
             # Never more than the program's allowance has left (when that fits
             # one expert request): the step's meter has this as its cap.
             cost = self.field_research.reservation(self, principal, specimen, cost)
+        # The limits on money, in the order they block: the cost settings, the
+        # saved cost totals, then the run's cost ceiling.
+        money_issue = None
+        if (
+            billable
+            and not run.profile.synthetic
+            and (cost is None or policy.approved_cost_limit_micros is None)
+        ):
+            money_issue = "approved_cost_budget_unavailable"
+        elif retained_cost_issue:
+            money_issue = retained_cost_issue
+        elif (
+            cost is not None
+            and policy.approved_cost_limit_micros is not None
+            and run.usage.reserved_cost_micros + retained_cost + cost
+            > policy.approved_cost_limit_micros
+        ):
+            money_issue = "cost_budget_exhausted"
         issue = None
         if run.usage.steps >= policy.max_steps:
             issue = "step_budget_exhausted"
@@ -541,31 +559,32 @@ class Workflow:
             > policy.max_active_seconds
         ):
             issue = "active_time_budget_exhausted"
-        elif (
-            billable
-            and not run.profile.synthetic
-            and (cost is None or policy.approved_cost_limit_micros is None)
-        ):
-            issue = "approved_cost_budget_unavailable"
-        elif retained_cost_issue:
-            issue = retained_cost_issue
-        elif (
-            cost is not None
-            and policy.approved_cost_limit_micros is not None
-            and run.usage.reserved_cost_micros + retained_cost + cost
-            > policy.approved_cost_limit_micros
-        ):
-            issue = "cost_budget_exhausted"
+        elif money_issue:
+            issue = money_issue
         if issue is None and billable and not run.profile.synthetic and self.reserve_retained_cost is not None:
             try:
                 self.reserve_retained_cost(principal, specimen, step, cost)
             except OperationalBlock as error:
                 issue = str(error)
         if issue in RESEARCH_LIMITS and step == FIELD_RESEARCH:
-            # No room for another attempt under the run's own limits: given up
-            # on unsent, the fields it could not check for a person. No model
-            # call, nothing reserved; the money limits below still block.
-            return self._give_up_field_research(principal, specimen, revision, issue)
+            # Money comes first: a run whose cost ceiling, cost settings or
+            # totals, or program allowance would refuse this attempt keeps that
+            # block. The allowance is only read here (lane_allowance.admits),
+            # never reserved on.
+            from .lane_allowance import admits
+
+            money_issue = money_issue or (
+                admits(self.repository, principal, specimen, cost, self.clock)
+                if billable and not run.profile.synthetic
+                else None
+            )
+            if money_issue:
+                issue = money_issue
+            else:
+                # No room for another attempt under the run's own limits other
+                # than money: given up on unsent, the fields it could not check
+                # for a person. No model call, nothing reserved.
+                return self._give_up_field_research(principal, specimen, revision, issue)
         if issue in UNAFFORDABLE and ordinary_first_pass:
             # No room for another comparison under the run's limits: give it up
             # unsent, as a first pass whose last attempt failed is given up on.

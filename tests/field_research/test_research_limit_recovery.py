@@ -25,6 +25,7 @@ from functools import partial
 
 import pytest
 
+from specimen_digitization.application import lane_allowance
 from specimen_digitization.application.domain import Disposition, ExecutionPolicy
 from specimen_digitization.application.storage import digest
 from specimen_digitization.application.workflow import FIELD_RESEARCH
@@ -161,12 +162,14 @@ def test_sensitive_finished_leased_and_money_blocks_are_never_recovered(rig, lef
     assert second.calls == [] and given_up(after.run) == []
 
 
-def test_a_retry_over_the_money_ceiling_still_blocks(rig):
+@pytest.mark.parametrize("tokens", [0, ONE_RESERVATION], ids=["money_only", "money_and_model_units"])
+def test_a_retry_over_the_money_ceiling_still_blocks(rig, tokens):
     """The run's cost ceiling is a limit on money (FIELD_RESEARCH.md 8): a run
-    whose reservations already exceed it is not given up on here."""
+    whose reservations already exceed it is not given up on here, and money
+    comes first when its model units are spent too (ONE_RESERVATION)."""
     held, _ = first_attempt_fails(rig)
     run = held.run
-    usage = run.usage.model_copy(update={"reserved_tokens": 0,
+    usage = run.usage.model_copy(update={"reserved_tokens": tokens,
         "reserved_cost_micros": run.profile.execution.approved_cost_limit_micros + 1})
     leave(rig, usage=usage)
     second = scripted()
@@ -176,4 +179,53 @@ def test_a_retry_over_the_money_ceiling_still_blocks(rig):
         done = workflow.step(rig.principal, rig.specimen_id)
     assert (done.run.stage, done.run.blocker) == ("processing_blocked", "cost_budget_exhausted")
     assert second.calls == [] and given_up(done.run) == []
+    assert not workflow.recover_blocked(rig.principal, rig.specimen_id)
+
+
+ALLOWANCE = 5_000_000
+
+
+def short(self):
+    """The program's ledger with one microdollar left: less than one expert request."""
+    return {"revision": 1, "reserved_total_micros": ALLOWANCE - 1}
+
+
+def plenty(self):
+    return {"revision": 1, "reserved_total_micros": 0}
+
+
+def unreadable(self):
+    raise lane_allowance.LegacyLedgerUnavailable(lane_allowance.UNAVAILABLE)
+
+
+@pytest.mark.parametrize(("ledger", "blocker"), [
+    (short, "program_allowance_exhausted"),
+    (unreadable, "program_allowance_ledger_unavailable"),
+    (plenty, None),
+], ids=["allowance_short", "ledger_unreadable", "allowance_plenty"])
+def test_the_program_allowance_comes_before_the_model_unit_limit(rig, monkeypatch, ledger, blocker):
+    """A retry whose model units are spent and whose program allowance cannot pay
+    for one expert request (or cannot be read) keeps the money block; with the
+    allowance able to pay, it is given up on and goes to review. The ledger is
+    only read: nothing is reserved on it."""
+    held, _ = first_attempt_fails(rig)
+    execution = held.run.profile.execution.model_copy(update={"program_allowance_micros": ALLOWANCE,
+        "program_ledger_collection": rig.principal.scope.collection_id})
+    leave(rig, profile=held.run.profile.model_copy(update={"execution": execution}))
+    monkeypatch.setattr(lane_allowance.ProgramLedger, "read", ledger)
+
+    def no_reservation(*args, **kwargs):
+        raise AssertionError("the program ledger is never reserved on here")
+    monkeypatch.setattr(lane_allowance.ProgramLedger, "reserve", no_reservation)
+    second = scripted()
+    workflow, _, _ = mount(rig, second)
+    due(rig, held.run)
+    with supervised():
+        done = workflow.step(rig.principal, rig.specimen_id)
+    assert second.calls == []
+    if blocker is None:
+        assert_reviewed_without_a_call(done.run, held, second)
+        return
+    assert (done.run.stage, done.run.blocker, done.run.disposition) == ("processing_blocked", blocker, None)
+    assert given_up(done.run) == [] and done.run.attempts[FIELD_RESEARCH] == 1
     assert not workflow.recover_blocked(rig.principal, rig.specimen_id)
