@@ -73,6 +73,7 @@ from .workflow import (
     SyntheticAdapters,
     Workflow,
     reconcilable_step,
+    requeue_completed_field_research,
 )
 
 SYNTHETIC_ORG = "00000000-0000-4000-8000-000000000001"
@@ -2684,9 +2685,14 @@ def create_app(
                         "An external effect is still leased; concurrent retry is prohibited"
                     )
                 if body.action in {"retry", "resume"}:
+                    rerun_field_research = (
+                        body.action == "retry" and requeue_completed_field_research(s.run)
+                    )
                     s.run.blocker = None
                     s.run.disposition = None
-                    s.run.stage = Workflow.next_step(s.run).split(":")[0]
+                    s.run.stage = (
+                        "plan" if rerun_field_research else Workflow.next_step(s.run).split(":")[0]
+                    )
                     if s.run.lookups and s.run.lookups[-1].status.value not in {
                         "success",
                         "no_match",
