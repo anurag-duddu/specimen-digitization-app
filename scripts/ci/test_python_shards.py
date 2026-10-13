@@ -34,6 +34,40 @@ def test_partition_keeps_every_module_and_its_order_together():
     assert partition(results[0]["collected"], 3) == [r["selected"] for r in results]
 
 
+def test_runtime_hints_balance_slow_modules_without_splitting_them():
+    nodes = [f"tests/test_{module}.py::test_case[{case}]"
+             for module, size in (("a", 5), ("b", 4), ("c", 3))
+             for case in range(size)]
+    shards = partition(nodes, 2, {"tests/test_b.py": 100})
+    assert [[node.split("::", 1)[0] for node in shard] for shard in shards] == [
+        ["tests/test_b.py"] * 4,
+        ["tests/test_a.py"] * 5 + ["tests/test_c.py"] * 3,
+    ]
+    assert [node for shard in shards for node in shard] != nodes
+    assert sorted(node for shard in shards for node in shard) == sorted(nodes)
+
+
+def test_committed_runtime_hints_are_valid_test_modules():
+    timings = python_shards.load_timings()
+    assert timings
+    root = Path(__file__).resolve().parents[2]
+    assert all((root / module).is_file() for module in timings)
+
+
+@pytest.mark.parametrize("value", [
+    {}, {"schema": 2, "module_seconds": {}},
+    {"schema": 1, "module_seconds": []},
+    {"schema": 1, "module_seconds": {"../test.py": 1}},
+    {"schema": 1, "module_seconds": {"test.py": 0}},
+    {"schema": 1, "module_seconds": {"test.py": True}},
+])
+def test_invalid_runtime_hints_fail_closed(tmp_path, value):
+    path = tmp_path / "timings.json"
+    path.write_text(json.dumps(value))
+    with pytest.raises(ValueError, match="invalid Python shard timings"):
+        python_shards.load_timings(path)
+
+
 @pytest.mark.parametrize("change", [
     lambda r: r.pop(),
     lambda r: r.append(deepcopy(r[0])),

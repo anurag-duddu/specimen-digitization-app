@@ -16,10 +16,6 @@ APPROVED_DEPLOY_SCRIPTS = {
     ROOT / "scripts/release/deploy_api.py",
     ROOT / "scripts/release/deploy_models.py",
     ROOT / "scripts/release/process_worker.py",
-    # Retired (scripts/ci/RETIRED.md): no workflow calls these two any more. They
-    # stay listed only until the follow-up pull request deletes the files.
-    ROOT / "scripts/ci/deploy_runtime.py",
-    ROOT / "scripts/ci/deploy_data.py",
 }
 # The operator's plain runtime deploy (scripts/ops/README.md) may issue only its two Cloud Run deploys, the SAM 3
 # service and the worker job; any other deploy command in it still fails. The exemption is for the hand bring-up and
@@ -127,6 +123,13 @@ def retired_reference() -> re.Pattern[str]:
     )), re.MULTILINE)
 
 
+def retired_tests() -> set[str]:
+    """List 2 of the manifest: tests removed with the retired release scripts."""
+    section = RETIRED_MANIFEST.read_text().split(
+        "\n## 2. Tests of the retired scripts\n", 1)[1].split("\n## ", 1)[0]
+    return set(re.findall(r"`(test_[a-z0-9_]+\.py)`", section))
+
+
 def test_workflow_preserves_production_gates() -> None:
     workflow = WORKFLOW.read_text()
 
@@ -145,6 +148,66 @@ def test_workflow_preserves_production_gates() -> None:
     )
     for fragment in required_fragments:
         assert fragment in workflow, f"required deployment gate is missing: {fragment}"
+
+
+def test_frontend_only_python_scope_keeps_the_required_gate_and_fails_closed() -> None:
+    workflow = yaml.load(WORKFLOW.read_text(), Loader=yaml.BaseLoader)
+    jobs = workflow["jobs"]
+    scope, shards, aggregate = jobs["python-scope"], jobs["python-shards"], jobs["python"]
+
+    assert scope["outputs"] == {"full": "${{ steps.scope.outputs.full }}"}
+    checkout = next(step for step in scope["steps"] if step.get("name") == "Check out repository history")
+    assert checkout["with"] == {"fetch-depth": "0"}
+    classify = next(step for step in scope["steps"] if step.get("id") == "scope")
+    assert "python3 scripts/ci/python_scope.py" in classify["run"]
+    assert set(classify["env"]) == {"EVENT_NAME", "BASE_SHA", "HEAD_SHA"}
+
+    assert shards["needs"] == "python-scope"
+    assert shards["if"] == "needs.python-scope.outputs.full == 'true'"
+    assert aggregate["if"] == "always()"
+    assert aggregate["needs"] == ["python-scope", "python-shards"]
+
+    validation = next(step for step in aggregate["steps"]
+                      if step.get("name") == "Require a valid scope decision")
+    assert set(validation["env"]) == {"SCOPE_RESULT", "FULL_PYTHON", "SHARD_RESULT"}
+    assert 'test "$SCOPE_RESULT" = success' in validation["run"]
+    assert 'true) test "$SHARD_RESULT" = success' in validation["run"]
+    assert 'false) test "$SHARD_RESULT" = skipped' in validation["run"]
+
+    focused = next(step for step in aggregate["steps"]
+                   if step.get("name") == "Run focused frontend Python contracts")
+    assert focused["if"] == "needs.python-scope.outputs.full == 'false'"
+    focused_paths = (
+        "scripts/ci/test_public_settings.py",
+        "scripts/ci/test_smoke_web_routes.py",
+        "tests/test_deployment_policy.py",
+        "tests/test_hosting_attempt_binding.py",
+        "tests/test_local_review_runner.py",
+        "tests/research_harness/test_thread_embedded_schema.py",
+    )
+    for path in focused_paths:
+        assert path in focused["run"]
+
+    # A Python test that resolves this repository and names the Flutter tree
+    # is a cross-language contract. Keep every such test in the focused gate;
+    # otherwise a frontend-only change could break it while reporting green.
+    references = set()
+    for directory in (ROOT / "tests", ROOT / "scripts"):
+        for path in directory.rglob("test_*.py"):
+            source = path.read_text(encoding="utf-8")
+            names_flutter_tree = (
+                "apps/specimen_digitization" in source
+                or re.search(r'["\']apps["\']\s*/\s*["\']specimen_digitization["\']', source)
+            )
+            if "Path(__file__)" in source and names_flutter_tree:
+                references.add(str(path.relative_to(ROOT)))
+    assert references <= set(focused_paths)
+    for name in ("Download Python results", "Verify complete Python coverage"):
+        step = next(step for step in aggregate["steps"] if step.get("name") == name)
+        assert step["if"] == "needs.python-scope.outputs.full == 'true'"
+
+    writing = next(step for step in jobs["flutter"]["steps"] if step.get("name") == "Check UI writing")
+    assert "scripts/ci/check_ui_strings.py" in writing["run"]
 
 
 def test_deploy_script_is_fail_closed_and_hosting_only() -> None:
@@ -249,6 +312,22 @@ def test_release_contract_names_only_approved_backend_workflows() -> None:
             identity = IDENTITIES[environment]
             row = f"| `.github/workflows/{plane}-release.yml` | `{environment}` | `{identity}` | `{identity}` |"
             assert row in contract, row
+
+
+def test_readme_marks_linked_go_live_documents_as_retired_history() -> None:
+    readme = (ROOT / "README.md").read_text()
+    assert "Historical records only (retired; do not follow their commands)" in readme
+
+    for relative in (
+        "docs/execution/GO_LIVE_READINESS.md",
+        "docs/execution/GO_LIVE_RUNBOOK.md",
+    ):
+        document = (ROOT / relative).read_text()
+        opening = "\n".join(document.splitlines()[:12])
+        assert "RETIRED — historical record only" in opening
+        assert "Do not follow commands or" in opening
+        assert "scripts/ops/owner_setup.sh" in opening
+        assert "scripts/ci/RETIRED.md" in opening
 
 
 @pytest.mark.parametrize("plane", PLANES)
@@ -402,6 +481,12 @@ def test_no_release_file_refers_to_a_retired_script_or_brings_the_ceremony_back(
     scripts, actions = retired()
     assert {"deploy_data.py", "deploy_runtime.py", "release_gate.py"} <= scripts
     assert ".github/actions/runtime-publication" in actions
+    assert not [name for name in scripts if (ROOT / "scripts/ci" / name).exists()]
+    assert not [path for name in actions for path in (ROOT / name).rglob("*") if path.is_file()]
+    tests = retired_tests()
+    assert len(tests) == 56
+    assert not [name for name in tests if (ROOT / "scripts/ci" / name).exists()]
+    assert not (ROOT / "scripts/ci/fixtures/publication_auth_transport.cjs").exists()
     reference = retired_reference()
     sources = release_sources()
     # The scan reaches every script the workflows run, and the owner's script.
