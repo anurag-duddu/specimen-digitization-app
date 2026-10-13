@@ -86,6 +86,20 @@ UNAFFORDABLE = frozenset(
         "active_time_budget_exhausted",
     }
 )
+# The run's own limits other than money. Field research the run has no room
+# for under one of them is given up on unsent, and the record goes to review
+# (Workflow._give_up_field_research); the drain recovers a run an earlier
+# worker left blocked there by one (Workflow.recover_blocked). The cost
+# ceiling and the program's allowance are limits on money: they still block
+# (FIELD_RESEARCH.md 8).
+RESEARCH_LIMITS = frozenset(
+    {
+        "step_budget_exhausted",
+        "token_budget_exhausted",
+        "external_call_budget_exhausted",
+        "active_time_budget_exhausted",
+    }
+)
 # Blockers of an ordinary first pass that the drain recovers on its own
 # (Workflow.recover_blocked). The two lane codes are lane_worker's RUN_STALLED
 # and HANDOVER_STALLED.
@@ -547,6 +561,11 @@ class Workflow:
                 self.reserve_retained_cost(principal, specimen, step, cost)
             except OperationalBlock as error:
                 issue = str(error)
+        if issue in RESEARCH_LIMITS and step == FIELD_RESEARCH:
+            # No room for another attempt under the run's own limits: given up
+            # on unsent, the fields it could not check for a person. No model
+            # call, nothing reserved; the money limits below still block.
+            return self._give_up_field_research(principal, specimen, revision, issue)
         if issue in UNAFFORDABLE and ordinary_first_pass:
             # No room for another comparison under the run's limits: give it up
             # unsent, as a first pass whose last attempt failed is given up on.
@@ -1524,6 +1543,47 @@ class Workflow:
             digest({"extraction_unaffordable": step, "run": run.id, "code": code}),
         )
 
+    def _give_up_field_research(self, principal, specimen, revision, code):
+        """Give field research up without starting it: the run's own limits
+        other than money (``RESEARCH_LIMITS``) leave no room for another
+        attempt. Nothing is reserved, attempted or paid; earlier attempts keep
+        what they hold and the fields they settled. The step's rules finalize
+        the record, the fields it could not check unresolved for a person
+        (``FieldResearchStep.give_up``), and it goes on to review."""
+        from .active_graph import save_recoverably
+
+        run = specimen.run
+        try:
+            self.field_research.give_up(self, principal, specimen, code)
+        except OperationalBlock as error:
+            run.blocker = str(error)
+            run.stage = "processing_blocked"
+            run.disposition = None
+        else:
+            run.next_retry_at = None
+            run.dead_letter = False
+            run.lease_until = None
+            end_step(run, FIELD_RESEARCH)
+        _log_step_failure(
+            run, FIELD_RESEARCH, "field_research_unaffordable", code=code, stage=run.stage
+        )
+        specimen.audit.append(
+            AuditEvent(
+                actor=principal.user_id,
+                action="workflow_step",
+                reason=FIELD_RESEARCH,
+                after={"stage": run.stage, "blocker": run.blocker},
+            )
+        )
+        return save_recoverably(
+            self.repository,
+            principal,
+            specimen,
+            revision,
+            f"field-research-unaffordable:{revision}",
+            digest({"field_research_unaffordable": code, "run": run.id}),
+        )
+
     def recover_blocked(self, principal: Principal, specimen_id: str) -> bool:
         """Make a blocked ordinary first pass or extraction due again; whether it did.
 
@@ -1546,9 +1606,14 @@ class Workflow:
           a provider circuit, or a lane stall: due; the step gives the call up,
           moves the pin, or asks the circuit again.
 
-        Only an ordinary first pass (``first_pass_failure_is_recoverable``) or
-        extraction (``extraction_failure_is_recoverable``), on a record that is
-        not sensitive, has no disposition and holds no live lease. An extraction
+        - Field research blocked by one of the run's own limits other than
+          money (``RESEARCH_LIMITS``): due; the step gives it up unsent and the
+          record goes to review (``_give_up_field_research``).
+
+        Only an ordinary first pass (``first_pass_failure_is_recoverable``),
+        extraction (``extraction_failure_is_recoverable``) or field research
+        held by such a limit, on a record that is not sensitive, has no
+        disposition and holds no live lease. An extraction
         given up on leaves parse due without its call.
         Each recovery is recorded in ``run.dependencies[AUTOMATIC_RECOVERIES]``,
         at most ``MAX_AUTOMATIC_RECOVERIES`` per step. No call is made here, and
@@ -1577,8 +1642,17 @@ class Workflow:
             and extraction_failure_is_recoverable(run, step)
             and not extraction_given_up(run)
         )
+        research = (
+            step == "plan"
+            and self.field_research is not None
+            and FIELD_RESEARCH not in run.completed_steps
+            and blocker in RESEARCH_LIMITS
+            and self.field_research.handles(run)
+        )
+        if research:
+            step = FIELD_RESEARCH
         if (
-            not (first_pass or extraction)
+            not (first_pass or extraction or research)
             or has_active_lease(run, self.clock())
             # Only an unknown outcome whose cause the run durably shows can be
             # mended by asking again; any other stays for a person.
@@ -1587,7 +1661,8 @@ class Workflow:
                 and not unknown_outcome_recoverable(run, step)
             )
             or not (
-                blocker in RECOVERABLE_FIRST_PASS_BLOCKERS
+                research
+                or blocker in RECOVERABLE_FIRST_PASS_BLOCKERS
                 or blocker == MALFORMED_ANSWER
                 or blocker.startswith(RECOVERABLE_FIRST_PASS_PREFIXES)
             )
