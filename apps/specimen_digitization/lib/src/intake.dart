@@ -12,6 +12,7 @@ import 'package:crypto/crypto.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/widgets.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -130,6 +131,34 @@ class _IntakeScreenState extends State<IntakeScreen> {
   bool _transferRefreshScheduled = false;
   String? _error;
 
+  /// The session's [IntakeTransferSession.movedToQueue] already spoken for,
+  /// so a photo that moves to the main Queue is announced once, and a route
+  /// that attaches later never repeats an earlier move.
+  int _announcedMoves = 0;
+
+  /// Moves not yet spoken. A count, not a sentence: two moves before one
+  /// frame are one announcement of two photos, never the last one alone.
+  int _pendingMoves = 0;
+
+  /// True while the main Queue's last photo collapses out of the manifest.
+  /// The Photos section stays mounted until that exit finishes, so the row
+  /// leaves the way every other row does instead of vanishing.
+  bool _holdPhotos = false;
+
+  /// Wraps the Photos section, so focus inside it is noticed when the last
+  /// row leaves and the section goes with it.
+  final FocusNode _photosFocus = FocusNode(
+    debugLabel: 'Intake photos',
+    skipTraversal: true,
+    canRequestFocus: false,
+  );
+
+  /// The screen heading, where focus lands if the section it was in leaves.
+  final FocusNode _headingFocus = FocusNode(
+    debugLabel: 'Intake heading',
+    skipTraversal: true,
+  );
+
   String get _captureOwner => '${widget.userId}:${widget.scope.key}';
   static const String _captureKey = 'pending-camera-owner-v1';
   String get _autoIngestKey =>
@@ -158,6 +187,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
       widget.userId,
     );
     _session.addListener(_sessionChanged);
+    _announcedMoves = _session.movedToQueue;
     // Preserve the existing Intake completion contract. The main Queue still
     // decides what it can display, while Intake independently tracks the
     // photograph until processing hands it over.
@@ -181,7 +211,58 @@ class _IntakeScreenState extends State<IntakeScreen> {
 
   void _sessionChanged() {
     if (!mounted) return;
+    final int moved = _session.movedToQueue - _announcedMoves;
+    if (moved > 0) {
+      _announcedMoves = _session.movedToQueue;
+      _announceMoved(moved);
+      if (_entries.isEmpty &&
+          !(context.ui.motion.reduced ||
+              MediaQuery.disableAnimationsOf(context))) {
+        _holdPhotos = true;
+      }
+    }
+    if (_entries.isEmpty && _photosFocus.hasFocus) {
+      // The Photos section is about to close, now or after a last row's
+      // exit. Wherever focus is inside it (a row, Stop, the summary), it
+      // goes to the screen heading rather than to nowhere or to whatever
+      // focus history picks (06 section 3). This is the only handover for
+      // an emptied list: the manifest leaves it to this screen
+      // ([IntakeManifest.hostHandlesEmptyFocus]). Checked before the rebuild
+      // that removes the focused control, so focus is still inside.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _headingFocus.requestFocus();
+      });
+    }
     setState(() => _error ??= _session.restoreError);
+  }
+
+  /// Speaks the move once, after the frame that removes the rows, politely.
+  /// Coalesced, so several rows leaving together are one sentence.
+  void _announceMoved(int count) {
+    final bool scheduled = _pendingMoves > 0;
+    _pendingMoves += count;
+    if (scheduled) return;
+    WidgetsBinding.instance
+      ..addPostFrameCallback((_) {
+        final int pending = _pendingMoves;
+        _pendingMoves = 0;
+        if (pending == 0 || !mounted) return;
+        if (!MediaQuery.supportsAnnounceOf(context)) return;
+        unawaited(
+          SemanticsService.sendAnnouncement(
+            View.of(context),
+            movedToQueueLine(pending),
+            Directionality.of(context),
+          ),
+        );
+      })
+      ..ensureVisualUpdate();
+  }
+
+  /// The manifest has finished collapsing its leaving rows.
+  void _exitsSettled() {
+    if (!mounted || !_holdPhotos) return;
+    setState(() => _holdPhotos = false);
   }
 
   @override
@@ -199,6 +280,9 @@ class _IntakeScreenState extends State<IntakeScreen> {
         widget.userId,
       );
       _session.addListener(_sessionChanged);
+      _announcedMoves = _session.movedToQueue;
+      _pendingMoves = 0;
+      _holdPhotos = false;
       _session.attachComplete(_transferRefresh);
       _session.attachHandoff(_transferRefresh);
       _sensitive = true;
@@ -221,6 +305,8 @@ class _IntakeScreenState extends State<IntakeScreen> {
     _session.detachHandoff(_transferRefresh);
     _session.removeListener(_sessionChanged);
     _slots?.release(this);
+    _photosFocus.dispose();
+    _headingFocus.dispose();
     super.dispose();
   }
 
@@ -726,11 +812,17 @@ class _IntakeScreenState extends State<IntakeScreen> {
   Widget _batchHeader(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: <Widget>[
-      Semantics(
-        header: true,
-        child: Text(
-          intakeTitle,
-          style: context.ui.type.headline.copyWith(color: context.ui.color.ink),
+      Focus(
+        focusNode: _headingFocus,
+        includeSemantics: false,
+        child: Semantics(
+          header: true,
+          child: Text(
+            intakeTitle,
+            style: context.ui.type.headline.copyWith(
+              color: context.ui.color.ink,
+            ),
+          ),
         ),
       ),
       if (_entries.isEmpty) ...[
@@ -866,6 +958,8 @@ class _IntakeScreenState extends State<IntakeScreen> {
     onRetry: (ManifestEntry entry) => unawaited(_session.start(only: entry)),
     padding: padding,
     scrollable: scrollable,
+    onExitsSettled: _exitsSettled,
+    hostHandlesEmptyFocus: true,
   );
 
   /// The one message slot, revealed above the sections.
@@ -919,27 +1013,40 @@ class _IntakeScreenState extends State<IntakeScreen> {
                       _captureCard(context, minDropHeight: 0),
                       SizedBox(height: layout.gap),
                       _sensitivityControl(context),
-                      if (_entries.isNotEmpty) ...[
-                        SizedBox(height: layout.sectionGap),
-                        Semantics(
-                          header: true,
-                          child: Text('Photos', style: ui.type.title),
-                        ),
-                        SizedBox(height: ui.space.s2),
-                        Align(
-                          alignment: AlignmentDirectional.topStart,
-                          child: ConstrainedBox(
-                            constraints: BoxConstraints(
-                              maxWidth: layout.readableMax,
-                            ),
-                            child: _manifest(
-                              context,
-                              padding: EdgeInsets.zero,
-                              scrollable: false,
-                            ),
+                      // The section closes the way a banner does when the
+                      // main Queue takes its last photo (motion, row 10).
+                      MotionReveal(
+                        visible: _entries.isNotEmpty || _holdPhotos,
+                        child: Focus(
+                          focusNode: _photosFocus,
+                          includeSemantics: false,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(height: layout.sectionGap),
+                              Semantics(
+                                header: true,
+                                child: Text('Photos', style: ui.type.title),
+                              ),
+                              SizedBox(height: ui.space.s2),
+                              Align(
+                                alignment: AlignmentDirectional.topStart,
+                                child: ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    maxWidth: layout.readableMax,
+                                  ),
+                                  child: _manifest(
+                                    context,
+                                    padding: EdgeInsets.zero,
+                                    scrollable: false,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ],
+                      ),
                       if (_inlineUpload() case final Widget upload) ...[
                         SizedBox(height: layout.gap),
                         Align(
