@@ -102,7 +102,7 @@ environments or production.
 
 ## Documentation
 
-- [Go-live readiness assessment](docs/execution/GO_LIVE_READINESS.md) and the [owner runbook](docs/execution/GO_LIVE_RUNBOOK.md)
+- Historical records only (retired; do not follow their commands): [2026-09-22 go-live readiness assessment](docs/execution/GO_LIVE_READINESS.md) and [first-ten runbook](docs/execution/GO_LIVE_RUNBOOK.md)
 - [Runnable handoff, architecture and evidence index](docs/execution/HANDOFF.md)
 - [Product requirements](docs/product-requirements/PRD.md) and the [collection hierarchy](docs/product-requirements/COLLECTION_HIERARCHY.md)
 - [Agent harness decision and alternatives](docs/product-requirements/HARNESS_OPTIONS.md)

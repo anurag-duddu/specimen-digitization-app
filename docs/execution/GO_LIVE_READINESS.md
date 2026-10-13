@@ -1,5 +1,11 @@
 # Go-live readiness assessment, 2026-09-22
 
+> **RETIRED — historical record only (2026-10-12).** Do not follow commands or
+> owner actions in this assessment; some named scripts were intentionally deleted.
+> The current release contract is [`docs/DEPLOYMENT.md`](../DEPLOYMENT.md), the
+> current one-time owner setup is [`scripts/ops/owner_setup.sh`](../../scripts/ops/owner_setup.sh),
+> and the removed-script inventory is [`scripts/ci/RETIRED.md`](../../scripts/ci/RETIRED.md).
+
 This page records what was verified about the release state on 2026-09-22,
 what blocks the first live release, what the readiness pull request changed,
 and what only the owner can do. The ordered procedure is in
@@ -244,11 +250,13 @@ Checked against platform documentation current in 2026.
   > one administrator, which the rate-limit note above depends on.
 - The coordinator runs the read-only cloud inventory after the owner signs
   in.
-- Later the same day: the whole collection tree is bootstrapped in the first
-  data release, and the worker's bounded Logfire tracing (metadata only) is
-  in the first runtime plan rather than left out. The IAM setup window's
-  exact packet is recorded by `scripts/ci/data_setup_window.py` for the
-  owner's approval.
+- Later the same day: the whole collection tree was to be bootstrapped in the
+  first data release, and the worker's bounded Logfire tracing (metadata only)
+  was in the first runtime plan rather than left out. Historical action only:
+  the retired process recorded an IAM setup packet with
+  `scripts/ci/data_setup_window.py`; that script was deleted and must not be run
+  or restored. Current setup uses `scripts/ops/owner_setup.sh` under
+  `docs/DEPLOYMENT.md`.
   > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G3.
   > Metadata-only is superseded: system prompts and the harness's tracing at
   > every VLM, LLM and SAM 3 level are now visible in Logfire, linked to the
