@@ -39,7 +39,12 @@ class IntakeManifest extends StatefulWidget {
     this.onRetry,
     this.padding,
     this.scrollable = true,
+    this.onExitsSettled,
   });
+
+  /// Called after a frame in which no row is leaving, so a host that kept
+  /// the manifest mounted for a final exit knows it may let it go.
+  final VoidCallback? onExitsSettled;
 
   /// Every row, in the order the operator chose them.
   final List<ManifestEntry> entries;
@@ -237,6 +242,11 @@ class _IntakeManifestState extends State<IntakeManifest> {
     };
     _drawn.addAll(entries.map((ManifestEntry e) => e.digest));
     final List<ManifestEntry> display = _reconcile(entries, reduced);
+    if (_leaving.isEmpty && widget.onExitsSettled != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _leaving.isEmpty) widget.onExitsSettled?.call();
+      });
+    }
 
     final List<Widget> children = <Widget>[
       Focus(

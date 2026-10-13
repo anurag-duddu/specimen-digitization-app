@@ -693,11 +693,17 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
   /// operator can act on it. Callers persist afterwards, so the list saved
   /// on this device loses the row too.
   bool _retireFinished() {
-    final int before = entries.length;
-    entries.removeWhere(
-      (ManifestEntry entry) => entry.state == UploadState.inMainQueue,
-    );
-    final int moved = before - entries.length;
+    final List<ManifestEntry> finished = entries
+        .where((ManifestEntry entry) => entry.state == UploadState.inMainQueue)
+        .toList();
+    if (finished.isEmpty) return false;
+    entries.removeWhere(finished.contains);
+    for (final ManifestEntry entry in finished) {
+      // Nothing reads a retired photo's revision or start failure again.
+      _processingRevisions.remove(entry.specimenId);
+      _startDispatchFailures.remove(entry.specimenId);
+    }
+    final int moved = finished.length;
     movedToQueue += moved;
     return moved > 0;
   }

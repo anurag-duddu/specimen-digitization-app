@@ -142,6 +142,94 @@ Future<void> _pumpManifest(
   reduceMotion: reduceMotion,
 );
 
+/// A server whose every upload completes straight into the main Queue.
+class _ImmediateQueueRepository implements SpecimenRepository {
+  @override
+  Future<Json> createIntake(
+    CollectionScope scope,
+    IntakeFile file,
+    String key,
+  ) async => <String, dynamic>{'upload_id': file.sha256, 'state': 'ready'};
+
+  @override
+  Future<Json> resumeIntake(CollectionScope scope, String id) async =>
+      <String, dynamic>{'upload_id': id, 'state': 'ready'};
+
+  @override
+  Future<void> upload(
+    CollectionScope scope,
+    Json session,
+    IntakeFile file,
+    void Function(double) progress,
+  ) async => progress(1);
+
+  @override
+  Future<Json> completeIntake(
+    CollectionScope scope,
+    String id,
+    String key,
+  ) async => <String, dynamic>{
+    'upload_id': id,
+    'specimen_id': 'specimen-$id',
+    'status': 'completed',
+    'disposition': 'cleared',
+    'revision': 1,
+    'available_actions': <String>[],
+  };
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+ManifestEntry _readyPhoto(String id) => ManifestEntry(
+  digest: _digest(id),
+  name: '$id.jpg',
+  file: IntakeFile(
+    name: '$id.jpg',
+    bytes: Uint8List.fromList(<int>[1, 2, 3]),
+    mimeType: 'image/jpeg',
+    sha256: _digest(id),
+    method: 'camera',
+  ),
+  state: UploadState.ready,
+);
+
+Future<void> _pumpScreen(
+  WidgetTester tester,
+  SpecimenRepository repository,
+  String user, {
+  bool reduceMotion = false,
+}) async {
+  await tester.binding.setSurfaceSize(const Size(1000, 2200));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: AppTheme.light(),
+      home: Builder(
+        builder: (BuildContext context) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(supportsAnnounce: true, disableAnimations: reduceMotion),
+          child: Scaffold(
+            body: IntakeScreen(
+              repository: repository,
+              scope: _scope,
+              userId: user,
+              onComplete: () {},
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  for (var i = 0; i < 3; i++) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    );
+    await tester.pump();
+  }
+}
+
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
 
@@ -493,6 +581,93 @@ void main() {
     await tester.pumpAndSettle();
     expect(announced, <String>['Photo moved to the main Queue.']);
     semantics.dispose();
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('two moves before one frame are one announcement of two', (
+    WidgetTester tester,
+  ) async {
+    final List<String> announced = _recordAnnouncements(tester);
+    final SemanticsHandle semantics = tester.ensureSemantics();
+    final _ImmediateQueueRepository repository = _ImmediateQueueRepository();
+    await _pumpScreen(tester, repository, 'two-moves');
+    final IntakeTransferSession session = intakeTransferSession(
+      repository,
+      _scope,
+      'two-moves',
+    );
+    session.entries.addAll(<ManifestEntry>[
+      _readyPhoto('first'),
+      _readyPhoto('second'),
+    ]);
+    session.changed();
+    await tester.pumpAndSettle();
+    expect(find.text('first.jpg'), findsOneWidget);
+
+    // Both uploads complete straight into the main Queue with no frame
+    // between them, so the screen hears two separate moves.
+    await tester.runAsync(session.start);
+    expect(session.movedToQueue, 2);
+    await tester.pumpAndSettle();
+
+    expect(announced, <String>['2 photos moved to the main Queue.']);
+    expect(find.text('first.jpg'), findsNothing);
+    expect(find.text('second.jpg'), findsNothing);
+    semantics.dispose();
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the last row collapses before the Photos section closes', (
+    WidgetTester tester,
+  ) async {
+    final _ImmediateQueueRepository repository = _ImmediateQueueRepository();
+    await _pumpScreen(tester, repository, 'lone-row');
+    final IntakeTransferSession session = intakeTransferSession(
+      repository,
+      _scope,
+      'lone-row',
+    );
+    session.entries.add(_readyPhoto('lone'));
+    session.changed();
+    await tester.pumpAndSettle();
+    expect(find.text('lone.jpg'), findsOneWidget);
+
+    await tester.runAsync(session.start);
+    expect(session.entries, isEmpty);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    // Mid-exit: the row is still drawn, collapsing, and cannot be pressed.
+    expect(find.text('Photos'), findsOneWidget);
+    expect(find.text('lone.jpg'), findsOneWidget);
+    expect(find.text('lone.jpg').hitTestable(), findsNothing);
+
+    await tester.pumpAndSettle();
+    expect(find.text('lone.jpg'), findsNothing);
+    expect(find.text('Photos'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('with animations off the last row and section go at once', (
+    WidgetTester tester,
+  ) async {
+    final _ImmediateQueueRepository repository = _ImmediateQueueRepository();
+    await _pumpScreen(tester, repository, 'lone-still', reduceMotion: true);
+    final IntakeTransferSession session = intakeTransferSession(
+      repository,
+      _scope,
+      'lone-still',
+    );
+    session.entries.add(_readyPhoto('still'));
+    session.changed();
+    await tester.pump();
+    expect(find.text('still.jpg'), findsOneWidget);
+
+    await tester.runAsync(session.start);
+    await tester.pump();
+
+    expect(find.text('still.jpg'), findsNothing);
+    expect(find.text('Photos'), findsNothing);
     await tester.pumpWidget(const SizedBox());
   });
 

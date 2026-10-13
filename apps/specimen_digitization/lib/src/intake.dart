@@ -136,8 +136,14 @@ class _IntakeScreenState extends State<IntakeScreen> {
   /// that attaches later never repeats an earlier move.
   int _announcedMoves = 0;
 
-  /// The move announcement waiting for the next frame, if any.
-  String? _moveAnnouncement;
+  /// Moves not yet spoken. A count, not a sentence: two moves before one
+  /// frame are one announcement of two photos, never the last one alone.
+  int _pendingMoves = 0;
+
+  /// True while the main Queue's last photo collapses out of the manifest.
+  /// The Photos section stays mounted until that exit finishes, so the row
+  /// leaves the way every other row does instead of vanishing.
+  bool _holdPhotos = false;
 
   /// Wraps the Photos section, so focus inside it is noticed when the last
   /// row leaves and the section goes with it.
@@ -208,7 +214,12 @@ class _IntakeScreenState extends State<IntakeScreen> {
     final int moved = _session.movedToQueue - _announcedMoves;
     if (moved > 0) {
       _announcedMoves = _session.movedToQueue;
-      _announceMoved(movedToQueueLine(moved));
+      _announceMoved(moved);
+      if (_entries.isEmpty &&
+          !(context.ui.motion.reduced ||
+              MediaQuery.disableAnimationsOf(context))) {
+        _holdPhotos = true;
+      }
     }
     if (_entries.isEmpty && _photosFocus.hasFocus) {
       // The section is about to go. Keep the operator's place on the page
@@ -222,23 +233,31 @@ class _IntakeScreenState extends State<IntakeScreen> {
 
   /// Speaks the move once, after the frame that removes the rows, politely.
   /// Coalesced, so several rows leaving together are one sentence.
-  void _announceMoved(String message) {
-    _moveAnnouncement = message;
+  void _announceMoved(int count) {
+    final bool scheduled = _pendingMoves > 0;
+    _pendingMoves += count;
+    if (scheduled) return;
     WidgetsBinding.instance
       ..addPostFrameCallback((_) {
-        final String? pending = _moveAnnouncement;
-        _moveAnnouncement = null;
-        if (pending == null || !mounted) return;
+        final int pending = _pendingMoves;
+        _pendingMoves = 0;
+        if (pending == 0 || !mounted) return;
         if (!MediaQuery.supportsAnnounceOf(context)) return;
         unawaited(
           SemanticsService.sendAnnouncement(
             View.of(context),
-            pending,
+            movedToQueueLine(pending),
             Directionality.of(context),
           ),
         );
       })
       ..ensureVisualUpdate();
+  }
+
+  /// The manifest has finished collapsing its leaving rows.
+  void _exitsSettled() {
+    if (!mounted || !_holdPhotos) return;
+    setState(() => _holdPhotos = false);
   }
 
   @override
@@ -257,7 +276,8 @@ class _IntakeScreenState extends State<IntakeScreen> {
       );
       _session.addListener(_sessionChanged);
       _announcedMoves = _session.movedToQueue;
-      _moveAnnouncement = null;
+      _pendingMoves = 0;
+      _holdPhotos = false;
       _session.attachComplete(_transferRefresh);
       _session.attachHandoff(_transferRefresh);
       _sensitive = true;
@@ -933,6 +953,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
     onRetry: (ManifestEntry entry) => unawaited(_session.start(only: entry)),
     padding: padding,
     scrollable: scrollable,
+    onExitsSettled: _exitsSettled,
   );
 
   /// The one message slot, revealed above the sections.
@@ -989,7 +1010,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
                       // The section closes the way a banner does when the
                       // main Queue takes its last photo (motion, row 10).
                       MotionReveal(
-                        visible: _entries.isNotEmpty,
+                        visible: _entries.isNotEmpty || _holdPhotos,
                         child: Focus(
                           focusNode: _photosFocus,
                           includeSemantics: false,
