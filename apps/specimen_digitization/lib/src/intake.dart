@@ -221,9 +221,12 @@ class _IntakeScreenState extends State<IntakeScreen> {
         _holdPhotos = true;
       }
     }
-    if (_entries.isEmpty && _photosFocus.hasFocus) {
-      // The section is about to go. Keep the operator's place on the page
-      // rather than dropping focus to nowhere (06 section 3).
+    if (_entries.isEmpty && _photosFocus.hasFocus && !_holdPhotos) {
+      // The section goes this frame. Keep the operator's place on the page
+      // rather than dropping focus to nowhere (06 section 3). While the
+      // section is held for a last row's exit, the manifest makes this same
+      // handover itself ([IntakeManifest.emptyFocusTarget]), so exactly one
+      // request is ever made.
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _headingFocus.requestFocus();
       });
@@ -954,6 +957,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
     padding: padding,
     scrollable: scrollable,
     onExitsSettled: _exitsSettled,
+    emptyFocusTarget: _headingFocus,
   );
 
   /// The one message slot, revealed above the sections.

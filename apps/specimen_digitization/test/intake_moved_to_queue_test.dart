@@ -671,6 +671,61 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  for (final bool reduceMotion in <bool>[false, true]) {
+    testWidgets('focus in the last row ends on the Intake heading'
+        '${reduceMotion ? ' with animations off' : ''}', (
+      WidgetTester tester,
+    ) async {
+      final _ImmediateQueueRepository repository = _ImmediateQueueRepository();
+      final String user = 'focused-last-$reduceMotion';
+      await _pumpScreen(tester, repository, user, reduceMotion: reduceMotion);
+      final IntakeTransferSession session = intakeTransferSession(
+        repository,
+        _scope,
+        user,
+      );
+      session.entries.add(_readyPhoto('focused'));
+      session.changed();
+      await tester.pumpAndSettle();
+
+      // The operator is reading the only row's progress details.
+      final Finder details = find.descendant(
+        of: find.byKey(
+          ValueKey<String>('intake-progress-details-${_digest('focused')}'),
+        ),
+        matching: find.byWidgetPredicate(
+          (Widget w) => w is Focus || w is FocusableActionDetector,
+        ),
+      );
+      expect(details, findsWidgets);
+      final FocusNode rowNode = Focus.of(tester.element(details.first));
+      rowNode.requestFocus();
+      await tester.pump();
+      expect(rowNode.hasFocus, isTrue);
+
+      await tester.runAsync(session.start);
+      expect(session.entries, isEmpty);
+      await tester.pump();
+      await tester.pump();
+      if (!reduceMotion) {
+        // Mid-exit, one handover has won: the heading, not the summary of
+        // a manifest that is about to close.
+        expect(find.text('Photos'), findsOneWidget);
+        expect(
+          FocusManager.instance.primaryFocus?.debugLabel,
+          'Intake heading',
+        );
+      }
+      await tester.pumpAndSettle();
+
+      expect(find.text('Photos'), findsNothing);
+      final FocusNode? focused = FocusManager.instance.primaryFocus;
+      expect(focused?.debugLabel, 'Intake heading');
+      expect(focused?.context, isNotNull, reason: 'focus is not left nowhere');
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+
   test('the move line counts photos plainly', () {
     expect(movedToQueueLine(1), 'Photo moved to the main Queue.');
     expect(movedToQueueLine(3), '3 photos moved to the main Queue.');

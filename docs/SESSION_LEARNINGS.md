@@ -19801,3 +19801,13 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
 - Non-blocking fix: `_retireFinished` now also prunes `_processingRevisions` and `_startDispatchFailures` for the retired specimens. No test covers this.
 - Red run in a throwaway `git worktree add --detach 652f6eb9` checkout: the announcement test and the last-row test failed, with "Photo moved to the main Queue." and "Photos" not found. The other 9 passed.
 - Validation: `flutter analyze` is clean. `TZ=America/Chicago flutter test` on the same set as the entry above: 476 passed, and the new file has 11 tests. Goldens are unchanged. The full app suite, `scripts/ci/verify.sh`, both phones and a manual screen-reader pass: Not confirmed.
+
+## 2026-10-12 - Correction: one focus handover when the focused last row leaves (intake-leaves-when-queued, review round 2)
+
+- This corrects both entries above. Codex reviewed e5e14d12 (PR #336) and requested changes.
+- The earlier claim that "focus inside [the Photos section] moves to the screen heading" was incomplete for a focused last row with animations on. Two handovers raced. `IntakeScreen` asked for the heading. The manifest found no neighbouring row and asked for its own summary node one callback later, which won. So for the whole exit, focus sat on the summary of a manifest that was about to close.
+  - At e5e14d12 focus still ended on the heading once the section closed. That came from Flutter's focus-scope history, not from the design.
+- Fix: `IntakeManifest.emptyFocusTarget`. `IntakeScreen` passes its heading node, and the manifest uses it as its final fallback. While the section is held open for an exit, only the manifest hands focus over. `IntakeScreen` makes the request itself only when the section closes in the same frame (animations off, or a removal that is not animated). Exactly one request wins.
+- Test: `focus in the last row ends on the Intake heading`, run with animations on and off. Focus starts inside the only row's progress details. With animations on, focus is on the heading two frames into the exit and is still there after the section closes.
+  - Red run in a throwaway `git worktree add --detach e5e14d12` checkout: the animations-on case failed, with focus on 'Intake manifest summary' mid-exit. The animations-off case is a guard and passes on both commits.
+- Validation: `flutter analyze` is clean. `TZ=America/Chicago flutter test` on the same set: 478 passed, and the new file has 13 tests. Goldens are unchanged. The full app suite, `scripts/ci/verify.sh`, both phones and a manual screen-reader pass: Not confirmed.
