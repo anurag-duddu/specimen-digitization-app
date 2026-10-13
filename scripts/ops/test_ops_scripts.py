@@ -197,6 +197,45 @@ RESEARCH = ('resource.name.startsWith("projects/_/buckets/specimen-digitization.
             'firebasestorage.app/objects/research-journal/") || resource.name.startsWith("projects/_/buckets/'
             'specimen-digitization.firebasestorage.app/objects/research-media/")')
 
+APP_OBJECTS = ('resource.name.startsWith("projects/_/buckets/specimen-digitization.firebasestorage.app/objects/'
+               'application/sha256/")', "specimen_application_objects")
+CHECKPOINT_LISTING = (
+    'api.getAttribute("storage.googleapis.com/objectListPrefix", "").startsWith('
+    '"application/sha256/9089029b241c8342be41225b51531bf0457f2db0c3b9896c844b22b3487ac9b8/'
+    'sam3-cache")',
+    "specimen_sam3_checkpoint_listing",
+)
+EXPECTED_IAM_GRANTS = {
+    ("serviceAccount:specimen-worker-runtime@specimen-digitization.iam.gserviceaccount.com",
+     "projects/specimen-digitization/roles/specimenRuntimeConnector", "project", "specimen-digitization", None),
+    *((member, role, "bucket", "specimen-digitization.firebasestorage.app", APP_OBJECTS)
+      for member in (
+          "serviceAccount:specimen-worker-runtime@specimen-digitization.iam.gserviceaccount.com",
+          "serviceAccount:specimen-sam-runtime@specimen-digitization.iam.gserviceaccount.com",
+      )
+      for role in ("roles/storage.objectViewer", "roles/storage.objectCreator")),
+    ("serviceAccount:specimen-sam-runtime@specimen-digitization.iam.gserviceaccount.com",
+     "roles/storage.objectViewer", "bucket", "specimen-digitization.firebasestorage.app", CHECKPOINT_LISTING),
+    ("serviceAccount:specimen-sam-runtime@specimen-digitization.iam.gserviceaccount.com",
+     "roles/storage.legacyBucketReader", "bucket", "specimen-digitization.firebasestorage.app", None),
+    *(("serviceAccount:specimen-worker-runtime@specimen-digitization.iam.gserviceaccount.com", role,
+       "bucket", "specimen-digitization.firebasestorage.app", (RESEARCH, "specimen_research_objects"))
+      for role in ("roles/storage.objectViewer", "roles/storage.objectCreator")),
+    ("serviceAccount:specimen-worker-runtime@specimen-digitization.iam.gserviceaccount.com",
+     "roles/run.invoker", "service", "specimen-sam", None),
+    ("serviceAccount:specimen-worker-runtime@specimen-digitization.iam.gserviceaccount.com",
+     "roles/run.invoker", "job", "specimen-worker", None),
+    ("serviceAccount:specimen-api-runtime@specimen-digitization.iam.gserviceaccount.com",
+     "roles/run.invoker", "job", "specimen-worker", None),
+}
+
+
+def test_iam_grants_match_the_complete_literal_table_without_duplicates():
+    table = importlib.import_module("iam").grants(S.PROJECT, S.SAM_CHECKPOINT_SHA256)
+    rows = [(grant.member, grant.role, grant.kind, grant.name, grant.condition) for grant in table]
+    assert len(rows) == len(set(rows)) == len(EXPECTED_IAM_GRANTS) == 12
+    assert set(rows) == EXPECTED_IAM_GRANTS
+
 
 def test_iam_gives_the_worker_alone_create_and_get_under_the_research_prefixes_and_nothing_else():
     iam = importlib.import_module("iam")

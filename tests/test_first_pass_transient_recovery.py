@@ -81,12 +81,15 @@ def failure_code(failure):
     return "first_pass_deadline_exceeded" if failure == "deadline" else "model_provider_error"
 
 
-def assert_children_stopped(tmp_path, failure):
+def assert_children_stopped(tmp_path, failure, expected):
     if failure != "deadline":
         return
     assert not (tmp_path / "late-comparison-result").exists()
     children = tmp_path / "isolated-pids-first_pass"
-    for line in children.read_text().splitlines() if children.exists() else ():
+    assert children.exists()
+    lines = children.read_text().splitlines()
+    assert len(lines) == expected
+    for line in lines:
         with pytest.raises(ProcessLookupError):
             os.kill(int(line), 0)
 
@@ -128,7 +131,7 @@ def test_comparison_recovers_on_next_attempt_without_repeating_readings(
             "reserved_micros": FIRST_PASS_RESERVATION, "settled_micros": None
         }
         assert drain.program >= FIRST_PASS_RESERVATION
-    assert_children_stopped(tmp_path, failure)
+    assert_children_stopped(tmp_path, failure, 1)
 
 
 @pytest.mark.parametrize("failure", ["http_503", "deadline"])
@@ -167,7 +170,7 @@ def test_exhausted_transient_comparison_keeps_readings_unresolved_for_review(
             "reserved_micros": held, "settled_micros": None
         }
     assert last.program >= 3 * held and run.usage.actual_cost_micros is None
-    assert_children_stopped(tmp_path, failure)
+    assert_children_stopped(tmp_path, failure, 3)
 
 
 @pytest.mark.parametrize("failure", ["http_503", "deadline"])
@@ -195,7 +198,7 @@ def test_published_budget_gives_up_an_unaffordable_third_comparison(
     ]
     assert run.usage.reserved_cost_micros <= run.profile.execution.approved_cost_limit_micros
     assert all(last.research["ordinary_reservations"][f"{step}:{attempt}"]["settled_micros"] is None for attempt in (1, 2))
-    assert_children_stopped(tmp_path, failure)
+    assert_children_stopped(tmp_path, failure, 2)
 
 
 @pytest.mark.parametrize("operation", ["field_research", "finalize", "publish", "segment"])
