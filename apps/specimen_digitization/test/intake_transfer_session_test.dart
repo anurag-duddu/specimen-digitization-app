@@ -541,7 +541,9 @@ void main() {
       session.addListener(observer);
       await Future<void>.delayed(const Duration(milliseconds: 35));
       expect(repository.summaryRequests, <String>['specimen-observed']);
-      expect(session.entries.single.state, UploadState.inMainQueue);
+      // In the main Queue, the photo leaves Intake (owner, 2026-10-12).
+      expect(session.entries, isEmpty);
+      expect(session.movedToQueue, 1);
       session.removeListener(observer);
       session.close();
     },
@@ -583,7 +585,8 @@ void main() {
       'specimen-access',
       'specimen-access',
     ]);
-    expect(session.entries.single.state, UploadState.inMainQueue);
+    expect(session.entries, isEmpty);
+    expect(session.movedToQueue, 1);
     session.removeListener(observer);
     session.close();
   });
