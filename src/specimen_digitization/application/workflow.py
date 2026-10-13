@@ -12,6 +12,7 @@ import logfire
 from ..process_logging import log_code
 from .domain import (
     AuditEvent,
+    Disposition,
     Evidence,
     FieldValue,
     FirstPassDecision,
@@ -66,6 +67,33 @@ FIELD_RESEARCH = "field_research"
 # A run field research has completed reaches the handover again: the clearance
 # rules only, nothing researched, external or paid (FieldResearchStep.recheck).
 FIELD_RECHECK = "field_research_recheck"
+
+
+def requeue_completed_field_research(run: Run) -> bool:
+    """Make an explicit retry of a reviewed field-research run research again.
+
+    The normal handover after completed field research is rules-only recheck:
+    reviewer decisions and approvals must not start another paid harness pass.
+    When an operator explicitly retries a completed field-research run that is
+    still in Needs human review because automatic fields remain unsettled, remove
+    the completed marker so the next workflow step re-enters ``field_research``
+    on the unresolved fields instead of ``field_research_recheck``.
+    """
+    if (
+        FIELD_RESEARCH not in run.completed_steps
+        or run.disposition != Disposition.REVIEW
+        or run.blocker is not None
+        or run.dependencies.get("human_review_field_locks")
+        or run.attempts.get(FIELD_RESEARCH, 0) >= run.profile.execution.max_attempts
+    ):
+        return False
+    unsettled = {ValueState.UNRESOLVED, ValueState.AMBIGUOUS, ValueState.UNKNOWN}
+    if not any(value.state in unsettled for value in run.fields.values()):
+        return False
+    run.completed_steps = [step for step in run.completed_steps if step != FIELD_RESEARCH]
+    return True
+
+
 # A reading whose worker stopped after saving its intent and before saving its
 # result (Workflow._settle_lost_reading).
 LOST_READING = "reading_result_lost"

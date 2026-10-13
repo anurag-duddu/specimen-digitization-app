@@ -30,9 +30,11 @@ the workflow saves the run once after it:
    still unreachable, or a field that ran out of time, sends its field to
    review instead (``last_attempt``).
 
-Once the step has completed on a run it never runs there again: a later pass
-(a retry, or a reviewer's decision) applies the rules only (``refinalize``),
-on the fields exactly as they are.
+Once the step has completed on a run, reviewer decisions and approvals do not
+run it again: they apply the rules only (``refinalize``), on the fields exactly
+as they are. An explicit operator retry of a completed run that is still in
+review for unsettled automatic fields may re-enter the step on those unresolved
+fields.
 """
 
 from __future__ import annotations

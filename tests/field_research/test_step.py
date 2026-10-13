@@ -39,6 +39,7 @@ from specimen_digitization.application.reliability import AdapterFailure
 from specimen_digitization.application.storage import LocalBlobs, SQLiteRepository, digest
 from specimen_digitization.application.workflow import (
     FIELD_RESEARCH, OperationalBlock, SyntheticAdapters, Workflow,
+    requeue_completed_field_research,
 )
 from specimen_digitization.field_research import agreement
 from specimen_digitization.field_research import step as field_step
@@ -2559,11 +2560,13 @@ def test_a_reviewers_correction_is_kept_and_the_run_is_never_researched_or_paid_
     verify_evidence(rig.repository.get(rig.principal.scope, saved.id), rig.blobs)
 
 
-def test_a_retry_action_on_a_researched_run_only_applies_the_rules_again(rig):
+def test_a_retry_action_on_a_cleared_researched_run_only_applies_the_rules_again(rig):
     mounted(rig, Scripted())
     done = rig.workflow.step(rig.principal, rig.specimen.id)
-    # api.action "retry": the next ordinary step, "plan", becomes the stage.
+    assert done.run.disposition == Disposition.CLEARED
+    # api.action "retry": a cleared record is not researched or paid again.
     retried = done.model_copy(deep=True)
+    assert not requeue_completed_field_research(retried.run)
     retried.run.stage = rig.workflow.next_step(retried.run).split(":")[0]
     assert retried.run.stage == "plan"
     retried.run.disposition = None
@@ -2574,6 +2577,81 @@ def test_a_retry_action_on_a_researched_run_only_applies_the_rules_again(rig):
     assert second.calls == [] and again.paid_calls == done.run.paid_calls
     assert (again.stage, again.disposition, again.reasons) == ("finalized", Disposition.CLEARED, [])
     assert again.completed_steps == done.run.completed_steps
+
+
+def test_retry_action_on_researched_review_requeues_unsettled_field_research(rig):
+    first = Scripted({"country": answering(FieldAnswer(
+        outcome="sources_cannot_resolve", literal=LABEL["country"], reading_names=["1A"],
+        explanation="The first pass could not settle it."))})
+    mounted(rig, first)
+    done = rig.workflow.step(rig.principal, rig.specimen.id)
+    assert (done.run.stage, done.run.disposition, done.run.blocker) == ("finalized", Disposition.REVIEW, None)
+    assert FIELD_RESEARCH in done.run.completed_steps
+    assert done.run.fields["country"].state == ValueState.UNRESOLVED
+
+    retried = done.model_copy(deep=True)
+    assert requeue_completed_field_research(retried.run)
+    retried.run.blocker = None
+    retried.run.disposition = None
+    retried.run.stage = rig.workflow.next_step(retried.run).split(":")[0]
+    assert retried.run.stage == "plan" and FIELD_RESEARCH not in retried.run.completed_steps
+    saved = rig.repository.save(rig.principal, retried, done.version, "retry", "retry")
+
+    second = Scripted()
+    mounted(rig, second)
+    again = rig.workflow.step(rig.principal, saved.id).run
+    assert "country" in second.calls
+    assert len(again.paid_calls) == len(done.run.paid_calls) + 1
+    assert again.attempts[FIELD_RESEARCH] == done.run.attempts[FIELD_RESEARCH] + 1
+    assert (again.stage, again.disposition, again.blocker, again.reasons) == (
+        "finalized", Disposition.CLEARED, None, [])
+    assert again.completed_steps[-1] == FIELD_RESEARCH
+
+
+def test_retry_action_on_researched_review_keeps_attempt_limit(rig):
+    first = Scripted({"country": answering(FieldAnswer(
+        outcome="sources_cannot_resolve", literal=LABEL["country"], reading_names=["1A"],
+        explanation="The first pass could not settle it."))})
+    mounted(rig, first)
+    done = rig.workflow.step(rig.principal, rig.specimen.id)
+    assert done.run.disposition == Disposition.REVIEW
+    done.run.attempts[FIELD_RESEARCH] = done.run.profile.execution.max_attempts
+
+    retried = done.model_copy(deep=True)
+    assert not requeue_completed_field_research(retried.run)
+    retried.run.blocker = None
+    retried.run.disposition = None
+    retried.run.stage = rig.workflow.next_step(retried.run).split(":")[0]
+    saved = rig.repository.save(rig.principal, retried, done.version, "retry-maxed", "retry-maxed")
+
+    second = Scripted()
+    mounted(rig, second)
+    again = rig.workflow.step(rig.principal, saved.id).run
+    assert second.calls == []
+    assert again.attempts[FIELD_RESEARCH] == done.run.profile.execution.max_attempts
+    assert (again.stage, again.disposition) == ("finalized", Disposition.REVIEW)
+
+
+def test_retry_http_action_on_researched_review_queues_field_research_instead_of_recheck(rig, monkeypatch):
+    first = Scripted({"country": answering(FieldAnswer(
+        outcome="sources_cannot_resolve", literal=LABEL["country"], reading_names=["1A"],
+        explanation="The first pass could not settle it."))})
+    mounted(rig, first)
+    done = rig.workflow.step(rig.principal, rig.specimen.id)
+    assert done.run.disposition == Disposition.REVIEW
+
+    from specimen_digitization.application import api as app_api
+    monkeypatch.setattr(app_api, "queue",
+        lambda specimen, registry, actor: setattr(specimen.run, "stage", "pending"))
+    client = review_client(rig)
+    response = client.post(f"/v1/organizations/{ORG}/runs/{done.run.id}/actions",
+        headers={"Authorization": "Bearer reviewer", "Idempotency-Key": "retry-field-research"},
+        json={"expected_revision": done.version, "action": "retry",
+            "reason": "Run the field research harness again after a code fix."})
+    assert response.status_code == 200, response.text
+    saved = rig.repository.get(rig.principal.scope, rig.specimen.id)
+    assert saved.run.stage == "pending" and saved.run.disposition is None
+    assert FIELD_RESEARCH not in saved.run.completed_steps
 
 
 def review_client(rig):
