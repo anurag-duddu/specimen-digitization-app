@@ -12,6 +12,7 @@ import 'package:crypto/crypto.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/widgets.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -130,6 +131,28 @@ class _IntakeScreenState extends State<IntakeScreen> {
   bool _transferRefreshScheduled = false;
   String? _error;
 
+  /// The session's [IntakeTransferSession.movedToQueue] already spoken for,
+  /// so a photo that moves to the main Queue is announced once, and a route
+  /// that attaches later never repeats an earlier move.
+  int _announcedMoves = 0;
+
+  /// The move announcement waiting for the next frame, if any.
+  String? _moveAnnouncement;
+
+  /// Wraps the Photos section, so focus inside it is noticed when the last
+  /// row leaves and the section goes with it.
+  final FocusNode _photosFocus = FocusNode(
+    debugLabel: 'Intake photos',
+    skipTraversal: true,
+    canRequestFocus: false,
+  );
+
+  /// The screen heading, where focus lands if the section it was in leaves.
+  final FocusNode _headingFocus = FocusNode(
+    debugLabel: 'Intake heading',
+    skipTraversal: true,
+  );
+
   String get _captureOwner => '${widget.userId}:${widget.scope.key}';
   static const String _captureKey = 'pending-camera-owner-v1';
   String get _autoIngestKey =>
@@ -158,6 +181,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
       widget.userId,
     );
     _session.addListener(_sessionChanged);
+    _announcedMoves = _session.movedToQueue;
     // Preserve the existing Intake completion contract. The main Queue still
     // decides what it can display, while Intake independently tracks the
     // photograph until processing hands it over.
@@ -181,7 +205,40 @@ class _IntakeScreenState extends State<IntakeScreen> {
 
   void _sessionChanged() {
     if (!mounted) return;
+    final int moved = _session.movedToQueue - _announcedMoves;
+    if (moved > 0) {
+      _announcedMoves = _session.movedToQueue;
+      _announceMoved(movedToQueueLine(moved));
+    }
+    if (_entries.isEmpty && _photosFocus.hasFocus) {
+      // The section is about to go. Keep the operator's place on the page
+      // rather than dropping focus to nowhere (06 section 3).
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _headingFocus.requestFocus();
+      });
+    }
     setState(() => _error ??= _session.restoreError);
+  }
+
+  /// Speaks the move once, after the frame that removes the rows, politely.
+  /// Coalesced, so several rows leaving together are one sentence.
+  void _announceMoved(String message) {
+    _moveAnnouncement = message;
+    WidgetsBinding.instance
+      ..addPostFrameCallback((_) {
+        final String? pending = _moveAnnouncement;
+        _moveAnnouncement = null;
+        if (pending == null || !mounted) return;
+        if (!MediaQuery.supportsAnnounceOf(context)) return;
+        unawaited(
+          SemanticsService.sendAnnouncement(
+            View.of(context),
+            pending,
+            Directionality.of(context),
+          ),
+        );
+      })
+      ..ensureVisualUpdate();
   }
 
   @override
@@ -199,6 +256,8 @@ class _IntakeScreenState extends State<IntakeScreen> {
         widget.userId,
       );
       _session.addListener(_sessionChanged);
+      _announcedMoves = _session.movedToQueue;
+      _moveAnnouncement = null;
       _session.attachComplete(_transferRefresh);
       _session.attachHandoff(_transferRefresh);
       _sensitive = true;
@@ -221,6 +280,8 @@ class _IntakeScreenState extends State<IntakeScreen> {
     _session.detachHandoff(_transferRefresh);
     _session.removeListener(_sessionChanged);
     _slots?.release(this);
+    _photosFocus.dispose();
+    _headingFocus.dispose();
     super.dispose();
   }
 
@@ -726,11 +787,17 @@ class _IntakeScreenState extends State<IntakeScreen> {
   Widget _batchHeader(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: <Widget>[
-      Semantics(
-        header: true,
-        child: Text(
-          intakeTitle,
-          style: context.ui.type.headline.copyWith(color: context.ui.color.ink),
+      Focus(
+        focusNode: _headingFocus,
+        includeSemantics: false,
+        child: Semantics(
+          header: true,
+          child: Text(
+            intakeTitle,
+            style: context.ui.type.headline.copyWith(
+              color: context.ui.color.ink,
+            ),
+          ),
         ),
       ),
       if (_entries.isEmpty) ...[
@@ -919,27 +986,40 @@ class _IntakeScreenState extends State<IntakeScreen> {
                       _captureCard(context, minDropHeight: 0),
                       SizedBox(height: layout.gap),
                       _sensitivityControl(context),
-                      if (_entries.isNotEmpty) ...[
-                        SizedBox(height: layout.sectionGap),
-                        Semantics(
-                          header: true,
-                          child: Text('Photos', style: ui.type.title),
-                        ),
-                        SizedBox(height: ui.space.s2),
-                        Align(
-                          alignment: AlignmentDirectional.topStart,
-                          child: ConstrainedBox(
-                            constraints: BoxConstraints(
-                              maxWidth: layout.readableMax,
-                            ),
-                            child: _manifest(
-                              context,
-                              padding: EdgeInsets.zero,
-                              scrollable: false,
-                            ),
+                      // The section closes the way a banner does when the
+                      // main Queue takes its last photo (motion, row 10).
+                      MotionReveal(
+                        visible: _entries.isNotEmpty,
+                        child: Focus(
+                          focusNode: _photosFocus,
+                          includeSemantics: false,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(height: layout.sectionGap),
+                              Semantics(
+                                header: true,
+                                child: Text('Photos', style: ui.type.title),
+                              ),
+                              SizedBox(height: ui.space.s2),
+                              Align(
+                                alignment: AlignmentDirectional.topStart,
+                                child: ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    maxWidth: layout.readableMax,
+                                  ),
+                                  child: _manifest(
+                                    context,
+                                    padding: EdgeInsets.zero,
+                                    scrollable: false,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ],
+                      ),
                       if (_inlineUpload() case final Widget upload) ...[
                         SizedBox(height: layout.gap),
                         Align(
