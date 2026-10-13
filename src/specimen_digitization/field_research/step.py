@@ -147,12 +147,17 @@ BLOCKER_STATUS = dict(RETRYABLE.values())
 # failure, or a defect) blocks on every attempt; a provider's outage is for
 # a later retry, never a finalized record.
 REVIEW_ON_LAST_ATTEMPT = frozenset({"source_unavailable", "timeout"})
+# Field research given up on unsent (FieldResearchStep.give_up): one warning
+# finding per run, "field_research_given_up:<the limit's code>".
+GIVEN_UP = "field_research_given_up"
+GIVEN_UP_RULES = "field-research-given-up-2026-10-12"
 FIELD_REASONS = {
     "source_unavailable": "An approved source could not be reached. The record will be retried.",
     "model_error": "An error occurred while researching this field. The record will be retried.",
     "timeout": "Research on this field ran out of time. The record will be retried.",
     "budget_exhausted": "The run's cost limit was reached before this field could be checked.",
     "input_too_large": "The readings and sources for this field were too long to send for checking.",
+    "run_limit": "The run reached one of its processing limits before this field could be checked.",
     None: "No answer was produced for this field.",
 }
 # The model gateway's own bound on one provider request, under the expert's
@@ -3046,6 +3051,41 @@ class FieldResearchStep:
             refinalize(specimen.run, specimen=specimen, blobs=workflow.blobs, today=workflow.clock().date())
         except EvidenceIntegrityError as error:
             raise OperationalBlock(str(error)) from error
+
+    def give_up(self, workflow, principal, specimen, code: str) -> None:
+        """Give field research up unsent: the run's own limits other than money
+        (``code``, workflow.RESEARCH_LIMITS) leave no room for another attempt.
+
+        No expert, source or meter is started and nothing is reserved, paid
+        for or recorded as a paid call; the fields an earlier attempt settled
+        are kept. Every field still to research is unresolved, with the
+        run_limit reason, and the step's own rules decide the record
+        (finalize_fields): a field the harness could not check waits on a
+        person, so the record goes to review. One warning finding records the
+        limit. The identified-by IRN keeps its nonblocking exception, as when
+        research runs.
+        """
+        run = specimen.run
+        try:
+            profile = profile_of(run)
+            prepared = build_tasks(run, profile)
+            outcomes = [
+                FieldOutcome(task.key, FieldAnswer(outcome="sources_cannot_resolve", explanation=IRN_EXPLANATION),
+                    finalized_without_model=True)
+                if task.key in NO_APPROVED_AUTHORITY else FieldOutcome(task.key, None, failure="run_limit")
+                for task in prepared[1]
+            ]
+            run.findings = [f for f in run.findings if f.rule_id != GIVEN_UP] + [
+                RunFinding(rule_id=GIVEN_UP, rule_version=GIVEN_UP_RULES, severity="warning",
+                    reason_code=f"{GIVEN_UP}:{code}")]
+            decisions: dict[str, dict] = {}
+            apply_outcomes(run, profile, prepared[1], outcomes, blobs=workflow.blobs, calls=(),
+                asset_id=specimen.asset.id, decisions=decisions)
+            finalize_fields(run, profile, outcomes, specimen=specimen, blobs=workflow.blobs,
+                today=workflow.clock().date())
+        except EvidenceIntegrityError as error:
+            raise OperationalBlock(str(error)) from error
+        trace_fields(run, prepared[1], outcomes, (), decisions)
 
     def run(self, workflow, principal, specimen, *, cap_micros: int, deadline_seconds: float) -> None:
         run = specimen.run

@@ -205,8 +205,11 @@ class FieldAnswer(BaseModel):
 # or a model request that ran out of time (experts.timed_out); a model_error
 # is any other failure of the model, or a defect. On the step's last attempt
 # a timeout or source_unavailable goes to review; a model_error blocks on
-# every attempt (step.REVIEW_ON_LAST_ATTEMPT).
-Failure = Literal["source_unavailable", "model_error", "timeout", "budget_exhausted", "input_too_large"]
+# every attempt (step.REVIEW_ON_LAST_ATTEMPT). A run_limit is a field the
+# step gave up on unsent: the run's own limits other than money left no room
+# for another attempt (step.FieldResearchStep.give_up); it goes to review.
+Failure = Literal["source_unavailable", "model_error", "timeout", "budget_exhausted", "input_too_large",
+    "run_limit"]
 
 
 @dataclass

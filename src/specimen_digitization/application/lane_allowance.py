@@ -217,3 +217,29 @@ def reserve_step(repository, principal, specimen, step, cost, clock=None) -> str
     if reservation.position is not None:
         run.program_allowance = reservation.position
     return reservation.issue
+
+
+def admits(repository, principal, specimen, cost, clock=None) -> str | None:
+    """What ``reserve_step`` would block the step with, read only: nothing is
+    reserved. None when the run carries no allowance, the step costs nothing,
+    or the ledger has room for ``cost``. Used where a step that ends without a
+    call must still keep a money block first (workflow.RESEARCH_LIMITS)."""
+    policy = specimen.run.profile.execution
+    allowance = policy.program_allowance_micros
+    if not cost or allowance is None:
+        return None
+    if type(cost) is not int or cost <= 0 or type(allowance) is not int or allowance <= 0:
+        return UNAVAILABLE
+    ledger = ProgramLedger(
+        repository,
+        Scope(
+            organization_id=principal.scope.organization_id,
+            collection_id=policy.program_ledger_collection,
+        ),
+        clock=clock,
+    )
+    try:
+        total = ledger.read()["reserved_total_micros"]
+    except (Conflict, LegacyLedgerUnavailable, TypeError, ValueError, KeyError):
+        return UNAVAILABLE
+    return EXHAUSTED if total + cost > allowance else None
