@@ -221,12 +221,14 @@ class _IntakeScreenState extends State<IntakeScreen> {
         _holdPhotos = true;
       }
     }
-    if (_entries.isEmpty && _photosFocus.hasFocus && !_holdPhotos) {
-      // The section goes this frame. Keep the operator's place on the page
-      // rather than dropping focus to nowhere (06 section 3). While the
-      // section is held for a last row's exit, the manifest makes this same
-      // handover itself ([IntakeManifest.emptyFocusTarget]), so exactly one
-      // request is ever made.
+    if (_entries.isEmpty && _photosFocus.hasFocus) {
+      // The Photos section is about to close, now or after a last row's
+      // exit. Wherever focus is inside it (a row, Stop, the summary), it
+      // goes to the screen heading rather than to nowhere or to whatever
+      // focus history picks (06 section 3). This is the only handover for
+      // an emptied list: the manifest leaves it to this screen
+      // ([IntakeManifest.hostHandlesEmptyFocus]). Checked before the rebuild
+      // that removes the focused control, so focus is still inside.
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _headingFocus.requestFocus();
       });
@@ -957,7 +959,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
     padding: padding,
     scrollable: scrollable,
     onExitsSettled: _exitsSettled,
-    emptyFocusTarget: _headingFocus,
+    hostHandlesEmptyFocus: true,
   );
 
   /// The one message slot, revealed above the sections.

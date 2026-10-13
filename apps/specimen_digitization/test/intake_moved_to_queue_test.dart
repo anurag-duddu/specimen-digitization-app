@@ -3,6 +3,7 @@
 // Intake list and this device's saved list by itself, is announced once, and
 // takes nobody's keyboard focus with it. Every other state stays.
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -144,6 +145,9 @@ Future<void> _pumpManifest(
 
 /// A server whose every upload completes straight into the main Queue.
 class _ImmediateQueueRepository implements SpecimenRepository {
+  /// When set, an upload waits here, so a test can act mid-upload.
+  Completer<void>? gate;
+
   @override
   Future<Json> createIntake(
     CollectionScope scope,
@@ -161,7 +165,10 @@ class _ImmediateQueueRepository implements SpecimenRepository {
     Json session,
     IntakeFile file,
     void Function(double) progress,
-  ) async => progress(1);
+  ) async {
+    await gate?.future;
+    progress(1);
+  }
 
   @override
   Future<Json> completeIntake(
@@ -724,6 +731,66 @@ void main() {
       expect(focused?.context, isNotNull, reason: 'focus is not left nowhere');
       await tester.pumpWidget(const SizedBox());
     });
+  }
+
+  for (final bool reduceMotion in <bool>[false, true]) {
+    testWidgets(
+      'focus on Stop ends on the Intake heading when the upload is queued'
+      '${reduceMotion ? ' with animations off' : ''}',
+      (WidgetTester tester) async {
+        final _ImmediateQueueRepository repository = _ImmediateQueueRepository()
+          ..gate = Completer<void>();
+        final String user = 'stop-focus-$reduceMotion';
+        await _pumpScreen(tester, repository, user, reduceMotion: reduceMotion);
+        final IntakeTransferSession session = intakeTransferSession(
+          repository,
+          _scope,
+          user,
+        );
+        session.entries.add(_readyPhoto('sending'));
+        session.changed();
+        await tester.pump();
+
+        late Future<void> run;
+        await tester.runAsync(() async {
+          run = session.start();
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        });
+        await tester.pump();
+        await tester.pump();
+
+        // The operator has moved to the header's Stop button.
+        final Finder stop = find.byKey(const ValueKey<String>('intake-stop'));
+        expect(stop, findsOneWidget);
+        final FocusNode stopNode = Focus.of(
+          tester.element(
+            find.descendant(of: stop, matching: find.text('Stop')).first,
+          ),
+        );
+        stopNode.requestFocus();
+        await tester.pump();
+        expect(stopNode.hasFocus, isTrue);
+
+        await tester.runAsync(() async {
+          repository.gate!.complete();
+          await run;
+        });
+        expect(session.entries, isEmpty);
+        await tester.pump();
+        await tester.pump();
+        expect(
+          FocusManager.instance.primaryFocus?.debugLabel,
+          'Intake heading',
+        );
+
+        await tester.pumpAndSettle();
+        expect(find.text('Photos'), findsNothing);
+        final FocusNode? focused = FocusManager.instance.primaryFocus;
+        expect(focused?.debugLabel, 'Intake heading');
+        expect(focused?.context, isNotNull);
+        await tester.pumpWidget(const SizedBox());
+      },
+    );
   }
 
   test('the move line counts photos plainly', () {

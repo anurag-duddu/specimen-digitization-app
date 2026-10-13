@@ -40,13 +40,13 @@ class IntakeManifest extends StatefulWidget {
     this.padding,
     this.scrollable = true,
     this.onExitsSettled,
-    this.emptyFocusTarget,
+    this.hostHandlesEmptyFocus = false,
   });
 
-  /// Where focus goes when the last row leaves while it held focus. The
-  /// manifest's own summary when null; a host that closes the manifest once
-  /// it is empty passes a node that outlives it.
-  final FocusNode? emptyFocusTarget;
+  /// True when the host moves focus itself once the list is empty, because
+  /// it closes the manifest then. The manifest then hands focus over only
+  /// between rows; when false, an emptied list's focus goes to its summary.
+  final bool hostHandlesEmptyFocus;
 
   /// Called after a frame in which no row is leaving, so a host that kept
   /// the manifest mounted for a final exit knows it may let it go.
@@ -165,8 +165,7 @@ class _IntakeManifestState extends State<IntakeManifest> {
       if (_rowFocus[gone.digest]?.hasFocus ?? false) {
         focusTarget =
             _neighbourFocus(index, present) ??
-            widget.emptyFocusTarget ??
-            _landing;
+            (widget.hostHandlesEmptyFocus ? null : _landing);
       }
       if (!reduced && gone.state == UploadState.inMainQueue) {
         _leaving.add(gone.digest);
@@ -206,9 +205,7 @@ class _IntakeManifestState extends State<IntakeManifest> {
           _rowFocus.remove(digest)?.dispose();
         }
         if (!mounted || target == null) return;
-        if (!identical(target, _landing) &&
-            !identical(target, widget.emptyFocusTarget) &&
-            target.context == null) {
+        if (!identical(target, _landing) && target.context == null) {
           _landing.requestFocus();
           return;
         }
