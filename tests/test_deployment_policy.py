@@ -314,6 +314,22 @@ def test_release_contract_names_only_approved_backend_workflows() -> None:
             assert row in contract, row
 
 
+def test_readme_marks_linked_go_live_documents_as_retired_history() -> None:
+    readme = (ROOT / "README.md").read_text()
+    assert "Historical records only (retired; do not follow their commands)" in readme
+
+    for relative in (
+        "docs/execution/GO_LIVE_READINESS.md",
+        "docs/execution/GO_LIVE_RUNBOOK.md",
+    ):
+        document = (ROOT / relative).read_text()
+        opening = "\n".join(document.splitlines()[:12])
+        assert "RETIRED — historical record only" in opening
+        assert "Do not follow commands or" in opening
+        assert "scripts/ops/owner_setup.sh" in opening
+        assert "scripts/ci/RETIRED.md" in opening
+
+
 @pytest.mark.parametrize("plane", PLANES)
 def test_release_workflow_starts_from_main_or_a_manual_run_and_one_runs_at_a_time(plane: str) -> None:
     workflow = release_workflow(plane)
