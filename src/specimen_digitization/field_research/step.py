@@ -1434,6 +1434,44 @@ def _proposal_identity(proposal: _LocationProposal) -> tuple[str, tuple[str, ...
     return (place_name(candidate.name), tuple(place_name(parent.name) for parent in candidate.parents))
 
 
+def _location_name_matches_literal(literal: str, answer: SourceAnswer, candidate) -> bool:
+    """Whether a shared location answer can stand for a field's label text.
+
+    Reconciliation may move a place string to a different administrative field.
+    It should accept the same place-name comparison as ordinary place settling,
+    plus the abbreviation expansion rule used there (for example ``Ill.`` ->
+    ``Illinois``).
+    """
+    from .abbreviations import fits
+    from .agreement import asked_name, place_name
+
+    literal_name = place_name(literal)
+    candidate_name = place_name(candidate.name)
+    if candidate_name == literal_name:
+        return True
+    asked = asked_name(answer)
+    return ((place_name(asked) == candidate_name and fits(literal, asked))
+        or fits(literal, candidate.name))
+
+
+def _answer_can_support_location_literal(answer: SourceAnswer, literal: str) -> bool:
+    """Whether a source answer was about a written literal or its expansion."""
+    from .abbreviations import fits
+    from .agreement import about, asked_name
+
+    return about(answer, literal) or fits(literal, asked_name(answer))
+
+
+def _text_names_place(text: str | None, place: str) -> bool:
+    """Whether label text names a place exactly or by abbreviation."""
+    if not text:
+        return False
+    from .abbreviations import fits
+    from .agreement import place_name
+
+    return place_name(text) == place_name(place) or fits(text, place)
+
+
 def _field_place(run, key: str, value: FieldValue, evidence: Mapping[str, Evidence],
         received: Mapping[str, Sequence[SourceAnswer]]):
     """A supported place value as agreement.lies_in compares it."""
@@ -1459,7 +1497,6 @@ def _candidate_fits_existing_chain(run, key: str, literal: str, candidate, *,
     from .agreement import PLACE_ORDER, lies_in, place_name
 
     ancestors = PLACE_ORDER[:PLACE_ORDER.index(key)]
-    parent_names = {place_name(parent.name) for parent in candidate.parents}
     for ancestor in ancestors:
         value = run.fields.get(ancestor)
         if value is None:
@@ -1470,7 +1507,9 @@ def _candidate_fits_existing_chain(run, key: str, literal: str, candidate, *,
             continue
         if value.literal and value.state != ValueState.NOT_PRESENT:
             written = place_name(value.literal)
-            if written != place_name(literal) and written not in parent_names:
+            names_candidate_or_parent = (written == place_name(literal)
+                or any(_text_names_place(value.literal, parent.name) for parent in candidate.parents))
+            if not names_candidate_or_parent:
                 return False
     return True
 
@@ -1479,7 +1518,7 @@ def _location_proposals(tasks_by_key: Mapping[str, FieldTask],
         received: Mapping[str, Sequence[SourceAnswer]], readings: Sequence[Reading],
         outcomes_by_key: Mapping[str, FieldOutcome]) -> dict[str, list[_LocationProposal]]:
     """Source-confirmed place interpretations pooled across location fields."""
-    from .agreement import about, at_level, place_name
+    from .agreement import at_level
 
     proposals: dict[str, list[_LocationProposal]] = {key: [] for key in LOCATION_RECONCILE_KEYS}
     for source_key in LOCATION_RECONCILE_KEYS:
@@ -1495,11 +1534,11 @@ def _location_proposals(tasks_by_key: Mapping[str, FieldTask],
             if answer.evidence is None:
                 continue
             for literal, names in literals:
-                if not about(answer, literal):
+                if not _answer_can_support_location_literal(answer, literal):
                     continue
                 for key in LOCATION_RECONCILE_KEYS:
                     for candidate in at_level(key, answer):
-                        if place_name(candidate.name) != place_name(literal):
+                        if not _location_name_matches_literal(literal, answer, candidate):
                             continue
                         proposals[key].append(_LocationProposal(key, literal, names, source_key, answer, candidate))
     return proposals
@@ -1507,12 +1546,11 @@ def _location_proposals(tasks_by_key: Mapping[str, FieldTask],
 
 def _answer_levels_for_literal(answer: SourceAnswer, literal: str) -> set[str]:
     """Location levels one source answer confirms for the written literal."""
-    from .agreement import at_level, place_name
+    from .agreement import at_level
 
     levels: set[str] = set()
-    literal_name = place_name(literal)
     for key in LOCATION_RECONCILE_KEYS:
-        if any(place_name(candidate.name) == literal_name for candidate in at_level(key, answer)):
+        if any(_location_name_matches_literal(literal, answer, candidate) for candidate in at_level(key, answer)):
             levels.add(key)
     return levels
 
