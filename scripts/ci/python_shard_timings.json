@@ -3,10 +3,10 @@
   "source": {
     "workflow_run": 38280958547,
     "measured_at": "2026-10-12",
-    "note": "Sum of each module's entries in pytest --durations=25 across six protected shards; lower bounds only."
+    "note": "Protected-shard lower bounds; test_parallel_roles was locally remeasured after its deliberate delay was removed."
   },
   "module_seconds": {
-    "tests/research_harness/test_parallel_roles.py": 602.49,
+    "tests/research_harness/test_parallel_roles.py": 433.43,
     "tests/research_harness/test_run_budget_ceiling.py": 276.21,
     "tests/research_harness/test_production_e2e.py": 274.46,
     "tests/research_harness/test_native_retry_work_queue.py": 272.08,

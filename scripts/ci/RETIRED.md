@@ -89,6 +89,13 @@ imported another test in this list.
 
 Their fixture `fixtures/publication_auth_transport.cjs` was deleted too.
 
+The unused input templates tied only to the deleted initializer and packet
+minting commands were deleted with them:
+
+- `infra/release/data-initialization-inventory.plan.template.json`
+- `infra/release/data-initialize-missing.plan.template.json`
+- `infra/release/evidence-digests.template.json`
+
 ## 3. Still in use by CI and Hosting
 
 Not retired.

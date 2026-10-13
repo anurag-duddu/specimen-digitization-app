@@ -143,6 +143,8 @@ jobs:
           scripts/ci/test_smoke_web_routes.py
           tests/test_deployment_policy.py
           tests/test_hosting_attempt_binding.py
+          tests/test_local_review_runner.py
+          tests/research_harness/test_thread_embedded_schema.py
 
       - name: Download Python results
         if: needs.python-scope.outputs.full == 'true'

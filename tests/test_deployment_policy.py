@@ -177,9 +177,31 @@ def test_frontend_only_python_scope_keeps_the_required_gate_and_fails_closed() -
     focused = next(step for step in aggregate["steps"]
                    if step.get("name") == "Run focused frontend Python contracts")
     assert focused["if"] == "needs.python-scope.outputs.full == 'false'"
-    for path in ("scripts/ci/test_public_settings.py", "scripts/ci/test_smoke_web_routes.py",
-                 "tests/test_deployment_policy.py", "tests/test_hosting_attempt_binding.py"):
+    focused_paths = (
+        "scripts/ci/test_public_settings.py",
+        "scripts/ci/test_smoke_web_routes.py",
+        "tests/test_deployment_policy.py",
+        "tests/test_hosting_attempt_binding.py",
+        "tests/test_local_review_runner.py",
+        "tests/research_harness/test_thread_embedded_schema.py",
+    )
+    for path in focused_paths:
         assert path in focused["run"]
+
+    # A Python test that resolves this repository and names the Flutter tree
+    # is a cross-language contract. Keep every such test in the focused gate;
+    # otherwise a frontend-only change could break it while reporting green.
+    references = set()
+    for directory in (ROOT / "tests", ROOT / "scripts"):
+        for path in directory.rglob("test_*.py"):
+            source = path.read_text(encoding="utf-8")
+            names_flutter_tree = (
+                "apps/specimen_digitization" in source
+                or re.search(r'["\']apps["\']\s*/\s*["\']specimen_digitization["\']', source)
+            )
+            if "Path(__file__)" in source and names_flutter_tree:
+                references.add(str(path.relative_to(ROOT)))
+    assert references <= set(focused_paths)
     for name in ("Download Python results", "Verify complete Python coverage"):
         step = next(step for step in aggregate["steps"] if step.get("name") == name)
         assert step["if"] == "needs.python-scope.outputs.full == 'true'"

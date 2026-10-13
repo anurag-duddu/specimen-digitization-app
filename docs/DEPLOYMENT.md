@@ -128,9 +128,10 @@ only when every changed path is under `apps/specimen_digitization/` or is
 comparison, any other path or any event other than `pull_request` requires the
 complete suite. The focused path still installs the locked Python environment
 and runs the public-settings, built-route, deployment-policy and Hosting-attempt
-contract suites. The Flutter job separately runs the UI-writing ratchet before
-analysis and tests. The protected check remains named `Python tests` in both
-paths.
+contract suites, the local-review credential guard, and the embedded
+research-schema parity contract. The Flutter job separately runs the UI-writing
+ratchet before analysis and tests. The protected check remains named `Python
+tests` in both paths.
 
 Full Python tests run in six isolated runner jobs. Each runner performs the
 same complete pytest discovery, then keeps whole test files assigned
@@ -142,9 +143,11 @@ source/run/attempt identity, successful test phases and complete execution with
 no missing, duplicate or extra tests. A failed or missing shard fails the gate.
 Every shard also reports its 25 slowest test durations for performance diagnosis.
 
-`scripts/ci/smoke_web_routes.py` runs between the deployment stamp and the
-artifact upload, so a build that fails it is never uploaded and therefore can
-never be deployed. It serves `build/web` on 127.0.0.1 with the rewrites and
+`scripts/ci/smoke_web_routes.py` and the embedded research-schema parity test
+run in the focused frontend contract gate. The former runs between the
+deployment stamp and the artifact upload, so a build that fails it is never
+uploaded and therefore can never be deployed. It serves `build/web` on
+127.0.0.1 with the rewrites and
 the response headers `firebase.json` declares, reads the route table out of
 `apps/specimen_digitization/lib/src/app/app_router.dart`, and proves four
 things about the artifact: every declared location answers with the
@@ -1181,9 +1184,9 @@ validator is absent. This is additive coverage, not a runtime release workflow.
 The earlier protected-release contract is retired. Gate packets, admission,
 recovery windows and the one-time initializer are no longer part of a release.
 The scripts that implemented them are listed in
-[`scripts/ci/RETIRED.md`](../scripts/ci/RETIRED.md). They stay in the tree
-unchanged until a follow-up pull request deletes them with their tests. Do not
-extend them or call them from new code.
+[`scripts/ci/RETIRED.md`](../scripts/ci/RETIRED.md). They and their tests were
+deleted together in the CI merge-latency cleanup; the manifest retains their
+names as the audit boundary. Do not restore or call them from new code.
 
 [`docs/execution/RELEASE_AUTHORIZATION.md`](execution/RELEASE_AUTHORIZATION.md)
 and [`docs/execution/golive/RELEASE.md`](execution/golive/RELEASE.md) describe

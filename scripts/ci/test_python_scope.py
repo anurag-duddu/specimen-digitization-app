@@ -69,6 +69,21 @@ def test_invalid_pull_request_identity_is_refused(base, head):
         python_scope.changed_paths(base, head)
 
 
+@pytest.mark.parametrize("error", [
+    ValueError("bad identity"),
+    UnicodeDecodeError("utf-8", b"x", 0, 1, "bad path"),
+    subprocess.CalledProcessError(128, ["git", "diff"]),
+    OSError("git unavailable"),
+])
+def test_pull_request_comparison_failure_selects_the_complete_suite(monkeypatch, error):
+    def fail(base, head):
+        raise error
+
+    monkeypatch.setattr(python_scope, "changed_paths", fail)
+    full, reasons = python_scope.classify("pull_request", "a" * 40, "b" * 40)
+    assert full and reasons == [f"<comparison-failed:{type(error).__name__}>"]
+
+
 def test_cli_appends_the_github_output(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(python_scope, "changed_paths", lambda base, head: [
         "apps/specimen_digitization/lib/main.dart", "docs/SESSION_LEARNINGS.md"])

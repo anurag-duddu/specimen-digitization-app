@@ -1,5 +1,9 @@
 # Owner inputs for the release plan templates
 
+> Historical only. The packet minting command and the initializer/evidence
+> templates named below were retired and deleted on 2026-10-12. Current owner
+> setup and releases follow `docs/DEPLOYMENT.md`; do not use these instructions.
+
 The guarded planes refuse to run without a typed plan inside the release
 envelope. The templates beside this file are those plans with every value the
 repository can already prove filled in, and one `<OWNER:name>` placeholder for

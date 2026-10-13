@@ -1042,6 +1042,57 @@ THEIR_GRANTS = {
 # writes them out; the retired release process's duplicate standing-grant table has been removed.
 RESEARCH_ROWS = {(f"bucket/{BUCKET}", WORKER, role, RESEARCH["title"], RESEARCH["expression"])
                  for role in ("roles/storage.objectViewer", "roles/storage.objectCreator")}
+
+
+def expected_grant(resource, member, role, held=None):
+    """A literal test-oracle row, independent of owner_setup.sh and iam.py."""
+    return (resource, member, role, held and held["title"], held and held["expression"])
+
+
+# The complete fresh-project grant table. This replaces the cross-check against
+# the retired owner_grants.py module with an in-file oracle, so deleting that
+# duplicate implementation cannot silently delete a standing grant from the
+# active setup. In particular, worker/SAM rows and every pinned secret version
+# remain exact rather than being judged only by shape.
+EXPECTED_FRESH_GRANTS = {
+    expected_grant("repository/specimen-runtime", BUILD, "roles/artifactregistry.writer"),
+    expected_grant("repository/specimen-runtime", RELEASE, "roles/artifactregistry.reader"),
+    *(expected_grant(f"service-account/{EMAIL(name)}", RELEASE, "roles/iam.serviceAccountUser")
+      for name in ("api-runtime", "worker-runtime", "sam-runtime")),
+    *(expected_grant(f"service-account/{name}@{PROJECT}.iam.gserviceaccount.com", PLANE + name,
+                     "roles/iam.workloadIdentityUser") for name in PLANES),
+    *(expected_grant(f"project/{PROJECT}", DATA, CUSTOM + role, SQL if role == "specimenDataInventorySqlConnect" else None)
+      for role in ("specimenDataSchemaPublish", "specimenDataStorageRules", "specimenDataInventoryProjectRead",
+                   "specimenDataInventorySqlConnect", "specimenDataBootstrapRows")),
+    *(expected_grant(f"project/{PROJECT}", RELEASE, CUSTOM + role)
+      for role in ("specimenRuntimeRelease", "specimenDataInventoryProjectRead", "specimenRuntimeInvokerPolicy")),
+    expected_grant(f"project/{PROJECT}", API, CUSTOM + "specimenRuntimeConnector"),
+    expected_grant(f"project/{PROJECT}", API, CUSTOM + "specimenApiUserLookup"),
+    expected_grant(f"project/{PROJECT}", WORKER, CUSTOM + "specimenRuntimeConnector"),
+    *(expected_grant(f"bucket/{BUCKET}", member, role, APP)
+      for member in (API, WORKER, SAM)
+      for role in ("roles/storage.objectViewer", "roles/storage.objectCreator")),
+    expected_grant(f"bucket/{BUCKET}", API, "roles/storage.objectViewer", SLIDES),
+    *(expected_grant(f"bucket/{BUCKET}", WORKER, role, RESEARCH)
+      for role in ("roles/storage.objectViewer", "roles/storage.objectCreator")),
+    expected_grant(f"bucket/{BUCKET}", DATA, CUSTOM + "specimenGeoreferenceDatasets", GEO),
+    expected_grant(f"bucket/{BUCKET}", API, CUSTOM + "specimenResearchCaptureRead", CAPTURE_READ),
+    expected_grant(f"bucket/{BUCKET}", SAM, "roles/storage.legacyBucketReader"),
+    *(expected_grant(f"secret/{secret}", member, ACCESSOR, pin(secret, version))
+      for member, secret, version in (
+          (API, "specimen-worker-logfire", 1),
+          (API, "specimen-source-registry", 1),
+          (API, "specimen-collection-bindings", 1),
+          (WORKER, "huggingface-runtime-token", 2),
+          (WORKER, "specimen-worker-logfire", 1),
+          (WORKER, "specimen-worker-actor-uid", 1),
+          (WORKER, "specimen-collection-bindings", 1),
+          (SAM, "specimen-worker-logfire", 1),
+          (DATA, "specimen-worker-actor-uid", 1),
+      )),
+    expected_grant("job/specimen-worker", RELEASE, CUSTOM + "specimenWorkerExecution"),
+    expected_grant("job/specimen-worker", API, CUSTOM + "specimenWorkerRead"),
+}
 # The settings may ask for these; the script must not grant them, each for its own reason.
 NOT_GRANTED = {
     MAPS_KEY: "retired by the owner; #236 removes it from the worker's settings",
@@ -1137,6 +1188,10 @@ def test_fresh_project_gets_every_role_and_pins_every_secret_read(fresh, setting
     # Shape, against the settings: for those two accounts the settings may move without this script.
     assert shape_problems(granted, settings) == []
     assert "the listing grant limited to the checkpoint prefix is not made here" in run.out
+
+
+def test_fresh_project_grants_the_complete_literal_standing_table(fresh):
+    assert grants(fresh[1]) == EXPECTED_FRESH_GRANTS
 
 
 def test_shape_rules_name_what_is_wrong():

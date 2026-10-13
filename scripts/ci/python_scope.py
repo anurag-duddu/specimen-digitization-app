@@ -56,7 +56,13 @@ def changed_paths(base: str, head: str) -> list[str]:
 def classify(event: str, base: str, head: str) -> tuple[bool, list[str]]:
     if event != "pull_request":
         return True, [f"<{event or 'missing-event'}>"]
-    paths = changed_paths(base, head)
+    try:
+        paths = changed_paths(base, head)
+    except (OSError, UnicodeError, ValueError, subprocess.SubprocessError) as error:
+        # The optimization is optional. An unreadable identity or comparison
+        # must select the complete suite, not turn the classifier into a gate
+        # failure whose safe intent is only implicit.
+        return True, [f"<comparison-failed:{type(error).__name__}>"]
     return requires_full_python(paths)
 
 

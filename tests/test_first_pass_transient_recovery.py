@@ -58,7 +58,15 @@ def comparison_lab(tmp_path, monkeypatch, failure, attempts, *, small_prices=Fal
         real_isolated = model_runtime.run_isolated
 
         def shortened(effect, payload, timeout, *args, **kwargs):
-            return real_isolated(effect, payload, 3, *args, **kwargs)
+            result = real_isolated(effect, payload, 3, *args, **kwargs)
+            # This is written by the parent after run_isolated returns, so it
+            # remains observable even when a loaded runner cuts the child off
+            # before the child's request marker reaches disk.
+            if result.worker_pid is not None:
+                root = Path(payload["storage"]["root"]).parent
+                with (root / "isolated-pids-first_pass").open("a") as children:
+                    children.write(str(result.worker_pid) + "\n")
+            return result
 
         monkeypatch.setattr(model_runtime, "run_isolated", shortened)
     result = lab(tmp_path, monkeypatch, adapter, "http_503")
@@ -77,20 +85,19 @@ def assert_children_stopped(tmp_path, failure):
     if failure != "deadline":
         return
     assert not (tmp_path / "late-comparison-result").exists()
-    sent = tmp_path / "requests-first_pass"
-    if not sent.exists():
-        # Under full-suite load the deadline can expire after the child starts
-        # but before its Python body writes this diagnostic marker.
-        return
-    for line in sent.read_text().splitlines():
+    children = tmp_path / "isolated-pids-first_pass"
+    for line in children.read_text().splitlines() if children.exists() else ():
         with pytest.raises(ProcessLookupError):
             os.kill(int(line), 0)
 
 
 def assert_visible_requests(tmp_path, failure, expected):
-    """Count requests only when the fixture can observe them synchronously."""
-    if failure != "deadline":
-        assert requests(tmp_path, "first_pass") == expected
+    """A loaded runner may stop a deadline child before its first marker."""
+    observed = requests(tmp_path, "first_pass")
+    if failure == "deadline":
+        assert observed <= expected
+    else:
+        assert observed == expected
 
 
 @pytest.mark.parametrize("failure", ["http_503", "deadline"])
