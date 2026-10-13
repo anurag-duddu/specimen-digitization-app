@@ -831,6 +831,83 @@ def test_live_illinois_reconciliation_recovers_state_county_and_city(tmp_path):
         for key in ("province_state", "county", "city", "precise_location"))
 
 
+class AbbreviatedIllinoisSources(FakeSources):
+    """The live abbreviation shape: ``Ill.`` is a state and ``Macoupin Co.``
+    is the county in that state, even when both were placed one field too high.
+    """
+
+    def _answer(self, source_id, query):
+        if source_id == "tgn" and query == "Macoupin County, Illinois, United States":
+            raw = json.dumps({"source": source_id, "query": query}).encode()
+            ref, sha = self.blobs.put(raw), hashlib.sha256(raw).hexdigest()
+            candidate = SourceCandidate("Macoupin County", "tgn:Macoupin County",
+                "counties, second level subdivisions (political entities)",
+                "in Illinois, United States",
+                (PlaceRef("Illinois", "tgn:Illinois"), PlaceRef("United States", "tgn:United States")))
+            evidence = Evidence(kind="authority", source="tgn", locator=candidate.authority_id,
+                excerpt=f"match\n{candidate.name} | {candidate.authority_id} | {candidate.kind} | {candidate.detail}",
+                raw_ref=ref, digest=sha)
+            return SourceAnswer("tgn", query, LookupStatus.SUCCESS, (candidate,), evidence, note="match")
+        return super()._answer(source_id, query)
+
+
+def test_location_reconciliation_recovers_abbreviated_illinois_chain(tmp_path):
+    places = {
+        "country": "Ill.",
+        "province_state": "Macoupin Co.",
+        "county": None,
+        "city": "Beaver Dam S.P.",
+        "precise_location": "Beaver Dam S.P.",
+    }
+    candidates = [*COLLECTORS, *(
+        (key, name, literal, f"{key}: {literal}")
+        for key, literal in places.items() if literal for name in ("1A", "1B"))]
+    rig = build_rig(tmp_path, label_with(**places), candidates=candidates)
+    run = rig.specimen.run
+
+    settle(rig, Scripted({
+        "country": unresolved_lookup("tgn", "Illinois", "Ill.", "Ill. is a state abbreviation."),
+        "province_state": unresolved_lookup("tgn", "Macoupin County, Illinois, United States", "Macoupin Co.",
+            "Macoupin Co. is a county, not a state."),
+        "county": LACKING,
+        "city": LACKING,
+    }), tools=AbbreviatedIllinoisSources(rig.blobs))
+
+    fields = run.fields
+    assert (fields["province_state"].state, fields["province_state"].literal,
+        fields["province_state"].normalized, fields["province_state"].authority_id) == (
+            ValueState.SUPPORTED, "Ill.", "Illinois", "tgn:Illinois")
+    assert (fields["county"].state, fields["county"].literal,
+        fields["county"].normalized, fields["county"].authority_id) == (
+            ValueState.SUPPORTED, "Macoupin Co.", "Macoupin County", "tgn:Macoupin County")
+    assert (fields["country"].state, fields["country"].literal, fields["country"].parsed,
+        fields["country"].authority_id, fields["country"].layer, fields["country"].derived_from) == (
+            ValueState.SUPPORTED, None, "United States", "tgn:United States", "derived", ["province_state"])
+    assert not any(agreement.NO_COUNTRY in (fields[key].reason or "")
+        for key in ("province_state", "county", "city"))
+
+
+def test_blank_unresolved_country_is_derived_from_settled_state(tmp_path):
+    text = label_with(country=None, province_state="Illinois", county=None, city=None)
+    candidates = [*COLLECTORS, *(
+        ("province_state", name, "Illinois", "province_state: Illinois") for name in ("1A", "1B"))]
+    rig = build_rig(tmp_path, text, candidates=candidates)
+    run = rig.specimen.run
+
+    settle(rig, Scripted({
+        "country": answering(FieldAnswer(outcome="sources_cannot_resolve", literal=None,
+            explanation="No country literal was present.")),
+        "province_state": from_tgn("Illinois", "Illinois", None, "tgn:Illinois"),
+        "county": LACKING,
+        "city": LACKING,
+    }))
+
+    country = run.fields["country"]
+    assert (country.state, country.literal, country.parsed, country.authority_id,
+        country.layer, country.derived_from) == (
+            ValueState.SUPPORTED, None, "United States", "tgn:United States", "derived", ["province_state"])
+
+
 def test_location_reconciliation_reclassifies_shared_place_evidence(tmp_path):
     text = label_with(country="Illinois", province_state="Cook", county=None, city="Chicago")
     candidates = [

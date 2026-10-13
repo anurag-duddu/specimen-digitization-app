@@ -134,11 +134,16 @@ def _can_derive_place(fields: Mapping[str, FieldValue], key: str, source_key: st
         return False
     if is_open(value):
         return True
+    if (value.state == ValueState.UNRESOLVED and not value.literal
+            and not value.verbatim_by_observation):
+        return True
     if value.state == ValueState.SUPPORTED and value.layer in RESEARCHED:
         return False
     if not value.literal or not source.literal:
         return False
-    return place_name(value.literal) == place_name(source.literal)
+    from .abbreviations import fits
+
+    return place_name(value.literal) == place_name(source.literal) or fits(value.literal, source.literal)
 
 
 def _settling_candidate(value: FieldValue, answers: Sequence[SourceAnswer]) -> SourceCandidate | None:
