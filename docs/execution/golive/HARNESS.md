@@ -369,6 +369,46 @@ and `test_the_organisers_refused_call_costs_nothing`.
   was reliably better; the 504 at 120 s is the Hugging Face router's own limit
   on one request, which a slow extraction reaches on either provider.
 
+**Field research at a run limit** (2026-10-12; replaces, for field research,
+the block on the run's own limits other than money). Production, about
+22:24Z: a camera photo (asset c7e52321bd4b...) failed its first field
+research attempt (experts answered `UnexpectedModelBehavior`; the taxon's
+expert stopped at its own usage limit) and was scheduled for a retry. The
+retry's budget check (`Workflow._step`) found no room for another 16,000
+reserved model units under the run's `max_tokens` and saved it
+`processing_blocked` as `token_budget_exhausted`, which the app reads "The
+run reached its limit on model units. An administrator must review the
+approved limit." Nothing carried it on. Tests:
+`tests/field_research/test_research_limit_recovery.py`.
+- Field research the run has no room for under one of its own limits other
+  than money (`workflow.RESEARCH_LIMITS`: the step, external request, model
+  unit and active time limits) is given up on unsent
+  (`Workflow._give_up_field_research`, `FieldResearchStep.give_up`). No
+  expert, source or meter starts, nothing is reserved, attempted or paid,
+  and the fields an earlier attempt settled are kept. Every field still to
+  research is unresolved with the reason "The run reached one of its
+  processing limits before this field could be checked." (failure
+  `run_limit`), the step's own rules finalize the record, and it goes to
+  review with a warning finding `field_research_given_up:<code>`
+  (`test_a_retry_the_model_unit_limit_leaves_no_room_for_goes_to_review_unsent`).
+- The run's cost ceiling and the program's allowance are limits on money
+  and still block (FIELD_RESEARCH.md, step 8), and they come first: a run
+  whose model units (or another limit above) are spent too keeps the money
+  block. Before giving up, the step checks the cost settings, the saved cost
+  totals and the ceiling, then reads the program's ledger
+  (`lane_allowance.admits`, read only, nothing reserved); an allowance that
+  cannot pay for one expert request, or a ledger that cannot be read, blocks
+  with its own code
+  (`test_a_retry_over_the_money_ceiling_still_blocks[money_and_model_units]`,
+  `test_the_program_allowance_comes_before_the_model_unit_limit`).
+- `Workflow.recover_blocked` makes due a run left blocked at field research
+  by one of those limits, within the same three recoveries per step; the step
+  then gives it up as above
+  (`test_a_run_left_blocked_at_the_model_unit_limit_is_recovered_by_the_drain`).
+  Sensitive records, runs with a disposition or a live lease, and the money
+  blocks are left alone
+  (`test_sensitive_finished_leased_and_money_blocks_are_never_recovered`).
+
 **Waiting after a rate limit** (2026-10-11). A step that fails with an
 `AdapterFailure` whose status is `rate_limited` (a model call's HTTP 429 is
 `model_rate_limited`) waits at least 30 seconds before its second attempt and at
