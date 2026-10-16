@@ -113,7 +113,7 @@ which only their own workflows call; see
 | Required check | What it proves |
 |---|---|
 | `Repository checks` | Sensitive-file policy, secret scans, formatting, YAML/JSON/TOML validity, shell checks, and GitHub Actions syntax |
-| `Python tests` | Locked Python environment. Backend, contract, workflow, dependency, release and unrecognized changes run the complete default pytest collection; all configured module shards must succeed and cover every collected test exactly once. A pull request changing only the Flutter tree and the append-only session log runs the focused Hosting/deployment Python contracts instead. Pushes to `main` always run the complete collection. |
+| `Python tests` | Locked Python environment. Backend, contract, workflow, dependency, release and unrecognized changes run the complete default pytest collection; all configured module shards must succeed and cover every collected test exactly once. Every pull request currently runs the complete collection, including Flutter-only changes. Pushes to `main` always run the complete collection. |
 | `Flutter checks and web build` | Locked Flutter dependencies, Dart formatting, the `specimen_ui` design system's own analysis and tests, client static analysis, client widget tests, release build, immutable deployment metadata, and a loopback route smoke over the built artifact |
 
 Pull requests use `apps/specimen_digitization/lib/firebase_options.ci.dart`.
@@ -122,21 +122,35 @@ token and cannot deploy.
 
 `Classify Python test scope` is fail-closed. On a pull request it compares the
 exact base and head commits with rename detection disabled, so moving a backend
-file into the Flutter tree still exposes both paths. The focused path is allowed
-only when every changed path is under `apps/specimen_digitization/` or is
-`docs/SESSION_LEARNINGS.md`. An empty diff, malformed commit identity, failed
+file into the Flutter tree still exposes both paths.
+Every pull request currently runs the complete Python collection because
+`scripts/ci/python_contract_closure.py` cannot yet prove the focused frontend
+path's transitive closure over Python tests that read the Flutter tree.
+Before the focused path may select again, that closure must be proved and
+tested against the integrated source, including helper, fixture, dynamic-path
+and subprocess reads during collection, setup, call and teardown, and shared-wire
+exporter and fixture readers.
+Qualification must fail closed for new or unclassified readers and changed
+helpers or fixtures; static spelling or marker checks are insufficient.
+Even with that proof, only additions or modifications to recognized Dart
+sources under `apps/specimen_digitization/` and to
+`docs/SESSION_LEARNINGS.md` could qualify; lockfiles, unknown paths, deletions
+and renames require the complete suite.
+An empty diff, malformed commit identity, failed
 comparison, any other path or any event other than `pull_request` requires the
-complete suite. The focused path still installs the locked Python environment
-and runs the public-settings, built-route, deployment-policy and Hosting-attempt
-contract suites, the local-review credential guard, and the embedded
-research-schema parity contract. The Flutter job separately runs the UI-writing
+complete suite.
+The focused workflow steps remain in `ci-cd.yml` but are dormant; if qualified,
+they would install the locked Python environment and run the public-settings,
+built-route, deployment-policy and Hosting-attempt contract suites, the
+local-review credential guard, and the embedded research-schema parity contract.
+The Flutter job separately runs the UI-writing
 ratchet before analysis and tests. The protected check remains named `Python
 tests` in both paths.
 
 Full Python tests run in the configured number of isolated runner jobs.
 The workflow-level `PYTHON_HOSTED_SHARDS` in `.github/workflows/ci-cd.yml`
 is the single count for matrix generation, each leaf and aggregate verification.
-It is initially 10; the scope job rejects nonintegers and values outside 6–16.
+It is currently 12; the scope job rejects nonintegers and values outside 6–16.
 Only that scalar changes for integrator-hosted 6/8/10/12 pilots on matched source.
 Choose the smallest count whose measured full required gate meets the 850-second
 target with all accepted correctness tiers, a positive net improvement and no
@@ -146,8 +160,40 @@ count through a reviewed pull request with fresh exact-head checks. Local
 verification remains capped at six processes independently of this setting.
 Each runner performs the
 same complete pytest discovery, then keeps whole test files assigned
-deterministically using checked-in lower-bound module durations from protected
-CI plus a per-item estimate for unmeasured work. Module fixtures and the
+deterministically using checked-in complete per-module setup, call and teardown
+costs in `scripts/ci/python_shard_timings.json`, with a per-item estimate for
+unknown or changed modules.
+The manifest uses schema 2 and mode `complete`, recording
+`measurement_identity` (source SHA, run ID and attempt), `inventory_digest`,
+`timing_manifest_digest` for the measured input manifest,
+`source_fingerprints`, `module_inventory_digests` and `module_seconds`.
+A source/input fingerprint mismatch invalidates all complete costs; a module
+inventory mismatch invalidates that module's cost.
+The fallback is 0.1 seconds per collected item; timing weights change only
+balance, never test selection.
+
+To refresh from all shard JSON results of one complete verified hosted run,
+use that run's count, source SHA, run ID and attempt, and the exact input
+timing manifest used by every measured leaf:
+
+```bash
+python3 scripts/ci/refresh_python_shard_timings.py \
+  --count MEASURED_SHARD_COUNT \
+  --timings PATH_TO_MEASURED_INPUT_TIMINGS_JSON \
+  --source-sha MEASURED_40_CHARACTER_SOURCE_SHA \
+  --run-id MEASURED_RUN_ID --run-attempt MEASURED_RUN_ATTEMPT \
+  --output PATH_TO_CANDIDATE_TIMINGS_JSON \
+  python-shards/shard-*.json
+```
+
+The tool verifies matching collections, source/run/attempt identity, input
+manifest, assignments and successful phases with exact-once execution before
+summing the recorded setup, call and teardown durations per module.
+It uses the measured fingerprints for offline refresh; the current worktree
+need not be the measured checkout.
+The output is a candidate for independent review before replacing the
+checked-in manifest.
+Module fixtures and the
 original order within each file are preserved. The required `Python tests`
 aggregate checks matching collections,
 source/run/attempt identity, successful test phases and complete execution with
@@ -155,7 +201,9 @@ no missing, duplicate or extra tests. A failed or missing shard fails the gate.
 Every shard also reports its 25 slowest test durations for performance diagnosis.
 
 `scripts/ci/smoke_web_routes.py` and the embedded research-schema parity test
-run in the focused frontend contract gate. The former runs between the
+have contract coverage in the dormant focused frontend steps; those tests
+currently run in the complete Python collection.
+The former runs between the
 deployment stamp and the artifact upload, so a build that fails it is never
 uploaded and therefore can never be deployed. It serves `build/web` on
 127.0.0.1 with the rewrites and
@@ -326,7 +374,8 @@ loaded workstation the whole script can be reaped part way through; run its
 gates one at a time when that happens and read each gate's own exit status.
 
 The local Python gate uses the same runtime-aware whole-module partition and complete-coverage
-verification, running six isolated Python processes. Its logs and results remain
+verification, running six or fewer isolated Python processes.
+Its logs and results remain
 in a uniquely named temporary directory printed by the command. Set
 `PYTHON_TEST_SHARDS=1` to run the complete Python collection in one process for
 diagnosis; this preserves all tests and assertions. Local shards must run in a
