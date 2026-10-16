@@ -17,7 +17,7 @@ concurrency:
 env:
   FLUTTER_VERSION: "3.38.5"
   UV_VERSION: "0.12.5"
-  PYTHON_HOSTED_SHARDS: 10
+  PYTHON_HOSTED_SHARDS: 12
 
 jobs:
   repository-checks:
