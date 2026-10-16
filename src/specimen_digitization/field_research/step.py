@@ -579,7 +579,10 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending, r
                 continue
             if (key not in pending and value is not None and value.state == ValueState.SUPPORTED and value.literal
                     and place_name(value.literal) in {place_name(text) for text in texts}):
-                names = (*sorted(texts), *(text for text in (value.normalized, value.parsed) if text),
+                # Earlier organiser candidates can belong to a different level
+                # after reconciliation. Only the settled value's own names are
+                # aliases of this place; the old candidates stay in evidence.
+                names = (value.literal, *(text for text in (value.normalized, value.parsed) if text),
                     *_expansions(key, value, rows))
                 code = _record_code(value, (received or {}).get(key, ())) if key == "country" else None
                 written[key] = settled[key] = PlaceField(tuple(dict.fromkeys(names)), value.authority_id, code)
