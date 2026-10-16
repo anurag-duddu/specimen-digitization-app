@@ -17,6 +17,7 @@ concurrency:
 env:
   FLUTTER_VERSION: "3.38.5"
   UV_VERSION: "0.12.5"
+  PYTHON_HOSTED_SHARDS: 10
 
 jobs:
   repository-checks:
@@ -42,11 +43,28 @@ jobs:
     timeout-minutes: 5
     outputs:
       full: ${{ steps.scope.outputs.full }}
+      matrix: ${{ steps.shards.outputs.matrix }}
     steps:
       - name: Check out repository history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+
+      - name: Configure hosted Python shards
+        id: shards
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from scripts.ci.python_shards import hosted_config
+
+          count = json.loads(os.environ["PYTHON_HOSTED_SHARDS"])
+          if type(count) is not int or not 6 <= count <= 16:
+              raise SystemExit("hosted Python shard count must be an integer between 6 and 16")
+          matrix = hosted_config(count)["matrix"]["index"]
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              print(f"matrix={json.dumps(matrix)}", file=output)
+          PY
 
       - name: Classify changed paths conservatively
         id: scope
@@ -68,7 +86,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5]
+        shard: ${{ fromJSON(needs.python-scope.outputs.matrix) }}
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -86,7 +104,7 @@ jobs:
       - name: Run Python tests
         run: >-
           uv run python scripts/ci/python_shards.py run
-          --index "${{ matrix.shard }}" --count 6
+          --index "${{ matrix.shard }}" --count "$PYTHON_HOSTED_SHARDS"
           --output "python-shards/shard-${{ matrix.shard }}.json"
 
       - name: Upload Python results
@@ -160,7 +178,7 @@ jobs:
           SHARD_RESULT: ${{ needs.python-shards.result }}
         run: |
           test "$SHARD_RESULT" = success
-          python3 scripts/ci/python_shards.py verify --count 6 python-shards/shard-*.json
+          python3 scripts/ci/python_shards.py verify --count "$PYTHON_HOSTED_SHARDS" python-shards/shard-*.json
 
   flutter:
     name: Flutter checks and web build

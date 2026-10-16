@@ -113,7 +113,7 @@ which only their own workflows call; see
 | Required check | What it proves |
 |---|---|
 | `Repository checks` | Sensitive-file policy, secret scans, formatting, YAML/JSON/TOML validity, shell checks, and GitHub Actions syntax |
-| `Python tests` | Locked Python environment. Backend, contract, workflow, dependency, release and unrecognized changes run the complete default pytest collection; all six module shards must succeed and cover every collected test exactly once. A pull request changing only the Flutter tree and the append-only session log runs the focused Hosting/deployment Python contracts instead. Pushes to `main` always run the complete collection. |
+| `Python tests` | Locked Python environment. Backend, contract, workflow, dependency, release and unrecognized changes run the complete default pytest collection; all configured module shards must succeed and cover every collected test exactly once. A pull request changing only the Flutter tree and the append-only session log runs the focused Hosting/deployment Python contracts instead. Pushes to `main` always run the complete collection. |
 | `Flutter checks and web build` | Locked Flutter dependencies, Dart formatting, the `specimen_ui` design system's own analysis and tests, client static analysis, client widget tests, release build, immutable deployment metadata, and a loopback route smoke over the built artifact |
 
 Pull requests use `apps/specimen_digitization/lib/firebase_options.ci.dart`.
@@ -133,7 +133,18 @@ research-schema parity contract. The Flutter job separately runs the UI-writing
 ratchet before analysis and tests. The protected check remains named `Python
 tests` in both paths.
 
-Full Python tests run in six isolated runner jobs. Each runner performs the
+Full Python tests run in the configured number of isolated runner jobs.
+The workflow-level `PYTHON_HOSTED_SHARDS` in `.github/workflows/ci-cd.yml`
+is the single count for matrix generation, each leaf and aggregate verification.
+It is initially 10; the scope job rejects nonintegers and values outside 6–16.
+Only that scalar changes for integrator-hosted 6/8/10/12 pilots on matched source.
+Choose the smallest count whose measured full required gate meets the 850-second
+target with all accepted correctness tiers, a positive net improvement and no
+eligible-focused regression; include queue, setup and artifact/aggregate costs.
+Modeled scheduling savings do not establish a delivered improvement. Change the
+count through a reviewed pull request with fresh exact-head checks. Local
+verification remains capped at six processes independently of this setting.
+Each runner performs the
 same complete pytest discovery, then keeps whole test files assigned
 deterministically using checked-in lower-bound module durations from protected
 CI plus a per-item estimate for unmeasured work. Module fixtures and the
