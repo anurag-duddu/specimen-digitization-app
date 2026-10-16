@@ -1,0 +1,740 @@
+"""Controlled subprocess qualification; these fixtures never launch real engines."""
+from __future__ import annotations
+
+import hashlib
+import importlib.util
+import json
+import os
+from pathlib import Path
+import shutil
+import signal
+import time
+import subprocess
+import sys
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[2]
+DATA = Path(os.environ.get('ENGINE_HARNESS_SOURCE', ROOT)) / 'scripts/data'
+
+
+def provisioner():
+    spec = importlib.util.spec_from_file_location('provision_under_test', DATA / 'provision-engine-tools.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def verified_cache_control(p,directory,monkeypatch):
+    directory.mkdir()
+    marker=directory/'executed'
+    payload=f'#!/bin/sh\n# good\necho executed > {marker}\n'.encode()
+    config=json.loads(json.dumps(p.gate.APPROVED_TOOLCHAIN))
+    cache=directory/'cache';cache.mkdir(mode=0o700)
+    for name,asset in config['assets'].items():
+        asset.update(bytes=len(payload),sha256=hashlib.sha256(payload).hexdigest())
+        target=cache/p.FILENAMES[name];target.write_bytes(payload);target.chmod(0o700)
+    monkeypatch.setattr(p,'load_toolchain',lambda:config)
+    monkeypatch.setattr(p,'download_asset',lambda *_a,**_k:pytest.fail('restored-cache validation attempted a download'))
+    return config,cache,payload,marker
+
+
+@pytest.mark.parametrize('fault', ['missing', 'size', 'sha', 'corrupt_cache', 'wrong_version'])
+def test_provision_checks_size_and_sha_after_restore(tmp_path, fault, monkeypatch, capsys):
+    p = provisioner()
+    asset = tmp_path / 'never-execute'
+    marker=tmp_path/'executed'
+    good=f'#!/bin/sh\n# good\necho executed > {marker}\n'.encode()
+    approved = {'version': '3.2.0', 'bytes': len(good), 'sha256': hashlib.sha256(good).hexdigest(), 'url': 'https://example.invalid/pinned'}
+    asset.write_bytes(good)
+    asset.chmod(0o700)
+    if fault == 'missing':
+        asset.unlink()
+    elif fault == 'size':
+        asset.write_bytes(good + b'!')
+    elif fault in ('sha', 'corrupt_cache'):
+        asset.write_bytes(good.replace(b'# good', b'# evil', 1))
+    else:
+        approved['version'] = '3.4.22'
+    with pytest.raises((ValueError, OSError), match='missing|size|hash|version|No such'):
+        p.verify_asset(asset, approved, version='3.2.0')
+    assert not marker.exists(), 'unverified binary was executed'
+    config,cache,payload,cache_marker=verified_cache_control(p,tmp_path/'restored',monkeypatch)
+    cached=cache/p.FILENAMES['dataconnect']
+    if fault=='missing': cached.unlink()
+    elif fault=='size': cached.write_bytes(payload+b'!')
+    elif fault in ('sha','corrupt_cache'): cached.write_bytes(payload.replace(b'# good',b'# evil'))
+    else: cached.rename(cache/'dataconnect-emulator-3.4.22')
+    assert p.main(['--directory',str(cache),'--mode','normal','--restore','hit','--output',str(tmp_path/'restore.json')])==1
+    expected='size' if fault=='size' else 'hash' if fault in ('sha','corrupt_cache') else 'missing' if fault=='missing' else 'unexpected'
+    assert expected in capsys.readouterr().err
+    assert not cache_marker.exists(), 'restored binary was executed'
+
+
+def test_pinned_manifest_matches_independent_gate():
+    spec = importlib.util.spec_from_file_location('gate_constants', ROOT / 'scripts/ci/engine_contract_gate.py')
+    g = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(g)
+    assert json.loads((DATA / 'engine-toolchain.json').read_text()) == g.APPROVED_TOOLCHAIN
+
+
+@pytest.mark.parametrize('fault', ['size', 'sha', 'oversize'])
+def test_download_checks_bytes_without_executing(tmp_path, fault):
+    p = provisioner()
+    import io
+    content = b'payload'
+    asset = {'version': '1', 'bytes': len(content), 'sha256': hashlib.sha256(content).hexdigest(), 'url': 'https://example.invalid/pinned'}
+    body = content[:-1] if fault == 'size' else b'changed' if fault == 'sha' else content + b'extra'
+    with pytest.raises(ValueError, match='size|hash'):
+        p.download_asset(tmp_path / 'tool', asset, opener=lambda _: io.BytesIO(body))
+    assert not (tmp_path / 'tool').exists()
+
+
+def test_cold_cache_refuses_inherited_or_preseeded_directory(tmp_path):
+    p = provisioner()
+    directory = tmp_path / 'preseeded'
+    directory.mkdir()
+    (directory / 'engine').write_text('inherited')
+    with pytest.raises(ValueError, match='cold.*new|cold.*exist'):
+        p.prepare_directory(directory, mode='cold', event='workflow_dispatch', restore='bypassed')
+    with pytest.raises(ValueError, match='dispatch'):
+        p.prepare_directory(tmp_path / 'new', mode='cold', event='pull_request', restore='bypassed')
+    fresh = tmp_path / 'cold'
+    evidence = p.prepare_directory(fresh, mode='cold', event='workflow_dispatch', restore='bypassed')
+    assert evidence == {'mode': 'cold', 'directory_private': True, 'directory_fresh': True, 'entries_before': 0, 'restore': 'bypassed'}
+    assert list(fresh.iterdir()) == []
+    assert fresh.stat().st_mode & 0o777 == 0o700
+
+
+# All stand-ins are copied into a private synthetic repository. They are never
+# injectable into a canonical gate: G hashes tracked helpers and independently
+# checks approved tool bytes before the wrapper starts.
+STANDIN = r'''#!PYTHON
+import json, os, pathlib, signal, socket, subprocess, sys, time
+args=sys.argv[1:]; name=pathlib.Path(sys.argv[0]).name
+fault=os.getenv('FIXTURE_FAULT',''); root=pathlib.Path(os.environ['FIXTURE_ROOT'])
+with (root/'calls.jsonl').open('a') as f: f.write(json.dumps([name,*args])+'\n')
+def birth(pid):
+ import hashlib
+ if sys.platform=='linux':
+  fields=pathlib.Path('/proc/'+str(pid)+'/stat').read_text().rsplit(') ',1)[1].split()
+  return hashlib.sha256(json.dumps({'boot_id':pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip(),'start_ticks':int(fields[19])},separators=(',',':')).encode()).hexdigest()
+ return hashlib.sha256(json.dumps({'darwin_lstart':'fixture-'+str(pid)},separators=(',',':')).encode()).hexdigest()
+if name in ('postgres','dc','firebase','java'):
+ (root/'instances').mkdir(exist_ok=True)
+ entry=root/'instances'/(str(os.getpid())+'.json')
+ entry.with_suffix('.partial').write_text(json.dumps({'pid':os.getpid(),'parent':os.getppid(),'command':str(pathlib.Path(sys.argv[0]).resolve())+' '+' '.join(args)})); entry.with_suffix('.partial').rename(entry)
+if name=='firebase' and fault=='unknown_argument': sys.exit(0)
+if name=='ps':
+ if '-p' in args:
+  pid=int(args[args.index('-p')+1])
+  try: os.kill(pid,0)
+  except ProcessLookupError: sys.exit(1)
+  deadline=time.monotonic()+1
+  while not (root/'instances'/(str(pid)+'.json')).exists() and time.monotonic()<deadline: time.sleep(.001)
+  row=json.loads((root/'instances'/(str(pid)+'.json')).read_text())
+  print(str(row['parent'])+' fixture-'+str(pid)); sys.exit(0)
+ for entry in (root/'instances').glob('*.json'):
+  row=json.loads(entry.read_text())
+  try: os.kill(row['pid'],0)
+  except ProcessLookupError: continue
+  print(str(row['pid'])+' '+str(row['parent'])+' '+row['command'])
+ sys.exit(0)
+if name=='python':
+ if '-c' in args:
+  # Model the native pidfd helper only in this private subprocess fixture.
+  # Its real birth/pidfd semantics are separately tested without OS signals.
+  pid=int(args[args.index('-c')+2]); receipt=json.loads(pathlib.Path(args[args.index('-c')+3]).read_text())
+  assert receipt['pid']==pid and receipt['birth_id']==birth(pid)
+  sig=int(args[-1]) if args[-1].isdigit() else int(signal.SIGKILL)
+  try: os.kill(pid,sig)
+  except ProcessLookupError: sent=False
+  else: sent=True
+  with (root/'native-signals.jsonl').open('a') as f: f.write(json.dumps({'pid':pid,'signal':sig})+'\n')
+  print(json.dumps({'forced':sent})); sys.exit(0)
+ if 'provision-engine-tools.py' in ' '.join(args):
+  print(json.dumps(json.loads((root/'preflight.json').read_text()))); sys.exit(0)
+ if 'process-start' in args:
+  pid=int(args[args.index('--pid')+1])
+  # Our synthetic ps birth record is written by the child, while the real OS
+  # record exists at spawn. Publish the mock receipt only after that barrier.
+  deadline=time.monotonic()+1
+  while not (root/'instances'/(str(pid)+'.json')).exists() and time.monotonic()<deadline: time.sleep(.001)
+  assert (root/'instances'/(str(pid)+'.json')).exists(),'fixture child identity was not published'
+  if fault=='storage_registration_failed' and args[args.index('--id')+1]=='storage.cli':
+   while not (root/'storage-cli-running').exists() and time.monotonic()<deadline: time.sleep(.001)
+   assert (root/'storage-cli-running').exists(),'fixture forked CLI did not start'
+   sys.exit(29)
+  print(json.dumps({'id':args[args.index('--id')+1],'pid':pid,'birth_id':birth(pid)})); sys.exit(0)
+ if 'process-end' in args:
+  print(pathlib.Path(args[args.index('--receipt')+1]).read_text()); sys.exit(0)
+ # pytest stand-in checks the exact in-lifetime environment.
+ (root/'python-env.json').write_text(json.dumps({'bytecode':os.getenv('PYTHONDONTWRITEBYTECODE'),'tmpdir':os.getenv('TMPDIR')}))
+ assert os.environ['SPECIMEN_SQL_EMULATOR_HOST']==os.environ['FIREBASE_DATACONNECT_EMULATOR_HOST']
+ assert (root/'seed-seen').exists()
+ pathlib.Path(os.environ['ENGINE_CONTRACT_PYTEST_REPORT']).write_text('{}')
+ if fault=='hold_python':
+  (root/'python-running').touch()
+  while True: time.sleep(.02)
+ sys.exit(17 if fault=='test_failed' else 0)
+if name=='node':
+ target=pathlib.Path(args[0]).name if args else ''
+ if target=='engine-contract-reporter.mjs': os.execv(os.environ['REAL_NODE'],[os.environ['REAL_NODE'],*args])
+ if target=='wait-local.mjs': sys.exit(19 if fault=='readiness_failed' else 0)
+ if target=='seed-integration.mjs':
+  if fault!='seed_missing':
+   seed=json.loads((root/'seed.json').read_text())
+   if fault=='seed_mismatch': seed['role']='outsider'
+   pathlib.Path(os.environ['ENGINE_CONTRACT_SEED_REPORT']).write_text(json.dumps(seed))
+  (root/'seed-seen').touch(); sys.exit(0)
+ if target in ('connector-test.mjs','storage-test.mjs'):
+  if target=='storage-test.mjs' and fault=='hold_storage':
+   (root/'storage-assertions-running').touch()
+   while True: time.sleep(.02)
+  selection=json.loads((root/'scripts/data/engine-contract-selection.json').read_text())
+  ids=selection['connector_groups' if target=='connector-test.mjs' else 'storage_assertions']
+  with open(os.environ['ENGINE_CONTRACT_NODE_EVENTS'],'a') as f:
+   for id in ids:
+    if id==fault: continue
+    f.write(json.dumps({'id':id,'outcome':'passed','seconds':0})+'\n')
+ if target=='source-asset-read-back.sh': print('1')
+ sys.exit(0)
+if name=='dc':
+ if args[0]=='build':
+  if 'FIXTURE_COMPILE_RESPONSE' in os.environ:
+   print(os.environ['FIXTURE_COMPILE_RESPONSE']); sys.exit(0)
+  print(json.dumps({'errors':['compile rejected'] if fault=='compile_errors_exit0' else []})); sys.exit(0)
+if name=='firebase' and os.getenv('FIXTURE_STANDALONE') and '--fixture-cli' not in args:
+ child=subprocess.Popen([sys.argv[0],'--fixture-cli',*args])
+ (root/'standalone-pids.json').write_text(json.dumps({'launcher':os.getpid(),'cli':child.pid}))
+ def end(signum,*_):
+  # A safety net for a broken controller, with an auditable signal record.
+  # The corrected controller must signal the CLI, leaving this path unused.
+  with (root/'launcher-signals.jsonl').open('a') as f: f.write(json.dumps(signum)+'\n')
+  child.send_signal(signum); child.wait(timeout=5); sys.exit(0)
+ signal.signal(signal.SIGINT,end); signal.signal(signal.SIGTERM,end)
+ sys.exit(child.wait())
+if name=='firebase' and '--fixture-cli' in args: args.remove('--fixture-cli')
+if name in ('postgres','dc','firebase','java'):
+ if name in ('dc','firebase') and fault!='false_readiness':
+  port=int(args[args.index('-listen')+1].split(':')[1]) if name=='dc' else json.loads(pathlib.Path(args[args.index('--config')+1]).read_text())['emulators']['storage']['port']
+  listener=socket.socket(); listener.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1); listener.bind(('127.0.0.1',port)); listener.listen(16)
+ if name=='postgres':
+  directory=pathlib.Path(args[args.index('-D')+1]); directory.mkdir(exist_ok=True)
+  (directory/'postmaster.pid').write_text(str(os.getpid()))
+ if name=='firebase':
+  probe=subprocess.Popen([str(root/'bin/java'),'--version']) if os.getenv('FIXTURE_JAVA_PROBE') else None
+  child=None if fault=='storage_no_java' else subprocess.Popen([str(root/'bin/java'),os.environ['STORAGE_EMULATOR_BINARY_PATH']])
+  (root/'java-pid.json').write_text(json.dumps({'pid':child.pid if child else None,'parent':os.getpid(),'probe':probe.pid if probe else None,'jar':os.environ['STORAGE_EMULATOR_BINARY_PATH']}))
+  def end(*_):
+   failed=False
+   for owned in ([probe] if probe else [])+([child] if child else []):
+    owned.terminate()
+    try: owned.wait(timeout=1)
+    except subprocess.TimeoutExpired: owned.kill(); owned.wait(); failed=True
+   sys.exit(31 if failed else 0)
+  signal.signal(signal.SIGINT,end); signal.signal(signal.SIGTERM,end)
+  for owned in ([probe] if probe else [])+([child] if child else []):
+   deadline=time.monotonic()+1
+   while not (root/'instances'/(str(owned.pid)+'.json')).exists() and time.monotonic()<deadline: time.sleep(.001)
+   assert (root/'instances'/(str(owned.pid)+'.json')).exists(),'fixture Java identity was not published'
+  (root/'storage-cli-running').touch(); print('Storage fixture started',flush=True)
+  while True: time.sleep(.02)
+ if name=='dc' and fault=='dc_cleanup_failed': signal.signal(signal.SIGTERM,signal.SIG_IGN)
+ else: signal.signal(signal.SIGTERM,lambda *_:sys.exit(0))
+ signal.signal(signal.SIGINT,lambda *_:sys.exit(0))
+ while True: time.sleep(.02)
+if name=='pg_ctl':
+ if args[-1]=='start': sys.exit(0)
+ if fault=='cleanup_failed': sys.exit(23)
+ pidfile=pathlib.Path(args[args.index('-D')+1])/'postmaster.pid'
+ if not pidfile.exists(): sys.exit(0)
+ pid=int(pidfile.read_text())
+ os.kill(pid,signal.SIGTERM)
+if name=='psql':
+ print(os.getenv('FIXTURE_PG_VERSION','16.15') if 'SHOW server_version' in ' '.join(args) else '4' if 'count(*)' in ' '.join(args) else '1')
+'''
+
+
+@pytest.fixture
+def shell_fixture(tmp_path):
+    root = tmp_path / 'repo'
+    (root / 'scripts/data').mkdir(parents=True)
+    (root / 'scripts/ci').mkdir()
+    for source in DATA.glob('*'):
+        if source.is_file():
+            shutil.copyfile(source, root / 'scripts/data' / source.name)
+    shutil.copyfile(ROOT / 'scripts/ci/engine_contract_gate.py', root / 'scripts/ci/engine_contract_gate.py')
+    (root / 'dataconnect/sql').mkdir(parents=True)
+    (root / 'storage.rules').write_text('synthetic fixture')
+    (root / 'bin').mkdir()
+    for name in ['node','python','dc','postgres','initdb','pg_ctl','createdb','psql','firebase','java','ps']:
+        path = root / 'bin' / name
+        path.write_text(STANDIN.replace('#!PYTHON', '#!' + sys.executable))
+        path.chmod(0o700)
+    (root/'.venv/bin').mkdir(parents=True)
+    shutil.copyfile(root/'bin/python',root/'.venv/bin/python')
+    (root/'.venv/bin/python').chmod(0o700)
+    # The existing readback helper's real shell is controlled as a subprocess.
+    (root / 'scripts/data/source-asset-read-back.sh').write_text('#!/bin/bash\nprintf "1\\n"\n')
+    seed = {'organization':'00000000-0000-4000-8000-000000000001','collection':'00000000-0000-4000-8000-000000000002','uid':'synthetic-reviewer','organization_active':True,'collection_active':True,'role':'reviewer','can_view_sensitive':True}
+    (root / 'seed.json').write_text(json.dumps(seed))
+    preflight={'tools':{},'runtime':{'postgres_server':'16.15'},'cache':{'mode':'normal','directory_private':True,'directory_fresh':True,'entries_before':0,'restore':'miss'}}
+    (root / 'preflight.json').write_text(json.dumps(preflight))
+    class Environment(dict):
+        def __repr__(self):
+            return '<controlled subprocess environment>'
+    env = Environment(os.environ, PATH=str(root / 'bin') + ':' + os.environ['PATH'], REAL_NODE=shutil.which('node'), FIXTURE_ROOT=str(root),
+               POSTGRES_BIN=str(root / 'bin'), DATACONNECT_EMULATOR_BIN=str(root / 'bin/dc'),
+               FIREBASE_CLI_BIN=str(root / 'bin/firebase'), STORAGE_RULES_RUNTIME_JAR=str(root / 'runtime.jar'),
+               SPECIMEN_TEST_SQL_EMULATOR='true', ENGINE_TOOLS_DIR=str(root / 'tools'), TMPDIR=str(tmp_path),
+               ENGINE_CONTRACT_LIFECYCLE=str(root / 'lifecycle.json'), ENGINE_CONTRACT_PROCESS_TOKEN='controlled-fixture')
+    for key in ['GOOGLE_APPLICATION_CREDENTIALS','FIREBASE_TOKEN','CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE','SPECIMEN_SQL_EMULATOR_HOST','FIREBASE_DATACONNECT_EMULATOR_HOST']:
+        env.pop(key,None)
+    (root / 'runtime.jar').write_bytes(b'fixture')
+    return root, env
+
+
+def run_shell(fixture, fault='', storage=False):
+    root, env = fixture
+    command = ['bash', str(root / 'scripts/data' / ('test-storage.sh' if storage else 'test-postgres.sh')),
+               '--contract-output' if storage else '--python-contract-output', str(root / ('storage-out' if storage else 'sql-out'))]
+    return subprocess.run(command, env=dict(env, FIXTURE_FAULT=fault), capture_output=True, text=True, timeout=35)
+
+
+@pytest.mark.parametrize('fault', ['compile_errors_exit0','seed_missing','seed_mismatch','readiness_failed','false_readiness','port_mismatch'])
+def test_sql_wrapper_requires_compile_seed_and_readiness(shell_fixture, fault):
+    if fault=='port_mismatch':
+        shell_fixture[1]['SPECIMEN_SQL_EMULATOR_HOST']='127.0.0.1:9998'
+    result = run_shell(shell_fixture, fault)
+    assert result.returncode != 0, f'{fault} was accepted: {result.stdout} {result.stderr}'
+    assert ('readiness' if fault=='false_readiness' else fault.split('_')[0]) in result.stderr.lower(), result.stderr
+
+
+@pytest.mark.parametrize('errors_member', ['absent', 'null'])
+def test_sql_wrapper_accepts_metadata_only_compile(shell_fixture, errors_member):
+    # Firebase 15.8.0 treats errors as optional. This metadata shape is a
+    # response-compatibility control, not qualification of an engine version.
+    response = {'metadata': {'primaryDataSource': {'postgres': {'requiredExtensions': ['uuid-ossp']}}}}
+    if errors_member == 'null':
+        response['errors'] = None
+    root, env = shell_fixture
+    env['FIXTURE_COMPILE_RESPONSE'] = json.dumps(response)
+    result = run_shell(shell_fixture)
+    assert result.returncode == 0, result.stdout + result.stderr
+    lifecycle = json.loads((root / 'lifecycle.json').read_text())
+    selection = json.loads((DATA / 'engine-contract-selection.json').read_text())
+    assert [row['id'] for row in lifecycle['stages']] == [id for id in selection['stages'] if not id.startswith('storage.')]
+    assert [row['id'] for row in lifecycle['node_events']] == selection['connector_groups']
+    assert lifecycle['seed'] == json.loads((root / 'seed.json').read_text())
+    assert lifecycle['cleanup']['ports_free_after'] is True
+
+
+@pytest.mark.parametrize('response', [
+    pytest.param('{', id='invalid-json'),
+    pytest.param('null', id='null-result'),
+    pytest.param('[]', id='array-result'),
+    pytest.param('"success"', id='string-result'),
+    pytest.param('1', id='number-result'),
+    pytest.param('true', id='boolean-result'),
+    pytest.param('{"errors": {}}', id='object-errors'),
+    pytest.param('{"errors": ""}', id='string-errors'),
+    pytest.param('{"errors": false}', id='boolean-errors'),
+    pytest.param('{"errors": 0}', id='number-errors'),
+])
+def test_sql_wrapper_rejects_malformed_compile_output(shell_fixture, response):
+    root, env = shell_fixture
+    env['FIXTURE_COMPILE_RESPONSE'] = response
+    result = run_shell(shell_fixture)
+    assert result.returncode != 0, f'malformed compile output accepted: {response}\n{result.stdout} {result.stderr}'
+    assert 'sql.compile' in result.stderr, result.stderr
+    lifecycle = json.loads((root / 'lifecycle.json').read_text())
+    assert [(row['id'], row['outcome']) for row in lifecycle['stages']] == [
+        ('preflight', 'passed'), ('sql.compile', 'failed'), ('sql.cleanup', 'passed'),
+    ]
+    assert 'initdb' not in (root / 'calls.jsonl').read_text(), 'malformed compile reached PostgreSQL initialization'
+
+
+@pytest.mark.parametrize('fault,code', [('test_failed',17),('cleanup_failed',1),('dc_cleanup_failed',1)])
+def test_sql_wrapper_preserves_test_failure_and_fails_cleanup(shell_fixture, fault, code):
+    result=run_shell(shell_fixture, fault)
+    assert result.returncode == code, result.stdout + result.stderr
+    calls=(shell_fixture[0]/'calls.jsonl').read_text()
+    assert 'pg_ctl' in calls, 'owned PostgreSQL cleanup was not attempted'
+
+
+@pytest.mark.parametrize('mode',['normal','cold'])
+def test_sql_wrapper_complete_original_sequence(shell_fixture,mode):
+    preflight=shell_fixture[0]/'preflight.json'
+    evidence=json.loads(preflight.read_text())
+    if mode=='cold': evidence['cache'].update(mode='cold',restore='bypassed')
+    preflight.write_text(json.dumps(evidence))
+    shell_fixture[1]['ENGINE_CACHE_MODE']=mode
+    result=run_shell(shell_fixture)
+    assert result.returncode==0, result.stdout+result.stderr
+    lifecycle=json.loads((shell_fixture[0]/'lifecycle.json').read_text())
+    selection=json.loads((DATA/'engine-contract-selection.json').read_text())
+    expected=[id for id in selection['stages'] if not id.startswith('storage.')]
+    assert [row['id'] for row in lifecycle['stages']]==expected
+    assert [row['id'] for row in lifecycle['node_events']]==selection['connector_groups']
+    assert lifecycle['seed']==json.loads((shell_fixture[0]/'seed.json').read_text())
+    assert lifecycle['cleanup']['ports_free_after'] is True
+
+
+@pytest.mark.parametrize('fault', [*json.loads((ROOT / 'scripts/data/engine-contract-selection.json').read_text())['storage_assertions'], 'cleanup_failed'])
+def test_storage_wrapper_requires_all_denial_ids_and_cleanup(shell_fixture, fault):
+    # Supply a passing SQL part first, exactly as the combined hosted command does.
+    result=run_shell(shell_fixture)
+    assert result.returncode==0, result.stderr
+    if fault=='cleanup_failed':
+        # A live owned port left behind must be a cleanup failure. Fixture Java
+        # ignores TERM, requiring fallback termination and a failing outcome.
+        java=shell_fixture[0]/'bin/java'
+        java.write_text(java.read_text().replace("signal.signal(signal.SIGTERM,lambda *_:sys.exit(0))", "signal.signal(signal.SIGTERM,signal.SIG_IGN)"))
+    result=run_shell(shell_fixture, fault, storage=True)
+    assert result.returncode != 0, result.stdout+result.stderr
+    assert ('cleanup' if fault=='cleanup_failed' else 'inventory mismatch') in result.stderr.lower(), result.stderr
+    assert 'storage-test.mjs' in (shell_fixture[0]/'calls.jsonl').read_text(), 'failure occurred before assertions'
+
+
+@pytest.mark.parametrize('layout',['direct','standalone'])
+def test_storage_wrapper_complete_inventory(shell_fixture,layout):
+    if layout=='standalone': shell_fixture[1]['FIXTURE_STANDALONE']='true'
+    assert run_shell(shell_fixture).returncode==0
+    result=run_shell(shell_fixture,storage=True)
+    assert result.returncode==0, result.stdout+result.stderr
+    lifecycle=json.loads((shell_fixture[0]/'lifecycle.json').read_text())
+    selection=json.loads((DATA/'engine-contract-selection.json').read_text())
+    assert [r['id'] for r in lifecycle['stages']]==selection['stages']
+    assert [r['id'] for r in lifecycle['node_events']]==selection['connector_groups']+selection['storage_assertions']
+    assert [r['id'] for r in lifecycle['processes']]==selection['processes']
+    if layout=='standalone': assert_storage_tree_stopped(shell_fixture,lifecycle)
+
+
+def assert_storage_tree_stopped(fixture,lifecycle,cleanup='passed'):
+    root,_=fixture
+    pids=json.loads((root/'standalone-pids.json').read_text())
+    if (root/'java-pid.json').exists():
+        runtime=json.loads((root/'java-pid.json').read_text())
+        if runtime['pid']: pids['java']=runtime['pid']
+        if runtime.get('probe'): pids['probe']=runtime['probe']
+    for pid in pids.values():
+        with pytest.raises(ProcessLookupError):
+            os.kill(pid,0)
+    assert not (root/'launcher-signals.jsonl').exists(),'shutdown must reach the actual forked CLI, without relying on launcher signal forwarding'
+    rows=lifecycle['storage_processes']
+    assert {row['pid'] for row in rows}==set(pids.values())
+    assert all(row['birth_id'] and row['stopped'] and row['waited'] and row['ended_ns']>=row['started_ns'] for row in rows)
+    cli=next(row for row in rows if row['pid']==pids['cli'])
+    launcher=next(row for row in rows if row['pid']==pids['launcher'])
+    assert cli['parent_pid']==launcher['pid'] and cli['parent_birth_id']==launcher['birth_id']
+    if 'java' in pids:
+        java=next(row for row in rows if row['pid']==pids['java'])
+        assert java['parent_pid']==cli['pid'] and java['parent_birth_id']==cli['birth_id']
+    assert lifecycle['cleanup']['outcome']==cleanup and lifecycle['cleanup']['survivors']==[]
+
+
+@pytest.mark.parametrize('fault,reason',[('storage_no_java','Storage Java child missing'),('readiness_failed','failed (19)')])
+def test_storage_standalone_startup_failure_cleans_partial_tree(shell_fixture,fault,reason):
+    root,env=shell_fixture
+    env['FIXTURE_STANDALONE']='true'
+    assert run_shell(shell_fixture).returncode==0
+    result=run_shell(shell_fixture,fault,storage=True)
+    assert result.returncode!=0 and reason in result.stderr,result.stdout+result.stderr
+    lifecycle=json.loads((root/'lifecycle.json').read_text())
+    assert_storage_tree_stopped(shell_fixture,lifecycle)
+    assert 'storage-test.mjs' not in (root/'calls.jsonl').read_text()
+
+
+def test_storage_registration_failure_still_owns_and_stops_tree(shell_fixture):
+    root,env=shell_fixture
+    env['FIXTURE_STANDALONE']='true'
+    assert run_shell(shell_fixture).returncode==0
+    result=run_shell(shell_fixture,'storage_registration_failed',storage=True)
+    assert result.returncode==29,result.stdout+result.stderr
+    lifecycle=json.loads((root/'lifecycle.json').read_text())
+    assert_storage_tree_stopped(shell_fixture,lifecycle,cleanup='failed')
+    assert 'storage-test.mjs' not in (root/'calls.jsonl').read_text()
+
+
+@pytest.mark.parametrize('phase',['startup','assertions'])
+@pytest.mark.parametrize('signum,expected',[(signal.SIGINT,130),(signal.SIGTERM,143)])
+def test_storage_standalone_interruption_cleans_complete_tree(shell_fixture,phase,signum,expected):
+    root,env=shell_fixture
+    env.update(FIXTURE_STANDALONE='true',FIXTURE_JAVA_PROBE='true')
+    assert run_shell(shell_fixture).returncode==0
+    fault='storage_no_java' if phase=='startup' else 'hold_storage'
+    marker=root/('storage-cli-running' if phase=='startup' else 'storage-assertions-running')
+    command=['bash',str(root/'scripts/data/test-storage.sh'),'--contract-output',str(root/'storage-out')]
+    child=subprocess.Popen(command,env=dict(env,FIXTURE_FAULT=fault),stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+    try:
+        deadline=time.monotonic()+15
+        while not marker.exists() and child.poll() is None and time.monotonic()<deadline: time.sleep(.02)
+        assert marker.exists(),'interruption control did not reach '+phase
+        child.send_signal(signum)
+        stdout,stderr=child.communicate(timeout=15)
+        assert child.returncode==expected,stdout+stderr
+        lifecycle=json.loads((root/'lifecycle.json').read_text())
+        assert_storage_tree_stopped(shell_fixture,lifecycle)
+    finally:
+        if child.poll() is None:
+            child.terminate(); child.communicate(timeout=15)
+
+
+@pytest.mark.parametrize('script', ['test-postgres.sh','test-storage.sh'])
+def test_wrappers_reject_unknown_arguments(shell_fixture, script):
+    root,env=shell_fixture
+    result=subprocess.run(['bash',str(root/'scripts/data'/script),'--unknown'],env=dict(env,FIXTURE_FAULT='unknown_argument'),capture_output=True,text=True,timeout=5)
+    assert result.returncode==2
+    assert 'unknown argument' in result.stderr.lower()
+
+
+def test_sql_wrapper_rejects_omitted_original_stage(shell_fixture):
+    reporter=shell_fixture[0]/'scripts/data/engine-contract-reporter.mjs'
+    before=reporter.read_text()
+    assert before.count("['paging','search','checksum']")==1
+    reporter.write_text(before.replace("['paging','search','checksum']", "['paging','checksum']"))
+    result=run_shell(shell_fixture)
+    assert result.returncode!=0
+    assert 'stage inventory mismatch' in result.stderr
+
+
+@pytest.mark.parametrize('mutated', [False,True])
+def test_storage_real_node_assertions_and_independent_denials(tmp_path, mutated):
+    # Response fault model only: actual storage.rules mutant needs hosted Java.
+    loader=tmp_path/'fetch.mjs'
+    events=tmp_path/'events.jsonl'
+    probes=tmp_path/'probes.jsonl'
+    loader.write_text(r'''
+import {appendFileSync} from 'node:fs';
+const objects=new Map();
+globalThis.fetch=async (url,options={})=> {
+ const u=new URL(url), method=options.method||'GET';
+ const owner=options.headers?.Authorization==='Bearer owner';
+ const name=u.searchParams.get('name')||decodeURIComponent(u.pathname.split('/o/')[1]||'');
+ if(!owner) {
+  appendFileSync(process.env.PROBES,JSON.stringify({method,name})+'\n');
+  if(process.env.ALLOW_ALL==='true') {
+   if(method==='DELETE') objects.delete(name);
+   if(method==='POST') objects.set(name,new Uint8Array(Buffer.from(options.body)));
+  }
+  return new Response('response fault',{status:process.env.ALLOW_ALL==='true'?200:403});
+ }
+ if(method==='POST') {objects.set(name,new Uint8Array(options.body));return new Response('{}',{status:200});}
+ return new Response(objects.get(name),{status:200});
+};
+''')
+    result=subprocess.run(['node','--import',str(loader),str(DATA/'storage-test.mjs')],env=dict(os.environ,
+                          ENGINE_CONTRACT_NODE_EVENTS=str(events),PROBES=str(probes),ALLOW_ALL=str(mutated).lower()),
+                          capture_output=True,text=True,timeout=10)
+    rows=[json.loads(line) for line in events.read_text().splitlines()]
+    assert len(probes.read_text().splitlines())==10, 'not every independent denial was exercised'
+    if mutated:
+        assert result.returncode!=0
+        assert 'storage.anonymous.read: GET unexpected 200' in result.stderr
+        assert 'AggregateError: Storage denial assertions failed' in result.stderr, 'primary denial failures were hidden by later diagnostics'
+        assert len(rows)==3, 'failed assertions must not emit passed events'
+    else:
+        assert result.returncode==0, result.stderr
+        assert [row['id'] for row in rows]==json.loads((ROOT/'scripts/data/engine-contract-selection.json').read_text())['storage_assertions']
+
+
+@pytest.mark.parametrize('fault', ['none','organization','collection','uid','role','organization_active','collection_active','can_view_sensitive','missing'])
+def test_seed_real_node_requires_exact_readback(tmp_path, fault):
+    loader=tmp_path/'seed-fetch.mjs'
+    seed=tmp_path/'seed.json'
+    loader.write_text(r'''
+const org='00000000-0000-4000-8000-000000000001', col='00000000-0000-4000-8000-000000000002';
+let count=0;
+globalThis.fetch=async()=> {
+ if(count++===0) return new Response(JSON.stringify({data:{}}),{status:200});
+ const organization={organizationId:org,uid:'synthetic-reviewer',active:true};
+ const collection={organizationId:org,collectionId:col,uid:'synthetic-reviewer',active:true,role:'reviewer',canViewSensitive:true};
+ switch(process.env.SEED_FAULT) {
+ case 'organization': organization.organizationId=col;break;
+ case 'collection': collection.collectionId=org;break;
+ case 'uid': collection.uid='outsider';break;
+ case 'role': collection.role='outsider';break;
+ case 'organization_active': organization.active=false;break;
+ case 'collection_active': collection.active=false;break;
+ case 'can_view_sensitive': collection.canViewSensitive=false;break;
+ }
+ return new Response(JSON.stringify({data:{organizationMembers:[organization],collectionMembers:process.env.SEED_FAULT==='missing'?[]:[collection]}}),{status:200});
+};
+''')
+    result=subprocess.run(['node','--import',str(loader),str(DATA/'seed-integration.mjs')],env=dict(os.environ,
+                          SEED_FAULT=fault,ENGINE_CONTRACT_SEED_REPORT=str(seed)),capture_output=True,text=True,timeout=10)
+    if fault=='none':
+        assert result.returncode==0, result.stderr
+        assert json.loads(seed.read_text())['role']=='reviewer'
+    else:
+        assert result.returncode!=0
+        assert not seed.exists(), 'a mismatched readback must not publish a seed result'
+
+
+@pytest.mark.parametrize('signum,expected',[(signal.SIGINT,130),(signal.SIGTERM,143)])
+def test_sql_signal_stops_owned_engines_and_waits(shell_fixture,signum,expected):
+    root,env=shell_fixture
+    command=['bash',str(root/'scripts/data/test-postgres.sh'),'--python-contract-output',str(root/'sql-out')]
+    child=subprocess.Popen(command,env=dict(env,FIXTURE_FAULT='hold_python'),stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+    try:
+        deadline=time.monotonic()+15
+        while not (root/'python-running').exists() and child.poll() is None and time.monotonic()<deadline:
+            time.sleep(.02)
+        assert (root/'python-running').exists(),'signal probe did not reach the live seeded Python stage'
+        child.send_signal(signum)
+        stdout,stderr=child.communicate(timeout=10)
+        assert child.returncode==expected,stdout+stderr
+        lifecycle=json.loads((root/'lifecycle.json').read_text())
+        assert lifecycle['cleanup']['outcome']=='passed'
+        assert lifecycle['cleanup']['survivors']==[]
+        assert [row['id'] for row in lifecycle['processes']]==['postgres','dataconnect.initial']
+    finally:
+        if child.poll() is None:
+            child.terminate()
+            child.communicate(timeout=10)
+
+
+def test_storage_standalone_is_diagnostic(shell_fixture):
+    root,env=shell_fixture
+    env.pop('ENGINE_CONTRACT_PROCESS_TOKEN')
+    env.pop('SPECIMEN_TEST_SQL_EMULATOR')
+    result=run_shell(shell_fixture,storage=True)
+    assert result.returncode==0,result.stdout+result.stderr
+    lifecycle=json.loads((root/'lifecycle.json').read_text())
+    assert lifecycle['engine_flag']=='diagnostic'
+    assert [row['id'] for row in lifecycle['stages']]==['storage.start','storage.ready','storage.assertions','storage.cleanup']
+
+
+@pytest.mark.parametrize('version,accepted',[('16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)',True),('16.16 (Ubuntu 16.16-0ubuntu0.24.04.1)',False)])
+def test_sql_server_version_retains_approved_patch(shell_fixture,version,accepted):
+    shell_fixture[1]['FIXTURE_PG_VERSION']=version
+    result=run_shell(shell_fixture)
+    if accepted:
+        assert result.returncode==0,result.stdout+result.stderr
+        assert json.loads((shell_fixture[0]/'lifecycle.json').read_text())['postgres_server_version']==version
+    else:
+        assert result.returncode!=0
+        assert 'PostgreSQL server version mismatch' in result.stderr
+
+
+@pytest.mark.parametrize('kind,override',[('sql','SPECIMEN_TEST_DATACONNECT_CONFIG'),('storage','SPECIMEN_TEST_STORAGE_RULES')])
+def test_scratch_configuration_cannot_qualify_canonical(shell_fixture,kind,override):
+    if kind=='storage':
+        assert run_shell(shell_fixture).returncode==0
+    root,env=shell_fixture
+    env[override]=str(root/('dataconnect' if kind=='sql' else 'storage.rules'))
+    result=run_shell(shell_fixture,storage=kind=='storage')
+    assert result.returncode!=0
+    assert 'diagnostic' in result.stderr and 'cannot qualify' in result.stderr
+
+
+def test_storage_registers_jar_runtime_instead_of_java_version_probe(shell_fixture):
+    assert run_shell(shell_fixture).returncode==0
+    root,env=shell_fixture
+    env['FIXTURE_JAVA_PROBE']='true'
+    result=run_shell(shell_fixture,storage=True)
+    assert result.returncode==0,result.stdout+result.stderr
+    observed=json.loads((root/'lifecycle.json').read_text())
+    runtime=json.loads((root/'java-pid.json').read_text())
+    receipt=next(row for row in observed['processes'] if row['id']=='storage.java')
+    assert receipt['pid']==runtime['pid'],'registered Java version probe instead of the verified Storage JAR runtime'
+    assert receipt['pid']!=runtime['probe']
+
+
+@pytest.mark.parametrize('case',['owned','reused','gone','missing'])
+@pytest.mark.parametrize('requested',[None,2,15,9])
+def test_forced_java_cleanup_binds_birth_and_pidfd(tmp_path,case,requested):
+    # No OS signal is issued. Native pidfd/signal calls are replaced only in a
+    # disposable child, and a different birth must never receive a signal.
+    result=subprocess.run(['node','--input-type=module','-e',
+                          f"import {{JAVA_CLEANUP_CODE}} from {json.dumps((DATA/'engine-contract-reporter.mjs').as_uri())}; console.log(JSON.stringify(JAVA_CLEANUP_CODE));"],
+                          capture_output=True,text=True,timeout=5)
+    assert result.returncode==0,result.stderr
+    code=json.loads(result.stdout)
+    gate=tmp_path/'gate.py'
+    gate.write_text('import json, os\nfrom pathlib import Path\ndef read_json(p): return json.loads(Path(p).read_text())\ndef require(c,m):\n if not c: raise ValueError(m)\ndef process_birth(pid):\n c=os.environ["PIDFD_CASE"]\n return None if c=="gone" else ("known-birth" if c=="owned" else "different-birth",123)\n')
+    receipt=tmp_path/'receipt.json'
+    receipt.write_text(json.dumps({'pid':12345,'birth_id':'known-birth'}))
+    marker=tmp_path/'calls.json'
+    prelude='''import os,signal,sys,json
+from pathlib import Path
+calls=[]
+def fake_open(pid):
+ assert pid==12345
+ if os.environ['PIDFD_CASE']=='missing': raise ProcessLookupError()
+ return 42
+os.pidfd_open=fake_open
+signal.pidfd_send_signal=lambda fd,sig: calls.append(['signal',fd,int(sig)])
+os.close=lambda fd: calls.append(['close',fd])
+'''
+    arguments=['cleanup','12345',str(receipt),str(gate)]+([] if requested is None else [str(requested)])
+    prelude+=f'sys.argv={arguments!r}\nexec({code!r})\nPath({str(marker)!r}).write_text(json.dumps(calls))\n'
+    result=subprocess.run([sys.executable,'-B','-c',prelude],env=dict(os.environ,PIDFD_CASE=case),capture_output=True,text=True,timeout=5)
+    assert result.returncode==0,result.stderr
+    assert json.loads(result.stdout)=={'forced':case=='owned'}
+    calls=json.loads(marker.read_text())
+    assert [call for call in calls if call[0]=='signal']==([['signal',42,9 if requested is None else requested]] if case=='owned' else [])
+    assert [call for call in calls if call[0]=='close']==([] if case=='missing' else [['close',42]])
+
+
+@pytest.mark.parametrize('fault',['none','recycled_launcher','child_reparented','child_recycled','parent_recycled'])
+def test_storage_discovery_binds_every_ancestry_link(tmp_path,fault):
+    # Reverse table order, an unrelated verified-JAR lookalike, and OS identity
+    # changes during capture: discovery may claim only the stable owned chain.
+    script=tmp_path/'ancestry.mjs'
+    script.write_text(f"import {{discoverStorageProcesses}} from {json.dumps((DATA/'engine-contract-reporter.mjs').as_uri())};\n"+r'''
+const root={pid:101,birth_id:'launcher',depth:0};
+const rows=[{pid:103,parent:102,command:'java verified.jar'},{pid:201,parent:999,command:'java verified.jar'},{pid:102,parent:101,command:'firebase CLI'}];
+const calls=new Map(), fault=process.argv[2];
+function inspect(pid) {
+ const n=(calls.get(pid)||0)+1;calls.set(pid,n);
+ const identities={101:{parent:1,birth_id:'launcher'},102:{parent:101,birth_id:'cli'},103:{parent:102,birth_id:'jar'},201:{parent:999,birth_id:'unrelated'}};
+ const identity=identities[pid];
+ if(pid===101 && (fault==='recycled_launcher' || (fault==='parent_recycled' && n>1))) identity.birth_id='new-launcher';
+ if(pid===102 && fault==='child_reparented') identity.parent=999;
+ if(pid===102 && fault==='child_recycled') identity.birth_id='cli-'+n;
+ return identity;
+}
+console.log(JSON.stringify(discoverStorageProcesses(rows,[root],inspect)));
+''')
+    result=subprocess.run(['node',str(script),fault],capture_output=True,text=True,timeout=5)
+    assert result.returncode==0,result.stderr
+    rows=json.loads(result.stdout)
+    assert [row['pid'] for row in rows]==([102,103] if fault=='none' else [])
+    if fault=='none':
+        assert [row['parent_birth_id'] for row in rows]==['launcher','cli']
+        assert [row['birth_id'] for row in rows]==['cli','jar']
+
+
+def test_sql_python_scratch_is_private(shell_fixture):
+    root,env=shell_fixture
+    env.pop('PYTHONDONTWRITEBYTECODE',None)
+    result=run_shell(shell_fixture)
+    assert result.returncode==0,result.stdout+result.stderr
+    calls=[json.loads(line) for line in (root/'calls.jsonl').read_text().splitlines()]
+    pytest_call=next(row for row in calls if row[0]=='python' and '-m' in row and 'pytest' in row)
+    assert 'no:cacheprovider' in pytest_call,'mandatory Python must not write checkout cache'
+    base=next(arg.split('=',1)[1] for arg in pytest_call if arg.startswith('--basetemp='))
+    assert Path(base).is_relative_to(root/'sql-out')
+    assert Path(base).parent.stat().st_mode & 0o777==0o700
+    assert json.loads((root/'python-env.json').read_text())['bytecode']=='1'
+
+
+def test_valid_restored_cache_and_download_are_verified_offline(tmp_path,monkeypatch,capsys):
+    import io
+    p=provisioner()
+    download=p.download_asset
+    config,cache,payload,marker=verified_cache_control(p,tmp_path/'valid',monkeypatch)
+    observed=p.verify_asset(cache/p.FILENAMES['dataconnect'],config['assets']['dataconnect'],version='3.2.0')
+    assert observed['sha256']==hashlib.sha256(payload).hexdigest()
+    report=tmp_path/'provision.json'
+    assert p.main(['--directory',str(cache),'--mode','normal','--restore','hit','--output',str(report)])==0
+    assert json.loads(capsys.readouterr().out)['cache']['restore']=='hit'
+    assert json.loads(report.read_text())['cache']['entries_before']==3
+    target=tmp_path/'downloaded'
+    download(target,config['assets']['dataconnect'],opener=lambda _:io.BytesIO(payload))
+    assert target.read_bytes()==payload
+    assert target.stat().st_mode & 0o777==0o700
+    assert not target.with_name(target.name+'.partial').exists()
+    assert not marker.exists(),'verification must never execute engine assets'
