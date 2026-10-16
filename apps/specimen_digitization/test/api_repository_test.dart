@@ -224,6 +224,64 @@ void main() {
     },
   );
 
+  test('location reassessment posts once and refreshes the same run', () async {
+    final workspace =
+        jsonDecode(jsonEncode(fixture['workspace_response'])) as Json;
+    workspace.addAll({
+      'specimen_id': 's1',
+      'revision': 8,
+      'active_run_id': 'run 1',
+      'record_version_id': 'run 1:8',
+      'stage': 'pending',
+      'disposition': null,
+      'run': {...?workspace['run'] as Json?, 'id': 'run 1', 'stage': 'pending'},
+    });
+    final sent = <http.Request>[];
+    final repo = repository((request) async {
+      sent.add(request);
+      if (request.method == 'POST') return http.Response('{}', 200);
+      if (request.url.path.endsWith('/content')) {
+        return http.Response.bytes([1, 2, 3], 200);
+      }
+      return http.Response(jsonEncode(workspace), 200);
+    });
+    final refreshed = await repo.review(
+      scope,
+      const Specimen({
+        'specimen_id': 's1',
+        'revision': 7,
+        'active_run_id': 'run 1',
+      }),
+      {
+        'kind': 'run_action',
+        'action': 'reassess_locations',
+        'reason': 'Recheck the retained location hierarchy',
+      },
+      'reassess-stable',
+    );
+    final posts = sent.where((request) => request.method == 'POST').toList();
+    expect(posts, hasLength(1));
+    expect(posts.single.url.path, endsWith('/runs/run%201/actions'));
+    expect(posts.single.headers['Idempotency-Key'], 'reassess-stable');
+    expect(jsonDecode(posts.single.body), {
+      'expected_revision': 7,
+      'action': 'reassess_locations',
+      'reason': 'Recheck the retained location hierarchy',
+    });
+    expect(
+      sent.where(
+        (request) =>
+            request.method == 'GET' &&
+            request.url.path.endsWith('/specimens/s1/workspace'),
+      ),
+      hasLength(1),
+    );
+    expect(refreshed.id, 's1');
+    expect(refreshed.revision, 8);
+    expect(refreshed.data['active_run_id'], 'run 1');
+    expect(refreshed.data['run']['stage'], 'pending');
+  });
+
   test(
     'research candidate review submits only the opaque selection receipt',
     () async {

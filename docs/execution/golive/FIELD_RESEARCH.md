@@ -2309,6 +2309,21 @@ province, county or city that waited for a country that did not settle
 is among them). A field marked not on the label is not settled, so the
 retry researches it again, and it then cites only the row the retry writes.
 
+An operator can explicitly **Reassess locations** from the Processing panel
+when a completed run still has unsettled automatic locations and a research
+attempt remains. This researches only country, province/state, county, city
+and precise location together, using the existing run and saved readings.
+It can reconsider earlier machine assignments when fresh qualified source
+evidence supports a different hierarchy. Human selections and independently
+source-backed parents remain protected. A partial or unavailable source cannot
+replace a supported hierarchy with a mixture of incompatible old and new
+values. Parents derived from a human-selected location remain constraints too;
+a stale dependent parent may still need separate review. Earlier values and
+evidence remain in history. The action records its
+reason and scope, consumes an ordinary research attempt and retains all usage,
+prices and spending limits; it supplies no geographic values. Ordinary Retry
+continues to preserve supported fields.
+
 If `SPECIMEN_RESEARCH_HARNESS` is rolled back to "on", a run field research
 left `retry_scheduled` (`field_research_timeout`, `field_research_model_error`,
 `lookup_operational_failure`) is refused by native provisioning when its retry
