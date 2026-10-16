@@ -1,11 +1,13 @@
 """Loopback HTTP custody; no Firebase, provider, worker or model calls."""
 import copy
+from contextlib import contextmanager
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from threading import Thread
 
 import pytest
 import requests
+
+from test_authority_registry import loopback_server
 
 from test_native_canonical_v2_contract import basis_v1, causal, receipt
 from test_native_materialization_loader_v2 import native_materialization_response
@@ -25,7 +27,10 @@ def http_read():
 
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self):
-            calls.append((self.path, json.loads(self.rfile.read(int(self.headers['Content-Length'])))))
+            raw = self.rfile.read(int(self.headers['Content-Length']))
+            if self.server.stop_event.is_set():
+                return
+            calls.append((self.path, json.loads(raw)))
             body = json.dumps({'data': replies.pop(0)}).encode()
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
@@ -36,10 +41,7 @@ def http_read():
         def log_message(self, *args):
             pass
 
-    server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
-    thread = Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    with requests.Session() as session:
+    with loopback_server(Handler, ThreadingHTTPServer) as server, requests.Session() as session:
         repository = SqlConnectRepository(project='demo-specimen-data', location='us-east4',
             service='specimen-digitization-service', connector='specimen-server', session=session,
             emulator_host=f'127.0.0.1:{server.server_port}')
@@ -52,10 +54,8 @@ def http_read():
             assert calls[-1][1] == {'operationName': operation, 'variables': {'actorUid': 'synthetic-worker'}}
             return result
 
+        read.calls, read.replies = calls, replies
         yield read
-    server.shutdown()
-    thread.join()
-    server.server_close()
 
 
 def envelope(operation, row, **access):
@@ -166,3 +166,22 @@ def test_retained_preparation_and_causal_preimages_survive_http(http_read, causa
     data = http_read('GetResearchPublicationReceiptV2', envelope('GetResearchPublicationReceiptV2',
         {'causal': causal_row}))
     assert NativeCausalReceiptV2.model_validate(data['retained']['causal']).model_dump(mode='json') == causal_row
+
+
+def test_loopback_cases_have_independent_reply_and_request_state():
+    fixture = contextmanager(http_read.__wrapped__)
+    with fixture() as first, fixture() as second:
+        assert first.calls is not second.calls
+        assert first.replies is not second.replies
+        first_row = {"case": "first", "number": 15.0}
+        second_row = {"case": "second", "number": 15}
+        operation = "GetCanonicalResearchBindingV2"
+        assert first(operation, envelope(operation, first_row))["binding"] == first_row
+        assert second.calls == [] and second.replies == []
+        assert second(operation, envelope(operation, second_row), "repository")["binding"] == second_row
+        assert len(first.calls) == len(second.calls) == 1
+        assert first.replies == second.replies == []
+        first.calls.clear()
+        assert len(second.calls) == 1, "one case mutated another case's request log"
+        assert first(operation, envelope(operation, first_row))["binding"] == first_row
+        assert len(second.calls) == 1
