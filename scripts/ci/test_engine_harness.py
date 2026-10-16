@@ -490,6 +490,71 @@ def test_wrappers_reject_unknown_arguments(shell_fixture, script):
     assert 'unknown argument' in result.stderr.lower()
 
 
+def assert_wrapper_rejects_before_work(fixture, script, arguments):
+    root, env = fixture
+    scratch = root.parent / 'wrapper-scratch'
+    scratch.mkdir()
+    before = set(root.rglob('*'))
+    result = subprocess.run(['bash', str(root / 'scripts/data' / script), *arguments],
+                            env=dict(env, TMPDIR=str(scratch)),
+                            capture_output=True, text=True, timeout=5)
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert not result.stdout, 'rejected configuration printed stdout'
+    assert result.stderr.strip(), 'rejection must explain the invalid configuration'
+    assert not (root / 'calls.jsonl').exists(), 'rejected configuration started Node or an engine'
+    assert set(root.rglob('*')) == before, 'rejected configuration wrote output or scratch files'
+    assert not list(scratch.iterdir()), 'rejected configuration created a temporary directory'
+
+
+@pytest.mark.parametrize('script,flag', [
+    ('test-postgres.sh', '--python-contract-output'),
+    ('test-storage.sh', '--contract-output'),
+])
+@pytest.mark.parametrize('variable', [
+    'SPECIMEN_TEST_PG_PORT', 'SPECIMEN_TEST_DC_PORT', 'SPECIMEN_TEST_STORAGE_PORT',
+])
+@pytest.mark.parametrize('port', ['3000', '8000', '0003000', '0', '1024', '65536', '-1', 'bad', '1.5', '99999999999999999999'])
+def test_wrappers_validate_all_ports_before_contract_output(shell_fixture, script, flag, variable, port):
+    root, env = shell_fixture
+    env[variable] = port
+    assert_wrapper_rejects_before_work(shell_fixture, script, [flag, str(root / 'new-output')])
+
+
+@pytest.mark.parametrize('script,flag', [
+    ('test-postgres.sh', '--python-contract-output'),
+    ('test-storage.sh', '--contract-output'),
+])
+@pytest.mark.parametrize('variable,port', [
+    ('SPECIMEN_TEST_PG_PORT', '9509'),
+    ('SPECIMEN_TEST_DC_PORT', '9299'),
+    ('SPECIMEN_TEST_STORAGE_PORT', '5559'),
+    ('SPECIMEN_TEST_STORAGE_PORT', '05559'),
+])
+def test_wrappers_reject_aliased_ports_before_contract_output(shell_fixture, script, flag, variable, port):
+    root, env = shell_fixture
+    env[variable] = port
+    assert_wrapper_rejects_before_work(shell_fixture, script, [flag, str(root / 'new-output')])
+
+
+@pytest.mark.parametrize('script,flag,other', [
+    ('test-postgres.sh', '--python-contract-output', '--contract-output'),
+    ('test-storage.sh', '--contract-output', '--python-contract-output'),
+])
+@pytest.mark.parametrize('case', ['unknown', 'missing', 'flag-value', 'duplicate', 'extra', 'wrong-flag'])
+def test_wrappers_validate_every_argument_before_work(shell_fixture, script, flag, other, case):
+    root, _ = shell_fixture
+    output = str(root / 'new-output')
+    arguments = {
+        'unknown': ['--unknown'],
+        'missing': [flag],
+        'flag-value': [flag, '--unknown'],
+        'duplicate': [flag, output, flag, output],
+        'extra': [flag, output, 'extra'],
+        'wrong-flag': [other, output],
+    }[case]
+    assert_wrapper_rejects_before_work(shell_fixture, script, arguments)
+
+
 def test_sql_wrapper_rejects_omitted_original_stage(shell_fixture):
     reporter=shell_fixture[0]/'scripts/data/engine-contract-reporter.mjs'
     before=reporter.read_text()
