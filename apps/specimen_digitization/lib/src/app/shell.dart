@@ -255,7 +255,9 @@ class _AppShellState extends State<AppShell> {
         _mobileNavigation =
             constraints.maxWidth < 768 * scale || constraints.maxHeight < 600;
         final navVisible =
-            _mobileNavigation && MediaQuery.viewInsetsOf(context).bottom == 0;
+            _mobileNavigation &&
+            !record &&
+            MediaQuery.viewInsetsOf(context).bottom == 0;
         _docked = !_mobileNavigation;
         _expanded =
             listRoute ||
@@ -311,25 +313,31 @@ class _AppShellState extends State<AppShell> {
                               child: MediaQuery.removePadding(
                                 context: context,
                                 removeLeft: _docked,
-                                child: UiScaffold(
-                                  sky: AppShell.skyOf(location),
-                                  header:
-                                      _mobileNavigation &&
-                                          widget.destination ==
-                                              WorkspaceDestination.intake
-                                      ? _mobileHeader(context, controller)
-                                      : null,
-                                  banner: _mobileNavigation && listRoute
-                                      ? null
-                                      : _Chrome(
-                                          controller: controller,
-                                          busy: busy,
-                                          window: WindowClass.of(context),
-                                        ),
-                                  body: Semantics(
-                                    container: true,
-                                    explicitChildNodes: true,
-                                    child: widget.child,
+                                child: SafeArea(
+                                  top: false,
+                                  left: false,
+                                  right: false,
+                                  bottom: _mobileNavigation && record,
+                                  child: UiScaffold(
+                                    sky: AppShell.skyOf(location),
+                                    header:
+                                        _mobileNavigation &&
+                                            widget.destination ==
+                                                WorkspaceDestination.intake
+                                        ? _mobileHeader(context, controller)
+                                        : null,
+                                    banner: _mobileNavigation && listRoute
+                                        ? null
+                                        : _Chrome(
+                                            controller: controller,
+                                            busy: busy,
+                                            window: WindowClass.of(context),
+                                          ),
+                                    body: Semantics(
+                                      container: true,
+                                      explicitChildNodes: true,
+                                      child: widget.child,
+                                    ),
                                   ),
                                 ),
                               ),

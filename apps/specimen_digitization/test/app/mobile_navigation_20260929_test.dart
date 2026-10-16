@@ -168,38 +168,47 @@ void main() {
       goldenIntakeLocation,
       goldenSpecimenLocation,
     ]) {
-      _testOn(platform, '$platform uses native phone tabs on $location', (
-        tester,
-      ) async {
-        await _pump(tester, platform, location: location);
-        expect(_nativeBar(platform), findsOneWidget);
-        expect(
-          platform == TargetPlatform.iOS
-              ? find.byType(material.NavigationBar)
-              : find.byType(cupertino.CupertinoTabBar),
-          findsNothing,
-        );
-        expect(_tab(platform, 'Specimens').hitTestable(), findsOneWidget);
-        expect(_tab(platform, 'Intake').hitTestable(), findsOneWidget);
-        expect(
-          _selectedTab(tester, platform),
-          location == goldenIntakeLocation ? 1 : 0,
-        );
-        _expectNoSidebar();
-        final content = location == goldenQueueLocation
-            ? find.byType(QueuePane)
-            : location == goldenIntakeLocation
-            ? find.byType(IntakeScreen)
-            : _record;
-        final bounds = tester.getRect(content);
-        expect(bounds.left, 0);
-        expect(bounds.width, 390);
-        expect(
-          bounds.bottom,
-          lessThanOrEqualTo(tester.getRect(_nativeBar(platform)).top),
-        );
-        expect(tester.takeException(), isNull);
-      });
+      _testOn(
+        platform,
+        '$platform shows phone tabs only outside $location record',
+        (tester) async {
+          await _pump(tester, platform, location: location);
+          final record = location == goldenSpecimenLocation;
+          expect(_nativeBar(platform), record ? findsNothing : findsOneWidget);
+          expect(
+            platform == TargetPlatform.iOS
+                ? find.byType(material.NavigationBar)
+                : find.byType(cupertino.CupertinoTabBar),
+            findsNothing,
+          );
+          if (record) {
+            expect(_backToSpecimens.hitTestable(), findsOneWidget);
+          } else {
+            expect(_tab(platform, 'Specimens').hitTestable(), findsOneWidget);
+            expect(_tab(platform, 'Intake').hitTestable(), findsOneWidget);
+            expect(
+              _selectedTab(tester, platform),
+              location == goldenIntakeLocation ? 1 : 0,
+            );
+          }
+          _expectNoSidebar();
+          final content = location == goldenQueueLocation
+              ? find.byType(QueuePane)
+              : location == goldenIntakeLocation
+              ? find.byType(IntakeScreen)
+              : _record;
+          final bounds = tester.getRect(content);
+          expect(bounds.left, 0);
+          expect(bounds.width, 390);
+          expect(
+            bounds.bottom,
+            lessThanOrEqualTo(
+              record ? 844 : tester.getRect(_nativeBar(platform)).top,
+            ),
+          );
+          expect(tester.takeException(), isNull);
+        },
+      );
     }
 
     _testOn(
@@ -215,11 +224,13 @@ void main() {
           ),
         );
         expect(_record, findsOneWidget);
+        expect(_nativeBar(platform), findsNothing);
         expect(_backToSpecimens.hitTestable(), findsOneWidget);
         _expectNoSidebar();
         await _tap(tester, _backToSpecimens);
         expect(_record, findsNothing);
         expect(find.byType(QueuePane), findsOneWidget);
+        expect(_nativeBar(platform), findsOneWidget);
         expect(tester.state(find.byType(QueuePane)), same(list));
         expect(tester.getRect(find.byType(QueuePane)).left, 0);
         expect(tester.getRect(find.byType(QueuePane)).width, 390);
@@ -229,26 +240,29 @@ void main() {
 
     _testOn(
       platform,
-      '$platform native tab selection respects the active label draft',
+      '$platform route exit to Intake respects the active label draft',
       (tester) async {
         await _pump(tester, platform, location: goldenSpecimenLocation);
         final state = tester.state(_record);
         final router = GoRouter.of(tester.element(_record));
         await _edit(tester, 'Keep this transcription');
         final draft = _draft(tester);
-        await _tap(tester, _tab(platform, 'Intake'));
+        expect(_nativeBar(platform), findsNothing);
+        router.go(goldenIntakeLocation);
+        await tester.pumpAndSettle();
         expect(find.text('Discard unsaved corrections?'), findsOneWidget);
         await _tap(tester, uiButton('Keep editing'));
         expect(tester.state(_record), same(state));
         expect(_draft(tester), same(draft));
         expect(draft.text, 'Keep this transcription');
-        expect(_selectedTab(tester, platform), 0);
+        expect(_nativeBar(platform), findsNothing);
         expect(
           router.routerDelegate.currentConfiguration.uri.toString(),
           goldenSpecimenLocation,
         );
 
-        await _tap(tester, _tab(platform, 'Intake'));
+        router.go(goldenIntakeLocation);
+        await tester.pumpAndSettle();
         await _tap(tester, uiButton('Discard changes').hitTestable());
         expect(find.byType(IntakeScreen), findsOneWidget);
         expect(_record, findsNothing);
@@ -271,6 +285,7 @@ void main() {
           final state = tester.state(_record);
           await _edit(tester, 'Unsaved reading');
           final draft = _draft(tester);
+          expect(_nativeBar(platform), findsNothing);
           Future<void> requestBack() async {
             if (platformBack) {
               unawaited(tester.binding.handlePopRoute());
@@ -282,14 +297,17 @@ void main() {
 
           await requestBack();
           expect(find.text('Discard unsaved corrections?'), findsOneWidget);
+          expect(_nativeBar(platform), findsNothing);
           await _tap(tester, uiButton('Keep editing'));
           expect(tester.state(_record), same(state));
           expect(_draft(tester), same(draft));
           expect(draft.text, 'Unsaved reading');
+          expect(_nativeBar(platform), findsNothing);
           await requestBack();
           await _tap(tester, uiButton('Discard changes').hitTestable());
           expect(_record, findsNothing);
           expect(find.byType(QueuePane), findsOneWidget);
+          expect(_nativeBar(platform), findsOneWidget);
           expect(_selectedTab(tester, platform), 0);
           _expectNoSidebar();
           expect(tester.takeException(), isNull);
@@ -299,13 +317,20 @@ void main() {
 
     _testOn(
       platform,
-      '$platform native tabs clear safe areas and the keyboard',
+      '$platform record respects safe areas and keeps tabs hidden after keyboard',
       (tester) async {
         tester.view.padding = const FakeViewPadding(top: 44, bottom: 34);
         tester.view.viewPadding = const FakeViewPadding(top: 44, bottom: 34);
-        await _pump(tester, platform, location: goldenSpecimenLocation);
+        await _pump(tester, platform);
         final navLabel = tester.getRect(_tab(platform, 'Intake'));
         expect(navLabel.bottom, lessThanOrEqualTo(844 - 34));
+        await _tap(
+          tester,
+          find.byWidgetPredicate(
+            (widget) => widget is QueueRow && widget.id == goldenSpecimenId,
+          ),
+        );
+        expect(_nativeBar(platform), findsNothing);
         expect(tester.getRect(_backToSpecimens).top, greaterThanOrEqualTo(44));
         await _edit(tester, 'Continue with keyboard');
         tester.view.viewInsets = const FakeViewPadding(bottom: 300);
@@ -316,16 +341,18 @@ void main() {
           tester.getRect(uiField('Accepted label text')).bottom,
           lessThanOrEqualTo(544),
         );
-        if (_nativeBar(platform).evaluate().isNotEmpty) {
-          expect(
-            tester.getRect(_nativeBar(platform)).bottom,
-            lessThanOrEqualTo(544),
-          );
-        }
+        expect(_nativeBar(platform), findsNothing);
         expect(_draft(tester).text, 'Continue with keyboard');
         tester.view.viewInsets = const FakeViewPadding();
         await tester.pumpAndSettle();
+        expect(_nativeBar(platform), findsNothing);
+        await _tap(tester, _backToSpecimens);
+        await _tap(tester, uiButton('Discard changes').hitTestable());
         expect(_nativeBar(platform), findsOneWidget);
+        expect(
+          tester.getRect(_tab(platform, 'Intake')).bottom,
+          lessThanOrEqualTo(844 - 34),
+        );
         expect(tester.takeException(), isNull);
       },
     );
@@ -353,7 +380,7 @@ void main() {
 
     _testOn(
       platform,
-      '$platform landscape phone keeps native navigation and the draft',
+      '$platform record hides phone tabs and keeps its draft through resizing',
       (tester) async {
         await _pump(tester, platform, location: goldenSpecimenLocation);
         final state = tester.state(_record);
@@ -369,12 +396,11 @@ void main() {
           expect(tester.state(_record), same(state));
           expect(_draft(tester), same(draft));
           expect(draft.text, 'Same record through rotation');
+          expect(_nativeBar(platform), findsNothing);
           if (size.height < 600 || size.width < 768) {
-            expect(_nativeBar(platform), findsOneWidget);
             _expectNoSidebar();
             expect(tester.getRect(_record).left, 0);
           } else {
-            expect(_nativeBar(platform), findsNothing);
             expect(find.byKey(const ValueKey('global-rail')), findsOneWidget);
           }
           expect(tester.takeException(), isNull, reason: '$size');
