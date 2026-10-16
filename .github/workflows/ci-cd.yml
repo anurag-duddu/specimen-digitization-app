@@ -177,11 +177,11 @@ jobs:
 
       - name: Select pinned runner tools
         run: |
-          node_bin="$RUNNER_TOOL_CACHE/node/22.23.3/x64/bin"
+          # select_node_bin uses RUNNER_TOOL_CACHE and the highest installed Node 22.x.
+          node_bin="$(python3 -c 'import os; from scripts.ci.engine_contract_gate import select_node_bin; print(select_node_bin(os.environ))')"
           test -x "$node_bin/node"
           export PATH="$node_bin:$PATH"
-          test "$(node --version)" = v22.23.3
-          test "$(npm --version)" = 10.9.9
+          [[ "$(node --version)" =~ ^v22\.[0-9]+\.[0-9]+$ ]]
           test -n "$JAVA_HOME_21_X64"
           test -x "$JAVA_HOME_21_X64/bin/java"
           test -x /usr/lib/postgresql/16/bin/pg_ctl

@@ -223,12 +223,17 @@ does not establish comprehensive projection coverage or cloud parity.
 `scripts/data/engine-toolchain.json` pins the Data Connect 3.2.0 executable,
 Storage 1.1.3 JAR and firebase-tools 15.8.0 standalone Linux binary by size and
 SHA-256. No npm package installation is needed for this tier. The runner must
-already provide Node 22.23.3/npm 10.9.9, JDK 21.0.12+1, PostgreSQL 16.15 and
-the recorded image version. The preflight checks all PG client tools, the
-server version and `uuid-ossp`; there is no package-manager, container or JDK
-fallback. PG16 is an explicit runner-major qualification boundary, not proof
-of another Cloud SQL major's behavior. A rolling runner image mismatch fails
-closed and requires qualification through review.
+already provide JDK 21 from `JAVA_HOME_21_X64`, PostgreSQL 16 binaries at
+`/usr/lib/postgresql/16/bin` and a 16.x server. Node is selected deterministically
+as the highest installed stable 22.x under `$RUNNER_TOOL_CACHE/node`; a missing
+tool or approved major fails. npm is unused and is not checked. The preflight
+checks all PG client tools, the server version and `uuid-ossp`; there is no
+package-manager, container or JDK fallback. Majors are enforced; exact Java,
+PostgreSQL client/server and Node versions plus a required non-empty
+`ImageVersion` are recorded in provisioning and engine evidence and cross-checked
+against recorder observations. Routine runner patch and image updates are
+accepted. PG16 remains an explicit runner-major qualification boundary, not
+proof of another Cloud SQL major's behavior.
 
 Only the three engine files are cached, under the full toolchain file hash
 and runner platform, without a restore prefix. Downloads and restored files

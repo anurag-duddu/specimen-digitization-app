@@ -359,6 +359,7 @@ async function harness(kind, argv) {
     } else {
       assert.deepEqual(evidence.tools,lifecycle.tools,'Storage/SQL tool mismatch');
       assert.deepEqual(evidence.cache,lifecycle.cache,'Storage/SQL cache mismatch');
+      assert.deepEqual(evidence.runtime,lifecycle.runtime,'Storage/SQL runtime mismatch');
     }
     // Never consult real HOME/config or libpq environment. Engines and CLI use a
     // private working/cache directory and fail outbound requests at a dead proxy.
@@ -400,7 +401,8 @@ async function harness(kind, argv) {
         assert.ok(ready && live(pgProcess.pid),'postgres readiness failed');
         const version=await run(path.join(pg,'psql'),['-h','127.0.0.1','-p',String(ports[0]),'-d','postgres','-Atc','SHOW server_version']);
         const serverVersion=version.stdout.trim();
-        assert.equal(serverVersion.match(/^(\d+\.\d+)(?:\s|$)/)?.[1],lifecycle.runtime.postgres_server,'PostgreSQL server version mismatch');
+        const exactVersion=serverVersion.match(/^(16\.\d+)(?: \([^\r\n]*\))?$/)?.[1];
+        assert.ok(exactVersion && exactVersion===lifecycle.runtime.postgres_server,'PostgreSQL server version mismatch');
         lifecycle.postgres_server_version=serverVersion;
         await run(path.join(pg,'psql'),['-h','127.0.0.1','-p',String(ports[0]),'-d','postgres','-v','ON_ERROR_STOP=1','-c','CREATE EXTENSION "uuid-ossp"']);
       });

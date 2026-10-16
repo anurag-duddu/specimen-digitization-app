@@ -21,11 +21,10 @@
     }
   },
   "runtime": {
-    "java": "21.0.12+1",
-    "postgres": "16.15",
-    "node": "22.23.3",
+    "java": "21",
+    "postgres": "16",
+    "node": "22",
     "image_os": "ubuntu24",
-    "image_version": "20261012.334.1",
     "postgres_bin": "/usr/lib/postgresql/16/bin",
     "java_home_env": "JAVA_HOME_21_X64",
     "postgres_clients": [
@@ -37,6 +36,6 @@
       "pg_restore"
     ],
     "uuid_ossp": true,
-    "postgres_server": "16.15"
+    "postgres_server": "16"
   }
 }

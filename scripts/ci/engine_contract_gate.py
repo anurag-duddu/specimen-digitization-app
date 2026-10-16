@@ -19,6 +19,7 @@ from pathlib import Path
 import platform
 import re
 import secrets
+import shutil
 import socket
 import socketserver
 import stat
@@ -44,10 +45,10 @@ APPROVED_TOOLCHAIN = {
                      "sha256": "9b0fd84d6b9b7d62dbea76a4753f7098fbdc8c5ad8dea8da0432852fd99bdd57",  # pragma: allowlist secret (approved public engine asset digest)
                      "url": "https://github.com/firebase/firebase-tools/releases/download/v15.8.0/firebase-tools-linux"},
     },
-    "runtime": {"java": "21.0.12+1", "postgres": "16.15", "node": "22.23.3",
-                "image_os": "ubuntu24", "image_version": "20261012.334.1", "postgres_bin": "/usr/lib/postgresql/16/bin",
+    "runtime": {"java": "21", "postgres": "16", "node": "22",
+                "image_os": "ubuntu24", "postgres_bin": "/usr/lib/postgresql/16/bin",
                 "java_home_env": "JAVA_HOME_21_X64", "postgres_clients": ["initdb", "pg_ctl", "createdb", "psql", "pg_dump", "pg_restore"],
-                "uuid_ossp": True, "postgres_server": "16.15"},
+                "uuid_ossp": True, "postgres_server": "16"},
 }
 SOURCE_PREFIXES = ("src/", "tests/", "scripts/", "dataconnect/", ".github/")
 CONFIG_FILES = {"pyproject.toml", "uv.lock", "storage.rules", "firebase.json", "firebase.data-emulator.json",
@@ -280,7 +281,12 @@ def validate(result, expected, selection):
         require(type(observed) is dict and all(type(observed.get(key)) is type(approved[key]) and observed[key] == approved[key]
                                              for key in ("version", "bytes", "sha256"))
                 and type(observed.get("path")) is str and Path(observed["path"]).is_absolute(), f"unapproved engine tool {name}")
-    require(digest(lifecycle.get("runtime")) == digest(APPROVED_TOOLCHAIN["runtime"]), "missing or unapproved runtime tool versions")
+    runtime = lifecycle.get("runtime")
+    require(runtime == result.get("runtime_observed"), "recorded runtime differs from recorder observations")
+    validate_runtime(runtime)
+    server = lifecycle.get("postgres_server_version")
+    require(type(server) is str and re.fullmatch(r"[0-9]+\.[0-9]+(?: \([^\r\n]*\))?", server) is not None
+            and server.split()[0] == runtime["postgres_server"], "PostgreSQL server version mismatch")
     preflight = lifecycle.get("preflight", {})
     require(preflight.get("project") == "demo-specimen-data" and preflight.get("host") == "127.0.0.1"
             and preflight.get("ports_free_before") is True and preflight.get("credentials_absent") is True, "unsafe loopback/demo preflight")
@@ -337,27 +343,80 @@ def inspect_tools(env):
         if name != "storage":
             require(os.access(path, os.X_OK), f"engine tool not executable: {name}")
         observed[name] = {"path": str(path), **{k: approved[k] for k in ("version", "bytes", "sha256")}}
+    return {"tools": observed, "runtime": inspect_runtime(env)}
+
+
+def select_node_bin(env):
+    """Choose the highest installed stable Node 22 numerically, never PATH's default."""
+    cache = Path(env.get("RUNNER_TOOL_CACHE", ""))
+    require(cache.is_absolute(), "Node 22 requires absolute RUNNER_TOOL_CACHE")
+    directory = cache / "node"
+    require(directory.is_dir(), "missing runner Node 22 cache")
+    candidates = []
+    for path in directory.iterdir():
+        version = re.fullmatch(r"22\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", path.name)
+        if version and path.is_dir():
+            candidates.append(((int(version[1]), int(version[2])), path / "x64/bin"))
+    require(bool(candidates), "missing runner Node 22")
+    selected = max(candidates)[1]
+    require((selected / "node").is_file() and os.access(selected / "node", os.X_OK), "missing executable for highest runner Node 22")
+    return selected
+
+
+def validate_runtime(observed):
+    """Majors are policy; exact versions and the rolling image are provenance."""
+    approved = APPROVED_TOOLCHAIN["runtime"]
+    require(type(observed) is dict and set(observed) == set(approved) | {"image_version", "postgres_client_versions"},
+            "missing or extra runtime version observations")
+    versions = {"java", "postgres", "node", "postgres_server"}
+    require(all(type(observed[key]) is type(value) and observed[key] == value
+                for key, value in approved.items() if key not in versions), "unapproved runtime tool configuration")
+    image = observed["image_version"]
+    require(type(image) is str and bool(image.strip()) and image == image.strip()
+            and all(char.isprintable() for char in image), "missing or malformed runtime ImageVersion")
+    for name in versions:
+        value = observed[name]
+        pattern = r"([0-9]+)(?:\.[0-9]+)*\+[0-9]+" if name == "java" else r"([0-9]+)\.[0-9]+\.[0-9]+" if name == "node" else r"([0-9]+)\.[0-9]+"
+        match = re.fullmatch(pattern, value) if type(value) is str else None
+        require(match is not None and match[1] == approved[name], f"unapproved runtime {name} version")
+    clients = observed["postgres_client_versions"]
+    require(type(clients) is dict and set(clients) == set(approved["postgres_clients"]), "missing PostgreSQL client versions")
+    for name, version in clients.items():
+        require(type(version) is str and re.fullmatch(r"16\.[0-9]+", version) is not None,
+                f"unapproved runtime PostgreSQL client version: {name}")
+    require(observed["postgres"] == observed["postgres_server"], "PostgreSQL binary/server version mismatch")
+
+
+def inspect_runtime(env):
+    """Observe approved runner tools without executing any downloaded engine."""
     runtime = APPROVED_TOOLCHAIN["runtime"]
+    require(platform.system() == "Linux" and platform.machine() == "x86_64", "unapproved engine tool platform")
     require(env.get("ImageOS") == runtime["image_os"], "unapproved runtime ImageOS")
-    require(env.get("ImageVersion") == runtime["image_version"], "unapproved runtime ImageVersion")
+    require(type(env.get("ImageVersion")) is str and bool(env["ImageVersion"].strip()), "missing runtime ImageVersion")
     require(env.get("POSTGRES_BIN") == runtime["postgres_bin"], "unapproved PostgreSQL tool path")
     require(Path("/usr/share/postgresql/16/extension/uuid-ossp.control").is_file(), "missing PostgreSQL uuid-ossp extension")
-    java = Path(env.get("JAVA_HOME_21_X64", "")) / "bin/java"
-    require(java.is_absolute() and env.get("JAVA_HOME") == env.get("JAVA_HOME_21_X64"), "Java21 explicit home required")
-    commands = [([str(java), "-version"], runtime["java"]), (["node", "--version"], "v" + runtime["node"])]
-    commands += [([str(Path(runtime["postgres_bin"]) / name), "--version"], runtime["postgres"]) for name in runtime["postgres_clients"]]
-    for command, version in commands:
+    java = Path(env.get(runtime["java_home_env"], "")) / "bin/java"
+    require(java.is_absolute() and env.get("JAVA_HOME") == env.get(runtime["java_home_env"]), "Java21 explicit home required")
+    require(java.is_file() and os.access(java, os.X_OK), "missing runtime Java executable")
+    node_bin = select_node_bin(env)
+    require(shutil.which("node", path=env.get("PATH", "")) == str(node_bin / "node"), "runtime PATH must select highest runner Node 22")
+    observed = {**runtime, "image_version": env["ImageVersion"], "postgres_client_versions": {}}
+    commands = [("java", [str(java), "-version"]), ("node", [str(node_bin / "node"), "--version"])]
+    commands += [(name, [str(Path(runtime["postgres_bin"]) / name), "--version"])
+                 for name in ["postgres", *runtime["postgres_clients"]]]
+    for name, command in commands:
         probe = subprocess.run(command, env=env, capture_output=True, text=True, timeout=15)
         output = probe.stdout + probe.stderr
-        if command[0] == "node":
-            matches = probe.stdout.strip() == version
-        elif command[0] == str(java):
-            build = re.search(r"build ([0-9][0-9.+]+)(?:-LTS)?[,)]", output)
-            matches = build is not None and build[1] == version
+        pattern = r"build ([0-9][0-9.+]+)(?:-LTS)?[,)]" if name == "java" else r"v([0-9]+\.[0-9]+\.[0-9]+)\s*" if name == "node" else r"\(PostgreSQL\) ([0-9]+\.[0-9]+)(?:\s|$)"
+        match = re.fullmatch(pattern, output) if name == "node" else re.search(pattern, output)
+        require(probe.returncode == 0 and match is not None, f"runtime version preflight failed: {command[0]}")
+        if name in runtime["postgres_clients"]:
+            observed["postgres_client_versions"][name] = match[1]
         else:
-            pg_version = re.search(r"\(PostgreSQL\) ([0-9]+(?:\.[0-9]+)+)", output)
-            matches = pg_version is not None and pg_version[1] == version
-        require(probe.returncode == 0 and matches, f"runtime version preflight failed: {command[0]}")
+            observed[name] = match[1]
+    observed["postgres_server"] = observed["postgres"]  # expected SHOW server_version, from the server binary
+    validate_runtime(observed)
+    require(observed["node"] == node_bin.parents[1].name, "runtime Node version differs from selected cache version")
     return observed
 
 
@@ -536,17 +595,18 @@ def record(root, selection_path, output, command, env=None):
     started = time.monotonic()
     initial = expected_context(root, selection_path, env)
     selection = load_selection(selection_path)
-    actual_tools = inspect_tools(env)
+    inspection = inspect_tools(env)
+    actual_tools, actual_runtime = inspection["tools"], inspection["runtime"]
     with tempfile.TemporaryDirectory(prefix=".engine-contract-", dir=output) as temp:
         exitstatus, report, lifecycle, process_receipts = run_command(command, env, Path(temp))
         result = {"schema": 1, "complete": True, "context_start": initial,
                   "context_end": initial, "pytest": report,
                   "lifecycle": lifecycle, "process_receipts": process_receipts,
-                  "exitstatus": exitstatus, "seconds": time.monotonic() - started}
+                  "exitstatus": exitstatus, "seconds": time.monotonic() - started, "runtime_observed": actual_runtime}
         validate(result, initial, selection)
         require(lifecycle["tools"] == actual_tools, "reported engine tool paths differ from inspected bytes")
         assert_cleanup(lifecycle)
-        require(inspect_tools(env) == actual_tools, "engine tool bytes changed during execution")
+        require(inspect_tools(env) == inspection, "engine tool bytes or runtime versions changed during execution")
     # Even scratch cleanup must complete before a final success marker exists.
     result["context_end"] = expected_context(root, selection_path, env)
     result["seconds"] = time.monotonic() - started

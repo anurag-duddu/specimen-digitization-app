@@ -90,7 +90,8 @@ def control(gate, tmp_path, monkeypatch, phase_control_bytes):
              for name, value in gate.APPROVED_TOOLCHAIN["assets"].items()}
     evidence = {
         "schema": 1, "engine_flag": "true", "tools": tools,
-        "runtime": copy.deepcopy(gate.APPROVED_TOOLCHAIN["runtime"]),
+        "runtime": runtime_control(),
+        "postgres_server_version": "16.15 (Ubuntu fixture)",
         "preflight": {"project": "demo-specimen-data", "host": "127.0.0.1", "ports": [5559, 9509, 9299],
                       "postgres_host": "127.0.0.1:5559", "dataconnect_host": "127.0.0.1:9509",
                       "python_host": "127.0.0.1:9509", "storage_host": "127.0.0.1:9299",
@@ -110,7 +111,7 @@ def control(gate, tmp_path, monkeypatch, phase_control_bytes):
     report = json.loads(phase_control_bytes)
     result = {"schema": 1, "complete": True, "context_start": copy.deepcopy(expected),
               "context_end": copy.deepcopy(expected), "pytest": report, "lifecycle": evidence,
-              "exitstatus": 0, "seconds": 1.0}
+              "exitstatus": 0, "seconds": 1.0, "runtime_observed": runtime_control()}
     # Recorder-owned registrations are separate from harness cleanup claims.
     launches, cleanups = [], []
     for i, process in enumerate(evidence["processes"]):
@@ -393,7 +394,7 @@ def test_source_change_during_record_never_publishes(gate, control, monkeypatch)
         (root / "src/app.py").write_text("VALUE = 2\n")
         return 0, result["pytest"], result["lifecycle"], result["process_receipts"]
     monkeypatch.setattr(gate, "run_command", run)
-    monkeypatch.setattr(gate, "inspect_tools", lambda *_: result["lifecycle"]["tools"])
+    monkeypatch.setattr(gate, "inspect_tools", lambda *_: {"tools": result["lifecycle"]["tools"], "runtime": result["lifecycle"]["runtime"]})
     monkeypatch.setattr(gate, "assert_cleanup", lambda *_: None)
     env = control[-1] | {"SPECIMEN_TEST_SQL_EMULATOR": "true"}
     with pytest.raises(ValueError, match="source|context|fingerprint"):
@@ -418,7 +419,7 @@ def test_record_and_verify_boundary(gate, control, monkeypatch, failure):
         if failure == "cleanup_source_change":
             (root / "src/app.py").write_text("VALUE = 3\n")
     monkeypatch.setattr(gate, "run_command", run)
-    monkeypatch.setattr(gate, "inspect_tools", lambda *_: result["lifecycle"]["tools"])
+    monkeypatch.setattr(gate, "inspect_tools", lambda *_: {"tools": result["lifecycle"]["tools"], "runtime": result["lifecycle"]["runtime"]})
     monkeypatch.setattr(gate, "assert_cleanup", cleanup)
     monkeypatch.setattr(gate, "ROOT", root)
     for key, value in (env | {"SPECIMEN_TEST_SQL_EMULATOR": "true"}).items():
@@ -490,7 +491,7 @@ def test_record_final_waits_for_scratch_cleanup(gate, control, monkeypatch, scra
                 raise OSError("scratch cleanup failed")
     monkeypatch.setattr(gate.tempfile, "TemporaryDirectory", CheckedScratch)
     monkeypatch.setattr(gate, "run_command", lambda *_: (0, result["pytest"], result["lifecycle"], result["process_receipts"]))
-    monkeypatch.setattr(gate, "inspect_tools", lambda *_: result["lifecycle"]["tools"])
+    monkeypatch.setattr(gate, "inspect_tools", lambda *_: {"tools": result["lifecycle"]["tools"], "runtime": result["lifecycle"]["runtime"]})
     monkeypatch.setattr(gate, "assert_cleanup", lambda *_: None)
     args = (root, root / "scripts/data/engine-contract-selection.json", output, ["fixture"],
             env | {"SPECIMEN_TEST_SQL_EMULATOR": "true"})
@@ -601,7 +602,7 @@ def test_record_withholds_final_for_invalid_process_receipts(gate, control, monk
     bad = copy.deepcopy(result)
     corrupt_process(bad, fault)
     monkeypatch.setattr(gate, "run_command", lambda *_: (0, bad["pytest"], bad["lifecycle"], bad.get("process_receipts")))
-    monkeypatch.setattr(gate, "inspect_tools", lambda *_: bad["lifecycle"]["tools"])
+    monkeypatch.setattr(gate, "inspect_tools", lambda *_: {"tools": bad["lifecycle"]["tools"], "runtime": bad["lifecycle"]["runtime"]})
     monkeypatch.setattr(gate, "assert_cleanup", lambda *_: None)
     output = root / "invalid-process-output"
     with pytest.raises(ValueError, match="process|receipt|birth|timestamp|lifecycle"):
@@ -778,7 +779,7 @@ Path(os.environ["ENGINE_CONTRACT_PYTEST_REPORT"]).write_text(json.dumps(payload[
         return f"{pid:064x}", gate.time.time_ns()
     monkeypatch.setattr(gate, "process_birth", birth)
     monkeypatch.setattr(gate, "ROOT", root)
-    monkeypatch.setattr(gate, "inspect_tools", lambda *_: lifecycle["tools"])
+    monkeypatch.setattr(gate, "inspect_tools", lambda *_: {"tools": lifecycle["tools"], "runtime": lifecycle["runtime"]})
     output = root / "real-registry-result"
     args = (root, root / "scripts/data/engine-contract-selection.json", output,
             [sys.executable, str(harness), str(payload), fault],
@@ -858,7 +859,7 @@ def test_record_cleanup_distinguishes_listener_from_time_wait(gate, control, mon
             return None
 
         monkeypatch.setattr(gate, "run_command", run)
-        monkeypatch.setattr(gate, "inspect_tools", lambda *_: valid["lifecycle"]["tools"])
+        monkeypatch.setattr(gate, "inspect_tools", lambda *_: {"tools": valid["lifecycle"]["tools"], "runtime": valid["lifecycle"]["runtime"]})
         monkeypatch.setattr(gate, "process_birth", birth)
         args = (root, root / "scripts/data/engine-contract-selection.json", output, ["fixture"],
                 env | {"SPECIMEN_TEST_SQL_EMULATOR": "true"})
@@ -873,3 +874,192 @@ def test_record_cleanup_distinguishes_listener_from_time_wait(gate, control, mon
             assert observed["complete"] is True
             assert [path.name for path in output.iterdir()] == ["engine-contract.json"]
         assert checked == [process["pid"] for process in valid["lifecycle"]["processes"]]
+
+
+# Exact values are synthetic observations, independent of the approved majors.
+def runtime_control():
+    return {"java": "21.0.12+1", "postgres": "16.15", "node": "22.23.3",
+            "image_os": "ubuntu24", "image_version": "20261012.334.1",
+            "postgres_bin": "/usr/lib/postgresql/16/bin", "java_home_env": "JAVA_HOME_21_X64",
+            "postgres_clients": ["initdb", "pg_ctl", "createdb", "psql", "pg_dump", "pg_restore"],
+            "uuid_ossp": True, "postgres_server": "16.15",
+            "postgres_client_versions": {name: "16.15" for name in
+                ("initdb", "pg_ctl", "createdb", "psql", "pg_dump", "pg_restore")}}
+
+
+@pytest.mark.parametrize("field,value", [("image_version", "20261019.400.1"),
+    ("java", "21.0.13+11"), ("java", "21+35"), ("java", "21.0.13.1+11"),
+    ("postgres", "16.16"), ("node", "22.24.0")])
+def test_verify_accepts_new_runner_patch(gate, control, field, value):
+    result, expected, selection, _, _ = control
+    runtime = runtime_control()
+    runtime[field] = value
+    if field == "postgres":
+        runtime["postgres_server"] = value
+        runtime["postgres_client_versions"] = dict.fromkeys(runtime["postgres_clients"], value)
+    result["lifecycle"]["runtime"] = runtime
+    result["lifecycle"]["postgres_server_version"] = runtime["postgres_server"] + " (Ubuntu fixture)"
+    result["runtime_observed"] = copy.deepcopy(runtime)
+    gate.validate(result, expected, selection)
+
+
+@pytest.mark.parametrize("field,value", [("java", "17.0.16+8"), ("java", "25.0.1+8"),
+    ("node", "20.19.0"), ("node", "24.1.0"), ("postgres", "15.15"), ("postgres", "17.6"),
+    ("postgres_bin", "/usr/lib/postgresql/15/bin"), ("postgres_bin", "/usr/lib/postgresql/17/bin"),
+    ("image_version", ""), ("image_version", " "), ("image_version", None),
+    ("java", "21garbage"), ("node", "22garbage"), ("postgres", "16garbage")])
+def test_verify_rejects_unapproved_runtime(gate, control, field, value):
+    result, expected, selection, _, _ = control
+    runtime = runtime_control()
+    runtime[field] = value
+    if value is None:
+        runtime.pop(field)
+    result["lifecycle"]["runtime"] = runtime
+    result["runtime_observed"] = copy.deepcopy(runtime)
+    with pytest.raises(ValueError, match="runtime|version|PostgreSQL"):
+        gate.validate(result, expected, selection)
+
+
+@pytest.mark.parametrize("field", ["java", "node", "postgres", "image_version", "postgres_client_versions", "postgres_server"])
+def test_verify_rejects_recorded_runtime_drift(gate, control, field):
+    result, expected, selection, _, _ = control
+    result["runtime_observed"] = runtime_control()
+    result["lifecycle"]["runtime"] = runtime_control()
+    result["lifecycle"]["runtime"][field] = {"java": "21.0.13+11", "node": "22.24.0",
+        "postgres": "16.16", "image_version": "20261019.400.1", "postgres_server": "16.16",
+        "postgres_client_versions": dict.fromkeys(runtime_control()["postgres_clients"], "16.16")}[field]
+    with pytest.raises(ValueError, match="runtime.*observ|observ.*runtime"):
+        gate.validate(result, expected, selection)
+
+
+@pytest.fixture
+def runner_tools(gate, tmp_path, monkeypatch):
+    runtime = runtime_control()
+    cache = tmp_path / "tool-cache"
+    node = cache / "node/22.23.3/x64/bin/node"
+    node.parent.mkdir(parents=True)
+    node.write_text("fixture")
+    node.chmod(0o700)
+    home = tmp_path / "jdk21"
+    (home / "bin").mkdir(parents=True)
+    (home / "bin/java").write_text("fixture")
+    (home / "bin/java").chmod(0o700)
+    env = {"ImageOS": "ubuntu24", "ImageVersion": runtime["image_version"],
+           "JAVA_HOME_21_X64": str(home), "JAVA_HOME": str(home),
+           "POSTGRES_BIN": runtime["postgres_bin"], "RUNNER_TOOL_CACHE": str(cache), "PATH": str(node.parent)}
+    monkeypatch.setattr(gate.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(gate.platform, "machine", lambda: "x86_64")
+    original = Path.is_file
+    monkeypatch.setattr(Path, "is_file", lambda p: True if str(p) == "/usr/share/postgresql/16/extension/uuid-ossp.control" else original(p))
+    for name, variable in {"dataconnect": "DATACONNECT_EMULATOR_BIN", "storage": "STORAGE_RULES_RUNTIME_JAR", "firebase": "FIREBASE_CLI_BIN"}.items():
+        path = tmp_path / name
+        path.write_bytes(b"fixture")
+        path.chmod(0o700)
+        monkeypatch.setitem(gate.APPROVED_TOOLCHAIN["assets"], name,
+                            dict(gate.APPROVED_TOOLCHAIN["assets"][name], bytes=7, sha256=gate.file_hash(path)))
+        env[variable] = str(path)
+    def probe(command, **kwargs):
+        name = Path(command[0]).name
+        version = runtime["java"] if name == "java" else runtime["node"] if name == "node" else runtime["postgres_client_versions"].get(name, runtime["postgres"])
+        output = f"OpenJDK Runtime Environment (build {version}-LTS)" if name == "java" else "v" + version if name == "node" else f"{name} (PostgreSQL) {version} (Ubuntu fixture)"
+        return subprocess.CompletedProcess(command, 0, output, "")
+    monkeypatch.setattr(gate.subprocess, "run", probe)
+    return env, runtime, node
+
+
+@pytest.mark.parametrize("field,value", [("image_version", "20261019.400.1"),
+    ("java", "21.0.13+11"), ("java", "21+35"), ("java", "21.0.13.1+11"),
+    ("postgres", "16.16"), ("node", "22.24.0")])
+def test_preflight_accepts_new_runner_patch(gate, runner_tools, field, value):
+    env, runtime, _ = runner_tools
+    runtime[field] = value
+    if field == "image_version":
+        env["ImageVersion"] = value
+    if field == "postgres":
+        runtime["postgres_client_versions"] = dict.fromkeys(runtime["postgres_clients"], value)
+    if field == "node":
+        old_node = runner_tools[2]
+        new_node = old_node.parents[3] / value / "x64/bin/node"
+        new_node.parent.mkdir(parents=True)
+        old_node.rename(new_node)
+        env["PATH"] = str(new_node.parent)
+    inspected = gate.inspect_tools(env)
+    assert set(inspected["tools"]) == {"dataconnect", "storage", "firebase"}
+    assert inspected["runtime"][field] == value
+
+
+@pytest.mark.parametrize("field,value", [("java", "17.0.16+8"), ("java", "25.0.1+8"),
+    ("node", "20.19.0"), ("node", "24.1.0"), ("postgres", "15.15"), ("postgres", "17.6"),
+    ("ImageVersion", ""), ("ImageVersion", None),
+    ("POSTGRES_BIN", "/usr/lib/postgresql/15/bin"), ("POSTGRES_BIN", "/usr/lib/postgresql/17/bin")])
+def test_preflight_rejects_wrong_runtime(gate, runner_tools, field, value):
+    env, runtime, _ = runner_tools
+    if field in ("java", "node", "postgres"):
+        runtime[field] = value
+        if field == "postgres":
+            runtime["postgres_client_versions"] = dict.fromkeys(runtime["postgres_clients"], value)
+    elif value is None:
+        env.pop(field)
+    else:
+        env[field] = value
+    with pytest.raises(ValueError, match="runtime|version|PostgreSQL"):
+        gate.inspect_tools(env)
+
+
+def test_runner_node_selection_is_numeric_highest_22(gate, runner_tools):
+    env, _, node = runner_tools
+    for version in ("20.99.0", "24.0.0", "22.9.0", "22.24.0", "22.24.0-rc.1"):
+        other = node.parents[3] / version / "x64/bin/node"
+        other.parent.mkdir(parents=True)
+        other.write_text("fixture")
+        other.chmod(0o700)
+    assert gate.select_node_bin(env) == node.parents[3] / "22.24.0/x64/bin"
+    for directory in node.parents[3].glob("22.*"):
+        import shutil
+        shutil.rmtree(directory)
+    with pytest.raises(ValueError, match="Node 22"):
+        gate.select_node_bin(env)
+
+
+@pytest.mark.parametrize("tool", ["java", "node", "psql", "postgres"])
+def test_preflight_rejects_missing_tool(gate, runner_tools, monkeypatch, tool):
+    env, _, _ = runner_tools
+    probe = gate.subprocess.run
+    def missing(command, **kwargs):
+        if Path(command[0]).name == tool:
+            raise FileNotFoundError("missing runtime tool: " + tool)
+        return probe(command, **kwargs)
+    monkeypatch.setattr(gate.subprocess, "run", missing)
+    with pytest.raises((ValueError, OSError), match="missing|runtime"):
+        gate.inspect_tools(env)
+
+
+@pytest.mark.parametrize("tool,field,value", [("java", "java", "21.0.13+11"),
+    ("node", "node", "22.24.0"), ("postgres", "postgres", "16.16"),
+    ("image", "image_version", "20261019.400.1")])
+def test_record_refuses_harness_runtime_claim_drift(gate, control, monkeypatch, tool, field, value):
+    result, _, _, root, env = control
+    observed = runtime_control()
+    result["lifecycle"]["runtime"][field] = value
+    monkeypatch.setattr(gate, "inspect_tools", lambda *_: {"tools": result["lifecycle"]["tools"], "runtime": observed})
+    monkeypatch.setattr(gate, "run_command", lambda *_: (0, result["pytest"], result["lifecycle"], result["process_receipts"]))
+    monkeypatch.setattr(gate, "assert_cleanup", lambda *_: None)
+    output = root / "drift-result"
+    with pytest.raises(ValueError, match="runtime.*observ|observ.*runtime"):
+        gate.record(root, root / "scripts/data/engine-contract-selection.json", output, ["fixture"],
+                    env | {"SPECIMEN_TEST_SQL_EMULATOR": "true"})
+    assert not (output / "engine-contract.json").exists()
+
+
+@pytest.mark.parametrize("version", ["15.15", "17.6", "16garbage", ""])
+def test_verify_rejects_actual_server_version(gate, control, version):
+    reject(gate, control, lambda r: r["lifecycle"].update(postgres_server_version=version), "PostgreSQL server version")
+
+
+@pytest.mark.parametrize("client", ["initdb", "pg_ctl", "createdb", "psql", "pg_dump", "pg_restore"])
+@pytest.mark.parametrize("version", ["15.15", "17.6", "", None])
+def test_preflight_checks_every_pg_client(gate, runner_tools, client, version):
+    env, runtime, _ = runner_tools
+    runtime["postgres_client_versions"][client] = version
+    with pytest.raises(ValueError, match="runtime.*version"):
+        gate.inspect_tools(env)

@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import platform
 import stat
+import subprocess
 import sys
 import urllib.request
 
@@ -124,16 +125,22 @@ def main(argv=None):
                     gate.require(args.restore != 'hit' and args.download, f'missing restored asset: {name}')
                     download_asset(path, pin)
             evidence = {'directory': str(directory), 'toolchain_digest': gate.file_hash(ROOT / 'scripts/data/engine-toolchain.json'), 'cache': cache}
-            gate.atomic_json(args.output, evidence)
         tools = verify_directory(directory, config)
         if args.verify_only:
             # The wrapper cannot execute a caller-selected substitute path.
             for name, variable in VARIABLES.items():
                 gate.require(os.environ.get(variable) == tools[name]['path'], f'engine path mismatch: {variable}')
-            gate.require(gate.inspect_tools(os.environ) == tools, 'runtime/tool preflight mismatch')
-        print(json.dumps({'tools': tools, 'runtime': config['runtime'], 'cache': cache}, allow_nan=False))
+            inspection = gate.inspect_tools(os.environ)
+            gate.require(inspection['tools'] == tools, 'runtime/tool preflight mismatch')
+            runtime = inspection['runtime']
+            gate.require(evidence.get('runtime') == runtime, 'recorded runtime differs from provisioning observations')
+        else:
+            runtime = gate.inspect_runtime(os.environ)
+            evidence['runtime'] = runtime
+            gate.atomic_json(args.output, evidence)
+        print(json.dumps({'tools': tools, 'runtime': runtime, 'cache': cache}, allow_nan=False))
         return 0
-    except (ValueError, OSError, KeyError, TypeError) as error:
+    except (ValueError, OSError, KeyError, TypeError, subprocess.SubprocessError) as error:
         print(f'engine provisioning: {error}', file=sys.stderr)
         return 1
 

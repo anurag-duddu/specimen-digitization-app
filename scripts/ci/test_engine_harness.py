@@ -35,6 +35,7 @@ def verified_cache_control(p,directory,monkeypatch):
         asset.update(bytes=len(payload),sha256=hashlib.sha256(payload).hexdigest())
         target=cache/p.FILENAMES[name];target.write_bytes(payload);target.chmod(0o700)
     monkeypatch.setattr(p,'load_toolchain',lambda:config)
+    monkeypatch.setattr(p.gate,'inspect_runtime',lambda _env: {'java':'21.0.13+11','node':'22.24.0','postgres':'16.16','image_version':'20261019.400.1'},raising=False)
     monkeypatch.setattr(p,'download_asset',lambda *_a,**_k:pytest.fail('restored-cache validation attempted a download'))
     return config,cache,payload,marker
 
@@ -606,9 +607,14 @@ def test_storage_standalone_is_diagnostic(shell_fixture):
     assert [row['id'] for row in lifecycle['stages']]==['storage.start','storage.ready','storage.assertions','storage.cleanup']
 
 
-@pytest.mark.parametrize('version,accepted',[('16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)',True),('16.16 (Ubuntu 16.16-0ubuntu0.24.04.1)',False)])
-def test_sql_server_version_retains_approved_patch(shell_fixture,version,accepted):
+@pytest.mark.parametrize('version,accepted',[('16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)',True),('16.16 (Ubuntu 16.16-0ubuntu0.24.04.1)',True),('15.15',False),('17.6',False),('16garbage',False)])
+def test_sql_server_version_enforces_approved_major(shell_fixture,version,accepted):
     shell_fixture[1]['FIXTURE_PG_VERSION']=version
+    if accepted:
+        report=shell_fixture[0]/'preflight.json'
+        evidence=json.loads(report.read_text())
+        evidence['runtime']['postgres_server']=version.split()[0]
+        report.write_text(json.dumps(evidence))
     result=run_shell(shell_fixture)
     if accepted:
         assert result.returncode==0,result.stdout+result.stderr
@@ -738,3 +744,74 @@ def test_valid_restored_cache_and_download_are_verified_offline(tmp_path,monkeyp
     assert target.stat().st_mode & 0o777==0o700
     assert not target.with_name(target.name+'.partial').exists()
     assert not marker.exists(),'verification must never execute engine assets'
+
+
+@pytest.mark.parametrize('version', ['15.15', '17.6'])
+def test_sql_server_rejects_unapproved_major_even_when_provision_claims_it(shell_fixture, version):
+    root, env = shell_fixture
+    report=root/'preflight.json'
+    evidence=json.loads(report.read_text())
+    evidence['runtime']['postgres_server']=version
+    report.write_text(json.dumps(evidence))
+    env['FIXTURE_PG_VERSION']=version
+    result=run_shell(shell_fixture)
+    assert result.returncode != 0, result.stdout+result.stderr
+    assert 'PostgreSQL server version mismatch' in result.stderr
+
+
+@pytest.mark.parametrize('asset', ['dataconnect', 'storage', 'firebase'])
+@pytest.mark.parametrize('fault', ['size', 'sha'])
+def test_every_download_pin_remains_enforced(tmp_path, asset, fault):
+    import io
+    p=provisioner()
+    good=b'pinned asset bytes'
+    approved=dict(p.gate.APPROVED_TOOLCHAIN['assets'][asset], bytes=len(good), sha256=hashlib.sha256(good).hexdigest())
+    bad=good+b'!' if fault=='size' else b'corrupt asset data'
+    assert fault=='size' or len(good)==len(bad)
+    with pytest.raises(ValueError, match='size|hash'):
+        p.download_asset(tmp_path/asset, approved, opener=lambda _:io.BytesIO(bad))
+    assert not (tmp_path/asset).exists()
+
+
+@pytest.mark.parametrize('fault', ['none', 'java', 'node', 'postgres', 'image_version'])
+def test_provision_report_records_and_cross_checks_runtime(tmp_path, monkeypatch, capsys, fault):
+    p=provisioner()
+    config,cache,payload,_=verified_cache_control(p,tmp_path/'runtime',monkeypatch)
+    runtime={'java':'21.0.13+11','node':'22.24.0','postgres':'16.16','image_version':'20261019.400.1'}
+    monkeypatch.setattr(p.gate,'inspect_runtime',lambda _env: dict(runtime),raising=False)
+    report=tmp_path/'report.json'
+    assert p.main(['--directory',str(cache),'--mode','normal','--restore','hit','--output',str(report)])==0
+    assert json.loads(report.read_text())['runtime']==runtime
+    assert json.loads(capsys.readouterr().out)['runtime']==runtime
+    tools=p.verify_directory(cache,config)
+    monkeypatch.setattr(p.gate,'inspect_tools',lambda _env: {'tools':tools,'runtime':dict(runtime)})
+    for name,variable in p.VARIABLES.items():
+        monkeypatch.setenv(variable,tools[name]['path'])
+    if fault!='none':
+        changed=json.loads(report.read_text())
+        changed['runtime'][fault]='forged observation'
+        report.write_text(json.dumps(changed))
+    status=p.main(['--directory',str(cache),'--mode','normal','--verify-only','--output',str(report)])
+    assert status==int(fault!='none')
+    if fault!='none':
+        assert 'recorded runtime differs' in capsys.readouterr().err
+
+
+def test_sql_server_exact_version_disagreement_stays_rejected(shell_fixture):
+    shell_fixture[1]['FIXTURE_PG_VERSION']='16.16'
+    result=run_shell(shell_fixture)
+    assert result.returncode!=0
+    assert 'PostgreSQL server version mismatch' in result.stderr
+
+
+def test_storage_rejects_runtime_drift_since_sql(shell_fixture):
+    root,env=shell_fixture
+    control=run_shell(shell_fixture)
+    assert control.returncode==0,control.stdout+control.stderr
+    report=root/'preflight.json'
+    evidence=json.loads(report.read_text())
+    evidence['runtime']['postgres_server']='16.16'
+    report.write_text(json.dumps(evidence))
+    result=run_shell(shell_fixture,storage=True)
+    assert result.returncode!=0
+    assert 'Storage/SQL runtime mismatch' in result.stderr

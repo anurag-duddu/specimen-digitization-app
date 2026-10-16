@@ -398,9 +398,10 @@ def test_engine_job_is_parallel_and_required_for_both_scopes() -> None:
     assert not any("setup-node@" in s.get("uses", "") or "setup-java@" in s.get("uses", "")
                    for s in engines["steps"])
     runtime = workflow_step(engines, "Select pinned runner tools")["run"]
-    for required in ("node/22.23.3/x64/bin", 'test "$(node --version)" = v22.23.3',
-                     'test "$(npm --version)" = 10.9.9', "JAVA_HOME_21_X64", "/usr/lib/postgresql/16/bin"):
+    for required in ("select_node_bin", "RUNNER_TOOL_CACHE", "JAVA_HOME_21_X64", "/usr/lib/postgresql/16/bin"):
         assert required in runtime
+    assert "npm" not in runtime
+    assert not re.search(r"22\.23\.3|21\.0\.12|16\.15|20261012", runtime)
     assert not re.search(r"apt-get|brew |npm (?:ci|install)|npx ", str(engines))
     provision = workflow_step(engines, "Provision verified engine files")
     assert "provision-engine-tools.py" in provision["run"] and "--download" in provision["run"]
@@ -932,3 +933,44 @@ def test_new_release_code_never_applies_data_connect_through_the_firebase_cli() 
     # scripts/ci/test_schema_gate.py holds the same rule for the workflows and scripts/ci.
     for path in release_sources():
         assert not re.search(r"--only[= ][^\n]*dataconnect|\bdataconnect:[a-z]", path.read_text()), path.name
+
+
+@pytest.mark.parametrize("field,value", [("image_version", "20261019.400.1"),
+    ("java", "21.0.13+11"), ("java", "21+35"), ("java", "21.0.13.1+11"),
+    ("postgres", "16.16"), ("node", "22.24.0")])
+def test_python_aggregate_accepts_runner_patch_update(engine_workflow_fixture, field, value):
+    root, result, env = engine_workflow_fixture
+    runtime=result["lifecycle"]["runtime"]
+    runtime[field]=value
+    if field=="postgres":
+        runtime["postgres_server"]=value
+        runtime["postgres_client_versions"]=dict.fromkeys(runtime["postgres_clients"],value)
+        result["lifecycle"]["postgres_server_version"]=value+" (Ubuntu fixture)"
+    result["runtime_observed"]=json.loads(json.dumps(runtime))
+    output=root/'python-shards'
+    output.mkdir()
+    (output/'engine-contract.json').write_text(json.dumps(result))
+    workflow=yaml.safe_load(WORKFLOW.read_text())
+    verifier=workflow_step(workflow['jobs']['python'],'Verify mandatory engine evidence')
+    checked=subprocess.run(['bash','-euo','pipefail','-c',verifier['run']],cwd=root,env={**os.environ,**env},capture_output=True,text=True,timeout=15)
+    assert checked.returncode==0,checked.stdout+checked.stderr
+    assert 'mandatory engine contract evidence verified' in checked.stdout
+
+
+@pytest.mark.parametrize("versions,expected", [(["22.9.0","22.24.0","24.0.0","20.99.0"],"22.24.0"),
+    (["22.23.3","22.24.0"],"22.24.0"),(["20.9.0","24.0.0"],None)])
+def test_workflow_selects_highest_runner_node_22(tmp_path, versions, expected):
+    workflow=yaml.safe_load(WORKFLOW.read_text())
+    script=workflow_step(workflow['jobs']['python-engines'],'Select pinned runner tools')['run']
+    # Exercise the workflow's real Node-selection preflight, before fixed Linux JDK/PG paths.
+    script=script.split('test -n "$JAVA_HOME_21_X64"')[0]
+    for version in versions:
+        node=tmp_path/'node'/version/'x64/bin/node'
+        node.parent.mkdir(parents=True)
+        node.write_text('#!/bin/sh\necho v'+version+'\n')
+        node.chmod(0o700)
+    checked=subprocess.run(['bash','-euo','pipefail','-c',script+'\nprintf "%s" "$node_bin"'],
+        cwd=ROOT,env={**os.environ,'RUNNER_TOOL_CACHE':str(tmp_path)},capture_output=True,text=True,timeout=15)
+    assert (checked.returncode==0)==(expected is not None),checked.stdout+checked.stderr
+    if expected:
+        assert checked.stdout==str(tmp_path/'node'/expected/'x64/bin')
