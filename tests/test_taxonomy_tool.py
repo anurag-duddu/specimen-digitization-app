@@ -1033,6 +1033,27 @@ def test_the_workflow_lookup_never_clears_a_species_label_at_genus(tmp_path, lit
 
 
 @pytest.mark.parametrize(
+    "literal,written_rank",
+    [("Apis", "GENUS"), ("Apis mellifera", "SPECIES"), ("Apis mellifera ligustica", "SUBSPECIES")],
+)
+@pytest.mark.parametrize("reply_rank", ["GENUS", "SPECIES", "SUBSPECIES"])
+def test_only_rank_changes_an_otherwise_exact_accepted_match(
+    tmp_path, literal, written_rank, reply_rank
+):
+    # All other row-one predicates stay true, including canonical equality.
+    # Reuse the reply through both public lookup paths, without alternatives.
+    reply = gbif("EXACT", usage(literal, reply_rank))
+    expected = S.SUCCESS if reply_rank == written_rank else S.AMBIGUOUS
+
+    result, lookup = run(tmp_path, literal, transport(reply))
+    direct = GbifTaxonomy(LocalBlobs(tmp_path), transport(reply)).lookup(literal)
+
+    assert result.outcome == expected, f"{literal}: {reply_rank} reply for {written_rank} label"
+    assert lookup.status == expected
+    assert direct.status == expected
+
+
+@pytest.mark.parametrize(
     "literal", ["Bombus impatiens.", "Bombus impatiens, det. Smith", "Bombus (P.) impatiens"]
 )
 def test_a_species_label_read_in_full_clears_at_species(tmp_path, literal):
@@ -1806,3 +1827,67 @@ def test_every_other_listed_word_marks_the_name(word):
 
     assert (after_genus.query, after_genus.partly_read) == ("Xus", word)
     assert (after_species.query, after_species.partly_read) == ("Xus yus", word)
+
+
+# Independent literal policy corpus. Keep these words in tests even if a
+# production vocabulary entry is accidentally deleted; the dynamic tables
+# above separately exercise every entry production currently advertises.
+@pytest.mark.parametrize(
+    "kind,word",
+    [
+        (kind, word)
+        for kind, words in (
+            ("clause",
+             "det determ determined determiner ident identif identified leg legit lg lgt "
+             "coll col collected collector collectors vid vidit rev revid revidit conf "
+             "confirmed confirmavit teste dt dét déterminé recogn recognovit "
+             "determinavit sammler determinado determinada determinó colectado "
+             "colectada colectó colector colectores colecta recolectado recolectada "
+             "recolector recolectores identificado identificó revisado revisó confirmado"),
+            ("end",
+             "de da di du van von der den la le "
+             "by in on at from ex with near prope ad bei en por con cerca del sobre "
+             "male males female females fem macho machos hembra hembras larva larvae "
+             "nymph nymphs pupa pupae adult adults worker workers queen queens teneral "
+             "imago juv juvenile immature egg eggs exuvia exuviae type types holotype "
+             "paratype paratypes allotype lectotype paralectotype paralectotypes "
+             "neotype syntype syntypes cotype cotypes topotype topotypes holotipo "
+             "holotipos paratipo paratipos alotipo alotipos lectotipo lectotipos "
+             "paralectotipo paralectotipos neotipo neotipos sintipo sintipos cotipo "
+             "cotipos topotipo topotipos nov gen comb stat emend"),
+            ("concept", "group gr grp grupo complex complejo agg aggr sensu auct auctt auctorum"),
+            ("unread",
+             "about above across after against along among amongst around before behind "
+             "below beneath beside besides between beyond during for inside into of off "
+             "onto out outside over past per through throughout till toward towards "
+             "under underneath until unto upon via within without an the and or nor but "
+             "al ante bajo contra desde durante entre hacia hasta mediante para según "
+             "segun sin tras vía junto dentro fuera encima debajo detrás detras delante "
+             "alrededor lejos el los las lo un una unos unas ni pero "
+             "apud circa circum cum extra infra inter intra iuxta juxta ob post prae "
+             "praeter pro propter sec secundum sine sub super supra trans ultra versus "
+             "et ac atque aut vel sed nec neque "
+             "au aux avec chez contre dans derrière derriere devant hors jusqu jusque "
+             "malgré malgre par parmi pendant pour près pres sans selon sous sur vers "
+             "les des une ou mais "
+             "am an auf aus bis durch für fur gegen hinter im mit nach neben ohne seit um "
+             "unter über uber vom vor während wahrend wegen zu zum zur zwischen die das "
+             "dem ein eine einem einen einer und oder"),
+        )
+        for word in words.split()
+    ],
+)
+def test_literal_vocabulary_preserves_name_boundaries_when_entries_are_deleted(kind, word):
+    if kind == "clause":
+        cases = ((f"Xus {word} zus", "Xus", None),
+                 (f"Xus yus {word} zus", "Xus yus", None))
+    elif kind == "end":
+        cases = ((f"Xus {word} Davao", "Xus", None),
+                 (f"Xus yus {word} 1946", "Xus yus", None),
+                 (f"Xus yus {word} zus", "Xus yus", "zus"))
+    else:
+        cases = ((f"Xus {word} Davao 1946", "Xus", word),
+                 (f"Xus yus {word} zus Davao 1946", "Xus yus", word))
+    for literal, query, reason in cases:
+        name = scientific_name(literal)
+        assert (name.query, name.partly_read) == (query, reason), f"{kind}: {literal}"

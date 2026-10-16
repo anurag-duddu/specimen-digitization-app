@@ -298,3 +298,67 @@ def test_owner_write_rechecks_removed_or_downgraded_membership_after_session(
     assert identity.call_count == 2
     repository.document.assert_not_called()
     repository.put_document.assert_not_called()
+
+
+@pytest.mark.parametrize("token_kind", ["identity", "app_check"])
+@pytest.mark.parametrize("length,accepted", [(16384, True), (16385, False)])
+def test_literal_token_length_boundary_precedes_sdks_and_membership(
+    monkeypatch, token_kind, length, accepted
+):
+    verify, identity, appcheck, app = owner_sdk(monkeypatch)
+    memberships = Mock(return_value=[])
+    client, repository = owner_api(verify, memberships)
+    headers = dict(OWNER_HEADERS)
+    token = "t" * length
+    if token_kind == "identity":
+        headers["Authorization"] = "Bearer " + token
+    else:
+        headers["X-Firebase-AppCheck"] = token
+
+    response = client.get("/v1/session", headers=headers)
+
+    assert response.status_code == (200 if accepted else 403), (
+        f"{token_kind}: length {length} must {'proceed' if accepted else 'be refused'}"
+    )
+    if accepted:
+        identity.assert_called_once_with(
+            token if token_kind == "identity" else "owner-id-fixture", app=app, check_revoked=True
+        )
+        appcheck.assert_called_once_with(
+            token if token_kind == "app_check" else "owner-app-fixture", app=app
+        )
+        memberships.assert_called_once_with("owner-uid-fixture")
+        assert response.json()["user_id"] == "owner-uid-fixture"
+    else:
+        identity.assert_not_called()
+        appcheck.assert_not_called()
+        memberships.assert_not_called()
+        assert token not in response.text, "input tokens must not appear in denial responses"
+    assert repository.mock_calls == [], "session identity checks must not read or write repository data"
+
+
+@pytest.mark.parametrize(
+    "uid,accepted",
+    [("u" * 128, True), ("u" * 129, False), (None, False), (True, False),
+     (128, False), ([], False), ({}, False), ("", False)],
+    ids=["max-128", "over-129", "none", "bool", "int", "list", "dict", "empty"],
+)
+def test_literal_uid_boundary_uses_valid_claims_before_membership(monkeypatch, uid, accepted):
+    verify, identity, appcheck, app = owner_sdk(monkeypatch, uid=uid)
+    memberships = Mock(return_value=[])
+    client, repository = owner_api(verify, memberships)
+
+    response = client.get("/v1/session", headers=OWNER_HEADERS)
+
+    assert response.status_code == (200 if accepted else 403), "UID must be text of length 1 through 128"
+    identity.assert_called_once_with("owner-id-fixture", app=app, check_revoked=True)
+    appcheck.assert_called_once_with("owner-app-fixture", app=app)
+    if accepted:
+        assert response.json()["user_id"] == uid
+        memberships.assert_called_once_with(uid)
+    else:
+        memberships.assert_not_called()
+        assert "Invalid identity" not in response.text
+        if isinstance(uid, str) and uid:
+            assert uid not in response.text
+    assert repository.mock_calls == [], "invalid identity must not reach repository operations"

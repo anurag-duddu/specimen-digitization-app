@@ -12,6 +12,9 @@ fixture provider (test_rate_limit_refusal); no live model request is made.
 import threading
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
+from unittest.mock import Mock
+
+import pytest
 
 from specimen_digitization.application.domain import Disposition
 from specimen_digitization.application.lane_worker import DrainWorker
@@ -278,6 +281,86 @@ def test_a_lane_stall_at_a_comparison_is_recovered_at_most_three_times(tmp_path,
         "pin_dependencies", "classify", "quality_check", "segment", "transcribe"}]
     workflow.repository.save(principal, capped, specimen.version, "capped", digest({"capped": 1}))
     assert workflow.recover_blocked(principal, ident) is False
+
+
+@pytest.mark.parametrize("kind", ["first_pass", "extraction", "field_research"])
+@pytest.mark.parametrize("used,allowed", [(2, True), (3, False), (4, False)])
+def test_literal_three_recovery_policy_has_no_extra_effects(
+    tmp_path, monkeypatch, kind, used, allowed
+):
+    # These counts are policy expectations, independent of the production cap.
+    # Reach each real workflow step with offline adapters before leaving a
+    # stalled row. The older child/provider recovery journeys stay above.
+    from specimen_digitization.application.storage import LocalBlobs
+    from specimen_digitization.application.lane_allowance import ProgramLedger
+    from test_rate_limit_refusal import ChildLab, lab, research_state
+
+    adapter = ChildLab(LocalBlobs(tmp_path / "blobs"))
+    adapter.extract = Mock(return_value=None)
+    workflow, principal, ident, backend = lab(tmp_path, monkeypatch, adapter, "http_503")
+    target = {"first_pass": "first_pass", "extraction": "parse", "field_research": "plan"}[kind]
+    for _ in range(20):
+        specimen = workflow.repository.get(principal.scope, ident)
+        step = workflow.next_step(specimen.run)
+        if step.split(":")[0] == target:
+            break
+        workflow.step(principal, ident)
+    assert step.split(":")[0] == target, f"fixture did not reach {kind}"
+    research = Mock()
+    research.handles.return_value = True
+    workflow.field_research = research if kind == "field_research" else None
+    recovery_step = "field_research" if kind == "field_research" else step
+    blocker = "token_budget_exhausted" if kind == "field_research" else "lane_run_not_progressing"
+    history = [
+        {"step": recovery_step, "blocker": blocker, "attempt": 1, "at": "2026-10-01T00:00:00+00:00"}
+        for _ in range(used)
+    ]
+    # Unrelated steps do not spend this step's recovery allowance.
+    history.append({"step": "another-step", "blocker": blocker, "attempt": 1, "at": "x"})
+    before = leave(
+        workflow, principal, ident, stage="processing_blocked", blocker=blocker,
+        next_retry_at=None, lease_until=None,
+        dependencies={**specimen.run.dependencies, AUTOMATIC_RECOVERIES: history},
+    )
+    assert before.run.usage.reserved_cost_micros > 0, "fixture must retain an existing liability"
+    program_before = research_state(backend, before)
+    ledger = ProgramLedger(workflow.repository, principal.scope)
+    ledger_before = ledger.read()
+    save = Mock(wraps=workflow.repository.save)
+    monkeypatch.setattr(workflow.repository, "save", save)
+    first_pass = Mock(wraps=adapter.first_pass)
+    monkeypatch.setattr(adapter, "first_pass", first_pass)
+    adapter.extract.reset_mock()
+    settle = Mock(wraps=workflow.settle_retained_cost)
+    reserve = Mock(wraps=workflow.reserve_retained_cost)
+    monkeypatch.setattr(workflow, "settle_retained_cost", settle)
+    monkeypatch.setattr(workflow, "reserve_retained_cost", reserve)
+
+    recovered = workflow.recover_blocked(principal, ident)
+    after = workflow.repository.get(principal.scope, ident)
+
+    # Check effects before the boolean so an admitted fourth recovery reports
+    # the forbidden durable save, rather than only a return-value mismatch.
+    assert save.call_count == int(allowed), f"{kind}: history {used} must allow {int(allowed)} save(s)"
+    assert recovered is allowed, f"{kind}: only histories below three may recover"
+    first_pass.assert_not_called()
+    adapter.extract.assert_not_called()
+    research.run.assert_not_called()
+    settle.assert_not_called()
+    reserve.assert_not_called()
+    assert after.run.usage == before.run.usage, "recovery must neither add nor release liability"
+    assert after.run.paid_calls == before.run.paid_calls
+    assert research_state(backend, after) == program_before, "program liability must stay held"
+    assert ledger.read() == ledger_before, "collection liability must stay held"
+    if allowed:
+        assert after.version == before.version + 1
+        assert after.run.stage == "retry_scheduled"
+        assert after.run.next_retry_at is not None
+        assert after.run.dependencies[AUTOMATIC_RECOVERIES][:-1] == history
+        assert after.run.dependencies[AUTOMATIC_RECOVERIES][-1]["step"] == recovery_step
+        assert len(after.run.dependencies[AUTOMATIC_RECOVERIES]) == 4
+    else:
+        assert after == before, "a refused fourth or later recovery must not change the record"
 
 
 def test_evidence_pilot_and_other_steps_are_never_recovered(tmp_path, monkeypatch):
