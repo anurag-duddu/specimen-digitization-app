@@ -633,8 +633,8 @@ def test_a_retry_the_program_allowance_cannot_cover_blocks_and_names_its_cause(
     ledger = ProgramLedger(repository, SCOPE)
     current = ledger.read()
     # Less than one more reservation is left of the program's allowance (the
-    # pilot profile's USD 15, G30; the same literal tests/test_lane_costs.py uses).
-    settled = 15_000_000 - 1
+    # pilot profile's USD 16, G30; the same literal tests/test_lane_costs.py uses).
+    settled = 16_000_000 - 1
     repository.put_document(
         SCOPE,
         LEDGER_KIND,

@@ -18,6 +18,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
+import 'app/shell.dart';
 import 'capture/capture_camera.dart';
 import 'capture/capture_screen.dart';
 import 'capture_quality.dart';
@@ -996,12 +997,21 @@ class _IntakeScreenState extends State<IntakeScreen> {
             constraints,
             textScaler: MediaQuery.textScalerOf(context),
           );
+          final topInset =
+              AppSidebarScope.maybeOf(context)?.mobileNavigation == true
+              ? ui.space.s2
+              : layout.gutter;
           // One scroll keeps capture, classification and file errors reachable
           // at enlarged text sizes and short viewport heights.
           return CustomScrollView(
             slivers: [
               SliverPadding(
-                padding: EdgeInsetsDirectional.all(layout.gutter),
+                padding: EdgeInsetsDirectional.fromSTEB(
+                  layout.gutter,
+                  topInset,
+                  layout.gutter,
+                  layout.gutter,
+                ),
                 sliver: SliverToBoxAdapter(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -9,7 +9,7 @@ import math
 from pathlib import Path
 import sys
 
-from python_shards import (decode_json, digest, load_timings, TIMINGS,
+from python_shards import (decode_json, digest, fingerprint_records, load_timings, TIMINGS,
                            validate_measurement_identity, verify)
 
 
@@ -36,11 +36,12 @@ def refresh(results, count, expected_identity, timings):
     # Finite individual values can still overflow when summed.
     if not all(math.isfinite(value) for value in seconds.values()):
         raise ValueError("nonfinite complete module duration")
-    return {"schema": 2, "mode": "complete", "measurement_identity": dict(expected_identity),
+    return {"schema": 3, "mode": "complete", "measurement_identity": dict(expected_identity),
             "inventory_digest": first["inventory_digest"],
             "timing_manifest_digest": first["timing_manifest_digest"],
-            "source_fingerprints": dict(first["source_fingerprints"]),
-            "module_inventory_digests": {module: digest(inventory[module]) for module in modules},
+            "source_fingerprints": fingerprint_records(first["source_fingerprints"]),
+            "module_inventory_digests": fingerprint_records(
+                {module: digest(inventory[module]) for module in modules}),
             "module_seconds": seconds}
 
 

@@ -345,7 +345,10 @@ void routedScrolling() {
   testWidgets(
     'the routed workbench scrolls on a phone',
     (WidgetTester tester) async {
-      await pumpApp(tester, window: const Size(390, 844));
+      const window = Size(390, 844);
+      tester.view.padding = const FakeViewPadding(top: 44, bottom: 34);
+      tester.view.viewPadding = const FakeViewPadding(top: 44, bottom: 34);
+      await pumpApp(tester, window: window);
       await tester.scrollUntilVisible(
         find.text('fixture-001'),
         200,
@@ -354,9 +357,10 @@ void routedScrolling() {
       await tester.tap(find.text('fixture-001'));
       await tester.pumpAndSettle();
 
-      expect(nativeNavigation(), findsOneWidget);
-      final Rect navigation = tester.getRect(nativeNavigation());
+      expect(nativeNavigation(), findsNothing);
       final Rect content = contentAboveNativeNavigation(tester);
+      expect(content.top, 44);
+      expect(content.bottom, window.height - 34);
 
       final Finder pane = find
           .descendant(
@@ -381,8 +385,8 @@ void routedScrolling() {
       expect(viewport.height, greaterThan(0));
       expect(viewport.bottom, lessThanOrEqualTo(decision.top + .5));
       expect(decision.bottom, lessThanOrEqualTo(content.bottom + .5));
-      expect(content.bottom, navigation.top);
-      expect(tester.getRect(nativeNavigation()), navigation);
+      expect(nativeNavigation(), findsNothing);
+      expect(contentAboveNativeNavigation(tester), content);
       await tester.pumpWidget(const SizedBox());
     },
     variant: TargetPlatformVariant({

@@ -74,6 +74,9 @@ from .workflow import (
     Workflow,
     reconcilable_step,
     requeue_completed_field_research,
+    can_reassess_locations,
+    requeue_location_reassessment,
+    current_human_location_fields,
 )
 
 SYNTHETIC_ORG = "00000000-0000-4000-8000-000000000001"
@@ -371,6 +374,8 @@ def summary(specimen: Specimen, role: str = "viewer") -> dict:
         ),
     }
 
+    if role in {"operator", "reviewer", "manager", "admin"} and can_reassess_locations(run):
+        result["available_actions"].append("reassess_locations")
     if run.blocker == "external_outcome_unknown":
         result["available_actions"] = [
             action for action in result["available_actions"]
@@ -2282,6 +2287,11 @@ def create_app(
                 finalize(s.run)
             if phase_result is not None:
                 apply_phase_gate(s.run, phase_result)
+        reassessment = s.run.dependencies.get("location_reassessment")
+        if (body.kind in {"field", "authority_resolution"} and isinstance(reassessment, dict)
+                and body.target_id in reassessment.get("fields", [])):
+            reassessment["fields"] = [name for name in reassessment["fields"] if name != body.target_id]
+            reassessment["protected"] = sorted(set(reassessment.get("protected", [])) | {body.target_id})
         s.audit.append(
             AuditEvent(
                 actor=user,
@@ -2674,17 +2684,29 @@ def create_app(
                     raise PermissionError("Reconciling an unknown outcome needs an administrator")
                 if "evidence_pilot" in s.run.dependencies:
                     raise Conflict("Evidence pilot permits retained-evidence corrections only")
-                if s.run.blocker == "external_outcome_unknown" and body.action in {"retry", "resume", "reprocess"}:
+                if s.run.blocker == "external_outcome_unknown" and body.action in {"retry", "resume", "reprocess", "reassess_locations"}:
                     raise Conflict("Unknown external outcome requires operator reconciliation")
                 if not body.reason.strip():
                     raise ValueError("Action reason required")
-                if body.action in {"retry", "resume", "reprocess", "reconcile"} and has_active_lease(
+                if body.action in {"retry", "resume", "reprocess", "reconcile", "reassess_locations"} and has_active_lease(
                     s.run
                 ):
                     raise Conflict(
                         "An external effect is still leased; concurrent retry is prohibited"
                     )
-                if body.action in {"retry", "resume"}:
+                if body.action == "reassess_locations":
+                    protected = current_human_location_fields(repository, s)
+                    fields = requeue_location_reassessment(s.run, protected)
+                    if not fields:
+                        raise Conflict("Location reassessment requires completed research, unsettled automatic locations and a remaining attempt")
+                    action_event = AuditEvent(actor=user, action=body.action, reason=body.reason,
+                        before={"run_id": s.run.id, "attempt": s.run.attempts.get("field_research", 0),
+                            "fields": {field: s.run.fields[field].model_dump(mode="json") for field in fields if field in s.run.fields}},
+                        after={"run_id": s.run.id, "attempt": s.run.dependencies["location_reassessment"]["attempt"],
+                            "fields": fields})
+                    s.run.disposition = None
+                    s.run.stage = "plan"
+                elif body.action in {"retry", "resume"}:
                     rerun_field_research = (
                         body.action == "retry" and requeue_completed_field_research(s.run)
                     )
@@ -2757,11 +2779,17 @@ def create_app(
                     install(s, carries, blobs)
                 else:
                     raise ValueError("Unsupported action")
-                if body.action in {"retry", "resume", "reprocess"} or (
+                if body.action == "reassess_locations":
+                    # Queue through the existing lane without renewing the run's
+                    # pinned limits, prices or shared ledger identity.
+                    policy = s.run.profile.execution.model_copy(deep=True)
+                    request_processing(s, user)
+                    s.run.profile.execution = policy
+                elif body.action in {"retry", "resume", "reprocess"} or (
                     body.action == "reconcile" and s.run.stage != "paused"
                 ):
                     request_processing(s, user)
-                s.audit.append(action_event if body.action in {"reprocess", "reconcile"} else
+                s.audit.append(action_event if body.action in {"reprocess", "reconcile", "reassess_locations"} else
                     AuditEvent(actor=user, action=body.action, reason=body.reason))
                 saved = repository.save(
                     p,
