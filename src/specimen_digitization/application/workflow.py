@@ -69,6 +69,81 @@ FIELD_RESEARCH = "field_research"
 FIELD_RECHECK = "field_research_recheck"
 
 
+def current_human_location_fields(repository, specimen) -> set[str]:
+    """Current ordinary field decisions, verified against immutable save audits.
+
+    Legacy decisions predate field locks. Reuse the existing review proof
+    reader rather than infer a human choice from a value or an authority ID.
+    """
+    from .human_field_carry import _pass, _proofs, _latest
+    from ..field_research.location_reassessment import FIELDS
+
+    reader, _ = _pass(repository, None)
+    proofs = [proof for proof in _proofs(reader, specimen)
+        if proof.event.action in {"review_field", "review_authority_resolution"}
+        and proof.event.after.get("field_key") in FIELDS]
+    protected = set()
+    for key, (_, proof, original) in _latest(reader, specimen, proofs).items():
+        if original.run.id != specimen.run.id:
+            continue
+        field = original.run.fields.get(key)
+        if (not proof.event.reason.strip() or field is None
+                or specimen.run.fields.get(key) != field):
+            raise ValueError("Current human location decision could not be verified")
+        if proof.event.action == "review_field":
+            declared = {name: proof.event.after[name] for name in FieldValue.model_fields
+                if name in proof.event.after}
+            matches = FieldValue.model_validate(declared) == field
+        else:
+            matches = (proof.event.after.get("authority_id") == field.authority_id
+                and proof.event.after.get("value") == field.normalized
+                and proof.event.after.get("evidence_ids") == field.evidence_ids)
+        if not matches:
+            raise ValueError("Current human location decision could not be verified")
+        protected.add(key)
+    return protected
+
+
+def can_reassess_locations(run: Run, protected=()) -> bool:
+    """An explicit, bounded reassessment of a completed location hierarchy.
+
+    This does not repin the profile, repeat readings or replenish any budget.
+    Settled records continue to use ordinary Retry's rules-only recheck.
+    """
+    from .reliability import has_active_lease
+    from ..field_research.location_reassessment import eligible_keys
+
+    if (
+        FIELD_RESEARCH not in run.completed_steps
+        or run.stage != "finalized"
+        or run.disposition != Disposition.REVIEW
+        or run.blocker is not None
+        or has_active_lease(run)
+        or "evidence_pilot" in run.dependencies
+        or run.attempts.get(FIELD_RESEARCH, 0) >= run.profile.execution.max_attempts
+    ):
+        return False
+    eligible = eligible_keys(run) - set(protected)
+    unsettled = {ValueState.UNRESOLVED, ValueState.AMBIGUOUS, ValueState.UNKNOWN}
+    return any(key in eligible and value.state in unsettled for key, value in run.fields.items())
+
+
+def requeue_location_reassessment(run: Run, protected=()) -> list[str]:
+    """Queue one location-only pass, leaving fields and accounting untouched."""
+    from ..field_research.location_reassessment import eligible_keys
+
+    if not can_reassess_locations(run, protected):
+        return []
+    fields = sorted(eligible_keys(run) - set(protected))
+    run.dependencies["location_reassessment"] = {
+        "attempt": run.attempts.get(FIELD_RESEARCH, 0) + 1,
+        "fields": fields,
+        "protected": sorted(protected),
+    }
+    run.completed_steps = [step for step in run.completed_steps if step != FIELD_RESEARCH]
+    return fields
+
+
 def requeue_completed_field_research(run: Run) -> bool:
     """Make an explicit retry of a reviewed field-research run research again.
 

@@ -1413,6 +1413,7 @@ class ApiSpecimenRepository
         'cancel',
         'reprocess',
         'reconcile',
+        'reassess_locations',
       ].contains(action)) {
         throw const ApiFailure(
           'This run action is not supported.',
