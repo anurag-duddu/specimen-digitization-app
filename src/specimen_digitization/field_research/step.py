@@ -1408,6 +1408,7 @@ class _LocationProposal:
     key: str
     literal: str
     reading_names: tuple[str, ...]
+    literal_key: str
     source_key: str
     answer: SourceAnswer
     candidate: object
@@ -1527,33 +1528,79 @@ def _candidate_fits_existing_chain(run, key: str, literal: str, candidate, *,
 
 
 def _location_proposals(tasks_by_key: Mapping[str, FieldTask],
-        received: Mapping[str, Sequence[SourceAnswer]], readings: Sequence[Reading],
-        outcomes_by_key: Mapping[str, FieldOutcome]) -> dict[str, list[_LocationProposal]]:
+        received: Mapping[str, Sequence[SourceAnswer]], readings: Sequence[Reading]) -> dict[str, list[_LocationProposal]]:
     """Source-confirmed place interpretations pooled across location fields."""
     from .agreement import at_level
 
     proposals: dict[str, list[_LocationProposal]] = {key: [] for key in LOCATION_RECONCILE_KEYS}
-    for source_key in LOCATION_RECONCILE_KEYS:
-        source_outcome = outcomes_by_key.get(source_key)
-        if (source_outcome is not None and source_outcome.answer is not None
-                and source_outcome.answer.outcome == "resolved"):
-            continue
-        task = tasks_by_key.get(source_key)
-        if task is None:
-            continue
-        literals = _location_literals(task, readings)
+    location_keys = (*LOCATION_RECONCILE_KEYS, "precise_location")
+    by_name = {reading.name: reading for reading in readings}
+    literals = [(key, literal, grounded) for key in location_keys if key in tasks_by_key
+        for literal, names in _location_literals(tasks_by_key[key], readings)
+        if (grounded := tuple(name for name in names
+            if name in by_name and literal in by_name[name].text))]
+    # Expert routing is not evidence ownership: a country expert may look up
+    # the state text that the organiser put under city. Pair every grounded
+    # location literal with the captured location answers, without new calls.
+    for source_key in location_keys:
         for answer in received.get(source_key, ()):
             if answer.evidence is None:
                 continue
-            for literal, names in literals:
+            for literal_key, literal, names in literals:
                 if not _answer_can_support_location_literal(answer, literal):
                     continue
                 for key in LOCATION_RECONCILE_KEYS:
                     for candidate in at_level(key, answer):
                         if not _location_name_matches_literal(literal, answer, candidate):
                             continue
-                        proposals[key].append(_LocationProposal(key, literal, names, source_key, answer, candidate))
+                        proposals[key].append(_LocationProposal(key, literal, names, literal_key, source_key, answer, candidate))
     return proposals
+
+
+def _compatible_location_literals(proposals: Mapping[str, Sequence[_LocationProposal]], *,
+        tasks_by_key: Mapping[str, FieldTask], readings: Sequence[Reading],
+        received: Mapping[str, Sequence[SourceAnswer]]) -> dict[str, list[_LocationProposal]]:
+    """Use distinct, source-typed administrative text as relational constraints.
+
+    A written county can have several matches and still constrain a written
+    state to a parent of one of those matches. Only literals with one known
+    administrative level constrain others; disputed towns/localities do not
+    choose an administrative chain. Keep the original constraint sets while
+    filtering so an inconsistent written state cannot disappear and allow a
+    county to donate a different state afterwards.
+    """
+    from .agreement import PLACE_ORDER, PlaceField, lies_in, place_name
+
+    by_literal: dict[str, list[_LocationProposal]] = {}
+    for items in proposals.values():
+        for proposal in items:
+            by_literal.setdefault(place_name(proposal.literal), []).append(proposal)
+    constraints = {literal: items for literal, items in by_literal.items()
+        if len({item.key for item in items}) == 1 and items[0].key != "city"}
+    agreed = {literal: [item for item in items if _location_readers_agree(item, tasks_by_key, readings, received)]
+        for literal, items in constraints.items()}
+
+    def compatible(proposal, other):
+        if proposal.key == other.key:
+            return True
+        parent, child = (proposal, other) if PLACE_ORDER.index(proposal.key) < PLACE_ORDER.index(other.key) else (other, proposal)
+        candidate = parent.candidate
+        return lies_in(child.candidate, parent.key,
+            PlaceField((candidate.name,), candidate.authority_id, candidate.iso_code))
+
+    def fits_constraint(proposal, literal, alternatives):
+        if literal == place_name(proposal.literal):
+            return True
+        if not agreed[literal]:
+            # Unsettled reader alternatives cannot narrow other places, nor
+            # can a child hide that unsettled ancestor by deriving it later.
+            return PLACE_ORDER.index(proposal.key) <= PLACE_ORDER.index(alternatives[0].key)
+        return any(compatible(proposal, other) for other in agreed[literal])
+
+    return {key: [proposal for proposal in items
+        if all(fits_constraint(proposal, literal, alternatives)
+            for literal, alternatives in constraints.items())]
+        for key, items in proposals.items()}
 
 
 def _answer_levels_for_literal(answer: SourceAnswer, literal: str) -> set[str]:
@@ -1578,6 +1625,70 @@ def _narrowed_location_answer(proposal: _LocationProposal) -> SourceAnswer:
     source answer at its own level.
     """
     return replace(proposal.answer, candidates=(proposal.candidate,))
+
+
+def _location_readers_agree(proposal: _LocationProposal, tasks_by_key: Mapping[str, FieldTask],
+        readings: Sequence[Reading], received: Mapping[str, Sequence[SourceAnswer]]) -> bool:
+    """Moving a literal carries both its owner's and destination's alternatives.
+
+    Fresh grounded gazetteer answers, or the existing explicit county-unit
+    rule for a country/state fragment, establish another level. Unknown or
+    same-level alternatives stay in the ordinary G19/G20/G32 proof, including
+    on other labels. Transcript coverage additionally
+    prevents a one-reader candidate from hiding text filed under another field.
+    """
+    from specimen_digitization.application.georef_locality import fold
+    from .admin_markers import ADMIN_MARKERS
+    from .agreement import PLACE_ANSWERED, _disagreement, literal_refusal, refusal, verbatim_runs, writes_county_unit
+    from .contracts import GAZETTEERS
+
+    owner = tasks_by_key[proposal.literal_key]
+    task = replace(owner, key=proposal.key, tools=FIELD_TOOLS[proposal.key])
+    source = _narrowed_location_answer(proposal)
+    by_name = {reading.name: reading for reading in readings}
+    named = [by_name[name] for name in proposal.reading_names]
+    if literal_refusal(task, readings, literal=proposal.literal, named=named) is not None:
+        return False
+    captured = [answer for answers in received.values() for answer in answers]
+
+    def other_level(literal, reading):
+        if reading is None or not verbatim_runs(reading.text, literal):
+            return False
+        levels = set().union(*(_answer_levels_for_literal(answer, literal) for answer in captured
+            if answer.source_id in GAZETTEERS and answer.status in PLACE_ANSWERED
+            and answer.evidence is not None and _answer_can_support_location_literal(answer, literal)))
+        if levels:
+            return proposal.key not in levels
+        # This only classifies explicit county/municipality text; it supplies
+        # no identity or supported value. Retain mixed province/county units.
+        return (proposal.key in {"country", "province_state"} and writes_county_unit(literal)
+            and not any("province_state" in ADMIN_MARKERS.get(word, ()) for word in fold(literal).split()))
+
+    candidates = []
+    verbatims = {}
+    contexts = [owner]
+    target = tasks_by_key.get(proposal.key)
+    if target is not None and target is not owner:
+        contexts.append(target)
+    for context in contexts:
+        candidates.extend(candidate for candidate in context.candidates
+            if not other_level(candidate.literal, by_name.get(candidate.reading)))
+        for observation, literal in context.current.verbatim_by_observation.items():
+            observation_readings = [reading for reading in readings if reading.observation_id == observation]
+            if observation_readings and all(other_level(literal, reading) for reading in observation_readings):
+                continue
+            if observation in verbatims and verbatims[observation] != literal:
+                # This private proof view must represent both fields' text for
+                # one observation. These alternatives are never persisted as
+                # evidence, candidates or authority claims.
+                candidates.extend(Candidate(reading.name, literal, literal, "") for reading in observation_readings)
+            else:
+                verbatims[observation] = literal
+    task = replace(task, candidates=tuple(candidates), current=FieldValue(verbatim_by_observation=verbatims))
+    common = dict(literal=proposal.literal, named=named,
+        authority_id=proposal.candidate.authority_id, cited=(source,), received=(*captured, source))
+    return (refusal(task, readings, value=proposal.candidate.name, **common) is None
+        and _disagreement(task, readings, transcript=proposal.literal, **common) is None)
 
 
 def _usable_location_proposals(run, proposals: Mapping[str, Sequence[_LocationProposal]], *,
@@ -1626,32 +1737,47 @@ def _reconcile_location_outcomes(run, tasks_by_key: Mapping[str, FieldTask],
     application sees a resolved outcome for that level.
     """
     by_key = {outcome.key: outcome for outcome in outcomes}
-    proposals = _usable_location_proposals(run,
-        _location_proposals(tasks_by_key, received, readings, by_key), evidence=evidence, received=received)
+    proposals = _compatible_location_literals(_location_proposals(tasks_by_key, received, readings),
+        tasks_by_key=tasks_by_key, readings=readings, received=received)
+    qualification = run.model_copy(update={"fields": dict(run.fields)})
     for key in LOCATION_RECONCILE_KEYS:
         task = tasks_by_key.get(key)
         value = run.fields.get(key)
         existing = by_key.get(key)
         if (task is None or key in human
-                or (value is not None and value.state == ValueState.SUPPORTED and value.layer in RESEARCHED)
-                or (existing is not None and existing.answer is not None and existing.answer.outcome == "resolved")):
+                or (value is not None and value.state == ValueState.SUPPORTED and value.layer in RESEARCHED)):
             continue
-        usable = list(proposals.get(key, ()))
-        identities = {_proposal_identity(proposal) for proposal in usable}
-        if len(identities) != 1:
-            continue
-        proposal = usable[0]
-        source_answer = _narrowed_location_answer(proposal)
-        answer = FieldAnswer(outcome="resolved", literal=proposal.literal,
-            reading_names=list(proposal.reading_names),
-            value=proposal.candidate.name if proposal.candidate.name != proposal.literal else None,
-            authority_id=proposal.candidate.authority_id,
-            source_evidence_ids=[source_answer.evidence.id],
-            explanation=("Resolved by location reconciliation: the shared location lookup identified "
-                f"this label text as {key.replace('_', ' ')}."))
-        by_key[key] = FieldOutcome(key, answer, evidence=[source_answer.evidence],
-            finalized_without_model=True)
-        received.setdefault(key, []).append(source_answer)
+        if existing is None or existing.answer is None or existing.answer.outcome != "resolved":
+            usable = _usable_location_proposals(qualification, proposals,
+                evidence=evidence, received=received).get(key, ())
+            identities = {_proposal_identity(proposal) for proposal in usable}
+            source_ids: dict[str, set[str]] = {}
+            for proposal in usable:
+                if proposal.candidate.authority_id:
+                    source_ids.setdefault(proposal.answer.source_id, set()).add(proposal.candidate.authority_id)
+            if len(identities) != 1 or any(len(ids) > 1 for ids in source_ids.values()):
+                continue
+            if not all(_location_readers_agree(proposal, tasks_by_key, readings, received) for proposal in usable):
+                continue
+            proposal = usable[0]
+            source_answer = _narrowed_location_answer(proposal)
+            answer = FieldAnswer(outcome="resolved", literal=proposal.literal,
+                reading_names=list(proposal.reading_names),
+                value=proposal.candidate.name if proposal.candidate.name != proposal.literal else None,
+                authority_id=proposal.candidate.authority_id,
+                source_evidence_ids=[source_answer.evidence.id],
+                explanation=("Resolved by location reconciliation: the shared location lookup identified "
+                    f"this label text as {key.replace('_', ' ')}."))
+            by_key[key] = FieldOutcome(key, answer, evidence=[source_answer.evidence],
+                finalized_without_model=True)
+            received.setdefault(key, []).append(source_answer)
+        # Qualify each parent before using it to narrow the next level. A
+        # model's resolved claim alone must not become an ancestry constraint.
+        settled = _first_pass(qualification, tasks_by_key, (by_key[key],), human=human,
+            readings=readings, by_name={reading.name: reading for reading in readings},
+            asset_id=run.regions[0].asset_id if run.regions else None, date_rules=None,
+            received=received, places=_place_texts(qualification, tasks_by_key, readings), final=last_attempt(run))
+        qualification.fields.update(settled)
     return tuple(by_key.get(outcome.key, outcome) for outcome in outcomes)
 
 
