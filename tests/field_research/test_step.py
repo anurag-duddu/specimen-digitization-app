@@ -887,6 +887,44 @@ def test_location_reconciliation_recovers_abbreviated_illinois_chain(tmp_path):
         for key in ("province_state", "county", "city"))
 
 
+def test_retry_county_uses_reconciled_state_without_its_old_organiser_alias(tmp_path):
+    """a1efc490's retry: Macoupin Co. was first misfiled as the state,
+    but an earlier attempt settled Ill. as Illinois before the county retried.
+    """
+    places = {"country": "Ill.", "province_state": "Macoupin Co.", "county": None,
+        "city": "Beaver Dam S.P.", "precise_location": "Beaver Dam S.P."}
+    candidates = [*COLLECTORS, *(
+        (key, name, literal, f"{key}: {literal}")
+        for key, literal in places.items() if literal for name in ("1A", "1B"))]
+    rig = build_rig(tmp_path, label_with(**places), candidates=candidates)
+    settle(rig, Scripted({
+        "country": unresolved_lookup("tgn", "Illinois", "Ill.", "Ill. is a state abbreviation."),
+        "province_state": failing("model_error"),
+        "county": failing("model_error"),
+        "city": LACKING,
+    }), tools=AbbreviatedIllinoisSources(rig.blobs))
+    run = rig.specimen.run
+    assert (run.fields["province_state"].state, run.fields["province_state"].literal,
+        run.fields["province_state"].normalized) == (ValueState.SUPPORTED, "Ill.", "Illinois")
+    assert run.fields["county"].state == ValueState.UNRESOLVED
+    state = run.fields["province_state"].model_copy(deep=True)
+    saved = rig.repository.save(rig.principal, rig.specimen, rig.specimen.version,
+        "county-failed-checkpoint", "county-failed-checkpoint")
+    rig.specimen = rig.repository.get(rig.principal.scope, saved.id)
+    run = rig.specimen.run
+
+    settle(rig, Scripted({
+        "county": from_tgn("Macoupin County, Illinois, United States", "Macoupin Co.",
+            "Macoupin County", "tgn:Macoupin County"),
+        "city": LACKING,
+    }), tools=AbbreviatedIllinoisSources(rig.blobs))
+
+    assert run.fields["province_state"] == state
+    assert (run.fields["county"].state, run.fields["county"].literal,
+        run.fields["county"].normalized, run.fields["county"].authority_id) == (
+            ValueState.SUPPORTED, "Macoupin Co.", "Macoupin County", "tgn:Macoupin County")
+
+
 def test_blank_unresolved_country_is_derived_from_settled_state(tmp_path):
     text = label_with(country=None, province_state="Illinois", county=None, city=None)
     candidates = [*COLLECTORS, *(
