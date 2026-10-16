@@ -207,3 +207,13 @@ coordinating session tracks the total and asks the owner before spending passes
 USD 30, and no code can enforce it. The research broker (`ProgramEffectBroker`
 in `research_harness/program_budget.py`) refuses an allowance above USD 25; no
 other code checks that cap.
+
+## Amendment, 2026-10-16 (G30)
+
+The owner explicitly approved "Approve $16 cumulative ceiling" in the Illinois
+location-harness session, in response to a proposal to raise the shared model
+allowance from USD 15 to USD 16 through a reviewed PR, preserving all recorded
+usage. The published allowance is 16000000 micro-units. Cumulative charges and
+reservations are retained; the USD 1 specimen-run limit, the research broker's
+USD 25 cap and the broader envelope above are unchanged. See the dated approval
+in [`golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator).
