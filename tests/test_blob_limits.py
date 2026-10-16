@@ -5,6 +5,7 @@ import io
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import SimpleNamespace
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 import requests
@@ -69,7 +70,10 @@ def test_gcs_generation_stream_bounds_overshoot_cleanup_and_integrity():
     ref = hashlib.sha256(b"complete").hexdigest() + ":12345"
     try:
         assert blobs.get_bounded(ref, 8) == b"complete"
-        assert "generation=12345" in state["paths"][-1]
+        assert parse_qs(urlsplit(state["paths"][-1]).query) == {
+            "alt": ["media"],
+            "generation": ["12345"],
+        }, "GCS media read must request the exact pinned generation"
         state["body"] = b"x" * 100000
         with pytest.raises(BlobTooLarge):
             blobs.get_bounded(ref, 100)

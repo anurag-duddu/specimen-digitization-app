@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 from collections.abc import Callable
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 import httpx
@@ -695,19 +696,111 @@ def test_each_experts_inference_client_is_closed():
     assert [client.closed for client in clients] == [1, 1]
 
 
-def test_the_field_deadline_is_a_timeout():
+@pytest.fixture
+def field_clock(monkeypatch):
+    """Hold only this loop's time; production owns scheduling and cancellation."""
+    @contextmanager
+    def controlled():
+        loop = asyncio.get_running_loop()
+        clock = SimpleNamespace(origin=loop.time())
+        clock.now = clock.origin
+        with monkeypatch.context() as patch:
+            patch.setattr(loop, "time", lambda: clock.now)
+            yield clock
+
+    return controlled
+
+
+def test_the_field_deadline_is_a_timeout(field_clock):
     cost = meter()
+    cancelled = False
 
-    async def slow(messages, info):
-        await asyncio.sleep(5)
+    async def run():
+        entered, release = asyncio.Event(), asyncio.Event()
 
-    resolver = make_resolver(model_factory=lambda: FunctionModel(slow), meter=cost,
-                             field_timeout_seconds=0.05)
-    outcome = asyncio.run(resolver(task("habitat"), READINGS, CONTEXT, tools=FakeTools()))
+        async def slow(messages, info):
+            nonlocal cancelled
+            entered.set()
+            assert cost.outstanding_micros > 0, "model entry must follow a real reservation"
+            try:
+                await release.wait()
+            except asyncio.CancelledError:
+                cancelled = True
+                raise
+            return final(outcome="label_lacks_value")(messages, info)
+
+        resolver = make_resolver(model_factory=lambda: FunctionModel(slow), meter=cost,
+                                 field_timeout_seconds=0.05)
+        with field_clock() as clock:
+            pending = asyncio.create_task(resolver(task("habitat"), READINGS, CONTEXT, tools=FakeTools()))
+            await entered.wait()
+            clock.now = clock.origin + 0.06
+            # First let the loop notice the due timer, then run its callback.
+            # Only production's asyncio.timeout may cancel the resolver/model.
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+            if not pending.cancelling():
+                # Missing/disabled cancellation must fail normally, not hang.
+                release.set()
+            result = await pending
+            # Observe production cancellation before asyncio.run() cleanup can
+            # cancel a model request that survived the field deadline.
+            assert cancelled, "the production field deadline must cancel the model request"
+            return result
+
+    outcome = asyncio.run(run())
 
     assert outcome.failure == "timeout" and outcome.answer is None
     # The cancelled request keeps its worst case: it may have been billed.
     assert cost.outstanding_micros == 0 and cost.spent_micros == outcome.cost_micros > 0
+
+
+@pytest.mark.parametrize(("factory_seconds", "agent_seconds"), [
+    (0.06, 0.0), (0.0, 0.06), (0.03, 0.03),
+], ids=["model_factory", "Agent", "combined"])
+def test_field_initialization_uses_the_original_deadline(
+        monkeypatch, field_clock, factory_seconds, agent_seconds):
+    cost = meter()
+    phases = []
+    agent_type = experts.Agent
+
+    async def respond(messages, info):
+        # With a renewed/missing deadline this finite model returns an answer.
+        # No fixture raises TimeoutError or cancels the resolver.
+        for _ in range(4):
+            await asyncio.sleep(0)
+        return final(outcome="label_lacks_value")(messages, info)
+
+    def factory():
+        phases.append(("factory", clock.now - clock.origin))
+        clock.now += factory_seconds
+        return FunctionModel(respond)
+
+    def construct_agent(*args, **kwargs):
+        phases.append(("Agent", clock.now - clock.origin))
+        made = agent_type(*args, **kwargs)
+        clock.now += agent_seconds
+        return made
+
+    monkeypatch.setattr(experts, "Agent", construct_agent)
+    resolver = make_resolver(model_factory=factory, meter=cost, field_timeout_seconds=0.05)
+
+    async def run():
+        nonlocal clock
+        with field_clock() as clock:
+            result = await resolver(task("habitat"), READINGS, CONTEXT, tools=FakeTools())
+            assert clock.now - clock.origin == pytest.approx(0.06)
+            return result
+
+    clock = None
+    outcome = asyncio.run(run())
+
+    assert phases == [("factory", 0.0), ("Agent", pytest.approx(factory_seconds))]
+    assert outcome.failure == "timeout" and outcome.answer is None, (
+        "model_factory and Agent construction must share the original 0.05 s budget; "
+        "expiry must be delivered when initialization next yields to the loop"
+    )
+    assert cost.outstanding_micros == 0
 
 
 # An expert's budget: the real run of 2026-10-09 (twelve fields on seven
