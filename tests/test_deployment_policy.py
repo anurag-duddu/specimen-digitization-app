@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import os
 import re
+import importlib.util
+import json
 from pathlib import Path
+import subprocess
 
 import pytest
 import yaml
@@ -155,7 +158,10 @@ def test_frontend_only_python_scope_keeps_the_required_gate_and_fails_closed() -
     jobs = workflow["jobs"]
     scope, shards, aggregate = jobs["python-scope"], jobs["python-shards"], jobs["python"]
 
-    assert scope["outputs"] == {"full": "${{ steps.scope.outputs.full }}"}
+    assert scope["outputs"] == {
+        "full": "${{ steps.scope.outputs.full }}",
+        "matrix": "${{ steps.shards.outputs.matrix }}",
+    }
     checkout = next(step for step in scope["steps"] if step.get("name") == "Check out repository history")
     assert checkout["with"] == {"fetch-depth": "0"}
     classify = next(step for step in scope["steps"] if step.get("id") == "scope")
@@ -208,6 +214,198 @@ def test_frontend_only_python_scope_keeps_the_required_gate_and_fails_closed() -
 
     writing = next(step for step in jobs["flutter"]["steps"] if step.get("name") == "Check UI writing")
     assert "scripts/ci/check_ui_strings.py" in writing["run"]
+
+
+def hosting_workflow(path: Path = WORKFLOW) -> dict:
+    return yaml.safe_load(path.read_text())
+
+
+def workflow_step(job: dict, name: str) -> dict:
+    return next(step for step in job["steps"] if step.get("name") == name)
+
+
+def workflow_shell(command: str, *, env: dict, cwd: Path = ROOT) -> subprocess.CompletedProcess:
+    return subprocess.run(["bash", "-e", "-o", "pipefail", "-c", command],
+                          cwd=cwd, env={**os.environ, **env}, capture_output=True,
+                          text=True, timeout=10)
+
+
+def hosted_matrix(workflow: dict, output: Path) -> subprocess.CompletedProcess:
+    step = next(step for step in workflow["jobs"]["python-scope"]["steps"]
+                if step.get("id") == "shards")
+    return workflow_shell(step["run"], env={
+        "PYTHON_HOSTED_SHARDS": str(workflow["env"]["PYTHON_HOSTED_SHARDS"]),
+        "GITHUB_OUTPUT": str(output),
+    })
+
+
+def command_arguments(command: str, count: int) -> list[str]:
+    # Expand the actual shell arguments without launching a shard or collecting tests.
+    result = workflow_shell('set -- ' + command + '\nprintf "%s\\0" "$@"',
+                            env={"PYTHON_HOSTED_SHARDS": str(count)})
+    assert result.returncode == 0, result.stderr
+    return result.stdout.rstrip("\0").split("\0")
+
+
+@pytest.mark.parametrize("count", [6, 8, 10, 12, 16])
+def test_one_hosted_count_controls_matrix_leaves_and_verify(tmp_path: Path, count: int) -> None:
+    source = WORKFLOW.read_text()
+    configured = hosting_workflow()["env"]["PYTHON_HOSTED_SHARDS"]
+    assert type(configured) is int and 6 <= configured <= 16
+    # A single scalar edit in a real temporary workflow copy must change all three consumers.
+    changed, replacements = re.subn(r"(?m)^  PYTHON_HOSTED_SHARDS: .*?$",
+                                    f"  PYTHON_HOSTED_SHARDS: {count}", source)
+    assert replacements == 1, "hosted shard count must have exactly one definition"
+    copy = tmp_path / "ci-cd.yml"
+    copy.write_text(changed)
+    workflow = hosting_workflow(copy)
+    output = tmp_path / "outputs"
+    result = hosted_matrix(workflow, output)
+    assert result.returncode == 0, result.stderr
+    outputs = dict(line.split("=", 1) for line in output.read_text().splitlines())
+    matrix = json.loads(outputs["matrix"])
+    assert matrix == list(range(count))
+    scope = workflow["jobs"]["python-scope"]
+    assert scope["outputs"]["matrix"] == "${{ steps.shards.outputs.matrix }}"
+    shards = workflow["jobs"]["python-shards"]
+    assert shards["strategy"]["matrix"] == {
+        "shard": "${{ fromJSON(needs.python-scope.outputs.matrix) }}"}
+    run = workflow_step(shards, "Run Python tests")["run"]
+    for index in matrix:
+        arguments = command_arguments(run.replace("${{ matrix.shard }}", str(index)), count)
+        assert arguments == ["uv", "run", "python", "scripts/ci/python_shards.py", "run",
+                             "--index", str(index), "--count", str(count),
+                             "--output", f"python-shards/shard-{index}.json"]
+    verify = workflow_step(workflow["jobs"]["python"], "Verify complete Python coverage")["run"]
+    assert command_arguments(verify.splitlines()[-1], count) == [
+        "python3", "scripts/ci/python_shards.py", "verify", "--count", str(count),
+        "python-shards/shard-*.json"]
+    local = (ROOT / "scripts/ci/verify.sh").read_text()
+    assert 'python_shards.py local --count "${PYTHON_TEST_SHARDS:-6}"' in local
+    assert "PYTHON_HOSTED_SHARDS" not in local
+
+
+@pytest.mark.parametrize("value", ["5", "17", "0", "-1", "6.0", "true", "null",
+                                  '"10"', "[]", "{}", "not-an-integer", ""])
+def test_hosted_count_rejects_out_of_range_and_nonintegers(tmp_path: Path, value: str) -> None:
+    workflow = hosting_workflow()
+    workflow["env"]["PYTHON_HOSTED_SHARDS"] = value
+    output = tmp_path / "outputs"
+    result = hosted_matrix(workflow, output)
+    assert result.returncode != 0, f"invalid hosted count accepted: {value!r}"
+    assert not output.exists() or not output.read_text(), "invalid count emitted a matrix"
+
+
+def test_hosting_required_names_dependencies_and_attempt_binding_are_exact() -> None:
+    workflow = hosting_workflow()
+    jobs = workflow["jobs"]
+    assert set(jobs) == {"repository-checks", "python-scope", "python-shards", "python",
+                         "flutter", "mobile", "deploy-hosting"}
+    assert {key: jobs[key]["name"] for key in ("repository-checks", "python", "flutter")} == {
+        "repository-checks": "Repository checks", "python": "Python tests",
+        "flutter": "Flutter checks and web build"}
+    assert jobs["deploy-hosting"]["needs"] == ["repository-checks", "python", "flutter", "mobile"]
+    assert workflow["concurrency"] == {
+        "group": "ci-cd-${{ github.workflow }}-${{ github.ref }}",
+        "cancel-in-progress": "${{ github.event_name == 'pull_request' }}"}
+    assert jobs["deploy-hosting"]["concurrency"] == {
+        "group": "firebase-hosting-production", "cancel-in-progress": False}
+    shards, aggregate = jobs["python-shards"], jobs["python"]
+    assert shards["name"] == "Python shard ${{ matrix.shard }}"
+    assert shards["strategy"]["fail-fast"] is False
+    upload = workflow_step(shards, "Upload Python results")
+    download = workflow_step(aggregate, "Download Python results")
+    binding = "python-tests-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-"
+    assert upload["if"] == "always()"
+    assert upload["with"] == {"name": binding + "${{ matrix.shard }}",
+                              "path": "python-shards/shard-${{ matrix.shard }}.json",
+                              "if-no-files-found": "error", "retention-days": 7}
+    assert download["with"] == {"pattern": binding + "*", "path": "python-shards",
+                                "merge-multiple": True}
+    pins = {step["uses"] for job in jobs.values() for step in job["steps"] if "uses" in step}
+    assert pins == {
+        "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+        "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d",
+        "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+        "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+        "subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2",
+        "google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093",
+        "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+    }
+    assert all("continue-on-error" not in job and all("continue-on-error" not in step
+               for step in job["steps"]) for job in jobs.values())
+
+
+@pytest.mark.parametrize("scope_result", ["success", "failure", "cancelled", "skipped", ""])
+@pytest.mark.parametrize("full", ["true", "false", "", "TRUE"])
+@pytest.mark.parametrize("shard_result", ["success", "failure", "cancelled", "skipped", ""])
+def test_python_aggregate_scope_and_shard_truth_table(scope_result: str, full: str,
+                                                    shard_result: str) -> None:
+    aggregate = hosting_workflow()["jobs"]["python"]
+    assert aggregate["if"] == "always()"
+    assert aggregate["needs"] == ["python-scope", "python-shards"]
+    step = workflow_step(aggregate, "Require a valid scope decision")
+    assert step["env"] == {"SCOPE_RESULT": "${{ needs.python-scope.result }}",
+                           "FULL_PYTHON": "${{ needs.python-scope.outputs.full }}",
+                           "SHARD_RESULT": "${{ needs.python-shards.result }}"}
+    result = workflow_shell(step["run"], env={"SCOPE_RESULT": scope_result,
+                            "FULL_PYTHON": full, "SHARD_RESULT": shard_result})
+    accepted = scope_result == "success" and (full, shard_result) in {
+        ("true", "success"), ("false", "skipped")}
+    assert (result.returncode == 0) == accepted, (scope_result, full, shard_result, result.stderr)
+
+
+@pytest.mark.parametrize("fault", ["none", "missing", "stale_attempt", "failed", "wrong_count"])
+def test_python_aggregate_verifies_current_attempt_artifacts(tmp_path: Path, fault: str) -> None:
+    # Run the workflow's real verifier against complete synthetic schema-2 leaves.
+    # No pytest collection, leaf execution or network call occurs here.
+    workflow = hosting_workflow()
+    count = workflow["env"]["PYTHON_HOSTED_SHARDS"]
+    script = ROOT / "scripts/ci/python_shards.py"
+    spec = importlib.util.spec_from_file_location("deployment_shards", script)
+    shards = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(shards)
+    directory = tmp_path / "scripts/ci"
+    directory.mkdir(parents=True)
+    (directory / script.name).write_bytes(script.read_bytes())
+    timing_path = directory / "python_shard_timings.json"
+    timing_path.write_text(json.dumps({"schema": 1, "module_seconds": {}}))
+    timings = shards.load_timings(timing_path)
+    sources = shards.source_fingerprints(tmp_path)
+    identity = {"GITHUB_SHA": "a" * 40, "GITHUB_RUN_ID": "123", "GITHUB_RUN_ATTEMPT": "2"}
+    nodes = [f"tests/test_module_{index}.py::test_case" for index in range(count)]
+    results_dir = tmp_path / "python-shards"
+    results_dir.mkdir()
+    for index, selected in enumerate(shards.partition(nodes, count, timings)):
+        if fault == "missing" and index == count - 1:
+            continue
+        result = {"schema": 2, "identity": dict(identity), "index": index, "count": count,
+                  "collected": nodes, "selected": selected, "collection_errors": 0, "exitstatus": 0,
+                  "inventory_digest": shards.digest(nodes), "source_fingerprints": sources,
+                  "timing_manifest_digest": timings.manifest_digest, "timing_mode": timings.mode,
+                  "telemetry": {"collection_seconds": 0.1, "execution_seconds": 0.2},
+                  "reports": {node: dict.fromkeys(("setup", "call", "teardown"), "passed")
+                              for node in selected},
+                  "durations": {node: dict.fromkeys(("setup", "call", "teardown"), 0.01)
+                                for node in selected}}
+        if index == 0:
+            if fault == "stale_attempt":
+                result["identity"]["GITHUB_RUN_ATTEMPT"] = "1"
+            elif fault == "failed":
+                result["exitstatus"] = 1
+            elif fault == "wrong_count":
+                result["count"] = count + 1
+        (results_dir / f"shard-{index}.json").write_text(json.dumps(result))
+    step = workflow_step(workflow["jobs"]["python"], "Verify complete Python coverage")
+    assert step["if"] == "needs.python-scope.outputs.full == 'true'"
+    assert step["env"] == {"SHARD_RESULT": "${{ needs.python-shards.result }}"}
+    checked = workflow_shell(step["run"], cwd=tmp_path, env={
+        **identity, "SHARD_RESULT": "success", "PYTHON_HOSTED_SHARDS": str(count)})
+    assert (checked.returncode == 0) == (fault == "none"), checked.stdout + checked.stderr
+    if fault == "none":
+        assert f"exactly once across {count} shards" in checked.stdout
+    else:
+        assert "Python shard verification failed:" in checked.stderr
 
 
 def test_deploy_script_is_fail_closed_and_hosting_only() -> None:

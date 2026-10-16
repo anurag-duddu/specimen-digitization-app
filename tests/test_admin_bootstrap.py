@@ -3,9 +3,12 @@
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import stat
+import subprocess
 import sys
+import textwrap
 
 import pytest
 
@@ -379,7 +382,7 @@ def test_hierarchy_cli_without_its_flag_refuses_the_hierarchy_request(hierarchy,
     assert "synthetic-admin" not in "".join(capsys.readouterr())
 
 
-def test_helper_mints_one_canonical_uuid_per_reviewed_entry_and_prepares(tmp_path, inputs):
+def test_helper_mints_one_canonical_uuid_per_reviewed_entry_and_prepares(tmp_path, inputs, monkeypatch):
     tmp_path.chmod(0o700)
     tree = tmp_path / "tree.json"
     tree.write_bytes(tree_bytes())
@@ -389,8 +392,7 @@ def test_helper_mints_one_canonical_uuid_per_reviewed_entry_and_prepares(tmp_pat
                  "--requested-email", inputs["requested_email"],
                  "--requested-uid", inputs["requested_uid"],
                  "--admin-collection-key", "insects", "--output", str(output)]
-    import sys as system
-    system.argv = arguments
+    monkeypatch.setattr(sys, "argv", arguments)
     assert helper.main() == 0
     assert stat.S_IMODE(output.stat().st_mode) == 0o600
     request = json.loads(output.read_bytes())
@@ -404,6 +406,62 @@ def test_helper_mints_one_canonical_uuid_per_reviewed_entry_and_prepares(tmp_pat
     artifact = bootstrap.prepare_first_scope_hierarchy(
         auth_record=inputs["auth_record"], tree=tree_bytes(), **request)
     assert artifact["schema_version"] == "first-scope-hierarchy-bootstrap/v1"
+
+
+@pytest.mark.parametrize("outcome", ["success", "exception"])
+def test_cli_fixture_restores_argv_after_success_and_exception(tmp_path, outcome):
+    # Run the real CLI test in a child so an unrestored argv cannot contaminate
+    # this process. Observe after the entire protocol, including fixture teardown.
+    node = f"{Path(__file__).resolve()}::test_helper_mints_one_canonical_uuid_per_reviewed_entry_and_prepares"
+    script = textwrap.dedent("""\
+        import json
+        from pathlib import Path
+        import sys
+        import pytest
+
+        directory, outcome, node = sys.argv[1:]
+        sys.argv = ["pytest-argv-sentinel", "--must-be-restored"]
+
+        class Observer:
+            @pytest.hookimpl(hookwrapper=True)
+            def pytest_runtest_call(self, item):
+                with pytest.MonkeyPatch.context() as patch:
+                    if outcome == "exception":
+                        def fail():
+                            assert sys.argv[0] == "prepare_hierarchy_request.py"
+                            raise RuntimeError("injected helper failure")
+                        patch.setattr(item.module.helper, "main", fail)
+                    yield
+
+            @pytest.hookimpl(hookwrapper=True)
+            def pytest_runtest_protocol(self, item, nextitem):
+                original = sys.argv
+                before = list(original)
+                yield
+                (Path(directory) / "argv.json").write_text(json.dumps({
+                    "nodeid": item.nodeid,
+                    "before": before,
+                    "after": list(sys.argv),
+                    "same_object": sys.argv is original,
+                }))
+
+        raise SystemExit(pytest.main([
+            "-q", "-p", "no:cacheprovider", "--basetemp=" + str(Path(directory) / "inner"), node,
+        ], plugins=[Observer()]))
+        """)
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(tmp_path), outcome, node],
+        cwd=MODULE_PATH.parents[2], env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+        capture_output=True, text=True, timeout=60,
+    )
+    output = result.stdout + result.stderr
+    assert result.returncode == (0 if outcome == "success" else 1), output
+    if outcome == "exception":
+        assert "RuntimeError: injected helper failure" in output, output
+    observed = json.loads((tmp_path / "argv.json").read_text())
+    assert observed["nodeid"].endswith("::" + node.split("::")[-1])
+    assert observed["after"] == observed["before"], f"argv leaked after {outcome}: {observed}"
+    assert observed["same_object"], f"argv object was not restored after {outcome}: {observed}"
 
 
 def test_helper_keeps_a_fixed_organization_id_and_refuses_an_unknown_key(tmp_path):

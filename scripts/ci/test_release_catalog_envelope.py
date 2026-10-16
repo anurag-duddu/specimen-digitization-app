@@ -146,6 +146,9 @@ def test_missing_metadata_rejected(sealed, recipient, provenance):
     ('wrapped_key_b64', 'AA=='), ('nonce_b64', 'AA=='), ('ciphertext_b64', 'AA=='),
     ('nonce_b64', '!' * 16), ('nonce_b64', 'A' * 17),
     ('ciphertext_b64', 'A' * (4 * (envelope.MAX_CATALOG_BYTES + 17))),
+], ids=[
+    'short-wrapped-key', 'short-nonce', 'short-ciphertext',
+    'invalid-base64-nonce', 'oversized-nonce', 'oversized-ciphertext',
 ])
 def test_malformed_or_oversized_encoding_rejected(sealed, recipient, provenance, field, value):
     sealed[field] = value
@@ -167,7 +170,8 @@ def test_provenance_has_only_bounded_public_fields(recipient, provenance, change
                                   provenance=provenance)
 
 
-@pytest.mark.parametrize('raw', [b'', 'not bytes', b'x' * (envelope.MAX_CATALOG_BYTES + 1)])
+@pytest.mark.parametrize('raw', [b'', 'not bytes', b'x' * (envelope.MAX_CATALOG_BYTES + 1)],
+                         ids=['empty-plaintext', 'non-bytes-plaintext', 'oversized-plaintext'])
 def test_plaintext_size_and_type_bounded(recipient, provenance, raw):
     with pytest.raises(ValueError):
         envelope.encrypt_catalog(raw, recipient[1], public_key_sha256=recipient[3], provenance=provenance)
