@@ -204,7 +204,7 @@ in total (G9's USD 25 plus USD 5), the owner accepting plus or minus USD 10. The
 coordinating session tracks the total and asks the owner before spending passes
 USD 30. No code enforces that envelope.
 
-What holds now: the published profile `zoology_insects_slides` 1.0.0 carries
+At that amendment, the published profile `zoology_insects_slides` 1.0.0 carries
 `processing.program_allowance.allowance_micros` 15000000, and the research
 broker (the `ProgramEffectBroker` constructor in
 `research_harness/program_budget.py`) refuses an allowance above G9's USD 25
@@ -223,6 +223,16 @@ USD 2.04 of the USD 5 was taken, and a full rerun from the image keeps about
 USD 0.25 for good plus its real cost, so ten full reruns do not fit under USD 5.
 The other mentions of the USD 5 allowance in this plan and in the documents it
 feeds record the 2026-09-23 decision and its quotations.
+
+2026-10-16 (owner, in the Illinois location-harness session): the owner
+answered the proposal to raise the cumulative ceiling from USD 15 to USD 16
+through a reviewed PR while preserving recorded usage:
+"Approve $16 cumulative ceiling".
+The published profile's `processing.program_allowance.allowance_micros` is
+therefore 16000000. Existing cumulative ledger charges and reservations remain;
+there is no reset or credit. The USD 1 specimen-run limit and the research
+broker's USD 25 cap remain. A blocked run can pick up the new execution policy
+through Retry or Resume without repeating completed steps.
 
 ### 2.2 What the existing documents already fix
 
@@ -335,8 +345,8 @@ be extracted and shown.
 The USD 25 ceiling (G9) covers everything. The pipeline records every paid
 call's cost on the run and refuses a paid step whose worst-case reservation
 would cross the configured model allowance; a Cloud Billing budget alert
-watches the whole project. The production model allowance is USD 15 (G30,
-raised from USD 5 on 2026-10-09; section 2.1). By
+watches the whole project. The production model allowance is USD 16 (G30,
+raised from USD 15 on 2026-10-16; section 2.1). By
 coordinator ruling on the mechanism:
 - Each paid call reserves its worst-case cost before it starts, in one atomic
   check-and-reserve on a shared ledger: S3's `worker_cursor` document, written
