@@ -14,6 +14,7 @@ const Size _window = Size(420, 820);
 
 Widget _page({
   Widget? topBar,
+  Widget? header,
   Widget? banner,
   Widget? body,
   Widget? actionBar,
@@ -39,6 +40,7 @@ Widget _page({
       size: size,
       child: UiScaffold(
         topBar: topBar,
+        header: header,
         banner: banner,
         body: body,
         actionBar: actionBar,
@@ -137,6 +139,65 @@ class _PublisherState extends State<_Publisher> {
 }
 
 void main() {
+  for (final withTopBar in <bool>[false, true]) {
+    testWidgets(
+      'a safe-area header clears the top inset once, top bar=$withTopBar',
+      (WidgetTester tester) async {
+        const headerContent = ValueKey<String>('header-content');
+        await tester.pumpWidget(
+          uiHarness(
+            size: _window,
+            child: _page(
+              padding: const EdgeInsets.only(top: 44, bottom: 34),
+              header: const SafeArea(
+                bottom: false,
+                child: SizedBox(key: headerContent, height: 48),
+              ),
+              topBar: withTopBar ? const UiTopBar(title: 'Intake') : null,
+              body: const _MeasuredBody(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final headerBounds = tester.getRect(find.byKey(headerContent));
+        final bodyBounds = tester.getRect(find.byType(_MeasuredBody));
+        expect(headerBounds.top, 44);
+        expect(
+          withTopBar
+              ? tester.getRect(find.byType(UiTopBar)).top
+              : bodyBounds.top,
+          headerBounds.bottom,
+          reason: 'the workspace header already clears the status bar',
+        );
+        if (withTopBar) {
+          expect(bodyBounds.top, tester.getRect(find.byType(UiTopBar)).bottom);
+        }
+        expect(
+          MediaQuery.paddingOf(tester.element(find.byType(_MeasuredBody))).top,
+          0,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets('a page without top chrome still clears the status bar', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      uiHarness(
+        size: _window,
+        child: _page(
+          padding: const EdgeInsets.only(top: 44, bottom: 34),
+          body: const _MeasuredBody(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.getRect(find.byType(_MeasuredBody)).top, 44);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('a page can ask the field layer to keep a rectangle clear', (
     WidgetTester tester,
   ) async {

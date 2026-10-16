@@ -44,6 +44,38 @@ def valid_path(value):
             and ".." not in Path(value).parts)
 
 
+def valid_record_path(value):
+    """Schema-3 paths are canonical relative POSIX names, with no aliases."""
+    return (isinstance(value, str) and bool(value) and "\\" not in value
+            and ":" not in value
+            and all(part not in {"", ".", ".."} for part in value.split("/"))
+            and not any(ord(character) < 32 or ord(character) == 127 for character in value))
+
+
+def fingerprints_from_records(records):
+    """Read explicit path/SHA-256 records without silently replacing duplicates."""
+    if type(records) is not list:
+        raise ValueError("fingerprints must be path/sha256 records")
+    result = {}
+    for record in records:
+        if (type(record) is not dict or set(record) != {"path", "sha256"}
+                or not valid_record_path(record["path"]) or not valid_digest(record["sha256"])):
+            raise ValueError("invalid path/sha256 record")
+        if record["path"] in result:
+            raise ValueError("duplicate fingerprint path")
+        result[record["path"]] = record["sha256"]
+    return result
+
+
+def fingerprint_records(fingerprints):
+    """Serialize digest metadata as deterministic, explicitly typed records."""
+    if type(fingerprints) is not dict:
+        raise ValueError("fingerprints must be a mapping")
+    records = [{"path": path, "sha256": sha} for path, sha in fingerprints.items()]
+    fingerprints_from_records(records)
+    return sorted(records, key=lambda record: record["path"])
+
+
 def finite_seconds(value):
     return type(value) in (int, float) and math.isfinite(value) and value >= 0
 
@@ -109,21 +141,29 @@ def timing_hints(value):
 
 
 def load_timings(path=TIMINGS, *, fingerprints=None):
-    """Load schema-1 lower bounds or schema-2 complete measured module costs.
+    """Load schema-1 lower bounds or schema-2/3 complete measured module costs.
 
     Measurement SHA identifies the original run, not the future commit carrying
     this file. Changed sources/inputs conservatively invalidate complete costs.
+    Schema 3 makes paths and SHA-256 values explicit record fields; schemas 1
+    and 2 retain their original mapping representation and validation.
     """
     try:
         contents = Path(path).read_bytes()
         raw = decode_json(contents)
-        if (type(raw.get("schema")) is not int or raw["schema"] not in (1, 2)
+        if (type(raw.get("schema")) is not int or raw["schema"] not in (1, 2, 3)
                 or type(raw.get("module_seconds")) is not dict):
             raise ValueError("unsupported timing schema")
+        records = raw["schema"] == 3
+        if records and set(raw) != {"schema", "mode", "measurement_identity", "inventory_digest",
+                                    "timing_manifest_digest", "source_fingerprints",
+                                    "module_inventory_digests", "module_seconds"}:
+            raise ValueError("invalid schema-3 timing fields")
         timings = raw["module_seconds"]
-        complete = raw["schema"] == 2
+        complete = raw["schema"] in (2, 3)
         for module, seconds in timings.items():
-            if (not valid_path(module) or not module.endswith(".py")
+            if (not (valid_record_path(module) if records else valid_path(module))
+                    or not module.endswith(".py")
                     or not finite_seconds(seconds) or (not complete and seconds == 0)):
                 raise ValueError("invalid module timing")
         inventory = None
@@ -131,15 +171,18 @@ def load_timings(path=TIMINGS, *, fingerprints=None):
             if raw["mode"] != "complete" or not valid_digest(raw["inventory_digest"]):
                 raise ValueError("invalid complete timing provenance")
             validate_measurement_identity(raw["measurement_identity"])
-            validate_fingerprints(raw["source_fingerprints"])
+            sources = (fingerprints_from_records(raw["source_fingerprints"]) if records
+                       else raw["source_fingerprints"])
+            validate_fingerprints(sources)
             if not valid_digest(raw["timing_manifest_digest"]):
                 raise ValueError("invalid input timing manifest digest")
-            inventory = raw["module_inventory_digests"]
+            inventory = (fingerprints_from_records(raw["module_inventory_digests"]) if records
+                         else raw["module_inventory_digests"])
             if (type(inventory) is not dict or set(inventory) != set(timings)
                     or any(not valid_digest(sha) for sha in inventory.values())):
                 raise ValueError("invalid module inventory digests")
             current = source_fingerprints() if fingerprints is None else fingerprints
-            if current != raw["source_fingerprints"]:
+            if current != sources:
                 timings = {}
                 inventory = {}
         return TimingHints(timings, mode="complete" if complete else "lower_bound",

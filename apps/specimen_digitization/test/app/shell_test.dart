@@ -114,7 +114,7 @@ void main() {
     },
   );
 
-  testWidgets('a phone record retains native navigation and a way back', (
+  testWidgets('a phone record hides global tabs and retains a way back', (
     tester,
   ) async {
     await pumpGoldenApp(
@@ -123,7 +123,7 @@ void main() {
       brightness: Brightness.light,
       location: goldenSpecimenLocation,
     );
-    expect(find.byKey(const ValueKey('mobile-navigation')), findsOneWidget);
+    expect(find.byKey(const ValueKey('mobile-navigation')), findsNothing);
     expect(find.byKey(const ValueKey('global-sidebar')), findsNothing);
     expect(uiIconButton(AppShell.backLabel), findsOneWidget);
     expect(find.text(goldenVerifiedSpecimen().displayReference), findsWidgets);

@@ -235,6 +235,10 @@ class _CaptureScreenState extends State<CaptureScreen>
     }
     try {
       final CaptureCamera camera = await widget.camera();
+      if (!mounted || !_foreground || generation != _cameraGeneration) {
+        await _releaseCamera(null, camera);
+        return;
+      }
       try {
         await camera.start();
       } catch (error, stackTrace) {
@@ -303,23 +307,23 @@ class _CaptureScreenState extends State<CaptureScreen>
   }
 
   void _requestCameraSuspend() {
-    final int generation = ++_cameraGeneration;
-    _queueCameraLifecycle(() => _suspendCamera(generation));
+    ++_cameraGeneration;
+    // A frame can rebuild while the controller is still disposing. Publish
+    // its absence before releasing it, even when a review covers the preview.
+    setState(() {
+      _starting = true;
+      _capturing = false;
+    });
+    _queueCameraLifecycle(_suspendCamera);
   }
 
-  Future<void> _suspendCamera(int generation) async {
+  Future<void> _suspendCamera() async {
     final StreamSubscription<CapturePreviewReading>? subscription =
         _subscription;
     final CaptureCamera? camera = _camera;
     _subscription = null;
     _camera = null;
     await _releaseCamera(subscription, camera);
-    if (mounted &&
-        !_foreground &&
-        generation == _cameraGeneration &&
-        _reviewBytes == null) {
-      setState(() => _starting = true);
-    }
   }
 
   /// Only rebuilds when the sentence would change, so a 30 frames per second
@@ -355,41 +359,41 @@ class _CaptureScreenState extends State<CaptureScreen>
     final CaptureCamera? camera = _camera;
     if (camera == null || _capturing) return;
     final int generation = _cameraGeneration;
+    bool isCurrent() =>
+        mounted &&
+        _foreground &&
+        generation == _cameraGeneration &&
+        identical(camera, _camera);
     setState(() {
       _capturing = true;
       _captureError = null;
     });
     try {
       final XFile file = await camera.capture();
-      if (!mounted) return;
+      if (!isCurrent()) return;
       // Android CameraX can return upright JPEG pixels with the undefined
       // EXIF orientation value zero. Repair only that metadata value in an
       // in-memory copy before either submission path sees it; the camera's
       // temporary original remains untouched.
       final Uint8List capturedBytes = await readCapture(file);
-      if (!mounted) return;
+      if (!isCurrent()) return;
       final Uint8List bytes = normalizeCameraExifOrientation(capturedBytes);
       if (_autoIngest) {
         final XFile normalized = await _normalizeCameraCapture(
           file,
           bytes: bytes,
         );
-        if (!mounted) return;
-        if (!_foreground ||
-            generation != _cameraGeneration ||
-            !identical(camera, _camera)) {
-          return;
-        }
+        if (!isCurrent()) return;
         _accept(normalized);
         return;
       }
       final CaptureDimensions dimensions = await captureDimensions(bytes);
-      if (!mounted) return;
+      if (!isCurrent()) return;
       // Review owns an in-memory copy. The camera package's temporary path is
       // no longer retained, while these bytes remain available until Intake
       // accepts them or the operator retakes the photograph.
       final XFile review = await _normalizeCameraCapture(file, bytes: bytes);
-      if (!mounted) return;
+      if (!isCurrent()) return;
       setState(() {
         _review = review;
         _reviewBytes = bytes;
@@ -398,20 +402,20 @@ class _CaptureScreenState extends State<CaptureScreen>
         _editError = null;
       });
     } on FormatException {
-      if (mounted && _foreground) {
+      if (isCurrent()) {
         setState(
           () => _captureError =
               'The photograph could not be read. Take it again, or return to Intake and choose the file.',
         );
       }
     } on CaptureCameraUnavailable catch (error) {
-      if (mounted && _foreground) setState(() => _unavailable = error.kind);
+      if (isCurrent()) setState(() => _unavailable = error.kind);
     } catch (_) {
-      if (mounted && _foreground) {
+      if (isCurrent()) {
         setState(() => _unavailable = CaptureUnavailable.failed);
       }
     } finally {
-      if (mounted) setState(() => _capturing = false);
+      if (isCurrent()) setState(() => _capturing = false);
     }
   }
 
@@ -678,7 +682,9 @@ class _CaptureScreenState extends State<CaptureScreen>
     // background/resume cycle may restart or fail the camera behind it, but
     // neither is allowed to replace the evidence they are still reviewing.
     if (_reviewBytes != null) return _reviewBody();
-    if (_starting) {
+    if (!_starting && _unavailable != null) return _unavailableBody();
+    final CaptureCamera? camera = _camera;
+    if (_starting || camera == null) {
       return Center(
         child: UiProgress.ring(
           semanticsLabel: 'Starting the camera',
@@ -686,8 +692,7 @@ class _CaptureScreenState extends State<CaptureScreen>
         ),
       );
     }
-    if (_unavailable != null) return _unavailableBody();
-    return _viewfinder();
+    return _viewfinder(camera);
   }
 
   Widget _unavailableBody() {
@@ -919,183 +924,221 @@ class _CaptureScreenState extends State<CaptureScreen>
     );
   }
 
-  Widget _viewfinder() {
+  Widget _viewfinder(CaptureCamera camera) {
     final UiThemeData ui = context.ui;
-    final CaptureCamera camera = _camera!;
-    final String? hint = _reading?.hint;
-    return Column(
-      children: <Widget>[
-        Expanded(
-          child: LayoutBuilder(
-            builder: (BuildContext context, BoxConstraints constraints) {
-              final Size size = constraints.biggest;
-              return Stack(
-                fit: StackFit.expand,
-                children: <Widget>[
-                  // One node for the whole viewfinder: a screen reader hears
-                  // "Viewfinder, button", not a bare tappable rectangle. The
-                  // focus mark sits outside it so its own announcement is
-                  // still reachable.
-                  Semantics(
-                    container: true,
-                    button: true,
-                    excludeSemantics: true,
-                    label:
-                        'Viewfinder. Activate to lock focus and exposure on '
-                        'the centre of the frame.',
-                    onTap: () => _focus(size.center(Offset.zero), size),
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTapDown: (TapDownDetails details) =>
-                          _focus(details.localPosition, size),
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: <Widget>[
-                          camera.preview(context),
-                          CustomPaint(
-                            key: const ValueKey<String>(
-                              'capture-framing-guides',
-                            ),
-                            painter: _FramingGuidePainter(
-                              // Drawn in `paper` rather than in `ink`: the
-                              // guide sits over a photograph, and the one
-                              // thing a specimen photograph always has is
-                              // dark ground around a pinned insect.
-                              stroke: ui.color.paper,
-                              width: ui.shape.stroke.emphasis,
-                              radius: ui.shape.inner,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  if (_focusPoint != null)
-                    _FocusMark(at: _focusPoint!, locked: _focusLocked),
-                  // The one capsule over the pixels: the way out of the
-                  // camera, floating rather than welded into a bar, so the
-                  // preview keeps the whole window.
-                  PositionedDirectional(
-                    top: ui.space.s4,
-                    end: ui.space.s4,
-                    child: GlassSurface(
-                      level: GlassLevel.floating,
-                      capsule: true,
-                      padding: EdgeInsetsDirectional.all(ui.space.s1),
-                      child: UiIconButton(
-                        icon: UiIcons.close,
-                        semanticsLabel: CaptureScreen.closeLabel,
-                        tooltip: CaptureScreen.closeLabel,
-                        onPressed: _finish,
-                      ),
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
-        ),
-        Padding(
-          padding: EdgeInsetsDirectional.all(ui.space.s4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final Widget preview = _viewfinderPreview(camera);
+        final Widget guidance = _viewfinderGuidance();
+        final Widget controls = _viewfinderControls();
+        // A short, wide allocation has room for controls beside the evidence.
+        // This is the available window, not a device or orientation guess.
+        if (constraints.maxWidth >= WindowClass.mediumMin &&
+            constraints.maxWidth > constraints.maxHeight) {
+          return Row(
             children: <Widget>[
-              Semantics(
-                container: true,
-                liveRegion: true,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              Expanded(child: preview),
+              SizedBox(
+                width: math.min(ui.space.readingMax, constraints.maxWidth / 2),
+                child: Column(
                   children: <Widget>[
-                    const NotCalibratedChip(),
-                    SizedBox(width: ui.space.s3),
-                    Expanded(
-                      child: Text(
-                        hint ??
-                            (_reading == null
-                                ? 'Exposure is not measured on this device.'
-                                : 'No clipping measured in this frame.'),
-                        style: ui.type.body.copyWith(color: ui.color.ink),
+                    Expanded(child: guidance),
+                    controls,
+                  ],
+                ),
+              ),
+            ],
+          );
+        }
+        // After the scaled primary controls have their natural height, give
+        // the photograph two shares and scrollable secondary copy one share.
+        return Column(
+          children: <Widget>[
+            Expanded(flex: 2, child: preview),
+            Expanded(child: guidance),
+            controls,
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _viewfinderPreview(CaptureCamera camera) {
+    final UiThemeData ui = context.ui;
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final Size size = constraints.biggest;
+        return Stack(
+          fit: StackFit.expand,
+          children: <Widget>[
+            // One node for the whole viewfinder: a screen reader hears
+            // "Viewfinder, button", not a bare tappable rectangle. The
+            // focus mark sits outside it so its own announcement is
+            // still reachable.
+            Semantics(
+              container: true,
+              button: true,
+              excludeSemantics: true,
+              label:
+                  'Viewfinder. Activate to lock focus and exposure on '
+                  'the centre of the frame.',
+              onTap: () => _focus(size.center(Offset.zero), size),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTapDown: (TapDownDetails details) =>
+                    _focus(details.localPosition, size),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: <Widget>[
+                    camera.preview(context),
+                    CustomPaint(
+                      key: const ValueKey<String>('capture-framing-guides'),
+                      painter: _FramingGuidePainter(
+                        // Drawn in `paper` rather than in `ink`: the
+                        // guide sits over a photograph, and the one
+                        // thing a specimen photograph always has is
+                        // dark ground around a pinned insect.
+                        stroke: ui.color.paper,
+                        width: ui.shape.stroke.emphasis,
+                        radius: ui.shape.inner,
                       ),
                     ),
                   ],
                 ),
               ),
-              if (_captureError != null) ...<Widget>[
-                SizedBox(height: ui.space.s3),
-                UiBanner(
-                  message: _captureError!,
-                  tone: UiBannerTone.blocked,
-                  dismissLabel: 'Dismiss message',
-                  onDismiss: () => setState(() => _captureError = null),
+            ),
+            if (_focusPoint != null)
+              _FocusMark(at: _focusPoint!, locked: _focusLocked),
+            // The one capsule over the pixels: the way out of the
+            // camera, floating rather than welded into a bar, so the
+            // preview keeps the whole window.
+            PositionedDirectional(
+              top: ui.space.s4,
+              end: ui.space.s4,
+              child: GlassSurface(
+                level: GlassLevel.floating,
+                capsule: true,
+                padding: EdgeInsetsDirectional.all(ui.space.s1),
+                child: UiIconButton(
+                  icon: UiIcons.close,
+                  semanticsLabel: CaptureScreen.closeLabel,
+                  tooltip: CaptureScreen.closeLabel,
+                  onPressed: _finish,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _viewfinderGuidance() {
+    final UiThemeData ui = context.ui;
+    final String? hint = _reading?.hint;
+    return SingleChildScrollView(
+      key: const ValueKey<String>('capture-guidance'),
+      padding: EdgeInsetsDirectional.all(ui.space.s4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Semantics(
+            container: true,
+            liveRegion: true,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                const NotCalibratedChip(),
+                SizedBox(height: ui.space.s2),
+                Text(
+                  hint ??
+                      (_reading == null
+                          ? 'Exposure is not measured on this device.'
+                          : 'No clipping measured in this frame.'),
+                  style: ui.type.body.copyWith(color: ui.color.ink),
                 ),
               ],
-              SizedBox(height: ui.space.s2),
-              Text(
-                'Framing, focus and label coverage are not checked here.',
-                style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+            ),
+          ),
+          if (_captureError != null) ...<Widget>[
+            SizedBox(height: ui.space.s3),
+            UiBanner(
+              message: _captureError!,
+              tone: UiBannerTone.blocked,
+              dismissLabel: 'Dismiss message',
+              onDismiss: () => setState(() => _captureError = null),
+            ),
+          ],
+          SizedBox(height: ui.space.s2),
+          Text(
+            'Framing, focus and label coverage are not checked here.',
+            style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+          ),
+          SizedBox(height: ui.space.s3),
+          _activityBar(context),
+          SizedBox(height: ui.space.s3),
+          Text(
+            _autoIngest
+                ? cameraSendImmediatelyBody
+                : 'Review and adjust each photo before sending it.',
+            style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _viewfinderControls() {
+    final UiThemeData ui = context.ui;
+    return Padding(
+      padding: EdgeInsetsDirectional.all(ui.space.s4),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Semantics(
+            container: true,
+            liveRegion: true,
+            child: Text(
+              counterLabel(_acceptedCount),
+              style: ui.type.body.copyWith(color: ui.color.ink),
+            ),
+          ),
+          SizedBox(height: ui.space.s2),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Expanded(
+                child: Text(cameraSendImmediatelyLabel, style: ui.type.label),
               ),
-              SizedBox(height: ui.space.s3),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(cameraSendImmediatelyLabel, style: ui.type.label),
-                        Text(
-                          _autoIngest
-                              ? cameraSendImmediatelyBody
-                              : 'Review and adjust each photo before sending it.',
-                          style: ui.type.bodySmall.copyWith(
-                            color: ui.color.inkSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  SizedBox(width: ui.space.s3),
-                  UiSwitch(
-                    key: const ValueKey<String>('capture-auto-ingest'),
-                    label: cameraSendImmediatelyLabel,
-                    showLabel: false,
-                    value: _autoIngest,
-                    onChanged: _capturing ? null : _setAutoIngest,
-                  ),
-                ],
-              ),
-              SizedBox(height: ui.space.s3),
-              _activityBar(context),
-              SizedBox(height: ui.space.s4),
-              Row(
-                children: <Widget>[
-                  Expanded(
-                    child: Semantics(
-                      container: true,
-                      liveRegion: true,
-                      child: Text(
-                        counterLabel(_acceptedCount),
-                        style: ui.type.body.copyWith(color: ui.color.ink),
-                      ),
-                    ),
-                  ),
-                  SizedBox(width: ui.space.s4),
-                  _Shutter(
-                    key: const ValueKey<String>('capture-shutter'),
-                    onPressed: _capturing ? null : _capture,
-                  ),
-                  SizedBox(width: ui.space.s4),
-                  UiButton(
-                    label: CaptureScreen.doneLabel,
-                    variant: UiButtonVariant.secondary,
-                    onPressed: _finish,
-                  ),
-                ],
+              SizedBox(width: ui.space.s3),
+              UiSwitch(
+                key: const ValueKey<String>('capture-auto-ingest'),
+                label: cameraSendImmediatelyLabel,
+                showLabel: false,
+                value: _autoIngest,
+                onChanged: _capturing ? null : _setAutoIngest,
               ),
             ],
           ),
-        ),
-      ],
+          SizedBox(height: ui.space.s3),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: <Widget>[
+              _Shutter(
+                key: const ValueKey<String>('capture-shutter'),
+                onPressed: _capturing ? null : _capture,
+              ),
+              SizedBox(width: ui.space.s4),
+              UiButton(
+                label: CaptureScreen.doneLabel,
+                variant: UiButtonVariant.secondary,
+                onPressed: _finish,
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
