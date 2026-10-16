@@ -163,10 +163,14 @@ same complete pytest discovery, then keeps whole test files assigned
 deterministically using checked-in complete per-module setup, call and teardown
 costs in `scripts/ci/python_shard_timings.json`, with a per-item estimate for
 unknown or changed modules.
-The manifest uses schema 2 and mode `complete`, recording
+The manifest uses schema 3 and mode `complete`, recording
 `measurement_identity` (source SHA, run ID and attempt), `inventory_digest`,
 `timing_manifest_digest` for the measured input manifest,
 `source_fingerprints`, `module_inventory_digests` and `module_seconds`.
+The two fingerprint collections are path-sorted arrays of explicit `path` and
+`sha256` records; their literal paths and digests retain the original measurement
+provenance. The loader also accepts legacy schema-1 lower bounds and schema-2
+complete mappings. The stored input-manifest digest is not the new file's hash.
 A source/input fingerprint mismatch invalidates all complete costs; a module
 inventory mismatch invalidates that module's cost.
 The fallback is 0.1 seconds per collected item; timing weights change only
@@ -485,7 +489,7 @@ public image. Never use private specimen material for a smoke test.
 These optional smoke commands are distinct from the user-authorized first-ten
 application pilot. The pilot requires its privately frozen originals, pinned
 provider routes, verified identity/data/runtime prerequisites and the shared
-reservation ledger (G30's allowance, USD 15 since 2026-10-09). It is never run
+reservation ledger (G30's allowance, USD 16 since 2026-10-16). It is never run
 inside ordinary pull-request CI.
 
 > 2026-09-23: Superseded for the go-live program by

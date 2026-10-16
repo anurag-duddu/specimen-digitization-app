@@ -808,13 +808,13 @@ class _UiScaffoldState extends State<UiScaffold> {
       ],
     );
 
-    // The side navigation and the body clear the side notches; the top bar
-    // does its own, because its pane has to reach the window's edge.
+    // The side navigation and the body clear the side notches; the header
+    // or top bar clears the top inset so its pane reaches the window's edge.
     belowBar = Padding(
       padding: EdgeInsets.only(left: safe.left, right: safe.right),
       child: belowBar,
     );
-    if (bar == null && safe.top > 0) {
+    if (widget.header == null && bar == null && safe.top > 0) {
       belowBar = Padding(
         padding: EdgeInsets.only(top: safe.top),
         child: belowBar,

@@ -25,6 +25,7 @@ const Map<String, String> runActionLabels = <String, String>{
   'pause': 'Pause processing',
   'resume': 'Resume processing',
   'cancel': 'Cancel processing',
+  'reassess_locations': 'Reassess locations',
   'reprocess': 'Start new run',
 };
 
@@ -173,12 +174,21 @@ class ProcessingDetail extends StatelessWidget {
       context,
       title: '$label?',
       action: label,
-      consequence: action == 'reprocess'
-          ? 'A new run keeps the previous record and repeats the processing '
-                'the server allows.'
-          : 'The server applies this action to the current run. Work already '
-                'sent may still finish, and only current results are saved.',
-      retained: 'Earlier evidence and decisions stay in history.',
+      consequence: switch (action) {
+        'reprocess' =>
+          'A new run keeps the previous record and repeats the processing '
+              'the server allows.',
+        'reassess_locations' =>
+          'The location fields are researched together using saved label '
+              'readings. Another processing attempt may incur a charge.',
+        _ =>
+          'The server applies this action to the current run. Work already '
+              'sent may still finish, and only current results are saved.',
+      },
+      retained: action == 'reassess_locations'
+          ? 'Reviewer decisions, earlier evidence and recorded usage are kept. '
+                'The existing spending limits still apply.'
+          : 'Earlier evidence and decisions stay in history.',
     );
     if (reason == null || !context.mounted) return;
     await onAction(<String, dynamic>{
@@ -447,7 +457,12 @@ class ProcessingDetail extends StatelessWidget {
   }) {
     if (busy) return 'Wait for the save that is in flight to finish';
     if (activeLease &&
-        <String>['resume', 'reprocess', 'reconcile'].contains(action)) {
+        <String>[
+          'resume',
+          'reprocess',
+          'reconcile',
+          'reassess_locations',
+        ].contains(action)) {
       return 'The processing service holds this run until '
           '${relativeInstant(leaseUntil)}';
     }

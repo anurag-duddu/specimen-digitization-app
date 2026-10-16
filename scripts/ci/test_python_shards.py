@@ -5,6 +5,7 @@ from collections import Counter
 import json
 import os
 from pathlib import Path
+import re
 import signal
 import subprocess
 import sys
@@ -57,14 +58,16 @@ def test_runtime_hints_balance_slow_modules_without_splitting_them():
 
 def test_committed_runtime_hints_are_valid_test_modules():
     raw = python_shards.decode_json(python_shards.TIMINGS.read_bytes())
+    sources = raw.get("source_fingerprints")
+    if raw["schema"] == 3:
+        sources = python_shards.fingerprints_from_records(sources)
     # Validate every stored hint even when changed inputs make it inapplicable.
-    stored = python_shards.load_timings(fingerprints=raw.get("source_fingerprints"))
+    stored = python_shards.load_timings(fingerprints=sources)
     assert stored, "committed manifest must contain validated module costs"
     root = Path(__file__).resolve().parents[2]
     assert all((root / module).is_file() for module in stored)
     timings = python_shards.load_timings()
-    applicable = (raw["schema"] == 1
-                  or raw["source_fingerprints"] == python_shards.source_fingerprints())
+    applicable = raw["schema"] == 1 or sources == python_shards.source_fingerprints()
     assert dict(timings) == (dict(stored) if applicable else {})
     assert timings.mode == stored.mode
     assert timings.manifest_digest == stored.manifest_digest
@@ -73,7 +76,9 @@ def test_committed_runtime_hints_are_valid_test_modules():
 
 
 @pytest.mark.parametrize("change", ["unchanged", "source", "new_module"])
-def test_committed_complete_manifest_allows_changed_input_fallback(tmp_path, monkeypatch, change):
+@pytest.mark.parametrize("schema", [2, 3])
+def test_committed_complete_manifest_allows_changed_input_fallback(tmp_path, monkeypatch,
+                                                                  change, schema):
     # Synthetic complete costs exercise the I27 integration boundary without
     # changing the committed timing file or claiming new measurements.
     modules = {"tests/test_application.py": (100, 1),
@@ -83,15 +88,20 @@ def test_committed_complete_manifest_allows_changed_input_fallback(tmp_path, mon
                  for module, (size, _) in modules.items()}
     nodes = [node for module_nodes in inventory.values() for node in module_nodes]
     measured_sources = {module: "a" * 64 for module in modules}
-    manifest = {"schema": 2, "mode": "complete",
+    inventory_digests = {module: python_shards.digest(module_nodes)
+                         for module, module_nodes in inventory.items()}
+    manifest = {"schema": schema, "mode": "complete",
                 "measurement_identity": {"GITHUB_SHA": "a" * 40,
                                          "GITHUB_RUN_ID": "123", "GITHUB_RUN_ATTEMPT": "2"},
                 "inventory_digest": python_shards.digest(nodes),
                 "timing_manifest_digest": "b" * 64,
                 "source_fingerprints": measured_sources,
-                "module_inventory_digests": {module: python_shards.digest(module_nodes)
-                                             for module, module_nodes in inventory.items()},
+                "module_inventory_digests": inventory_digests,
                 "module_seconds": {module: seconds for module, (_, seconds) in modules.items()}}
+    if schema == 3:
+        for field in ("source_fingerprints", "module_inventory_digests"):
+            manifest[field] = [{"path": path, "sha256": sha}
+                               for path, sha in sorted(manifest[field].items())]
     path = tmp_path / "complete-timings.json"
     path.write_text(json.dumps(manifest))
     current_sources = dict(measured_sources)
@@ -116,7 +126,7 @@ def test_committed_complete_manifest_allows_changed_input_fallback(tmp_path, mon
     assert partition(nodes, 2, measured) != partition(nodes, 2, {})
     if change == "unchanged":
         assert dict(hints) == manifest["module_seconds"]
-        assert hints.module_inventory_digests == manifest["module_inventory_digests"]
+        assert hints.module_inventory_digests == inventory_digests
     else:
         assert dict(hints) == {}, "stale complete costs must be discarded"
         assert hints.module_inventory_digests == {}
@@ -230,18 +240,24 @@ def test_real_pytest_discovery_phases_fixtures_and_cli_aggregate(tmp_path):
     assert invoke(tmp_path, "verify", "--count", "3", *map(str, paths)).returncode == 1
 
 
-def test_local_parallel_command_runs_all_modules_and_propagates_failure(tmp_path):
+@pytest.mark.parametrize("color", ["no", "yes"], ids=["plain", "color"])
+def test_local_parallel_command_runs_all_modules_and_propagates_failure(tmp_path, monkeypatch, color):
+    # Child pytest processes inherit these options; exercise both display modes.
+    monkeypatch.setenv("PYTEST_ADDOPTS", f"{os.environ.get('PYTEST_ADDOPTS', '')} --color={color}")
+    sgr = re.compile(r"\x1b\[[0-9;]*m")
     for index in range(3):
         (tmp_path / f"test_{index}.py").write_text(
             "import pytest\n@pytest.mark.parametrize('value', [1, 2])\n"
             "def test_pass(value):\n    assert value > 0\n")
     result = invoke(tmp_path, "local", "--count", "3")
     assert result.returncode == 0, result.stdout + result.stderr
+    assert bool(sgr.search(result.stdout)) == (color == "yes")
     assert "6 collected Python tests completed exactly once" in result.stdout
     (tmp_path / "test_1.py").write_text("def test_fail():\n    assert False\n")
     result = invoke(tmp_path, "local", "--count", "3")
     assert result.returncode == 1
-    assert "FAILED test_1.py::test_fail" in result.stdout
+    assert bool(sgr.search(result.stdout)) == (color == "yes")
+    assert "FAILED test_1.py::test_fail" in sgr.sub("", result.stdout)
 
 
 @pytest.mark.parametrize("count", ["0", "-1", "7"])

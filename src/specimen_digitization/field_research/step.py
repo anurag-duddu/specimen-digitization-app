@@ -40,6 +40,7 @@ fields.
 from __future__ import annotations
 
 import asyncio
+import copy
 import calendar
 import hashlib
 import json
@@ -266,12 +267,20 @@ def build_tasks(run, profile: CollectionProfile | None = None):
     ``context`` is every field's value as the organiser (or an earlier attempt)
     left it.
     """
+    from .location_reassessment import KEY as REASSESSMENT, active_keys, working_run
+
+    selected = active_keys(run)
+    if REASSESSMENT in run.dependencies and not selected:
+        raise OperationalBlock("location_reassessment_unavailable")
+    run = working_run(run)
     profile = profile_of(run) if profile is None else profile
     readings = run_readings(run)
     candidates = _candidates(run, readings)
     human = human_keys(run)
     tasks = []
     for key in field_keys(profile):
+        if selected and key not in selected:
+            continue
         current = run.fields.get(key) or FieldValue()
         if key in human or (current.state == ValueState.SUPPORTED and current.layer in RESEARCHED):
             continue
@@ -1709,7 +1718,9 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     field, the codes of the checks and rules that decided it (trace_fields).
     """
     from .agreement import PLACE_ORDER
+    from .location_reassessment import active_keys
 
+    reassessing = active_keys(run)
     profile = profile_of(run) if profile is None else profile
     readings = run_readings(run)
     by_name = {reading.name: reading for reading in readings}
@@ -1745,7 +1756,8 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     # locality: not present, as label_lacks_value makes it (_repeats_a_place).
     repeated = _repeats_a_place(run, tasks_by_key, applied, added, readings, evidence=evidence,
         decisions=decisions)
-    eligible = [key for key in field_keys(profile) if key not in human]
+    eligible = [key for key in field_keys(profile) if key not in human
+        and (not reassessing or key in reassessing)]
     derived = derive.fill(run, eligible=eligible, asset_id=asset_id, blobs=blobs, received=received)
     for key in derived:
         decisions.setdefault(key, {})["rule"] = "derived"
@@ -3106,9 +3118,20 @@ class FieldResearchStep:
         limit. The identified-by IRN keeps its nonblocking exception, as when
         research runs.
         """
+        from .location_reassessment import KEY as REASSESSMENT
+
         run = specimen.run
         try:
             profile = profile_of(run)
+            if REASSESSMENT in run.dependencies:
+                # The workflow can give up before incrementing the attempt.
+                # No explicit reassessment was sent: leave every field intact,
+                # rather than falling back to ordinary unresolved-field work.
+                run.dependencies.pop(REASSESSMENT, None)
+                finalize_fields(run, profile, (), specimen=specimen, blobs=workflow.blobs,
+                    today=workflow.clock().date())
+                self._retained_reassessment(run, {f"run_limit:{code}"})
+                return
             prepared = build_tasks(run, profile)
             outcomes = [
                 FieldOutcome(task.key, FieldAnswer(outcome="sources_cannot_resolve", explanation=IRN_EXPLANATION),
@@ -3129,7 +3152,11 @@ class FieldResearchStep:
         trace_fields(run, prepared[1], outcomes, (), decisions)
 
     def run(self, workflow, principal, specimen, *, cap_micros: int, deadline_seconds: float) -> None:
+        from .location_reassessment import KEY as REASSESSMENT, commit, working_run
+
         run = specimen.run
+        reassessment_marker = copy.deepcopy(run.dependencies.get(REASSESSMENT))
+        research_run = working_run(run)
         route = None
         try:
             # Nothing is sent before the research below: an error here is the
@@ -3137,8 +3164,8 @@ class FieldResearchStep:
             profile = profile_of(run)
             route = profile.harness_route
             meter = self.meter_factory(max(0, cap_micros), _route_price(profile, route))
-            prepared = build_tasks(run, profile)
-            resolver = self.resolver_factory(run, profile, meter)
+            prepared = build_tasks(research_run, profile)
+            resolver = self.resolver_factory(research_run, profile, meter)
         except OperationalBlock:
             record_cost(run, route, reserved=cap_micros, spent=0, outcome="failed")
             raise
@@ -3151,7 +3178,7 @@ class FieldResearchStep:
         # Research, then each field's decision (trace_fields), in one span.
         with logfire.span(SPAN) as span:
             try:
-                outcomes = asyncio.run(self._research(run, profile, prepared, resolver, workflow.blobs,
+                outcomes = asyncio.run(self._research(research_run, profile, prepared, resolver, workflow.blobs,
                     calls, self._bound(deadline_seconds), span))
             finally:
                 # Research cut short by an error still settles to what the meter
@@ -3164,10 +3191,17 @@ class FieldResearchStep:
                     outcome="completed" if outcomes is not None else "failed" if known else "unknown",
                     model_calls=sum(o.model_calls for o in outcomes or ()))
             try:
-                apply_outcomes(run, profile, prepared[1], outcomes, blobs=workflow.blobs, calls=calls,
+                apply_outcomes(research_run, profile, prepared[1], outcomes, blobs=workflow.blobs, calls=calls,
                     asset_id=specimen.asset.id, decisions=decisions)
+                retained = commit(run, research_run, decisions=decisions) if research_run is not run else set()
                 blocker = finalize_fields(run, profile, outcomes, specimen=specimen, blobs=workflow.blobs,
                     today=workflow.clock().date())
+                self._retained_reassessment(run, retained)
+                if blocker is not None and research_run is not run and not last_attempt(run):
+                    # The ordinary bounded operational retry keeps this explicit
+                    # family's scope; it must not expand to unrelated fields.
+                    run.dependencies[REASSESSMENT] = {
+                        **reassessment_marker, "attempt": run.attempts[STEP] + 1}
             except EvidenceIntegrityError as error:
                 raise OperationalBlock(str(error)) from error
             trace_fields(run, prepared[1], outcomes, calls, decisions)
@@ -3175,6 +3209,14 @@ class FieldResearchStep:
             if run.paid_calls and run.paid_calls[-1]["step"] == STEP:
                 run.paid_calls[-1]["outcome"] = "failed"
             raise AdapterFailure(blocker, BLOCKER_STATUS[blocker])
+
+    @staticmethod
+    def _retained_reassessment(run, retained) -> None:
+        if retained:
+            run.reasons = list(dict.fromkeys((*run.reasons,
+                *(f"location_reassessment_unconfirmed:{key}" for key in sorted(retained)))))
+            if run.blocker is None:
+                run.disposition = Disposition.REVIEW
 
     def _bound(self, deadline_seconds: float) -> float:
         from specimen_digitization.application.worker_deadline import current_deadline

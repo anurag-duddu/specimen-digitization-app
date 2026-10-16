@@ -122,8 +122,9 @@ class FakeCaptureCamera implements CaptureCamera {
 
 /// A camera whose capture and disposal can be held across lifecycle changes.
 class ControlledCaptureCamera implements CaptureCamera {
-  ControlledCaptureCamera({this.captureGate, this.disposeGate});
+  ControlledCaptureCamera({this.startGate, this.captureGate, this.disposeGate});
 
+  final Completer<void>? startGate;
   final Completer<XFile>? captureGate;
   final Completer<void>? disposeGate;
   final StreamController<CapturePreviewReading> _readings =
@@ -131,6 +132,8 @@ class ControlledCaptureCamera implements CaptureCamera {
   bool started = false;
   bool disposeStarted = false;
   bool disposed = false;
+  int disposeCalls = 0;
+  int captureCalls = 0;
 
   @override
   double get aspectRatio => 1;
@@ -142,16 +145,19 @@ class ControlledCaptureCamera implements CaptureCamera {
   Stream<CapturePreviewReading> get readings => _readings.stream;
 
   @override
-  Future<XFile> capture() async =>
-      captureGate?.future ??
-      XFile.fromData(
-        FakeCaptureCamera.frame,
-        path: 'controlled-capture.png',
-        name: 'controlled-capture.png',
-      );
+  Future<XFile> capture() async {
+    captureCalls++;
+    return captureGate?.future ??
+        XFile.fromData(
+          FakeCaptureCamera.frame,
+          path: 'controlled-capture.png',
+          name: 'controlled-capture.png',
+        );
+  }
 
   @override
   Future<void> dispose() async {
+    disposeCalls++;
     disposeStarted = true;
     await disposeGate?.future;
     if (disposed) return;
@@ -167,12 +173,15 @@ class ControlledCaptureCamera implements CaptureCamera {
       const SizedBox.expand(key: ValueKey<String>('controlled-preview'));
 
   @override
-  Future<void> start() async => started = true;
+  Future<void> start() async {
+    await startGate?.future;
+    started = true;
+  }
 }
 
 Future<CaptureResult?> pumpCapture(
   WidgetTester tester,
-  FakeCaptureCamera camera,
+  CaptureCamera camera,
 ) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = const Size(500, 900);
@@ -623,6 +632,61 @@ void main() {
     expect(find.text(CaptureUnavailable.failed.message), findsNothing);
   });
 
+  testWidgets('rebuilding during camera disposal never draws a stale preview', (
+    WidgetTester tester,
+  ) async {
+    final Completer<void> disposeGate = Completer<void>();
+    final ControlledCaptureCamera camera = ControlledCaptureCamera(
+      disposeGate: disposeGate,
+    );
+    await pumpCapture(tester, camera);
+    addTearDown(() {
+      if (!disposeGate.isCompleted) disposeGate.complete();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    });
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await waitForCameraCondition(tester, () => camera.disposeStarted);
+    tester.view.physicalSize = const Size(520, 900);
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const ValueKey('controlled-preview')), findsNothing);
+    expect(find.byKey(const ValueKey('capture-shutter')), findsNothing);
+    disposeGate.complete();
+    await waitForCameraCondition(tester, () => camera.disposed);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('retaking a suspended review waits for a current camera', (
+    WidgetTester tester,
+  ) async {
+    final ControlledCaptureCamera camera = ControlledCaptureCamera();
+    await pumpCapture(tester, camera);
+    addTearDown(
+      () => tester.binding.handleAppLifecycleStateChanged(
+        AppLifecycleState.resumed,
+      ),
+    );
+    await takeOne(tester);
+    final Uint8List before =
+        (tester.widget<Image>(find.byType(Image)).image as MemoryImage).bytes;
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await waitForCameraCondition(tester, () => camera.disposed);
+    expect(
+      (tester.widget<Image>(find.byType(Image)).image as MemoryImage).bytes,
+      orderedEquals(before),
+    );
+
+    await tester.tap(find.text('Retake'));
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const ValueKey('capture-shutter')), findsNothing);
+    expect(find.byKey(const ValueKey('controlled-preview')), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('resume waits for the previous controller to finish disposing', (
     WidgetTester tester,
   ) async {
@@ -662,6 +726,194 @@ void main() {
     expect(factories, 2);
     expect(first.disposed, isTrue);
   });
+
+  testWidgets('a late camera factory cannot start after route disposal', (
+    WidgetTester tester,
+  ) async {
+    final Completer<CaptureCamera> factoryGate = Completer<CaptureCamera>();
+    final ControlledCaptureCamera camera = ControlledCaptureCamera();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: CaptureScreen(camera: () => factoryGate.future),
+      ),
+    );
+    await tester.pump();
+    expect(find.byKey(const ValueKey('capture-shutter')), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    factoryGate.complete(camera);
+    await waitForCameraCondition(tester, () => camera.disposed);
+
+    expect(camera.started, isFalse);
+    expect(camera.disposeCalls, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('late initialization releases its camera once after route pop', (
+    WidgetTester tester,
+  ) async {
+    final Completer<void> startGate = Completer<void>();
+    final ControlledCaptureCamera camera = ControlledCaptureCamera(
+      startGate: startGate,
+    );
+    final GlobalKey<NavigatorState> navigator = GlobalKey<NavigatorState>();
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorKey: navigator,
+        theme: AppTheme.light(),
+        home: const SizedBox.shrink(),
+      ),
+    );
+    final Future<CaptureResult?> result = navigator.currentState!.push(
+      CaptureScreen.route(() async => camera),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(camera.started, isFalse);
+    expect(find.byKey(const ValueKey('capture-shutter')), findsNothing);
+
+    navigator.currentState!.pop();
+    await tester.pumpAndSettle();
+    expect(await result, isNull);
+    startGate.complete();
+    await waitForCameraCondition(tester, () => camera.disposed);
+
+    expect(camera.disposeCalls, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a late capture failure cannot replace a resumed camera', (
+    WidgetTester tester,
+  ) async {
+    final Completer<XFile> captureGate = Completer<XFile>();
+    final ControlledCaptureCamera first = ControlledCaptureCamera(
+      captureGate: captureGate,
+    );
+    final ControlledCaptureCamera second = ControlledCaptureCamera();
+    var factories = 0;
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(500, 900);
+    addTearDown(tester.view.reset);
+    addTearDown(
+      () => tester.binding.handleAppLifecycleStateChanged(
+        AppLifecycleState.resumed,
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: CaptureScreen(
+          camera: () async => factories++ == 0 ? first : second,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('capture-shutter')));
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await waitForCameraCondition(tester, () => first.disposed);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await waitForCameraCondition(tester, () => second.started);
+
+    captureGate.completeError(
+      const CaptureCameraUnavailable(CaptureUnavailable.permission),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('controlled-preview')), findsOneWidget);
+    expect(find.text(CaptureUnavailable.permission.message), findsNothing);
+    expect(second.disposeCalls, 0);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  for (final bool autoIngest in [false, true]) {
+    testWidgets(
+      'late capture leaves the next ${autoIngest ? 'automatic' : 'manual'} capture in control',
+      (WidgetTester tester) async {
+        final Completer<XFile> firstCapture = Completer<XFile>();
+        final Completer<XFile> secondCapture = Completer<XFile>();
+        final ControlledCaptureCamera first = ControlledCaptureCamera(
+          captureGate: firstCapture,
+        );
+        final ControlledCaptureCamera second = ControlledCaptureCamera(
+          captureGate: secondCapture,
+        );
+        final List<XFile> accepted = [];
+        var factories = 0;
+        tester.view.devicePixelRatio = 1;
+        tester.view.physicalSize = const Size(500, 900);
+        addTearDown(tester.view.reset);
+        addTearDown(
+          () => tester.binding.handleAppLifecycleStateChanged(
+            AppLifecycleState.resumed,
+          ),
+        );
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: AppTheme.light(),
+            home: CaptureScreen(
+              camera: () async => factories++ == 0 ? first : second,
+              autoIngest: autoIngest,
+              onAccepted: accepted.add,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final Finder shutter = find.byKey(const ValueKey('capture-shutter'));
+        await tester.tap(shutter);
+        await tester.pump();
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        await waitForCameraCondition(tester, () => first.disposed);
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+        await waitForCameraCondition(tester, () => second.started);
+        await tester.tap(shutter);
+        await tester.pump();
+        expect(second.captureCalls, 1);
+
+        firstCapture.complete(
+          XFile.fromData(
+            FakeCaptureCamera.frame,
+            path: 'stale.png',
+            name: 'stale.png',
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(accepted, isEmpty);
+        expect(find.text('Send for processing'), findsNothing);
+        await tester.tap(shutter);
+        await tester.pump();
+        expect(second.captureCalls, 1);
+
+        secondCapture.complete(
+          XFile.fromData(
+            FakeCaptureCamera.frame,
+            path: 'current.png',
+            name: 'current.png',
+          ),
+        );
+        if (autoIngest) {
+          await waitForCameraCondition(tester, () => accepted.isNotEmpty);
+        } else {
+          await waitForCameraCondition(
+            tester,
+            () => find.text('Send for processing').evaluate().isNotEmpty,
+          );
+          expect(accepted, isEmpty);
+          await tester.tap(find.text('Send for processing'));
+          await tester.pump();
+        }
+        expect(accepted, hasLength(1));
+        expect(accepted.single.name, 'current.png');
+        expect(first.disposeCalls, 1);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+  }
 
   testWidgets('a camera that will not start returns cleanly to Intake', (
     WidgetTester tester,
@@ -707,6 +959,81 @@ void main() {
     expect(result!.needsFallback, isFalse);
     expect(result!.unavailable, isNull);
   });
+
+  testWidgets(
+    'camera opt-in and return to manual mode persist across reopening Intake',
+    (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(700, 1000);
+      addTearDown(tester.view.reset);
+      final CaptureIntakeRepository repository = CaptureIntakeRepository();
+      final List<FakeCaptureCamera> cameras = [];
+      Widget intake() => MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: IntakeScreen(
+            repository: repository,
+            scope: const CollectionScope(
+              organizationId: 'org',
+              collectionId: 'insects',
+              name: 'Synthetic insects',
+            ),
+            userId: 'owner',
+            onComplete: () {},
+            cameraFactory: () async {
+              final FakeCaptureCamera camera = FakeCaptureCamera();
+              cameras.add(camera);
+              return camera;
+            },
+          ),
+        ),
+      );
+      Future<void> openCamera() async {
+        final Finder take = find.byKey(
+          const ValueKey('intake-take-photograph'),
+        );
+        await tester.ensureVisible(take);
+        await tester.tap(take);
+        await tester.pumpAndSettle();
+      }
+
+      final Finder toggle = find.descendant(
+        of: find.byType(CaptureScreen),
+        matching: find.byKey(const ValueKey('capture-auto-ingest')),
+      );
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      const String preference = 'camera-auto-ingest-v1:owner:org/insects';
+
+      await tester.pumpWidget(intake());
+      await tester.pumpAndSettle();
+      await openCamera();
+      expect(tester.widget<UiSwitch>(toggle).value, isFalse);
+      for (final bool enabled in [true, false]) {
+        await tester.tap(toggle);
+        await tester.pumpAndSettle();
+        expect(prefs.getBool(preference), enabled);
+        await tester.tap(find.text(CaptureScreen.doneLabel));
+        await tester.pumpAndSettle();
+        expect(find.byType(CaptureScreen), findsNothing);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpWidget(intake());
+        await tester.pumpAndSettle();
+        await openCamera();
+        expect(tester.widget<UiSwitch>(toggle).value, enabled);
+      }
+      await tester.tap(find.text(CaptureScreen.doneLabel));
+      await tester.pumpAndSettle();
+      expect(cameras, hasLength(3));
+      await waitForCameraCondition(
+        tester,
+        () => cameras.every((camera) => camera.disposed),
+      );
+      expect(cameras.every((camera) => camera.disposed), isTrue);
+      expect(repository.captured, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'accepted captures land in the same manifest a file picker fills',
