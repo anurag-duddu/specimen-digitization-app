@@ -84,6 +84,13 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
   bool _handoffWhileDetached = false;
   String? restoreError;
 
+  /// How many photographs this session has moved out of Intake because the
+  /// server put them in the main Queue. Monotonic, so a screen that attaches
+  /// later can remember where it started and announce only what it saw.
+  /// Rows dropped at [restore] were finished in an earlier session and are
+  /// not counted: nothing on screen changes for them.
+  int movedToQueue = 0;
+
   String get _storageKey => 'upload-handles-v1:$userId:${scope.key}';
 
   void attachComplete(VoidCallback callback) {
@@ -172,6 +179,7 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
     try {
       final dynamic parsed = jsonDecode(saved);
       if (parsed is! List) throw const FormatException('Upload handles');
+      var droppedFinished = false;
       for (final dynamic value in parsed) {
         if (value is! Map ||
             value['digest'] is! String ||
@@ -186,6 +194,12 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
         final Object? specimenId = value['specimen_id'];
         if (specimenId is String && specimenId.isNotEmpty) {
           final UploadState state = _restoredTrackingState(value['state']);
+          // Finished in an earlier session: the main Queue owns it now, so
+          // it no longer belongs in this device's Intake list.
+          if (state == UploadState.inMainQueue) {
+            droppedFinished = true;
+            continue;
+          }
           entries.add(
             ManifestEntry.tracking(
               digest: digest,
@@ -193,9 +207,7 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
               handle: <String, dynamic>{'upload_id': value['upload_id']},
               specimenId: specimenId,
               state: state,
-              reason: state == UploadState.inMainQueue
-                  ? 'Processing finished. This photograph is in the main Queue.'
-                  : state == UploadState.processingBlocked
+              reason: state == UploadState.processingBlocked
                   ? 'Processing needs attention.'
                   : 'Checking processing status.',
             ),
@@ -210,6 +222,7 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
         }
       }
       changed();
+      if (droppedFinished) await persist();
       await refreshProcessingStatuses();
     } catch (_) {
       restoreError =
@@ -403,6 +416,10 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
         }
         callback();
       }
+      if (!_closed && _retireFinished()) {
+        changed();
+        await persist();
+      }
       return true;
     } catch (error) {
       if (_closed) return false;
@@ -503,6 +520,7 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
           changedAny = true;
         }
       }
+      if (_retireFinished()) changedAny = true;
       if (changedAny && !_closed) {
         changed();
         await persist();
@@ -582,6 +600,7 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
         throw const ApiFailure('The requested photo could not be verified.');
       }
       _applyProcessingSummary(entry, refreshed);
+      _retireFinished();
       await persist();
     } on ApiFailure catch (error) {
       if (_closed) return;
@@ -622,7 +641,11 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
     entry.specimen = specimen;
     entry.specimenId = specimen.id;
     entry.why = null;
-    if (specimen.state != 'pending') _startDispatchFailures.remove(specimen.id);
+    // A photo in line is picked up by the processing already under way, so an
+    // earlier start that did not go through no longer needs attention.
+    if (specimen.state != 'pending' || intakeWaitingInLine(specimen)) {
+      _startDispatchFailures.remove(specimen.id);
+    }
     final String? disposition = specimen.disposition;
     if (const <String>{
       'cleared',
@@ -645,6 +668,7 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
       _ => UploadState.processing,
     };
     entry.reason = switch (specimen.state) {
+      'pending' when intakeWaitingInLine(specimen) => intakeInLineReason,
       'pending' =>
         _startDispatchFailures[specimen.id] ??
             'Waiting for processing to start.',
@@ -659,6 +683,29 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
         'Processing finished, but its main Queue outcome is not available.',
       _ => 'Waiting for the latest processing status.',
     };
+  }
+
+  /// Takes every row the server has put in the main Queue out of Intake.
+  ///
+  /// Owner, 2026-10-12: "once it ends up in the main queue, we dont need that
+  /// in the intake right?" Only [UploadState.inMainQueue] leaves. A row that
+  /// is blocked, failed, in line, uploading or processing stays where the
+  /// operator can act on it. Callers persist afterwards, so the list saved
+  /// on this device loses the row too.
+  bool _retireFinished() {
+    final List<ManifestEntry> finished = entries
+        .where((ManifestEntry entry) => entry.state == UploadState.inMainQueue)
+        .toList();
+    if (finished.isEmpty) return false;
+    entries.removeWhere(finished.contains);
+    for (final ManifestEntry entry in finished) {
+      // Nothing reads a retired photo's revision or start failure again.
+      _processingRevisions.remove(entry.specimenId);
+      _startDispatchFailures.remove(entry.specimenId);
+    }
+    final int moved = finished.length;
+    movedToQueue += moved;
+    return moved > 0;
   }
 
   void _notifyHandoff() {
@@ -709,6 +756,18 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
   }
 }
 
+/// What a saved photo waiting behind another in its collection says.
+const String intakeInLineReason =
+    'Waiting for its turn. Photos are processed one at a time.';
+
+/// True when the server reports this pending run waiting behind the
+/// processing already under way in its collection.
+bool intakeWaitingInLine(Specimen? specimen) {
+  if (specimen?.state != 'pending') return false;
+  final Object? progress = specimen!.data['intake_progress'];
+  return progress is Map && progress['waiting_in_line'] == true;
+}
+
 /// An action is never inferred from a failed upload or a UI status label.
 /// Only the scoped server summary may offer recovery of its existing record.
 String? intakeProcessingRetryAction(ManifestEntry entry) {
@@ -717,6 +776,8 @@ String? intakeProcessingRetryAction(ManifestEntry entry) {
   final Object? offered = specimen.data['available_actions'];
   if (offered is! List) return null;
   final String blocker = textOf(specimen.data['blocker'], '');
+  // A start cannot move a photo forward in line; it is never offered there.
+  if (intakeWaitingInLine(specimen)) return null;
   if (specimen.state == 'pending' &&
       entry.state == UploadState.processing &&
       blocker.isEmpty &&

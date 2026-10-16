@@ -1015,7 +1015,7 @@ def grants(run):
     return found
 
 
-# What the script grants beyond the committed standing table, and the two rows of the table it leaves alone.
+# Current grants that were added when the simple owner setup replaced the retired standing table.
 SAM_LISTING = (f"bucket/{BUCKET}", SAM, "roles/storage.legacyBucketReader", None, None)
 ADDED = {("job/specimen-worker", RELEASE, CUSTOM + "specimenWorkerExecution", None, None),
          (f"bucket/{BUCKET}", API, CUSTOM + "specimenResearchCaptureRead", CAPTURE_READ["title"], CAPTURE_READ["expression"]),
@@ -1027,8 +1027,6 @@ ADDED = {("job/specimen-worker", RELEASE, CUSTOM + "specimenWorkerExecution", No
          SAM_LISTING,
          *((f"service-account/{name}@{PROJECT}.iam.gserviceaccount.com", PLANE + name, "roles/iam.workloadIdentityUser",
             None, None) for name in PLANES)}
-LEFT_ALONE = {(f"project/{PROJECT}", DATA, CUSTOM + "specimenDataSourceBackup", None, None),
-              (f"project/{PROJECT}", BUILD, CUSTOM + "specimenDataInventoryProjectRead", None, None)}
 # The worker's and SAM 3's settings belong to their own change (#236) and move with it. For these two accounts the
 # script is held to this list of its own and to the shape rules of shape_problems, never to equality with the
 # settings; everything else (the release identities, the data release, the API runtime, SAM 3's bucket listing) is
@@ -1040,11 +1038,61 @@ THEIR_GRANTS = {
       for member in THEIRS for role in ("roles/storage.objectViewer", "roles/storage.objectCreator")),
     *((f"secret/{secret}", member, ACCESSOR, *list(pin(secret, version).values())[:2])
       for member, secret, version in LIVE_PINS if member in THEIRS and secret != MAPS_KEY)}
-# The research harness's create and get, for the worker alone. The standing table the next test compares with is the
-# retired release process's (scripts/ci/owner_grants.py), which scripts/ci/RETIRED.md keeps unchanged, so this pair
-# is held to this file and to the test that writes it out, not to that table.
+# The research harness's create and get, for the worker alone. These are held directly here and by the test that
+# writes them out; the retired release process's duplicate standing-grant table has been removed.
 RESEARCH_ROWS = {(f"bucket/{BUCKET}", WORKER, role, RESEARCH["title"], RESEARCH["expression"])
                  for role in ("roles/storage.objectViewer", "roles/storage.objectCreator")}
+
+
+def expected_grant(resource, member, role, held=None):
+    """A literal test-oracle row, independent of owner_setup.sh and iam.py."""
+    return (resource, member, role, held and held["title"], held and held["expression"])
+
+
+# The complete fresh-project grant table. This replaces the cross-check against
+# the retired owner_grants.py module with an in-file oracle, so deleting that
+# duplicate implementation cannot silently delete a standing grant from the
+# active setup. In particular, worker/SAM rows and every pinned secret version
+# remain exact rather than being judged only by shape.
+EXPECTED_FRESH_GRANTS = {
+    expected_grant("repository/specimen-runtime", BUILD, "roles/artifactregistry.writer"),
+    expected_grant("repository/specimen-runtime", RELEASE, "roles/artifactregistry.reader"),
+    *(expected_grant(f"service-account/{EMAIL(name)}", RELEASE, "roles/iam.serviceAccountUser")
+      for name in ("api-runtime", "worker-runtime", "sam-runtime")),
+    *(expected_grant(f"service-account/{name}@{PROJECT}.iam.gserviceaccount.com", PLANE + name,
+                     "roles/iam.workloadIdentityUser") for name in PLANES),
+    *(expected_grant(f"project/{PROJECT}", DATA, CUSTOM + role, SQL if role == "specimenDataInventorySqlConnect" else None)
+      for role in ("specimenDataSchemaPublish", "specimenDataStorageRules", "specimenDataInventoryProjectRead",
+                   "specimenDataInventorySqlConnect", "specimenDataBootstrapRows")),
+    *(expected_grant(f"project/{PROJECT}", RELEASE, CUSTOM + role)
+      for role in ("specimenRuntimeRelease", "specimenDataInventoryProjectRead", "specimenRuntimeInvokerPolicy")),
+    expected_grant(f"project/{PROJECT}", API, CUSTOM + "specimenRuntimeConnector"),
+    expected_grant(f"project/{PROJECT}", API, CUSTOM + "specimenApiUserLookup"),
+    expected_grant(f"project/{PROJECT}", WORKER, CUSTOM + "specimenRuntimeConnector"),
+    *(expected_grant(f"bucket/{BUCKET}", member, role, APP)
+      for member in (API, WORKER, SAM)
+      for role in ("roles/storage.objectViewer", "roles/storage.objectCreator")),
+    expected_grant(f"bucket/{BUCKET}", API, "roles/storage.objectViewer", SLIDES),
+    *(expected_grant(f"bucket/{BUCKET}", WORKER, role, RESEARCH)
+      for role in ("roles/storage.objectViewer", "roles/storage.objectCreator")),
+    expected_grant(f"bucket/{BUCKET}", DATA, CUSTOM + "specimenGeoreferenceDatasets", GEO),
+    expected_grant(f"bucket/{BUCKET}", API, CUSTOM + "specimenResearchCaptureRead", CAPTURE_READ),
+    expected_grant(f"bucket/{BUCKET}", SAM, "roles/storage.legacyBucketReader"),
+    *(expected_grant(f"secret/{secret}", member, ACCESSOR, pin(secret, version))
+      for member, secret, version in (
+          (API, "specimen-worker-logfire", 1),
+          (API, "specimen-source-registry", 1),
+          (API, "specimen-collection-bindings", 1),
+          (WORKER, "huggingface-runtime-token", 2),
+          (WORKER, "specimen-worker-logfire", 1),
+          (WORKER, "specimen-worker-actor-uid", 1),
+          (WORKER, "specimen-collection-bindings", 1),
+          (SAM, "specimen-worker-logfire", 1),
+          (DATA, "specimen-worker-actor-uid", 1),
+      )),
+    expected_grant("job/specimen-worker", RELEASE, CUSTOM + "specimenWorkerExecution"),
+    expected_grant("job/specimen-worker", API, CUSTOM + "specimenWorkerRead"),
+}
 # The settings may ask for these; the script must not grant them, each for its own reason.
 NOT_GRANTED = {
     MAPS_KEY: "retired by the owner; #236 removes it from the worker's settings",
@@ -1142,6 +1190,10 @@ def test_fresh_project_gets_every_role_and_pins_every_secret_read(fresh, setting
     assert "the listing grant limited to the checkpoint prefix is not made here" in run.out
 
 
+def test_fresh_project_grants_the_complete_literal_standing_table(fresh):
+    assert grants(fresh[1]) == EXPECTED_FRESH_GRANTS
+
+
 def test_shape_rules_name_what_is_wrong():
     settings = ci_module("runtime_settings")
     wrong = {
@@ -1161,25 +1213,6 @@ def test_shape_rules_name_what_is_wrong():
     for grant, words in wrong.items():
         assert [problem for problem in shape_problems({grant}, settings) if words in problem], grant
     assert shape_problems(THEIR_GRANTS | RESEARCH_ROWS | ADDED, settings) == []
-
-
-def test_fresh_project_grants_match_the_standing_table_for_what_this_change_owns(fresh, settings):
-    table = ci_module("owner_grants")
-    standing = {(f"{grant.resource[0]}/{grant.resource[1]}", grant.member, grant.role,
-                 *(reversed(grant.condition) if grant.condition else (None, None)))
-                for grant in (*table.STANDING, *table.runtime_grants(settings)[0])}
-    theirs = {grant for grant in standing if grant[1] in THEIRS}
-    granted = grants(fresh[1])
-    assert LEFT_ALONE <= standing
-    # Strict: the release identities, the data release and the API runtime, row for row.
-    assert owned(granted) == (standing - theirs - LEFT_ALONE) | ADDED
-    # Not strict: the table's rows for the worker and SAM 3 follow their own change. The script stays inside them
-    # (apart from its pinned secret reads, which shape_problems judges), and may leave rows out: on main the
-    # retired Maps key, on #236 the checkpoint listing.
-    assert {grant for grant in granted - owned(granted) if grant[2] != ACCESSOR} - RESEARCH_ROWS <= theirs
-    for name, (_, _, permissions) in table.ROLES.items():
-        added = ["run.jobs.getIamPolicy"] if name == "specimenRuntimeRelease" else []
-        assert sorted([*permissions, *added]) == ROLES[name]
 
 
 def test_the_worker_alone_gets_create_and_get_on_the_three_research_prefixes_and_no_wider_grant(fresh):

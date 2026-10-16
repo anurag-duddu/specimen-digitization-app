@@ -1283,7 +1283,11 @@ handover runs field research instead of the six specialists:
    holds no more of the shared program allowance than it has left: when that
    is less than the run's headroom, the meter's cap is what is left, and a
    field that does not fit goes to review. Only when the program allowance
-   cannot pay for one expert request is the record blocked, as before. A setup
+   cannot pay for one expert request is the record blocked, as before. Field
+   research the run's own limits other than money (steps, external requests,
+   model units, active time) leave no room for is not blocked: the step is
+   given up on unsent and the record goes to review, its unchecked fields
+   for a person (HARNESS.md, "Field research at a run limit"). A setup
    error before any request settles to nothing; research cut short by an
    error, or a step that overran its deadline, settles to what the meter spent.
 9. **Time.** Research stops a minute before the step's deadline (210 s of the

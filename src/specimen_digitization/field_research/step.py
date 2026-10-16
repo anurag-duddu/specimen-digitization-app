@@ -30,9 +30,11 @@ the workflow saves the run once after it:
    still unreachable, or a field that ran out of time, sends its field to
    review instead (``last_attempt``).
 
-Once the step has completed on a run it never runs there again: a later pass
-(a retry, or a reviewer's decision) applies the rules only (``refinalize``),
-on the fields exactly as they are.
+Once the step has completed on a run, reviewer decisions and approvals do not
+run it again: they apply the rules only (``refinalize``), on the fields exactly
+as they are. An explicit operator retry of a completed run that is still in
+review for unsettled automatic fields may re-enter the step on those unresolved
+fields.
 """
 
 from __future__ import annotations
@@ -47,7 +49,7 @@ import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import asynccontextmanager, nullcontext
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 
@@ -145,12 +147,17 @@ BLOCKER_STATUS = dict(RETRYABLE.values())
 # failure, or a defect) blocks on every attempt; a provider's outage is for
 # a later retry, never a finalized record.
 REVIEW_ON_LAST_ATTEMPT = frozenset({"source_unavailable", "timeout"})
+# Field research given up on unsent (FieldResearchStep.give_up): one warning
+# finding per run, "field_research_given_up:<the limit's code>".
+GIVEN_UP = "field_research_given_up"
+GIVEN_UP_RULES = "field-research-given-up-2026-10-12"
 FIELD_REASONS = {
     "source_unavailable": "An approved source could not be reached. The record will be retried.",
     "model_error": "An error occurred while researching this field. The record will be retried.",
     "timeout": "Research on this field ran out of time. The record will be retried.",
     "budget_exhausted": "The run's cost limit was reached before this field could be checked.",
     "input_too_large": "The readings and sources for this field were too long to send for checking.",
+    "run_limit": "The run reached one of its processing limits before this field could be checked.",
     None: "No answer was produced for this field.",
 }
 # The model gateway's own bound on one provider request, under the expert's
@@ -572,7 +579,10 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending, r
                 continue
             if (key not in pending and value is not None and value.state == ValueState.SUPPORTED and value.literal
                     and place_name(value.literal) in {place_name(text) for text in texts}):
-                names = (*sorted(texts), *(text for text in (value.normalized, value.parsed) if text),
+                # Earlier organiser candidates can belong to a different level
+                # after reconciliation. Only the settled value's own names are
+                # aliases of this place; the old candidates stay in evidence.
+                names = (value.literal, *(text for text in (value.normalized, value.parsed) if text),
                     *_expansions(key, value, rows))
                 code = _record_code(value, (received or {}).get(key, ())) if key == "country" else None
                 written[key] = settled[key] = PlaceField(tuple(dict.fromkeys(names)), value.authority_id, code)
@@ -1427,6 +1437,44 @@ def _proposal_identity(proposal: _LocationProposal) -> tuple[str, tuple[str, ...
     return (place_name(candidate.name), tuple(place_name(parent.name) for parent in candidate.parents))
 
 
+def _location_name_matches_literal(literal: str, answer: SourceAnswer, candidate) -> bool:
+    """Whether a shared location answer can stand for a field's label text.
+
+    Reconciliation may move a place string to a different administrative field.
+    It should accept the same place-name comparison as ordinary place settling,
+    plus the abbreviation expansion rule used there (for example ``Ill.`` ->
+    ``Illinois``).
+    """
+    from .abbreviations import fits
+    from .agreement import asked_name, place_name
+
+    literal_name = place_name(literal)
+    candidate_name = place_name(candidate.name)
+    if candidate_name == literal_name:
+        return True
+    asked = asked_name(answer)
+    return ((place_name(asked) == candidate_name and fits(literal, asked))
+        or fits(literal, candidate.name))
+
+
+def _answer_can_support_location_literal(answer: SourceAnswer, literal: str) -> bool:
+    """Whether a source answer was about a written literal or its expansion."""
+    from .abbreviations import fits
+    from .agreement import about, asked_name
+
+    return about(answer, literal) or fits(literal, asked_name(answer))
+
+
+def _text_names_place(text: str | None, place: str) -> bool:
+    """Whether label text names a place exactly or by abbreviation."""
+    if not text:
+        return False
+    from .abbreviations import fits
+    from .agreement import place_name
+
+    return place_name(text) == place_name(place) or fits(text, place)
+
+
 def _field_place(run, key: str, value: FieldValue, evidence: Mapping[str, Evidence],
         received: Mapping[str, Sequence[SourceAnswer]]):
     """A supported place value as agreement.lies_in compares it."""
@@ -1452,7 +1500,6 @@ def _candidate_fits_existing_chain(run, key: str, literal: str, candidate, *,
     from .agreement import PLACE_ORDER, lies_in, place_name
 
     ancestors = PLACE_ORDER[:PLACE_ORDER.index(key)]
-    parent_names = {place_name(parent.name) for parent in candidate.parents}
     for ancestor in ancestors:
         value = run.fields.get(ancestor)
         if value is None:
@@ -1463,7 +1510,9 @@ def _candidate_fits_existing_chain(run, key: str, literal: str, candidate, *,
             continue
         if value.literal and value.state != ValueState.NOT_PRESENT:
             written = place_name(value.literal)
-            if written != place_name(literal) and written not in parent_names:
+            names_candidate_or_parent = (written == place_name(literal)
+                or any(_text_names_place(value.literal, parent.name) for parent in candidate.parents))
+            if not names_candidate_or_parent:
                 return False
     return True
 
@@ -1472,7 +1521,7 @@ def _location_proposals(tasks_by_key: Mapping[str, FieldTask],
         received: Mapping[str, Sequence[SourceAnswer]], readings: Sequence[Reading],
         outcomes_by_key: Mapping[str, FieldOutcome]) -> dict[str, list[_LocationProposal]]:
     """Source-confirmed place interpretations pooled across location fields."""
-    from .agreement import about, placed, place_name
+    from .agreement import at_level
 
     proposals: dict[str, list[_LocationProposal]] = {key: [] for key in LOCATION_RECONCILE_KEYS}
     for source_key in LOCATION_RECONCILE_KEYS:
@@ -1488,29 +1537,38 @@ def _location_proposals(tasks_by_key: Mapping[str, FieldTask],
             if answer.evidence is None:
                 continue
             for literal, names in literals:
-                if not about(answer, literal):
+                if not _answer_can_support_location_literal(answer, literal):
                     continue
                 for key in LOCATION_RECONCILE_KEYS:
-                    if key == source_key:
-                        continue
-                    candidate = placed(key, answer)
-                    if candidate is None or place_name(candidate.name) != place_name(literal):
-                        continue
-                    proposals[key].append(_LocationProposal(key, literal, names, source_key, answer, candidate))
+                    for candidate in at_level(key, answer):
+                        if not _location_name_matches_literal(literal, answer, candidate):
+                            continue
+                        proposals[key].append(_LocationProposal(key, literal, names, source_key, answer, candidate))
     return proposals
 
 
 def _answer_levels_for_literal(answer: SourceAnswer, literal: str) -> set[str]:
     """Location levels one source answer confirms for the written literal."""
-    from .agreement import place_name, placed
+    from .agreement import at_level
 
     levels: set[str] = set()
-    literal_name = place_name(literal)
     for key in LOCATION_RECONCILE_KEYS:
-        candidate = placed(key, answer)
-        if candidate is not None and place_name(candidate.name) == literal_name:
+        if any(_location_name_matches_literal(literal, answer, candidate) for candidate in at_level(key, answer)):
             levels.add(key)
     return levels
+
+
+def _narrowed_location_answer(proposal: _LocationProposal) -> SourceAnswer:
+    """The cited answer as the normal place-settling check should see it.
+
+    Gazetteer answers may hold several same-level places with the same name,
+    such as the United States' many Clark Counties. Reconciliation first filters
+    those candidates against the label's other place text. Once only one
+    hierarchy-compatible proposal remains, pass that single candidate through
+    the ordinary field-value checks so the field still settles only by a cited
+    source answer at its own level.
+    """
+    return replace(proposal.answer, candidates=(proposal.candidate,))
 
 
 def _usable_location_proposals(run, proposals: Mapping[str, Sequence[_LocationProposal]], *,
@@ -1574,16 +1632,17 @@ def _reconcile_location_outcomes(run, tasks_by_key: Mapping[str, FieldTask],
         if len(identities) != 1:
             continue
         proposal = usable[0]
+        source_answer = _narrowed_location_answer(proposal)
         answer = FieldAnswer(outcome="resolved", literal=proposal.literal,
             reading_names=list(proposal.reading_names),
             value=proposal.candidate.name if proposal.candidate.name != proposal.literal else None,
             authority_id=proposal.candidate.authority_id,
-            source_evidence_ids=[proposal.answer.evidence.id],
+            source_evidence_ids=[source_answer.evidence.id],
             explanation=("Resolved by location reconciliation: the shared location lookup identified "
                 f"this label text as {key.replace('_', ' ')}."))
-        by_key[key] = FieldOutcome(key, answer, evidence=[proposal.answer.evidence],
+        by_key[key] = FieldOutcome(key, answer, evidence=[source_answer.evidence],
             finalized_without_model=True)
-        received.setdefault(key, []).append(proposal.answer)
+        received.setdefault(key, []).append(source_answer)
     return tuple(by_key.get(outcome.key, outcome) for outcome in outcomes)
 
 
@@ -3033,6 +3092,41 @@ class FieldResearchStep:
             refinalize(specimen.run, specimen=specimen, blobs=workflow.blobs, today=workflow.clock().date())
         except EvidenceIntegrityError as error:
             raise OperationalBlock(str(error)) from error
+
+    def give_up(self, workflow, principal, specimen, code: str) -> None:
+        """Give field research up unsent: the run's own limits other than money
+        (``code``, workflow.RESEARCH_LIMITS) leave no room for another attempt.
+
+        No expert, source or meter is started and nothing is reserved, paid
+        for or recorded as a paid call; the fields an earlier attempt settled
+        are kept. Every field still to research is unresolved, with the
+        run_limit reason, and the step's own rules decide the record
+        (finalize_fields): a field the harness could not check waits on a
+        person, so the record goes to review. One warning finding records the
+        limit. The identified-by IRN keeps its nonblocking exception, as when
+        research runs.
+        """
+        run = specimen.run
+        try:
+            profile = profile_of(run)
+            prepared = build_tasks(run, profile)
+            outcomes = [
+                FieldOutcome(task.key, FieldAnswer(outcome="sources_cannot_resolve", explanation=IRN_EXPLANATION),
+                    finalized_without_model=True)
+                if task.key in NO_APPROVED_AUTHORITY else FieldOutcome(task.key, None, failure="run_limit")
+                for task in prepared[1]
+            ]
+            run.findings = [f for f in run.findings if f.rule_id != GIVEN_UP] + [
+                RunFinding(rule_id=GIVEN_UP, rule_version=GIVEN_UP_RULES, severity="warning",
+                    reason_code=f"{GIVEN_UP}:{code}")]
+            decisions: dict[str, dict] = {}
+            apply_outcomes(run, profile, prepared[1], outcomes, blobs=workflow.blobs, calls=(),
+                asset_id=specimen.asset.id, decisions=decisions)
+            finalize_fields(run, profile, outcomes, specimen=specimen, blobs=workflow.blobs,
+                today=workflow.clock().date())
+        except EvidenceIntegrityError as error:
+            raise OperationalBlock(str(error)) from error
+        trace_fields(run, prepared[1], outcomes, (), decisions)
 
     def run(self, workflow, principal, specimen, *, cap_micros: int, deadline_seconds: float) -> None:
         run = specimen.run

@@ -76,6 +76,20 @@ def field(*texts, authority_id=None):
     return agreement.PlaceField(tuple(texts), authority_id)
 
 
+@pytest.mark.parametrize("kind", ["U.S. state", "first-level administrative division"])
+def test_wikidata_state_kinds_are_province_state_not_country(kind):
+    answer = SourceAnswer("wikidata", "ILLINOIS", LookupStatus.AMBIGUOUS,
+        (SourceCandidate("Illinois", "wikidata:Q1204", kind, "in United States",
+            (PlaceRef("United States", "wikidata:Q30"),)),),
+        Evidence(id="ev-illinois", kind="authority", source="wikidata", locator=None,
+            excerpt=f"Illinois | wikidata:Q1204 | {kind} | in United States"),
+        note="ambiguous")
+
+    assert [candidate.authority_id for candidate in agreement.at_level("province_state", answer)] == [
+        "wikidata:Q1204"]
+    assert agreement.at_level("country", answer) == []
+
+
 FRANCE = field("France", authority_id="tgn:1000070")
 GERMANY = field("Deutschland", authority_id="tgn:7000084")
 BRAZIL = field("Brasil", authority_id="tgn:1000047")

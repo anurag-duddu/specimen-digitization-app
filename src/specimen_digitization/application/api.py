@@ -73,6 +73,7 @@ from .workflow import (
     SyntheticAdapters,
     Workflow,
     reconcilable_step,
+    requeue_completed_field_research,
 )
 
 SYNTHETIC_ORG = "00000000-0000-4000-8000-000000000001"
@@ -1252,7 +1253,7 @@ def create_app(
                 raise Conflict(
                     "Upload completion request differs from accepted request"
                 )
-            return doc["completion_response"]
+            return completed_upload(p, doc["completion_response"])
         if doc["revision"] != body.expected_revision:
             raise Conflict("Stale upload revision")
         if doc["offset"] != doc["size_bytes"]:
@@ -1395,7 +1396,7 @@ def create_app(
             background_tasks.add_task(process_background, p, specimen.id)
         elif not duplicate and specimen.run.stage == "pending":
             start_worker()
-        return response
+        return completed_upload(p, response)
 
     def history_access(user, organization_id, specimen_id):
         p, current = find(user, organization_id, specimen_id)
@@ -1708,6 +1709,66 @@ def create_app(
             p.scope, filters, cutoff or now(), after_created, after_id, limit, sensitive
         )
 
+    def in_line(p, specimen, result):
+        """Mark a pending run waiting behind its collection's live drain (G13).
+
+        One execution steps a collection's runs one at a time behind the
+        collection fence; a pending run then waits for its turn, and another
+        worker start cannot move it forward (that execution skips the held
+        fence). Such a run is reported as waiting in line and is not offered
+        `start_processing`. When no other run is being processed, or the
+        listing cannot be read, the summary stays as it was.
+        """
+        from datetime import datetime, timezone
+
+        from .domain import now
+        from .intake_progress import lane_busy
+        from .search import SearchFilters
+
+        run = specimen.run
+        if (
+            mode == "synthetic"
+            or run.stage != "pending"
+            or specimen.asset.sensitive
+            or run.blocker is not None
+            or run.disposition is not None
+            or "evidence_pilot" in run.dependencies
+        ):
+            return result
+        try:
+            # The drain never takes a sensitive record, so the non-sensitive
+            # listing holds every run it can be stepping.
+            rows = repository.search(
+                p.scope, SearchFilters(state="running"), now(), None, "", 100, False
+            )
+            busy = lane_busy(rows, specimen.id, datetime.now(timezone.utc))
+        except Exception:  # noqa: BLE001 - a projection never fails the read
+            return result
+        result.setdefault("intake_progress", {})["waiting_in_line"] = busy
+        if busy:
+            result["available_actions"] = [
+                action for action in result["available_actions"]
+                if action != "start_processing"
+            ]
+        return result
+
+    def completed_upload(p, response):
+        """An upload completion's reply, its in-line state derived now.
+
+        The accepted upload stores the summary as it was saved. Waiting in
+        line is transient, so it is never stored: each reply, a replay too,
+        reads it again from the record's current run. The upload is already
+        accepted, stored and dispatched here, so this optional re-read fails
+        open as `in_line` does: any error returns the stored summary.
+        """
+        import copy
+
+        try:
+            specimen = repository.get(p.scope, response["specimen_id"])
+            return in_line(p, specimen, copy.deepcopy(response))
+        except Exception:  # noqa: BLE001 - a projection never fails the reply
+            return copy.deepcopy(response)
+
     def render_workspace(specimen, p, mutation_committed=False):
         from .search import SearchFilters
 
@@ -1800,7 +1861,7 @@ def create_app(
         p, s = find(user, organization_id, specimen_id)
         from .search import SearchFilters
 
-        result = summary(s, p.role)
+        result = in_line(p, s, summary(s, p.role))
         metadata = search_metadata(p, user, SearchFilters(specimen_id=s.id), limit=1)
         if not metadata:
             raise Missing(specimen_id)
@@ -2624,9 +2685,14 @@ def create_app(
                         "An external effect is still leased; concurrent retry is prohibited"
                     )
                 if body.action in {"retry", "resume"}:
+                    rerun_field_research = (
+                        body.action == "retry" and requeue_completed_field_research(s.run)
+                    )
                     s.run.blocker = None
                     s.run.disposition = None
-                    s.run.stage = Workflow.next_step(s.run).split(":")[0]
+                    s.run.stage = (
+                        "plan" if rerun_field_research else Workflow.next_step(s.run).split(":")[0]
+                    )
                     if s.run.lookups and s.run.lookups[-1].status.value not in {
                         "success",
                         "no_match",
@@ -2773,7 +2839,8 @@ def create_app(
                 f"The run is {run_status(s.run)}; a run action continues it",
             )
         response.status_code = 202
-        return dict(summary(s, p.role), dispatch=start_worker().model_dump())
+        dispatch = start_worker().model_dump()
+        return dict(in_line(p, s, summary(s, p.role)), dispatch=dispatch)
 
     # Research uses the same verifier and current membership source as the
     # host, with an async lifetime so ContextVar state reaches every await and

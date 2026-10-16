@@ -39,6 +39,7 @@ from specimen_digitization.application.reliability import AdapterFailure
 from specimen_digitization.application.storage import LocalBlobs, SQLiteRepository, digest
 from specimen_digitization.application.workflow import (
     FIELD_RESEARCH, OperationalBlock, SyntheticAdapters, Workflow,
+    requeue_completed_field_research,
 )
 from specimen_digitization.field_research import agreement
 from specimen_digitization.field_research import step as field_step
@@ -687,6 +688,51 @@ class DavaoAtTwoLevels(FakeSources):
         return SourceAnswer("tgn", query, LookupStatus.AMBIGUOUS, candidates, evidence, note="ambiguous")
 
 
+class LiveIllinoisSources(FakeSources):
+    """The live Illinois trace shape: TGN refused, Wikidata was ambiguous, but
+    its candidates and the other location text identify Illinois and Clark County."""
+
+    CLARKS = ("Nevada", "Washington", "Idaho", "Wisconsin", "Arkansas", "Indiana", "Illinois")
+
+    def _authority(self, source_id, query, candidates):
+        raw = json.dumps({"source": source_id, "query": query}).encode()
+        ref, sha = self.blobs.put(raw), hashlib.sha256(raw).hexdigest()
+        evidence = Evidence(kind="authority", source=source_id, locator=None,
+            excerpt="\n".join(f"{c.name} | {c.authority_id} | {c.kind} | {c.detail or ''}" for c in candidates),
+            raw_ref=ref, digest=sha)
+        return SourceAnswer(source_id, query, LookupStatus.AMBIGUOUS, tuple(candidates), evidence, note="ambiguous")
+
+    def _answer(self, source_id, query):
+        if source_id == "tgn":
+            return SourceAnswer("tgn", query, LookupStatus.AUTHORIZATION, (), None,
+                note="Getty TGN refused the request with HTTP 403")
+        if source_id == "wikidata" and query == "ILLINOIS":
+            return self._authority(source_id, query, (
+                SourceCandidate("Illinois", "wikidata:Q1204", "U.S. state",
+                    "in United States; valid from 1818-12-03", (PlaceRef("United States", "wikidata:Q30"),)),
+                SourceCandidate("Illinois", "wikidata:synthetic-university", "public university",
+                    "in United States", (PlaceRef("United States", "wikidata:Q30"),)),
+            ))
+        if source_id == "wikidata" and query == "Clark County, Illinois, United States":
+            candidates = tuple(SourceCandidate("Clark County", f"wikidata:synthetic-clark-{state.casefold()}",
+                    f"county of {state}, second-level administrative division",
+                    f"in {state}, United States; valid from 1819",
+                    (PlaceRef(state, f"wikidata:synthetic-{state.casefold()}"),
+                        PlaceRef("United States", "wikidata:Q30")))
+                for state in self.CLARKS)
+            return self._authority(source_id, query, candidates)
+        return super()._answer(source_id, query)
+
+
+def unresolved_lookup(source_id, query, literal, explanation):
+    async def script(task, readings, tools):
+        answer = await tools.lookup(source_id, query, field_key=task.key)
+        return FieldOutcome(task.key, FieldAnswer(outcome="sources_cannot_resolve", literal=literal,
+            reading_names=["1A"], source_evidence_ids=[answer.evidence.id],
+            explanation=explanation), evidence=[answer.evidence], model_calls=1)
+    return script
+
+
 def test_location_reconciliation_keeps_same_literal_cross_level_ambiguity_reviewable(tmp_path):
     text = label_with(country="Davao", province_state=None, county=None, city=None)
     candidates = [
@@ -742,6 +788,162 @@ def test_location_reconciliation_counts_the_source_field_level_when_literal_is_a
     assert fields["county"].state != ValueState.SUPPORTED
     assert fields["country"].state != ValueState.SUPPORTED
     assert rig.specimen.run.disposition == Disposition.REVIEW
+
+
+def test_live_illinois_reconciliation_recovers_state_county_and_city(tmp_path):
+    places = {
+        "country": "ILLINOIS",
+        "province_state": "ILLINOIS",
+        "county": "Clark County",
+        "city": "Rocky Branch",
+        "precise_location": "Rocky Branch",
+    }
+    candidates = every_field(*((
+        key, name, literal, f"{key}: {literal}") for key, literal in places.items() for name in ("1A", "1B")))
+    rig = build_rig(tmp_path, label_with(**places), candidates=candidates)
+    run = rig.specimen.run
+
+    settle(rig, Scripted({
+        "country": unresolved_lookup("wikidata", "ILLINOIS", "ILLINOIS", "Illinois is a state, not a country."),
+        "province_state": unresolved_lookup("wikidata", "ILLINOIS", "ILLINOIS",
+            "The source answer needs field-level reconciliation."),
+        "county": unresolved_lookup("wikidata", "Clark County, Illinois, United States", "Clark County",
+            "Several Clark Counties share the name."),
+        "city": from_tgn("Rocky Branch, Clark, Illinois, United States", "Rocky Branch", None,
+            "geolocate:Rocky Branch, Clark, Illinois, United States", source="geolocate"),
+        "precise_location": from_tgn("Rocky Branch, Clark, Illinois, United States", "Rocky Branch", None,
+            "geolocate:Rocky Branch, Clark, Illinois, United States", source="geolocate"),
+    }), tools=LiveIllinoisSources(rig.blobs))
+
+    fields = run.fields
+    assert (fields["province_state"].state, fields["province_state"].literal,
+        fields["province_state"].normalized, fields["province_state"].authority_id) == (
+            ValueState.SUPPORTED, "ILLINOIS", "Illinois", "wikidata:Q1204")
+    assert (fields["county"].state, fields["county"].literal, fields["county"].authority_id) == (
+        ValueState.SUPPORTED, "Clark County", "wikidata:synthetic-clark-illinois")
+    assert (fields["country"].state, fields["country"].literal, fields["country"].parsed,
+        fields["country"].authority_id, fields["country"].layer, fields["country"].derived_from) == (
+            ValueState.SUPPORTED, None, "United States", "wikidata:Q30", "derived", ["province_state"])
+    assert (fields["city"].state, fields["city"].literal,
+        fields["city"].authority_id) == (
+            ValueState.SUPPORTED, "Rocky Branch", "geolocate:Rocky Branch, Clark, Illinois, United States")
+    assert not any(agreement.NO_COUNTRY in (fields[key].reason or "")
+        for key in ("province_state", "county", "city", "precise_location"))
+
+
+class AbbreviatedIllinoisSources(FakeSources):
+    """The live abbreviation shape: ``Ill.`` is a state and ``Macoupin Co.``
+    is the county in that state, even when both were placed one field too high.
+    """
+
+    def _answer(self, source_id, query):
+        if source_id == "tgn" and query == "Macoupin County, Illinois, United States":
+            raw = json.dumps({"source": source_id, "query": query}).encode()
+            ref, sha = self.blobs.put(raw), hashlib.sha256(raw).hexdigest()
+            candidate = SourceCandidate("Macoupin County", "tgn:Macoupin County",
+                "counties, second level subdivisions (political entities)",
+                "in Illinois, United States",
+                (PlaceRef("Illinois", "tgn:Illinois"), PlaceRef("United States", "tgn:United States")))
+            evidence = Evidence(kind="authority", source="tgn", locator=candidate.authority_id,
+                excerpt=f"match\n{candidate.name} | {candidate.authority_id} | {candidate.kind} | {candidate.detail}",
+                raw_ref=ref, digest=sha)
+            return SourceAnswer("tgn", query, LookupStatus.SUCCESS, (candidate,), evidence, note="match")
+        return super()._answer(source_id, query)
+
+
+def test_location_reconciliation_recovers_abbreviated_illinois_chain(tmp_path):
+    places = {
+        "country": "Ill.",
+        "province_state": "Macoupin Co.",
+        "county": None,
+        "city": "Beaver Dam S.P.",
+        "precise_location": "Beaver Dam S.P.",
+    }
+    candidates = [*COLLECTORS, *(
+        (key, name, literal, f"{key}: {literal}")
+        for key, literal in places.items() if literal for name in ("1A", "1B"))]
+    rig = build_rig(tmp_path, label_with(**places), candidates=candidates)
+    run = rig.specimen.run
+
+    settle(rig, Scripted({
+        "country": unresolved_lookup("tgn", "Illinois", "Ill.", "Ill. is a state abbreviation."),
+        "province_state": unresolved_lookup("tgn", "Macoupin County, Illinois, United States", "Macoupin Co.",
+            "Macoupin Co. is a county, not a state."),
+        "county": LACKING,
+        "city": LACKING,
+    }), tools=AbbreviatedIllinoisSources(rig.blobs))
+
+    fields = run.fields
+    assert (fields["province_state"].state, fields["province_state"].literal,
+        fields["province_state"].normalized, fields["province_state"].authority_id) == (
+            ValueState.SUPPORTED, "Ill.", "Illinois", "tgn:Illinois")
+    assert (fields["county"].state, fields["county"].literal,
+        fields["county"].normalized, fields["county"].authority_id) == (
+            ValueState.SUPPORTED, "Macoupin Co.", "Macoupin County", "tgn:Macoupin County")
+    assert (fields["country"].state, fields["country"].literal, fields["country"].parsed,
+        fields["country"].authority_id, fields["country"].layer, fields["country"].derived_from) == (
+            ValueState.SUPPORTED, None, "United States", "tgn:United States", "derived", ["province_state"])
+    assert not any(agreement.NO_COUNTRY in (fields[key].reason or "")
+        for key in ("province_state", "county", "city"))
+
+
+def test_retry_county_uses_reconciled_state_without_its_old_organiser_alias(tmp_path):
+    """a1efc490's retry: Macoupin Co. was first misfiled as the state,
+    but an earlier attempt settled Ill. as Illinois before the county retried.
+    """
+    places = {"country": "Ill.", "province_state": "Macoupin Co.", "county": None,
+        "city": "Beaver Dam S.P.", "precise_location": "Beaver Dam S.P."}
+    candidates = [*COLLECTORS, *(
+        (key, name, literal, f"{key}: {literal}")
+        for key, literal in places.items() if literal for name in ("1A", "1B"))]
+    rig = build_rig(tmp_path, label_with(**places), candidates=candidates)
+    settle(rig, Scripted({
+        "country": unresolved_lookup("tgn", "Illinois", "Ill.", "Ill. is a state abbreviation."),
+        "province_state": failing("model_error"),
+        "county": failing("model_error"),
+        "city": LACKING,
+    }), tools=AbbreviatedIllinoisSources(rig.blobs))
+    run = rig.specimen.run
+    assert (run.fields["province_state"].state, run.fields["province_state"].literal,
+        run.fields["province_state"].normalized) == (ValueState.SUPPORTED, "Ill.", "Illinois")
+    assert run.fields["county"].state == ValueState.UNRESOLVED
+    state = run.fields["province_state"].model_copy(deep=True)
+    saved = rig.repository.save(rig.principal, rig.specimen, rig.specimen.version,
+        "county-failed-checkpoint", "county-failed-checkpoint")
+    rig.specimen = rig.repository.get(rig.principal.scope, saved.id)
+    run = rig.specimen.run
+
+    settle(rig, Scripted({
+        "county": from_tgn("Macoupin County, Illinois, United States", "Macoupin Co.",
+            "Macoupin County", "tgn:Macoupin County"),
+        "city": LACKING,
+    }), tools=AbbreviatedIllinoisSources(rig.blobs))
+
+    assert run.fields["province_state"] == state
+    assert (run.fields["county"].state, run.fields["county"].literal,
+        run.fields["county"].normalized, run.fields["county"].authority_id) == (
+            ValueState.SUPPORTED, "Macoupin Co.", "Macoupin County", "tgn:Macoupin County")
+
+
+def test_blank_unresolved_country_is_derived_from_settled_state(tmp_path):
+    text = label_with(country=None, province_state="Illinois", county=None, city=None)
+    candidates = [*COLLECTORS, *(
+        ("province_state", name, "Illinois", "province_state: Illinois") for name in ("1A", "1B"))]
+    rig = build_rig(tmp_path, text, candidates=candidates)
+    run = rig.specimen.run
+
+    settle(rig, Scripted({
+        "country": answering(FieldAnswer(outcome="sources_cannot_resolve", literal=None,
+            explanation="No country literal was present.")),
+        "province_state": from_tgn("Illinois", "Illinois", None, "tgn:Illinois"),
+        "county": LACKING,
+        "city": LACKING,
+    }))
+
+    country = run.fields["country"]
+    assert (country.state, country.literal, country.parsed, country.authority_id,
+        country.layer, country.derived_from) == (
+            ValueState.SUPPORTED, None, "United States", "tgn:United States", "derived", ["province_state"])
 
 
 def test_location_reconciliation_reclassifies_shared_place_evidence(tmp_path):
@@ -1932,8 +2134,9 @@ UNSETTLED_COUNTY = {"outcome": "sources_cannot_resolve", "literal": "Cook", "rea
 @pytest.mark.parametrize("county", [None, UNSETTLED_COUNTY])
 def test_one_source_down_among_several_settles_from_the_others_and_names_it(rig, county):
     """Getty TGN never answers; Wikidata does. The places settle on Wikidata
-    under the same rules, each reason naming TGN, and an unresolved county goes
-    to review with its reason instead of blocking the record."""
+    under the same rules, each reason naming TGN. A county whose expert gives up
+    still self-resolves from its captured Wikidata evidence when the hierarchy
+    leaves only one place."""
     run = rig.specimen.run
     blocker = settle(rig, place_experts(county), tools=TgnDown(rig.blobs))
     assert blocker is None and (run.stage, run.blocker) == ("finalized", None)
@@ -1945,9 +2148,11 @@ def test_one_source_down_among_several_settles_from_the_others_and_names_it(rig,
     if county is None:
         assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
         return
-    assert run.fields["county"].state == ValueState.UNRESOLVED
-    assert run.fields["county"].reason == UNSETTLED_COUNTY["explanation"] + " Getty TGN could not be reached."
-    assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["mandatory_unresolved:county"])
+    value = run.fields["county"]
+    assert (value.state, value.authority_id) == (ValueState.SUPPORTED, f"wikidata:{LABEL['county']}")
+    assert value.reason == (
+        "Resolved by location reconciliation: the shared location lookup identified this label text as county.")
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
 
 
 # ---- through the workflow: one step, retry, cost -------------------------------
@@ -2470,11 +2675,13 @@ def test_a_reviewers_correction_is_kept_and_the_run_is_never_researched_or_paid_
     verify_evidence(rig.repository.get(rig.principal.scope, saved.id), rig.blobs)
 
 
-def test_a_retry_action_on_a_researched_run_only_applies_the_rules_again(rig):
+def test_a_retry_action_on_a_cleared_researched_run_only_applies_the_rules_again(rig):
     mounted(rig, Scripted())
     done = rig.workflow.step(rig.principal, rig.specimen.id)
-    # api.action "retry": the next ordinary step, "plan", becomes the stage.
+    assert done.run.disposition == Disposition.CLEARED
+    # api.action "retry": a cleared record is not researched or paid again.
     retried = done.model_copy(deep=True)
+    assert not requeue_completed_field_research(retried.run)
     retried.run.stage = rig.workflow.next_step(retried.run).split(":")[0]
     assert retried.run.stage == "plan"
     retried.run.disposition = None
@@ -2485,6 +2692,81 @@ def test_a_retry_action_on_a_researched_run_only_applies_the_rules_again(rig):
     assert second.calls == [] and again.paid_calls == done.run.paid_calls
     assert (again.stage, again.disposition, again.reasons) == ("finalized", Disposition.CLEARED, [])
     assert again.completed_steps == done.run.completed_steps
+
+
+def test_retry_action_on_researched_review_requeues_unsettled_field_research(rig):
+    first = Scripted({"country": answering(FieldAnswer(
+        outcome="sources_cannot_resolve", literal=LABEL["country"], reading_names=["1A"],
+        explanation="The first pass could not settle it."))})
+    mounted(rig, first)
+    done = rig.workflow.step(rig.principal, rig.specimen.id)
+    assert (done.run.stage, done.run.disposition, done.run.blocker) == ("finalized", Disposition.REVIEW, None)
+    assert FIELD_RESEARCH in done.run.completed_steps
+    assert done.run.fields["country"].state == ValueState.UNRESOLVED
+
+    retried = done.model_copy(deep=True)
+    assert requeue_completed_field_research(retried.run)
+    retried.run.blocker = None
+    retried.run.disposition = None
+    retried.run.stage = rig.workflow.next_step(retried.run).split(":")[0]
+    assert retried.run.stage == "plan" and FIELD_RESEARCH not in retried.run.completed_steps
+    saved = rig.repository.save(rig.principal, retried, done.version, "retry", "retry")
+
+    second = Scripted()
+    mounted(rig, second)
+    again = rig.workflow.step(rig.principal, saved.id).run
+    assert "country" in second.calls
+    assert len(again.paid_calls) == len(done.run.paid_calls) + 1
+    assert again.attempts[FIELD_RESEARCH] == done.run.attempts[FIELD_RESEARCH] + 1
+    assert (again.stage, again.disposition, again.blocker, again.reasons) == (
+        "finalized", Disposition.CLEARED, None, [])
+    assert again.completed_steps[-1] == FIELD_RESEARCH
+
+
+def test_retry_action_on_researched_review_keeps_attempt_limit(rig):
+    first = Scripted({"country": answering(FieldAnswer(
+        outcome="sources_cannot_resolve", literal=LABEL["country"], reading_names=["1A"],
+        explanation="The first pass could not settle it."))})
+    mounted(rig, first)
+    done = rig.workflow.step(rig.principal, rig.specimen.id)
+    assert done.run.disposition == Disposition.REVIEW
+    done.run.attempts[FIELD_RESEARCH] = done.run.profile.execution.max_attempts
+
+    retried = done.model_copy(deep=True)
+    assert not requeue_completed_field_research(retried.run)
+    retried.run.blocker = None
+    retried.run.disposition = None
+    retried.run.stage = rig.workflow.next_step(retried.run).split(":")[0]
+    saved = rig.repository.save(rig.principal, retried, done.version, "retry-maxed", "retry-maxed")
+
+    second = Scripted()
+    mounted(rig, second)
+    again = rig.workflow.step(rig.principal, saved.id).run
+    assert second.calls == []
+    assert again.attempts[FIELD_RESEARCH] == done.run.profile.execution.max_attempts
+    assert (again.stage, again.disposition) == ("finalized", Disposition.REVIEW)
+
+
+def test_retry_http_action_on_researched_review_queues_field_research_instead_of_recheck(rig, monkeypatch):
+    first = Scripted({"country": answering(FieldAnswer(
+        outcome="sources_cannot_resolve", literal=LABEL["country"], reading_names=["1A"],
+        explanation="The first pass could not settle it."))})
+    mounted(rig, first)
+    done = rig.workflow.step(rig.principal, rig.specimen.id)
+    assert done.run.disposition == Disposition.REVIEW
+
+    from specimen_digitization.application import api as app_api
+    monkeypatch.setattr(app_api, "queue",
+        lambda specimen, registry, actor: setattr(specimen.run, "stage", "pending"))
+    client = review_client(rig)
+    response = client.post(f"/v1/organizations/{ORG}/runs/{done.run.id}/actions",
+        headers={"Authorization": "Bearer reviewer", "Idempotency-Key": "retry-field-research"},
+        json={"expected_revision": done.version, "action": "retry",
+            "reason": "Run the field research harness again after a code fix."})
+    assert response.status_code == 200, response.text
+    saved = rig.repository.get(rig.principal.scope, rig.specimen.id)
+    assert saved.run.stage == "pending" and saved.run.disposition is None
+    assert FIELD_RESEARCH not in saved.run.completed_steps
 
 
 def review_client(rig):

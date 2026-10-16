@@ -1103,11 +1103,38 @@ def test_initialize_sql_is_one_transaction_that_only_adds():
         r"<> 'firebaseowner_specimen-digitization-database_public' THEN.*ALTER SCHEMA public OWNER TO", blocks["owner"], re.S)
     for name in ("firebaseowner", "firebasewriter", "firebasereader"):
         assert f"'{name}_specimen-digitization-database_public'" in blocks["roles"]
-    # Every grant of the original initialization is still made.
-    original = re.sub(r"^\s*--.*$", "", (ROOT / "scripts/ci/initialize_database.sql").read_text(), flags=re.M)
-    kept = [" ".join(statement.split()) for statement in original.split(";")
-            if statement.split()[:1] in (["GRANT"], ["REVOKE"]) or statement.split()[:3] == ["ALTER", "DEFAULT", "PRIVILEGES"]]
-    assert len(kept) == 12 and all(statement in " ".join(code.split()) for statement in kept)
+    # The current initializer keeps the complete privilege contract directly; it no longer relies on the retired
+    # initializer as an oracle.
+    normalized = " ".join(code.split())
+    privilege_contract = (
+        'GRANT "firebaseowner_specimen-digitization-database_public", '
+        '"firebasewriter_specimen-digitization-database_public", '
+        '"firebasereader_specimen-digitization-database_public" TO cloudsqlsuperuser',
+        'GRANT CREATE ON DATABASE "specimen-digitization-database" '
+        'TO "firebaseowner_specimen-digitization-database_public"',
+        'REVOKE CREATE ON DATABASE "specimen-digitization-database" '
+        'FROM "firebaseowner_specimen-digitization-database_public"',
+        "REVOKE ALL ON SCHEMA public FROM PUBLIC",
+        'REVOKE CONNECT, TEMPORARY ON DATABASE "specimen-digitization-database" FROM PUBLIC',
+        'GRANT CONNECT ON DATABASE "specimen-digitization-database" TO '
+        '"firebaseowner_specimen-digitization-database_public", '
+        '"firebasewriter_specimen-digitization-database_public", '
+        '"firebasereader_specimen-digitization-database_public"',
+        'GRANT USAGE ON SCHEMA public TO "firebasewriter_specimen-digitization-database_public", '
+        '"firebasereader_specimen-digitization-database_public"',
+        'GRANT "firebaseowner_specimen-digitization-database_public" '
+        'TO "specimen-data-release@specimen-digitization.iam" WITH ADMIN FALSE, INHERIT TRUE, SET TRUE',
+        'GRANT "firebasewriter_specimen-digitization-database_public" '
+        'TO "service-716045864126@gcp-sa-firebasedataconnect.iam" WITH ADMIN FALSE, INHERIT TRUE, SET TRUE',
+        'ALTER DEFAULT PRIVILEGES FOR ROLE "firebaseowner_specimen-digitization-database_public" '
+        'IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES '
+        'TO "firebasewriter_specimen-digitization-database_public"',
+        'ALTER DEFAULT PRIVILEGES FOR ROLE "firebaseowner_specimen-digitization-database_public" '
+        'IN SCHEMA public GRANT SELECT ON TABLES TO "firebasereader_specimen-digitization-database_public"',
+        'ALTER DEFAULT PRIVILEGES FOR ROLE "firebaseowner_specimen-digitization-database_public" '
+        'IN SCHEMA public GRANT USAGE ON SEQUENCES TO "firebasewriter_specimen-digitization-database_public"',
+    )
+    assert len(privilege_contract) == 12 and all(statement in normalized for statement in privilege_contract)
 
 
 def test_data_sql_is_plain_ascii_with_a_psql_ready_probe_and_no_removal():
