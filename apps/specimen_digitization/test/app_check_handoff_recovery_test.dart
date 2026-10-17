@@ -195,6 +195,72 @@ void main() {
     expect(fixture.reload!.locations, [intendedRoute]);
   });
 
+  for (final intervening in [
+    'verified-other-account',
+    'unverified-matching-account',
+  ]) {
+    testWidgets(
+      'intervening $intervening then sign-out cannot reuse an old send',
+      (tester) async {
+        final fixture = await mountRecovery(tester);
+        await fixture.link!.send('staff@fieldmuseum.org');
+        if (intervening == 'verified-other-account') {
+          fixture.session.address = 'another@fieldmuseum.org';
+          fixture.session.identity = 'another-fixture';
+          fixture.session.restore();
+        } else {
+          fixture.session.restore(verified: false);
+        }
+        await tester.pumpAndSettle();
+        expect(fixture.reload!.locations, isEmpty);
+        await fixture.session.signOut();
+        await tester.pumpAndSettle();
+        fixture.session.address = 'staff@fieldmuseum.org';
+        fixture.session.identity = 'staff-fixture';
+        fixture.session.restore();
+        await tester.pumpAndSettle();
+        expect(fixture.reload!.locations, isEmpty);
+        expect(fixture.link!.emailSentInThisPage, isNull);
+        expect(find.text('Reload app'), findsOneWidget);
+        expect(find.byType(AppShell), findsNothing);
+      },
+    );
+  }
+
+  testWidgets(
+    'initial duplicate signed-out events retain the current email request',
+    (tester) async {
+      final fixture = await mountRecovery(tester);
+      await fixture.link!.send('staff@fieldmuseum.org');
+      // Firebase may repeat its still-signed-out initial state while the user
+      // opens email. This is not a transition out of an established session.
+      fixture.session.controller.add(false);
+      fixture.session.controller.add(false);
+      await tester.pumpAndSettle();
+      expect(fixture.link!.emailSentInThisPage, 'staff@fieldmuseum.org');
+      fixture.session.restore();
+      await tester.pumpAndSettle();
+      expect(fixture.reload!.locations, [intendedRoute]);
+    },
+  );
+
+  testWidgets(
+    'an established identity change invalidates pending email provenance',
+    (tester) async {
+      final fixture = await mountRecovery(tester);
+      await fixture.link!.send('staff@fieldmuseum.org');
+      fixture.session.restore(verified: false);
+      await tester.pumpAndSettle();
+      expect(fixture.link!.emailSentInThisPage, 'staff@fieldmuseum.org');
+      fixture.session.identity = 'another-fixture';
+      fixture.session.address = 'another@fieldmuseum.org';
+      fixture.session.restore(verified: false);
+      await tester.pumpAndSettle();
+      expect(fixture.link!.emailSentInThisPage, isNull);
+      expect(fixture.reload!.locations, isEmpty);
+    },
+  );
+
   testWidgets('cleanup is awaited despite repeated verified notifications', (
     tester,
   ) async {

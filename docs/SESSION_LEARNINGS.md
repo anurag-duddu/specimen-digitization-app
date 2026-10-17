@@ -21492,3 +21492,27 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
   moving disposal into the test finally block fixed the fixture without
   weakening assertions or changing production timers. Canonical verification
   and hosted/live acceptance remain pending.
+- Independent review of recovery d8537355/tree ded5c076 reported NOT APPROVED
+  for stale successful-send provenance across an intervening identity/sign-out
+  sequence. No access bypass was found. Its canonical run was intentionally
+  interrupted during Python shards (exit 130); it is incomplete, not passing.
+  The runner cleaned its owned workers before any source edits. The narrow
+  correction and a deterministic regression are required before a new run.
+- Before PR #374 merge: fresh CI/CD 39078159542 and Runtime candidate
+  CI 39078159561 passed on exact 238317a3, including both native builds. The
+  ordinary engine artifact passed strict 891-input/53-stage validation. Main
+  remains c73b13a4; strict required checks, administrator enforcement and
+  conversation resolution are enabled, with force pushes/deletions disabled.
+  Merge is authorized by the owner; no bypass or branch pruning is requested.
+- PR #374 merged normally at 23:26:37 UTC as
+  `1b1a0b08de42e0d9c5eeb64de647e10bba380a93`. Protected runs started:
+  Hosting 39079047147, Data 39079047193, Runtime 39079047127. Completion
+  remains Not confirmed; source merge does not establish a release. The
+  successful engine job ended 601 seconds before the final shard on the PR.
+- The stale-provenance finding was reproduced on unchanged d8537355 in both
+  reported sequences. The correction invalidates the successful-send hint on
+  established identity changes or signed-in to signed-out transitions, while
+  preserving initial duplicate signed-out events. The expanded focused suite
+  passed 130 tests (26 new recovery cases); the negative baseline is retained
+  in this task's external evidence. Fresh final review and full canonical run
+  are required; interrupted d853 results are not reused as a passing gate.

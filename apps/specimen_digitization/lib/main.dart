@@ -249,6 +249,11 @@ class _SpecimenDigitizationAppState extends State<SpecimenDigitizationApp> {
     final signedIn = _sessionNotifier.signedIn;
     final verified = _sessionNotifier.verified;
     final link = _magicLink;
+    if (_wasSignedIn && (!signedIn || _lastSessionUserId != session?.userId)) {
+      // An actual established-session transition ends the old request's
+      // recovery eligibility. Initial/duplicate signed-out events do not.
+      link?.invalidateSessionHandoff();
+    }
     if (!signedIn || !verified || _lastSessionUserId != session?.userId) {
       _disarmHandoff();
       _recoveryEpoch++;

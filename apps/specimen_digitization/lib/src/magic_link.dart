@@ -219,7 +219,12 @@ class MagicLinkController extends ChangeNotifier {
   int get handoffGeneration => _handoffGeneration;
 
   /// Called synchronously before dispatching another provider's sign-in.
-  void beginAlternateSignIn() {
+  void beginAlternateSignIn() => invalidateSessionHandoff();
+
+  /// An established session left or changed identity. Its earlier email
+  /// request cannot later become a fresh cross-tab recovery opportunity.
+  /// The sent UI and cooldown remain available for ordinary link completion.
+  void invalidateSessionHandoff() {
     _emailSentInThisPage = null;
     _handoffGeneration++;
     _changed();
