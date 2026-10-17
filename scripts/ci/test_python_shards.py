@@ -2,6 +2,7 @@
 
 from copy import deepcopy
 from collections import Counter
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -65,6 +66,8 @@ def test_committed_runtime_hints_are_valid_test_modules():
     assert all((root / module).is_file() for module in timings)
     assert dict(timings) == raw["module_seconds"]
     assert timings.mode == ("lower_bound" if raw["schema"] == 1 else "complete")
+    assert timings.manifest_digest == hashlib.sha256(
+        python_shards.TIMINGS.read_bytes()).hexdigest()
     if raw["schema"] != 1:
         inventory = raw["module_inventory_digests"]
         if raw["schema"] == 3:
