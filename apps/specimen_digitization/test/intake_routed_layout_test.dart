@@ -13,7 +13,10 @@ import 'ui_finders.dart';
 final Finder _collection = find.byKey(
   const ValueKey<String>('collection-sheet-trigger'),
 );
-final Finder _title = find.text(intakeTitle);
+final Finder _title = find.descendant(
+  of: find.byType(IntakeScreen),
+  matching: find.text(intakeTitle),
+);
 final Finder _header = find.byWidgetPredicate(
   (widget) => widget is PinnedChrome && widget.region == UiPinnedRegion.topBar,
 );

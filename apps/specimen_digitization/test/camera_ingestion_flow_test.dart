@@ -185,9 +185,9 @@ void main() {
 
     expect(accepted, hasLength(1));
     expect(find.byKey(const ValueKey<String>('fake-camera-preview')), findsOne);
-    expect(find.text('Send for processing'), findsNothing);
+    expect(find.text('Send'), findsNothing);
     expect(find.text('Retake'), findsNothing);
-    expect(find.text('1 photograph in this batch'), findsOne);
+    expect(find.text('1'), findsOne);
   });
 
   for (final bool autoIngest in <bool>[true, false]) {
@@ -269,7 +269,7 @@ void main() {
 
     await _takePhotograph(tester, waitForReview: true);
 
-    expect(find.text('Send for processing'), findsOne);
+    expect(find.text('Send'), findsOne);
     expect(find.text('Retake'), findsOne);
     expect(find.text('Rotate'), findsOne);
     expect(find.text('Crop'), findsOne);
@@ -311,17 +311,17 @@ void main() {
       onAutoIngestChanged: changes.add,
     );
 
-    await tester.tap(find.byKey(const ValueKey<String>('capture-auto-ingest')));
+    await tester.tap(find.text('Send now'));
     await tester.pumpAndSettle();
     expect(changes, <bool>[true]);
     expect(
       find.text('Camera photos skip review and send as soon as you take them.'),
-      findsOne,
+      findsNothing,
     );
 
     await _takePhotograph(tester);
     expect(accepted, hasLength(1));
-    expect(find.text('Send for processing'), findsNothing);
+    expect(find.text('Send'), findsNothing);
   });
 
   testWidgets('Intake activity stays visible and updates while capturing', (
@@ -390,7 +390,7 @@ void main() {
       );
       await _takePhotograph(tester, waitForReview: true);
       expect(tester.takeException(), isNull);
-      expect(find.text('Send for processing'), findsOne);
+      expect(find.text('Send'), findsOne);
       expect(find.text('Retake'), findsOne);
     });
   }
@@ -405,17 +405,13 @@ void main() {
     expect(find.bySemanticsLabel(CaptureScreen.shutterLabel), findsOne);
     expect(find.bySemanticsLabel(CaptureScreen.closeLabel), findsOne);
     expect(
-      tester
-          .getSemantics(
-            find.byKey(const ValueKey<String>('capture-auto-ingest')),
-          )
-          .label,
-      'Send immediately',
+      tester.getSemantics(find.bySemanticsLabel('Review')).label,
+      'Review',
     );
     await expectAccessible(tester);
 
     await _takePhotograph(tester, waitForReview: true);
-    expect(find.bySemanticsLabel('The photograph you took'), findsOne);
+    expect(find.bySemanticsLabel('The photo you took'), findsOne);
     await expectAccessible(tester);
     semantics.dispose();
   });
