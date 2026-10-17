@@ -850,9 +850,16 @@ the bar's width divided by its destinations would fall under that, five
 destinations in a 200 dp column being 40 dp cells, the bar lays its cells at 48
 dp inside the library's `EdgeFadedRow`, the way `UiPillNav` does (11 section
 3.3, the compact variant of a navigation row): it scrolls, the edge with more
-beyond it fades, and the current destination is scrolled into view when the bar
-is built and when it changes (`EdgeFadedRow.revealInitially`, because a bar can
-open on any destination). Otherwise the cells are equal and nothing scrolls, so
+beyond it fades, and the current destination is in view from the first frame
+and is scrolled into view when it changes. A bar can open on any destination, so
+the row is built already scrolled to it: `EdgeFadedRow.revealInitially`, with
+the row's own `extent` (48 dp times the destinations), sets the scroll
+controller's initial offset from that and the width the row is given before the
+row is first laid out and painted, with no jump after the first frame; it is
+off by default, so `UiTabs` and `UiPillNav` are unchanged, and the row is put
+back on its destination if its width changes. (The first version of this
+arrangement did it in a post frame callback, after the first frame had painted;
+corrected 2026-10-17.) Otherwise the cells are equal and nothing scrolls, so
 a two destination bar on a phone is exactly as before. In the scrolling form the
 `tabBar` group sits inside the scroller, because a scroller publishes a node
 and every child of a `tabBar` node has to be a tab; arrow keys also scroll the
@@ -862,8 +869,12 @@ an ellipsis and carries the whole word in a `UiTooltip` (10 section 2 clause
 15), on hover and on a long press, armed only on a cut label. The tooltip is
 around the cell and not in `UiLabel.tooltip`: a tooltip's own tap handler is
 the innermost, so inside the cell it took the tap on the word and the tab
-selected nothing. The cell's semantics label already carries the whole word, so
-a tab still reads once. `UiTabBar` takes an optional `iconKeyOf` so a shell or a
+selected nothing. The cell's semantics label already carries the whole word and
+the open pane is kept out of semantics (`UiTooltip.excludeSemantics`, off by
+default for every other caller): the pane's semantics live beneath the portal,
+inside the `MergeSemantics` the cell needs, and would give the tab its word
+twice and a tooltip of its own while the tooltip is open. So a tab reads once,
+open or closed. `UiTabBar` takes an optional `iconKeyOf` so a shell or a
 test can find and measure a glyph without the bar knowing about either. It retires `CupertinoTabBar` and
 the compact `NavigationBar` from the shell: `AppShell` draws `UiTabBar` on
 every platform at the compact window class and no longer branches on
