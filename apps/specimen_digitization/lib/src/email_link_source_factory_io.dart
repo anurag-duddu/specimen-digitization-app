@@ -8,7 +8,8 @@ import 'email_link_source.dart';
 ///
 /// The application owns the returned source and must close it on disposal.
 /// URI validation remains in the sign-in controller. Desktop keeps its existing
-/// behavior. This factory is prepared but is not called by startup yet.
+/// behavior. Startup creates this before asynchronous Firebase initialization
+/// so a cold or warm delivery can wait for the sign-in controller.
 EmailLinkSource? createNativeEmailLinkSource() {
   if (!Platform.isAndroid && !Platform.isIOS) return null;
   final links = AppLinks();

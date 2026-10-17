@@ -20880,6 +20880,168 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
 - Every remaining command was taken from the current `scripts/ci/verify.sh`, preserving pinned tool checks and credential-free FlutterFire placeholder cleanup. UI-string gate passed; both Flutter analyses were clean; 1,271 design-system tests passed; 3,025 application tests passed and 7 skipped; 565 Dart files formatted with zero changes; release web build and loopback route/security-header smoke passed (13 responses, five security headers). Repository/pre-commit and frozen-install gates passed in the canonical attempts. Logs and the explicit remaining-gates runner are under this task's `outputs/intake-integration/` artifact directory. The local build is not deployment evidence.
 - Reusable failure evidence/follow-up: local load was about 43 when short subprocess deadlines failed; isolated passes support load sensitivity but do not prove causation. The integrated upstream engine fixture publishes process identity before deferred HTTP/server imports and its synthetic `wait-local.mjs` returns immediately, leaving a possible listener-start race before the reporter's real TCP check. This module passed in the accepted original six-shard result set and failed in the four-shard attempt. A dedicated fixture-readiness follow-up remains; no readiness assertion was bypassed here.
 - Not confirmed at this entry: final committed-head hosted checks, merge, Hosting/data/runtime deployment, public deployment marker/API version/readiness, and pruning. These will be recorded after the corresponding evidence exists. Physical camera capture, VoiceOver/TalkBack and live camera-to-Specimens acceptance remain Not confirmed by this task.
+## 2026-10-17 — Login journey correction, implementation checkpoint
+
+- Task: `01a147ea-7efb-7e22-8821-e42395a135fc`; worktree
+  `/Users/anuragduddu/.codex/worktrees/9030/specimen-digitization-app`; branch
+  `codex/login-journey-complete`, based on `ee727747a612cc98e64936e72493501a5b45c3c9`.
+- Correction to the earlier PR361 completion claim: the owner rejected retaining
+  the previous login composition and shipping with Google unconfigured. That
+  scope reduction was the implementation's decision, not an approved change to
+  the requested new whole-flow experience. PR361's test/release evidence remains
+  historical evidence for that narrower change, not acceptance of this correction.
+- Replaced the pre-collection composition with a separate institution/product
+  masthead and responsive task stage; added explicit Gmail website handoff,
+  recipient/change-email recognition, disclosed manual-link recovery, and
+  corresponding verification/access stages. Google remains the second method;
+  separate institution SAML/OIDC configuration is not implied by Google Workspace.
+- Added Google-only provisioning through the existing Data workflow, with
+  preservation checks for existing email/domain settings and an exact optional
+  `owner_setup.sh --auth-only` permission setup. No production settings or IAM
+  were changed at this checkpoint. Provider/native/live-account acceptance:
+  Not confirmed. See `docs/execution/GOOGLE_SIGN_IN_SETUP.md`.
+- Focused validation: 103 email/controller/login tests, 20 button tests, 13
+  verification/access tests and 4 inbox-adapter tests passed. App static analysis
+  passed before the final full-width/race refinement; the canonical verifier will
+  recheck the final source. New provider/auth-only focused cases: 69 passed.
+- Visual validation: 58 fresh offline PNGs across six viewport/theme scenarios;
+  source hashes remained stable for the complete run. Prior images and two
+  incomplete capture attempts were retained separately. External evidence lives
+  under `login-study/recovery-implementation/` in this task's visualization
+  directory, including `before-after.html`. These synthetic captures do not prove
+  actual Gmail delivery, Google account eligibility, or physical native handoff.
+- Failed approaches fixed: narrow primary capsules made Google visually dominant;
+  an opt-in bounded-width button variant fixes the hierarchy without changing
+  other controls. Sliver tests must pump after scrolling before hit testing;
+  specific resend assertions replace first-button assumptions. Independent
+  review found a pending inbox completion could strand loading after a warm link;
+  context generations now invalidate it, with a regression test. The role's
+  documentation no longer claims config-read IAM cannot expose provider secrets;
+  partial-response fields bound this implementation's reads, not the IAM role.
+- Full canonical checks, exact-head independent approval, PR/hosted CI, protected
+  release, live verification and task-only pruning remain pending at this
+  checkpoint. Do not reuse prior green runs as this change's approval.
+
+### Login correction validation follow-up, 2026-10-17
+
+- Candidate `f947b709d0342d590a64ef4df6259ee887c24bc3`, tree
+  `7f587ee7e7c115280281acec762c6d6f59518547`, received independent G51
+  source approval from `/root/login_independent_review`; record:
+  `login-study/recovery-implementation/independent-review-f947b709.json`.
+  This was source approval, not a release or live-authentication claim.
+- The initial verifier stopped at detect-secrets on two synthetic response
+  dictionary keys in `test_provision_auth.py`. Both keys now use `detail`;
+  private response payloads and the no-logging assertions are unchanged. Normal
+  commit hooks and the subsequent full repository hook pass succeeded. No
+  scanner, baseline, allowlist or required check was weakened.
+- Canonical r2 passed all repository hooks and started complete Python coverage
+  with two workers to limit contention with unrelated sessions. It was
+  deliberately interrupted (exit 130), with its worker cleanup, when a separate
+  scoped comparison confirmed the expected new-icon reference changes. It is
+  INCOMPLETE, not a full verification pass. Unrelated processes were untouched.
+- The icon gallery now has 83 keys rather than 82. Exactly 28 icon comparisons
+  (four foundation, 24 matrix) differ because `email` follows `account`; the
+  overflow ratchet passed. All 82 preexisting cells in both large/1.0 modes
+  and all 71 fully visible old cells in each foundation image match pixel for
+  pixel at their shifted positions. This establishes an intentional registry
+  update, not a font or geometry change. Old PNGs, hashes, actual renders and
+  comparisons are retained under `recovery-implementation/icon-golden-review/`.
+  Only those 28 references are being updated; no broad golden regeneration or
+  comparator change is authorized by this correction.
+- Final reference validation, renewed exact-head source review, complete
+  canonical run, hosted CI and all release/live gates remain pending here.
+
+### Login code-and-link correction, 2026-10-17
+
+- Task `01a147ea-7efb-7e22-8821-e42395a135fc`, branch
+  `codex/login-journey-complete`, worktree `9030`: the owner clarified that the
+  same sign-in email must contain a short verification code and a magic link.
+  Pasting the full link is not an acceptable substitute. The original browser
+  tab must receive completed authentication; native link return must be tested
+  against actual platform associations. References are the Plain flow
+  `ce779e11-e45f-4a02-b2c2-128c4ba402ae` and Mobbin flow
+  `feee70ed-a591-4f71-8730-c7f73655cd0e`. No candidate was pushed or deployed.
+- Candidate `874c491d3b5b4753a4f5239652b98f9a0dfabd7b` received renewed
+  independent G51 source approval. Exactly 28 intentional icon references
+  passed 29 normal macOS comparisons including the overflow ratchet. The
+  unsigned iOS release build and CI-equivalent Android debug build passed with
+  synthetic configuration, unchanged source hashes and clean tracked state.
+  These results do not establish code-based email authentication or installed
+  native delivery. External reports remain in `recovery-implementation/`.
+- Canonical r3 passed repository hooks and began the complete 18,143-test Python
+  collection with two workers. The coordinator stopped its own runner on the
+  owner's code-and-link correction; normal worker cleanup completed and the
+  verifier exited 130. This run is INCOMPLETE. No unrelated process was stopped.
+- The owner explicitly authorized the existing six-permission
+  `owner_setup.sh --auth-only` setup if the Google release reports missing
+  permissions. That authorization does not expand the command to new email
+  delivery, user-management or token-signing permissions.
+- Short-code delivery, email transport, original-tab acceptance and native
+  association readiness are being investigated before implementation continues.
+  Full canonical verification, hosted CI and launch remain Not confirmed.
+
+### Paired-email implementation and integration checkpoint, 2026-10-17
+
+- Task `01a147ea-7efb-7e22-8821-e42395a135fc`, `codex/login-journey-complete`,
+  worktree `9030`, after `874c491d`: implemented the actual six-digit code field
+  and single code-plus-link email service. Both choices use the same Firebase
+  email-link credential; no custom tokens, new identity system, account deletion
+  or collection membership grants are introduced. Client proofs and credentials
+  remain in memory; private CAS state encrypts the link and hashes the code.
+- Current focused evidence: 99 service tests; 226 combined backend/API/runtime/
+  public-build-setting tests; 32 narrow owner-setup tests; 38 focused UI tests;
+  Flutter static analysis. The API test run initially hit sandbox-denied local
+  sockets, then passed after ordinary escalation. The first UI run caught a
+  misleading resend busy label and a test caret-scroll timing issue; the label
+  was corrected and the test waits for the actual keyboard scroll to settle.
+  No assertion, comparator, required check or secret scanner was weakened.
+- Independent dirty-source review found resend429 could discard a still-valid
+  challenge; the client now preserves it only for definitive rate-limit rejection
+  to the same recipient. Three new regressions bring its paired-email suite to
+  20 passing tests. Exact-head review and the full canonical run remain pending.
+- PR #367 has merged to `origin/main` as `835f197a`, moving Google's button/font
+  into the design system. This checkpoint precedes local integration so both
+  that work and this login journey are preserved before fresh captures/checks.
+- Sender metadata inspection found Firebase default email, no custom SMTP
+  runtime configuration and no named mail secret. A sender choice is pending.
+  `--email-auth-only --email-secret-version=N` is prepared/tested separately
+  from the already conditionally authorized Google `--auth-only`; it has not
+  been run or authorized. No production change or email send occurred.
+- Browser same-origin two-tab acceptance is in progress with an isolated Auth
+  emulator, not a live account. Native association files were empty and the
+  personal iOS profile lacks associated domains. Bucket retention metadata is
+  Not confirmed: gcloud token refresh requested interactive reauthentication.
+  No staging flag-off build is described as the completed requested login.
+
+### Owner selects Firebase-built-in email for launch, 2026-10-17
+
+- Task `01a147ea-7efb-7e22-8821-e42395a135fc`: after being told that Firebase's
+  standard email has no per-message numeric code, the owner explicitly directed
+  “we should do what firebase has for now” and requested options for the missing
+  capability. The current release therefore uses Firebase's built-in magic link,
+  the redesigned whole journey, original-tab session synchronization and Google.
+  This is an owner scope decision, superseding the earlier paired-email launch
+  requirement; it is not an agent decision to hide an unfinished code option.
+- Paired-email work is preserved at `18288554` on
+  `codex/login-journey-complete`, with normal commit hooks passed. The launch
+  branch is `codex/login-firebase-launch` from `874c491d` in worktree `9030`.
+  Its inherited journal retains the implementation checkpoint. No SMTP routes,
+  sender secret, email-code flag or new email-auth IAM mode is being launched.
+- The Firebase-only branch keeps the independently tested session cleanup and
+  iOS link-handler ownership fixes and will integrate PR #367 locally before
+  fresh capture, canonical checks and exact-head review. No production change,
+  real account handoff or release is claimed by this checkpoint.
+- Additional deferred-candidate evidence: 667 release/owner configuration tests
+  passed with one intentional skip (see the saved log for the exact total);
+  isolated browser tests established original-tab authentication, same UID,
+  intended-route preservation, synchronized sign-out and signed-out reload.
+  Browser mail and collection data were synthetic. Fresh Firebase-only browser
+  acceptance is still required after source integration.
+- Read-only bucket metadata obtained through the existing Firebase CLI identity
+  confirms no reported retention lock, default event hold or object versioning;
+  soft deletion retains replaced/deleted generations for seven days. No bucket
+  setting was changed. This corrects the earlier “Not confirmed” retention read
+  after the separate gcloud session could not refresh its token.
 ## 2026-10-17: the Google sign-in button as one specimen_ui component
 
 - Task: build the button part of the owner's decision below as `UiGoogleSignInButton`, as a Claude Code helper started by the coordinator session (brief of 2026-10-17). Branch `claude/google-button-specimen-ui`, worktree `.claude/worktrees/google-button`, cut from origin/main `ee727747` (it includes #361 and #362; main had not moved when this entry was last edited). Pull request #367, not merged, no auto-merge. Commits: `89af0dc3` carries the code, docs, tests and goldens; `00dc352f` carried the first version of this entry; the third commit, the one that carries this wording, is the set of fixes after the independent review of `00dc352f` (below). This entry was edited in place because it was not on main yet.
@@ -20907,6 +21069,73 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
 - Failed approach and recovery: the initial six-shard invocation failed `test_owned_group_kills_descendant_even_when_leader_has_exited[False]` because its ready file was absent within the existing 0.6-second budget, and `test_sql_wrapper_complete_original_sequence[normal]` with synthetic SQL readiness ECONNREFUSED. Original artifacts are preserved. The entire original partitions 1 and 3 were rerun sequentially on unchanged source: 2,497 passed/2 skipped and 2,721 passed/13 skipped. The four original successful partitions plus these two complete replacement partitions passed the unchanged exact-once verifier. All remaining commands from current `verify.sh` then passed with pinned tool checks and placeholder cleanup. This is complete local gate coverage with failed-partition retries, not one uninterrupted successful `verify.sh` invocation; an isolated pass supports but does not prove the previously observed load/race explanation. No assertions, timeout, tests, or implementation were changed for these failures.
 - Durable evidence is outside the worktree in the task's `outputs/intake-integration/`: `835f197a-python-original-attempt/`, `835f197a-verify-original-attempt.log`, `835f197a-python-accepted/`, `835f197a-exact-once.log`, and `835f197a-remaining.log` with its exact runner. The prior synthetic SQL fixture-readiness follow-up remains unresolved and is outside this Intake change.
 - While validation ran, main advanced to `aaf1e5343d257db0d9aa013c85d5681bec4d1c38` (PR #370), changing only the session log and `docs/execution/golive/location-rerun-inventory-2026-10-17.md`. That documentation integration will receive normal hooks and exact-head review; no code/test revalidation is implied by its report contents. Final-head hosted checks, merge, production release verification, and safe branch/worktree pruning remain pending. Physical camera acceptance, native installation, live specimen upload, and manual VoiceOver/TalkBack: Not confirmed.
+
+### Firebase login integration and verification repair, 2026-10-17
+
+- Task `01a147ea-7efb-7e22-8821-e42395a135fc`, branch
+  `codex/login-firebase-launch`, worktree `9030`: committed Firebase-only session
+  completion as `619ec39d`, then merged main `835f197a` locally as `e3454c38`.
+  PR #367's shared Google button, assets, fonts and journal entry are preserved.
+  Paired code/email work remains separately preserved at `18288554` and is not
+  included in this launch branch.
+- Independent G51 source review approved exact head `e3454c38` and tree
+  `668a5940e6f5387745c2b0d4107079f8aa1b0f76`. Fresh Firebase-only focused tests
+  passed 88 cases. Isolated Chrome with the real Firebase Auth emulator verified
+  matching identities in two tabs, original-tab authentication and intended
+  route, synchronized sign-out, cleared sent state and signed-out reload. The
+  runner initially matched both the heading and its accessibility announcement;
+  three heading-role selectors correct the runner, without application changes.
+- Fresh visual QA produced 58 PNGs in six passing capture tests. All 274 source
+  hashes and 98 prior PNGs stayed unchanged. The comparison baseline is offline
+  build `86d9dab7`, explicitly not claimed as production. Independent inspection
+  added no product finding. Fresh unsigned iOS release and Android debug builds
+  passed in 107.3 and 34.4 seconds; all 1,442 build-input hashes stayed stable.
+  Native temporary configs were removed; the CI Dart placeholder was preserved.
+- Canonical r4 passed all normal hooks, then failed in the SQL/Storage shell
+  test fixture: the required SQL prefix returned `sql.ready.restored1: readiness
+  port failed: connect ECONNREFUSED` before any Storage assertion ran. Cleanup
+  passed with no survivors and ports released. A focused unchanged rerun passed,
+  but that did not qualify the canonical run. The owned failing shard was
+  interrupted to flush its traceback; the coordinator then cleaned its workers
+  and exited 130. This run is FAILED/INCOMPLETE, not a passing gate.
+- A deterministic regression proved the fixture's fake `wait-local` returned
+  success while its reserved port was not listening. The narrow correction waits
+  for the actual loopback listener within the existing ten-second helper budget.
+  The deliberate `readiness_failed` and `false_readiness` controls, production
+  reporter, 35-second wrapper timeout and cleanup assertions are unchanged.
+  Baseline regression failed; all six candidate and applied focused cases passed.
+  Independent review approved the fix. A fresh complete canonical run is required.
+- Reports, captures and logs remain under external `recovery-implementation/`,
+  including exact source/build hashes. Browser mail and collection data were
+  synthetic. Real email delivery, live Google, signed-device return, hosted CI,
+  protected merge and three-workflow release are Not confirmed at this checkpoint.
+
+
+### Firebase login canonical pass before PR integration, 2026-10-17
+
+- Task `01a147ea-7efb-7e22-8821-e42395a135fc`, `codex/login-firebase-launch`,
+  worktree `9030`: canonical `scripts/ci/verify.sh` r5 passed with exit 0 on
+  `225a5af652c93f3e8416935bedfef40726988a09` (tree
+  `2df25f6aacac0c73b9615ae9aea5b387700742c2`). All normal repository hooks,
+  18,097 Python passes plus 49 skips across all 18,146 collected tests exactly
+  once, UI strings, both analyses, 1,307 design-system tests, 3,056 app tests
+  plus seven expected skips, 573-file formatting, release web build and route/
+  security-header smoke passed. The local build is unstamped; deployment.json
+  was explicitly skipped locally and no production marker is claimed here.
+- The corrected tracked browser runner also passed against the unchanged
+  compiled e3454c38 fixture. Its SHA-256 is
+  `f3e1550da7fec08347bc9832a3b202ee5d65f53ce66e31f4a20c18000ce58d7c`;
+  the final external `firebase-browser-final-runner.json` supersedes the prior
+  temporary-runner caveat. Temporary emulator and server processes were stopped.
+- Independent G51 review approved exact head 225a5af6 with no findings, including
+  the fixture correction and final runner. The current upstream `aaf1e534`
+  (PR #370) differs from the integrated main base only in the append-only journal
+  and a location-rerun inventory document. Local integration will preserve both
+  journals and receive renewed exact-head review. Application/test source must
+  remain equal to this qualified candidate during that documentation merge.
+- No PR has yet been pushed or merged, no provider permission setup was run,
+  and no production setting was changed by this checkpoint. Hosted checks,
+  protected release, Google activation and real account acceptance remain open.
 ### 2026-10-17 - LOCATION-RERUN-INVENTORY-20261017 read-only inventory of saved locations before one batch rerun
 
 - Branch `claude/location-rerun-inventory` (worktree `.claude/worktrees/location-rerun-inventory`), from `origin/main` `7f0447c3`. Report: `docs/execution/golive/location-rerun-inventory-2026-10-17.md`. Pull request #370. Read-only: Data Connect `executeGraphqlRead`, generation-pinned Storage GETs, no production write, no model or source call.
@@ -20941,6 +21170,29 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
 - Task `01a14a1c-4506-7543-8eb1-e5ec81870d06`; branch/worktree `codex/finish-photo-intake` / `finish-photo-intake/specimen-digitization-app`; PR #366. Commit `acd4977cfa0ac800d4d7d0f6d194fc59bacd21d1` records the shared-button integration and the validation above. Main `aaf1e5343d257db0d9aa013c85d5681bec4d1c38` then merged cleanly, adding only the location-rerun report and append-only session entries. Executable source, tests, assets and configuration match the validated tree `7b3c3825fe1420cb0254089d30bf99db74f5ff26`; its validation remains applicable to them.
 - Validation for this documentation integration: staged whitespace check; normal commit hooks; independent exact-head review requested after commit. No production or specimen-data claims in the incoming report were revalidated by this session. Hosted final-head checks, merge, exact-commit production releases, public marker/API/smoke verification and pruning remain pending.
 
+### Firebase login PR integration checkpoint, 2026-10-17
+
+- Task `01a147ea-7efb-7e22-8821-e42395a135fc`, branch
+  `codex/login-firebase-launch`, worktree `9030`: PR #371 opened at
+  `54eafa33dc7b0b7fb8f7174125a3fd6f7c9e10e0`, independently reviewed under G51
+  with no findings against `aaf1e534`. Full canonical local verification on
+  product-identical `225a5af6` is recorded above. Normal pre-push hooks passed.
+- PR CI run `39066511718` has passed repository, SQL/Storage engine, Flutter
+  web and both native build checks, plus eleven of twelve Python shards at
+  this checkpoint. The complete Python aggregate is Not confirmed yet. Runtime
+  candidate CI `39066511694` passed all four jobs.
+- Main advanced to `c4335b61` through PR #369 while checks ran. Integrate that
+  backend retry/drain fix locally, preserve both journal appends, and requalify
+  the combined source before pushing. It changes no login/UI/build source.
+- Read-only production checks: email passwordless settings and authorized
+  domains remain intact; Google provider is absent. No owner setup, provider
+  provisioning, activation flag or production deployment has been performed
+  by this session. The owner already authorized the exact auth-only setup if
+  an actual release permission failure requires it.
+- Live baseline Chrome on `aaf1e534` reaches App Check reCAPTCHA execution
+  failure before collection access. One reload reproduced it. This predates
+  the new login; its cause and post-release recovery are Not confirmed. The
+  existing primary in-app-browser collection session remains untouched.
 ### 2026-10-17 - WORKER-CRASH-HANDOVER a dropped SQL Connect connection killed the drain and nothing restarted it
 
 - Task: a side session started from session `local_e3ae4073-3104-4654-a8b6-cae123e47c6c`. Branch `claude/beautiful-mclean-f512b6`, worktree `.claude/worktrees/adoring-elgamal-a9b492`, PR #369 (https://github.com/anurag-duddu/specimen-digitization-app/pull/369), code commit `d620da61`, base `ee727747`. Incident, as the starting session gave it (not re-read from logs here): execution `specimen-worker-4fk49` ran 16:28:07-16:45:13Z on 2026-10-17 and exited 1 on `requests.ConnectionError: RemoteDisconnected` from `SqlConnectRepository.execute`, reached from `settle_step`. Nine due runs waited until a person's Resume at 17:52Z.
@@ -20956,6 +21208,30 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
 - Validation actually run: a fresh, uninterrupted `TZ=America/Chicago LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 scripts/ci/verify.sh` exited 0 on staged tree `c122baa1b79fa9c09fccfb39b55e66f0a33f40a7`. All six Python shards passed on their first attempt and the unmodified verifier accepted all 18,091 collected tests exactly once (18,042 passed, 49 skipped). Both fatal-info analyses passed; 1,305 design-system tests passed; 3,026 application tests passed with 7 skipped; 569 Dart files had zero formatting changes; repository hooks, frozen install, UI strings, release web build, and route smoke (13 responses, five security headers) passed. No test, assertion or timeout changes were made. Only this append follows the validated tree.
 - Evidence: task artifact folder `outputs/intake-integration/c4335b61-verify.log` and `c4335b61-python-accepted/`. Earlier failed local attempts/retries remain preserved and are historical; this latest candidate has an uninterrupted successful canonical gate. Main still resolved to `c4335b6163050b6bf2083162f8e092a4c8db8832` after validation. Exact committed-head confirmation, hosted final-head checks, merge, all three production release verifications, public marker/API/smoke checks and pruning follow. Native installation, physical camera capture/live upload acceptance, and manual VoiceOver/TalkBack: Not confirmed.
 
+### Firebase login integrated canonical pass, 2026-10-17
+
+- Task `01a147ea-7efb-7e22-8821-e42395a135fc`, `codex/login-firebase-launch`,
+  worktree `9030`, PR #371: full canonical r6 `scripts/ci/verify.sh` passed
+  with exit 0 at `67cb8747fc767a41d82ad8384db2dae06f8fb680` (tree
+  `d38480a9f56d0f4a50475446f3881931449cd04d`), integrating main PR #369.
+  All 18,163 Python tests executed exactly once: 18,114 passed, 49 skipped.
+  Repository hooks, UI strings, both analyses, 1,307 design-system tests,
+  3,056 app tests plus seven expected skips, formatting, release web build
+  and route/security-header smoke passed. Local deployment metadata remains
+  unstamped, so this is not live release evidence.
+- Independent G51 source review approved 67cb8747 against c4335b61 with no
+  findings. The complete original PR CI/CD run 39066511718 and Runtime
+  candidate run 39066511694 passed on 54eafa33. Neither run qualifies a
+  subsequent head; required hosted checks still run on the updated candidate.
+- Main then advanced to `69bd6469` through PR #358, adding the theme guard
+  tests, a test-only analyzer dependency, the queue capability refactor and
+  the CI guard-base setting. Integrate it and exercise its new guard tests
+  against the login changes. Preserve the completed canonical result's source
+  binding; do not describe a reused result as a fresh run on a later head.
+- The App Check key was read through the existing owner credential without
+  changes: SCORE integration, web.app allowed, matching Firebase Enterprise
+  registration. The Chrome execution error's cause remains Not confirmed.
+  No production mutation or owner setup has occurred at this checkpoint.
 ### 2026-10-17 - GUARD-GATES-20261017 the source gates read Cupertino, the platform, named sizes and opacities; allowances need the owner
 
 - Branch `claude/guard-gates-cupertino-platform-pixels`, worktree `.claude/worktrees/inspiring-cerf-4c2a64`, on the coordinator's brief. The brief said to start only after `claude/brand-bottom-tabs` merged; it had not been pushed, so on the user's "Coordinate and figure this out please" the branch was cut from that branch's tip `d900eb3e`, which removes the shell's `NavigationBar` exemption from the two Material gates. The coordinator then agreed the PR opens with `claude/brand-bottom-tabs` as its base once that is pushed, and is retargeted to main after it merges. Commits `86b27e23` (the gates, CLAUDE.md, 10 section 8) and this one (the named size gate also reads `static final`, top-level `final` and `=>` getters, and lets a factor pass; this entry). Not pushed, no pull request at the time of writing.
@@ -21078,3 +21354,10 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
 - Focused validation: 205 theme-guard, Queue, camera-wiring, completion-navigation and routed-Intake tests passed with `GATE_BASE=69bd6469cde211cb822936f9ac033b9453a80404`. An initial command mistakenly named nonexistent `test/screens/queue_handoff_test.dart`; its 168 actual tests passed, the path error was corrected, and the complete intended set then passed. No source changes resulted from that setup error.
 - Fresh canonical validation: `GATE_BASE=69bd6469cde211cb822936f9ac033b9453a80404 TZ=America/Chicago LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 scripts/ci/verify.sh` exited 0 uninterrupted on tree `120a91517349c6adcd0db1791d357bdca2dbe09f`. Python: all 18,091 tests exactly once, 18,042 passed and 49 skipped, all six partitions first attempt. Design system: 1,305 passed. Application: 3,068 passed and 7 skipped. Both fatal-info analyses, repository/UI-string gates, frozen install, 577 Dart files with zero formatting changes, release web build, and route smoke (13 responses, five headers) passed.
 - Evidence is preserved as `outputs/intake-integration/69bd6469-verify.log`, `69bd6469-python-accepted/`, and `intake-guard-integration-corrected.log`. Only this closeout follows the validated tree. At the final remote check main had advanced again to `86555f1f8ad9a58014e03156e3336e19f5bd0ffe` (PR #371, login/Firebase changes); that integration is the next validation boundary. Auto-merge remains disabled. Merge, production verification and pruning remain pending; physical/native/live-camera acceptance remains Not confirmed.
+
+### 2026-10-17 — Photo-intake PR #366 login-main integration and upstream release hold
+
+- Task `01a14a1c-4506-7543-8eb1-e5ec81870d06`; branch/worktree `codex/finish-photo-intake` / `finish-photo-intake/specimen-digitization-app`; PR #366. Guard integration was committed as `afcc7757e3cb4c50334ba243f101e56683b27764`. Main `86555f1f8ad9a58014e03156e3336e19f5bd0ffe` (PR #371, login/Firebase) then merged cleanly. The complete change to the previously read `docs/DEPLOYMENT.md` and the Google sign-in setup document were read before proceeding. Independent review found no actionable integration findings: all 64 non-closeout incoming paths match main, verified-account/session checks and Intake account-change/sign-out cleanup remain intact, shared-button defaults are unchanged, and prior closeout text is preserved. No implementation, exemption, assertion or timeout was edited by this integration.
+- Focused verification passed 259 tests covering login options, email-session completion, Intake recovery/processing recovery, completion navigation, camera wiring and all theme guards, with `GATE_BASE=86555f1f8ad9a58014e03156e3336e19f5bd0ffe`.
+- Fresh canonical verification: `GATE_BASE=86555f1f8ad9a58014e03156e3336e19f5bd0ffe TZ=America/Chicago LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 scripts/ci/verify.sh` exited 0 uninterrupted on staged tree `d7d436eaa88c200c6895a89970ee3019dce9aebf`. All six Python partitions passed first attempt; the unmodified verifier accepted all 18,163 collected tests exactly once (18,114 passed, 49 skipped). Design system: 1,307 passed. Application: 3,093 passed, 7 skipped. Both fatal-info analyses, repository and UI-string gates, frozen install, 583 Dart files with zero formatting changes, release web build and route smoke (13 responses, five security headers) passed. Only this append follows the validated tree. Evidence: task artifact folder `outputs/intake-integration/86555f1f-verify.log`, `86555f1f-python-accepted/` and `intake-login-integration.log`.
+- Production gate: upstream main Data release `https://github.com/anurag-duddu/specimen-digitization-app/actions/runs/39070548128` failed its new “Enable and verify Google alongside email sign-in” step. Attempt 1 reported Auth GET HTTP 403; attempt 2 reported “Pinned Auth CLI exited 2” with raw output suppressed. The upstream login work is investigating. This session made no IAM/provider/flag change and did not rerun its release. Main still resolved to `86555f1f` after local validation. Auto-merge remains disabled; this PR must not merge or prune while the production gate is unresolved. Exact committed-head review and hosted checks will complete independently. Production release, native installation, physical camera/live upload acceptance and manual VoiceOver/TalkBack: Not confirmed.

@@ -4,17 +4,19 @@
 # the runtime release and the web app build, each started on main and followed to its end.
 # Safe to run again: every step reads the live state first and changes only what is missing.
 #
-# Usage: owner_setup.sh [--dry-run] [--setup-only | --redeploy-web]
+# Usage: owner_setup.sh [--dry-run] [--setup-only | --redeploy-web | --auth-only]
 #   --dry-run       read the live state and print every command that would run; change and start nothing.
 #   --setup-only    do the setup and stop; start no release.
 #   --redeploy-web  build and publish the web app again even when its variables were already set.
+#   --auth-only     grant only the existing data identity's Auth configuration role; start no release.
 #
 # Self-contained: it reads no other file of the repository and nothing relative to its own
 # location, so a copy fetched from main runs from any directory. It needs no terminal either:
 # no question is asked, no pager is used, and every tool it starts reads from /dev/null.
 #
 # Needs gcloud signed in as a project Owner (or IAM admin plus Cloud SQL admin) and gh signed
-# in with admin rights on the repository. Written for the stock macOS bash 3.2: no associative
+# in with admin rights on the repository. --auth-only needs only the project IAM administrator;
+# it does not use gh or Cloud SQL. Written for the stock macOS bash 3.2: no associative
 # arrays, no mapfile, and no pattern substitution with a computed replacement.
 
 # Bash only. Any other shell (zsh, a plain sh, bash started as sh) stops here, at lines every
@@ -117,6 +119,7 @@ readonly NL=$'\n'
 DRY_RUN=0
 SETUP_ONLY=0
 REDEPLOY_WEB=0
+AUTH_ONLY=0
 STARTED=0
 COMPLETE=0
 CHANGE_WORD=change
@@ -160,12 +163,13 @@ POLL_SECONDS=15
 FIND_SECONDS=5
 
 usage() {
-  printf 'Usage: owner_setup.sh [--dry-run] [--setup-only | --redeploy-web]\n'
+  printf 'Usage: owner_setup.sh [--dry-run] [--setup-only | --redeploy-web | --auth-only]\n'
   printf '  (no flag)       do the setup, then start the data release, the runtime release and, when the\n'
   printf '                  repository variables changed, the web app build; follow each to its end.\n'
   printf '  --dry-run       read the live state and print every command that would run; change and start nothing.\n'
   printf '  --setup-only    do the setup and stop; start no release.\n'
   printf '  --redeploy-web  build and publish the web app again even when its variables were already set.\n'
+  printf '  --auth-only     grant only Auth configuration access to the existing data identity; start nothing.\n'
 }
 
 bad_usage() {
@@ -500,18 +504,20 @@ ensure_role() { # ensure_role NAME TITLE DESCRIPTION PERMISSION...
 preflight() {
   local account login number
   command -v gcloud > /dev/null 2>&1 || die "gcloud is not on PATH: install the Google Cloud SDK"
-  command -v gh > /dev/null 2>&1 || die "gh is not on PATH: install the GitHub CLI"
   account=$(gcloud config get-value account 2> /dev/null < /dev/null) || account=''
   [ -n "$account" ] || die "gcloud is not signed in: run gcloud auth login"
-  gh auth status > /dev/null 2>&1 < /dev/null || die "gh is not signed in: run gh auth login"
-  login=$(gh api user --jq .login 2> /dev/null < /dev/null) || login='(not shown by gh)'
+  if [ "$AUTH_ONLY" -eq 0 ]; then
+    command -v gh > /dev/null 2>&1 || die "gh is not on PATH: install the GitHub CLI"
+    gh auth status > /dev/null 2>&1 < /dev/null || die "gh is not signed in: run gh auth login"
+    login=$(gh api user --jq .login 2> /dev/null < /dev/null) || login='(not shown by gh)'
+  fi
   if ! number=$(gcloud projects describe "$PROJECT" '--format=value(projectNumber)' 2> "$WORK/stderr" < /dev/null); then
     cat "$WORK/stderr" >&2
     die "cannot reach project $PROJECT as $account (if the sign-in has expired: gcloud auth login)"
   fi
   [ "$number" = "$PROJECT_NUMBER" ] || die "project $PROJECT has number $number, expected $PROJECT_NUMBER"
   printf 'Google Cloud account: %s\n' "$account"
-  printf 'GitHub account: %s\n' "$login"
+  if [ "$AUTH_ONLY" -eq 0 ]; then printf 'GitHub account: %s\n' "$login"; fi
   printf 'Project: %s (%s)\n' "$PROJECT" "$PROJECT_NUMBER"
   printf 'Repository: %s\n' "$REPOSITORY"
   if [ "$DRY_RUN" -eq 1 ]; then
@@ -519,6 +525,23 @@ preflight() {
   else
     printf 'Mode: apply. Each line that starts with + is run right after it is printed.\n'
   fi
+}
+
+auth_release_grants() {
+  local failures_before=$FAILURE_COUNT
+  heading 'Auth setup only: configuration access for the existing data release identity'
+  # CLI15.8.0 preflights projects.update/configs.update, lists the existing
+  # web app and reads its project. The release verifies only non-secret Auth
+  # fields. Config access is project-wide; partial response fields keep this
+  # script from fetching provider secrets. No user, hash, Secret Manager,
+  # client creation, IAM or Hosting permission is granted.
+  ensure_role specimenAuthConfiguration 'Specimen Auth configuration' \
+    'Provision Google for the existing Firebase app and verify Auth configuration; no user or hash permissions.' \
+    firebase.clients.get firebase.clients.list firebase.projects.get firebase.projects.update \
+    firebaseauth.configs.get firebaseauth.configs.update
+  # Do not bind an existing role if its permissions could not be reconciled.
+  if [ "$FAILURE_COUNT" -ne "$failures_before" ]; then return 0; fi
+  grant project "$PROJECT" "$DATA" "$CUSTOM/specimenAuthConfiguration"
 }
 
 # Removes one expired grant by its exact live condition; never --all, which would also drop
@@ -1314,6 +1337,10 @@ main() {
         if [ "$REDEPLOY_WEB" -eq 1 ]; then bad_usage; fi
         REDEPLOY_WEB=1
         ;;
+      --auth-only)
+        if [ "$AUTH_ONLY" -eq 1 ]; then bad_usage; fi
+        AUTH_ONLY=1
+        ;;
       -h | --help)
         usage
         exit 0
@@ -1322,6 +1349,7 @@ main() {
     esac
   done
   if [ "$SETUP_ONLY" -eq 1 ] && [ "$REDEPLOY_WEB" -eq 1 ]; then bad_usage; fi
+  if [ "$AUTH_ONLY" -eq 1 ] && { [ "$SETUP_ONLY" -eq 1 ] || [ "$REDEPLOY_WEB" -eq 1 ]; }; then bad_usage; fi
   # The two waits a test may shorten: after new access (and, half as long again, before the
   # one retry), and between two readings of a run (a third of it while a new run shows up).
   SETTLE_SECONDS=${OWNER_SETUP_SETTLE_SECONDS:-120}
@@ -1340,6 +1368,14 @@ main() {
   NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   preflight
   STARTED=1
+  if [ "$AUTH_ONLY" -eq 1 ]; then
+    auth_release_grants
+    printf 'Auth setup only: %s change(s), %s failure(s). No providers, variables, other grants or releases changed.\n' \
+      "$CHANGE_COUNT" "$FAILURE_COUNT"
+    COMPLETE=1
+    if [ "$FAILURE_COUNT" -gt 0 ]; then exit 1; fi
+    return 0
+  fi
   remove_expired_grants
   data_release_grants
   cloud_sql_role
