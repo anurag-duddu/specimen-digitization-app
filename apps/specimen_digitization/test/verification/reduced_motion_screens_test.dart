@@ -24,10 +24,8 @@
 import 'dart:ui' show Tristate;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/cupertino.dart' show CupertinoTabBar;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_digitization/src/app/help_screen.dart';
@@ -236,7 +234,7 @@ void main() {
         });
       });
 
-      testWidgets('the native navigation destination does not glide', (
+      testWidgets('the tab bar destination does not cross-fade', (
         WidgetTester tester,
       ) async {
         await reduced(tester, () async {
@@ -249,53 +247,63 @@ void main() {
           final handle = tester.ensureSemantics();
           try {
             final target = uiDestination('Intake').first;
-            final focus = Focus.of(tester.element(target));
-            if (signal == 'android') {
-              focus.requestFocus();
-              await tester.pump();
-              expect(focus.hasPrimaryFocus, isTrue);
-            }
+            // The glyph is inside the cell, which is the focus owner: asking
+            // the focus tree from the glyph reaches the cell's own node.
+            final glyph = find.byKey(const ValueKey('mobile-nav-intake'));
+            final focus = Focus.of(tester.element(glyph));
+            focus.requestFocus();
+            await tester.pump();
+            expect(focus.hasPrimaryFocus, isTrue);
             final bar = find.byKey(const ValueKey('mobile-navigation'));
             final originalBar = tester.element(bar);
-            if (signal == 'android') {
-              expect(
-                tester.widget<NavigationBar>(bar).animationDuration,
-                Duration.zero,
-              );
-            }
+            // The same token layer collapses the bar's cross-fade whichever
+            // signal the platform sends: the bar is one component, so the
+            // Android residual that the stock `NavigationBar` carried (an
+            // SDK indicator fade, up to 6 ms) is gone, and so is its row.
+            expect(
+              tester.element(bar).ui.motion.navigationGlide,
+              Duration.zero,
+            );
             await tester.tap(target);
             await tester.pump();
-            if (signal == 'android') {
-              await recordNativeIndicatorOpacity(tester);
-            } else {
-              await recordTransition(
-                tester,
-                signal,
-                'navigation destination change',
-              );
-              expect(tester.widget<CupertinoTabBar>(bar).currentIndex, 1);
-              expect(
-                tester
-                    .getSemantics(target)
-                    .getSemanticsData()
-                    .flagsCollection
-                    .isSelected,
-                Tristate.isTrue,
-              );
-            }
+            await recordTransition(
+              tester,
+              signal,
+              'navigation destination change',
+            );
+            expect(tester.widget<UiTabBar>(bar).currentIndex, 1);
+            expect(
+              tester
+                  .getSemantics(target)
+                  .getSemanticsData()
+                  .flagsCollection
+                  .isSelected,
+              Tristate.isTrue,
+            );
+            // Both layers of the glyph are already at their destination.
+            final layers = find.descendant(
+              of: glyph,
+              matching: find.byType(FadeTransition),
+            );
+            expect(
+              tester
+                  .widgetList<FadeTransition>(layers)
+                  .map((fade) => fade.opacity.value),
+              orderedEquals([0.0, 1.0]),
+            );
             expect(tester.element(bar), same(originalBar));
             expect(
-              Focus.of(tester.element(uiDestination('Intake').first)),
+              Focus.of(
+                tester.element(find.byKey(const ValueKey('mobile-nav-intake'))),
+              ),
               same(focus),
             );
-            if (signal == 'android') {
-              // The newly activated branch may legitimately take route focus.
-              // The existing native button's node remains attached and usable.
-              expect(focus.context, isNotNull);
-              focus.requestFocus();
-              await tester.pump();
-              expect(focus.hasPrimaryFocus, isTrue);
-            }
+            // The newly activated branch may legitimately take route focus.
+            // The existing cell's node remains attached and usable.
+            expect(focus.context, isNotNull);
+            focus.requestFocus();
+            await tester.pump();
+            expect(focus.hasPrimaryFocus, isTrue);
           } finally {
             handle.dispose();
           }
@@ -340,113 +348,6 @@ Future<void> flushRoutedFrames(WidgetTester tester) async {
     await tester.pump();
   }
   expect(tester.binding.clock.now(), before);
-}
-
-/// Qualifies the SDK's remaining indicator opacity, not arbitrary tickers.
-///
-/// Flutter's NavigationIndicator has an independent hardcoded 100 ms fade
-/// (material/navigation_bar.dart), compressed to 5% by Android's platform
-/// disableAnimations flag. NavigationBar.animationDuration controls its scale
-/// and label geometry but not this fade. The product motion guidance explicitly
-/// permits native indicator motion (04, row 12) and stationary fades (2.5).
-/// This records a <=6 ms sampled opacity residual, never a zero-animation claim.
-Future<void> recordNativeIndicatorOpacity(WidgetTester tester) async {
-  await flushRoutedFrames(tester);
-  final bar = find.byType(NavigationBar);
-  final selectedTab = find.descendant(
-    of: bar,
-    matching: find.byWidgetPredicate(
-      (widget) =>
-          widget is Semantics &&
-          widget.properties.role == SemanticsRole.tab &&
-          widget.properties.selected == true,
-    ),
-  );
-  expect(selectedTab, findsOneWidget);
-  expect(tester.getSemantics(selectedTab).label, contains('Intake'));
-  final indicators = find.descendant(
-    of: bar,
-    matching: find.byType(NavigationIndicator),
-  );
-  expect(indicators, findsNWidgets(2));
-  final fades = find.descendant(
-    of: indicators,
-    matching: find.byType(FadeTransition),
-  );
-  expect(fades, findsNWidgets(2));
-  final allowedFades = tester.widgetList<FadeTransition>(fades).toList();
-  final allFades = tester.widgetList<FadeTransition>(
-    find.byType(FadeTransition),
-  );
-  for (final fade in allFades) {
-    if (!allowedFades.contains(fade)) {
-      expect(
-        fade.opacity.isAnimating,
-        isFalse,
-        reason: 'the exception belongs only to the native indicator opacity',
-      );
-    }
-  }
-  expect(
-    tester
-        .widgetList<NavigationIndicator>(indicators)
-        .map((indicator) => indicator.animation.value),
-    orderedEquals([0.0, 1.0]),
-  );
-  expect(_travelling(tester).difference({'FadeTransition'}), isEmpty);
-
-  List<Rect> geometry() => [
-    for (final label in ['Specimens', 'Intake']) ...[
-      tester.getRect(uiDestination(label).first),
-      tester.getRect(find.descendant(of: bar, matching: find.text(label))),
-    ],
-    for (final element in indicators.evaluate())
-      tester.getRect(
-        find.byElementPredicate((candidate) => identical(candidate, element)),
-      ),
-  ];
-  List<List<double>> transforms() => tester
-      .widgetList<Transform>(
-        find.descendant(of: bar, matching: find.byType(Transform)),
-      )
-      .map((transform) => transform.transform.storage.toList())
-      .toList();
-  void expectOnlyIndicatorTickers() {
-    final activeFades = tester
-        .widgetList<FadeTransition>(fades)
-        .where((fade) => fade.opacity.isAnimating)
-        .length;
-    expect(
-      tester.binding.transientCallbackCount,
-      activeFades,
-      reason: 'no unrelated ticker may share the native opacity allowance',
-    );
-  }
-
-  expectOnlyIndicatorTickers();
-  final initialGeometry = geometry();
-  final initialTransforms = transforms();
-  var elapsed = 0;
-  while (tester.hasRunningAnimations && elapsed < 6) {
-    await tester.pump(const Duration(milliseconds: 1));
-    elapsed++;
-    expectOnlyIndicatorTickers();
-    expect(geometry(), orderedEquals(initialGeometry));
-    expect(transforms(), equals(initialTransforms));
-  }
-  expect(
-    tester.hasRunningAnimations,
-    isFalse,
-    reason: 'only the SDK indicator fade may remain, for at most 6 ms',
-  );
-  expect(
-    tester.widgetList<FadeTransition>(fades).map((fade) => fade.opacity.value),
-    orderedEquals([0.0, 1.0]),
-  );
-  debugPrint(
-    'MOTIONROW|android|navigation destination change|'
-    'geometry instant; SDK indicator opacity only|residual ${elapsed}ms',
-  );
 }
 
 /// How long the transition still had to run, and what was travelling.

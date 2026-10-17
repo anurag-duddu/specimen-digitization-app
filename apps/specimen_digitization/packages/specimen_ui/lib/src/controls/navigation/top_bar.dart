@@ -74,31 +74,73 @@ class UiTopBarAction extends StatelessWidget {
   );
 }
 
+/// Which of the two bars [UiTopBar] is (10 section 4.4, amended 2026-10-17).
+///
+/// The names follow `UiBannerForm`: one component, two forms, each resolved
+/// from tokens in [UiTopBarStyle] rather than tuned at a call site.
+enum UiTopBarForm {
+  /// A page's bar: transparent over the page, a title and commands, filled
+  /// with `glass.flat` once content has scrolled under it. What every record
+  /// screen draws, and the default.
+  page,
+
+  /// The workspace header: the collection switcher and the account, on every
+  /// compact destination, as one surface.
+  ///
+  /// It paints an opaque `paper` ground (14 section 3: shell chrome is
+  /// `paper`) across its whole box, **including the top safe inset**, so the
+  /// status bar strip and the bar read as one surface on every tab and every
+  /// platform. It is the top edge mirror of `UiTabBar`, which paints its
+  /// ground under the bottom inset: in both, the platform only decides how
+  /// big the inset is. Around its 48 dp controls it keeps `space.s2` of air on
+  /// every side, the actions touch (their own hit boxes are the spacing), and
+  /// the [UiTopBar.leading] slot takes the space the actions leave, start
+  /// aligned, so a long collection name is cut rather than overflowing.
+  workspace,
+}
+
 /// The resolved measurements of one top bar (10 section 1.5).
 @immutable
 class UiTopBarStyle {
   /// Binds every token the top bar draws with.
   const UiTopBarStyle({
+    required this.form,
     required this.height,
     required this.gutter,
+    required this.verticalInset,
     required this.gap,
     required this.title,
     required this.actionExtent,
     required this.titleMin,
+    this.ground,
   });
+
+  /// Which form this is.
+  final UiTopBarForm form;
 
   /// The bar's least height, before the safe area and the text scale.
   ///
-  /// `space.topBar` at touch density and the 48 dp hit box at pointer, which
-  /// is 10 section 4.4's "56 dp (48 pointer)", and the floor rather than the
-  /// height: [heightIn] grows it with the title's line box.
+  /// Page form: `space.topBar` at touch density and the 48 dp hit box at
+  /// pointer, which is 10 section 4.4's "56 dp (48 pointer)", and the floor
+  /// rather than the height: [heightIn] grows it with the title's line box.
+  /// Workspace form: a 48 dp control plus [verticalInset] above and below,
+  /// 64 dp, at both densities, and again a floor: the controls grow it.
   final double height;
 
   /// The padding between the bar's content and the window's edge.
   final double gutter;
 
+  /// The air above and below the content row, inside [height]. Zero for the
+  /// page form, whose content is centred in its height instead.
+  final double verticalInset;
+
   /// The space between one slot and the next.
   final double gap;
+
+  /// The opaque ground the bar paints over its whole box, the top safe inset
+  /// included, or null for a bar that is transparent until content scrolls
+  /// under it.
+  final Color? ground;
 
   /// The title's type role.
   final TextStyle title;
@@ -109,15 +151,33 @@ class UiTopBarStyle {
   /// The least width the title is given before the actions collapse.
   final double titleMin;
 
-  /// The style for [ui].
-  static UiTopBarStyle resolve(UiThemeData ui) => UiTopBarStyle(
-    height: ui.density.isTouch ? ui.space.topBar : UiDensity.hitBox,
-    gutter: ui.space.s4,
-    gap: ui.space.s2,
-    title: ui.type.title,
-    actionExtent: UiDensity.hitBox,
-    titleMin: ui.space.labelMin,
-  );
+  /// The style for [ui] in [form].
+  static UiTopBarStyle resolve(
+    UiThemeData ui, {
+    UiTopBarForm form = UiTopBarForm.page,
+  }) => switch (form) {
+    UiTopBarForm.page => UiTopBarStyle(
+      form: form,
+      height: ui.density.isTouch ? ui.space.topBar : UiDensity.hitBox,
+      gutter: ui.space.s4,
+      verticalInset: ui.space.s0,
+      gap: ui.space.s2,
+      title: ui.type.title,
+      actionExtent: UiDensity.hitBox,
+      titleMin: ui.space.labelMin,
+    ),
+    UiTopBarForm.workspace => UiTopBarStyle(
+      form: form,
+      height: UiDensity.hitBox + 2 * ui.space.s2,
+      gutter: ui.space.s2,
+      verticalInset: ui.space.s2,
+      gap: ui.space.s0,
+      title: ui.type.title,
+      actionExtent: UiDensity.hitBox,
+      titleMin: ui.space.labelMin,
+      ground: ui.color.paper,
+    ),
+  };
 
   /// The bar's height at [context]'s text scale (11 section 2.2).
   ///
@@ -126,6 +186,9 @@ class UiTopBarStyle {
   /// height itself. At scale 1.0 it is 56 or 48 exactly, as 10 section 4.4
   /// states it; above it the bar grows rather than clipping the title.
   double heightIn(UiThemeData ui, BuildContext context) {
+    // The workspace form holds controls, not a title line: they set its
+    // height, and `height` is only the floor under them.
+    if (form == UiTopBarForm.workspace) return height;
     final double derived =
         UiType.lineHeightOf(title, context) +
         2 * UiType.insetFor(ui.density, title);
@@ -173,6 +236,14 @@ class UiTopBarStyle {
 /// `setLeading` wins over the [title] and [leading] the shell built the bar
 /// with, and everything else on the bar stays (13 section 3.4; polish 3).
 ///
+/// **Forms.** [UiTopBarForm.page], the default, is everything above. The
+/// [UiTopBarForm.workspace] form is the compact shell's header: an opaque
+/// `paper` ground that runs under the top safe inset, so the status strip and
+/// the bar are one surface on every tab, with the collection switcher in
+/// [leading] and the account in [actions]. The inset's size comes from the
+/// platform, never from here (05 section 5). A page bar's behaviour is the
+/// same with or without the workspace form existing.
+///
 /// Retires `AppBar`.
 class UiTopBar extends StatelessWidget {
   /// A bar with the given slots.
@@ -183,9 +254,15 @@ class UiTopBar extends StatelessWidget {
     this.center,
     this.actions = const <Widget>[],
     this.scrolledUnder,
+    this.form = UiTopBarForm.page,
   });
 
-  /// The start slot: a back control, or the mark.
+  /// Which bar this is. The page form is the default.
+  final UiTopBarForm form;
+
+  /// The start slot: a back control, or the mark. In the workspace form, the
+  /// collection switcher, which takes the space the actions leave and sits at
+  /// its start.
   final Widget? leading;
 
   /// The page's name, in sentence case with no terminal period
@@ -225,9 +302,13 @@ class UiTopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
-    final UiTopBarStyle style = UiTopBarStyle.resolve(ui);
+    final UiTopBarStyle style = UiTopBarStyle.resolve(ui, form: form);
     final EdgeInsets safe = MediaQuery.paddingOf(context);
-    final bool filled = scrolledUnder ?? UiScaffold.of(context).scrolledUnder;
+    // A bar with its own ground is always filled, so it neither reads nor
+    // depends on the scaffold's scroll state.
+    final bool filled =
+        style.ground != null ||
+        (scrolledUnder ?? UiScaffold.of(context).scrolledUnder);
     // What the routed screen asked of this bar wins over what it was built
     // with, slot by slot.
     final UiTopBarAsk? asked = UiTopBarAsk.maybeOf(context);
@@ -239,9 +320,17 @@ class UiTopBar extends StatelessWidget {
         minHeight: style.heightIn(ui, context) + safe.top,
       ),
       child: Padding(
-        padding: EdgeInsetsDirectional.symmetric(horizontal: style.gutter).add(
-          EdgeInsets.only(left: safe.left, top: safe.top, right: safe.right),
-        ),
+        padding:
+            EdgeInsetsDirectional.symmetric(
+              horizontal: style.gutter,
+              vertical: style.verticalInset,
+            ).add(
+              EdgeInsets.only(
+                left: safe.left,
+                top: safe.top,
+                right: safe.right,
+              ),
+            ),
         child: _fitted(
           context,
           ui,
@@ -253,6 +342,12 @@ class UiTopBar extends StatelessWidget {
     );
 
     if (!filled) return content;
+    // The opaque ground covers the whole box, and the box includes the top
+    // safe inset the padding above reserves, so nothing of the page or the
+    // scaffold's ground shows in the status strip.
+    if (style.ground case final Color ground) {
+      return ColoredBox(color: ground, child: content);
+    }
     return GlassSurface(
       level: GlassLevel.flat,
       // The bar spans the window, so it has no corners of its own.
@@ -339,16 +434,37 @@ class UiTopBar extends StatelessWidget {
     final Widget? name = title == null
         ? null
         : UiLabel(title, style: style.title.copyWith(color: ui.color.ink));
+    // The workspace form's switcher is the flexible slot: it is a wide
+    // labelled control, not a disc, so it takes what the actions leave and
+    // sits at the start, where a long name is cut by the control itself.
+    final bool flexibleLeading =
+        style.form == UiTopBarForm.workspace &&
+        leading != null &&
+        name == null &&
+        center == null;
     return Row(
       children: <Widget>[
-        if (leading != null) ...<Widget>[leading, SizedBox(width: style.gap)],
-        if (center != null) ...<Widget>[
-          if (name != null) Flexible(child: name),
-          Expanded(child: Center(child: center)),
-        ] else if (name != null)
-          Expanded(child: name)
-        else
-          const Spacer(),
+        if (flexibleLeading)
+          Expanded(
+            child: Align(
+              alignment: AlignmentDirectional.centerStart,
+              // The width is the slot's, the height is the control's: an
+              // `Align` with no factor would take every pixel a bounded
+              // parent offers and a bar would stop being a bar.
+              heightFactor: 1,
+              child: leading,
+            ),
+          )
+        else ...<Widget>[
+          if (leading != null) ...<Widget>[leading, SizedBox(width: style.gap)],
+          if (center != null) ...<Widget>[
+            if (name != null) Flexible(child: name),
+            Expanded(child: Center(child: center)),
+          ] else if (name != null)
+            Expanded(child: name)
+          else
+            const Spacer(),
+        ],
         for (final Widget action in drawn) ...<Widget>[
           SizedBox(width: style.gap),
           action,

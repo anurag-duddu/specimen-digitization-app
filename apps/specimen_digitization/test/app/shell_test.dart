@@ -1,5 +1,6 @@
-// The approved shell uses native phone tabs and a global desktop icon rail.
+// The approved shell uses the brand phone tab bar and a global desktop icon rail.
 // Collection selection and specimen rows share one sidebar on larger windows.
+import 'package:flutter/cupertino.dart' show CupertinoTabBar;
 import 'package:flutter/material.dart' show NavigationBar;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -46,10 +47,9 @@ void main() {
         find.byKey(const ValueKey('mobile-navigation')),
         mobile ? findsOneWidget : findsNothing,
       );
-      expect(
-        find.byType(NavigationBar),
-        mobile ? findsOneWidget : findsNothing,
-      );
+      expect(find.byType(UiTabBar), mobile ? findsOneWidget : findsNothing);
+      expect(find.byType(NavigationBar), findsNothing);
+      expect(find.byType(CupertinoTabBar), findsNothing);
       expect(
         find.byKey(const ValueKey('global-rail')),
         mobile ? findsNothing : findsOneWidget,
