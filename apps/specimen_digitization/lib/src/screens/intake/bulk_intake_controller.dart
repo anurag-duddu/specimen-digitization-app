@@ -14,6 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../models.dart';
 import 'bulk_intake_repository.dart';
 import 'draft_file_store.dart';
+import 'intake_timing.dart';
 
 String intakeClientId() => List.generate(
   16,
@@ -85,6 +86,9 @@ class BulkIntakeController extends ChangeNotifier {
       .length;
   int get savedCount => visible.where((item) => item.saved).length;
   bool get hasUnsaved => visible.any((item) => !item.saved);
+  bool get hasPendingLocalTransfers => _local.values.any(
+    (row) => row['saved'] != true && row['removed'] != true,
+  );
   bool get needsReselection => _local.values.any(
     (row) =>
         row['saved'] != true &&
@@ -105,7 +109,9 @@ class BulkIntakeController extends ChangeNotifier {
       : 'Saving $savedCount of ${visible.length}';
 
   void changed() {
-    if (!_disposed) setDraftLeaveWarning(!hasDurableLocalFiles && hasUnsaved);
+    if (!_disposed) {
+      setDraftLeaveWarning(!hasDurableLocalFiles && hasPendingLocalTransfers);
+    }
     if (!_disposed) notifyListeners();
   }
 
@@ -183,7 +189,7 @@ class BulkIntakeController extends ChangeNotifier {
       loading = false;
       changed();
       if (!_disposed) {
-        _timer = Timer.periodic(const Duration(seconds: 3), (_) => poll());
+        _timer = Timer.periodic(intakePollInterval, (_) => poll());
       }
     }
   }
@@ -833,6 +839,90 @@ class BulkIntakeController extends ChangeNotifier {
     changed();
   }
 
+  Future<void> reselectSubmission(
+    String submissionId,
+    List<XFile> files,
+  ) async {
+    // Reconcile any already-running upload before replacing its local handle.
+    await _transfers;
+    final candidates = await _pages('/submissions/$submissionId/items');
+    final matched = <String>{};
+    var unmatched = 0;
+    error = null;
+    for (final file in files) {
+      final size = await file.length();
+      if (size == 0 || size > 25000000) {
+        unmatched++;
+        continue;
+      }
+      final hash = (await sha256.bind(file.openRead()).first).toString();
+      final target = candidates
+          .where(
+            (row) =>
+                row['needs_original'] == true &&
+                row['sha256'] == hash &&
+                row['size_bytes'] == size &&
+                !matched.contains(row['item_id']),
+          )
+          .firstOrNull;
+      if (target == null) {
+        unmatched++;
+        continue;
+      }
+      final item = await call('GET', '/items/${target['item_id']}');
+      final clientId = item['client_id'] as String;
+      final retained = await retainDraftFile(file, _owner, clientId);
+      final row = <String, dynamic>{
+        ...item,
+        'item_id': item['id'],
+        'path': retained.path,
+        'saved': false,
+        'photo_sensitive': item['sensitive'],
+        'submission_id': submissionId,
+      };
+      _local[clientId] = row;
+      _files[clientId] = retained;
+      matched.add(item['id'] as String);
+      await _persist();
+      changed();
+      // The immutable submitted item is resumed directly: no draft admission,
+      // metadata edit, or new specimen identity is created by reselection.
+      _queueTransfer(row);
+    }
+    await _transfers;
+    if (unmatched > 0) {
+      error =
+          '$unmatched files did not match unfinished photos in this submission. Choose their original files.';
+    }
+    await refreshLists();
+    changed();
+  }
+
+  Future<void> reconcileFinishedTransfers(
+    List<IntakeSubmissionItem> results,
+  ) async {
+    final finished = results
+        .where(
+          (row) =>
+              ['sent', 'duplicate', 'held', 'cancelled'].contains(row.state),
+        )
+        .map((row) => row.itemId)
+        .toSet();
+    final removed = _local.keys
+        .where((id) => finished.contains(_local[id]!['item_id']))
+        .toList();
+    for (final id in removed) {
+      final row = _local.remove(id)!;
+      row['removed'] = true;
+      _files.remove(id);
+      await releaseDraftFile(row['path'] as String);
+    }
+    if (removed.isNotEmpty) {
+      await _persist();
+      changed();
+    }
+  }
+
   Future<void> newDraft() async {
     await _admissions;
     await _persist();
@@ -961,7 +1051,7 @@ class BulkIntakeController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
-    setDraftLeaveWarning(false);
+    setDraftLeaveWarning(!hasDurableLocalFiles && hasPendingLocalTransfers);
     _timer?.cancel();
     _previews.clear();
     _files.clear();

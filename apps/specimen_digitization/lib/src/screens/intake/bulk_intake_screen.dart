@@ -6,16 +6,17 @@ import 'dart:math' as math;
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart' show MaterialPageRoute;
 import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 import '../../capture/capture_camera.dart';
 import '../../capture/capture_screen.dart';
 import '../../models.dart';
+import '../../region_editor.dart' show uiFullScreenRoute;
 import '../../widgets/product_modal.dart';
 import 'bulk_intake_controller.dart';
 import 'bulk_intake_repository.dart';
 import 'intake_source_picker.dart';
+import 'intake_timing.dart';
 
 String intakeStateLabel(String state) => switch (state) {
   'ready' => 'Saved',
@@ -119,7 +120,7 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen> {
         onCapturedDurably: (photo) =>
             c.addFiles([photo.file], camera: true, sensitive: photo.sensitive),
         batchTray: (context) => SizedBox(
-          height: 64,
+          height: context.ui.space.s16,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             reverse: true,
@@ -127,7 +128,7 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen> {
             itemBuilder: (context, index) => Padding(
               padding: EdgeInsets.all(context.ui.space.s1),
               child: SizedBox(
-                width: 56,
+                width: context.ui.space.s16 - context.ui.space.s2,
                 child: BulkPhotoPreview(
                   controller: c,
                   item: c.visible[c.visible.length - 1 - index],
@@ -207,7 +208,8 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen> {
       return;
     }
     await Navigator.of(context).push(
-      MaterialPageRoute<void>(
+      uiFullScreenRoute<void>(
+        context,
         builder: (_) => Surface(
           child: SafeArea(
             child: BulkPhotoInspector(
@@ -539,7 +541,12 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen> {
       child: SingleChildScrollView(
         padding: EdgeInsets.all(ui.space.s6),
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 640),
+          constraints: BoxConstraints(
+            maxWidth: UiLayoutMetrics.fromConstraints(
+              const BoxConstraints(),
+              textScaler: MediaQuery.textScalerOf(context),
+            ).readableMax,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -882,12 +889,12 @@ class _BulkIntakeProgressState extends State<BulkIntakeProgress> {
   List<IntakeSubmissionItem> items = [];
   String? error;
   Timer? timer;
-  bool reading = false;
+  bool reading = false, reselecting = false;
   @override
   void initState() {
     super.initState();
     unawaited(refresh());
-    timer = Timer.periodic(const Duration(seconds: 3), (_) => refresh());
+    timer = Timer.periodic(intakePollInterval, (_) => refresh());
   }
 
   @override
@@ -915,6 +922,7 @@ class _BulkIntakeProgressState extends State<BulkIntakeProgress> {
         rows.addAll(objects(page['items']).map(IntakeSubmissionItem.new));
         after = page['next_cursor']?.toString();
       } while (after != null && mounted);
+      await c.reconcileFinishedTransfers(rows);
       if (mounted) {
         setState(() {
           batch = current;
@@ -942,6 +950,37 @@ class _BulkIntakeProgressState extends State<BulkIntakeProgress> {
     }
   }
 
+  Future<void> reselect() async {
+    setState(() => reselecting = true);
+    try {
+      final files = await openFiles(
+        acceptedTypeGroups: [
+          const XTypeGroup(
+            label: 'Photos',
+            extensions: [
+              'jpg',
+              'jpeg',
+              'png',
+              'tif',
+              'tiff',
+              'heic',
+              'heif',
+              'dng',
+            ],
+          ),
+        ],
+      );
+      if (files.isEmpty) return;
+      await widget.controller.reselectSubmission(widget.submissionId, files);
+      await refresh();
+      if (mounted) setState(() => error = widget.controller.error);
+    } catch (e) {
+      if (mounted) setState(() => error = widget.controller.message(e));
+    } finally {
+      if (mounted) setState(() => reselecting = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final ui = context.ui;
@@ -953,124 +992,168 @@ class _BulkIntakeProgressState extends State<BulkIntakeProgress> {
       child: SafeArea(
         child: Padding(
           padding: EdgeInsets.all(ui.space.s4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Wrap(
-                alignment: WrapAlignment.spaceBetween,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  Text('Intake progress', style: ui.type.titleLarge),
-                  UiButton(
-                    label: 'Add more photos',
-                    leading: UiIcons.add,
-                    variant: UiButtonVariant.secondary,
-                    onPressed: widget.onAdd,
-                  ),
-                ],
-              ),
-              SizedBox(height: ui.space.s3),
-              Text(
-                batch == null
-                    ? 'Loading your submission…'
-                    : '$done of ${batch!.total} finished · ${count('sent')} sent to pipeline',
-                style: ui.type.body,
-              ),
-              SizedBox(height: ui.space.s2),
-              UiProgress.bar(
-                value: batch == null ? null : done / math.max(1, batch!.total),
-                semanticsLabel: 'Photos finished',
-              ),
-              SizedBox(height: ui.space.s2),
-              Text(
-                'The specimen pipeline takes over after each successful handoff.',
-                style: ui.type.bodySmall,
-              ),
-              if (error != null) Text(error!, style: ui.type.bodySmall),
-              if (batch?.data['worker_error'] is Map)
-                Text(
-                  textOf((batch!.data['worker_error'] as Map)['message']),
-                  style: ui.type.bodySmall,
-                ),
-              Wrap(
-                spacing: ui.space.s2,
-                children: [
-                  if (batch?.data['worker_error'] != null)
-                    UiButton(
-                      label: 'Retry batch',
-                      variant: UiButtonVariant.secondary,
-                      onPressed: items.isEmpty
+          child: CustomScrollView(
+            slivers: [
+              SliverToBoxAdapter(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text('Intake progress', style: ui.type.titleLarge),
+                        UiButton(
+                          label: 'Add more photos',
+                          leading: UiIcons.add,
+                          variant: UiButtonVariant.secondary,
+                          onPressed: widget.onAdd,
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: ui.space.s3),
+                    Text(
+                      batch == null
+                          ? 'Loading your submission…'
+                          : '$done of ${batch!.total} finished · ${count('sent')} sent to pipeline',
+                      style: ui.type.body,
+                    ),
+                    SizedBox(height: ui.space.s2),
+                    UiProgress.bar(
+                      value: batch == null
                           ? null
-                          : () => action(
+                          : done / math.max(1, batch!.total),
+                      semanticsLabel: 'Photos finished',
+                    ),
+                    SizedBox(height: ui.space.s2),
+                    Text(
+                      'The specimen pipeline takes over after each successful handoff.',
+                      style: ui.type.bodySmall,
+                    ),
+                    if (error != null) Text(error!, style: ui.type.bodySmall),
+                    if (items.any(
+                      (item) => item.data['needs_original'] == true,
+                    )) ...[
+                      Text(
+                        'Some photos still need their original files. Keep this workspace open until transfer finishes; after reopening, choose the originals here to resume this submission.',
+                        style: ui.type.bodySmall,
+                      ),
+                      UiButton(
+                        label: reselecting
+                            ? 'Resuming original files'
+                            : 'Choose original files to resume',
+                        variant: UiButtonVariant.secondary,
+                        onPressed: reselecting ? null : reselect,
+                      ),
+                    ],
+                    if (batch?.data['worker_error'] is Map)
+                      Text(
+                        textOf((batch!.data['worker_error'] as Map)['message']),
+                        style: ui.type.bodySmall,
+                      ),
+                    Wrap(
+                      spacing: ui.space.s2,
+                      children: [
+                        if (items.any(
+                          (item) => item.data['needs_finalization'] == true,
+                        ))
+                          UiButton(
+                            label: 'Finish saved transfers',
+                            variant: UiButtonVariant.secondary,
+                            onPressed: () => action(
                               'retry',
                               body: {
-                                'item_ids': items.map((i) => i.itemId).toList(),
+                                'item_ids': items
+                                    .where(
+                                      (item) =>
+                                          item.data['needs_finalization'] ==
+                                          true,
+                                    )
+                                    .map((item) => item.itemId)
+                                    .toList(),
                               },
                             ),
-                    ),
-                  if (count('needs_attention') > 0)
-                    UiButton(
-                      label: 'Retry failed photos',
-                      variant: UiButtonVariant.secondary,
-                      onPressed: () => action(
-                        'retry',
-                        body: {
-                          'item_ids': items
-                              .where((i) => i.state == 'needs_attention')
-                              .map((i) => i.itemId)
-                              .toList(),
-                        },
-                      ),
-                    ),
-                  if (batch?.active == true)
-                    UiButton(
-                      label: 'Cancel remaining',
-                      variant: UiButtonVariant.ghost,
-                      onPressed: () => action('cancel'),
-                    ),
-                  if (count('sent') + count('held') + count('duplicate') > 0)
-                    UiButton(
-                      label: 'View specimens',
-                      variant: UiButtonVariant.secondary,
-                      onPressed: widget.onViewSpecimens,
-                    ),
-                ],
-              ),
-              Expanded(
-                child: ListView.builder(
-                  itemCount: items.length,
-                  itemBuilder: (context, index) {
-                    final item = items[index];
-                    return Padding(
-                      padding: EdgeInsets.symmetric(vertical: ui.space.s3),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Text(
-                            item.name,
-                            style: ui.type.label,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
                           ),
+                        if (batch?.data['worker_error'] != null)
+                          UiButton(
+                            label: 'Retry batch',
+                            variant: UiButtonVariant.secondary,
+                            onPressed: items.isEmpty
+                                ? null
+                                : () => action(
+                                    'retry',
+                                    body: {
+                                      'item_ids': items
+                                          .map((i) => i.itemId)
+                                          .toList(),
+                                    },
+                                  ),
+                          ),
+                        if (count('needs_attention') > 0)
+                          UiButton(
+                            label: 'Retry failed photos',
+                            variant: UiButtonVariant.secondary,
+                            onPressed: () => action(
+                              'retry',
+                              body: {
+                                'item_ids': items
+                                    .where((i) => i.state == 'needs_attention')
+                                    .map((i) => i.itemId)
+                                    .toList(),
+                              },
+                            ),
+                          ),
+                        if (batch?.active == true)
+                          UiButton(
+                            label: 'Cancel remaining',
+                            variant: UiButtonVariant.ghost,
+                            onPressed: () => action('cancel'),
+                          ),
+                        if (count('sent') + count('held') + count('duplicate') >
+                            0)
+                          UiButton(
+                            label: 'View specimens',
+                            variant: UiButtonVariant.secondary,
+                            onPressed: widget.onViewSpecimens,
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              SliverList.builder(
+                itemCount: items.length,
+                itemBuilder: (context, index) {
+                  final item = items[index];
+                  return Padding(
+                    padding: EdgeInsets.symmetric(vertical: ui.space.s3),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          item.name,
+                          style: ui.type.label,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        Text(
+                          intakeStateLabel(item.state),
+                          style: ui.type.bodySmall,
+                        ),
+                        if (item.progress != null)
+                          UiProgress.bar(
+                            value: item.progress,
+                            semanticsLabel: 'Transferring ${item.name}',
+                          ),
+                        if (item.data['error'] is Map)
                           Text(
-                            intakeStateLabel(item.state),
+                            textOf((item.data['error'] as Map)['message']),
                             style: ui.type.bodySmall,
                           ),
-                          if (item.progress != null)
-                            UiProgress.bar(
-                              value: item.progress,
-                              semanticsLabel: 'Transferring ${item.name}',
-                            ),
-                          if (item.data['error'] is Map)
-                            Text(
-                              textOf((item.data['error'] as Map)['message']),
-                              style: ui.type.bodySmall,
-                            ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
+                      ],
+                    ),
+                  );
+                },
               ),
             ],
           ),

@@ -115,6 +115,10 @@ def test_frozen_manifest_rejects_edits_and_can_wait_for_bytes(tmp_path):
     item, data = add(client, batch)
     result = submit(client, batch, [item])
     assert result.status_code == 202
+    progress_path = ROOT + f"/submissions/{result.json()['id']}/items"
+    pending = client.get(progress_path, headers=HEADERS).json()['items'][0]
+    assert pending['needs_original'] is True
+    assert pending['sha256'] == item['sha256']
     current = client.get(ROOT + f"/drafts/{batch['id']}", headers=HEADERS).json()
     edit = client.post(ROOT + f"/drafts/{batch['id']}/edit", headers=HEADERS,
         json={'expected_revision': current['revision'], 'item_ids': [item['id']], 'action': 'remove'})
@@ -122,6 +126,29 @@ def test_frozen_manifest_rejects_edits_and_can_wait_for_bytes(tmp_path):
     stage(client, item, data)
     state = client.get(ROOT + f"/submissions/{result.json()['id']}", headers=HEADERS).json()
     assert state['counts'] == {'sent': 1}
+    assert client.get(progress_path, headers=HEADERS).json()['items'][0]['needs_original'] is False
+
+
+def test_submitted_final_chunk_without_save_recovers_without_original(tmp_path):
+    app = local_app(tmp_path, TOKEN)
+    client = TestClient(app)
+    batch = draft(client)
+    item, data = add(client, batch)
+    submitted = submit(client, batch, [item]).json()
+    uploaded = client.put(ROOT + f"/items/{item['id']}/content", headers={**HEADERS, 'Upload-Offset': '0'}, content=data)
+    assert uploaded.status_code == 200
+    path = ROOT + f"/submissions/{submitted['id']}"
+    pending = client.get(path + '/items', headers=HEADERS).json()['items'][0]
+    assert pending['needs_finalization'] is True
+    assert pending['needs_original'] is False
+    # Simulate the browser losing the final acknowledgement and never saving.
+    # Recovery needs only the submitted identity, not the original file bytes.
+    for _ in range(2):
+        response = client.post(path + '/retry', headers=HEADERS, json={'item_ids': [item['id']]})
+        assert response.status_code == 200
+    assert client.get(path, headers=HEADERS).json()['counts'] == {'sent': 1}
+    assert client.get(path + '/items', headers=HEADERS).json()['items'][0]['needs_finalization'] is False
+    assert len(app.state.workflow.repository.list(Scope(organization_id=PREFIX.split('/')[-1], collection_id=SYNTHETIC_COLLECTION))) == 1
 
 
 def test_500_photo_limit_and_paging_do_not_truncate(tmp_path):

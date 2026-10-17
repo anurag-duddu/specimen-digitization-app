@@ -1,3 +1,4 @@
+import 'intake_timing.dart';
 import 'dart:async';
 import 'package:app_links/app_links.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -44,7 +45,7 @@ class IntakeAuthSession {
           code: 'browser_unavailable',
         );
       }
-      final uri = await _result.future.timeout(const Duration(minutes: 10));
+      final uri = await _result.future.timeout(intakeAuthorizationTimeout);
       return Map<String, dynamic>.from(Uri.splitQueryString(uri.fragment));
     } finally {
       await _links?.cancel();

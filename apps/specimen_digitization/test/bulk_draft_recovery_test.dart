@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:crypto/crypto.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -30,6 +31,70 @@ class OfflineIntake implements BulkIntakeRepository {
     String id, {
     bool full = false,
   }) async => throw StateError('Offline');
+}
+
+class SubmittedRecovery extends OfflineIntake {
+  SubmittedRecovery(this.hash);
+  final String hash;
+  final List<int> received = [];
+  bool saved = false;
+  Json get item => {
+    'id': 'original-item',
+    'client_id': 'original-client',
+    'draft_id': 'frozen-draft',
+    'filename': 'original.png',
+    'source': {'provider': 'files'},
+    'sensitive': true,
+    'size_bytes': 4,
+    'sha256': hash,
+    'offset': saved ? 4 : 2,
+    'state': saved ? 'ready' : 'transferring',
+  };
+  @override
+  Future<Json> intakeRequest(
+    CollectionScope scope,
+    String method,
+    String path, {
+    Json? body,
+    Map<String, String>? query,
+    Uint8List? bytes,
+    int? offset,
+  }) async {
+    calls.add('$method $path');
+    if (path == '/capabilities') return {};
+    if (path == '/drafts' || path == '/submissions') {
+      expect(method, 'GET');
+      return {'items': [], 'next_cursor': null};
+    }
+    if (path == '/submissions/old-submission/items') {
+      return {
+        'items': [
+          {
+            'item_id': 'original-item',
+            'needs_original': !saved,
+            'sha256': hash,
+            'size_bytes': 4,
+          },
+        ],
+        'next_cursor': null,
+      };
+    }
+    if (path == '/items/original-item') return item;
+    if (path == '/drafts/frozen-draft') {
+      return {'id': 'frozen-draft', 'state': 'submitted'};
+    }
+    if (path == '/items/original-item/content') {
+      expect(method, 'PUT');
+      expect(offset, 2);
+      received.addAll(bytes!);
+      return {...item, 'offset': 4};
+    }
+    if (path == '/items/original-item/save') {
+      saved = true;
+      return item;
+    }
+    throw StateError('Unexpected request: $method $path');
+  }
 }
 
 void main() {
@@ -168,6 +233,64 @@ void main() {
       );
       expect(restored.visible.single.data['batch_client_id'], originalBatch);
       expect(restored.needsReselection, isFalse);
+      restored.dispose();
+    },
+  );
+  test(
+    'submitted originals resume their immutable item after reopening',
+    () async {
+      final source = File('${directory.path}/original.png');
+      await source.writeAsBytes([1, 2, 3, 4]);
+      final first = BulkIntakeController(
+        repository: OfflineIntake(),
+        scope: scope,
+        userId: 'owner',
+      );
+      await first.initialize();
+      await first.addFiles([XFile(source.path)], sensitive: true);
+      final prefs = await SharedPreferences.getInstance();
+      final key = prefs.getKeys().singleWhere(
+        (key) => key.startsWith('bulk-intake-v1:'),
+      );
+      final state = jsonDecode(prefs.getString(key)!) as Map<String, dynamic>;
+      final row = objects(state['files']).single;
+      first.dispose();
+      await File(row['path'] as String).delete();
+      state['client_id'] = null;
+      state['active_draft_id'] = null;
+      state['files'] = [
+        {
+          ...row,
+          'client_id': 'original-client',
+          'item_id': 'original-item',
+          'draft_id': 'frozen-draft',
+          'saved': false,
+        },
+      ];
+      await prefs.setString(key, jsonEncode(state));
+      final repo = SubmittedRecovery(sha256.convert([1, 2, 3, 4]).toString());
+      final restored = BulkIntakeController(
+        repository: repo,
+        scope: scope,
+        userId: 'owner',
+      );
+      await restored.initialize();
+      expect(restored.visible, isEmpty);
+      expect(restored.hasPendingLocalTransfers, isTrue);
+      final wrong = File('${directory.path}/different.png');
+      await wrong.writeAsBytes([4, 3, 2, 1]);
+      await restored.reselectSubmission('old-submission', [XFile(wrong.path)]);
+      expect(repo.received, isEmpty);
+      expect(restored.error, contains('did not match'));
+      await restored.reselectSubmission('old-submission', [XFile(source.path)]);
+      expect(repo.received, [3, 4]);
+      expect(repo.saved, isTrue);
+      expect(restored.hasPendingLocalTransfers, isFalse);
+      expect(restored.visible, isEmpty);
+      expect((await storedFiles()).single['photo_sensitive'], isTrue);
+      expect(repo.calls.where((call) => call.startsWith('POST ')), [
+        'POST /items/original-item/save',
+      ]);
       restored.dispose();
     },
   );

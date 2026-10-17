@@ -1,6 +1,7 @@
 /// Source-specific acquisition ends by adding photos to the shared draft.
 library;
 
+import 'intake_timing.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/widgets.dart';
@@ -41,7 +42,7 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
   void initState() {
     super.initState();
     unawaited(load());
-    timer = Timer.periodic(const Duration(seconds: 3), (_) => poll());
+    timer = Timer.periodic(intakePollInterval, (_) => poll());
   }
 
   @override

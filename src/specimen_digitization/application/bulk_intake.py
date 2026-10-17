@@ -445,7 +445,10 @@ class IntakeService:
         if state == 'waiting' and item['state'] != 'ready':
             state = item['state']
         return dict(result, state=state, filename=item['filename'], offset=item['offset'],
-                    size_bytes=item['size_bytes'], error=result['error'] or item['error'])
+                    size_bytes=item['size_bytes'], error=result['error'] or item['error'],
+                    needs_original=state not in TERMINAL and item['source']['provider'] in {'camera', 'files'} and item['offset'] < (item['size_bytes'] or 0),
+                    needs_finalization=state not in TERMINAL and item['state'] != 'ready' and item['source']['provider'] in {'camera', 'files'} and bool(item['size_bytes']) and item['offset'] == item['size_bytes'],
+                    sha256=item['sha256'] if item['source']['provider'] in {'camera', 'files'} else None)
 
     def process_submission(self, p, id, *, deadline=None):
         submission = self.read(p, 'intake_submission', id)
@@ -564,8 +567,11 @@ class IntakeService:
             if item['state'] == 'needs_attention':
                 item.update(state='waiting', error=None)
                 self.save(p, 'intake_item', item)
-                if item['source']['provider'] not in {'camera', 'files'} or (item['size_bytes'] and item['offset'] == item['size_bytes']):
-                    self.enqueue(p, item_id, 'stage')
+            # The final chunk can commit before its acknowledgement or save()
+            # request arrives. Complete local bytes remain recoverable without
+            # the original browser file, including state=transferring.
+            if item['state'] != 'ready' and (item['source']['provider'] not in {'camera', 'files'} or (item['size_bytes'] and item['offset'] == item['size_bytes'])):
+                self.enqueue(p, item_id, 'stage')
             result_id = ident(id, item_id)
             try:
                 result = self.read(p, 'intake_result', result_id)

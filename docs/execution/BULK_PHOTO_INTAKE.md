@@ -40,6 +40,13 @@ Native recovery copies live under the app support directory in an owner/collecti
 namespace and are released after the server acknowledges staged bytes. Browser
 files require reselection if they were not safely staged before leaving; the
 workspace warns about that before leaving and restores the metadata honestly.
+The warning includes transfers belonging to older submissions, even while a new
+draft is open. Each submission can reselect its unfinished originals by checksum
+and length, resuming the same immutable item and acknowledged byte offset.
+If all bytes arrived but the browser lost the final acknowledgement before save,
+**Finish saved transfers** validates those retained bytes without asking for the
+originals again. Progress headers and their recovery actions scroll with the
+virtualized item list, including on a phone at 200% text.
 Removing a draft is a logical discard; shared blobs are never blindly deleted,
 because a submitted specimen may reference the same content. Physical blob GC
 requires reference-aware retention policy and is not performed by a discard.

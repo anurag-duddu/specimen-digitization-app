@@ -17,22 +17,26 @@ import 'widgets/harness.dart';
 /// are deliberately outside these UI tests.
 class BulkFixtureRepository extends GoldenRepository
     implements BulkIntakeRepository {
-  BulkFixtureRepository(int count, {this.state = 'ready'})
-    : photos = List.generate(
-        count,
-        (i) => <String, dynamic>{
-          'id': 'photo-$i',
-          'filename': 'specimen-${i + 1}.png',
-          'state': state,
-          'photo_sensitive': false,
-          'included': true,
-          'removed': false,
-          'revision': 1,
-          if (state == 'needs_attention')
-            'error': {'message': 'Choose the original photo again.'},
-        },
-      );
+  BulkFixtureRepository(
+    int count, {
+    this.state = 'ready',
+    this.needsOriginal = false,
+  }) : photos = List.generate(
+         count,
+         (i) => <String, dynamic>{
+           'id': 'photo-$i',
+           'filename': 'specimen-${i + 1}.png',
+           'state': state,
+           'photo_sensitive': false,
+           'included': true,
+           'removed': false,
+           'revision': 1,
+           if (state == 'needs_attention')
+             'error': {'message': 'Choose the original photo again.'},
+         },
+       );
   final String state;
+  final bool needsOriginal;
   final List<Json> photos;
   bool submitted = false;
   int revision = 1, previewCalls = 0;
@@ -47,7 +51,7 @@ class BulkFixtureRepository extends GoldenRepository
   Json get batch => {
     'id': 'submission',
     'total': submittedIds.length,
-    'counts': {'sent': submittedIds.length},
+    'counts': {needsOriginal ? 'waiting' : 'sent': submittedIds.length},
     'entries': submittedIds.map((id) => {'id': id}).toList(),
   };
   @override
@@ -129,7 +133,8 @@ class BulkFixtureRepository extends GoldenRepository
               (id) => <String, dynamic>{
                 'item_id': id,
                 'filename': '$id.png',
-                'state': 'sent',
+                'state': needsOriginal ? 'waiting' : 'sent',
+                'needs_original': needsOriginal,
               },
             )
             .toList(),
@@ -212,6 +217,29 @@ void main() {
       });
     }
   }
+  testWidgets(
+    'submitted original recovery remains usable on a phone at 200% text',
+    (tester) async {
+      final repo = BulkFixtureRepository(20, needsOriginal: true);
+      await pumpGoldenApp(
+        tester,
+        window: const Size(390, 844),
+        brightness: Brightness.light,
+        textScale: 2,
+        location: goldenIntakeLocation,
+        repository: repo,
+      );
+      await tester.tap(find.text('Submit 20 photos'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Choose original files to resume').hitTestable(),
+        findsOneWidget,
+      );
+      expect(find.text('Add more photos').hitTestable(), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
   testWidgets(
     '500 thumbnails are virtualized and selection never changes inclusion',
     (tester) async {

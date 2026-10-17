@@ -1,3 +1,4 @@
+import 'intake_timing.dart';
 import 'dart:async';
 import 'dart:js_interop';
 import 'package:web/web.dart' as web;
@@ -63,7 +64,7 @@ class IntakeAuthSession {
       }
     });
     try {
-      return await result.future.timeout(const Duration(minutes: 10));
+      return await result.future.timeout(intakeAuthorizationTimeout);
     } finally {
       close();
     }
