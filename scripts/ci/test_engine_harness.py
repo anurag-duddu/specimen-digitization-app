@@ -151,10 +151,14 @@ if name=='python':
   # Model the native pidfd helper only in this private subprocess fixture.
   # Its real birth/pidfd semantics are separately tested without OS signals.
   pid=int(args[args.index('-c')+2]); receipt=json.loads(pathlib.Path(args[args.index('-c')+3]).read_text())
-  assert receipt['pid']==pid and receipt['birth_id']==birth(pid)
+  assert receipt['pid']==pid
   sig=int(args[-1]) if args[-1].isdigit() else int(signal.SIGKILL)
-  try: os.kill(pid,sig)
-  except ProcessLookupError: sent=False
+  try:
+   assert receipt['birth_id']==birth(pid)
+   os.kill(pid,sig)
+  # Match pidfd_open/process_birth: an already reaped process is gone. Linux
+  # removes its /proc stat file; the Darwin fixture uses a synthetic birth.
+  except (ProcessLookupError,FileNotFoundError): sent=False
   else: sent=True
   with (root/'native-signals.jsonl').open('a') as f: f.write(json.dumps({'pid':pid,'signal':sig})+'\n')
   print(json.dumps({'forced':sent})); sys.exit(0)
@@ -213,6 +217,19 @@ if name=='dc':
 if name=='firebase' and os.getenv('FIXTURE_STANDALONE') and '--fixture-cli' not in args:
  child=subprocess.Popen([sys.argv[0],'--fixture-cli',*args])
  (root/'standalone-pids.json').write_text(json.dumps({'launcher':os.getpid(),'cli':child.pid}))
+ if fault=='storage_ready_cli_exit':
+  # Keep the readiness probe pending until the launcher has reaped the CLI.
+  # Otherwise it can observe Java's exit in the interval before CLI exit.
+  config=json.loads(pathlib.Path(args[args.index('--config')+1]).read_text())['emulators']
+  # Linux requires reuse on this listener as well as cleanup's replacement
+  # binder after the accepted connection is actively closed (socket(7)).
+  exit_hub=socket.socket(); exit_hub.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1); exit_hub.bind(('127.0.0.1',config['hub']['port'])); exit_hub.listen(16)
+  def exit_probe():
+   with exit_hub.accept()[0] as connection:
+    assert connection.recv(4096).startswith(b'GET /emulators ')
+    (root/'hub-requested').touch()
+    child.wait()
+  threading.Thread(target=exit_probe,daemon=True).start()
  def end(signum,*_):
   # A safety net for a broken controller, with an auditable signal record.
   # The corrected controller must signal the CLI, leaving this path unused.
@@ -237,8 +254,9 @@ if name in ('postgres','dc','firebase','java'):
     body=json.dumps({} if fault.startswith('storage_ready_') else {'storage':{'name':'storage','host':'127.0.0.1','port':config['storage']['port']}}).encode()
     self.send_response(200); self.end_headers(); self.wfile.write(body)
    def log_message(self,*_): pass
-  hub=ThreadingHTTPServer(('127.0.0.1',config['hub']['port']),Hub)
-  threading.Thread(target=hub.serve_forever,daemon=True).start()
+  if fault!='storage_ready_cli_exit' or not os.getenv('FIXTURE_STANDALONE'):
+   hub=ThreadingHTTPServer(('127.0.0.1',config['hub']['port']),Hub)
+   threading.Thread(target=hub.serve_forever,daemon=True).start()
   probe=subprocess.Popen([str(root/'bin/java'),'--version']) if os.getenv('FIXTURE_JAVA_PROBE') else None
   child=None if fault=='storage_no_java' else subprocess.Popen([str(root/'bin/java'),os.environ['STORAGE_EMULATOR_BINARY_PATH']])
   (root/'java-pid.json').write_text(json.dumps({'pid':child.pid if child else None,'parent':os.getpid(),'probe':probe.pid if probe else None,'jar':os.environ['STORAGE_EMULATOR_BINARY_PATH']}))
@@ -433,6 +451,7 @@ def test_storage_wrapper_complete_inventory(shell_fixture,layout):
 
 def assert_storage_tree_stopped(fixture,lifecycle,cleanup='passed'):
     root,_=fixture
+    diagnostics=json.dumps({'cleanup':lifecycle['cleanup'],'storage_processes':lifecycle['storage_processes']},sort_keys=True)
     pids=json.loads((root/'standalone-pids.json').read_text())
     if (root/'java-pid.json').exists():
         runtime=json.loads((root/'java-pid.json').read_text())
@@ -441,17 +460,17 @@ def assert_storage_tree_stopped(fixture,lifecycle,cleanup='passed'):
     for pid in pids.values():
         with pytest.raises(ProcessLookupError):
             os.kill(pid,0)
-    assert not (root/'launcher-signals.jsonl').exists(),'shutdown must reach the actual forked CLI, without relying on launcher signal forwarding'
+    assert not (root/'launcher-signals.jsonl').exists(),'shutdown must reach the actual forked CLI, without relying on launcher signal forwarding; '+diagnostics
     rows=lifecycle['storage_processes']
-    assert {row['pid'] for row in rows}==set(pids.values())
-    assert all(row['birth_id'] and row['stopped'] and row['waited'] and row['ended_ns']>=row['started_ns'] for row in rows)
+    assert {row['pid'] for row in rows}==set(pids.values()),diagnostics
+    assert all(row['birth_id'] and row['stopped'] and row['waited'] and row['ended_ns']>=row['started_ns'] for row in rows),diagnostics
     cli=next(row for row in rows if row['pid']==pids['cli'])
     launcher=next(row for row in rows if row['pid']==pids['launcher'])
-    assert cli['parent_pid']==launcher['pid'] and cli['parent_birth_id']==launcher['birth_id']
+    assert cli['parent_pid']==launcher['pid'] and cli['parent_birth_id']==launcher['birth_id'],diagnostics
     if 'java' in pids:
         java=next(row for row in rows if row['pid']==pids['java'])
-        assert java['parent_pid']==cli['pid'] and java['parent_birth_id']==cli['birth_id']
-    assert lifecycle['cleanup']['outcome']==cleanup and lifecycle['cleanup']['survivors']==[]
+        assert java['parent_pid']==cli['pid'] and java['parent_birth_id']==cli['birth_id'],diagnostics
+    assert lifecycle['cleanup']['outcome']==cleanup and lifecycle['cleanup']['survivors']==[],diagnostics
 
 
 @pytest.mark.parametrize('fault,reason',[('storage_no_java','Storage Java child missing'),('storage_download','Storage CLI attempted download')])
@@ -935,6 +954,67 @@ def test_storage_readiness_child_exit_stops_assertions_and_cleans(shell_fixture,
     # Readiness is failed, while the existing cleanup can pass after a clean
     # early CLI exit has reaped Java and released every owned port.
     assert_storage_tree_stopped(shell_fixture, lifecycle)
+
+
+def test_storage_readiness_cli_exit_with_linux_reaped_birth(shell_fixture):
+    root,env=shell_fixture
+    # Linux requires SO_REUSEADDR on both binders when cleanup reuses the hub
+    # address after an active close. Capture the option BEFORE the first bind;
+    # Darwin can otherwise hide the missing option on that previous listener.
+    launcher=root/'bin/firebase'
+    source=launcher.read_text()
+    target='exit_hub.bind('
+    assert source.count(target)==1
+    launcher.write_text(source.replace(target,"(root/'exit-hub-options.json').write_text(json.dumps({'reuseaddr_before_bind':exit_hub.getsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR)})); "+target))
+    # Linux removes /proc/<pid>/stat after wait/reap. Darwin's synthetic birth
+    # otherwise hides the fixture's read-before-signal failure for a gone CLI.
+    helper=root/'.venv/bin/python'
+    source=helper.read_text()
+    target='def birth(pid):\n'
+    assert source.count(target)==1
+    helper.write_text(source.replace(target,target+''' try: os.kill(pid,0)
+ except ProcessLookupError: raise FileNotFoundError('/proc/'+str(pid)+'/stat')
+'''))
+    env['FIXTURE_STANDALONE']='true'
+    control=run_shell(shell_fixture)
+    assert control.returncode==0,control.stdout+control.stderr
+    result=run_shell(shell_fixture,'storage_ready_cli_exit',storage=True)
+    assert result.returncode!=0 and 'Storage CLI exited during readiness' in result.stderr,result.stdout+result.stderr
+    lifecycle=json.loads((root/'lifecycle.json').read_text())
+    assert ('storage.ready','failed') in [(row['id'],row['outcome']) for row in lifecycle['stages']]
+    assert 'storage-test.mjs' not in (root/'calls.jsonl').read_text()
+    assert_storage_tree_stopped(shell_fixture,lifecycle)
+    assert 'Storage cleanup:' not in result.stderr,result.stderr
+    options=json.loads((root/'exit-hub-options.json').read_text())
+    assert options['reuseaddr_before_bind']!=0,'Linux requires SO_REUSEADDR on the previous hub listener before bind: '+json.dumps(options)
+
+
+def test_storage_cleanup_rejects_live_owned_survivor(shell_fixture):
+    root,env=shell_fixture
+    control=run_shell(shell_fixture)
+    assert control.returncode==0,control.stdout+control.stderr
+    reporter=root/'scripts/data/engine-contract-reporter.mjs'
+    source=reporter.read_text()
+    target='    const survivors=children.filter('
+    assert source.count(target)==1
+    # Seed a late-discovered, genuinely live owner at the final survivor gate.
+    # Keep it a direct child of this test so teardown can always kill AND reap
+    # it, without leaving an orphan/zombie behind on either operating system.
+    reporter.write_text(source.replace(target,"    storageOwners.push({pid:Number(env.FIXTURE_SURVIVOR_PID),...storageIdentity(Number(env.FIXTURE_SURVIVOR_PID),env)});\n"+target))
+    child=subprocess.Popen([sys.executable,'-c','import signal; signal.pause()'])
+    try:
+        (root/'instances'/f'{child.pid}.json').write_text(json.dumps({'pid':child.pid,'parent':os.getpid(),'command':'owned-survivor'}))
+        env['FIXTURE_SURVIVOR_PID']=str(child.pid)
+        result=run_shell(shell_fixture,storage=True)
+        os.kill(child.pid,0)
+        assert result.returncode!=0,'live owned survivor was accepted: '+result.stdout+result.stderr
+        lifecycle=json.loads((root/'lifecycle.json').read_text())
+        assert lifecycle['cleanup']['outcome']=='failed',lifecycle['cleanup']
+        assert lifecycle['cleanup']['survivors']==[child.pid],lifecycle['cleanup']
+        assert ('storage.assertions','passed') in [(row['id'],row['outcome']) for row in lifecycle['stages']]
+    finally:
+        child.kill()
+        child.wait(timeout=5)
 
 
 @contextmanager
