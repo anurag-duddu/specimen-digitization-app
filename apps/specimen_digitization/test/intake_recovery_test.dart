@@ -379,11 +379,7 @@ void main() {
       await tester.pumpWidget(app('other'));
       await tester.pumpAndSettle();
       expect(recovered, 0);
-      await tester.runAsync(() async {
-        await tester.pumpWidget(app('owner'));
-        await Future<void>.delayed(const Duration(milliseconds: 100));
-      });
-      await tester.pumpAndSettle();
+      await _pumpRecovery(tester, app('owner'));
       expect(recovered, 1);
       await tester.ensureVisible(find.text('recovered.png'));
       await tester.pumpAndSettle();
