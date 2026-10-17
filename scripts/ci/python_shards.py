@@ -140,11 +140,13 @@ def timing_hints(value):
     return value if isinstance(value, TimingHints) else TimingHints(value or {})
 
 
-def load_timings(path=TIMINGS, *, fingerprints=None):
+def load_timings(path=TIMINGS):
     """Load schema-1 lower bounds or schema-2/3 complete measured module costs.
 
-    Measurement SHA identifies the original run, not the future commit carrying
-    this file. Changed sources/inputs conservatively invalidate complete costs.
+    Measurement SHA and source fingerprints record the original run, not the
+    future commit carrying this file. Costs only balance shards, so changed
+    sources/inputs keep every measured cost; `partition` decides per module,
+    by collected inventory, whether a cost is exact.
     Schema 3 makes paths and SHA-256 values explicit record fields; schemas 1
     and 2 retain their original mapping representation and validation.
     """
@@ -181,10 +183,6 @@ def load_timings(path=TIMINGS, *, fingerprints=None):
             if (type(inventory) is not dict or set(inventory) != set(timings)
                     or any(not valid_digest(sha) for sha in inventory.values())):
                 raise ValueError("invalid module inventory digests")
-            current = source_fingerprints() if fingerprints is None else fingerprints
-            if current != sources:
-                timings = {}
-                inventory = {}
         return TimingHints(timings, mode="complete" if complete else "lower_bound",
                            manifest_digest=hashlib.sha256(contents).hexdigest(),
                            module_inventory_digests=inventory)
@@ -192,30 +190,37 @@ def load_timings(path=TIMINGS, *, fingerprints=None):
         raise ValueError(f"invalid Python shard timings: {error}") from error
 
 
+def module_weights(nodeids, timings=None):
+    """Estimate each module's cost; weights only balance shards, never select tests.
+
+    A complete measurement of the same collected node set is that module's
+    exact cost. A module whose node set changed, and every legacy lower bound,
+    keeps its measured seconds plus the item prior. Unknown modules get the prior.
+    """
+    timings = timing_hints(timings)
+    module_nodes = {}
+    for node in nodeids:
+        module_nodes.setdefault(node.split("::", 1)[0], []).append(node)
+    weights = {}
+    for module, nodes in module_nodes.items():
+        prior = len(nodes) / 10
+        seconds = timings.get(module, 0)
+        exact = timings.mode == "complete" and module in timings
+        if timings.module_inventory_digests is not None:
+            exact &= timings.module_inventory_digests.get(module) == digest(nodes)
+        weights[module] = seconds if exact else prior + seconds
+    return weights
+
+
 def partition(nodeids, count, timings=None):
     """Keep modules together while balancing measured time plus collection size."""
     if type(count) is not int or count < 1 or len(set(nodeids)) != len(nodeids):
         raise ValueError("invalid shard count or duplicate collected node IDs")
-    module_nodes = {}
-    for node in nodeids:
-        module_nodes.setdefault(node.split("::", 1)[0], []).append(node)
-    sizes = {module: len(nodes) for module, nodes in module_nodes.items()}
-    timings = timing_hints(timings)
+    weights = module_weights(nodeids, timings)
     loads = [0.0] * count
     owners = {}
-    # Unknown/new/changed modules always keep every item and its prior cost.
-    # Complete measurements replace that prior; legacy lower bounds add to it.
-    weights = {}
-    for module in sizes:
-        prior = sizes[module] / 10
-        measured = module in timings
-        if timings.module_inventory_digests is not None:
-            measured &= timings.module_inventory_digests.get(module) == digest(module_nodes[module])
-        seconds = timings[module] if measured else 0
-        weights[module] = (seconds if measured and timings.mode == "complete"
-                           else prior + seconds)
     assigned = [0] * count
-    for module in sorted(sizes, key=lambda name: (-weights[name], name)):
+    for module in sorted(weights, key=lambda name: (-weights[name], name)):
         index = min(range(count), key=lambda shard: (
             loads[shard], assigned[shard] if weights[module] == 0 else 0, shard))
         owners[module] = index

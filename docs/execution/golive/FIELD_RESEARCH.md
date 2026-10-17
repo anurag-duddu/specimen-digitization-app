@@ -2324,6 +2324,14 @@ reason and scope, consumes an ordinary research attempt and retains all usage,
 prices and spending limits; it supplies no geographic values. Ordinary Retry
 continues to preserve supported fields.
 
+Location reconciliation shares captured source answers across every grounded
+location literal, regardless of which expert requested the lookup. Distinct
+source-typed administrative text constrains compatible parent chains; qualified
+parents then narrow their children. An ambiguous town cannot choose a county,
+and conflicting written administrative places or distinct authority matches
+remain unresolved. This uses the answers already captured during the attempt;
+it makes no additional lookup and does not reopen an exhausted attempt.
+
 If `SPECIMEN_RESEARCH_HARNESS` is rolled back to "on", a run field research
 left `retry_scheduled` (`field_research_timeout`, `field_research_model_error`,
 `lookup_operational_failure`) is refused by native provisioning when its retry

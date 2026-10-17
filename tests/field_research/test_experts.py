@@ -751,6 +751,7 @@ def test_the_field_deadline_is_a_timeout(field_clock):
     outcome = asyncio.run(run())
 
     assert outcome.failure == "timeout" and outcome.answer is None
+    assert outcome.model_calls == 1
     # The cancelled request keeps its worst case: it may have been billed.
     assert cost.outstanding_micros == 0 and cost.spent_micros == outcome.cost_micros > 0
 
