@@ -423,6 +423,7 @@ class UiField extends StatefulWidget {
     this.semanticsLabel,
     this.keyboardType,
     this.textInputAction,
+    this.autofillHints = const <String>[],
     this.textCapitalization = TextCapitalization.none,
     this.inputFormatters,
     this.minLines,
@@ -516,6 +517,9 @@ class UiField extends StatefulWidget {
 
   /// What the action key does.
   final TextInputAction? textInputAction;
+
+  /// Platform autofill purposes for this value. Null opts out of autofill.
+  final Iterable<String>? autofillHints;
 
   /// How the platform capitalises.
   final TextCapitalization textCapitalization;
@@ -689,6 +693,7 @@ class _UiFieldState extends State<UiField> {
     inputFormatters: widget.inputFormatters,
     keyboardType: widget.keyboardType,
     textInputAction: widget.textInputAction,
+    autofillHints: widget.autofillHints,
     textCapitalization: widget.textCapitalization,
     onChanged: widget.onChanged,
     onSubmitted: widget.onSubmitted,
