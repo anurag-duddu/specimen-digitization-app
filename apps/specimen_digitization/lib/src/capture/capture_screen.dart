@@ -83,6 +83,10 @@ class CaptureResult {
 }
 
 /// The viewfinder, review step and batch counter.
+///
+/// Sensitive controls appear in the viewfinder and review only when
+/// [onCaptured] is supplied. Without it, no [CapturedPhoto] is produced;
+/// [onAccepted] and [CaptureResult.files] continue to carry files only.
 class CaptureScreen extends StatefulWidget {
   const CaptureScreen({
     super.key,
@@ -108,6 +112,8 @@ class CaptureScreen extends StatefulWidget {
 
   /// Receives the same accepted file with its per-photo sensitivity.
   /// When both callbacks are supplied, each is called once for that photo.
+  /// Supplying this callback enables both Sensitive controls. When null,
+  /// neither control is shown and no [CapturedPhoto] is produced.
   final ValueChanged<CapturedPhoto>? onCaptured;
 
   /// The starting choice for this camera session; never persisted here.
@@ -125,10 +131,17 @@ class CaptureScreen extends StatefulWidget {
   /// Reads a plain, camera-safe summary of the intake queue.
   final CaptureActivity Function()? activitySnapshot;
 
-  /// Optional batch summary, already composed by Intake. Overrides the snapshot.
+  /// Optional batch summary, already composed by Intake. When non-null, this
+  /// and [statusBlocked] override [activitySnapshot], even on [activity] ticks.
+  /// A directly embedded widget can receive new values from its parent.
+  /// Values passed to [route] are fixed when it is pushed; use [activity] and
+  /// [activitySnapshot] for live updates while that route is open.
   final String? statusLabel;
 
   /// Whether [statusLabel] describes a photo the operator needs to fix.
+  /// Used only when [statusLabel] is non-null, overriding the snapshot's tone
+  /// even on [activity] ticks. Values passed to [route] are fixed when pushed;
+  /// live route status must use [activity] and [activitySnapshot] instead.
   final bool statusBlocked;
 
   /// Whether a separate operating-system camera app is a meaningful fallback.
@@ -136,6 +149,16 @@ class CaptureScreen extends StatefulWidget {
   final bool deviceFallbackAvailable;
 
   /// The route the intake screen pushes.
+  ///
+  /// Both Sensitive controls appear only when [onCaptured] is non-null.
+  /// Otherwise no [CapturedPhoto] is produced; [onAccepted] and the result
+  /// still carry files only. [initialSensitive] initializes those controls.
+  ///
+  /// [statusLabel] and [statusBlocked] are captured when the route is pushed;
+  /// rebuilding its builder does not supply new values. A non-null
+  /// [statusLabel] overrides [activitySnapshot], including its tone via
+  /// [statusBlocked], even while [activity] ticks. Pass [activity] and
+  /// [activitySnapshot] without [statusLabel] to keep the route status live.
   static Route<CaptureResult> route(
     CaptureCameraFactory camera, {
     ValueChanged<XFile>? onAccepted,
@@ -921,14 +944,15 @@ class _CaptureScreenState extends State<CaptureScreen>
                       ),
                     ],
                   ),
-                  UiSwitch(
-                    key: const ValueKey('capture-review-sensitive'),
-                    label: _sensitiveLabel,
-                    value: _reviewSensitive,
-                    onChanged: _editing
-                        ? null
-                        : (value) => setState(() => _reviewSensitive = value),
-                  ),
+                  if (widget.onCaptured != null)
+                    UiSwitch(
+                      key: const ValueKey('capture-review-sensitive'),
+                      label: _sensitiveLabel,
+                      value: _reviewSensitive,
+                      onChanged: _editing
+                          ? null
+                          : (value) => setState(() => _reviewSensitive = value),
+                    ),
                 ],
               ],
             ),
@@ -1186,15 +1210,17 @@ class _CaptureScreenState extends State<CaptureScreen>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          UiSwitch(
-            key: const ValueKey('capture-sensitive'),
-            label: _sensitiveLabel,
-            value: _sensitive,
-            onChanged: _capturing
-                ? null
-                : (value) => setState(() => _sensitive = value),
-          ),
-          SizedBox(height: ui.space.s2),
+          if (widget.onCaptured != null) ...[
+            UiSwitch(
+              key: const ValueKey('capture-sensitive'),
+              label: _sensitiveLabel,
+              value: _sensitive,
+              onChanged: _capturing
+                  ? null
+                  : (value) => setState(() => _sensitive = value),
+            ),
+            SizedBox(height: ui.space.s2),
+          ],
           Row(
             children: [
               Expanded(

@@ -44,47 +44,146 @@ Future<void> _pump(
   });
 }
 
+// Text builds a RichText child. Count that content once, plus standalone
+// RichText, and only where it is painted and hittable on this route.
+List<String> _visibleCopy(WidgetTester tester) => find
+    .descendant(
+      of: find.byType(CaptureScreen),
+      matching: find.byWidgetPredicate(
+        (widget) => widget is Text || widget is RichText,
+      ),
+    )
+    .hitTestable()
+    .evaluate()
+    .where((element) => element.findAncestorWidgetOfExactType<Icon>() == null)
+    .where(
+      (element) =>
+          element.widget is Text ||
+          element.findAncestorWidgetOfExactType<Text>() == null,
+    )
+    .map((element) {
+      final widget = element.widget;
+      return (widget is Text
+              ? widget.data ?? widget.textSpan!.toPlainText()
+              : (widget as RichText).text.toPlainText())
+          .trim();
+    })
+    .where((text) => text.isNotEmpty)
+    .toList();
+
+int _wordCount(Iterable<String> texts) =>
+    texts.fold(0, (count, text) => count + text.split(RegExp(r'\s+')).length);
+
 void main() {
-  testWidgets('INT-UX-010 viewfinder has one instruction and no caveats', (
-    tester,
-  ) async {
-    await _pump(tester, CaptureScreen(camera: () async => FakeCaptureCamera()));
-    expect(find.byType(NotCalibratedChip), findsNothing);
-    expect(find.text('Fit specimen and labels inside'), findsOneWidget);
-    // Icons use a font-backed RichText internally; count the visible words,
-    // not glyph code points from controls.
-    final texts = find
-        .descendant(
-          of: find.byType(CaptureScreen),
-          matching: find.byType(RichText),
-        )
-        .evaluate()
-        .where(
-          (element) => element.findAncestorWidgetOfExactType<Icon>() == null,
-        )
-        .map((element) => (element.widget as RichText).text.toPlainText())
-        .where((text) => text.isNotEmpty);
-    expect(
-      texts,
-      unorderedEquals([
-        'Review',
-        'Send now',
-        'Fit specimen and labels inside',
-        'Sensitive',
-        '0',
-        'Done',
-      ]),
+  for (final wired in [false, true]) {
+    testWidgets(
+      'INT-UX-010 viewfinder has one instruction and no caveats onCaptured=$wired',
+      (tester) async {
+        await _pump(
+          tester,
+          CaptureScreen(
+            camera: () async => FakeCaptureCamera(),
+            onCaptured: wired ? (_) {} : null,
+          ),
+        );
+        expect(find.byType(NotCalibratedChip), findsNothing);
+        expect(find.text('Fit specimen and labels inside'), findsOneWidget);
+        final texts = _visibleCopy(tester);
+        expect(
+          texts,
+          unorderedEquals([
+            'Review',
+            'Send now',
+            'Fit specimen and labels inside',
+            if (wired) 'Sensitive',
+            '0',
+            'Done',
+          ]),
+        );
+        expect(
+          _wordCount(
+            texts.where(
+              (text) => ![
+                'Review',
+                'Send now',
+                'Sensitive',
+                '0',
+                'Done',
+              ].contains(text),
+            ),
+          ),
+          lessThanOrEqualTo(6),
+        );
+        expect(
+          find.textContaining('Framing, focus and label coverage'),
+          findsNothing,
+        );
+        expect(find.textContaining('skip review'), findsNothing);
+        expect(
+          find.text('Review and adjust each photo before sending it.'),
+          findsNothing,
+        );
+      },
     );
-    expect(
-      find.textContaining('Framing, focus and label coverage'),
-      findsNothing,
+  }
+
+  for (final review in [false, true]) {
+    testWidgets(
+      'F1 legacy callback hides Sensitive in ${review ? 'review' : 'viewfinder'}',
+      (tester) async {
+        final accepted = <XFile>[];
+        await _pump(
+          tester,
+          CaptureScreen(
+            camera: () async => FakeCaptureCamera(),
+            onAccepted: accepted.add,
+          ),
+        );
+        if (review) await takeOne(tester);
+        expect(find.byKey(const ValueKey('capture-sensitive')), findsNothing);
+        expect(
+          find.byKey(const ValueKey('capture-review-sensitive')),
+          findsNothing,
+        );
+        expect(find.text('Sensitive'), findsNothing);
+        if (review) {
+          await tester.tap(_button('Send'));
+          await tester.pumpAndSettle();
+          expect(accepted, hasLength(1));
+        }
+      },
     );
-    expect(find.textContaining('skip review'), findsNothing);
-    expect(
-      find.text('Review and adjust each photo before sending it.'),
-      findsNothing,
+  }
+
+  for (final wired in [false, true]) {
+    testWidgets(
+      'F4 INT-UX-021 visible review copy is at most eight words onCaptured=$wired',
+      (tester) async {
+        await _pump(
+          tester,
+          CaptureScreen(
+            camera: () async => FakeCaptureCamera(),
+            onCaptured: wired ? (_) {} : null,
+          ),
+        );
+        for (var count = 0; count < 3; count++) {
+          await takeOne(tester);
+          await tester.tap(_button('Send'));
+          await tester.pumpAndSettle();
+        }
+        await takeOne(tester);
+        final visible = _visibleCopy(tester);
+        expect(visible, contains('Photo 4'));
+        expect(visible, contains('All labels sharp and in frame?'));
+        if (wired) expect(visible, contains('Sensitive'));
+        final prose = visible.where(
+          (text) =>
+              !['Photo 4', 'Retake', 'Send', 'Crop', 'Rotate'].contains(text),
+        );
+        expect(_wordCount(prose), lessThanOrEqualTo(8));
+      },
     );
-  });
+  }
 
   testWidgets('INT-UX-011 send segments sit above preview and report changes', (
     tester,
@@ -152,7 +251,13 @@ void main() {
   testWidgets('INT-UX-014 sensitivity starts off and stays visibly on', (
     tester,
   ) async {
-    await _pump(tester, CaptureScreen(camera: () async => FakeCaptureCamera()));
+    await _pump(
+      tester,
+      CaptureScreen(
+        camera: () async => FakeCaptureCamera(),
+        onCaptured: (_) {},
+      ),
+    );
     final sensitive = find.byWidgetPredicate(
       (widget) => widget is UiSwitch && widget.label == 'Sensitive',
     );
@@ -380,7 +485,10 @@ void main() {
     (tester) async {
       await _pump(
         tester,
-        CaptureScreen(camera: () async => FakeCaptureCamera()),
+        CaptureScreen(
+          camera: () async => FakeCaptureCamera(),
+          onCaptured: (_) {},
+        ),
       );
       final toggle = find.byKey(const ValueKey('capture-sensitive'));
       await tester.tap(toggle);
@@ -391,7 +499,10 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           theme: AppTheme.light(),
-          home: CaptureScreen(camera: () async => FakeCaptureCamera()),
+          home: CaptureScreen(
+            camera: () async => FakeCaptureCamera(),
+            onCaptured: (_) {},
+          ),
         ),
       );
       await tester.pumpAndSettle();
