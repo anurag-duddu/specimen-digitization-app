@@ -400,7 +400,7 @@ class _Loading extends StatelessWidget {
     label: 'Loading record $id',
     child: UiTopBar(
       key: const ValueKey<String>('loading-record-toolbar'),
-      leading: AppSidebarScope.maybeOf(context)?.mobileNavigation == true
+      leading: WindowArrangement.of(context).isStacked
           ? UiIconButton(
               icon: UiIcons.back,
               semanticsLabel: AppShell.backLabel,

@@ -1004,8 +1004,12 @@ class _IntakeScreenState extends State<IntakeScreen> {
             constraints,
             textScaler: MediaQuery.textScalerOf(context),
           );
+          // A step of air under the shell's compact top bar, which the shell
+          // draws above Intake where the window is stacked; the page's own
+          // gutter where there is no bar above it, docked or outside a shell.
           final topInset =
-              AppSidebarScope.maybeOf(context)?.mobileNavigation == true
+              AppSidebarScope.maybeOf(context) != null &&
+                  WindowArrangement.of(context).isStacked
               ? ui.space.s2
               : layout.gutter;
           // One scroll keeps capture, classification and file errors reachable

@@ -29,7 +29,6 @@ import '../widgets/widgets.dart';
 import '../workspace.dart';
 import 'help_screen.dart';
 import 'routes.dart';
-import 'shell.dart';
 import 'session_notifier.dart';
 import 'setup_screen.dart';
 
@@ -447,7 +446,7 @@ class _WorkspacePageRoute<T> extends PageRoute<T> {
     // Keep the presentation ancestry stable across phone/tablet changes.
     // Replacing this wrapper would dispose the live review and its drafts.
     child: ColoredBox(
-      color: AppSidebarScope.maybeOf(context)?.mobileNavigation == true
+      color: WindowArrangement.of(context).isStacked
           ? context.ui.color.ground
           : context.ui.color.ground.withValues(alpha: 0),
       child: _page.child,
@@ -461,7 +460,7 @@ class _WorkspacePageRoute<T> extends PageRoute<T> {
     Widget child,
   ) {
     if (defaultTargetPlatform == TargetPlatform.iOS &&
-        AppSidebarScope.maybeOf(context)?.mobileNavigation == true) {
+        WindowArrangement.of(context).isStacked) {
       return CupertinoRouteTransitionMixin.buildPageTransitions<T>(
         this,
         context,
@@ -644,7 +643,7 @@ class _EnvironmentFrame extends StatelessWidget {
             child: SafeArea(
               bottom: false,
               child: UiBandForm(
-                form: WindowClass.of(context).isCompact
+                form: WindowArrangement.of(context).isStacked
                     ? UiBannerForm.strip
                     : UiBannerForm.full,
                 child: EnvironmentBanner(environment: environment),
