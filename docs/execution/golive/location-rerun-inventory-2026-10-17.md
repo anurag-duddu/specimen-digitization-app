@@ -1,7 +1,8 @@
 # Location rerun inventory, 2026-10-17
 
 Task: `LOCATION-RERUN-INVENTORY-20261017`. Branch `claude/location-rerun-inventory`.
-Read-only: no production write, no paid model call, no source request.
+The inventory is read-only: no production write, no paid model call, no source request.
+The "Batch rerun" section at the end records owner-approved runs and is not.
 Observed 2026-10-17 between 12:50 and 13:20 UTC, against `origin/main` at `7f0447c3`.
 
 ## In short
@@ -10,7 +11,7 @@ Observed 2026-10-17 between 12:50 and 13:20 UTC, against `origin/main` at `7f044
   other 17 collections has a specimen yet, so this list is the whole queue.
 - **4 records have a location value in the wrong place.** Three of them ran before
   any of the location fixes. The fourth (`ebfc6171`) came out wrong again on its
-  fourth live attempt at 05:50 UTC today. It saved a village in Mexico as its city,
+  fourth live attempt at 05:50 UTC today. It saved a populated place in Mexico as its city,
   then derived the Philippines as that city's country.
 - **4 more are incomplete** in shapes the fixes address. **3 never finished field
   research or are blocked.** **1** is an old run whose values look right but were
@@ -126,11 +127,14 @@ records outside `ebfc6171`, observed with the same read-only queries. Times are 
 
 - 16:10: PR #365 merged (`4894bf2e`). It raised the program allowance to USD 28 (G30)
   and the G9 ceiling to USD 30. Both public markers later reported `ee727747`, which
-  contains it, and every new run below pins `allowance_micros` 28000000.
-- 16:27 to 16:40: "Start new run" on the 10 records other than `e98a924c`.
-- 16:31 to 16:42: five `handwriting-muse` readings ended `provider_request_failed`
-  after 60 s each, the client timeout (`reader_timeout_seconds` 120, halved for the
-  Hugging Face gateway). The runs waited for a retry.
+  contains it, and every new run below records `program_allowance.allowance_micros`
+  28000000.
+- 16:27 to 16:39: "Start new run" on the 10 records other than `e98a924c`.
+- 16:31 to 16:43: five `handwriting-muse` readings, begun between 16:31 and 16:42,
+  failed after about 60 s each with no answer (Logfire: `RuntimeError:
+  provider_request_failed`; run graphs: `reader_worker_failed`). 60 s is the client
+  timeout: `reader_timeout_seconds` 120, halved for the Hugging Face gateway. The runs
+  waited for a retry.
 - 16:45:10: worker execution `specimen-worker-4fk49` exited 1 on a
   `requests.ConnectionError` (RemoteDisconnected) from a SQL Connect request made by
   `settle_step`. Nothing restarts the worker job (`maxRetries` 0; Cloud Scheduler and Cloud
@@ -150,8 +154,8 @@ records outside `ebfc6171`, observed with the same read-only queries. Times are 
 All 11 new runs ended `completed` / `needs_human_review`, between 17:58 and 18:48.
 Their usage records USD 5.459 reserved in total (USD 0.289 to 0.996 per run), with
 `actual_cost_micros` null on every run. The ledger total rose from 15,161,257 to
-20,620,245 micro-units (revision 1006 to 1265), by the same 5,458,988. USD 7.38 of the
-USD 28 allowance is left. The inventory estimated USD 5.40 to 10.95.
+20,620,245 micro-units (revision 1006 to 1265), by the same 5,458,988. After the last
+run's charge, at 18:48:33, USD 7.38 of the USD 28 allowance was left. The inventory estimated USD 5.40 to 10.95.
 
 By the inventory's groups:
 
@@ -184,8 +188,9 @@ By the inventory's groups:
     line ("Coles Co." and "USAI.C. Coleco.").
   - `e98a924c`: country Philippines, province Davao (`wikidata:Q15095071`) and county not
     present settled. Its city is unresolved; its locality reads "McKinley, Davao Prov.".
-- **Old run.** `9cc24b07`: country Guatemala (`wikidata:Q774`), province Chimaltenango
-  Department and city Yepocapa (GEOLocate) settled. Its county is ambiguous.
+- **Old run.** `9cc24b07`: province Chimaltenango Department settled. Its country
+  Guatemala and city Yepocapa, supported before with no authority, now carry
+  `wikidata:Q774` and a GEOLocate id. Its county is ambiguous.
 
 ### Shapes still open
 
@@ -193,8 +198,9 @@ Not fixed here. Each record above is in human review.
 
 1. County ambiguous where the label names only a first-level unit: `93e61763`,
    `9cc24b07`, `f35af3a5` and `48a71d53` (as `d3fb389f` in the inventory).
-2. "Davao Prov." settles as the province on `f35af3a5` and `e98a924c`, but is ambiguous
-   on `48a71d53` and `cb903c0e`, whose labels also name Mindanao.
+2. "Davao Prov." settles as the province on `f35af3a5` and `e98a924c`. On `48a71d53`
+   and `cb903c0e` a reader also offers "Mindanao" (an island) for the province, and the
+   province ends ambiguous.
 3. Country not settled although lower units are: `d10333ff` (Illinois, Edgar County)
    and `2b02009d` ("P.I.").
 4. `19f0f1f6` reaches its USD 1 run limit before field research checks a location. Its
