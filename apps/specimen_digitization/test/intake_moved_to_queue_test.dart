@@ -1,8 +1,3 @@
-// Owner, 2026-10-12: "once it ends up in the main queue, we dont need that in
-// the intake right?" A photo the server has put in the main Queue leaves the
-// Intake list and this device's saved list by itself, is announced once, and
-// takes nobody's keyboard focus with it. Every other state stays.
-
 import 'dart:async';
 import 'dart:convert';
 
@@ -241,7 +236,7 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
 
   test(
-    'a finished photo leaves Intake and the saved list; others stay',
+    'handed-off photos leave the list and polling; only unsent rows stay',
     () async {
       final Map<String, Json> summaries = <String, Json>{
         'done': _summary('done', status: 'completed', disposition: 'cleared'),
@@ -286,34 +281,22 @@ void main() {
       await session.refreshProcessingStatuses();
 
       expect(session.entries.map((ManifestEntry e) => e.name), <String>[
-        'running.jpg',
-        'blocked.jpg',
-        'waiting.jpg',
         'ready.jpg',
         'failed.jpg',
       ]);
       expect(session.entries.map((ManifestEntry e) => e.state), <UploadState>[
-        UploadState.processing,
-        UploadState.processingBlocked,
-        UploadState.processing,
         UploadState.ready,
         UploadState.failed,
       ]);
       expect(handoffs, 1, reason: 'the main Queue still refreshes once');
-      expect(session.movedToQueue, 1);
-      expect(await _savedSpecimens('moved-operator'), <String>[
-        'running',
-        'blocked',
-        'waiting',
-      ]);
-      expect(
-        ingestionQueueLine(session.entries),
-        '5 photographs · 1 ready, 2 processing, 2 need attention',
-      );
+      expect(session.movedToQueue, 4);
+      expect(await _savedSpecimens('moved-operator'), isEmpty);
+      expect(session.needsProcessingPoll, isFalse);
+      expect(ingestionQueueLine(session.entries), '1 to fix · 1 ready');
 
       // A second check of the same server state moves nothing again.
       await session.refreshProcessingStatuses();
-      expect(session.movedToQueue, 1);
+      expect(session.movedToQueue, 4);
       expect(handoffs, 1);
       session.close();
     },
@@ -360,7 +343,7 @@ void main() {
         }),
       );
       final ApiSpecimenRepository repository = _server(<String, Json>{
-        'still-running': _summary('still-running'),
+        'still-running': _summary('still-running', status: 'pending'),
       });
       addTearDown(repository.close);
       final IntakeTransferSession session = IntakeTransferSession(
@@ -403,7 +386,7 @@ void main() {
         'blocked': _summary(
           'blocked',
           status: 'processing_blocked',
-          blocker: 'model_output_invalid',
+          blocker: 'sensitive_record_not_processed',
         ),
       });
       addTearDown(repository.close);
@@ -431,8 +414,8 @@ void main() {
       '${reduceMotion ? ' under reduced motion' : ''}',
       (WidgetTester tester) async {
         final Map<String, Json> summaries = <String, Json>{
-          'first': _summary('first'),
-          'second': _summary('second'),
+          'first': _summary('first', status: 'pending'),
+          'second': _summary('second', status: 'pending'),
         };
         final ApiSpecimenRepository repository = _server(summaries);
         addTearDown(repository.close);
@@ -449,7 +432,7 @@ void main() {
         await tester.runAsync(session.refreshProcessingStatuses);
         await _pumpManifest(tester, session, reduceMotion: reduceMotion);
         expect(find.text('first.jpg'), findsOneWidget);
-        expect(find.textContaining('2 photographs'), findsOneWidget);
+        expect(find.text('2 sending'), findsOneWidget);
 
         // The operator is reading the first row's progress details.
         final Finder firstDetails = find.descendant(
@@ -468,12 +451,7 @@ void main() {
         await tester.pump();
         expect(firstNode.hasFocus, isTrue);
 
-        summaries['first'] = _summary(
-          'first',
-          status: 'completed',
-          disposition: 'needs_human_review',
-          revision: 3,
-        );
+        summaries['first'] = _summary('first', status: 'running', revision: 3);
         await tester.runAsync(session.refreshProcessingStatuses);
         await tester.pump();
         if (reduceMotion) {
@@ -489,10 +467,7 @@ void main() {
 
         expect(find.text('first.jpg'), findsNothing);
         expect(find.text('second.jpg'), findsOneWidget);
-        expect(
-          find.textContaining('1 photograph · 1 processing'),
-          findsOneWidget,
-        );
+        expect(find.textContaining('1 sending'), findsOneWidget);
         final FocusNode? focused = FocusManager.instance.primaryFocus;
         expect(focused, isNotNull);
         expect(focused!.context, isNotNull);
@@ -522,7 +497,7 @@ void main() {
       _saved('owner', <String, String>{'tracked': 'processing'}),
     );
     final Map<String, Json> summaries = <String, Json>{
-      'tracked': _summary('tracked'),
+      'tracked': _summary('tracked', status: 'pending'),
     };
     final ApiSpecimenRepository repository = _server(summaries);
     addTearDown(repository.close);
@@ -557,18 +532,10 @@ void main() {
       await tester.pump();
     }
     expect(find.text('Photos'), findsOneWidget);
-    expect(
-      find.text('Photograph ${_digest('tracked').substring(0, 12)}'),
-      findsOneWidget,
-    );
+    expect(find.text('Saved photo'), findsOneWidget);
     expect(announced, isEmpty);
 
-    summaries['tracked'] = _summary(
-      'tracked',
-      status: 'completed',
-      disposition: 'cleared',
-      revision: 3,
-    );
+    summaries['tracked'] = _summary('tracked', status: 'running', revision: 3);
     final IntakeTransferSession session = intakeTransferSession(
       repository,
       _scope,
@@ -580,13 +547,13 @@ void main() {
     expect(find.text('Photos'), findsNothing);
     expect(session.entries, isEmpty);
     expect(await _savedSpecimens('owner'), isEmpty);
-    expect(announced, <String>['Photo moved to the main Queue.']);
+    expect(announced, <String>['1 photo sent']);
     expect(completions, 1, reason: 'the main Queue refreshes for the move');
 
     // Later frames and checks do not repeat it.
     await tester.runAsync(session.refreshProcessingStatuses);
     await tester.pumpAndSettle();
-    expect(announced, <String>['Photo moved to the main Queue.']);
+    expect(announced, <String>['1 photo sent']);
     semantics.dispose();
     await tester.pumpWidget(const SizedBox());
   });
@@ -617,7 +584,7 @@ void main() {
     expect(session.movedToQueue, 2);
     await tester.pumpAndSettle();
 
-    expect(announced, <String>['2 photos moved to the main Queue.']);
+    expect(announced, <String>['2 photos sent']);
     expect(find.text('first.jpg'), findsNothing);
     expect(find.text('second.jpg'), findsNothing);
     semantics.dispose();
@@ -794,7 +761,7 @@ void main() {
   }
 
   test('the move line counts photos plainly', () {
-    expect(movedToQueueLine(1), 'Photo moved to the main Queue.');
-    expect(movedToQueueLine(3), '3 photos moved to the main Queue.');
+    expect(movedToQueueLine(1), '1 photo sent');
+    expect(movedToQueueLine(3), '3 photos sent');
   });
 }

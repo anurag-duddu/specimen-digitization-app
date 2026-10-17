@@ -125,7 +125,7 @@ void main() {
       ],
     );
     await chooseFiles(tester);
-    expect(find.text('0 of 3 uploaded'), findsOneWidget);
+    expect(find.text('3 ready'), findsOneWidget);
     expect(repository.created, isEmpty);
 
     await tester.ensureVisible(uploadButton);
@@ -155,11 +155,8 @@ void main() {
     // The file already sending finished. The two that had not started are
     // named, not left in an unlabelled state (pass criterion 3.6).
     expect(repository.created, <String>['one.png']);
-    expect(find.text('1 of 3 uploaded'), findsOneWidget);
-    expect(
-      find.text('Stopped before this file started. Upload again to continue.'),
-      findsNWidgets(2),
-    );
+    expect(find.text('1 to fix · 2 ready'), findsOneWidget);
+    expect(find.text('Stopped. Send to continue.'), findsNWidgets(2));
   });
 
   testWidgets('a refused file becomes a skipped row with its own reason', (
@@ -180,18 +177,12 @@ void main() {
     );
     await chooseFiles(tester);
 
-    expect(find.text('0 of 3 uploaded, 2 skipped'), findsOneWidget);
+    expect(find.text('2 to fix · 1 ready'), findsOneWidget);
     expect(find.text('Not uploaded'), findsNWidgets(2));
     expect(find.text('empty.png'), findsOneWidget);
     expect(find.text('notes.txt'), findsOneWidget);
-    expect(
-      find.text('This file is empty, so there is nothing to upload.'),
-      findsOneWidget,
-    );
-    expect(
-      find.textContaining('This client uploads JPEG, PNG, HEIC, TIFF and DNG.'),
-      findsOneWidget,
-    );
+    expect(find.text('Empty file. Choose another.'), findsOneWidget);
+    expect(find.text('Use JPEG, PNG, HEIC, TIFF or DNG.'), findsOneWidget);
     // Every reason sits in the row it belongs to (H9.4).
     expect(find.byType(IntakeManifestRow), findsNWidgets(3));
   });
@@ -214,7 +205,7 @@ void main() {
     expect(buttonEnabled(tester, uploadButton), isTrue);
     await chooseFiles(tester);
     expect(repository.created, isEmpty);
-    expect(find.text('Send 2 for processing'), findsOneWidget);
+    expect(find.text('Send 2 photos'), findsOneWidget);
     expect(confirmCheckbox, findsNothing);
     await submitBatch(tester);
     expect(repository.created, <String>['take-0.png', 'take-1.png']);
@@ -233,9 +224,9 @@ void main() {
     );
     expect(uploadButton, findsNothing);
     await chooseFiles(tester);
-    expect(find.text('Send 1 for processing'), findsOneWidget);
+    expect(find.text('Send 1 photo'), findsOneWidget);
     await chooseFiles(tester);
-    expect(find.text('Send 2 for processing'), findsOneWidget);
+    expect(find.text('Send 2 photos'), findsOneWidget);
   });
 
   testWidgets('removing a row takes it out of the batch', (

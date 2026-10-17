@@ -104,13 +104,14 @@ def current_human_location_fields(repository, specimen) -> set[str]:
     return protected
 
 
-def can_reassess_locations(run: Run, protected=()) -> bool:
+def can_reassess_locations(run: Run, protected=(), *, specimen=None) -> bool:
     """An explicit, bounded reassessment of a completed location hierarchy.
 
     This does not repin the profile, repeat readings or replenish any budget.
     Settled records continue to use ordinary Retry's rules-only recheck.
     """
     from .reliability import has_active_lease
+    from .location_reassessment_authorization import authorization_for
     from ..field_research.location_reassessment import eligible_keys
 
     if (
@@ -120,7 +121,8 @@ def can_reassess_locations(run: Run, protected=()) -> bool:
         or run.blocker is not None
         or has_active_lease(run)
         or "evidence_pilot" in run.dependencies
-        or run.attempts.get(FIELD_RESEARCH, 0) >= run.profile.execution.max_attempts
+        or (run.attempts.get(FIELD_RESEARCH, 0) >= run.profile.execution.max_attempts
+            and authorization_for(run, specimen) is None)
     ):
         return False
     eligible = eligible_keys(run) - set(protected)
@@ -128,11 +130,12 @@ def can_reassess_locations(run: Run, protected=()) -> bool:
     return any(key in eligible and value.state in unsettled for key, value in run.fields.items())
 
 
-def requeue_location_reassessment(run: Run, protected=()) -> list[str]:
+def requeue_location_reassessment(run: Run, protected=(), *, specimen=None) -> list[str]:
     """Queue one location-only pass, leaving fields and accounting untouched."""
     from ..field_research.location_reassessment import eligible_keys
+    from .location_reassessment_authorization import authorization_for
 
-    if not can_reassess_locations(run, protected):
+    if not can_reassess_locations(run, protected, specimen=specimen):
         return []
     fields = sorted(eligible_keys(run) - set(protected))
     run.dependencies["location_reassessment"] = {
@@ -140,6 +143,8 @@ def requeue_location_reassessment(run: Run, protected=()) -> list[str]:
         "fields": fields,
         "protected": sorted(protected),
     }
+    if authorization := authorization_for(run, specimen):
+        run.dependencies["location_reassessment"]["authorization_id"] = authorization
     run.completed_steps = [step for step in run.completed_steps if step != FIELD_RESEARCH]
     return fields
 
@@ -645,8 +650,13 @@ class Workflow:
             > policy.approved_cost_limit_micros
         ):
             money_issue = "cost_budget_exhausted"
+        from .location_reassessment_authorization import authorized_queued_attempt
+
         issue = None
-        if run.usage.steps >= policy.max_steps:
+        if (step == FIELD_RESEARCH and run.attempts.get(step, 0) >= policy.max_attempts
+                and not authorized_queued_attempt(specimen)):
+            issue = ATTEMPTS_USED
+        elif run.usage.steps >= policy.max_steps:
             issue = "step_budget_exhausted"
         elif (
             external
@@ -669,7 +679,7 @@ class Workflow:
                 self.reserve_retained_cost(principal, specimen, step, cost)
             except OperationalBlock as error:
                 issue = str(error)
-        if issue in RESEARCH_LIMITS and step == FIELD_RESEARCH:
+        if (issue in RESEARCH_LIMITS or issue == ATTEMPTS_USED) and step == FIELD_RESEARCH:
             # Money comes first: a run whose cost ceiling, cost settings or
             # totals, or program allowance would refuse this attempt keeps that
             # block. The allowance is only read here (lane_allowance.admits),

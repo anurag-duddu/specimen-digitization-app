@@ -2332,6 +2332,27 @@ and conflicting written administrative places or distinct authority matches
 remain unresolved. This uses the answers already captured during the attempt;
 it makes no additional lookup and does not reopen an exhausted attempt.
 
+On 2026-10-16 the owner authorized one additional same-run location reassessment
+for specimen `ebfc6171-bf2f-56b8-a35b-442798810461`, run
+`e7b00556-f006-4be7-9bd8-82ebf41173be`, in organization
+`e4b2a17f-c28b-4e13-8273-c8297083d215` and collection
+`200d7057-23fa-41ab-875b-682c8ba218c9`. The earlier third attempt exposed the
+shared-source reconciliation defect fixed by PR349. The reviewed server
+exception admits only the existing explicit action from count three to count
+four for this exact identity. Its authorization identifier is
+`owner-2026-10-16-ebfc-location-attempt-4`, recorded with the existing action
+audit and location-only queue marker. The original execution policy remains
+pinned at three attempts, with USD1 per run and USD16 shared; earlier attempts,
+usage, prices, readings, checkpoints and reviewer decisions remain retained.
+
+The worker validates the exact prospective fourth marker before reserving or
+sending work. Exhausted field research without that authorization is given up
+unsent, including ordinary Retry/Resume after the fourth. The normal intent
+save counts the fourth before dispatch; failure or history restore cannot
+replenish it. Source protection, final-attempt handling and all money limits
+continue to apply. This exception provides no fifth attempt or additional
+attempt for another record or processing stage.
+
 If `SPECIMEN_RESEARCH_HARNESS` is rolled back to "on", a run field research
 left `retry_scheduled` (`field_research_timeout`, `field_research_model_error`,
 `lookup_operational_failure`) is refused by native provisioning when its retry
