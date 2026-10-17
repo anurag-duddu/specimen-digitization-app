@@ -288,7 +288,8 @@ void main() {
     expect(
       delegate,
       isNot(contains('GeneratedPluginRegistrant.register(with: self)')),
-      reason: 'Registering with the app delegate runs before the engine exists.',
+      reason:
+          'Registering with the app delegate runs before the engine exists.',
     );
   });
 
