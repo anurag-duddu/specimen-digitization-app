@@ -7,6 +7,7 @@ library;
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
@@ -86,8 +87,8 @@ DateTime? queueUpdatedAt(Specimen specimen) {
 class QueueScreen extends StatelessWidget {
   const QueueScreen({super.key});
 
-  /// The pull to refresh wrapper around the list, present while the reviewer
-  /// is using touch.
+  /// The pull to refresh wrapper around the list, present in the iOS and
+  /// Android apps.
   static const Key pullToRefreshKey = ValueKey<String>('queue-pull-to-refresh');
 
   @override
@@ -709,11 +710,12 @@ class _QueuePaneState extends State<QueuePane> {
       ],
     );
 
-    // Pull to refresh is a touch gesture, so it is offered while the reviewer
-    // is using touch, on any device: the owner chose a touch check over a
-    // platform check on 2026-10-17 (motion catalog, row 21, amended). The
-    // list is never cleared while the refresh is out: the rows that are
-    // there stay there.
+    // Pull to refresh is a touch gesture of the phone and tablet apps, and on
+    // the web it fights the browser's own pull to refresh, so it is offered
+    // on iOS and Android only (motion catalog, row 21). Web and desktop
+    // refresh from the account menu's reload control, as the owner confirmed
+    // on 2026-10-17. The list is never cleared while the refresh is out: the
+    // rows that are there stay there.
     return _pullToRefresh
         ? _PullToRefresh(
             key: QueueScreen.pullToRefreshKey,
@@ -730,9 +732,11 @@ class _QueuePaneState extends State<QueuePane> {
   /// Search matches the exact specimen identifier the API accepts.
   static const String searchHint = 'Specimen ID';
 
-  /// True while the reviewer is using touch, from the design system's
-  /// density, which follows the last pointer the window saw.
-  bool get _pullToRefresh => Density.of(context).isTouch;
+  /// True on the two platforms whose pull gesture is the app's to own.
+  bool get _pullToRefresh =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.iOS ||
+          defaultTargetPlatform == TargetPlatform.android);
 
   Widget _skeleton(
     UiThemeData ui,

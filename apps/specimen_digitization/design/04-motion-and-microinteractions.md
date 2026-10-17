@@ -557,15 +557,13 @@ it, and so is the instruction above to leave that bar alone.
 | 28 | Empty state (`workspace.dart:386-412`) | opacity, arriving with the rest of the list | `standard` 200, `standard` | instant | none | Static icon, static text. This is the place an animated illustration would go, and we are declining it (section 3.4). |
 | 29 | Collection dropdown changed (`workspace.dart:643-654`) | The queue clears and reloads: skeleton, then rows | `standard` 200, `standard` | instant | none | Treat as a fresh load, row 13. The dropdown menu itself uses Material's default. |
 
-**Amendment, 2026-10-17, row 21.** The owner chose a touch check over the
-platform check above. Asked in the coordinating Claude Code session which
-existing platform checks to approve, the owner left "Pull-to-refresh on
-Specimens" unselected; that option read "Recommended NOT to approve: switch it
-to a "touch screen" check instead, so it also works on touch tablets and
-laptops". So the queue offers pull to refresh while `Density.of(context)` is
-touch, on any device, and names no platform. Whether a phone browser's own
-pull to refresh competes with it, which is why the row gated on `!kIsWeb`, is
-not confirmed on a device.
+**Amendment, 2026-10-17, row 21.** Confirmed by the owner, in the
+coordinating Claude Code session: "Mobile and tablet stay on pull to refresh
+web nd desktop might need exception the refresh icon we already have is
+relevant there". So the gate above stands: pull to refresh in the iOS and
+Android apps, phones and tablets, and on the web and the desktop the account
+menu's "Refresh collection" control, which every window has.
+`test/screens/queue_test.dart` holds both halves on every target platform.
 
 ### 4.3 Workbench: source image
 

@@ -4,13 +4,14 @@
 
 import 'dart:async';
 
-import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 import 'package:specimen_digitization/main.dart';
+import 'package:specimen_digitization/src/app/shell.dart' show AppShell;
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/screens/queue/queue_screen.dart';
 import 'package:specimen_digitization/src/screens/queue/workbench_screen.dart';
@@ -566,11 +567,13 @@ void main() {
     });
   });
 
-  // Motion catalog row 21, amended 2026-10-17: pull to refresh follows the
-  // design system's touch density, not the platform. The same assertions on
-  // four platforms are the proof that the platform no longer decides.
+  // Motion catalog row 21 as the owner confirmed it on 2026-10-17: pull to
+  // refresh in the iOS and Android apps, and the account menu's reload
+  // control everywhere, so a desktop window is never left without a refresh.
+  // The web runs the desktop path; `kIsWeb` is a compile-time constant, so a
+  // widget test cannot be the web.
   testWidgets(
-    'pull to refresh is offered while the reviewer uses touch, on any platform',
+    'phones and tablets pull to refresh; every window reloads from the menu',
     (tester) async {
       final ScriptedRepository repository = ScriptedRepository()
         ..results = <Specimen>[
@@ -581,36 +584,26 @@ void main() {
           }),
         ];
       await pumpQueue(tester, repository);
-      final Finder pull = find.byKey(QueueScreen.pullToRefreshKey);
-
-      // An 800 dp window starts in touch, below UiDensity.pointerDefaultWidth.
-      expect(pull, findsOneWidget);
-
-      // A mouse moving over the window makes it a pointer window.
-      final TestGesture mouse = await tester.createGesture(
-        kind: PointerDeviceKind.mouse,
+      final bool app =
+          defaultTargetPlatform == TargetPlatform.iOS ||
+          defaultTargetPlatform == TargetPlatform.android;
+      expect(
+        find.byKey(QueueScreen.pullToRefreshKey),
+        app ? findsOneWidget : findsNothing,
       );
-      await mouse.addPointer(location: const Offset(400, 700));
-      await mouse.moveTo(const Offset(420, 700));
-      await tester.pumpAndSettle();
-      expect(pull, findsNothing);
-      await mouse.removePointer();
 
-      // A finger on the glass makes it a touch window again.
-      final TestGesture finger = await tester.startGesture(
-        const Offset(400, 700),
-        kind: PointerDeviceKind.touch,
-      );
-      await finger.up();
+      final int loads = repository.requests.length;
+      await tester.tap(uiMenuTrigger(RegExp('^${AppShell.accountLabel}')));
       await tester.pumpAndSettle();
-      expect(pull, findsOneWidget);
+      await tester.tap(find.text(AppShell.reloadLabel));
+      await tester.pumpAndSettle();
+      expect(
+        repository.requests.length,
+        greaterThan(loads),
+        reason: 'the reload control asks the collection again',
+      );
       await tester.pumpWidget(const SizedBox());
     },
-    variant: TargetPlatformVariant(<TargetPlatform>{
-      TargetPlatform.android,
-      TargetPlatform.iOS,
-      TargetPlatform.macOS,
-      TargetPlatform.windows,
-    }),
+    variant: TargetPlatformVariant.all(),
   );
 }

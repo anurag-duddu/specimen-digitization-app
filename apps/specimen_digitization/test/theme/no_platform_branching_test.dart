@@ -30,14 +30,13 @@ import 'platform_scan.dart';
 /// Every declaration allowed a platform check. Sorted by path, then site.
 ///
 /// The brief of 2026-10-17 named nine files; their declarations are below.
-/// Two more files make checks, both page transitions, which 09 section 2
-/// principle 5 gives the platform: `app_router.dart` (the iOS page
-/// transition, 04 row 18) and `app_theme.dart` (`PageTransitionsTheme` is
-/// keyed by platform and gives every key the same builder). The owner
-/// approved both, and the skip of the generated options below, on
-/// 2026-10-17; each entry carries the sign-off. The queue's pull to refresh
-/// asked the platform until the owner chose a touch check instead (04 row
-/// 21, amended); it reads `Density.of(context)` and needs no entry.
+/// Three more files make checks, all behaviour 09 section 2 principle 5 gives
+/// the platform: `app_router.dart` (the iOS page transition, 04 row 18),
+/// `queue_screen.dart` (pull to refresh in the iOS and Android apps, 04 row
+/// 21) and `app_theme.dart` (`PageTransitionsTheme` is keyed by platform and
+/// gives every key the same builder). The owner approved all three, and the
+/// skip of the generated options below, on 2026-10-17; each entry carries
+/// the owner's words.
 const List<PlatformCapability> platformCapabilities = <PlatformCapability>[
   PlatformCapability(
     'lib/firebase_options.ci.dart',
@@ -175,6 +174,25 @@ const List<PlatformCapability> platformCapabilities = <PlatformCapability>[
     'the paste field is a debug-only aid for the opted-in iPhone demo',
     readers: <String, int>{
       'lib/src/magic_link_screen.dart _MagicLinkSignInScreenState.build': 1,
+    },
+  ),
+  // owner-approved: 2026-10-17 "Yes approved" (the owner, in the guard-gates
+  // Claude Code session, answering whether to approve the four platform
+  // exemptions on PR #358)
+  // owner-approved: 2026-10-17 "Mobile and tablet stay on pull to refresh web
+  // nd desktop might need exception the refresh icon we already have is
+  // relevant there" (the owner, in the coordinating Claude Code session,
+  // asked which of the two answers stands for pull to refresh): pull to
+  // refresh on the iOS and Android apps, phones and tablets; web and desktop
+  // rely on the refresh icon, the account menu's reload control.
+  PlatformCapability(
+    'lib/src/screens/queue/queue_screen.dart',
+    '_QueuePaneState._pullToRefresh',
+    <String, int>{webFlag: 1, targetPlatform: 2, targetPlatformType: 2},
+    'pull to refresh is the iOS and Android apps\' gesture; web and desktop '
+        'reload from the account menu (04 row 21)',
+    readers: <String, int>{
+      'lib/src/screens/queue/queue_screen.dart _QueuePaneState._list': 1,
     },
   ),
   PlatformCapability(
