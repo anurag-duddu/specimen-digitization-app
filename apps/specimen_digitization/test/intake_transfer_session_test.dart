@@ -213,6 +213,8 @@ class RetryTransferRepository extends TransferRepository {
   Object? accessFailure;
   String failAt = 'create';
   int serverOffset = 0;
+  int failureOffset = 1;
+  bool reportFailureProgress = true;
 
   void checkAccess(String point) {
     if (point != failAt || accessFailure == null) return;
@@ -250,8 +252,8 @@ class RetryTransferRepository extends TransferRepository {
     offsets.add((session['offset'] as int?) ?? 0);
     if (failures.isNotEmpty) {
       await failureGate?.future;
-      serverOffset = 1;
-      progress(1 / 3);
+      serverOffset = failureOffset;
+      if (reportFailureProgress) progress(serverOffset / file.bytes.length);
       throw failures.removeAt(0);
     }
     await super.upload(scope, session, file, progress);
@@ -563,9 +565,9 @@ void main() {
     },
   );
 
-  test(
+  testWidgets(
     'processing polling pauses without observers and resumes on attach',
-    () async {
+    (tester) async {
       final TransferRepository repository = TransferRepository();
       repository.summaries['specimen-observed'] = processingSpecimen(
         'specimen-observed',
@@ -590,11 +592,11 @@ void main() {
 
       session.addListener(observer);
       session.removeListener(observer);
-      await Future<void>.delayed(const Duration(milliseconds: 35));
+      await tester.pump(const Duration(milliseconds: 35));
       expect(repository.summaryRequests, isEmpty);
 
       session.addListener(observer);
-      await Future<void>.delayed(const Duration(milliseconds: 35));
+      await tester.pump(const Duration(milliseconds: 35));
       expect(repository.summaryRequests, <String>['specimen-observed']);
       // In the main Queue, the photo leaves Intake (owner, 2026-10-12).
       expect(session.entries, isEmpty);
@@ -604,7 +606,9 @@ void main() {
     },
   );
 
-  test('reattaching stays paused until sign-in resumes the session', () async {
+  testWidgets('reattaching stays paused until sign-in resumes the session', (
+    tester,
+  ) async {
     final TransferRepository repository = TransferRepository()
       ..summaryAccessFailures = 1;
     repository.summaries['specimen-access'] = processingSpecimen(
@@ -629,13 +633,13 @@ void main() {
     void observer() {}
 
     session.addListener(observer);
-    await Future<void>.delayed(const Duration(milliseconds: 35));
+    await tester.pump(const Duration(milliseconds: 35));
     expect(repository.summaryRequests, <String>['specimen-access']);
     expect(session.entries.single.state, UploadState.processing);
 
     session.removeListener(observer);
     session.addListener(observer);
-    await Future<void>.delayed(const Duration(milliseconds: 35));
+    await tester.pump(const Duration(milliseconds: 35));
     expect(repository.summaryRequests, <String>['specimen-access']);
     await session.resumeAfterSignIn();
     expect(repository.summaryRequests, <String>[
@@ -685,6 +689,46 @@ void main() {
     );
   }
 
+  for (final String blocker in [
+    'sensitive_record_not_processed',
+    'collection_processing_unconfigured',
+    'program_allowance_unavailable',
+  ]) {
+    testWidgets('F7 $blocker survives a missing summary', (tester) async {
+      final TransferRepository repository = TransferRepository();
+      final IntakeTransferSession session = IntakeTransferSession(
+        repository,
+        scope,
+        'missing',
+        processingPollInterval: Duration.zero,
+      );
+      addTearDown(session.close);
+      final ManifestEntry photo = trackedPhotograph('missing');
+      session.entries.add(photo);
+      repository.summaries['missing'] = processingSpecimen(
+        'missing',
+        status: 'processing_blocked',
+        blocker: blocker,
+      );
+      await session.refreshProcessingStatuses();
+      final IntakeStatus confirmed = intakeStatus(photo);
+      repository.summaries.clear();
+      await session.refreshProcessingStatuses();
+      expect(intakeStatus(photo).status, confirmed.status);
+      expect(intakeStatus(photo).reason, confirmed.reason);
+      expect(intakeStatus(photo).action, IntakeAction.dismiss);
+      expect(
+        session.summary,
+        blocker == 'sensitive_record_not_processed' ? '1 held' : '1 to fix',
+      );
+      expect(session.canRetryProcessing(photo), isFalse);
+      await tester.pump(const Duration(seconds: 120));
+      expect(repository.retryRequests, isEmpty);
+      session.remove(photo);
+      expect(session.entries, isEmpty);
+    });
+  }
+
   test(
     'status outage preserves a pending record until read recovery',
     () async {
@@ -723,7 +767,9 @@ void main() {
     },
   );
 
-  test('route reattach immediately checks a pending summary', () async {
+  testWidgets('route reattach immediately checks a pending summary', (
+    tester,
+  ) async {
     final TransferRepository repository = TransferRepository();
     final IntakeTransferSession session = IntakeTransferSession(
       repository,
@@ -748,7 +794,7 @@ void main() {
     );
 
     session.addListener(observer);
-    await Future<void>.delayed(Duration.zero);
+    await tester.pump(const Duration(milliseconds: 1));
 
     expect(repository.summaryRequests, hasLength(2));
     expect(photograph.state, UploadState.inMainQueue);
@@ -758,7 +804,9 @@ void main() {
     session.close();
   });
 
-  test('background pauses reads and sign-in recovery resumes them', () async {
+  testWidgets('background pauses reads and sign-in recovery resumes them', (
+    tester,
+  ) async {
     final TestWidgetsFlutterBinding binding =
         TestWidgetsFlutterBinding.ensureInitialized();
     final TransferRepository repository = TransferRepository()
@@ -779,16 +827,16 @@ void main() {
     void observer() {}
     try {
       session.addListener(observer);
-      await Future<void>.delayed(const Duration(milliseconds: 35));
+      await tester.pump(const Duration(milliseconds: 35));
       expect(repository.summaryRequests, hasLength(1));
       expect(photograph.state, UploadState.processing);
 
       binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-      await Future<void>.delayed(const Duration(milliseconds: 35));
+      await tester.pump(const Duration(milliseconds: 35));
       expect(repository.summaryRequests, hasLength(1));
 
       binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-      await Future<void>.delayed(Duration.zero);
+      await tester.pump();
       expect(repository.summaryRequests, hasLength(1));
       await session.resumeAfterSignIn();
       expect(repository.summaryRequests, hasLength(2));
@@ -1130,6 +1178,130 @@ void main() {
     );
   }
 
+  for (final bool reportProgress in [true, false]) {
+    testWidgets(
+      'F6 ${reportProgress ? 'progress' : 'server offset'} restarts retry backoff at five seconds',
+      (tester) async {
+        final RetryTransferRepository repository = RetryTransferRepository()
+          ..holdFirst = false
+          ..failureOffset = 0
+          ..reportFailureProgress = reportProgress
+          ..failures.addAll(
+            List.filled(4, const ApiFailure('lost', code: 'network')),
+          );
+        final IntakeTransferSession session = IntakeTransferSession(
+          repository,
+          scope,
+          'progress',
+        );
+        addTearDown(session.close);
+        final ManifestEntry photo = entry('progress');
+        session.entries.add(photo);
+        await session.start();
+        await tester.pump(const Duration(seconds: 4));
+        expect(repository.offsets, [0]);
+        await tester.pump(const Duration(seconds: 1));
+        expect(repository.offsets, [0, 0]);
+        await tester.pump(const Duration(seconds: 14));
+        expect(repository.offsets, [0, 0]);
+        // The third attempt advances, through progress or a fresh server offset.
+        repository.failureOffset = 2;
+        if (!reportProgress) repository.serverOffset = 2;
+        await tester.pump(const Duration(seconds: 1));
+        expect(repository.offsets, hasLength(3));
+        await tester.pump(const Duration(seconds: 4));
+        expect(repository.offsets, hasLength(3));
+        await tester.pump(const Duration(seconds: 1));
+        expect(repository.offsets, hasLength(4));
+        // No further progress: the next failure backs off to 15 seconds.
+        await tester.pump(const Duration(seconds: 14));
+        expect(repository.offsets, hasLength(4));
+        await tester.pump(const Duration(seconds: 1));
+        expect(repository.offsets, hasLength(5));
+        expect(photo.state, UploadState.accepted);
+      },
+    );
+  }
+
+  for (final ApiFailure refusal in [
+    const ApiFailure('refused', status: 422),
+    const ApiFailure('image_codec_disabled', status: 503),
+    const ApiFailure('different setting', code: 'intake_sensitivity_mismatch'),
+  ]) {
+    testWidgets('F4 Stop preserves earlier ${refusal.message} refusal', (
+      tester,
+    ) async {
+      final RetryTransferRepository repository = RetryTransferRepository()
+        ..holdFirst = false
+        ..failures.add(refusal);
+      final IntakeTransferSession session = IntakeTransferSession(
+        repository,
+        scope,
+        'stop-refusal',
+      );
+      addTearDown(session.close);
+      final ManifestEntry refused = entry('refused');
+      session.entries.add(refused);
+      await session.start();
+      final IntakeStatus confirmed = intakeStatus(refused);
+      final String? detail = refused.why;
+      final Completer<void> inFlight = Completer<void>();
+      repository.failureGate = inFlight;
+      repository.failures.add(const ApiFailure('lost', code: 'network'));
+      session.entries.add(entry('second'));
+      final Future<void> sending = session.start();
+      await tester.pump();
+      expect(repository.offsets, hasLength(2));
+      session.stop();
+      inFlight.complete();
+      await sending;
+      expect(refused.state, UploadState.failed);
+      expect(intakeStatus(refused).status, confirmed.status);
+      expect(intakeStatus(refused).reason, confirmed.reason);
+      expect(intakeStatus(refused).action, confirmed.action);
+      expect(refused.why, detail);
+      await session.start();
+      expect(repository.offsets, hasLength(3));
+      expect(refused.state, UploadState.failed);
+    });
+  }
+
+  for (final int status in [401, 403]) {
+    testWidgets('F5 Stop before $status prevents sign-in resuming transfers', (
+      tester,
+    ) async {
+      final Completer<void> inFlight = Completer<void>();
+      final RetryTransferRepository repository = RetryTransferRepository()
+        ..holdFirst = false
+        ..failureGate = inFlight
+        ..failures.add(ApiFailure('signed out', status: status));
+      final IntakeTransferSession session = IntakeTransferSession(
+        repository,
+        scope,
+        'stop-auth',
+      );
+      addTearDown(session.close);
+      final List<ManifestEntry> photos = [entry('first'), entry('second')];
+      session.entries.addAll(photos);
+      final Future<void> sending = session.start();
+      await tester.pump();
+      expect(repository.offsets, [0]);
+      session.stop();
+      inFlight.complete();
+      await sending;
+      expect(session.signInRequired, isTrue);
+      await session.resumeAfterSignIn();
+      await tester.pump(const Duration(seconds: 90));
+      expect(repository.offsets, [0]);
+      expect(photos.map((p) => p.state), everyElement(UploadState.ready));
+      expect(photos.map((p) => intakeStatus(p).status), everyElement('Ready'));
+      expect(
+        photos.map((p) => p.reason),
+        everyElement('Stopped. Send to continue.'),
+      );
+    });
+  }
+
   testWidgets('retry delays are 5, 15, 60 then 60 seconds', (tester) async {
     final RetryTransferRepository repository = RetryTransferRepository()
       ..holdFirst = false
@@ -1190,7 +1362,10 @@ void main() {
       final ManifestEntry photograph = entry('now');
       session.entries.add(photograph);
       await session.start();
+      await tester.pump(const Duration(seconds: 1));
+      expect(repository.offsets, [0]);
       await session.start(only: photograph);
+      expect(repository.offsets, [0, 1]);
       await tester.pump(const Duration(seconds: 90));
       expect(repository.offsets, [0, 1]);
       expect(repository.createKeys, hasLength(1));

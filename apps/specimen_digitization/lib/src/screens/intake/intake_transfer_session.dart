@@ -5,6 +5,7 @@ library;
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -76,6 +77,7 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
   final Set<VoidCallback> _handedOff = <VoidCallback>{};
   final Map<ManifestEntry, Timer> _transferRetries = <ManifestEntry, Timer>{};
   final Map<ManifestEntry, int> _transferAttempts = <ManifestEntry, int>{};
+  final Map<ManifestEntry, double> _transferProgressAtFailure = {};
   final Set<ManifestEntry> _retryDue = <ManifestEntry>{};
   final Map<ManifestEntry, Timer> _automaticStarts = <ManifestEntry, Timer>{};
   final Set<ManifestEntry> _startDue = <ManifestEntry>{};
@@ -84,6 +86,7 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
   bool _refreshingProcessing = false;
   bool _observingAppLifecycle = false;
   bool _appInBackground = false;
+  int _foregroundGeneration = 0;
   bool busy = false;
   bool stopping = false;
   bool _closed = false;
@@ -169,7 +172,20 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    final bool wasInBackground = _appInBackground;
     _appInBackground = state != AppLifecycleState.resumed;
+    if (_appInBackground || wasInBackground) {
+      // A pre-background offer cannot authorize work after resuming. Keep the
+      // confirmed display, but require a read begun in this foreground period.
+      _foregroundGeneration++;
+      for (final ManifestEntry entry in entries) {
+        entry.startOfferCurrent = false;
+      }
+      changed();
+    }
+    if (!_appInBackground && wasInBackground) {
+      unawaited(refreshProcessingStatuses());
+    }
     _scheduleProcessingPoll(immediately: !_appInBackground);
     if (!_appInBackground) _resumeAutomaticWork();
   }
@@ -240,11 +256,42 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> persist() async {
+    await _persist();
+  }
+
+  Future<bool> _persist({ManifestEntry? automaticStart}) async {
     await beforePersist?.call();
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     if (_closed) {
       await prefs.remove(_storageKey);
-      return;
+      return false;
+    }
+    await prefs.reload();
+    if (_closed) {
+      await prefs.remove(_storageKey);
+      return false;
+    }
+    final List<Json> stored = objects(
+      jsonDecode(prefs.getString(_storageKey) ?? '[]'),
+    );
+    for (final ManifestEntry entry in entries) {
+      if (stored.any(
+        (row) =>
+            row['digest'] == entry.digest &&
+            row['upload_id'] == entry.session?['upload_id'] &&
+            row['specimen_id'] == entry.specimenId &&
+            row['automatic_start_attempted'] == true,
+      )) {
+        entry.automaticStartAttempted = true;
+      }
+    }
+    if (automaticStart != null) {
+      // Re-read shared storage just before saving the decision and dispatching.
+      // Also preserve another session's true flag on ordinary saves. This
+      // narrows the multi-session race; read/modify/write is NOT atomic. Two
+      // sessions that both read false before either writes can still dispatch.
+      if (automaticStart.automaticStartAttempted) return false;
+      automaticStart.automaticStartAttempted = true;
     }
     await prefs.setString(
       _storageKey,
@@ -273,6 +320,7 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
             .toList(),
       ),
     );
+    return true;
   }
 
   void remove(ManifestEntry entry) {
@@ -291,8 +339,12 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
   /// Stops after the current transfer. Pending retries return to Ready.
   void stop() {
     stopping = true;
+    _resumeSending = false;
+    _resumeOnly = null;
     for (final ManifestEntry entry in entries) {
-      if (entry.state == UploadState.interrupted && entry.file != null) {
+      if (entry.state == UploadState.interrupted &&
+          entry.file != null &&
+          intakeTransientFailure(entry.transferError)) {
         entry.state = UploadState.ready;
         entry.reason = intakeStoppedReason;
         entry.transferError = null;
@@ -304,6 +356,7 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
     _transferRetries.clear();
     _retryDue.clear();
     _transferAttempts.clear();
+    _transferProgressAtFailure.clear();
     changed();
   }
 
@@ -342,8 +395,8 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
         _retryDue.remove(entry);
         final bool authorized = await _sendOne(entry);
         if (!authorized) {
-          _resumeSending = true;
-          _resumeOnly = only;
+          _resumeSending = !stopping;
+          _resumeOnly = stopping ? null : only;
           break;
         }
         if (only != null) break;
@@ -355,7 +408,7 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
     } finally {
       if (!_closed && stopping) {
         for (final ManifestEntry entry in entries) {
-          if (entry.sendable && !attempted.contains(entry)) {
+          if (entry.sendable && entry.state == UploadState.ready) {
             entry.state = UploadState.ready;
             entry.reason = intakeStoppedReason;
             entry.why = null;
@@ -453,6 +506,7 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
       entry.file = null;
       final bool handedOff = entry.state == UploadState.inMainQueue;
       _transferAttempts.remove(entry);
+      _transferProgressAtFailure.remove(entry);
       _retireFinished();
       changed();
       await persist();
@@ -474,7 +528,7 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
           error is ApiFailure && (error.status == 401 || error.status == 403);
       if (denied) {
         entry.state = UploadState.ready;
-        entry.reason = null;
+        entry.reason = stopping ? intakeStoppedReason : null;
         entry.why = null;
         _pauseForSignIn();
       } else {
@@ -493,6 +547,18 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
             entry.reason = intakeStoppedReason;
             entry.transferError = null;
           } else {
+            // Offset and callback progress describe the same bytes: avoid
+            // counting a later offset confirmation as a second advance.
+            final Object? offset = entry.session?['offset'];
+            final double progress = math.max(
+              entry.progress,
+              offset is num && file.bytes.isNotEmpty
+                  ? offset / file.bytes.length
+                  : 0,
+            );
+            final double previous = _transferProgressAtFailure[entry] ?? 0;
+            if (progress > previous) _transferAttempts.remove(entry);
+            _transferProgressAtFailure[entry] = math.max(previous, progress);
             _scheduleTransferRetry(entry);
           }
         }
@@ -514,12 +580,13 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
     _processingPoll?.cancel();
     _processingPoll = null;
     _refreshingProcessing = true;
+    final int generation = _foregroundGeneration;
     var changedAny = false;
     final int sentBefore = sentCount;
     try {
       for (final ManifestEntry entry
           in entries.where(_needsProcessingRefresh).toList()) {
-        if (_closed) return;
+        if (_closed || _appInBackground) return;
         if (entry.checking) continue;
         final String specimenId = entry.specimenId!;
         final Specimen? summaryAtRead = entry.specimen;
@@ -542,13 +609,13 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
           // A read started before a user action cannot replace its newer
           // outcome or re-enable controls while that action is in flight.
           if (!entries.contains(entry) ||
+              generation != _foregroundGeneration ||
               entry.checking ||
               !identical(entry.specimen, summaryAtRead)) {
             continue;
           }
           if (specimen == null) {
-            entry.specimen = null;
-            entry.reason = null;
+            entry.startOfferCurrent = false;
           } else if (specimen.id != specimenId) {
             throw const ApiFailure(
               'The requested photo could not be verified.',
@@ -560,12 +627,12 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
         } on ApiFailure catch (error) {
           if (_closed) return;
           if (!entries.contains(entry) ||
+              generation != _foregroundGeneration ||
               entry.checking ||
               !identical(entry.specimen, summaryAtRead)) {
             continue;
           }
-          entry.specimen = null;
-          entry.reason = null;
+          entry.startOfferCurrent = false;
           entry.why = error.toString();
           changedAny = true;
           if (error.status == 401 || error.status == 403) {
@@ -575,12 +642,12 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
         } catch (_) {
           if (_closed) return;
           if (!entries.contains(entry) ||
+              generation != _foregroundGeneration ||
               entry.checking ||
               !identical(entry.specimen, summaryAtRead)) {
             continue;
           }
-          entry.specimen = null;
-          entry.reason = null;
+          entry.startOfferCurrent = false;
           changedAny = true;
         }
       }
@@ -592,8 +659,15 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
       }
     } finally {
       _refreshingProcessing = false;
-      _scheduleProcessingPoll();
-      _resumeAutomaticWork();
+      if (!_closed &&
+          !_appInBackground &&
+          generation != _foregroundGeneration) {
+        // Resume may have happened while an older read was still in flight.
+        unawaited(refreshProcessingStatuses());
+      } else {
+        _scheduleProcessingPoll();
+        _resumeAutomaticWork();
+      }
     }
   }
 
@@ -609,28 +683,47 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
     await _startProcessing(entry);
   }
 
-  Future<void> _startProcessing(ManifestEntry entry) async {
+  Future<void> _startProcessing(
+    ManifestEntry entry, {
+    bool automatic = false,
+  }) async {
     if (_closed ||
         busy ||
+        stopping ||
         _appInBackground ||
         signInRequired ||
         entry.checking ||
         !entries.contains(entry) ||
+        !entry.startOfferCurrent ||
         !intakeStartOffered(entry.specimen) ||
         repository is! IntakeProcessingRepository) {
       return;
     }
     final Specimen current = entry.specimen!;
+    final int generation = _foregroundGeneration;
     busy = true;
     entry.checking = true;
-    entry.automaticStartAttempted = true;
+    if (!automatic) entry.automaticStartAttempted = true;
     _automaticStarts.remove(entry)?.cancel();
     _startDue.remove(entry);
     changed();
     try {
-      // Save the once-only decision before a request can reach the service.
-      await persist();
-      if (_closed) return;
+      // The consumed attempt survives a guard change during persistence. Do
+      // not roll it back: another session may already have acted on the flag.
+      // Even if this request never leaves, retain the same conservative rule
+      // as a crash/ambiguous dispatch: read status, never auto-start again.
+      if (!await _persist(automaticStart: automatic ? entry : null)) return;
+      if (_closed ||
+          _appInBackground ||
+          signInRequired ||
+          stopping ||
+          generation != _foregroundGeneration ||
+          !entries.contains(entry) ||
+          !entry.startOfferCurrent ||
+          !identical(entry.specimen, current) ||
+          !intakeStartOffered(entry.specimen)) {
+        return;
+      }
       final Json response = await (repository as IntakeProcessingRepository)
           .startIntakeProcessing(
             scope,
@@ -653,7 +746,12 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
       }.contains(dispatchStatus)) {
         throw const ApiFailure('The processing start could not be confirmed.');
       }
-      _applyProcessingSummary(entry, refreshed);
+      _applyProcessingSummary(
+        entry,
+        refreshed,
+        startOfferCurrent:
+            !_appInBackground && generation == _foregroundGeneration,
+      );
       final int sentBefore = sentCount;
       _retireFinished();
       if (sentCount > sentBefore) _notifyHandoff();
@@ -663,6 +761,7 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
       // An ambiguous response is not a server-reported failed dispatch.
       // Read back before offering any action; never repeat the automatic start.
       entry.specimen = null;
+      entry.startOfferCurrent = false;
       entry.startDispatchStatus = null;
       entry.reason = null;
       entry.why = error.toString();
@@ -680,11 +779,16 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  void _applyProcessingSummary(ManifestEntry entry, Specimen specimen) {
+  void _applyProcessingSummary(
+    ManifestEntry entry,
+    Specimen specimen, {
+    bool startOfferCurrent = true,
+  }) {
     final int knownRevision = _processingRevisions[specimen.id] ?? 0;
     if (specimen.revision < knownRevision) return;
     _processingRevisions[specimen.id] = specimen.revision;
     entry.specimen = specimen;
+    entry.startOfferCurrent = startOfferCurrent && !_appInBackground;
     entry.specimenId = specimen.id;
     entry.why = null;
     final Object? dispatch = specimen.data['dispatch'];
@@ -731,6 +835,7 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
     _processingRevisions.remove(entry.specimenId);
     _transferRetries.remove(entry)?.cancel();
     _transferAttempts.remove(entry);
+    _transferProgressAtFailure.remove(entry);
     _retryDue.remove(entry);
     _automaticStarts.remove(entry)?.cancel();
     _startDue.remove(entry);
@@ -805,10 +910,11 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
       if (entries.contains(entry) &&
           !entry.automaticStartAttempted &&
           !entry.checking &&
+          entry.startOfferCurrent &&
           intakeStartOffered(entry.specimen) &&
           entry.startDispatchStatus != 'unconfigured' &&
           repository is IntakeProcessingRepository) {
-        unawaited(_startProcessing(entry));
+        unawaited(_startProcessing(entry, automatic: true));
         return;
       }
     }
@@ -863,6 +969,7 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
     }
     _transferRetries.clear();
     _transferAttempts.clear();
+    _transferProgressAtFailure.clear();
     _retryDue.clear();
     _automaticStarts.clear();
     _startDue.clear();

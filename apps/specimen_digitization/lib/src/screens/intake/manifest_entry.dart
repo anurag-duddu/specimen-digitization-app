@@ -108,7 +108,7 @@ class ManifestEntry {
   /// The record created by upload completion, once the server returns it.
   String? specimenId;
 
-  /// The most recent summary used for processing progress and retry.
+  /// The last confirmed summary, retained for display even if a later read fails.
   Specimen? specimen;
 
   /// The last transfer error, for classification and the details sheet.
@@ -120,7 +120,11 @@ class ManifestEntry {
   /// A server-reported start dispatch result, retained across status reads.
   String? startDispatchStatus;
 
-  /// Persisted before dispatch so restoring a photo cannot start it twice.
+  /// Whether this summary may authorize a start. Backgrounding or an unclear
+  /// read invalidates the offer without erasing the last confirmed display.
+  bool startOfferCurrent = true;
+
+  /// Persisted before dispatch; shared preferences do not provide atomic claims.
   bool automaticStartAttempted = false;
 
   /// Completion time anchors the one automatic start even after restoration.

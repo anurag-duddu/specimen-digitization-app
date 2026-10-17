@@ -179,7 +179,9 @@ IntakeStatus intakeStatus(ManifestEntry entry, {Specimen? summary}) {
             'Not started',
             IntakeTone.operational,
             reason: intakeStartFailedReason,
-            action: intakeStartOffered(summary) ? IntakeAction.start : null,
+            action: entry.startOfferCurrent && intakeStartOffered(summary)
+                ? IntakeAction.start
+                : null,
           );
         }
       }

@@ -80,6 +80,7 @@ class StartRepository
   int reads = 0;
   Object? startError;
   Completer<Specimen>? pendingRead;
+  Object? readError;
   final List<bool> persistedAttempts = [];
 
   @override
@@ -112,6 +113,7 @@ class StartRepository
     String id,
   ) async {
     reads++;
+    if (readError != null) throw readError!;
     return pendingRead?.future ?? Specimen(current);
   }
 
@@ -145,13 +147,16 @@ class StartRepository
 IntakeTransferSession automaticSession(
   StartRepository repository, {
   Duration delay = const Duration(seconds: 60),
+  Duration pollInterval = Duration.zero,
+  Future<void> Function()? beforePersist,
 }) {
   final IntakeTransferSession session = IntakeTransferSession(
     repository,
     _scope,
     'auto',
-    processingPollInterval: Duration.zero,
+    processingPollInterval: pollInterval,
     automaticStartDelay: delay,
+    beforePersist: beforePersist,
   );
   session.entries.add(
     ManifestEntry(
@@ -174,6 +179,218 @@ IntakeTransferSession automaticSession(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
+
+  testWidgets('F1 resume reads status before using an overdue start offer', (
+    tester,
+  ) async {
+    final StartRepository repository = StartRepository();
+    final IntakeTransferSession session = automaticSession(
+      repository,
+      pollInterval: const Duration(seconds: 5),
+    );
+    addTearDown(() {
+      session.close();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    });
+    await session.start();
+    session.addListener(() {});
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump(const Duration(seconds: 61));
+    final int readsBeforeResume = repository.reads;
+    final Completer<Specimen> read = Completer<Specimen>();
+    repository.pendingRead = read;
+    repository.current = _summary(status: 'running');
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(repository.keys, isEmpty);
+    expect(repository.reads, readsBeforeResume + 1);
+    read.complete(Specimen(repository.current));
+    await tester.pump();
+    expect(repository.keys, isEmpty);
+    expect(session.entries, isEmpty);
+    expect(session.summary, '1 sent');
+  });
+
+  testWidgets(
+    'F1 a read begun before background cannot renew the start offer',
+    (tester) async {
+      final StartRepository repository = StartRepository();
+      final IntakeTransferSession session = automaticSession(repository);
+      addTearDown(() {
+        session.close();
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+      });
+      await session.start();
+      final Completer<Specimen> oldRead = Completer<Specimen>();
+      repository.pendingRead = oldRead;
+      final Future<void> reading = session.refreshProcessingStatuses();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump(const Duration(seconds: 61));
+      repository.pendingRead = null;
+      repository.current = _summary(status: 'running');
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      oldRead.complete(Specimen(_summary()));
+      await reading;
+      await tester.pump();
+      expect(repository.keys, isEmpty);
+      expect(repository.reads, 2);
+      expect(session.entries, isEmpty);
+      expect(session.summary, '1 sent');
+    },
+  );
+
+  for (final String guard in [
+    'background',
+    'Stop',
+    'sign-in',
+    'changed offer',
+  ]) {
+    testWidgets('F2 $guard during start persistence prevents dispatch', (
+      tester,
+    ) async {
+      final StartRepository repository = StartRepository();
+      final Completer<void> write = Completer<void>();
+      bool holdWrite = false;
+      final IntakeTransferSession session = automaticSession(
+        repository,
+        beforePersist: () async {
+          if (holdWrite) await write.future;
+        },
+      );
+      addTearDown(() {
+        session.close();
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+      });
+      await session.start();
+      final ManifestEntry photo = session.entries.single;
+      holdWrite = true;
+      await tester.pump(const Duration(seconds: 60));
+      expect(session.busy, isTrue);
+      expect(repository.keys, isEmpty);
+      switch (guard) {
+        case 'background':
+          tester.binding.handleAppLifecycleStateChanged(
+            AppLifecycleState.paused,
+          );
+        case 'Stop':
+          session.stop();
+        case 'sign-in':
+          session.signInRequired = true;
+        case 'changed offer':
+          photo.specimen = Specimen(_summary(actions: []));
+      }
+      write.complete();
+      await tester.pump();
+      expect(repository.keys, isEmpty);
+      // The saved decision stays consumed: local storage cannot safely undo
+      // another session's attempt, even when this session sent no request.
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final List<dynamic> rows =
+          jsonDecode(prefs.getString('upload-handles-v1:auto:${_scope.key}')!)
+              as List<dynamic>;
+      expect(rows.single['automatic_start_attempted'], isTrue);
+      expect(photo.automaticStartAttempted, isTrue);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await session.resumeAfterSignIn();
+      await tester.pump(const Duration(seconds: 120));
+      expect(repository.keys, isEmpty);
+      expect(intakeStatus(photo).status, 'Starting');
+      expect(intakeStatus(photo).action, isNull);
+    });
+  }
+
+  for (final bool saveFirst in [false, true]) {
+    testWidgets(
+      'F3 a restored session respects another session start attempt (save=$saveFirst)',
+      (tester) async {
+        final StartRepository repository = StartRepository();
+        final IntakeTransferSession first = automaticSession(repository);
+        addTearDown(first.close);
+        await first.start();
+        final IntakeTransferSession second = IntakeTransferSession(
+          repository,
+          _scope,
+          'auto',
+          processingPollInterval: Duration.zero,
+          automaticStartDelay: const Duration(seconds: 61),
+        );
+        addTearDown(second.close);
+        await second.restore();
+        expect(second.entries.single.automaticStartAttempted, isFalse);
+        await tester.pump(const Duration(seconds: 60));
+        expect(repository.keys, hasLength(1));
+        // A stale session's ordinary save must not erase the other attempt.
+        if (saveFirst) await second.persist();
+        await tester.pump(const Duration(seconds: 2));
+        expect(repository.keys, hasLength(1));
+        expect(second.entries.single.automaticStartAttempted, isTrue);
+      },
+    );
+  }
+
+  for (final String blocker in [
+    'sensitive_record_not_processed',
+    'collection_processing_unconfigured',
+    'program_allowance_unavailable',
+  ]) {
+    testWidgets('F7 $blocker survives a 503 summary', (tester) async {
+      final StartRepository repository = StartRepository()
+        ..current = _summary(status: 'processing_blocked', blocker: blocker);
+      final IntakeTransferSession session = automaticSession(repository);
+      addTearDown(session.close);
+      await session.start();
+      final ManifestEntry photo = session.entries.single;
+      final IntakeStatus confirmed = intakeStatus(photo);
+      repository.readError = const ApiFailure('outage', status: 503);
+      await session.refreshProcessingStatuses();
+      expect(intakeStatus(photo).status, confirmed.status);
+      expect(intakeStatus(photo).reason, confirmed.reason);
+      expect(intakeStatus(photo).action, IntakeAction.dismiss);
+      expect(
+        session.summary,
+        blocker == 'sensitive_record_not_processed' ? '1 held' : '1 to fix',
+      );
+      await tester.pump(const Duration(seconds: 120));
+      expect(repository.keys, isEmpty);
+      session.remove(photo);
+      expect(session.entries, isEmpty);
+    });
+  }
+
+  for (final bool failedDispatch in [false, true]) {
+    testWidgets(
+      'F7 stale ${failedDispatch ? 'manual' : 'automatic'} start offer stays disabled until a successful read',
+      (tester) async {
+        final StartRepository repository = StartRepository();
+        if (failedDispatch) {
+          repository.current = {
+            ..._summary(),
+            'dispatch': {'status': 'failed'},
+          };
+        }
+        final IntakeTransferSession session = automaticSession(repository);
+        addTearDown(session.close);
+        await session.start();
+        final ManifestEntry photo = session.entries.single;
+        repository.readError = const ApiFailure('outage', status: 503);
+        await session.refreshProcessingStatuses();
+        expect(photo.specimen, isNotNull);
+        expect(intakeStatus(photo).action, isNull);
+        await session.retryProcessing(photo);
+        await tester.pump(const Duration(seconds: 60));
+        expect(repository.keys, isEmpty);
+        repository.readError = null;
+        await session.refreshProcessingStatuses();
+        await tester.pump();
+        expect(repository.keys, hasLength(1));
+      },
+    );
+  }
 
   testWidgets(
     'pending saved photo starts once at 60 seconds with no early button',
