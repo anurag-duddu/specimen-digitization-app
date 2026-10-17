@@ -645,3 +645,13 @@ regexTarget = "line"
 regexes = [
   '''^\s*"Idempotency-Key": "7651ca196a03f7cc18d5625844ca3b2fdc68a62d7b19c691c3b222ad40a77aa8",?\s*$''', # pragma: allowlist secret (synthetic shared-wire fixture idempotency key)
 ]
+
+[[rules.allowlists]]
+description = "Exact public CocoaPods AppAuth and GTMAppAuth specification checksums; see SECRET_SCAN_REVIEW.md"
+condition = "AND"
+paths = ['''^apps/specimen_digitization/ios/Podfile\.lock$''']
+regexTarget = "line"
+regexes = [
+  '''^\s*AppAuth: ef4da5a3fc2e10b90c09a0a94a9baeaedc0341d5\s*$''', # pragma: allowlist secret (public podspec checksum)
+  '''^\s*GTMAppAuth: 217a876b249c3c585a54fd6f73e6b58c4f5c4238\s*$''', # pragma: allowlist secret (public podspec checksum)
+]

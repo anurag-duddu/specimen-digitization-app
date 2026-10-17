@@ -260,6 +260,60 @@ void main() {
     );
   });
 
+  test('iOS adopts the UIScene lifecycle that iOS 27 requires at launch', () {
+    final String plist = File('ios/Runner/Info.plist').readAsStringSync();
+    final String delegate = File(
+      'ios/Runner/AppDelegate.swift',
+    ).readAsStringSync();
+    expect(
+      plist,
+      contains('<key>UIApplicationSceneManifest</key>'),
+      reason:
+          'An iOS 27 SDK build without a scene manifest is killed by UIKit at '
+          'launch (UIApplicationEvaluateRuntimeIssueForNoSceneLifecycleAdoption).',
+    );
+    expect(plist, contains('<string>FlutterSceneDelegate</string>'));
+    expect(plist, contains('<string>UIWindowScene</string>'));
+    // One window scene, the Flutter one. Whitespace is collapsed so the
+    // assertions do not depend on the plist's indentation.
+    final String flat = plist.replaceAll(RegExp(r'\s+'), ' ');
+    expect(
+      flat,
+      contains('<key>UIApplicationSupportsMultipleScenes</key> <false/>'),
+      reason: 'Flutter does not support multiple scenes yet.',
+    );
+    expect(
+      RegExp('<key>UISceneConfigurationName</key>').allMatches(flat),
+      hasLength(1),
+    );
+    expect(
+      flat,
+      contains('<key>UISceneStoryboardFile</key> <string>Main</string>'),
+    );
+    expect(
+      File('ios/Runner/Base.lproj/Main.storyboard').readAsStringSync(),
+      contains('customClass="FlutterViewController"'),
+      reason: 'The scene builds its window from the Main storyboard.',
+    );
+    expect(
+      delegate,
+      contains('FlutterImplicitEngineDelegate'),
+      reason: 'Plugins must register once the scene creates the engine.',
+    );
+    expect(
+      delegate,
+      contains(
+        'GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)',
+      ),
+    );
+    expect(
+      delegate,
+      isNot(contains('GeneratedPluginRegistrant.register(with: self)')),
+      reason:
+          'Registering with the app delegate runs before the engine exists.',
+    );
+  });
+
   test('web keeps preview and still capture without unsupported controls', () {
     final String camera = File(
       'lib/src/capture/capture_camera.dart',

@@ -1290,6 +1290,18 @@ accepts `Name <address>`, `Name, address` or a bare address, is validated for
 that shape only, and is forwarded on main pushes independently of the API pair.
 `build_web.sh` never forwards these variables for PR/manual/native builds.
 
+`SPECIMEN_GOOGLE_SIGN_IN_ENABLED` is an optional public boolean (`true` or
+`false`, default false). Main pushes alone may forward `true` to expose the
+secondary Google action; the API/App Check pair must already be configured.
+This switch does not provision a Firebase provider. Leave it off until Google
+is enabled in Firebase and a real allowed account has been tested. Email links
+remain the primary method. Provider configuration follows the production
+workflow rules above; no workstation deployment is authorized by this switch.
+Native Google sign-in also defaults off and requires its separate native build
+flag and actual OAuth client/callback registration. Web build success does not
+qualify native provider handoff. See
+[`execution/LOGIN_IMPROVEMENTS.md`](execution/LOGIN_IMPROVEMENTS.md).
+
 ### Verifying a release
 
 The release of a merged commit is complete when all of these hold:

@@ -13,6 +13,17 @@ def test_empty_configuration_preserves_setup_screen():
     MODULE.validate({})
 
 
+@pytest.mark.parametrize("value", ["yes", "TRUE", "true ", "1"])
+def test_reject_ambiguous_google_sign_in_switch(value):
+    with pytest.raises(ValueError, match="Google sign-in"):
+        MODULE.validate({"SPECIMEN_GOOGLE_SIGN_IN_ENABLED": value})
+
+
+def test_google_sign_in_requires_real_api_settings():
+    with pytest.raises(ValueError, match="public API"):
+        MODULE.validate({"SPECIMEN_GOOGLE_SIGN_IN_ENABLED": "true"})
+
+
 def test_public_https_settings():
     MODULE.validate({"SPECIMEN_API_BASE_URL": "https://example.run.app/api", "SPECIMEN_RECAPTCHA_SITE_KEY": "synthetic-site-key"})
 
@@ -117,7 +128,8 @@ def test_build_forwards_public_values_only_on_main_push(tmp_path, event, ref, li
                SPECIMEN_API_BASE_URL="https://example.run.app",
                SPECIMEN_RECAPTCHA_SITE_KEY="synthetic-site-key",
                SPECIMEN_ADMIN_CONTACT="Alex Mwangi <alex.mwangi@fieldmuseum.org>",
-               SPECIMEN_PILOT_SCOPE="Ten original specimens")
+               SPECIMEN_PILOT_SCOPE="Ten original specimens",
+               SPECIMEN_GOOGLE_SIGN_IN_ENABLED="true")
     env.pop("SPECIMEN_AUTH_EMULATOR_HOST", None)
     env.pop("SPECIMEN_LOCAL_SYNTHETIC", None)
     result = subprocess.run([str(root / "scripts/ci/build_web.sh")], cwd=root / "apps/specimen_digitization",
@@ -126,6 +138,7 @@ def test_build_forwards_public_values_only_on_main_push(tmp_path, event, ref, li
     assert ("--dart-define=SPECIMEN_RECAPTCHA_SITE_KEY=" in result.stdout) is live
     assert ("--dart-define=SPECIMEN_ADMIN_CONTACT=" in result.stdout) is live
     assert ("--dart-define=SPECIMEN_PILOT_SCOPE=" in result.stdout) is live
+    assert ("--dart-define=SPECIMEN_GOOGLE_SIGN_IN_ENABLED=true" in result.stdout) is live
 
 
 @pytest.mark.parametrize("sha", ["4f9f518", None])

@@ -115,8 +115,7 @@ def test_cold_cache_refuses_inherited_or_preseeded_directory(tmp_path):
 # injectable into a canonical gate: G hashes tracked helpers and independently
 # checks approved tool bytes before the wrapper starts.
 STANDIN = r'''#!PYTHON
-import json, os, pathlib, signal, socket, subprocess, sys, time, threading
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import json, os, pathlib, signal, sys, time
 args=sys.argv[1:]; name=pathlib.Path(sys.argv[0]).name
 fault=os.getenv('FIXTURE_FAULT',''); root=pathlib.Path(os.environ['FIXTURE_ROOT'])
 with (root/'calls.jsonl').open('a') as f: f.write(json.dumps([name,*args])+'\n')
@@ -214,6 +213,9 @@ if name=='dc':
   if 'FIXTURE_COMPILE_RESPONSE' in os.environ:
    print(os.environ['FIXTURE_COMPILE_RESPONSE']); sys.exit(0)
   print(json.dumps({'errors':['compile rejected'] if fault=='compile_errors_exit0' else []})); sys.exit(0)
+# Process census and receipt stand-ins exit above without loading engine servers.
+import socket, subprocess, threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 if name=='firebase' and os.getenv('FIXTURE_STANDALONE') and '--fixture-cli' not in args:
  child=subprocess.Popen([sys.argv[0],'--fixture-cli',*args])
  (root/'standalone-pids.json').write_text(json.dumps({'launcher':os.getpid(),'cli':child.pid}))
