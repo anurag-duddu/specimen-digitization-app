@@ -242,6 +242,8 @@ class _CaptureScreenState extends State<CaptureScreen>
   XFile? _review;
   Uint8List? _reviewBytes;
   Uint8List? _lastShotBytes;
+  ImageProvider? _lastShotThumbnail;
+  int? _thumbnailWidth;
   CaptureDimensions? _reviewDimensions;
   String? _editError;
   String? _captureError;
@@ -253,6 +255,37 @@ class _CaptureScreenState extends State<CaptureScreen>
     _autoIngest = widget.autoIngest;
     _sensitive = widget.initialSensitive;
     _requestCameraStart();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final ui = context.ui;
+    final width =
+        ((ui.space.targetMin + ui.space.s2) *
+                MediaQuery.devicePixelRatioOf(context))
+            .ceil();
+    if (_thumbnailWidth != width) {
+      _thumbnailWidth = width;
+      _setLastShotBytes(_lastShotBytes);
+    }
+  }
+
+  void _setLastShotBytes(Uint8List? bytes) {
+    final previous = _lastShotThumbnail;
+    _lastShotBytes = bytes;
+    _lastShotThumbnail = bytes == null
+        ? null
+        : ResizeImage.resizeIfNeeded(_thumbnailWidth, null, MemoryImage(bytes));
+    if (previous != _lastShotThumbnail) unawaited(previous?.evict());
+  }
+
+  void _setReviewBytes(Uint8List? bytes) {
+    final previous = _reviewBytes;
+    _reviewBytes = bytes;
+    if (previous != null && !identical(previous, bytes)) {
+      unawaited(MemoryImage(previous).evict());
+    }
   }
 
   @override
@@ -456,7 +489,7 @@ class _CaptureScreenState extends State<CaptureScreen>
       if (!isCurrent()) return;
       setState(() {
         _review = review;
-        _reviewBytes = bytes;
+        _setReviewBytes(bytes);
         _reviewSensitive = sensitive;
         _reviewDimensions = dimensions;
         _cropping = false;
@@ -525,7 +558,7 @@ class _CaptureScreenState extends State<CaptureScreen>
 
   void _retake() => setState(() {
     _review = null;
-    _reviewBytes = null;
+    _setReviewBytes(null);
     _reviewDimensions = null;
     _cropping = false;
     _editError = null;
@@ -551,11 +584,11 @@ class _CaptureScreenState extends State<CaptureScreen>
       // A streamed photo is owned by Intake as soon as the callback returns.
       // Keep no result-file list for either streaming interface.
       if (onAccepted == null && onCaptured == null) _accepted.add(file);
-      // Retain only the latest encoded photo for the thumbnail. Image.memory
-      // below bounds its decoded size to the displayed target.
-      _lastShotBytes = bytes;
+      // The resized provider bounds decoded pixels, but its cache key also
+      // retains the encoded bytes. Evict the old key when replacing the photo.
+      _setLastShotBytes(bytes);
       _review = null;
-      _reviewBytes = null;
+      _setReviewBytes(null);
       _reviewDimensions = null;
       _cropping = false;
       _editError = null;
@@ -669,7 +702,7 @@ class _CaptureScreenState extends State<CaptureScreen>
       final String original = _review?.name ?? 'camera-photo';
       final String stem = original.replaceFirst(RegExp(r'\.[^.]+$'), '');
       setState(() {
-        _reviewBytes = result.bytes;
+        _setReviewBytes(result.bytes);
         _reviewDimensions = CaptureDimensions(result.width, result.height);
         _review = XFile.fromData(
           result.bytes,
@@ -703,6 +736,8 @@ class _CaptureScreenState extends State<CaptureScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _setLastShotBytes(null);
+    _setReviewBytes(null);
     _foreground = false;
     ++_cameraGeneration;
     final StreamSubscription<CapturePreviewReading>? subscription =
@@ -1204,7 +1239,7 @@ class _CaptureScreenState extends State<CaptureScreen>
 
   Widget _viewfinderControls() {
     final ui = context.ui;
-    final bytes = _lastShotBytes;
+    final thumbnail = _lastShotThumbnail;
     return Padding(
       padding: EdgeInsetsDirectional.all(ui.space.s4),
       child: Column(
@@ -1238,17 +1273,11 @@ class _CaptureScreenState extends State<CaptureScreen>
                       children: [
                         SizedBox.square(
                           dimension: ui.space.targetMin + ui.space.s2,
-                          child: bytes == null
+                          child: thumbnail == null
                               ? const UiIcon(UiIcons.image)
-                              : Image.memory(
-                                  bytes,
+                              : Image(
+                                  image: thumbnail,
                                   fit: BoxFit.cover,
-                                  cacheWidth:
-                                      ((ui.space.targetMin + ui.space.s2) *
-                                              MediaQuery.devicePixelRatioOf(
-                                                context,
-                                              ))
-                                          .ceil(),
                                   gaplessPlayback: true,
                                   errorBuilder: (context, error, stack) =>
                                       const UiIcon(UiIcons.image),

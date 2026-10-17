@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:camera/camera.dart' show XFile;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -73,6 +75,30 @@ List<String> _visibleCopy(WidgetTester tester) => find
 
 int _wordCount(Iterable<String> texts) =>
     texts.fold(0, (count, text) => count + text.split(RegExp(r'\s+')).length);
+
+class _DistinctCaptureCamera extends FakeCaptureCamera {
+  @override
+  Future<XFile> capture() async => XFile.fromData(
+    Uint8List.fromList(FakeCaptureCamera.frame),
+    name: 'distinct.png',
+    mimeType: 'image/png',
+  );
+}
+
+Future<Object> _cachedKey(WidgetTester tester, Finder photo) async {
+  final provider = tester.widget<Image>(photo).image;
+  await tester.runAsync(() => precacheImage(provider, tester.element(photo)));
+  await tester.pumpAndSettle();
+  final key = await provider.obtainKey(ImageConfiguration.empty);
+  expect(PaintingBinding.instance.imageCache.containsKey(key), isTrue);
+  return key;
+}
+
+void _expectEvicted(Object key) {
+  final cache = PaintingBinding.instance.imageCache;
+  expect(cache.containsKey(key), isFalse, reason: 'obsolete photo cached');
+  expect(cache.statusForKey(key).live, isFalse, reason: 'obsolete photo live');
+}
 
 void main() {
   for (final wired in [false, true]) {
@@ -154,6 +180,102 @@ void main() {
       },
     );
   }
+
+  testWidgets(
+    'F2 Send now evicts replaced thumbnails and disposes the last one',
+    (tester) async {
+      var accepted = 0;
+      final camera = _DistinctCaptureCamera();
+      await _pump(
+        tester,
+        CaptureScreen(
+          camera: () async => camera,
+          autoIngest: true,
+          onAccepted: (_) => accepted++,
+        ),
+      );
+      final unrelated = MemoryImage(
+        Uint8List.fromList(FakeCaptureCamera.frame),
+      );
+      await tester.runAsync(
+        () => precacheImage(
+          unrelated,
+          tester.element(find.byType(CaptureScreen)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final unrelatedKey = await unrelated.obtainKey(ImageConfiguration.empty);
+      addTearDown(unrelated.evict);
+      final keys = <Object>[];
+      for (var count = 1; count <= 4; count++) {
+        await tester.tap(find.byKey(const ValueKey('capture-shutter')));
+        await waitForCameraCondition(tester, () => accepted == count);
+        expect(accepted, count);
+        await tester.pumpAndSettle();
+        final photo = find.descendant(
+          of: find.byKey(const ValueKey('capture-last-shot')),
+          matching: find.byType(Image),
+        );
+        final key = await _cachedKey(tester, photo);
+        expect(
+          keys,
+          isNot(contains(key)),
+          reason: 'each capture uses a distinct buffer',
+        );
+        for (final previous in keys) {
+          _expectEvicted(previous);
+        }
+        keys.add(key);
+        expect(
+          PaintingBinding.instance.imageCache.containsKey(unrelatedKey),
+          isTrue,
+        );
+      }
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      for (final key in keys) {
+        _expectEvicted(key);
+      }
+      expect(
+        PaintingBinding.instance.imageCache.containsKey(unrelatedKey),
+        isTrue,
+      );
+    },
+  );
+
+  testWidgets(
+    'F2 review evicts edited and retaken photos and disposes the last one',
+    (tester) async {
+      await _pump(
+        tester,
+        CaptureScreen(camera: () async => _DistinctCaptureCamera()),
+      );
+      await takeOne(tester);
+      final photo = find.byWidgetPredicate(
+        (widget) =>
+            widget is Image && widget.semanticLabel == 'The photo you took',
+      );
+      final original = await _cachedKey(tester, photo);
+      await tester.tap(_button('Rotate'));
+      await tester.pump();
+      await waitForCameraCondition(
+        tester,
+        () => _button('Rotate').evaluate().isNotEmpty,
+      );
+      await tester.pumpAndSettle();
+      final edited = await _cachedKey(tester, photo);
+      expect(edited, isNot(original));
+      _expectEvicted(original);
+      await tester.tap(_button('Retake'));
+      await tester.pumpAndSettle();
+      _expectEvicted(edited);
+      await takeOne(tester);
+      final last = await _cachedKey(tester, photo);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      _expectEvicted(last);
+    },
+  );
 
   for (final wired in [false, true]) {
     testWidgets(
