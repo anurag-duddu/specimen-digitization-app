@@ -58,6 +58,7 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
     this.scope,
     this.userId, {
     this.beforePersist,
+    this.preferences,
     Duration? processingPollInterval,
     this.automaticStartDelay = const Duration(seconds: _automaticStartSeconds),
   }) : processingPollInterval =
@@ -70,6 +71,9 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Test seam for a slow local preference write at the sign-out boundary.
   final Future<void> Function()? beforePersist;
+
+  /// Optional preference store for persistence-failure tests.
+  final SharedPreferences? preferences;
   final Duration processingPollInterval;
   final Duration automaticStartDelay;
   final List<ManifestEntry> entries = <ManifestEntry>[];
@@ -199,7 +203,8 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> restore() async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final SharedPreferences prefs =
+        preferences ?? await SharedPreferences.getInstance();
     final String? saved = prefs.getString(_storageKey);
     if (saved == null || _closed) return;
     try {
@@ -263,7 +268,8 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<bool> _persist({ManifestEntry? automaticStart}) async {
     await beforePersist?.call();
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final SharedPreferences prefs =
+        preferences ?? await SharedPreferences.getInstance();
     if (_closed) {
       await prefs.remove(_storageKey);
       return false;
@@ -298,7 +304,7 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
       if (automaticStart.automaticStartAttempted) return false;
       automaticStart.automaticStartAttempted = true;
     }
-    await prefs.setString(
+    final bool saved = await prefs.setString(
       _storageKey,
       jsonEncode(
         entries
@@ -325,6 +331,14 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
             .toList(),
       ),
     );
+    if (!saved && automaticStart != null) {
+      automaticStart.automaticStartAttempted = false;
+      // At most one attempt per timer firing: the caller removed its due flag.
+      // Only a later successful status read can arm another timer (including
+      // the fresh read on foreground resume). Never retry from finally here.
+      return false;
+    }
+    // Ordinary saves retain their best-effort behavior on a false write result.
     return true;
   }
 
@@ -495,13 +509,30 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
         entry.session = fresh;
         if (!_finishFromHandle(entry, generation)) {
           generation = _foregroundGeneration;
-          final Json completion = await repository.completeIntake(
-            scope,
-            fresh['upload_id'] as String,
-            'complete-${entry.digest}',
-          );
-          if (_closed) return false;
-          _applyCompletion(entry, completion, generation);
+          try {
+            final Json completion = await repository.completeIntake(
+              scope,
+              fresh['upload_id'] as String,
+              'complete-${entry.digest}',
+            );
+            if (_closed) return false;
+            _applyCompletion(entry, completion, generation);
+          } on ApiFailure catch (error) {
+            if (_closed) return false;
+            if (error.status != 409) rethrow;
+            // A lost response or another tab may commit after the last read.
+            // Reconcile once before treating this conflict as a refusal.
+            generation = _foregroundGeneration;
+            entry.session = await repository.resumeIntake(
+              scope,
+              fresh['upload_id'] as String,
+            );
+            if (_closed) return false;
+            if (entry.session!['state'] != 'accepted' ||
+                !_finishFromHandle(entry, generation)) {
+              rethrow;
+            }
+          }
         }
       }
       entry.progress = 1;
@@ -751,8 +782,8 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
     _startDue.remove(entry);
     changed();
     try {
-      // The consumed attempt survives a guard change during persistence. Do
-      // not roll it back: another session may already have acted on the flag.
+      // A successfully saved attempt survives a guard change during persistence.
+      // Do not roll it back: another session may already have acted on the flag.
       // Even if this request never leaves, retain the same conservative rule
       // as a crash/ambiguous dispatch: read status, never auto-start again.
       if (!await _persist(automaticStart: automatic ? entry : null)) return;

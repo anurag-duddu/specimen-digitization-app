@@ -230,11 +230,77 @@ class AcceptedHandleRepository extends StartRepository {
   }
 }
 
+class CompletionConflictRepository extends LostCompletionRepository {
+  CompletionConflictRepository(super.recorded, {this.accepted = true});
+
+  final bool accepted;
+
+  @override
+  Future<Json> completeIntake(
+    CollectionScope scope,
+    String id,
+    String key,
+  ) async {
+    completions++;
+    // Acceptance becomes visible only after this session's last handle read.
+    committed = accepted;
+    throw const ApiFailure('Completion payload changed.', status: 409);
+  }
+}
+
+class LateCompletionRepository extends LostCompletionRepository {
+  LateCompletionRepository(super.recorded);
+
+  final Completer<void> retryReply = Completer<void>();
+
+  @override
+  Future<Json> completeIntake(
+    CollectionScope scope,
+    String id,
+    String key,
+  ) async {
+    completions++;
+    if (completions == 2) await retryReply.future;
+    throw const ApiFailure('Completion response lost.', code: 'network');
+  }
+}
+
+class FailingPreferences implements SharedPreferences {
+  FailingPreferences(this.delegate);
+
+  final SharedPreferences delegate;
+  bool failNextWrite = false;
+  int failedWrites = 0;
+
+  @override
+  Future<bool> setString(String key, String value) async {
+    if (failNextWrite) {
+      failNextWrite = false;
+      failedWrites++;
+      return false;
+    }
+    return delegate.setString(key, value);
+  }
+
+  @override
+  String? getString(String key) => delegate.getString(key);
+
+  @override
+  Future<void> reload() => delegate.reload();
+
+  @override
+  Future<bool> remove(String key) => delegate.remove(key);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 IntakeTransferSession automaticSession(
   StartRepository repository, {
   Duration delay = const Duration(seconds: 60),
   Duration pollInterval = Duration.zero,
   Future<void> Function()? beforePersist,
+  SharedPreferences? preferences,
 }) {
   final IntakeTransferSession session = IntakeTransferSession(
     repository,
@@ -243,6 +309,7 @@ IntakeTransferSession automaticSession(
     processingPollInterval: pollInterval,
     automaticStartDelay: delay,
     beforePersist: beforePersist,
+    preferences: preferences,
   );
   session.entries.add(
     ManifestEntry(
@@ -265,6 +332,182 @@ IntakeTransferSession automaticSession(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
+
+  for (final String status in ['running', 'pending']) {
+    testWidgets('H1 completion conflict reconciles accepted $status', (
+      tester,
+    ) async {
+      final CompletionConflictRepository repository =
+          CompletionConflictRepository(_summary(status: status));
+      final IntakeTransferSession session = automaticSession(repository);
+      addTearDown(session.close);
+      final ManifestEntry photo = session.entries.single;
+      await session.start();
+      await tester.pump();
+      expect(
+        intakeStatus(photo).status,
+        status == 'running' ? 'Sent' : 'Starting',
+      );
+      expect(photo.file, isNull);
+      expect(repository.resumes, 2);
+      expect(repository.uploads, 1);
+      expect(repository.completions, 1);
+      expect(session.needsProcessingPoll, status == 'pending');
+      if (status == 'running') {
+        expect(session.entries, isEmpty);
+        expect(session.sentCount, 1);
+        final SharedPreferences prefs = await SharedPreferences.getInstance();
+        expect(
+          jsonDecode(prefs.getString('upload-handles-v1:auto:${_scope.key}')!),
+          isEmpty,
+        );
+      } else {
+        expect(session.entries, [photo]);
+        expect(repository.reads, 1);
+      }
+      await tester.pump(const Duration(seconds: 120));
+      expect(repository.completions, 1);
+      expect(repository.uploads, 1);
+    });
+  }
+
+  testWidgets('H1 unexplained completion conflict stays Not sent', (
+    tester,
+  ) async {
+    final CompletionConflictRepository repository =
+        CompletionConflictRepository(
+          _summary(status: 'running'),
+          accepted: false,
+        );
+    final IntakeTransferSession session = automaticSession(repository);
+    addTearDown(session.close);
+    final ManifestEntry photo = session.entries.single;
+    await session.start();
+    expect(intakeStatus(photo).status, 'Not sent');
+    expect(intakeStatus(photo).action, IntakeAction.remove);
+    expect(photo.file, isNotNull);
+    expect(session.needsProcessingPoll, isFalse);
+    expect(repository.resumes, 2);
+    await tester.pump(const Duration(seconds: 120));
+    expect(repository.completions, 1);
+    expect(repository.uploads, 1);
+    expect(session.entries, [photo]);
+    expect(session.sentCount, 0);
+  });
+
+  testWidgets('H1 late commit after retry read recovers on a later retry', (
+    tester,
+  ) async {
+    final LateCompletionRepository repository = LateCompletionRepository(
+      _summary(status: 'running'),
+    );
+    final IntakeTransferSession session = automaticSession(repository);
+    addTearDown(session.close);
+    final ManifestEntry photo = session.entries.single;
+    await session.start();
+    expect(intakeStatus(photo).status, 'Retrying');
+    expect(repository.committed, isFalse);
+    await tester.pump(const Duration(seconds: 5));
+    expect(repository.completions, 2);
+    expect(repository.resumes, 3);
+    expect(repository.committed, isFalse);
+    // The original server operation commits after both reads by this retry.
+    // Its pending completion response is also lost; the next retry must recover.
+    repository.committed = true;
+    repository.retryReply.complete();
+    await tester.pump();
+    expect(intakeStatus(photo).status, 'Retrying');
+    await tester.pump(const Duration(seconds: 14));
+    expect(repository.resumes, 3);
+    await tester.pump(const Duration(seconds: 1));
+    expect(intakeStatus(photo).status, 'Sent');
+    expect(session.entries, isEmpty);
+    expect(session.sentCount, 1);
+    expect(session.needsProcessingPoll, isFalse);
+    expect(photo.file, isNull);
+    expect(repository.resumes, 4);
+    expect(repository.completions, 2);
+    expect(repository.uploads, 2);
+    await tester.pump(const Duration(seconds: 120));
+    expect(repository.completions, 2);
+  });
+
+  for (final String opportunity in ['read', 'foreground']) {
+    testWidgets('H2 failed attempt write waits for next $opportunity', (
+      tester,
+    ) async {
+      final FailingPreferences prefs = FailingPreferences(
+        await SharedPreferences.getInstance(),
+      );
+      final StartRepository repository = StartRepository();
+      final IntakeTransferSession session = automaticSession(
+        repository,
+        preferences: prefs,
+      );
+      addTearDown(() {
+        session.close();
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+      });
+      await session.start();
+      final ManifestEntry photo = session.entries.single;
+      prefs.failNextWrite = true;
+      await tester.pump(const Duration(seconds: 60));
+      expect(repository.keys, isEmpty);
+      expect(prefs.failedWrites, 1);
+      expect(photo.automaticStartAttempted, isFalse);
+      expect(session.busy, isFalse);
+      await prefs.reload();
+      final List<dynamic> rows =
+          jsonDecode(prefs.getString('upload-handles-v1:auto:${_scope.key}')!)
+              as List<dynamic>;
+      expect(rows.single['automatic_start_attempted'], isFalse);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(repository.keys, isEmpty);
+      expect(prefs.failedWrites, 1);
+      // Keep the re-armed timer overdue without depending on wall-clock time.
+      photo.savedAt = DateTime.utc(2000);
+      if (opportunity == 'read') {
+        await session.refreshProcessingStatuses();
+      } else {
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+      }
+      await tester.pump();
+      await tester.pump(Duration.zero);
+      expect(repository.keys, hasLength(1));
+      expect(repository.persistedAttempts, [true]);
+      expect(photo.automaticStartAttempted, isTrue);
+      await session.refreshProcessingStatuses();
+      await tester.pump(const Duration(seconds: 120));
+      expect(repository.keys, hasLength(1));
+    });
+  }
+
+  testWidgets('H2 ordinary failed write does not throw from persist', (
+    tester,
+  ) async {
+    final FailingPreferences prefs = FailingPreferences(
+      await SharedPreferences.getInstance(),
+    );
+    final IntakeTransferSession session = automaticSession(
+      StartRepository(),
+      preferences: prefs,
+    );
+    try {
+      await session.start();
+      prefs.failNextWrite = true;
+      await expectLater(session.persist(), completes);
+      expect(prefs.failedWrites, 1);
+      expect(session.entries.single.automaticStartAttempted, isFalse);
+    } finally {
+      session.close();
+    }
+  });
 
   for (final String result in ['running', 'pending', 'duplicate', 'legacy']) {
     testWidgets(
