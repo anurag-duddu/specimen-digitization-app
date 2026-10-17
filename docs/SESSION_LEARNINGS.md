@@ -20829,3 +20829,45 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
 - Not confirmed: Universal Links end to end (a personal-team build has an empty `Runner.entitlements`, so no Associated Domains; `applinks:specimen-digitization.firebaseapp.com` needs a paid-team build); a real magic-link email completing sign-in on iOS 27 after this change; `firebase_auth`'s native URL handling (not used by the app's flows); the camera and image picker on a device after the migration; iPad and multitasking (multiple scenes are off, as Flutter requires); a TestFlight or App Store build; Android (untouched).
 - Failed approaches and traps. (1) The re-sign script builds `origin/main` by default, so until this lands every re-sign reinstalls a crashing build: use `~/bin/resign-specimen-iphone.sh --ref claude/ios-uiscene-adoption` meanwhile. (2) `xcrun simctl openurl` with a custom scheme stops at an OS prompt, so a log-based link test shows nothing until the prompt is tapped (the first scripted run showed no links for that reason). (3) A broad `pkill -f xcodebuild` to stop a simulator build on a shared Mac can kill another session's build; scope kills to the worktree path. (4) Two agents fixed the same crash at once because the coordinator's request and the owner's report arrived separately, and the later `devicectl install` replaced the earlier one: one installer per phone, named in the coordinator's plan.
 - Reusable learning. When an iPhone app that ran yesterday crashes on every launch, read the crash log before reading code: `xcrun devicectl device info files --device <udid> --domain-type systemCrashLogs` lists them and `devicectl device copy from --domain-type systemCrashLogs --source <name>` fetches them. Here the faulting frame named the cause outright, and the OS version in the log header (26.6.2 yesterday, 27.0.1 today) explained why an unchanged app broke. Crash logs of a device that was updated overnight should be compared against the previous OS before suspecting the last commit.
+
+## 2026-10-17 — Login journey correction, implementation checkpoint
+
+- Task: `01a147ea-7efb-7e22-8821-e42395a135fc`; worktree
+  `/Users/anuragduddu/.codex/worktrees/9030/specimen-digitization-app`; branch
+  `codex/login-journey-complete`, based on `ee727747a612cc98e64936e72493501a5b45c3c9`.
+- Correction to the earlier PR361 completion claim: the owner rejected retaining
+  the previous login composition and shipping with Google unconfigured. That
+  scope reduction was the implementation's decision, not an approved change to
+  the requested new whole-flow experience. PR361's test/release evidence remains
+  historical evidence for that narrower change, not acceptance of this correction.
+- Replaced the pre-collection composition with a separate institution/product
+  masthead and responsive task stage; added explicit Gmail website handoff,
+  recipient/change-email recognition, disclosed manual-link recovery, and
+  corresponding verification/access stages. Google remains the second method;
+  separate institution SAML/OIDC configuration is not implied by Google Workspace.
+- Added Google-only provisioning through the existing Data workflow, with
+  preservation checks for existing email/domain settings and an exact optional
+  `owner_setup.sh --auth-only` permission setup. No production settings or IAM
+  were changed at this checkpoint. Provider/native/live-account acceptance:
+  Not confirmed. See `docs/execution/GOOGLE_SIGN_IN_SETUP.md`.
+- Focused validation: 103 email/controller/login tests, 20 button tests, 13
+  verification/access tests and 4 inbox-adapter tests passed. App static analysis
+  passed before the final full-width/race refinement; the canonical verifier will
+  recheck the final source. New provider/auth-only focused cases: 69 passed.
+- Visual validation: 58 fresh offline PNGs across six viewport/theme scenarios;
+  source hashes remained stable for the complete run. Prior images and two
+  incomplete capture attempts were retained separately. External evidence lives
+  under `login-study/recovery-implementation/` in this task's visualization
+  directory, including `before-after.html`. These synthetic captures do not prove
+  actual Gmail delivery, Google account eligibility, or physical native handoff.
+- Failed approaches fixed: narrow primary capsules made Google visually dominant;
+  an opt-in bounded-width button variant fixes the hierarchy without changing
+  other controls. Sliver tests must pump after scrolling before hit testing;
+  specific resend assertions replace first-button assumptions. Independent
+  review found a pending inbox completion could strand loading after a warm link;
+  context generations now invalidate it, with a regression test. The role's
+  documentation no longer claims config-read IAM cannot expose provider secrets;
+  partial-response fields bound this implementation's reads, not the IAM role.
+- Full canonical checks, exact-head independent approval, PR/hosted CI, protected
+  release, live verification and task-only pruning remain pending at this
+  checkpoint. Do not reuse prior green runs as this change's approval.

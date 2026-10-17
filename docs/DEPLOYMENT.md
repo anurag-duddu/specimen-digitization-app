@@ -996,8 +996,9 @@ and can only read the registry.
 ### Data release
 
 The workflow has one job, `release`, in the `data-production` environment. It
-checks out the commit, installs the locked Python environment and the two
-pinned Node packages the SQL steps use, signs in as `specimen-data-release`
+checks out the commit, installs the locked Python environment, the two
+pinned Node packages the SQL steps use and `firebase-tools@15.8.0` for Auth,
+then signs in as `specimen-data-release`
 and runs `scripts/release/data_release.py`. That script runs the steps below
 in order and prints one line per step, saying what it did or that it skipped.
 A failure stops the run with one line that starts `data release failed:`. The
@@ -1052,6 +1053,32 @@ script refuses to run outside GitHub Actions.
    creates no generic runtime signup or collection-creation API.
 9. **Done.** The last line is `data release complete for <sha>`.
 
+The workflow then publishes the pinned georeferencing datasets and runs
+`scripts/release/provision_auth.py` to enable and verify Google alongside the
+existing passwordless email provider. This separate step uses only
+`firebase.auth.json`; it cannot deploy Hosting, SQL Connect or Storage. An
+enabled Google client is retained, an existing disabled client receives only
+an enabled-field patch, and a missing client uses the pinned CLI's Auth-only
+provisioning path for the single existing production web app. Before and after
+any change, email/domain settings are read with explicit non-secret field
+masks and must match. No email settings or authorized domains are written.
+
+The Auth step stops on a failed read, ambiguous app, invalid provider or
+unverified result. A failure does not trigger a local deployment or broadened
+IAM grants. If the existing Data identity needs configuration permissions,
+the owner's minimal setup command is
+`bash scripts/ops/owner_setup.sh --auth-only` (add `--dry-run` to inspect first).
+It creates/reconciles one six-permission custom role and binds only the existing
+Data identity; it does not replay general owner setup or start releases.
+The owner must authorize an agent's execution first-hand, as for every other
+owner setup run. See [Google sign-in setup](execution/GOOGLE_SIGN_IN_SETUP.md)
+for the exact permissions, API scope and test/activation sequence.
+
+Keep the web Google flag off during the initial provisioning release. Hosting
+and Data release start independently; activate the web flag through the
+reviewed Hosting configuration path only after Data release has verified the
+provider. Native OAuth setup and actual account handoff remain separate checks.
+
 #### Additive only
 
 The release changes the database schema only by adding to it. It refuses a
@@ -1098,8 +1125,9 @@ The data release runs on every push to `main`, including a docs-only push,
 because the runtime release waits for it on every commit. On such a push every
 step is a no-op: initialization finds everything present, the diff is empty,
 the schema, connector and rules already match, the indexes exist and the
-bootstrap rows are identical. The run still prints the completion line and
-succeeds.
+bootstrap rows are identical. The later Auth step also makes no change when
+the existing Google provider is already enabled and valid. The run still
+prints the completion line and succeeds.
 
 #### Inputs
 
@@ -1112,7 +1140,7 @@ succeeds.
 - The Secret Manager secret `specimen-worker-actor-uid`, version 1: the
   worker's user ID, read during the bootstrap step when the artifact is set.
 - Everything else the release reads is committed in this repository:
-  `dataconnect/`, `storage.rules`, the collection tree under
+  `dataconnect/`, `storage.rules`, `firebase.auth.json`, the collection tree under
   `infra/reference/` and the release scripts.
 
 #### Running it again

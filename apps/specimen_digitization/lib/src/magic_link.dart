@@ -247,7 +247,19 @@ class MagicLinkController extends ChangeNotifier {
       return false;
     }
     final String? previousMessage = message;
-    final bool accepted = _ingestLink(uri, () {});
+    // A copied email button can contain the direct action URL rather than the
+    // native Hosting envelope. Reuse the envelope validator for its exact
+    // origin, path, unique parameters and continuation; Firebase still verifies
+    // the action code. This normalization applies only to an explicit paste.
+    final Uri candidate =
+        uri.host == _emailLinkNativeHost &&
+            uri.path == _emailLinkNativeActionPath &&
+            value.startsWith(
+              'https://$_emailLinkNativeHost$_emailLinkNativeActionPath?',
+            )
+        ? Uri.https(_emailLinkNativeHost, _emailLinkNativePath, {'link': value})
+        : uri;
+    final bool accepted = _ingestLink(candidate, () {});
     if (!accepted && _link == null && message == previousMessage) {
       message =
           'This sign-in link cannot be used. Copy the full link from the email or request a new one.';
