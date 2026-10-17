@@ -216,7 +216,7 @@ void main() {
     expect(removed, <ManifestEntry>[handedOff]);
   });
 
-  testWidgets('blocked processing offers retry only when the server does', (
+  testWidgets('post-hand-off processing never offers retry in Intake', (
     WidgetTester tester,
   ) async {
     final List<ManifestEntry> retried = <ManifestEntry>[];
@@ -232,10 +232,8 @@ void main() {
     });
     await pumpManifest(tester, <ManifestEntry>[blocked], onRetry: retried.add);
 
-    expect(find.text('Retry processing'), findsOneWidget);
-    await tester.tap(find.text('Retry processing'));
-    await tester.pumpAndSettle();
-    expect(retried, <ManifestEntry>[blocked]);
+    expect(find.text('Retry processing'), findsNothing);
+    expect(retried, isEmpty);
 
     blocked.specimen = Specimen(<String, dynamic>{
       'specimen_id': 'blocked-1',
@@ -246,7 +244,7 @@ void main() {
     expect(find.text('Retry processing'), findsNothing);
   });
 
-  testWidgets('processing rows use the Intake queue summary', (
+  testWidgets('processing rows use the shared Intake summary', (
     WidgetTester tester,
   ) async {
     await pumpManifest(tester, <ManifestEntry>[
@@ -254,21 +252,16 @@ void main() {
       entryIn(UploadState.inMainQueue, digest: 'handoff-digest'),
       entryIn(UploadState.processingBlocked, digest: 'blocked-digest'),
     ]);
-    expect(
-      find.text(
-        '3 photographs · 1 processing, 1 in main Queue, 1 need attention',
-      ),
-      findsOneWidget,
-    );
+    expect(find.text('2 to fix · 1 sent'), findsOneWidget);
   });
 
-  test('the Intake queue summary keeps legacy uploaded rows explicit', () {
+  test('the summary keeps unknown hand-offs out of sent counts', () {
     expect(
       ingestionQueueLine(<ManifestEntry>[
         entryIn(UploadState.accepted, digest: 'accepted-digest'),
         entryIn(UploadState.processing, digest: 'processing-digest'),
       ]),
-      '2 photographs · 1 uploaded, 1 processing',
+      '2 to fix',
     );
   });
 
@@ -308,7 +301,7 @@ void main() {
     await pumpManifest(tester, <ManifestEntry>[]);
     expect(find.text(IntakeManifest.emptyTitle), findsOneWidget);
     expect(find.text(IntakeManifest.emptyBody), findsOneWidget);
-    expect(find.text('No files selected yet'), findsOneWidget);
+    expect(find.text('No photos'), findsOneWidget);
   });
 
   testWidgets('local measurements are three labelled values and a caveat', (
@@ -361,23 +354,21 @@ void main() {
     // One node for the whole account, so a reader hears the sentence once
     // rather than three tiles and then the sentence again.
     expect(
-      find.bySemanticsLabel(
-        '8 of 11 uploaded, 1 already in collection, 1 failed',
-      ),
+      find.bySemanticsLabel('9 to fix · 1 ready · 1 duplicate'),
       findsOneWidget,
     );
     handle.dispose();
   });
 
   group('the batch progress line', () {
-    test('reads "8 of 12 uploaded, 1 skipped"', () {
+    test('counts unknown hand-offs and local refusals before ready photos', () {
       final List<ManifestEntry> entries = <ManifestEntry>[
         for (int i = 0; i < 8; i++)
           entryIn(UploadState.accepted, digest: 'a$i'),
         for (int i = 0; i < 3; i++) entryIn(UploadState.ready, digest: 'r$i'),
         entryIn(UploadState.skipped, digest: 's0'),
       ];
-      expect(batchProgressLine(entries), '8 of 12 uploaded, 1 skipped');
+      expect(batchProgressLine(entries), '9 to fix · 3 ready');
     });
 
     test('names duplicates, interruptions and failures when they exist', () {
@@ -388,7 +379,7 @@ void main() {
           entryIn(UploadState.interrupted, digest: 'c'),
           entryIn(UploadState.failed, digest: 'd'),
         ]),
-        '1 of 4 uploaded, 1 already in collection, 1 interrupted, 1 failed',
+        '3 to fix · 1 duplicate',
       );
     });
 
@@ -397,12 +388,12 @@ void main() {
         batchProgressLine(<ManifestEntry>[
           entryIn(UploadState.accepted, digest: 'a'),
         ]),
-        '1 of 1 uploaded',
+        '1 to fix',
       );
     });
 
     test('an empty batch says so', () {
-      expect(batchProgressLine(<ManifestEntry>[]), 'No files selected yet');
+      expect(batchProgressLine(<ManifestEntry>[]), 'No photos');
     });
   });
 
@@ -412,14 +403,14 @@ void main() {
         batchCompleteLine(<ManifestEntry>[
           entryIn(UploadState.accepted, digest: 'a'),
         ]),
-        '1 photograph is in the Intake queue.',
+        '1 to fix',
       );
       expect(
         batchCompleteLine(<ManifestEntry>[
           entryIn(UploadState.accepted, digest: 'a'),
           entryIn(UploadState.duplicate, digest: 'b'),
         ]),
-        '2 photographs are in the Intake queue.',
+        '1 to fix · 1 duplicate',
       );
     });
   });

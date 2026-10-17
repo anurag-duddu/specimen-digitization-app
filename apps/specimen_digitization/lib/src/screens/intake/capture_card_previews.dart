@@ -20,9 +20,11 @@ Widget intakeFilePreview() => SizedBox(
   child: IntakeCaptureCard(
     web: true,
     onChooseFiles: choosePreviewFiles,
-    onTakePhotograph: null,
+    onTakePhotograph: choosePreviewFiles,
     onDropFiles: (_) {},
-    cameraAvailable: false,
+    cameraAvailable: true,
+    onAutoIngestChanged: (_) {},
+    onImportFromLink: choosePreviewFiles,
   ),
 );
 
@@ -39,6 +41,8 @@ Widget intakeBusyPreview() => SizedBox(
     onChooseFiles: null,
     onTakePhotograph: null,
     onDropFiles: null,
-    cameraAvailable: false,
+    cameraAvailable: true,
+    hasPhotos: true,
+    onImportFromLink: choosePreviewFiles,
   ),
 );

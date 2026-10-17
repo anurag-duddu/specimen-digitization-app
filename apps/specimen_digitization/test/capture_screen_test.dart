@@ -228,9 +228,7 @@ Future<void> takeOne(WidgetTester tester) async {
               .isNotEmpty ||
           find.text(CaptureUnavailable.failed.message).evaluate().isNotEmpty ||
           find
-              .text(
-                'The photograph could not be read. Take it again, or return to Intake and choose the file.',
-              )
+              .text('Photo could not be read. Take it again.')
               .evaluate()
               .isNotEmpty) {
         break;
@@ -267,6 +265,7 @@ class _AdmissionRepository extends TestRepository {
   final Map<String, IntakeFile> received = {};
   Completer<void>? uploadGate;
   bool failUpload = false;
+  int failureStatus = 503;
   bool serverDuplicate = false;
 
   @override
@@ -300,7 +299,7 @@ class _AdmissionRepository extends TestRepository {
     received[file.sha256] = file;
     await uploadGate?.future;
     if (failUpload) {
-      throw const ApiFailure('Test upload interrupted.', status: 503);
+      throw ApiFailure('Test upload interrupted.', status: failureStatus);
     }
     progress(1);
   }
@@ -480,13 +479,13 @@ Future<void> _acceptAdmissionFile(WidgetTester tester, XFile file) async {
 
 void main() {
   group('camera admission:', () {
-    for (final action in ['Close', 'Done', 'Back', 'Back to Intake']) {
+    for (final action in ['Close', 'Done', 'Back', 'Choose files']) {
       testWidgets('zero-photo $action preserves old rows without sending', (
         tester,
       ) async {
         final repository = _AdmissionRepository();
         final camera = FakeCaptureCamera(
-          unavailable: action == 'Back to Intake'
+          unavailable: action == 'Choose files'
               ? CaptureUnavailable.permission
               : null,
         );
@@ -618,7 +617,9 @@ void main() {
       testWidgets('failed streamed transfer is not retried by $action', (
         tester,
       ) async {
-        final repository = _AdmissionRepository()..failUpload = true;
+        final repository = _AdmissionRepository()
+          ..failUpload = true
+          ..failureStatus = 422;
         final session = await _pumpAdmission(tester, repository, rows: []);
         await _openAdmissionCamera(tester);
         await tester.tap(find.byKey(const ValueKey('capture-shutter')));
@@ -641,6 +642,31 @@ void main() {
         await _waitAdmission(tester, () => !session.busy, 'return settled');
         expect(repository.requests, before);
         expect(session.entries.single.sendable, isTrue);
+
+        // A transient 503 has its own timer; exiting must not trigger it early.
+        session.remove(session.entries.single);
+        repository.failureStatus = 503;
+        await _openAdmissionCamera(tester);
+        await tester.tap(find.byKey(const ValueKey('capture-shutter')));
+        await _waitAdmission(
+          tester,
+          () =>
+              !session.busy &&
+              session.entries.length == 1 &&
+              session.entries.single.state == UploadState.interrupted,
+          '503 is waiting for its scheduled retry',
+        );
+        expect(session.entries.single.reason, 'Connection lost. Retrying.');
+        final retryWaitingAt = tester.binding.clock.now();
+        final beforeTransientExit = [...repository.requests];
+        await _closeAdmissionCamera(tester, action);
+        expect(
+          tester.binding.clock.now().difference(retryWaitingAt),
+          lessThan(const Duration(seconds: 5)),
+        );
+        expect(repository.requests, beforeTransientExit);
+        expect(session.entries.single.state, UploadState.interrupted);
+        session.stop(); // Cancel the timer after the exit assertions.
       });
     }
 
@@ -954,19 +980,61 @@ void main() {
         tester,
         () =>
             !session.busy &&
-            session.entries.length == 2 &&
-            session.entries.every((e) => e.settled),
+            session.entries.isEmpty &&
+            session.duplicateCount == 2,
         'unsupported local decoder is tolerated and server duplicates are normal acceptance',
       );
       expect(repository.requests, [
         (operation: 'create', row: 'old-ready'.padRight(64, '0')),
         (operation: 'create', row: sha256.convert([1, 2, 3]).toString()),
       ]);
-      expect(
-        session.entries.every((e) => e.state == UploadState.duplicate),
-        isTrue,
-      );
+      expect(session.entries, isEmpty);
+      expect(session.duplicateCount, 2);
     });
+
+    testWidgets(
+      'INT-UX-016 failed camera action reaches device picker and keeps recovery marker',
+      (tester) async {
+        const channel = MethodChannel('plugins.flutter.io/image_picker');
+        final messenger =
+            TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+        var calls = 0;
+        messenger.setMockMethodCallHandler(channel, (call) async {
+          expect(call.method, 'pickImage');
+          calls++;
+          expect(
+            (await SharedPreferences.getInstance()).getString(
+              'pending-camera-owner-v1',
+            ),
+            '$_admissionOwner:${_admissionScope.key}',
+          );
+          return null;
+        });
+        addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+        final repository = _AdmissionRepository();
+        final session = await _pumpAdmission(
+          tester,
+          repository,
+          camera: FakeCaptureCamera(unavailable: CaptureUnavailable.failed),
+        );
+        await _openAdmissionCamera(tester);
+        expect(calls, 0);
+        await tester.tap(find.text('Use phone camera'));
+        await _pumpAdmissionFrames(tester);
+        await _waitAdmission(
+          tester,
+          () => calls == 1 && !session.busy,
+          'device fallback completed',
+        );
+        expect(repository.requests, isEmpty);
+        expect(
+          (await SharedPreferences.getInstance()).getString(
+            'pending-camera-owner-v1',
+          ),
+          isNull,
+        );
+      },
+    );
 
     for (final selected in [false, true]) {
       for (final automatic in selected ? [false, true] : [true]) {
@@ -1131,7 +1199,8 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('capture-crop')));
       await tester.pumpAndSettle();
       final move = find.byWidgetPredicate(
-        (widget) => widget is UiButton && widget.label == 'Move left',
+        (widget) =>
+            widget is UiIconButton && widget.semanticsLabel == 'Move left',
       );
       await tester.ensureVisible(move);
       await tester.tap(move);
@@ -1164,17 +1233,17 @@ void main() {
       find.byKey(const ValueKey<String>('capture-framing-guides')),
       findsOneWidget,
     );
-    expect(find.text(NotCalibratedChip.label), findsOneWidget);
+    expect(find.byType(NotCalibratedChip), findsNothing);
     expect(
       find.text('Exposure is not measured on this device.'),
-      findsOneWidget,
-      reason: 'no reading yet is unmeasured, never a pass',
+      findsNothing,
+      reason: 'no reading makes no exposure claim',
     );
     expect(
       find.text('Framing, focus and label coverage are not checked here.'),
-      findsOneWidget,
+      findsNothing,
     );
-    expect(find.text('0 photographs in this batch'), findsOneWidget);
+    expect(find.text('0'), findsOneWidget);
   });
 
   testWidgets('a clipped frame produces a glare hint, a clean one does not', (
@@ -1191,12 +1260,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(
-      find.text(
-        'Bright areas are clipping. Check for glare before you capture.',
-      ),
-      findsOneWidget,
-    );
+    expect(find.text('Bright spots. Check for glare.'), findsOneWidget);
 
     camera.emit(
       const CapturePreviewReading(
@@ -1206,8 +1270,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('No clipping measured in this frame.'), findsOneWidget);
-    expect(find.text(NotCalibratedChip.label), findsOneWidget);
+    expect(find.text('No clipping measured in this frame.'), findsNothing);
+    expect(find.byType(NotCalibratedChip), findsNothing);
   });
 
   testWidgets('tapping the viewfinder locks focus and exposure at that point', (
@@ -1268,14 +1332,14 @@ void main() {
 
     await takeOne(tester);
     expect(find.text('Retake'), findsOneWidget);
-    expect(find.text('Send for processing'), findsOneWidget);
+    expect(find.text('Send'), findsOneWidget);
     expect(find.byKey(const ValueKey<String>('fake-preview')), findsNothing);
 
     await tester.tap(find.text('Retake'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey<String>('fake-preview')), findsOneWidget);
     expect(
-      find.text('0 photographs in this batch'),
+      find.text('0'),
       findsOneWidget,
       reason: 'a retaken photograph was never in the batch',
     );
@@ -1293,9 +1357,7 @@ void main() {
 
     expect(find.byKey(const ValueKey<String>('fake-preview')), findsOneWidget);
     expect(
-      find.text(
-        'The photograph could not be read. Take it again, or return to Intake and choose the file.',
-      ),
+      find.text('Photo could not be read. Take it again.'),
       findsOneWidget,
     );
     expect(find.text(CaptureUnavailable.failed.message), findsNothing);
@@ -1308,15 +1370,15 @@ void main() {
     await pumpCapture(tester, camera);
 
     await takeOne(tester);
-    await tester.tap(find.text('Send for processing'));
+    await tester.tap(find.text('Send'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey<String>('fake-preview')), findsOneWidget);
-    expect(find.text('1 photograph in this batch'), findsOneWidget);
+    expect(find.text('1'), findsOneWidget);
 
     await takeOne(tester);
-    await tester.tap(find.text('Send for processing'));
+    await tester.tap(find.text('Send'));
     await tester.pumpAndSettle();
-    expect(find.text('2 photographs in this batch'), findsOneWidget);
+    expect(find.text('2'), findsOneWidget);
     expect(camera.taken, hasLength(2));
   });
 
@@ -1351,7 +1413,7 @@ void main() {
       await tester.pumpAndSettle();
 
       await takeOne(tester);
-      await tester.tap(find.text('Send for processing'));
+      await tester.tap(find.text('Send'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Done'));
       await tester.pumpAndSettle();
@@ -1454,7 +1516,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey<String>('capture-shutter')));
     await tester.pumpAndSettle();
-    expect(find.text('1 photograph in this batch'), findsOneWidget);
+    expect(find.text('1'), findsOneWidget);
     await tester.tap(find.text(CaptureScreen.doneLabel));
     await tester.pumpAndSettle();
 
@@ -1489,7 +1551,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     await takeOne(tester);
-    expect(find.text('Send for processing'), findsOneWidget);
+    expect(find.text('Send'), findsOneWidget);
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
     await waitForCameraCondition(tester, () => first.disposed);
@@ -1498,7 +1560,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(failedResume.disposed, isTrue);
-    expect(find.text('Send for processing'), findsOneWidget);
+    expect(find.text('Send'), findsOneWidget);
     expect(find.text('Retake'), findsOneWidget);
     expect(find.text(CaptureUnavailable.failed.message), findsNothing);
   });
@@ -1754,7 +1816,7 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(accepted, isEmpty);
-        expect(find.text('Send for processing'), findsNothing);
+        expect(find.text('Send'), findsNothing);
         await tester.tap(shutter);
         await tester.pump();
         expect(second.captureCalls, 1);
@@ -1771,10 +1833,10 @@ void main() {
         } else {
           await waitForCameraCondition(
             tester,
-            () => find.text('Send for processing').evaluate().isNotEmpty,
+            () => find.text('Send').evaluate().isNotEmpty,
           );
           expect(accepted, isEmpty);
-          await tester.tap(find.text('Send for processing'));
+          await tester.tap(find.text('Send'));
           await tester.pump();
         }
         expect(accepted, hasLength(1));
@@ -1824,11 +1886,11 @@ void main() {
       reason: 'the reason is a plain sentence, never a code',
     );
     expect(find.text('Use device camera'), findsNothing);
-    expect(find.text('Back to Intake'), findsOneWidget);
-    await tester.tap(find.text('Back to Intake'));
+    expect(find.text('Choose files'), findsOneWidget);
+    await tester.tap(find.text('Choose files'));
     await tester.pumpAndSettle();
-    expect(result!.needsFallback, isFalse);
-    expect(result!.unavailable, isNull);
+    expect(result!.needsFallback, isTrue);
+    expect(result!.unavailable, CaptureUnavailable.permission);
   });
 
   testWidgets(
@@ -1879,9 +1941,9 @@ void main() {
       await tester.pumpWidget(intake());
       await tester.pumpAndSettle();
       await openCamera();
-      expect(tester.widget<UiSwitch>(toggle).value, isFalse);
+      expect(tester.widget<UiSegmented<bool>>(toggle).value, isFalse);
       for (final bool enabled in [true, false]) {
-        await tester.tap(toggle);
+        await tester.tap(find.text(enabled ? 'Send now' : 'Review'));
         await tester.pumpAndSettle();
         expect(prefs.getBool(preference), enabled);
         await tester.tap(find.text(CaptureScreen.doneLabel));
@@ -1891,7 +1953,7 @@ void main() {
         await tester.pumpWidget(intake());
         await tester.pumpAndSettle();
         await openCamera();
-        expect(tester.widget<UiSwitch>(toggle).value, enabled);
+        expect(tester.widget<UiSegmented<bool>>(toggle).value, enabled);
       }
       await tester.tap(find.text(CaptureScreen.doneLabel));
       await tester.pumpAndSettle();
@@ -1970,7 +2032,11 @@ void main() {
       // Accepting a camera photograph releases it to continuous Intake.
       expect(repository.captured, hasLength(1));
       expect(repository.captured.single.method, 'camera');
-      expect(repository.captured.single.sensitive, isTrue);
+      expect(
+        repository.captured.single.sensitive,
+        isFalse,
+        reason: 'Intake starts with Mark sensitive off',
+      );
       expect(
         completed,
         1,
@@ -2068,7 +2134,7 @@ void main() {
     FlutterError.onError = previous;
     expect(errors, isEmpty, reason: 'the capture route at 200 percent text');
     expect(tester.takeException(), isNull);
-    expect(find.text('Send for processing'), findsOneWidget);
+    expect(find.text('Send'), findsOneWidget);
     expect(find.text('Retake'), findsOneWidget);
   });
 
