@@ -1,12 +1,10 @@
-/// Adaptive collection navigation: native phone tabs and a spacious sidebar.
+/// Adaptive collection navigation: the brand phone tab bar and a spacious
+/// sidebar.
 library;
 
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/cupertino.dart' as cupertino;
-import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart' as material;
 import 'package:flutter/widgets.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -320,11 +318,11 @@ class _AppShellState extends State<AppShell> {
                                   bottom: _mobileNavigation && record,
                                   child: UiScaffold(
                                     sky: AppShell.skyOf(location),
-                                    header:
-                                        _mobileNavigation &&
-                                            widget.destination ==
-                                                WorkspaceDestination.intake
-                                        ? _mobileHeader(context, controller)
+                                    header: _mobileNavigation && !record
+                                        ? _compactTopBar(
+                                            controller,
+                                            listRoute: listRoute,
+                                          )
                                         : null,
                                     banner: _mobileNavigation && listRoute
                                         ? null
@@ -385,87 +383,47 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
-  Widget _mobileHeader(BuildContext context, WorkspaceController controller) =>
-      SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: EdgeInsets.all(context.ui.space.s2),
-          child: Row(
-            children: <Widget>[
-              Expanded(
-                child: Align(
-                  alignment: AlignmentDirectional.centerStart,
-                  child: _CollectionSwitcher(
-                    controller: controller,
-                    sheet: true,
-                  ),
-                ),
-              ),
-              if (EnvironmentBanner.showsBand(controller.environment))
-                _EnvironmentContext(controller: controller, compact: true),
-              ShellAccountMenu(controller: controller),
-            ],
-          ),
-        ),
-      );
+  /// The one compact top bar: the collection switcher and the account, on
+  /// every compact destination that is not a record.
+  ///
+  /// This used to be built twice, once inside the Specimens list (on `paper`)
+  /// and once above Intake (on `ground`), which left a seam under the status
+  /// strip on one tab and not the other. It is `UiTopBar` in its workspace
+  /// form now (10 section 4.4): an opaque `paper` ground that also fills the
+  /// top safe inset, drawn by the design system rather than padded here, so
+  /// the strip and the bar are one surface on every tab and every platform.
+  /// A record draws its own bar and the shell draws none above it.
+  Widget _compactTopBar(
+    WorkspaceController controller, {
+    required bool listRoute,
+  }) => UiTopBar(
+    key: const ValueKey<String>('shell-top-bar'),
+    form: UiTopBarForm.workspace,
+    leading: _CollectionSwitcher(controller: controller, sheet: true),
+    actions: <Widget>[
+      // Only the Specimens list has a selection to finish.
+      if (listRoute) ?widget.specimensActions,
+      if (EnvironmentBanner.showsBand(controller.environment))
+        _EnvironmentContext(controller: controller, compact: true),
+      ShellAccountMenu(controller: controller),
+    ],
+  );
 
-  Widget _mobileNav(BuildContext context) {
-    final ui = context.ui;
-    final selected = widget.destination.index;
-    Widget icon(int index) => UiIcon(
-      AppShell.destinations[index].icon,
-      key: ValueKey<String>(
-        'mobile-nav-${AppShell.destinations[index].label.toLowerCase()}',
-      ),
-      current: index == selected,
-      color: index == selected ? ui.color.ink : ui.color.inkSecondary,
-    );
-    void select(int index) => _select(WorkspaceDestination.values[index]);
-    if (defaultTargetPlatform == TargetPlatform.iOS) {
-      return cupertino.CupertinoTabBar(
-        key: const ValueKey<String>('mobile-navigation'),
-        currentIndex: selected,
-        onTap: select,
-        backgroundColor: ui.color.paper,
-        activeColor: ui.color.ink,
-        inactiveColor: ui.color.inkSecondary,
-        height: math.max(56, 32 + MediaQuery.textScalerOf(context).scale(16)),
-        items: <cupertino.BottomNavigationBarItem>[
-          for (var i = 0; i < AppShell.destinations.length; i++)
-            cupertino.BottomNavigationBarItem(
-              icon: icon(i),
-              label: AppShell.destinations[i].label,
-            ),
-        ],
-      );
-    }
-    return material.NavigationBarTheme(
-      data: material.NavigationBarThemeData(
-        labelTextStyle: WidgetStatePropertyAll(
-          ui.type.label.copyWith(color: ui.color.ink),
-        ),
-      ),
-      child: material.NavigationBar(
-        key: const ValueKey<String>('mobile-navigation'),
-        // Keep the compact content height separate from the native safe inset.
-        height: UiType.heightAround(ui.space.s16, ui.type.label, context),
-        animationDuration: ui.motion.navigationGlide,
-        selectedIndex: selected,
-        onDestinationSelected: select,
-        backgroundColor: ui.color.paper,
-        indicatorColor: ui.color.ink.withValues(alpha: .08),
-        surfaceTintColor: GroundPalette.transparent,
-        elevation: 0,
-        destinations: <Widget>[
-          for (var i = 0; i < AppShell.destinations.length; i++)
-            material.NavigationDestination(
-              icon: icon(i),
-              label: AppShell.destinations[i].label,
-            ),
-        ],
-      ),
-    );
-  }
+  /// The compact bottom tab bar.
+  ///
+  /// One brand component on every platform (10 section 4.4, `UiTabBar`): the
+  /// window class chose it, and the platform only supplies the safe inset
+  /// under it. A `CupertinoTabBar` here and a `NavigationBar` there were two
+  /// products' identities in one app (09 section 2 principle 5).
+  Widget _mobileNav(BuildContext context) => UiTabBar(
+    key: const ValueKey<String>('mobile-navigation'),
+    destinations: AppShell.destinations,
+    currentIndex: widget.destination.index,
+    iconKeyOf: (index) => ValueKey<String>(
+      'mobile-nav-${AppShell.destinations[index].label.toLowerCase()}',
+    ),
+    onSelect: (index) => _select(WorkspaceDestination.values[index]),
+  );
 
   Widget _toggleButton() => UiIconButton(
     icon: UiIcons.sidebar,
@@ -507,40 +465,37 @@ class _AppShellState extends State<AppShell> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              Padding(
-                padding: EdgeInsets.all(ui.space.s2),
-                child: Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: Align(
-                        key: const ValueKey<String>(
-                          'global-sidebar-collection',
+              // The docked sidebar's own header. On a phone the list has no
+              // header of its own: the shell's compact top bar sits above it
+              // (`_compactTopBar`), so the switcher and the account are not
+              // declared a second time here.
+              if (!_mobileNavigation)
+                Padding(
+                  padding: EdgeInsets.all(ui.space.s2),
+                  child: Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: Align(
+                          key: const ValueKey<String>(
+                            'global-sidebar-collection',
+                          ),
+                          alignment: AlignmentDirectional.centerStart,
+                          child: _CollectionSwitcher(
+                            controller: controller,
+                            sheet: false,
+                          ),
                         ),
-                        alignment: AlignmentDirectional.centerStart,
-                        child: _CollectionSwitcher(
-                          controller: controller,
-                          sheet: !_docked,
+                      ),
+                      ?widget.specimensActions,
+                      if (canClose)
+                        UiIconButton(
+                          icon: UiIcons.sidebar,
+                          semanticsLabel: 'Close sidebar',
+                          onPressed: _close,
                         ),
-                      ),
-                    ),
-                    ?widget.specimensActions,
-                    if (_mobileNavigation &&
-                        EnvironmentBanner.showsBand(controller.environment))
-                      _EnvironmentContext(
-                        controller: controller,
-                        compact: true,
-                      ),
-                    if (_mobileNavigation)
-                      ShellAccountMenu(controller: controller),
-                    if (canClose)
-                      UiIconButton(
-                        icon: UiIcons.sidebar,
-                        semanticsLabel: 'Close sidebar',
-                        onPressed: _close,
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
               if (_mobileNavigation)
                 _Chrome(
                   controller: controller,

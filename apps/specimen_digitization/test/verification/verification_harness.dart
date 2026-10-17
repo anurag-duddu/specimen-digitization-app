@@ -9,9 +9,7 @@
 
 import 'dart:ui' as ui;
 
-import 'package:flutter/cupertino.dart' as cupertino;
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart' as material;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -107,16 +105,11 @@ List<String> get capturedErrors => List<String>.unmodifiable(_captured);
 // ---------------------------------------------------------------------------
 
 /// Which navigation arrangement is actually mounted in the current shell.
-/// Compact screens use native bottom navigation; wider screens use the global
-/// rail and optional specimen sidebar. Legacy primitives remain recognizable
+/// Compact screens use the brand bottom tab bar on every platform; wider
+/// screens use the global rail and optional specimen sidebar. Legacy primitives remain recognizable
 /// for isolated gallery captures. Screens outside the shell report `none`.
 String navigationVariant(WidgetTester tester) {
-  if (find.byType(cupertino.CupertinoTabBar).evaluate().isNotEmpty) {
-    return 'cupertino tabs';
-  }
-  if (find.byType(material.NavigationBar).evaluate().isNotEmpty) {
-    return 'material navigation bar';
-  }
+  if (find.byType(UiTabBar).evaluate().isNotEmpty) return 'tab bar';
   if (find.byKey(const ValueKey('global-rail')).evaluate().isNotEmpty) {
     return find.byKey(const ValueKey('global-sidebar')).evaluate().isNotEmpty
         ? 'global rail and specimens'

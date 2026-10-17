@@ -808,6 +808,92 @@ every text scale, so what gives is the capsule: it scrolls through
 destination is scrolled into view when it changes. The pill overflowed by 56
 dp at 200 dp before this, which the gallery matrix counted six times.
 
+**`UiTabBar`.** Added 2026-10-17. The compact window's bottom navigation, one
+component on every platform. A docked, full width bar flush to the bottom edge:
+a solid `paper` ground, a top line of exactly one physical pixel
+(1 / device pixel ratio) in `boundary`, and no pill, no indicator, no
+elevation, no surface tint and no glass. Its content height, excluding the
+system inset, is `max(56, 32 + textScaler.scale(16) + 4)`: 56 dp at normal text
+and 68 dp at 200 percent, so it grows with the reviewer's text size and never
+clips a label. The resting 56 is the token `space.tabBar` (03 section 5.2,
+`size.tabbar`), beside `space.topBar` and decided separately from it: the HIG
+tab bar's 49 pt plus room for Dynamic Type, above the 48 dp Material and WCAG
+target. The rest are named in `UiTabBarStyle`: 32 is the 24 dp glyph and one
+8 dp step of air; 16 is the line the label sits in, scaled with
+the text; the 4 is the gap the cell pads under the label. The 4 is in the
+formula so the glyph keeps its 4 dp of air above it and 4 dp below it at every
+text scale; a first version without it put the glyph about 3 dp under the top
+line at 200 percent (corrected 2026-10-17, same day), and normal text is
+unchanged because 56 governs there. Below the content the bar pads by `MediaQuery.viewPaddingOf(context).bottom`
+(the home indicator on an iPhone, the gesture or three button bar on Android)
+with the `paper` ground running under it. That inset is the only part that
+varies with the device: behaviour adapts, identity does not (09 section 2
+principle 5).
+
+Two to five equal cells, the whole cell being the hit target (48 by 48 at
+least at every density and text scale). A cell is the stock iOS bar's anatomy
+rebuilt in our parts: a 4 dp pad under a column that ends at the inset, the
+glyph centred in the height the label leaves, the label under it. The glyph is
+the destination's Phosphor glyph at 24 in `regular` and `ink.secondary`; the
+current destination is `fill` and `ink` (09 section 7). The label is always
+drawn: `label.small`, sentence case, one line, the same colour as its glyph. On
+a change the two glyph weights and the label colour cross-fade over
+`navigationGlide` (09 section 8), which is zero under reduced motion. Semantics
+are the pill's: `tab` per cell with `selected`, inside a `tabBar` group, the
+label in the node. `Left` and `Right` move focus (wrapping, mirrored under
+RTL), `Enter` and `Space` select, and the focus ring is drawn inside the cell
+because the bar touches the screen's edges and its neighbours.
+
+Narrow windows (amended 2026-10-17). Equal cells are only equal while each
+keeps its 48 dp hit box (`UiTabBarStyle.cellMin`, 10 section 2 clause 2). Where
+the bar's width divided by its destinations would fall under that, five
+destinations in a 200 dp column being 40 dp cells, the bar lays its cells at 48
+dp inside the library's `EdgeFadedRow`, the way `UiPillNav` does (11 section
+3.3, the compact variant of a navigation row): it scrolls, the edge with more
+beyond it fades, and the current destination is in view from the first frame
+and is scrolled into view when it changes. A bar can open on any destination, so
+the row is built already scrolled to it: `EdgeFadedRow.revealInitially`, with
+the row's own `extent` (48 dp times the destinations), sets the scroll
+controller's initial offset from that and the width the row is given before the
+row is first laid out and painted, with no jump after the first frame; it is
+off by default, so `UiTabs` and `UiPillNav` are unchanged, and the row is put
+back on its destination if its width changes. (The first version of this
+arrangement did it in a post frame callback, after the first frame had painted;
+corrected 2026-10-17.) Otherwise the cells are equal and nothing scrolls, so
+a two destination bar on a phone is exactly as before. In the scrolling form the
+`tabBar` group sits inside the scroller, because a scroller publishes a node
+and every child of a `tabBar` node has to be a tab; arrow keys also scroll the
+cell they focus into view, because `FocusNode.requestFocus` does not; and the
+focus ring is still drawn inside the cell. A label the cell cannot hold ends in
+an ellipsis and carries the whole word in a `UiTooltip` (10 section 2 clause
+15), on hover and on a long press, armed only on a cut label. The tooltip is
+around the cell and not in `UiLabel.tooltip`: a tooltip's own tap handler is
+the innermost, so inside the cell it took the tap on the word and the tab
+selected nothing. The cell's semantics label already carries the whole word and
+the open pane is kept out of semantics (`UiTooltip.excludeSemantics`, off by
+default for every other caller): the pane's semantics live beneath the portal,
+inside the `MergeSemantics` the cell needs, and would give the tab its word
+twice and a tooltip of its own while the tooltip is open. So a tab reads once,
+open or closed. `UiTabBar` takes an optional `iconKeyOf` so a shell or a
+test can find and measure a glyph without the bar knowing about either. It retires `CupertinoTabBar` and
+the compact `NavigationBar` from the shell: `AppShell` draws `UiTabBar` on
+every platform at the compact window class and no longer branches on
+`defaultTargetPlatform`. `UiPillNav` stays in the library for a window that
+wants a floating capsule; compact phones do not use it.
+
+Why. The shell drew `CupertinoTabBar` on iOS and Material's `NavigationBar`
+(a 32 dp pill indicator, 64 dp of content) on Android, which copied each
+platform's stock widget and put two products' identities in one app. The owner,
+in a Claude Code session on 2026-10-17: "btw ios nav behaves perfectly but
+android has too much padding/space". And, in the same session: "are you sure it
+is following desired guidelines given flutter we are cross-platform and brand
+focsed less native focused but still tream guidelines seriously not copy".
+Source for both sentences: the owner's messages in the Claude Code session of
+2026-10-17. The target is therefore the iPhone's proportions, which he called
+perfect, rebuilt as our own anatomy so the two platforms are the same bar.
+Bottom tabs on phones, rather than a sidebar or drawer, stay as the owner
+corrected on 2026-09-29.
+
 **`UiRail`.** For medium windows: a 72 dp column of the same discs, top-aligned
 under the mark; extended form at expanded width shows `label.small` under each
 disc. Retires `NavigationRail`.
@@ -879,6 +965,38 @@ text with the other half of the bar empty beside it. And the bar's height is
 the line box of `type.title` floored at the density height rather than the
 density height alone (11 section 2.2), which is 56 and 48 unchanged at scale
 1.0.
+
+Amended 2026-10-17, the workspace form. `UiTopBar` takes a `form`:
+`UiTopBarForm.page`, everything above and the default, or
+`UiTopBarForm.workspace`, the compact shell's header. The shell used to declare
+the collection switcher and the account row twice, once inside the Specimens
+list on `paper` and once above Intake on `ground`, so on a phone the status
+strip met the header on a different ground on one tab and not the other. The
+owner, in a Claude Code session on 2026-10-17: "why does the insects dropdown
+backround behave differently? has it been created twice? that whole top thing I
+thought is same ?" and "i hope we arent duplicating and hand-codring hardcoding.
+we should have a working design system + ui components given we're on flutter
+at a cross-platform level with behaviors in different circumstances". It is one
+bar now, for the Specimens list, Intake and the screens under Intake. The
+workspace form is opaque `paper` (14 section 3: shell chrome is `paper`) and
+the ground covers the bar's whole box, **the top safe inset included**, so the
+status strip and the bar are one surface on every tab and every platform. It is
+the top edge mirror of `UiTabBar`, which paints its ground under the bottom
+inset: the platform only decides how tall the inset is, and the component
+decides what is painted in it, so no shell pads a strip itself. The geometry is
+the one the owner called accurate on Specimens, now declared in
+`UiTopBarStyle` instead of written at two call sites: a 64 dp bar under the
+inset (a 48 dp control with `space.s2` of air above and below, growing with the
+control at larger text), a `space.s2` gutter at both ends, actions that touch
+because their own 48 dp hit boxes are the spacing, and a `leading` slot that
+takes what the actions leave and sits at the start, so a long collection name
+is cut by its control rather than overflowing. The page form is unchanged: it
+is still transparent at rest, `glass.flat` once content scrolls under it, 56 dp
+(48 pointer) with a 16 dp gutter. The workspace form reads no scroll state and
+draws no glass, so it adds nothing to the pane budget. The shell's one builder
+is `AppShell._compactTopBar`; the docked sidebar's own header, a different
+composition on large windows, reuses the same `_CollectionSwitcher` widget and
+has no account or environment control of its own.
 
 **`UiScaffold`.** The page frame: paints `ground` and the sky preset via
 `FieldLayer`, then `topBar`, `banner` slot, `body`, `actionBar` slot (sticky,

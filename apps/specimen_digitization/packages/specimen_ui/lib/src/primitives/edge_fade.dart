@@ -7,6 +7,8 @@
 /// scrolls, and the fade is what says so.
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/widgets.dart';
 
 import '../foundation/motion.dart';
@@ -34,7 +36,13 @@ class EdgeFadedRow extends StatefulWidget {
     required this.index,
     required this.length,
     required this.fadeExtent,
-  });
+    this.revealInitially = false,
+    this.extent,
+  }) : assert(
+         !revealInitially || extent != null,
+         'revealInitially places the row before it is first painted, which '
+         'needs the row\'s own width: pass extent',
+       );
 
   /// The row, at its own intrinsic width.
   final Widget child;
@@ -49,17 +57,55 @@ class EdgeFadedRow extends StatefulWidget {
   /// control, because a primitive makes no styling decisions of its own.
   final double fadeExtent;
 
+  /// True to start the row already scrolled to item [index], and not only to
+  /// scroll there when [index] changes.
+  ///
+  /// False by default, which is what a strip or a pill that always opens on
+  /// its first item wants, and what leaves `UiTabs` and `UiPillNav` exactly as
+  /// they were. A bar that can open on any of its items, such as the tab bar
+  /// on a deep link, sets it. The offset is set **before the row is first
+  /// laid out and painted**: it is the scroll controller's initial offset,
+  /// worked out from [extent] and the width the row is given, so the first
+  /// frame already shows where the reviewer is, with nothing to travel from
+  /// and no frame at the wrong place first. The row is also put back on
+  /// [index] when the width it is given changes, for example on rotation.
+  ///
+  /// Expected not to change for the life of the widget: it decides whether the
+  /// row measures its own width.
+  final bool revealInitially;
+
+  /// The row's own width, which [child] has at its intrinsic size.
+  ///
+  /// Read only when [revealInitially] is set. The row's scroll reach is this
+  /// minus the width it is given, and item [index] of [length] sits that
+  /// fraction of the way along it (see the class comment), so the caller, who
+  /// owns the row, says how wide it is rather than the scroller measuring a
+  /// child it cannot see.
+  final double? extent;
+
   @override
   State<EdgeFadedRow> createState() => _EdgeFadedRowState();
 }
 
 class _EdgeFadedRowState extends State<EdgeFadedRow> {
-  final ScrollController _controller = ScrollController();
+  /// Created in [initState] for a row that starts at the beginning, and by the
+  /// first build for one that starts on an item, because its initial offset
+  /// needs the width the row is given and that is not known until then.
+  ScrollController? _controller;
+
+  /// The width the row was last laid out in, for putting it back on its item
+  /// when that changes.
+  double? _viewport;
+
+  ScrollController _controllerAt(double initialOffset) {
+    return _controller ??= ScrollController(initialScrollOffset: initialOffset)
+      ..addListener(_edgesChanged);
+  }
 
   @override
   void initState() {
     super.initState();
-    _controller.addListener(_edgesChanged);
+    if (!widget.revealInitially) _controllerAt(0);
   }
 
   @override
@@ -71,7 +117,7 @@ class _EdgeFadedRowState extends State<EdgeFadedRow> {
   @override
   void dispose() {
     _controller
-      ..removeListener(_edgesChanged)
+      ?..removeListener(_edgesChanged)
       ..dispose();
     super.dispose();
   }
@@ -84,22 +130,34 @@ class _EdgeFadedRowState extends State<EdgeFadedRow> {
   ///
   /// After rather than during: a listener runs before the rebuild it caused,
   /// and the extent has to be read from a viewport that has been laid out.
-  void _reveal() {
-    WidgetsBinding.instance.addPostFrameCallback((Duration _) => _scroll());
+  void _reveal({bool animate = true}) {
+    WidgetsBinding.instance.addPostFrameCallback(
+      (Duration _) => _scroll(animate: animate),
+    );
   }
 
-  void _scroll() {
-    if (!mounted || !_controller.hasClients || widget.length < 2) return;
-    final ScrollPosition position = _controller.position;
-    final double target =
-        position.maxScrollExtent *
-        (widget.index.clamp(0, widget.length - 1) / (widget.length - 1));
-    final MotionTokens motion = context.ui.motion;
-    if (motion.reduced) {
-      _controller.jumpTo(target);
+  /// Where item [index] of [length] sits along a row that can scroll [reach].
+  double _offsetFor(double reach) => widget.length < 2
+      ? 0
+      : reach *
+            (widget.index.clamp(0, widget.length - 1) / (widget.length - 1));
+
+  void _scroll({bool animate = true}) {
+    final ScrollController? controller = _controller;
+    if (!mounted ||
+        controller == null ||
+        !controller.hasClients ||
+        widget.length < 2) {
       return;
     }
-    _controller.animateTo(
+    final ScrollPosition position = controller.position;
+    final double target = _offsetFor(position.maxScrollExtent);
+    final MotionTokens motion = context.ui.motion;
+    if (!animate || motion.reduced) {
+      controller.jumpTo(target);
+      return;
+    }
+    controller.animateTo(
       target,
       duration: motion.medium,
       curve: MotionTokens.standardCurve,
@@ -107,13 +165,34 @@ class _EdgeFadedRowState extends State<EdgeFadedRow> {
   }
 
   bool get _fadeStart =>
-      _controller.hasClients && _controller.position.extentBefore > 0;
+      (_controller?.hasClients ?? false) &&
+      _controller!.position.extentBefore > 0;
 
   bool get _fadeEnd =>
-      _controller.hasClients && _controller.position.extentAfter > 0;
+      (_controller?.hasClients ?? false) &&
+      _controller!.position.extentAfter > 0;
 
   @override
   Widget build(BuildContext context) {
+    if (!widget.revealInitially) return _scroller(context, _controllerAt(0));
+    // The row starts on its item, so its first offset needs the width it is
+    // given: a `LayoutBuilder` above the scroller hands it to the controller
+    // before the scroller exists, which is what makes the first frame right.
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final double viewport = constraints.maxWidth;
+        final double reach = viewport.isFinite
+            ? math.max(0, widget.extent! - viewport)
+            : 0;
+        final double? before = _viewport;
+        _viewport = viewport;
+        if (before != null && before != viewport) _reveal(animate: false);
+        return _scroller(context, _controllerAt(_offsetFor(reach)));
+      },
+    );
+  }
+
+  Widget _scroller(BuildContext context, ScrollController controller) {
     final TextDirection direction = Directionality.of(context);
     // The mask is always in the tree, opaque at both ends when there is
     // nothing to fade. Adding and removing it instead would change the
@@ -139,7 +218,7 @@ class _EdgeFadedRowState extends State<EdgeFadedRow> {
         ).createShader(bounds, textDirection: direction);
       },
       child: SingleChildScrollView(
-        controller: _controller,
+        controller: controller,
         scrollDirection: Axis.horizontal,
         child: widget.child,
       ),

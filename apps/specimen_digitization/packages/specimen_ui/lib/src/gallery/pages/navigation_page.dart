@@ -1,8 +1,9 @@
 /// The navigation family (10 sections 4.4 and 6).
 ///
 /// The page the shell is judged on: if a disc stops reading as the current
-/// destination, if a rail clips a word, or if the page frame stops holding its
-/// chrome clear of the safe area, it shows here before it shows on a screen.
+/// destination, if a tab or a rail clips a word, or if the page frame stops
+/// holding its chrome clear of the safe area, it shows here before it shows on
+/// a screen.
 library;
 
 import 'package:flutter/widgets.dart';
@@ -204,6 +205,80 @@ Widget buildNavigationPage(BuildContext context) {
           ],
         ),
       ),
+      GallerySection(
+        title: 'UiTabBar',
+        child: Wrap(
+          spacing: ui.space.s4,
+          runSpacing: ui.space.s4,
+          children: const <Widget>[
+            GallerySpecimen(
+              label: 'two destinations',
+              note: 'compact windows, every platform',
+              child: _OverFields(
+                width: 360,
+                height: 96,
+                padded: false,
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: _Tabs(destinations: _two, initial: 0),
+                ),
+              ),
+            ),
+            GallerySpecimen(
+              label: 'three destinations, 34 dp inset',
+              note: 'the ground runs under the home indicator',
+              child: _OverFields(
+                width: 360,
+                height: 128,
+                padded: false,
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: _Tabs(destinations: _three, initial: 1, inset: 34),
+                ),
+              ),
+            ),
+            GallerySpecimen(
+              label: 'five destinations',
+              note: 'the most a bar holds',
+              child: _OverFields(
+                width: 360,
+                height: 96,
+                padded: false,
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: _Tabs(destinations: _five, initial: 2),
+                ),
+              ),
+            ),
+            GallerySpecimen(
+              label: 'five destinations in 200 dp',
+              note: 'under 48 dp a cell the bar scrolls, on Help',
+              child: _OverFields(
+                width: 200,
+                height: 96,
+                padded: false,
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: _Tabs(destinations: _five, initial: 3),
+                ),
+              ),
+            ),
+            GallerySpecimen(
+              label: 'two destinations, text at 200 percent',
+              note: 'the bar grows, nothing is cut',
+              child: _OverFields(
+                width: 360,
+                height: 112,
+                padded: false,
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: _Tabs(destinations: _two, initial: 1, textScale: 2),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     ],
   );
 }
@@ -295,6 +370,45 @@ class _PillState extends State<_Pill> {
     currentIndex: _current,
     onSelect: (int index) => setState(() => _current = index),
   );
+}
+
+class _Tabs extends StatefulWidget {
+  const _Tabs({
+    required this.destinations,
+    required this.initial,
+    this.inset = 0,
+    this.textScale = 1,
+  });
+
+  final List<UiNavDestination> destinations;
+  final int initial;
+
+  /// The system inset the bar is drawn over, as a phone's home indicator.
+  final double inset;
+  final double textScale;
+
+  @override
+  State<_Tabs> createState() => _TabsState();
+}
+
+class _TabsState extends State<_Tabs> {
+  late int _current = widget.initial;
+
+  @override
+  Widget build(BuildContext context) {
+    final MediaQueryData media = MediaQuery.of(context);
+    return MediaQuery(
+      data: media.copyWith(
+        viewPadding: EdgeInsets.only(bottom: widget.inset),
+        textScaler: TextScaler.linear(widget.textScale),
+      ),
+      child: UiTabBar(
+        destinations: widget.destinations,
+        currentIndex: _current,
+        onSelect: (int index) => setState(() => _current = index),
+      ),
+    );
+  }
 }
 
 class _Rail extends StatefulWidget {

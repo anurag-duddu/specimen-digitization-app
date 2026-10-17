@@ -640,7 +640,8 @@ apply the gutter; the gutter belongs to the pane, and cards inside it are flush 
 | `size.row.compact` | 72 | Queue row, compact window |
 | `size.row.medium` | 64 | Queue row, medium window |
 | `size.row.expanded` | 56 | Queue row, expanded and large windows |
-| `size.appbar` | 56 | All windows |
+| `size.appbar` | 56 | All windows (`space.topBar`) |
+| `size.tabbar` | 56 | Compact windows: the bottom tab bar's content height before the system inset and before the text size grows it (`space.tabBar`; 10 section 4.4, `UiTabBar`). Added 2026-10-17, beside `size.appbar` and decided separately from it. |
 | `size.rail` | 80 | Navigation rail |
 | `size.pane.detail.min` | 400 | Minimum width for the workbench content pane before it stacks |
 | `size.reading.max` | 640 | Maximum measure for prose. Reason text, review context, error explanations. |
