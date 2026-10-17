@@ -320,8 +320,23 @@ enum UiNavPlacement {
   /// Over the body, above the bottom safe area. The pill.
   floating,
 
-  /// Beside the body, in flow, full height. The rail and the sidebar.
+  /// Beside the body, in flow, under the top bar and the band. The rail and
+  /// the sidebar.
   beside,
+
+  /// Beside the whole frame, from the window's top edge to its bottom edge,
+  /// at the start side.
+  ///
+  /// The top bar, the band and the body sit beside it, so a band that comes
+  /// and goes (an error, a 4 dp progress strip) never moves the navigation,
+  /// and the column takes the start side's safe inset while the frame beside
+  /// it takes none there. The application's docked rail and its list pane
+  /// (05 section 1). Never inferred: a caller asks for it.
+  ///
+  /// The frame keeps one shape whether or not [UiScaffold.nav] is set, so a
+  /// shell that drops its navigation at one window class and draws it at
+  /// another keeps the page and its state across the change.
+  edge,
 }
 
 /// What a scaffold tells its body about the frame around it.
@@ -659,6 +674,16 @@ class _UiScaffoldState extends State<UiScaffold> {
         widget.nav != null && placement == UiNavPlacement.beside;
     final bool floats =
         widget.nav != null && placement == UiNavPlacement.floating;
+    final bool edge = placement == UiNavPlacement.edge;
+    // The edge column takes the start side's inset; the frame beside it then
+    // has none there. Physical, because safe areas are.
+    final bool startIsLeft = Directionality.of(context) == TextDirection.ltr;
+    final bool edgeShown = edge && widget.nav != null && widget.navVisible;
+    final EdgeInsets frameSafe = !edgeShown
+        ? safe
+        : startIsLeft
+        ? safe.copyWith(left: 0)
+        : safe.copyWith(right: 0);
     // What the page asked for wins over what the caller passed, the rule the
     // exclusion already follows: the shell builds the frame and the routed
     // screen is the one that knows what the route needs (13 section 3.4).
@@ -828,7 +853,7 @@ class _UiScaffoldState extends State<UiScaffold> {
     // The side navigation and the body clear the side notches; the header
     // or top bar clears the top inset so its pane reaches the window's edge.
     belowBar = Padding(
-      padding: EdgeInsets.only(left: safe.left, right: safe.right),
+      padding: EdgeInsets.only(left: frameSafe.left, right: frameSafe.right),
       child: belowBar,
     );
     if (widget.header == null && bar == null && safe.top > 0) {
@@ -887,11 +912,22 @@ class _UiScaffoldState extends State<UiScaffold> {
                       : MediaQuery.removePadding(
                           context: context,
                           removeTop: true,
+                          // An edge navigation already took the start inset.
+                          removeLeft: edgeShown && startIsLeft,
+                          removeRight: edgeShown && !startIsLeft,
                           child: localBar,
                         ),
               ],
             ),
           );
+
+    final Widget frame = Column(
+      children: <Widget>[
+        ?topBar,
+        ?banner,
+        Expanded(child: belowBar),
+      ],
+    );
 
     return _UiScaffoldScope(
       geometry: UiScaffoldGeometry(
@@ -915,13 +951,37 @@ class _UiScaffoldState extends State<UiScaffold> {
                 exclusion: _exclusion.rect ?? widget.exclusion,
                 child: child,
               ),
-              child: Column(
-                children: <Widget>[
-                  ?topBar,
-                  ?banner,
-                  Expanded(child: belowBar),
-                ],
-              ),
+              child: edge
+                  ? Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        if (widget.nav != null)
+                          unfloated(
+                            Offstage(
+                              offstage: !widget.navVisible,
+                              // Top, start and bottom: the column runs from
+                              // the top edge to the bottom edge at the start.
+                              child: MediaQuery.removePadding(
+                                context: context,
+                                removeLeft: !startIsLeft,
+                                removeRight: startIsLeft,
+                                child: widget.nav!,
+                              ),
+                            ),
+                          ),
+                        // Always this wrapper, so the frame keeps its place in
+                        // the tree whether or not the navigation is drawn.
+                        Expanded(
+                          child: MediaQuery.removePadding(
+                            context: context,
+                            removeLeft: edgeShown && startIsLeft,
+                            removeRight: edgeShown && !startIsLeft,
+                            child: frame,
+                          ),
+                        ),
+                      ],
+                    )
+                  : frame,
             ),
           ),
         ),

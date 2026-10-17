@@ -911,7 +911,8 @@ Amended 2026-10-17: the application draws it. The docked shell's destinations
 were a hand-built column of `Pressable` rows from 2026-10-01, with their own
 arrow keys, a literal 6 percent `ink` fill and a radius of their own, while
 this entry had no caller. `AppShell` now puts `UiRail` at the head of its rail
-column in `UiScaffold.nav`, with the list pane's toggle, the environment and
+column in `UiScaffold.nav` (placement `edge`, below), with the list pane's
+toggle, the environment and
 the account under it on the rail's centre line. The rail takes an optional
 `semanticsLabel`, the tab list's name, because the shell's column was named
 "Workspace navigation" and a record beside it has tabs of its own; a rail
@@ -1056,8 +1057,22 @@ Everything below the top bar has the window's padding removed, and the rail
 and the sidebar run to the bottom edge, so a control at the foot of either had
 no inset to clear the home indicator with. The frame now hands the column the
 bottom inset (not the keyboard) and nothing else. A column with a control at
-its foot spends it: the shell's rail does, with a `SafeArea` under the account
-control. `UiSidebar`'s footer does not yet, and nothing draws a sidebar today.
+its foot spends it. `UiSidebar`'s footer does not yet, and nothing draws a
+sidebar today.
+
+Amended 2026-10-17, again: a third placement, `UiNavPlacement.edge`. The
+navigation runs the window's full height at the start side, and the top bar,
+the band and the body sit beside it, so a band that comes and goes never moves
+the navigation, and the column takes the top, start and bottom insets while the
+frame beside it takes none at the start. `beside` keeps the wave 1 arrangement
+above, the bar and the band across the full width. The application's docked
+shell asks for `edge`: with `beside`, its band (an error, a blocker, and the
+4 dp progress strip of every record and page load) pushed the rail and the list
+pane down and back, which the independent review of #359 found and the shell
+before `UiRail` never did. `edge` is never inferred, and the frame keeps one
+shape whether or not `nav` is set, so a shell that draws the navigation at one
+window class and not at another keeps the page and its state across the
+change.
 
 Three files hold the navigation family's shared parts and are not in the
 layout of section 1.2: `nav_destination.dart`, the one destination model all
@@ -1175,7 +1190,11 @@ sentence body and no action. The control asserts that an action it is given
 can be pressed, the rule the application's wrapper used to keep: a button
 that does nothing is not "one way out of it". `test/widgets/
 empty_states_on_specimen_ui_test.dart` fails if the application declares a
-class named like either control again.
+class named like either control again. The glyph rule above is not met by
+these call sites and was not before: only `UiIcons.noResults` has a `light`
+form, `IconSpec.resolve` changes the glyph only for `fill`, so the wrapper's
+`weight: light` drew the regular glyph too; the pixels are the same. A light
+form for the other registry entries is a follow-up.
 
 **`UiDataTile`.** The reference's numeral tile on `glass.flat`, `radius.tile`:
 `label` at top-start in `type.label` `ink.secondary`, numeral in

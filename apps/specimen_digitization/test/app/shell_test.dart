@@ -69,7 +69,7 @@ void main() {
         );
         final scaffold = tester.widget<UiScaffold>(find.byType(UiScaffold));
         expect(scaffold.nav, isNotNull);
-        expect(scaffold.navPlacement, UiNavPlacement.beside);
+        expect(scaffold.navPlacement, UiNavPlacement.edge);
       }
       expect(find.byType(UiSidebar), findsNothing);
       expect(uiDestination('Specimens'), findsOneWidget);

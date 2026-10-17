@@ -16,6 +16,7 @@ import 'package:specimen_ui/specimen_ui.dart';
 
 import '../ui_finders.dart';
 import '../widget_test.dart' show TestRepository, TestSession;
+import 'error_persistence_test.dart' show FlakyRepository;
 
 Future<void> _pump(WidgetTester tester, Size window, double textScale) async {
   tester.view.devicePixelRatio = 1;
@@ -74,6 +75,49 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
   }
+
+  // The band spans the page beside the docked navigation, as it did before
+  // the rail was `UiRail`: an error, a blocker or the 4 dp strip of every
+  // load must not move the rail and the list pane (UiNavPlacement.edge).
+  testWidgets('a band never moves the docked rail or the list pane', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1180, 820);
+    addTearDown(tester.view.reset);
+    final repository = FlakyRepository()..failNext = true;
+    final session = TestSession();
+    addTearDown(session.controller.close);
+    await tester.pumpWidget(
+      SpecimenDigitizationApp(session: session, repository: repository),
+    );
+    await tester.pumpAndSettle();
+    final band = find.byWidgetPredicate(
+      (Widget widget) =>
+          widget is UiBanner &&
+          widget.message.startsWith('The service could not be reached.'),
+      description: 'the failure band',
+    );
+    expect(band, findsOneWidget);
+    final rail = find.byKey(const ValueKey('global-rail'));
+    final pane = find.byKey(const ValueKey('global-sidebar'));
+    final railWith = tester.getRect(rail);
+    final paneWith = tester.getRect(pane);
+    expect(railWith.top, 0);
+    expect(paneWith.top, 0);
+    expect(
+      tester.getRect(band).left,
+      greaterThanOrEqualTo(paneWith.right),
+      reason: 'the band spans the page beside the list pane',
+    );
+
+    await tester.tap(uiControl('Dismiss'));
+    await tester.pumpAndSettle();
+    expect(band, findsNothing);
+    expect(tester.getRect(rail), railWith);
+    expect(tester.getRect(pane), paneWith);
+    await tester.pumpWidget(const SizedBox());
+  });
 
   testWidgets('the docked rail keeps its arrow keys, Enter and its name', (
     tester,

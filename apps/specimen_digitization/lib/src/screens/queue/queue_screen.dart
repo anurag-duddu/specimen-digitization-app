@@ -792,7 +792,7 @@ class _QueuePaneState extends State<QueuePane> {
         ),
         _ => (
           'No specimens in this view',
-          'Choose another view to see the rest of the collection.',
+          'Specimens appear here when they match this view.',
         ),
       };
       return UiEmptyState(icon: UiIcons.queue, title: title, body: body);

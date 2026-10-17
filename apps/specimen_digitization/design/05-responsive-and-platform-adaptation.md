@@ -67,7 +67,7 @@ the shipped client since 2026-10-01. The shell does not switch at 600, 840 and
 | Arrangement | When (widths are multiplied by the text scale, held to 1 through 2) | Navigation | Modal | Band |
 |---|---|---|---|---|
 | `stacked` | narrower than 768, or under 600 tall at any width | `UiTabBar` along the bottom edge; the list is its own route under a record | sheet | strip |
-| `docked` | from 768 | `UiRail`, collapsed, in `UiScaffold.nav`, with a 312 dp list pane (scaled with the text) beside it on request | dialog | full |
+| `docked` | from 768 | `UiRail`, collapsed, in `UiScaffold.nav` at the frame's start edge (`UiNavPlacement.edge`, full height; the band spans the page only), with a 312 dp list pane (scaled with the text) beside it on request | dialog | full |
 | `listDetail` | from 1100 | the same, with the list pane open beside a record from the start | dialog | full |
 
 `UiSidebar` is not drawn at any width: every docked window is the rail and the

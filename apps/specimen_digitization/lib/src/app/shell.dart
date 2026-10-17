@@ -333,7 +333,7 @@ class _AppShellState extends State<AppShell> {
                                     sidebar: sidebar,
                                     sidebarWidth: sidebarWidth,
                                   ),
-                            navPlacement: UiNavPlacement.beside,
+                            navPlacement: UiNavPlacement.edge,
                             body: Semantics(
                               container: true,
                               explicitChildNodes: true,
@@ -498,8 +498,11 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
-  /// What a docked window draws beside the body, in `UiScaffold.nav`: the
-  /// rail, and the list pane beside it while it is open.
+  /// What a docked window draws at the frame's start edge, in `UiScaffold.nav`
+  /// with `UiNavPlacement.edge`: the rail, and the list pane beside it while
+  /// it is open. Edge rather than beside, so the band (an error, a blocker,
+  /// the 4 dp progress strip of every load) spans the page only and never
+  /// moves the navigation, as it did not before the rail was `UiRail`.
   ///
   /// The pane is offstage rather than removed while it is closed, so the list
   /// keeps its search, selection and scroll, and it takes no width.
@@ -534,15 +537,16 @@ class _AppShellState extends State<AppShell> {
   /// the account at its foot.
   ///
   /// It is `UiRail`'s own column width, 72 dp, so the controls under the
-  /// destinations sit on the same centre line as the discs. The scaffold has
-  /// already cleared the top and side insets and hands the rail the bottom
-  /// one, which the `SafeArea` spends under the account control.
+  /// destinations sit on the same centre line as the discs. The frame hands
+  /// an edge column the top, start and bottom insets, and the `SafeArea`
+  /// spends them around the column, so a side notch widens the rail rather
+  /// than squeezing it.
   Widget _rail(BuildContext context, WorkspaceController controller) {
     final ui = context.ui;
-    return SizedBox(
-      key: const ValueKey<String>('global-rail'),
-      width: UiRailStyle.minWidthOf(ui),
-      child: SafeArea(
+    return SafeArea(
+      child: SizedBox(
+        key: const ValueKey<String>('global-rail'),
+        width: UiRailStyle.minWidthOf(ui),
         child: LayoutBuilder(
           builder: (context, constraints) => SingleChildScrollView(
             child: ConstrainedBox(
