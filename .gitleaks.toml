@@ -636,3 +636,12 @@ regexes = [
   '''^\s*"hashed_secret": "13685940fb69a045ed2a0b5800962f51155d0948",?\s*$''', # pragma: allowlist secret (published SHA-256 pin of an approved engine download)
   '''^\s*"hashed_secret": "5d876c14b2eb6b173d3dd0d4715df50b4cb352a4",?\s*$''', # pragma: allowlist secret (synthetic shared-wire fixture value)
 ]
+
+[[rules.allowlists]]
+description = "Exact synthetic idempotency key of the shared-wire HTTP journey in tests/fixtures/general_api_contracts.json; not a credential; reviewed false alarm by owner decision 2026-10-17; see SECRET_SCAN_REVIEW.md"
+condition = "AND"
+paths = ['''^tests/fixtures/general_api_contracts\.json$''']
+regexTarget = "line"
+regexes = [
+  '''^\s*"Idempotency-Key": "7651ca196a03f7cc18d5625844ca3b2fdc68a62d7b19c691c3b222ad40a77aa8",?\s*$''', # pragma: allowlist secret (synthetic shared-wire fixture idempotency key)
+]

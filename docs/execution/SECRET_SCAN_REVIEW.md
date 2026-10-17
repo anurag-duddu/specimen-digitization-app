@@ -510,3 +510,59 @@ Only these five exact path/type/hash findings were added to `.secrets.baseline` 
 Gitleaks then flags the five scanner identifiers, so one new rule-local AND allowlist
 matches only those exact `hashed_secret` lines inside `.secrets.baseline`. No file,
 path or field pattern is excluded from either scanner.
+
+## 2026-10-17 shared-wire fixture idempotency key: reviewed Gitleaks false positive
+
+Pinned Gitleaks 8.30.1 reports `tests/fixtures/general_api_contracts.json` line 23 as
+`generic-api-key` (fingerprint `tests/fixtures/general_api_contracts.json:generic-api-key:23`)
+whenever a staged diff adds that line, for example a commit that brings the file in. The
+line is the `Idempotency-Key` request header of the `review_batch` request in the ordinary
+synthetic HTTP journey; its value is a 64-hex SHA-256 that begins `7651ca19` and ends
+`a77aa8` (the complete value is on that line and in the exact entry in `.gitleaks.toml`).
+It is not a credential. The exporter `scripts/ci/export_general_api_contract_fixtures.py`
+carries the value as a literal (line 378) in the request it records;
+`tests/test_general_api_contract_fixtures.py` asserts the exporter's output equals the
+committed fixture; the same literal is committed in that test (line 93) and in
+`apps/specimen_digitization/test/general_api_shared_contract_test.dart` (lines 326, 452 and
+706), each under a detect-secrets pragma that calls it a synthetic idempotency SHA-256. The
+Dart test also reads the fixture. detect-secrets already records the fixture line as
+reviewed (the 2026-10-16 section above, scanner identifier
+`5d876c14b2eb6b173d3dd0d4715df50b4cb352a4`); Gitleaks had no matching record.
+CI did not report it because `pre-commit run --all-files` invokes Gitleaks in its staged
+mode with nothing staged (see the publication supervisor section above).
+
+Owner decision, typed in the coordinator Claude Code session on 2026-10-17 at about 13:22Z,
+answering the coordinator's question (verbatim: "**Your decision:** how should we clear the
+false alarm?"), which offered two numbered options; the owner replied with this sentence instead of
+a number:
+
+> Yes: record that one test value as a reviewed false alarm with a single exact entry, in its own small reviewed PR to main. Keep every other scanner check unchanged.
+
+This follows, and does not widen, the 2026-10-16 ruling that forbids new allowlists,
+exclusions, skips or weaker checks without an explicit owner decision
+(SESSION_LEARNINGS, "Owner requires a proper fix without exceptions"). The new decision
+covers exactly one value. The coordinator's first option pointed at the existing `Podfile.lock`
+fingerprint entries in `.gitleaksignore` as the model for the entry; this record deliberately
+uses a value-bound `.gitleaks.toml` entry instead, because a fingerprint ignores any value at
+its line, which is the tighter reading of "a single exact entry".
+
+One new rule-local `[[rules.allowlists]]` block under `generic-api-key` in
+`.gitleaks.toml`, condition AND, binds both the exact path
+`^tests/fixtures/general_api_contracts\.json$` and a line pattern anchored on the complete
+`"Idempotency-Key": "<that 64-hex value>"` line, with the same optional comma and
+surrounding whitespace the existing line patterns tolerate. A line-number
+`.gitleaksignore` fingerprint was not used: it would ignore any value at line 23.
+The entry's line carries `# pragma: allowlist secret` like the file's other entries. Gitleaks
+skips its own config path (`detect/detect.go`, "skipping file: matches config or baseline
+path") and never reads `.gitleaks.toml` as content, so the pragma is for detect-secrets,
+which does scan the file and reports the line without it.
+
+Allowed: that one value, on that exact line shape, at that one path. Still flagged
+(staged-hook controls, listed in the pull request): the same line with any
+other value, the identical line or the whole fixture at any other path, a different
+credential-shaped value on its own line of the same fixture or appended to the allowed
+line, and a generic `api_key` or AWS access key id in another file. Default rules, every
+earlier exception, the `.gitleaksignore` entries, `.secrets.baseline` and
+`.pre-commit-config.yaml` are unchanged. Gitleaks scans only the added lines of a staged
+diff, so a staged edit that does not touch line 23 never reaches it; test with line 23
+in the diff.
