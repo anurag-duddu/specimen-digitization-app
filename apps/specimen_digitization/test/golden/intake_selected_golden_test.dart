@@ -70,16 +70,21 @@ void main() {
     }
   }
 
-  testWidgets('adding controls reopen without losing the selected photo', (
-    tester,
-  ) async {
-    await pumpIntake(tester, const Size(390, 844), selectedFile: true);
-    expect(find.byKey(const ValueKey('intake-choose-files')), findsNothing);
-    await chooseFiles(tester);
-    expect(find.byType(IntakePhoto), findsOneWidget);
-    expect(find.text('layout-label.png'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
+  testWidgets(
+    'adding controls stay visible without losing the selected photo',
+    (tester) async {
+      await pumpIntake(tester, const Size(390, 844), selectedFile: true);
+      expect(
+        find.byKey(const ValueKey('intake-choose-files')).hitTestable(),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('intake-add-photos')), findsNothing);
+      await chooseFiles(tester);
+      expect(find.byType(IntakePhoto), findsOneWidget);
+      expect(find.text('layout-label.png'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   for (final dark in <bool>[false, true]) {
     testWidgets(
@@ -124,22 +129,19 @@ void main() {
     );
   }
 
-  testWidgets(
-    'camera settings explain immediate submission before enabling it',
-    (tester) async {
-      await pumpIntake(tester, const Size(390, 844));
-      expect(find.text(cameraReviewFirst), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('intake-camera-settings')));
-      await tester.pumpAndSettle();
-      expect(find.text(cameraSendImmediatelyBody), findsOneWidget);
-      final toggle = find.byKey(const ValueKey('intake-auto-ingest'));
-      expect(tester.widget<UiSwitch>(toggle).value, isFalse);
-      await tester.ensureVisible(toggle);
-      await tester.tap(toggle);
-      await tester.pumpAndSettle();
-      expect(tester.widget<UiSwitch>(toggle).value, isTrue);
-      expect(find.text('Photos send immediately'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
+  testWidgets('send mode is visible and can enable immediate submission', (
+    tester,
+  ) async {
+    await pumpIntake(tester, const Size(390, 844));
+    expect(find.text(cameraReviewFirst), findsOneWidget);
+    expect(find.byKey(const ValueKey('intake-camera-settings')), findsNothing);
+    final toggle = find.byKey(const ValueKey('intake-auto-ingest'));
+    expect(tester.widget<UiSegmented<bool>>(toggle).value, isFalse);
+    await tester.ensureVisible(toggle);
+    await tester.tap(find.text(cameraSendImmediatelyLabel));
+    await tester.pumpAndSettle();
+    expect(tester.widget<UiSegmented<bool>>(toggle).value, isTrue);
+    expect(find.text(cameraSendImmediatelyLabel), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }

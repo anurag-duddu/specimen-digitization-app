@@ -1,12 +1,20 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:specimen_digitization/src/api_repository.dart';
+import 'package:specimen_digitization/src/capture/capture_camera.dart';
+import 'package:specimen_digitization/src/capture/capture_screen.dart';
 import 'package:specimen_digitization/src/intake.dart';
 import 'package:specimen_digitization/src/theme/app_theme.dart';
 import 'package:specimen_digitization/src/widgets/caveat_text.dart';
 import 'package:specimen_digitization/src/models.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 import 'intake_harness.dart';
 import 'widget_test.dart' show TestRepository;
 
@@ -48,6 +56,83 @@ class DeniedIntakeRepository extends TestRepository {
     attempts++;
     throw const ApiFailure('Collection access denied.', status: 403);
   }
+}
+
+const _captureKey = 'pending-camera-owner-v1';
+const _captureSensitiveKey = '$_captureKey:sensitive';
+const _recoveryScope = CollectionScope(
+  organizationId: 'org',
+  collectionId: 'insects',
+  name: 'Synthetic insects',
+  permissions: ['upload'],
+);
+
+Widget _recoveryApp(
+  SpecimenRepository repository, {
+  String user = 'owner',
+  Future<List<XFile>> Function()? recover,
+  Future<List<XFile>> Function(bool)? pick,
+}) => MaterialApp(
+  theme: AppTheme.light(),
+  home: Scaffold(
+    body: IntakeScreen(
+      repository: repository,
+      scope: _recoveryScope,
+      userId: user,
+      onComplete: () {},
+      recoverCamera: recover,
+      pickImages: pick,
+      openCapture: (_) async =>
+          const CaptureResult(unavailable: CaptureUnavailable.noCamera),
+    ),
+  ),
+);
+
+// Snapshot the preferences while the real device-picker path is open. The
+// returned snapshot represents what survives an Android process restart.
+Future<Map<String, Object>> _writeCameraMarker(
+  WidgetTester tester, {
+  required bool sensitive,
+  String user = 'owner',
+}) async {
+  SharedPreferences.setMockInitialValues({});
+  const channel = MethodChannel('plugins.flutter.io/image_picker');
+  final messenger =
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+  Map<String, Object>? marker;
+  messenger.setMockMethodCallHandler(channel, (call) async {
+    expect(call.method, 'pickImage');
+    final prefs = await SharedPreferences.getInstance();
+    marker = {for (final key in prefs.getKeys()) key: prefs.get(key)!};
+    return null;
+  });
+  addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+  await tester.pumpWidget(_recoveryApp(TestRepository(), user: user));
+  await tester.pumpAndSettle();
+  await selectSensitivity(tester, sensitive ? 'Sensitive' : 'Not sensitive');
+  await tester.tap(takePhotographButton);
+  await tester.pumpAndSettle();
+  expect(marker, isNotNull);
+  expect(marker![_captureKey], '$user:${_recoveryScope.key}');
+  final prefs = await SharedPreferences.getInstance();
+  expect(prefs.containsKey(_captureKey), isFalse);
+  expect(prefs.containsKey(_captureSensitiveKey), isFalse);
+  await tester.pumpWidget(const SizedBox.shrink());
+  await tester.pumpAndSettle();
+  return marker!;
+}
+
+Future<void> _pumpRecovery(WidgetTester tester, Widget app) async {
+  await tester.runAsync(() async {
+    await tester.pumpWidget(app);
+    for (var attempt = 0; attempt < 200; attempt++) {
+      await Future<void>.delayed(const Duration(milliseconds: 25));
+      await tester.pump();
+      if (tester.widget<UiButton>(chooseFilesButton).onPressed != null) return;
+    }
+    fail('Camera recovery did not finish');
+  });
+  await tester.pumpAndSettle();
 }
 
 void main() {
@@ -105,6 +190,162 @@ void main() {
   final bytes = File(
     'test/fixtures/synthetic-wide-label.png',
   ).readAsBytesSync();
+  XFile recoveredPhoto() =>
+      XFile.fromData(bytes, path: 'recovered.png', name: 'recovered.png');
+
+  ApiSpecimenRepository recordingRepository(List<Json> bodies) =>
+      ApiSpecimenRepository(
+        baseUrl: Uri.parse('http://localhost:8016'),
+        token: () async => 'synthetic-test-token',
+        client: MockClient((request) async {
+          if (request.url.path.endsWith('/batches') ||
+              request.url.path.endsWith('/items')) {
+            expect(request.method, 'POST');
+            final body = jsonDecode(request.body) as Json;
+            bodies.add(body);
+            return http.Response(
+              jsonEncode({
+                'batch_id': 'b',
+                'upload_id': 'u',
+                'sensitive': body['sensitive'],
+              }),
+              200,
+            );
+          }
+          return http.Response(
+            jsonEncode({
+              'upload_id': 'u',
+              'offset': bytes.length,
+              'revision': 2,
+            }),
+            200,
+          );
+        }),
+      );
+
+  for (final sensitive in [true, false]) {
+    testWidgets(
+      'device camera marker recovers sensitive=$sensitive in both creation requests',
+      (tester) async {
+        final marker = await _writeCameraMarker(tester, sensitive: sensitive);
+        SharedPreferences.setMockInitialValues(marker);
+        final bodies = <Json>[];
+        final repository = recordingRepository(bodies);
+        addTearDown(repository.close);
+        await _pumpRecovery(
+          tester,
+          _recoveryApp(repository, recover: () async => [recoveredPhoto()]),
+        );
+        expect(tester.widget<UiSwitch>(sensitivityControl).value, isFalse);
+        expect(
+          find.text('Recovered a photo. Check it, then send.'),
+          findsOneWidget,
+        );
+        expect(bodies, isEmpty);
+        await submitBatch(tester);
+        expect(bodies.map((body) => body['sensitive']), [sensitive, sensitive]);
+        expect(marker[_captureSensitiveKey], sensitive);
+      },
+      variant: TargetPlatformVariant.only(TargetPlatform.android),
+    );
+  }
+
+  for (final declaration in <Object?>[null, 'false']) {
+    testWidgets(
+      'legacy camera marker declaration=$declaration recovers as Sensitive',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({
+          _captureKey: 'owner:${_recoveryScope.key}',
+          _captureSensitiveKey: ?declaration,
+        });
+        final bodies = <Json>[];
+        final repository = recordingRepository(bodies);
+        addTearDown(repository.close);
+        await _pumpRecovery(
+          tester,
+          _recoveryApp(repository, recover: () async => [recoveredPhoto()]),
+        );
+        expect(tester.widget<UiSwitch>(sensitivityControl).value, isFalse);
+        expect(bodies, isEmpty);
+        await submitBatch(tester);
+        expect(bodies.map((body) => body['sensitive']), [true, true]);
+      },
+    );
+  }
+
+  for (final throws in [false, true]) {
+    testWidgets('camera recovery clears both marker keys, throws=$throws', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({
+        _captureKey: 'owner:${_recoveryScope.key}',
+        _captureSensitiveKey: true,
+      });
+      await _pumpRecovery(
+        tester,
+        _recoveryApp(
+          TestRepository(),
+          recover: () async {
+            if (throws) throw StateError('Synthetic recovery failure');
+            return [recoveredPhoto()];
+          },
+        ),
+      );
+      expect(
+        find.text(
+          throws
+              ? 'Could not read this photo. Choose it again.'
+              : 'Recovered a photo. Check it, then send.',
+        ),
+        findsOneWidget,
+      );
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.containsKey(_captureKey), isFalse);
+      expect(prefs.containsKey(_captureSensitiveKey), isFalse);
+    });
+  }
+
+  testWidgets(
+    'another owner camera marker is ignored without applying its declaration',
+    (tester) async {
+      final marker = await _writeCameraMarker(
+        tester,
+        sensitive: true,
+        user: 'other',
+      );
+      SharedPreferences.setMockInitialValues(marker);
+      var recoveries = 0;
+      final bodies = <Json>[];
+      final repository = recordingRepository(bodies);
+      addTearDown(repository.close);
+      await _pumpRecovery(
+        tester,
+        _recoveryApp(
+          repository,
+          recover: () async {
+            recoveries++;
+            return [recoveredPhoto()];
+          },
+          pick: (_) async => [recoveredPhoto()],
+        ),
+      );
+      expect(recoveries, 0);
+      expect(
+        find.text('Recovered a photo. Check it, then send.'),
+        findsNothing,
+      );
+      expect(uploadButton, findsNothing);
+      expect(tester.widget<UiSwitch>(sensitivityControl).value, isFalse);
+      await chooseFiles(tester);
+      await submitBatch(tester);
+      expect(bodies.map((body) => body['sensitive']), [false, false]);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString(_captureKey), 'other:${_recoveryScope.key}');
+      expect(prefs.get(_captureSensitiveKey), isTrue);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.android),
+  );
+
   testWidgets(
     'interrupted camera recovery requires the same user and collection and never uploads automatically',
     (tester) async {
@@ -148,7 +389,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('recovered.png'), findsOneWidget);
       expect(
-        find.textContaining('Recovered an interrupted photograph'),
+        find.text('Recovered a photo. Check it, then send.'),
         findsOneWidget,
       );
       // Recovery only queues the photograph; Upload remains an explicit action.

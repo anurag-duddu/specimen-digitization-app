@@ -181,14 +181,8 @@ void main() {
     expect(find.text('Not uploaded'), findsNWidgets(2));
     expect(find.text('empty.png'), findsOneWidget);
     expect(find.text('notes.txt'), findsOneWidget);
-    expect(
-      find.text('This file is empty, so there is nothing to upload.'),
-      findsOneWidget,
-    );
-    expect(
-      find.textContaining('This client uploads JPEG, PNG, HEIC, TIFF and DNG.'),
-      findsOneWidget,
-    );
+    expect(find.text('Empty file. Choose another.'), findsOneWidget);
+    expect(find.text('Use JPEG, PNG, HEIC, TIFF or DNG.'), findsOneWidget);
     // Every reason sits in the row it belongs to (H9.4).
     expect(find.byType(IntakeManifestRow), findsNWidgets(3));
   });
@@ -211,7 +205,7 @@ void main() {
     expect(buttonEnabled(tester, uploadButton), isTrue);
     await chooseFiles(tester);
     expect(repository.created, isEmpty);
-    expect(find.text('Send 2 for processing'), findsOneWidget);
+    expect(find.text('Send 2 photos'), findsOneWidget);
     expect(confirmCheckbox, findsNothing);
     await submitBatch(tester);
     expect(repository.created, <String>['take-0.png', 'take-1.png']);
@@ -230,9 +224,9 @@ void main() {
     );
     expect(uploadButton, findsNothing);
     await chooseFiles(tester);
-    expect(find.text('Send 1 for processing'), findsOneWidget);
+    expect(find.text('Send 1 photo'), findsOneWidget);
     await chooseFiles(tester);
-    expect(find.text('Send 2 for processing'), findsOneWidget);
+    expect(find.text('Send 2 photos'), findsOneWidget);
   });
 
   testWidgets('removing a row takes it out of the batch', (

@@ -7,15 +7,16 @@ import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 /// The screen's own name.
-const String intakeTitle = 'Add specimens';
+const String intakeTitle = 'Intake';
 
 /// What the screen is for, including the possible next step after admission.
-const String intakePurpose = 'One photograph per specimen.';
+const String intakePurpose = 'One photo per specimen.';
 
-const String cameraSendImmediatelyLabel = 'Send immediately';
-const String cameraReviewFirst = 'Review before sending';
+const String cameraSendImmediatelyLabel = 'Send now';
+const String cameraReviewFirst = 'Review';
 const String cameraSendImmediatelyBody =
     'Camera photos skip review and send as soon as you take them.';
+const String _sourceBusyMessage = 'Camera or photo picker is already open.';
 
 /// The capture surface adapts its source choices to the current platform.
 class IntakeCaptureCard extends StatefulWidget {
@@ -70,8 +71,8 @@ class IntakeCaptureCard extends StatefulWidget {
   final bool hasPhotos;
 
   static const String title = intakeTitle;
-  static const String dropTitle = 'Drop specimen photos anywhere';
-  static const String dropActive = 'Release to add specimen photos';
+  static const String dropTitle = 'Drop photos anywhere';
+  static const String dropActive = 'Release to add photos';
   static const String cameraTitle = 'Camera';
   static const String bulkTitle = 'Files';
 
@@ -110,15 +111,7 @@ class _IntakeCaptureCardState extends State<IntakeCaptureCard> {
             },
             child: files,
           );
-    if (!widget.hasPhotos) return bulk;
-    return UiDisclosure(
-      key: const ValueKey<String>('intake-add-photos'),
-      title: 'Add photos',
-      summary: widget.cameraAvailable && widget.autoIngest
-          ? 'Camera photos send immediately'
-          : null,
-      child: bulk,
-    );
+    return bulk;
   }
 
   Widget _fileContent(BuildContext context) {
@@ -133,11 +126,9 @@ class _IntakeCaptureCardState extends State<IntakeCaptureCard> {
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         children: <Widget>[
-          if (widget.web) ...<Widget>[
+          if (widget.web && dragging) ...<Widget>[
             Text(
-              dragging
-                  ? IntakeCaptureCard.dropActive
-                  : IntakeCaptureCard.dropTitle,
+              IntakeCaptureCard.dropActive,
               style: ui.type.body.copyWith(color: ui.color.ink),
             ),
             SizedBox(height: ui.space.s2),
@@ -145,29 +136,16 @@ class _IntakeCaptureCardState extends State<IntakeCaptureCard> {
           _actions(context),
           if (widget.cameraAvailable) ...[
             SizedBox(height: ui.space.s2),
-            UiDisclosure(
-              key: const ValueKey<String>('intake-camera-settings'),
-              title: 'Camera settings',
-              summary: widget.autoIngest
-                  ? 'Photos send immediately'
-                  : cameraReviewFirst,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    cameraSendImmediatelyBody,
-                    style: ui.type.bodySmall.copyWith(
-                      color: ui.color.inkSecondary,
-                    ),
-                  ),
-                  SizedBox(height: ui.space.s2),
-                  UiSwitch(
-                    key: const ValueKey<String>('intake-auto-ingest'),
-                    label: cameraSendImmediatelyLabel,
-                    value: widget.autoIngest,
-                    onChanged: widget.onAutoIngestChanged,
-                  ),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: UiSegmented<bool>(
+                key: const ValueKey<String>('intake-auto-ingest'),
+                segments: const <UiSegment<bool>>[
+                  UiSegment(value: false, label: cameraReviewFirst),
+                  UiSegment(value: true, label: cameraSendImmediatelyLabel),
                 ],
+                value: widget.autoIngest,
+                onChanged: widget.onAutoIngestChanged,
               ),
             ),
           ],
@@ -185,38 +163,54 @@ class _IntakeCaptureCardState extends State<IntakeCaptureCard> {
           key: const ValueKey<String>('intake-take-photograph'),
           label: 'Take photos',
           leading: UiIcons.camera,
+          variant: widget.web
+              ? UiButtonVariant.secondary
+              : UiButtonVariant.primary,
           onPressed: widget.onTakePhotograph,
           disabledReason: widget.onTakePhotograph == null
-              ? 'The camera or file picker is already open.'
+              ? _sourceBusyMessage
               : null,
         ),
-      UiButton(
-        key: const ValueKey<String>('intake-choose-files'),
-        label: 'Choose files',
-        leading: UiIcons.uploadFile,
-        variant: widget.cameraAvailable
-            ? UiButtonVariant.secondary
-            : UiButtonVariant.primary,
-        onPressed: widget.onChooseFiles,
-        disabledReason: widget.onChooseFiles == null
-            ? 'The file picker is already open.'
-            : null,
+      // Keep the overflow source beside Choose files when they fit. At larger
+      // text sizes the pair stacks without clipping either label.
+      OverflowBar(
+        spacing: context.ui.space.s2,
+        overflowSpacing: context.ui.space.s2,
+        children: [
+          UiButton(
+            key: const ValueKey<String>('intake-choose-files'),
+            label: 'Choose files',
+            leading: UiIcons.uploadFile,
+            variant: widget.cameraAvailable && !widget.web
+                ? UiButtonVariant.secondary
+                : UiButtonVariant.primary,
+            onPressed: widget.onChooseFiles,
+            disabledReason: widget.onChooseFiles == null
+                ? _sourceBusyMessage
+                : null,
+          ),
+          if (widget.onImportFromLink != null || widget.onBrowseSources != null)
+            UiMenuTrigger(
+              key: const ValueKey<String>('intake-more'),
+              label: 'More',
+              semanticsLabel: 'More photo sources',
+              items: <UiMenuItem>[
+                if (widget.onImportFromLink != null)
+                  UiMenuItem(
+                    label: 'Import from link',
+                    icon: UiIcons.sourceImport,
+                    onSelected: widget.onImportFromLink,
+                  ),
+                if (widget.onBrowseSources != null)
+                  UiMenuItem(
+                    label: 'Add from storage',
+                    icon: UiIcons.sources,
+                    onSelected: widget.onBrowseSources,
+                  ),
+              ],
+            ),
+        ],
       ),
-      if (widget.onImportFromLink != null)
-        UiButton(
-          key: const ValueKey<String>('intake-import-from-link'),
-          label: 'Import from link',
-          variant: UiButtonVariant.secondary,
-          leading: UiIcons.sourceImport,
-          onPressed: widget.onImportFromLink,
-        ),
-      if (widget.onBrowseSources != null)
-        UiButton(
-          label: 'Add from storage',
-          variant: UiButtonVariant.secondary,
-          leading: UiIcons.sources,
-          onPressed: widget.onBrowseSources,
-        ),
     ],
   );
 }
@@ -224,6 +218,6 @@ class _IntakeCaptureCardState extends State<IntakeCaptureCard> {
 /// The action names the processing handoff rather than its transport detail.
 String intakeUploadLabel({required bool uploading, required int pending}) {
   if (uploading) return 'Sending';
-  if (pending == 1) return 'Send 1 for processing';
-  return 'Send $pending for processing';
+  if (pending == 1) return 'Send 1 photo';
+  return 'Send $pending photos';
 }

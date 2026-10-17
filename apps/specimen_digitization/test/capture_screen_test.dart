@@ -2032,7 +2032,11 @@ void main() {
       // Accepting a camera photograph releases it to continuous Intake.
       expect(repository.captured, hasLength(1));
       expect(repository.captured.single.method, 'camera');
-      expect(repository.captured.single.sensitive, isTrue);
+      expect(
+        repository.captured.single.sensitive,
+        isFalse,
+        reason: 'Intake starts with Mark sensitive off',
+      );
       expect(
         completed,
         1,

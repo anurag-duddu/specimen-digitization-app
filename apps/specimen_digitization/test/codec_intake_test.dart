@@ -37,12 +37,12 @@ void main() {
         token: () async => 'test-only',
         client: MockClient((request) async {
           if (request.url.path.endsWith('/batches')) {
-            expect((jsonDecode(request.body) as Json)['sensitive'], isTrue);
-            return http.Response('{"batch_id":"b"}', 200);
+            expect((jsonDecode(request.body) as Json)['sensitive'], isFalse);
+            return http.Response('{"batch_id":"b","sensitive":false}', 200);
           }
           if (request.url.path.endsWith('/items')) {
             final body = jsonDecode(request.body) as Json;
-            expect(body['sensitive'], isTrue);
+            expect(body['sensitive'], isFalse);
             expect(body.containsKey('width'), false);
             expect(body.containsKey('height'), false);
             return http.Response(
