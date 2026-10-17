@@ -1149,6 +1149,13 @@ surface toward its opposite" correction wave 0 made to the state layer itself,
 and it is visible on `paper`, on `ground` and under a field in both modes. The
 control is outside the semantics tree.
 
+Amended 2026-10-17: the application's `SkeletonBar`, `SkeletonRow` and
+`SkeletonBlock` are gone. Two were this control under another name; the
+third, three bars at 60, 40 and 80 percent, was a row shape of its own, and
+its call sites draw `UiSkeleton.row()` now, which is a list row's shape: right
+for the source lists, approximate for the record's loading inspector, whose
+field rows have no leading block.
+
 **`UiEmptyState`.** Glyph 40 `light`, `type.title`, one sentence `body`,
 at most one `UiButton`. Sits on the sky, no glass. Carried from v1.
 
@@ -1156,6 +1163,19 @@ Amended in wave 1: the action slot is typed `UiButton?` rather than the
 `Widget?` section 11 asks for, because "at most one `UiButton`" is a rule and
 a type states a rule better than a comment does. This is the one slot in the
 family narrow enough to be worth it.
+
+Amended 2026-10-17: the application draws it directly. Its `EmptyState` in
+`lib/src/widgets/empty_state.dart` wrapped this control in a second centre,
+reading width cap and 24 by 48 dp padding, so every empty state carried the
+padding twice, and the queue's filtered views drew a bare line of grey text
+instead of an empty state at all. Both are gone: every call site passes a
+`UiIcons` entry to `UiEmptyState`, and the queue's four empty views (needs a
+human, deferred, cleared, any other view) are `UiEmptyState` with a one
+sentence body and no action. The control asserts that an action it is given
+can be pressed, the rule the application's wrapper used to keep: a button
+that does nothing is not "one way out of it". `test/widgets/
+empty_states_on_specimen_ui_test.dart` fails if the application declares a
+class named like either control again.
 
 **`UiDataTile`.** The reference's numeral tile on `glass.flat`, `radius.tile`:
 `label` at top-start in `type.label` `ink.secondary`, numeral in
@@ -1226,7 +1246,8 @@ percent, or an image. Semantics `image` with the person's name.
 | `QueueRow`, `SourceObjectRow`, `UploadItem` | `UiListRow` | Selection mode via the row's selectable variant |
 | `SelectionBar` | `glass.floating` capsule with `UiButton`s and a count | Anchored like the toast layer |
 | `EnvironmentBanner` | `UiBanner` | Same copy, `flask` glyph |
-| `Thumbnail`, `RegionOverlay`, `InFlightGlyph`, `MotionReveal`, `MeasuredHeight`, `Skeleton`, `EmptyState`, `KeyCap`, `AdaptiveForm` | tokens, `UiSkeleton`, `UiEmptyState`, `UiKeyCap`, `ModalRoutes` | `AdaptiveForm` delegates to `showUiModal` |
+| `Thumbnail`, `RegionOverlay`, `InFlightGlyph`, `MotionReveal`, `MeasuredHeight`, `KeyCap`, `AdaptiveForm` | tokens, `UiKeyCap`, `ModalRoutes` | `AdaptiveForm` delegates to `showUiModal` |
+| `Skeleton`, `EmptyState` (retired 2026-10-17) | `UiSkeleton`, `UiEmptyState`, drawn directly | No application wrapper; see 4.5 |
 
 ## 6. The gallery
 
