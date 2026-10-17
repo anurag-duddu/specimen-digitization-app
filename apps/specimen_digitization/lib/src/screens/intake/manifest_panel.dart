@@ -1,9 +1,8 @@
-/// The upload manifest (07 section 5).
+/// Compact Intake rows, batch progress and photo diagnostics.
 ///
-/// Every file the operator chose is a row, including the ones this client
-/// refused, so the manifest is the complete account PRD 9.1.5 asks for. A
-/// rejection is a Skipped row carrying its own reason (heuristics audit, H1.6
-/// and H9.4), not a banner somewhere else on the screen.
+/// Local refusals stay as rows with a short reason. A photo already in this
+/// list is reported once without adding another row; handed-off photos leave
+/// the list while their cumulative result remains in the header.
 library;
 
 import 'dart:async';
@@ -22,8 +21,10 @@ import '../../widgets/evidence_drawer.dart';
 import '../../widgets/motion_reveal.dart';
 import '../../widgets/upload_item.dart';
 import 'manifest_entry.dart';
-import 'intake_transfer_session.dart';
-import 'stage_progress.dart';
+import 'intake_status.dart';
+import '../../widgets/product_modal.dart';
+import '../../widgets/specimen_status.dart';
+import '../../widgets/intake_photo.dart';
 
 /// The manifest header and its rows.
 class IntakeManifest extends StatefulWidget {
@@ -36,6 +37,12 @@ class IntakeManifest extends StatefulWidget {
     required this.onRemove,
     required this.onServerCheck,
     this.onRetry,
+    this.onChooseFile,
+    this.onSensitivityChanged,
+    this.onViewSpecimens,
+    this.sent = 0,
+    this.duplicates = 0,
+    this.activity,
     this.padding,
     this.scrollable = true,
     this.onExitsSettled,
@@ -46,6 +53,10 @@ class IntakeManifest extends StatefulWidget {
   /// it closes the manifest then. The manifest then hands focus over only
   /// between rows; when false, an emptied list's focus goes to its summary.
   final bool hostHandlesEmptyFocus;
+  final VoidCallback? onChooseFile, onViewSpecimens;
+  final void Function(ManifestEntry, bool)? onSensitivityChanged;
+  final int sent, duplicates;
+  final Listenable? activity;
 
   /// Called after a frame in which no row is leaving, so a host that kept
   /// the manifest mounted for a final exit knows it may let it go.
@@ -85,14 +96,13 @@ class IntakeManifest extends StatefulWidget {
   final bool scrollable;
 
   /// The pane's own title.
-  static const String title = 'Intake queue';
+  static const String title = 'Photos';
 
   /// What an empty manifest is called.
-  static const String emptyTitle = 'No photographs yet';
+  static const String emptyTitle = 'No photos yet';
 
   /// What would fill an empty manifest.
-  static const String emptyBody =
-      'Photographs appear here as you choose or take them.';
+  static const String emptyBody = 'Choose or take a photo to begin.';
 
   @override
   State<IntakeManifest> createState() => _IntakeManifestState();
@@ -110,7 +120,7 @@ class _IntakeManifestState extends State<IntakeManifest> {
   /// The rows drawn last frame, in order, including any still leaving.
   List<ManifestEntry> _shown = const <ManifestEntry>[];
 
-  /// Rows the main Queue has taken that are collapsing out of the list.
+  /// Rows handed off to Specimens that are collapsing out of the list.
   /// Drawn in place, out of the semantics tree and out of focus traversal,
   /// until their exit finishes (motion catalog, section 2.4: permanent exits
   /// are `quick` on the `exit` curve, and nothing under reduced motion).
@@ -135,6 +145,21 @@ class _IntakeManifestState extends State<IntakeManifest> {
   }
 
   @override
+  void didUpdateWidget(covariant IntakeManifest oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Stop disappears on completion; keep its keyboard focus on the summary.
+    if (oldWidget.busy &&
+        !widget.busy &&
+        widget.entries.isEmpty &&
+        _landing.hasFocus &&
+        !widget.hostHandlesEmptyFocus) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _landing.requestFocus();
+      });
+    }
+  }
+
+  @override
   void dispose() {
     for (final FocusNode node in _rowFocus.values) {
       node.dispose();
@@ -148,8 +173,7 @@ class _IntakeManifestState extends State<IntakeManifest> {
     () => FocusNode(debugLabel: 'Intake row $digest', skipTraversal: true),
   );
 
-  /// Works out which rows left since the last frame, keeps the ones the main
-  /// Queue took on screen while they collapse, and moves focus out of any
+  /// Works out which rows left since the last frame, keeps handed-off rows on screen while they collapse, and moves focus out of any
   /// row that held it.
   List<ManifestEntry> _reconcile(List<ManifestEntry> entries, bool reduced) {
     final Set<String> present = <String>{
@@ -261,13 +285,18 @@ class _IntakeManifestState extends State<IntakeManifest> {
         includeSemantics: false,
         child: _ManifestHeader(
           entries: entries,
+          sent: widget.sent,
+          duplicates: widget.duplicates,
+          onViewSpecimens: widget.onViewSpecimens,
           busy: widget.busy,
           stopping: widget.stopping,
           onStop: widget.onStop,
         ),
       ),
       SizedBox(height: ui.space.s4),
-      if (entries.isEmpty && _leaving.isEmpty)
+      if (entries.isEmpty &&
+          _leaving.isEmpty &&
+          widget.sent + widget.duplicates == 0)
         const UiEmptyState(
           icon: UiIcons.intake,
           title: IntakeManifest.emptyTitle,
@@ -292,7 +321,12 @@ class _IntakeManifestState extends State<IntakeManifest> {
                   key: ValueKey<String>(entry.digest),
                   entry: entry,
                   busy: widget.busy,
+                  activity: widget.activity,
                   onRemove: () => widget.onRemove(entry),
+                  onChooseFile: widget.onChooseFile,
+                  onSensitivityChanged: widget.onSensitivityChanged == null
+                      ? null
+                      : (value) => widget.onSensitivityChanged!(entry, value),
                   onServerCheck: () => widget.onServerCheck(entry),
                   onRetry: widget.onRetry == null
                       ? null
@@ -305,20 +339,22 @@ class _IntakeManifestState extends State<IntakeManifest> {
     ];
     final EdgeInsetsGeometry padding =
         widget.padding ?? EdgeInsetsDirectional.all(ui.space.s6);
-    // One ticker for every rolling row, however long the manifest is.
-    return IntakeStageCycle(
-      active: entries.any(IntakeProgress.rolls),
-      child: widget.scrollable
-          ? ListView(padding: padding, children: children)
-          : Padding(
-              padding: padding,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisSize: MainAxisSize.min,
-                children: children,
-              ),
+    return widget.scrollable
+        ? SingleChildScrollView(
+            padding: padding,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: children,
             ),
-    );
+          )
+        : Padding(
+            padding: padding,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: children,
+            ),
+          );
   }
 }
 
@@ -330,91 +366,78 @@ class _ManifestHeader extends StatelessWidget {
     required this.busy,
     required this.stopping,
     required this.onStop,
+    required this.sent,
+    required this.duplicates,
+    this.onViewSpecimens,
   });
-
   final List<ManifestEntry> entries;
-  final bool busy;
-  final bool stopping;
-  final VoidCallback? onStop;
-
-  /// What Stop does and what it does not, stated beside the control rather
-  /// than after it has been pressed (02 section 4.4).
-  static const String stopConsequence =
-      'Stop cancels the files that have not started. The file already '
-      'sending finishes first.';
-
-  /// What a reviewer is told once Stop has been pressed.
-  static const String stoppingLine =
-      'Stopping. The file already sending finishes first.';
+  final bool busy, stopping;
+  final VoidCallback? onStop, onViewSpecimens;
+  final int sent, duplicates;
 
   @override
   Widget build(BuildContext context) {
-    final UiThemeData ui = context.ui;
-    final bool hasProcessingRows = entries.any(
-      (ManifestEntry entry) =>
-          entry.state == UploadState.processing ||
-          entry.state == UploadState.processingBlocked ||
-          entry.state == UploadState.inMainQueue,
+    final ui = context.ui;
+    final complete = entries.isEmpty && sent > 0 && duplicates == 0;
+    final summary = complete
+        ? 'All $sent sent'
+        : intakeBatchSummary(entries, sent: sent, duplicates: duplicates);
+    final active = entries.indexWhere(
+      (entry) =>
+          entry.state == UploadState.uploading ||
+          (entry.checking && !entry.settled),
     );
-    final String summary = entries.isEmpty
-        ? batchProgressLine(entries)
-        : hasProcessingRows
-        ? ingestionQueueLine(entries)
-        : batchComplete(entries) && !busy
-        ? batchCompleteLine(entries)
-        : batchProgressLine(entries);
-    return Padding(
-      padding: EdgeInsetsDirectional.zero,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          // One account of the batch, read in place but never announced:
-          // each row's stage status is the one live region for a photo's
-          // change, so one transition is heard once (06 section 2.1).
-          Semantics(
-            key: const ValueKey<String>('intake-batch-summary'),
-            container: true,
-            child: Text(
-              summary,
-              style: ui.type.body.copyWith(color: ui.color.inkSecondary),
+    final total = sent + duplicates + entries.length;
+    final position = sent + duplicates + (active < 0 ? 0 : active + 1);
+    final progressLabel = 'Sending $position of $total';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Semantics(
+          key: const ValueKey<String>('intake-batch-summary'),
+          container: true,
+          child: Text(
+            summary,
+            style: ui.type.body.copyWith(color: ui.color.inkSecondary),
+          ),
+        ),
+        if (sent + duplicates > 0 && onViewSpecimens != null)
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: UiButton(
+              label: 'View in Specimens',
+              variant: UiButtonVariant.ghost,
+              onPressed: onViewSpecimens,
             ),
           ),
-          if (busy &&
-              entries.any(
-                (ManifestEntry entry) =>
-                    entry.state == UploadState.uploading ||
-                    (entry.checking && entry.file != null),
-              )) ...<Widget>[
-            SizedBox(height: ui.space.s4),
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              // The label is the present participle and the control is
-              // disabled, which is what 02 section 4.3 asks of a control in
-              // flight. No indeterminate ring: the batch's own progress is
-              // the determinate ring on the row that is sending.
-              child: UiButton(
-                key: const ValueKey<String>('intake-stop'),
-                label: stopping ? 'Stopping' : 'Stop',
-                variant: UiButtonVariant.danger,
-                leading: UiIcons.stop,
-                onPressed: stopping ? null : onStop,
-              ),
+        if (busy && active >= 0) ...[
+          SizedBox(height: ui.space.s2),
+          Text(progressLabel, style: ui.type.bodySmall),
+          UiProgress.bar(
+            value: ((position - 1 + entries[active].progress) / total).clamp(
+              0,
+              1,
             ),
-            SizedBox(height: ui.space.s2),
+            semanticsLabel: progressLabel,
+          ),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: UiButton(
+              key: const ValueKey<String>('intake-stop'),
+              label: stopping ? 'Stopping' : 'Stop sending',
+              variant: UiButtonVariant.secondary,
+              leading: UiIcons.stop,
+              onPressed: stopping ? null : onStop,
+            ),
+          ),
+          if (stopping)
             Semantics(
-              container: true,
               liveRegion: true,
-              child: Text(
-                stopping
-                    ? _ManifestHeader.stoppingLine
-                    : _ManifestHeader.stopConsequence,
-                style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
-              ),
+              child: const Text('Stopping. Current photo finishes.'),
             ),
-          ],
         ],
-      ),
+      ],
     );
   }
 }
@@ -525,6 +548,9 @@ class IntakeManifestRow extends StatelessWidget {
     required this.onRemove,
     required this.onServerCheck,
     this.onRetry,
+    this.onChooseFile,
+    this.onSensitivityChanged,
+    this.activity,
   });
 
   /// The row's data.
@@ -539,154 +565,178 @@ class IntakeManifestRow extends StatelessWidget {
   /// Asks the server to try decoding this file.
   final VoidCallback onServerCheck;
   final VoidCallback? onRetry;
+  final VoidCallback? onChooseFile;
+  final ValueChanged<bool>? onSensitivityChanged;
+  final Listenable? activity;
 
   /// What the server check control is called.
   static const String serverCheckLabel = 'Send for server check';
 
+  bool? get _sensitive {
+    final handle = entry.session;
+    if (handle == null) return entry.file?.sensitive;
+    // Reselected bytes can carry a different local default. Once a handle
+    // exists, only its reported classification describes the saved upload.
+    final value = handle['sensitive'];
+    return value is bool ? value : null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
-    final bool canDismiss =
-        !entry.checking && (entry.removable || entry.dismissible);
-    final bool canRetryTransfer =
-        (entry.state == UploadState.failed ||
-            entry.state == UploadState.interrupted) &&
-        entry.file != null;
-    final String? processingAction = intakeProcessingRetryAction(entry);
-    final bool canRetryProcessing = processingAction != null;
-    final bool showProcessingGuidance =
-        entry.state == UploadState.processingBlocked ||
-        canRetryProcessing ||
-        (entry.state == UploadState.processing && entry.specimen == null);
-    // The stage track owns progress interpolation and status announcements.
-    final Widget item = UploadItem(
+    final status = intakeStatus(entry);
+    final triple = switch (status.tone) {
+      IntakeTone.error => ui.color.status.blocked,
+      IntakeTone.operational => ui.color.status.needsReview,
+      IntakeTone.processing => ui.color.status.processing,
+      IntakeTone.none || IntakeTone.neutral => ui.color.status.deferred,
+    };
+    final icon = switch (status.tone) {
+      IntakeTone.error => UiIcons.error,
+      IntakeTone.operational => UiIcons.deferred,
+      IntakeTone.processing => UiIcons.processing,
+      _ => UiIcons.time,
+    };
+    final sensitive = _sensitive;
+    return UploadItem(
       name: entry.label,
-      concise: true,
-      stageProgress: IntakeStageProgress(entry: entry),
       state: entry.displayState,
       thumbnail: entry.file?.bytes,
-      sizeBytes: entry.file?.bytes.length,
-      pixelWidth: entry.file?.width,
-      pixelHeight: entry.file?.height,
-      progress: entry.progress,
-      reason: entry.why == null ? entry.reason : null,
-      onRemove: canDismiss ? onRemove : null,
-      removeBlockedReason: canDismiss
-          ? null
-          : entry.state == UploadState.processing
-          ? 'This photograph stays here while processing is active.'
-          : 'The server has taken this file, so it cannot be removed from '
-                'the batch.',
-      // The per-row action and the per-row evidence live inside the
-      // component rather than in a column around it, so a manifest row is
-      // one thing a reviewer learns once.
-      details: _details(context, ui),
-    );
-
-    return Padding(
-      padding: EdgeInsetsDirectional.symmetric(vertical: ui.space.s2),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          const UiHairline(),
-          SizedBox(height: ui.space.s2),
-          item,
-          UiDisclosure(
-            key: ValueKey<String>('intake-progress-details-${entry.digest}'),
-            title: 'Progress details',
-            child: IntakeProgressDetails(entry: entry),
-          ),
-          if ((canRetryTransfer || canRetryProcessing) && onRetry != null)
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: UiButton(
-                key: ValueKey<String>('intake-retry-${entry.digest}'),
-                label: entry.checking
-                    ? 'Retrying…'
-                    : processingAction == 'start_processing'
-                    ? 'Retry start'
-                    : canRetryProcessing
-                    ? 'Retry processing'
-                    : 'Retry this file',
-                variant: UiButtonVariant.primary,
-                onPressed: busy || entry.checking ? null : onRetry,
-                disabledReason: busy && !entry.checking
-                    ? 'Finish the current upload or retry first.'
-                    : null,
+      reason: status.reason,
+      sensitive: sensitive,
+      intakePresentation: StatusPresentation(
+        content: triple.content,
+        fill: triple.fill,
+        onFill: triple.onFill,
+        icon: icon.resolve(),
+        spec: icon,
+        label: status.status,
+        semanticsLabel: status.status,
+        progress: entry.state == UploadState.uploading ? entry.progress : null,
+      ),
+      onOpen: () => showProductModal<void>(
+        context: context,
+        title: entry.label,
+        body: (context) => activity == null
+            ? _sheet(context)
+            : ListenableBuilder(
+                listenable: activity!,
+                builder: (context, _) => _sheet(context),
               ),
+      ),
+      action: _action(status),
+    );
+  }
+
+  Widget? _action(IntakeStatus status) {
+    // A server handle locks the declaration even after sign-in interruption.
+    final editable =
+        entry.state == UploadState.ready &&
+        !entry.checking &&
+        entry.session == null &&
+        entry.file != null;
+    if (status.action == IntakeAction.menu) {
+      final wasSensitive = entry.file?.sensitive == true;
+      return UiMenuTrigger(
+        semanticsLabel: 'Photo options for ${entry.label}',
+        items: [
+          if (editable && onSensitivityChanged != null)
+            UiMenuItem(
+              label: wasSensitive ? 'Mark not sensitive' : 'Mark sensitive',
+              icon: UiIcons.locked,
+              onSelected: () => onSensitivityChanged!(!wasSensitive),
             ),
-          if (showProcessingGuidance) ...<Widget>[
-            SizedBox(height: ui.space.s2),
-            Text(
-              intakeProcessingRecoveryGuidance(entry),
-              style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
-            ),
-            if (entry.specimen != null &&
-                !canRetryProcessing &&
-                const <String>{
-                  'processing_blocked',
-                  'paused',
-                }.contains(entry.specimen!.state))
-              AdministratorContactLine(specimenId: entry.specimenId),
-          ],
-          if (entry.why != null)
-            CaveatText(label: entry.reason ?? '', why: entry.why!),
-          UiDisclosure(
-            title: 'File details',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                Text(
-                  entry.session != null
-                      ? 'Existing upload, classification unchanged'
-                      : entry.file?.sensitive == false
-                      ? 'Not sensitive'
-                      : 'Sensitive',
-                  style: ui.type.bodySmall.copyWith(
-                    color: ui.color.inkSecondary,
-                  ),
-                ),
-                if (entry.file != null)
-                  Text(
-                    UploadItem.measurements(
-                      sizeBytes: entry.file!.bytes.length,
-                      width: entry.file!.width,
-                      height: entry.file!.height,
-                    ),
-                    style: ui.type.bodySmall,
-                  ),
-                _ChecksumLine(digest: entry.digest),
-                if (entry.file != null) ...<Widget>[
-                  SizedBox(height: ui.space.s3),
-                  CaptureQualitySummary(quality: entry.quality),
-                  if (entry.preflight == null &&
-                      entry.preflightError == null &&
-                      !entry.checking)
-                    _checkButton(context),
-                  if (entry.quality != null)
-                    const CaveatText(
-                      label:
-                          'Thumbnail measurements do not assess readability.',
-                      why:
-                          'Check focus, glare and whether every label is in frame.',
-                    ),
-                  const CaveatText(
-                    label: 'The server check creates nothing.',
-                    why:
-                        'Nothing is created and no outside service is called. '
-                        'Local measurements stay on this device until you choose an action.',
-                  ),
-                ],
-                if (entry.preflight != null)
-                  EvidenceDrawer(
-                    title: 'Server codec support and check evidence',
-                    payload: entry.preflight,
-                  ),
-              ],
-            ),
+          UiMenuItem(
+            label: 'Remove',
+            icon: UiIcons.close,
+            onSelected: onRemove,
           ),
         ],
-      ),
+      );
+    }
+    final action = switch (status.action) {
+      IntakeAction.dismiss || IntakeAction.remove => onRemove,
+      IntakeAction.chooseFile => onChooseFile,
+      IntakeAction.start ||
+      IntakeAction.retry ||
+      IntakeAction.retryNow => busy || entry.checking ? null : onRetry,
+      _ => null,
+    };
+    if (status.action?.label == null) return null;
+    return UiButton(
+      key: ValueKey<String>('intake-action-${entry.digest}'),
+      label: status.action!.label!,
+      variant: UiButtonVariant.ghost,
+      onPressed: action,
+    );
+  }
+
+  Widget _sheet(BuildContext context) {
+    final ui = context.ui;
+    final sensitive = _sensitive;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (entry.file != null)
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: IntakePhoto(
+              bytes: entry.file!.bytes,
+              side: ui.space.s10 * 4,
+            ),
+          ),
+        Text(
+          sensitive == false
+              ? 'Not sensitive'
+              : sensitive == true
+              ? 'Sensitive'
+              : 'Existing upload, classification unchanged',
+          style: ui.type.body,
+        ),
+        if (entry.file != null)
+          Text(
+            UploadItem.measurements(
+              sizeBytes: entry.file!.bytes.length,
+              width: entry.file!.width,
+              height: entry.file!.height,
+            ),
+            style: ui.type.bodySmall,
+          ),
+        _ChecksumLine(digest: entry.digest),
+        if (entry.reason != null) Text(entry.reason!, style: ui.type.bodySmall),
+        if (entry.why != null) Text(entry.why!, style: ui.type.bodySmall),
+        if (entry.transferError != null)
+          Text(
+            entry.transferError is ApiFailure
+                ? (entry.transferError! as ApiFailure).message
+                : entry.transferError.toString(),
+            style: ui.type.bodySmall,
+          ),
+        if (entry.file != null) ...[
+          CaptureQualitySummary(quality: entry.quality),
+          if (entry.preflight == null &&
+              entry.preflightError == null &&
+              !entry.checking)
+            _checkButton(context),
+          const CaveatText(
+            label: 'Thumbnail measurements do not assess readability.',
+            why: 'Check focus, glare and whether every label is in frame.',
+          ),
+          const CaveatText(
+            label: 'The server check creates nothing.',
+            why:
+                'Nothing is created and no outside service is called. '
+                'Local measurements stay on this device until you choose an action.',
+          ),
+        ],
+        if (_details(context, ui) case final Widget details) details,
+        if (entry.preflight != null)
+          EvidenceDrawer(
+            title: 'Server codec support and check evidence',
+            payload: entry.preflight,
+          ),
+      ],
     );
   }
 

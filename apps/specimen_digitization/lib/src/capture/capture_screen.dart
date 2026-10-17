@@ -93,6 +93,8 @@ class CaptureScreen extends StatefulWidget {
     required this.camera,
     this.onAccepted,
     this.onCaptured,
+    this.canRemovePhoto,
+    this.removePhoto,
     this.initialSensitive = false,
     this.autoIngest = false,
     this.onAutoIngestChanged,
@@ -115,6 +117,11 @@ class CaptureScreen extends StatefulWidget {
   /// Supplying this callback enables both Sensitive controls. When null,
   /// neither control is shown and no [CapturedPhoto] is produced.
   final ValueChanged<CapturedPhoto>? onCaptured;
+
+  /// Intake checks ownership and Ready state both when showing and invoking
+  /// the last-shot action. A stale open menu cannot cancel a running upload.
+  final bool Function(XFile)? canRemovePhoto;
+  final bool Function(XFile)? removePhoto;
 
   /// The starting choice for this camera session; never persisted here.
   final bool initialSensitive;
@@ -163,6 +170,8 @@ class CaptureScreen extends StatefulWidget {
     CaptureCameraFactory camera, {
     ValueChanged<XFile>? onAccepted,
     ValueChanged<CapturedPhoto>? onCaptured,
+    bool Function(XFile)? canRemovePhoto,
+    bool Function(XFile)? removePhoto,
     bool initialSensitive = false,
     bool autoIngest = false,
     ValueChanged<bool>? onAutoIngestChanged,
@@ -176,6 +185,8 @@ class CaptureScreen extends StatefulWidget {
       camera: camera,
       onAccepted: onAccepted,
       onCaptured: onCaptured,
+      canRemovePhoto: canRemovePhoto,
+      removePhoto: removePhoto,
       initialSensitive: initialSensitive,
       autoIngest: autoIngest,
       onAutoIngestChanged: onAutoIngestChanged,
@@ -238,6 +249,8 @@ class _CaptureScreenState extends State<CaptureScreen>
   bool _foreground = true;
   int _cameraGeneration = 0;
   int _acceptedCount = 0;
+  XFile? _lastAccepted;
+  final _lastShotMenu = PopoverController();
   Rect _crop = const Rect.fromLTWH(0.06, 0.06, 0.88, 0.88);
   XFile? _review;
   Uint8List? _reviewBytes;
@@ -577,10 +590,12 @@ class _CaptureScreenState extends State<CaptureScreen>
     required Uint8List bytes,
     required bool sensitive,
   }) {
+    _lastShotMenu.close();
     final ValueChanged<XFile>? onAccepted = widget.onAccepted;
     final ValueChanged<CapturedPhoto>? onCaptured = widget.onCaptured;
     setState(() {
       _acceptedCount++;
+      _lastAccepted = file;
       // A streamed photo is owned by Intake as soon as the callback returns.
       // Keep no result-file list for either streaming interface.
       if (onAccepted == null && onCaptured == null) _accepted.add(file);
@@ -735,6 +750,7 @@ class _CaptureScreenState extends State<CaptureScreen>
 
   @override
   void dispose() {
+    _lastShotMenu.dispose();
     WidgetsBinding.instance.removeObserver(this);
     _setLastShotBytes(null);
     _setReviewBytes(null);
@@ -1259,7 +1275,52 @@ class _CaptureScreenState extends State<CaptureScreen>
     );
   }
 
-  Widget _viewfinderControls() {
+  Widget _viewfinderControls() => widget.activity == null
+      ? _buildViewfinderControls()
+      : ListenableBuilder(
+          listenable: widget.activity!,
+          builder: (context, _) => _buildViewfinderControls(),
+        );
+
+  Widget _lastShotControl(Widget visual) {
+    final file = _lastAccepted;
+    if (!_autoIngest ||
+        file == null ||
+        widget.removePhoto == null ||
+        widget.canRemovePhoto?.call(file) != true) {
+      if (_lastShotMenu.isOpen) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _lastShotMenu.close();
+        });
+      }
+      return visual;
+    }
+    return UiPopoverMenu(
+      controller: _lastShotMenu,
+      items: [
+        UiMenuItem(
+          label: 'Remove last photo',
+          icon: UiIcons.close,
+          onSelected: () {
+            if (widget.removePhoto?.call(file) != true || !mounted) return;
+            setState(() {
+              _acceptedCount--;
+              _lastAccepted = null;
+              _setLastShotBytes(null);
+            });
+          },
+        ),
+      ],
+      child: Pressable(
+        semanticsLabel: 'Last photo options',
+        onPressed: _lastShotMenu.toggle,
+        radius: context.ui.shape.inner,
+        builder: (context, states) => visual,
+      ),
+    );
+  }
+
+  Widget _buildViewfinderControls() {
     final ui = context.ui;
     final thumbnail = _lastShotThumbnail;
     return Padding(
@@ -1283,34 +1344,36 @@ class _CaptureScreenState extends State<CaptureScreen>
               Expanded(
                 child: Align(
                   alignment: AlignmentDirectional.centerStart,
-                  child: Semantics(
-                    container: true,
-                    liveRegion: true,
-                    label: _acceptedCount == 1
-                        ? '1 photo'
-                        : '$_acceptedCount photos',
-                    excludeSemantics: true,
-                    child: Stack(
-                      key: const ValueKey('capture-last-shot'),
-                      children: [
-                        SizedBox.square(
-                          dimension: ui.space.targetMin + ui.space.s2,
-                          child: thumbnail == null
-                              ? const UiIcon(UiIcons.image)
-                              : Image(
-                                  image: thumbnail,
-                                  fit: BoxFit.cover,
-                                  gaplessPlayback: true,
-                                  errorBuilder: (context, error, stack) =>
-                                      const UiIcon(UiIcons.image),
-                                ),
-                        ),
-                        PositionedDirectional(
-                          bottom: 0,
-                          end: 0,
-                          child: UiBadge(_acceptedCount),
-                        ),
-                      ],
+                  child: _lastShotControl(
+                    Semantics(
+                      container: true,
+                      liveRegion: true,
+                      label: _acceptedCount == 1
+                          ? '1 photo'
+                          : '$_acceptedCount photos',
+                      excludeSemantics: true,
+                      child: Stack(
+                        key: const ValueKey('capture-last-shot'),
+                        children: [
+                          SizedBox.square(
+                            dimension: ui.space.targetMin + ui.space.s2,
+                            child: thumbnail == null
+                                ? const UiIcon(UiIcons.image)
+                                : Image(
+                                    image: thumbnail,
+                                    fit: BoxFit.cover,
+                                    gaplessPlayback: true,
+                                    errorBuilder: (context, error, stack) =>
+                                        const UiIcon(UiIcons.image),
+                                  ),
+                          ),
+                          PositionedDirectional(
+                            bottom: 0,
+                            end: 0,
+                            child: UiBadge(_acceptedCount),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),

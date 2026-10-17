@@ -7,6 +7,8 @@
 /// screen, keeping the location it was trying to reach.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/cupertino.dart' show CupertinoRouteTransitionMixin;
 import 'package:flutter/widgets.dart';
@@ -702,6 +704,22 @@ class _IntakeRoute extends StatelessWidget {
       scope: scope,
       userId: controller.session.userId,
       onComplete: () => controller.refresh(quiet: true),
+      accessVerified: true,
+      restoreAccess: () async {
+        final userId = controller.session.userId;
+        await controller.checkAccess();
+        return controller.session.signedIn &&
+            controller.session.userId == userId &&
+            controller.scopesVerified &&
+            controller.scopes.any((allowed) => allowed.key == scope.key);
+      },
+      onViewSpecimens: () {
+        // Newly handed-off photos have no review disposition yet.
+        unawaited(controller.clearFilters(disposition: ''));
+        GoRouter.of(
+          context,
+        ).go(AppRoutes.queueOf(Uri.encodeComponent(scope.key)));
+      },
       // Hidden rather than disabled where the build serves no sources.
       onBrowseSources: sourcesIn(controller.repository) == null
           ? null
