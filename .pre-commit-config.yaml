@@ -36,7 +36,7 @@ repos:
         # Generated Flutter and Xcode revision identifiers, and the SHA-256
         # source fingerprints in the generated Python shard timing manifest,
         # are not credentials. gitleaks still scans all of these files.
-        exclude: ^(apps/specimen_digitization/(\.metadata|ios/Runner\.xcodeproj/xcshareddata/xcschemes/Runner\.xcscheme)|scripts/ci/python_shard_timings\.json)$
+        exclude: ^(apps/specimen_digitization/(\.metadata|(ios|macos)/Runner\.xcodeproj/xcshareddata/xcschemes/Runner\.xcscheme)|scripts/ci/python_shard_timings\.json)$
 
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.1
