@@ -32,6 +32,7 @@ import 'package:specimen_digitization/src/search_filters.dart';
 import 'package:specimen_digitization/src/theme/app_theme.dart';
 import 'package:specimen_digitization/src/widgets/widgets.dart';
 import 'package:specimen_digitization/src/workbench.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 import '../golden/golden_harness.dart';
 
 /// A session that reaches nothing, so the sign-in screen renders its form.
@@ -287,8 +288,8 @@ void main() {
   bothThemes(
     'Empty state',
     () => const Scaffold(
-      body: EmptyState(
-        icon: Icons.inbox,
+      body: UiEmptyState(
+        icon: UiIcons.queue,
         title: 'No specimens yet',
         body: 'Upload a photograph to create the first record.',
       ),
@@ -307,8 +308,8 @@ void main() {
           child: Column(
             children: <Widget>[
               LoadingAnnouncement(thing: 'queue', visible: true),
-              SkeletonRow(),
-              SkeletonRow(),
+              UiSkeleton.row(),
+              UiSkeleton.row(),
             ],
           ),
         ),

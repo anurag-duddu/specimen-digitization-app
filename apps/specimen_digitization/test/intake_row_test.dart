@@ -63,7 +63,7 @@ void main() {
         );
         entry.session = {
           'upload_id': 'restored',
-          if (serverSensitive != null) 'sensitive': serverSensitive,
+          'sensitive': ?serverSensitive,
         };
         await pumpManifest(tester, [entry], size: const Size(390, 844));
         final spoken = serverSensitive == null

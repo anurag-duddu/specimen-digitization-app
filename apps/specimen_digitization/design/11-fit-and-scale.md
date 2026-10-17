@@ -83,6 +83,14 @@ class and resolves to the nearest smaller class that is set:
 and 3 on large. Scaffolds, screens and patterns choose arrangements with these
 two. A control never reads either.
 
+Amended 2026-10-17: chrome reads a third, `WindowArrangement`, in the same
+file. It is the shell's rule for when a window is stacked (the tab bar, sheets,
+the strip band) and when it docks (the rail, dialogs, the full band): width
+multiplied by the text scale against 768 and 1100, and height against 600 (05
+section 1, "one arrangement per window"). Content keeps reading the window
+class. The text scale is in it because the docked list pane grows with the
+text.
+
 ### 3.2 Density
 
 Unchanged from 09 section 6. Density is the spacing modifier. It never changes

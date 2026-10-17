@@ -137,6 +137,7 @@ class UiRail extends StatelessWidget {
     required this.onSelect,
     this.leading,
     this.extended = false,
+    this.semanticsLabel,
   });
 
   /// The destinations, in order.
@@ -158,6 +159,14 @@ class UiRail extends StatelessWidget {
   /// form to expanded ones. The rail does not decide that for itself: the
   /// window class does, and the shell reads it.
   final bool extended;
+
+  /// What the tab list is called to a screen reader, or null for no name.
+  ///
+  /// WAI-ARIA asks a tab list for a name when a page has more than one, and
+  /// the shell's rail sits beside a record that has tabs of its own, so a
+  /// screen reader user hears which list they are in. The destinations keep
+  /// their own labels either way.
+  final String? semanticsLabel;
 
   /// The fewest destinations a rail may hold.
   ///
@@ -205,6 +214,7 @@ class UiRail extends StatelessWidget {
               container: true,
               explicitChildNodes: true,
               role: SemanticsRole.tabBar,
+              label: semanticsLabel,
               child: SizedBox(
                 height: style.itemExtent * destinations.length,
                 child: Stack(

@@ -18,7 +18,6 @@ import '../../api_repository.dart';
 import '../../research/research_host.dart';
 import '../workbench/source_pane.dart';
 import '../workbench/workbench_layout.dart';
-import '../../widgets/widgets.dart';
 import '../../workbench.dart';
 import '../../workspace.dart';
 
@@ -400,7 +399,7 @@ class _Loading extends StatelessWidget {
     label: 'Loading record $id',
     child: UiTopBar(
       key: const ValueKey<String>('loading-record-toolbar'),
-      leading: AppSidebarScope.maybeOf(context)?.mobileNavigation == true
+      leading: WindowArrangement.of(context).isStacked
           ? UiIconButton(
               icon: UiIcons.back,
               semanticsLabel: AppShell.backLabel,
@@ -429,7 +428,7 @@ class _Loading extends StatelessWidget {
     height: UiDecisionBarStyle.resolve(context.ui, context).height,
     child: const Align(
       alignment: AlignmentDirectional.centerEnd,
-      child: SkeletonBar(widthFactor: .45),
+      child: UiSkeleton.line(widthFactor: .45),
     ),
   );
 
@@ -453,7 +452,7 @@ class _Loading extends StatelessWidget {
         Expanded(
           child: LayoutBuilder(
             builder: (context, constraints) =>
-                SkeletonBlock(height: constraints.maxHeight),
+                UiSkeleton.line(height: constraints.maxHeight),
           ),
         ),
         Padding(
@@ -462,8 +461,8 @@ class _Loading extends StatelessWidget {
             height: toolsHeight ?? style.chromeRowHeight * rows,
             child: const Row(
               children: <Widget>[
-                Expanded(child: SkeletonBar(widthFactor: .55)),
-                Expanded(child: SkeletonBar(widthFactor: .7)),
+                Expanded(child: UiSkeleton.line(widthFactor: .55)),
+                Expanded(child: UiSkeleton.line(widthFactor: .7)),
               ],
             ),
           ),
@@ -476,11 +475,11 @@ class _Loading extends StatelessWidget {
     crossAxisAlignment: CrossAxisAlignment.stretch,
     mainAxisSize: MainAxisSize.min,
     children: <Widget>[
-      const SkeletonRow(),
+      const UiSkeleton.row(),
       SizedBox(height: context.ui.space.s6),
-      const SkeletonRow(),
+      const UiSkeleton.row(),
       SizedBox(height: context.ui.space.s6),
-      const SkeletonRow(),
+      const UiSkeleton.row(),
     ],
   );
 
@@ -513,7 +512,7 @@ class _Loading extends StatelessWidget {
                 key: const ValueKey<String>('loading-inspector'),
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
-                  const SkeletonRow(),
+                  const UiSkeleton.row(),
                   const UiHairline(),
                   Expanded(
                     child: SingleChildScrollView(

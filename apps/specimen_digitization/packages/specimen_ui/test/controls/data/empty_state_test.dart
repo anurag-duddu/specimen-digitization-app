@@ -82,6 +82,28 @@ void main() {
     expect(cleared, 1);
   });
 
+  testWidgets('a button that does nothing is refused', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      uiHarness(
+        child: const UiEmptyState(
+          icon: UiIcons.noResults,
+          title: 'No matches',
+          body: 'No records match the current search and filters.',
+          action: UiButton(label: 'Clear filters'),
+        ),
+      ),
+    );
+    expect(
+      tester.takeException(),
+      isAssertionError,
+      reason:
+          'a label without a callback is a control that does nothing; a '
+          'state with no way out passes no button (02 section 4.6)',
+    );
+  });
+
   testWidgets('it sits on the sky with no glass of its own', (
     WidgetTester tester,
   ) async {

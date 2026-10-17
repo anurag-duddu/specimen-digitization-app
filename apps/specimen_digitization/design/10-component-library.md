@@ -779,6 +779,13 @@ it floats in, and two sentences are three lines at 200 percent text on a short
 window, so the dialog needed the same thing the sheet has. The application's
 filter form was carrying the difference as a height cap of its own.
 
+Amended 2026-10-17: `UiDialog.showAdaptive`, `showUiModal` and the toast's
+corner read `WindowArrangement` (05 section 1, "one arrangement per window")
+through `presentsAsSheet` rather than the compact width class, so a modal is
+a sheet wherever the shell draws the tab bar: a phone on its side, a window
+under 768 dp, a tablet at 200 percent text. `isCompactWindow` and
+`compactWindowMax` stay, and answer the width class only.
+
 ### 4.4 Navigation family
 
 **`UiPillNav`.** The reference's floating row: a `glass.floating` capsule of
@@ -910,6 +917,17 @@ is composed as `space.targetMin + space.s6`, a 48 dp hit box with 12 dp of
 gutter, rather than read from `space.rail`, which is the v1 rail at 80 and
 still belongs to the screens that have not moved. Arrow keys move `Up` and
 `Down` and leave the cross axis alone, per the amendment to clause 3.
+
+Amended 2026-10-17: the application draws it. The docked shell's destinations
+were a hand-built column of `Pressable` rows from 2026-10-01, with their own
+arrow keys, a literal 6 percent `ink` fill and a radius of their own, while
+this entry had no caller. `AppShell` now puts `UiRail` at the head of its rail
+column in `UiScaffold.nav` (placement `edge`, below), with the list pane's
+toggle, the environment and
+the account under it on the rail's centre line. The rail takes an optional
+`semanticsLabel`, the tab list's name, because the shell's column was named
+"Workspace navigation" and a record beside it has tabs of its own; a rail
+without one publishes an unnamed tab list as before.
 
 **`UiSidebar`.** For large windows: 280 dp, `glass.flat`, the mark and product
 name, destinations as `UiListRow` with the 3 dp leading bar on the current one,
@@ -1045,6 +1063,28 @@ title and leading beside the whole bar, `setTitle` and `setLeading`, which the
 frame hands to the `UiTopBar` in the slot through `UiTopBarAsk`, an inherited
 widget the bar reads itself; the application's `ShellChrome` retired onto it.
 
+Amended 2026-10-17: a navigation beside the body keeps the bottom safe area.
+Everything below the top bar has the window's padding removed, and the rail
+and the sidebar run to the bottom edge, so a control at the foot of either had
+no inset to clear the home indicator with. The frame now hands the column the
+bottom inset (not the keyboard) and nothing else. A column with a control at
+its foot spends it. `UiSidebar`'s footer does not yet, and nothing draws a
+sidebar today.
+
+Amended 2026-10-17, again: a third placement, `UiNavPlacement.edge`. The
+navigation runs the window's full height at the start side, and the top bar,
+the band and the body sit beside it, so a band that comes and goes never moves
+the navigation, and the column takes the top, start and bottom insets while the
+frame beside it takes none at the start. `beside` keeps the wave 1 arrangement
+above, the bar and the band across the full width. The application's docked
+shell asks for `edge`: with `beside`, its band (an error, a blocker, and the
+4 dp progress strip of every record and page load) pushed the rail and the list
+pane down and back, which the independent review of #359 found and the shell
+before `UiRail` never did. `edge` is never inferred, and the frame keeps one
+shape whether or not `nav` is set, so a shell that draws the navigation at one
+window class and not at another keeps the page and its state across the
+change.
+
 Three files hold the navigation family's shared parts and are not in the
 layout of section 1.2: `nav_destination.dart`, the one destination model all
 three navigations take, and `nav_disc.dart` and `nav_group.dart`, the disc the
@@ -1135,6 +1175,13 @@ surface toward its opposite" correction wave 0 made to the state layer itself,
 and it is visible on `paper`, on `ground` and under a field in both modes. The
 control is outside the semantics tree.
 
+Amended 2026-10-17: the application's `SkeletonBar`, `SkeletonRow` and
+`SkeletonBlock` are gone. Two were this control under another name; the
+third, three bars at 60, 40 and 80 percent, was a row shape of its own, and
+its call sites draw `UiSkeleton.row()` now, which is a list row's shape: right
+for the source lists, approximate for the record's loading inspector, whose
+field rows have no leading block.
+
 **`UiEmptyState`.** Glyph 40 `light`, `type.title`, one sentence `body`,
 at most one `UiButton`. Sits on the sky, no glass. Carried from v1.
 
@@ -1142,6 +1189,23 @@ Amended in wave 1: the action slot is typed `UiButton?` rather than the
 `Widget?` section 11 asks for, because "at most one `UiButton`" is a rule and
 a type states a rule better than a comment does. This is the one slot in the
 family narrow enough to be worth it.
+
+Amended 2026-10-17: the application draws it directly. Its `EmptyState` in
+`lib/src/widgets/empty_state.dart` wrapped this control in a second centre,
+reading width cap and 24 by 48 dp padding, so every empty state carried the
+padding twice, and the queue's filtered views drew a bare line of grey text
+instead of an empty state at all. Both are gone: every call site passes a
+`UiIcons` entry to `UiEmptyState`, and the queue's four empty views (needs a
+human, deferred, cleared, any other view) are `UiEmptyState` with a one
+sentence body and no action. The control asserts that an action it is given
+can be pressed, the rule the application's wrapper used to keep: a button
+that does nothing is not "one way out of it". `test/widgets/
+empty_states_on_specimen_ui_test.dart` fails if the application declares a
+class named like either control again. The glyph rule above is not met by
+these call sites and was not before: only `UiIcons.noResults` has a `light`
+form, `IconSpec.resolve` changes the glyph only for `fill`, so the wrapper's
+`weight: light` drew the regular glyph too; the pixels are the same. A light
+form for the other registry entries is a follow-up.
 
 **`UiDataTile`.** The reference's numeral tile on `glass.flat`, `radius.tile`:
 `label` at top-start in `type.label` `ink.secondary`, numeral in
@@ -1212,7 +1276,8 @@ percent, or an image. Semantics `image` with the person's name.
 | `QueueRow`, `SourceObjectRow`, `UploadItem` | `UiListRow` | Selection mode via the row's selectable variant |
 | `SelectionBar` | `glass.floating` capsule with `UiButton`s and a count | Anchored like the toast layer |
 | `EnvironmentBanner` | `UiBanner` | Same copy, `flask` glyph |
-| `Thumbnail`, `RegionOverlay`, `InFlightGlyph`, `MotionReveal`, `MeasuredHeight`, `Skeleton`, `EmptyState`, `KeyCap`, `AdaptiveForm` | tokens, `UiSkeleton`, `UiEmptyState`, `UiKeyCap`, `ModalRoutes` | `AdaptiveForm` delegates to `showUiModal` |
+| `Thumbnail`, `RegionOverlay`, `InFlightGlyph`, `MotionReveal`, `MeasuredHeight`, `KeyCap`, `AdaptiveForm` | tokens, `UiKeyCap`, `ModalRoutes` | `AdaptiveForm` delegates to `showUiModal` |
+| `Skeleton`, `EmptyState` (retired 2026-10-17) | `UiSkeleton`, `UiEmptyState`, drawn directly | No application wrapper; see 4.5 |
 
 ## 6. The gallery
 
