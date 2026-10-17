@@ -173,10 +173,13 @@ void main() {
     );
     await tester.pumpAndSettle();
     await chooseFiles(tester);
-    expect(find.text('0 of 2 uploaded'), findsOneWidget);
+    expect(find.text('2 ready'), findsOneWidget);
     expect(repo.attempts, 0);
     await submitBatch(tester);
     expect(repo.attempts, 1);
+    expect(find.text('2 ready'), findsOneWidget);
+    // The current row widget labels UploadState.ready this way.
+    expect(find.text('Waiting to upload'), findsNWidgets(2));
   });
 
   const scope = CollectionScope(

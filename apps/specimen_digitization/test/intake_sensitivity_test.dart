@@ -269,7 +269,7 @@ void main() {
         expect(items, 0);
         expect(accepted, 0);
         expect(
-          find.textContaining('original classification is unchanged'),
+          find.text('Saved earlier with another setting. Photo kept.'),
           findsOneWidget,
         );
       },
@@ -353,6 +353,8 @@ void main() {
     await selectSensitivity(tester, 'Sensitive');
     await choose(tester);
     await submit(tester);
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
     expect(bodies.map((body) => body['sensitive']), [
       false,
       false,

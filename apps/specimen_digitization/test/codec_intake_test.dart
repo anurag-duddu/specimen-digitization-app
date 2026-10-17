@@ -97,7 +97,10 @@ void main() {
       expect(offset, bytes.length);
       expect(completions, 1);
       expect(accepted, 0);
-      expect(find.textContaining('Your upload is kept.'), findsOneWidget);
+      expect(
+        find.text('Format not supported yet. Photo kept.'),
+        findsOneWidget,
+      );
       final stored = (await SharedPreferences.getInstance()).getString(
         'upload-handles-v1:owner:org/c',
       )!;

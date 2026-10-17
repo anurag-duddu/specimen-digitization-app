@@ -125,7 +125,7 @@ void main() {
       ],
     );
     await chooseFiles(tester);
-    expect(find.text('0 of 3 uploaded'), findsOneWidget);
+    expect(find.text('3 ready'), findsOneWidget);
     expect(repository.created, isEmpty);
 
     await tester.ensureVisible(uploadButton);
@@ -155,11 +155,8 @@ void main() {
     // The file already sending finished. The two that had not started are
     // named, not left in an unlabelled state (pass criterion 3.6).
     expect(repository.created, <String>['one.png']);
-    expect(find.text('1 of 3 uploaded'), findsOneWidget);
-    expect(
-      find.text('Stopped before this file started. Upload again to continue.'),
-      findsNWidgets(2),
-    );
+    expect(find.text('1 to fix · 2 ready'), findsOneWidget);
+    expect(find.text('Stopped. Send to continue.'), findsNWidgets(2));
   });
 
   testWidgets('a refused file becomes a skipped row with its own reason', (
@@ -180,7 +177,7 @@ void main() {
     );
     await chooseFiles(tester);
 
-    expect(find.text('0 of 3 uploaded, 2 skipped'), findsOneWidget);
+    expect(find.text('2 to fix · 1 ready'), findsOneWidget);
     expect(find.text('Not uploaded'), findsNWidgets(2));
     expect(find.text('empty.png'), findsOneWidget);
     expect(find.text('notes.txt'), findsOneWidget);

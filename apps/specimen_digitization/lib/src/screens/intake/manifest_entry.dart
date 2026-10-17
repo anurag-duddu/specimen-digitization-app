@@ -1,17 +1,13 @@
-/// One row of the intake manifest, and the two sentences the manifest header
-/// computes from a batch of them.
-///
-/// The state and the reason are separate fields (heuristics audit, H4.5). The
-/// state is one of the eight `UploadState` values the shared `UploadItem`
-/// draws; the reason is one plain sentence attached to the file it is about
-/// (H9.4), never a progress string and never a screen-level banner.
+/// A photo awaiting hand-off, with the server summary and local transfer state.
+/// Intake's display words and actions are defined in intake_status.dart.
 library;
 
 import '../../capture_quality.dart';
 import '../../models.dart';
 import '../../widgets/upload_item.dart';
+import 'intake_status.dart';
 
-/// One file on its way into a collection.
+/// One photo on its way into a collection.
 class ManifestEntry {
   ManifestEntry({
     required this.digest,
@@ -25,12 +21,14 @@ class ManifestEntry {
     this.quality,
     this.specimenId,
     this.specimen,
+    this.transferError,
+    this.refusal,
   });
 
   /// A restored upload handle, read back from local storage after a restart.
   /// The bytes are gone; only the server handle and the checksum survive.
   ManifestEntry.restored({required this.digest, required Json handle})
-    : name = 'Interrupted upload ${digest.substring(0, 12)}',
+    : name = 'Unfinished photo',
       file = null,
       session = handle,
       state = UploadState.interrupted,
@@ -48,7 +46,7 @@ class ManifestEntry {
     required Json handle,
     required this.specimenId,
     this.state = UploadState.processing,
-    this.reason = 'Checking processing status.',
+    this.reason,
   }) : file = null,
        session = handle,
        why = null,
@@ -60,20 +58,23 @@ class ManifestEntry {
   ///
   /// A rejection is a row with a reason, not a banner that the next rejection
   /// overwrites (heuristics audit, H1.6 and H9.4).
-  ManifestEntry.skipped({required this.digest, required this.name, String? why})
-    : file = null,
-      session = null,
-      state = UploadState.skipped,
-      reason = why,
-      progress = 0,
-      quality = null,
-      specimenId = null,
-      specimen = null,
-      why = null;
+  ManifestEntry.skipped({
+    required this.digest,
+    required this.name,
+    String? why,
+    this.refusal,
+  }) : file = null,
+       session = null,
+       state = UploadState.skipped,
+       reason = why,
+       progress = 0,
+       quality = null,
+       specimenId = null,
+       specimen = null,
+       why = null;
 
   /// What a restored handle can say for itself.
-  static const String restoredReason =
-      'Select this file again to resume it from the server offset.';
+  static const String restoredReason = intakeUnfinishedReason;
 
   /// The checksum, or a synthetic key for a row that never got one.
   final String digest;
@@ -87,7 +88,7 @@ class ManifestEntry {
   /// The server's upload handle, once one exists.
   Json? session;
 
-  /// Where the file has got to. One of the eight upload states.
+  /// Where the photo has got to. Shared with the Sources upload widget.
   UploadState state;
 
   /// One plain sentence saying why the state is what it is.
@@ -107,8 +108,27 @@ class ManifestEntry {
   /// The record created by upload completion, once the server returns it.
   String? specimenId;
 
-  /// The most recent summary used for processing progress and retry.
+  /// The last confirmed summary, retained for display even if a later read fails.
   Specimen? specimen;
+
+  /// The last transfer error, for classification and the details sheet.
+  Object? transferError;
+
+  /// Local admission failure. Older callers can keep their existing row key.
+  IntakeRefusal? refusal;
+
+  /// A server-reported start dispatch result, retained across status reads.
+  String? startDispatchStatus;
+
+  /// Whether this summary may authorize a start. Backgrounding or an unclear
+  /// read invalidates the offer without erasing the last confirmed display.
+  bool startOfferCurrent = true;
+
+  /// Persisted before dispatch; shared preferences do not provide atomic claims.
+  bool automaticStartAttempted = false;
+
+  /// Completion time anchors the one automatic start even after restoration.
+  DateTime? savedAt;
 
   /// The server's decode check, once the operator has asked for one.
   Json? preflight;
@@ -136,14 +156,18 @@ class ManifestEntry {
 
   /// True while Intake should refresh the server's processing summary.
   bool get tracksProcessing =>
-      specimenId != null && state == UploadState.processing;
+      specimenId != null &&
+      !intakeHandedOff(specimen) &&
+      (state == UploadState.processing ||
+          state == UploadState.processingBlocked);
 
   /// A finished Intake row can be removed without affecting the server.
   bool get dismissible =>
       state == UploadState.accepted ||
       state == UploadState.inMainQueue ||
       state == UploadState.processingBlocked ||
-      state == UploadState.duplicate;
+      state == UploadState.duplicate ||
+      intakeStatus(this).action == IntakeAction.dismiss;
 
   /// True for a row a batch should try to send.
   bool get sendable =>
@@ -163,86 +187,20 @@ class ManifestEntry {
   }
 }
 
-/// The manifest header's aggregate line (screen blueprints, section 5;
-/// heuristics audit, H1.5 and pass criterion 1.5).
-///
-/// Reads "8 of 12 uploaded, 1 skipped". Counts that are zero are left out,
-/// because a zero is noise in a line an operator reads at a glance.
-/// True when every file in the batch reached a state the server holds.
-///
-/// The summary line and the one per batch haptic both key off this, so the
-/// buzz and the sentence can never disagree (motion catalog, row 67).
+/// True when every photo in this list is held by the server.
 bool batchComplete(Iterable<ManifestEntry> entries) {
   final List<ManifestEntry> all = entries.toList(growable: false);
   return all.isNotEmpty && all.every((ManifestEntry e) => e.settled);
 }
 
-/// The sentence that appears once a whole batch has landed.
-String batchCompleteLine(Iterable<ManifestEntry> entries) {
-  final int count = entries.length;
-  return count == 1
-      ? '1 photograph is in the Intake queue.'
-      : '$count photographs are in the Intake queue.';
-}
+/// Compatibility entry points for the existing list and camera callers.
+String batchCompleteLine(Iterable<ManifestEntry> entries) =>
+    intakeBatchSummary(entries);
 
-/// What a screen reader hears when finished photos leave Intake for the main
-/// Queue. Spoken once, politely; the rows themselves leave without a sound.
-String movedToQueueLine(int count) => count == 1
-    ? 'Photo moved to the main Queue.'
-    : '$count photos moved to the main Queue.';
+String movedToQueueLine(int count) => intakeDepartureLine(count);
 
-/// A compact account of the new Intake queue. This deliberately stops before
-/// the existing post-processing Queue's three outcomes.
-String ingestionQueueLine(Iterable<ManifestEntry> entries) {
-  final List<ManifestEntry> all = entries.toList(growable: false);
-  if (all.isEmpty) return 'No photographs in the Intake queue';
-  int count(UploadState state) =>
-      all.where((ManifestEntry entry) => entry.state == state).length;
-  final int ready = count(UploadState.ready);
-  final int sending =
-      count(UploadState.checking) + count(UploadState.uploading);
-  final int uploaded = count(UploadState.accepted);
-  final int processing = count(UploadState.processing);
-  final int handedOff = count(UploadState.inMainQueue);
-  final int attention =
-      count(UploadState.processingBlocked) +
-      count(UploadState.failed) +
-      count(UploadState.interrupted);
-  final int other = count(UploadState.duplicate) + count(UploadState.skipped);
-  final List<String> parts = <String>[
-    if (ready > 0) '$ready ready',
-    if (sending > 0) '$sending uploading',
-    if (uploaded > 0) '$uploaded uploaded',
-    if (processing > 0) '$processing processing',
-    if (handedOff > 0) '$handedOff in main Queue',
-    if (attention > 0) '$attention need attention',
-    if (other > 0) '$other not sent',
-  ];
-  final String noun = all.length == 1 ? 'photograph' : 'photographs';
-  return '${all.length} $noun · ${parts.join(', ')}';
-}
+String ingestionQueueLine(Iterable<ManifestEntry> entries) =>
+    intakeBatchSummary(entries);
 
-String batchProgressLine(Iterable<ManifestEntry> entries) {
-  final List<ManifestEntry> all = entries.toList(growable: false);
-  if (all.isEmpty) return 'No files selected yet';
-  int count(UploadState state) =>
-      all.where((ManifestEntry e) => e.state == state).length;
-  final StringBuffer line = StringBuffer(
-    '${count(UploadState.accepted)} of ${all.length} uploaded',
-  );
-  final int skipped = count(UploadState.skipped);
-  final int duplicate = count(UploadState.duplicate);
-  final int failed = count(UploadState.failed);
-  final int interrupted = count(UploadState.interrupted);
-  final int processing = count(UploadState.processing);
-  final int handedOff = count(UploadState.inMainQueue);
-  final int processingBlocked = count(UploadState.processingBlocked);
-  if (skipped > 0) line.write(', $skipped skipped');
-  if (duplicate > 0) line.write(', $duplicate already in collection');
-  if (interrupted > 0) line.write(', $interrupted interrupted');
-  if (failed > 0) line.write(', $failed failed');
-  if (processing > 0) line.write(', $processing processing');
-  if (handedOff > 0) line.write(', $handedOff in main Queue');
-  if (processingBlocked > 0) line.write(', $processingBlocked need attention');
-  return line.toString();
-}
+String batchProgressLine(Iterable<ManifestEntry> entries) =>
+    intakeBatchSummary(entries);
