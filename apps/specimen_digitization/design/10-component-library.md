@@ -779,6 +779,13 @@ it floats in, and two sentences are three lines at 200 percent text on a short
 window, so the dialog needed the same thing the sheet has. The application's
 filter form was carrying the difference as a height cap of its own.
 
+Amended 2026-10-17: `UiDialog.showAdaptive`, `showUiModal` and the toast's
+corner read `WindowArrangement` (05 section 1, "one arrangement per window")
+through `presentsAsSheet` rather than the compact width class, so a modal is
+a sheet wherever the shell draws the tab bar: a phone on its side, a window
+under 768 dp, a tablet at 200 percent text. `isCompactWindow` and
+`compactWindowMax` stay, and answer the width class only.
+
 ### 4.4 Navigation family
 
 **`UiPillNav`.** The reference's floating row: a `glass.floating` capsule of
@@ -879,6 +886,16 @@ is composed as `space.targetMin + space.s6`, a 48 dp hit box with 12 dp of
 gutter, rather than read from `space.rail`, which is the v1 rail at 80 and
 still belongs to the screens that have not moved. Arrow keys move `Up` and
 `Down` and leave the cross axis alone, per the amendment to clause 3.
+
+Amended 2026-10-17: the application draws it. The docked shell's destinations
+were a hand-built column of `Pressable` rows from 2026-10-01, with their own
+arrow keys, a literal 6 percent `ink` fill and a radius of their own, while
+this entry had no caller. `AppShell` now puts `UiRail` at the head of its rail
+column in `UiScaffold.nav`, with the list pane's toggle, the environment and
+the account under it on the rail's centre line. The rail takes an optional
+`semanticsLabel`, the tab list's name, because the shell's column was named
+"Workspace navigation" and a record beside it has tabs of its own; a rail
+without one publishes an unnamed tab list as before.
 
 **`UiSidebar`.** For large windows: 280 dp, `glass.flat`, the mark and product
 name, destinations as `UiListRow` with the 3 dp leading bar on the current one,
@@ -1013,6 +1030,14 @@ entrance to the start of the exit. And `UiScaffoldSlots` carries the bar's
 title and leading beside the whole bar, `setTitle` and `setLeading`, which the
 frame hands to the `UiTopBar` in the slot through `UiTopBarAsk`, an inherited
 widget the bar reads itself; the application's `ShellChrome` retired onto it.
+
+Amended 2026-10-17: a navigation beside the body keeps the bottom safe area.
+Everything below the top bar has the window's padding removed, and the rail
+and the sidebar run to the bottom edge, so a control at the foot of either had
+no inset to clear the home indicator with. The frame now hands the column the
+bottom inset (not the keyboard) and nothing else. A column with a control at
+its foot spends it: the shell's rail does, with a `SafeArea` under the account
+control. `UiSidebar`'s footer does not yet, and nothing draws a sidebar today.
 
 Three files hold the navigation family's shared parts and are not in the
 layout of section 1.2: `nav_destination.dart`, the one destination model all
