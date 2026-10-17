@@ -1,4 +1,5 @@
 """Offline timing refresh must require complete exact-provenance evidence."""
+from collections import Counter
 from copy import deepcopy
 import importlib
 import json
@@ -68,13 +69,13 @@ def test_refresh_sums_every_phase_deterministically_and_preserves_provenance(tmp
                                           "scripts/release/test_c.py": 1.5}
     path = tmp_path / "timings.json"
     path.write_text(json.dumps(manifest))
-    hints = python_shards.load_timings(path, fingerprints=results[0]["source_fingerprints"])
+    hints = python_shards.load_timings(path)
     assert hints.mode == "complete"
     assert dict(hints) == manifest["module_seconds"]
     # Source SHA identifies measurement; a new commit containing the manifest
-    # can reuse unchanged inputs without a self-referential SHA requirement.
-    hints = python_shards.load_timings(path, fingerprints={"test.py": "b" * 64})
-    assert not hints, "changed source inputs must fall back to item cost"
+    # reuses every cost, and unchanged module inventories keep exact weights.
+    nodes = results[0]["collected"]
+    assert python_shards.module_weights(nodes, hints) == manifest["module_seconds"]
 
 
 def test_refresh_rejects_unbound_measurement_identity():
@@ -147,7 +148,7 @@ def test_refresh_cli_is_offline_and_refuses_missing_input_without_output(tmp_pat
             for field in ("source_fingerprints", "module_inventory_digests"):
                 manifest[field] = {record["path"]: record["sha256"] for record in manifest[field]}
     timings.write_text(json.dumps(manifest))
-    hints = python_shards.load_timings(timings, fingerprints=results[0]["source_fingerprints"])
+    hints = python_shards.load_timings(timings)
     paths = []
     for result in results:
         result["timing_manifest_digest"] = hints.manifest_digest
@@ -164,7 +165,7 @@ def test_refresh_cli_is_offline_and_refuses_missing_input_without_output(tmp_pat
     refreshed = json.loads(output.read_text())
     assert refreshed["schema"] == 3
     assert refreshed["module_seconds"]["tests/test_a.py"] == 3.75
-    loaded = python_shards.load_timings(output, fingerprints=results[0]["source_fingerprints"])
+    loaded = python_shards.load_timings(output)
     assert dict(loaded) == refreshed["module_seconds"]
     assert refreshed["source_fingerprints"] == [{"path": "test.py", "sha256": "a" * 64}]
     output.unlink()
@@ -208,7 +209,7 @@ def test_schema3_refuses_untyped_or_mixed_records(tmp_path, field, value):
     path = tmp_path / "timings.json"
     path.write_text(json.dumps(manifest))
     with pytest.raises(ValueError, match="invalid Python shard timings"):
-        python_shards.load_timings(path, fingerprints={"test.py": "a" * 64})
+        python_shards.load_timings(path)
 
 
 @pytest.mark.parametrize("field", ["source_fingerprints", "module_inventory_digests"])
@@ -324,14 +325,13 @@ def test_schema3_rejects_duplicate_json_fields_before_normalization(tmp_path, fi
 def test_complete_schema2_and_schema3_have_identical_partition_semantics(tmp_path):
     manifest = schema3_manifest()
     path = tmp_path / "timings.json"
-    sources = {"test.py": "a" * 64}
     path.write_text(json.dumps(manifest))
-    records = python_shards.load_timings(path, fingerprints=sources)
+    records = python_shards.load_timings(path)
     for field in ("source_fingerprints", "module_inventory_digests"):
         manifest[field] = {record["path"]: record["sha256"] for record in manifest[field]}
     manifest["schema"] = 2
     path.write_text(json.dumps(manifest))
-    legacy = python_shards.load_timings(path, fingerprints=sources)
+    legacy = python_shards.load_timings(path)
     assert dict(records) == dict(legacy) == manifest["module_seconds"]
     assert records.mode == legacy.mode == "complete"
     assert records.module_inventory_digests == legacy.module_inventory_digests
@@ -342,14 +342,13 @@ def test_complete_schema2_and_schema3_have_identical_partition_semantics(tmp_pat
 
 def test_schema3_record_order_is_not_inventory_order_and_mismatch_keeps_all_nodes(tmp_path):
     manifest = schema3_manifest()
-    sources = {"test.py": "a" * 64}
     path = tmp_path / "timings.json"
     path.write_text(json.dumps(manifest))
-    hints = python_shards.load_timings(path, fingerprints=sources)
+    hints = python_shards.load_timings(path)
     for field in ("source_fingerprints", "module_inventory_digests"):
         manifest[field].reverse()
     path.write_text(json.dumps(manifest))
-    reordered = python_shards.load_timings(path, fingerprints=sources)
+    reordered = python_shards.load_timings(path)
     assert dict(reordered) == dict(hints)
     assert reordered.module_inventory_digests == hints.module_inventory_digests
     nodes = measurement_results()[0]["collected"]
@@ -357,10 +356,13 @@ def test_schema3_record_order_is_not_inventory_order_and_mismatch_keeps_all_node
     for record in manifest["module_inventory_digests"]:
         record["sha256"] = "f" * 64
     path.write_text(json.dumps(manifest))
-    changed = python_shards.load_timings(path, fingerprints=sources)
+    changed = python_shards.load_timings(path)
     assert dict(changed) == manifest["module_seconds"]
+    sizes = Counter(node.split("::", 1)[0] for node in nodes)
+    assert python_shards.module_weights(nodes, changed) == pytest.approx(
+        {module: sizes[module] / 10 + seconds
+         for module, seconds in manifest["module_seconds"].items()})
     shards = python_shards.partition(nodes, 2, changed)
-    assert shards == python_shards.partition(nodes, 2)
     assert sorted(node for shard in shards for node in shard) == sorted(nodes)
     for module in manifest["module_seconds"]:
         expected = [node for node in nodes if node.split("::", 1)[0] == module]
@@ -385,6 +387,6 @@ def test_timing_versions_preserve_lower_bound_and_complete_zero_rules(tmp_path, 
             python_shards.load_timings(path)
         manifest["module_seconds"]["tests/test_a.py"] = 1
         path.write_text(json.dumps(manifest))
-    hints = python_shards.load_timings(path, fingerprints={"test.py": "a" * 64})
+    hints = python_shards.load_timings(path)
     assert hints.mode == ("lower_bound" if schema == 1 else "complete")
     assert dict(hints) == manifest["module_seconds"]
