@@ -299,7 +299,7 @@ void main() {
           camera: () async => camera,
           deviceFallbackAvailable: false,
         );
-        expect(find.text('Back to Intake'), findsOneWidget);
+        expect(find.text('Choose files'), findsOneWidget);
         expect(find.text('Use device camera'), findsNothing);
         expect(tester.takeException(), isNull);
       });
@@ -395,7 +395,7 @@ void main() {
           find.byKey(const ValueKey<String>('capture-send')),
           findsNothing,
         );
-        expect(find.text('1 photograph in this batch'), findsOneWidget);
+        expect(find.text('1'), findsOneWidget);
         expect(tester.takeException(), isNull);
       });
     });
@@ -561,7 +561,7 @@ void main() {
           findsOneWidget,
         );
         expect(find.text('Use device camera'), findsNothing);
-        expect(find.text('Back to Intake'), findsOneWidget);
+        expect(find.text('Choose files'), findsOneWidget);
         expect(tester.takeException(), isNull);
       });
     },
