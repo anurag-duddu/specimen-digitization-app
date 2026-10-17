@@ -146,6 +146,59 @@ const List<PlatformCapability> platformCapabilities = <PlatformCapability>[
     'incoming app links exist only on Android and iOS',
     readers: <String, int>{'lib/main.dart main': 1},
   ),
+  // owner-approved: 2026-10-17 "Google sign-in may be offered differently by
+  // platform (always on web; on iPhone and Android when it's set up)."
+  // (owner, coordinator Claude Code session, 2026-10-17, about 17:41Z,
+  // answering the coordinator's question on how the Google sign-in button
+  // should be handled)
+  PlatformCapability(
+    'lib/src/firebase_google_sign_in.dart',
+    'GoogleFirebaseSignInAdapter.<constructor>',
+    <String, int>{webFlag: 1, targetPlatform: 1, targetPlatformType: 1},
+    'Google sign-in is offered on the web, and in the iOS and Android apps '
+        'when native sign-in is configured',
+  ),
+  // owner-approved: 2026-10-17 "Google sign-in may be offered differently by
+  // platform (always on web; on iPhone and Android when it's set up)."
+  // (owner, coordinator Claude Code session, 2026-10-17, about 17:41Z,
+  // answering the coordinator's question on how the Google sign-in button
+  // should be handled)
+  PlatformCapability(
+    'lib/src/firebase_google_sign_in.dart',
+    'GoogleFirebaseSignInAdapter._platform',
+    <String, int>{targetPlatformType: 1},
+    'Google sign-in is offered on the web, and in the iOS and Android apps '
+        'when native sign-in is configured',
+    // The constructor's `_platform = ...` is the field being set; the gate
+    // reads its name there as a read.
+    readers: <String, int>{
+      'lib/src/firebase_google_sign_in.dart GoogleFirebaseSignInAdapter.<constructor>':
+          1,
+      'lib/src/firebase_google_sign_in.dart GoogleFirebaseSignInAdapter.available':
+          2,
+    },
+  ),
+  // owner-approved: 2026-10-17 "Google sign-in may be offered differently by
+  // platform (always on web; on iPhone and Android when it's set up)."
+  // (owner, coordinator Claude Code session, 2026-10-17, about 17:41Z,
+  // answering the coordinator's question on how the Google sign-in button
+  // should be handled)
+  PlatformCapability(
+    'lib/src/firebase_google_sign_in.dart',
+    'GoogleFirebaseSignInAdapter.available',
+    <String, int>{targetPlatformType: 2},
+    'Google sign-in is offered on the web, and in the iOS and Android apps '
+        'when native sign-in is configured',
+    // `source_screen.dart` reads `SourceObjectState.available`, an enum value;
+    // the gate counts any `.available` in a file that can see the adapter.
+    readers: <String, int>{
+      'lib/src/auth.dart FirebaseSession.googleSignInAvailable': 1,
+      'lib/src/firebase_google_sign_in.dart GoogleFirebaseSignInAdapter.authenticate':
+          1,
+      'lib/src/screens/sources/source_screen.dart _SourceBrowsePaneState._body':
+          1,
+    },
+  ),
   PlatformCapability(
     'lib/src/intake.dart',
     '_IntakeScreenState._isWeb',
