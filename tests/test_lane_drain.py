@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
+import requests
 
 from specimen_digitization.application.domain import (
     Asset,
@@ -1437,3 +1438,179 @@ def test_an_unsupervised_drain_still_ends_the_execution(lane):
         "pending"
     ] * 10
     assert fence(lane).read()["holder"] is None
+
+
+class DroppedConnection(ScriptedWorkflow):
+    """Its step on each run in `dropped` loses the database connection once.
+
+    `intent` first saves the paid call's intent and lease, as the workflow does
+    before a reading (workflow.py), the state specimen 2b02009d was left in
+    when execution specimen-worker-4fk49 died on 2026-10-17.
+    """
+
+    def __init__(self, repository, clock, dropped=(), scripts=None, *, intent=False, always=False):
+        super().__init__(repository, clock, scripts)
+        self.dropped, self.intent, self.always = set(dropped), intent, always
+
+    def step(self, principal, ident):
+        if not (self.always or ident in self.dropped):
+            return super().step(principal, ident)
+        self.dropped.discard(ident)
+        self.steps.append(ident)
+        if self.intent:
+            specimen = self.repository.get(principal.scope, ident)
+            specimen.run.stage = "transcribe"
+            specimen.run.blocker = "external_outcome_unknown"
+            specimen.run.lease_until = (self.clock() + timedelta(seconds=400)).isoformat()
+            self.repository.save(principal, specimen, specimen.version, f"intent:{ident}", ident)
+        raise requests.ConnectionError("Remote end closed connection without response")
+
+
+def test_an_unexpected_crash_hands_the_queue_over_once_and_still_ends_the_execution(lane):
+    queued(lane.repository, "a-oldest", minutes=30)
+    queued(lane.repository, "b-dropped", minutes=20)
+    queued(lane.repository, "c-newest", minutes=10)
+    dropping = DroppedConnection(lane.repository, lane.clock, {"b-dropped"})
+    continuation = Continuation()
+    # The crash still ends the execution, so the job records a failure.
+    with pytest.raises(requests.ConnectionError):
+        worker(lane.repository, dropping, lane.clock, continuation=continuation).run(stop=None)
+    assert dropping.steps == ["a-oldest", "b-dropped"]
+    assert continuation.calls == 1
+    left = fence(lane).read()
+    assert (left["holder"], left["specimen_id"]) == (None, "b-dropped")
+    assert left["crashes_without_progress"] == 1
+
+    # The execution it started drains the rest in request order.
+    summary = worker(
+        lane.repository, dropping, lane.clock, execution="exec-next", continuation=continuation
+    ).run(stop=None)
+    assert dropping.steps[2:] == ["b-dropped", "c-newest"]
+    assert summary["status"] == "drained"
+    assert continuation.calls == 1
+    assert fence(lane).read()["crashes_without_progress"] == 0
+
+
+def test_the_run_a_crash_interrupted_is_waited_for_until_its_lease_ends(lane):
+    queued(lane.repository, "b-dropped", minutes=10)
+    dropping = DroppedConnection(lane.repository, lane.clock, {"b-dropped"}, intent=True)
+    continuation = Continuation()
+    with pytest.raises(requests.ConnectionError):
+        worker(lane.repository, dropping, lane.clock, continuation=continuation).run(stop=None)
+    lease = START + timedelta(seconds=400)
+    left = fence(lane).read()
+    assert (left["holder"], left["specimen_id"]) == (None, "b-dropped")
+    assert left["retry_at"] == lease.isoformat()
+    assert continuation.calls == 1
+
+    summary = worker(
+        lane.repository, dropping, lane.clock, execution="exec-next", continuation=continuation
+    ).run(stop=None)
+    assert dropping.steps == ["b-dropped", "b-dropped"]
+    assert lane.clock.now >= lease
+    assert summary["processed"] == ["b-dropped"]
+    assert lane.repository.get(SCOPE, "b-dropped").run.disposition == Disposition.REVIEW
+
+
+def test_crashes_without_progress_hand_over_three_times_then_stop(lane):
+    queued(lane.repository, "a-stuck", minutes=30)
+    dropping = DroppedConnection(lane.repository, lane.clock, always=True)
+    continuation = Continuation()
+    for index in range(5):
+        with pytest.raises(requests.ConnectionError):
+            worker(
+                lane.repository, dropping, lane.clock,
+                execution=f"exec-{index}", continuation=continuation,
+            ).run(stop=None)
+        assert fence(lane).read()["crashes_without_progress"] == index + 1
+    assert dropping.steps == ["a-stuck"] * 5
+    assert continuation.calls == 3
+    # The record itself is left as it was requested, for a person's action.
+    run = lane.repository.get(SCOPE, "a-stuck").run
+    assert (run.stage, run.blocker) == ("pending", None)
+
+
+def test_a_crash_after_the_last_run_finished_starts_no_execution(lane):
+    queued(lane.repository, "a-only", minutes=30)
+
+    class DroppedAfterSaving(ScriptedWorkflow):
+        def step(self, principal, ident):
+            super().step(principal, ident)
+            raise requests.ConnectionError("Remote end closed connection without response")
+
+    continuation = Continuation()
+    with pytest.raises(requests.ConnectionError):
+        worker(
+            lane.repository, DroppedAfterSaving(lane.repository, lane.clock), lane.clock,
+            continuation=continuation,
+        ).run(stop=None)
+    assert lane.repository.get(SCOPE, "a-only").run.stage == "finalized"
+    assert continuation.calls == 0
+    assert fence(lane).read()["holder"] is None
+
+
+def test_a_crash_that_cannot_release_the_fence_starts_no_execution(tmp_path):
+    class Unreachable(NonSensitiveMember):
+        down = False
+
+        def put_document(self, scope, kind, ident, payload, expected):
+            if self.down:
+                raise requests.ConnectionError("Remote end closed connection without response")
+            return super().put_document(scope, kind, ident, payload, expected)
+
+    class LosingTheDatabase(ScriptedWorkflow):
+        def step(self, principal, ident):
+            self.repository.down = True
+            raise requests.ConnectionError("Remote end closed connection without response")
+
+    repository, clock = Unreachable(tmp_path / "state.sqlite3"), Clock()
+    queued(repository, "a-oldest", minutes=30)
+    continuation = Continuation()
+    with pytest.raises(requests.ConnectionError):
+        worker(
+            repository, LosingTheDatabase(repository, clock), clock, continuation=continuation
+        ).run(stop=None)
+    # Still held, so a new execution could not take the collection.
+    assert CollectionFence(repository, SCOPE, WORKER, "exec-b", clock=clock).read()["holder"] == "exec-a"
+    assert continuation.calls == 0
+
+
+def test_a_step_saved_before_a_crash_counts_as_progress(lane):
+    queued(lane.repository, "a-long", minutes=30)
+
+    class SavingThenDropping(ScriptedWorkflow):
+        """In each execution, one step saves and the next loses its connection."""
+
+        def step(self, principal, ident):
+            if len(self.steps) % 2:
+                self.steps.append(ident)
+                raise requests.ConnectionError("Remote end closed connection without response")
+            return super().step(principal, ident)
+
+    long_run = SavingThenDropping(lane.repository, lane.clock, {"a-long": ["progress"]})
+    continuation = Continuation()
+    for index in range(4):
+        # A saved step makes the run due at the save's wall-clock time
+        # (storage.work_available_at), so this clock must be past it.
+        lane.clock.now = datetime.now(timezone.utc) + timedelta(seconds=2)
+        with pytest.raises(requests.ConnectionError):
+            worker(
+                lane.repository, long_run, lane.clock,
+                execution=f"exec-{index}", continuation=continuation,
+            ).run(stop=None)
+        assert fence(lane).read()["crashes_without_progress"] == 1
+    assert lane.repository.get(SCOPE, "a-long").version == 5
+    assert continuation.calls == 4
+
+
+def test_a_crash_resets_the_idle_hand_over_count_as_before(lane):
+    queued(lane.repository, "a-stuck", minutes=30)
+    earlier = fence(lane, "exec-earlier")
+    earlier.acquire()
+    earlier.release(idle=2)
+    with pytest.raises(requests.ConnectionError):
+        worker(
+            lane.repository, DroppedConnection(lane.repository, lane.clock, always=True),
+            lane.clock, continuation=Continuation(),
+        ).run(stop=None)
+    assert fence(lane).read()["handovers_without_progress"] == 0

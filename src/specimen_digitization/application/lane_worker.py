@@ -3,7 +3,7 @@
 One collection at a time, behind a fence: the oldest request first (G13), each
 run stepped until it stops, short retries waited for, and no new run in the
 last ten minutes before the task deadline. Work left at the end is handed to
-the next execution.
+the next execution, and so is work an unexpected error leaves behind.
 """
 
 from __future__ import annotations
@@ -34,6 +34,9 @@ QUEUE_CLOCK_MARGIN_SECONDS = 1  # Keep connector cutoffs behind its own clock.
 CONTINUATION_START_SECONDS = 10
 MAX_CONFLICTS = 3  # Consecutive save conflicts on one run before moving on.
 MAX_IDLE_HANDOVERS = 3  # Consecutive hand-overs without progress, then stop.
+# Consecutive executions ended by an unexpected error, none saving a step, that
+# still start the next one. A fourth such crash in a row starts none.
+MAX_CRASH_HANDOVERS = 3
 RUN_STALLED = "lane_run_not_progressing"
 HANDOVER_STALLED = "lane_handover_without_progress"
 # One record's own hold: the native worker's blocked outcome codes
@@ -156,6 +159,7 @@ class CollectionFence:
             )
         )
         self.revision = None
+        self.specimen_id = None  # The run last held, for a crash to hand on.
 
     def read(self) -> dict:
         try:
@@ -168,10 +172,14 @@ class CollectionFence:
             handovers_without_progress=stored_integer(
                 current.get("handovers_without_progress", 0)
             ),
+            crashes_without_progress=stored_integer(
+                current.get("crashes_without_progress", 0)
+            ),
         )
 
     def _write(
-        self, revision, holder, specimen_id=None, run_id=None, retry_at=None, idle=0
+        self, revision, holder, specimen_id=None, run_id=None, retry_at=None, idle=0,
+        crashes=0,
     ):
         lease = self.clock() + timedelta(seconds=self.lease_seconds)
         stored = self.repository.put_document(
@@ -188,6 +196,8 @@ class CollectionFence:
                 # A retry this holder left for the next one to wait for.
                 "retry_at": retry_at,
                 "handovers_without_progress": idle,
+                # Consecutive executions an unexpected error ended without progress.
+                "crashes_without_progress": crashes,
             },
             revision,
         )
@@ -210,17 +220,20 @@ class CollectionFence:
 
     def hold(self, specimen_id, run_id=None):
         """Record the run being worked on and renew the lease."""
+        self.specimen_id = specimen_id
         try:
             self._write(self.revision, self.holder, specimen_id, run_id)
         except Conflict as exc:
             raise FenceLost("collection fence taken over") from exc
 
-    def release(self, retry=None, idle=0):
+    def release(self, retry=None, idle=0, crashes=0):
         """Free the fence, leaving `(specimen_id, retry_at)` for the next holder
-        and the count of consecutive hand-overs without progress."""
+        and the counts of consecutive hand-overs and crashes without progress."""
         specimen_id, retry_at = retry or (None, None)
         try:
-            self._write(self.revision, None, specimen_id, retry_at=retry_at, idle=idle)
+            self._write(
+                self.revision, None, specimen_id, retry_at=retry_at, idle=idle, crashes=crashes
+            )
         except Conflict:
             pass  # Taken over after expiry; the new holder owns it now.
 
@@ -368,6 +381,10 @@ class DrainWorker:
                 # Another execution took over after this one stalled past its lease.
                 summary["skipped_collections"].append(scope.collection_id)
                 continue
+            except Exception as exc:
+                # The error still ends this execution, so the job records it.
+                self._crashed(drain, fence, previous, exc)
+                raise
             except BaseException:
                 fence.release()
                 raise
@@ -433,6 +450,59 @@ class DrainWorker:
             waiting is not None
             or self._next_due(drain.principal, drain.stalled) is not None
         )
+
+    def _crashed(self, drain, fence, previous, error) -> None:
+        """Release the fence after an unexpected error and start the next execution.
+
+        Nothing else starts one: the scheduled services are off, so due work
+        would wait for a person's action (2026-10-17, execution
+        specimen-worker-4fk49). The run in flight is left as a retry at its
+        lease's end, or now, as a finished execution leaves one, so the next
+        execution waits for it in request order. The next execution starts when
+        that retry is within its reach or requested work is due; a failed read
+        counts as work. After MAX_CRASH_HANDOVERS crashes in a row with no step
+        saved, none starts. The idle hand-over count is reset, as the plain
+        release a crash made before reset it. Each step here is best effort and
+        never replaces the original error.
+        """
+        name = type(error).__name__
+        crashes = 1 if drain.progress else previous.get("crashes_without_progress", 0) + 1
+        retries = dict(drain.retries)
+        try:
+            if fence.specimen_id is not None:
+                run = self.repository.get(drain.principal.scope, fence.specimen_id).run
+                if not run.disposition and run.stage not in FINISHED:
+                    until = waiting_until(run)
+                    retries[fence.specimen_id] = moment(until) if until else self.clock()
+        except Exception as exc:  # noqa: BLE001 - the release below still runs
+            LOGGER.warning("drain crash: run in flight not read: %s", type(exc).__name__)
+        first = min(retries.items(), key=lambda item: item[1], default=None)
+        try:
+            fence.release(first and (first[0], first[1].isoformat()), 0, crashes)
+        except Exception as exc:  # noqa: BLE001 - still held, so no execution could take it
+            LOGGER.warning("drain crash (%s): fence not released: %s", name, type(exc).__name__)
+            return
+        if crashes > MAX_CRASH_HANDOVERS:
+            LOGGER.warning(
+                "drain crash (%s): %d in a row without progress; no next execution", name, crashes
+            )
+            return
+        wanted = first is not None and first[1] <= self.clock() + timedelta(
+            seconds=self.window_seconds
+        )
+        if not wanted:
+            try:
+                self._pause(QUEUE_CLOCK_MARGIN_SECONDS, None)
+                wanted = self._next_due(drain.principal, drain.stalled) is not None
+            except Exception:  # noqa: BLE001 - the next execution reads again
+                wanted = True
+        if not wanted or not self.continuation:
+            return
+        try:
+            status = self.continuation().status
+        except Exception as exc:  # noqa: BLE001 - the original error still ends the execution
+            status = "failed:" + type(exc).__name__
+        LOGGER.warning("drain crash (%s): next execution %s", name, status)
 
     def _next_due(self, principal, skip=()):
         # A cutoff a second behind keeps it no later than the database's clock.
@@ -523,7 +593,7 @@ class DrainWorker:
                 for key in [k for k, at in drain.retries.items() if at <= self.clock()]:
                     del drain.retries[key]  # Due now, so the queue returns it.
                 continue
-            run, progressed = self._step_until_stopped(principal, fence, ident, stop)
+            run, progressed = self._step_until_stopped(principal, fence, ident, stop, drain)
             if ident not in summary["processed"]:
                 summary["processed"].append(ident)
             if progressed:
@@ -538,8 +608,12 @@ class DrainWorker:
             else:
                 drain.retries.pop(ident, None)
 
-    def _step_until_stopped(self, principal, fence, ident, stop):
-        """Step one run until it stops; the run and whether any step saved."""
+    def _step_until_stopped(self, principal, fence, ident, stop, drain=None):
+        """Step one run until it stops; the run and whether any step saved.
+
+        Each saved step also marks `drain` as progressing at once, so a later
+        step's unexpected error does not count the execution as one without
+        progress (`_crashed`)."""
         fence.hold(ident)
         progressed, conflicts = False, 0
         before = self.repository.get(principal.scope, ident)
@@ -572,6 +646,8 @@ class DrainWorker:
                     return run, True  # Verified native queue retirement, no scientific save.
                 return run, progressed  # Leased or otherwise waiting.
             progressed = True
+            if drain is not None:
+                drain.progress = True
             if run.disposition or run.stage in STOPPED or self._stopped(stop):
                 return run, progressed
             before = specimen
