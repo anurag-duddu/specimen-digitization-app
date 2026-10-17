@@ -38,6 +38,7 @@ void main() {
     WidgetTester tester,
     ApiSpecimenRepository repository, {
     required VoidCallback onComplete,
+    Future<List<XFile>> Function(bool)? pickImages,
   }) async {
     await tester.binding.setSurfaceSize(const Size(1000, 2200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -50,9 +51,11 @@ void main() {
             scope: scope,
             userId: 'owner',
             onComplete: onComplete,
-            pickImages: (_) async => [
-              XFile.fromData(bytes, path: 'source.png', name: 'source.png'),
-            ],
+            pickImages:
+                pickImages ??
+                (_) async => [
+                  XFile.fromData(bytes, path: 'source.png', name: 'source.png'),
+                ],
           ),
         ),
       ),
@@ -64,16 +67,56 @@ void main() {
 
   Future<void> submit(WidgetTester tester) => submitBatch(tester);
 
+  testWidgets('sensitive-default sends false in both creation requests', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final bodies = <Json>[];
+    final repo = repository((request) async {
+      if (request.url.path.endsWith('/batches') ||
+          request.url.path.endsWith('/items')) {
+        final body = jsonDecode(request.body) as Json;
+        bodies.add(body);
+        return http.Response(
+          jsonEncode({
+            'batch_id': 'b',
+            'upload_id': 'u',
+            'sensitive': body['sensitive'],
+          }),
+          200,
+        );
+      }
+      return http.Response(
+        jsonEncode({'upload_id': 'u', 'offset': bytes.length, 'revision': 2}),
+        200,
+      );
+    });
+    addTearDown(repo.close);
+    await mount(tester, repo, onComplete: () {});
+    await choose(tester);
+    await submit(tester);
+    expect(bodies, hasLength(2));
+    expect(bodies.map((body) => body['sensitive']), [false, false]);
+  });
+
   test(
     'legacy intake defaults to Sensitive in both creation requests',
     () async {
       final bodies = <Json>[];
       final repo = repository((request) async {
-        bodies.add(jsonDecode(request.body) as Json);
+        expect(request.method, 'POST');
+        expect(
+          request.url.path,
+          anyOf(endsWith('/batches'), endsWith('/items')),
+        );
+        final body = jsonDecode(request.body) as Json;
+        bodies.add(body);
         return http.Response(
-          request.url.path.endsWith('/batches')
-              ? '{"batch_id":"b"}'
-              : '{"upload_id":"u"}',
+          jsonEncode({
+            'batch_id': 'b',
+            'upload_id': 'u',
+            'sensitive': body['sensitive'],
+          }),
           200,
         );
       });
@@ -87,10 +130,78 @@ void main() {
           sha256: digest,
           method: 'files',
         ),
-        'sensitive-default',
+        'legacy-default',
       );
-      expect(bodies, hasLength(2));
       expect(bodies.map((body) => body['sensitive']), [true, true]);
+    },
+  );
+
+  testWidgets(
+    'switching off keeps photo A Sensitive when reselected and photo B off',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final secondBytes = File(
+        'test/fixtures/synthetic-wide-label.png',
+      ).readAsBytesSync();
+      final photoA = XFile.fromData(bytes, path: 'a.png', name: 'a.png');
+      final photoB = XFile.fromData(secondBytes, path: 'b.png', name: 'b.png');
+      var chosen = photoA;
+      final batches = <Json>[];
+      final items = <Json>[];
+      final sizes = <String, int>{};
+      var accepted = 0;
+      final repo = repository((request) async {
+        if (request.url.path.endsWith('/batches')) {
+          final body = jsonDecode(request.body) as Json;
+          batches.add(body);
+          return http.Response(
+            jsonEncode({
+              'batch_id': 'b${batches.length}',
+              'sensitive': body['sensitive'],
+            }),
+            200,
+          );
+        }
+        if (request.url.path.endsWith('/items')) {
+          final body = jsonDecode(request.body) as Json;
+          items.add(body);
+          final id = 'u${items.length}';
+          sizes[id] = body['size_bytes'] as int;
+          return http.Response(
+            jsonEncode({'upload_id': id, 'sensitive': body['sensitive']}),
+            200,
+          );
+        }
+        final segments = request.url.pathSegments;
+        final id = segments[segments.indexOf('uploads') + 1];
+        return http.Response(
+          jsonEncode({'upload_id': id, 'offset': sizes[id], 'revision': 2}),
+          200,
+        );
+      });
+      addTearDown(repo.close);
+      await mount(
+        tester,
+        repo,
+        onComplete: () => accepted++,
+        pickImages: (_) async => [chosen],
+      );
+      await selectSensitivity(tester, 'Sensitive');
+      await choose(tester);
+      await selectSensitivity(tester, 'Not sensitive');
+      chosen = photoB;
+      await choose(tester);
+      chosen = photoA;
+      await choose(tester);
+      expect(batches, isEmpty);
+      await submit(tester);
+      expect(batches.map((body) => body['sensitive']), [true, false]);
+      expect(
+        {for (final body in items) body['filename']: body['sensitive']},
+        {'a.png': true, 'b.png': false},
+      );
+      expect(items, hasLength(2));
+      expect(accepted, 2);
     },
   );
 
@@ -195,7 +306,9 @@ void main() {
     });
     addTearDown(repo.close);
     await mount(tester, repo, onComplete: () => accepted++);
-    expect(tester.widget<UiCheckbox>(sensitivityControl).value, isTrue);
+    expect(tester.widget(sensitivityControl), isA<UiSwitch>());
+    expect(tester.widget<UiSwitch>(sensitivityControl).value, isFalse);
+    await selectSensitivity(tester, 'Sensitive');
     await selectSensitivity(tester, 'Not sensitive');
     await choose(tester);
     await submit(tester);
@@ -279,7 +392,10 @@ void main() {
         });
         addTearDown(repo.close);
         await mount(tester, repo, onComplete: () => accepted++);
-        if (sensitive) await selectSensitivity(tester, 'Not sensitive');
+        await selectSensitivity(
+          tester,
+          sensitive ? 'Not sensitive' : 'Sensitive',
+        );
         await choose(tester);
         await submit(tester);
         expect(accepted, 1);
