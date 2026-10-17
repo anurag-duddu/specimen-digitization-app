@@ -1802,6 +1802,62 @@ def _first_pass(run, tasks_by_key: Mapping[str, FieldTask], ordered: Sequence[Fi
         if copy.fields[key].state == ValueState.SUPPORTED and copy.fields[key].layer in SETTLED_LAYERS}
 
 
+def _country_alternatives_are_lower_places(run, task, outcome, *, readings, received, fresh) -> bool:
+    """Fresh lower-place proof for every alternative, without country counterproof.
+
+    Keep every original country alternative, including other labels, alongside
+    the expert's options. This classifies their levels, never chooses a country:
+    ordinary derivation still requires compatible qualified parent ancestry.
+    Only recognized source kinds prove a level. Nonempty unmodeled kinds give
+    neither lower-place proof nor country counterproof; missing kinds fail closed.
+    """
+    from .agreement import PLACE_ANSWERED, at_level, literal_refusal, verbatim_runs
+    from .contracts import GAZETTEERS
+    from .location_reassessment import protected_keys
+
+    value = run.fields.get("country")
+    answer = outcome.answer if outcome is not None else None
+    if (task is None or "country" in protected_keys(run)
+            or value is None or value.state != ValueState.AMBIGUOUS
+            or value.literal or value.verbatim_by_observation
+            or answer is None or answer.outcome != "several_possibilities" or not answer.options):
+        return False
+    captured = [source for sources in received.values() for source in sources
+        if source.source_id in GAZETTEERS and source.status in PLACE_ANSWERED
+        and source.evidence is not None and source.evidence.id in fresh]
+    # A newly settled administrative child must cite the direct gazetteer
+    # record that names its country; a GEOLocate query part is never ancestry.
+    if not any(child is not None and child.state == ValueState.SUPPORTED
+            and child.layer in {"settled", "verbatim"} and child.authority_id
+            and source.evidence.id in child.evidence_ids
+            and child.evidence_relations.get(source.evidence.id) in {"supports", "decides"}
+            and any(candidate.authority_id == child.authority_id and candidate.parents
+                and candidate.parents[-1].name for candidate in at_level(key, source))
+            for key in ("province_state", "county") if (child := run.fields.get(key)) is not None
+            for source in captured):
+        return False
+    by_name = {reading.name: reading for reading in readings}
+    alternatives = [(literal, tuple(readings)) for literal in answer.options]
+    if task.current.literal:
+        alternatives.append((task.current.literal, tuple(readings)))
+    alternatives.extend((candidate.literal, (by_name[candidate.reading],)
+        if candidate.reading in by_name else ()) for candidate in task.candidates)
+    alternatives.extend((literal, tuple(reading for reading in readings if reading.observation_id == observation))
+        for observation, literal in task.current.verbatim_by_observation.items())
+    for literal, possible in alternatives:
+        named = [reading for reading in possible if literal and verbatim_runs(reading.text, literal)]
+        if not named or literal_refusal(task, readings, literal=literal, named=named) is not None:
+            return False
+        about = [source for source in captured if _answer_can_support_location_literal(source, literal)]
+        if any(not (candidate.kind or "").strip() for source in about for candidate in source.candidates
+                if _location_name_matches_literal(literal, source, candidate)):
+            return False
+        levels = set().union(*(_answer_levels_for_literal(source, literal) for source in about))
+        if not levels or "country" in levels:
+            return False
+    return True
+
+
 def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[FieldTask],
         outcomes: Sequence[FieldOutcome], *, blobs=None, calls: Sequence[SourceCall] = (),
         asset_id: str | None = None, decisions: dict[str, dict] | None = None) -> list[str]:
@@ -1854,7 +1910,9 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
         asset_id = run.regions[0].asset_id if run.regions else None
     tasks_by_key = {task.key: task for task in tasks}
     places = _place_texts(run, tasks_by_key, readings)
+    previous_evidence = {item.id for item in run.evidence}
     _add_sources(run, outcomes, calls, readings, _taxon_literals(run, tasks, outcomes))
+    fresh = {item.id for item in run.evidence} - previous_evidence
     evidence = {item.id: item for item in run.evidence}
     human = human_keys(run)
     received: dict[str, list[SourceAnswer]] = {}
@@ -1884,7 +1942,15 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
         decisions=decisions)
     eligible = [key for key in field_keys(profile) if key not in human
         and (not reassessing or key in reassessing)]
+    ambiguous_country = None
+    if "country" in eligible and _country_alternatives_are_lower_places(run, tasks_by_key.get("country"),
+            next((outcome for outcome in outcomes if outcome.key == "country"), None),
+            readings=readings, received=received, fresh=fresh):
+        ambiguous_country = run.fields["country"]
+        run.fields["country"] = ambiguous_country.model_copy(update={"state": ValueState.UNRESOLVED})
     derived = derive.fill(run, eligible=eligible, asset_id=asset_id, blobs=blobs, received=received)
+    if ambiguous_country is not None and "country" not in derived:
+        run.fields["country"] = ambiguous_country
     for key in derived:
         decisions.setdefault(key, {})["rule"] = "derived"
     # Last, so that a value derived above is never marked absent.
