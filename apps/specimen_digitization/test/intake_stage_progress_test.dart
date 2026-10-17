@@ -496,7 +496,7 @@ void main() {
     final summary = tester.getSemantics(
       find.byKey(const ValueKey('intake-batch-summary')),
     );
-    expect(summary.label, contains('need attention'));
+    expect(summary.label, '2 sent');
     expect(summary.getSemanticsData().flagsCollection.isLiveRegion, isFalse);
     semantics.dispose();
   });

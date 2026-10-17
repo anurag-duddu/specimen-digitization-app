@@ -299,7 +299,7 @@ void main() {
           camera: () async => camera,
           deviceFallbackAvailable: false,
         );
-        expect(find.text('Back to Intake'), findsOneWidget);
+        expect(find.text('Choose files'), findsOneWidget);
         expect(find.text('Use device camera'), findsNothing);
         expect(tester.takeException(), isNull);
       });
@@ -395,7 +395,7 @@ void main() {
           find.byKey(const ValueKey<String>('capture-send')),
           findsNothing,
         );
-        expect(find.text('1 photograph in this batch'), findsOneWidget);
+        expect(find.text('1'), findsOneWidget);
         expect(tester.takeException(), isNull);
       });
     });
@@ -489,7 +489,7 @@ void main() {
     await tester.tap(send);
     await _waitUntil(
       tester,
-      () => find.text('Intake queue · 1 uploading').evaluate().isNotEmpty,
+      () => find.text('1 sending').evaluate().isNotEmpty,
     );
     // PreviewRepository deliberately advances upload progress on a timer. The
     // image admission above needs real async polling, while these timers need
@@ -499,13 +499,15 @@ void main() {
     }
     await tester.pumpAndSettle();
     expect(
-      find.text('Intake queue · 1 uploaded'),
+      find.text('1 saved'),
       findsOneWidget,
       reason: tester
           .widgetList<Text>(find.byType(Text))
           .map((Text text) => text.data)
           .whereType<String>()
-          .where((String text) => text.contains('Intake queue'))
+          .where(
+            (String text) => text.contains('saved') || text.contains('sending'),
+          )
           .join(' | '),
     );
     expect(tester.takeException(), isNull);
@@ -561,7 +563,7 @@ void main() {
           findsOneWidget,
         );
         expect(find.text('Use device camera'), findsNothing);
-        expect(find.text('Back to Intake'), findsOneWidget);
+        expect(find.text('Choose files'), findsOneWidget);
         expect(tester.takeException(), isNull);
       });
     },

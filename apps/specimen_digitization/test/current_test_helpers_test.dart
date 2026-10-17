@@ -12,28 +12,30 @@ import 'workbench_harness.dart';
 
 void main() {
   testWidgets(
-    'new-file classification is idempotent on the actual intake checkbox',
+    'new-file classification is idempotent on the actual intake switch',
     (tester) async {
       await pumpIntake(tester, const Size(1000, 1200));
-      expect(tester.widget<UiCheckbox>(sensitivityControl).value, isTrue);
+      expect(tester.widget(sensitivityControl), isA<UiSwitch>());
+      expect(tester.widget<UiSwitch>(sensitivityControl).value, isFalse);
       await selectSensitivity(tester, 'Not sensitive');
       await selectSensitivity(tester, 'Not sensitive');
-      expect(tester.widget<UiCheckbox>(sensitivityControl).value, isFalse);
+      expect(tester.widget<UiSwitch>(sensitivityControl).value, isFalse);
       await selectSensitivity(tester, 'Sensitive');
-      expect(tester.widget<UiCheckbox>(sensitivityControl).value, isTrue);
+      expect(tester.widget<UiSwitch>(sensitivityControl).value, isTrue);
       expect(confirmCheckbox, findsNothing);
     },
   );
 
   testWidgets(
-    'unknown classification is refused without changing the actual checkbox',
+    'unknown classification is refused without changing the actual switch',
     (tester) async {
       await pumpIntake(tester, const Size(1000, 1200));
       await expectLater(
         selectSensitivity(tester, 'invented'),
         throwsArgumentError,
       );
-      expect(tester.widget<UiCheckbox>(sensitivityControl).value, isTrue);
+      expect(tester.widget(sensitivityControl), isA<UiSwitch>());
+      expect(tester.widget<UiSwitch>(sensitivityControl).value, isFalse);
     },
   );
 

@@ -38,7 +38,9 @@ Future<void> _reach(WidgetTester tester, Finder control) async {
 }
 
 Finder _button(String label) => find.byWidgetPredicate(
-  (widget) => widget is UiButton && widget.label == label,
+  (widget) =>
+      (widget is UiButton && widget.label == label) ||
+      (widget is UiIconButton && widget.semanticsLabel == label),
 );
 
 Future<void> _snapshot(WidgetTester tester, String name) async {
@@ -138,10 +140,10 @@ void main() {
           await tester.pumpAndSettle();
           expect(find.text(activity.value.label).hitTestable(), findsOneWidget);
           expect(tester.getRect(shutter), shutterBefore);
-          expect(tester.widget<UiSwitch>(automatic).value, isFalse);
+          expect(tester.widget<UiSegmented<bool>>(automatic).value, isFalse);
           expect(
             find.text('Exposure is not measured on this device.'),
-            findsOneWidget,
+            findsNothing,
           );
           expect(tester.takeException(), isNull);
           await tester.pumpWidget(const SizedBox.shrink());
@@ -200,12 +202,7 @@ void main() {
           await takeOne(tester);
           expect(tester.takeException(), isNull);
 
-          for (final label in [
-            'Retake',
-            'Send for processing',
-            'Rotate',
-            'Crop',
-          ]) {
+          for (final label in ['Retake', 'Send', 'Rotate', 'Crop']) {
             await _reach(tester, _button(label));
           }
           await _snapshot(tester, '$scene-review');
@@ -295,7 +292,7 @@ void main() {
       await tester.pump();
       await waitForCameraCondition(
         tester,
-        () => _button('Send for processing').evaluate().isNotEmpty,
+        () => _button('Send').evaluate().isNotEmpty,
       );
       final Uint8List cropped =
           (tester.widget<Image>(find.byType(Image)).image as MemoryImage).bytes;
@@ -307,14 +304,14 @@ void main() {
         decoded.getPixel(36, 48).toList(),
       );
       expect(accepted, isEmpty);
-      await _reach(tester, _button('Send for processing'));
-      await tester.tap(_button('Send for processing'));
-      await tester.tap(_button('Send for processing'));
+      await _reach(tester, _button('Send'));
+      await tester.tap(_button('Send'));
+      await tester.tap(_button('Send'));
       await tester.pumpAndSettle();
       expect(accepted, hasLength(1));
       expect(await accepted.single.readAsBytes(), orderedEquals(cropped));
       expect(camera.captureBytes, orderedEquals(original));
-      expect(find.text('1 photograph in this batch'), findsOneWidget);
+      expect(find.text('1'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );

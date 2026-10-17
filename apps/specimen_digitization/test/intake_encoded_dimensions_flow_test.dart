@@ -277,7 +277,7 @@ void main() {
 
     expect(repository.created, isEmpty);
     expect(
-      find.textContaining('over 40 megapixels'),
+      find.text('Over 40 megapixels. Choose a smaller photo.'),
       findsOneWidget,
       reason: 'encoded raster claims must not bypass the existing local cap',
     );

@@ -1043,7 +1043,7 @@ void main() {
     for (final int count in <int>[3, 4, 5]) {
       testWidgets(
         '$count destinations in 120 dp: the current one is in view whichever '
-        'it is on the first frame, and when it changes',
+        'it is, once settled, and when it changes',
         (WidgetTester tester) async {
           for (int initial = 0; initial < count; initial++) {
             // A fresh bar, so `initial` is the destination it is built on.
@@ -1074,6 +1074,76 @@ void main() {
               expect(cellOf(next).left, greaterThanOrEqualTo(bar.left - 0.5));
               expect(cellOf(next).right, lessThanOrEqualTo(bar.right + 0.5));
             }
+          }
+        },
+      );
+    }
+
+    for (final int count in <int>[3, 4, 5]) {
+      testWidgets(
+        '$count destinations in 120 dp: the FIRST frame already shows the '
+        'current one whole, with no settling and no animation to wait for',
+        (WidgetTester tester) async {
+          tester.view.devicePixelRatio = 1;
+          tester.view.physicalSize = const Size(120, 800);
+          addTearDown(tester.view.reset);
+          for (int initial = 0; initial < count; initial++) {
+            await tester.pumpWidget(const SizedBox());
+            // Moving a row after it has been painted, which is what a post
+            // frame `jumpTo` does, announces itself as scroll notifications.
+            // A row that was built on its destination sends none.
+            final List<Type> scrolls = <Type>[];
+            // One pump and nothing else: no `pumpAndSettle`, no second frame.
+            await tester.pumpWidget(
+              uiHarness(
+                size: const Size(120, 800),
+                child: NotificationListener<ScrollNotification>(
+                  onNotification: (ScrollNotification n) {
+                    scrolls.add(n.runtimeType);
+                    return false;
+                  },
+                  child: _BarHost(destinations: first(count), initial: initial),
+                ),
+              ),
+            );
+            expect(
+              scrolls,
+              isEmpty,
+              reason:
+                  'destination $initial of $count was scrolled into view '
+                  'after the first frame: $scrolls',
+            );
+            final Rect bar = tester.getRect(find.byType(UiTabBar));
+            final Rect cell = tester.getRect(
+              find.bySemanticsLabel(first(count)[initial].label),
+            );
+            expect(
+              cell.left,
+              greaterThanOrEqualTo(bar.left - 0.5),
+              reason:
+                  'destination $initial of $count starts before the bar on '
+                  'the first frame',
+            );
+            expect(
+              cell.right,
+              lessThanOrEqualTo(bar.right + 0.5),
+              reason:
+                  'destination $initial of $count ends after the bar on the '
+                  'first frame',
+            );
+            expect(
+              tester
+                  .state<ScrollableState>(find.byType(Scrollable))
+                  .position
+                  .pixels,
+              closeTo((48.0 * count - 120) * initial / (count - 1), 0.001),
+              reason: 'the scroll offset is where the destination sits',
+            );
+            expect(
+              tester.hasRunningAnimations,
+              isFalse,
+              reason: 'nothing is still travelling to the destination',
+            );
           }
         },
       );
@@ -1241,9 +1311,51 @@ void main() {
       expect(cutLabels(tester), isEmpty);
     });
 
-    testWidgets('a cut label shows its whole word on hover, and the tab '
-        'still reads once', (WidgetTester tester) async {
-      final SemanticsHandle handle = tester.ensureSemantics();
+    /// Every tab is one node with one label, its role, its selected state and
+    /// a tap action, and no tooltip of its own, whatever the moment is.
+    ///
+    /// The open tooltip pane's semantics live beneath the portal, which is
+    /// inside the `MergeSemantics` around a cut cell, so they are asserted
+    /// again while it is open: the label must not become "Sources\nSources".
+    void expectEachTabReadsOnce(WidgetTester tester, String when) {
+      for (final UiNavDestination destination in fiveDestinations) {
+        expect(
+          find.bySemanticsLabel(destination.label),
+          findsOneWidget,
+          reason: '${destination.label} has more than one node $when',
+        );
+        final SemanticsData data = tester
+            .getSemantics(find.bySemanticsLabel(destination.label))
+            .getSemanticsData();
+        expect(
+          data.label,
+          destination.label,
+          reason: '${destination.label} reads "${data.label}" $when',
+        );
+        expect(
+          data.tooltip,
+          isEmpty,
+          reason: '${destination.label} has a tooltip $when',
+        );
+        // A cut cell is still a tab, with its selected state and its tap,
+        // inside the tooltip's wrapper.
+        expect(data.role, SemanticsRole.tab, reason: destination.label);
+        expect(
+          data.flagsCollection.isSelected,
+          destination == fiveDestinations.first
+              ? Tristate.isTrue
+              : Tristate.isFalse,
+          reason: '${destination.label} selected state $when',
+        );
+        expect(
+          data.hasAction(SemanticsAction.tap),
+          isTrue,
+          reason: '${destination.label} cannot be activated $when',
+        );
+      }
+    }
+
+    Future<String> pumpCutBar(WidgetTester tester) async {
       await _pumpBar(
         tester,
         destinations: fiveDestinations,
@@ -1261,28 +1373,15 @@ void main() {
         findsNWidgets(cut.length),
         reason: 'a tooltip armed for each cut label, and for no other',
       );
-      // Each tab reads once: the tooltip adds no second node, and the tab
-      // carries no tooltip of its own.
-      for (final UiNavDestination destination in fiveDestinations) {
-        expect(find.bySemanticsLabel(destination.label), findsOneWidget);
-        final SemanticsData data = tester
-            .getSemantics(find.bySemanticsLabel(destination.label))
-            .getSemanticsData();
-        expect(data.label, destination.label);
-        expect(data.tooltip, isEmpty, reason: destination.label);
-        // A cut cell is still a tab, with its selected state, inside the
-        // tooltip's wrapper.
-        expect(data.role, SemanticsRole.tab, reason: destination.label);
-        expect(
-          data.flagsCollection.isSelected,
-          destination == fiveDestinations.first
-              ? Tristate.isTrue
-              : Tristate.isFalse,
-          reason: destination.label,
-        );
-      }
+      return cut.first;
+    }
 
-      final String word = cut.first;
+    testWidgets('a cut label shows its whole word on hover, and every tab '
+        'still reads once, open or closed', (WidgetTester tester) async {
+      final SemanticsHandle handle = tester.ensureSemantics();
+      final String word = await pumpCutBar(tester);
+      expectEachTabReadsOnce(tester, 'before the tooltip opens');
+
       expect(find.text(word), findsOneWidget, reason: 'no tooltip drawn yet');
       final TestGesture pointer = await tester.createGesture(
         kind: PointerDeviceKind.mouse,
@@ -1299,6 +1398,37 @@ void main() {
         findsNWidgets(2),
         reason: 'the tooltip draws the whole word beside the cut label',
       );
+      expectEachTabReadsOnce(tester, 'while the hover tooltip is open');
+
+      await pointer.moveTo(const Offset(5, 5));
+      await tester.pumpAndSettle();
+      expect(find.text(word), findsOneWidget);
+      expectEachTabReadsOnce(tester, 'after the hover tooltip closes');
+      handle.dispose();
+    });
+
+    testWidgets('a cut label shows its whole word on a long press, and every '
+        'tab still reads once, open or closed', (WidgetTester tester) async {
+      final SemanticsHandle handle = tester.ensureSemantics();
+      final String word = await pumpCutBar(tester);
+      expectEachTabReadsOnce(tester, 'before the tooltip opens');
+
+      await tester.longPress(find.text(word));
+      // The pane is built on this frame and its semantics reach the tree on
+      // the next, well inside the 1500 ms the reveal stays open.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(
+        find.text(word),
+        findsNWidgets(2),
+        reason: 'a long press draws the whole word beside the cut label',
+      );
+      expectEachTabReadsOnce(tester, 'while the long press tooltip is open');
+
+      await tester.pump(UiTooltipStyle.touchDuration);
+      await tester.pumpAndSettle();
+      expect(find.text(word), findsOneWidget);
+      expectEachTabReadsOnce(tester, 'after the long press tooltip closes');
       handle.dispose();
     });
 
