@@ -217,3 +217,23 @@ usage. The published allowance is 16000000 micro-units. Cumulative charges and
 reservations are retained; the USD 1 specimen-run limit, the research broker's
 USD 25 cap and the broader envelope above are unchanged. See the dated approval
 in [`golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator).
+
+## Amendment, 2026-10-17 (G9 and G30)
+
+The owner raised G9's cumulative ceiling from USD 25 to USD 30 and the shared
+model allowance from USD 16 to USD 28, through one reviewed PR, preserving all
+recorded usage. The owner's words, sent 2026-10-17 in Claude Code desktop
+session 475c3298, each a reply to a question there, quoted exactly:
+
+- "Approve raising the cumulative program allowance from $16 to $28 so the 11-record batch can run. Do it through a reviewed PR, then run Start new run on those 11 and report what settles."
+- "I approve raising the G9 ceiling from $25 to $30 (the recorded envelope) and the program allowance from $16 to $28, both through one reviewed PR, then run the 11-record batch."
+- "Yes. I know the safety check flagged it. Make the two edits in this session yourself: MAX_PROGRAM_ALLOWANCE_MICROS 25_000_000 to 30_000_000 in research_harness/program_budget.py, and allowance_micros 16000000 to 28000000 in published.json. Then finish the docs, tests and log, review, and open the PR"
+
+The published allowance is 28000000 micro-units and the research broker's cap
+(`MAX_PROGRAM_ALLOWANCE_MICROS` in `research_harness/program_budget.py`) is
+30000000. The amendments above state the cap, the ceiling and the allowance as
+they were on their dates. Cumulative charges and reservations are retained; the
+USD 1 specimen-run limit is unchanged. See the dated approval in
+[`golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator).
+Whether the Cloud Billing budget alert is moved from USD 25 to USD 30 is Not
+confirmed (owner to check).
