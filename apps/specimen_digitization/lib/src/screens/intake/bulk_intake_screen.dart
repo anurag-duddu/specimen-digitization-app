@@ -18,6 +18,11 @@ import 'bulk_intake_repository.dart';
 import 'intake_source_picker.dart';
 import 'intake_timing.dart';
 
+const _photoTypes = XTypeGroup(
+  label: 'Photos',
+  extensions: ['jpg', 'jpeg', 'png', 'tif', 'tiff', 'heic', 'heif', 'dng'],
+);
+
 String intakeStateLabel(String state) => switch (state) {
   'ready' => 'Saved',
   'waiting' => 'Waiting',
@@ -88,23 +93,7 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen> {
     try {
       final files =
           await (widget.pickFiles?.call() ??
-              openFiles(
-                acceptedTypeGroups: [
-                  const XTypeGroup(
-                    label: 'Photos',
-                    extensions: [
-                      'jpg',
-                      'jpeg',
-                      'png',
-                      'tif',
-                      'tiff',
-                      'heic',
-                      'heif',
-                      'dng',
-                    ],
-                  ),
-                ],
-              ));
+              openFiles(acceptedTypeGroups: const [_photoTypes]));
       await c.addFiles(files);
     } catch (e) {
       c.error = c.message(e);
@@ -214,6 +203,7 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen> {
           child: SafeArea(
             child: BulkPhotoInspector(
               controller: c,
+              cameraFactory: widget.cameraFactory,
               initialId: item.id,
               onClose: () => Navigator.of(context).pop(),
             ),
@@ -485,6 +475,7 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen> {
                                     child: BulkPhotoInspector(
                                       key: ValueKey(inspecting),
                                       controller: c,
+                                      cameraFactory: widget.cameraFactory,
                                       initialId: inspecting!,
                                       onClose: () =>
                                           setState(() => inspecting = null),
@@ -676,10 +667,14 @@ class BulkPhotoInspector extends StatefulWidget {
     required this.controller,
     required this.initialId,
     required this.onClose,
+    this.cameraFactory,
+    this.pickReplacementFile,
   });
   final BulkIntakeController controller;
   final String initialId;
   final VoidCallback onClose;
+  final CaptureCameraFactory? cameraFactory;
+  final Future<XFile?> Function()? pickReplacementFile;
   @override
   State<BulkPhotoInspector> createState() => _BulkPhotoInspectorState();
 }
@@ -690,24 +685,42 @@ class _BulkPhotoInspectorState extends State<BulkPhotoInspector> {
   bool editing = false;
   Future<void> retakePhoto(IntakeDraftItem item) async {
     var replaced = false;
-    await Navigator.of(context).push(
-      CaptureScreen.route(
-        () async => PlatformCaptureCamera(),
-        bulkDraft: true,
-        initialSensitive: item.sensitive,
-        onCapturedDurably: (photo) async {
-          await widget.controller.addFiles(
-            [photo.file],
-            camera: true,
-            sensitive: photo.sensitive,
-            replacesId: item.id,
-          );
-          replaced = true;
-          if (mounted) Navigator.of(context).pop();
-        },
-      ),
-    );
-    if (mounted && replaced) widget.onClose();
+    try {
+      final result = await Navigator.of(context).push(
+        CaptureScreen.route(
+          widget.cameraFactory ?? () async => PlatformCaptureCamera(),
+          bulkDraft: true,
+          initialSensitive: item.sensitive,
+          onCapturedDurably: (photo) async {
+            await widget.controller.addFiles(
+              [photo.file],
+              camera: true,
+              sensitive: photo.sensitive,
+              replacesId: item.id,
+            );
+            replaced = true;
+            if (mounted) Navigator.of(context).pop();
+          },
+        ),
+      );
+      if (!mounted) return;
+      if (result?.needsFallback == true) {
+        final file =
+            await (widget.pickReplacementFile?.call() ??
+                openFile(acceptedTypeGroups: const [_photoTypes]));
+        if (!mounted || file == null) return;
+        await widget.controller.addFiles(
+          [file],
+          sensitive: item.sensitive,
+          replacesId: item.id,
+        );
+        replaced = true;
+      }
+      if (mounted && replaced) widget.onClose();
+    } catch (error) {
+      widget.controller.error = widget.controller.message(error);
+      widget.controller.changed();
+    }
   }
 
   Future<void> editPhoto(IntakeDraftItem item) async {
