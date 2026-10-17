@@ -17,6 +17,17 @@ library;
 
 import 'dart:ui' show Color;
 
+/// Provider-prescribed colours, scoped to the Google sign-in button.
+/// https://developers.google.com/identity/branding-guidelines
+abstract final class GoogleSignInPalette {
+  static const Color fillLight = Color(0xFFFFFFFF);
+  static const Color borderLight = Color(0xFF747775);
+  static const Color labelLight = Color(0xFF1F1F1F);
+  static const Color fillDark = Color(0xFF131314);
+  static const Color borderDark = Color(0xFF8E918F);
+  static const Color labelDark = Color(0xFFE3E3E3);
+}
+
 /// Ground, ink and the neutral edges (09 section 3.1).
 abstract final class GroundPalette {
   /// Neutral backgrounds keep evidence and status colour meaningful.

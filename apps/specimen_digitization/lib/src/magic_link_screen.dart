@@ -6,8 +6,10 @@ import 'package:specimen_ui/specimen_ui.dart';
 import 'email_link_browser.dart';
 import 'app/auth_layout.dart';
 import 'magic_link.dart';
+import 'google_sign_in.dart';
+import 'google_sign_in_option.dart';
+import 'administrator_contact.dart';
 import 'widgets/motion_reveal.dart';
-import 'widgets/caveat_text.dart';
 
 const bool _applePersonalDemoConfigured = bool.fromEnvironment(
   'SPECIMEN_APPLE_PERSONAL_DEMO',
@@ -83,12 +85,14 @@ class MagicLinkSignInScreen extends StatefulWidget {
     super.key,
     required this.access,
     this.controller,
+    this.google,
     @visibleForTesting this.applePersonalDemoConfigured,
     @visibleForTesting this.platform,
     @visibleForTesting this.clipboardReader,
   });
   final EmailLinkAccess access;
   final MagicLinkController? controller;
+  final GoogleSignInAccess? google;
   final bool? applePersonalDemoConfigured;
   final TargetPlatform? platform;
   final Future<String?> Function()? clipboardReader;
@@ -102,6 +106,8 @@ class _MagicLinkSignInScreenState extends State<MagicLinkSignInScreen> {
   late final MagicLinkController controller;
   Timer? _timer;
   bool _readingClipboard = false;
+  bool _googleBusy = false;
+  bool _helpExpanded = false;
   String? _lastRemembered;
   int _lastCooldown = 0;
   @override
@@ -146,7 +152,7 @@ class _MagicLinkSignInScreenState extends State<MagicLinkSignInScreen> {
   }
 
   void _submit() {
-    if (!controller.initialized || controller.busy) return;
+    if (!controller.initialized || controller.busy || _googleBusy) return;
     final String? error = normalizedStaffEmail(_email.text) == null
         ? staffEmailMessage
         : null;
@@ -193,14 +199,15 @@ class _MagicLinkSignInScreenState extends State<MagicLinkSignInScreen> {
     required bool confirm,
   }) {
     if (controller.busy) return confirm ? 'Signing in…' : 'Sending link…';
-    if (confirm) return 'Confirm and sign in';
-    return controller.sent ? 'Resend sign-in link' : 'Send sign-in link';
+    if (confirm) return 'Sign in';
+    return controller.sent ? 'Resend link' : 'Send link';
   }
 
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
     final bool confirm = controller.handlingLink;
+    final bool sent = controller.sent && !confirm;
     final bool pasteDemo = applePersonalDemoPasteEnabled(
       configured: widget.applePersonalDemoConfigured,
       platform: widget.platform,
@@ -209,6 +216,7 @@ class _MagicLinkSignInScreenState extends State<MagicLinkSignInScreen> {
     final bool disabled =
         !controller.initialized ||
         controller.busy ||
+        _googleBusy ||
         (!confirm && cooldown > 0);
     return UiScaffold(
       body: AutofillGroup(
@@ -219,34 +227,78 @@ class _MagicLinkSignInScreenState extends State<MagicLinkSignInScreen> {
               ? 'Check your email'
               : 'Sign in to your collection',
           purpose: confirm
-              ? 'Enter the fieldmuseum.org address that received this link.'
-              : 'Use your fieldmuseum.org email to get a sign-in link. '
-                    'No password needed.',
+              ? 'Enter the email address that received this link.'
+              : sent
+              ? 'Open the sign-in link sent to:'
+              : 'Use your fieldmuseum.org email. No password needed.',
           children: <Widget>[
-            UiField(
-              label: 'Email address',
-              controller: _email,
-              enabled: !controller.busy,
-              errorText: _emailError,
-              keyboardType: TextInputType.emailAddress,
-              autocorrect: false,
-              onSubmitted: (_) {
-                if (!disabled) _submit();
-              },
-            ),
+            if (sent)
+              Semantics(
+                container: true,
+                liveRegion: true,
+                child: Text(
+                  controller.email,
+                  key: const ValueKey<String>('email-link-recipient'),
+                  style: ui.type.title.copyWith(color: ui.color.ink),
+                ),
+              )
+            else
+              UiField(
+                label: 'Email address',
+                controller: _email,
+                enabled: !controller.busy && !_googleBusy,
+                errorText: _emailError,
+                keyboardType: TextInputType.emailAddress,
+                textInputAction: TextInputAction.done,
+                autofillHints: const <String>[AutofillHints.email],
+                autocorrect: false,
+                onChanged: (_) {
+                  if (_emailError != null) setState(() => _emailError = null);
+                },
+                onSubmitted: (_) {
+                  if (!disabled) _submit();
+                },
+              ),
             // The announcement is what tells a screen reader user; the
             // reveal only keeps the column from snapping (04 section 4,
             // row 5).
             MotionReveal(
-              visible: controller.message != null,
+              visible: controller.hasError,
               child: Padding(
                 padding: EdgeInsetsDirectional.symmetric(vertical: ui.space.s4),
-                child: UiBanner(message: controller.message ?? ''),
+                child: Semantics(
+                  container: true,
+                  liveRegion: true,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      const UiIcon(UiIcons.error),
+                      SizedBox(width: ui.space.s2),
+                      Expanded(
+                        child: Text(
+                          controller.hasError ? controller.message! : '',
+                          key: const ValueKey<String>('email-link-error'),
+                          style: ui.type.body.copyWith(color: ui.color.ink),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
             SizedBox(height: ui.space.s6),
             UiButton(
               label: _submitLabel(controller, confirm: confirm),
+              semanticsLabel: controller.busy
+                  ? _submitLabel(controller, confirm: confirm)
+                  : confirm
+                  ? 'Sign in with this email link'
+                  : sent
+                  ? 'Resend link to sign in'
+                  : 'Send link to sign in',
+              variant: sent
+                  ? UiButtonVariant.secondary
+                  : UiButtonVariant.primary,
               size: UiSize.lg,
               loading: controller.busy,
               onPressed: disabled ? null : _submit,
@@ -276,7 +328,7 @@ class _MagicLinkSignInScreenState extends State<MagicLinkSignInScreen> {
                 label: 'Paste link from email',
                 variant: UiButtonVariant.ghost,
                 loading: _readingClipboard,
-                onPressed: controller.busy || _readingClipboard
+                onPressed: controller.busy || _googleBusy || _readingClipboard
                     ? null
                     : () => unawaited(_pasteSignInLink()),
                 disabledReason: controller.busy
@@ -290,9 +342,9 @@ class _MagicLinkSignInScreenState extends State<MagicLinkSignInScreen> {
               Align(
                 alignment: AlignmentDirectional.centerStart,
                 child: UiButton(
-                  label: confirm ? 'Cancel sign-in' : 'Use a different email',
+                  label: confirm ? 'Cancel sign-in' : 'Change email',
                   variant: UiButtonVariant.ghost,
-                  onPressed: controller.busy || _readingClipboard
+                  onPressed: controller.busy || _googleBusy || _readingClipboard
                       ? null
                       : () => unawaited(controller.changeEmail()),
                   disabledReason: _readingClipboard
@@ -300,15 +352,57 @@ class _MagicLinkSignInScreenState extends State<MagicLinkSignInScreen> {
                       : null,
                 ),
               ),
+            // A warm email link can arrive during a provider attempt. Keep the
+            // option alive until its completion releases the shared busy guard.
+            if (widget.google != null &&
+                ((!controller.sent && !confirm) || _googleBusy)) ...<Widget>[
+              SizedBox(height: ui.space.s4),
+              Text(
+                'Or',
+                textAlign: TextAlign.center,
+                style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+              ),
+              SizedBox(height: ui.space.s4),
+              GoogleSignInOption(
+                key: const ValueKey<String>('google-sign-in-option'),
+                access: widget.google!,
+                enabled:
+                    !controller.busy &&
+                    controller.initialized &&
+                    !controller.sent &&
+                    !confirm,
+                onBusyChanged: (busy) {
+                  if (mounted) setState(() => _googleBusy = busy);
+                },
+              ),
+            ],
             SizedBox(height: ui.space.s4),
-            const CaveatText(
-              label:
-                  'First time? Signing in with your verified staff email '
-                  'creates your account.',
-              why:
-                  'Collection access is separate and is granted by your '
-                  'collection administrator.',
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: MergeSemantics(
+                child: Semantics(
+                  expanded: _helpExpanded,
+                  child: UiButton(
+                    label: 'Sign-in help',
+                    variant: UiButtonVariant.ghost,
+                    trailing: _helpExpanded ? UiIcons.collapse : UiIcons.expand,
+                    onPressed: () =>
+                        setState(() => _helpExpanded = !_helpExpanded),
+                  ),
+                ),
+              ),
             ),
+            if (_helpExpanded) ...<Widget>[
+              SizedBox(height: ui.space.s2),
+              Text(
+                sent
+                    ? 'Check your spam folder, or request a new link when the timer ends.'
+                    : 'Your first sign-in creates your account. Your collection administrator grants collection access.',
+                style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+              ),
+              SizedBox(height: ui.space.s3),
+              const AdministratorContactLine(),
+            ],
           ],
         ),
       ),
