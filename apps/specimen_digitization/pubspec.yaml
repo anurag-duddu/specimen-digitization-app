@@ -98,6 +98,13 @@ dev_dependencies:
   # 3.38.5 and 2.4.7 is the last one that does. Same reason as go_router
   # above. Revisit with the SDK, not on its own.
   flutter_native_splash: 2.4.7
+  # Test only. The source gates under test/theme/ read lib/ as a Dart syntax
+  # tree rather than as text, so a comment between tokens, a hex literal, an
+  # interpolation or a second declarator reads the way the compiler reads it.
+  # 10.0.1 is the newest that resolves on Flutter 3.38.5; it adds seven
+  # packages to the lockfile and changes none. Revisit with the SDK, not on
+  # its own.
+  analyzer: 10.0.1
   integration_test:
     sdk: flutter
 

@@ -201,6 +201,18 @@ void main() {
         if (state == 'inspector') {
           tester.widget<UiPhotoTile>(find.byType(UiPhotoTile).first).onOpen();
           await tester.pumpAndSettle();
+          expect(find.text('Retake photo'), findsOneWidget);
+        }
+        if (state == 'empty') {
+          final primary = tester.widget<UiButton>(
+            find.widgetWithText(
+              UiButton,
+              size.width < WindowClass.mediumMin
+                  ? 'Take photos'
+                  : 'Choose files',
+            ),
+          );
+          expect(primary.variant, UiButtonVariant.primary);
         }
         if (state == 'submitted') {
           await tester.tap(find.text('Submit 20 photos'));

@@ -3,9 +3,9 @@ library;
 
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_selector/file_selector.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 import '../../capture/capture_camera.dart';
@@ -403,7 +403,7 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen> {
                           ],
                         ),
                       ),
-                    if (kIsWeb && c.hasUnsaved)
+                    if (c.needsOpenWorkspace)
                       Padding(
                         padding: EdgeInsets.symmetric(horizontal: ui.space.s4),
                         child: Text(
@@ -533,10 +533,7 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen> {
 
   Widget _empty(BuildContext context, bool dragging) {
     final ui = context.ui;
-    final cameraFirst =
-        !kIsWeb &&
-        (defaultTargetPlatform == TargetPlatform.iOS ||
-            defaultTargetPlatform == TargetPlatform.android);
+    final cameraFirst = WindowClass.of(context).isCompact;
     return Center(
       child: SingleChildScrollView(
         padding: EdgeInsets.all(ui.space.s6),
@@ -826,16 +823,13 @@ class _BulkPhotoInspectorState extends State<BulkPhotoInspector> {
                   ? null
                   : () => editPhoto(item),
             ),
-            if (!kIsWeb &&
-                (defaultTargetPlatform == TargetPlatform.android ||
-                    defaultTargetPlatform == TargetPlatform.iOS))
-              UiButton(
-                label: 'Retake photo',
-                variant: UiButtonVariant.ghost,
-                onPressed: item.id.startsWith('local:')
-                    ? null
-                    : () => retakePhoto(item),
-              ),
+            UiButton(
+              label: 'Retake photo',
+              variant: UiButtonVariant.ghost,
+              onPressed: item.id.startsWith('local:')
+                  ? null
+                  : () => retakePhoto(item),
+            ),
             UiSwitch(
               label: 'Mark this photo sensitive',
               value: item.sensitive,

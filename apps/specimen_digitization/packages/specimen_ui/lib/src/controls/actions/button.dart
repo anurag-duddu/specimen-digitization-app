@@ -237,6 +237,7 @@ class UiButton extends StatelessWidget {
     this.onPressed,
     this.variant = UiButtonVariant.primary,
     this.size = UiSize.md,
+    this.expand = false,
     this.leading,
     this.trailing,
     this.loading = false,
@@ -259,6 +260,10 @@ class UiButton extends StatelessWidget {
 
   /// The size the button is drawn at.
   final UiSize size;
+
+  /// Fill the available bounded width; retain intrinsic sizing when unbounded.
+  /// Use for the primary action in a single-column task.
+  final bool expand;
 
   /// An optional leading glyph, drawn at 20. The ring takes its slot while
   /// [loading].
@@ -413,7 +418,7 @@ class UiButton extends StatelessWidget {
       builder: (BuildContext context, Set<WidgetState> states) {
         final Color foreground = style.foreground.resolve(states);
         final BorderSide? side = style.side.resolve(states);
-        return DecoratedBox(
+        final Widget visual = DecoratedBox(
           decoration: ShapeDecoration(
             shape: Squircle.border(
               ui.shape.inner,
@@ -494,6 +499,13 @@ class UiButton extends StatelessWidget {
                 ],
               ),
             ),
+          ),
+        );
+        if (!expand) return visual;
+        return LayoutBuilder(
+          builder: (context, constraints) => SizedBox(
+            width: constraints.hasBoundedWidth ? constraints.maxWidth : null,
+            child: visual,
           ),
         );
       },

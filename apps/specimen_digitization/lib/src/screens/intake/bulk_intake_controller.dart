@@ -89,6 +89,8 @@ class BulkIntakeController extends ChangeNotifier {
   bool get hasPendingLocalTransfers => _local.values.any(
     (row) => row['saved'] != true && row['removed'] != true,
   );
+  bool get needsOpenWorkspace =>
+      !hasDurableLocalFiles && hasPendingLocalTransfers;
   bool get needsReselection => _local.values.any(
     (row) =>
         row['saved'] != true &&

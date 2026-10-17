@@ -15,6 +15,7 @@ from collections import OrderedDict
 from uuid import UUID
 
 import google.auth
+import requests
 from google.auth.transport.requests import AuthorizedSession
 from google.cloud import storage
 from pydantic_ai import BinaryContent
@@ -75,6 +76,25 @@ REVIEW_ROLES = {"reviewer", "manager", "admin"}
 
 class ProjectionRejected(RuntimeError):
     """A projection write the connector refused for a reason other than a replay."""
+
+
+# A request whose connection drops, or whose answer times out, is sent again at
+# most twice more, after a pause of 1 s and then 2 s. An HTTP answer is final.
+SQL_CONNECT_SENDS = 3
+SQL_CONNECT_DROPPED = (requests.ConnectionError, requests.ReadTimeout)
+# The mutations a repeat cannot apply twice. Each is one @transaction that
+# applies only at its expected revision, or as a first revision, and inserts a
+# receipt keyed by its idempotency key (dataconnect/connector/checksum.gql and
+# sensitivity.gql), so the connector refuses a repeat of a committed send whole.
+# Any other mutation is sent once. A query is a read and is always sent again.
+REPEATABLE_MUTATIONS = frozenset(
+    {"CreateSpecimenV3", "SaveSpecimenV3", "CreateDocumentV2", "SaveDocumentV2"}
+)
+
+
+class RepeatRefused(Conflict):
+    """A save sent again after a dropped connection, and refused. The first
+    send may have committed before its answer was lost; its receipt says so."""
 
 
 # A specimen id as GetSpecimen's `$id: UUID!` takes it: 8-4-4-4-12 hex digits, with
@@ -168,14 +188,27 @@ class SqlConnectRepository:
             origin = "https://firebasedataconnect.googleapis.com"
         self.url = f"{origin}/v1/projects/{project}/locations/{location}/services/{service}/connectors/{connector}"
 
+    # Between sends after a dropped connection; tests replace it.
+    pause = staticmethod(time.sleep)
+
     @guarded
     def execute(self, operation, variables, mutation=False):
-        response = deadline_call(
-            self.session.post,
-            self.url + (":impersonateMutation" if mutation else ":impersonateQuery"),
-            json={"operationName": operation, "variables": variables},
-            timeout=30,
-        )
+        sends = SQL_CONNECT_SENDS if not mutation or operation in REPEATABLE_MUTATIONS else 1
+        for send in range(1, sends + 1):
+            try:
+                response = deadline_call(
+                    self.session.post,
+                    self.url + (":impersonateMutation" if mutation else ":impersonateQuery"),
+                    json={"operationName": operation, "variables": variables},
+                    timeout=30,
+                )
+                break
+            except SQL_CONNECT_DROPPED as exc:
+                if send == sends:
+                    raise
+                LOGGER.warning("SQL Connect %s connection dropped (%s); sending again",
+                               log_code(operation), type(exc).__name__)
+                self.pause(send)
         if response.status_code in {401, 403}:
             raise PermissionError("SQL Connect access denied")
         if response.status_code != 200:
@@ -185,6 +218,10 @@ class SqlConnectRepository:
             # Every GraphQL error becomes a Conflict (409); the code says which kind it was.
             LOGGER.warning("SQL Connect %s rejected: code=%s",
                            log_code(operation), graphql_error_code(body["errors"]))
+            if mutation and send > 1:
+                raise RepeatRefused(
+                    "SQL Connect refused a repeat; the receipt says whether the first send committed"
+                )
             raise Conflict(
                 "SQL Connect transaction rejected; reload current revision and membership"
             )
@@ -622,24 +659,31 @@ class SqlConnectRepository:
 
         return proofs, recheck_conflict
 
+    def _receipted(self, principal, base, operation, key, request_digest):
+        """The snapshot this request already committed, or None when it has not."""
+        receipt = self.execute(
+            "GetReceipt", dict(base, operation=operation, idempotencyKey=key)
+        ).get("requestReceipt")
+        if not receipt:
+            return None
+        if receipt["requestSha256"] != request_digest:
+            raise Conflict("Idempotency key reused")
+        row = self.execute(
+            "GetSnapshot",
+            dict(base, id=receipt["specimenId"], revision=receipt["revision"]),
+        )["specimenSnapshot"]
+        committed = self._snapshot(row)
+        # A replayed save still catches up rows a lost pass did not write.
+        self.write_projection(principal.scope, committed, principal.role in REVIEW_ROLES)
+        return committed
+
     def _commit(self, principal, specimen, expected, key, request_digest):
         if principal.scope != specimen.scope or principal.user_id != actor_uid.get():
             raise PermissionError("Verified actor/scope mismatch")
         operation = "create" if not expected else "save:" + specimen.id
         base = self.variables(principal.scope)
-        receipt = self.execute(
-            "GetReceipt", dict(base, operation=operation, idempotencyKey=key)
-        ).get("requestReceipt")
-        if receipt:
-            if receipt["requestSha256"] != request_digest:
-                raise Conflict("Idempotency key reused")
-            row = self.execute(
-                "GetSnapshot",
-                dict(base, id=receipt["specimenId"], revision=receipt["revision"]),
-            )["specimenSnapshot"]
-            committed = self._snapshot(row)
-            # A replayed save still catches up rows a lost pass did not write.
-            self.write_projection(principal.scope, committed, principal.role in REVIEW_ROLES)
+        committed = self._receipted(principal, base, operation, key, request_digest)
+        if committed is not None:
             return committed
         specimen = specimen.model_copy(deep=True)
         specimen.version = expected + 1
@@ -675,11 +719,17 @@ class SqlConnectRepository:
             )
         if not expected:
             variables["sourceChecksum"] = specimen.asset.sha256
-        self.execute(
-            "SaveSpecimenV3" if expected else "CreateSpecimenV3",
-            variables,
-            mutation=True,
-        )
+        try:
+            self.execute(
+                "SaveSpecimenV3" if expected else "CreateSpecimenV3",
+                variables,
+                mutation=True,
+            )
+        except RepeatRefused:
+            committed = self._receipted(principal, base, operation, key, request_digest)
+            if committed is None:
+                raise
+            return committed
         self.write_projection(principal.scope, specimen, principal.role in REVIEW_ROLES)
         return specimen
 
@@ -857,9 +907,24 @@ class SqlConnectRepository:
         )
         if expected:
             variables["expectedRevision"] = expected
-        self.execute(
-            "SaveDocumentV2" if expected else "CreateDocumentV2", variables, mutation=True
-        )
+        try:
+            self.execute(
+                "SaveDocumentV2" if expected else "CreateDocumentV2", variables, mutation=True
+            )
+        except RepeatRefused:
+            receipt = self.execute(
+                "GetDocumentReceiptV2",
+                dict(
+                    self.variables(scope),
+                    operation=variables["operation"],
+                    idempotencyKey=variables["idempotencyKey"],
+                ),
+            ).get("auxiliaryReceipt")
+            # The receipt's key names this document and revision; its digest, this payload.
+            if not receipt or (receipt.get("revision"), receipt.get("requestSha256")) != (
+                expected + 1, variables["requestSha256"]
+            ):
+                raise
         return payload
 
     def active_intake_jobs(self, scope):

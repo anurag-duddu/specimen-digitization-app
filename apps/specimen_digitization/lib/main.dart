@@ -185,7 +185,7 @@ class _SpecimenDigitizationAppState extends State<SpecimenDigitizationApp> {
         access: session as EmailLinkAccess,
         browser: widget.emailLinkBrowser ?? createEmailLinkBrowser(),
         linkSource: _emailLinkSource,
-      );
+      )..addListener(_reconcileEmailSession);
       unawaited(_magicLink!.initialize());
     }
     final SpecimenRepository? repository = widget.repository;
@@ -210,10 +210,25 @@ class _SpecimenDigitizationAppState extends State<SpecimenDigitizationApp> {
   /// Starts collection loading the moment the session is signed in and
   /// verified, and never before, so an unverified account sends no token.
   void _sessionChanged() {
+    _reconcileEmailSession();
     if (_sessionNotifier.signedIn && _sessionNotifier.verified) {
       _workspace?.start();
     } else {
       _workspace?.resetSession();
+    }
+  }
+
+  void _reconcileEmailSession() {
+    final session = _sessionNotifier.session;
+    if (session == null ||
+        session is! VerifiedEmailAccess ||
+        !_sessionNotifier.signedIn ||
+        !_sessionNotifier.verified) {
+      return;
+    }
+    final controller = _magicLink;
+    if (controller != null) {
+      unawaited(controller.reconcileVerifiedSession(session.displayName));
     }
   }
 
@@ -224,7 +239,9 @@ class _SpecimenDigitizationAppState extends State<SpecimenDigitizationApp> {
       ..dispose();
     _router.dispose();
     _motion.dispose();
-    _magicLink?.dispose();
+    _magicLink
+      ?..removeListener(_reconcileEmailSession)
+      ..dispose();
     unawaited(_emailLinkSource?.close());
     _workspace?.dispose();
     super.dispose();
