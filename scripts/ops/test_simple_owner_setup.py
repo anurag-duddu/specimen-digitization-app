@@ -1000,6 +1000,82 @@ def test_preflight_stops_before_any_change(tmp_path, change, message):
     assert "== " not in run.out
 
 
+AUTH_ROLE = "specimenAuthConfiguration"
+AUTH_PERMISSIONS = ["firebase.clients.get", "firebase.clients.list", "firebase.projects.get",
+                    "firebase.projects.update", "firebaseauth.configs.get", "firebaseauth.configs.update"]
+AUTH_CREATE = ["gcloud", "iam", "roles", "create", AUTH_ROLE, f"--project={PROJECT}",
+               "--title=Specimen Auth configuration",
+               "--description=Provision Google for the existing Firebase app and verify Auth configuration; "
+               "no user or hash permissions.",
+               f"--permissions={','.join(AUTH_PERMISSIONS)}", "--stage=GA"]
+AUTH_GRANT = project_grant(DATA, AUTH_ROLE)
+
+
+@pytest.mark.parametrize("shell", SHELLS)
+def test_auth_only_dry_run_has_just_one_role_and_one_data_binding(tmp_path, shell):
+    initial = {**live_state(), "gh_signed_in": False}
+    harness = Harness(tmp_path, initial, shell)
+    # This narrow mode needs no GitHub CLI or private bootstrap file.
+    (tmp_path / "bin/gh").unlink()
+    run = harness.run("--auth-only", "--dry-run")
+    assert run.code == 0, run.err
+    assert run.printed == [AUTH_CREATE, AUTH_GRANT] and run.writes == []
+    assert harness.state() == initial
+    assert all(call["tool"] == "gcloud" for call in run.calls)
+    assert not run.starts and not run.sleeps
+    assert "Auth setup only: 2 change(s), 0 failure(s)" in run.out
+
+
+@pytest.mark.parametrize("shell", SHELLS)
+def test_auth_only_apply_is_minimal_and_idempotent(tmp_path, shell):
+    initial = live_state()
+    harness = Harness(tmp_path, initial, shell)
+    run = harness.run("--auth-only")
+    assert run.code == 0 and run.ran == [AUTH_CREATE, AUTH_GRANT], run.err
+    expected = copy.deepcopy(initial)
+    expected["roles"][AUTH_ROLE] = {"stage": "GA", "deleted": False, "permissions": AUTH_PERMISSIONS}
+    expected["policies"][f"project/{PROJECT}"].append(binding(CUSTOM + AUTH_ROLE, [DATA]))
+    assert harness.state() == expected
+    again = harness.run("--auth-only")
+    assert again.code == 0 and again.writes == [] and again.printed == []
+    assert harness.state() == expected and not again.starts and not again.sleeps
+
+
+@pytest.mark.parametrize("args", [("--auth-only", "--auth-only"), ("--auth-only", "--setup-only"),
+                                  ("--redeploy-web", "--auth-only")])
+def test_auth_only_rejects_other_setup_modes_before_tools(tmp_path, args):
+    run = Harness(tmp_path, live_state()).run(*args)
+    assert run.code != 0 and run.calls == [] and "Usage:" in run.err
+
+
+@pytest.mark.parametrize("change", [{"account": ""}, {"project_number": "1"}])
+def test_auth_only_checks_google_identity_and_exact_project_before_writes(tmp_path, change):
+    run = Harness(tmp_path, {**live_state(), **change}).run("--auth-only")
+    assert run.code == 1 and run.writes == [] and not run.starts
+
+
+def test_auth_only_failed_role_change_cannot_bind_unreconciled_role(tmp_path):
+    initial = live_state()
+    initial["roles"][AUTH_ROLE] = {"stage": "GA", "deleted": False,
+                                    "permissions": ["firebaseauth.users.delete"]}
+    initial["fail"] = ["update"]
+    harness = Harness(tmp_path, initial)
+    run = harness.run("--auth-only")
+    assert run.code == 1 and len(run.writes) == 1 and run.ran[0][1:4] == ["iam", "roles", "update"]
+    assert harness.state() == initial and not run.starts
+    assert "1 failure(s)" in run.out
+
+
+def test_auth_only_failed_grant_stops_without_other_setup(tmp_path):
+    initial = live_state()
+    initial["roles"][AUTH_ROLE] = {"stage": "GA", "deleted": False, "permissions": AUTH_PERMISSIONS}
+    initial["fail"] = ["add-iam-policy-binding"]
+    harness = Harness(tmp_path, initial)
+    run = harness.run("--auth-only")
+    assert run.code == 1 and run.ran == [AUTH_GRANT] and harness.state() == initial
+    assert not run.starts and not run.sleeps and "1 failure(s)" in run.out
+
+
 def grants(run):
     """Every binding an apply added: (resource, member, role, condition title, condition expression)."""
     found, conditions = set(), run.conditions()
