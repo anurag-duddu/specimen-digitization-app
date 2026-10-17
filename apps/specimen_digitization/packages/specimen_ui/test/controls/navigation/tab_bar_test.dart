@@ -435,9 +435,13 @@ void main() {
       // version of the formula left out (2026-10-17 correction): at 200
       // percent the bar is 68 dp, not 64.
       await _pumpBar(tester);
-      final UiTabBarStyle style = UiTabBarStyle.resolve(
-        tester.element(find.byType(UiTabBar)).ui,
-      );
+      final UiThemeData ui = tester.element(find.byType(UiTabBar)).ui;
+      final UiTabBarStyle style = UiTabBarStyle.resolve(ui);
+      // The resting height is a token, `space.tabBar`, and not a number
+      // written in the control; it sits beside `space.topBar` and the two are
+      // decided separately.
+      expect(ui.space.tabBar, 56);
+      expect(style.restingHeight, ui.space.tabBar);
       expect(style.restingHeight, 56);
       expect(style.glyphBand, 32);
       expect(style.labelAllowance, 16);

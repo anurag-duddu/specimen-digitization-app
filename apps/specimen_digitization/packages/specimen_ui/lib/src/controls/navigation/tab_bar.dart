@@ -66,13 +66,14 @@ class UiTabBarStyle {
   /// The label role: `label.small`, sentence case, one line.
   final TextStyle label;
 
-  /// The least the bar's content may be tall, before the safe inset.
+  /// The least the bar's content may be tall, before the safe inset:
+  /// `space.tabBar`, 56 dp (03 section 5.2, `size.tabbar`).
   ///
-  /// 56 dp. The HIG tab bar is 49 pt and grows with Dynamic Type; Material
-  /// asks for a 48 dp target and WCAG 2.2 SC 2.5.8 asks for 24 CSS px. 56 is
-  /// the first number on the 8 dp grid that holds a 24 dp glyph, a one line
-  /// label and a 4 dp gap without crowding any of them, and it is the height
-  /// the iPhone bar had when the owner called it "perfect".
+  /// The HIG tab bar is 49 pt and grows with Dynamic Type; Material asks for a
+  /// 48 dp target and WCAG 2.2 SC 2.5.8 asks for 24 CSS px. 56 is the first
+  /// number on the 8 dp grid that holds a 24 dp glyph, a one line label and a
+  /// 4 dp gap without crowding any of them, and it is the height the iPhone
+  /// bar had when the owner called it "perfect".
   final double restingHeight;
 
   /// What the bar spends on the glyph before the label's own line: the 24 dp
@@ -128,7 +129,7 @@ class UiTabBarStyle {
     current: ui.color.ink,
     rest: ui.color.inkSecondary,
     label: ui.type.labelSmall,
-    restingHeight: _restingHeight,
+    restingHeight: ui.space.tabBar,
     glyphBand: ui.space.iconAction + ui.space.s2,
     labelAllowance: ui.space.iconSmall,
     labelGap: ui.space.s1,
@@ -136,11 +137,6 @@ class UiTabBarStyle {
     crossFade: ui.motion.navigationGlide,
     curve: MotionTokens.standardCurve,
   );
-
-  /// No token names this height: the nearest, `space.topBar`, is the top bar's
-  /// and the nearest control size, `lg`, is a button's. It is written once
-  /// here, with the reasoning above, rather than borrowed.
-  static const double _restingHeight = 56;
 }
 
 /// The one bottom tab bar, drawn the same on every platform.

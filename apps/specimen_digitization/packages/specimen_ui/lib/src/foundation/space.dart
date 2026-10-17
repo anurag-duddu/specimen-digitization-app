@@ -87,6 +87,19 @@ class UiSpace {
   /// The top bar at touch density.
   double get topBar => 56;
 
+  /// The bottom tab bar's resting content height, before the system inset
+  /// under it and before the reviewer's text size grows it (`size.tabbar` in
+  /// 03 section 5.2; 10 section 4.4, `UiTabBar`).
+  ///
+  /// 56 dp: the HIG tab bar is 49 pt and grows with Dynamic Type, Material
+  /// and WCAG ask for a 48 dp target, and 56 is the first number on the 8 dp
+  /// grid that holds a 24 dp glyph, a one line label and a 4 dp gap without
+  /// crowding any of them. It is the height the owner approved on the iPhone
+  /// bar. It is the same number as [topBar] today, and a token of its own
+  /// because the two are decided separately: a change to one top bar must
+  /// not resize the tab bar.
+  double get tabBar => 56;
+
   /// The navigation rail.
   double get rail => 80;
 
