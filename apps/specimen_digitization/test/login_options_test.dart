@@ -1,9 +1,10 @@
 import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart'
+    show debugDefaultTargetPlatformOverride;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/google_sign_in.dart';
 import 'package:specimen_digitization/src/google_sign_in_option.dart';
@@ -77,16 +78,9 @@ MagicLinkController emailController(
 );
 
 void main() {
+  // The faces, Google Sans among them, are loaded by `flutter_test_config.dart`
+  // through `UiFonts.loadForTest`: the font belongs to specimen_ui now.
   TestWidgetsFlutterBinding.ensureInitialized();
-  setUpAll(() async {
-    for (final font in <String, String>{
-      UiFonts.sansFamily: 'packages/specimen_ui/${UiFonts.sansAsset}',
-      'GoogleSignInSans': 'assets/google-sign-in/GoogleSans-Medium.ttf',
-    }.entries) {
-      final loader = FontLoader(font.key)..addFont(rootBundle.load(font.value));
-      await loader.load();
-    }
-  });
 
   testWidgets(
     'Google does not request an email and releases busy after cancellation',
@@ -110,7 +104,11 @@ void main() {
       final RenderParagraph providerLabel = tester.renderObject(
         find.text('Sign in with Google'),
       );
-      expect(providerLabel.text.style!.fontFamily, 'GoogleSignInSans');
+      expect(find.byType(UiGoogleSignInButton), findsOneWidget);
+      expect(
+        providerLabel.text.style!.fontFamily,
+        GoogleSignInBrand.prefixedFontFamily,
+      );
       expect(providerLabel.text.style!.fontWeight, FontWeight.w500);
       await tapVisible(tester, 'Sign in with Google');
       expect(changes, <bool>[true]);
@@ -131,6 +129,27 @@ void main() {
       expect(changes, <bool>[true, false]);
     },
   );
+
+  testWidgets('the option draws the same button on every platform', (
+    tester,
+  ) async {
+    // The padding and the icon gap used to differ on iOS. The option offers the
+    // design system's button now, which reads no platform.
+    final sizes = <TargetPlatform, Size>{};
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    for (final platform in TargetPlatform.values) {
+      debugDefaultTargetPlatformOverride = platform;
+      await pumpLogin(
+        tester,
+        Center(child: GoogleSignInOption(access: FakeGoogleAccess())),
+      );
+      expect(find.byType(UiGoogleSignInButton), findsOneWidget);
+      sizes[platform] = tester.getSize(find.byType(UiGoogleSignInButton));
+    }
+    debugDefaultTargetPlatformOverride = null;
+    expect(sizes.values.toSet(), hasLength(1), reason: '$sizes');
+    expect(sizes.values.first.height, UiDensity.hitBox);
+  });
 
   testWidgets('disposing during Google sign-in never calls parent again', (
     tester,
