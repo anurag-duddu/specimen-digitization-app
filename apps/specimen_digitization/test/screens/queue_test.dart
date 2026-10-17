@@ -4,6 +4,7 @@
 
 import 'dart:async';
 
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -564,4 +565,52 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
   });
+
+  // Motion catalog row 21, amended 2026-10-17: pull to refresh follows the
+  // design system's touch density, not the platform. The same assertions on
+  // four platforms are the proof that the platform no longer decides.
+  testWidgets(
+    'pull to refresh is offered while the reviewer uses touch, on any platform',
+    (tester) async {
+      final ScriptedRepository repository = ScriptedRepository()
+        ..results = <Specimen>[
+          const Specimen({
+            'specimen_id': 'SD-1',
+            'filename': 'First record',
+            'disposition': 'cleared',
+          }),
+        ];
+      await pumpQueue(tester, repository);
+      final Finder pull = find.byKey(QueueScreen.pullToRefreshKey);
+
+      // An 800 dp window starts in touch, below UiDensity.pointerDefaultWidth.
+      expect(pull, findsOneWidget);
+
+      // A mouse moving over the window makes it a pointer window.
+      final TestGesture mouse = await tester.createGesture(
+        kind: PointerDeviceKind.mouse,
+      );
+      await mouse.addPointer(location: const Offset(400, 700));
+      await mouse.moveTo(const Offset(420, 700));
+      await tester.pumpAndSettle();
+      expect(pull, findsNothing);
+      await mouse.removePointer();
+
+      // A finger on the glass makes it a touch window again.
+      final TestGesture finger = await tester.startGesture(
+        const Offset(400, 700),
+        kind: PointerDeviceKind.touch,
+      );
+      await finger.up();
+      await tester.pumpAndSettle();
+      expect(pull, findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    },
+    variant: TargetPlatformVariant(<TargetPlatform>{
+      TargetPlatform.android,
+      TargetPlatform.iOS,
+      TargetPlatform.macOS,
+      TargetPlatform.windows,
+    }),
+  );
 }

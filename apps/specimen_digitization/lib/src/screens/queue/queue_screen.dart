@@ -7,7 +7,6 @@ library;
 
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
@@ -86,6 +85,10 @@ DateTime? queueUpdatedAt(Specimen specimen) {
 /// that it is the queue itself.
 class QueueScreen extends StatelessWidget {
   const QueueScreen({super.key});
+
+  /// The pull to refresh wrapper around the list, present while the reviewer
+  /// is using touch.
+  static const Key pullToRefreshKey = ValueKey<String>('queue-pull-to-refresh');
 
   @override
   Widget build(BuildContext context) {
@@ -706,12 +709,17 @@ class _QueuePaneState extends State<QueuePane> {
       ],
     );
 
-    // Pull to refresh is a touch gesture, and on the web it fights the
-    // browser's own pull to refresh, so it is offered on the two touch
-    // platforms only (motion catalog, row 21). The list is never cleared
-    // while the refresh is out: the rows that are there stay there.
+    // Pull to refresh is a touch gesture, so it is offered while the reviewer
+    // is using touch, on any device: the owner chose a touch check over a
+    // platform check on 2026-10-17 (motion catalog, row 21, amended). The
+    // list is never cleared while the refresh is out: the rows that are
+    // there stay there.
     return _pullToRefresh
-        ? _PullToRefresh(onRefresh: controller.refresh, child: list)
+        ? _PullToRefresh(
+            key: QueueScreen.pullToRefreshKey,
+            onRefresh: controller.refresh,
+            child: list,
+          )
         : list;
   }
 
@@ -722,11 +730,9 @@ class _QueuePaneState extends State<QueuePane> {
   /// Search matches the exact specimen identifier the API accepts.
   static const String searchHint = 'Specimen ID';
 
-  /// True on the two platforms whose pull gesture is the app's to own.
-  bool get _pullToRefresh =>
-      !kIsWeb &&
-      (defaultTargetPlatform == TargetPlatform.iOS ||
-          defaultTargetPlatform == TargetPlatform.android);
+  /// True while the reviewer is using touch, from the design system's
+  /// density, which follows the last pointer the window saw.
+  bool get _pullToRefresh => Density.of(context).isTouch;
 
   Widget _skeleton(
     UiThemeData ui,
@@ -1263,7 +1269,11 @@ class _LoadMoreButton extends StatelessWidget {
 // entry in 10 section 4, which 10 section 10 asks for before a new component
 // exists.
 class _PullToRefresh extends StatefulWidget {
-  const _PullToRefresh({required this.onRefresh, required this.child});
+  const _PullToRefresh({
+    super.key,
+    required this.onRefresh,
+    required this.child,
+  });
 
   /// What a completed pull asks for.
   final Future<void> Function() onRefresh;

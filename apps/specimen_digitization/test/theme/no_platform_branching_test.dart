@@ -30,12 +30,14 @@ import 'platform_scan.dart';
 /// Every declaration allowed a platform check. Sorted by path, then site.
 ///
 /// The brief of 2026-10-17 named nine files; their declarations are below.
-/// Three more files make checks: `app_router.dart` (the iOS page transition,
-/// 04 row 18), `queue_screen.dart` (pull to refresh on iOS and Android, 04
-/// row 21) and `app_theme.dart` (`PageTransitionsTheme` is keyed by platform
-/// and gives every key the same builder). The owner approved all three, and
-/// the skip of the generated options below, on 2026-10-17; each entry carries
-/// the sign-off.
+/// Two more files make checks, both page transitions, which 09 section 2
+/// principle 5 gives the platform: `app_router.dart` (the iOS page
+/// transition, 04 row 18) and `app_theme.dart` (`PageTransitionsTheme` is
+/// keyed by platform and gives every key the same builder). The owner
+/// approved both, and the skip of the generated options below, on
+/// 2026-10-17; each entry carries the sign-off. The queue's pull to refresh
+/// asked the platform until the owner chose a touch check instead (04 row
+/// 21, amended); it reads `Density.of(context)` and needs no entry.
 const List<PlatformCapability> platformCapabilities = <PlatformCapability>[
   PlatformCapability(
     'lib/firebase_options.ci.dart',
@@ -61,6 +63,9 @@ const List<PlatformCapability> platformCapabilities = <PlatformCapability>[
   // owner-approved: 2026-10-17 "Yes approved" (the owner, in the guard-gates
   // Claude Code session, answering whether to approve the four platform
   // exemptions on PR #358)
+  // owner-approved: 2026-10-17 "Page transitions (Recommended), Firebase
+  // config file (Recommended)" (the owner's selection in the coordinating
+  // Claude Code session, asked which existing platform checks to approve)
   PlatformCapability(
     'lib/src/app/app_router.dart',
     '_WorkspacePageRoute.buildTransitions',
@@ -70,6 +75,9 @@ const List<PlatformCapability> platformCapabilities = <PlatformCapability>[
   // owner-approved: 2026-10-17 "Yes approved" (the owner, in the guard-gates
   // Claude Code session, answering whether to approve the four platform
   // exemptions on PR #358)
+  // owner-approved: 2026-10-17 "Page transitions (Recommended), Firebase
+  // config file (Recommended)" (the owner's selection in the coordinating
+  // Claude Code session, asked which existing platform checks to approve)
   PlatformCapability(
     'lib/src/app/app_router.dart',
     'buildAppRouter',
@@ -169,19 +177,6 @@ const List<PlatformCapability> platformCapabilities = <PlatformCapability>[
       'lib/src/magic_link_screen.dart _MagicLinkSignInScreenState.build': 1,
     },
   ),
-  // owner-approved: 2026-10-17 "Yes approved" (the owner, in the guard-gates
-  // Claude Code session, answering whether to approve the four platform
-  // exemptions on PR #358)
-  PlatformCapability(
-    'lib/src/screens/queue/queue_screen.dart',
-    '_QueuePaneState._pullToRefresh',
-    <String, int>{webFlag: 1, targetPlatform: 2, targetPlatformType: 2},
-    'pull to refresh is iOS and Android; in a browser it fights the '
-        "browser's own (04 row 21)",
-    readers: <String, int>{
-      'lib/src/screens/queue/queue_screen.dart _QueuePaneState._list': 1,
-    },
-  ),
   PlatformCapability(
     'lib/src/screens/workbench/readings_panel.dart',
     '_WorkbenchReadingsState.didUpdateWidget',
@@ -191,6 +186,9 @@ const List<PlatformCapability> platformCapabilities = <PlatformCapability>[
   // owner-approved: 2026-10-17 "Yes approved" (the owner, in the guard-gates
   // Claude Code session, answering whether to approve the four platform
   // exemptions on PR #358)
+  // owner-approved: 2026-10-17 "Page transitions (Recommended), Firebase
+  // config file (Recommended)" (the owner's selection in the coordinating
+  // Claude Code session, asked which existing platform checks to approve)
   PlatformCapability(
     'lib/src/theme/app_theme.dart',
     'specimenPageTransitions',
@@ -221,6 +219,9 @@ const List<PlatformCapability> platformCapabilities = <PlatformCapability>[
 /// owner-approved: 2026-10-17 "Yes approved" (the owner, in the guard-gates
 /// Claude Code session, answering whether to approve the four platform
 /// exemptions on PR #358)
+/// owner-approved: 2026-10-17 "Page transitions (Recommended), Firebase
+/// config file (Recommended)" (the owner's selection in the coordinating
+/// Claude Code session, asked which existing platform checks to approve)
 const String generatedOptions = 'lib/firebase_options.dart';
 
 /// Every platform check under `lib/` of the application at [base], by file.
