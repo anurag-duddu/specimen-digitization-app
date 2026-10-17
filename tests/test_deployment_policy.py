@@ -6,12 +6,23 @@ import importlib.util
 import json
 from pathlib import Path
 import subprocess
+import sys
 
 import pytest
 import yaml
 
 
 ROOT = Path(__file__).resolve().parents[1]
+# Load only reusable fixtures, without re-exporting G's test functions or
+# changing sys.path. Each mutable control is newly constructed per test.
+_engine_spec = importlib.util.spec_from_file_location(
+    "deployment_engine_fixtures", ROOT / "scripts/ci/test_engine_contract_gate.py")
+_engine_fixtures = importlib.util.module_from_spec(_engine_spec)
+_engine_spec.loader.exec_module(_engine_fixtures)
+engine_control = _engine_fixtures.control
+gate = _engine_fixtures.gate
+phase_control_bytes = _engine_fixtures.phase_control_bytes
+
 WORKFLOW = ROOT / ".github/workflows/ci-cd.yml"
 DEPLOY_SCRIPT = ROOT / "scripts/ci/deploy_hosting.sh"
 APPROVED_DEPLOY_SCRIPTS = {
@@ -171,11 +182,12 @@ def test_frontend_only_python_scope_keeps_the_required_gate_and_fails_closed() -
     assert shards["needs"] == "python-scope"
     assert shards["if"] == "needs.python-scope.outputs.full == 'true'"
     assert aggregate["if"] == "always()"
-    assert aggregate["needs"] == ["python-scope", "python-shards"]
+    assert aggregate["needs"] == ["python-scope", "python-shards", "python-engines"]
 
     validation = next(step for step in aggregate["steps"]
                       if step.get("name") == "Require a valid scope decision")
-    assert set(validation["env"]) == {"SCOPE_RESULT", "FULL_PYTHON", "SHARD_RESULT"}
+    assert set(validation["env"]) == {"SCOPE_RESULT", "FULL_PYTHON", "SHARD_RESULT", "ENGINE_RESULT"}
+    assert 'test "$ENGINE_RESULT" = success' in validation["run"]
     assert 'test "$SCOPE_RESULT" = success' in validation["run"]
     assert 'true) test "$SHARD_RESULT" = success' in validation["run"]
     assert 'false) test "$SHARD_RESULT" = skipped' in validation["run"]
@@ -300,7 +312,7 @@ def test_hosting_required_names_dependencies_and_attempt_binding_are_exact() -> 
     workflow = hosting_workflow()
     jobs = workflow["jobs"]
     assert set(jobs) == {"repository-checks", "python-scope", "python-shards", "python",
-                         "flutter", "mobile", "deploy-hosting"}
+                         "python-engines", "flutter", "mobile", "deploy-hosting"}
     assert {key: jobs[key]["name"] for key in ("repository-checks", "python", "flutter")} == {
         "repository-checks": "Repository checks", "python": "Python tests",
         "flutter": "Flutter checks and web build"}
@@ -331,6 +343,7 @@ def test_hosting_required_names_dependencies_and_attempt_binding_are_exact() -> 
         "subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2",
         "google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093",
         "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+        "actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809",
     }
     assert all("continue-on-error" not in job and all("continue-on-error" not in step
                for step in job["steps"]) for job in jobs.values())
@@ -339,20 +352,229 @@ def test_hosting_required_names_dependencies_and_attempt_binding_are_exact() -> 
 @pytest.mark.parametrize("scope_result", ["success", "failure", "cancelled", "skipped", ""])
 @pytest.mark.parametrize("full", ["true", "false", "", "TRUE"])
 @pytest.mark.parametrize("shard_result", ["success", "failure", "cancelled", "skipped", ""])
+@pytest.mark.parametrize("engine_result", ["success", "failure", "skipped", "cancelled", ""])
 def test_python_aggregate_scope_and_shard_truth_table(scope_result: str, full: str,
-                                                    shard_result: str) -> None:
+                                                    shard_result: str, engine_result: str) -> None:
     aggregate = hosting_workflow()["jobs"]["python"]
     assert aggregate["if"] == "always()"
-    assert aggregate["needs"] == ["python-scope", "python-shards"]
+    assert aggregate["needs"] == ["python-scope", "python-shards", "python-engines"]
     step = workflow_step(aggregate, "Require a valid scope decision")
     assert step["env"] == {"SCOPE_RESULT": "${{ needs.python-scope.result }}",
                            "FULL_PYTHON": "${{ needs.python-scope.outputs.full }}",
-                           "SHARD_RESULT": "${{ needs.python-shards.result }}"}
+                           "SHARD_RESULT": "${{ needs.python-shards.result }}",
+                           "ENGINE_RESULT": "${{ needs.python-engines.result }}"}
     result = workflow_shell(step["run"], env={"SCOPE_RESULT": scope_result,
-                            "FULL_PYTHON": full, "SHARD_RESULT": shard_result})
-    accepted = scope_result == "success" and (full, shard_result) in {
+                            "FULL_PYTHON": full, "SHARD_RESULT": shard_result,
+                            "ENGINE_RESULT": engine_result})
+    accepted = scope_result == "success" and engine_result == "success" and (full, shard_result) in {
         ("true", "success"), ("false", "skipped")}
-    assert (result.returncode == 0) == accepted, (scope_result, full, shard_result, result.stderr)
+    assert (result.returncode == 0) == accepted, (scope_result, full, shard_result, engine_result, result.stderr)
+
+
+ENGINE_BINDING = "python-tests-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-engines"
+ENGINE_VERIFY = ("python3 scripts/ci/engine_contract_gate.py verify "
+                 "--selection scripts/data/engine-contract-selection.json --results python-shards")
+
+
+def test_engine_job_is_parallel_and_required_for_both_scopes() -> None:
+    workflow = hosting_workflow()
+    jobs = workflow["jobs"]
+    assert "python-engines" in jobs, "mandatory parallel engine job is missing"
+    engines, aggregate = jobs["python-engines"], jobs["python"]
+    assert engines["name"] == "SQL and Storage engine contracts"
+    assert engines["runs-on"] == "ubuntu-24.04"
+    assert engines["timeout-minutes"] == 10
+    assert "needs" not in engines and "if" not in engines
+    assert engines["permissions"] == {"contents": "read"}
+    assert "environment" not in engines and "secrets." not in str(engines)
+    assert "id-token" not in str(engines) and not any(is_sign_in(s) for s in engines["steps"])
+    checkout = workflow_step(engines, "Check out repository")
+    assert checkout["uses"] == "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+    assert checkout["with"] == {"persist-credentials": False}
+    setup = workflow_step(engines, "Install uv and Python")
+    assert setup["uses"] == "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d"
+    assert setup["with"] == {"version": "${{ env.UV_VERSION }}", "enable-cache": True, "python-version": "3.12"}
+    assert workflow_step(engines, "Install locked dependencies")["run"] == "uv sync --frozen"
+    assert not any("setup-node@" in s.get("uses", "") or "setup-java@" in s.get("uses", "")
+                   for s in engines["steps"])
+    runtime = workflow_step(engines, "Select pinned runner tools")["run"]
+    for required in ("select_node_bin", "RUNNER_TOOL_CACHE", "JAVA_HOME_21_X64", "/usr/lib/postgresql/16/bin"):
+        assert required in runtime
+    assert "npm" not in runtime
+    assert not re.search(r"22\.23\.3|21\.0\.12|16\.15|20261012", runtime)
+    assert not re.search(r"apt-get|brew |npm (?:ci|install)|npx ", str(engines))
+    provision = workflow_step(engines, "Provision verified engine files")
+    assert "provision-engine-tools.py" in provision["run"] and "--download" in provision["run"]
+    assert "if" not in provision
+    run = workflow_step(engines, "Run mandatory engine contracts")
+    assert "if" not in run
+    assert run["run"] == (
+        "uv run python scripts/ci/engine_contract_gate.py record "
+        "--selection scripts/data/engine-contract-selection.json --results python-engines "
+        "-- bash -euo pipefail -c 'scripts/data/test-postgres.sh; scripts/data/test-storage.sh'")
+    assert engines["env"] == {"SPECIMEN_TEST_SQL_EMULATOR": "true", "PYTHONDONTWRITEBYTECODE": "1"}
+    upload = workflow_step(engines, "Upload engine result")
+    assert upload["uses"] == "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+    assert upload["if"] == "always()"
+    assert upload["with"] == {"name": ENGINE_BINDING, "path": "python-engines/engine-contract.json",
+                               "if-no-files-found": "error", "retention-days": 7}
+    verify = workflow_step(aggregate, "Verify mandatory engine evidence")
+    assert "if" not in verify and verify["run"] == ENGINE_VERIFY
+    assert verify["env"] == {"ENGINE_CACHE_MODE": "${{ github.event_name == 'workflow_dispatch' && inputs.engine_cache_mode || 'normal' }}"}
+    focused = workflow_step(aggregate, "Download engine result for focused contracts")
+    assert focused["uses"] == "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"
+    assert focused["if"] == "needs.python-scope.outputs.full == 'false'"
+    assert focused["with"] == {"name": ENGINE_BINDING, "path": "python-shards"}
+    names = [s["name"] for s in aggregate["steps"]]
+    assert names.index("Download Python results") < names.index(verify["name"])
+    assert names.index(focused["name"]) < names.index(verify["name"])
+    assert names.index(verify["name"]) < names.index("Run focused frontend Python contracts")
+    # Existing job budgets, shard scalar, permissions and production boundary stay exact.
+    assert workflow["env"]["PYTHON_HOSTED_SHARDS"] == 12
+    assert {key: jobs[key]["timeout-minutes"] for key in jobs if key != "python-engines"} == {
+        "repository-checks": 15, "python-scope": 5, "python-shards": 90, "python": 15,
+        "flutter": 30, "mobile": 45, "deploy-hosting": 15}
+    assert workflow["permissions"] == {"contents": "read"}
+    for step in engines["steps"]:
+        assert "continue-on-error" not in step
+        if "uses" in step:
+            assert re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", step["uses"])
+
+
+@pytest.fixture
+def engine_workflow_fixture(engine_control, gate, tmp_path, monkeypatch):
+    """Real stdlib verifier in a small checkout; only Git's identity transport is synthetic.
+
+    Reuse G's immutable phase report and valid lifecycle control, then independently
+    bind the scratch inventory. No engine, server, credential or download is used.
+    """
+    result, _, selection, root, env = engine_control
+    cli = root / "scripts/ci/engine_contract_gate.py"
+    cli.parent.mkdir(parents=True)
+    cli.write_bytes((ROOT / "scripts/ci/engine_contract_gate.py").read_bytes())
+    files = sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file())
+    binary = root / "git-bin"
+    binary.mkdir()
+    fake_git = binary / "git"
+    fake_git.write_text(f"#!{sys.executable}\nimport sys\nargs=sys.argv[3:]\n"
+                        f"answers={{('rev-parse','HEAD'):{'a' * 40!r},"
+                        f"('ls-files','-z'):{chr(0).join(files) + chr(0)!r},"
+                        "('diff','--name-only','HEAD'):''}\n"
+                        "sys.stdout.write(answers[tuple(args)])\n")
+    fake_git.chmod(0o700)
+    def git_transport(_root, *args):
+        return subprocess.check_output([str(fake_git), "-C", str(root), *args], text=True).strip("\n")
+    monkeypatch.setattr(gate, "git", git_transport)
+    expected = gate.expected_context(root, root / "scripts/data/engine-contract-selection.json", env)
+    result["context_start"] = dict(expected)
+    result["context_end"] = dict(expected)
+    gate.validate(result, expected, selection)
+    return root, result, {**env, "PATH": str(binary) + os.pathsep + os.environ["PATH"]}
+
+
+@pytest.mark.parametrize("full", ["true", "false"], ids=["full", "focused"])
+@pytest.mark.parametrize("fault", ["none", "missing", "old_attempt", "old_sha", "wrong_run",
+                                  "wrong_config", "partial", "all_skipped", "cleanup_failed"])
+def test_python_aggregate_rejects_engine_artifact_fault(engine_workflow_fixture, full, fault) -> None:
+    root, result, env = engine_workflow_fixture
+    aggregate = hosting_workflow()["jobs"]["python"]
+    decision = workflow_step(aggregate, "Require a valid scope decision")
+    checked = workflow_shell(decision["run"], cwd=root, env={**env, "SCOPE_RESULT": "success",
+                             "FULL_PYTHON": full, "SHARD_RESULT": "success" if full == "true" else "skipped",
+                             "ENGINE_RESULT": "success"})
+    assert checked.returncode == 0, checked.stderr
+    verifier = workflow_step(aggregate, "Verify mandatory engine evidence")
+    assert "if" not in verifier, "engine verification must also run for focused scope"
+    directory = root / "python-shards"
+    directory.mkdir()
+    if fault in ("old_attempt", "old_sha", "wrong_run", "wrong_config"):
+        field, value = {"old_attempt": ("run_attempt", "1"), "old_sha": ("source_sha", "b" * 40),
+                        "wrong_run": ("run_id", "41"), "wrong_config": ("config_digest", "0" * 64)}[fault]
+        for context in ("context_start", "context_end"):
+            result[context][field] = value
+    elif fault == "all_skipped":
+        for event in result["pytest"]["events"]:
+            event["outcome"] = "skipped"
+    elif fault == "cleanup_failed":
+        result["lifecycle"]["cleanup"]["outcome"] = "failed"
+    name = "engine-contract.json.partial" if fault == "partial" else "engine-contract.json"
+    if fault != "missing":
+        (directory / name).write_text(json.dumps(result))
+    checked = workflow_shell(verifier["run"], cwd=root, env=env)
+    assert (checked.returncode == 0) == (fault == "none"), checked.stdout + checked.stderr
+    if fault == "none":
+        assert "mandatory engine contract evidence verified" in checked.stdout
+    else:
+        assert "engine contract gate:" in checked.stderr
+        assert "Traceback" not in checked.stderr, "a verifier crash is not an intended rejection"
+
+
+@pytest.mark.parametrize("scenario", ["normal", "cold", "unknown", "push_cold", "pr_cold"])
+def test_engine_cache_mode_changes_only_provisioning(tmp_path, scenario) -> None:
+    workflow = yaml.load(WORKFLOW.read_text(), Loader=yaml.BaseLoader)
+    assert workflow["on"]["workflow_dispatch"]["inputs"] == {"engine_cache_mode": {
+        "description": "Engine file cache provisioning only", "type": "choice", "default": "normal",
+        "options": ["normal", "cold"]}}
+    job = workflow["jobs"]["python-engines"]
+    select = workflow_step(job, "Select engine cache mode")
+    assert select["env"] == {"EVENT_NAME": "${{ github.event_name }}",
+                             "REQUESTED_MODE": "${{ inputs.engine_cache_mode || 'normal' }}"}
+    event = "push" if scenario == "push_cold" else "pull_request" if scenario == "pr_cold" else "workflow_dispatch"
+    requested = "cold" if scenario in ("cold", "push_cold", "pr_cold") else scenario
+    output, exported = tmp_path / "outputs", tmp_path / "environment"
+    checked = workflow_shell(select["run"], env={"EVENT_NAME": event, "REQUESTED_MODE": requested,
+        "RUNNER_TEMP": str(tmp_path), "GITHUB_OUTPUT": str(output), "GITHUB_ENV": str(exported)})
+    assert (checked.returncode == 0) == (scenario != "unknown"), checked.stderr
+    if scenario == "unknown":
+        assert not output.exists() and not exported.exists(), "unknown cache mode emitted usable configuration"
+        return
+    values = dict(line.split("=", 1) for line in exported.read_text().splitlines())
+    outputs = dict(line.split("=", 1) for line in output.read_text().splitlines())
+    mode = "cold" if scenario == "cold" else "normal"
+    assert values["ENGINE_CACHE_MODE"] == outputs["mode"] == mode
+    directory = Path(values["ENGINE_TOOLS_DIR"])
+    assert str(directory) == outputs["directory"]
+    assert not directory.exists(), "provisioner must receive an unseeded engine directory"
+    spec = importlib.util.spec_from_file_location("workflow_provision", ROOT / "scripts/data/provision-engine-tools.py")
+    provisioner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(provisioner)
+    evidence = provisioner.prepare_directory(directory, mode=mode, event=event,
+                                             restore="bypassed" if mode == "cold" else "miss")
+    assert list(directory.iterdir()) == [] and directory.stat().st_mode & 0o777 == 0o700
+    assert evidence == {"mode": mode, "directory_private": True, "directory_fresh": True,
+                        "entries_before": 0, "restore": "bypassed" if mode == "cold" else "miss"}
+    if mode == "cold":
+        assert directory.parent.stat().st_mode & 0o777 == 0o700
+        with pytest.raises(ValueError, match="new nonexistent directory"):
+            provisioner.prepare_directory(directory, mode=mode, event=event, restore="bypassed")
+    cache = workflow_step(job, "Cache verified engine files")
+    assert cache["if"] == "steps.engine-cache.outputs.mode == 'normal'"
+    assert cache["uses"] == "actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809"
+    assert cache["with"] == {"path": "${{ steps.engine-cache.outputs.directory }}",
+        "key": "engine-tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/data/engine-toolchain.json') }}"}
+    # One combined restore/save action, and no cold condition around any assertion,
+    # lifecycle, inventory, tool-byte verification, record or upload operation.
+    assert [s for s in job["steps"] if s.get("uses", "").startswith("actions/cache")] == [cache]
+    assert {s["name"] for s in job["steps"] if "if" in s} == {"Cache verified engine files", "Upload engine result"}
+    provision = workflow_step(job, "Provision verified engine files")
+    assert provision["env"] == {"CACHE_HIT": "${{ steps.engine-files.outputs.cache-hit }}"}
+    # Execute the real provisioning shell using an argv-only spy: never download.
+    binary = tmp_path / "bin"
+    binary.mkdir()
+    spy = binary / "python3"
+    spy.write_text(f"#!{sys.executable}\nimport json,sys\nprint(json.dumps(sys.argv[1:]))\n")
+    spy.chmod(0o700)
+    for hit in ("", "false", "true", "invalid"):
+        checked = workflow_shell(provision["run"], env={**values, "CACHE_HIT": hit,
+            "PATH": str(binary) + os.pathsep + os.environ["PATH"]})
+        accepted = hit in ("", "false") if mode == "cold" else hit != "invalid"
+        assert (checked.returncode == 0) == accepted, checked.stderr
+        if accepted:
+            restore = "bypassed" if mode == "cold" else "hit" if hit == "true" else "miss"
+            assert checked.stdout.strip(), "provisioning bypassed verified engine bytes"
+            assert json.loads(checked.stdout) == ["scripts/data/provision-engine-tools.py", "--download",
+                "--directory", str(directory), "--mode", mode, "--restore", restore,
+                "--output", values["ENGINE_PROVISION_REPORT"]]
 
 
 @pytest.mark.parametrize("fault", ["none", "missing", "stale_attempt", "failed", "wrong_count"])
@@ -711,3 +933,44 @@ def test_new_release_code_never_applies_data_connect_through_the_firebase_cli() 
     # scripts/ci/test_schema_gate.py holds the same rule for the workflows and scripts/ci.
     for path in release_sources():
         assert not re.search(r"--only[= ][^\n]*dataconnect|\bdataconnect:[a-z]", path.read_text()), path.name
+
+
+@pytest.mark.parametrize("field,value", [("image_version", "20261019.400.1"),
+    ("java", "21.0.13+11"), ("java", "21+35"), ("java", "21.0.13.1+11"),
+    ("postgres", "16.16"), ("node", "22.24.0")])
+def test_python_aggregate_accepts_runner_patch_update(engine_workflow_fixture, field, value):
+    root, result, env = engine_workflow_fixture
+    runtime=result["lifecycle"]["runtime"]
+    runtime[field]=value
+    if field=="postgres":
+        runtime["postgres_server"]=value
+        runtime["postgres_client_versions"]=dict.fromkeys(runtime["postgres_clients"],value)
+        result["lifecycle"]["postgres_server_version"]=value+" (Ubuntu fixture)"
+    result["runtime_observed"]=json.loads(json.dumps(runtime))
+    output=root/'python-shards'
+    output.mkdir()
+    (output/'engine-contract.json').write_text(json.dumps(result))
+    workflow=yaml.safe_load(WORKFLOW.read_text())
+    verifier=workflow_step(workflow['jobs']['python'],'Verify mandatory engine evidence')
+    checked=subprocess.run(['bash','-euo','pipefail','-c',verifier['run']],cwd=root,env={**os.environ,**env},capture_output=True,text=True,timeout=15)
+    assert checked.returncode==0,checked.stdout+checked.stderr
+    assert 'mandatory engine contract evidence verified' in checked.stdout
+
+
+@pytest.mark.parametrize("versions,expected", [(["22.9.0","22.24.0","24.0.0","20.99.0"],"22.24.0"),
+    (["22.23.3","22.24.0"],"22.24.0"),(["20.9.0","24.0.0"],None)])
+def test_workflow_selects_highest_runner_node_22(tmp_path, versions, expected):
+    workflow=yaml.safe_load(WORKFLOW.read_text())
+    script=workflow_step(workflow['jobs']['python-engines'],'Select pinned runner tools')['run']
+    # Exercise the workflow's real Node-selection preflight, before fixed Linux JDK/PG paths.
+    script=script.split('test -n "$JAVA_HOME_21_X64"')[0]
+    for version in versions:
+        node=tmp_path/'node'/version/'x64/bin/node'
+        node.parent.mkdir(parents=True)
+        node.write_text('#!/bin/sh\necho v'+version+'\n')
+        node.chmod(0o700)
+    checked=subprocess.run(['bash','-euo','pipefail','-c',script+'\nprintf "%s" "$node_bin"'],
+        cwd=ROOT,env={**os.environ,'RUNNER_TOOL_CACHE':str(tmp_path)},capture_output=True,text=True,timeout=15)
+    assert (checked.returncode==0)==(expected is not None),checked.stdout+checked.stderr
+    if expected:
+        assert checked.stdout==str(tmp_path/'node'/expected/'x64/bin')
