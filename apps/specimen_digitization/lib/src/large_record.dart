@@ -188,15 +188,15 @@ class _LargeRecordEvidenceState extends State<LargeRecordEvidence> {
         if (_artifact == null)
           // Nothing is loaded yet, so the pane is an empty state with the one
           // action that fills it (blueprint 9).
-          EmptyState(
-            icon: UiIcons.record.defaultGlyph,
+          UiEmptyState(
+            icon: UiIcons.record,
             title: 'The evidence file is not loaded',
             body: widget.load == null ? unavailableBody : loadableBody,
-            // Both or neither: the empty state asserts that a label without
-            // a callback is a control that does nothing. While the request is
-            // out the ring below carries the state instead.
-            actionLabel: widget.load == null || _loading ? null : loadLabel,
-            onAction: widget.load == null || _loading ? null : _load,
+            // No button rather than one that does nothing: while the request
+            // is out the ring below carries the state instead.
+            action: widget.load == null || _loading
+                ? null
+                : UiButton(label: loadLabel, onPressed: _load),
           ),
         if (_loading)
           Padding(

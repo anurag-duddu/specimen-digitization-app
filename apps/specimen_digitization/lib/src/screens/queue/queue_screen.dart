@@ -775,20 +775,27 @@ class _QueuePaneState extends State<QueuePane> {
       );
     }
     if (controller.query.trim().isEmpty && controller.activeFilterCount == 0) {
-      return Padding(
-        padding: EdgeInsets.symmetric(vertical: context.ui.space.s4),
-        child: Text(
-          switch (controller.disposition) {
-            'needs_human_review' => 'No specimens need a human',
-            'deferred' => 'No deferred specimens',
-            'cleared' => 'No cleared specimens',
-            _ => 'No specimens in this view',
-          },
-          style: context.ui.type.bodySmall.copyWith(
-            color: context.ui.color.inkSecondary,
-          ),
+      // A review view fills as the server routes specimens into it, so there
+      // is nothing on this screen to fill it with and no button.
+      final (String title, String body) = switch (controller.disposition) {
+        'needs_human_review' => (
+          'No specimens need a human',
+          'Specimens appear here when they need a reviewer to decide.',
         ),
-      );
+        'deferred' => (
+          'No deferred specimens',
+          'Specimens appear here when a reviewer defers them.',
+        ),
+        'cleared' => (
+          'No cleared specimens',
+          'Specimens appear here once they are cleared.',
+        ),
+        _ => (
+          'No specimens in this view',
+          'Specimens appear here when they match this view.',
+        ),
+      };
+      return UiEmptyState(icon: UiIcons.queue, title: title, body: body);
     }
     return UiEmptyState(
       icon: UiIcons.noResults,

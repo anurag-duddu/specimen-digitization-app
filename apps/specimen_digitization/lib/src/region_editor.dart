@@ -567,8 +567,8 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
       return <Widget>[
         Padding(
           padding: EdgeInsetsDirectional.only(top: ui.space.s2),
-          child: EmptyState(
-            icon: UiIcons.wholeImage.glyph,
+          child: const UiEmptyState(
+            icon: UiIcons.wholeImage,
             title: 'No label regions',
             body:
                 'This record cannot be saved without at least one region. Add '

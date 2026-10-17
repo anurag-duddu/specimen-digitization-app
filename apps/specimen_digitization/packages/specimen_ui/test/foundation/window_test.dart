@@ -124,4 +124,135 @@ void main() {
       expect(seen, 3, reason: 'large inherits expanded');
     });
   });
+  // The arrangement the chrome reads (05 section 2, amended 2026-10-17). The
+  // values are the shell's since 2026-10-01; these pin each boundary from
+  // both sides, at normal and at 200 percent text, so a change to one is a
+  // decision someone has to make here rather than a literal that drifts.
+  group('WindowArrangement', () {
+    const TextScaler doubled = TextScaler.linear(2);
+
+    test('the boundaries are the shell\'s, unchanged', () {
+      expect(WindowArrangement.dockedMinWidth, 768);
+      expect(WindowArrangement.dockedMinHeight, 600);
+      expect(WindowArrangement.listDetailMinWidth, 1100);
+      expect(WindowArrangement.listPaneWidth, 312);
+    });
+
+    test('width docks from 768 and opens the list from 1100', () {
+      expect(
+        WindowArrangement.fromSize(const Size(767.9, 1000)),
+        WindowArrangement.stacked,
+      );
+      expect(
+        WindowArrangement.fromSize(const Size(768, 1000)),
+        WindowArrangement.docked,
+      );
+      expect(
+        WindowArrangement.fromSize(const Size(1099.9, 1000)),
+        WindowArrangement.docked,
+      );
+      expect(
+        WindowArrangement.fromSize(const Size(1100, 1000)),
+        WindowArrangement.listDetail,
+      );
+    });
+
+    test('a window under 600 tall is stacked at any width', () {
+      expect(
+        WindowArrangement.fromSize(const Size(2000, 599.9)),
+        WindowArrangement.stacked,
+      );
+      expect(
+        WindowArrangement.fromSize(const Size(2000, 600)),
+        WindowArrangement.listDetail,
+      );
+      // A phone on its side: the window class is expanded, the arrangement
+      // is the phone's.
+      expect(WindowClass.fromWidth(844), WindowClass.expanded);
+      expect(
+        WindowArrangement.fromSize(const Size(844, 390)),
+        WindowArrangement.stacked,
+      );
+    });
+
+    test('the widths scale with the text, held to 1 through 2', () {
+      expect(
+        WindowArrangement.fromSize(const Size(1535, 1000), textScaler: doubled),
+        WindowArrangement.stacked,
+      );
+      expect(
+        WindowArrangement.fromSize(const Size(1536, 1000), textScaler: doubled),
+        WindowArrangement.docked,
+      );
+      expect(
+        WindowArrangement.fromSize(const Size(2199, 1000), textScaler: doubled),
+        WindowArrangement.docked,
+      );
+      expect(
+        WindowArrangement.fromSize(const Size(2200, 1000), textScaler: doubled),
+        WindowArrangement.listDetail,
+      );
+      // Reduced text docks no earlier, and 300 percent no later, than the
+      // ends of the clamp.
+      expect(
+        WindowArrangement.fromSize(
+          const Size(767, 1000),
+          textScaler: const TextScaler.linear(0.85),
+        ),
+        WindowArrangement.stacked,
+      );
+      expect(
+        WindowArrangement.fromSize(
+          const Size(1536, 1000),
+          textScaler: const TextScaler.linear(3),
+        ),
+        WindowArrangement.docked,
+      );
+    });
+
+    test('the list pane grows with the text on the 8 dp grid', () {
+      expect(WindowArrangement.listPaneWidthOf(TextScaler.noScaling), 312);
+      expect(WindowArrangement.listPaneWidthOf(doubled), 624);
+      // 312 times 1.3 is 405.6, up to the grid.
+      expect(
+        WindowArrangement.listPaneWidthOf(const TextScaler.linear(1.3)),
+        408,
+      );
+    });
+
+    test('stacked is the only arrangement that is not docked', () {
+      expect(WindowArrangement.stacked.isStacked, isTrue);
+      expect(WindowArrangement.stacked.isDocked, isFalse);
+      expect(WindowArrangement.docked.isDocked, isTrue);
+      expect(WindowArrangement.listDetail.isDocked, isTrue);
+      expect(WindowArrangement.listDetail.isStacked, isFalse);
+    });
+
+    testWidgets('of reads the window and its text scale', (
+      WidgetTester tester,
+    ) async {
+      late WindowArrangement seen;
+      Future<void> pumpAt(Size size, TextScaler scaler) async {
+        await tester.pumpWidget(
+          uiHarness(
+            size: size,
+            textScaler: scaler,
+            child: Builder(
+              builder: (BuildContext context) {
+                seen = WindowArrangement.of(context);
+                return const SizedBox.shrink();
+              },
+            ),
+          ),
+        );
+      }
+
+      await pumpAt(const Size(1180, 820), TextScaler.noScaling);
+      expect(seen, WindowArrangement.listDetail);
+      await pumpAt(const Size(1180, 820), doubled);
+      expect(seen, WindowArrangement.stacked);
+      await pumpAt(const Size(844, 390), TextScaler.noScaling);
+      expect(seen, WindowArrangement.stacked);
+    });
+  });
 }

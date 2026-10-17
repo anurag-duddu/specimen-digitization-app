@@ -3,7 +3,6 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:specimen_digitization/src/app/shell.dart';
 import 'package:specimen_digitization/src/intake.dart';
 import 'package:specimen_digitization/src/screens/intake/capture_card.dart';
 import 'package:specimen_ui/specimen_ui.dart';
@@ -65,7 +64,8 @@ void main() {
         final collection = tester.getRect(_collection);
         final header = tester.getRect(_header);
         final intake = tester.getRect(find.byType(IntakeScreen));
-        expect(AppSidebarScope.maybeOf(context)!.mobileNavigation, isTrue);
+        expect(WindowArrangement.of(context).isStacked, isTrue);
+        expect(find.byType(UiTabBar), findsOneWidget);
         expect(
           collection.top,
           insets.top + ui.space.s2,
@@ -146,7 +146,8 @@ void main() {
       tester.view.physicalSize = window;
       await tester.pumpAndSettle();
       final context = tester.element(find.byType(IntakeScreen));
-      expect(AppSidebarScope.maybeOf(context)!.mobileNavigation, isFalse);
+      expect(WindowArrangement.of(context).isStacked, isFalse);
+      expect(find.byType(UiTabBar), findsNothing);
       final intake = tester.getRect(find.byType(IntakeScreen));
       final title = tester.getRect(_title);
       final layout = UiLayoutMetrics.fromConstraints(
