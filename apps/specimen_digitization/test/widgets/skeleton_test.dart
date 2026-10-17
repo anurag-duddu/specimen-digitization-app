@@ -10,7 +10,8 @@
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:specimen_digitization/src/widgets/skeleton.dart';
+import 'package:specimen_digitization/src/widgets/loading_announcement.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import 'harness.dart';
 
@@ -18,19 +19,17 @@ import 'harness.dart';
 Widget still(Widget child) => TickerMode(enabled: false, child: child);
 
 void main() {
-  testWidgets('a skeleton row draws three bars at 60, 40 and 80 percent', (
+  testWidgets('a row placeholder is the height of the list row it stands for', (
     WidgetTester tester,
   ) async {
     await pumpComponent(
       tester,
-      still(const SizedBox(width: 200, child: SkeletonRow())),
-    );
-    final Iterable<SkeletonBar> bars = tester.widgetList<SkeletonBar>(
-      find.byType(SkeletonBar),
+      still(const SizedBox(width: 200, child: UiSkeleton.row())),
     );
     expect(
-      bars.map((SkeletonBar bar) => bar.widthFactor),
-      SkeletonRow.widthFactors,
+      tester.getSize(find.byType(UiSkeleton)).height,
+      UiListRowStyle.heightOf(tester.element(find.byType(UiSkeleton)).ui),
+      reason: 'the list does not move when the rows arrive',
     );
   });
 
@@ -40,7 +39,11 @@ void main() {
     final SemanticsHandle handle = tester.ensureSemantics();
     await pumpComponent(
       tester,
-      still(const Column(children: <Widget>[SkeletonRow(), SkeletonBlock()])),
+      still(
+        const Column(
+          children: <Widget>[UiSkeleton.row(), UiSkeleton.line(height: 56)],
+        ),
+      ),
     );
     expect(
       find.bySemanticsLabel(RegExp('.+')),
@@ -58,7 +61,7 @@ void main() {
     // 10 section 4.5 does ask for: a slow opacity pulse, which stops outright
     // under reduced motion rather than running at zero duration.
     await tester.pumpWidget(
-      MaterialApp(home: Scaffold(body: const SkeletonRow())),
+      MaterialApp(home: Scaffold(body: const UiSkeleton.row())),
     );
     await tester.pump();
     expect(
@@ -72,7 +75,7 @@ void main() {
         home: Builder(
           builder: (BuildContext context) => MediaQuery(
             data: MediaQuery.of(context).copyWith(disableAnimations: true),
-            child: const Scaffold(body: SkeletonRow()),
+            child: const Scaffold(body: UiSkeleton.row()),
           ),
         ),
       ),
@@ -121,8 +124,8 @@ void main() {
           child: still(
             const Column(
               children: <Widget>[
-                SkeletonRow(),
-                SkeletonRow(),
+                UiSkeleton.row(),
+                UiSkeleton.row(),
                 LoadingAnnouncement(thing: 'queue'),
               ],
             ),
@@ -153,7 +156,7 @@ void main() {
     for (final ThemeData theme in productThemes.values) {
       await pumpComponent(
         tester,
-        still(const SizedBox(width: 300, child: SkeletonRow())),
+        still(const SizedBox(width: 300, child: UiSkeleton.row())),
         theme: theme,
       );
       await expectAccessible(tester);

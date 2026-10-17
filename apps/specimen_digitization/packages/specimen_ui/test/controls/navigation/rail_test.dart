@@ -259,6 +259,42 @@ void main() {
     handle.dispose();
   });
 
+  testWidgets('a named rail is a named tab list; an unnamed one has none', (
+    WidgetTester tester,
+  ) async {
+    final SemanticsHandle handle = tester.ensureSemantics();
+    SemanticsData tabList() => tester
+        .getSemantics(
+          find
+              .byWidgetPredicate(
+                (Widget widget) =>
+                    widget is Semantics &&
+                    widget.properties.role == SemanticsRole.tabBar,
+              )
+              .first,
+        )
+        .getSemanticsData();
+    for (final String? name in <String?>['Workspace navigation', null]) {
+      await tester.pumpWidget(
+        uiHarness(
+          child: UiRail(
+            destinations: threeDestinations,
+            currentIndex: 0,
+            semanticsLabel: name,
+            onSelect: (_) {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tabList().role, SemanticsRole.tabBar);
+      expect(tabList().label, name ?? '');
+      for (final UiNavDestination destination in threeDestinations) {
+        expect(find.bySemanticsLabel(destination.label), findsOneWidget);
+      }
+    }
+    handle.dispose();
+  });
+
   testWidgets('a rail carries no glass of its own', (
     WidgetTester tester,
   ) async {

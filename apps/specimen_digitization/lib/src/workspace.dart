@@ -15,6 +15,7 @@ import 'package:go_router/go_router.dart';
 
 import 'app/shell.dart';
 import 'auth.dart';
+import 'layout/window_class.dart';
 import 'models.dart';
 import 'widgets/editing_safe_shortcut.dart';
 import 'screens/queue/queue_screen.dart';
@@ -1923,8 +1924,7 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
             controller: _queueKeyboard,
             onDismiss:
                 (record || !queueDestination) &&
-                    !(AppSidebarScope.maybeOf(context)?.mobileNavigation ??
-                        false)
+                    !WindowArrangement.of(context).isStacked
                 ? AppSidebarScope.maybeOf(context)?.close
                 : null,
           ),

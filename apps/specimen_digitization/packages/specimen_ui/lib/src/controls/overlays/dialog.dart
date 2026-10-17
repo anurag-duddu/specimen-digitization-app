@@ -89,7 +89,8 @@ class UiDialog extends StatelessWidget {
     ),
   );
 
-  /// Pushes a sheet on a compact window and a dialog above it.
+  /// Pushes a sheet where the window is stacked and a dialog where it is
+  /// docked ([presentsAsSheet]).
   ///
   /// One call, so a screen never writes the breakpoint itself
   /// (05 section 3.7).
@@ -103,7 +104,7 @@ class UiDialog extends StatelessWidget {
     String? dismissLabel,
     bool dismissible = true,
     bool scrollBody = true,
-  }) => isCompactWindow(context)
+  }) => presentsAsSheet(context)
       ? UiSheet.show<T>(
           context: context,
           title: title,
