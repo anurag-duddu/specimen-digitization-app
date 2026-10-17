@@ -1,7 +1,11 @@
 # Google sign-in assets
 
-These assets are used only by the Google authentication action. They do not
-change the product typeface, icon registry, or theme.
+These assets are used only by `UiGoogleSignInButton`
+(`lib/src/controls/actions/google_sign_in_button.dart`), whose measurements are
+in `lib/src/foundation/google_sign_in_brand.dart`. They do not change the
+product typeface, icon registry, or theme. They are declared in this package's
+`pubspec.yaml`; until 2026-10-17 they sat in the application's own `assets/`,
+and the move changed none of the font, the licence or the logo.
 
 - `google-g.png` is Google's unmodified standard color gradient G from
   <https://developers.google.com/static/identity/images/g-logo.png>, downloaded
@@ -47,7 +51,11 @@ font.save('GoogleSans-Medium.ttf')
 
 Button colors, font, logo, and padding follow Google's current branding guide:
 <https://developers.google.com/identity/branding-guidelines>, updated
-2026-07-07. The Google logo is preserved with `BoxFit.contain`. The button uses
-real, wrapping text rather than a whole-button raster so text enlargement and
-assistive technology remain available. Google brand assets remain subject to
-Google's brand guidelines; the font license does not license the Google mark.
+2026-07-07. The component draws the Android and web figure of the guide's custom
+button section (a 40 high pill, paddings of 12, 10 and 12, a 20 by 20 logo,
+Google Sans Medium 14/20) on every platform; the guide's separate iOS figure
+(44 high, paddings of 16, 12 and 16, Roboto Medium) is not used. The Google
+logo is preserved with `BoxFit.contain`. The button uses real, wrapping text
+rather than a whole-button raster so text enlargement and assistive technology
+remain available. Google brand assets remain subject to Google's brand
+guidelines; the font license does not license the Google mark.

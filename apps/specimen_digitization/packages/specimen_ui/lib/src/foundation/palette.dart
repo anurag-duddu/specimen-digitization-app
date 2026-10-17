@@ -18,7 +18,12 @@ library;
 import 'dart:ui' show Color;
 
 /// Provider-prescribed colours, scoped to the Google sign-in button.
-/// https://developers.google.com/identity/branding-guidelines
+///
+/// The Light and Dark themes of the custom button on
+/// https://developers.google.com/identity/branding-guidelines (fill, a 1 px
+/// stroke and the label colour of each). The button's measurements and type
+/// are in `google_sign_in_brand.dart`; this file keeps the colours because it
+/// is the only one allowed to carry a colour literal.
 abstract final class GoogleSignInPalette {
   static const Color fillLight = Color(0xFFFFFFFF);
   static const Color borderLight = Color(0xFF747775);
