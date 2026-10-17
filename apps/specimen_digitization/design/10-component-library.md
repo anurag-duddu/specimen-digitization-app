@@ -1491,6 +1491,11 @@ control, which is what one vocabulary exists to prevent (section 0, property
 | `no_stand_ins` | No `TODO(fe/` marker under the package's `lib/` | none |
 | `no_fallback_text_style` | Every gallery page and every overlay pumped under `WidgetsApp`; no `RenderParagraph` carries the framework fallback style or a double underline (11 section 5) | none |
 | `fit_matrix` | The golden matrix of 11 section 3.5: four window classes by three text scales by two modes per family page, plus the Fit page | none |
+| `no_cupertino` | Read as syntax trees, over the application's `lib/` and that of every package under `packages/` (the design system's among them): no import or export of `package:flutter/cupertino.dart` (conditional URIs included), no identifier containing `Cupertino` (interpolations included), and none of Flutter's `.adaptive` constructors, `Icons.adaptive` or `showAdaptive*` functions, also through an import prefix, named exactly so a product's own `adaptive` is not counted; one exemption, `CupertinoRouteTransitionMixin` in `_WorkspacePageRoute.buildTransitions` of `app_router.dart`, behind a one-name `show` on every cupertino directive (04 row 18; 09 section 2 principle 5) | none |
+| `no_platform_branching` | Read as syntax trees, over the same files: `kIsWeb`, `kIsWasm`, `defaultTargetPlatform`, `TargetPlatform` as a type or value, `Platform` from `dart:io`, `Theme.of(context).platform` or the `.platform` of a theme held in a variable (initialised from `Theme.of`, typed `ThemeData`, or named for a theme), a scroll behaviour's `getPlatform`, `identical(0, 0.0)` and `0.0 is int`, a conditional import or export, and `debugDefaultTargetPlatformOverride`, only in the declarations the test names, each with exact counts per kind and the exact places that read it, a read counting in the declaration's own library, its parts included, and in every file that can see it through imports and exports, with or without an import prefix | none; the capability list is the allowance |
+| `no_named_pixels` | Read as syntax trees: a number above 1, evaluated (hex, `280 * 1`, `35 * 8`), named by any declarator, field, local, getter, parameterless function, constructor initializer (`: width = 280`), parameter default (`{double width = 280}`, `this.gutter = 24`, handed on through an initializer list, or a `super.` default named for a dimension), list, set, map or record of `double`, or `int` read through `.toDouble()`, when that name reaches layout, through arithmetic, a conditional or a switch's case: a dimension argument or variable, a geometry constructor, a comparison with a measured size, a sum with a measured size or a spacing token, being divided by a size, or another named size. A factor (`x * 2`, `width * padding`), a ratio a size is divided by (`width / aspectRatio`) and a list index are not sizes; a timeout, a zoom limit or a gesture threshold is not a layout use | per-file, shrink-only, held to the exact count |
+| `no_alpha_literals` | Read as syntax trees: a number written as the opacity of `withValues(alpha:)`, `withOpacity`, `withAlpha`, `stateLayer`, `Color.fromARGB`, `Color.fromRGBO`, `Color.from`, `HSLColor.fromAHSL`, `HSVColor.fromAHSV` or the amount of `Color.lerp` under `lib/`, `0` included, written with or without `const`, or a name for one: a constant, a final, or a one-expression getter, function or method with no parameters, in the same file, a public one anywhere in the application, or the default of the parameter it is read in. No `opacity:` argument is read (`Opacity`, `AnimatedOpacity`, `FadeTransition`, `Image`): today they hold visibility toggles and animations | per-file, shrink-only, held to the exact count |
+| `exemptions_owner_approved` | Every allowance and ban list in the source gates, and the gate's own registry, evaluated from the pull request base's copy and this change's, the registry read in the base under its fixed name `allowances` and compared with the list the test runs, so renaming it fails: a new entry, a higher count, a wider capability, a changed exemption, scalar or threshold, an entry removed from a ban list, and an allowance dropped, renamed or regranted in the registry carry `// owner-approved: YYYY-MM-DD "the owner's exact words"` on the entry or its declaration, and a sign-off licenses one change: a quotation already on the base's copy licenses nothing further | the base is the record; a gate file the base lacks holds only the 2026-10-17 brief's inventory unsigned |
 
 **Amendment, fit (2026-09-16, 11 sections 1 and 2.2).** `no_literal_geometry`
 is now a census of every static size rather than four sample patterns, and it
@@ -1521,6 +1526,51 @@ and a cooldown), so the resolution there is one named constant in the file that
 owns the policy rather than a motion token; the package's three are interaction
 delays that 10 section 4.3 fixes and `foundation/motion.dart` says belong to
 it.
+
+**Amendment, holes in the gates (2026-10-17).** The gates above held while a
+stock `CupertinoTabBar` shipped on iOS behind a `defaultTargetPlatform` switch
+in the shell, with tests asserting it, because no gate read the Cupertino
+library or the platform, and a size or an opacity given a name
+(`static const double switcherMaxWidth = 280`, `ink.withValues(alpha: .06)`)
+passed the geometry and colour gates. The five rows added to the table close
+those four routes and put every named allowance, every ban list and the
+sign-off gate's own registry under the owner's sign-off. The first version
+read text through the prose mask; its reviews (PR #358) showed legal Dart
+passing it, so the gates read syntax trees from `package:analyzer`, a
+test-only dependency. Their record is the pull request base, read with
+`git show` (CI checks out two commits and sets `GATE_BASE`; a developer's run
+fetches `origin/main` first). The two backlogs start at the tree as it stood
+that day, 19 named sizes over 14 files and 4 opacities over 4, and only
+shrink. The tests live in `apps/specimen_digitization/test/theme/` and share
+`gate_support.dart`.
+
+Not enforced by these gates, and left to review:
+
+- whether an `owner-approved:` quotation is really the owner's: the gate
+  checks that one is present, dated, quoted and new to the change, not who
+  wrote it;
+- a change to a gate's own patterns, rules and scanners, which tightens or
+  loosens what every list means;
+- the geometry gates' `paint` allowance, which is a function rather than a
+  list;
+- a platform fact passed as an argument into a callee (`web: kIsWeb`), and a
+  platform-derived value handed on through state rather than a read of its
+  declaration;
+- a size passed as an argument to a product function (`photo(320)`), a size
+  or an opacity named outside the application, and a private name for an
+  opacity declared in another file;
+- a size given by an enum's constructor arguments (`wide(280)`), assigned or
+  cascaded (`..strokeWidth = stroke`), passed to a constructor the pixel gate
+  does not list (`FixedColumnWidth`), or an `int` made a double other than by
+  `.toDouble()` (`rail * 1.0`);
+- any `opacity:` argument (`Opacity`, `AnimatedOpacity`, `FadeTransition`,
+  `Image`);
+- upstream code vendored under `third_party/`, which the Cupertino and
+  platform gates do not read;
+- the design system's own controls under the two number gates, which read the
+  application only;
+- a full colour built from numbers (`Color.fromRGBO(r, g, b, a)`), which is
+  the colour gate's (`Color(0x` only today).
 
 ## 9. Definition of done for a component
 
