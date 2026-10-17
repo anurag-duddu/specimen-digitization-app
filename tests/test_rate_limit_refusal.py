@@ -366,6 +366,9 @@ def test_a_malformed_first_pass_is_given_up_at_once_and_the_record_goes_to_revie
     # output retry ("Exceeded maximum output retries (1)") and the run blocked as
     # model_malformed_response with no way on. A malformed answer is a known,
     # billed outcome: the first pass is given up on at once, not asked again.
+    # Its provider reported both requests' tokens, so it costs what they cost
+    # (2026-10-17: 19f0f1f6's two were held at 318,670 each, against about
+    # 1,424 at their tokens).
     from test_first_pass_given_up import given_up_findings
 
     adapters = ChildLab(LocalBlobs(tmp_path / "blobs"), first_passes=1)
@@ -381,13 +384,20 @@ def test_a_malformed_first_pass_is_given_up_at_once_and_the_record_goes_to_revie
         ("first_pass_given_up", "warning", f"first_pass_given_up:{run.regions[0].id}:model_malformed_response")
     ]
     [call] = [c for c in run.paid_calls if c["step"] == step]
-    assert ledger_rows([call]) == [
-        (1, "failed", "reserved", FIRST_PASS_RESERVATION, None, "model_malformed_response")
-    ]
+    # Two answers of 1,000 in and 40 out at GLM's 0.15 and 0.50 per million.
+    usage = {"input_tokens": 2_000, "output_tokens": 80}
+    assert ledger_rows([call]) == [(1, "failed", "computed", 340, usage, "model_malformed_response")]
     assert research_state(backend, specimen)["ordinary_reservations"][f"{step}:1"] == {
         "reserved_micros": FIRST_PASS_RESERVATION,
-        "settled_micros": None,
+        "settled_micros": 340,
     }
+    # The rest of its reservation is given back on the run and the program ledger.
+    held = [c for c in run.paid_calls if c["cost_basis"] == "reserved"]
+    assert [c["step"] for c in held] == ["segment"]
+    assert run.usage.reserved_cost_micros == sum(c["cost_micros"] for c in run.paid_calls)
+    assert ProgramLedger(workflow.repository, SCOPE).read()["reserved_total_micros"] == (
+        run.usage.reserved_cost_micros
+    )
 
 
 def test_a_first_pass_refused_after_its_deadline_keeps_its_known_refusal(tmp_path, monkeypatch):

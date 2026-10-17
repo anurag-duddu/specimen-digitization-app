@@ -163,8 +163,8 @@ def reserve_ordinary_liability(repository, principal, specimen, step, cost, *, a
 def settle_ordinary_liability(repository, principal, specimen, step, *, attempt=None, state_backend=None):
     """After record_step, settle only its complete known provider usage.
 
-    SAM's request-duration estimate and unknown calls have cost_basis=reserved;
-    neither can refund any liability. A call refused before any work
+    A SAM call without its instance report and unknown calls have
+    cost_basis=reserved; neither can refund any liability. A call refused before any work
     (cost_basis=refused, lane_costs.record_refused) is a known zero and settles.
     Original seed costs remain immutable.
     """
