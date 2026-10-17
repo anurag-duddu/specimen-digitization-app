@@ -1,11 +1,15 @@
 """Connection, picker, and source browsing routes shared by web and native apps."""
 import html
 import json
+import base64
+import io
+import tempfile
+from pathlib import Path
 from pathlib import PurePosixPath
 from urllib.parse import urlsplit, urlencode
 from uuid import uuid4
 from fastapi import Depends
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from pydantic import Field
 
 from .domain import Record
@@ -13,6 +17,7 @@ from .intake_connections import safe_connection
 from .intake_sources import ImportProblem, public_url
 from .source_registry import validate_object_name
 from .intake_cloud_sources import EXTENSIONS
+from .intake_models import SourceReference, MAX_BYTES
 
 
 class ConnectionInput(Record):
@@ -20,6 +25,7 @@ class ConnectionInput(Record):
     access: str
     session_proof: str = Field(pattern=r'^[a-f0-9]{64}$')
     return_origin: str | None = None
+    reconnect_id: str | None = Field(default=None, max_length=200)
 
 
 class ConnectionComplete(Record):
@@ -38,6 +44,7 @@ class BrowseInput(Record):
 
 class LinkInput(Record):
     url: str = Field(min_length=1, max_length=4096)
+    connection_id: str | None = Field(default=None, max_length=200)
 
 
 class PickerBootstrap(Record):
@@ -61,6 +68,27 @@ def install_source_routes(app, prefix, service, manager, *, identity, principal,
         doc = manager.get(p, id, connected=True)
         return service.sources.providers[doc['provider']]
 
+    @app.post(root + '/source-preview')
+    def source_preview(organization_id: str, collection_id: str, body: SourceReference, user=Depends(identity)):
+        from PIL import Image
+        from .storage import LocalBlobs
+        from .intake_image import verify_photo
+        p = access(organization_id, collection_id, user)
+        service.classify(p, service.sources.required_sensitive(p, body))
+        content, media_type = service.sources.read(p, body.model_dump())
+        if not content or len(content) > MAX_BYTES:
+            raise ValueError('Photo exceeds the image size limit')
+        # One explicitly requested preview, with the same codec/pixel limits as
+        # staging. Temporary private bytes are removed without creating a draft.
+        with tempfile.TemporaryDirectory(prefix='intake-preview-') as directory:
+            blobs = LocalBlobs(Path(directory))
+            asset = verify_photo(content, dict(media_type=media_type, width=None, height=None), blobs, service.codec_policy)
+            with Image.open(io.BytesIO(blobs.get(asset['view_derivative']['blob_ref']))) as image:
+                image.thumbnail((800, 800))
+                out = io.BytesIO()
+                image.convert('RGB').save(out, format='JPEG', quality=85)
+            return JSONResponse(dict(image=base64.b64encode(out.getvalue()).decode(), media_type='image/jpeg'), headers={'Cache-Control': 'private, no-store'})
+
     @app.get(root + '/connections')
     def connections(organization_id: str, collection_id: str, provider: str, user=Depends(identity)):
         p = access(organization_id, collection_id, user)
@@ -81,7 +109,7 @@ def install_source_routes(app, prefix, service, manager, *, identity, principal,
             raise ImportProblem('provider_not_configured', 'Cloud connections need administrator setup. Choose files or camera for now.', 'administrator', False)
         if body.return_origin is not None and body.return_origin not in origins:
             raise PermissionError('Unknown application origin')
-        return manager.connect(p, body.provider, body.access, body.session_proof, body.return_origin)
+        return manager.connect(p, body.provider, body.access, body.session_proof, body.return_origin, body.reconnect_id)
 
     @app.post(root + '/connections/complete')
     def complete_connection(organization_id: str, collection_id: str, body: ConnectionComplete, user=Depends(identity)):
@@ -187,10 +215,18 @@ def install_source_routes(app, prefix, service, manager, *, identity, principal,
         public_url(body.url)
         name = 'google_drive' if url.hostname in {'drive.google.com', 'docs.google.com'} else 'dropbox' if url.hostname in {'dropbox.com', 'www.dropbox.com'} else None
         if name:
-            candidates = [row for row in service.list(p, 'intake_connection')['items'] if row['provider'] == name and row['state'] == 'connected']
-            candidates.sort(key=lambda row: row['access'] != 'folders')
+            candidates, cursor = [], ''
+            while True:
+                page = service.list(p, 'intake_connection', after=cursor, limit=100)
+                candidates.extend(row for row in page['items'] if row['provider'] == name and row['state'] == 'connected')
+                cursor = page['next_cursor']
+                if not cursor: break
+            if body.connection_id:
+                candidates = [row for row in candidates if row['id'] == body.connection_id]
             if not candidates:
                 raise ImportProblem('connect_provider', 'Connect this provider from Add photos, then review the link again.', 'connect', False)
+            if len(candidates) != 1:
+                raise ImportProblem('choose_account', 'Choose the account to use for this provider link.', 'choose_account', False)
             connection_id = candidates[0]['id']
             return dict(items=[provider(p, connection_id).resolve(p, connection_id, body.url)])
         return dict(items=[dict(id=body.url, filename=PurePosixPath(url.path).name or 'Linked photo', supported=True, kind='file',

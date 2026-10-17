@@ -61,7 +61,7 @@ class SecretManagerTokens:
 
 
 def safe_connection(doc):
-    return {key: doc[key] for key in ('id', 'provider', 'access', 'state', 'account_label', 'revision') if key in doc} | (
+    return {key: doc[key] for key in ('id', 'provider', 'access', 'state', 'account_label', 'account_id', 'revision') if key in doc} | (
         {'error': doc['error']} if doc.get('error') else {})
 
 
@@ -113,7 +113,7 @@ class ConnectionManager:
             raise ValueError('This connection session expired. Start again in the app.')
         return doc
 
-    def connect(self, p, provider, access, session_proof, return_origin=None):
+    def connect(self, p, provider, access, session_proof, return_origin=None, reconnect_id=None):
         if not re.fullmatch(r'[a-f0-9]{64}', session_proof):
             raise ValueError('A fresh application session proof is required')
         if provider not in self.config:
@@ -121,14 +121,24 @@ class ConnectionManager:
         if access not in {'files', 'folders'} or (provider == 'dropbox' and access != 'folders'):
             raise ValueError('Invalid provider access level')
         config = self.config[provider]
-        id = str(uuid4())
-        connection = ProviderConnection(id=id, owner_id=p.user_id, collection_id=p.scope.collection_id,
-            provider=provider, access=access, state='needs_authorization').model_dump()
-        self.service.save(p, 'intake_connection', connection)
+        if reconnect_id:
+            connection = self.get(p, reconnect_id)
+            if connection['provider'] != provider or connection['access'] != access:
+                raise ValueError('Reconnect must preserve provider and access level')
+            if not connection.get('account_id'):
+                raise ImportProblem('account_identity_missing', 'Choose a new connection and select these files again.', 'choose_source', False)
+            id = reconnect_id
+            connection.update(state='needs_authorization', revocation_complete=False)
+        else:
+            id = str(uuid4())
+            connection = ProviderConnection(id=id, owner_id=p.user_id, collection_id=p.scope.collection_id,
+                provider=provider, access=access, state='needs_authorization').model_dump()
+        connection = self.service.save(p, 'intake_connection', connection)
         verifier = secrets.token_urlsafe(64)
         verifier_ref = self.secrets.write(str(uuid4()), {'verifier': verifier})
         pending, state = self.pending(p, id, 'oauth', {'verifier_ref': verifier_ref,
-            'session_hash': hashlib.sha256(session_proof.encode()).hexdigest(), 'return_origin': return_origin})
+            'session_hash': hashlib.sha256(session_proof.encode()).hexdigest(), 'return_origin': return_origin,
+            'expected_account_id': connection.get('account_id')})
         challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip('=')
         params = dict(client_id=config['client_id'], redirect_uri=config['redirect_uri'], response_type='code',
             state=state, code_challenge=challenge, code_challenge_method='S256')
@@ -171,16 +181,21 @@ class ConnectionManager:
         if not token.get('refresh_token') or not token.get('access_token'):
             raise ImportProblem('offline_access_required', 'Connect again and allow access so unfinished imports can resume.', 'connect', False)
         token['expires_at'] = self.clock() + token.get('expires_in', 3600)
-        connection.update(secret_ref=self.secrets.write(connection['id'], token), state='connected')
-        connection.pop('error', None)
         if provider == 'google_drive':
-            account = self.http.get('https://www.googleapis.com/drive/v3/about', params={'fields': 'user(emailAddress,displayName)'},
+            account = self.http.get('https://www.googleapis.com/drive/v3/about', params={'fields': 'user(emailAddress,displayName,permissionId)'},
                                    headers={'Authorization': 'Bearer ' + token['access_token']}, timeout=15)
-            connection['account_label'] = account.json().get('user', {}).get('emailAddress', 'Google Drive') if account.status_code == 200 else 'Google Drive'
+            info = account.json().get('user', {}) if account.status_code == 200 else {}
+            account_id, label = info.get('permissionId'), info.get('emailAddress', 'Google Drive')
         else:
             account = self.http.post('https://api.dropboxapi.com/2/users/get_current_account',
                                      headers={'Authorization': 'Bearer ' + token['access_token']}, timeout=15)
-            connection['account_label'] = account.json().get('email', 'Dropbox') if account.status_code == 200 else 'Dropbox'
+            info = account.json() if account.status_code == 200 else {}
+            account_id, label = info.get('account_id'), info.get('email', 'Dropbox')
+        if not account_id or (pending.get('expected_account_id') and account_id != pending['expected_account_id']):
+            self._revoke(provider, token)
+            raise ImportProblem('account_mismatch', 'Reconnect the same provider account to resume these photos. Choose another account as a new connection.', 'connect', False)
+        connection.update(secret_ref=self.secrets.write(connection['id'], token), state='connected', account_id=account_id, account_label=label)
+        connection.pop('error', None)
         try:
             return self.service.save(p, 'intake_connection', connection)
         except Conflict:

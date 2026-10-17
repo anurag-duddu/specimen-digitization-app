@@ -2,10 +2,12 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/widgets.dart';
 import 'package:flutter/services.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 import '../../models.dart';
+import '../../widgets/product_modal.dart';
 import 'bulk_intake_controller.dart';
 import 'intake_auth_session.dart';
 
@@ -27,6 +29,7 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
   final links = TextEditingController();
   List<Json> connections = [], entries = [], sources = [];
   final Map<String, Json> selected = {};
+  final Map<String, String> linkAccounts = {};
   final List<(String, String)> parents = [];
   String? connectionId, sourceId, folder, cursor, pickerId, message;
   bool busy = false, includeSubfolders = false, configured = true;
@@ -74,7 +77,19 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
   }
 
   Future<void> load() => run(() async {
-    if (widget.provider == 'url') return;
+    if (widget.provider == 'url') {
+      final rows = <Json>[];
+      for (final name in ['google_drive', 'dropbox']) {
+        final result = await c.call(
+          'GET',
+          '/connections',
+          query: {'provider': name},
+        );
+        rows.addAll(objects(result['items']));
+      }
+      if (mounted) setState(() => connections = rows);
+      return;
+    }
     if (widget.provider == 'storage') {
       final result = await c.call('GET', '/sources');
       if (mounted) setState(() => sources = objects(result['items']));
@@ -103,7 +118,11 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
     if (connectionId != null && widget.provider == 'dropbox') await browse();
   });
 
-  Future<void> connect(String access) => run(() async {
+  Future<void> connect(
+    String access, {
+    String? provider,
+    String? reconnectId,
+  }) => run(() async {
     final session = IntakeAuthSession();
     authSession = session;
     final proof = intakeClientId() + intakeClientId();
@@ -112,10 +131,11 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
         'POST',
         '/connections',
         body: {
-          'provider': widget.provider,
+          'provider': provider ?? widget.provider,
           'access': access,
           'session_proof': proof,
           'return_origin': ?session.returnOrigin,
+          'reconnect_id': ?reconnectId,
         },
       );
       connectionId = result['id'] as String;
@@ -149,7 +169,11 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
       });
       if (result['state'] == 'connected' && !wasConnected) {
         setState(() => message = 'Connected. Choose photos to review.');
-        if (result['access'] == 'folders') await run(browse);
+        if (widget.provider == 'url') {
+          linkAccounts[result['provider'] as String] = result['id'] as String;
+        } else if (result['access'] == 'folders') {
+          await run(browse);
+        }
       } else if (result['error'] is Map) {
         setState(() {
           message = textOf((result['error'] as Map)['message']);
@@ -275,7 +299,17 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
     final rows = <Json>[];
     for (final value in values) {
       try {
-        final result = await c.call('POST', '/resolve', body: {'url': value});
+        final host = Uri.tryParse(value)?.host;
+        final provider = ['drive.google.com', 'docs.google.com'].contains(host)
+            ? 'google_drive'
+            : ['dropbox.com', 'www.dropbox.com'].contains(host)
+            ? 'dropbox'
+            : null;
+        final result = await c.call(
+          'POST',
+          '/resolve',
+          body: {'url': value, 'connection_id': ?linkAccounts[provider]},
+        );
         rows.addAll(objects(result['items']));
       } catch (e) {
         rows.add({
@@ -314,15 +348,78 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
     }
   });
 
+  Future<void> disconnect(String id) => run(() async {
+    final result = await c.call('POST', '/connections/$id/disconnect');
+    connections.removeWhere((row) => row['id'] == id);
+    connections.add(result);
+    if (result['error'] is Map) {
+      message = textOf((result['error'] as Map)['message']);
+    }
+    if (connectionId == id) {
+      connectionId = null;
+      entries = [];
+      selected.clear();
+    }
+  });
+
+  Future<void> preview(Json row) => run(() async {
+    final result = await c.call(
+      'POST',
+      '/source-preview',
+      body: Map<String, dynamic>.from(row['source'] as Map),
+    );
+    if (!mounted) return;
+    await showProductModal<void>(
+      context: context,
+      title: textOf(row['filename'], 'Photo preview'),
+      body: (context) => SizedBox(
+        height: MediaQuery.sizeOf(context).height * .55,
+        child: InteractiveViewer(
+          child: Image.memory(
+            base64Decode(result['image'] as String),
+            fit: BoxFit.contain,
+            semanticLabel: textOf(row['filename'], 'Photo preview'),
+          ),
+        ),
+      ),
+    );
+  });
+
   @override
   Widget build(BuildContext context) {
     final ui = context.ui;
-    final connected = connections.any((row) => row['state'] == 'connected');
+    final connected = connections.any(
+      (row) => row['id'] == connectionId && row['state'] == 'connected',
+    );
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (widget.provider == 'url') ...[
+          for (final provider in ['google_drive', 'dropbox']) ...[
+            for (final account in connections.where(
+              (row) =>
+                  row['provider'] == provider && row['state'] == 'connected',
+            ))
+              UiCheckbox(
+                label:
+                    '${provider == 'google_drive' ? 'Google Drive' : 'Dropbox'} · ${textOf(account['account_label'], 'Account')} · ${account['access'] == 'folders' ? 'Folders' : 'Selected files'}',
+                value: linkAccounts[provider] == account['id'],
+                onChanged: busy
+                    ? null
+                    : (_) => setState(
+                        () => linkAccounts[provider] = account['id'] as String,
+                      ),
+              ),
+            UiButton(
+              label:
+                  'Connect ${provider == 'google_drive' ? 'Google Drive' : 'Dropbox'} for links and folders',
+              variant: UiButtonVariant.ghost,
+              onPressed: busy
+                  ? null
+                  : () => connect('folders', provider: provider),
+            ),
+          ],
           UiField(
             label: 'Photo or folder links',
             controller: links,
@@ -366,6 +463,17 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
                   : () => connect(
                       widget.provider == 'google_drive' ? 'files' : 'folders',
                     ),
+            ),
+          for (final connection in connections.where(
+            (row) => row['state'] == 'disconnected' && row['error'] is Map,
+          ))
+            UiButton(
+              label:
+                  'Retry disconnecting ${textOf(connection['account_label'], 'account')}',
+              variant: UiButtonVariant.secondary,
+              onPressed: busy
+                  ? null
+                  : () => disconnect(connection['id'] as String),
             ),
           for (final connection in connections.where(
             (row) => row['state'] == 'connected',
@@ -412,28 +520,7 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
                 UiButton(
                   label: 'Disconnect',
                   variant: UiButtonVariant.ghost,
-                  onPressed: busy
-                      ? null
-                      : () => run(() async {
-                          final result = await c.call(
-                            'POST',
-                            '/connections/$connectionId/disconnect',
-                          );
-                          connections.removeWhere(
-                            (row) => row['id'] == connectionId,
-                          );
-                          connections.add(result);
-                          if (result['error'] is Map) {
-                            message = textOf(
-                              (result['error'] as Map)['message'],
-                            );
-                            recoveryAction = 'retry';
-                          } else {
-                            connectionId = null;
-                          }
-                          entries = [];
-                          selected.clear();
-                        }),
+                  onPressed: busy ? null : () => disconnect(connectionId!),
                 ),
               ],
             ),
@@ -442,6 +529,21 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
           Padding(
             padding: EdgeInsets.symmetric(vertical: ui.space.s3),
             child: Text(message!, style: ui.type.bodySmall),
+          ),
+        for (final account in connections.where(
+          (row) => row['state'] != 'connected' && row['account_id'] != null,
+        ))
+          UiButton(
+            label:
+                'Reconnect ${textOf(account['account_label'], 'account')} to resume imports',
+            variant: UiButtonVariant.secondary,
+            onPressed: busy
+                ? null
+                : () => connect(
+                    account['access'] as String,
+                    provider: account['provider'] as String,
+                    reconnectId: account['id'] as String,
+                  ),
           ),
         if (recoveryAction == 'administrator' || !configured)
           UiButton(
@@ -468,6 +570,28 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
         if (recoveryAction == 'file_access')
           const Text(
             'Ask the file owner for download access, reconnect the account with access, or choose another source. Your other selections are retained.',
+          ),
+        if (recoveryAction == 'connect' && widget.provider != 'url')
+          UiButton(
+            label: 'Sign in again',
+            variant: UiButtonVariant.secondary,
+            onPressed: busy
+                ? null
+                : () => connect(
+                    widget.provider == 'google_drive' ? 'files' : 'folders',
+                  ),
+          ),
+        if (recoveryAction == 'retry')
+          UiButton(
+            label: 'Retry',
+            variant: UiButtonVariant.secondary,
+            onPressed: busy
+                ? null
+                : widget.provider == 'url'
+                ? resolveLinks
+                : connectionId != null || sourceId != null
+                ? () => run(() => browse())
+                : load,
           ),
         if (parents.isNotEmpty)
           UiButton(
@@ -544,6 +668,12 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
                     ),
                     if (row['error'] != null)
                       Text(textOf(row['error']), style: ui.type.bodySmall),
+                    if (row['supported'] == true && row['source'] is Map)
+                      UiButton(
+                        label: 'Preview',
+                        variant: UiButtonVariant.ghost,
+                        onPressed: busy ? null : () => preview(row),
+                      ),
                   ],
                 );
               },

@@ -54,6 +54,12 @@ query ListDocumentPageV2($organizationId: UUID!, $collectionId: UUID!, $actorUid
 }
 
 # Private intake inventories are filtered in SQL, before payloads are read.
+query ListActiveIntakeJobs($organizationId: UUID!, $collectionId: UUID!, $actorUid: String!, $afterId: String!, $limit: Int!) @auth(level: NO_ACCESS) {
+  organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
+  collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && vars.limit > 0 && vars.limit <= 100 && (vars.afterId == '' || vars.afterId.matches('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'))") { active }
+  items: activeIntakeJobs(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, id: {gt: $afterId}}, orderBy: {id: ASC}, limit: $limit) { id payload }
+}
+
 query GetPrivateIntakeItems($organizationId: UUID!, $collectionId: UUID!, $actorUid: String!, $kind: String!, $ids: [UUID!]!, $includeSensitive: Boolean!) @auth(level: NO_ACCESS) {
   organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
   collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && (!vars.includeSensitive || this.canViewSensitive) && vars.ids.size() <= 100 && vars.kind in ['intake_draft', 'intake_item', 'intake_submission', 'intake_result', 'intake_connection', 'intake_oauth']") { active canViewSensitive }

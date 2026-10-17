@@ -285,7 +285,7 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen> {
               unawaited(c.newDraft());
             },
           ),
-          for (final batch in c.drafts.where((d) => d['state'] == 'draft'))
+          for (final batch in c.savedDrafts.where((d) => d['state'] == 'draft'))
             UiButton(
               label: 'Resume ${textOf(batch['name'], 'draft')}',
               variant: UiButtonVariant.secondary,
@@ -304,7 +304,7 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen> {
                 setState(() => submission = batch.id);
               },
             ),
-          if (c.drafts.isEmpty && c.submissions.isEmpty)
+          if (c.savedDrafts.isEmpty && c.submissions.isEmpty)
             const Text('Your saved drafts and submissions appear here.'),
         ],
       ),

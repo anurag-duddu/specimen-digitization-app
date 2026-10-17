@@ -123,6 +123,7 @@ class ProviderConnection(Record):
     access: Literal['files', 'folders']
     state: Literal['connected', 'disconnected', 'needs_authorization', 'policy_blocked']
     account_label: str = ''
+    account_id: str | None = None
     secret_ref: str | None = None
     sensitive: bool = False
     revision: int = 0

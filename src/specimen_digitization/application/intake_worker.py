@@ -4,6 +4,12 @@ from .bulk_intake import problem
 from .storage import Conflict, Missing
 
 
+def active_jobs(repository, scope):
+    if hasattr(repository, 'active_intake_jobs'):
+        return repository.active_intake_jobs(scope)
+    return (job for job in repository.documents(scope, 'intake_job') if job['state'] == 'waiting')
+
+
 class IntakeWorker:
     def __init__(self, service):
         self.service = service
@@ -11,7 +17,7 @@ class IntakeWorker:
     def drain(self, p, *, limit=500, deadline=None):
         service = self.service
         processed = 0
-        for job in service.repo.documents(p.scope, 'intake_job'):
+        for job in active_jobs(service.repo, p.scope):
             if processed >= limit or (deadline is not None and service.clock() >= deadline):
                 break
             if job['owner_id'] != p.user_id or job['state'] != 'waiting' or job.get('next_attempt', 0) > service.clock():
@@ -98,7 +104,7 @@ def main():
         for membership in memberships:
             scope = Scope(organization_id=membership['organization_id'], collection_id=membership['collection_id'])
             with verified_actor_context(worker):
-                jobs = service.repo.documents(scope, 'intake_job')
+                jobs = list(active_jobs(service.repo, scope))
             owners = {job['owner_id'] for job in jobs if job['state'] == 'waiting'}
             for owner in owners:
                 with verified_actor_context(owner):
@@ -108,7 +114,7 @@ def main():
                         continue
                     p = Principal(user_id=owner, scope=scope, role=member['role'])
                     IntakeWorker(service).drain(p, limit=50, deadline=deadline)
-                    pending.extend((p, j) for j in service.repo.documents(scope, 'intake_job')
+                    pending.extend((p, j) for j in active_jobs(service.repo, scope)
                         if j['state'] == 'waiting' and j['owner_id'] == owner)
                     if jobs:
                         idle_since = service.clock()

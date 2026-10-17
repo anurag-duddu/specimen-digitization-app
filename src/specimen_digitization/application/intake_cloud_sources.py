@@ -114,7 +114,7 @@ class CloudSource:
         supported = not folder and (raw.get('mimeType') in IMAGE_TYPES if google else name.lower().endswith(EXTENSIONS))
         downloadable = raw.get('capabilities', {}).get('canDownload', True) if google else raw.get('is_downloadable', True)
         supported = supported and downloadable
-        return dict(id=id, filename=name, kind='folder' if folder else 'file', supported=supported,
+        return dict(id=id, filename=name, kind='folder' if folder else 'file', supported=supported, inaccessible=not downloadable,
             media_type=raw.get('mimeType', 'application/octet-stream'), connection_id=connection_id,
             error=None if folder or supported else 'Download access is required.' if not downloadable else 'Unsupported file type.',
             source=dict(provider=self.provider, connection_id=connection_id, object_id=id,
@@ -183,6 +183,7 @@ class CloudSource:
                         continue
                     discovered += 1
                     if row['supported']: rows.append(row)
+                    elif row.get('inaccessible'): inaccessible += 1
                     else: unsupported += 1
                     if len(rows) > limit or discovered > 5000:
                         raise ImportProblem('selection_limit', 'This selection exceeds the batch limit. Choose fewer files or a smaller folder.', 'choose_source', False)

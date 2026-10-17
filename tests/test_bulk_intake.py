@@ -219,6 +219,86 @@ def test_failed_launch_is_visible_and_batch_retry_is_idempotent(tmp_path):
     assert service.submission(p, result.json()['id'])['worker_error']['retryable']
 
 
+def test_submission_retry_revalidates_complete_local_bytes_after_worker_failure(tmp_path):
+    from specimen_digitization.application.intake_worker import IntakeWorker
+    app = local_app(tmp_path, TOKEN)
+    client = TestClient(app)
+    batch = draft(client)
+    item, data = add(client, batch)
+    assert client.put(ROOT + f"/items/{item['id']}/content", headers=HEADERS, content=data).status_code == 200
+    submission = submit(client, batch, [item]).json()
+    service = app.state.intake
+    p = Principal(user_id='synthetic-reviewer', scope=Scope(organization_id=PREFIX.split('/')[-1], collection_id=SYNTHETIC_COLLECTION), role='reviewer')
+    current = service.item(p, item['id'])
+    current.update(state='needs_attention', error={'message': 'Transient validation failure'})
+    service.save(p, 'intake_item', current)
+    job = service.enqueue(p, item['id'], 'stage')
+    job['state'] = 'needs_attention'
+    service.save(p, 'intake_job', job)
+    service.retry(p, submission['id'], [item['id']])
+    for _ in range(2): IntakeWorker(service).drain(p)
+    assert service.submission(p, submission['id'])['counts'] == {'sent': 1}
+
+
+def test_production_worker_inventory_fetches_payload_pages_without_per_job_reads(monkeypatch):
+    from uuid import UUID
+    from specimen_digitization.application.production import SqlConnectRepository, verified_actor_context
+    repo = SqlConnectRepository(session=object())
+    calls = []
+    rows = [dict(id=str(UUID(int=i + 1)), state='waiting', sensitive=False) for i in range(500)]
+    def execute(operation, variables):
+        calls.append(operation)
+        after = variables['afterId']
+        page = [row for row in rows if row['id'] > after][:variables['limit']]
+        return {'items': [dict(id=row['id'], payload=row) for row in page]}
+    monkeypatch.setattr(repo, 'execute', execute)
+    with verified_actor_context('worker'):
+        result = list(repo.active_intake_jobs(Scope(organization_id=PREFIX.split('/')[-1], collection_id=SYNTHETIC_COLLECTION)))
+    assert result == rows
+    assert calls == ['ListActiveIntakeJobs'] * 6
+
+
+def test_100_mixed_source_photos_share_one_submission_and_create_nothing_before_submit(tmp_path):
+    import io
+    from types import SimpleNamespace
+    from PIL import Image
+    app = local_app(tmp_path, TOKEN)
+    client = TestClient(app)
+    images = {}
+    for n in range(100):
+        output = io.BytesIO()
+        Image.new('RGB', (64, 64), (n, 20, 50)).save(output, format='PNG')
+        images[str(n)] = output.getvalue()
+    adapter = SimpleNamespace(validate=lambda p, source: None,
+        read=lambda p, source: (images[source.object_id], 'image/png'))
+    app.state.intake.sources.providers.update(google_drive=adapter, dropbox=adapter)
+    app.state.intake.sources.url_reader = SimpleNamespace(read=lambda url: (images[url.rsplit('/', 1)[-1]], 'image/png'))
+    batch = draft(client, 'mixed')
+    items = []
+    for n in range(100):
+        provider = ('files', 'camera', 'url', 'google_drive', 'dropbox')[n % 5]
+        data = images[str(n)]
+        source = {'provider': provider}
+        if provider == 'url': source['url'] = f'https://public.example/{n}'
+        elif provider in {'google_drive', 'dropbox'}: source.update(connection_id='synthetic', object_id=str(n), version='1')
+        payload = dict(client_id=str(n), filename=f'{n}.png', media_type='image/png', source=source)
+        if provider in {'camera', 'files'}:
+            payload.update(size_bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
+        response = client.post(ROOT + f"/drafts/{batch['id']}/items", headers=HEADERS, json=payload)
+        assert response.status_code == 200, response.text
+        item = response.json()
+        if provider in {'camera', 'files'}: stage(client, item, data)
+        items.append(item)
+    scope = Scope(organization_id=PREFIX.split('/')[-1], collection_id=SYNTHETIC_COLLECTION)
+    assert app.state.workflow.repository.list(scope) == []
+    submission = submit(client, batch, items)
+    assert submission.status_code == 202, submission.text
+    result = client.get(ROOT + '/submissions/' + submission.json()['id'], headers=HEADERS).json()
+    assert result['total'] == 100
+    assert result['counts'] == {'sent': 100}
+    assert len(app.state.workflow.repository.list(scope)) == 100
+
+
 def test_stage_reconciles_concurrent_awaiting_content_commit(tmp_path, monkeypatch):
     from specimen_digitization.application.bulk_intake import ident
     app = local_app(tmp_path, TOKEN)

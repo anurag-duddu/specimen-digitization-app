@@ -564,7 +564,7 @@ class IntakeService:
             if item['state'] == 'needs_attention':
                 item.update(state='waiting', error=None)
                 self.save(p, 'intake_item', item)
-                if item['source']['provider'] not in {'camera', 'files'}:
+                if item['source']['provider'] not in {'camera', 'files'} or (item['size_bytes'] and item['offset'] == item['size_bytes']):
                     self.enqueue(p, item_id, 'stage')
             result_id = ident(id, item_id)
             try:

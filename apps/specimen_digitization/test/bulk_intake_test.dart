@@ -270,7 +270,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('capture-shutter')));
       await tester.pump();
       await waitForCameraCondition(tester, () => count == 1);
-      expect(find.text('Use photo'), findsNothing);
+      expect(find.text('Add photo'), findsNothing);
       gate.complete();
       await tester.pumpAndSettle();
       for (var n = 1; n < 30; n++) {
@@ -281,6 +281,37 @@ void main() {
       }
       expect(find.text('Review 30'), findsOneWidget);
       expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+  testWidgets(
+    'failed durable retention keeps the shot for retry and does not count it',
+    (tester) async {
+      var attempts = 0;
+      await pumpComponent(
+        tester,
+        CaptureScreen(
+          camera: () async => FakeCaptureCamera(),
+          bulkDraft: true,
+          onCapturedDurably: (_) async {
+            if (attempts++ == 0) throw StateError('Storage full');
+          },
+        ),
+        size: const Size(390, 844),
+      );
+      await tester.tap(find.byKey(const ValueKey('capture-shutter')));
+      await tester.pump();
+      await waitForCameraCondition(
+        tester,
+        () => find.text('Add photo').evaluate().isNotEmpty,
+      );
+      expect(find.text('Review 1'), findsNothing);
+      expect(find.textContaining('Photo was not saved.'), findsOneWidget);
+      await tester.ensureVisible(find.text('Add photo'));
+      await tester.tap(find.text('Add photo'));
+      await tester.pumpAndSettle();
+      expect(find.text('Review 1'), findsOneWidget);
+      expect(attempts, 2);
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );

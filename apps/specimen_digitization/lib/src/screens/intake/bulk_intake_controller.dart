@@ -33,6 +33,27 @@ class BulkIntakeController extends ChangeNotifier {
   List<IntakeDraftItem> items = [];
   List<IntakeSubmission> submissions = [];
   List<Json> drafts = [];
+  List<Json> get savedDrafts {
+    final localBatches = <String, int>{};
+    for (final row in _local.values) {
+      if (row['draft_id'] == null &&
+          row['removed'] != true &&
+          row['saved'] != true) {
+        final id = row['batch_client_id'] as String;
+        localBatches.update(id, (count) => count + 1, ifAbsent: () => 1);
+      }
+    }
+    return [
+      ...drafts,
+      for (final entry in localBatches.entries)
+        {
+          'local_client_id': entry.key,
+          'state': 'draft',
+          'name': 'draft on this device (${entry.value} photos)',
+        },
+    ];
+  }
+
   Json capabilities = {};
   String? error;
   bool loading = true, submitting = false;
@@ -145,7 +166,7 @@ class BulkIntakeController extends ChangeNotifier {
       await refreshLists();
       final open = drafts.where((d) => d['state'] == 'draft').toList()
         ..sort((a, b) => '${b['created_at']}'.compareTo('${a['created_at']}'));
-      if (open.isNotEmpty) {
+      if (open.isNotEmpty && (restoredId != null || items.isEmpty)) {
         draft = IntakeDraft(
           open.where((d) => d['id'] == restoredId).firstOrNull ?? open.first,
         );
@@ -265,6 +286,12 @@ class BulkIntakeController extends ChangeNotifier {
     draft = IntakeDraft(
       await call('POST', '/drafts', body: {'client_id': _draftClientId}),
     );
+    _rememberDraft(draft!);
+  }
+
+  void _rememberDraft(IntakeDraft value) {
+    drafts.removeWhere((row) => row['id'] == value.id);
+    drafts.add(value.data);
   }
 
   Future<void> addFiles(
@@ -273,17 +300,21 @@ class BulkIntakeController extends ChangeNotifier {
     bool sensitive = false,
     String? replacesId,
   }) {
-    _admissions = _admissions.then((_) async {
-      if (visible.length + files.length - (replacesId == null ? 0 : 1) > 500) {
-        error =
-            'A batch holds up to 500 photos. Choose fewer files or start another batch.';
-        changed();
-        return;
-      }
+    final admission = _admissions.then((_) async {
+      _draftClientId ??= intakeClientId();
+      final matched = <String>{};
+      final prepared =
+          <
+            ({
+              XFile file,
+              int size,
+              String? hash,
+              Json? previous,
+              Object? failure,
+            })
+          >[];
       for (final file in files) {
         if (_disposed) return;
-        _draftClientId ??= intakeClientId();
-        final id = intakeClientId();
         try {
           final size = await file.length();
           if (size == 0 || size > 25000000) {
@@ -293,18 +324,55 @@ class BulkIntakeController extends ChangeNotifier {
             );
           }
           final hash = (await sha256.bind(file.openRead()).first).toString();
-          // Matching bytes can restore a browser transfer after a page reload.
-          final previous = _local.values
-              .where(
-                (row) =>
-                    row['sha256'] == hash &&
-                    row['saved'] != true &&
-                    row['removed'] != true &&
-                    (draft != null
-                        ? row['draft_id'] == draft!.id
-                        : row['batch_client_id'] == _draftClientId),
-              )
-              .firstOrNull;
+          final previous = camera || replacesId != null
+              ? null
+              : _local.values
+                    .where(
+                      (row) =>
+                          row['sha256'] == hash &&
+                          row['saved'] != true &&
+                          row['removed'] != true &&
+                          !_files.containsKey(row['client_id']) &&
+                          !matched.contains(row['client_id']) &&
+                          (draft != null
+                              ? row['draft_id'] == draft!.id
+                              : row['batch_client_id'] == _draftClientId),
+                    )
+                    .firstOrNull;
+          if (previous != null) matched.add(previous['client_id'] as String);
+          prepared.add((
+            file: file,
+            size: size,
+            hash: hash,
+            previous: previous,
+            failure: null,
+          ));
+        } catch (e) {
+          prepared.add((
+            file: file,
+            size: 0,
+            hash: null,
+            previous: null,
+            failure: e,
+          ));
+        }
+      }
+      final additions = prepared.where((row) => row.previous == null).length;
+      if (visible.length + additions - (replacesId == null ? 0 : 1) > 500) {
+        error =
+            'A batch holds up to 500 photos. Choose fewer files or start another batch.';
+        changed();
+        if (camera) throw ApiFailure(error!, code: 'batch_limit');
+        return;
+      }
+      for (final photo in prepared) {
+        if (_disposed) return;
+        final file = photo.file;
+        final id = intakeClientId();
+        try {
+          if (photo.failure != null) throw photo.failure!;
+          final size = photo.size, hash = photo.hash!;
+          final previous = photo.previous;
           final clientId = previous?['client_id'] as String? ?? id;
           final retained = await retainDraftFile(file, _owner, clientId);
           final row = <String, dynamic>{
@@ -326,7 +394,9 @@ class BulkIntakeController extends ChangeNotifier {
           };
           _local[clientId] = row;
           _files[clientId] = retained;
-          if (!items.any((i) => i.id == row['item_id'])) {
+          if (!items.any(
+            (i) => i.id == row['item_id'] || i.id == 'local:$clientId',
+          )) {
             items.add(
               IntakeDraftItem({
                 ...row,
@@ -339,6 +409,7 @@ class BulkIntakeController extends ChangeNotifier {
           changed();
           _queueTransfer(row);
         } catch (e) {
+          if (camera) rethrow;
           items.add(
             IntakeDraftItem({
               'id': 'local:$id',
@@ -351,7 +422,9 @@ class BulkIntakeController extends ChangeNotifier {
         }
       }
     });
-    return _admissions;
+    // A failed capture must reach its caller without poisoning later retries.
+    _admissions = admission.catchError((Object _) {});
+    return admission;
   }
 
   String _mediaType(XFile file) {
@@ -399,6 +472,7 @@ class BulkIntakeController extends ChangeNotifier {
           ),
         );
         row['draft_id'] = batch.id;
+        _rememberDraft(batch);
         if (row['batch_client_id'] == _draftClientId) draft = batch;
         await _persist();
       }
@@ -435,6 +509,7 @@ class BulkIntakeController extends ChangeNotifier {
                 body: {'client_id': 'pending-${row['draft_id']}'},
               );
         row['draft_id'] = batch['id'];
+        _rememberDraft(IntakeDraft(batch));
         if (items.any((i) => i.id == 'local:${row['client_id']}')) {
           draft = IntakeDraft(batch);
         }
@@ -570,9 +645,12 @@ class BulkIntakeController extends ChangeNotifier {
       photo['client_id'] ??= intakeClientId();
     }
     final admitted = items.map((item) => item.data['client_id']).toSet();
-    final additions = photos.where((photo) => !admitted.contains(photo['client_id'])).length;
+    final additions = photos
+        .where((photo) => !admitted.contains(photo['client_id']))
+        .length;
     if (visible.length + additions > 500) {
-      error = 'Choose up to ${500 - visible.length} more photos for this batch.';
+      error =
+          'Choose up to ${500 - visible.length} more photos for this batch.';
       changed();
       return;
     }
@@ -580,9 +658,19 @@ class BulkIntakeController extends ChangeNotifier {
       error = null;
       await ensureDraft();
       for (final photo in photos) {
-        final item = await call('POST', '/drafts/${draft!.id}/items', body: photo);
+        final item = await call(
+          'POST',
+          '/drafts/${draft!.id}/items',
+          body: photo,
+        );
         if (!items.any((existing) => existing.id == item['id'])) {
-          items.add(IntakeDraftItem({...item, 'photo_sensitive': item['sensitive'], 'included': true}));
+          items.add(
+            IntakeDraftItem({
+              ...item,
+              'photo_sensitive': item['sensitive'],
+              'included': true,
+            }),
+          );
           changed();
         }
       }
@@ -590,7 +678,11 @@ class BulkIntakeController extends ChangeNotifier {
       error = message(e);
     } finally {
       // Reconcile a lost acknowledgement once, including partial success.
-      try { await refreshDraft(); } catch (e) { error ??= message(e); }
+      try {
+        await refreshDraft();
+      } catch (e) {
+        error ??= message(e);
+      }
       changed();
     }
   }
@@ -707,6 +799,31 @@ class BulkIntakeController extends ChangeNotifier {
   }
 
   Future<void> openDraft(Json value) async {
+    await _admissions;
+    final localId = value['local_client_id'] as String?;
+    if (localId != null) {
+      draft = null;
+      _draftClientId = localId;
+      items = [
+        for (final row in _local.values)
+          if (row['batch_client_id'] == localId && row['removed'] != true)
+            IntakeDraftItem({
+              ...row,
+              'id': row['item_id'] ?? 'local:${row['client_id']}',
+              'state': _files.containsKey(row['client_id'])
+                  ? 'waiting'
+                  : 'needs_attention',
+              if (!_files.containsKey(row['client_id']))
+                'error': {
+                  'message': 'Choose the original file again to resume.',
+                },
+            }),
+      ];
+      selected.clear();
+      await _persist();
+      changed();
+      return;
+    }
     draft = IntakeDraft(value);
     _draftClientId = null;
     items = [];

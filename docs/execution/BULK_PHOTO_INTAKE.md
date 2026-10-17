@@ -49,6 +49,9 @@ requires reference-aware retention policy and is not performed by a discard.
 All sources return selections to the same draft. A source selection is limited
 to 500 photos; oversized folders require narrowing, and no list is silently
 truncated. Subfolders are opt-in. Provider originals are never changed.
+Source browsers provide an explicitly requested, authenticated image preview
+using the same decoding limits in temporary private staging. Links name the
+selected provider account; multiple connections are never silently substituted.
 
 - Google Picker uses `drive.file`. Folder browsing requires a separate
   `drive.readonly` connection. Resource keys on shared links are preserved.
@@ -77,6 +80,9 @@ The browser validates both popup identity and callback origin. Native callbacks 
 `specimenintake://oauth/callback`; a different app cannot complete the connection
 without the original session proof. Disconnect disables local use before provider
 revocation and exposes a retry if revocation could not be confirmed.
+Reconnect preserves the connection identity used by queued photos and verifies
+the provider account identity before replacing credentials. A different account
+requires a new connection and an explicit new source selection.
 
 Google Picker needs a short-lived access token in browser memory. Its one-use
 bootstrap is in the URL fragment, removed from browser history before a POST

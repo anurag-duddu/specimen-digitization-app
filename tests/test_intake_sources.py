@@ -171,3 +171,84 @@ def test_partial_drive_search_requires_narrower_folder():
     with pytest.raises(ImportProblem) as error:
         adapter.select_folder(None, 'c', 'folder', False, 500)
     assert error.value.intake_problem['code'] == 'incomplete_search'
+
+
+def test_folder_counts_separate_download_denial_from_unsupported_formats():
+    adapter = CloudSource(None, 'google_drive')
+    files = [
+        {'id': 'ok', 'name': 'ok.png', 'mimeType': 'image/png'},
+        {'id': 'denied', 'name': 'private.png', 'mimeType': 'image/png', 'capabilities': {'canDownload': False}},
+        {'id': 'text', 'name': 'notes.txt', 'mimeType': 'text/plain'},
+    ]
+    adapter.browse = lambda *a: {'items': [adapter.row('c', row) for row in files]}
+    result = adapter.select_folder(None, 'c', 'folder', False, 500)
+    assert (result['discovered'], result['unsupported'], result['inaccessible']) == (3, 1, 1)
+    assert [row['id'] for row in result['items']] == ['ok']
+
+
+@pytest.mark.parametrize('same_account', [True, False])
+def test_reconnect_preserves_item_connection_only_for_the_same_provider_account(connected, same_account):
+    p, manager = connected
+    value = manager.connect(p, 'google_drive', 'folders', 'a' * 64)
+    doc = manager.get(p, value['id'])
+    doc.update(state='connected', account_id='original-account', secret_ref=manager.secrets.write(value['id'], {'access_token': 'expired', 'refresh_token': 'revoked', 'expires_at': 0}))
+    manager.service.save(p, 'intake_connection', doc)
+    manager.http = SimpleNamespace(post=lambda *a, **kw: Response(status=400))
+    with pytest.raises(ImportProblem): manager.token(p, value['id'])
+    resumed = manager.connect(p, 'google_drive', 'folders', 'b' * 64, reconnect_id=value['id'])
+    assert resumed['id'] == value['id']
+    state = parse_qs(urlsplit(resumed['authorization_url']).query)['state'][0]
+    manager.http = SimpleNamespace(
+        post=lambda *a, **kw: Response({'access_token': 'fresh', 'refresh_token': 'refresh', 'scope': GOOGLE_READ}),
+        get=lambda *a, **kw: Response({'user': {'permissionId': 'original-account' if same_account else 'other-account', 'emailAddress': 'fixture@example.test'}}))
+    if same_account:
+        manager.complete(p, state, 'code', 'b' * 64)
+        assert manager.token(p, value['id']) == 'fresh'
+        CloudSource(manager, 'google_drive').validate(p, SourceReference(provider='google_drive', connection_id=value['id'], object_id='old-file', version='1'))
+    else:
+        with pytest.raises(ImportProblem) as error: manager.complete(p, state, 'code', 'b' * 64)
+        assert error.value.intake_problem['code'] == 'account_mismatch'
+        assert manager.get(p, value['id'])['state'] == 'needs_authorization'
+
+
+def test_source_preview_is_private_and_does_not_create_a_draft_or_specimen(tmp_path):
+    import base64
+    from fastapi.testclient import TestClient
+    from test_application import HEADERS, PREFIX
+    app = local_app(tmp_path, TOKEN)
+    content = image_bytes()
+    app.state.intake.sources.url_reader = SimpleNamespace(read=lambda url: (content, 'image/png'))
+    client = TestClient(app)
+    root = PREFIX + '/collections/' + SYNTHETIC_COLLECTION + '/intake'
+    result = client.post(root + '/source-preview', headers=HEADERS, json={'provider': 'url', 'url': 'https://public.example/photo.png'})
+    assert result.status_code == 200, result.text
+    assert base64.b64decode(result.json()['image']).startswith(b'\xff\xd8')
+    assert result.headers['cache-control'] == 'private, no-store'
+    assert client.get(root + '/drafts', headers=HEADERS).json()['items'] == []
+    assert app.state.workflow.repository.list(Scope(organization_id=SYNTHETIC_ORG, collection_id=SYNTHETIC_COLLECTION)) == []
+
+
+def test_provider_links_use_the_explicit_owned_account(connected):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from specimen_digitization.application.intake_source_routes import install_source_routes
+    p, manager = connected
+    ids = []
+    for _ in range(2):
+        initial = manager.connect(p, 'google_drive', 'folders', 'a' * 64)
+        doc = manager.get(p, initial['id'])
+        doc['state'] = 'connected'
+        manager.service.save(p, 'intake_connection', doc)
+        ids.append(doc['id'])
+    manager.service.sources.providers['google_drive'] = SimpleNamespace(resolve=lambda p, id, url: {'connection_id': id})
+    app = FastAPI()
+    install_source_routes(app, '/v1/organizations/{organization_id}', manager.service, manager, identity=lambda: p.user_id, principal=lambda *a, **kw: p)
+    client = TestClient(app)
+    root = f'/v1/organizations/{p.scope.organization_id}/collections/{p.scope.collection_id}/intake/resolve'
+    body = {'url': 'https://drive.google.com/file/d/file/view', 'connection_id': ids[1]}
+    assert client.post(root, json=body).json()['items'][0]['connection_id'] == ids[1]
+    with pytest.raises(ImportProblem) as error:
+        client.post(root, json={'url': body['url']})
+    assert error.value.intake_problem['code'] == 'choose_account'
+    with pytest.raises(ImportProblem):
+        client.post(root, json={**body, 'connection_id': 'someone-elses-connection'})

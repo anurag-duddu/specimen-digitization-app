@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -149,6 +148,7 @@ void main() {
       );
       await first.initialize();
       await first.addFiles([XFile(source.path)]);
+      final originalBatch = first.savedDrafts.single['local_client_id'];
       await first.newDraft();
       await first.addFiles([XFile(source.path)]);
       expect((await storedFiles()).length, 2);
@@ -160,6 +160,60 @@ void main() {
       );
       await restored.initialize();
       expect(restored.visible.length, 1);
+      expect(restored.savedDrafts.length, 2);
+      await restored.openDraft(
+        restored.savedDrafts.singleWhere(
+          (d) => d['local_client_id'] == originalBatch,
+        ),
+      );
+      expect(restored.visible.single.data['batch_client_id'], originalBatch);
+      expect(restored.needsReselection, isFalse);
+      restored.dispose();
+    },
+  );
+  test(
+    'a full draft can reselect missing originals without adding photo 501',
+    () async {
+      final source = File('${directory.path}/photo.png');
+      await source.writeAsBytes([1, 2, 3]);
+      final first = BulkIntakeController(
+        repository: OfflineIntake(),
+        scope: scope,
+        userId: 'owner',
+      );
+      await first.initialize();
+      await first.addFiles([XFile(source.path)]);
+      final prefs = await SharedPreferences.getInstance();
+      final key = prefs.getKeys().singleWhere(
+        (key) => key.startsWith('bulk-intake-v1:'),
+      );
+      final state = jsonDecode(prefs.getString(key)!) as Map<String, dynamic>;
+      final original = objects(state['files']).single;
+      first.dispose();
+      await File(original['path'] as String).delete();
+      state['files'] = List.generate(
+        500,
+        (i) => {...original, 'client_id': 'missing-$i'},
+      );
+      await prefs.setString(key, jsonEncode(state));
+      final restored = BulkIntakeController(
+        repository: OfflineIntake(),
+        scope: scope,
+        userId: 'owner',
+      );
+      await restored.initialize();
+      expect(restored.visible.length, 500);
+      await restored.addFiles([XFile(source.path)]);
+      expect(restored.visible.length, 500);
+      expect((await storedFiles()).length, 500);
+      expect(
+        await File((await storedFiles()).first['path'] as String).exists(),
+        isTrue,
+      );
+      await expectLater(
+        restored.addFiles([XFile(source.path)], camera: true),
+        throwsA(isA<ApiFailure>()),
+      );
       restored.dispose();
     },
   );

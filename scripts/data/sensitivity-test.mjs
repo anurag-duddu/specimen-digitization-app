@@ -146,3 +146,43 @@ for(const operation of ['SaveSpecimen','SaveSpecimenV2','SaveSpecimenV3']) {
  denied(await specimenOp(operation,{...savedVars(ordinary,false,3),actorUid:'privileged'}));
 }
 console.log('PASS all named specimen versions bind explicit classification, reject legacy downgrade and protect history after promotion');
+
+// Private intake metadata is owner scoped even for non-sensitive photos.
+for (const kind of ['intake_draft','intake_item','intake_submission','intake_result','intake_connection','intake_oauth']) {
+ const create=document(kind);
+ create.payload={...create.payload,id:create.id,owner_id:'ordinary',state:'draft',revision:1};
+ ok(await op('CreateDocumentV2',create,true));
+ denied(await op('GetDocumentV2',{...read(create),actorUid:'sibling'}));
+ denied(await op('SaveDocumentV2',{...create,actorUid:'sibling',expectedRevision:1,idempotencyKey:randomUUID()},true));
+ const selected={...scope,kind,ids:[create.id],includeSensitive:false};
+ assert.equal(ok(await op('GetPrivateIntakeItems',selected)).items.length,1);
+ assert.deepEqual(ok(await op('GetPrivateIntakeItems',{...selected,actorUid:'sibling'})).items,[]);
+ const page={...scope,kind,afterId:'',limit:100,includeSensitive:false};
+ assert.equal(ok(await op('ListPrivateIntakePage',page)).items.length,1);
+ assert.deepEqual(ok(await op('ListPrivateIntakePage',{...page,actorUid:'sibling'})).items,[]);
+ denied(await op('ListPrivateIntakePage',{...page,limit:102}));
+ for (const [name,variables] of [['ListPrivateIntakePage',page],['GetPrivateIntakeItems',selected]]) {
+  denied(await op(name,variables,false,{authClaims:{sub:'ordinary'}}));
+  denied(await op(name,{...variables,collectionId:randomUUID()}));
+ }
+ if(kind==='intake_draft') {
+  const jobId=randomUUID();
+  const commit={...scope,id:create.id,expectedRevision:1,sensitive:false,
+   payload:{...create.payload,state:'submitted',revision:2},jobId,
+   jobPayload:{id:jobId,owner_id:'ordinary',sensitive:false,state:'waiting',operation:'submit'}};
+  denied(await op('CommitIntakeSubmission',{...commit,actorUid:'sibling'},true));
+  denied(await op('CommitIntakeSubmission',commit,true,{authClaims:{sub:'ordinary'}}));
+  ok(await op('CommitIntakeSubmission',commit,true));
+  assert.equal(ok(await op('GetDocumentV2',read(create))).auxiliaryDocument.payload.state,'submitted');
+  const orphan=randomUUID();
+  denied(await op('CommitIntakeSubmission',{...commit,jobId:orphan},true));
+  assert.equal(ok(await op('GetDocumentV2',{...scope,kind:'intake_job',id:orphan})).auxiliaryDocument,null);
+  const work={...scope,afterId:'',limit:100};
+  const active=ok(await op('ListActiveIntakeJobs',work)).items;
+  assert.ok(active.some(row=>row.payload.id===jobId));
+  denied(await op('ListActiveIntakeJobs',work,false,{authClaims:{sub:'ordinary'}}));
+  denied(await op('ListActiveIntakeJobs',{...work,collectionId:randomUUID()}));
+  denied(await op('ListActiveIntakeJobs',{...work,limit:101}));
+ }
+}
+console.log('PASS private intake ownership, bounded pages, explicit submission/outbox transaction and active-job inventory');

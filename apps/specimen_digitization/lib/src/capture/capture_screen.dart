@@ -652,6 +652,24 @@ class _CaptureScreenState extends State<CaptureScreen>
     _lastShotMenu.close();
     final ValueChanged<XFile>? onAccepted = widget.onAccepted;
     final ValueChanged<CapturedPhoto>? onCaptured = widget.onCaptured;
+    try {
+      await widget.onCapturedDurably?.call(
+        CapturedPhoto(file: file, sensitive: sensitive),
+      );
+    } catch (_) {
+      final dimensions = await captureDimensions(bytes);
+      if (!mounted) return;
+      setState(() {
+        _review = file;
+        _setReviewBytes(bytes);
+        _reviewDimensions = dimensions;
+        _reviewSensitive = sensitive;
+        _editError =
+            'Photo was not saved. Keep this screen open and retry after freeing storage or making room in the batch.';
+      });
+      return;
+    }
+    if (!mounted) return;
     setState(() {
       _acceptedCount++;
       _lastAccepted = file;
@@ -673,9 +691,6 @@ class _CaptureScreenState extends State<CaptureScreen>
     });
     onAccepted?.call(file);
     onCaptured?.call(CapturedPhoto(file: file, sensitive: sensitive));
-    await widget.onCapturedDurably?.call(
-      CapturedPhoto(file: file, sensitive: sensitive),
-    );
   }
 
   void _setAutoIngest(bool value) {
