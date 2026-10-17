@@ -483,15 +483,16 @@ SESSION_LEARNINGS, rather than asserted here before execution.
 
 ## 2026-10-16 engine-contract tier and shared wire fixture
 
-The test-suite gaps program (branch `claude/test-suite-gaps`) added six strings that
-detect-secrets reports as high entropy. None is a credential:
+The test-suite gaps program (branch `claude/test-suite-gaps`) added five strings that
+detect-secrets reports as high entropy. None is a credential. (The synthetic PNG is
+now written with stored deflate blocks and no longer scans as high entropy, so its entry
+was removed.)
 
 - `scripts/data/engine-toolchain.json`: the published SHA-256 of each owner-approved
   engine download (Data Connect 3.2.0 Linux, Storage rules runtime 1.1.3 JAR,
   firebase-tools 15.8.0 Linux binary), taken from the firebase-tools release manifest
   and the GitHub release asset digest.
-- `tests/fixtures/general_api_contracts.json`: the synthetic PNG (base64) and the
-  deterministic idempotency key of the ordinary synthetic HTTP journey both Python and
+- `tests/fixtures/general_api_contracts.json`: the deterministic idempotency key of the ordinary synthetic HTTP journey both Python and
   Dart read.
 - `.github/workflows/ci-cd.yml`: the engine job's runner tool-selection block (runner
   tool paths only; the YAML plugin reports the block at its `run:` key).
@@ -502,11 +503,10 @@ detect-secrets reports as high entropy. None is a credential:
 | `scripts/data/engine-toolchain.json` | Hex High Entropy String | `07a4593b6f7f875bb650c2263406d4da24c2345a` | published SHA-256 pin of an approved engine download |
 | `scripts/data/engine-toolchain.json` | Hex High Entropy String | `f92babbd4bddd1527d1656e2d319924beae14f7b` | published SHA-256 pin of an approved engine download |
 | `scripts/data/engine-toolchain.json` | Hex High Entropy String | `13685940fb69a045ed2a0b5800962f51155d0948` | published SHA-256 pin of an approved engine download |
-| `tests/fixtures/general_api_contracts.json` | Base64 High Entropy String | `4afa8266bcd39ad662fb6389e6884e2f09bf9bf0` | synthetic shared-wire fixture value |
 | `tests/fixtures/general_api_contracts.json` | Hex High Entropy String | `5d876c14b2eb6b173d3dd0d4715df50b4cb352a4` | synthetic shared-wire fixture value |
 
-Only these six exact path/type/hash findings were added to `.secrets.baseline` with
+Only these five exact path/type/hash findings were added to `.secrets.baseline` with
 `is_secret: false`; earlier entries, detectors, thresholds and filters are unchanged.
-Gitleaks then flags the six scanner identifiers, so one new rule-local AND allowlist
+Gitleaks then flags the five scanner identifiers, so one new rule-local AND allowlist
 matches only those exact `hashed_secret` lines inside `.secrets.baseline`. No file,
 path or field pattern is excluded from either scanner.

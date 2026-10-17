@@ -634,6 +634,5 @@ regexes = [
   '''^\s*"hashed_secret": "07a4593b6f7f875bb650c2263406d4da24c2345a",?\s*$''', # pragma: allowlist secret (published SHA-256 pin of an approved engine download)
   '''^\s*"hashed_secret": "f92babbd4bddd1527d1656e2d319924beae14f7b",?\s*$''', # pragma: allowlist secret (published SHA-256 pin of an approved engine download)
   '''^\s*"hashed_secret": "13685940fb69a045ed2a0b5800962f51155d0948",?\s*$''', # pragma: allowlist secret (published SHA-256 pin of an approved engine download)
-  '''^\s*"hashed_secret": "4afa8266bcd39ad662fb6389e6884e2f09bf9bf0",?\s*$''', # pragma: allowlist secret (synthetic shared-wire fixture value)
   '''^\s*"hashed_secret": "5d876c14b2eb6b173d3dd0d4715df50b4cb352a4",?\s*$''', # pragma: allowlist secret (synthetic shared-wire fixture value)
 ]
