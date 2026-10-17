@@ -194,7 +194,8 @@ What ships, and what a device capture shows:
 rows above, here and in section 1, name `NavigationBar` and then `UiPillNav`;
 what ships is `UiTabBar` (10 section 4.4), the same component on iOS and on
 Android. It is docked, full width and flush to the bottom edge, with a content
-height of `max(56, 32 + scaled 16)` plus the system inset, a one physical pixel
+height of `max(56, 32 + scaled 16 + 4)` plus the system inset (56 dp at normal
+text, 68 dp at 200 percent), a one physical pixel
 `boundary` line along its top and a `paper` ground that runs under the inset.
 The shell used to draw `CupertinoTabBar` on iOS and Material's
 `NavigationBar` on Android; that platform fork is gone, because layout decisions

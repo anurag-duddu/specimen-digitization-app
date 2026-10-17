@@ -5,7 +5,8 @@
 // `NavigationBar` elsewhere. The owner's words, 2026-10-17: "btw ios nav
 // behaves perfectly but android has too much padding/space". So this file
 // holds three kinds of assertion: the geometry the owner approved on the
-// iPhone (content `max(56, 32 + scaled 16)`, plus the system inset), that it
+// iPhone (56 dp of content at normal text, growing as
+// `max(56, 32 + scaled 16 + 4)` with the text, plus the system inset), that it
 // is the same widget and the same pixels on iOS and Android, and that every
 // edge of it is a usable target above each system inset.
 import 'dart:convert';
@@ -36,12 +37,16 @@ Finder _label(String label) =>
 Finder _target(int index) =>
     find.descendant(of: _bar, matching: find.byType(Pressable)).at(index);
 
-/// The content height the owner approved on the iPhone, before the system
-/// inset: `max(56, 32 + scaled 16)`.
+/// The content height before the system inset: `max(56, 32 + scaled 16 + 4)`.
+///
+/// 56 at normal text is what the owner approved on the iPhone. The `+ 4` is
+/// the gap the cell pads under its label, which the first version of the
+/// formula left out, so at 200 percent the glyph sat about 3 dp under the top
+/// line; with it the bar is 68 dp there (2026-10-17 correction).
 final Map<double, double> _contentHeight = <double, double>{
   1.0: 56.0,
-  1.3: 56.0,
-  2.0: 64.0,
+  1.3: 32 + 16 * 1.3 + 4,
+  2.0: 68.0,
 };
 
 Future<void> _pump(
@@ -142,7 +147,7 @@ void _expectGeometry(
     expect(targetBounds.height, greaterThanOrEqualTo(48));
     expect(
       targetBounds.height,
-      contentHeight,
+      closeTo(contentHeight, .001),
       reason: 'the whole content height of the bar is the hit target',
     );
     for (final rect in [labelBounds, iconBounds, targetBounds]) {
@@ -152,6 +157,19 @@ void _expectGeometry(
       expect(rect.bottom, lessThanOrEqualTo(window.height - bottom));
     }
     expect(iconBounds.bottom, lessThanOrEqualTo(labelBounds.top));
+    // The glyph keeps its air at every text scale: 4 dp under the bar's top
+    // edge and 4 dp above the label. At 200 percent text the first version of
+    // the height left the glyph about 3 dp from the top line.
+    expect(
+      iconBounds.top - bounds.top,
+      greaterThanOrEqualTo(4),
+      reason: '$name glyph is too close to the top line at this text scale',
+    );
+    expect(
+      labelBounds.top - iconBounds.bottom,
+      greaterThanOrEqualTo(4),
+      reason: '$name label is too close to its glyph at this text scale',
+    );
     expect(paragraph.didExceedMaxLines, isFalse);
     final boxes = paragraph.getBoxesForSelection(
       TextSelection(baseOffset: 0, extentOffset: name.length),
@@ -239,7 +257,7 @@ void main() {
         );
         expect(
           heights[TargetPlatform.android],
-          _contentHeight[scale]! + bottom,
+          closeTo(_contentHeight[scale]! + bottom, .001),
           reason: 'content plus inset at scale $scale, inset $bottom',
         );
       }

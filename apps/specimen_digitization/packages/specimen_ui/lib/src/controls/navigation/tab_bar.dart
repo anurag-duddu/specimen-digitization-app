@@ -16,12 +16,19 @@ import 'nav_group.dart';
 
 /// The resolved measurements of one tab bar (10 section 1.5).
 ///
-/// Every number the bar draws with is named here, so the one metric the owner
-/// signed off on, the iPhone bar of 2026-10-16 (`max(56, 32 + scaled 16)`), is
-/// a documented property of the component rather than three literals in a
-/// shell. The bar is the same on every platform: the only thing that varies
-/// with the device is the system inset under it (05 section 5), and that is
-/// read at build time, never here.
+/// Every number the bar draws with is named here, so the metric the owner
+/// signed off on at normal text, the iPhone bar of 2026-10-16 (56 dp of
+/// content), is a documented property of the component rather than literals
+/// in a shell. The bar is the same on every platform: the only thing that
+/// varies with the device is the system inset under it (05 section 5), and
+/// that is read at build time, never here.
+///
+/// Amended 2026-10-17: the height that grows with the text is
+/// `glyphBand + scaled labelAllowance + labelGap`. The first version left
+/// [labelGap] out, so the 4 dp the cell pads under its label came out of the
+/// glyph's air and at 200 percent text the glyph sat about 3 dp under the top
+/// line. Normal text is unchanged at 56 dp, because the resting height
+/// governs there; 200 percent is 68 dp.
 @immutable
 class UiTabBarStyle {
   /// Binds every token the bar draws with.
@@ -69,18 +76,22 @@ class UiTabBarStyle {
   final double restingHeight;
 
   /// What the bar spends on the glyph before the label's own line: the 24 dp
-  /// glyph plus one 8 dp step of air, 32 dp.
+  /// glyph plus one 8 dp step of air, 32 dp. The air is 4 dp above the glyph
+  /// and 4 dp below it, and it holds at every text scale because the height
+  /// formula adds it to the label rather than competing with it.
   final double glyphBand;
 
   /// What the label's line is allowed at scale 1.0: 16 dp, the line a
   /// `label.small` label sits in beside a 16 dp glyph (09 section 7).
   ///
   /// Scaled with the reviewer's text size, so at 200 percent the bar is
-  /// `32 + 32 = 64` dp tall and the label never touches the glyph.
+  /// `32 + 32 + 4 = 68` dp tall and the label never touches the glyph.
   final double labelAllowance;
 
   /// The air under the label and above the bar's inset: 4 dp, `space.s1`,
-  /// which is also what the stock iOS bar leaves.
+  /// which is also what the stock iOS bar leaves. It is part of the height
+  /// that grows with the text, so the glyph keeps its own air (see
+  /// [contentHeightOf]).
   final double labelGap;
 
   /// The glyph's square: 24 dp, the navigation size of 09 section 7.
@@ -95,10 +106,15 @@ class UiTabBarStyle {
 
   /// The bar's content height at [textScaler], excluding the safe inset.
   ///
-  /// `max(restingHeight, glyphBand + textScaler.scale(labelAllowance))`: it
-  /// grows with the label rather than clipping it (10 section 2 clause 14).
-  double contentHeightOf(TextScaler textScaler) =>
-      math.max(restingHeight, glyphBand + textScaler.scale(labelAllowance));
+  /// `max(restingHeight, glyphBand + textScaler.scale(labelAllowance) +
+  /// labelGap)`: it grows with the label rather than clipping it (10 section
+  /// 2 clause 14), and the 4 dp the cell pads under the label is counted, so
+  /// the glyph keeps the 8 dp of air [glyphBand] promises at every scale.
+  /// That is 56 dp at normal text and 68 dp at 200 percent.
+  double contentHeightOf(TextScaler textScaler) => math.max(
+    restingHeight,
+    glyphBand + textScaler.scale(labelAllowance) + labelGap,
+  );
 
   /// The width of the top line for a window drawn at [devicePixelRatio]: one
   /// physical pixel, which is thinner than a logical one on every phone.

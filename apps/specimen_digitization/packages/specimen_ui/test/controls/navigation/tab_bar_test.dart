@@ -420,16 +420,20 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(content, 64);
-      expect(whole, 64 + 24);
+      expect(content, 68);
+      expect(whole, 68 + 24);
       expect(_barSize(tester).height, whole);
     });
 
-    testWidgets('the content height is the metric the iPhone bar had', (
+    testWidgets('the content height is 56 at normal text, as the iPhone bar '
+        'had, and grows with the label and the gap under it', (
       WidgetTester tester,
     ) async {
-      // `max(56, 32 + scaled 16)`: the formula the shell handed
-      // `CupertinoTabBar` until 2026-10-17, which the owner called perfect.
+      // `max(56, 32 + scaled 16 + 4)`. At normal text the resting height
+      // governs and it is the 56 the owner approved on the iPhone bar. Above
+      // it the 4 dp the cell pads under the label is counted, which the first
+      // version of the formula left out (2026-10-17 correction): at 200
+      // percent the bar is 68 dp, not 64.
       await _pumpBar(tester);
       final UiTabBarStyle style = UiTabBarStyle.resolve(
         tester.element(find.byType(UiTabBar)).ui,
@@ -437,14 +441,61 @@ void main() {
       expect(style.restingHeight, 56);
       expect(style.glyphBand, 32);
       expect(style.labelAllowance, 16);
+      expect(style.labelGap, 4);
       expect(style.glyphSize, 24);
       for (final double scale in <double>[0.8, 1, 1.15, 1.3, 1.5, 2, 3]) {
         final TextScaler scaler = TextScaler.linear(scale);
         expect(
           style.contentHeightOf(scaler),
-          math.max(56, 32 + scaler.scale(16)),
+          math.max(56, 32 + scaler.scale(16) + 4),
           reason: 'scale $scale',
         );
+      }
+      expect(style.contentHeightOf(TextScaler.noScaling), 56);
+      expect(style.contentHeightOf(const TextScaler.linear(2)), 68);
+    });
+
+    testWidgets('the glyph keeps its air at every text scale: 4 dp above it '
+        'and 4 dp between it and the label', (WidgetTester tester) async {
+      for (final double scale in <double>[1, 1.15, 1.3, 1.5, 2, 3]) {
+        await _pumpBar(
+          tester,
+          destinations: threeDestinations,
+          textScaler: TextScaler.linear(scale),
+          inset: 34,
+        );
+        final Rect bar = tester.getRect(find.byType(UiTabBar));
+        for (final UiNavDestination destination in threeDestinations) {
+          final Rect glyph = tester.getRect(
+            find.byKey(ValueKey<String>('icon-${destination.label}')),
+          );
+          final Rect label = tester.getRect(find.text(destination.label));
+          expect(
+            glyph.top - bar.top,
+            greaterThanOrEqualTo(4),
+            reason:
+                'the glyph of "${destination.label}" is ${glyph.top - bar.top} '
+                'dp under the bar\'s top edge at scale $scale',
+          );
+          expect(
+            label.top - glyph.bottom,
+            greaterThanOrEqualTo(4),
+            reason:
+                'the label of "${destination.label}" is '
+                '${label.top - glyph.bottom} dp under its glyph at scale '
+                '$scale (a negative number is an overlap)',
+          );
+          expect(
+            glyph.bottom,
+            lessThanOrEqualTo(label.top),
+            reason: 'the label overlaps the glyph at scale $scale',
+          );
+          expect(
+            (bar.bottom - 34) - label.bottom,
+            greaterThanOrEqualTo(4),
+            reason: 'the label sits under 4 dp from the inset at scale $scale',
+          );
+        }
       }
     });
 
@@ -501,8 +552,12 @@ void main() {
         }
       }
       expect(heights[1], 56);
-      expect(heights[1.3], 56, reason: '32 + 20.8 is still under 56');
-      expect(heights[2], 64);
+      expect(
+        heights[1.3],
+        closeTo(56.8, 1e-9),
+        reason: '32 + 20.8 + 4 is the first height over the 56 floor',
+      );
+      expect(heights[2], 68);
       expect(heights[2]!, greaterThan(heights[1]!), reason: 'it grows');
     });
 

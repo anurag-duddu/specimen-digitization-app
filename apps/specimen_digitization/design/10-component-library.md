@@ -813,13 +813,17 @@ component on every platform. A docked, full width bar flush to the bottom edge:
 a solid `paper` ground, a top line of exactly one physical pixel
 (1 / device pixel ratio) in `boundary`, and no pill, no indicator, no
 elevation, no surface tint and no glass. Its content height, excluding the
-system inset, is `max(56, 32 + textScaler.scale(16))`: 56 dp at normal text and
-64 dp at 200 percent, so it grows with the reviewer's text size and never clips
-a label. The numbers are named in `UiTabBarStyle` rather than borrowed from a
-token that means something else: 56 is the HIG tab bar's 49 pt plus room for
-Dynamic Type, above the 48 dp Material and WCAG target; 32 is the 24 dp glyph
-and one 8 dp step of air; 16 is the line the label sits in, scaled with the
-text. Below the content the bar pads by `MediaQuery.viewPaddingOf(context).bottom`
+system inset, is `max(56, 32 + textScaler.scale(16) + 4)`: 56 dp at normal text
+and 68 dp at 200 percent, so it grows with the reviewer's text size and never
+clips a label. The numbers are named in `UiTabBarStyle` rather than borrowed
+from a token that means something else: 56 is the HIG tab bar's 49 pt plus room
+for Dynamic Type, above the 48 dp Material and WCAG target; 32 is the 24 dp
+glyph and one 8 dp step of air; 16 is the line the label sits in, scaled with
+the text; the 4 is the gap the cell pads under the label. The 4 is in the
+formula so the glyph keeps its 4 dp of air above it and 4 dp below it at every
+text scale; a first version without it put the glyph about 3 dp under the top
+line at 200 percent (corrected 2026-10-17, same day), and normal text is
+unchanged because 56 governs there. Below the content the bar pads by `MediaQuery.viewPaddingOf(context).bottom`
 (the home indicator on an iPhone, the gesture or three button bar on Android)
 with the `paper` ground running under it. That inset is the only part that
 varies with the device: behaviour adapts, identity does not (09 section 2
