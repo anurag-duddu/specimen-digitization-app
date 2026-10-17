@@ -5,7 +5,8 @@
 > supersede parts of this document for the go-live program. Each superseded
 > clause keeps its original text and carries a dated note naming the decision.
 > The [go-live amendment](#go-live-amendment-2026-09-23-g9) at the end records
-> the USD 25 ceiling. [`golive/RELEASE.md`](golive/RELEASE.md) lists the code
+> the USD 25 ceiling; the [amendment of 2026-10-17](#amendment-2026-10-17-g9-and-g30)
+> raises it to USD 30 (G9). [`golive/RELEASE.md`](golive/RELEASE.md) lists the code
 > that still enforces a superseded clause until a later go-live pull request
 > changes it.
 

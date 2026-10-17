@@ -10,8 +10,10 @@ new release inputs must explicitly select the approved additive contracts.
 > [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > supersede parts of this document for the go-live program. Each superseded
 > clause keeps its original text and carries a dated note naming the decision.
-> The ceiling is now USD 30 (G9, raised from USD 25 on 2026-10-17;
-> [amendment](execution/APPROVED_RELEASE_BUDGET.md#go-live-amendment-2026-09-23-g9)),
+> The ceiling is now USD 30 (G9,
+> [amendment](execution/APPROVED_RELEASE_BUDGET.md#go-live-amendment-2026-09-23-g9);
+> raised from USD 25 on 2026-10-17,
+> [amendment](execution/APPROVED_RELEASE_BUDGET.md#amendment-2026-10-17-g9-and-g30)),
 > trace content follows G3
 > ([amendment](execution/APPROVED_LOGFIRE_TRACING.md#go-live-amendment-2026-09-23-g3)),
 > and data and runtime releases deploy on merge without release inputs (G11).

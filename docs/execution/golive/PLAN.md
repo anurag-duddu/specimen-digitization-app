@@ -374,7 +374,8 @@ The USD 30 ceiling (G9, raised from USD 25 on 2026-10-17; section 2.1) covers
 everything. The pipeline records every paid
 call's cost on the run and refuses a paid step whose worst-case reservation
 would cross the configured model allowance; a Cloud Billing budget alert
-watches the whole project. The production model allowance is USD 28 (G30,
+watches the whole project (its threshold after 2026-10-17 is Not confirmed;
+section 2.1). The production model allowance is USD 28 (G30,
 raised from USD 16 on 2026-10-17; section 2.1). By
 coordinator ruling on the mechanism:
 - Each paid call reserves its worst-case cost before it starts, in one atomic
