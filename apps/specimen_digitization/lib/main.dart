@@ -15,7 +15,6 @@ import 'src/app/routes.dart';
 import 'src/app/session_notifier.dart';
 import 'src/app_check.dart';
 import 'src/app_reload.dart';
-import 'src/app_reload_factory.dart';
 import 'src/auth.dart';
 import 'src/connection_config.dart';
 import 'src/email_link_browser.dart';

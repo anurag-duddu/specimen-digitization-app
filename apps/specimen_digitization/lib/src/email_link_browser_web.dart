@@ -2,6 +2,8 @@ import 'dart:js_interop';
 import 'email_link_cleanup.dart';
 import 'magic_link.dart';
 
+export 'app_reload_web.dart';
+
 @JS('window.history.replaceState')
 external void _replaceState(JSAny? state, String title, String url);
 

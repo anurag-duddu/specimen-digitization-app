@@ -21516,3 +21516,29 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
   passed 130 tests (26 new recovery cases); the negative baseline is retained
   in this task's external evidence. Fresh final review and full canonical run
   are required; interrupted d853 results are not reused as a passing gate.
+
+- Final source review approved recovery `39c7f22e` / tree `ee7e22a9`.
+  Its fresh canonical run then failed one architecture gate: the new
+  `app_reload_factory.dart` conditional export was not a registered platform
+  capability. Python passed 18,225 / 49 skipped; design-system passed 1,307;
+  application passed 3,123 / seven skipped / one failed. The formatter,
+  release build and route smoke did not run. This is a failed canonical run,
+  not a release qualification.
+- The correction consolidates selection into the existing conditional
+  `email_link_browser.dart` boundary: its web/stub implementations reexport
+  the unchanged reload adapters. The extra conditional factory and main
+  import are removed. No platform scanner, capability allowance, assertion
+  or required check was changed. Independent review approved this bounded
+  integration, and the architecture plus recovery suites passed all 31 tests.
+  Fresh full canonical verification remains required before push.
+- PR #374 Hosting run 39079047147 succeeded at 23:40:04 UTC and the public
+  marker matches exact merge `1b1a0b08`, run/attempt 39079047147/1. Runtime
+  candidate 39079047085 also succeeded. Data 39079047193 failed Google setup;
+  its bounded diagnostic says CLI exit 2, provider_provision, HTTP 200, with
+  no API code, status, reason or permission. That last recognized response
+  does not establish success or a new permission diagnosis. One field-masked
+  owner read at 23:30:59 UTC returned HTTP 404: Google provider remains absent.
+  No further grant or blind retry was made. Runtime's Data dependency failed;
+  full three-workflow release remains incomplete. The owner Google scope
+  question is still unanswered. The optional deferral is prepared externally
+  only; no flag, provisioning intent, or release gate has changed.
