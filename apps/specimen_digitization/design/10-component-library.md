@@ -808,6 +808,56 @@ every text scale, so what gives is the capsule: it scrolls through
 destination is scrolled into view when it changes. The pill overflowed by 56
 dp at 200 dp before this, which the gallery matrix counted six times.
 
+**`UiTabBar`.** Added 2026-10-17. The compact window's bottom navigation, one
+component on every platform. A docked, full width bar flush to the bottom edge:
+a solid `paper` ground, a top line of exactly one physical pixel
+(1 / device pixel ratio) in `boundary`, and no pill, no indicator, no
+elevation, no surface tint and no glass. Its content height, excluding the
+system inset, is `max(56, 32 + textScaler.scale(16))`: 56 dp at normal text and
+64 dp at 200 percent, so it grows with the reviewer's text size and never clips
+a label. The numbers are named in `UiTabBarStyle` rather than borrowed from a
+token that means something else: 56 is the HIG tab bar's 49 pt plus room for
+Dynamic Type, above the 48 dp Material and WCAG target; 32 is the 24 dp glyph
+and one 8 dp step of air; 16 is the line the label sits in, scaled with the
+text. Below the content the bar pads by `MediaQuery.viewPaddingOf(context).bottom`
+(the home indicator on an iPhone, the gesture or three button bar on Android)
+with the `paper` ground running under it. That inset is the only part that
+varies with the device: behaviour adapts, identity does not (09 section 2
+principle 5).
+
+Two to five equal cells, the whole cell being the hit target (48 by 48 at
+least at every density and text scale). A cell is the stock iOS bar's anatomy
+rebuilt in our parts: a 4 dp pad under a column that ends at the inset, the
+glyph centred in the height the label leaves, the label under it. The glyph is
+the destination's Phosphor glyph at 24 in `regular` and `ink.secondary`; the
+current destination is `fill` and `ink` (09 section 7). The label is always
+drawn: `label.small`, sentence case, one line, the same colour as its glyph. On
+a change the two glyph weights and the label colour cross-fade over
+`navigationGlide` (09 section 8), which is zero under reduced motion. Semantics
+are the pill's: `tab` per cell with `selected`, inside a `tabBar` group, the
+label in the node. `Left` and `Right` move focus (wrapping, mirrored under
+RTL), `Enter` and `Space` select, and the focus ring is drawn inside the cell
+because the bar touches the screen's edges and its neighbours. `UiTabBar`
+takes an optional `iconKeyOf` so a shell or a test can find and measure a
+glyph without the bar knowing about either. It retires `CupertinoTabBar` and
+the compact `NavigationBar` from the shell: `AppShell` draws `UiTabBar` on
+every platform at the compact window class and no longer branches on
+`defaultTargetPlatform`. `UiPillNav` stays in the library for a window that
+wants a floating capsule; compact phones do not use it.
+
+Why. The shell drew `CupertinoTabBar` on iOS and Material's `NavigationBar`
+(a 32 dp pill indicator, 64 dp of content) on Android, which copied each
+platform's stock widget and put two products' identities in one app. The owner,
+in a Claude Code session on 2026-10-17: "btw ios nav behaves perfectly but
+android has too much padding/space". And, in the same session: "are you sure it
+is following desired guidelines given flutter we are cross-platform and brand
+focsed less native focused but still tream guidelines seriously not copy".
+Source for both sentences: the owner's messages in the Claude Code session of
+2026-10-17. The target is therefore the iPhone's proportions, which he called
+perfect, rebuilt as our own anatomy so the two platforms are the same bar.
+Bottom tabs on phones, rather than a sidebar or drawer, stay as the owner
+corrected on 2026-09-29.
+
 **`UiRail`.** For medium windows: a 72 dp column of the same discs, top-aligned
 under the mark; extended form at expanded width shows `label.small` under each
 disc. Retires `NavigationRail`.

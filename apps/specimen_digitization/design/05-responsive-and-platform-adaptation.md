@@ -49,7 +49,7 @@ all four windows in `test/verification/fit_matrix_test.dart`:
 
 | Class | Navigation the shell draws | Where |
 |---|---|---|
-| Compact | `UiPillNav`, a floating glass capsule of discs at the foot of the window | `lib/src/app/shell.dart` |
+| Compact | `UiTabBar`, a docked bottom tab bar, the same on every platform (amended 2026-10-17, below) | `lib/src/app/shell.dart` |
 | Medium | `UiRail`, collapsed: a glyph per destination with its name on a tooltip | the same |
 | Expanded | `UiRail`, extended: the name drawn under the glyph | the same |
 | Large and extra-large | `UiSidebar`, a permanent column with the mark in its header and the account and help controls in its footer | the same |
@@ -186,9 +186,25 @@ What ships, and what a device capture shows:
 
 | Class | Navigation | Collection switcher | Account and help |
 |---|---|---|---|
-| Compact | `UiPillNav`, two discs, floating over the body | `UiMenuTrigger` in the top bar, capped at `AppShell.switcherMaxWidth`, 280 dp including padding | Two `UiIconButton`s in the top bar |
+| Compact | `UiTabBar`, two cells, docked to the bottom edge (amended 2026-10-17, below) | `UiMenuTrigger` in the top bar, capped at `AppShell.switcherMaxWidth`, 280 dp including padding | Two `UiIconButton`s in the top bar |
 | Medium and expanded | `UiRail`, collapsed then extended | the same | the same |
 | Large and extra-large | `UiSidebar`, permanent | in the sidebar header | in the sidebar footer |
+
+**Amendment, 2026-10-17 (compact navigation is one brand bar).** The compact
+rows above, here and in section 1, name `NavigationBar` and then `UiPillNav`;
+what ships is `UiTabBar` (10 section 4.4), the same component on iOS and on
+Android. It is docked, full width and flush to the bottom edge, with a content
+height of `max(56, 32 + scaled 16)` plus the system inset, a one physical pixel
+`boundary` line along its top and a `paper` ground that runs under the inset.
+The shell used to draw `CupertinoTabBar` on iOS and Material's
+`NavigationBar` on Android; that platform fork is gone, because layout decisions
+use the window class and never the platform (section 1, "Rule: window size,
+never device type") and because 09 section 2 principle 5 keeps component
+anatomy ours on every platform. The system inset under the bar is the only
+platform dependent part, which is what "behaviour adapts" means here (section
+5, "Status bar / safe areas"). The owner's words, in a Claude Code session on
+2026-10-17: "btw ios nav behaves perfectly but android has too much
+padding/space".
 
 Three things the old table got wrong about the shipped client and one it got
 right. Wrong: the switcher is a menu button rather than a form field, which is

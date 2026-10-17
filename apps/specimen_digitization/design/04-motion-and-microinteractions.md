@@ -527,6 +527,14 @@ must not feel a buzz while the device is held over a copy stand steadying a shot
 | 11 | Global load or mutate indicator (`workspace.dart:676-679`) | opacity only | `quick` 100, `standard` | instant | none | Always occupy the 4 px row. Render `LinearProgressIndicator` inside an `Opacity`/`AnimatedOpacity` that goes to 0 rather than removing the widget, so the page never jumps. |
 | 12 | Sign-out failure, nav destination change | See row 10 for the error; nav destination change is Material's own `NavigationBar` / `NavigationRail` indicator | Material default | Material default | `selectionClick()` on mobile | Leave `NavigationBar` alone. The destination indicator is already correct M3 motion. |
 
+**Amendment, 2026-10-17, row 12.** The compact navigation is no longer Material's
+`NavigationBar`: it is `UiTabBar` (10 section 4.4), so its destination change is
+ours. The two glyph weights and the label colour cross-fade over
+`navigationGlide` (`medium`, 250 ms), and that token is zero under reduced
+motion, so the change lands in one frame on both signals of section 2.5. The
+SDK indicator fade that `NavigationBar` kept under Android's flag is gone with
+it, and so is the instruction above to leave that bar alone.
+
 ### 4.2 Queue
 
 | # | Interaction, trigger | What moves | Duration, curve | RM | Haptic | Flutter approach |
