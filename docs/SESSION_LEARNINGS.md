@@ -20396,6 +20396,63 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
 
 - Main integration correction: PR349 e7fcb315 hosted checks all passed, including the single Android fresh-runner retry (CI/CD38986451543 attempt2), but main advanced through independent mobile PR350 to0603b3d61dc8c7cb1ddc978399074ef2b89a8871 before merge. GitHub reported the append-only log conflict. Root merged origin/main locally, preserving its exact log byte prefix plus this session's exact committed and uncommitted suffixes. Mobile source/tests/references are taken unchanged from reviewed main; no location source/test/config/dependency change. The integrated head requires fresh independent review, canonical verification before push and hosted checks before merge. Previous hosted/local passes remain scoped to e7fcb315, not this integrated tree. No production or paid action occurred.
 
+## 2026-10-17 UTC - Correction: PR343's 760 s held only on matched sources; measured shard costs kept on code PRs (SHARD-BALANCE-20261017)
+
+- Task: shard-balance regression after PR #343, started by the session that coordinates PR #343's follow-ups. Branch `claude/shard-balance-keep-costs`, worktree `.claude/worktrees/eloquent-lumiere-496801`, PR https://github.com/anurag-duddu/specimen-digitization-app/pull/351, commits `4c488692` (fix), `de39c55a` (manifest-digest assertion) and this entry.
+- Correction to `## 2026-10-16 - Correction: PR343 merge and release verified (TEST-SUITE-RELIABILITY-RELEASE-20261016)` and `## 2026-10-16 - Python suite reliability, measured sharding and retained gaps (TEST-SUITE-RELIABILITY-20261015)`: the 760 s required path (run 38886008122 on `e2ba7c8c`) and 779 s (main run 38887586799 on `5f5ae87b`) held only while the checked-out sources matched the timing manifest's `source_fingerprints`. They are not the steady state for code changes. `load_timings` emptied the whole manifest when any fingerprinted file differed. So every run whose fingerprinted sources differed from the manifest's weighed modules at 0.1 s per item, and the few-node research-harness modules shared shards. That covers every code PR and every main push from PR #346's merge `ea2fdcc1` on (6 to 17 files differing). The docs-only main pushes `99152171` (PR #344) and `d341a72c` (PR #341) still matched, as did `5f5ae87b` (`match-history.log`). Re-measured with the PR #343 closeout's path definition (first job start to last required check):
+  - run 38988919628, main `0603b3d6`: slowest shard 1,431 s, fastest 106 s, Python path 1,468 s;
+  - run 38990810987, PR #349 `5eb402aa`: slowest 1,735 s, fastest 83 s, Python path 1,764 s;
+  - run 38992945619, main `6270ba1f`: slowest 1,632 s, fastest 74 s, Python path 1,672 s.
+
+  The pre-#343 baseline was 1,318 s. origin/main at `6270ba1f` differs from the manifest's recorded fingerprints in 17 files, including the planner files.
+- Fix (`scripts/ci/python_shards.py`): fingerprints are provenance only, and `load_timings` keeps every validated cost. New `module_weights` sets each module's weight from its own collected inventory:
+  - unchanged node set: exact complete cost;
+  - changed node set: measured seconds plus 0.1 s per item;
+  - unknown module: 0.1 s per item.
+
+  The `fingerprints=` parameter of `load_timings` is removed. Collection, `verify`'s exact-once checks, `python_scope.py`, the workflow and the timing JSON are unchanged. `docs/DEPLOYMENT.md` lines 174-178 now describe the rule.
+- Evidence, simulation. Real origin/main collection (16,523 tests, 405 modules), committed manifest, the 17 real changed files. Slowest/fastest are estimated shard seconds from measured module costs:
+
+  | Plan | Slowest/fastest | Slowest/mean |
+  |---|---|---|
+  | Old planner | 1,154/77 s | 2.49 |
+  | Lower-bound for every module (prior + seconds) | 567/345 s | 1.22 |
+  | New planner | 483/270 s | 1.04 |
+  | New planner, hosted-like inventories | 467/449 s | 1.008 |
+  | Old planner, one test added to each of the two heaviest modules | 1,295/56 s | 2.80 |
+  | New planner, the same scenario | 483/270 s | 1.04 |
+  | That scenario with changed modules dropped to the prior | - | 1.86 |
+
+  Every row is reproduced by `variants.py` (output `variants.log`), which cross-checks its new-rule plan against the real `partition()`. Evidence folder: `~/specimen-golive/shard-balance-20261017/`, which also holds the input collection `nodes-main.txt`, `mutants.py`/`mutants.log`, `hosted.py` with its run logs, `match_history.py`/`match-history.log` and both Codex verdicts.
+- Evidence, tests. Two new tests fail on the origin/main planner: costs `{}` and both heavy modules on one shard. Five tests that asserted the old "mismatch empties everything" scheduling now assert the new scheduling. Four of them pin exact weights; the fifth, the committed-manifest test, pins the full cost map, the inventory digests and the file digest. Mutant run in throwaway worktrees, over `test_python_shards.py` and `test_refresh_python_shard_timings.py`:
+
+  | Planner | Result |
+  |---|---|
+  | origin/main | 18 failed |
+  | Fix | 253 passed |
+  | M1: wipe reinstated | 14 failed |
+  | M2: changed inventory to prior only | 3 failed |
+  | M3: no per-module inventory check | 2 failed |
+- Evidence, hosted: CI/CD run 38997163664 on `de39c55a` (`pull_request`, attempt 1) succeeded. Aggregate job 117294290226 reported "All 16524 collected Python tests completed exactly once across 12 shards." Shard jobs: slowest 626 s, fastest 336 s, mean 510 s, slowest/mean 1.227. Python path and required path were both 659 s, against 1,468-1,764 s on the three runs above and 760 s for PR #343. PR #343's own matched-source runs, for comparison:
+  - run 38886008122: 719/382 s, slowest/mean 1.340;
+  - run 38887586799: 734/372 s, slowest/mean 1.418.
+
+  The target of a slowest shard within about 15% of the mean is **not met yet**. Each shard log lists its 25 slowest phases, and summed per module they show modules already slower than the manifest says:
+  - `test_final_progress_carrier.py`: at least 217.57 s, manifest 123 s;
+  - `test_organiser_raw_reading_composer.py`: at least 133.45 s, manifest 79 s;
+  - `test_taxonomy_automatic_publication.py`: at least 106.70 s, manifest 65 s;
+  - `test_parallel_roles.py`: at least 510.12 s, manifest 467 s.
+
+  That is cost drift since the measurement at `4e6d73b2`. The floor is `test_parallel_roles.py`, which alone took a 547 s shard job against the 510 s mean (1.07). Closing the gap needs the timing-manifest refresh.
+- Validation, local, on `4c488692`. pre-commit (all files), `uv sync --frozen` and the UI-strings ratchet passed. `python_shards.py local --count 6` was **not green**: 16,471 passed, 49 skipped, 5 failed, 16,525 collected. The 5 failures were wall-clock deadline tests in `test_reader_failures_recoverable.py`, `test_reader_effect_timeout.py` and `test_sam3_runtime.py`, at load average 44-47. All 5 passed when rerun in isolation. A second run on `de39c55a`, at load 33-43, had 5 failures and 2 errors, all timing or process tests: `test_worker_cleanup_cutoff.py` (2), `test_worker_supervisor.py`, `test_sam3_runtime.py`, `test_reader_failures_recoverable.py`, and `test_upload_completion_http.py` (2 errors). All 7 passed in isolation (11 parametrized cases). The branch changes no file under `src/` or `tests/`. Flutter, web build and route smoke were not run, because no Dart, web or Hosting file changed.
+- Reusable learnings:
+  - A provenance gate on a performance hint can switch the hint off exactly when it matters. PR #343's 760 s and 779 s came from runs whose sources matched the manifest. Judge a planner on a code-change run, not on its calibration run.
+  - Local collection differs from hosted collection. `tests/test_georef_locality.py` parametrizes over Unicode-derived sets (local Python 3.11 versus hosted 3.12), and `scripts/ops/test_simple_owner_setup.py` collects Bash-path nodes. Local plans see those inventories as changed, so judge balance from hosted runs or with hosted-like inventories.
+  - Greedy failing tests need hand-traced layouts. With the item prior, a naive layout often spreads heavy modules by parity alone, and such a test passes on the old code.
+  - `refresh_python_shard_timings.py` re-derives every measured leaf's assignment. Its planner must match the planner those leaves ran. Leaves from pre-fix code on a mismatched tree are refused, failing closed: refresh from a post-fix run, or from the measured checkout.
+- Failed approach: falling back to lower-bound weights (prior + seconds) for every module after a mismatch. The 16,523-item prior adds about 1,650 s, mostly on cheap parametrized modules, which gives slowest/mean 1.22.
+- Unresolved: merge, the three main workflows for the merge SHA, and hosted balance on later code PRs are Not confirmed at entry time. Author-reported by this session, not verifiable from repository evidence: the owner's merge OK was typed in this session's chat on 2026-10-17 UTC: "Yes, merge PR #351 once its final head has an exact-head Codex APPROVE naming that SHA and every required check is green." An earlier approval relayed by the coordinating session was not acted on. The timing-manifest refresh belongs to the `claude/test-suite-gaps` integrator. The local deadline tests stay load-sensitive.
+
 
 ### 2026-10-16 - INTAKE-UX-LANE1 status model and pipeline hand-off
 
