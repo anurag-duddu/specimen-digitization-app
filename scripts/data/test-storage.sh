@@ -1,20 +1,31 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Reject configuration before starting Node, which creates output and cleanup state.
+if (( $# )); then
+  if (( $# != 2 )) || [[ $1 != --contract-output || $2 == --* ]]; then
+    printf '%s\n' 'unknown argument or missing value' >&2
+    exit 2
+  fi
+fi
+ports=("${SPECIMEN_TEST_PG_PORT:-5559}" "${SPECIMEN_TEST_DC_PORT:-9509}" "${SPECIMEN_TEST_STORAGE_PORT:-9299}")
+for index in "${!ports[@]}"; do
+  port=${ports[index]}
+  # Normalize leading zeroes before bounded decimal arithmetic (never octal).
+  while [[ $port == 0* && ${#port} -gt 1 ]]; do port=${port#0}; done
+  if [[ ! $port =~ ^[0-9]+$ || ${#port} -gt 5 ]]; then
+    printf '%s\n' 'invalid ports' >&2
+    exit 2
+  fi
+  port=$((10#$port))
+  if (( port <= 1024 || port >= 65536 || port == 3000 || port == 8000 )); then
+    printf '%s\n' 'invalid ports' >&2
+    exit 2
+  fi
+  ports[index]=$port
+done
+if (( ports[0] == ports[1] || ports[0] == ports[2] || ports[1] == ports[2] )); then
+  printf '%s\n' 'invalid ports: duplicate values' >&2
+  exit 2
+fi
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-cd "$repo_root"
-storage_port="${SPECIMEN_TEST_STORAGE_PORT:-9299}"
-[[ "$storage_port" =~ ^[0-9]+$ && "$storage_port" -gt 1024 && "$storage_port" -lt 65536 ]] || exit 1
-[[ "$storage_port" != 3000 && "$storage_port" != 8000 ]] || exit 1
-test_dir="$(mktemp -d "${TMPDIR:-/tmp}/specimen-storage-test.XXXXXX")"
-node - "$repo_root" "$storage_port" "$test_dir" <<'JS'
-const fs = require('node:fs');
-const [root,port,destination] = process.argv.slice(2);
-fs.writeFileSync(`${destination}/firebase.json`, JSON.stringify({
- storage:{rules:`${root}/storage.rules`},
- emulators:{storage:{host:'127.0.0.1',port:Number(port)},ui:{enabled:false},singleProjectMode:true}
-}));
-JS
-# Caller selects Java21+ using task-scoped JAVA_HOME/PATH, never global config.
-firebase emulators:exec --only storage --project demo-specimen-data \
-  --config "$test_dir/firebase.json" 'node scripts/data/storage-test.mjs'
-printf 'Storage emulator configuration retained at %s\n' "$test_dir"
+exec node "$repo_root/scripts/data/engine-contract-reporter.mjs" storage "$@"

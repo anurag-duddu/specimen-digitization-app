@@ -125,7 +125,7 @@ void main() {
         isEmpty,
       );
       await tester.enterText(find.byType(UiField), 'STAFF@FIELDMUSEUM.ORG');
-      await tester.tap(find.text('Confirm and sign in'));
+      await tester.tap(find.text('Sign in'));
       await tester.pump();
       expect(find.text('Signing in…'), findsOneWidget);
       expect(find.byType(CollectionWorkspace), findsNothing);
@@ -139,7 +139,7 @@ void main() {
       expect(browser.clearCount, 1);
       await tester.tap(find.text('Sign out'));
       await tester.pumpAndSettle();
-      expect(find.text('Send sign-in link'), findsOneWidget);
+      expect(find.text('Send link'), findsOneWidget);
       expect(find.text('Reset password'), findsNothing);
     },
   );
@@ -191,7 +191,7 @@ void main() {
         ),
       );
       await tester.enterText(find.byType(UiField), 'staff@fieldmuseum.org');
-      await tester.tap(find.text('Send sign-in link'));
+      await tester.tap(find.text('Send link'));
       await tester.pump();
       expect(find.text('Sending link…'), findsOneWidget);
       expect(
@@ -200,7 +200,7 @@ void main() {
       );
       access.sendWait!.complete();
       await tester.pumpAndSettle();
-      expect(find.text('Resend sign-in link'), findsOneWidget);
+      expect(find.text('Resend link'), findsOneWidget);
       expect(
         tester.widget<UiButton>(find.byType(UiButton).first).onPressed,
         isNull,
@@ -212,7 +212,7 @@ void main() {
         tester.widget<UiButton>(find.byType(UiButton).first).onPressed,
         isNotNull,
       );
-      await tester.tap(find.text('Use a different email'));
+      await tester.tap(find.text('Change email'));
       await tester.pumpAndSettle();
       expect(
         tester.widget<UiField>(find.byType(UiField)).controller!.text,
@@ -336,9 +336,7 @@ void main() {
     await tester.pump();
     expect(
       tester
-          .widget<UiButton>(
-            find.widgetWithText(UiButton, 'Use a different email'),
-          )
+          .widget<UiButton>(find.widgetWithText(UiButton, 'Change email'))
           .onPressed,
       isNull,
     );

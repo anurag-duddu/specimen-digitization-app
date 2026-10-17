@@ -1,4 +1,6 @@
-// The adaptive form: a sheet on a compact window, a dialog above it.
+// The adaptive form: a sheet where the window is stacked, a dialog where it
+// docks (05 section 3.7, amended 2026-10-17: the window's arrangement, not
+// the compact width class, so it agrees with the tab bar).
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -33,7 +35,7 @@ void main() {
     expect(DialogWidths.wide, 640);
   });
 
-  testWidgets('below 600 it is a sheet against the bottom of the window', (
+  testWidgets('a stacked window gets a sheet against the bottom of it', (
     WidgetTester tester,
   ) async {
     await pumpComponent(tester, _opener(), size: const Size(420, 800));
@@ -43,7 +45,7 @@ void main() {
     expect(modalIsSheet(tester), isTrue);
   });
 
-  testWidgets('at 600 and above it is a dialog at the given width', (
+  testWidgets('a docked window gets a dialog at the given width', (
     WidgetTester tester,
   ) async {
     await pumpComponent(tester, _opener(), size: const Size(1000, 800));
@@ -56,14 +58,25 @@ void main() {
     );
   });
 
-  testWidgets('exactly 600 is already the dialog form', (
-    WidgetTester tester,
-  ) async {
-    await pumpComponent(tester, _opener(), size: const Size(600, 800));
-    await tester.tap(uiButton('Open'));
-    await tester.pumpAndSettle();
-    expect(modalIsSheet(tester), isFalse);
-  });
+  // The boundary moved with the arrangement: a window from 600 to 767 wide
+  // draws the tab bar, so its forms are sheets too. Both sides of the new
+  // boundary are pinned, as both sides of 600 were.
+  for (final (Size window, bool sheet) in <(Size, bool)>[
+    (const Size(600, 800), true),
+    (const Size(767, 800), true),
+    (const Size(768, 800), false),
+    (const Size(1000, 599), true),
+    (const Size(1000, 600), false),
+  ]) {
+    testWidgets('at $window it is ${sheet ? 'a sheet' : 'the dialog form'}', (
+      WidgetTester tester,
+    ) async {
+      await pumpComponent(tester, _opener(), size: window);
+      await tester.tap(uiButton('Open'));
+      await tester.pumpAndSettle();
+      expect(modalIsSheet(tester), sheet);
+    });
+  }
 
   testWidgets('the wide dialog is wider than the standard one', (
     WidgetTester tester,

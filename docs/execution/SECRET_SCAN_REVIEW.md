@@ -480,3 +480,123 @@ exception remain unchanged. Other values, paths and adjacent credential-shaped
 fields remain scanned. Private provenance/rejection-control receipts are
 retained by Lane P; completion of those controls is recorded separately in
 SESSION_LEARNINGS, rather than asserted here before execution.
+
+## 2026-10-16 engine-contract tier and shared wire fixture
+
+The test-suite gaps program (branch `claude/test-suite-gaps`) added five strings that
+detect-secrets reports as high entropy. None is a credential. (The synthetic PNG is
+now written with stored deflate blocks and no longer scans as high entropy, so its entry
+was removed.)
+
+- `scripts/data/engine-toolchain.json`: the published SHA-256 of each owner-approved
+  engine download (Data Connect 3.2.0 Linux, Storage rules runtime 1.1.3 JAR,
+  firebase-tools 15.8.0 Linux binary), taken from the firebase-tools release manifest
+  and the GitHub release asset digest.
+- `tests/fixtures/general_api_contracts.json`: the deterministic idempotency key of the ordinary synthetic HTTP journey both Python and
+  Dart read.
+- `.github/workflows/ci-cd.yml`: the engine job's runner tool-selection block (runner
+  tool paths only; the YAML plugin reports the block at its `run:` key).
+
+| File | Type | Scanner SHA-1 | Value |
+|---|---|---|---|
+| `.github/workflows/ci-cd.yml` | Base64 High Entropy String | `4e053c740a8a9b1fa4ffe7d95e81278a99e5ccd4` | engine job runner tool paths |
+| `scripts/data/engine-toolchain.json` | Hex High Entropy String | `07a4593b6f7f875bb650c2263406d4da24c2345a` | published SHA-256 pin of an approved engine download |
+| `scripts/data/engine-toolchain.json` | Hex High Entropy String | `f92babbd4bddd1527d1656e2d319924beae14f7b` | published SHA-256 pin of an approved engine download |
+| `scripts/data/engine-toolchain.json` | Hex High Entropy String | `13685940fb69a045ed2a0b5800962f51155d0948` | published SHA-256 pin of an approved engine download |
+| `tests/fixtures/general_api_contracts.json` | Hex High Entropy String | `5d876c14b2eb6b173d3dd0d4715df50b4cb352a4` | synthetic shared-wire fixture value |
+
+Only these five exact path/type/hash findings were added to `.secrets.baseline` with
+`is_secret: false`; earlier entries, detectors, thresholds and filters are unchanged.
+Gitleaks then flags the five scanner identifiers, so one new rule-local AND allowlist
+matches only those exact `hashed_secret` lines inside `.secrets.baseline`. No file,
+path or field pattern is excluded from either scanner.
+
+## 2026-10-17 shared-wire fixture Gitleaks correction
+
+The preceding engine-contract audit covered the scanner identifier but omitted
+Gitleaks' finding on the actual synthetic `Idempotency-Key` line. The exporter
+passes that fixed value to its in-process TestClient using emulator adapters,
+SQLite and synthetic identity and membership. Python and Dart contract tests
+assert the same value; it is not an authentication credential. Its recomputed
+SHA-1 matches the previously reviewed baseline identifier
+`5d876c14b2eb6b173d3dd0d4715df50b4cb352a4`.
+
+The additional `generic-api-key` rule-local AND allowlist requires both the exact
+`tests/fixtures/general_api_contracts.json` path and the complete anchored field
+line containing that one fixed value. The fixture, exporter, default rules and
+existing exceptions remain unchanged. A different value, path or field, and
+credentials adjacent to or appended on the same line, remain subject to scanning.
+Validation of those controls is recorded in SESSION_LEARNINGS.
+
+
+## 2026-10-17 public CocoaPods specification checksums
+
+Adding Google's native sign-in dependency introduces AppAuth 2.1.0 and
+GTMAppAuth 5.0.0. Gitleaks classifies their `SPEC CHECKSUMS` values as generic
+API keys because their names contain Auth. CocoaPods 1.16.2 computes these
+values as SHA-1 of the public podspec file bytes. Independent recomputation
+against the installed trunk specifications matches both locked values; the
+specifications point to openid/AppAuth-iOS tag 2.1.0 and google/GTMAppAuth tag
+5.0.0 respectively. These are public dependency integrity metadata.
+
+A separate rule-local AND exception matches only the exact iOS Podfile.lock
+path and each complete anchored dependency-name/checksum line. It excludes no
+whole file or general checksum pattern. Different values, paths and fields,
+and adjacent or appended credential text, continue to be scanned. Control
+execution is recorded in SESSION_LEARNINGS.
+
+## 2026-10-17 shared-wire fixture idempotency key: reviewed Gitleaks false positive
+
+Pinned Gitleaks 8.30.1 reports `tests/fixtures/general_api_contracts.json` line 23 as
+`generic-api-key` (fingerprint `tests/fixtures/general_api_contracts.json:generic-api-key:23`)
+whenever a staged diff adds that line, for example a commit that brings the file in. The
+line is the `Idempotency-Key` request header of the `review_batch` request in the ordinary
+synthetic HTTP journey; its value is a 64-hex SHA-256 that begins `7651ca19` and ends
+`a77aa8` (the complete value is on that line and in the exact entry in `.gitleaks.toml`).
+It is not a credential. The exporter `scripts/ci/export_general_api_contract_fixtures.py`
+carries the value as a literal (line 378) in the request it records;
+`tests/test_general_api_contract_fixtures.py` asserts the exporter's output equals the
+committed fixture; the same literal is committed in that test (line 93) and in
+`apps/specimen_digitization/test/general_api_shared_contract_test.dart` (lines 326, 452 and
+706), each under a detect-secrets pragma that calls it a synthetic idempotency SHA-256. The
+Dart test also reads the fixture. detect-secrets already records the fixture line as
+reviewed (the 2026-10-16 section above, scanner identifier
+`5d876c14b2eb6b173d3dd0d4715df50b4cb352a4`); Gitleaks had no matching record.
+CI did not report it because `pre-commit run --all-files` invokes Gitleaks in its staged
+mode with nothing staged (see the publication supervisor section above).
+
+Owner decision, typed in the coordinator Claude Code session on 2026-10-17 at about 13:22Z,
+answering the coordinator's question (verbatim: "**Your decision:** how should we clear the
+false alarm?"), which offered two numbered options; the owner replied with this sentence instead of
+a number:
+
+> Yes: record that one test value as a reviewed false alarm with a single exact entry, in its own small reviewed PR to main. Keep every other scanner check unchanged.
+
+This follows, and does not widen, the 2026-10-16 ruling that forbids new allowlists,
+exclusions, skips or weaker checks without an explicit owner decision
+(SESSION_LEARNINGS, "Owner requires a proper fix without exceptions"). The new decision
+covers exactly one value. The coordinator's first option pointed at the existing `Podfile.lock`
+fingerprint entries in `.gitleaksignore` as the model for the entry; this record deliberately
+uses a value-bound `.gitleaks.toml` entry instead, because a fingerprint ignores any value at
+its line, which is the tighter reading of "a single exact entry".
+
+One new rule-local `[[rules.allowlists]]` block under `generic-api-key` in
+`.gitleaks.toml`, condition AND, binds both the exact path
+`^tests/fixtures/general_api_contracts\.json$` and a line pattern anchored on the complete
+`"Idempotency-Key": "<that 64-hex value>"` line, with the same optional comma and
+surrounding whitespace the existing line patterns tolerate. A line-number
+`.gitleaksignore` fingerprint was not used: it would ignore any value at line 23.
+The entry's line carries `# pragma: allowlist secret` like the file's other entries. Gitleaks
+skips its own config path (`detect/detect.go`, "skipping file: matches config or baseline
+path") and never reads `.gitleaks.toml` as content, so the pragma is for detect-secrets,
+which does scan the file and reports the line without it.
+
+Allowed: that one value, on that exact line shape, at that one path. Still flagged
+(staged-hook controls, listed in the pull request): the same line with any
+other value, the identical line or the whole fixture at any other path, a different
+credential-shaped value on its own line of the same fixture or appended to the allowed
+line, and a generic `api_key` or AWS access key id in another file. Default rules, every
+earlier exception, the `.gitleaksignore` entries, `.secrets.baseline` and
+`.pre-commit-config.yaml` are unchanged. Gitleaks scans only the added lines of a staged
+diff, so a staged edit that does not touch line 23 never reaches it; test with line 23
+in the diff.
