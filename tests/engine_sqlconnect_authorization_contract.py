@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 import json
 import os
+from pathlib import Path
 import re
 from threading import Barrier
 from uuid import UUID, uuid4
@@ -70,6 +71,7 @@ def _denied(reply, operation, label, *, member=None, client=None):
         "GetSpecimen": {"specimen", "specimenSnapshots"},
         "GetSnapshot": {"specimen", "specimenSnapshot"},
         "ListSpecimens": {"specimens"},
+        "ListSpecimenPage": {"specimens"},  # paging.gql: adapter list uses the keyset page.
         "GetReceipt": {"requestReceipt"},
         "CreateSpecimenV3": {"specimen_insert", "specimenSnapshot_insert", "requestReceipt_insert",
                              "outboxEvent_insert", "auditEvent_insert"},
@@ -98,6 +100,8 @@ def _denied(reply, operation, label, *, member=None, client=None):
             )
         elif value is not None:
             fields = {"active"} if field == "organizationMember" else {"active", "role", "canViewSensitive"}
+            if operation == "ListSpecimenPage" and field == "collectionMember":
+                fields = {"active", "canViewSensitive"}  # paging.gql selects no role.
             assert isinstance(value, dict) and value.keys() <= fields, f"{label}: unexpected membership data: {value}"
             for name, item in value.items():
                 assert (isinstance(item, str) if name == "role" else type(item) is bool), (
@@ -116,7 +120,11 @@ def _denied(reply, operation, label, *, member=None, client=None):
     if errors is not None:
         assert isinstance(errors, list) and errors, f"{label}: unexpectedly authorized: {reply}"
         assert not body.get("code") and not body.get("error"), f"{label}: mixed error envelopes: {body}"
-        expected_path = ["query", member] if mutation else [member]
+        # checksum.gql's query @redact collapses a child's failed @check to
+        # ['query'] on the wire (round-3 local probe). A wrapper path alone
+        # cannot identify which check refused: require that detail below.
+        redacted = mutation and not client and isinstance(errors[0], dict) and errors[0].get("path") == ["query"]
+        expected_path = ["query"] if redacted else (["query", member] if mutation else [member])
         for index, error in enumerate(errors):
             assert isinstance(error, dict) and isinstance(error.get("message"), str) and error["message"], (
                 f"{label}: malformed GraphQL error: {error}"
@@ -149,6 +157,16 @@ def _denied(reply, operation, label, *, member=None, client=None):
                 assert path in (None, [], [operation]), f"{label}: client failed a field check, not NO_ACCESS: {error}"
             else:
                 assert path == expected_path, f"{label}: expected membership check at {expected_path}, got {error}"
+                if redacted:
+                    details = extensions.get("debugDetails")
+                    assert isinstance(details, str), f"{label}: redacted denial must identify its membership check: {error}"
+                    checks = tuple(re.findall(r"Check Requirement Evaluated: Every\(path: ([^,\s]+),", details))
+                    # Source order is organizationMember, collectionMember;
+                    # either can fail alone, or both can fail in that order.
+                    allowed = {(f"query.{member}",)}
+                    if member == "organizationMember":
+                        allowed.add(("query.organizationMember", "query.collectionMember"))
+                    assert checks in allowed, f"{label}: wrong redacted membership check: {error}"
     else:
         # HTTP status alone proves nothing. Accept only a structured client auth
         # status (gRPC code or Google REST error), never a generic 401/403 page.
@@ -307,6 +325,182 @@ def test_denial_oracle_client_boundary(client, code):
     body["errors"].append(cascade)
     with pytest.raises(AssertionError):
         _denied(reply, "CreateSpecimenV3", "client must not accept field cascade", client=client)
+
+
+@pytest.mark.parametrize("member", ("organizationMember", "collectionMember"))
+@pytest.mark.parametrize("fault", (None, "data", "path", "first_code", "other_field", "metadata"))
+def test_denial_oracle_page_replay(member, fault):
+    # paging.gql: ListSpecimenPage selects specimens plus active/canViewSensitive
+    # membership metadata. These replies are synthetic, not engine evidence.
+    _, reply = _hosted_denial_fragment("foreign_actor")
+    body = reply[1]
+    body["data"] = {"organizationMember": None, "collectionMember": None, "specimens": None}
+    body["errors"][0]["path"] = [member]
+    body["errors"][1]["path"] = ["specimens"]
+    if fault == "data":
+        body["data"]["specimens"] = [{"id": "protected"}]
+    elif fault == "path":
+        body["errors"][0]["path"] = ["specimens"]
+    elif fault == "first_code":
+        body["errors"][0]["extensions"]["code"] = "UNAUTHENTICATED"
+    elif fault == "other_field":
+        body["errors"][1]["path"] = ["specimenSnapshots"]
+    elif fault == "metadata":
+        body["data"]["collectionMember"] = {"role": "reviewer"}
+    if fault is None:
+        _denied(reply, "ListSpecimenPage", "page refusal replay", member=member)
+    else:
+        with pytest.raises(AssertionError):
+            _denied(reply, "ListSpecimenPage", f"page refusal replay: {fault}", member=member)
+
+
+@pytest.mark.parametrize("operation", ("NotAConnectorOperation", "Memberships"))
+def test_denial_oracle_rejects_unregistered_refusal(operation):
+    # Memberships has actor/active filters but no membership @check; success
+    # there cannot substitute for a scope refusal on ListSpecimenPage.
+    member, reply = _hosted_denial_fragment("foreign_actor")
+    with pytest.raises(AssertionError, match="unrecognized refusal operation"):
+        _denied(reply, operation, "unregistered refusal replay", member=member)
+
+
+@pytest.mark.parametrize("member", ("organizationMember", "collectionMember"))
+@pytest.mark.parametrize("fault", (
+    None, "foreign_organization", "foreign_collection", "inactive", "duplicate", "missing_row",
+    "extra_field", "missing_table", "protected_data", "member_denial", "member_actor",
+    "malformed_active", "malformed_sensitive",
+    "target_grant", "page_data", "page_path", "page_code", "missing_page", "unknown_operation",
+))
+def test_denial_oracle_adapter_list_replay(member, fault):
+    # Synthetic admin expectations and wire replies, never an engine substitute.
+    scope = Scope(organization_id="10000000-0000-4000-8000-000000000001",
+                  collection_id="10000000-0000-4000-8000-000000000002")
+    own_org, own_collection = "20000000000040008000000000000001", "20000000000040008000000000000002"
+    uid = "synthetic-replay-actor"
+    expected = {
+        "organizationMembers": [{"organizationId": own_org, "active": True}],
+        "collectionMembers": [{"organizationId": own_org, "collectionId": own_collection,
+                               "active": True, "role": "reviewer", "canViewSensitive": True}],
+    }
+    # Organization revocation leaves the actor's active collection row; collection
+    # revocation leaves the active organization row. Neither grants scoped access.
+    if member == "organizationMember":
+        expected["collectionMembers"].append({
+            "organizationId": _uuid(scope.organization_id), "collectionId": _uuid(scope.collection_id),
+            "active": True, "role": "reviewer", "canViewSensitive": True,
+        })
+    else:
+        expected["organizationMembers"].append({"organizationId": _uuid(scope.organization_id), "active": True})
+    data = json.loads(_json(expected))
+    memberships = {"operationName": "Memberships", "variables": {"actorUid": uid}}
+    membership_body = {"data": data, "errors": []}
+    _, page_reply = _hosted_denial_fragment("foreign_actor")
+    page_reply[1]["data"] = {"specimens": None}
+    page_reply[1]["errors"][0]["path"] = [member]
+    page_reply[1]["errors"][1]["path"] = ["specimens"]
+    page = {"operationName": "ListSpecimenPage", "variables": _base(scope, uid)}
+    attempts = [(memberships, (200, membership_body)), (page, page_reply)]
+    if fault in {"foreign_organization", "foreign_collection"}:
+        table = "organizationMembers" if fault == "foreign_organization" else "collectionMembers"
+        data[table].append({**data[table][0], "organizationId": "30000000000040008000000000000001"})
+    elif fault == "inactive":
+        data["collectionMembers"][0]["active"] = False
+    elif fault == "duplicate":
+        data["collectionMembers"].append(dict(data["collectionMembers"][0]))
+    elif fault == "missing_row":
+        data["collectionMembers"].pop()
+    elif fault == "extra_field":
+        data["collectionMembers"][0]["uid"] = "another-actor"
+    elif fault == "missing_table":
+        del data["organizationMembers"]
+    elif fault == "protected_data":
+        data["specimens"] = [{"id": "protected"}]
+    elif fault == "member_denial":
+        membership_body["errors"] = page_reply[1]["errors"]
+    elif fault == "member_actor":
+        memberships["variables"]["actorUid"] = "another-actor"
+    elif fault in {"malformed_active", "malformed_sensitive"}:
+        field = "active" if fault == "malformed_active" else "canViewSensitive"
+        data["collectionMembers"][0][field] = 1
+    elif fault == "target_grant":
+        # Even a matching admin expectation must not describe an active grant
+        # for the scope being tested as foreign/revoked.
+        table = "organizationMembers" if member == "organizationMember" else "collectionMembers"
+        row = {"organizationId": _uuid(scope.organization_id), "active": True}
+        if table == "collectionMembers":
+            row.update(collectionId=_uuid(scope.collection_id), role="reviewer", canViewSensitive=True)
+        expected[table].append(row)
+        data[table].append(dict(row))
+    elif fault == "page_data":
+        page_reply[1]["data"]["specimens"] = [{"id": "protected"}]
+    elif fault == "page_path":
+        page_reply[1]["errors"][0]["path"] = ["specimens"]
+    elif fault == "page_code":
+        page_reply[1]["errors"][0]["extensions"]["code"] = "UNAUTHENTICATED"
+    elif fault == "missing_page":
+        attempts.pop()
+    elif fault == "unknown_operation":
+        page["operationName"] = "NotAConnectorOperation"
+    if fault is None:
+        _assert_adapter_denials(attempts, "list", scope, uid, member, expected)
+    else:
+        with pytest.raises(AssertionError):
+            _assert_adapter_denials(attempts, "list", scope, uid, member, expected)
+
+
+@pytest.mark.parametrize("operation", ("CreateSpecimenV3", "SaveSpecimenV3"))
+@pytest.mark.parametrize("members", (
+    ("collectionMember",), ("organizationMember",), ("organizationMember", "collectionMember"),
+))
+@pytest.mark.parametrize("fault", (
+    None, "data", "path", "first_code", "missing_debug", "wrong_check", "other_check",
+    "reversed_checks", "aborted_first", "cascade_path", "cascade_message",
+))
+def test_denial_oracle_redacted_mutation_replay(operation, members, fault):
+    # checksum.gql nests both membership checks in query @redact. The round-3
+    # local probe reports CreateSpecimenV3 failures at ['query'], naming the
+    # exact failed children in debugDetails. Save's matching wrapper is derived
+    # from source; this minimal synthetic replay is not engine qualification.
+    source = (Path(__file__).resolve().parents[1] / "dataconnect/connector/checksum.gql").read_text()
+    definition = source.split(f"mutation {operation}(", 1)[1].split("\n}", 1)[0]
+    details = []
+    for member in members:
+        expression = re.search(rf'{member}\(.*?@check\(expr: "([^"]+)"', definition)[1]
+        details.append(f'Check Requirement Evaluated: Every(path: query.{member}, '
+                       f'DenyUnlessTrue(CEL("{expression}" -> Boolean)))')
+    _, reply = _hosted_denial_fragment("foreign_actor")
+    body = reply[1]
+    result = "specimen_insert" if operation == "CreateSpecimenV3" else "specimen_updateMany"
+    body["data"] = {result: None}
+    first, cascade = body["errors"]
+    first["path"] = ["query"]
+    first["extensions"]["debugDetails"] = "\n".join(details)
+    cascade["path"] = [result]
+    if fault == "data":
+        body["data"][result] = {"id": "protected"} if operation == "CreateSpecimenV3" else 1
+    elif fault == "path":
+        first["path"] = ["current"]
+    elif fault == "first_code":
+        first["extensions"]["code"] = "UNAUTHENTICATED"
+    elif fault == "missing_debug":
+        del first["extensions"]["debugDetails"]
+    elif fault == "wrong_check":
+        first["extensions"]["debugDetails"] = details[0].replace(f"query.{members[0]}", "current.specimen")
+    elif fault == "other_check":
+        first["extensions"]["debugDetails"] = details[0].replace(
+            f"query.{members[0]}", "query.organizationMember" if members[0] == "collectionMember" else "query.collectionMember")
+    elif fault == "reversed_checks":
+        first["extensions"]["debugDetails"] = "\n".join(reversed(details)) if len(details) > 1 else ""
+    elif fault == "aborted_first":
+        body["errors"] = [cascade, first]
+    elif fault == "cascade_path":
+        cascade["path"] = ["query"]
+    elif fault == "cascade_message":
+        cascade["message"] = "aborted"
+    if fault is None:
+        _denied(reply, operation, "redacted mutation refusal replay", member=members[0])
+    else:
+        with pytest.raises(AssertionError):
+            _denied(reply, operation, f"redacted mutation refusal replay: {fault}", member=members[0])
 
 
 class _Session(requests.Session):
@@ -573,6 +767,66 @@ def _direct_positive(engine, scope, uid):
     return saved
 
 
+def _actor_memberships(engine, uid):
+    """Independent admin rows for Memberships' actor and active predicates."""
+    # operations.gql:70-73 selects these fields, only active rows for actorUid,
+    # independently for organizations and collections (no organization join).
+    data = engine.raw(f'''query {{
+      organizationMembers(where:{{uid:{{eq:{_json(uid)}}}}},limit:1000) {{ uid organizationId active }}
+      collectionMembers(where:{{uid:{{eq:{_json(uid)}}}}},limit:1000) {{ uid organizationId collectionId role canViewSensitive active }}
+    }}''')
+    expected = {}
+    for table, rows in data.items():
+        assert len(rows) < 1000, f"{table}: actor membership oracle was truncated"
+        assert all(row["uid"] == uid and type(row["active"]) is bool for row in rows), rows
+        expected[table] = [{key: value for key, value in row.items() if key != "uid"}
+                           for row in rows if row["active"]]
+    return expected
+
+
+def _assert_actor_memberships(reply, expected, scope):
+    """Success here may contain only the requesting actor's active memberships."""
+    label = "adapter list actor memberships"
+    data = _ok(reply, label)
+    assert data.keys() == expected.keys() == {"organizationMembers", "collectionMembers"}, (
+        f"{label}: unexpected selected fields: {data}"
+    )
+    for table, rows in data.items():
+        assert isinstance(rows, list) and all(isinstance(row, dict) for row in rows), (
+            f"{label}: malformed {table}: {rows}"
+        )
+        assert _json(sorted(rows, key=_json)) == _json(sorted(expected[table], key=_json)), (
+            f"{label}: {table} differs from the actor's active admin rows: {rows}; expected {expected[table]}"
+        )
+    # A collection membership may still be active after organization revocation;
+    # memberships() requires both. The refused scope must have no effective grant.
+    organizations = {_uuid(row["organizationId"]) for row in data["organizationMembers"]}
+    assert not any(_uuid(row["organizationId"]) == _uuid(scope.organization_id)
+                   and _uuid(row["collectionId"]) == _uuid(scope.collection_id)
+                   and _uuid(row["organizationId"]) in organizations
+                   for row in data["collectionMembers"]), f"{label}: refused scope has an active grant"
+
+
+def _assert_adapter_denials(attempts, label, scope, uid, member, memberships):
+    # production.py: get/version stop at their first scoped read; create/save
+    # stop at GetReceipt. list first reads actor memberships, then the scoped page.
+    operations = {
+        "get": ("GetSpecimen",), "snapshot": ("GetSnapshot",),
+        "list": ("Memberships", "ListSpecimenPage"),
+        "create": ("GetReceipt",), "save": ("GetReceipt",),
+    }
+    assert tuple(body["operationName"] for body, _ in attempts) == operations[label], (
+        f"Adapter {label} did not reach the expected connector checks: {attempts}"
+    )
+    for body, reply in attempts:
+        if body["operationName"] == "Memberships":
+            assert body["variables"] == {"actorUid": uid}, body
+            _assert_actor_memberships(reply, memberships, scope)
+        else:
+            assert all(body["variables"][key] == value for key, value in _base(scope, uid).items()), body
+            _denied(reply, body["operationName"], f"adapter {label} foreign/revoked membership", member=member)
+
+
 def _deny_scope(engine, specimen, uid, member):
     """Adapter guards and registered operations are separately exercised."""
     scope = specimen.scope
@@ -580,6 +834,7 @@ def _deny_scope(engine, specimen, uid, member):
     candidate = _specimen(scope, engine.blobs, uid)
     before = engine.footprint(scope)
     repo = engine.repo()
+    memberships = _actor_memberships(engine, uid)
     with verified_actor_context(uid):
         for label, call in (
             ("get", lambda: repo.get(scope, specimen.id)),
@@ -592,9 +847,7 @@ def _deny_scope(engine, specimen, uid, member):
             with pytest.raises((Conflict, PermissionError), match="SQL Connect"):
                 call()
             attempts = repo.session.calls[first_call:]
-            assert attempts, f"Adapter {label} did not reach a registered connector operation"
-            for body, reply in attempts:
-                _denied(reply, body["operationName"], f"adapter {label} foreign/revoked membership", member=member)
+            _assert_adapter_denials(attempts, label, scope, uid, member, memberships)
             assert engine.footprint(scope) == before, f"Adapter {label} denial changed rows"
     base = _base(scope, uid)
     for operation, variables in (
