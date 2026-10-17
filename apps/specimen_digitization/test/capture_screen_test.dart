@@ -267,6 +267,7 @@ class _AdmissionRepository extends TestRepository {
   final Map<String, IntakeFile> received = {};
   Completer<void>? uploadGate;
   bool failUpload = false;
+  int failureStatus = 503;
   bool serverDuplicate = false;
 
   @override
@@ -300,7 +301,7 @@ class _AdmissionRepository extends TestRepository {
     received[file.sha256] = file;
     await uploadGate?.future;
     if (failUpload) {
-      throw const ApiFailure('Test upload interrupted.', status: 503);
+      throw ApiFailure('Test upload interrupted.', status: failureStatus);
     }
     progress(1);
   }
@@ -618,7 +619,9 @@ void main() {
       testWidgets('failed streamed transfer is not retried by $action', (
         tester,
       ) async {
-        final repository = _AdmissionRepository()..failUpload = true;
+        final repository = _AdmissionRepository()
+          ..failUpload = true
+          ..failureStatus = 422;
         final session = await _pumpAdmission(tester, repository, rows: []);
         await _openAdmissionCamera(tester);
         await tester.tap(find.byKey(const ValueKey('capture-shutter')));
@@ -641,6 +644,31 @@ void main() {
         await _waitAdmission(tester, () => !session.busy, 'return settled');
         expect(repository.requests, before);
         expect(session.entries.single.sendable, isTrue);
+
+        // A transient 503 has its own timer; exiting must not trigger it early.
+        session.remove(session.entries.single);
+        repository.failureStatus = 503;
+        await _openAdmissionCamera(tester);
+        await tester.tap(find.byKey(const ValueKey('capture-shutter')));
+        await _waitAdmission(
+          tester,
+          () =>
+              !session.busy &&
+              session.entries.length == 1 &&
+              session.entries.single.state == UploadState.interrupted,
+          '503 is waiting for its scheduled retry',
+        );
+        expect(session.entries.single.reason, 'Connection lost. Retrying.');
+        final retryWaitingAt = tester.binding.clock.now();
+        final beforeTransientExit = [...repository.requests];
+        await _closeAdmissionCamera(tester, action);
+        expect(
+          tester.binding.clock.now().difference(retryWaitingAt),
+          lessThan(const Duration(seconds: 5)),
+        );
+        expect(repository.requests, beforeTransientExit);
+        expect(session.entries.single.state, UploadState.interrupted);
+        session.stop(); // Cancel the timer after the exit assertions.
       });
     }
 
@@ -954,18 +982,16 @@ void main() {
         tester,
         () =>
             !session.busy &&
-            session.entries.length == 2 &&
-            session.entries.every((e) => e.settled),
+            session.entries.isEmpty &&
+            session.duplicateCount == 2,
         'unsupported local decoder is tolerated and server duplicates are normal acceptance',
       );
       expect(repository.requests, [
         (operation: 'create', row: 'old-ready'.padRight(64, '0')),
         (operation: 'create', row: sha256.convert([1, 2, 3]).toString()),
       ]);
-      expect(
-        session.entries.every((e) => e.state == UploadState.duplicate),
-        isTrue,
-      );
+      expect(session.entries, isEmpty);
+      expect(session.duplicateCount, 2);
     });
 
     for (final selected in [false, true]) {
