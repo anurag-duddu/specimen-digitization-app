@@ -18,7 +18,6 @@ import '../../models.dart';
 import '../../review_context.dart';
 import '../../vocabulary.dart';
 import '../../widgets/caveat_text.dart';
-import '../../widgets/empty_state.dart';
 import '../../widgets/evidence_drawer.dart';
 import '../../widgets/motion_reveal.dart';
 import '../../widgets/upload_item.dart';
@@ -269,8 +268,8 @@ class _IntakeManifestState extends State<IntakeManifest> {
       ),
       SizedBox(height: ui.space.s4),
       if (entries.isEmpty && _leaving.isEmpty)
-        EmptyState(
-          icon: UiIcons.intake.defaultGlyph,
+        const UiEmptyState(
+          icon: UiIcons.intake,
           title: IntakeManifest.emptyTitle,
           body: IntakeManifest.emptyBody,
         ),

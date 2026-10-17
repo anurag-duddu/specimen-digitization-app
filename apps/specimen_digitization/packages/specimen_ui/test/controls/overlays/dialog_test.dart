@@ -224,6 +224,45 @@ void main() {
     }
   });
 
+  // The sheet belongs to the window's arrangement, not to its width class
+  // (05 section 3.7, amended 2026-10-17): a phone on its side is the
+  // expanded class and draws the tab bar, and a tablet at 200 percent text
+  // draws it too, so both get the sheet the tab bar's other screens get.
+  testWidgets('showAdaptive follows the arrangement, not the width class', (
+    WidgetTester tester,
+  ) async {
+    for (final (Size window, TextScaler scaler, bool sheet)
+        in <(Size, TextScaler, bool)>[
+          (const Size(844, 390), TextScaler.noScaling, true),
+          (const Size(1180, 820), const TextScaler.linear(2), true),
+          (const Size(700, 1000), TextScaler.noScaling, true),
+          (const Size(768, 1000), TextScaler.noScaling, false),
+          (const Size(1180, 820), TextScaler.noScaling, false),
+        ]) {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = window;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        uiHarness(size: window, textScaler: scaler, child: _page()),
+      );
+      unawaited(open(pageContext, adaptive: true));
+      await tester.pumpAndSettle();
+      final String where = '$window at ${scaler.scale(16) / 16}x';
+      expect(
+        find.byType(UiSheet),
+        sheet ? findsOneWidget : findsNothing,
+        reason: where,
+      );
+      expect(
+        find.byType(UiDialog),
+        sheet ? findsNothing : findsOneWidget,
+        reason: where,
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+    }
+  });
+
   testWidgets('it builds right to left and at 200 percent text', (
     WidgetTester tester,
   ) async {

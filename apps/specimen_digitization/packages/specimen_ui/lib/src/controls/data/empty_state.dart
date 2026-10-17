@@ -41,12 +41,20 @@ class UiEmptyState extends StatelessWidget {
 
   /// The single action. Typed as a button rather than as a slot, because
   /// "at most one `UiButton`" is the rule and a type states it.
+  ///
+  /// It does something: a button with no `onPressed` is refused, as the v1
+  /// `EmptyState` refused a label without a callback. A state whose way out
+  /// is unavailable for now passes no button.
   final UiButton? action;
 
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
     final UiButton? button = action;
+    assert(
+      button == null || button.onPressed != null,
+      'an empty state action that does nothing is no way out; pass none',
+    );
     return Semantics(
       container: true,
       child: Center(

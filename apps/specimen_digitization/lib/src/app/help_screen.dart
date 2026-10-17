@@ -61,8 +61,8 @@ const Map<String, String> queueShortcuts = <String, String>{
   '/': 'Focus the search field',
 };
 
-/// The help sheet as a route page: a scrim, and a pane that is a sheet on a
-/// compact window and a centered dialog everywhere else.
+/// The help sheet as a route page: a scrim, and a pane that is a sheet where
+/// the window is stacked and a centered dialog where it is docked.
 Page<void> helpPage(BuildContext context) {
   final MotionTokens motion = context.ui.motion;
   return CustomTransitionPage<void>(
@@ -102,7 +102,9 @@ class HelpScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
-    final bool compact = WindowClass.of(context).isCompact;
+    // A sheet where the window is stacked, as every other modal is there
+    // (05 section 3.7, amended 2026-10-17).
+    final bool compact = WindowArrangement.of(context).isStacked;
 
     return SafeArea(
       child: Align(
