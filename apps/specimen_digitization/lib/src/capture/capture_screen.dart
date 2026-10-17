@@ -813,40 +813,63 @@ class _CaptureScreenState extends State<CaptureScreen>
     return _viewfinder(camera);
   }
 
+  Widget _closeButton() => UiIconButton(
+    icon: UiIcons.close,
+    semanticsLabel: CaptureScreen.closeLabel,
+    tooltip: CaptureScreen.closeLabel,
+    onPressed: _finish,
+  );
+
   Widget _unavailableBody() {
     final UiThemeData ui = context.ui;
-    return Center(
-      child: SingleChildScrollView(
-        padding: EdgeInsetsDirectional.all(ui.space.s6),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: ui.space.readingMax),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              Semantics(
-                container: true,
-                liveRegion: true,
-                child: Text(
-                  _unavailable!.message,
-                  style: ui.type.bodyLarge.copyWith(color: ui.color.ink),
-                ),
-              ),
-              SizedBox(height: ui.space.s6),
-              UiButtonRow(
-                primary: UiButton(
-                  label:
-                      widget.deviceFallbackAvailable &&
-                          _unavailable == CaptureUnavailable.failed
-                      ? 'Use phone camera'
-                      : 'Choose files',
-                  onPressed: () => _finish(unavailable: _unavailable),
-                ),
-              ),
-            ],
+    return Column(
+      children: [
+        Padding(
+          padding: EdgeInsetsDirectional.symmetric(
+            horizontal: ui.space.s4,
+            vertical: ui.space.s2,
+          ),
+          child: Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: _closeButton(),
           ),
         ),
-      ),
+        Expanded(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: EdgeInsetsDirectional.all(ui.space.s6),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: ui.space.readingMax),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    Semantics(
+                      container: true,
+                      liveRegion: true,
+                      child: Text(
+                        _unavailable!.message,
+                        style: ui.type.bodyLarge.copyWith(color: ui.color.ink),
+                      ),
+                    ),
+                    SizedBox(height: ui.space.s6),
+                    UiButtonRow(
+                      primary: UiButton(
+                        label:
+                            widget.deviceFallbackAvailable &&
+                                _unavailable == CaptureUnavailable.failed
+                            ? 'Use phone camera'
+                            : 'Choose files',
+                        onPressed: () => _finish(unavailable: _unavailable),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1091,12 +1114,7 @@ class _CaptureScreenState extends State<CaptureScreen>
           ),
           child: Row(
             children: [
-              UiIconButton(
-                icon: UiIcons.close,
-                semanticsLabel: CaptureScreen.closeLabel,
-                tooltip: CaptureScreen.closeLabel,
-                onPressed: _finish,
-              ),
+              _closeButton(),
               SizedBox(width: ui.space.s2),
               Expanded(
                 child: UiSegmented<bool>(

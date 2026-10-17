@@ -361,6 +361,78 @@ void main() {
     );
   }
 
+  for (final kind in CaptureUnavailable.values) {
+    testWidgets(
+      'F5 unavailable $kind Close exits without fallback and leaves one body action',
+      (tester) async {
+        final semantics = tester.ensureSemantics();
+        try {
+          CaptureResult? result;
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: AppTheme.light(),
+              home: Builder(
+                builder: (context) => TextButton(
+                  onPressed: () async {
+                    result = await Navigator.of(context).push(
+                      CaptureScreen.route(
+                        () async => FakeCaptureCamera(unavailable: kind),
+                      ),
+                    );
+                  },
+                  child: const Text('Open'),
+                ),
+              ),
+            ),
+          );
+          await tester.tap(find.text('Open'));
+          await tester.pumpAndSettle();
+          final close = find.byWidgetPredicate(
+            (widget) =>
+                widget is UiIconButton &&
+                widget.semanticsLabel == CaptureScreen.closeLabel,
+          );
+          expect(close, findsOneWidget);
+          expect(
+            tester.widget<UiIconButton>(close).tooltip,
+            CaptureScreen.closeLabel,
+          );
+          expect(
+            tester.getCenter(close).dx,
+            lessThan(tester.view.physicalSize.width / 2),
+          );
+          final spokenClose = find.descendant(
+            of: close,
+            matching: find.bySemanticsLabel(CaptureScreen.closeLabel),
+          );
+          expect(spokenClose, findsOneWidget);
+          final spokenData = tester
+              .getSemantics(spokenClose)
+              .getSemanticsData();
+          expect(spokenData.label, CaptureScreen.closeLabel);
+          expect(spokenData.tooltip, CaptureScreen.closeLabel);
+          expect(find.byType(UiButton), findsOneWidget);
+          expect(
+            _wordCount(
+              _visibleCopy(tester).where(
+                (text) => !['Choose files', 'Use phone camera'].contains(text),
+              ),
+            ),
+            lessThanOrEqualTo(10),
+          );
+          await tester.tap(close);
+          await tester.pumpAndSettle();
+          expect(result, isNotNull);
+          expect(result!.unavailable, isNull);
+          expect(result!.needsFallback, isFalse);
+          expect(find.byType(CaptureScreen), findsNothing);
+        } finally {
+          semantics.dispose();
+        }
+      },
+    );
+  }
+
   testWidgets('INT-UX-011 send segments sit above preview and report changes', (
     tester,
   ) async {
