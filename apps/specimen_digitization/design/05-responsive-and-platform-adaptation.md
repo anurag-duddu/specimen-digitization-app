@@ -207,6 +207,15 @@ platform dependent part, which is what "behaviour adapts" means here (section
 2026-10-17: "btw ios nav behaves perfectly but android has too much
 padding/space".
 
+**Amendment, 2026-10-17 (the compact top bar is one bar).** The compact row's
+"collection switcher in the top bar" and "two `UiIconButton`s in the top bar" are
+one component now: `UiTopBar` in its workspace form (10 section 4.4), built once
+in `AppShell._compactTopBar` for the Specimens list, Intake and the screens under
+Intake. It is an opaque `paper` bar whose ground also fills the top safe inset,
+so the status strip and the bar are one surface on every tab and every platform,
+the top edge mirror of `UiTabBar` under the bottom inset; the platform decides
+how tall the inset is and nothing else. A record keeps its own page bar.
+
 Three things the old table got wrong about the shipped client and one it got
 right. Wrong: the switcher is a menu button rather than a form field, which is
 finding V-9 in 08 closed; the compact window has no sheet from the app bar

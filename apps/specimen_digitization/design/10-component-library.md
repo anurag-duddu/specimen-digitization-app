@@ -815,10 +815,11 @@ a solid `paper` ground, a top line of exactly one physical pixel
 elevation, no surface tint and no glass. Its content height, excluding the
 system inset, is `max(56, 32 + textScaler.scale(16) + 4)`: 56 dp at normal text
 and 68 dp at 200 percent, so it grows with the reviewer's text size and never
-clips a label. The numbers are named in `UiTabBarStyle` rather than borrowed
-from a token that means something else: 56 is the HIG tab bar's 49 pt plus room
-for Dynamic Type, above the 48 dp Material and WCAG target; 32 is the 24 dp
-glyph and one 8 dp step of air; 16 is the line the label sits in, scaled with
+clips a label. The resting 56 is the token `space.tabBar` (03 section 5.2,
+`size.tabbar`), beside `space.topBar` and decided separately from it: the HIG
+tab bar's 49 pt plus room for Dynamic Type, above the 48 dp Material and WCAG
+target. The rest are named in `UiTabBarStyle`: 32 is the 24 dp glyph and one
+8 dp step of air; 16 is the line the label sits in, scaled with
 the text; the 4 is the gap the cell pads under the label. The 4 is in the
 formula so the glyph keeps its 4 dp of air above it and 4 dp below it at every
 text scale; a first version without it put the glyph about 3 dp under the top
@@ -933,6 +934,38 @@ text with the other half of the bar empty beside it. And the bar's height is
 the line box of `type.title` floored at the density height rather than the
 density height alone (11 section 2.2), which is 56 and 48 unchanged at scale
 1.0.
+
+Amended 2026-10-17, the workspace form. `UiTopBar` takes a `form`:
+`UiTopBarForm.page`, everything above and the default, or
+`UiTopBarForm.workspace`, the compact shell's header. The shell used to declare
+the collection switcher and the account row twice, once inside the Specimens
+list on `paper` and once above Intake on `ground`, so on a phone the status
+strip met the header on a different ground on one tab and not the other. The
+owner, in a Claude Code session on 2026-10-17: "why does the insects dropdown
+backround behave differently? has it been created twice? that whole top thing I
+thought is same ?" and "i hope we arent duplicating and hand-codring hardcoding.
+we should have a working design system + ui components given we're on flutter
+at a cross-platform level with behaviors in different circumstances". It is one
+bar now, for the Specimens list, Intake and the screens under Intake. The
+workspace form is opaque `paper` (14 section 3: shell chrome is `paper`) and
+the ground covers the bar's whole box, **the top safe inset included**, so the
+status strip and the bar are one surface on every tab and every platform. It is
+the top edge mirror of `UiTabBar`, which paints its ground under the bottom
+inset: the platform only decides how tall the inset is, and the component
+decides what is painted in it, so no shell pads a strip itself. The geometry is
+the one the owner called accurate on Specimens, now declared in
+`UiTopBarStyle` instead of written at two call sites: a 64 dp bar under the
+inset (a 48 dp control with `space.s2` of air above and below, growing with the
+control at larger text), a `space.s2` gutter at both ends, actions that touch
+because their own 48 dp hit boxes are the spacing, and a `leading` slot that
+takes what the actions leave and sits at the start, so a long collection name
+is cut by its control rather than overflowing. The page form is unchanged: it
+is still transparent at rest, `glass.flat` once content scrolls under it, 56 dp
+(48 pointer) with a 16 dp gutter. The workspace form reads no scroll state and
+draws no glass, so it adds nothing to the pane budget. The shell's one builder
+is `AppShell._compactTopBar`; the docked sidebar's own header, a different
+composition on large windows, reuses the same `_CollectionSwitcher` widget and
+has no account or environment control of its own.
 
 **`UiScaffold`.** The page frame: paints `ground` and the sky preset via
 `FieldLayer`, then `topBar`, `banner` slot, `body`, `actionBar` slot (sticky,

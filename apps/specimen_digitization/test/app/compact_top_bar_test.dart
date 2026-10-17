@@ -7,7 +7,7 @@
 // and a different ground on the other. The owner, 2026-10-17: "why does the
 // insects dropdown backround behave differently? has it been created twice?
 // that whole top thing I thought is same ?" and "i hope we arent duplicating
-// and hand-coding hardcoding. we should have a working design system + ui
+// and hand-codring hardcoding. we should have a working design system + ui
 // components given we're on flutter at a cross-platform level with behaviors
 // in different circumstances".
 //
