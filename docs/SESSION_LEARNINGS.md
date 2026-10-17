@@ -21280,3 +21280,94 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
 - Why it fired: the hook scans what is staged (`gitleaks git --pre-commit --staged`). The merge staged all of #356, and gitleaks flags main's own synthetic `Idempotency-Key` at `tests/fixtures/general_api_contracts.json:23`.
 - What the skip covered: gitleaks (the hook's build, pre-commit rev v8.30.1) with main's `.gitleaks.toml` was run over every line this PR adds relative to `origin/main`, 5,348 lines of `git diff origin/main ca1acaeb`. It finds no leaks. The same scan flags main's line 23, so it can see one. The fixture is byte-identical to main's. The coordinator ran the same check independently.
 - The merge stays, with no revert and no force-push, by the coordinator's decision. PR #364 records main's value as a reviewed false alarm. When #364 merges, the new main is merged here once, with every hook running.
+
+
+### 2026-10-17 - LOGIN-JOURNEY-FIREBASE pre-merge closeout for PR 371
+
+- Task 01a147ea-7efb-7e22-8821-e42395a135fc, worktree 9030, branch
+  `codex/login-firebase-launch`: release candidate
+  `ecbc150f8e350ab57a1ead30c02fe899b14e81e9`, tree
+  `3c9af751a733368b0848379bd51579b6ada7c47d`, integrates main
+  `69bd6469cde211cb822936f9ac033b9453a80404`. PR #371:
+  https://github.com/anurag-duddu/specimen-digitization-app/pull/371.
+- Exact-head hosted CI/CD 39069497515 and Runtime candidate CI 39069497512
+  completed successfully. The full Python aggregate, mandatory engine contracts,
+  repository checks, Flutter analysis/tests/web build, Android and unsigned iOS
+  compilation all passed. Independent G51 reviewer approved this exact head and
+  tree with no findings. The source review and complete job JSON are retained in
+  this task's login-study/recovery-implementation artifacts.
+- Fresh local follow-up after PR #358 integration: 3,098 app tests passed with
+  seven expected skips; analyzer, formatting, web build and route/header smoke
+  passed; 956 affected Python workflow contracts passed. Full canonical r6
+  remains bound to 67cb8747, as recorded above, and is not relabeled as an
+  exact-ecbc canonical run. Hosted full-collection evidence now covers ecbc.
+- Scope remains Firebase built-in email links plus protected Google setup.
+  Paired code/link work at 18288554 on `codex/login-journey-complete` is retained
+  and must not be pruned. No custom sender, code-email service, or native
+  installed-app acceptance is claimed.
+- Before merge: production release, live Google handoff and real email fallback
+  are Not confirmed. Baseline Chrome App Check reCAPTCHA failure predates this
+  change and remains a separate live acceptance issue. The user authorized only
+  the exact auth-only owner setup if the protected Google step reports missing
+  permissions; the helper is reviewed, but no IAM setup has run.
+
+
+### 2026-10-17 - LOGIN-JOURNEY-FIREBASE production blockers and fix-forward
+
+- Task 01a147ea-7efb-7e22-8821-e42395a135fc: PR #371 merged as
+  `86555f1f8ad9a58014e03156e3336e19f5bd0ffe` at 21:20:46Z. Its tree equals
+  the independently reviewed ecbc150f tree. Follow-up branch
+  `codex/login-auth-diagnostics` starts at this merged commit in worktree 9030;
+  the preceding local closeout append was preserved.
+- Main CI/CD 39070548112 attempt 1 failed Python shard 8 at
+  `test_storage_cleanup_rejects_live_owned_survivor`: cleanup failure and the
+  exact survivor matched, but the expected passed storage assertion stage was
+  absent. This same tree passed the PR run. Hosting did not deploy; no rerun or
+  relaxed assertion is substituted for diagnosing the failure.
+- Data release 39070548128 attempt 1 reached the new Auth step and failed an
+  Auth GET with HTTP 403. The user's first-hand authorization for the exact
+  `bash scripts/ops/owner_setup.sh --auth-only` was exercised using the existing
+  same-owner Firebase credential, a private temporary token file, and a fresh
+  isolated gcloud configuration. The reviewed script was unchanged. It reported
+  two changes and zero failures; independent readback found exactly the six
+  reviewed permissions and one unconditional binding solely to the existing
+  Data identity. Temporary token/configuration paths were removed. No general
+  owner setup, other grants or workstation deployment ran.
+- Data attempt 2 passed the direct Auth reads but the pinned CLI exited 2.
+  Read-only audit counts establish one Firebase PERMISSION_DENIED in the exact
+  Data identity/time window, but do not identify a denied permission. Nested
+  audit-field projection was rejected, and later method/presence reads returned
+  server errors. No extra IAM grant is justified from these observations. Google
+  remains absent; passwordless email and authorized domains are unchanged.
+- Runtime 39070548062 did not deploy because Data failed. Overall release is
+  incomplete. The fix-forward work preserves all required gates and adds
+  bounded diagnostics without printing raw CLI/API payloads. Actual repair,
+  fresh checks and live sign-in acceptance remain Not confirmed at this entry.
+
+
+### 2026-10-17 - LOGIN-JOURNEY-FIREBASE reviewed release repair
+
+- Same task/worktree, branch `codex/login-auth-diagnostics`, base 86555f1f.
+  The production engine reporter created a child's log only when that child
+  emitted output, but Storage readiness could read the file earlier. A temporary
+  delayed-output reproduction failed at the same survivor assertion with an
+  ENOENT log read. The original hosted failure did not print this stderr, so
+  this establishes the reproduced race, not direct proof of the hosted cause.
+- The reporter now exclusively creates its owned log at mode 0600 before spawn.
+  The permanent quiet-child regression covers direct and standalone layouts
+  without timing sleeps. Both cases failed on the old reporter; the corrected
+  seven-case selection passed, then all 236 engine harness tests passed in
+  237.09 seconds. Existing assertions, download checks, readiness limits and
+  process cleanup behavior are unchanged; survivor failure messages now include
+  the bounded synthetic lifecycle and stderr for diagnosis.
+- Firebase CLI diagnostics inspect only bounded private output and emit fixed
+  endpoint-stage labels, numeric codes, finite status/reason/permission names,
+  or `unrecognized`. URLs, query values, raw response/error messages and secrets
+  are never published. Mutation calls, release guards, CLI version, retries and
+  timeouts are unchanged. All 127 focused tests passed, independently rerun by
+  the replacement reviewer; secret canaries and unsafe/private-log cases are
+  covered. No further production call or IAM change occurred.
+- Replacement independent review found no issues in the combined working diff.
+  Exact committed-head review, complete canonical verification and hosted
+  normal/cold engine qualification are still pending at this entry. The new
+  diagnostics do not themselves fix or identify the provider denial.

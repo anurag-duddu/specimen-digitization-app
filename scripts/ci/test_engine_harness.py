@@ -288,7 +288,8 @@ if name in ('postgres','dc','firebase','java'):
    deadline=time.monotonic()+1
    while not (root/'instances'/(str(owned.pid)+'.json')).exists() and time.monotonic()<deadline: time.sleep(.001)
    assert (root/'instances'/(str(owned.pid)+'.json')).exists(),'fixture Java identity was not published'
-  (root/'storage-cli-running').touch(); print('Downloading forbidden runtime' if fault=='storage_download' else 'Storage fixture started',flush=True)
+  (root/'storage-cli-running').touch()
+  if fault!='storage_quiet': print('Downloading forbidden runtime' if fault=='storage_download' else 'Storage fixture started',flush=True)
   while True:
    if (root/'hub-requested').exists() and fault in ('storage_ready_cli_exit','storage_ready_java_exit'):
     if child and child.poll() is None: child.terminate(); child.wait(timeout=1)
@@ -891,6 +892,31 @@ def test_storage_wrapper_complete_inventory(shell_fixture,layout):
     if layout=='standalone': assert_storage_tree_stopped(shell_fixture,lifecycle)
 
 
+@pytest.mark.parametrize('layout', ['direct', 'standalone'])
+def test_storage_readiness_accepts_quiet_cli_with_private_log(shell_fixture, layout):
+    root, env = shell_fixture
+    if layout == 'standalone':
+        env['FIXTURE_STANDALONE'] = 'true'
+    control = run_shell(shell_fixture)
+    assert control.returncode == 0, control.stdout + control.stderr
+    # A ready child need not write stdout/stderr. The reporter owns its log
+    # before spawn; readiness must not race that child's first output event.
+    result = run_shell(shell_fixture, 'storage_quiet', storage=True)
+    lifecycle = json.loads((root / 'lifecycle.json').read_text())
+    diagnostics = result.stdout + result.stderr + json.dumps(lifecycle)
+    assert result.returncode == 0, diagnostics
+    stages = [(row['id'], row['outcome']) for row in lifecycle['stages']]
+    assert ('storage.ready', 'passed') in stages, diagnostics
+    assert ('storage.assertions', 'passed') in stages, diagnostics
+    assert lifecycle['cleanup']['outcome'] == 'passed', diagnostics
+    logs = list((root / 'storage-out').glob('private-*/storage.cli.log'))
+    assert len(logs) == 1, logs
+    assert logs[0].read_bytes() == b''
+    assert logs[0].stat().st_mode & 0o777 == 0o600
+    if layout == 'standalone':
+        assert_storage_tree_stopped(shell_fixture, lifecycle)
+
+
 def assert_storage_tree_stopped(fixture,lifecycle,cleanup='passed'):
     root,_=fixture
     diagnostics=json.dumps({'cleanup':lifecycle['cleanup'],'storage_processes':lifecycle['storage_processes']},sort_keys=True)
@@ -1455,7 +1481,7 @@ def test_storage_cleanup_rejects_live_owned_survivor(shell_fixture):
         lifecycle=json.loads((root/'lifecycle.json').read_text())
         assert lifecycle['cleanup']['outcome']=='failed',lifecycle['cleanup']
         assert lifecycle['cleanup']['survivors']==[child.pid],lifecycle['cleanup']
-        assert ('storage.assertions','passed') in [(row['id'],row['outcome']) for row in lifecycle['stages']]
+        assert ('storage.assertions','passed') in [(row['id'],row['outcome']) for row in lifecycle['stages']], result.stdout+result.stderr+json.dumps(lifecycle)
     finally:
         child.kill()
         child.wait(timeout=5)

@@ -11,10 +11,12 @@ import json
 import os
 from pathlib import Path
 import re
+import stat
 import subprocess
 import sys
 import tempfile
 import time
+from urllib.parse import parse_qsl
 
 ROOT = Path(__file__).resolve().parents[2]
 PROJECT = "specimen-digitization"
@@ -34,6 +36,53 @@ AUTH_CONFIG = {"auth": {"providers": {"googleSignIn": {
     "supportEmail": "anurag@infinative.com",
 }}}}
 SETUP_HINT = "if permissions are missing, the owner runs bash scripts/ops/owner_setup.sh --auth-only once"
+
+# Firebase CLI 15.8.0 apiv2/logger and Auth provisioning formats. These map
+# observations to fixed labels; neither URLs nor arbitrary server text escape.
+DIAGNOSTIC_LIMIT = 1024 * 1024
+DIAGNOSTIC_LINE_LIMIT = 16384
+_PROJECT_PATH = rf"(?:{PROJECT}|{NUMBER})"
+_CLI_STAGES = (
+    ("POST", rf"https://cloudresourcemanager\.googleapis\.com/v1/projects/{_PROJECT_PATH}:testIamPermissions", "permission_check"),
+    ("GET", rf"https://cloudresourcemanager\.googleapis\.com/v1/projects/{_PROJECT_PATH}", "project_read"),
+    ("GET", rf"https://firebase\.googleapis\.com/v1beta1/projects/{_PROJECT_PATH}", "firebase_project_read"),
+    ("GET", rf"https://firebase\.googleapis\.com/v1beta1/projects/{_PROJECT_PATH}/webApps", "web_app_list"),
+    ("POST", r"https://firebase\.googleapis\.com/v1alpha/firebase:provisionFirebaseApp", "provider_provision"),
+    ("GET", rf"https://firebase\.googleapis\.com/v1beta1/(?:projects/{_PROJECT_PATH}/)?operations/[A-Za-z0-9_-]+", "provider_operation"),
+)
+_DEBUG_PREFIX = r"(?:\[debug\] )?(?:\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z\] )?"
+_RESPONSE_LINE = re.compile(_DEBUG_PREFIX + r"<<< \[apiv2\]\[(status|body)\] (GET|POST) (https://\S+) (.+)")
+_CLI_HTTP_ERROR = re.compile(
+    r"(?:\[error\] )?" + _DEBUG_PREFIX + r"(?:Error: (?:Failed to provision Firebase app: )?)?Request to "
+    r"(https://\S+) had HTTP Error: ([45][0-9]{2}),.*"
+)
+_API_STATUSES = frozenset({
+    "CANCELLED", "UNKNOWN", "INVALID_ARGUMENT", "DEADLINE_EXCEEDED", "NOT_FOUND",
+    "ALREADY_EXISTS", "PERMISSION_DENIED", "RESOURCE_EXHAUSTED", "FAILED_PRECONDITION",
+    "ABORTED", "OUT_OF_RANGE", "UNIMPLEMENTED", "INTERNAL", "UNAVAILABLE", "DATA_LOSS", "UNAUTHENTICATED",
+})
+_API_REASONS = frozenset({
+    # Public google/api/error_reason.proto names, plus IAM's ErrorInfo reason.
+    "IAM_PERMISSION_DENIED", "SERVICE_DISABLED", "BILLING_DISABLED", "CONSUMER_INVALID",
+    "ACCESS_TOKEN_SCOPE_INSUFFICIENT", "RATE_LIMIT_EXCEEDED", "SECURITY_POLICY_VIOLATED",
+    "API_KEY_INVALID", "API_KEY_SERVICE_BLOCKED", "API_KEY_HTTP_REFERRER_BLOCKED",
+    "API_KEY_IP_ADDRESS_BLOCKED", "API_KEY_ANDROID_APP_BLOCKED", "API_KEY_IOS_APP_BLOCKED",
+    "CONSUMER_SUSPENDED", "ACCESS_TOKEN_EXPIRED", "ACCESS_TOKEN_TYPE_UNSUPPORTED",
+    "ACCOUNT_STATE_INVALID", "CREDENTIALS_MISSING", "USER_PROJECT_DENIED", "USER_BLOCKED_BY_ADMIN",
+    "RESOURCE_USAGE_RESTRICTION_VIOLATED", "ORG_RESTRICTION_VIOLATION", "SERVICE_NOT_VISIBLE",
+    "GCP_SUSPENDED", "CREDENTIAL_TYPE_UNSUPPORTED", "ACCOUNT_TYPE_UNSUPPORTED",
+    "ENDPOINT_USAGE_RESTRICTION_VIOLATED",
+})
+_API_PERMISSIONS = frozenset({
+    # Diagnostic names only; this list grants no permission or authority.
+    "firebase.clients.get", "firebase.clients.list", "firebase.projects.get",
+    "firebase.projects.update", "firebaseauth.configs.get", "firebaseauth.configs.update",
+    "firebase.clients.create", "resourcemanager.projects.get",
+    "clientauthconfig.brands.create", "clientauthconfig.brands.get", "clientauthconfig.brands.list",
+    "clientauthconfig.brands.update", "clientauthconfig.clients.create", "clientauthconfig.clients.get",
+    "clientauthconfig.clients.list", "clientauthconfig.clients.update",
+    "serviceusage.services.get", "serviceusage.services.enable", "serviceusage.services.use",
+})
 
 
 class Failure(RuntimeError):
@@ -123,6 +172,132 @@ def google_ready(provider):
             and isinstance(client, str) and bool(re.fullmatch(r"[A-Za-z0-9-]+\.apps\.googleusercontent\.com", client)))
 
 
+def _cli_stage(method, url):
+    base, separator, query = url.partition("?")
+    stage = next((stage for verb, pattern, stage in _CLI_STAGES
+                  if method == verb and re.fullmatch(pattern, base)), None)
+    if not separator:
+        return stage
+    # apiv2 response records omit query parameters, but responseToError uses
+    # fetchURL. listFirebaseApps supplies pageSize/pageToken; operation polling
+    # supplies no query. Recognize only that pinned pagination shape, omit values.
+    if stage != "web_app_list" or "#" in query:
+        return None
+    try:
+        fields = parse_qsl(query, keep_blank_values=True, strict_parsing=True, max_num_fields=2)
+    except ValueError:
+        return None
+    if (not fields or len(dict(fields)) != len(fields)
+            or any(key not in {"pageSize", "pageToken"} or not value for key, value in fields)
+            or any(key == "pageSize" and not re.fullmatch(r"[1-9][0-9]{0,3}", value) for key, value in fields)):
+        return None
+    return stage
+
+
+def _structured_cli_error(body):
+    """Read only enumerated fields of an HTTP or completed-operation error."""
+    try:
+        data = json.loads(body)
+    except (ValueError, RecursionError):
+        return {}
+    error = data.get("error") if isinstance(data, dict) else None
+    if not isinstance(error, dict):
+        return {}
+    result = {}
+    code = error.get("code")
+    if type(code) is int and (1 <= code <= 16 or 400 <= code <= 599):
+        result["api_code"] = code
+    elif "code" in error:
+        result["api_code"] = "unrecognized"
+    status = error.get("status")
+    if isinstance(status, str) and status in _API_STATUSES:
+        result["api_status"] = status
+    elif "status" in error:
+        result["api_status"] = "unrecognized"
+    details = error.get("details")
+    for detail in details if isinstance(details, list) else []:
+        if not isinstance(detail, dict) or detail.get("@type") != "type.googleapis.com/google.rpc.ErrorInfo":
+            continue
+        reason = detail.get("reason")
+        if isinstance(reason, str) and reason in _API_REASONS:
+            result["reason"] = reason
+        elif "reason" in detail:
+            result["reason"] = "unrecognized"
+        metadata = detail.get("metadata")
+        permission = metadata.get("permission") if isinstance(metadata, dict) else None
+        if isinstance(permission, str) and permission in _API_PERMISSIONS:
+            result["permission"] = permission
+        elif isinstance(metadata, dict) and "permission" in metadata:
+            result["permission"] = "unrecognized"
+    return result
+
+
+def _cli_observation(text):
+    """Last recognized response, not an assertion that it caused CLI failure."""
+    if not isinstance(text, str) or len(text) > DIAGNOSTIC_LIMIT:
+        return {}
+    result, response_key = {}, None
+    for line in text.splitlines():
+        if len(line) > DIAGNOSTIC_LINE_LIMIT:
+            continue
+        match = _RESPONSE_LINE.fullmatch(line)
+        if match:
+            kind, method, url, payload = match.groups()
+            stage = _cli_stage(method, url)
+            if kind == "status":
+                # An intervening unknown response cannot donate its body to a
+                # previous recognized request, even when a URL is repeated.
+                response_key = None
+                if stage and re.fullmatch(r"[1-5][0-9]{2}", payload):
+                    result = {"stage": stage, "http": int(payload)}
+                    response_key = (method, url)
+            elif stage and response_key == (method, url):
+                result.update(_structured_cli_error(payload))
+            continue
+        match = _CLI_HTTP_ERROR.fullmatch(line)
+        if match:
+            url, status = match.groups()
+            # responseToError omits the method; infer it only for an endpoint
+            # with a single known verb in this pinned Auth provisioning path.
+            stages = {_cli_stage(verb, url) for verb in ("GET", "POST")} - {None}
+            if len(stages) == 1:
+                stage = stages.pop()
+                if result.get("stage") != stage or result.get("http") != int(status):
+                    result = {"stage": stage, "http": int(status)}
+                response_key = None
+    return result
+
+
+def _private_cli_log(folder):
+    """Refuse symlinks, special files, oversized logs and undecodable content."""
+    try:
+        fd = os.open(Path(folder) / "firebase-debug.log", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(fd, "rb") as stream:
+            info = os.fstat(stream.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > DIAGNOSTIC_LIMIT:
+                return ""
+            data = stream.read(DIAGNOSTIC_LIMIT + 1)
+        return data.decode("utf-8") if len(data) <= DIAGNOSTIC_LIMIT else ""
+    except (OSError, UnicodeError):
+        return ""
+
+
+def cli_failure_diagnostic(done, folder):
+    observations = [_cli_observation(source) for source in (
+        _private_cli_log(folder), getattr(done, "stderr", ""), getattr(done, "stdout", ""),
+    )]
+    # Prefer a structured API error or HTTP refusal over an earlier successful
+    # read. File output wins ties. Every emitted value is fixed or bounded.
+    observation = max(observations, key=lambda item: (
+        "api_code" in item or "api_status" in item,
+        item.get("http", 0) >= 400,
+        bool(item),
+    ))
+    if not observation:
+        return "CLI diagnostic unavailable"
+    return "CLI response diagnostic: " + " ".join(f"{key}={value}" for key, value in observation.items())
+
+
 def run_cli(cli, config):
     if config != AUTH_CONFIG:
         raise Failure("Auth config must contain only the approved Google provider")
@@ -139,10 +314,13 @@ def run_cli(cli, config):
             done = subprocess.run([str(cli), "deploy", "--only", "auth", "--project", PROJECT,
                                    "--config", str(path), "--non-interactive"], cwd=folder,
                                   capture_output=True, text=True, timeout=300, check=False)
-        except (OSError, subprocess.TimeoutExpired):
-            raise Failure("Pinned Auth CLI did not complete; rerun Data release after checking provider state") from None
+        except (OSError, subprocess.TimeoutExpired) as error:
+            diagnostic = cli_failure_diagnostic(error, folder)
+            raise Failure("Pinned Auth CLI did not complete; rerun Data release after checking provider state; "
+                          f"{diagnostic}; raw output omitted") from None
         if done.returncode:
-            raise Failure(f"Pinned Auth CLI exited {done.returncode}; {SETUP_HINT}; raw output omitted")
+            diagnostic = cli_failure_diagnostic(done, folder)
+            raise Failure(f"Pinned Auth CLI exited {done.returncode}; {diagnostic}; {SETUP_HINT}; raw output omitted")
 
 
 def provision(api, cli, config):

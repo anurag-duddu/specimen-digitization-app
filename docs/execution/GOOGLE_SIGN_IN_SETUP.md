@@ -47,6 +47,12 @@ the explicit enabled-only patch is sent once. A failed CLI operation is not
 automatically repeated by this script; rerunning Data release reads live state
 first. The CLI has its own bounded provisioning/operation handling.
 
+On CLI failure, the release reports only a recognized request stage and
+bounded status/error identifiers. Raw CLI output, API payloads and private
+debug logs are never published. A last observed response is diagnostic context,
+not proof that a particular permission is missing; a generic exit code alone
+does not authorize additional grants.
+
 ## One-time permission setup
 
 Existing role names alone do not prove that the release identity lacks effective
