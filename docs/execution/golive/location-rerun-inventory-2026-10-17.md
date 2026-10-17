@@ -198,7 +198,12 @@ Not fixed here. Each record above is in human review.
 3. Country not settled although lower units are: `d10333ff` (Illinois, Edgar County)
    and `2b02009d` ("P.I.").
 4. `19f0f1f6` reaches its USD 1 run limit before field research checks a location. Its
-   cause is not confirmed here.
+   run graph's 27 paid calls sum to 995,703 micro-units: two failed first-pass attempts
+   held at reservation (637,340), segmentation (182,321, reserved), five failed readings
+   (100,000, reserved) and parse (58,164, reserved), against 17,878 at computed cost
+   (17 answered readings and field research). Field research ran with the 13,247 left.
+   One follow-up is to settle a failed call at computed cost when its provider
+   reported usage; it is not done here.
 
 ### Per record
 
