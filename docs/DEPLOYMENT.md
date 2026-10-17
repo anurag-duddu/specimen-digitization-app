@@ -171,10 +171,11 @@ The two fingerprint collections are path-sorted arrays of explicit `path` and
 `sha256` records; their literal paths and digests retain the original measurement
 provenance. The loader also accepts legacy schema-1 lower bounds and schema-2
 complete mappings. The stored input-manifest digest is not the new file's hash.
-A source/input fingerprint mismatch invalidates all complete costs; a module
-inventory mismatch invalidates that module's cost.
-The fallback is 0.1 seconds per collected item; timing weights change only
-balance, never test selection.
+Source fingerprints are provenance only: a source/input mismatch keeps every
+measured cost. A module whose collected node set matches its inventory digest
+weighs exactly its complete cost; a module whose node set changed weighs its
+measured cost plus 0.1 seconds per collected item, and an unknown module weighs
+0.1 seconds per item. Timing weights change only balance, never test selection.
 
 To refresh from all shard JSON results of one complete verified hosted run,
 use that run's count, source SHA, run ID and attempt, and the exact input
