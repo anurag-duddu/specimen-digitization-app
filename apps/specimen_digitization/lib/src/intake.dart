@@ -63,6 +63,9 @@ const String intakeBrowseSourcesLabel = 'Add from storage';
 /// What the message band's dismiss control is called.
 const String dismissMessageLabel = 'Dismiss this message';
 
+const String _unreadablePhotoMessage =
+    'Could not read this photo. Choose it again.';
+
 class IntakeScreen extends StatefulWidget {
   const IntakeScreen({
     super.key,
@@ -123,7 +126,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
   ({bool busy, int pending, bool current})? _publishedUpload;
 
   bool get _busy => _session.busy;
-  bool _sensitive = true;
+  bool _sensitive = false;
   bool get _stopRequested => _session.stopping;
   bool _choosing = false;
   bool _pageDragging = false;
@@ -286,7 +289,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
       _holdPhotos = false;
       _session.attachComplete(_transferRefresh);
       _session.attachHandoff(_transferRefresh);
-      _sensitive = true;
+      _sensitive = false;
       _autoIngest = false;
       _autoIngestLoaded = false;
       _error = null;
@@ -320,7 +323,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
         : await openFiles(
             acceptedTypeGroups: <XTypeGroup>[
               const XTypeGroup(
-                label: 'Specimen photographs',
+                label: 'Photos',
                 extensions: <String>[
                   'jpg',
                   'jpeg',
@@ -447,11 +450,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
       if (camera && _autoIngest && admitted > 0) unawaited(_session.start());
     } catch (_) {
       if (mounted) {
-        setState(
-          () => _error =
-              'The camera or file picker did not open. Check device '
-              'permissions, then choose files.',
-        );
+        setState(() => _error = 'Picker did not open. Try Choose files.');
       }
     } finally {
       if (mounted) setState(() => _choosing = false);
@@ -462,10 +461,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
   /// admission path as the system picker.
   Future<void> _dropFiles(List<XFile> files) {
     if (files.isEmpty) {
-      setState(
-        () => _error =
-            'No files were added. Drop image files, not a folder or link.',
-      );
+      setState(() => _error = 'No photos added. Drop photos here.');
       return Future<void>.value();
     }
     return _collect(camera: false, load: () async => files);
@@ -516,19 +512,11 @@ class _IntakeScreenState extends State<IntakeScreen> {
         if (!mounted) return;
         await _acceptFiles(files, camera: true);
         if (mounted && files.isNotEmpty) {
-          setState(
-            () => _error =
-                'Recovered an interrupted photograph. Check its framing and '
-                'readability before you upload.',
-          );
+          setState(() => _error = 'Recovered a photo. Check it, then send.');
         }
       } catch (_) {
         if (mounted) {
-          setState(
-            () => _error =
-                'The interrupted photograph could not be recovered. Take it '
-                'again, or choose the original file.',
-          );
+          setState(() => _error = _unreadablePhotoMessage);
         }
       } finally {
         if (prefs.getString(_captureKey) == _captureOwner) {
@@ -554,9 +542,8 @@ class _IntakeScreenState extends State<IntakeScreen> {
             key: 'size:${file.name}:$size',
             name: file.name,
             why: size == 0
-                ? 'This file is empty, so there is nothing to upload.'
-                : 'This file is over 25 MB. Photograph it again at a smaller '
-                      'size, or choose a smaller file.',
+                ? 'Empty file. Choose another.'
+                : 'Over 25 MB. Choose a smaller photo.',
           );
           continue;
         }
@@ -575,9 +562,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
           _skip(
             key: 'format:$digest',
             name: file.name,
-            why:
-                'This client uploads JPEG, PNG, HEIC, TIFF and DNG. Choose one '
-                'of those formats.',
+            why: 'Use JPEG, PNG, HEIC, TIFF or DNG.',
           );
           continue;
         }
@@ -637,9 +622,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
           _skip(
             key: 'resolution:$digest',
             name: file.name,
-            why:
-                'This image is over 40 megapixels or over 20,000 pixels on one '
-                'side. Upload a smaller derivative.',
+            why: 'Over 40 megapixels. Choose a smaller photo.',
           );
           continue;
         }
@@ -656,9 +639,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
           _skip(
             key: 'selected:$digest:${_entries.length}',
             name: file.name,
-            why: old.settled
-                ? 'This photograph was already uploaded in this intake.'
-                : 'This photograph is already in the upload queue.',
+            why: 'Already in the list',
           );
           continue;
         }
@@ -671,7 +652,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
           // Reselecting a queued file retains its declaration, including a
           // batch created before an item request was interrupted. A restored
           // server handle is resumed, never recreated with this local value.
-          // New selections use the visible declaration, sensitive by default.
+          // New selections use the visible declaration, off by default.
           // Resumed server uploads retain their existing classification.
           sensitive: old?.file?.sensitive ?? _sensitive,
           width: encodedDimensions?.width,
@@ -684,7 +665,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
             old.quality = quality;
             if (old.state != UploadState.accepted) {
               old.state = UploadState.ready;
-              old.reason = 'Ready to resume from the server offset.';
+              old.reason = 'Ready to send.';
               old.why = null;
             }
           } else {
@@ -705,8 +686,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
         _skip(
           key: 'read:${file.name}:${_entries.length}',
           name: file.name,
-          why:
-              'This file could not be read. Check file permission or choose the original again.',
+          why: _unreadablePhotoMessage,
         );
       }
     }
@@ -757,7 +737,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
 
   CaptureActivity _captureActivity() {
     if (_entries.isEmpty) {
-      return const CaptureActivity(label: 'Intake queue · No photographs yet');
+      return const CaptureActivity(label: 'No photos yet');
     }
     final int uploading = _entries
         .where(
@@ -786,15 +766,15 @@ class _IntakeScreenState extends State<IntakeScreen> {
         .where((ManifestEntry entry) => entry.state == UploadState.uploading)
         .firstOrNull;
     final List<String> parts = <String>[
-      if (uploading > 0) '$uploading uploading',
-      if (uploaded > 0) '$uploaded uploaded',
-      if (processing > 0) '$processing processing',
-      if (handedOff > 0) '$handedOff in main Queue',
-      if (attention > 0) '$attention need attention',
+      if (uploading > 0) '$uploading sending',
+      if (uploaded + processing > 0) '${uploaded + processing} saved',
+      if (handedOff > 0) '$handedOff sent',
+      if (attention > 0) '$attention not sent',
     ];
     return CaptureActivity(
-      label:
-          'Intake queue · ${parts.isEmpty ? '${_entries.length} waiting' : parts.join(', ')}',
+      label: parts.isEmpty
+          ? '${_entries.length} ${_entries.length == 1 ? 'photo' : 'photos'}'
+          : parts.join(', '),
       progress: active?.progress,
       problem: attention > 0,
     );
@@ -845,25 +825,15 @@ class _IntakeScreenState extends State<IntakeScreen> {
     ],
   );
 
-  Widget _sensitivityControl(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    mainAxisSize: MainAxisSize.min,
-    children: <Widget>[
-      UiCheckbox(
-        key: const ValueKey<String>('intake-sensitivity'),
-        label: 'Sensitive photographs',
-        semanticsLabel:
-            'Mark new photographs as sensitive. Applies to new files; existing uploads keep their classification.',
-        value: _sensitive,
-        onChanged: (bool value) => setState(() => _sensitive = value),
-      ),
-      Text(
-        'For new files',
-        style: context.ui.type.bodySmall.copyWith(
-          color: context.ui.color.inkSecondary,
-        ),
-      ),
-    ],
+  Widget _sensitivityControl(BuildContext context) => Align(
+    alignment: AlignmentDirectional.centerStart,
+    child: UiSwitch(
+      key: const ValueKey<String>('intake-sensitivity'),
+      label: 'Mark sensitive',
+      semanticsLabel: 'Mark sensitive for new photos',
+      value: _sensitive,
+      onChanged: (bool value) => setState(() => _sensitive = value),
+    ),
   );
 
   Widget _captureCard(

@@ -163,10 +163,11 @@ void main() {
     );
     await tester.ensureVisible(sensitivity);
     await tester.pumpAndSettle();
-    final bool before = tester.widget<UiCheckbox>(sensitivity).value ?? false;
+    expect(tester.widget(sensitivity), isA<UiSwitch>());
+    final bool before = tester.widget<UiSwitch>(sensitivity).value;
     await tester.tap(sensitivity);
     await tester.pumpAndSettle();
-    expect(tester.widget<UiCheckbox>(sensitivity).value, !before);
+    expect(tester.widget<UiSwitch>(sensitivity).value, !before);
     await tester.ensureVisible(upload);
     await tester.pumpAndSettle();
     expect(upload.hitTestable(), findsOneWidget);

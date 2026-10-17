@@ -64,35 +64,37 @@ void main() {
 
   Future<void> submit(WidgetTester tester) => submitBatch(tester);
 
-  test(
-    'legacy intake defaults to Sensitive in both creation requests',
-    () async {
-      final bodies = <Json>[];
-      final repo = repository((request) async {
-        bodies.add(jsonDecode(request.body) as Json);
+  testWidgets('sensitive-default sends false in both creation requests', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final bodies = <Json>[];
+    final repo = repository((request) async {
+      if (request.url.path.endsWith('/batches') ||
+          request.url.path.endsWith('/items')) {
+        final body = jsonDecode(request.body) as Json;
+        bodies.add(body);
         return http.Response(
-          request.url.path.endsWith('/batches')
-              ? '{"batch_id":"b"}'
-              : '{"upload_id":"u"}',
+          jsonEncode({
+            'batch_id': 'b',
+            'upload_id': 'u',
+            'sensitive': body['sensitive'],
+          }),
           200,
         );
-      });
-      addTearDown(repo.close);
-      await repo.createIntake(
-        scope,
-        IntakeFile(
-          name: 'source.png',
-          bytes: bytes,
-          mimeType: 'image/png',
-          sha256: digest,
-          method: 'files',
-        ),
-        'sensitive-default',
+      }
+      return http.Response(
+        jsonEncode({'upload_id': 'u', 'offset': bytes.length, 'revision': 2}),
+        200,
       );
-      expect(bodies, hasLength(2));
-      expect(bodies.map((body) => body['sensitive']), [true, true]);
-    },
-  );
+    });
+    addTearDown(repo.close);
+    await mount(tester, repo, onComplete: () {});
+    await choose(tester);
+    await submit(tester);
+    expect(bodies, hasLength(2));
+    expect(bodies.map((body) => body['sensitive']), [false, false]);
+  });
 
   test('a conflicting batch stops before creating its item', () async {
     var items = 0;
@@ -195,7 +197,9 @@ void main() {
     });
     addTearDown(repo.close);
     await mount(tester, repo, onComplete: () => accepted++);
-    expect(tester.widget<UiCheckbox>(sensitivityControl).value, isTrue);
+    expect(tester.widget(sensitivityControl), isA<UiSwitch>());
+    expect(tester.widget<UiSwitch>(sensitivityControl).value, isFalse);
+    await selectSensitivity(tester, 'Sensitive');
     await selectSensitivity(tester, 'Not sensitive');
     await choose(tester);
     await submit(tester);
@@ -279,7 +283,10 @@ void main() {
         });
         addTearDown(repo.close);
         await mount(tester, repo, onComplete: () => accepted++);
-        if (sensitive) await selectSensitivity(tester, 'Not sensitive');
+        await selectSensitivity(
+          tester,
+          sensitive ? 'Not sensitive' : 'Sensitive',
+        );
         await choose(tester);
         await submit(tester);
         expect(accepted, 1);

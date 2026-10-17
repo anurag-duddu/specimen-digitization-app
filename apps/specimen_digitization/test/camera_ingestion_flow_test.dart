@@ -410,7 +410,7 @@ void main() {
             find.byKey(const ValueKey<String>('capture-auto-ingest')),
           )
           .label,
-      'Send immediately',
+      'Send now',
     );
     await expectAccessible(tester);
 

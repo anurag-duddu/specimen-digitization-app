@@ -145,7 +145,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('recovered.png'), findsOneWidget);
       expect(
-        find.textContaining('Recovered an interrupted photograph'),
+        find.text('Recovered a photo. Check it, then send.'),
         findsOneWidget,
       );
       // Recovery only queues the photograph; Upload remains an explicit action.
