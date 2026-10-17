@@ -21371,3 +21371,43 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
   Exact committed-head review, complete canonical verification and hosted
   normal/cold engine qualification are still pending at this entry. The new
   diagnostics do not themselves fix or identify the provider denial.
+
+
+### 2026-10-17 - LOGIN-JOURNEY-FIREBASE PR 374 qualification and concurrent main integration
+
+- Task 01a147ea-7efb-7e22-8821-e42395a135fc, worktree 9030, branch
+  `codex/login-auth-diagnostics`, PR #374: exact head
+  `5bf9c32295ec93fcbc619542210e47ec7f4a423e`, tree
+  `ec2f106827cbc3f56b7e3e09b32739285f46c35f`, passed independent G51 review
+  with no findings and full local `scripts/ci/verify.sh`: 18,185 Python passed,
+  49 skipped; 1,307 design-system passed; 3,098 app passed, seven skipped;
+  analysis, formatting, release web build and 13-route/five-header smoke passed.
+- Required PR CI/CD 39074066885 and Runtime candidate CI 39074066854 passed.
+  Normal qualification 39074076384 and cold qualification 39074087513 passed
+  in full. All three engine artifacts passed strict validation with 53 stages
+  and 889 source fingerprints. Engine completion from the first job was
+  165/147/176 seconds versus last shard 1,234/767/1,026 seconds for normal,
+  cold and PR respectively. Evidence is retained under this task's
+  `recovery-implementation/engine-qualification-5bf9c322/qualification.json`.
+- Main advanced to c73b13a4 (PR #373 cost-ledger changes) before merge. The only
+  changed-path overlap is the append-only session log. Integrate main locally,
+  preserve both entries, verify engine input identity and rerun exact-head
+  required checks; the old head's successful runs are not relabeled as new runs.
+- Data release 39070548128 attempt 3, on merged 86555f1f, again failed Auth
+  with pinned CLI exit 2 after more than an hour of IAM propagation time.
+  A tightly scoped read-only audit found one ProvisionFirebaseApp status-7
+  record. ErrorInfo, authorizationInfo and bounded message matching identify no
+  permission. No further grant or repeated audit read is justified by this
+  evidence. The original six-permission setup remains the only IAM change.
+- A fresh native-only Chrome Guest session received a real museum email link,
+  reached the authorized Insects Queue, and eventually updated its original
+  tab on public build 69bd6469. A native-only tab in the existing museum Chrome
+  profile also reached Queue. The earlier browser-controlled QA tab's reCAPTCHA
+  error therefore does not establish a general production/profile outage.
+  That owned QA tab and the Guest probe were closed; user sessions remain.
+- The existing live build already synchronizes tabs after authentication. The
+  new controller cleans remembered/sent state and invalidates late request
+  completions, including after sign-out; it does not force tab focus or promise
+  faster synchronization. New production UI, Google admission and installed
+  native-app return remain Not confirmed at this entry. The paired code/link
+  branch `codex/login-journey-complete` at 18288554 remains preserved.
