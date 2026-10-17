@@ -521,6 +521,45 @@ void main() {
     );
   });
 
+  testWidgets('a column beside the body keeps the bottom safe area', (
+    WidgetTester tester,
+  ) async {
+    // The rail runs to the window's bottom edge, so whatever sits at its foot
+    // has to clear the home indicator; everything else below the bar still
+    // has the padding removed, so nothing insets twice.
+    late EdgeInsets nav;
+    late EdgeInsets body;
+    await tester.pumpWidget(
+      uiHarness(
+        size: const Size(1024, 768),
+        child: _page(
+          size: const Size(1024, 768),
+          padding: const EdgeInsets.only(left: 30, top: 24, bottom: 20),
+          nav: UiRail(
+            destinations: threeDestinations,
+            currentIndex: 0,
+            onSelect: (int _) {},
+            leading: Builder(
+              builder: (BuildContext context) {
+                nav = MediaQuery.paddingOf(context);
+                return const SizedBox.shrink();
+              },
+            ),
+          ),
+          body: Builder(
+            builder: (BuildContext context) {
+              body = MediaQuery.paddingOf(context);
+              return const SizedBox.expand();
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(nav, const EdgeInsets.only(bottom: 20));
+    expect(body, EdgeInsets.zero);
+  });
+
   testWidgets('a sidebar is placed beside the body too', (
     WidgetTester tester,
   ) async {

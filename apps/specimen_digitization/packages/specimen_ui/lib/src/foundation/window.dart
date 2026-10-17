@@ -67,6 +67,115 @@ enum WindowClass {
   bool get isCompact => this == WindowClass.compact;
 }
 
+/// How a window arranges the workspace around its content (05 section 2,
+/// amended 2026-10-17).
+///
+/// [WindowClass] says how wide a window is, and content reads it: how many
+/// columns a list takes, whether a record's panes sit side by side, whether a
+/// row of buttons stacks. This says where the chrome goes, and the chrome
+/// reads it: the navigation, the workspace header, the form of the band, and
+/// whether a modal is a sheet or a dialog. A window has one answer, so a
+/// landscape phone that draws the tab bar also gets the sheet and the strip,
+/// and every surface that asks gets it from here rather than from a number of
+/// its own.
+///
+/// It reads three things the window class does not. The text scale, because
+/// the docked arrangement puts a list pane beside the content that is
+/// [listPaneWidth] wide at normal text and grows with the text, so at 200
+/// percent the same window has half the room beside it. The height, so a
+/// window under [dockedMinHeight] tall, a phone on its side, is arranged the
+/// way it is upright. And a width boundary that is not a Material 3 one,
+/// [dockedMinWidth]: with the 72 dp rail and the list pane open, a docked
+/// 768 dp window leaves 384 dp beside them, about a phone's width.
+///
+/// The boundaries are the shell's own since 2026-10-01, written there as
+/// literals until 2026-10-17 and moved here unchanged, so the captures and
+/// the device check made on them (#347, #350) still describe what ships. The
+/// list pane is 8 dp narrower than the shell's 320, see [listPaneWidth].
+enum WindowArrangement {
+  /// One pane at a time.
+  ///
+  /// The navigation is a tab bar along the bottom edge, a record stacks over
+  /// the list it came from, a modal is a sheet and the band is a strip.
+  stacked,
+
+  /// The navigation docks down the start edge beside one content pane.
+  ///
+  /// The list pane opens beside a record when the reviewer asks for it.
+  docked,
+
+  /// Docked, with room for the list pane beside the record from the start.
+  ///
+  /// Material 3's list-detail canonical layout.
+  listDetail;
+
+  /// The least scaled width that docks.
+  ///
+  /// Scaled: multiplied by the text scale before it is compared, so a window
+  /// at 200 percent text docks from 1536.
+  static const double dockedMinWidth = 768;
+
+  /// The least height that docks, whatever the width.
+  static const double dockedMinHeight = 600;
+
+  /// The least scaled width that opens the list beside a record.
+  static const double listDetailMinWidth = 1100;
+
+  /// The list pane's width at normal text.
+  ///
+  /// 312, so the rail and the pane together are the 384 dp the shell's
+  /// hand-built 64 dp column and 320 dp list took before 2026-10-17. `UiRail`
+  /// is 72 dp (10 section 4.4), and the 8 dp it grew by come out of the pane
+  /// rather than out of the content: at 1180 by 820 with the list open, a
+  /// record 8 dp narrower moves its decision bar's previous and next into the
+  /// overflow menu, and that window is the review desk.
+  static const double listPaneWidth = 312;
+
+  /// The text scale the arrangement reads.
+  ///
+  /// The scaler's factor at 16 dp, held to 1 through 2: a window at reduced
+  /// text docks no earlier than one at normal text, and the control contract
+  /// promises nothing above 200 percent (11 section 2.1).
+  static double textScaleOf(TextScaler textScaler) =>
+      (textScaler.scale(16) / 16).clamp(1.0, 2.0);
+
+  /// The arrangement for a window of [size] at [textScaler].
+  static WindowArrangement fromSize(
+    Size size, {
+    TextScaler textScaler = TextScaler.noScaling,
+  }) {
+    final double scale = textScaleOf(textScaler);
+    if (size.width < dockedMinWidth * scale || size.height < dockedMinHeight) {
+      return WindowArrangement.stacked;
+    }
+    if (size.width < listDetailMinWidth * scale) {
+      return WindowArrangement.docked;
+    }
+    return WindowArrangement.listDetail;
+  }
+
+  /// The arrangement for the window this context is painted into.
+  ///
+  /// Reads `MediaQuery.sizeOf` and `MediaQuery.textScalerOf`, so a widget
+  /// that calls this rebuilds when the window is resized or the text scale
+  /// changes, and only then.
+  static WindowArrangement of(BuildContext context) => fromSize(
+    MediaQuery.sizeOf(context),
+    textScaler: MediaQuery.textScalerOf(context),
+  );
+
+  /// The list pane's width at [textScaler]: [listPaneWidth] scaled with the
+  /// text and rounded up to the 8 dp grid.
+  static double listPaneWidthOf(TextScaler textScaler) =>
+      (listPaneWidth * textScaleOf(textScaler) / 8).ceil() * 8.0;
+
+  /// True only for [stacked].
+  bool get isStacked => this == WindowArrangement.stacked;
+
+  /// True for [docked] and [listDetail]: the navigation is down the side.
+  bool get isDocked => this != WindowArrangement.stacked;
+}
+
 /// One value per window class, resolved to the nearest smaller class that is
 /// set.
 ///

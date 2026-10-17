@@ -802,8 +802,25 @@ class _UiScaffoldState extends State<UiScaffold> {
         // sidebar are columns beside the body rather than chrome over it, and
         // a desktop with its navigation taken away inside a record has no
         // navigation at all, so only the caller's own answer hides them.
+        //
+        // The column runs to the window's bottom edge, so it keeps the bottom
+        // safe area the rest of this region has removed: a control at its
+        // foot clears the home indicator itself rather than sitting on it.
+        // The keyboard is not in it, because a column beside the body does
+        // not move up with the body's text field.
         if (beside)
-          unfloated(Offstage(offstage: !widget.navVisible, child: widget.nav!)),
+          unfloated(
+            Offstage(
+              offstage: !widget.navVisible,
+              child: MediaQuery.removePadding(
+                context: context,
+                removeTop: true,
+                removeLeft: true,
+                removeRight: true,
+                child: widget.nav!,
+              ),
+            ),
+          ),
         Expanded(child: bodyArea),
       ],
     );
