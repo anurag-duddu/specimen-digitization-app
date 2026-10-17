@@ -2,8 +2,8 @@
 /// 10 section 5).
 ///
 /// Raw JSON is never the primary rendering of anything, so it lives one
-/// control away: a ghost trigger that opens a sheet on a compact window and a
-/// dialog on a wider one, with the payload in `mono.code` and a copy control
+/// control away: a ghost trigger that opens a sheet where the window is
+/// stacked and a dialog where it is docked, with the payload in `mono.code` and a copy control
 /// beside its size. Closed, the payload is not in the tree at all, so a screen
 /// reader user is never made to walk a thousand lines of JSON to reach the
 /// next control. Open, the text keeps its own real semantics rather than one
@@ -84,7 +84,7 @@ class EvidenceDrawer extends StatelessWidget {
     ),
   );
 
-  /// A sheet on a compact window and a dialog on a wider one
+  /// A sheet where the window is stacked and a dialog where it is docked
   /// (10 section 5), written out rather than through
   /// `UiDialog.showAdaptive` because the two forms scroll the payload
   /// differently: the sheet scrolls its own body, and the dialog hands its
@@ -110,7 +110,7 @@ class EvidenceDrawer extends StatelessWidget {
       onPressed: () => Navigator.of(modalContext).pop(),
     );
 
-    if (isCompactWindow(context)) {
+    if (presentsAsSheet(context)) {
       await UiSheet.show<void>(
         context: context,
         title: title,

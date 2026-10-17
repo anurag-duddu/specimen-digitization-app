@@ -14,22 +14,21 @@ PreviewThemeData shellPreviewThemes() => PreviewThemeData(
   materialDark: AppTheme.dark(),
 );
 
-@Preview(name: 'Sidebar navigation', group: 'Shell', theme: shellPreviewThemes)
+@Preview(name: 'Rail navigation', group: 'Shell', theme: shellPreviewThemes)
 Widget shellNavigationPreview() {
   WorkspaceDestination selected = WorkspaceDestination.queue;
+  // The docked shell's destinations are the design system's `UiRail`, in the
+  // scaffold's `nav` slot, exactly as `AppShell` draws them.
   return StatefulBuilder(
     builder: (BuildContext context, StateSetter setState) => UiScaffold(
-      body: Padding(
-        padding: EdgeInsets.all(context.ui.space.s4),
-        child: Align(
-          alignment: AlignmentDirectional.topStart,
-          child: ShellSidebarNavigation(
-            destination: selected,
-            onSelect: (WorkspaceDestination next) =>
-                setState(() => selected = next),
-          ),
-        ),
+      nav: UiRail(
+        destinations: AppShell.destinations,
+        currentIndex: selected.index,
+        semanticsLabel: AppShell.navigationLabel,
+        onSelect: (int index) =>
+            setState(() => selected = WorkspaceDestination.values[index]),
       ),
+      body: const SizedBox.expand(),
     ),
   );
 }
