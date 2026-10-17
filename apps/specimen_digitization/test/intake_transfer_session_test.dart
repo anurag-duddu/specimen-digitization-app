@@ -1349,6 +1349,71 @@ void main() {
     session.close();
   });
 
+  testWidgets('a batch keeps sending while the app is only inactive', (
+    tester,
+  ) async {
+    // On the web `inactive` is a window or tab without input focus; on phones
+    // it is a notification shade or a permission sheet. Neither may pause the
+    // primary action between two photos.
+    final TransferRepository repository = TransferRepository();
+    final IntakeTransferSession session = IntakeTransferSession(
+      repository,
+      scope,
+      'inactive-batch',
+    );
+    session.entries.addAll(<ManifestEntry>[
+      entry('one'),
+      entry('two'),
+      entry('three'),
+    ]);
+    try {
+      final Future<void> run = session.start();
+      await tester.pump();
+      expect(repository.started, ['one.jpg']);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      repository.firstUpload.complete();
+      await run;
+      expect(repository.started, ['one.jpg', 'two.jpg', 'three.jpg']);
+      expect(repository.completions, 3);
+      expect(session.busy, isFalse);
+    } finally {
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      session.close();
+    }
+  });
+
+  testWidgets('a batch pauses between photos in the background and resumes', (
+    tester,
+  ) async {
+    final TransferRepository repository = TransferRepository();
+    final IntakeTransferSession session = IntakeTransferSession(
+      repository,
+      scope,
+      'paused-batch',
+    );
+    session.entries.addAll(<ManifestEntry>[
+      entry('one'),
+      entry('two'),
+      entry('three'),
+    ]);
+    try {
+      final Future<void> run = session.start();
+      await tester.pump();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      repository.firstUpload.complete();
+      await run;
+      expect(repository.started, ['one.jpg']);
+      expect(repository.completions, 1);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(repository.started, ['one.jpg', 'two.jpg', 'three.jpg']);
+      expect(repository.completions, 3);
+    } finally {
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      session.close();
+    }
+  });
+
   testWidgets(
     'Retry now cancels the scheduled retry and keeps its server handle',
     (tester) async {

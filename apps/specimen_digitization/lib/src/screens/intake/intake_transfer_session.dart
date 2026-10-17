@@ -171,14 +171,24 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
     if (_observingAppLifecycle || _closed) return;
     WidgetsBinding.instance.addObserver(this);
     _observingAppLifecycle = true;
-    final AppLifecycleState? state = WidgetsBinding.instance.lifecycleState;
-    _appInBackground = state != null && state != AppLifecycleState.resumed;
+    _appInBackground = _isBackground(WidgetsBinding.instance.lifecycleState);
   }
+
+  /// Only a hidden, paused or detached app is in the background. `inactive` is
+  /// a web window or tab without input focus, or a transient phone overlay (a
+  /// notification shade, a permission sheet): uploads, retries and polls keep
+  /// going there, because pausing them would stall the primary action whenever
+  /// the operator clicks away. A real move to the background passes through
+  /// `hidden` or `paused` and is handled then.
+  static bool _isBackground(AppLifecycleState? state) =>
+      state == AppLifecycleState.hidden ||
+      state == AppLifecycleState.paused ||
+      state == AppLifecycleState.detached;
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final bool wasInBackground = _appInBackground;
-    _appInBackground = state != AppLifecycleState.resumed;
+    _appInBackground = _isBackground(state);
     if (_appInBackground || wasInBackground) {
       // A pre-background offer cannot authorize work after resuming. Keep the
       // confirmed display, but require a read begun in this foreground period.
