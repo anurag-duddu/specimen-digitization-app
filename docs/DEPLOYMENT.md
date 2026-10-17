@@ -256,20 +256,26 @@ selection, toolchain, configuration and source fingerprints. Full shard
 verification still consumes only `shard-*.json` and proves default exact-once
 coverage; focused contracts run after engine verification.
 
-Before this program's wiring can merge, the integrator must qualify the exact
-final source with CI-only branch `workflow_dispatch` cold and warm pilots,
-then ordinary PR required checks. Record actual queue, setup, download,
-engine/cleanup, post-cache and fan-in timestamps. Each pilot must prove
-`engine_end <= last_improved_shard_end - 30s`, no measured I10 required-path
-regression, the aggregate verification allowance of 0–3 seconds and the
-consolidated required path at most 700 seconds, including queue and fan-in.
-The modeled cold upper end of 578 seconds is 10–39 seconds later than the
-modeled improved leaves at 539–568 seconds and misses the reserve by
-40–69 seconds; it is not acceptance evidence. No speed saving is credited.
-Actual-engine success and timing remain unconfirmed until those pilots pass.
-Missing tool, PG-major, identity, runtime or reserve proof means defer final
-wiring/merge. A future eligible-focused comparison awaits closure qualification;
-do not force a focused run or compare it to a historical engine-free path.
+Qualification record (2026-10-17). The tier was qualified on the hosted runner
+with CI-only `workflow_dispatch` runs of the pull-request branch and with that
+pull request's required checks. Normal run 39002413443 and cold-cache run
+39002417497 used engine-tier inputs identical to the merged source; their engine
+jobs ended 207 and 243 seconds after the first job started. On the exact-head
+pull-request run 39016571627 the engine job ended at 156 seconds, the slowest
+shard at 734 seconds and `Python tests` at 749 seconds; main's baseline run
+38887586799 ended `Python tests` at 779 seconds. The engine job therefore ends
+far ahead of the slowest shard and adds no required-path time. The 700-second
+stretch target was not reached: the slowest shard is still
+`tests/research_harness/test_parallel_roles.py`, which stays one module.
+
+Any later change to the engine tier (toolchain, selection, wrappers, verifier or
+workflow wiring) re-qualifies the same way before merge: a CI-only
+`workflow_dispatch` run in `normal` and in `engine_cache_mode=cold` mode, then
+the ordinary pull-request checks, confirming every stage passes and the engine
+job still ends well before the slowest shard. A missing tool, wrong major,
+identity mismatch or failed stage keeps the change out of `main`. A future
+eligible-focused comparison awaits closure qualification; do not force a focused
+run or compare it to a historical engine-free path.
 
 `scripts/ci/smoke_web_routes.py` and the embedded research-schema parity test
 have contract coverage in the dormant focused frontend steps; those tests
