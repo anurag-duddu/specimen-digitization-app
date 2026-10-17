@@ -1,5 +1,6 @@
 // Synthetic-only integration harness. Never contacts a cloud endpoint.
 import assert from 'node:assert/strict';
+import {passed} from './engine-contract-reporter.mjs';
 import { randomUUID } from 'node:crypto';
 const host = process.env.FIREBASE_DATACONNECT_EMULATOR_HOST || '127.0.0.1:9499';
 assert.match(host, /^(127\.0\.0\.1|localhost):\d+$/);
@@ -17,6 +18,7 @@ assert.ok(ok(await op('Readiness', {})).organizations.length <= 1);
 denied(await op('Readiness', {}, false, {unauthenticated:true}));
 denied(await op('Readiness', {}, false, {authClaims:{sub:'reviewer'}}));
 console.log('PASS bounded server readiness and client denial');
+passed('connector.01');
 const org=randomUUID(), collection=randomUUID(), id=randomUUID();
 ok(await raw(`mutation @transaction {
  organization_insert(data:{id:"${org}",name:"Synthetic museum"})
@@ -29,10 +31,12 @@ const create={...scope,id,snapshot:{id,version:1,literal:'unchanged'},snapshotSh
 assert.equal(ok(await op('GetReceipt',{...scope,operation:'create',idempotencyKey:create.idempotencyKey})).requestReceipt,null);
 ok(await op('CreateSpecimen',create,true));
 console.log('PASS create transaction');
+passed('connector.02');
 const duplicateId=randomUUID();
 denied(await op('CreateSpecimen',{...create,id:duplicateId},true));
 assert.equal(ok(await op('GetSpecimen',{...scope,id:duplicateId})).specimen,null);
 console.log('PASS duplicate receipt rolls back newly inserted specimen');
+passed('connector.03');
 
 assert.equal(ok(await op('GetSpecimen',{...scope,id})).specimenSnapshots[0].snapshot.literal,'unchanged');
 const save={...create,expectedRevision:1,idempotencyKey:randomUUID(),operation:'save',action:'checkpoint',snapshot:{id,version:2,literal:'unchanged'},state:'processing_blocked',activeRunId:null,disposition:null};
@@ -40,16 +44,20 @@ ok(await op('SaveSpecimen',save,true));
 assert.equal(ok(await op('GetSpecimen',{...scope,id})).specimen.revision,2);
 assert.equal(ok(await op('GetSnapshot',{...scope,id,revision:1})).specimenSnapshot.snapshot.version,1);
 console.log('PASS CAS save and immutable prior snapshot');
+passed('connector.04');
 denied(await op('SaveSpecimen',{...save,idempotencyKey:randomUUID()},true));
 assert.equal(ok(await op('GetSpecimen',{...scope,id})).specimen.revision,2);
 console.log('PASS stale write rolls back');
+passed('connector.05');
 denied(await op('GetSpecimen',{...scope,id,actorUid:'outsider'}));
 denied(await op('CreateSpecimen',{...create,id:randomUUID(),actorUid:'outsider'},true));
 console.log('PASS unauthorized read/write');
+passed('connector.06');
 const receipt=ok(await op('GetReceipt',{...scope,operation:'save',idempotencyKey:save.idempotencyKey})).requestReceipt;
 assert.equal(receipt.revision,2);
 assert.equal(receipt.requestSha256,save.requestSha256);
 console.log('PASS idempotency receipt committed with snapshot');
+passed('connector.07');
 const actionId = randomUUID(), actionKey = `action:${randomUUID()}`;
 ok(await op('CreateSpecimen', {...create, id: actionId, idempotencyKey: randomUUID()}, true));
 const actionSave = {...save, id: actionId, operation: `save:${actionId}`, idempotencyKey: actionKey,
@@ -74,14 +82,17 @@ ok(await raw(`mutation @transaction {
 }`));
 assert.deepEqual(ok(await op('GetReprocessActionReceiptsV1', {...actionRead, actorUid: 'other-reviewer'})).requestReceipts, []);
 console.log('PASS bounded action receipt exact key/revision/actor and NO_ACCESS authorization');
+passed('connector.08');
 denied(await op('GetSpecimen',{...scope,id},false,{unauthenticated:true}));
 denied(await op('GetSpecimen',{...scope,id},false,{authClaims:{sub:'reviewer'}}));
 console.log('PASS client access denied, including valid user');
+passed('connector.09');
 const invalid={...save,expectedRevision:2,idempotencyKey:randomUUID(),state:'processing_blocked',disposition:'deferred'};
 denied(await op('SaveSpecimen',invalid,true));
 denied(await op('SaveSpecimen',{...invalid,state:'completed',disposition:'failed'},true));
 assert.equal(ok(await op('GetSpecimen',{...scope,id})).specimen.revision,2);
 console.log('PASS operational blocks cannot carry final disposition; invalid final queue rejected');
+passed('connector.10');
 const doc={...scope,kind:'upload',id:randomUUID(),payload:{offset:0},operation:'upload_create',idempotencyKey:randomUUID(),requestSha256:'c'.repeat(64)};
 ok(await op('CreateDocument',doc,true));
 ok(await op('SaveDocument',{...doc,expectedRevision:1,payload:{offset:1024},idempotencyKey:randomUUID()},true));
@@ -89,23 +100,28 @@ assert.equal(ok(await op('GetDocument',{...scope,kind:'upload',id:doc.id})).auxi
 assert.equal(ok(await op('GetDocumentVersion',{...scope,kind:'upload',id:doc.id,revision:1})).auxiliaryVersion.payload.offset,0);
 denied(await op('SaveDocument',{...doc,expectedRevision:1,idempotencyKey:randomUUID()},true));
 console.log('PASS upload metadata resume/CAS/history');
+passed('connector.11');
 const raced=await Promise.all([1,2].map(n=>op('SaveSpecimen',{...save,expectedRevision:2,idempotencyKey:randomUUID(),snapshot:{id,version:3,winner:n}},true)));
 assert.equal(raced.filter(r=>!r.code&&!r.errors?.length).length,1);
 assert.equal(ok(await op('GetSpecimen',{...scope,id})).specimen.revision,3);
 console.log('PASS concurrent writers yield one successful CAS');
+passed('connector.12');
 const events=ok(await raw(`query { auditEvents(where:{organizationId:{eq:"${org}"},collectionId:{eq:"${collection}"},specimenId:{eq:"${id}"}}) { revision } outboxEvents(where:{organizationId:{eq:"${org}"},collectionId:{eq:"${collection}"},specimenId:{eq:"${id}"}}) { aggregateRevision } }`));
 assert.equal(events.auditEvents.length,3); assert.equal(events.outboxEvents.length,3);
 console.log('PASS one audit and outbox per committed revision, none for rejected CAS');
+passed('connector.13');
 ok(await raw(`mutation { collectionMember_update(key:{organizationId:"${org}",collectionId:"${collection}",uid:"reviewer"},data:{canViewSensitive:false}) }`));
 denied(await op('GetSpecimen',{...scope,id}));
 denied(await op('GetReprocessActionReceiptsV1', actionRead));
 assert.deepEqual(ok(await op('ListSpecimens',{...scope,limit:20,offset:0,includeSensitive:false})).specimens,[]);
 denied(await op('ListSpecimens',{...scope,limit:20,offset:0,includeSensitive:true}));
 console.log('PASS sensitive record read/list gates');
+passed('connector.14');
 ok(await raw(`mutation { organizationMember_update(key:{organizationId:"${org}",uid:"reviewer"},data:{active:false}) }`));
 denied(await op('GetReceipt',{...scope,operation:'save',idempotencyKey:save.idempotencyKey}));
 denied(await op('GetReprocessActionReceiptsV1', actionRead));
 console.log('PASS organization revocation rechecked');
+passed('connector.15');
 ok(await raw(`mutation { organizationMember_update(key:{organizationId:"${org}",uid:"reviewer"},data:{active:true}) collectionMember_update(key:{organizationId:"${org}",collectionId:"${collection}",uid:"reviewer"},data:{canViewSensitive:true}) }`));
 ok(await raw(`mutation { collectionMember_update(key:{organizationId:"${org}",collectionId:"${collection}",uid:"reviewer"},data:{active:false}) }`));
 denied(await op('GetReprocessActionReceiptsV1', actionRead));
@@ -115,6 +131,7 @@ for (let n = 0; n < 2; n++) {
 }
 assert.equal(ok(await op('GetReprocessActionReceiptsV1', actionRead)).requestReceipts.length, 2);
 console.log('PASS action receipt sensitive/revoked membership refusal and fixed ambiguity limit2');
+passed('connector.16');
 if(process.env.DATA_RESTART_PROOF) {
  const {writeFile}=await import('node:fs/promises');
  await writeFile(process.env.DATA_RESTART_PROOF,JSON.stringify({scope,id}));
@@ -133,10 +150,13 @@ const rows=ok(await raw(`query { modelObservations(where:{organizationId:{eq:"${
 assert.equal(rows.modelObservations.length,1);
 assert.equal(rows.modelObservations[0].literalText,'literal evidence');
 console.log('PASS normalized immutable asset/run/region/observation chain and logical-step/object uniqueness');
+passed('connector.17');
 // A collection member cannot attach an asset to a specimen from a different scope.
 const otherCollection=randomUUID();
 ok(await raw(`mutation { collection_insert(data:{organizationId:"${org}",id:"${otherCollection}",name:"Other synthetic collection"}) collectionMember_insert(data:{organizationId:"${org}",collectionId:"${otherCollection}",uid:"reviewer",active:true,role:"reviewer",canViewSensitive:true}) }`));
 denied(await op('AppendSourceAsset',{...asset,id:randomUUID(),collectionId:otherCollection,objectName:randomUUID()},true));
 console.log('PASS composite foreign key rejects cross-collection specimen reference');
+passed('connector.18');
 assert.deepEqual(ok(await op('GetReprocessActionReceiptsV1', {...actionRead, collectionId: otherCollection})).requestReceipts, []);
 console.log('PASS action receipt cannot cross an otherwise authorized collection scope');
+passed('connector.19');
