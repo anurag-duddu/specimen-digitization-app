@@ -260,6 +260,38 @@ void main() {
     );
   });
 
+  test('iOS adopts the UIScene lifecycle that iOS 27 requires at launch', () {
+    final String plist = File('ios/Runner/Info.plist').readAsStringSync();
+    final String delegate = File(
+      'ios/Runner/AppDelegate.swift',
+    ).readAsStringSync();
+    expect(
+      plist,
+      contains('<key>UIApplicationSceneManifest</key>'),
+      reason:
+          'An iOS 27 SDK build without a scene manifest is killed by UIKit at '
+          'launch (UIApplicationEvaluateRuntimeIssueForNoSceneLifecycleAdoption).',
+    );
+    expect(plist, contains('<string>FlutterSceneDelegate</string>'));
+    expect(plist, contains('<string>UIWindowScene</string>'));
+    expect(
+      delegate,
+      contains('FlutterImplicitEngineDelegate'),
+      reason: 'Plugins must register once the scene creates the engine.',
+    );
+    expect(
+      delegate,
+      contains(
+        'GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)',
+      ),
+    );
+    expect(
+      delegate,
+      isNot(contains('GeneratedPluginRegistrant.register(with: self)')),
+      reason: 'Registering with the app delegate runs before the engine exists.',
+    );
+  });
+
   test('web keeps preview and still capture without unsupported controls', () {
     final String camera = File(
       'lib/src/capture/capture_camera.dart',
