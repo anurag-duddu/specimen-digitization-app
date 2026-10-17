@@ -10,7 +10,11 @@
 // So a `const` declared `double` or `num`, at the top level, as a static
 // member or as a local, fails when its initializer writes a number above 1.
 // An untyped `const` fails the same way when that number is written as a
-// double, `280.0`. Fractions of a size, 0 to 1, are what 11 section 1 asks
+// double, `280.0`. A `static final`, a top-level `final` and a `double` getter
+// written with `=>` are read the same way, because each is a name for a
+// number and swapping `const` for one of them must not pass. A number that
+// multiplies, or divides by, is a factor in a derivation rather than a size,
+// so `targetMin * 2` passes and `24.0 + inset` does not. Fractions of a size, 0 to 1, are what 11 section 1 asks
 // for and stay. The mechanism is the geometry gate's: a per-file count that may
 // go down, never up, and a file at zero leaves the map. It reads the same files
 // that gate reads, `lib/` without generated files and without the wire types
@@ -47,9 +51,21 @@ const Map<String, int> namedPixelBacklog = <String, int>{
   'lib/src/widgets/upload_item.dart': 1,
 };
 
-final RegExp _constDeclaration = RegExp(
-  r'\bconst\s+(?:(double|num)\s+)?([A-Za-z_$][\w$]*)\s*=(?!=)',
+final RegExp _namedNumber = RegExp(
+  r'\b(?:const|static\s+final)\s+(?:(double|num)\s+)?([A-Za-z_$][\w$]*)'
+  r'\s*=(?!=)'
+  r'|^final\s+(double|num)\s+([A-Za-z_$][\w$]*)\s*=(?!=)'
+  r'|\b(double|num)\s+get\s+([A-Za-z_$][\w$]*)\s*=>',
+  multiLine: true,
 );
+
+/// Whether the number from [start] to [end] in [code] multiplies, or is the
+/// divisor: `x * 2`, `2 * x`, `x / 2`.
+bool _isFactor(String code, int start, int end) {
+  final String before = code.substring(0, start).trimRight();
+  final String after = code.substring(end).trimLeft();
+  return before.endsWith('*') || before.endsWith('/') || after.startsWith('*');
+}
 
 /// Every named constant in [source] that holds a size above 1, as
 /// `line N, name = value`.
@@ -57,28 +73,34 @@ List<String> namedPixelsIn(String source) {
   final String code = maskProse(source);
   final List<List<int>> painting = painterPaintBodies(code);
   final List<String> found = <String>[];
-  for (final RegExpMatch declaration in _constDeclaration.allMatches(code)) {
+  for (final RegExpMatch declaration in _namedNumber.allMatches(code)) {
     if (painting.any(
       (List<int> span) =>
           declaration.start >= span[0] && declaration.start < span[1],
     )) {
       continue;
     }
-    final bool typed = declaration.group(1) != null;
+    final bool typed =
+        (declaration.group(1) ??
+            declaration.group(3) ??
+            declaration.group(5)) !=
+        null;
+    final String name =
+        declaration.group(2) ?? declaration.group(4) ?? declaration.group(6)!;
     final int end = endOfExpression(code, declaration.end);
     final String initializer = code.substring(declaration.end, end);
     final bool holdsSize = numericLiteral
         .allMatches(initializer)
-        .map((RegExpMatch m) => m.group(0)!)
         .any(
-          (String text) =>
-              double.parse(text) > 1 &&
-              (typed || text.contains(RegExp('[.eE]'))),
+          (RegExpMatch m) =>
+              double.parse(m.group(0)!) > 1 &&
+              (typed || m.group(0)!.contains(RegExp('[.eE]'))) &&
+              !_isFactor(initializer, m.start, m.end),
         );
     if (holdsSize) {
       found.add(
         'line ${lineOf(source, declaration.start)}, '
-        '${declaration.group(2)} = ${initializer.trim()}',
+        '$name = ${initializer.trim()}',
       );
     }
   }
@@ -137,11 +159,36 @@ void main() {
     expect(namedPixelsIn('static const double _edge = -24;'), <String>[
       'line 1, _edge = -24',
     ]);
-    expect(namedPixelsIn('static const double _w = 2 * kGap;'), <String>[
-      'line 1, _w = 2 * kGap',
+    expect(namedPixelsIn('static const double _w = 280 / kScale;'), <String>[
+      'line 1, _w = 280 / kScale',
     ]);
 
-    // A fraction, a token, an int count and prose are not sizes.
+    expect(namedPixelsIn('static final double switcher = 280;'), <String>[
+      'line 1, switcher = 280',
+    ]);
+    expect(namedPixelsIn('final double paneWidth = 320;'), <String>[
+      'line 1, paneWidth = 320',
+    ]);
+    expect(namedPixelsIn('double get width => 280;'), <String>[
+      'line 1, width = 280',
+    ]);
+    expect(namedPixelsIn('static double get _gap => 24.0 + inset;'), <String>[
+      'line 1, _gap = 24.0 + inset',
+    ]);
+
+    // A fraction, a token, an int count and prose are not sizes, and neither
+    // is a computation in a method body or a getter that falls back to 1.
+    expect(
+      namedPixelsIn('void f() {\n  final double s = w / 256;\n}'),
+      isEmpty,
+    );
+    expect(namedPixelsIn('double get aspect => ratio ?? 1;'), isEmpty);
+    expect(namedPixelsIn('static const double _w = 2 * kGap;'), isEmpty);
+    expect(
+      namedPixelsIn('double get _buffer => math.max(min * 2, h + s2 * 2);'),
+      isEmpty,
+    );
+    expect(namedPixelsIn('double get _half => extent / 2;'), isEmpty);
     expect(namedPixelsIn('static const double share = 0.55;'), isEmpty);
     expect(namedPixelsIn('static const double one = 1.0;'), isEmpty);
     expect(namedPixelsIn('const double min = WindowClass.mediumMin;'), isEmpty);
