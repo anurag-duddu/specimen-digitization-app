@@ -169,13 +169,25 @@ class ModelPrice(FrozenRecord):
 
 
 class ServicePrice(FrozenRecord):
-    """A Cloud Run service's size and rates, in micro-dollars per million units."""
+    """A Cloud Run service's size and rates, in micro-dollars per million units.
+
+    The first three rates are Cloud Run's request-based ones, which size the
+    service's reservation. A service billed by instance (CPU always allocated)
+    also names its instance-based rates, which have no request fee: its
+    settled cost is its instance time at those (lane_costs.segmentation_instance_cost).
+    """
 
     vcpus: float = Field(gt=0, le=64)
     memory_gib: float = Field(gt=0, le=512)
     vcpu_micros_per_million_seconds: int = Field(ge=0, le=10**12)
     gib_micros_per_million_seconds: int = Field(ge=0, le=10**12)
     request_micros_per_million: int = Field(default=0, ge=0, le=10**12)
+    instance_vcpu_micros_per_million_seconds: int | None = Field(
+        default=None, ge=0, le=10**12, exclude_if=lambda value: value is None
+    )
+    instance_gib_micros_per_million_seconds: int | None = Field(
+        default=None, ge=0, le=10**12, exclude_if=lambda value: value is None
+    )
 
 
 class PriceList(FrozenRecord):

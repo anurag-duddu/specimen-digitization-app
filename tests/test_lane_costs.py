@@ -168,8 +168,9 @@ def test_sam3_request_seconds_do_not_refund_unmeasured_lifecycle():
     run = priced_run()
     record_segmentation(run, "segment", seconds=25.2)
     [call] = run.paid_calls
-    # 25.2 s x (4 vCPU x 24 + 8 GiB x 2.5) micro-dollars a second, plus one
-    # request at 0.4: 2,923.6, rounded up.
+    # 25.2 s would cost 2,924, but they omit the start, its CPU boost and the
+    # idle time Cloud Run bills. Without SAM 3's instance report
+    # (tests/test_sam_instance_cost.py) the call stays reserved in full.
     assert call["cost_micros"] == step_reservation(run, "segment")
     assert call["cost_basis"] == "reserved"
     assert (call["kind"], call["service"]) == ("service", "sam3")
@@ -407,7 +408,8 @@ def test_a_step_without_recorded_calls_stays_reserved(tmp_path):
 
 def test_the_pilot_pins_the_prices_read_on_2026_09_24():
     prices = published_registry().resolve("insects").profile.processing.price_list
-    assert (prices.version, prices.as_of) == ("pilot-prices-2026-10-03", "2026-09-24")
+    # 2026-10-17: the same prices, with SAM 3's instance-based rates added.
+    assert (prices.version, prices.as_of) == ("pilot-prices-2026-10-17", "2026-09-24")
     qwen, muse = prices.models["handwriting-qwen"], prices.models["handwriting-muse"]
     assert (qwen.input_micros_per_million, qwen.output_micros_per_million) == (
         200_000,
@@ -430,6 +432,15 @@ def test_the_pilot_pins_the_prices_read_on_2026_09_24():
     worst = segmentation_cost(prices.model_dump(mode="json"), 310)
     assert worst == 42_161
     assert worst <= published_registry().resolve("insects").profile.processing.stage_cost_micros.for_step("segment")
+    # Cloud Run bills specimen-sam by instance (CPU always allocated), at 18
+    # and 2 a vCPU- and GiB-second with no request fee: what its calls settle
+    # at (lane_costs.segmentation_instance_cost). The request-based rates
+    # above still size its reservation.
+    segmentation = prices.segmentation
+    assert (
+        segmentation.instance_vcpu_micros_per_million_seconds,
+        segmentation.instance_gib_micros_per_million_seconds,
+    ) == (18_000_000, 2_000_000)
 
 
 def settled_run(tmp_path, cost_basis="computed", billed=None, allowance=True):

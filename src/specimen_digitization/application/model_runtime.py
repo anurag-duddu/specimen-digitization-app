@@ -23,6 +23,7 @@ from .organiser import extraction_readings
 from .reliability import (
     AdapterFailure,
     ReadingStopped,
+    checked_usage,
     extraction_failure_is_recoverable,
     first_pass_failure_is_recoverable,
     reader_failure_is_recoverable,
@@ -106,18 +107,22 @@ def _model_child(payload):
             }
             run.evidence = []
             run.usage = BudgetUsage()
-            adapter._extract_direct(specimen)
+            usage = adapter._extract_direct(specimen)
             value = {
                 "fields": {k: v.model_dump(mode="json") for k, v in run.fields.items()},
                 "evidence": [e.model_dump(mode="json") for e in run.evidence],
                 "tokens": run.usage.tokens,
+                # Its input and output tokens apart, so parse can be priced.
+                "usage": usage,
             }
         else:
             raise ValueError("Unknown trusted model operation")
         return json.dumps({"status": "completed", "value": value}).encode()
     except ReadingStopped as exc:
         # A reading stopped by its token limits crosses as a known status (#153).
-        return json.dumps({"status": "stopped", "code": exc.code}).encode()
+        return json.dumps(
+            {"status": "stopped", "code": exc.code, "usage": exc.usage}
+        ).encode()
     except AdapterFailure as exc:
         return json.dumps(
             {
@@ -128,6 +133,8 @@ def _model_child(payload):
                 "outcome_unknown": exc.outcome_unknown,
                 # A refusal before any work (reliability.AdapterFailure) costs nothing.
                 "refused": exc.refused,
+                # A malformed answer's reported tokens (reliability.reported_usage).
+                "usage": exc.usage,
             }
         ).encode()
     except OperationalBlock as exc:
@@ -248,11 +255,12 @@ def invoke_model(
             retry_after_seconds=body["retry_after_seconds"],
             outcome_unknown=body["outcome_unknown"],
             refused=body.get("refused") is True,
+            usage=checked_usage(body.get("usage")),
         )
     if body["status"] == "blocked":
         raise OperationalBlock(body["code"])
     if body["status"] == "stopped":
-        raise ReadingStopped(body["code"])
+        raise ReadingStopped(body["code"], checked_usage(body.get("usage")))
     if body["status"] != "completed":
         raise child_without_answer(run, operation, "unrecognized_answer")
     value = body["value"]
@@ -282,3 +290,6 @@ def invoke_model(
     run.fields = fields
     run.evidence.extend(evidence)
     run.usage.tokens += tokens
+    usage = checked_usage(value.get("usage"))
+    # The extraction's tokens, priced only when they are the tokens it counted.
+    return usage if usage and sum(usage.values()) == tokens else None

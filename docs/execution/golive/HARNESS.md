@@ -138,7 +138,10 @@ keeps a transcript with no text and no readings. Every reading that gave no
 observation is recorded in `paid_calls` as `failed` with its `failure_code`, and
 its reservation stays held in full (`cost_basis: reserved`), except an attempt
 the provider refused with HTTP 429 before any answer, which costs nothing and
-releases its reservation (`cost_basis: refused`, DATA_CONTRACT.md). An authentication or
+releases its reservation (`cost_basis: refused`, DATA_CONTRACT.md), and, since
+2026-10-17, an attempt whose provider reported every request's tokens (an answer
+that stayed malformed, a reading stopped by its limits), which costs what those
+tokens cost and releases the rest (`cost_basis: computed`). An authentication or
 authorization error, and a request the provider refuses as invalid (HTTP 400,
 404, 413, 422: `model_request_rejected`), still block at once and name their
 cause, since asking again repeats them. A reviewer cannot record supported text

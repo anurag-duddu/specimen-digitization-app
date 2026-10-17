@@ -21411,3 +21411,34 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
   faster synchronization. New production UI, Google admission and installed
   native-app return remain Not confirmed at this entry. The paired code/link
   branch `codex/login-journey-complete` at 18288554 remains preserved.
+### 2026-10-17 - COST-LEDGER-20261017: runs are charged what their calls cost
+
+- Task: make the cost ledger charge runs close to what they really cost. Branch `claude/cost-ledger-settles-reported-usage`, worktree `adoring-elgamal-a9b492`, PR #373. Started from the coordinator session's brief; the owner added, typed in this session: "remember I want actual costs attributed properly."
+- Evidence, read-only, from the 11-record batch of 2026-10-17 (run graphs over Data Connect `executeGraphqlRead` and Storage GET; Logfire `Run isolated specimen model` spans; Cloud Monitoring `billable_instance_time` and the `specimen-sam` request log):
+  - The runs were charged 5,458,988 micro-dollars, of which 4,857,355 was held at reservation: segmentation 11 x 182,321 and 32 model calls 2,851,824.
+  - 26 of the 32 held model calls had reported tokens. Every malformed one made two requests, both answered. One of the 26, a reading whose answer was lost when the worker crashed, cannot settle, because its run never received the tokens. So 25 would have settled.
+  - Cloud Monitoring counts 4,167.98 billable instance-seconds for `specimen-sam` over two instances, about 446,490 at the list instance-based rates. 84% of that was idle time. The invoice, free tier and all, was not read.
+- What changed:
+  - A failed model call whose provider reported every request's tokens is recorded `failed` at their cost (`computed`). That covers an answer that stayed malformed after its retry and a call stopped by its limits. `reliability.reported_usage` decides whether the tokens are complete. The usage crosses the model child (`model_runtime`) and reaches `lane_costs.record_step` through `workflow`.
+  - Parse records its extraction's input and output tokens, priced at `profile.routes[0]`, the route it calls.
+  - `sam3_server.InstanceMeter` reports each request's own seconds and the instance's idle seconds before it, in an `X-Specimen-Instance` header, never in the stored response. `lane_costs.segmentation_instance_cost` prices that report at Cloud Run's instance-based rates, which are new in price list `pilot-prices-2026-10-17`. The instance's first request also pays the start (plus 30 s), the boost, and the last idle wait and shutdown (930 s).
+  - Unknown spend stays reserved in full: a timeout, a 5xx, a 429 after an answer, a child with no answer, a reply the client could not read, an answer without usage, and a SAM call with no report. Reservation sizing, the USD 1 run limit and the USD 28 allowance are unchanged.
+- Under the fix the batch would have been charged 1,538,413. Of that, 1,099,743 settles: the models' 628,099 at their tokens and SAM's 471,644, against the 446,490 of billable instance time at list rates. SAM's 471,644 assumes no gap between the container starting and the server's clock; with the 30 s the cost record allows for, it is 461,084. The other 438,670 stays held for seven calls whose spend is unknown: one first pass answered 504, five Muse readings that timed out, and one reading whose answer was lost. Per specimen it is in the PR body. That is a computation over the read-only extraction (script in the session notes folder), Not confirmed by a test. The SAM part is pinned by `test_the_batch_of_2026_10_17_is_charged_close_to_what_cloud_run_billed`.
+- Durable learnings:
+  - Pydantic AI 2.54's message history holds a request from just before it is sent, and a malformed answer's retry prompt is queued after the last answer before "Exceeded maximum output retries" is raised. So "every request has an answer" undercounts. The proof that the queued request was not sent is the call's own `request_limit`: once two answers are counted, Pydantic AI refuses a third request.
+  - Pydantic AI adds an answer's tokens to `RunUsage` before it checks the token limits. It counts the answer in `usage.requests` and keeps it in the messages only after the check passes. A call stopped by `total_tokens_limit` therefore has the stopped answer's tokens in usage but not in its messages.
+  - Pydantic AI's `FunctionModel` estimates usage when a scripted answer reports none. A test of "no reported usage" must build the messages itself.
+  - `specimen-sam` runs with `cpu-throttling: "false"`, so it is on instance-based billing: idle time is billed, up to 15 minutes after the last request. Request seconds are not its cost, and a flat per-call idle margin overcharges batches about 3x, because consecutive calls share one instance.
+- Failed approach: the first `reported_usage` required one counted answer per request in the messages. It returned None for every malformed answer, because of the queued retry prompt. The existing child-lab malformed tests still passed while asserting `reserved`, which exposed it. An unexpected pass on a test that should change is a signal.
+- Validation:
+  - The new and updated test files pass on the head.
+  - Before the review fixes, 303 tests passed across the cost, SAM, first-pass, model-runtime, routes and lost-reading suites.
+  - The full suite in one process reached 32% with no failure. It was stopped before the merge of `main`, so its full result is Not confirmed locally. CI's result is on PR #373.
+  - Every new and updated test fails on `origin/main` `69bd6469`, checked in a throwaway worktree.
+  - `pre-commit` ran on every commit with all hooks.
+  - Review (G51): Fable reviewed `d75d8e7d` (notes `review-d75d8e7d.md` in the session notes folder) and requested changes. One should-fix (this entry) and ten nits. Seven nits are fixed in `791eb2af` and this entry. One, the unmeasured 30 s start allowance, is the first follow-up below. Two are left as theoretical: an answer the token limit refused that reported no input tokens, and a `computed` row with outcome `unknown`, which the code cannot reach. Its verdict on the final head is recorded on the PR.
+- Follow-ups, not done here:
+  - After the first runs on the new SAM image, compare the charged segmentation with Cloud Monitoring's `billable_instance_time` for the same window. Also compare the server's first idle report with the instance's start in its log; that checks the 30 s allowed for the time before the server's clock (`SAM_STARTUP_SLACK_SECONDS`).
+  - The live `specimen-sam` template carries `run.googleapis.com/health-check-disabled: "true"`, which `scripts/ops/deploy.py` `sam_argv` does not set. Its source is Not confirmed.
+  - A parse attempt that runs after its extraction was given up makes no model call, but `record_step`'s parse branch still records it `reserved`. Not measured here.
+  - A rerun of 19f0f1f6 is not part of this task.

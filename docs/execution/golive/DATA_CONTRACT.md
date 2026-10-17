@@ -641,6 +641,11 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
     reservation, which is never released. Only `computed` or `billed` settles a
     call, and a settled cost above its reservation counts in full (coordinator
     ruling under G30; PLAN 4.3 and S5's brief in #124, 18958e0).
+  - A failed model call is `computed` too when its provider reported every
+    request's tokens: an answer that stayed malformed after its retry, or a call
+    stopped by its limits (`reliability.reported_usage`, 2026-10-17). A SAM 3
+    call is `computed` when the service reported the instance time it used
+    (`usage.instance`), and `reserved` when it did not.
   - The one exception is `refused`: the provider answered HTTP 429 to a model
     call's first request, so nothing was generated or billed
     (`reliability.run_agent_bounded`). The call costs 0, with `usage` null,
@@ -665,7 +670,8 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
     - The target is `route_id` for kind `model`, `service` for kind `service`
       (`sam3`), and `tool_id` for kind `tool`.
     - `usage` is `{input_tokens, output_tokens}`, `{seconds, vcpus,
-      memory_gib}` or `{requests}`, and null for a reserved or refused call.
+      memory_gib}` (with `instance {first, idle_seconds, request_seconds}` when
+      SAM 3 reported it) or `{requests}`, and null for a reserved or refused call.
     - `outcome` is `completed`, `failed` or `unknown`.
     - Keys S3 adds later reach the client unchanged.
 - `region_id` throughout is the domain region id (`LabelRegion.domainRegionId`),

@@ -234,7 +234,7 @@
           "ledger_collection": "insects"
         },
         "price_list": {
-          "version": "pilot-prices-2026-10-03",
+          "version": "pilot-prices-2026-10-17",
           "as_of": "2026-09-24",
           "sources": [
             "https://router.huggingface.co/v1/models",
@@ -282,7 +282,9 @@
             "memory_gib": 16,
             "vcpu_micros_per_million_seconds": 24000000,
             "gib_micros_per_million_seconds": 2500000,
-            "request_micros_per_million": 400000
+            "request_micros_per_million": 400000,
+            "instance_vcpu_micros_per_million_seconds": 18000000,
+            "instance_gib_micros_per_million_seconds": 2000000
           },
           "tools": {
             "geography_lookup": 5000
