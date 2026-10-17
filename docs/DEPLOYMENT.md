@@ -10,8 +10,10 @@ new release inputs must explicitly select the approved additive contracts.
 > [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > supersede parts of this document for the go-live program. Each superseded
 > clause keeps its original text and carries a dated note naming the decision.
-> The ceiling is now USD 25 (G9,
-> [amendment](execution/APPROVED_RELEASE_BUDGET.md#go-live-amendment-2026-09-23-g9)),
+> The ceiling is now USD 30 (G9,
+> [amendment](execution/APPROVED_RELEASE_BUDGET.md#go-live-amendment-2026-09-23-g9);
+> raised from USD 25 on 2026-10-17,
+> [amendment](execution/APPROVED_RELEASE_BUDGET.md#amendment-2026-10-17-g9-and-g30)),
 > trace content follows G3
 > ([amendment](execution/APPROVED_LOGFIRE_TRACING.md#go-live-amendment-2026-09-23-g3)),
 > and data and runtime releases deploy on merge without release inputs (G11).
@@ -501,7 +503,7 @@ public image. Never use private specimen material for a smoke test.
 These optional smoke commands are distinct from the user-authorized first-ten
 application pilot. The pilot requires its privately frozen originals, pinned
 provider routes, verified identity/data/runtime prerequisites and the shared
-reservation ledger (G30's allowance, USD 16 since 2026-10-16). It is never run
+reservation ledger (G30's allowance, USD 28 since 2026-10-17). It is never run
 inside ordinary pull-request CI.
 
 > 2026-09-23: Superseded for the go-live program by
@@ -511,6 +513,12 @@ inside ordinary pull-request CI.
 > rather than a release reservation ledger. G30's per-call reservations stand
 > (PLAN 4.3; the coordinator's ruling on the mechanism). The pilot still never
 > runs in pull-request CI.
+>
+> 2026-10-17: The owner raised G9's ceiling from USD 25 to USD 30 and G30's
+> allowance from USD 16 to USD 28 (PLAN section 2.1, 2026-10-17, quoted there).
+> The pipeline's research broker now refuses an allowance above USD 30. Whether
+> the Cloud Billing budget alert is moved from USD 25 to USD 30 is Not confirmed
+> (owner to check): nothing in the repository holds it.
 
 ### Flutter client
 

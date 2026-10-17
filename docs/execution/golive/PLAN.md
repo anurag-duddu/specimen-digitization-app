@@ -64,7 +64,7 @@ first pull request records that in each affected document with a dated entry.
 | G6 | "graceful failures are important. no data found, an error occurred, retry and so on. I am aware there is not always available data and thats when it goes to the need a human queue. As long as agentic harness is able to resolve it will and it can. We need to have a strong harness layer that will be improved but we need to first have a fully functional one" | nothing |
 | G7 | The LLM first pass and the agentic harness run on a Hugging Face model, through the existing gateway and token | open item in `PRD.md`; no adjudication model was named anywhere |
 | G8 | Mandatory and optional fields for the slide pilot: the owner will supply the list. Until it arrives, the profile is configuration-driven and carries the specification's list (all 20 mandatory, `PRD.md` 12.4) | answered by G42 (2026-09-24) |
-| G9 | Spending ceiling USD 25, cumulative, infrastructure and models together | `APPROVED_RELEASE_BUDGET.md` USD 12 |
+| G9 | Spending ceiling USD 25, cumulative, infrastructure and models together. Raised to USD 30 on 2026-10-17 (note after this table) | `APPROVED_RELEASE_BUDGET.md` USD 12 |
 | G10 | Geography lookups use Google Maps as `PRD.md` 12.4 specifies; the owner creates the Maps Platform key | nothing |
 | G11 | Data and runtime releases deploy automatically on merge, like Hosting: once the required checks pass and the PR steward approves, a merge to `main` deploys runtime code and additive schema changes. Branch protection, the required checks, keyless identities and main-only environments stay. Envelopes, cost ledgers, independent-review reports and authorization artifacts retire for this program | `AGENTS.md` deployment paragraph (envelope, independent review), `DEPLOYMENT.md`, `RELEASING.md`, `RELEASE_AUTHORIZATION.md`, `RELEASE_DATA.md`, `RELEASE_RUNTIME.md`, `PROTECTED_RELEASE_HARNESS.md` |
 | G12 | "for location parts in the harness a different approach might be needed, spin this off as a new task". A research session (S8) produces a retrospective georeferencing plan from the owner's charter for the owner to review. Until the owner accepts a plan, the harness keeps geography behind its typed tool interface with the Google Maps tool of G10 as the initial version | nothing; G10 stands until the owner accepts S8's plan |
@@ -85,7 +85,7 @@ first pull request records that in each affected document with a dated entry.
 | G27 | Asked by the coordinator from S8's finding on 105526329 and 105526330: the label reads "Chimaltenago", one reader wrote that and the other silently wrote "Chimaltenango", and a place lookup matches the second exactly and the first only approximately. The owner chose neither offered option ("Exact match settles it", "Place yes, spelling to review") and answered: "raw transcript anyway will have exactly as written, for verbatim field it will be as written but final location will be exact actual as settled by harness. we are always capturing both so there isn't an issue if people want to change later". So the lookup settles the final value and the field clears; the verbatim is never replaced, neither by a lookup result nor by the spelling a lookup matched; when the first pass picked no reading and the readers' literals differ, each reader's reading is kept as captured and none is chosen; both are stored, linked to the specimen (the shape is in S5's data contract) | G20's "that literal is used" for the verbatim; S8's proposal D14 (#94) |
 | G28 | Chosen option "Yes, same as places": taxon names follow G27; the taxon field keeps the label's spelling as its verbatim text, GBIF's settled name is the final value, and both are stored | nothing |
 | G29 | Chosen option "Yes, read it as the month", with the owner's addition: "yes, read as month + this should be part of system prompt too, all permutations combinatinos. thats the whole point of the harness, we figure out all possible cases and try to get to final records that need to be ingested. this should be the prinnciple of th harness essentially. theres a broad range possible per collection/subcollection each subcollection will have its own harness, right now were on insects". So a Roman numeral I to XII in the month position is that month; the harness works through every reading a notation allows, for dates and for every other field, and settles the one the evidence supports; what it cannot settle goes to needs human review with the candidates (G1, G6); each subcollection's profile carries its own harness knowledge, and the pilot's is Insects | settles the Roman-numeral months of `PRD.md` 570; states `PRD.md` 44 and HAR-013 as the harness's principle |
-| G30 | Chosen option "USD 5" (the coordinator's recommendation): production model calls may spend USD 5 of G9's USD 25, across every paid step (readers, SAM 3, first pass, harness): each call reserves its worst-case cost before it starts, so no call can cross the allowance, and is settled to its cost once the provider reports its usage or returns a billed amount (SAM 3, priced by its measured seconds, settles as `computed`), while any other outcome stays reserved in full (coordinator ruling on the mechanism, section 4.3); the acceptance lab's USD 5 share is separate, and infrastructure takes the rest; when the allowance is spent, paid steps block as `program_allowance_exhausted`, an operational block (QUE-005), until the owner raises it. Raised to USD 15 on 2026-10-09 (note after this table) | sets section 4.3's "configured model allowance" |
+| G30 | Chosen option "USD 5" (the coordinator's recommendation): production model calls may spend USD 5 of G9's USD 25, across every paid step (readers, SAM 3, first pass, harness): each call reserves its worst-case cost before it starts, so no call can cross the allowance, and is settled to its cost once the provider reports its usage or returns a billed amount (SAM 3, priced by its measured seconds, settles as `computed`), while any other outcome stays reserved in full (coordinator ruling on the mechanism, section 4.3); the acceptance lab's USD 5 share is separate, and infrastructure takes the rest; when the allowance is spent, paid steps block as `program_allowance_exhausted`, an operational block (QUE-005), until the owner raises it. Raised to USD 15 on 2026-10-09 (note after this table), to USD 16 on 2026-10-16 and to USD 28 on 2026-10-17 (notes after this table) | sets section 4.3's "configured model allowance" |
 | G31 | Chosen option "Not sensitive": the owner checked the ten pilot slides against `PRD.md` 724's criteria and classified them not sensitive on 2026-09-23, recorded in `~/specimen-golive/OWNER_ACTIONS.md`; their import declares them not sensitive on that verified classification | meets `CONTRACTS.md` 169-170 ("actual source classification must be verified") and closes `RELEASE_RUNTIME.md` 558-560's open item for these ten |
 | G32 | Chosen option "Same settled value" (asked by S4; answered 2026-09-24): "The harness settles each label separately and clears the field when both settle to the same value, for example two spellings of one place. Otherwise it goes to review." So a field found on two labels of one slide is settled per label on its own evidence and clears when every label settles to the same value: the same place ID or GBIF usage, or, for a field without a lookup, the same text; otherwise it goes to needs human review with each label's reading kept, and every verbatim stays as written (G27) | the specification is silent on a field found on two labels (G5) |
 | G33 | Chosen option "Every reading" (asked by S4; answered 2026-09-24): "Dates in every model's reading count, not only the chosen transcript. If they disagree on the order, the date goes to review. A misread can block a choice but never make one." So the numeric dates of every reading, the decided transcript's and the raw readings', are the evidence that fixes an all-numeric date's day and month order (a component over 12), and any disagreement among them fixes no order | settles what "the one the evidence supports" (G29) means for an all-numeric date |
@@ -234,6 +234,34 @@ there is no reset or credit. The USD 1 specimen-run limit and the research
 broker's USD 25 cap remain. A blocked run can pick up the new execution policy
 through Retry or Resume without repeating completed steps.
 
+2026-10-17 (owner, in Claude Code desktop session 475c3298): the owner raised the
+cumulative program allowance from USD 16 to USD 28 and G9's ceiling from USD 25
+to USD 30, through one reviewed PR, so the 11-record batch of "Start new run"
+can run. The owner's words, quoted exactly and in the order sent, each a reply to
+a question in that session:
+
+- "Approve raising the cumulative program allowance from $16 to $28 so the 11-record batch can run. Do it through a reviewed PR, then run Start new run on those 11 and report what settles."
+- "I approve raising the G9 ceiling from $25 to $30 (the recorded envelope) and the program allowance from $16 to $28, both through one reviewed PR, then run the 11-record batch."
+- "Yes. I know the safety check flagged it. Make the two edits in this session yourself: MAX_PROGRAM_ALLOWANCE_MICROS 25_000_000 to 30_000_000 in research_harness/program_budget.py, and allowance_micros 16000000 to 28000000 in published.json. Then finish the docs, tests and log, review, and open the PR"
+
+G9's ceiling is therefore USD 30, cumulative, infrastructure and models together.
+The owner called USD 30 the recorded envelope: it is the total recorded on
+2026-10-09 (G9's USD 25 plus USD 5). The research broker's cap
+(`MAX_PROGRAM_ALLOWANCE_MICROS` in `research_harness/program_budget.py`) is
+therefore 30000000 micros, and the published profile's
+`processing.program_allowance.allowance_micros` is 28000000. The broker still
+refuses an allowance above its cap; `lane.queue`, `ProgramLedger.reserve` and the
+profile's `ProgramAllowance` field still do not check it. The cap bounds the
+model allowance only; no code bounds infrastructure spend or the envelope's
+plus or minus USD 10. Existing cumulative ledger charges and reservations
+remain; there is no reset or credit. The USD 1 specimen-run limit is
+unchanged. The 2026-10-09 and 2026-10-16 paragraphs above state the cap and the
+allowance as they were on those dates. A run keeps the allowance it was queued
+with until Retry, Resume or Reprocess queues it again (`lane.queue`). Whether the
+Cloud Billing budget alert, described in these documents as watching G9's
+ceiling, is moved from USD 25 to USD 30 is Not confirmed (owner to check): the
+repository does not hold it and no Google Cloud command was run.
+
 ### 2.2 What the existing documents already fix
 
 Sessions implement these as specified; none is a new decision.
@@ -342,11 +370,13 @@ be extracted and shown.
 
 ### 4.3 Budget
 
-The USD 25 ceiling (G9) covers everything. The pipeline records every paid
+The USD 30 ceiling (G9, raised from USD 25 on 2026-10-17; section 2.1) covers
+everything. The pipeline records every paid
 call's cost on the run and refuses a paid step whose worst-case reservation
 would cross the configured model allowance; a Cloud Billing budget alert
-watches the whole project. The production model allowance is USD 16 (G30,
-raised from USD 15 on 2026-10-16; section 2.1). By
+watches the whole project (its threshold after 2026-10-17 is Not confirmed;
+section 2.1). The production model allowance is USD 28 (G30,
+raised from USD 16 on 2026-10-17; section 2.1). By
 coordinator ruling on the mechanism:
 - Each paid call reserves its worst-case cost before it starts, in one atomic
   check-and-reserve on a shared ledger: S3's `worker_cursor` document, written
