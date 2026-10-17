@@ -20929,3 +20929,9 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
 - Reconciled both dependency sets, preserving intake app_links callback registration and main's Google sign-in and UIScene registrations. Only pubspec.lock had textual conflict; retain both package sets and resolve via Flutter. Validation of the merged source is pending this checkpoint.
 
 - Reconciliation validation: dependency lock enforced, 64 focused intake/login/native-configuration tests passed, and CocoaPods deployment-mode install retained the merged lock. The generated resource-copy phase for Google sign-in dependencies is included in the Xcode project. The vendored app_links implementation registers FlutterSceneLifeCycleDelegate and supports scene URL callbacks. Current iOS rebuild/full verification remain pending at this append.
+
+### 2026-10-17 — iOS callback ownership correction
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch/worktree unchanged. Bounded review of reconciliation head `2f6ed7029141d570db9383537c349e786cc85bc7` found an inherited callback issue: App Links publishes the intake OAuth URL but defaults to not claiming it, so Flutter's scene handler also forwards it to GoRouter and the no-collection fallback redirects to Queue.
+- Added `FlutterDeepLinkingEnabled=false` on iOS, matching Android's existing opt-out. App Links owns email and intake callbacks; native Google SDK retains its separate handler. Added the native configuration regression. The source-frozen verification parent was stopped through its cleanup handler before this edit, so the interrupted run is not a pass.
+- The merged arm64 iOS simulator build succeeded before this boolean configuration correction; no physical-device/provider acceptance is claimed. Final focused/full verification and exact-head review follow.

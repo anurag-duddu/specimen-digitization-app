@@ -260,6 +260,18 @@ void main() {
     );
   });
 
+  test('iOS App Links callbacks do not also navigate the Flutter router', () {
+    final String plist = File('ios/Runner/Info.plist').readAsStringSync();
+    expect(
+      plist.replaceAll(RegExp(r'\s+'), ' '),
+      contains('<key>FlutterDeepLinkingEnabled</key> <false/>'),
+      reason:
+          'App Links owns email and intake OAuth callbacks; forwarding the '
+          'same URL to GoRouter would redirect out of the active flow.',
+    );
+    expect(plist, contains('<string>specimenintake</string>'));
+  });
+
   test('iOS adopts the UIScene lifecycle that iOS 27 requires at launch', () {
     final String plist = File('ios/Runner/Info.plist').readAsStringSync();
     final String delegate = File(
