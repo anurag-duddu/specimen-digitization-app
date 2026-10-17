@@ -49,12 +49,15 @@ abstract final class UiFonts {
 
   static bool _licenceRegistered = false;
 
-  /// Declares the SIL Open Font License 1.1 for both families.
+  /// Declares the SIL Open Font License 1.1 for every face the package ships:
+  /// both Geist families, and Google Sans for `UiGoogleSignInButton`.
   ///
   /// Called once from `UiThemeData` construction, so an application that uses
   /// the theme cannot ship the faces without their licence. Repeat calls are
   /// ignored: `LicenseRegistry` has no way to withdraw an entry, and the
-  /// about dialog would otherwise list the text once per theme build.
+  /// about dialog would otherwise list the text once per theme build. Google
+  /// Sans is its own registration, so a licence file that cannot be read for
+  /// one family does not take the other's with it.
   static void registerLicense() {
     if (_licenceRegistered) return;
     _licenceRegistered = true;
@@ -63,6 +66,14 @@ abstract final class UiFonts {
         'packages/$package/LICENSES/OFL-Geist.txt',
       );
       yield LicenseEntryWithLineBreaks(const <String>[sans, mono], text);
+    });
+    LicenseRegistry.addLicense(() async* {
+      final String text = await rootBundle.loadString(
+        'packages/$package/${GoogleSignInBrand.licenceAsset}',
+      );
+      yield LicenseEntryWithLineBreaks(const <String>[
+        GoogleSignInBrand.fontName,
+      ], text);
     });
   }
 

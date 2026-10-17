@@ -25,7 +25,7 @@
 /// app is not something the page says.
 library;
 
-import 'package:flutter/widgets.dart' show FontWeight;
+import 'dart:ui' show FontWeight;
 
 /// What Google's page fixes about the button.
 abstract final class GoogleSignInBrand {
@@ -91,16 +91,14 @@ abstract final class GoogleSignInBrand {
   /// licence are in `assets/google-sign-in/README.md` and `OFL.txt`.
   static const String fontAsset = 'assets/google-sign-in/GoogleSans-Medium.ttf';
 
+  /// The name Google Sans is listed under on the application's licence page.
+  static const String fontName = 'Google Sans';
+
+  /// The asset path of the SIL Open Font License 1.1 text Google Sans ships
+  /// under, registered with `LicenseRegistry` by `UiFonts.registerLicense`.
+  static const String licenceAsset = 'assets/google-sign-in/OFL.txt';
+
   /// The asset path of Google's unmodified standard colour "G" inside this
   /// package (<https://developers.google.com/static/identity/images/g-logo.png>).
   static const String logoAsset = 'assets/google-sign-in/google-g.png';
-
-  /// The share of its paint a disabled button keeps: 0.38, Material 3's
-  /// disabled content opacity.
-  ///
-  /// The page does not describe a disabled button. It tells a custom button to
-  /// follow Google's Material guidelines for its boundary and colour scheme,
-  /// and 0.38 is the figure Material gives disabled content. It is applied to
-  /// the whole button, so the "G" keeps its colours and only fades.
-  static const double disabledOpacity = 0.38;
 }

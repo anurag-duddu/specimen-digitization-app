@@ -25,8 +25,14 @@ flutter:
   # The Google "G" and the licence and provenance that travel with Google Sans.
   # `UiGoogleSignInButton` draws them, so a consumer gets the button whole by
   # depending on the package (design 10 section 4.1).
+  #
+  # `LICENSES/` is the Geist licence text. `UiFonts.registerLicense` reads it
+  # from the bundle for the application's licence page, and a file that is not
+  # declared here is not in the bundle: its collector throws, and a licence
+  # page that stops at the first error never reaches the families after it.
   assets:
     - assets/google-sign-in/
+    - LICENSES/
 
   # Declared here rather than in the app so that a consumer gets the families
   # by depending on the package. Flutter prefixes a package font family with

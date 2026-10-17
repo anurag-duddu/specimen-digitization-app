@@ -83,7 +83,7 @@ Widget _states() => Builder(
         ),
         _state(
           context,
-          'Disabled, 38 percent',
+          'Disabled, system tokens',
           const UiGoogleSignInButton(
             disabledReason: 'Email sign-in is already in progress.',
           ),

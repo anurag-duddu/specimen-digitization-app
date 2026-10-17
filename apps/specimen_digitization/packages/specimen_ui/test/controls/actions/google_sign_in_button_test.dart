@@ -10,6 +10,7 @@
 // source names no platform.
 
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui' as ui show Image;
 import 'dart:ui' show Tristate;
 
@@ -85,20 +86,61 @@ int _lines(WidgetTester tester) {
   }.length;
 }
 
+/// WCAG 2.2 relative luminance of an opaque colour, written out from the
+/// definition rather than read from the package, so the disabled paint is
+/// checked against the standard and not against itself.
+double _luminance(Color c) {
+  double channel(double v) =>
+      v <= 0.03928 ? v / 12.92 : math.pow((v + 0.055) / 1.055, 2.4).toDouble();
+  return 0.2126 * channel(c.r) + 0.7152 * channel(c.g) + 0.0722 * channel(c.b);
+}
+
+/// WCAG 2.2 contrast ratio, from 1 to 21.
+double _contrast(Color a, Color b) {
+  final double la = _luminance(a);
+  final double lb = _luminance(b);
+  return (math.max(la, lb) + 0.05) / (math.min(la, lb) + 0.05);
+}
+
 /// One drawing of the button: its box, its semantics and its pixels.
 class _Drawn {
-  const _Drawn(this.size, this.semantics, this.pixels);
+  const _Drawn(this.size, this.semantics, this.pixels, this.logo, this.width);
 
   final Size size;
   final String semantics;
   final Uint8List pixels;
+
+  /// The "G" box, relative to the drawing's top left, in logical pixels.
+  final Rect logo;
+
+  /// The drawing's width in physical pixels.
+  final int width;
+
+  /// The bytes of the "G"'s box, row by row.
+  Uint8List logoPixels() {
+    final List<int> bytes = <int>[];
+    for (
+      int y = (logo.top * _scale).floor();
+      y < (logo.bottom * _scale).ceil();
+      y++
+    ) {
+      final int start = (y * width + (logo.left * _scale).floor()) * 4;
+      final int end = (y * width + (logo.right * _scale).ceil()) * 4;
+      bytes.addAll(pixels.sublist(start, end));
+    }
+    return Uint8List.fromList(bytes);
+  }
 }
 
-/// Pumps the button on [platform] and reads back what it drew.
+/// The pixel ratio a drawing is read back at.
+const double _scale = 3;
+
+/// Pumps [button] on [platform] and reads back what it drew.
 Future<_Drawn> _draw(
   WidgetTester tester, {
   required TargetPlatform? platform,
   required Brightness brightness,
+  Widget button = _plain,
 }) async {
   debugDefaultTargetPlatformOverride = platform;
   final GlobalKey key = GlobalKey();
@@ -107,10 +149,7 @@ Future<_Drawn> _draw(
     await tester.pumpWidget(
       uiHarness(
         brightness: brightness,
-        child: RepaintBoundary(
-          key: key,
-          child: const UiGoogleSignInButton(onPressed: _noop),
-        ),
+        child: RepaintBoundary(key: key, child: button),
       ),
     );
     // The "G" is decoded off the frame loop, so a pixel read has to wait for
@@ -123,12 +162,15 @@ Future<_Drawn> _draw(
     await tester.pumpAndSettle();
     final RenderRepaintBoundary boundary =
         key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+    final ui.Image image = (await tester.runAsync(
+      () => boundary.toImage(pixelRatio: _scale),
+    ))!;
     final Uint8List pixels = (await tester.runAsync(() async {
-      final ui.Image image = await boundary.toImage(pixelRatio: 3);
       final ByteData? bytes = await image.toByteData();
-      image.dispose();
       return bytes!.buffer.asUint8List();
     }))!;
+    final int width = image.width;
+    image.dispose();
     return _Drawn(
       tester.getSize(find.byType(UiGoogleSignInButton)),
       tester
@@ -136,6 +178,10 @@ Future<_Drawn> _draw(
           .getSemanticsData()
           .toString(),
       pixels,
+      tester
+          .getRect(find.byType(Image))
+          .shift(-tester.getTopLeft(find.byKey(key))),
+      width,
     );
   } finally {
     semantics.dispose();
@@ -229,7 +275,7 @@ void main() {
       );
     });
 
-    testWidgets('its edge is a capsule with a 1 dp outline drawn inside', (
+    testWidgets("its edge is Google's pill with a 1 dp outline drawn inside", (
       WidgetTester tester,
     ) async {
       await tester.pumpWidget(uiHarness(child: _plain));
@@ -615,8 +661,8 @@ void main() {
       await touch.up();
     });
 
-    testWidgets('a disabled button fades to 38 percent, refuses a press and '
-        'says why on its hint and on a tooltip', (WidgetTester tester) async {
+    testWidgets('a disabled button refuses a press and says why on its hint '
+        'and on a tooltip', (WidgetTester tester) async {
       final SemanticsHandle semantics = tester.ensureSemantics();
       await tester.pumpWidget(
         uiHarness(
@@ -626,11 +672,6 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      final Finder fade = find.descendant(
-        of: find.byType(UiGoogleSignInButton),
-        matching: find.byType(Opacity),
-      );
-      expect(tester.widget<Opacity>(fade).opacity, 0.38);
       final SemanticsData data = tester
           .getSemantics(find.bySemanticsLabel(_label))
           .getSemanticsData();
@@ -652,19 +693,168 @@ void main() {
       semantics.dispose();
     });
 
-    testWidgets('an enabled button is not faded', (WidgetTester tester) async {
-      await tester.pumpWidget(uiHarness(child: _plain));
-      expect(
-        find.descendant(
-          of: find.byType(UiGoogleSignInButton),
-          matching: find.byType(Opacity),
-        ),
-        findsNothing,
-      );
+    testWidgets('disabled draws its label and outline in the disabled tokens '
+        "on Google's fill, and no opacity touches the button", (
+      WidgetTester tester,
+    ) async {
+      // 03 section 3.6 rejects a 38 percent fade by name: it measures under 3:1
+      // on this product's surfaces. A disabled control carries a reason the
+      // reader is owed, so its label and its outline come from the tokens
+      // that clear 4.5:1 and 3:1, as `UiButton`'s do.
+      final Map<Brightness, (Color, Color, Color)> themes =
+          <Brightness, (Color, Color, Color)>{
+            Brightness.light: (_lightFill, _lightStroke, _lightText),
+            Brightness.dark: (_darkFill, _darkStroke, _darkText),
+          };
+      for (final MapEntry<Brightness, (Color, Color, Color)> theme
+          in themes.entries) {
+        final (Color fill, Color stroke, Color text) = theme.value;
+        late UiThemeData ui;
+        await tester.pumpWidget(
+          uiHarness(
+            brightness: theme.key,
+            child: Builder(
+              builder: (BuildContext context) {
+                ui = context.ui;
+                return const UiGoogleSignInButton(
+                  disabledReason: 'Email sign-in is already in progress.',
+                );
+              },
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final String mode = theme.key.name;
+
+        // Google's fill stays; the label and the outline move to the tokens.
+        final ShapeDecoration painted = _decoration(tester, _face(fill));
+        final BorderSide side = (painted.shape as StadiumBorder).side;
+        expect(side.color, ui.color.disabledOutline, reason: '$mode outline');
+        expect(side.color, isNot(stroke), reason: '$mode is not enabled paint');
+        expect(side.width, 1);
+        expect(
+          _paragraph(tester).text.style!.color,
+          ui.color.disabledContent,
+          reason: '$mode label',
+        );
+        expect(
+          _paragraph(tester).text.style!.color,
+          isNot(text),
+          reason: '$mode is not enabled paint',
+        );
+
+        // Nothing fades the button, and the G is a plain image.
+        expect(
+          find.descendant(
+            of: find.byType(UiGoogleSignInButton),
+            matching: find.byType(Opacity),
+          ),
+          findsNothing,
+          reason: '$mode: no Opacity wraps the face',
+        );
+        expect(
+          find.descendant(
+            of: find.byType(UiGoogleSignInButton),
+            matching: find.byType(AnimatedOpacity),
+          ),
+          findsNothing,
+        );
+        final Image logo = tester.widget<Image>(find.byType(Image));
+        expect(logo.color, isNull, reason: '$mode: the G is not tinted');
+        expect(logo.opacity, isNull, reason: '$mode: the G is not faded');
+        expect(logo.colorBlendMode, isNull);
+
+        // The floors of 09 section 3.7, which a disabled control keeps: 4.5:1
+        // for the label on the button's own fill, 3:1 for the outline against
+        // the fill inside it and the surfaces it sits on outside it.
+        expect(
+          _contrast(ui.color.disabledContent, fill),
+          greaterThanOrEqualTo(4.5),
+          reason: '$mode label on the fill',
+        );
+        for (final (String name, Color behind) in <(String, Color)>[
+          ('the fill', fill),
+          ('ground', ui.color.ground),
+          ('paper', ui.color.paper),
+        ]) {
+          expect(
+            _contrast(ui.color.disabledOutline, behind),
+            greaterThanOrEqualTo(3),
+            reason: '$mode outline on $name',
+          );
+        }
+      }
     });
 
-    testWidgets('busy keeps the enabled paint, refuses a second press and '
-        'keeps focus where it was', (WidgetTester tester) async {
+    testWidgets(
+      'disabled leaves the G exactly as the enabled button draws it',
+      (WidgetTester tester) async {
+        for (final Brightness mode in Brightness.values) {
+          final _Drawn enabled = await _draw(
+            tester,
+            platform: null,
+            brightness: mode,
+          );
+          final _Drawn disabled = await _draw(
+            tester,
+            platform: null,
+            brightness: mode,
+            button: const UiGoogleSignInButton(),
+          );
+          expect(disabled.size, enabled.size, reason: mode.name);
+          expect(disabled.logo, enabled.logo, reason: mode.name);
+          expect(
+            listEquals(disabled.logoPixels(), enabled.logoPixels()),
+            isTrue,
+            reason:
+                '${mode.name}: the G is the same pixels disabled and enabled, '
+                'so its colour is not changed (the page forbids it)',
+          );
+          expect(
+            listEquals(disabled.pixels, enabled.pixels),
+            isFalse,
+            reason: '${mode.name}: the label and outline do change',
+          );
+        }
+      },
+    );
+
+    testWidgets('enabled and busy keep Google\'s own paint', (
+      WidgetTester tester,
+    ) async {
+      for (final bool busy in <bool>[false, true]) {
+        await tester.pumpWidget(
+          uiHarness(
+            child: UiGoogleSignInButton(
+              onPressed: busy ? null : _noop,
+              busy: busy,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final String state = busy ? 'busy' : 'enabled';
+        expect(
+          find.descendant(
+            of: find.byType(UiGoogleSignInButton),
+            matching: find.byType(Opacity),
+          ),
+          findsNothing,
+          reason: state,
+        );
+        expect(
+          (_decoration(tester, _face(_lightFill)).shape as StadiumBorder)
+              .side
+              .color,
+          _lightStroke,
+          reason: '$state outline',
+        );
+        expect(_paragraph(tester).text.style!.color, _lightText);
+      }
+    });
+
+    testWidgets('busy refuses a second press and keeps focus where it was', (
+      WidgetTester tester,
+    ) async {
       int pressed = 0;
       final FocusNode node = FocusNode(debugLabel: 'google');
       addTearDown(node.dispose);
@@ -685,14 +875,6 @@ void main() {
 
       await tester.pumpWidget(build(busy: true));
       await tester.pumpAndSettle();
-      expect(
-        find.descendant(
-          of: find.byType(UiGoogleSignInButton),
-          matching: find.byType(Opacity),
-        ),
-        findsNothing,
-        reason: 'a button that is working is busy, not forbidden',
-      );
       expect(node.hasPrimaryFocus, isTrue, reason: 'focus stays put');
       await tester.tap(find.byType(UiGoogleSignInButton));
       await tester.sendKeyEvent(LogicalKeyboardKey.enter);
