@@ -33,8 +33,9 @@ import 'platform_scan.dart';
 /// Three more files make checks: `app_router.dart` (the iOS page transition,
 /// 04 row 18), `queue_screen.dart` (pull to refresh on iOS and Android, 04
 /// row 21) and `app_theme.dart` (`PageTransitionsTheme` is keyed by platform
-/// and gives every key the same builder). They are listed so the census
-/// matches the tree; the sign-off gate holds each until the owner signs it.
+/// and gives every key the same builder). The owner approved all three, and
+/// the skip of the generated options below, on 2026-10-17; each entry carries
+/// the sign-off.
 const List<PlatformCapability> platformCapabilities = <PlatformCapability>[
   PlatformCapability(
     'lib/firebase_options.ci.dart',
@@ -57,12 +58,18 @@ const List<PlatformCapability> platformCapabilities = <PlatformCapability>[
     'startup hands the web flag to configuration, the session and App Check, '
         'which are set up differently in a browser',
   ),
+  // owner-approved: 2026-10-17 "Yes approved" (the owner, in the guard-gates
+  // Claude Code session, answering whether to approve the four platform
+  // exemptions on PR #358)
   PlatformCapability(
     'lib/src/app/app_router.dart',
     '_WorkspacePageRoute.buildTransitions',
     <String, int>{targetPlatform: 1, targetPlatformType: 1},
     'the phone iOS push takes the platform page transition (04 row 18)',
   ),
+  // owner-approved: 2026-10-17 "Yes approved" (the owner, in the guard-gates
+  // Claude Code session, answering whether to approve the four platform
+  // exemptions on PR #358)
   PlatformCapability(
     'lib/src/app/app_router.dart',
     'buildAppRouter',
@@ -162,6 +169,9 @@ const List<PlatformCapability> platformCapabilities = <PlatformCapability>[
       'lib/src/magic_link_screen.dart _MagicLinkSignInScreenState.build': 1,
     },
   ),
+  // owner-approved: 2026-10-17 "Yes approved" (the owner, in the guard-gates
+  // Claude Code session, answering whether to approve the four platform
+  // exemptions on PR #358)
   PlatformCapability(
     'lib/src/screens/queue/queue_screen.dart',
     '_QueuePaneState._pullToRefresh',
@@ -178,6 +188,9 @@ const List<PlatformCapability> platformCapabilities = <PlatformCapability>[
     <String, int>{webFlag: 1},
     'a reparented web semantics input loses focus, so focus is parked first',
   ),
+  // owner-approved: 2026-10-17 "Yes approved" (the owner, in the guard-gates
+  // Claude Code session, answering whether to approve the four platform
+  // exemptions on PR #358)
   PlatformCapability(
     'lib/src/theme/app_theme.dart',
     'specimenPageTransitions',
@@ -204,6 +217,10 @@ const List<PlatformCapability> platformCapabilities = <PlatformCapability>[
 /// committed stand-in on a pull request and from the production secret on
 /// main, so its contents are not this repository's to count. The gate skips
 /// it; the stand-in is counted above.
+///
+/// owner-approved: 2026-10-17 "Yes approved" (the owner, in the guard-gates
+/// Claude Code session, answering whether to approve the four platform
+/// exemptions on PR #358)
 const String generatedOptions = 'lib/firebase_options.dart';
 
 /// Every platform check under `lib/` of the application at [base], by file.
