@@ -81,6 +81,15 @@ def test_a_malformed_answer_carries_the_tokens_its_provider_reported():
     assert model_cost(prices.model_dump(mode="json"), "first-pass-glm", 2_153, 2_202) == 1_424
 
 
+def test_a_call_that_could_still_send_a_request_stays_unknown():
+    # The proof that the queued retry was not sent is the call's request limit,
+    # which every production model read sets to 2. A limit the answers did not
+    # use up proves nothing, so the call is held: over, never under.
+    agent, _ = scripted((1_076, 1_101), (1_077, 1_101))
+    limits = UsageLimits(request_limit=3, total_tokens_limit=16_000)
+    assert failure_of(agent, limits).usage is None
+
+
 def test_an_answer_the_client_could_not_read_leaves_the_spend_unknown():
     # The second request was sent; what came back was not counted, and the
     # provider may have billed it.

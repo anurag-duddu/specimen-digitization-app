@@ -5,9 +5,9 @@ specimen-sam runs with CPU always allocated (`run.googleapis.com/cpu-throttling:
 its whole life from start to shutdown, idle time included, and keeps an idle
 instance up to 15 minutes after its last request. On 2026-10-17 the 11-record
 batch used two instances for 4,168.0 billable seconds, about 446,490
-micro-dollars at the instance-based rates, while the ledger held 182,321 for
+micro-dollars at the list instance-based rates, while the ledger held 182,321 for
 each call, 2,005,531 in all. The worker's request seconds alone (41 to 134 s a
-call) would miss the idle time, which was 84% of what was billed.
+call) would miss the idle time, which was 84% of the billable time.
 
 The service now reports, beside each answer, its own seconds and the instance
 seconds before it (sam3_server.InstanceMeter); each call pays those, and the
@@ -219,28 +219,45 @@ BATCH = [
     (80.387, [("17:53:16.749", 131.907), ("17:58:12.779", 51.600), ("18:00:16.814", 48.995),
               ("18:01:48.659", 51.972), ("18:17:12.748", 49.051)]),
 ]
-# Cloud Monitoring's billable_instance_time for those two instances, at 104 a
-# second, plus the startup boost (4 vCPU at 18 for each start and 10 s after).
+# Cloud Monitoring's billable_instance_time for those two instances at the
+# list instance-based rates, 104 a second, plus the startup boost (4 vCPU at 18
+# for each start and 10 s after). The invoice, free tier and all, is not read.
 BILLED = 446_490
 
 
-def batch_reports():
+def batch_reports(before_clock):
+    """The reports the meter would have sent. Its clock starts at the server's
+    import, `before_clock` seconds after the container started, so the first
+    request's idle time is the measured start less that."""
     for startup, requests in BATCH:
         ended = None
         for number, (start, latency) in enumerate(requests):
             if number == 0:
-                yield {"first": True, "idle_seconds": startup, "request_seconds": latency - startup}
+                yield {
+                    "first": True,
+                    "idle_seconds": startup - before_clock,
+                    "request_seconds": latency - startup,
+                }
             else:
                 yield {"first": False, "idle_seconds": at(start) - ended, "request_seconds": latency}
             ended = at(start) + latency
 
 
-def test_the_batch_of_2026_10_17_is_charged_close_to_what_cloud_run_billed():
+@pytest.mark.parametrize(
+    ("before_clock", "total"),
+    # Up to the 30 s the cost record adds for it (SAM_STARTUP_SLACK_SECONDS).
+    [(0, 471_644), (30, 461_084)],
+)
+def test_the_batch_of_2026_10_17_is_charged_close_to_what_cloud_run_billed(
+    before_clock, total
+):
     assert 4_167.98 * 104 + 2 * 90.4 * 4 * 18 == pytest.approx(BILLED, abs=20)
-    charged = [segmentation_instance_cost(PRICES, report) for report in batch_reports()]
+    charged = [
+        segmentation_instance_cost(PRICES, report) for report in batch_reports(before_clock)
+    ]
     assert len(charged) == 11
     # Never less than the bill, and within 6% of it, against 2,005,531 held.
-    assert BILLED <= sum(charged) == 471_644 <= BILLED * 1.06
+    assert BILLED <= sum(charged) == total <= BILLED * 1.06
     assert sum(charged) < 11 * 182_321 / 4
 
 

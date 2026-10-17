@@ -71,7 +71,9 @@ def reported_usage(messages, usage, usage_limits=None, *, stopped=False) -> dict
       either way.
     - In a call whose answers used up its ``request_limit``, it cannot have
       been sent (Pydantic AI refuses it first): a malformed answer's retry
-      prompt, queued after the last answer.
+      prompt, queued after the last answer. The production model reads all set
+      ``request_limit=2``; with a limit the answers did not use up there is no
+      such proof, and the call is held.
 
     None in every other case: a sent request with no counted answer (a reply
     the model client could not read, which the provider may still have

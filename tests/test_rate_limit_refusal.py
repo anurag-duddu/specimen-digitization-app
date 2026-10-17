@@ -367,8 +367,8 @@ def test_a_malformed_first_pass_is_given_up_at_once_and_the_record_goes_to_revie
     # model_malformed_response with no way on. A malformed answer is a known,
     # billed outcome: the first pass is given up on at once, not asked again.
     # Its provider reported both requests' tokens, so it costs what they cost
-    # (2026-10-17: 19f0f1f6's two were held at 318,670 each, against about
-    # 1,424 at their tokens).
+    # (2026-10-17: 19f0f1f6's malformed attempt was held at 318,670, against
+    # 1,424 at its tokens; its other attempt, a 504, stays held).
     from test_first_pass_given_up import given_up_findings
 
     adapters = ChildLab(LocalBlobs(tmp_path / "blobs"), first_passes=1)

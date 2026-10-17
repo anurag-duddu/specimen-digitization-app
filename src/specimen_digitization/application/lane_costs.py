@@ -73,7 +73,9 @@ def segmentation_instance_cost(prices, instance):
     SAM_STARTUP_SLACK_SECONDS) with the startup CPU boost over it and 10 s
     after, and the instance's last idle wait and shutdown, which follow
     whichever request ends up last. So each run pays the instance time it
-    caused, and together they pay the instance's whole life.
+    caused, and together they pay the whole life of an instance a request
+    started. A run whose price list predates the instance-based rates settles
+    at its request-based ones, which are higher.
     """
     service = prices.get("segmentation")
     if service is None:
