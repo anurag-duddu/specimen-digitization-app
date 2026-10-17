@@ -20871,3 +20871,32 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
 - Full canonical checks, exact-head independent approval, PR/hosted CI, protected
   release, live verification and task-only pruning remain pending at this
   checkpoint. Do not reuse prior green runs as this change's approval.
+
+### Login correction validation follow-up, 2026-10-17
+
+- Candidate `f947b709d0342d590a64ef4df6259ee887c24bc3`, tree
+  `7f587ee7e7c115280281acec762c6d6f59518547`, received independent G51
+  source approval from `/root/login_independent_review`; record:
+  `login-study/recovery-implementation/independent-review-f947b709.json`.
+  This was source approval, not a release or live-authentication claim.
+- The initial verifier stopped at detect-secrets on two synthetic response
+  dictionary keys in `test_provision_auth.py`. Both keys now use `detail`;
+  private response payloads and the no-logging assertions are unchanged. Normal
+  commit hooks and the subsequent full repository hook pass succeeded. No
+  scanner, baseline, allowlist or required check was weakened.
+- Canonical r2 passed all repository hooks and started complete Python coverage
+  with two workers to limit contention with unrelated sessions. It was
+  deliberately interrupted (exit 130), with its worker cleanup, when a separate
+  scoped comparison confirmed the expected new-icon reference changes. It is
+  INCOMPLETE, not a full verification pass. Unrelated processes were untouched.
+- The icon gallery now has 83 keys rather than 82. Exactly 28 icon comparisons
+  (four foundation, 24 matrix) differ because `email` follows `account`; the
+  overflow ratchet passed. All 82 preexisting cells in both large/1.0 modes
+  and all 71 fully visible old cells in each foundation image match pixel for
+  pixel at their shifted positions. This establishes an intentional registry
+  update, not a font or geometry change. Old PNGs, hashes, actual renders and
+  comparisons are retained under `recovery-implementation/icon-golden-review/`.
+  Only those 28 references are being updated; no broad golden regeneration or
+  comparator change is authorized by this correction.
+- Final reference validation, renewed exact-head source review, complete
+  canonical run, hosted CI and all release/live gates remain pending here.
