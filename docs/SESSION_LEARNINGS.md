@@ -21051,3 +21051,30 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
   including exact source/build hashes. Browser mail and collection data were
   synthetic. Real email delivery, live Google, signed-device return, hosted CI,
   protected merge and three-workflow release are Not confirmed at this checkpoint.
+
+
+### Firebase login canonical pass before PR integration, 2026-10-17
+
+- Task `01a147ea-7efb-7e22-8821-e42395a135fc`, `codex/login-firebase-launch`,
+  worktree `9030`: canonical `scripts/ci/verify.sh` r5 passed with exit 0 on
+  `225a5af652c93f3e8416935bedfef40726988a09` (tree
+  `2df25f6aacac0c73b9615ae9aea5b387700742c2`). All normal repository hooks,
+  18,097 Python passes plus 49 skips across all 18,146 collected tests exactly
+  once, UI strings, both analyses, 1,307 design-system tests, 3,056 app tests
+  plus seven expected skips, 573-file formatting, release web build and route/
+  security-header smoke passed. The local build is unstamped; deployment.json
+  was explicitly skipped locally and no production marker is claimed here.
+- The corrected tracked browser runner also passed against the unchanged
+  compiled e3454c38 fixture. Its SHA-256 is
+  `f3e1550da7fec08347bc9832a3b202ee5d65f53ce66e31f4a20c18000ce58d7c`;
+  the final external `firebase-browser-final-runner.json` supersedes the prior
+  temporary-runner caveat. Temporary emulator and server processes were stopped.
+- Independent G51 review approved exact head 225a5af6 with no findings, including
+  the fixture correction and final runner. The current upstream `aaf1e534`
+  (PR #370) differs from the integrated main base only in the append-only journal
+  and a location-rerun inventory document. Local integration will preserve both
+  journals and receive renewed exact-head review. Application/test source must
+  remain equal to this qualified candidate during that documentation merge.
+- No PR has yet been pushed or merged, no provider permission setup was run,
+  and no production setting was changed by this checkpoint. Hosted checks,
+  protected release, Google activation and real account acceptance remain open.
