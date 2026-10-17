@@ -8,6 +8,36 @@ import 'package:specimen_digitization/src/theme/app_theme.dart';
 import 'widgets/harness.dart';
 
 void main() {
+  test(
+    'INT-UX-015 exposure thresholds keep their strict boundary and short hints',
+    () {
+      expect(
+        const CapturePreviewReading(
+          mean: 128,
+          darkFraction: CapturePreviewReading.shadowHintFraction,
+          brightFraction: CapturePreviewReading.glareHintFraction,
+        ).hint,
+        isNull,
+      );
+      expect(
+        const CapturePreviewReading(
+          mean: 220,
+          darkFraction: 0,
+          brightFraction: CapturePreviewReading.glareHintFraction + 0.001,
+        ).hint,
+        'Bright spots. Check for glare.',
+      );
+      expect(
+        const CapturePreviewReading(
+          mean: 20,
+          brightFraction: 0,
+          darkFraction: CapturePreviewReading.shadowHintFraction + 0.001,
+        ).hint,
+        'Dark areas. Check the lighting.',
+      );
+    },
+  );
+
   Uint8List pixels(List<int> values) =>
       Uint8List.fromList(values.expand((v) => [v, v, v, 255]).toList());
   test('measured exposure and detail respond to controlled degradation', () {
