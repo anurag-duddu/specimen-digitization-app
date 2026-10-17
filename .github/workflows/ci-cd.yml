@@ -6,6 +6,14 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      engine_cache_mode:
+        description: Engine file cache provisioning only
+        type: choice
+        default: normal
+        options:
+          - normal
+          - cold
 
 permissions:
   contents: read
@@ -116,12 +124,133 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  python-engines:
+    name: SQL and Storage engine contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      SPECIMEN_TEST_SQL_EMULATOR: 'true'
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select engine cache mode
+        id: engine-cache
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_MODE: ${{ inputs.engine_cache_mode || 'normal' }}
+        run: |
+          case "$EVENT_NAME" in
+            workflow_dispatch)
+              case "$REQUESTED_MODE" in
+                normal|cold) mode="$REQUESTED_MODE" ;;
+                *) echo 'Unknown engine cache mode' >&2; exit 1 ;;
+              esac ;;
+            pull_request|push) mode=normal ;;
+            *) echo 'Unsupported engine event' >&2; exit 1 ;;
+          esac
+          if [ "$mode" = cold ]; then
+            private_parent="$(mktemp -d "$RUNNER_TEMP/engine-cold.XXXXXXXX")"
+            directory="$private_parent/engines"
+          else
+            directory="$RUNNER_TEMP/engine-tools"
+          fi
+          test ! -e "$directory"
+          test ! -L "$directory"
+          {
+            echo "mode=$mode"
+            echo "directory=$directory"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "ENGINE_CACHE_MODE=$mode"
+            echo "ENGINE_TOOLS_DIR=$directory"
+            echo "ENGINE_PROVISION_REPORT=$RUNNER_TEMP/engine-provision.json"
+            echo "DATACONNECT_EMULATOR_BIN=$directory/dataconnect-emulator-3.2.0"
+            echo "STORAGE_RULES_RUNTIME_JAR=$directory/cloud-storage-rules-runtime-v1.1.3.jar"
+            echo "FIREBASE_CLI_BIN=$directory/firebase-tools-linux"
+          } >> "$GITHUB_ENV"
+
+      - name: Select pinned runner tools
+        run: |
+          # select_node_bin uses RUNNER_TOOL_CACHE and the highest installed Node 22.x.
+          node_bin="$(python3 -c 'import os; from scripts.ci.engine_contract_gate import select_node_bin; print(select_node_bin(os.environ))')"
+          test -x "$node_bin/node"
+          export PATH="$node_bin:$PATH"
+          [[ "$(node --version)" =~ ^v22\.[0-9]+\.[0-9]+$ ]]
+          test -n "$JAVA_HOME_21_X64"
+          test -x "$JAVA_HOME_21_X64/bin/java"
+          test -x /usr/lib/postgresql/16/bin/pg_ctl
+          echo "$node_bin" >> "$GITHUB_PATH"
+          echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV"
+          echo 'POSTGRES_BIN=/usr/lib/postgresql/16/bin' >> "$GITHUB_ENV"
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          python-version: '3.12'
+
+      - name: Install locked dependencies
+        run: uv sync --frozen
+
+      - name: Cache verified engine files
+        id: engine-files
+        if: steps.engine-cache.outputs.mode == 'normal'
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: ${{ steps.engine-cache.outputs.directory }}
+          key: engine-tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/data/engine-toolchain.json') }}
+
+      - name: Provision verified engine files
+        env:
+          CACHE_HIT: ${{ steps.engine-files.outputs.cache-hit }}
+        run: |
+          case "$ENGINE_CACHE_MODE" in
+            cold)
+              case "$CACHE_HIT" in
+                ''|false) restore=bypassed ;;
+                *) echo 'Cold engine cache was restored' >&2; exit 1 ;;
+              esac ;;
+            normal)
+              case "$CACHE_HIT" in
+                true) restore=hit ;;
+                ''|false) restore=miss ;;
+                *) echo 'Unknown engine cache hit status' >&2; exit 1 ;;
+              esac ;;
+            *) echo 'Unknown engine cache mode' >&2; exit 1 ;;
+          esac
+          python3 scripts/data/provision-engine-tools.py --download \
+            --directory "$ENGINE_TOOLS_DIR" --mode "$ENGINE_CACHE_MODE" \
+            --restore "$restore" --output "$ENGINE_PROVISION_REPORT"
+
+      - name: Run mandatory engine contracts
+        run: >-
+          uv run python scripts/ci/engine_contract_gate.py record
+          --selection scripts/data/engine-contract-selection.json --results python-engines
+          -- bash -euo pipefail -c 'scripts/data/test-postgres.sh; scripts/data/test-storage.sh'
+
+      - name: Upload engine result
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: python-tests-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-engines
+          path: python-engines/engine-contract.json
+          if-no-files-found: error
+          retention-days: 7
+
   python:
     name: Python tests
     if: always()
     needs:
       - python-scope
       - python-shards
+      - python-engines
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -130,8 +259,10 @@ jobs:
           SCOPE_RESULT: ${{ needs.python-scope.result }}
           FULL_PYTHON: ${{ needs.python-scope.outputs.full }}
           SHARD_RESULT: ${{ needs.python-shards.result }}
+          ENGINE_RESULT: ${{ needs.python-engines.result }}
         run: |
           test "$SCOPE_RESULT" = success
+          test "$ENGINE_RESULT" = success
           case "$FULL_PYTHON" in
             true) test "$SHARD_RESULT" = success ;;
             false) test "$SHARD_RESULT" = skipped ;;
@@ -153,6 +284,28 @@ jobs:
         if: needs.python-scope.outputs.full == 'false'
         run: uv sync --frozen
 
+      - name: Download Python results
+        if: needs.python-scope.outputs.full == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: python-tests-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-*
+          path: python-shards
+          merge-multiple: true
+
+      - name: Download engine result for focused contracts
+        if: needs.python-scope.outputs.full == 'false'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: python-tests-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-engines
+          path: python-shards
+
+      - name: Verify mandatory engine evidence
+        env:
+          ENGINE_CACHE_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.engine_cache_mode || 'normal' }}
+        run: >-
+          python3 scripts/ci/engine_contract_gate.py verify
+          --selection scripts/data/engine-contract-selection.json --results python-shards
+
       - name: Run focused frontend Python contracts
         if: needs.python-scope.outputs.full == 'false'
         run: >-
@@ -163,14 +316,6 @@ jobs:
           tests/test_hosting_attempt_binding.py
           tests/test_local_review_runner.py
           tests/research_harness/test_thread_embedded_schema.py
-
-      - name: Download Python results
-        if: needs.python-scope.outputs.full == 'true'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          pattern: python-tests-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-*
-          path: python-shards
-          merge-multiple: true
 
       - name: Verify complete Python coverage
         if: needs.python-scope.outputs.full == 'true'

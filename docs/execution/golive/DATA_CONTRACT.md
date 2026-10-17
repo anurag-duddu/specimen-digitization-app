@@ -769,10 +769,13 @@ against real PostgreSQL and the Data Connect emulator. It checks:
   the worker, and skips finished and undated runs; a stuck cursor fails the
   test instead of hanging it.
 
-`scripts/ci/test_data_release.py` pins the table count at 30. CI does not start
-the emulator. It does not compile the GraphQL, run the `@check`s, test replays,
-cursors or the migration from `main`. Those run locally, and each PR records
-the result.
+`scripts/ci/test_data_release.py` pins the table count at 30. The separate
+mandatory `python-engines` CI tier compiles the GraphQL and runs the selected
+connector authorization/CAS, replay, paging/search/checksum, restart/restore
+and Storage contracts in `scripts/data/engine-contract-selection.json`.
+Exact-head hosted qualification is required before merge; this is not complete
+projection coverage, migration-from-`main` proof or cloud parity. Seventeen
+additional opt-in SQL calls remain catalogued residual coverage.
 
 For the writer: `tests/test_projection.py` (the mapping) and
 `tests/test_projection_writer.py` (order, scope and actor, primary-key

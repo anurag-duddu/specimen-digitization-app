@@ -113,7 +113,7 @@ which only their own workflows call; see
 | Required check | What it proves |
 |---|---|
 | `Repository checks` | Sensitive-file policy, secret scans, formatting, YAML/JSON/TOML validity, shell checks, and GitHub Actions syntax |
-| `Python tests` | Locked Python environment. Backend, contract, workflow, dependency, release and unrecognized changes run the complete default pytest collection; all configured module shards must succeed and cover every collected test exactly once. Every pull request currently runs the complete collection, including Flutter-only changes. Pushes to `main` always run the complete collection. |
+| `Python tests` | Locked Python environment. Backend, contract, workflow, dependency, release and unrecognized changes run the complete default pytest collection; all configured module shards must succeed and cover every collected test exactly once. Every pull request currently runs the complete collection, including Flutter-only changes. Pushes to `main` always run the complete collection. The separate mandatory SQL/Storage engine tier must also succeed and supply verified current-attempt evidence in either scope. |
 | `Flutter checks and web build` | Locked Flutter dependencies, Dart formatting, the `specimen_ui` design system's own analysis and tests, client static analysis, client widget tests, release build, immutable deployment metadata, and a loopback route smoke over the built artifact |
 
 Pull requests use `apps/specimen_digitization/lib/firebase_options.ci.dart`.
@@ -205,6 +205,78 @@ source/run/attempt identity, successful test phases and complete execution with
 no missing, duplicate or extra tests. A failed or missing shard fails the gate.
 Every shard also reports its 25 slowest test durations for performance diagnosis.
 
+#### Mandatory SQL and Storage engine contracts
+
+`python-engines` (`SQL and Storage engine contracts`) starts independently of
+scope classification on `ubuntu-24.04`, with a new ten-minute budget. It has
+only `contents: read`, no production environment, cloud credentials or OIDC.
+It is a dependency of the existing `Python tests` aggregate in both full and
+dormant focused scopes; it adds no required check context. Hosting still needs
+exactly `repository-checks`, `python`, `flutter` and `mobile`.
+
+The tier records the nine Python calls, 19 connector group IDs, 13 Storage
+assertion IDs and complete SQL/Storage lifecycle in
+`scripts/data/engine-contract-selection.json`. The three existing opt-in SQL
+calls remain separately accounted for in default shard discovery; the other
+17 opt-in SQL calls are explicitly catalogued residual coverage. This tier
+does not establish comprehensive projection coverage or cloud parity.
+
+`scripts/data/engine-toolchain.json` pins the Data Connect 3.2.0 executable,
+Storage 1.1.3 JAR and firebase-tools 15.8.0 standalone Linux binary by size and
+SHA-256. No npm package installation is needed for this tier. The runner must
+already provide JDK 21 from `JAVA_HOME_21_X64`, PostgreSQL 16 binaries at
+`/usr/lib/postgresql/16/bin` and a 16.x server. Node is selected deterministically
+as the highest installed stable 22.x under `$RUNNER_TOOL_CACHE/node`; a missing
+tool or approved major fails. npm is unused and is not checked. The preflight
+checks all PG client tools, the server version and `uuid-ossp`; there is no
+package-manager, container or JDK fallback. Majors are enforced; exact Java,
+PostgreSQL client/server and Node versions plus a required non-empty
+`ImageVersion` are recorded in provisioning and engine evidence and cross-checked
+against recorder observations. Routine runner patch and image updates are
+accepted. PG16 remains an explicit runner-major qualification boundary, not
+proof of another Cloud SQL major's behavior.
+
+Only the three engine files are cached, under the full toolchain file hash
+and runner platform, without a restore prefix. Downloads and restored files
+are size/hash verified before execution, including each wrapper's preflight;
+a corrupt or incomplete cache hit fails. The recorder publishes
+`engine-contract.json` only after exact passing inventories, seed/readiness,
+owned-process cleanup and unchanged source/configuration fingerprints. The
+always-upload step uses the immutable name
+`python-tests-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-engines`
+and errors on a missing final file. Diagnostic upload cannot turn a failed
+job into success. There is no overwrite or previous-attempt fallback.
+
+The aggregate first requires scope success, engine success, and the unchanged
+full/shard relation (full means shards succeeded; focused means shards were
+skipped). Full scope uses the existing artifact wildcard; focused scope
+downloads the exact engine artifact name. Both unconditionally run the stdlib
+engine verifier against independently derived SHA/run/attempt, cache mode,
+selection, toolchain, configuration and source fingerprints. Full shard
+verification still consumes only `shard-*.json` and proves default exact-once
+coverage; focused contracts run after engine verification.
+
+Qualification record (2026-10-17). The tier was qualified on the hosted runner
+with CI-only `workflow_dispatch` runs of the pull-request branch and with that
+pull request's required checks. Normal run 39002413443 and cold-cache run
+39002417497 used engine-tier inputs identical to the merged source; their engine
+jobs ended 207 and 243 seconds after the first job started. On the exact-head
+pull-request run 39016571627 the engine job ended at 156 seconds, the slowest
+shard at 734 seconds and `Python tests` at 749 seconds; main's baseline run
+38887586799 ended `Python tests` at 779 seconds. The engine job therefore ends
+far ahead of the slowest shard and adds no required-path time. The 700-second
+stretch target was not reached: the slowest shard is still
+`tests/research_harness/test_parallel_roles.py`, which stays one module.
+
+Any later change to the engine tier (toolchain, selection, wrappers, verifier or
+workflow wiring) re-qualifies the same way before merge: a CI-only
+`workflow_dispatch` run in `normal` and in `engine_cache_mode=cold` mode, then
+the ordinary pull-request checks, confirming every stage passes and the engine
+job still ends well before the slowest shard. A missing tool, wrong major,
+identity mismatch or failed stage keeps the change out of `main`. A future
+eligible-focused comparison awaits closure qualification; do not force a focused
+run or compare it to a historical engine-free path.
+
 `scripts/ci/smoke_web_routes.py` and the embedded research-schema parity test
 have contract coverage in the dormant focused frontend steps; those tests
 currently run in the complete Python collection.
@@ -273,6 +345,13 @@ request runs can be cancelled when superseded.
 
 In this Hosting workflow, `workflow_dispatch` intentionally runs CI only. It
 cannot deploy. Do not change manual dispatch into a Hosting production trigger.
+Its only input, `engine_cache_mode`, selects `normal` (default) or `cold`.
+Cold uses a new empty private engine directory and bypasses engine-file cache
+restore and save, while downloading/verifying the same approved bytes and
+running every identical test, stage and result gate. The result records and
+verifies mode, actual cache-hit state and directory freshness. Unknown modes
+fail. PR/push always use normal. This switch changes only engine-file
+provisioning; it cannot select scope or reuse a result artifact.
 A replay of a failed Hosting production job must retain its original `push`
 event and merged `main` commit. The data and runtime release workflows are
 different: they accept a manual run on `main`, as
@@ -527,7 +606,8 @@ Emulators are local tools and are not a release path:
 firebase emulators:start --only auth,dataconnect,storage
 ```
 
-Storage emulation may require a JDK. Do not add Java to the Hosting workflow.
+Storage emulation requires a JDK in the isolated engine CI job; native Android
+builds also use Java. Hosting deployment itself remains Java-free.
 Do not treat emulator success as proof of Cloud SQL migration safety or
 production behavior.
 
