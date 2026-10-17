@@ -112,7 +112,7 @@ void main() {
       expect(
         find.descendant(
           of: find.byType(IntakeManifestRow),
-          matching: find.text('Waiting to start'),
+          matching: find.text('Saved'),
         ),
         findsNothing,
       );

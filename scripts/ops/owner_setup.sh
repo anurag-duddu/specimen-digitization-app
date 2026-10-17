@@ -650,6 +650,7 @@ runtime_grants() {
   grant repository "$REGISTRY" "$RELEASE" roles/artifactregistry.reader
   grant job specimen-worker "$RELEASE" "$CUSTOM/specimenWorkerExecution"
   grant job specimen-worker "$API" "$CUSTOM/specimenWorkerRead"
+  grant job specimen-intake "$API" roles/run.invoker
   for name in api worker sam; do
     grant service-account "specimen-$name-runtime@$ACCOUNTS" "$RELEASE" roles/iam.serviceAccountUser
   done
@@ -675,6 +676,7 @@ runtime_grants() {
   pinned_secret "$API" specimen-worker-logfire 1
   pinned_secret "$API" specimen-source-registry 1
   pinned_secret "$API" specimen-collection-bindings 1
+  pinned_secret "$API" specimen-worker-actor-uid 1
   pinned_secret "$WORKER" huggingface-runtime-token 2
   pinned_secret "$WORKER" specimen-worker-logfire 1
   pinned_secret "$WORKER" specimen-worker-actor-uid 1

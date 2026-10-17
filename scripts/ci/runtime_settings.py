@@ -19,6 +19,7 @@ PREFIX = f"projects/{PROJECT}/locations/{REGION}"
 BUCKET = f"{PROJECT}.firebasestorage.app"
 SAM_URL = f"https://specimen-sam-{PROJECT_NUMBER}.{REGION}.run.app"
 WORKER_JOB = f"{PREFIX}/jobs/specimen-worker"
+INTAKE_JOB = f"{PREFIX}/jobs/specimen-intake"
 WORKER_EMAIL = f"specimen-worker-runtime@{PROJECT}.iam.gserviceaccount.com"
 
 # Secret Manager versions, pinned by number once the owner creates them (T4); never "latest".
@@ -62,9 +63,22 @@ API = {
         **SQL, "SPECIMEN_GCS_BUCKET": BUCKET,
         "SPECIMEN_CORS_ORIGINS": "https://specimen-digitization.web.app,https://specimen-digitization.firebaseapp.com",
         "SPECIMEN_READINESS_OBJECT": READINESS_OBJECT, "SPECIMEN_WORKER_JOB": WORKER_JOB,
+        "SPECIMEN_INTAKE_JOB": INTAKE_JOB,
     },
     "secret_env": {"LOGFIRE_TOKEN": "specimen-worker-logfire", "SPECIMEN_SOURCE_REGISTRY_JSON": "specimen-source-registry",
                    "SPECIMEN_COLLECTION_BINDINGS_JSON": "specimen-collection-bindings"},
+}
+
+# Private transfer/validation work uses the API image, without inference keys.
+# Provider applications remain unavailable until their reviewed configuration
+# names real client IDs, callback URLs, and pinned client-secret versions.
+INTAKE = {
+    "service_account": API["service_account"], "cpu": "1", "memory": "1Gi",
+    "timeout_seconds": 3600, "max_retries": 2,
+    "command": ["python"],
+    "args": ["-m", "specimen_digitization.application.intake_worker", "--max-seconds", "3300"],
+    "env": {**API["env"], **tracing_env("intake")},
+    "secret_env": {**API["secret_env"], "SPECIMEN_WORKER_ACTOR_UID": "specimen-worker-actor-uid"},
 }
 
 # A Cloud Run job the release defines but never starts; the API and the drain's deadline hand-over start its

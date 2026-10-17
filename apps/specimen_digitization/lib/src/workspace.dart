@@ -1023,9 +1023,10 @@ class WorkspaceController extends ChangeNotifier {
   }
 
   /// Clears the search, the segment and every filter.
-  Future<void> clearFilters() {
+  Future<void> clearFilters({String disposition = 'needs_human_review'}) {
+    _search?.cancel();
     _query = '';
-    _disposition = 'needs_human_review';
+    _disposition = disposition;
     _filters = <String, String>{};
     _notify();
     return refresh();

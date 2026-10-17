@@ -112,6 +112,10 @@ jobs:
         run: uv run python scripts/release/deploy_api.py "$IMAGE"
       - name: Smoke the public API
         run: scripts/release/smoke_api.sh
+      - name: Define the private intake transfer job
+        env:
+          IMAGE: ${{ needs.build.outputs.image }}
+        run: uv run python scripts/release/deploy_intake.py "$IMAGE"
       - name: Deploy private SAM at minimum zero and define the worker job
         env:
           SAM_IMAGE: ${{ needs.build.outputs.sam }}

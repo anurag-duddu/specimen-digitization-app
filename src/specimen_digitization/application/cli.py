@@ -67,6 +67,7 @@ def production_app(config=None):
     from ..research_harness.derivation_work_queue import schedule_derivation
     from ..research_harness.persistence import GcsImmutableBlobs
     wiring = lane_wiring(config)
+    from .intake_connections import SecretManagerTokens
     app = create_app(
         mode="production",
         repository=repository,
@@ -79,6 +80,9 @@ def production_app(config=None):
         research_derivation_ready=DeployedDerivationWorker(config, provenance, wiring['worker_dispatcher']),
         schedule_derivation=partial(schedule_derivation, repository),
         research_capture_blobs=GcsImmutableBlobs(blobs.bucket),
+        intake_dispatcher=dispatcher_from_value(config.intake_job),
+        intake_oauth_config=dict(config.intake_oauth),
+        intake_secret_store=SecretManagerTokens(config.project) if config.intake_oauth else None,
         **wiring,
     )
     install_health(

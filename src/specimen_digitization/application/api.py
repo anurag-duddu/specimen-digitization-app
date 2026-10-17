@@ -262,6 +262,10 @@ def classify_error(exc) -> tuple[int, str, str, str]:
     "one record refused" would be told a different thing depending on how the
     decision was sent.
     """
+    from .intake_sources import ImportProblem
+    if isinstance(exc, ImportProblem):
+        detail = exc.intake_problem
+        return (503 if detail['retryable'] else 422, detail['code'], 'import', detail['message'])
     status, code, category, message = (
         503,
         "runtime_unavailable",
@@ -495,6 +499,10 @@ def create_app(
     research_derivation_ready=None,
     schedule_derivation=None,
     research_capture_blobs=None,
+    intake_dispatcher=None,
+    intake_sources=None,
+    intake_oauth_config=None,
+    intake_secret_store=None,
 ) -> FastAPI:
     if mode not in {"synthetic", "emulator", "production"}:
         raise ValueError("Explicit application mode required")
@@ -529,7 +537,12 @@ def create_app(
         @app.middleware("http")
         async def require_allowed_origin(request, call_next):
             origin = request.headers.get("origin")
-            if origin is not None and origin not in origins:
+            from urllib.parse import urlsplit
+            picker_origins = {f'{u.scheme}://{u.netloc}' for value in (intake_oauth_config or {}).values()
+                if (u := urlsplit(value['redirect_uri'])).scheme == 'https'}
+            picker_callback = (request.url.path in {'/v1/intake/picker/selection', '/v1/intake/picker/bootstrap'}
+                and request.method == 'POST' and origin in picker_origins)
+            if origin is not None and origin not in origins and not picker_callback:
                 return JSONResponse(
                     status_code=403,
                     headers={"Cache-Control": "no-store"},
@@ -612,7 +625,7 @@ def create_app(
                     "request_id": uid(),
                     "details": exc.details
                     if isinstance(exc, WorkspaceTooLarge)
-                    else {},
+                    else getattr(exc, 'intake_problem', {}),
                 }
             },
         )
@@ -1266,85 +1279,14 @@ def create_app(
         content = b"".join(blobs.get(c["ref"]) for c in doc["chunks"])
         if hashlib.sha256(content).hexdigest() != doc["sha256"]:
             raise ValueError("Original checksum mismatch")
-        processing = None
-        pixel_basis = "original_pixel_edges"
-        special = doc["media_type"] in {
-            "image/heic",
-            "image/heif",
-            "image/dng",
-            "image/x-adobe-dng",
-        }
-        if special:
-            from .image_codecs import CodecPolicy, decode_image
-
-            policy = codec_policy or CodecPolicy()
-            family = (
-                "HEIC" if doc["media_type"] in {"image/heic", "image/heif"} else "DNG"
-            )
-            result, derivative = decode_image(content, family, policy)
-            if result.status == "blocked":
-                raise OperationalBlock("image_codec_" + result.reason)
-            if result.status != "decoded" or derivative is None:
-                raise ValueError("Invalid image: " + result.reason)
-            provenance = result.provenance
-            if provenance.actual_format != family:
-                raise ValueError("Decoded image family mismatch")
-            # HEIF's primary raster is already container-oriented. DNG's retained
-            # view must be inverted to its explicitly recorded active-area basis.
-            with Image.open(io.BytesIO(derivative)) as displayed:
-                canonical = displayed.convert("RGB")
-                orientation = provenance.transform.orientation
-                inverse = {
-                    2: Image.Transpose.FLIP_LEFT_RIGHT,
-                    3: Image.Transpose.ROTATE_180,
-                    4: Image.Transpose.FLIP_TOP_BOTTOM,
-                    5: Image.Transpose.TRANSPOSE,
-                    6: Image.Transpose.ROTATE_90,
-                    7: Image.Transpose.TRANSVERSE,
-                    8: Image.Transpose.ROTATE_270,
-                }.get(orientation)
-                if inverse is not None:
-                    canonical = canonical.transpose(inverse)
-                dimensions = canonical.size
-                pixels = io.BytesIO()
-                canonical.save(pixels, format="PNG")
-                canonical_bytes = pixels.getvalue()
-            processing = dict(
-                provenance.model_dump(mode="json"),
-                blob_ref=blobs.put(canonical_bytes),
-                derivative_sha256=hashlib.sha256(canonical_bytes).hexdigest(),
-                canonicalization="inverse_view_affine_to_declared_pixel_basis",
-            )
-            pixel_basis = provenance.coordinate_space
-            actual_type = "image/heic" if family == "HEIC" else "image/dng"
-        else:
-            try:
-                with Image.open(io.BytesIO(content)) as image:
-                    image.verify()
-                with Image.open(io.BytesIO(content)) as image:
-                    actual_type = Image.MIME.get(image.format)
-                    if actual_type not in {"image/png", "image/jpeg", "image/tiff"}:
-                        raise ValueError("Image decoder format not supported")
-                    if actual_type != doc["media_type"]:
-                        raise ValueError("Declared image media type mismatch")
-                    if image.width * image.height > 40000000 or max(image.size) > 20000:
-                        raise ValueError("Decoded image resolution limit exceeded")
-                    image.load()
-                    dimensions = image.size
-            except (
-                OSError,
-                SyntaxError,
-                EOFError,
-                Image.DecompressionBombError,
-            ) as exc:
-                raise ValueError("Invalid or truncated image content") from exc
-            derivative, provenance = orientation_view(
-                content, ImageLimits(allowed_formats=("JPEG", "PNG", "TIFF"))
-            )
-        if doc["width"] is not None and dimensions != (doc["width"], doc["height"]):
-            raise ValueError("Declared image dimensions mismatch")
+        from .intake_image import verify_photo
+        verified = verify_photo(content, doc, blobs, codec_policy)
+        dimensions = (verified["width"], verified["height"])
         doc.update(width=dimensions[0], height=dimensions[1])
-        view = dict(provenance.model_dump(mode="json"), blob_ref=blobs.put(derivative))
+        actual_type = verified["media_type"]
+        view = verified["view_derivative"]
+        processing = verified["processing_derivative"]
+        pixel_basis = verified["pixel_basis"]
         profile = Profile(
             synthetic=mode == "synthetic",
             institutional_policy_approved=mode == "synthetic",
@@ -2973,6 +2915,32 @@ def create_app(
     app.state.research_derivation = derivation
     app.state.research_discovery = discovery
     app.state.workflow = workflow
+    from .bulk_intake import IntakeService
+    from .intake_routes import install_intake_routes
+    from .intake_worker import IntakeWorker
+    from .intake_sources import IntakeSources
+    from .intake_source_routes import install_source_routes
+    intake = IntakeService(repository, blobs,
+        authorize=lambda p: principal(p.user_id, p.scope.organization_id, p.scope.collection_id, write=True),
+        classify=lambda p, sensitive: sensitivity_access(p.user_id, p, sensitive),
+        queue_specimen=lambda s, user: queue_on_intake(s, registry, user) if mode != 'synthetic' else None,
+        dispatch_pipeline=lambda p, s: process_background(p, s.id) if mode == 'synthetic' else start_worker(),
+        dispatch_intake=intake_dispatcher.start if intake_dispatcher else None,
+        sources=intake_sources or IntakeSources(source_registry=source_registry, source_reader=source_reader),
+        codec_policy=codec_policy, synthetic=mode == 'synthetic')
+    app.state.intake = intake
+    connections = None
+    if intake_oauth_config:
+        from .intake_connections import ConnectionManager
+        from .intake_cloud_sources import CloudSource
+        if intake_secret_store is None:
+            raise ValueError('OAuth configuration requires protected credential storage')
+        connections = ConnectionManager(intake, intake_oauth_config, intake_secret_store)
+        intake.sources.providers.update({name: CloudSource(connections, name) for name in intake_oauth_config})
+    app.state.intake_connections = connections
+    install_source_routes(app, prefix, intake, connections, identity=identity, principal=principal, origins=origins)
+    install_intake_routes(app, prefix, intake, identity=identity, principal=principal,
+        local_drain=IntakeWorker(intake).drain if mode == 'synthetic' else None)
     return app
 
 

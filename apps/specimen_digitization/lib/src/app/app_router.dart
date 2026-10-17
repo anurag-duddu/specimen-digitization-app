@@ -7,6 +7,8 @@
 /// screen, keeping the location it was trying to reach.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/cupertino.dart' show CupertinoRouteTransitionMixin;
 import 'package:flutter/widgets.dart';
@@ -17,6 +19,8 @@ import 'package:specimen_ui/specimen_ui.dart';
 import '../auth.dart';
 import '../email_verification.dart';
 import '../intake.dart';
+import '../screens/intake/bulk_intake_repository.dart';
+import '../screens/intake/bulk_intake_screen.dart';
 import '../magic_link.dart';
 import '../models.dart';
 import '../screens/queue/queue_screen.dart';
@@ -496,6 +500,13 @@ class _SourcesRoute extends StatelessWidget {
       );
     }
     final SourceRepository? repository = sourcesIn(controller.repository);
+    if (controller.repository is BulkIntakeRepository &&
+        const bool.fromEnvironment(
+          'BULK_INTAKE_ENABLED',
+          defaultValue: !kReleaseMode,
+        )) {
+      return const _IntakeRoute(initialProvider: 'storage');
+    }
     if (repository == null) return const _NoSourceSupport();
     return SourcesScreen(
       key: ValueKey<String>(scope.key),
@@ -563,6 +574,16 @@ class _SourceRouteState extends State<_SourceRoute> {
       );
     }
     final SourceRepository? repository = sourcesIn(controller.repository);
+    if (controller.repository is BulkIntakeRepository &&
+        const bool.fromEnvironment(
+          'BULK_INTAKE_ENABLED',
+          defaultValue: !kReleaseMode,
+        )) {
+      return _IntakeRoute(
+        initialProvider: 'storage',
+        initialSourceId: widget.sourceId,
+      );
+    }
     if (repository == null) return const _NoSourceSupport();
     final SourceBrowseController browse = _controllerFor(repository, scope);
     return FutureBuilder<List<RegisteredSource>>(
@@ -685,7 +706,8 @@ class _LeaveVerificationState extends State<_LeaveVerification> {
 
 /// Intake, wired to the open collection.
 class _IntakeRoute extends StatelessWidget {
-  const _IntakeRoute();
+  const _IntakeRoute({this.initialProvider, this.initialSourceId});
+  final String? initialProvider, initialSourceId;
 
   @override
   Widget build(BuildContext context) {
@@ -696,12 +718,49 @@ class _IntakeRoute extends StatelessWidget {
         child: LoadingAnnouncement(thing: 'the collection', visible: true),
       );
     }
+    final repository = controller.repository;
+    if (repository is BulkIntakeRepository &&
+        const bool.fromEnvironment(
+          'BULK_INTAKE_ENABLED',
+          defaultValue: !kReleaseMode,
+        )) {
+      return BulkIntakeScreen(
+        key: ValueKey('${controller.session.userId}:${scope.key}'),
+        repository: repository as BulkIntakeRepository,
+        scope: scope,
+        userId: controller.session.userId,
+        initialProvider: initialProvider,
+        initialSourceId: initialSourceId,
+        onViewSpecimens: () {
+          unawaited(controller.clearFilters(disposition: ''));
+          GoRouter.of(
+            context,
+          ).go(AppRoutes.queueOf(Uri.encodeComponent(scope.key)));
+        },
+      );
+    }
     return IntakeScreen(
       key: ValueKey<String>(scope.key),
       repository: controller.repository,
       scope: scope,
       userId: controller.session.userId,
       onComplete: () => controller.refresh(quiet: true),
+      accessVerified: true,
+      restoreAccess: () async {
+        final userId = controller.session.userId;
+        await controller.checkAccess();
+        return controller.session.signedIn &&
+            controller.session.userId == userId &&
+            controller.scopesVerified &&
+            controller.scopes.any((allowed) => allowed.key == scope.key);
+      },
+      onViewSpecimens: () {
+        // Newly handed-off photos have no review disposition yet.
+        unawaited(controller.clearFilters(disposition: ''));
+        GoRouter.of(
+          context,
+        ).go(AppRoutes.queueOf(Uri.encodeComponent(scope.key)));
+      },
       // Hidden rather than disabled where the build serves no sources.
       onBrowseSources: sourcesIn(controller.repository) == null
           ? null
