@@ -376,8 +376,8 @@ def test_a_call_that_would_cross_the_cap_is_refused_however_little_was_spent(
     tmp_path,
 ):
     # Earlier runs settled 20,000 short of the pilot profile's allowance (G30,
-    # USD 16): less than SAM 3's 45,000 reservation is left.
-    settled = 16_000_000 - 20_000
+    # USD 28): less than SAM 3's 45,000 reservation is left.
+    settled = 28_000_000 - 20_000
     app, principal, row = lab(tmp_path, ledger_total_micros=settled)
     run = app.state.workflow.drain(principal, row["specimen_id"]).run
     assert (run.stage, run.blocker) == ("processing_blocked", "program_allowance_exhausted")

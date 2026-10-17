@@ -71,9 +71,9 @@ Widget skeletons() => _surface(
     builder: (BuildContext context) => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        const SkeletonBlock(),
+        UiSkeleton.line(height: context.ui.space.rowExpanded),
         SizedBox(height: context.ui.space.s4),
-        const SkeletonRow(),
+        const UiSkeleton.row(),
         const LoadingAnnouncement(thing: 'queue', visible: true),
       ],
     ),
@@ -83,12 +83,11 @@ Widget skeletons() => _surface(
 /// The empty state pattern.
 @Preview(name: 'Empty state', group: 'Molecules', theme: previewThemes)
 Widget emptyState() => _surface(
-  EmptyState(
-    icon: UiIcons.queue.defaultGlyph,
+  UiEmptyState(
+    icon: UiIcons.queue,
     title: 'No specimens yet',
     body: 'Upload a photograph to create the first record.',
-    actionLabel: 'Add photographs',
-    onAction: () {},
+    action: UiButton(label: 'Add photographs', onPressed: () {}),
   ),
 );
 

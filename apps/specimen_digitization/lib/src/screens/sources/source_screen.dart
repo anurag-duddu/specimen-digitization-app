@@ -418,7 +418,7 @@ class _SourceBrowsePaneState extends State<SourceBrowsePane> {
               for (int row = 0; row < sourceSkeletonRows; row++)
                 Padding(
                   padding: EdgeInsetsDirectional.only(bottom: ui.space.s2),
-                  child: const SkeletonRow(),
+                  child: const UiSkeleton.row(),
                 ),
             ],
           ),
@@ -429,8 +429,8 @@ class _SourceBrowsePaneState extends State<SourceBrowsePane> {
       return SliverPadding(
         padding: sides,
         sliver: SliverToBoxAdapter(
-          child: EmptyState(
-            icon: UiIcons.noResults.defaultGlyph,
+          child: UiEmptyState(
+            icon: UiIcons.noResults,
             title: controller.filter == SourceFilter.all
                 ? 'No photographs here'
                 : 'No photographs match',
@@ -774,13 +774,12 @@ class _Failure extends StatelessWidget {
       'administrator for access.';
 
   @override
-  Widget build(BuildContext context) => EmptyState(
-    icon: failure.status == 403
-        ? UiIcons.locked.defaultGlyph
-        : UiIcons.syncProblem.defaultGlyph,
+  Widget build(BuildContext context) => UiEmptyState(
+    icon: failure.status == 403 ? UiIcons.locked : UiIcons.syncProblem,
     title: failure.status == 403 ? 'Source not available' : 'Source not loaded',
     body: failure.status == 403 ? denied : failure.message,
-    actionLabel: failure.status == 403 ? null : 'Retry',
-    onAction: failure.status == 403 ? null : onRetry,
+    action: failure.status == 403
+        ? null
+        : UiButton(label: 'Retry', onPressed: onRetry),
   );
 }

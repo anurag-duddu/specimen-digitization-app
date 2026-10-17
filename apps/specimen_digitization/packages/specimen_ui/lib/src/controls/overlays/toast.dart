@@ -10,10 +10,10 @@ import '../../foundation/glass.dart';
 import '../../foundation/icons.dart';
 import '../../foundation/motion.dart';
 import '../../foundation/theme.dart';
+import '../../foundation/window.dart';
 import '../../primitives/announcer.dart';
 import '../../primitives/fit.dart';
 import '../../primitives/glass_surface.dart';
-import '../../primitives/modal_routes.dart';
 import '../actions/button.dart';
 
 /// One transient message.
@@ -372,10 +372,10 @@ class UiToastHostState extends State<UiToastHost> {
                   EdgeInsetsDirectional.only(bottom: widget.bottomInset),
                 ),
                 child: Align(
-                  // Compact windows centre the capsule above the pill
-                  // navigation; wider ones anchor it to the bottom start
+                  // A stacked window centres the capsule above the bottom
+                  // navigation; a docked one anchors it to the bottom start
                   // corner, away from the action bar (10 section 4.3).
-                  alignment: isCompactWindow(context)
+                  alignment: WindowArrangement.of(context).isStacked
                       ? AlignmentDirectional.bottomCenter
                       : AlignmentDirectional.bottomStart,
                   child: _ToastEntrance(
