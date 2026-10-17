@@ -21106,3 +21106,28 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
 - Failed approach. The first Pause click on `e98a924c` was refused by the auto-mode safety check, because the owner had approved "Start new run" only; the owner then approved the three steps first-hand (quote 2).
 - Validation: read-only Data Connect `executeGraphqlRead` and run-graph reads about every 90 s, except from 16:45 to 17:53 UTC, when the tracker had stopped on a 401 authentication error (times in that window, and the 16:27 to 16:39 start times, come from the records' audit trails and run records, Logfire and Cloud Run); Cloud Run Admin API reads of the worker executions and job. No test suite (documentation only).
 - Not confirmed: whether settling failed calls from the usage their provider reported would let `19f0f1f6` finish; whether PR #369 prevents the crash in production; whether the fields still open are right, which human review decides.
+
+
+### Firebase login PR integration checkpoint, 2026-10-17
+
+- Task `01a147ea-7efb-7e22-8821-e42395a135fc`, branch
+  `codex/login-firebase-launch`, worktree `9030`: PR #371 opened at
+  `54eafa33dc7b0b7fb8f7174125a3fd6f7c9e10e0`, independently reviewed under G51
+  with no findings against `aaf1e534`. Full canonical local verification on
+  product-identical `225a5af6` is recorded above. Normal pre-push hooks passed.
+- PR CI run `39066511718` has passed repository, SQL/Storage engine, Flutter
+  web and both native build checks, plus eleven of twelve Python shards at
+  this checkpoint. The complete Python aggregate is Not confirmed yet. Runtime
+  candidate CI `39066511694` passed all four jobs.
+- Main advanced to `c4335b61` through PR #369 while checks ran. Integrate that
+  backend retry/drain fix locally, preserve both journal appends, and requalify
+  the combined source before pushing. It changes no login/UI/build source.
+- Read-only production checks: email passwordless settings and authorized
+  domains remain intact; Google provider is absent. No owner setup, provider
+  provisioning, activation flag or production deployment has been performed
+  by this session. The owner already authorized the exact auth-only setup if
+  an actual release permission failure requires it.
+- Live baseline Chrome on `aaf1e534` reaches App Check reCAPTCHA execution
+  failure before collection access. One reload reproduced it. This predates
+  the new login; its cause and post-release recovery are Not confirmed. The
+  existing primary in-app-browser collection session remains untouched.
