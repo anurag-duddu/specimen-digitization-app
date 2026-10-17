@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_digitization/src/email_handoff.dart';
 import 'package:specimen_digitization/src/google_sign_in.dart';
 import 'package:specimen_digitization/src/google_sign_in_option.dart';
 import 'package:specimen_digitization/src/magic_link.dart';
@@ -30,6 +31,17 @@ class FakeGoogleAccess implements GoogleSignInAccess {
     if (pending != null) return pending!.future;
     if (failure != null) throw failure!;
     return outcome;
+  }
+}
+
+class FakeEmailInboxLauncher implements EmailInboxLauncher {
+  int attempts = 0;
+  Future<bool> Function()? next;
+
+  @override
+  Future<bool> openInbox() {
+    attempts++;
+    return next?.call() ?? Future<bool>.value(true);
   }
 }
 
@@ -63,6 +75,9 @@ Future<void> pumpLogin(
 Future<void> tapVisible(WidgetTester tester, String label) async {
   final target = find.text(label);
   await tester.ensureVisible(target);
+  // A sliver scroll schedules layout; commit it before computing tap position.
+  await tester.pump();
+  expect(target.hitTestable(), findsOneWidget, reason: '$label is reachable');
   await tester.tap(target);
   await tester.pump();
 }
@@ -265,6 +280,231 @@ void main() {
       );
     },
   );
+
+  testWidgets('Gmail is an explicit next step only after sending a link', (
+    tester,
+  ) async {
+    final access = FakeLinkAccess();
+    final controller = emailController(access);
+    final inbox = FakeEmailInboxLauncher();
+    addTearDown(controller.dispose);
+    await controller.initialize();
+    await pumpLogin(
+      tester,
+      MagicLinkSignInScreen(
+        access: access,
+        controller: controller,
+        inboxLauncher: inbox,
+      ),
+    );
+    expect(find.text('Open Gmail'), findsNothing);
+    expect(inbox.attempts, 0);
+
+    await tester.enterText(find.byType(UiField), 'staff@fieldmuseum.org');
+    await tapVisible(tester, 'Send link');
+    await tester.pumpAndSettle();
+
+    expect(inbox.attempts, 0);
+    expect(find.text('staff@fieldmuseum.org'), findsOneWidget);
+    expect(find.text('Change email'), findsOneWidget);
+    final open = tester.widget<UiButton>(
+      find.widgetWithText(UiButton, 'Open Gmail'),
+    );
+    expect(open.variant, UiButtonVariant.primary);
+    expect(open.onPressed, isNotNull);
+    final resend = tester.widget<UiButton>(
+      find.widgetWithText(UiButton, 'Resend link'),
+    );
+    expect(resend.variant, UiButtonVariant.secondary);
+    expect(resend.onPressed, isNull);
+    expect(controller.cooldownSeconds, greaterThan(0));
+
+    await tapVisible(tester, 'Open Gmail');
+    await tester.pumpAndSettle();
+    expect(inbox.attempts, 1);
+    expect(access.sent, <String>['staff@fieldmuseum.org']);
+    expect(access.completed, isEmpty);
+    expect(controller.sent, isTrue);
+    expect(
+      find.byKey(const ValueKey<String>('email-inbox-error')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('warm link failure does not strand a pending inbox action', (
+    tester,
+  ) async {
+    final access = FakeLinkAccess()
+      ..completeWait = Completer<void>()
+      ..completeError = FirebaseAuthException(code: 'expired-action-code');
+    final source = FakeEmailLinkSource();
+    var now = DateTime.utc(2026, 10, 17);
+    final controller = MagicLinkController(
+      access: access,
+      browser: MemoryEmailLinkBrowser(),
+      storage: MemoryLinkStorage(),
+      linkSource: source,
+      now: () => now,
+    );
+    final pending = Completer<bool>();
+    final inbox = FakeEmailInboxLauncher()..next = () => pending.future;
+    await controller.initialize();
+    await controller.send('staff@fieldmuseum.org');
+    await pumpLogin(
+      tester,
+      MagicLinkSignInScreen(
+        access: access,
+        controller: controller,
+        inboxLauncher: inbox,
+      ),
+    );
+    await tapVisible(tester, 'Open Gmail');
+    source.deliver(Uri.parse(testLink));
+    await tester.pump();
+    expect(controller.handlingLink, isTrue);
+    pending.complete(false);
+    await tester.pump();
+    access.completeWait!.complete();
+    await tester.pumpAndSettle();
+    expect(controller.handlingLink, isFalse);
+    expect(controller.sent, isFalse);
+    now = now.add(const Duration(seconds: 61));
+    await controller.send('staff@fieldmuseum.org');
+    await tester.pumpAndSettle();
+    final open = tester.widget<UiButton>(
+      find.widgetWithText(UiButton, 'Open Gmail'),
+    );
+    expect(open.loading, isFalse);
+    expect(open.onPressed, isNotNull);
+    expect(
+      find.byKey(const ValueKey<String>('email-inbox-error')),
+      findsNothing,
+    );
+    inbox.next = null;
+    await tapVisible(tester, 'Open Gmail');
+    expect(inbox.attempts, 2);
+    await tester.pumpWidget(const SizedBox.shrink());
+    controller.dispose();
+    await source.close();
+  });
+
+  for (final throws in <bool>[false, true]) {
+    testWidgets('failed inbox handoff offers safe recovery throws=$throws', (
+      tester,
+    ) async {
+      final access = FakeLinkAccess();
+      final controller = emailController(access);
+      final inbox = FakeEmailInboxLauncher()
+        ..next = () async {
+          if (throws) throw StateError('private-platform-detail');
+          return false;
+        };
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.send('staff@fieldmuseum.org');
+      await pumpLogin(
+        tester,
+        MagicLinkSignInScreen(
+          access: access,
+          controller: controller,
+          inboxLauncher: inbox,
+        ),
+      );
+
+      await tapVisible(tester, 'Open Gmail');
+      await tester.pumpAndSettle();
+      final failure = find.byKey(const ValueKey<String>('email-inbox-error'));
+      expect(failure, findsOneWidget);
+      expect(
+        tester.widget<Text>(failure).data,
+        "Couldn't open Gmail. Open your inbox in a browser and use the sign-in link.",
+      );
+      expect(find.textContaining('private-platform-detail'), findsNothing);
+      expect(controller.hasError, isFalse);
+      expect(controller.sent, isTrue);
+      expect(find.text('staff@fieldmuseum.org'), findsOneWidget);
+      expect(
+        tester
+            .widget<UiButton>(find.widgetWithText(UiButton, 'Open Gmail'))
+            .onPressed,
+        isNotNull,
+      );
+      expect(tester.takeException(), isNull);
+
+      inbox.next = null;
+      await tapVisible(tester, 'Open Gmail');
+      await tester.pumpAndSettle();
+      expect(inbox.attempts, 2);
+      expect(failure, findsNothing);
+    });
+  }
+
+  testWidgets('changing email ignores a previous pending inbox failure', (
+    tester,
+  ) async {
+    final pending = Completer<bool>();
+    final access = FakeLinkAccess();
+    final controller = emailController(access);
+    final inbox = FakeEmailInboxLauncher()..next = () => pending.future;
+    addTearDown(controller.dispose);
+    await controller.initialize();
+    await controller.send('staff@fieldmuseum.org');
+    await pumpLogin(
+      tester,
+      MagicLinkSignInScreen(
+        access: access,
+        controller: controller,
+        inboxLauncher: inbox,
+      ),
+    );
+
+    await tapVisible(tester, 'Open Gmail');
+    expect(inbox.attempts, 1);
+    await tapVisible(tester, 'Change email');
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(UiField), 'another@fieldmuseum.org');
+    pending.complete(false);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Open Gmail'), findsNothing);
+    expect(
+      find.byKey(const ValueKey<String>('email-inbox-error')),
+      findsNothing,
+    );
+    expect(
+      tester.widget<UiField>(find.byType(UiField)).controller!.text,
+      'another@fieldmuseum.org',
+    );
+    expect(controller.hasError, isFalse);
+    expect(controller.sent, isFalse);
+    expect(access.completed, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('disposed inbox handoff ignores a late failure', (tester) async {
+    final pending = Completer<bool>();
+    final access = FakeLinkAccess();
+    final controller = emailController(access);
+    final inbox = FakeEmailInboxLauncher()..next = () => pending.future;
+    addTearDown(controller.dispose);
+    await controller.initialize();
+    await controller.send('staff@fieldmuseum.org');
+    await pumpLogin(
+      tester,
+      MagicLinkSignInScreen(
+        access: access,
+        controller: controller,
+        inboxLauncher: inbox,
+      ),
+    );
+
+    await tapVisible(tester, 'Open Gmail');
+    await tester.pumpWidget(const SizedBox.shrink());
+    pending.complete(false);
+    await tester.pump();
+    expect(inbox.attempts, 1);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('warm link during Google cancel releases confirmation controls', (
     tester,

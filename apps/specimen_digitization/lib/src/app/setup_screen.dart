@@ -12,9 +12,8 @@ import 'package:specimen_ui/specimen_ui.dart';
 
 import '../administrator_contact.dart';
 import '../auth.dart';
-import '../widgets/widgets.dart';
 import '../workspace.dart';
-import 'auth_layout.dart';
+import 'sign_in_layout.dart';
 
 /// The message shown while a build has a session but no collection API.
 const String collectionSetupMessage =
@@ -115,35 +114,38 @@ class _SetupScreenState extends State<SetupScreen> {
     };
     final String body = switch (state) {
       SetupState.unconfigured => widget.setupMessage ?? collectionSetupMessage,
-      SetupState.checking =>
-        'The server is answering which collections this account may open.',
+      SetupState.checking => 'Finding the collections you can open.',
       SetupState.unassigned =>
         'Ask your administrator to assign one, then check again.',
-      SetupState.unverified =>
-        'Reconnect or sign in again, then check access again.',
+      SetupState.unverified => 'Check your connection, then try again.',
     };
 
     return UiScaffold(
-      body: AuthLayout(
+      body: SignInLayout(
         title: title,
+        purpose: body,
+        icon: state == SetupState.unverified
+            ? UiIcons.locked
+            : UiIcons.collection,
+        busy: state == SetupState.checking || _signingOut,
+        footer: state == SetupState.checking || _signingOut
+            ? null
+            : const AdministratorContactLine(),
         children: <Widget>[
-          Text(
-            body,
-            style: ui.type.body.copyWith(color: ui.color.inkSecondary),
-          ),
-          // Every message on this screen ends in "ask your administrator",
-          // and this is who that is (pass criterion 10.3).
-          Padding(
-            padding: EdgeInsetsDirectional.only(top: ui.space.s2),
-            child: const AdministratorContactLine(),
-          ),
-          if (state == SetupState.checking) ...<Widget>[
-            SizedBox(height: ui.space.s4),
-            const LoadingAnnouncement(
-              thing: 'collection access',
-              visible: true,
+          if (widget.session != null)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                const ExcludeSemantics(child: UiIcon(UiIcons.account)),
+                SizedBox(width: ui.space.s2),
+                Expanded(
+                  child: Text(
+                    'Account: ${widget.session!.displayName}',
+                    style: ui.type.body.copyWith(color: ui.color.ink),
+                  ),
+                ),
+              ],
             ),
-          ],
           if (controller?.error != null) ...<Widget>[
             SizedBox(height: ui.space.s4),
             UiBanner(
@@ -159,6 +161,7 @@ class _SetupScreenState extends State<SetupScreen> {
             SizedBox(height: ui.space.s6),
             UiButton(
               label: 'Check access again',
+              expand: true,
               size: UiSize.lg,
               loading: controller.loading,
               onPressed: controller.loading
@@ -168,10 +171,6 @@ class _SetupScreenState extends State<SetupScreen> {
           ],
           if (widget.session != null) ...<Widget>[
             SizedBox(height: ui.space.s4),
-            Text(
-              'Account: ${widget.session!.displayName}',
-              style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
-            ),
             Align(
               alignment: AlignmentDirectional.centerStart,
               child: UiButton(
