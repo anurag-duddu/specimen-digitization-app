@@ -157,9 +157,10 @@ def _settling_candidate(value: FieldValue, answers: Sequence[SourceAnswer]) -> S
         if answer.evidence is None or answer.evidence.id not in value.evidence_ids:
             continue
         for candidate in answer.candidates:
-            if value.authority_id and candidate.authority_id == value.authority_id:
-                return candidate
-            if expected and place_name(candidate.name) == place_name(expected):
+            if value.authority_id:
+                if candidate.authority_id == value.authority_id:
+                    return candidate
+            elif expected and place_name(candidate.name) == place_name(expected):
                 return candidate
     return None
 

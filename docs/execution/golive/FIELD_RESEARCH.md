@@ -2420,6 +2420,18 @@ and conflicting written administrative places or distinct authority matches
 remain unresolved. This uses the answers already captured during the attempt;
 it makes no additional lookup and does not reopen an exhausted attempt.
 
+A blank ambiguous country can be derived from qualified administrative parents
+when every retained country alternative (including other labels and readers)
+has a fresh, directly matching gazetteer record at a recognized lower level,
+and no matching record has a recognized country level. Unmodeled source kinds
+provide neither level proof nor country counterproof; an alternative with no
+recognized lower-level proof stays ambiguous. Human decisions, actual country
+disputes, unknown alternatives and incompatible parent countries still block
+replacement. If derivation cannot complete, the original ambiguity is retained.
+An explicitly selected authority record supplies its own ancestry; another
+same-name record cannot supply parents for it. This changes no attempt or
+spending authorization and does not apply archived answers to a live record.
+
 On 2026-10-16 the owner authorized one additional same-run location reassessment
 for specimen `ebfc6171-bf2f-56b8-a35b-442798810461`, run
 `e7b00556-f006-4be7-9bd8-82ebf41173be`, in organization
