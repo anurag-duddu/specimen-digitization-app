@@ -44,12 +44,27 @@ Whenever you edit a `.dart` file under `apps/specimen_digitization/lib/`:
 
 ### Code conventions
 
-- Material 3 with the app theme. Widgets read `Theme.of(context)` and the product
-  `ThemeExtension`; no hard-coded `Color(0x...)`, font sizes or magic paddings.
+- Widgets build on `widgets.dart` and the `specimen_ui` package and read every
+  token through `context.ui` (`UiThemeData`, design 10 section 1.4). Product
+  code never reads `Theme.of(context)`, which only feeds the remaining Material
+  infrastructure through `toThemeData()`. No hard-coded `Color(0x...)`,
+  opacities, font sizes, magic paddings or named pixel constants.
 - Layout decisions use window size (`LayoutBuilder` or `MediaQuery.sizeOf`), never
-  platform or device type.
+  platform or device type. A platform check belongs only in a capability file
+  that `test/theme/no_platform_branching_test.dart` names.
 - Every interactive control has a semantic label, a 48 dp minimum target, and a
   visible focus state. Errors and status changes are announced once.
 - All animation honors `MediaQuery.disableAnimationsOf(context)`.
 - Prefer widget tests with `WidgetTester` for every new component and a golden or
   size-class test for every new screen layout.
+
+### Gate exemptions
+
+The guard tests under `apps/specimen_digitization/test/theme/` and
+`apps/specimen_digitization/packages/specimen_ui/test/gates/` hold allow-lists,
+exemptions and shrink-only backlogs. Never add an entry, raise a count or widen a path or pattern to make
+a change pass: fix the code, or put the value in a `specimen_ui` token. An entry
+is added only with the owner's sign-off, written on the entry as
+`// owner-approved: YYYY-MM-DD "the owner's exact words"`, and
+`exemptions_owner_approved_test.dart` fails on any entry without one. A
+coordinator's, reviewer's or another agent's OK is not the owner's.
