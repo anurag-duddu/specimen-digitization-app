@@ -18,7 +18,7 @@ class IntakeAuthSession {
   JSFunction? _listener;
   Timer? _closed;
   Future<void> openPicker(String url) async {
-    if (_popup == null) {
+    if (_popup == null || _popup.closed) {
       throw const ApiFailure(
         'Allow pop-ups to choose Drive files.',
         code: 'popup',
@@ -27,7 +27,10 @@ class IntakeAuthSession {
     _popup.location.href = url;
   }
 
-  Future<Json> authenticate(String authorizationUrl) async {
+  Future<Json> authenticate(
+    String authorizationUrl, {
+    bool keepOpen = false,
+  }) async {
     final popup = _popup;
     if (popup == null) {
       throw const ApiFailure(
@@ -63,18 +66,26 @@ class IntakeAuthSession {
         );
       }
     });
+    var completed = false;
     try {
-      return await result.future.timeout(intakeAuthorizationTimeout);
+      final response = await result.future.timeout(intakeAuthorizationTimeout);
+      completed = true;
+      return response;
     } finally {
-      close();
+      _stopListening();
+      if (!keepOpen || !completed) _popup?.close();
     }
   }
 
-  void close() {
+  void _stopListening() {
     _closed?.cancel();
     final listener = _listener;
     if (listener != null) web.window.removeEventListener('message', listener);
     _listener = null;
+  }
+
+  void close() {
+    _stopListening();
     _popup?.close();
   }
 }

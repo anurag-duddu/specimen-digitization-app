@@ -73,6 +73,28 @@ selected provider account; multiple connections are never silently substituted.
   connection is pinned to the checked public address. Every redirect is checked
   again; byte count and elapsed download time are bounded. No webpage scraping.
 
+### Connector interaction
+
+Drive and Dropbox start with **Connect**, continue through provider consent, and
+immediately open photo selection. Google reuses the user-opened sign-in popup for
+Picker; Dropbox opens its folder browser in the source sheet. Returning users
+reuse saved accounts. A single connected account is selected automatically;
+multiple accounts require an explicit choice. Folder browsing requests Google's
+additional access only when the user chooses that action.
+
+Show configuration, authorization, and organization-policy failures after the
+connection attempt, with the confirmed reason, Retry, and (when appropriate)
+Copy administrator details. Copying preserves the reason on screen. Users can
+share these details outside the app and retry after access changes; the app does
+not send a notification or claim that an approval request exists. Connection
+failures retain successful selections. A failed Picker launch retries selection
+with the connected account rather than repeating consent.
+
+Connector references inspected in Mobbin: [Attio's saved storage accounts](https://mobbin.com/screens/288d76c3-b7b9-4812-8304-2bd83ce4f0c4)
+for available/connected separation, and [Dropbox Dash's denied connection](https://mobbin.com/screens/f10e8de9-fc45-47d7-8ada-238f1ea8d062)
+for retry and administrator guidance after failure. These are interaction
+references, not evidence of our provider or institutional acceptance.
+
 Account authorization, organization policy, application membership and individual
 file access produce distinct recovery states. The UI never invents an approval
 request or says approval is pending without a provider-confirmed state. A personal

@@ -664,7 +664,12 @@ def create_app(
             },
         )
 
+    # Known import failures must be handled inside CORS middleware so browser
+    # clients can read their actionable recovery details.
+    from .intake_sources import ImportProblem
+
     for handled in (
+        ImportProblem,
         Conflict,
         Missing,
         PermissionError,

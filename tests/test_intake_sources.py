@@ -252,3 +252,47 @@ def test_provider_links_use_the_explicit_owned_account(connected):
     assert error.value.intake_problem['code'] == 'choose_account'
     with pytest.raises(ImportProblem):
         client.post(root, json={**body, 'connection_id': 'someone-elses-connection'})
+
+
+def test_web_callback_leaves_popup_lifecycle_to_initiating_app(connected):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from specimen_digitization.application.intake_source_routes import install_source_routes
+    p, manager = connected
+    app = FastAPI()
+    install_source_routes(app, '/v1/organizations/{organization_id}', manager.service, manager,
+        identity=lambda: p.user_id, principal=lambda *a, **kw: p)
+    connection = manager.connect(p, 'google_drive', 'files', 'a' * 64, 'https://app.example')
+    state = parse_qs(urlsplit(connection['authorization_url']).query)['state'][0]
+    response = TestClient(app).get('/v1/intake/oauth/callback', params={'state': state, 'code': 'one-use-code'})
+    assert response.status_code == 200
+    assert 'window.opener.postMessage(' in response.text
+    assert '"https://app.example"' in response.text
+    assert 'window.close()' not in response.text
+    assert response.headers['cache-control'] == 'no-store'
+    assert response.headers['referrer-policy'] == 'no-referrer'
+    assert "frame-ancestors 'none'" in response.headers['content-security-policy']
+    # Merely visiting the callback must not exchange credentials or connect.
+    assert manager.get(p, connection['id'])['state'] == 'needs_authorization'
+    assert manager.verify_pending(p, state, 'oauth')['state'] == 'pending'
+
+
+@pytest.mark.parametrize('provider', ['google_drive', 'dropbox'])
+def test_connection_setup_failure_has_browser_readable_recovery(tmp_path, provider):
+    from fastapi.testclient import TestClient
+    from test_application import HEADERS, PREFIX
+    app = local_app(tmp_path, TOKEN)
+    root = PREFIX + '/collections/' + SYNTHETIC_COLLECTION + '/intake'
+    # The default TestClient also rejects an unhandled exception: this must be
+    # a handled import response, not the outer server-error middleware.
+    response = TestClient(app).post(root + '/connections',
+        headers={**HEADERS, 'Origin': 'http://localhost:3000'},
+        json={'provider': provider, 'access': 'folders', 'session_proof': 'a' * 64,
+              'return_origin': 'http://localhost:3000'})
+    assert response.status_code == 422
+    assert response.headers['access-control-allow-origin'] == 'http://localhost:3000'
+    error = response.json()['error']
+    assert error['code'] == 'provider_not_configured'
+    assert error['details']['action'] == 'administrator'
+    assert error['retryable'] is False
+    assert 'setup' in error['message']

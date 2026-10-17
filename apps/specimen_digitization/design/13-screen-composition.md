@@ -519,6 +519,14 @@ for the editor, so the marker states what the header is and no gate reads a
 new number off it.
 
 ### 4.4 Intake and capture
+
+Cloud-source sheets use a connector progression: Connect → provider consent →
+Connected account → photo selection. Keep the account visible alongside selection;
+use a single-choice account selector when more than one is available. Show
+administrator guidance only in response to a confirmed connection failure, beside
+Retry and Copy administrator details. Preserve both the error reason and prior
+photo selections while users resolve access outside the app. Do not show an
+approval-pending state unless the provider confirms one.
 **Bulk intake, 2026-10-17.** Add photos → review the batch → Submit → intake
 progress → specimen pipeline. One photo creates one specimen. Acquisition
 never creates a specimen. The existing scientific Queue retains Needs Human,

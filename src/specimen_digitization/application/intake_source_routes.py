@@ -258,7 +258,9 @@ def install_source_routes(app, prefix, service, manager, *, identity, principal,
         values = json.dumps(payload).replace('<', '\\u003c')
         target = json.dumps(pending['return_origin']).replace('<', '\\u003c')
         page = '<!doctype html><meta name="viewport" content="width=device-width"><title>Photo import</title><p>Return to the app that opened this window to finish connecting.</p>'
-        page += f'<script nonce="{nonce}">history.replaceState(null,"","/v1/intake/oauth/callback");if(window.opener){{window.opener.postMessage({values},{target});window.close();}}</script>'
+        # The initiating app owns the popup lifecycle. It can reuse this same
+        # user-opened window for Picker without a second popup permission.
+        page += f'<script nonce="{nonce}">history.replaceState(null,"","/v1/intake/oauth/callback");if(window.opener){{window.opener.postMessage({values},{target});}}</script>'
         return HTMLResponse(page, headers=dict(headers, **{'Content-Security-Policy': f"default-src 'none'; script-src 'nonce-{nonce}'; frame-ancestors 'none'"}))
 
     @app.post(root + '/connections/{connection_id}/picker')

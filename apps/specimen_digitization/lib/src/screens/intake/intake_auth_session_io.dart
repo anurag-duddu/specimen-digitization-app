@@ -22,7 +22,10 @@ class IntakeAuthSession {
     }
   }
 
-  Future<Json> authenticate(String authorizationUrl) async {
+  Future<Json> authenticate(
+    String authorizationUrl, {
+    bool keepOpen = false,
+  }) async {
     final expected = Uri.parse(authorizationUrl).queryParameters['state'];
     _links = AppLinks().uriLinkStream.listen((uri) {
       if (uri.scheme != 'specimenintake' ||
