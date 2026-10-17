@@ -2,6 +2,7 @@
 
 from copy import deepcopy
 from collections import Counter
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -58,21 +59,20 @@ def test_runtime_hints_balance_slow_modules_without_splitting_them():
 
 def test_committed_runtime_hints_are_valid_test_modules():
     raw = python_shards.decode_json(python_shards.TIMINGS.read_bytes())
-    sources = raw.get("source_fingerprints")
-    if raw["schema"] == 3:
-        sources = python_shards.fingerprints_from_records(sources)
-    # Validate every stored hint even when changed inputs make it inapplicable.
-    stored = python_shards.load_timings(fingerprints=sources)
-    assert stored, "committed manifest must contain validated module costs"
-    root = Path(__file__).resolve().parents[2]
-    assert all((root / module).is_file() for module in stored)
+    # Every stored hint is validated and kept, whether or not inputs changed.
     timings = python_shards.load_timings()
-    applicable = raw["schema"] == 1 or sources == python_shards.source_fingerprints()
-    assert dict(timings) == (dict(stored) if applicable else {})
-    assert timings.mode == stored.mode
-    assert timings.manifest_digest == stored.manifest_digest
-    assert timings.module_inventory_digests == (stored.module_inventory_digests
-                                              if applicable else {})
+    assert timings, "committed manifest must contain validated module costs"
+    root = Path(__file__).resolve().parents[2]
+    assert all((root / module).is_file() for module in timings)
+    assert dict(timings) == raw["module_seconds"]
+    assert timings.mode == ("lower_bound" if raw["schema"] == 1 else "complete")
+    assert timings.manifest_digest == hashlib.sha256(
+        python_shards.TIMINGS.read_bytes()).hexdigest()
+    if raw["schema"] != 1:
+        inventory = raw["module_inventory_digests"]
+        if raw["schema"] == 3:
+            inventory = python_shards.fingerprints_from_records(inventory)
+        assert timings.module_inventory_digests == inventory
 
 
 @pytest.mark.parametrize("change", ["unchanged", "source", "new_module"])
@@ -105,32 +105,29 @@ def test_committed_complete_manifest_allows_changed_input_fallback(tmp_path, mon
     path = tmp_path / "complete-timings.json"
     path.write_text(json.dumps(manifest))
     current_sources = dict(measured_sources)
+    added = {}
     if change == "source":
         current_sources["tests/test_application.py"] = "c" * 64
     elif change == "new_module":
         new_module = "scripts/ci/test_refresh_python_shard_timings.py"
         current_sources[new_module] = "c" * 64
         nodes += [f"{new_module}::test_new"]
+        added = {new_module: 0.1}
     load = python_shards.load_timings
     monkeypatch.setattr(python_shards, "TIMINGS", path)
     monkeypatch.setattr(python_shards, "source_fingerprints", lambda: current_sources)
-    monkeypatch.setattr(python_shards, "load_timings", lambda **kwargs: load(path, **kwargs))
+    monkeypatch.setattr(python_shards, "load_timings", lambda: load(path))
     # The real committed-manifest contract must pass both immediately after
     # calibration and after ordinary source changes, including new modules.
     test_committed_runtime_hints_are_valid_test_modules()
     hints = python_shards.load_timings()
-    measured = python_shards.load_timings(fingerprints=measured_sources)
-    assert dict(measured) == manifest["module_seconds"]
-    assert hints.mode == measured.mode == "complete"
-    assert hints.manifest_digest == measured.manifest_digest
-    assert partition(nodes, 2, measured) != partition(nodes, 2, {})
-    if change == "unchanged":
-        assert dict(hints) == manifest["module_seconds"]
-        assert hints.module_inventory_digests == inventory_digests
-    else:
-        assert dict(hints) == {}, "stale complete costs must be discarded"
-        assert hints.module_inventory_digests == {}
-        assert partition(nodes, 2, hints) == partition(nodes, 2, {})
+    # Changed sources keep every measured cost and exact weight; only a new
+    # module, whose inventory was never measured, gets the item prior.
+    assert dict(hints) == manifest["module_seconds"]
+    assert hints.mode == "complete"
+    assert hints.module_inventory_digests == inventory_digests
+    assert python_shards.module_weights(nodes, hints) == {**manifest["module_seconds"], **added}
+    assert partition(nodes, 2, hints) != partition(nodes, 2, {})
     shards = partition(nodes, 2, hints)
     assert Counter(node for shard in shards for node in shard) == Counter(nodes)
     for module in {node.split("::", 1)[0] for node in nodes}:
@@ -549,10 +546,68 @@ def test_same_wrong_manifest_in_every_leaf_is_refused():
 def test_unknown_and_changed_module_inventory_retain_item_fallback():
     nodes = [f"test_{module}.py::test_case[{i}]" for module in ("a", "b", "new")
              for i in range(3)]
-    hints = python_shards.TimingHints({"test_a.py": 100}, mode="complete",
-                                    module_inventory_digests={"test_a.py": "c" * 64})
-    assert partition(nodes, 2, hints) == partition(nodes, 2)
+    hints = python_shards.TimingHints(
+        {"test_a.py": 100, "test_b.py": 7}, mode="complete",
+        module_inventory_digests={"test_a.py": "c" * 64,
+                                  "test_b.py": python_shards.digest(nodes[3:6])})
+    # A changed inventory keeps its measured seconds plus the item prior; only
+    # an unchanged inventory makes a complete cost exact.
+    assert python_shards.module_weights(nodes, hints) == pytest.approx(
+        {"test_a.py": 100.3, "test_b.py": 7, "test_new.py": 0.3})
     assert sorted(node for shard in partition(nodes, 2, hints) for node in shard) == sorted(nodes)
+
+
+def module_owners(shards):
+    return {node.split("::", 1)[0]: index for index, shard in enumerate(shards) for node in shard}
+
+
+def test_unrelated_source_change_keeps_measured_costs_and_spreads_heavy_modules(tmp_path):
+    # After PR #343, one changed source file discarded every measured cost.
+    # Few-node end-to-end modules then weighed 0.2 and shared one shard.
+    heavy = ["tests/research_harness/test_heavy_a.py", "tests/research_harness/test_heavy_b.py"]
+    wide = [f"tests/test_wide_{name}.py" for name in "abc"]
+    inventory = {**{module: [f"{module}::test_flow[{i}]" for i in range(2)] for module in heavy},
+                 **{module: [f"{module}::test_case[{i}]" for i in range(5)] for module in wide}}
+    nodes = [node for module_nodes in inventory.values() for node in module_nodes]
+    seconds = {**dict.fromkeys(heavy, 100.0), **dict.fromkeys(wide, 50.0)}
+    measured_sources = python_shards.source_fingerprints()
+    measured_sources["scripts/ci/python_scope.py"] = "0" * 64
+    assert measured_sources != python_shards.source_fingerprints()
+    manifest = {"schema": 3, "mode": "complete",
+                "measurement_identity": {"GITHUB_SHA": "a" * 40,
+                                         "GITHUB_RUN_ID": "123", "GITHUB_RUN_ATTEMPT": "1"},
+                "inventory_digest": python_shards.digest(nodes),
+                "timing_manifest_digest": "b" * 64,
+                "source_fingerprints": python_shards.fingerprint_records(measured_sources),
+                "module_inventory_digests": python_shards.fingerprint_records(
+                    {module: python_shards.digest(module_nodes)
+                     for module, module_nodes in inventory.items()}),
+                "module_seconds": seconds}
+    path = tmp_path / "timings.json"
+    path.write_text(json.dumps(manifest))
+    hints = python_shards.load_timings(path)
+    assert dict(hints) == seconds, "an unrelated source change must keep measured costs"
+    shards = partition(nodes, 2, hints)
+    owners = module_owners(shards)
+    assert owners[heavy[0]] != owners[heavy[1]], "heavy modules must not share a shard"
+    assert sorted(node for shard in shards for node in shard) == sorted(nodes)
+
+
+def test_heavy_module_that_gains_a_test_keeps_its_measured_seconds():
+    heavy = ["tests/research_harness/test_heavy_a.py", "tests/research_harness/test_heavy_b.py"]
+    narrow = [f"tests/test_narrow_{name}.py" for name in "abcd"]
+    measured = {**{module: [f"{module}::test_flow[{i}]" for i in range(2)] for module in heavy},
+                **{module: [f"{module}::test_case"] for module in narrow}}
+    collected = {**measured, heavy[0]: measured[heavy[0]] + [f"{heavy[0]}::test_added"]}
+    nodes = [node for module_nodes in collected.values() for node in module_nodes]
+    hints = python_shards.TimingHints(
+        {**dict.fromkeys(heavy, 100.0), **dict.fromkeys(narrow, 25.0)}, mode="complete",
+        module_inventory_digests={module: python_shards.digest(module_nodes)
+                                  for module, module_nodes in measured.items()})
+    shards = partition(nodes, 2, hints)
+    owners = module_owners(shards)
+    assert owners[heavy[0]] != owners[heavy[1]], "heavy modules must not share a shard"
+    assert sorted(node for shard in shards for node in shard) == sorted(nodes)
 
 
 def test_zero_complete_costs_keep_modules_distributed_and_every_node():

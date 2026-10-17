@@ -59,9 +59,9 @@ def main():
                 "GITHUB_RUN_ATTEMPT": args.run_attempt}
     try:
         results = [decode_json(path.read_text(encoding="utf-8")) for path in args.results]
-        # Offline refresh uses measured input fingerprints; the current worktree
-        # need not be the measured checkout. No current-SHA equality is implied.
-        hints = load_timings(args.timings, fingerprints=results[0]["source_fingerprints"])
+        # The current worktree need not be the measured checkout; costs never
+        # depend on current sources. Its planner must match the measured leaves'.
+        hints = load_timings(args.timings)
         manifest = refresh(results, args.count, expected, hints)
         contents = json.dumps(manifest, indent=2, sort_keys=True, allow_nan=False) + "\n"
         args.output.write_text(contents, encoding="utf-8")
