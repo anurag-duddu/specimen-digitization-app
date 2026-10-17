@@ -20438,10 +20438,10 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
   - run 38887586799: 734/372 s, slowest/mean 1.418.
 
   The target of a slowest shard within about 15% of the mean is **not met yet**. Each shard log lists its 25 slowest phases, and summed per module they show modules already slower than the manifest says:
-  - `test_final_progress_carrier.py`: at least 218 s, manifest 123 s;
-  - `test_organiser_raw_reading_composer.py`: at least 133 s, manifest 79 s;
-  - `test_taxonomy_automatic_publication.py`: at least 107 s, manifest 65 s;
-  - `test_parallel_roles.py`: at least 510 s, manifest 467 s.
+  - `test_final_progress_carrier.py`: at least 217.57 s, manifest 123 s;
+  - `test_organiser_raw_reading_composer.py`: at least 133.45 s, manifest 79 s;
+  - `test_taxonomy_automatic_publication.py`: at least 106.70 s, manifest 65 s;
+  - `test_parallel_roles.py`: at least 510.12 s, manifest 467 s.
 
   That is cost drift since the measurement at `4e6d73b2`. The floor is `test_parallel_roles.py`, which alone took a 547 s shard job against the 510 s mean (1.07). Closing the gap needs the timing-manifest refresh.
 - Validation, local, on `4c488692`. pre-commit (all files), `uv sync --frozen` and the UI-strings ratchet passed. `python_shards.py local --count 6` was **not green**: 16,471 passed, 49 skipped, 5 failed, 16,525 collected. The 5 failures were wall-clock deadline tests in `test_reader_failures_recoverable.py`, `test_reader_effect_timeout.py` and `test_sam3_runtime.py`, at load average 44-47. All 5 passed when rerun in isolation. A second run on `de39c55a`, at load 33-43, had 5 failures and 2 errors, all timing or process tests: `test_worker_cleanup_cutoff.py` (2), `test_worker_supervisor.py`, `test_sam3_runtime.py`, `test_reader_failures_recoverable.py`, and `test_upload_completion_http.py` (2 errors). All 7 passed in isolation (11 parametrized cases). The branch changes no file under `src/` or `tests/`. Flutter, web build and route smoke were not run, because no Dart, web or Hosting file changed.
