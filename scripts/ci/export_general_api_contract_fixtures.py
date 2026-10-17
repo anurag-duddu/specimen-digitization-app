@@ -1,7 +1,11 @@
 """Export a single synthetic ordinary HTTP journey as exact UTF-8 wire bytes.
 
-Only clocks/IDs and native binding discovery are fixtures. The workflow,
-checkpoints, retained captures, candidate proof and canonical saves are real.
+Clocks/IDs, native binding discovery and the PNG codec are fixtures. Pillow's
+bundled zlib differs across platforms, and production hashes its encoded view
+derivative into retained responses. During export only, a scoped encoder seam
+writes PNG with fixed STORED deflate blocks; no compressor runs. Production
+still performs its own orientation/region saves, with its actual pixels. The
+workflow, checkpoints, retained captures, candidate proof and canonical saves are real.
 No production credentials, live providers, test imports or response rewriting.
 """
 import argparse
@@ -10,14 +14,17 @@ import base64
 import hashlib
 import io
 import json
+import struct
 import sys
-from contextlib import ExitStack
+from binascii import crc32
+from contextlib import ExitStack, contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import patch
 from uuid import UUID
+from zlib import adler32
 
 from fastapi.testclient import TestClient
 from PIL import Image
@@ -46,6 +53,52 @@ from specimen_digitization.research_harness.persistence import (
 from specimen_digitization.research_harness.prompts import resolve_prompt
 from specimen_digitization.research_harness.runtime import runtime_pins
 from specimen_digitization.research_harness.thread_view import ResearchThreadReader
+
+
+def _stored_png(image: Image.Image) -> bytes:
+    """Encode RGB pixels as PNG using filter 0 and fixed, uncompressed blocks."""
+    if image.mode != 'RGB':
+        raise ValueError('The export PNG seam requires RGB pixels')
+    width, height = image.size
+    pixels = image.tobytes('raw', 'RGB')
+    stride = width * 3
+    scanlines = b''.join(b'\0' + pixels[start:start + stride]
+                         for start in range(0, len(pixels), stride))
+    # RFC 1950 header: deflate, 32 KiB window, no dictionary, fastest level.
+    stream = bytearray(b'\x78\x01')
+    for start in range(0, len(scanlines), 65535):
+        block = scanlines[start:start + 65535]
+        # Byte-aligned BFINAL and BTYPE=00, then little-endian LEN and NLEN.
+        stream.append(int(start + len(block) == len(scanlines)))
+        stream.extend(struct.pack('<HH', len(block), 65535 - len(block)))
+        stream.extend(block)
+    stream.extend(struct.pack('>I', adler32(scanlines)))
+
+    def chunk(kind, data):
+        return (struct.pack('>I', len(data)) + kind + data
+                + struct.pack('>I', crc32(kind + data)))
+
+    return (b'\x89PNG\r\n\x1a\n'
+            + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0))
+            + chunk(b'IDAT', bytes(stream)) + chunk(b'IEND', b''))
+
+
+@contextmanager
+def _portable_png_encoder():
+    """Replace explicit PNG saves only for the lifetime of one export journey."""
+    original_save = Image.Image.save
+
+    def save(image, fp, format=None, **params):
+        if (format or '').upper() != 'PNG':
+            return original_save(image, fp, format=format, **params)
+        # The journey uses pixel-only RGB PNGs and BytesIO destinations. Fail
+        # closed if a future caller needs metadata or another save option.
+        if params:
+            raise ValueError('The export PNG seam does not support save options')
+        fp.write(_stored_png(image))
+
+    with patch.object(Image.Image, 'save', save):
+        yield
 
 
 class RetainedResearch:
@@ -196,6 +249,11 @@ def export_fixture_bytes(root: Path, reverse_reads: bool = False) -> bytes:
     ``root`` must be fresh local storage. ``reverse_reads`` changes only the
     order of the two independent initial GETs, for determinism qualification.
     """
+    with _portable_png_encoder():
+        return _export_fixture_bytes(root, reverse_reads)
+
+
+def _export_fixture_bytes(root: Path, reverse_reads: bool) -> bytes:
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
     original_uuid5 = api.uuid5

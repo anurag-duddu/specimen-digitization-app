@@ -21,11 +21,11 @@ ACTIONS = ['retry', 'resume', 'pause', 'cancel', 'reprocess', 'field',
            'classification', 'regions', 'taxonomy_resolution',
            'authority_resolution', 'capability_defer', 'restore_version']
 # pragma: allowlist nextline secret -- Synthetic retained candidate selection SHA-256.
-SELECTION = '0f970a204f3b22c88e2913393e9a0ac6e8729430bd51f32b12c4b46cd93940c7'
-# pragma: allowlist nextline secret -- Synthetic 257-byte PNG SHA-256.
-PNG_HASH = '7f194fdff2c2798ac3f1702acdcb187b9ad6b8dd23d2668bc2ea21f9e001ecd8'
+SELECTION = '70c2cd77f73f5180e59ce357a83eec7c625e495f52a5e4bcb98627731c48b1e8'
+# pragma: allowlist nextline secret -- Synthetic 28948-byte PNG SHA-256.
+PNG_HASH = '50262755ff88d14aec25fe44b1876563f4f77b3e95c6fad87c99ebe7fc584a8a'
 # pragma: allowlist nextline secret -- Synthetic PNG remaining-tail SHA-256.
-TAIL_HASH = '63807a3f952e417c78fd4692e56a0d96eb2dae99a0a1cabd27e7b6e94aa9e80e'
+TAIL_HASH = 'bbb49a538af41922d5d53b6d285079c3ba70156b1bdcc2a78c39bd7711e971f3'
 PREFIX = '/v1/organizations/' + S
 
 
@@ -44,12 +44,12 @@ def workspace(revision, disposition, actions, parsed='United States'):
 
 def upload(revision, offset):
     return dict(upload_id=U, specimen_id=S, collection_id=R, revision=revision,
-                state='uploading', offset=offset, size_bytes=257,
+                state='uploading', offset=offset, size_bytes=28948,
                 upload_method='PUT', upload_url=PREFIX + '/uploads/' + U + '/content',
                 sha256=PNG_HASH, chunks=[{'offset': 0, 'size': 20,
                     # pragma: allowlist nextline secret -- Synthetic PNG first-chunk SHA-256.
                     'sha256': '1bf0a9034faa63a8a53121b00ef018df9890126003c37e1416fb5a6401e25afd'}]
-                    + ([{'offset': 20, 'size': 237, 'sha256': TAIL_HASH}] if offset == 257 else []))
+                    + ([{'offset': 20, 'size': 28928, 'sha256': TAIL_HASH}] if offset == 28948 else []))
 
 
 # Independently authored required keys. Additional unknown server keys are legal.
@@ -62,8 +62,8 @@ TABLE = {
                       'message': 'Stale revision',
                       'request_id': '00000000-0000-0000-0000-00000000008e'}},
     'error_readback': workspace(20, 'needs_human_review', ACTIONS),
-    'upload': upload(2, 20), 'upload_tail': upload(3, 257),
-    'upload_current': upload(3, 257),
+    'upload': upload(2, 20), 'upload_tail': upload(3, 28948),
+    'upload_current': upload(3, 28948),
     'upload_complete': {**record(1, None, ACTIONS), 'status': 'running', 'stage': 'ingested'},
     'action': workspace(21, 'cleared', ACTIONS),
     'action_readback': workspace(21, 'cleared', ACTIONS),
@@ -147,8 +147,8 @@ def assert_group(wire, group):
         strict(request['path'], PREFIX + '/uploads/' + U + '/content')
         strict(request['headers'], {'Upload-Offset': '20', 'Idempotency-Key': 'chunk-' + U + '-20'})
         data = base64.b64decode(corpus['png_base64'], validate=True)
-        assert len(data) == 257 and hashlib.sha256(data).hexdigest() == PNG_HASH
-        assert len(data[20:]) == 237 and hashlib.sha256(data[20:]).hexdigest() == TAIL_HASH
+        assert len(data) == 28948 and hashlib.sha256(data).hexdigest() == PNG_HASH
+        assert len(data[20:]) == 28928 and hashlib.sha256(data[20:]).hexdigest() == TAIL_HASH
         request = corpus['requests']['upload_complete']
         strict(request['method'], 'POST')
         strict(request['path'], PREFIX + '/uploads/' + U + '/complete')

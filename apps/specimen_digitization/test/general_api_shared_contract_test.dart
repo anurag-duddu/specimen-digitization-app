@@ -77,11 +77,11 @@ void pin(Specimen item, int revision, String disposition) {
 
 // This table is handwritten independently of both the Python oracle and exporter.
 const selection =
-    '0f970a204f3b22c88e2913393e9a0ac6e8729430bd51f32b12c4b46cd93940c7'; // pragma: allowlist secret -- Synthetic retained candidate selection SHA-256.
+    '70c2cd77f73f5180e59ce357a83eec7c625e495f52a5e4bcb98627731c48b1e8'; // pragma: allowlist secret -- Synthetic retained candidate selection SHA-256.
 const pngHash =
-    '7f194fdff2c2798ac3f1702acdcb187b9ad6b8dd23d2668bc2ea21f9e001ecd8'; // pragma: allowlist secret -- Synthetic 257-byte PNG SHA-256.
+    '50262755ff88d14aec25fe44b1876563f4f77b3e95c6fad87c99ebe7fc584a8a'; // pragma: allowlist secret -- Synthetic 28948-byte PNG SHA-256.
 const tailHash =
-    '63807a3f952e417c78fd4692e56a0d96eb2dae99a0a1cabd27e7b6e94aa9e80e'; // pragma: allowlist secret -- Synthetic PNG remaining-tail SHA-256.
+    'bbb49a538af41922d5d53b6d285079c3ba70156b1bdcc2a78c39bd7711e971f3'; // pragma: allowlist secret -- Synthetic PNG remaining-tail SHA-256.
 Json recordLiteral(
   int revision,
   String? disposition,
@@ -121,7 +121,7 @@ Json uploadLiteral(int revision, int offset) => {
   'revision': revision,
   'state': 'uploading',
   'offset': offset,
-  'size_bytes': 257,
+  'size_bytes': 28948,
   'upload_method': 'PUT',
   'upload_url': '$root/uploads/$u/content',
   'sha256': pngHash,
@@ -132,7 +132,7 @@ Json uploadLiteral(int revision, int offset) => {
       'sha256':
           '1bf0a9034faa63a8a53121b00ef018df9890126003c37e1416fb5a6401e25afd', // pragma: allowlist secret -- Synthetic PNG first-chunk SHA-256.
     },
-    if (offset == 257) {'offset': 20, 'size': 237, 'sha256': tailHash},
+    if (offset == 28948) {'offset': 20, 'size': 28928, 'sha256': tailHash},
   ],
 };
 Map<String, Json> get rawTable => <String, Json>{
@@ -154,8 +154,8 @@ Map<String, Json> get rawTable => <String, Json>{
   },
   'error_readback': workspaceLiteral(20, 'needs_human_review', actions),
   'upload': uploadLiteral(2, 20),
-  'upload_tail': uploadLiteral(3, 257),
-  'upload_current': uploadLiteral(3, 257),
+  'upload_tail': uploadLiteral(3, 28948),
+  'upload_current': uploadLiteral(3, 28948),
   'upload_complete': {
     ...recordLiteral(1, null, actions),
     'status': 'running',
@@ -301,9 +301,9 @@ void assertCorpus(Json fixture) {
   strictRaw(fixture['selection_id'], selection, 'selection_id');
   expect(fixture.containsKey('checkpoints'), isFalse);
   final image = base64Decode(fixture['png_base64'] as String);
-  expect(image.length, 257);
+  expect(image.length, 28948);
   expect(crypto.sha256.convert(image).toString(), pngHash);
-  expect(image.sublist(20).length, 237);
+  expect(image.sublist(20).length, 28928);
   expect(crypto.sha256.convert(image.sublist(20)).toString(), tailHash);
   for (final name in rawTable.keys) {
     assertRawEnvelope(name, Json.from(fixture['responses'][name]));
@@ -361,14 +361,14 @@ void main() {
     for (final name in rawTable.keys) {
       assertRaw(name);
     }
-    expect(png.length, 257);
+    expect(png.length, 28948);
     expect(
       crypto.sha256.convert(png).toString(),
-      '7f194fdff2c2798ac3f1702acdcb187b9ad6b8dd23d2668bc2ea21f9e001ecd8', // pragma: allowlist secret -- Synthetic 257-byte PNG SHA-256.
+      '50262755ff88d14aec25fe44b1876563f4f77b3e95c6fad87c99ebe7fc584a8a', // pragma: allowlist secret -- Synthetic 28948-byte PNG SHA-256.
     );
     expect(
       crypto.sha256.convert(png.sublist(20)).toString(),
-      '63807a3f952e417c78fd4692e56a0d96eb2dae99a0a1cabd27e7b6e94aa9e80e', // pragma: allowlist secret -- Synthetic PNG remaining-tail SHA-256.
+      'bbb49a538af41922d5d53b6d285079c3ba70156b1bdcc2a78c39bd7711e971f3', // pragma: allowlist secret -- Synthetic PNG remaining-tail SHA-256.
     );
     for (final name in [
       'list',
@@ -623,7 +623,7 @@ void main() {
         expect(q.url.path, '$root/uploads/$u/content');
         expect(q.headers['Upload-Offset'], '20');
         expect(q.headers['Idempotency-Key'], 'chunk-$u-20');
-        expect(q.bodyBytes.length, 237);
+        expect(q.bodyBytes.length, 28928);
         expect(q.bodyBytes, png.sublist(20));
         uploaded = true;
         return response('upload_tail');
@@ -677,7 +677,7 @@ void main() {
     pin(original, 21, 'cleared');
     // Independent selection receipt; the exporter never supplies expectations.
     const selection =
-        '0f970a204f3b22c88e2913393e9a0ac6e8729430bd51f32b12c4b46cd93940c7'; // pragma: allowlist secret -- Synthetic retained candidate selection SHA-256.
+        '70c2cd77f73f5180e59ce357a83eec7c625e495f52a5e4bcb98627731c48b1e8'; // pragma: allowlist secret -- Synthetic retained candidate selection SHA-256.
     expect(corpus['selection_id'], selection);
     final result = await repo.reviewCandidateBatch(
       scope,
@@ -765,7 +765,7 @@ void main() {
               'kind': 'research_candidate',
               'target_id': 'country',
               'selection_id':
-                  '0f970a204f3b22c88e2913393e9a0ac6e8729430bd51f32b12c4b46cd93940c7', // pragma: allowlist secret -- Synthetic retained candidate selection SHA-256.
+                  '70c2cd77f73f5180e59ce357a83eec7c625e495f52a5e4bcb98627731c48b1e8', // pragma: allowlist secret -- Synthetic retained candidate selection SHA-256.
             },
           ],
           'I11 retained source reviewed',
@@ -947,7 +947,7 @@ void main() {
       }
       if (q.method == 'PUT') {
         writes++;
-        expect(q.bodyBytes.length, 237);
+        expect(q.bodyBytes.length, 28928);
         expect(q.bodyBytes, png.sublist(20));
         return response('upload_tail');
       }
@@ -972,7 +972,7 @@ void main() {
     expect(writes, 1);
     expect(completes, 1);
   });
-  for (final offset in [20, 258]) {
+  for (final offset in [20, 28949]) {
     test('upload_bad_offset_${offset}_never_completes', () async {
       var puts = 0;
       var completes = 0;
