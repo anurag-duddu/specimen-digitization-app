@@ -43,6 +43,10 @@ class _BarHost extends StatefulWidget {
 class _BarHostState extends State<_BarHost> {
   late int _current = widget.initial;
 
+  /// Chooses a destination without a pointer, for a bar narrow enough that
+  /// the destination it is choosing is off screen.
+  void choose(int index) => setState(() => _current = index);
+
   @override
   Widget build(BuildContext context) => MediaQuery(
     data: MediaQuery.of(context).copyWith(
@@ -930,4 +934,391 @@ void main() {
       );
     });
   }
+
+  // ---------------------------------------------------------------------
+  // Narrow windows (10 section 2 clause 2 and 11 section 3.3). Equal cells
+  // are only equal while each keeps its 48 dp hit box; under that the bar
+  // lays the cells at the floor in a row that scrolls, like UiPillNav.
+  // ---------------------------------------------------------------------
+  group('narrow windows', () {
+    const List<double> widths = <double>[480, 360, 280, 200];
+
+    List<UiNavDestination> first(int count) =>
+        fiveDestinations.take(count).toList();
+
+    /// Pumps [count] destinations in a window [width] wide, collecting what
+    /// the framework reports instead of throwing it.
+    Future<List<FlutterErrorDetails>> pumpNarrow(
+      WidgetTester tester, {
+      required int count,
+      required double width,
+      UiDensityMode density = UiDensityMode.touch,
+      double scale = 1,
+      int initial = 0,
+    }) async {
+      final List<FlutterErrorDetails> reported = <FlutterErrorDetails>[];
+      final FlutterExceptionHandler? previous = FlutterError.onError;
+      FlutterError.onError = reported.add;
+      try {
+        await _pumpBar(
+          tester,
+          destinations: first(count),
+          density: density,
+          textScaler: TextScaler.linear(scale),
+          size: Size(width, 800),
+          initial: initial,
+        );
+      } finally {
+        FlutterError.onError = previous;
+      }
+      return reported;
+    }
+
+    Iterable<FlutterErrorDetails> overflows(List<FlutterErrorDetails> all) =>
+        all.where(
+          (FlutterErrorDetails d) =>
+              d.exceptionAsString().contains('overflowed'),
+        );
+
+    for (final int count in <int>[2, 3, 4, 5]) {
+      for (final double width in widths) {
+        testWidgets(
+          '$count destinations in $width dp: every cell is at least 48 by '
+          '48, at both densities and text 1.0 and 2.0, with no overflow',
+          (WidgetTester tester) async {
+            final bool scrolls = width < UiDensity.hitBox * count;
+            for (final UiDensityMode density in UiDensityMode.values) {
+              for (final double scale in <double>[1, 2]) {
+                final List<FlutterErrorDetails> reported = await pumpNarrow(
+                  tester,
+                  count: count,
+                  width: width,
+                  density: density,
+                  scale: scale,
+                );
+                final String where =
+                    '$count in $width dp, ${density.name}, scale $scale';
+                expect(
+                  overflows(reported),
+                  isEmpty,
+                  reason: 'overflow: $where',
+                );
+                expect(tester.takeException(), isNull, reason: where);
+                for (final UiNavDestination destination in first(count)) {
+                  final Size size = tester.getSize(
+                    find.bySemanticsLabel(destination.label),
+                  );
+                  expect(
+                    size.width,
+                    greaterThanOrEqualTo(UiDensity.hitBox),
+                    reason:
+                        '${destination.label} is ${size.width} wide: $where',
+                  );
+                  expect(
+                    size.height,
+                    greaterThanOrEqualTo(UiDensity.hitBox),
+                    reason:
+                        '${destination.label} is ${size.height} tall: $where',
+                  );
+                  if (!scrolls) {
+                    expect(
+                      size.width,
+                      closeTo(width / count, 0.001),
+                      reason: 'equal cells: $where',
+                    );
+                  }
+                }
+                expect(
+                  find.byType(SingleChildScrollView),
+                  scrolls ? findsOneWidget : findsNothing,
+                  reason: 'scrolls only under 48 dp a cell: $where',
+                );
+              }
+            }
+          },
+        );
+      }
+    }
+
+    for (final int count in <int>[3, 4, 5]) {
+      testWidgets(
+        '$count destinations in 120 dp: the current one is in view whichever '
+        'it is on the first frame, and when it changes',
+        (WidgetTester tester) async {
+          for (int initial = 0; initial < count; initial++) {
+            // A fresh bar, so `initial` is the destination it is built on.
+            await tester.pumpWidget(const SizedBox());
+            await pumpNarrow(
+              tester,
+              count: count,
+              width: 120,
+              initial: initial,
+            );
+            final Rect bar = tester.getRect(find.byType(UiTabBar));
+            Rect cellOf(int index) => tester.getRect(
+              find.bySemanticsLabel(first(count)[index].label),
+            );
+            expect(
+              cellOf(initial).left,
+              greaterThanOrEqualTo(bar.left - 0.5),
+              reason: 'destination $initial of $count starts before the bar',
+            );
+            expect(
+              cellOf(initial).right,
+              lessThanOrEqualTo(bar.right + 0.5),
+              reason: 'destination $initial of $count ends after the bar',
+            );
+            for (int next = 0; next < count; next++) {
+              tester.state<_BarHostState>(find.byType(_BarHost)).choose(next);
+              await tester.pumpAndSettle();
+              expect(cellOf(next).left, greaterThanOrEqualTo(bar.left - 0.5));
+              expect(cellOf(next).right, lessThanOrEqualTo(bar.right + 0.5));
+            }
+          }
+        },
+      );
+    }
+
+    testWidgets('a scrolling bar fades the edge there is more beyond, and an '
+        'equal one has no scroller', (WidgetTester tester) async {
+      await pumpNarrow(tester, count: 5, width: 200);
+      expect(
+        find.descendant(
+          of: find.byType(UiTabBar),
+          matching: find.byType(ShaderMask),
+        ),
+        findsOneWidget,
+      );
+      final ScrollableState scroller = tester.state<ScrollableState>(
+        find.byType(Scrollable),
+      );
+      expect(scroller.position.pixels, 0);
+      expect(scroller.position.extentAfter, greaterThan(0));
+      await pumpNarrow(tester, count: 5, width: 390);
+      expect(find.byType(Scrollable), findsNothing);
+      expect(find.byType(ShaderMask), findsNothing);
+    });
+
+    testWidgets('the scrolling bar keeps its tab list, its tabs and one '
+        'selected', (WidgetTester tester) async {
+      final SemanticsHandle handle = tester.ensureSemantics();
+      await pumpNarrow(tester, count: 5, width: 200, initial: 2);
+      expect(tester.takeException(), isNull);
+      final Finder list = find.byWidgetPredicate(
+        (Widget widget) =>
+            widget is Semantics &&
+            widget.properties.role == SemanticsRole.tabBar,
+      );
+      expect(list, findsOneWidget);
+      int selected = 0;
+      for (final UiNavDestination destination in fiveDestinations) {
+        final SemanticsData data = tester
+            .getSemantics(find.bySemanticsLabel(destination.label))
+            .getSemanticsData();
+        expect(data.role, SemanticsRole.tab, reason: destination.label);
+        expect(data.label, destination.label);
+        if (data.flagsCollection.isSelected == Tristate.isTrue) selected++;
+      }
+      expect(selected, 1);
+      expect(
+        tester
+            .getSemantics(find.bySemanticsLabel(fiveDestinations[2].label))
+            .getSemanticsData()
+            .flagsCollection
+            .isSelected,
+        Tristate.isTrue,
+      );
+      handle.dispose();
+    });
+
+    testWidgets('keyboard: arrows reach a cell that was off screen, bring it '
+        'into view, ring it, and Enter selects it', (
+      WidgetTester tester,
+    ) async {
+      FocusManager.instance.highlightStrategy =
+          FocusHighlightStrategy.alwaysTraditional;
+      addTearDown(
+        () => FocusManager.instance.highlightStrategy =
+            FocusHighlightStrategy.automatic,
+      );
+      final List<int> selected = <int>[];
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(200, 800);
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        uiHarness(
+          size: const Size(200, 800),
+          child: _BarHost(
+            destinations: fiveDestinations,
+            onSelect: selected.add,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final Rect bar = tester.getRect(find.byType(UiTabBar));
+      Rect cell(int i) =>
+          tester.getRect(find.bySemanticsLabel(fiveDestinations[i].label));
+      expect(cell(4).right, greaterThan(bar.right), reason: 'off screen');
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pumpAndSettle();
+      for (int i = 0; i < 4; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+        await tester.pumpAndSettle();
+        expect(
+          cell(i + 1).right,
+          lessThanOrEqualTo(bar.right + 0.5),
+          reason: 'the focused cell ${i + 1} is not in view',
+        );
+        expect(cell(i + 1).left, greaterThanOrEqualTo(bar.left - 0.5));
+      }
+      final List<FocusRing> rings = tester
+          .widgetList<FocusRing>(find.byType(FocusRing))
+          .where((FocusRing ring) => ring.visible)
+          .toList();
+      expect(rings, hasLength(1));
+      expect(rings.single.inset, isTrue);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(selected, <int>[4]);
+      // Left from the first wraps to the last, which is in view again.
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      expect(cell(0).left, greaterThanOrEqualTo(bar.left - 0.5));
+    });
+
+    testWidgets('five destinations keep the control contract at the last one '
+        'too, in every fit width', (WidgetTester tester) async {
+      for (final String label in <String>['Queue', 'Account']) {
+        await expectControlContract(
+          tester,
+          (BuildContext context) =>
+              const _BarHost(destinations: fiveDestinations),
+          semanticsLabel: label,
+          labelsNeverWrap: true,
+          geometryFromType: true,
+          fit: FitExpectation(
+            check: (WidgetTester tester, double width) async {
+              final Size size = tester.getSize(find.bySemanticsLabel(label));
+              expect(
+                size.width,
+                greaterThanOrEqualTo(UiDensity.hitBox),
+                reason: '"$label" is ${size.width} wide at $width dp',
+              );
+              expect(size.height, greaterThanOrEqualTo(UiDensity.hitBox));
+            },
+          ),
+        );
+      }
+    });
+  });
+
+  // ---------------------------------------------------------------------
+  // A label the cell cannot hold ends in an ellipsis and carries its whole
+  // word in a tooltip (10 section 2 clause 15).
+  // ---------------------------------------------------------------------
+  group('truncated labels', () {
+    /// The labels whose paragraph ends in an ellipsis right now.
+    List<String> cutLabels(WidgetTester tester) => <String>[
+      for (final UiNavDestination d in fiveDestinations)
+        if (tester.allRenderObjects.whereType<RenderParagraph>().any(
+          (RenderParagraph p) =>
+              p.text.toPlainText(includeSemanticsLabels: false) == d.label &&
+              p.didExceedMaxLines,
+        ))
+          d.label,
+    ];
+
+    /// The tooltips: one per cut label, and none for a word that fits, so a
+    /// cell that is not cut carries no second tap recognizer.
+    final Finder armed = find.byType(UiTooltip);
+
+    testWidgets('a bar whose labels all fit arms no tooltip', (
+      WidgetTester tester,
+    ) async {
+      await _pumpBar(tester);
+      expect(armed, findsNothing);
+      expect(cutLabels(tester), isEmpty);
+    });
+
+    testWidgets('a cut label shows its whole word on hover, and the tab '
+        'still reads once', (WidgetTester tester) async {
+      final SemanticsHandle handle = tester.ensureSemantics();
+      await _pumpBar(
+        tester,
+        destinations: fiveDestinations,
+        textScaler: const TextScaler.linear(2),
+        size: const Size(360, 800),
+      );
+      final List<String> cut = cutLabels(tester);
+      expect(
+        cut,
+        isNotEmpty,
+        reason: 'five destinations at 200 percent text in 360 dp cut a word',
+      );
+      expect(
+        armed,
+        findsNWidgets(cut.length),
+        reason: 'a tooltip armed for each cut label, and for no other',
+      );
+      // Each tab reads once: the tooltip adds no second node, and the tab
+      // carries no tooltip of its own.
+      for (final UiNavDestination destination in fiveDestinations) {
+        expect(find.bySemanticsLabel(destination.label), findsOneWidget);
+        final SemanticsData data = tester
+            .getSemantics(find.bySemanticsLabel(destination.label))
+            .getSemanticsData();
+        expect(data.label, destination.label);
+        expect(data.tooltip, isEmpty, reason: destination.label);
+        // A cut cell is still a tab, with its selected state, inside the
+        // tooltip's wrapper.
+        expect(data.role, SemanticsRole.tab, reason: destination.label);
+        expect(
+          data.flagsCollection.isSelected,
+          destination == fiveDestinations.first
+              ? Tristate.isTrue
+              : Tristate.isFalse,
+          reason: destination.label,
+        );
+      }
+
+      final String word = cut.first;
+      expect(find.text(word), findsOneWidget, reason: 'no tooltip drawn yet');
+      final TestGesture pointer = await tester.createGesture(
+        kind: PointerDeviceKind.mouse,
+      );
+      await pointer.addPointer(location: Offset.zero);
+      addTearDown(pointer.removePointer);
+      await tester.pump();
+      await pointer.moveTo(tester.getCenter(find.text(word)));
+      await tester.pump();
+      await tester.pump(UiTooltipStyle.hoverDelay);
+      await tester.pumpAndSettle();
+      expect(
+        find.text(word),
+        findsNWidgets(2),
+        reason: 'the tooltip draws the whole word beside the cut label',
+      );
+      handle.dispose();
+    });
+
+    testWidgets('a tap on a cut label still selects its destination', (
+      WidgetTester tester,
+    ) async {
+      final List<int> selected = <int>[];
+      await _pumpBar(
+        tester,
+        destinations: fiveDestinations,
+        textScaler: const TextScaler.linear(2),
+        size: const Size(360, 800),
+        onSelect: selected.add,
+      );
+      final String word = cutLabels(tester).first;
+      await tester.tap(find.text(word));
+      await tester.pumpAndSettle();
+      expect(selected, <int>[
+        fiveDestinations.indexWhere((UiNavDestination d) => d.label == word),
+      ], reason: 'the tooltip must not take the tap from the tab');
+    });
+  });
 }

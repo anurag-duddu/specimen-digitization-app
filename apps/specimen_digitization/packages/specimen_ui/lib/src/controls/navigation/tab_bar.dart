@@ -6,11 +6,15 @@ import 'dart:math' as math;
 import 'package:flutter/semantics.dart' show SemanticsRole;
 import 'package:flutter/widgets.dart';
 
+import '../../foundation/density.dart';
 import '../../foundation/icons.dart';
 import '../../foundation/motion.dart';
 import '../../foundation/theme.dart';
+import '../../primitives/edge_fade.dart';
+import '../../primitives/fit.dart';
 import '../../primitives/label.dart';
 import '../../primitives/pressable.dart';
+import '../overlays/tooltip.dart';
 import 'nav_destination.dart';
 import 'nav_group.dart';
 
@@ -43,6 +47,8 @@ class UiTabBarStyle {
     required this.labelAllowance,
     required this.labelGap,
     required this.glyphSize,
+    required this.cellMin,
+    required this.fadeExtent,
     required this.crossFade,
     required this.curve,
   });
@@ -98,6 +104,19 @@ class UiTabBarStyle {
   /// The glyph's square: 24 dp, the navigation size of 09 section 7.
   final double glyphSize;
 
+  /// The narrowest a cell may be: the 48 dp hit box, at every density and
+  /// every text scale (10 section 2 clause 2).
+  ///
+  /// Equal cells share the bar's width, and where that share would fall under
+  /// this the bar lays its cells at this width in a row that scrolls
+  /// (11 section 3.3, the compact variant of a navigation row), the way
+  /// `UiPillNav` does. A cell never shrinks under its hit box.
+  final double cellMin;
+
+  /// How wide the fade is at the edge of a scrolling bar that has more
+  /// beyond it: `space.s6`, the pill's.
+  final double fadeExtent;
+
   /// How long the fill and the colour take to cross-fade when the current
   /// destination changes, or zero under reduced motion (09 section 8).
   final Duration crossFade;
@@ -134,6 +153,8 @@ class UiTabBarStyle {
     labelAllowance: ui.space.iconSmall,
     labelGap: ui.space.s1,
     glyphSize: UiIconSize.action.dimension,
+    cellMin: UiDensity.hitBox,
+    fadeExtent: ui.space.s6,
     crossFade: ui.motion.navigationGlide,
     curve: MotionTokens.standardCurve,
   );
@@ -241,6 +262,56 @@ class UiTabBar extends StatelessWidget {
     // same property).
     final double inset = MediaQuery.viewPaddingOf(context).bottom;
 
+    final int count = destinations.length;
+
+    /// The cells, in one of the two arrangements 11 section 3.3 asks for.
+    Widget arrangement(bool scrolling) => NavGroup(
+      length: count,
+      axis: NavAxis.horizontal,
+      builder: (BuildContext context, List<FocusNode> nodes) {
+        Widget slot(int i) {
+          final Widget cell = _TabCell(
+            destination: destinations[i],
+            style: style,
+            ui: ui,
+            current: i == current,
+            focusNode: nodes[i],
+            iconKey: iconKeyOf?.call(i),
+            onPressed: () => onSelect(i),
+          );
+          if (!scrolling) return Expanded(child: cell);
+          return SizedBox(
+            width: style.cellMin,
+            child: _RevealOnFocus(focusNode: nodes[i], child: cell),
+          );
+        }
+
+        // The tab list wraps the row rather than the scroller: a scroller
+        // publishes a node of its own, and every child of a `tabBar` node has
+        // to be a tab.
+        final Widget row = Semantics(
+          container: true,
+          explicitChildNodes: true,
+          role: SemanticsRole.tabBar,
+          child: Row(
+            mainAxisSize: scrolling ? MainAxisSize.min : MainAxisSize.max,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[for (int i = 0; i < count; i++) slot(i)],
+          ),
+        );
+        if (!scrolling) return row;
+        return EdgeFadedRow(
+          index: current,
+          length: count,
+          fadeExtent: style.fadeExtent,
+          // A bar can open on any destination, so the first frame already
+          // shows the one the reviewer is on.
+          revealInitially: true,
+          child: row,
+        );
+      },
+    );
+
     return DecoratedBox(
       decoration: BoxDecoration(
         color: style.ground,
@@ -258,36 +329,77 @@ class UiTabBar extends StatelessWidget {
         child: SizedBox(
           width: double.infinity,
           height: content,
-          child: NavGroup(
-            length: destinations.length,
-            axis: NavAxis.horizontal,
-            builder: (BuildContext context, List<FocusNode> nodes) => Semantics(
-              container: true,
-              explicitChildNodes: true,
-              role: SemanticsRole.tabBar,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  for (int i = 0; i < destinations.length; i++)
-                    Expanded(
-                      child: _TabCell(
-                        destination: destinations[i],
-                        style: style,
-                        ui: ui,
-                        current: i == current,
-                        focusNode: nodes[i],
-                        iconKey: iconKeyOf?.call(i),
-                        onPressed: () => onSelect(i),
-                      ),
-                    ),
-                ],
+          child: FitBuilder(
+            variants: <FitVariant>[
+              // Equal cells, when every one of them gets its hit box.
+              FitVariant(
+                intrinsicWidth: style.cellMin * count,
+                builder: (BuildContext context, bool _) => arrangement(false),
               ),
-            ),
+              // Otherwise the cells keep their hit box and the bar scrolls.
+              FitVariant(
+                intrinsicWidth: 0,
+                builder: (BuildContext context, bool _) => arrangement(true),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
+}
+
+/// Scrolls the cell it wraps into view when the keyboard moves focus onto it.
+///
+/// Only the scrolling arrangement has cells that can be out of view. Arrow
+/// keys move focus with `FocusNode.requestFocus`, which does not scroll, so a
+/// reviewer pressing `Right` would otherwise focus a cell they cannot see.
+class _RevealOnFocus extends StatefulWidget {
+  const _RevealOnFocus({required this.focusNode, required this.child});
+
+  final FocusNode focusNode;
+  final Widget child;
+
+  @override
+  State<_RevealOnFocus> createState() => _RevealOnFocusState();
+}
+
+class _RevealOnFocusState extends State<_RevealOnFocus> {
+  @override
+  void initState() {
+    super.initState();
+    widget.focusNode.addListener(_focusChanged);
+  }
+
+  @override
+  void didUpdateWidget(_RevealOnFocus oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.focusNode != widget.focusNode) {
+      oldWidget.focusNode.removeListener(_focusChanged);
+      widget.focusNode.addListener(_focusChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.focusNode.removeListener(_focusChanged);
+    super.dispose();
+  }
+
+  void _focusChanged() {
+    if (!mounted || !widget.focusNode.hasFocus) return;
+    // Centred, so the cell either side is a hint that there is more. A zero
+    // duration under reduced motion is a jump.
+    Scrollable.ensureVisible(
+      context,
+      alignment: 0.5,
+      duration: context.ui.motion.short,
+      curve: MotionTokens.standardCurve,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 /// One destination: its glyph over its label, in a cell that is all hit box.
@@ -352,7 +464,7 @@ class _TabCell extends StatelessWidget {
       ),
     );
 
-    return Pressable(
+    final Widget cell = Pressable(
       semanticsLabel: destination.label,
       role: PressableRole.tab,
       selected: current,
@@ -386,6 +498,35 @@ class _TabCell extends StatelessWidget {
               ),
             ),
           ),
+    );
+
+    // Given less width than the word needs, the label ends in an ellipsis and
+    // the whole word goes to a tooltip (10 section 2 clause 15), drawn on
+    // hover and on a long press. Only a cut label gets one: a tooltip carries
+    // a gesture detector of its own, and a second tap recognizer around every
+    // cell would delay the press state of every tab until the pointer lifts.
+    //
+    // The tooltip is around the cell and not inside the label
+    // (`UiLabel.tooltip`): a tooltip's own tap handler is the innermost
+    // there, so it would win the tap on the word and the tab would select
+    // nothing. Around the cell the `Pressable`, being deeper, keeps the tap,
+    // which is how `NavDisc` does it.
+    //
+    // `MergeSemantics`, because every child of a `tabBar` node has to be a
+    // tab and the tooltip's wrapper would otherwise publish a node between
+    // the list and the tab. The cell's semantics label already carries the
+    // whole word and the tooltip adds no node of its own, so the tab reads
+    // once.
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final bool cut =
+            measureLabel(context, destination.label, style.label).width >
+            constraints.maxWidth;
+        if (!cut) return cell;
+        return MergeSemantics(
+          child: UiTooltip(message: destination.label, child: cell),
+        );
+      },
     );
   }
 }

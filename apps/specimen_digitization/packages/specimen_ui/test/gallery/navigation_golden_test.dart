@@ -21,7 +21,7 @@ import 'package:specimen_ui/specimen_ui.dart';
 import '../harness/control_contract.dart';
 
 /// Tall enough to hold the whole page, at the gallery's own width.
-const Size navigationWindow = Size(1180, 1640);
+const Size navigationWindow = Size(1180, 1840);
 
 void main() {
   final GalleryPage page = familyPages.firstWhere(
