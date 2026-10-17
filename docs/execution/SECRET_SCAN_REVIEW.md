@@ -533,7 +533,7 @@ mode with nothing staged (see the publication supervisor section above).
 
 Owner decision, typed in the coordinator Claude Code session on 2026-10-17 at about 13:22Z,
 answering the coordinator's question (verbatim: "**Your decision:** how should we clear the
-false alarm?"), which offered two numbered options; he replied with this sentence instead of
+false alarm?"), which offered two numbered options; the owner replied with this sentence instead of
 a number:
 
 > Yes: record that one test value as a reviewed false alarm with a single exact entry, in its own small reviewed PR to main. Keep every other scanner check unchanged.
