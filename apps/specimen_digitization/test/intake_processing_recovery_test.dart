@@ -80,6 +80,9 @@ class StartRepository
   int reads = 0;
   Object? startError;
   Completer<Specimen>? pendingRead;
+  Completer<Json>? pendingCompletion;
+  Completer<Json>? pendingStart;
+  int completions = 0;
   Object? readError;
   final List<bool> persistedAttempts = [];
 
@@ -106,7 +109,11 @@ class StartRepository
     CollectionScope scope,
     String id,
     String key,
-  ) async => current;
+  ) async {
+    completions++;
+    return pendingCompletion?.future ?? current;
+  }
+
   @override
   Future<Specimen> intakeProcessingStatus(
     CollectionScope scope,
@@ -134,6 +141,7 @@ class StartRepository
       rows.isNotEmpty && rows.first['automatic_start_attempted'] == true,
     );
     if (startError != null) throw startError!;
+    if (pendingStart != null) return pendingStart!.future;
     return {
       ...current,
       'dispatch': {'status': dispatch},
@@ -142,6 +150,84 @@ class StartRepository
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class LostCompletionRepository extends StartRepository {
+  LostCompletionRepository(this.recorded);
+
+  final Json recorded;
+  bool committed = false;
+  int uploads = 0;
+  int resumes = 0;
+
+  @override
+  Future<Json> resumeIntake(CollectionScope scope, String id) async {
+    resumes++;
+    // GET /uploads/{id} returns the accepted document and its stored summary.
+    return {
+      'upload_id': id,
+      'state': committed ? 'accepted' : 'uploading',
+      'offset': 3,
+      'revision': committed ? 3 : 2,
+      'specimen_id': _id,
+      if (committed) 'completion_response': recorded,
+    };
+  }
+
+  @override
+  Future<void> upload(
+    CollectionScope scope,
+    Json session,
+    IntakeFile file,
+    void Function(double) onProgress,
+  ) async {
+    uploads++;
+    onProgress(1);
+  }
+
+  @override
+  Future<Json> completeIntake(
+    CollectionScope scope,
+    String id,
+    String key,
+  ) async {
+    completions++;
+    if (committed) {
+      throw const ApiFailure('Completion payload changed.', status: 409);
+    }
+    committed = true;
+    throw const ApiFailure('Response lost after commit.', code: 'network');
+  }
+}
+
+class AcceptedHandleRepository extends StartRepository {
+  AcceptedHandleRepository(this.source);
+
+  final String source;
+  final Completer<Json> handle = Completer<Json>();
+  int uploads = 0;
+
+  @override
+  Future<Json> createIntake(
+    CollectionScope scope,
+    IntakeFile file,
+    String key,
+  ) =>
+      source == 'create' ? handle.future : super.createIntake(scope, file, key);
+
+  @override
+  Future<Json> resumeIntake(CollectionScope scope, String id) => handle.future;
+
+  @override
+  Future<void> upload(
+    CollectionScope scope,
+    Json session,
+    IntakeFile file,
+    void Function(double) onProgress,
+  ) async {
+    uploads++;
+    onProgress(1);
+  }
 }
 
 IntakeTransferSession automaticSession(
@@ -179,6 +265,196 @@ IntakeTransferSession automaticSession(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
+
+  for (final String result in ['running', 'pending', 'duplicate', 'legacy']) {
+    testWidgets(
+      'G2 lost completion recovers $result without completing twice',
+      (tester) async {
+        final Json recorded = switch (result) {
+          'duplicate' => {..._summary(), 'upload_state': 'duplicate'},
+          'legacy' => <String, dynamic>{'status': 'pending'},
+          _ => _summary(status: result),
+        };
+        final LostCompletionRepository repository = LostCompletionRepository(
+          recorded,
+        )..current = _summary();
+        final IntakeTransferSession session = automaticSession(repository);
+        addTearDown(session.close);
+        final ManifestEntry photo = session.entries.single;
+        await session.start();
+        expect(intakeStatus(photo).status, 'Retrying');
+        expect(repository.completions, 1);
+        await tester.pump(const Duration(seconds: 4));
+        expect(repository.resumes, 1);
+        await tester.pump(const Duration(seconds: 1));
+        expect(repository.completions, 1);
+        expect(repository.uploads, 1);
+        expect(repository.resumes, 2);
+        expect(photo.file, isNull);
+        expect(intakeStatus(photo).status, switch (result) {
+          'running' => 'Sent',
+          'duplicate' => 'Duplicate',
+          'legacy' => 'Saved',
+          _ => 'Starting',
+        });
+        if (result == 'running' || result == 'duplicate') {
+          expect(session.entries, isEmpty);
+          expect(session.sentCount, result == 'running' ? 1 : 0);
+          expect(session.duplicateCount, result == 'duplicate' ? 1 : 0);
+          expect(session.needsProcessingPoll, isFalse);
+          final SharedPreferences prefs = await SharedPreferences.getInstance();
+          expect(
+            jsonDecode(
+              prefs.getString('upload-handles-v1:auto:${_scope.key}')!,
+            ),
+            isEmpty,
+          );
+        } else if (result == 'pending') {
+          expect(repository.reads, 1);
+          expect(session.needsProcessingPoll, isTrue);
+          await tester.pump(const Duration(seconds: 60));
+          expect(repository.keys, hasLength(1));
+        } else {
+          expect(intakeStatus(photo).action, IntakeAction.dismiss);
+          expect(session.needsProcessingPoll, isFalse);
+        }
+        await tester.pump(const Duration(seconds: 120));
+        expect(repository.completions, 1);
+      },
+    );
+  }
+
+  for (final bool readCrossesBackground in [false, true]) {
+    testWidgets(
+      'G3 in-flight completion refreshes without listeners (read crosses background=$readCrossesBackground)',
+      (tester) async {
+        final Completer<Json> completion = Completer<Json>();
+        final Completer<Specimen> freshRead = Completer<Specimen>();
+        final StartRepository repository = StartRepository()
+          ..pendingCompletion = completion
+          ..pendingRead = freshRead;
+        final IntakeTransferSession session = automaticSession(repository);
+        addTearDown(() {
+          session.close();
+          tester.binding.handleAppLifecycleStateChanged(
+            AppLifecycleState.resumed,
+          );
+        });
+        int notifications = 0;
+        void listener() => notifications++;
+        session.addListener(listener);
+        final ManifestEntry photo = session.entries.single;
+        final Future<void> sending = session.start();
+        await tester.pump();
+        expect(repository.completions, 1);
+        session.removeListener(listener);
+        final int notificationsBeforeRemoval = notifications;
+        session.changed();
+        expect(notifications, notificationsBeforeRemoval);
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        await tester.pump(const Duration(seconds: 61));
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+        expect(repository.reads, 0);
+        completion.complete(_summary());
+        await sending;
+        await tester.pump();
+        expect(intakeStatus(photo).status, 'Starting');
+        expect(repository.reads, 1);
+        expect(photo.startOfferCurrent, isFalse);
+        await tester.pump(const Duration(seconds: 61));
+        expect(repository.keys, isEmpty);
+        if (readCrossesBackground) {
+          tester.binding.handleAppLifecycleStateChanged(
+            AppLifecycleState.paused,
+          );
+          tester.binding.handleAppLifecycleStateChanged(
+            AppLifecycleState.resumed,
+          );
+          repository.pendingRead = null;
+          repository.current = _summary(status: 'running');
+          freshRead.complete(Specimen(_summary()));
+        } else {
+          freshRead.complete(Specimen(_summary(status: 'running')));
+        }
+        await tester.pump();
+        expect(repository.reads, readCrossesBackground ? 2 : 1);
+        expect(repository.keys, isEmpty);
+        expect(session.entries, isEmpty);
+        expect(session.summary, '1 sent');
+      },
+    );
+  }
+
+  for (final String source in ['create', 'resume', 'post-upload resume']) {
+    testWidgets(
+      'G3 accepted $source refreshes after resume without listeners',
+      (tester) async {
+        final AcceptedHandleRepository repository = AcceptedHandleRepository(
+          source,
+        );
+        final IntakeTransferSession session = automaticSession(repository);
+        addTearDown(() {
+          session.close();
+          tester.binding.handleAppLifecycleStateChanged(
+            AppLifecycleState.resumed,
+          );
+        });
+        if (source == 'resume') {
+          session.entries.single.session = {'upload_id': 'same-upload'};
+        }
+        final Future<void> sending = session.start();
+        await tester.pump();
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+        repository.current = _summary(status: 'running');
+        repository.handle.complete({
+          'upload_id': 'same-upload',
+          'state': 'accepted',
+          'specimen_id': _id,
+          'completion_response': _summary(),
+        });
+        await sending;
+        await tester.pump();
+        expect(repository.completions, 0);
+        expect(repository.uploads, source == 'post-upload resume' ? 1 : 0);
+        expect(repository.reads, 1);
+        expect(repository.keys, isEmpty);
+        expect(session.entries, isEmpty);
+        expect(session.summary, '1 sent');
+      },
+    );
+  }
+
+  testWidgets('G3 in-flight start refreshes after resume without listeners', (
+    tester,
+  ) async {
+    final Completer<Json> reply = Completer<Json>();
+    final StartRepository repository = StartRepository()..pendingStart = reply;
+    final IntakeTransferSession session = automaticSession(repository);
+    addTearDown(() {
+      session.close();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    });
+    await session.start();
+    await tester.pump(const Duration(seconds: 60));
+    expect(repository.keys, hasLength(1));
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    repository.current = _summary(status: 'running');
+    reply.complete({
+      ..._summary(),
+      'dispatch': {'status': 'failed'},
+    });
+    await tester.pump();
+    expect(repository.reads, 1);
+    expect(repository.keys, hasLength(1));
+    expect(session.entries, isEmpty);
+    expect(session.summary, '1 sent');
+  });
 
   testWidgets('F1 resume reads status before using an overdue start offer', (
     tester,

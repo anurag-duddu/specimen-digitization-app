@@ -82,6 +82,7 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
   final Map<ManifestEntry, Timer> _automaticStarts = <ManifestEntry, Timer>{};
   final Set<ManifestEntry> _startDue = <ManifestEntry>{};
   final Map<String, int> _processingRevisions = <String, int>{};
+  final Set<ManifestEntry> _freshProcessingReads = <ManifestEntry>{};
   Timer? _processingPoll;
   bool _refreshingProcessing = false;
   bool _observingAppLifecycle = false;
@@ -141,9 +142,9 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
   bool get needsProcessingPoll =>
       !_closed && !signInRequired && entries.any(_needsProcessingRefresh);
 
-  /// Processing checks are useful only while Intake or its camera route is
-  /// observing this session. Reattaching a listener restarts a poll that was
-  /// paused when the last route went away. Sign-in recovery is explicit.
+  /// Periodic checks run while Intake or its camera route observes the session.
+  /// Reattaching restarts polling. Required foreground refreshes also run
+  /// without a route listener; sign-in recovery remains explicit.
   @override
   void addListener(VoidCallback listener) {
     final bool wasObserved = hasListeners;
@@ -180,6 +181,7 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
       _foregroundGeneration++;
       for (final ManifestEntry entry in entries) {
         entry.startOfferCurrent = false;
+        if (entry.tracksProcessing) _freshProcessingReads.add(entry);
       }
       changed();
     }
@@ -460,6 +462,7 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
       entry.why = null;
       entry.transferError = null;
       changed();
+      int generation = _foregroundGeneration;
       entry.session = entry.session == null
           ? await repository.createIntake(scope, file, 'intake-${entry.digest}')
           : await repository.resumeIntake(
@@ -471,9 +474,7 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
       changed();
       await persist();
       if (_closed) return false;
-      if (entry.session!['state'] == 'duplicate') {
-        entry.state = UploadState.duplicate;
-      } else {
+      if (!_finishFromHandle(entry, generation)) {
         entry.state = UploadState.uploading;
         changed();
         await repository.upload(scope, entry.session!, file, (double progress) {
@@ -482,27 +483,22 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
           changed();
         });
         if (_closed) return false;
+        generation = _foregroundGeneration;
         final Json fresh = await repository.resumeIntake(
           scope,
           entry.session!['upload_id'] as String,
         );
         if (_closed) return false;
         entry.session = fresh;
-        final Json completion = await repository.completeIntake(
-          scope,
-          fresh['upload_id'] as String,
-          'complete-${entry.digest}',
-        );
-        if (_closed) return false;
-        if (completion['upload_state'] == 'duplicate') {
-          entry.state = UploadState.duplicate;
-        } else if (completion['specimen_id'] is String &&
-            (completion['specimen_id'] as String).isNotEmpty) {
-          entry.savedAt ??= DateTime.now();
-          _applyProcessingSummary(entry, Specimen(completion));
-        } else {
-          entry.state = UploadState.accepted;
-          entry.reason = intakeSavedReason;
+        if (!_finishFromHandle(entry, generation)) {
+          generation = _foregroundGeneration;
+          final Json completion = await repository.completeIntake(
+            scope,
+            fresh['upload_id'] as String,
+            'complete-${entry.digest}',
+          );
+          if (_closed) return false;
+          _applyCompletion(entry, completion, generation);
         }
       }
       entry.progress = 1;
@@ -572,6 +568,50 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  bool _finishFromHandle(ManifestEntry entry, int generation) {
+    if (entry.session!['state'] == 'duplicate') {
+      entry.state = UploadState.duplicate;
+      return true;
+    }
+    if (entry.session!['state'] != 'accepted') return false;
+    // The upload read returns the stored completion response. Re-completing
+    // with the now-incremented upload revision would conflict with its key.
+    final Object? response = entry.session!['completion_response'];
+    _applyCompletion(
+      entry,
+      response is Map
+          ? Map<String, dynamic>.from(response)
+          : <String, dynamic>{},
+      generation,
+      stored: true,
+    );
+    return true;
+  }
+
+  void _applyCompletion(
+    ManifestEntry entry,
+    Json completion,
+    int generation, {
+    bool stored = false,
+  }) {
+    if (completion['upload_state'] == 'duplicate') {
+      entry.state = UploadState.duplicate;
+    } else if (completion['specimen_id'] is String &&
+        (completion['specimen_id'] as String).isNotEmpty) {
+      entry.savedAt ??= DateTime.now();
+      _applyProcessingSummary(
+        entry,
+        Specimen(completion),
+        // A stored completion is a historical snapshot even when its upload
+        // handle was just read. Refresh it before authorizing a start.
+        startOfferCurrent: !stored && generation == _foregroundGeneration,
+      );
+    } else {
+      entry.state = UploadState.accepted;
+      entry.reason = intakeSavedReason;
+    }
+  }
+
   /// Refreshes saved photos only until the server confirms pipeline hand-off.
   Future<void> refreshProcessingStatuses() async {
     if (_closed ||
@@ -583,7 +623,6 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
     _processingPoll?.cancel();
     _processingPoll = null;
     _refreshingProcessing = true;
-    final int generation = _foregroundGeneration;
     var changedAny = false;
     final int sentBefore = sentCount;
     try {
@@ -593,6 +632,8 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
         if (entry.checking) continue;
         final String specimenId = entry.specimenId!;
         final Specimen? summaryAtRead = entry.specimen;
+        final int generation = _foregroundGeneration;
+        _freshProcessingReads.remove(entry);
         try {
           final Specimen? specimen;
           final SpecimenRepository source = repository;
@@ -612,7 +653,6 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
           // A read started before a user action cannot replace its newer
           // outcome or re-enable controls while that action is in flight.
           if (!entries.contains(entry) ||
-              generation != _foregroundGeneration ||
               entry.checking ||
               !identical(entry.specimen, summaryAtRead)) {
             continue;
@@ -624,7 +664,11 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
               'The requested photo could not be verified.',
             );
           } else {
-            _applyProcessingSummary(entry, specimen);
+            _applyProcessingSummary(
+              entry,
+              specimen,
+              startOfferCurrent: generation == _foregroundGeneration,
+            );
           }
           changedAny = true;
         } on ApiFailure catch (error) {
@@ -662,15 +706,8 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
       }
     } finally {
       _refreshingProcessing = false;
-      if (!_closed &&
-          !_appInBackground &&
-          generation != _foregroundGeneration) {
-        // Resume may have happened while an older read was still in flight.
-        unawaited(refreshProcessingStatuses());
-      } else {
-        _scheduleProcessingPoll();
-        _resumeAutomaticWork();
-      }
+      _scheduleProcessingPoll();
+      _resumeAutomaticWork();
     }
   }
 
@@ -785,7 +822,7 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
   void _applyProcessingSummary(
     ManifestEntry entry,
     Specimen specimen, {
-    bool startOfferCurrent = true,
+    required bool startOfferCurrent,
   }) {
     final int knownRevision = _processingRevisions[specimen.id] ?? 0;
     if (specimen.revision < knownRevision) return;
@@ -809,6 +846,12 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
           : UploadState.processing;
     }
     entry.reason = intakeStatus(entry).reason;
+    if (entry.tracksProcessing && !entry.startOfferCurrent) {
+      // Completion/start may finish after resume, when no specimen ID was
+      // available or the row was still checking. Queue the read itself: route
+      // listeners and periodic polling are not required for this refresh.
+      _freshProcessingReads.add(entry);
+    }
     if (entry.tracksProcessing && specimen.data['status'] == 'pending') {
       _scheduleAutomaticStart(entry);
     }
@@ -835,6 +878,7 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void _forgetEntry(ManifestEntry entry) {
+    _freshProcessingReads.remove(entry);
     _processingRevisions.remove(entry.specimenId);
     _transferRetries.remove(entry)?.cancel();
     _transferAttempts.remove(entry);
@@ -893,6 +937,13 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
         signInRequired ||
         _appInBackground ||
         _refreshingProcessing) {
+      return;
+    }
+    _freshProcessingReads.removeWhere(
+      (entry) => !entries.contains(entry) || !entry.tracksProcessing,
+    );
+    if (_freshProcessingReads.any((entry) => !entry.checking)) {
+      unawaited(refreshProcessingStatuses());
       return;
     }
     if (_resumeSending) {
@@ -977,6 +1028,7 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
     _automaticStarts.clear();
     _startDue.clear();
     _processingRevisions.clear();
+    _freshProcessingReads.clear();
     unawaited(persist());
     dispose();
   }
