@@ -1,13 +1,17 @@
 """Controlled subprocess qualification; these fixtures never launch real engines."""
 from __future__ import annotations
 
+from contextlib import contextmanager
 import hashlib
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import importlib.util
 import json
 import os
 from pathlib import Path
 import shutil
 import signal
+import socket
+import threading
 import time
 import subprocess
 import sys
@@ -111,7 +115,8 @@ def test_cold_cache_refuses_inherited_or_preseeded_directory(tmp_path):
 # injectable into a canonical gate: G hashes tracked helpers and independently
 # checks approved tool bytes before the wrapper starts.
 STANDIN = r'''#!PYTHON
-import json, os, pathlib, signal, socket, subprocess, sys, time
+import json, os, pathlib, signal, socket, subprocess, sys, time, threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 args=sys.argv[1:]; name=pathlib.Path(sys.argv[0]).name
 fault=os.getenv('FIXTURE_FAULT',''); root=pathlib.Path(os.environ['FIXTURE_ROOT'])
 with (root/'calls.jsonl').open('a') as f: f.write(json.dumps([name,*args])+'\n')
@@ -224,6 +229,16 @@ if name in ('postgres','dc','firebase','java'):
   directory=pathlib.Path(args[args.index('-D')+1]); directory.mkdir(exist_ok=True)
   (directory/'postmaster.pid').write_text(str(os.getpid()))
  if name=='firebase':
+  config=json.loads(pathlib.Path(args[args.index('--config')+1]).read_text())['emulators']
+  class Hub(BaseHTTPRequestHandler):
+   def do_GET(self):
+    assert self.path=='/emulators'
+    (root/'hub-requested').touch()
+    body=json.dumps({} if fault.startswith('storage_ready_') else {'storage':{'name':'storage','host':'127.0.0.1','port':config['storage']['port']}}).encode()
+    self.send_response(200); self.end_headers(); self.wfile.write(body)
+   def log_message(self,*_): pass
+  hub=ThreadingHTTPServer(('127.0.0.1',config['hub']['port']),Hub)
+  threading.Thread(target=hub.serve_forever,daemon=True).start()
   probe=subprocess.Popen([str(root/'bin/java'),'--version']) if os.getenv('FIXTURE_JAVA_PROBE') else None
   child=None if fault=='storage_no_java' else subprocess.Popen([str(root/'bin/java'),os.environ['STORAGE_EMULATOR_BINARY_PATH']])
   (root/'java-pid.json').write_text(json.dumps({'pid':child.pid if child else None,'parent':os.getpid(),'probe':probe.pid if probe else None,'jar':os.environ['STORAGE_EMULATOR_BINARY_PATH']}))
@@ -239,8 +254,12 @@ if name in ('postgres','dc','firebase','java'):
    deadline=time.monotonic()+1
    while not (root/'instances'/(str(owned.pid)+'.json')).exists() and time.monotonic()<deadline: time.sleep(.001)
    assert (root/'instances'/(str(owned.pid)+'.json')).exists(),'fixture Java identity was not published'
-  (root/'storage-cli-running').touch(); print('Storage fixture started',flush=True)
-  while True: time.sleep(.02)
+  (root/'storage-cli-running').touch(); print('Downloading forbidden runtime' if fault=='storage_download' else 'Storage fixture started',flush=True)
+  while True:
+   if (root/'hub-requested').exists() and fault in ('storage_ready_cli_exit','storage_ready_java_exit'):
+    if child and child.poll() is None: child.terminate(); child.wait(timeout=1)
+    if fault=='storage_ready_cli_exit': sys.exit(0)
+   time.sleep(.02)
  if name=='dc' and fault=='dc_cleanup_failed': signal.signal(signal.SIGTERM,signal.SIG_IGN)
  else: signal.signal(signal.SIGTERM,lambda *_:sys.exit(0))
  signal.signal(signal.SIGINT,lambda *_:sys.exit(0))
@@ -435,7 +454,7 @@ def assert_storage_tree_stopped(fixture,lifecycle,cleanup='passed'):
     assert lifecycle['cleanup']['outcome']==cleanup and lifecycle['cleanup']['survivors']==[]
 
 
-@pytest.mark.parametrize('fault,reason',[('storage_no_java','Storage Java child missing'),('readiness_failed','failed (19)')])
+@pytest.mark.parametrize('fault,reason',[('storage_no_java','Storage Java child missing'),('storage_download','Storage CLI attempted download')])
 def test_storage_standalone_startup_failure_cleans_partial_tree(shell_fixture,fault,reason):
     root,env=shell_fixture
     env['FIXTURE_STANDALONE']='true'
@@ -443,7 +462,7 @@ def test_storage_standalone_startup_failure_cleans_partial_tree(shell_fixture,fa
     result=run_shell(shell_fixture,fault,storage=True)
     assert result.returncode!=0 and reason in result.stderr,result.stdout+result.stderr
     lifecycle=json.loads((root/'lifecycle.json').read_text())
-    assert_storage_tree_stopped(shell_fixture,lifecycle)
+    assert_storage_tree_stopped(shell_fixture,lifecycle,cleanup='failed' if fault=='storage_download' else 'passed')
     assert 'storage-test.mjs' not in (root/'calls.jsonl').read_text()
 
 
@@ -880,3 +899,156 @@ def test_storage_rejects_runtime_drift_since_sql(shell_fixture):
     result=run_shell(shell_fixture,storage=True)
     assert result.returncode!=0
     assert 'Storage/SQL runtime mismatch' in result.stderr
+
+
+def test_storage_readiness_does_not_use_sql_waiter(shell_fixture):
+    root, _ = shell_fixture
+    control = run_shell(shell_fixture)
+    assert control.returncode == 0, control.stdout + control.stderr
+    # Reproduce the hosted defect: the SQL-specific root probe cannot qualify
+    # Storage, even though its real loopback hub and Storage socket are ready.
+    result = run_shell(shell_fixture, 'readiness_failed', storage=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (root / 'hub-requested').exists(), 'Storage readiness never consulted its private hub'
+    calls = [json.loads(line) for line in (root / 'calls.jsonl').read_text().splitlines()]
+    assert len([row for row in calls if row[0] == 'node' and row[1].endswith('/wait-local.mjs')]) == 4
+    lifecycle = json.loads((root / 'lifecycle.json').read_text())
+    assert {'id': 'storage', 'outcome': 'passed'} in [
+        {key: row[key] for key in ('id', 'outcome')} for row in lifecycle['readiness']]
+    assert lifecycle['cleanup']['ports_free_after'] is True
+
+
+@pytest.mark.parametrize('fault,reason', [
+    ('storage_ready_cli_exit', 'Storage CLI exited during readiness'),
+    ('storage_ready_java_exit', 'Storage Java child exited during readiness'),
+])
+def test_storage_readiness_child_exit_stops_assertions_and_cleans(shell_fixture, fault, reason):
+    root, env = shell_fixture
+    env['FIXTURE_STANDALONE'] = 'true'
+    control = run_shell(shell_fixture)
+    assert control.returncode == 0, control.stdout + control.stderr
+    result = run_shell(shell_fixture, fault, storage=True)
+    assert result.returncode != 0 and reason in result.stderr, result.stdout + result.stderr
+    lifecycle = json.loads((root / 'lifecycle.json').read_text())
+    assert ('storage.ready', 'failed') in [(row['id'], row['outcome']) for row in lifecycle['stages']]
+    assert 'storage-test.mjs' not in (root / 'calls.jsonl').read_text()
+    # Readiness is failed, while the existing cleanup can pass after a clean
+    # early CLI exit has reaped Java and released every owned port.
+    assert_storage_tree_stopped(shell_fixture, lifecycle)
+
+
+@contextmanager
+def storage_readiness_servers(case):
+    # The bound-but-not-listening socket reserves the negative TCP control's
+    # exact port, so no concurrent test can accidentally make that control pass.
+    with socket.socket() as storage:
+        storage.bind(('127.0.0.1', 0))
+        port = storage.getsockname()[1]
+        if case not in ('closed_tcp', 'delayed_tcp'):
+            storage.listen(128)
+        requests = []
+
+        class Hub(BaseHTTPRequestHandler):
+            def do_GET(self):
+                requests.append(self.path)
+                row = {'name': 'storage', 'host': '127.0.0.1', 'port': port}
+                body = {'storage': row}
+                if case in ('only_other', 'cli_exit', 'java_exit', 'download'):
+                    body = {'auth': dict(row, name='auth')}
+                elif case == 'wrong_port':
+                    row['port'] = port + 1
+                elif case == 'wrong_host':
+                    row['host'] = 'localhost'
+                elif case == 'string_port':
+                    row['port'] = str(port)
+                elif case == 'null_storage':
+                    body['storage'] = None
+                elif case == 'delayed' and len(requests) == 1:
+                    body = {}
+                if case == 'delayed_tcp' and len(requests) == 2:
+                    storage.listen(128)
+                if case == 'hung_headers':
+                    time.sleep(.7)
+                    return
+                self.send_response(503 if case == 'http_error' else 302 if case == 'redirect' else 200)
+                if case == 'redirect':
+                    self.send_header('Location', '/redirect-must-not-be-followed')
+                self.end_headers()
+                if case == 'hung_body':
+                    time.sleep(.7)
+                    return
+                try:
+                    self.wfile.write(b'{' if case == 'malformed' else json.dumps(body).encode())
+                except (BrokenPipeError, ConnectionResetError):
+                    pass  # The bounded waiter has already closed its request.
+
+            def log_message(self, *_):
+                pass
+
+        with ThreadingHTTPServer(('127.0.0.1', 0), Hub) as hub:
+            thread = threading.Thread(target=lambda: hub.serve_forever(poll_interval=.01))
+            thread.start()
+            try:
+                yield hub.server_port, port, requests
+            finally:
+                hub.shutdown()
+                thread.join(timeout=2)
+                assert not thread.is_alive(), 'fake hub did not shut down'
+
+
+@pytest.mark.parametrize('case', [
+    'ready', 'delayed', 'delayed_tcp', 'only_other', 'wrong_port', 'wrong_host', 'string_port',
+    'null_storage', 'malformed', 'closed_tcp', 'http_error', 'redirect',
+    'hung_headers', 'hung_body', 'cli_exit', 'java_exit', 'download',
+])
+def test_storage_waiter_real_loopback(tmp_path, case):
+    script = tmp_path / 'storage-ready.mjs'
+    script.write_text(f"import {{waitForStorage}} from {json.dumps((DATA / 'wait-storage.mjs').as_uri())};\n" + r'''
+import assert from 'node:assert/strict';
+import {spawn} from 'node:child_process';
+const [hubPort,storagePort,scenario]=process.argv.slice(2);
+const children=['CLI','Java child'].map(role=> {
+  const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)']);
+  const done=new Promise(resolve=>child.once('exit',resolve));
+  return {role,child,done};
+});
+let downloaded=false, checks=0;
+const timer=setTimeout(()=> {
+  if(scenario==='cli_exit') children[0].child.kill();
+  if(scenario==='java_exit') children[1].child.kill();
+  downloaded=scenario==='download';
+},100);
+try {
+  await waitForStorage({hubPort:Number(hubPort),storagePort:Number(storagePort),timeoutMs:350,
+    checkRunning:()=> {
+      checks++;
+      for(const {role,child} of children)
+        assert.ok(child.exitCode===null && child.signalCode===null,`Storage ${role} exited during readiness`);
+      assert.ok(!downloaded,'Storage CLI attempted download');
+    }});
+  console.log('storage ready');
+} catch(error) { console.error(error.message); process.exitCode=1; }
+finally {
+  clearTimeout(timer);
+  for(const {child,done} of children) {if(child.exitCode===null && child.signalCode===null) child.kill(); await done;}
+  console.log(`guard checks: ${checks}`);
+}
+''')
+    with storage_readiness_servers(case) as (hub, storage, requests):
+        start = time.monotonic()
+        result = subprocess.run(['node', str(script), str(hub), str(storage), case],
+                                capture_output=True, text=True, timeout=5)
+        seconds = time.monotonic() - start
+    if case in ('ready', 'delayed', 'delayed_tcp'):
+        assert result.returncode == 0 and 'storage ready' in result.stdout, result.stdout + result.stderr
+        if case in ('delayed', 'delayed_tcp'):
+            assert len(requests) >= 2, 'waiter did not poll until Storage registered'
+    else:
+        assert result.returncode != 0, f'{case} incorrectly became ready: {result.stdout}'
+        reason = {'cli_exit': 'Storage CLI exited during readiness',
+                  'java_exit': 'Storage Java child exited during readiness',
+                  'download': 'Storage CLI attempted download'}.get(case, 'Storage emulator did not become ready within 350 ms')
+        assert reason in result.stderr, result.stdout + result.stderr
+    assert requests and set(requests) == {'/emulators'}, 'waiter must only GET the private hub /emulators'
+    assert seconds < 3, f'{case} exceeded its bounded readiness budget: {seconds:.3f}s'
+    assert int(result.stdout.split('guard checks: ')[1]) >= 2, 'process/download guard was not rechecked'

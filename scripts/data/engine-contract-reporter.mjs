@@ -8,6 +8,7 @@ import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import net from 'node:net';
 import os from 'node:os';
+import {waitForStorage} from './wait-storage.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const read = p => JSON.parse(readFileSync(p, 'utf8'));
@@ -490,7 +491,17 @@ async function harness(kind, argv) {
       });
       await stage('storage.ready',async()=> {
         const start=performance.now();
-        await run('node',[path.join(root,'scripts/data/wait-local.mjs')],{env:{...env,FIREBASE_DATACONNECT_EMULATOR_HOST:env.FIREBASE_STORAGE_EMULATOR_HOST}});
+        // Include the real CLI's ancestry: the standalone launcher can remain
+        // alive after its forked CLI exits. Retain birth-bound process checks.
+        const ancestry=[];
+        for(let owner=storageOwners.find(row=>row.pid===javaProcess.pid);owner;owner=storageOwners.find(row=>row.pid===owner.parent_pid)) ancestry.push(owner);
+        assert.ok(ancestry.length>=2,'Storage readiness ancestry missing');
+        await waitForStorage({hubPort:auxiliaryPorts[0],storagePort:ports[2],checkRunning:()=> {
+          assert.equal(interrupted,0,'harness interrupted during Storage readiness');
+          assert.ok(!cliProcess.error() && cliProcess.child.exitCode===null && cliProcess.child.signalCode===null && ancestry.slice(1).every(storageAlive),'Storage CLI exited during readiness');
+          assert.ok(storageAlive(ancestry[0]),'Storage Java child exited during readiness');
+          assert.ok(!existsSync(cliProcess.log) || !/downloading|download failed/i.test(readFileSync(cliProcess.log,'utf8')),'Storage CLI attempted download');
+        }});
         assert.ok(live(cliProcess.pid)&&live(javaProcess.pid),'Storage readiness failed');
         await portOpen(ports[2]);
         assert.ok(!/downloading|download failed/i.test(readFileSync(cliProcess.log,'utf8')),'Storage CLI attempted download');
