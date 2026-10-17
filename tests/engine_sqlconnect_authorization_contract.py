@@ -116,20 +116,38 @@ def _denied(reply, operation, label, *, member=None, client=None):
     if errors is not None:
         assert isinstance(errors, list) and errors, f"{label}: unexpectedly authorized: {reply}"
         assert not body.get("code") and not body.get("error"), f"{label}: mixed error envelopes: {body}"
-        for error in errors:
+        expected_path = ["query", member] if mutation else [member]
+        for index, error in enumerate(errors):
             assert isinstance(error, dict) and isinstance(error.get("message"), str) and error["message"], (
                 f"{label}: malformed GraphQL error: {error}"
             )
             extensions = error.get("extensions")
+            path = error.get("path")
+            if not client and isinstance(extensions, dict) and extensions.get("code") == "ABORTED":
+                # The engine aborts dependent fields after a membership @check.
+                # Production reads errors[0], which must remain a real denial.
+                assert index > 0, f"{label}: cascade cannot establish denial: {error}"
+                assert error == {
+                    "message": "(aborted)", "locations": [], "path": path,
+                    "extensions": {"file": "", "code": "ABORTED", "debugDetails": "", "resource": "",
+                                   "warningLevel": "WARNING_LEVEL_UNKNOWN", "workarounds": []},
+                }, f"{label}: unexpected abort envelope: {error}"
+                cascade_paths = [[field] for field in results[operation] | metadata]
+                if mutation:
+                    cascade_paths += [["query"], ["query", "organizationMember"], ["query", "collectionMember"]]
+                    if operation == "SaveSpecimenV3":
+                        cascade_paths += [["current"], ["current", "specimen"]]
+                assert path != expected_path and path in cascade_paths, (
+                    f"{label}: cascade must be at another field of {operation}: {error}"
+                )
+                continue
             assert (isinstance(extensions, dict) and isinstance(extensions.get("code"), str)
                     and extensions["code"] in codes), (
                 f"{label}: expected {'/'.join(sorted(codes))}, got {error}"
             )
-            path = error.get("path")
             if client:
                 assert path in (None, [], [operation]), f"{label}: client failed a field check, not NO_ACCESS: {error}"
             else:
-                expected_path = ["query", member] if mutation else [member]
                 assert path == expected_path, f"{label}: expected membership check at {expected_path}, got {error}"
     else:
         # HTTP status alone proves nothing. Accept only a structured client auth
@@ -146,6 +164,149 @@ def _denied(reply, operation, label, *, member=None, client=None):
         ), (
             f"{label}: expected structured client authorization failure: {body}"
         )
+
+
+_HOSTED_DENIAL_CASES = (
+    "foreign_actor", "foreign_organization", "foreign_collection", "revoked_organization",
+)
+
+
+def _hosted_denial_fragment(case):
+    """Replay the recorded cascade with the established primary denial.
+
+    I10-V2/hosted-evidence.json, pilot 38980318610: complete ABORTED errors
+    at log lines 240/346/452/545; first-error codes at 249/355/461/554.
+    Full replies were truncated. The primary message and unprinted reply
+    fields use minimal synthetic values; the primary code/path were
+    established by the adapter log and prior assertions.
+    This is a minimal fragment replay, not a complete recorded HTTP reply.
+    """
+    organization_denied = case in {"foreign_organization", "revoked_organization"}
+    member = "organizationMember" if organization_denied else "collectionMember"
+    cascade = "collectionMember" if organization_denied else "specimen"
+    return member, (200, {
+        "data": {"collectionMember": None,
+                 "organizationMember": None if organization_denied else {"active": True},
+                 "specimen": None, "specimenSnapshots": None},
+        "errors": [
+            {"message": "membership denied (synthetic message)", "path": [member],
+             "extensions": {"code": "PERMISSION_DENIED"}},
+            {"message": "(aborted)", "locations": [], "path": [cascade],
+             "extensions": {"file": "", "code": "ABORTED", "debugDetails": "", "resource": "",
+                            "warningLevel": "WARNING_LEVEL_UNKNOWN", "workarounds": []}},
+        ],
+        "extensions": None,
+    })
+
+
+@pytest.mark.parametrize("case", _HOSTED_DENIAL_CASES)
+def test_denial_oracle_hosted_fragment(case):
+    member, reply = _hosted_denial_fragment(case)
+    _denied(reply, "GetSpecimen", case, member=member)
+
+
+@pytest.mark.parametrize("case", _HOSTED_DENIAL_CASES)
+@pytest.mark.parametrize("fault", (
+    "aborted_only", "aborted_first", "first_code", "first_path", "later_denial_path",
+    "other_code", "message", "locations", "missing_locations", "foreign_path",
+    "same_path", "nested_path", "other_operation_field", "file", "debugDetails",
+    "resource", "warningLevel", "workarounds", "extra_extension", "missing_extension",
+    "extra_error_field", "data_object", "data_list", "authorized", "authorized_empty",
+))
+def test_denial_oracle_rejects_invalid_fragment(case, fault):
+    member, reply = _hosted_denial_fragment(case)
+    body = reply[1]
+    first, cascade = body["errors"]
+    if fault == "aborted_only":
+        body["errors"] = [cascade]
+    elif fault == "aborted_first":
+        body["errors"] = [cascade, first]
+    elif fault == "first_code":
+        first["extensions"]["code"] = "UNAUTHENTICATED"
+    elif fault == "first_path":
+        first["path"] = ["collectionMember" if member == "organizationMember" else "organizationMember"]
+    elif fault == "later_denial_path":
+        cascade["extensions"]["code"] = "PERMISSION_DENIED"
+    elif fault == "other_code":
+        cascade["extensions"]["code"] = "UNAVAILABLE"
+    elif fault == "message":
+        cascade["message"] = "aborted"
+    elif fault == "locations":
+        cascade["locations"] = [{"line": 1, "column": 1}]
+    elif fault == "missing_locations":
+        del cascade["locations"]
+    elif fault == "foreign_path":
+        cascade["path"] = ["foreignField"]
+    elif fault == "same_path":
+        cascade["path"] = [member]
+    elif fault == "nested_path":
+        cascade["path"] = ["specimen", "foreignField"]
+    elif fault == "other_operation_field":
+        cascade["path"] = ["specimens"]
+    elif fault in {"file", "debugDetails", "resource", "warningLevel"}:
+        cascade["extensions"][fault] = "different"
+    elif fault == "workarounds":
+        cascade["extensions"]["workarounds"] = ["retry"]
+    elif fault == "extra_extension":
+        cascade["extensions"]["other"] = ""
+    elif fault == "missing_extension":
+        del cascade["extensions"]["file"]
+    elif fault == "extra_error_field":
+        cascade["other"] = ""
+    elif fault == "data_object":
+        body["data"]["specimen"] = {"id": "protected"}
+    elif fault == "data_list":
+        body["data"]["specimenSnapshots"] = [{"snapshot": "protected"}]
+    elif fault == "authorized":
+        body["errors"] = []
+        body["data"]["specimen"] = {"id": "protected"}
+    elif fault == "authorized_empty":
+        body["errors"] = []
+    else:
+        raise AssertionError(f"Unknown refusal fault: {fault}")
+    with pytest.raises(AssertionError):
+        _denied(reply, "GetSpecimen", f"{case}: {fault}", member=member)
+
+
+@pytest.mark.parametrize("operation,member,path", (
+    ("GetSpecimen", "collectionMember", ("specimenSnapshots",)),
+    ("GetSnapshot", "organizationMember", ("specimenSnapshot",)),
+    ("ListSpecimens", "organizationMember", ("specimens",)),
+    ("GetReceipt", "organizationMember", ("requestReceipt",)),
+    ("CreateSpecimenV3", "organizationMember", ("query", "collectionMember")),
+    ("CreateSpecimenV3", "collectionMember", ("specimen_insert",)),
+    ("SaveSpecimenV3", "organizationMember", ("current", "specimen")),
+    ("SaveSpecimenV3", "collectionMember", ("specimen_updateMany",)),
+))
+def test_denial_oracle_operation_cascade(operation, member, path):
+    # Synthetic coverage of the same rule for the other registered operations.
+    _, reply = _hosted_denial_fragment("foreign_actor")
+    body = reply[1]
+    body["data"] = None
+    primary = ["query", member] if operation.endswith("V3") else [member]
+    body["errors"][0]["path"] = primary
+    body["errors"][1]["path"] = list(path)
+    # Repeated permitted denials remain before the cascade.
+    body["errors"].insert(1, {"message": "membership denied", "path": list(primary),
+                              "extensions": {"code": "PERMISSION_DENIED"}})
+    _denied(reply, operation, "synthetic operation cascade", member=member)
+
+
+@pytest.mark.parametrize("client,code", (
+    ("authenticated", "PERMISSION_DENIED"), ("anonymous", "PERMISSION_DENIED"),
+    ("anonymous", "UNAUTHENTICATED"),
+))
+def test_denial_oracle_client_boundary(client, code):
+    _, reply = _hosted_denial_fragment("foreign_actor")
+    body = reply[1]
+    body["data"] = None
+    body["errors"][0]["path"] = ["CreateSpecimenV3"]
+    body["errors"][0]["extensions"]["code"] = code
+    cascade = body["errors"].pop()
+    _denied(reply, "CreateSpecimenV3", "client denial", client=client)
+    body["errors"].append(cascade)
+    with pytest.raises(AssertionError):
+        _denied(reply, "CreateSpecimenV3", "client must not accept field cascade", client=client)
 
 
 class _Session(requests.Session):
