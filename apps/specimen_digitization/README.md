@@ -2,9 +2,9 @@
 
 The Flutter client a collections reviewer works in: photographs come in through
 intake, a record is reviewed against its own evidence, and a decision is
-recorded with a reason. It runs on the web, on Android and on iOS from one
-codebase, and it is built from an in-repo design system rather than from
-Material.
+recorded with a reason. It runs on the web, on Android, on iOS, and on
+Linux, Windows, and macOS from one codebase, and it is built from an in-repo
+design system rather than from Material.
 
 Firebase supplies identity, storage and the application database. The client
 calls the scoped API; it never connects to PostgreSQL directly and carries no
