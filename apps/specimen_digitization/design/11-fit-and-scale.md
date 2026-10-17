@@ -123,6 +123,7 @@ titles, help text, banner text) is not a label and wraps as content should.
 | `UiButton` | label plus glyph plus padding | none: a button keeps its width and the parent arranges | ellipsis; the tooltip carries the label |
 | `UiChip` | label plus glyph plus padding | none | ellipsis |
 | `UiTabs`, navigation rows | sum of labels | a scrolling row with edge fades | ellipsis |
+| `UiTabBar` (added 2026-10-17) | 48 dp a destination | equal cells; under 48 dp a cell, 48 dp cells in a scrolling row with edge fades | ellipsis, the whole word in a tooltip |
 | `UiTopBar` | leading plus title plus actions | title ellipsis; actions beyond two collapse into an overflow menu | title ellipsis |
 | `UiDataTile` | numeral plus unit | the numeral steps down one display role at a time to `display.medium` | `FittedBox` on the numeral |
 | `UiListRow` | title plus trailing | trailing drops its label and keeps its glyph; then the trailing moves under the title, on a line of its own; the title takes two lines (it is content) | title ellipsis |

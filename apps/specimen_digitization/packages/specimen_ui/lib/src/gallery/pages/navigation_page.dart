@@ -251,6 +251,19 @@ Widget buildNavigationPage(BuildContext context) {
               ),
             ),
             GallerySpecimen(
+              label: 'five destinations in 200 dp',
+              note: 'under 48 dp a cell the bar scrolls, on Help',
+              child: _OverFields(
+                width: 200,
+                height: 96,
+                padded: false,
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: _Tabs(destinations: _five, initial: 3),
+                ),
+              ),
+            ),
+            GallerySpecimen(
               label: 'two destinations, text at 200 percent',
               note: 'the bar grows, nothing is cut',
               child: _OverFields(
