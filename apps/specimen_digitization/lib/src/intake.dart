@@ -405,7 +405,9 @@ class _IntakeScreenState extends State<IntakeScreen> {
     // Admission and upload run under the intake route while the viewfinder
     // stays on top. Each accepted photograph can start before Done is tapped.
     unawaited(
-      _acceptFiles(<XFile>[file], camera: true).then((_) => _session.start()),
+      _acceptFiles(<XFile>[file], camera: true).then((int admitted) async {
+        if (admitted > 0) await _session.start();
+      }),
     );
   }
 
@@ -436,11 +438,13 @@ class _IntakeScreenState extends State<IntakeScreen> {
       _error = null;
     });
     try {
-      await _acceptFiles(await load(), camera: camera);
+      final int admitted = await _acceptFiles(await load(), camera: camera);
       // The in-app camera streams only photographs the operator explicitly
       // sent. A platform picker cannot host that review UI, so manual mode
       // leaves its photograph ready in the Intake queue for the page action.
-      if (camera && _autoIngest) unawaited(_session.start());
+      // An empty return (including streamed captures) or a local refusal is
+      // not an instruction to restart photographs already waiting in Intake.
+      if (camera && _autoIngest && admitted > 0) unawaited(_session.start());
     } catch (_) {
       if (mounted) {
         setState(
@@ -540,7 +544,8 @@ class _IntakeScreenState extends State<IntakeScreen> {
   /// Reads every chosen file, measures what this device can measure, and adds
   /// a row for each. A file this client refuses gets a Skipped row carrying
   /// its own reason rather than a banner the next rejection overwrites.
-  Future<void> _acceptFiles(List<XFile> files, {required bool camera}) async {
+  Future<int> _acceptFiles(List<XFile> files, {required bool camera}) async {
+    int admitted = 0;
     for (final XFile file in files) {
       try {
         final int size = await file.length();
@@ -672,7 +677,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
           width: encodedDimensions?.width,
           height: encodedDimensions?.height,
         );
-        if (!mounted) return;
+        if (!mounted) return admitted;
         setState(() {
           if (old != null) {
             old.file = input;
@@ -695,6 +700,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
           }
         });
         _session.changed();
+        admitted++;
       } catch (_) {
         _skip(
           key: 'read:${file.name}:${_entries.length}',
@@ -704,6 +710,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
         );
       }
     }
+    return admitted;
   }
 
   void _skip({required String key, required String name, required String why}) {

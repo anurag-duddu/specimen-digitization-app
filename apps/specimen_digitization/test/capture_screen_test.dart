@@ -8,8 +8,10 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show MethodChannel;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_ui/specimen_ui.dart';
@@ -19,7 +21,9 @@ import 'package:specimen_digitization/src/capture_quality.dart';
 import 'package:specimen_digitization/src/intake.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/screens/intake/manifest_panel.dart';
+import 'package:specimen_digitization/src/screens/intake/intake_transfer_session.dart';
 import 'package:specimen_digitization/src/theme/app_theme.dart';
+import 'package:specimen_digitization/src/widgets/upload_item.dart';
 import 'package:specimen_digitization/src/widgets/not_calibrated_chip.dart';
 
 import 'widget_test.dart' show TestRepository;
@@ -249,7 +253,874 @@ Future<void> waitForCameraCondition(
   await tester.pump();
 }
 
+const _admissionScope = CollectionScope(
+  organizationId: 'org',
+  collectionId: 'admission',
+  name: 'Test collection',
+);
+const _admissionOwner = 'camera-admission-test';
+const _admissionPreference =
+    'camera-auto-ingest-v1:$_admissionOwner:org/admission';
+
+class _AdmissionRepository extends TestRepository {
+  final List<({String operation, String row})> requests = [];
+  final Map<String, IntakeFile> received = {};
+  Completer<void>? uploadGate;
+  bool failUpload = false;
+  bool serverDuplicate = false;
+
+  @override
+  Future<Json> createIntake(
+    CollectionScope scope,
+    IntakeFile file,
+    String key,
+  ) async {
+    requests.add((operation: 'create', row: file.sha256));
+    received[file.sha256] = file;
+    return {
+      'upload_id': file.sha256,
+      'state': serverDuplicate ? 'duplicate' : 'ready',
+    };
+  }
+
+  @override
+  Future<Json> resumeIntake(CollectionScope scope, String id) async {
+    requests.add((operation: 'resume', row: id));
+    return {'upload_id': id, 'state': 'ready'};
+  }
+
+  @override
+  Future<void> upload(
+    CollectionScope scope,
+    Json session,
+    IntakeFile file,
+    void Function(double) progress,
+  ) async {
+    requests.add((operation: 'upload', row: session['upload_id'] as String));
+    received[file.sha256] = file;
+    await uploadGate?.future;
+    if (failUpload) {
+      throw const ApiFailure('Test upload interrupted.', status: 503);
+    }
+    progress(1);
+  }
+
+  @override
+  Future<Json> completeIntake(
+    CollectionScope scope,
+    String id,
+    String key,
+  ) async {
+    requests.add((operation: 'complete', row: id));
+    return {};
+  }
+}
+
+/// Controls admission without changing CaptureScreen's asynchronous lifecycle.
+class _AdmissionFile extends XFile {
+  _AdmissionFile(
+    this.bytes, {
+    String name = 'admission.png',
+    this.gate,
+    this.reportedLength,
+    this.unreadable = false,
+  }) : super(name);
+
+  final Uint8List bytes;
+  final Completer<void>? gate;
+  final int? reportedLength;
+  final bool unreadable;
+  bool lengthRequested = false;
+
+  @override
+  Future<int> length() async {
+    lengthRequested = true;
+    await gate?.future;
+    return reportedLength ?? bytes.length;
+  }
+
+  @override
+  Future<Uint8List> readAsBytes() async {
+    if (unreadable) throw const FileSystemException('Test file unavailable');
+    return bytes;
+  }
+}
+
+ManifestEntry _admissionEntry(
+  String key, {
+  UploadState state = UploadState.ready,
+}) {
+  final digest = key.padRight(64, '0');
+  return ManifestEntry(
+    digest: digest,
+    name: '$key.png',
+    file: IntakeFile(
+      name: '$key.png',
+      bytes: FakeCaptureCamera.frame,
+      mimeType: 'image/png',
+      sha256: digest,
+      method: 'files',
+      sensitive: true,
+    ),
+    state: state,
+  );
+}
+
+List<ManifestEntry> _oldAdmissionRows() => [
+  _admissionEntry('old-ready'),
+  _admissionEntry('old-failed', state: UploadState.failed)
+    ..session = {'upload_id': 'old-upload'},
+  ManifestEntry.restored(
+    digest: 'restored'.padRight(64, '0'),
+    handle: {'upload_id': 'restored-upload'},
+  ),
+];
+
+Future<void> _waitAdmission(
+  WidgetTester tester,
+  bool Function() condition,
+  String reason,
+) async {
+  await waitForCameraCondition(tester, condition);
+  expect(condition(), isTrue, reason: reason);
+}
+
+Future<void> _pumpAdmissionFrames(WidgetTester tester) async {
+  // Seeded Checking rows deliberately keep animating. Advance route/disclosure
+  // transitions, then wait for explicit admission/transfer predicates instead
+  // of asking an indeterminate progress indicator to settle.
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
+  await tester.runAsync(() async => Future<void>.delayed(Duration.zero));
+  await tester.pump();
+}
+
+Future<IntakeTransferSession> _pumpAdmission(
+  WidgetTester tester,
+  _AdmissionRepository repository, {
+  bool automatic = true,
+  List<ManifestEntry>? rows,
+  Future<CaptureResult> Function(BuildContext)? result,
+  Future<List<XFile>> Function()? recover,
+  bool recoveryMarker = false,
+  FakeCaptureCamera? camera,
+}) async {
+  SharedPreferences.setMockInitialValues({
+    _admissionPreference: automatic,
+    if (recoveryMarker)
+      'pending-camera-owner-v1': '$_admissionOwner:${_admissionScope.key}',
+  });
+  tester.view.devicePixelRatio = 1;
+  tester.view.physicalSize = const Size(1100, 2400);
+  addTearDown(tester.view.reset);
+  final session = intakeTransferSession(
+    repository,
+    _admissionScope,
+    _admissionOwner,
+  );
+  session.entries.addAll(rows ?? _oldAdmissionRows());
+  addTearDown(() async {
+    final gate = repository.uploadGate;
+    if (gate != null && !gate.isCompleted) gate.complete();
+    await tester.pumpWidget(const SizedBox.shrink());
+    forgetIntakeTransfers(repository, _admissionOwner);
+  });
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: AppTheme.light(),
+      home: Scaffold(
+        body: IntakeScreen(
+          repository: repository,
+          scope: _admissionScope,
+          userId: _admissionOwner,
+          onComplete: () {},
+          cameraFactory: () async => camera ?? FakeCaptureCamera(),
+          openCapture: result,
+          recoverCamera: recover,
+        ),
+      ),
+    ),
+  );
+  await _pumpAdmissionFrames(tester);
+  return session;
+}
+
+Future<void> _openAdmissionCamera(WidgetTester tester) async {
+  const key = ValueKey<String>('intake-take-photograph');
+  if (find.byKey(key).evaluate().isEmpty) {
+    await tester.tap(find.byKey(const ValueKey('intake-add-photos')));
+    await _pumpAdmissionFrames(tester);
+  }
+  await tester.ensureVisible(find.byKey(key));
+  await tester.tap(find.byKey(key));
+  await _pumpAdmissionFrames(tester);
+}
+
+Future<void> _closeAdmissionCamera(WidgetTester tester, String action) async {
+  if (action == 'Back') {
+    await tester.binding.handlePopRoute();
+  } else if (action == 'Close') {
+    await tester.tap(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is UiIconButton &&
+            widget.semanticsLabel == CaptureScreen.closeLabel,
+      ),
+    );
+  } else {
+    await tester.tap(find.text(action));
+  }
+  await _pumpAdmissionFrames(tester);
+}
+
+Future<void> _acceptAdmissionFile(WidgetTester tester, XFile file) async {
+  tester.widget<CaptureScreen>(find.byType(CaptureScreen)).onAccepted!(file);
+  await tester.pump();
+}
+
 void main() {
+  group('camera admission:', () {
+    for (final action in ['Close', 'Done', 'Back', 'Back to Intake']) {
+      testWidgets('zero-photo $action preserves old rows without sending', (
+        tester,
+      ) async {
+        final repository = _AdmissionRepository();
+        final camera = FakeCaptureCamera(
+          unavailable: action == 'Back to Intake'
+              ? CaptureUnavailable.permission
+              : null,
+        );
+        final session = await _pumpAdmission(
+          tester,
+          repository,
+          camera: camera,
+        );
+        final before = [
+          for (final entry in session.entries)
+            (entry.state, entry.file, entry.session),
+        ];
+        await _openAdmissionCamera(tester);
+        await _closeAdmissionCamera(tester, action);
+        await _waitAdmission(
+          tester,
+          () => !session.busy,
+          'return pump finished',
+        );
+        expect(repository.requests, isEmpty);
+        expect([
+          for (final entry in session.entries)
+            (entry.state, entry.file, entry.session),
+        ], before);
+        expect(camera.taken, isEmpty);
+        expect(
+          (await SharedPreferences.getInstance()).getBool(_admissionPreference),
+          isTrue,
+        );
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    for (final callback in [false, true]) {
+      for (final rejection in [
+        'empty',
+        'format',
+        'size',
+        'resolution',
+        'read',
+      ]) {
+        testWidgets(
+          '${callback ? 'callback' : 'returned'} $rejection rejection does not release old rows',
+          (tester) async {
+            final bytes = Uint8List.fromList(FakeCaptureCamera.frame);
+            if (rejection == 'resolution') {
+              ByteData.sublistView(bytes).setUint32(16, 65537);
+            }
+            final file = _AdmissionFile(
+              bytes,
+              name: rejection == 'format' ? 'refused.txt' : 'refused.png',
+              reportedLength: rejection == 'empty'
+                  ? 0
+                  : rejection == 'size'
+                  ? intakeMaximumBytes + 1
+                  : null,
+              unreadable: rejection == 'read',
+            );
+            final repository = _AdmissionRepository();
+            final session = await _pumpAdmission(
+              tester,
+              repository,
+              result: callback
+                  ? null
+                  : (_) async => CaptureResult(files: [file]),
+            );
+            await _openAdmissionCamera(tester);
+            if (callback) await _acceptAdmissionFile(tester, file);
+            await _waitAdmission(
+              tester,
+              () => session.entries.any((e) => e.state == UploadState.skipped),
+              'the existing refusal is recorded',
+            );
+            await _waitAdmission(
+              tester,
+              () => !session.busy,
+              'admission settled',
+            );
+            expect(repository.requests, isEmpty);
+            expect(session.entries[0].state, UploadState.ready);
+            expect(session.entries[1].state, UploadState.failed);
+            expect(session.entries[2].file, isNull);
+          },
+        );
+      }
+
+      for (final duplicate in ['settled', 'checking', 'uploading']) {
+        testWidgets(
+          '${callback ? 'callback' : 'returned'} $duplicate local duplicate does not release old rows',
+          (tester) async {
+            final file = _AdmissionFile(FakeCaptureCamera.frame);
+            final digest = sha256.convert(file.bytes).toString();
+            final existing = _admissionEntry(digest)
+              ..state = duplicate == 'settled'
+                  ? UploadState.accepted
+                  : duplicate == 'uploading'
+                  ? UploadState.uploading
+                  : UploadState.ready
+              ..checking = duplicate == 'checking';
+            final repository = _AdmissionRepository();
+            final session = await _pumpAdmission(
+              tester,
+              repository,
+              rows: [..._oldAdmissionRows(), existing],
+              result: callback
+                  ? null
+                  : (_) async => CaptureResult(files: [file]),
+            );
+            await _openAdmissionCamera(tester);
+            if (callback) await _acceptAdmissionFile(tester, file);
+            await _waitAdmission(
+              tester,
+              () => session.entries.any((e) => e.state == UploadState.skipped),
+              'local duplicate is refused',
+            );
+            await _waitAdmission(
+              tester,
+              () => !session.busy,
+              'admission settled',
+            );
+            expect(repository.requests, isEmpty);
+            expect(session.entries[0].state, UploadState.ready);
+          },
+        );
+      }
+    }
+
+    for (final action in ['Close', 'Done', 'Back']) {
+      testWidgets('failed streamed transfer is not retried by $action', (
+        tester,
+      ) async {
+        final repository = _AdmissionRepository()..failUpload = true;
+        final session = await _pumpAdmission(tester, repository, rows: []);
+        await _openAdmissionCamera(tester);
+        await tester.tap(find.byKey(const ValueKey('capture-shutter')));
+        await _waitAdmission(
+          tester,
+          () =>
+              !session.busy &&
+              session.entries.length == 1 &&
+              session.entries.single.state == UploadState.failed &&
+              session.entries.single.sendable,
+          'first pump is terminal, nonbusy and retryable BEFORE exit',
+        );
+        final row = session.entries.single.digest;
+        expect(repository.requests, [
+          (operation: 'create', row: row),
+          (operation: 'upload', row: row),
+        ]);
+        final before = [...repository.requests];
+        await _closeAdmissionCamera(tester, action);
+        await _waitAdmission(tester, () => !session.busy, 'return settled');
+        expect(repository.requests, before);
+        expect(session.entries.single.sendable, isTrue);
+      });
+    }
+
+    for (final automatic in [false, true]) {
+      testWidgets('returned valid photo keeps automatic=$automatic behavior', (
+        tester,
+      ) async {
+        final bytes = FakeCaptureCamera.frame;
+        final digest = sha256.convert(bytes).toString();
+        final repository = _AdmissionRepository();
+        final session = await _pumpAdmission(
+          tester,
+          repository,
+          automatic: automatic,
+          rows: [],
+          result: (_) async => CaptureResult(files: [_AdmissionFile(bytes)]),
+        );
+        await _openAdmissionCamera(tester);
+        await _waitAdmission(
+          tester,
+          () => session.entries.isNotEmpty,
+          'admitted',
+        );
+        if (!automatic) {
+          expect(repository.requests, isEmpty);
+          final send = find.byKey(const ValueKey('intake-upload'));
+          await tester.ensureVisible(send);
+          await tester.tap(send);
+        }
+        await _waitAdmission(
+          tester,
+          () => !session.busy && session.entries.single.settled,
+          'valid accepted photo reaches existing transfer',
+        );
+        expect(repository.requests, [
+          (operation: 'create', row: digest),
+          (operation: 'upload', row: digest),
+          (operation: 'resume', row: digest),
+          (operation: 'complete', row: digest),
+        ]);
+        expect(repository.received[digest]!.bytes, orderedEquals(bytes));
+        expect(repository.received[digest]!.method, 'camera');
+        expect(repository.received[digest]!.width, isPositive);
+        expect(repository.received[digest]!.height, isPositive);
+      });
+    }
+
+    testWidgets('manual review Send still transfers before Done', (
+      tester,
+    ) async {
+      final repository = _AdmissionRepository();
+      final session = await _pumpAdmission(
+        tester,
+        repository,
+        automatic: false,
+        rows: [],
+      );
+      await _openAdmissionCamera(tester);
+      await takeOne(tester);
+      expect(repository.requests, isEmpty);
+      await tester.tap(find.byKey(const ValueKey('capture-send')));
+      await _waitAdmission(
+        tester,
+        () => !session.busy && session.entries.any((e) => e.settled),
+        'manual acceptance starts transfer even with automatic off',
+      );
+      expect(find.byType(CaptureScreen), findsOneWidget);
+      final before = [...repository.requests];
+      await _closeAdmissionCamera(tester, 'Done');
+      expect(repository.requests, before);
+      expect(
+        (await SharedPreferences.getInstance()).getBool(_admissionPreference),
+        isFalse,
+      );
+    });
+
+    testWidgets('unsent manual review never releases old rows', (tester) async {
+      final repository = _AdmissionRepository();
+      final session = await _pumpAdmission(
+        tester,
+        repository,
+        automatic: false,
+      );
+      await _openAdmissionCamera(tester);
+      await takeOne(tester);
+      await _closeAdmissionCamera(tester, 'Back');
+      expect(repository.requests, isEmpty);
+      expect(session.entries, hasLength(3));
+    });
+
+    for (final earned in [false, true]) {
+      testWidgets(
+        'unmount keeps earned=$earned admissions without admitting the later file',
+        (tester) async {
+          final gate = Completer<void>();
+          final first = _AdmissionFile(
+            FakeCaptureCamera.frame,
+            name: 'first.png',
+            reportedLength: earned ? null : 0,
+          );
+          final later = _AdmissionFile(
+            File('test/fixtures/synthetic-wide-label.png').readAsBytesSync(),
+            name: 'later.png',
+            gate: gate,
+          );
+          final firstDigest = sha256.convert(first.bytes).toString();
+          final laterDigest = sha256.convert(later.bytes).toString();
+          final repository = _AdmissionRepository();
+          final session = await _pumpAdmission(
+            tester,
+            repository,
+            result: (_) async => CaptureResult(files: [first, later]),
+          );
+          addTearDown(() {
+            if (!gate.isCompleted) gate.complete();
+          });
+          final take = find.byKey(const ValueKey('intake-take-photograph'));
+          if (take.evaluate().isEmpty) {
+            await tester.tap(find.byKey(const ValueKey('intake-add-photos')));
+            await _pumpAdmissionFrames(tester);
+          }
+          // Keep the actual selection future so the zero-earned assertion is
+          // made after admission returns, not before a delayed pump can start.
+          final choosing =
+              Function.apply(tester.widget<UiButton>(take).onPressed!, const [])
+                  as Future<void>;
+          await _waitAdmission(
+            tester,
+            () => later.lengthRequested && session.entries.length == 4,
+            'first file is handled while the second admission is gated',
+          );
+          expect(repository.requests, isEmpty);
+          expect(session.busy, isFalse);
+          expect(
+            session.entries.last.state,
+            earned ? UploadState.ready : UploadState.skipped,
+          );
+          final admitted = earned ? session.entries.last : null;
+          final before = [
+            for (final entry in session.entries)
+              (entry.state, entry.file, entry.session),
+          ];
+          await tester.pumpWidget(const SizedBox.shrink());
+          expect(find.byType(IntakeScreen), findsNothing);
+          gate.complete();
+          await tester.runAsync(() async => choosing);
+          await _waitAdmission(
+            tester,
+            () => !session.busy,
+            'the retained session finishes any earned pump after unmount',
+          );
+          expect(session.entries, hasLength(4));
+          expect(session.entries.any((e) => e.digest == laterDigest), isFalse);
+          expect(repository.requests.any((r) => r.row == laterDigest), isFalse);
+          if (earned) {
+            expect(admitted!.state, UploadState.accepted);
+            expect(
+              repository.requests
+                  .where((r) => r.row == firstDigest)
+                  .map((r) => r.operation),
+              ['create', 'upload', 'resume', 'complete'],
+            );
+            expect(
+              repository.received[firstDigest]!.bytes,
+              orderedEquals(first.bytes),
+            );
+          } else {
+            expect(repository.requests, isEmpty);
+            expect([
+              for (final entry in session.entries)
+                (entry.state, entry.file, entry.session),
+            ], before);
+          }
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+
+    testWidgets('accepted admission may finish after the camera closes', (
+      tester,
+    ) async {
+      final gate = Completer<void>();
+      final repository = _AdmissionRepository();
+      final session = await _pumpAdmission(tester, repository, rows: []);
+      await _openAdmissionCamera(tester);
+      await _acceptAdmissionFile(
+        tester,
+        _AdmissionFile(FakeCaptureCamera.frame, gate: gate),
+      );
+      expect(session.entries, isEmpty);
+      await _closeAdmissionCamera(tester, 'Done');
+      expect(repository.requests, isEmpty);
+      gate.complete();
+      await _waitAdmission(
+        tester,
+        () => !session.busy && session.entries.any((e) => e.settled),
+        'accepted callback owns admission even after camera pop',
+      );
+      expect(repository.requests.map((r) => r.operation), [
+        'create',
+        'upload',
+        'resume',
+        'complete',
+      ]);
+    });
+
+    testWidgets('multiple accepts join the running pump without double sends', (
+      tester,
+    ) async {
+      final gate = Completer<void>();
+      final repository = _AdmissionRepository()..uploadGate = gate;
+      final session = await _pumpAdmission(tester, repository, rows: []);
+      await _openAdmissionCamera(tester);
+      final first = FakeCaptureCamera.frame;
+      final second = File(
+        'test/fixtures/synthetic-wide-label.png',
+      ).readAsBytesSync();
+      await _acceptAdmissionFile(tester, _AdmissionFile(first));
+      await _waitAdmission(
+        tester,
+        () =>
+            session.busy &&
+            repository.requests.any((r) => r.operation == 'upload'),
+        'first transfer is held busy',
+      );
+      await _acceptAdmissionFile(
+        tester,
+        _AdmissionFile(second, name: 'second.png'),
+      );
+      await _waitAdmission(
+        tester,
+        () => session.entries.length == 2 && session.entries.last.sendable,
+        'second acceptance joins the same busy batch',
+      );
+      await _closeAdmissionCamera(tester, 'Done');
+      gate.complete();
+      await _waitAdmission(
+        tester,
+        () => !session.busy && session.entries.every((e) => e.settled),
+        'the existing pump drains both accepted photos',
+      );
+      for (final bytes in [first, second]) {
+        final digest = sha256.convert(bytes).toString();
+        expect(
+          repository.requests
+              .where((r) => r.row == digest)
+              .map((r) => r.operation),
+          ['create', 'upload', 'resume', 'complete'],
+        );
+        expect(repository.received[digest]!.bytes, orderedEquals(bytes));
+      }
+    });
+
+    for (final state in [UploadState.ready, UploadState.interrupted]) {
+      testWidgets('same-digest $state re-admission remains a positive action', (
+        tester,
+      ) async {
+        final bytes = FakeCaptureCamera.frame;
+        final digest = sha256.convert(bytes).toString();
+        final old = state == UploadState.interrupted
+            ? ManifestEntry.restored(
+                digest: digest,
+                handle: {'upload_id': 'existing-upload'},
+              )
+            : _admissionEntry(digest);
+        final repository = _AdmissionRepository();
+        final session = await _pumpAdmission(
+          tester,
+          repository,
+          rows: [old],
+          result: (_) async => CaptureResult(files: [_AdmissionFile(bytes)]),
+        );
+        await _openAdmissionCamera(tester);
+        await _waitAdmission(
+          tester,
+          () => !session.busy && old.settled,
+          're-admitted old row is eligible without a new manifest row',
+        );
+        expect(session.entries, [same(old)]);
+        expect(
+          repository.requests.map((r) => r.operation),
+          state == UploadState.interrupted
+              ? ['resume', 'upload', 'resume', 'complete']
+              : ['create', 'upload', 'resume', 'complete'],
+        );
+        if (state == UploadState.interrupted) {
+          expect(
+            repository.requests.every((r) => r.row == 'existing-upload'),
+            isTrue,
+          );
+        }
+      });
+    }
+
+    testWidgets('server duplicate is admitted and genuine batch drain survives', (
+      tester,
+    ) async {
+      final repository = _AdmissionRepository()..serverDuplicate = true;
+      final session = await _pumpAdmission(
+        tester,
+        repository,
+        rows: [_admissionEntry('old-ready')],
+        result: (_) async => CaptureResult(
+          files: [
+            _AdmissionFile(Uint8List.fromList([1, 2, 3])),
+          ],
+        ),
+      );
+      await _openAdmissionCamera(tester);
+      await _waitAdmission(
+        tester,
+        () =>
+            !session.busy &&
+            session.entries.length == 2 &&
+            session.entries.every((e) => e.settled),
+        'unsupported local decoder is tolerated and server duplicates are normal acceptance',
+      );
+      expect(repository.requests, [
+        (operation: 'create', row: 'old-ready'.padRight(64, '0')),
+        (operation: 'create', row: sha256.convert([1, 2, 3]).toString()),
+      ]);
+      expect(
+        session.entries.every((e) => e.state == UploadState.duplicate),
+        isTrue,
+      );
+    });
+
+    for (final selected in [false, true]) {
+      for (final automatic in selected ? [false, true] : [true]) {
+        testWidgets(
+          'platform picker selected=$selected automatic=$automatic keeps marker and send policy',
+          (tester) async {
+            const channel = MethodChannel('plugins.flutter.io/image_picker');
+            var calls = 0;
+            final messenger = TestDefaultBinaryMessengerBinding
+                .instance
+                .defaultBinaryMessenger;
+            messenger.setMockMethodCallHandler(channel, (call) async {
+              expect(call.method, 'pickImage');
+              calls++;
+              expect(
+                (await SharedPreferences.getInstance()).getString(
+                  'pending-camera-owner-v1',
+                ),
+                '$_admissionOwner:${_admissionScope.key}',
+              );
+              return selected
+                  ? File('test/fixtures/synthetic-label.png').absolute.path
+                  : null;
+            });
+            addTearDown(
+              () => messenger.setMockMethodCallHandler(channel, null),
+            );
+            final repository = _AdmissionRepository();
+            final session = await _pumpAdmission(
+              tester,
+              repository,
+              automatic: automatic,
+              rows: selected ? [] : null,
+              result: (_) async =>
+                  const CaptureResult(unavailable: CaptureUnavailable.noCamera),
+            );
+            await _openAdmissionCamera(tester);
+            await _waitAdmission(
+              tester,
+              () => calls == 1 && (!selected || session.entries.isNotEmpty),
+              'the real platform-picker adapter returns its mocked result',
+            );
+            if (selected && automatic) {
+              await _waitAdmission(
+                tester,
+                () => !session.busy && session.entries.single.settled,
+                'automatic fallback transfers',
+              );
+              expect(repository.requests.map((r) => r.operation), [
+                'create',
+                'upload',
+                'resume',
+                'complete',
+              ]);
+            } else {
+              await _waitAdmission(
+                tester,
+                () => !session.busy,
+                'picker settled',
+              );
+              expect(repository.requests, isEmpty);
+            }
+            expect(
+              (await SharedPreferences.getInstance()).getString(
+                'pending-camera-owner-v1',
+              ),
+              isNull,
+            );
+            expect(
+              (await SharedPreferences.getInstance()).getBool(
+                _admissionPreference,
+              ),
+              automatic,
+            );
+          },
+        );
+      }
+    }
+
+    testWidgets('recovered camera admission still waits for explicit Send', (
+      tester,
+    ) async {
+      final repository = _AdmissionRepository();
+      final session = await _pumpAdmission(
+        tester,
+        repository,
+        rows: [],
+        recoveryMarker: true,
+        recover: () async => [_AdmissionFile(FakeCaptureCamera.frame)],
+      );
+      await _waitAdmission(
+        tester,
+        () => session.entries.isNotEmpty,
+        'recovery admits its image',
+      );
+      expect(repository.requests, isEmpty);
+      expect(session.entries.single.sendable, isTrue);
+      expect(
+        (await SharedPreferences.getInstance()).getString(
+          'pending-camera-owner-v1',
+        ),
+        isNull,
+      );
+    });
+
+    testWidgets(
+      'explicit per-file Retry and page Send still own old transfers',
+      (tester) async {
+        final repository = _AdmissionRepository();
+        final session = await _pumpAdmission(tester, repository);
+        await _openAdmissionCamera(tester);
+        await _closeAdmissionCamera(tester, 'Done');
+        await _waitAdmission(
+          tester,
+          () => !session.busy,
+          'camera return settled',
+        );
+        expect(repository.requests, isEmpty);
+        final failed = session.entries[1];
+        final retry = find.byKey(ValueKey('intake-retry-${failed.digest}'));
+        await tester.ensureVisible(retry);
+        await tester.tap(retry);
+        await _waitAdmission(
+          tester,
+          () => !session.busy && failed.settled,
+          'explicit retry finishes',
+        );
+        expect(repository.requests, [
+          (operation: 'resume', row: 'old-upload'),
+          (operation: 'upload', row: 'old-upload'),
+          (operation: 'resume', row: 'old-upload'),
+          (operation: 'complete', row: 'old-upload'),
+        ]);
+        expect(session.entries.first.state, UploadState.ready);
+        final send = find.byKey(const ValueKey('intake-upload'));
+        await tester.ensureVisible(send);
+        await tester.tap(send);
+        await _waitAdmission(
+          tester,
+          () => !session.busy && session.entries.first.settled,
+          'explicit page Send finishes',
+        );
+        expect(
+          repository.requests
+              .where((r) => r.row == session.entries.first.digest)
+              .map((r) => r.operation),
+          ['create', 'upload', 'resume', 'complete'],
+        );
+        expect(session.entries[2].file, isNull);
+        expect(session.entries[2].state, UploadState.interrupted);
+      },
+    );
+  });
+
   testWidgets(
     'crop controls move the frame without dragging and cancel keeps pixels',
     (tester) async {

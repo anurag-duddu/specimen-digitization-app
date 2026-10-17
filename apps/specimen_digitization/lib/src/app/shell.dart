@@ -447,6 +447,8 @@ class _AppShellState extends State<AppShell> {
       ),
       child: material.NavigationBar(
         key: const ValueKey<String>('mobile-navigation'),
+        // Keep the compact content height separate from the native safe inset.
+        height: UiType.heightAround(ui.space.s16, ui.type.label, context),
         animationDuration: ui.motion.navigationGlide,
         selectedIndex: selected,
         onDestinationSelected: select,
