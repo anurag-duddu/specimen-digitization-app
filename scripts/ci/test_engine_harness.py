@@ -1,7 +1,7 @@
 """Controlled subprocess qualification; these fixtures never launch real engines."""
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import importlib.util
@@ -294,8 +294,271 @@ if name=='psql':
 '''
 
 
+# Each fixture subprocess starts in its own session: its process group ID is its
+# PID, and the group holds exactly the tree this test started. These two bounds
+# are new and only limit stopping that tree; no existing test limit changed.
+FIXTURE_TERM_SECONDS = 5
+FIXTURE_KILL_SECONDS = 5
+
+
+def process_states():
+    """Map each PID to (process group, state); a process exiting meanwhile is omitted."""
+    states = {}
+    if sys.platform == 'linux':
+        for entry in os.scandir('/proc'):
+            if entry.name.isdigit():
+                try:
+                    with open(f'/proc/{entry.name}/stat') as handle:
+                        fields = handle.read().rsplit(') ', 1)[1].split()
+                except (FileNotFoundError, ProcessLookupError):
+                    continue  # It exited and was reaped while the table was read.
+                states[int(entry.name)] = (int(fields[2]), fields[0])
+        return states
+    listing = subprocess.run(['/bin/ps', '-A', '-o', 'pid=,pgid=,stat='], capture_output=True, text=True,
+                             timeout=10, check=True, env=dict(os.environ, LC_ALL='C'))
+    for row in listing.stdout.splitlines():
+        pid, group, state = row.split()
+        states[int(pid)] = (int(group), state)
+    return states
+
+
+def live_processes(pids):
+    """The given PIDs that have not exited. A zombie has exited and holds no port."""
+    states = process_states()
+    return sorted(pid for pid in pids if pid in states and not states[pid][1].startswith(('Z', 'X')))
+
+
+def live_group_members(group):
+    """Members of one process group that have not exited."""
+    states = process_states()
+    return live_processes(pid for pid, (owner, _) in states.items() if owner == group)
+
+
+class FixtureProcesses:
+    """Own only subprocess sessions created by this test, even after failure."""
+
+    def __init__(self):
+        self.children = []
+
+    def start(self, command, **options):
+        child = subprocess.Popen(command, start_new_session=True, **options)
+        self.children.append(child)
+        return child
+
+    def group_live(self, child):
+        """Whether this test's own process group still has a member that has not exited."""
+        child.poll()  # Reap an exited leader; only this owner ever waits for it.
+        if child.returncode is not None:
+            try:
+                os.getpgid(child.pid)
+            except ProcessLookupError:
+                pass  # No process holds the PID, so a group with this ID is still ours.
+            else:
+                # Linux and Darwin never reissue a PID that still names a process
+                # group: a new process here proves this test's group already ended.
+                return False
+        try:
+            os.killpg(child.pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            # Darwin answers EPERM when every remaining member has exited and only
+            # awaits its reaper. That tree is stopped; a live member is not.
+            live = live_group_members(child.pid)
+            if live:
+                raise RuntimeError(f'live fixture group members cannot be signaled: {live}')
+            return False
+        return True
+
+    def stop_group(self, child):
+        for signum, seconds in ((signal.SIGTERM, FIXTURE_TERM_SECONDS), (signal.SIGKILL, FIXTURE_KILL_SECONDS)):
+            if not self.group_live(child):
+                return
+            try:
+                os.killpg(child.pid, signum)
+            except (ProcessLookupError, PermissionError):
+                pass  # It exited meanwhile; group_live() reports a live member it cannot signal.
+            deadline = time.monotonic() + seconds
+            census = time.monotonic() + .2
+            while self.group_live(child):
+                now = time.monotonic()
+                if now >= census:
+                    # Linux still answers for a group of exited zombies; stop once none is live.
+                    if not live_group_members(child.pid):
+                        return
+                    census = now + 1
+                if now >= deadline:
+                    break
+                time.sleep(.02)
+            else:
+                return
+        live = live_group_members(child.pid)
+        if live:
+            raise RuntimeError(f'fixture group members survived SIGKILL: {live}')
+
+    def stop(self, child):
+        if child not in self.children:
+            return
+        try:
+            self.stop_group(child)
+            child.wait(timeout=FIXTURE_KILL_SECONDS)
+        except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+            raise RuntimeError(f'fixture cleanup pid={child.pid} command={child.args!r} '
+                               f'returncode={child.returncode}: {error}') from error
+        for stream in (child.stdin, child.stdout, child.stderr):
+            if stream is not None:
+                stream.close()
+        self.children.remove(child)
+
+    def run(self, command, *, capture_output=False, timeout=None, **options):
+        """subprocess.run() in an owned session; the whole tree stops before it returns."""
+        if capture_output:
+            options.update(stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        child = self.start(command, **options)
+        try:
+            stdout, stderr = child.communicate(timeout=timeout)
+        finally:
+            self.stop(child)
+        return subprocess.CompletedProcess(command, child.returncode, stdout, stderr)
+
+    def close(self):
+        # ExitStack continues stopping the other owned sessions if one stop fails.
+        with ExitStack() as cleanup:
+            for child in self.children[:]:
+                cleanup.callback(self.stop, child)
+
+
 @pytest.fixture
-def shell_fixture(tmp_path):
+def fixture_processes():
+    processes = FixtureProcesses()
+    try:
+        yield processes
+    finally:
+        processes.close()
+
+
+def test_fixture_cleanup_does_not_signal_an_absent_group(fixture_processes, monkeypatch):
+    killpg = os.killpg
+    signals = []
+    def reject_stale_signal(group, signum):
+        signals.append(signum)
+        if signum:
+            raise PermissionError('completed fixture group no longer exists')
+        return killpg(group, signum)
+    monkeypatch.setattr(os, 'killpg', reject_stale_signal)
+    result = fixture_processes.run([sys.executable, '-B', '-c', 'print("completed"); raise SystemExit(7)'],
+                                   capture_output=True, text=True, timeout=5)
+    assert result.returncode == 7 and result.stdout == 'completed\n'
+    assert not any(signals), f'cleanup signaled a completed, absent group: {signals}'
+    assert not fixture_processes.children
+
+
+def test_fixture_cleanup_treats_an_exited_zombie_group_as_stopped(fixture_processes, monkeypatch, tmp_path):
+    # The state after a completed run: the leader is reaped and the group's last
+    # member has exited but is not yet reaped. Darwin refuses a group signal here
+    # with EPERM; that must count as stopped, not mask the test's result. The
+    # member's parent escapes to its own session: never this test's to signal.
+    record, release = tmp_path / 'record.json', tmp_path / 'release'
+    escaped = r'''
+import json, os, pathlib, subprocess, sys, time
+record, release = map(pathlib.Path, sys.argv[1:3])
+member = subprocess.Popen([sys.executable, '-B', '-c', 'pass'], stdout=subprocess.PIPE)
+member.stdout.read()  # EOF: the member has exited; it stays an unreaped zombie.
+os.setsid()  # Leave the fixture group; the zombie member stays in it.
+record.write_text(json.dumps({'escaped': os.getpid(), 'zombie': member.pid}))
+deadline = time.monotonic() + 30
+while not release.exists() and time.monotonic() < deadline:
+    time.sleep(.02)
+'''
+    leader = fixture_processes.start([sys.executable, '-B', '-c',
+                                      'import os, subprocess, sys; subprocess.Popen([sys.executable, "-B", "-c", *sys.argv[1:]]); os._exit(0)',
+                                      escaped, str(record), str(release)])
+    try:
+        deadline = time.monotonic() + 10
+        while not record.exists() and time.monotonic() < deadline:
+            time.sleep(.02)
+        ids = json.loads(record.read_text())
+        assert leader.wait(timeout=10) == 0
+        while process_states().get(ids['zombie'], (None, ''))[1][:1] != 'Z' and time.monotonic() < deadline:
+            time.sleep(.02)
+        group, state = process_states()[ids['zombie']]
+        assert group == leader.pid and state.startswith('Z'), (group, state)
+        assert live_processes([ids['escaped']]) == [ids['escaped']]
+        killpg = os.killpg
+        signals = []
+        def observed(group, signum):
+            signals.append(group)
+            return killpg(group, signum)
+        with monkeypatch.context() as patch:
+            patch.setattr(os, 'killpg', observed)
+            fixture_processes.stop(leader)
+        assert leader not in fixture_processes.children
+        assert set(signals) <= {leader.pid}, f'cleanup signaled a group it did not start: {signals}'
+        assert live_processes([ids['escaped']]) == [ids['escaped']], 'cleanup reached a process outside its group'
+    finally:
+        release.touch()
+        if record.exists():
+            escaped_pid = json.loads(record.read_text())['escaped']
+            deadline = time.monotonic() + 10
+            while live_processes([escaped_pid]) and time.monotonic() < deadline:
+                time.sleep(.02)
+
+
+def test_fixture_cleanup_reports_a_live_group_it_may_not_signal(fixture_processes, monkeypatch):
+    child = fixture_processes.start([sys.executable, '-B', '-c', 'import signal; signal.pause()'])
+    def deny(group, signum):
+        raise PermissionError(f'signal {signum} to group {group} denied')
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(os, 'killpg', deny)
+            with pytest.raises(RuntimeError, match=rf'pid={child.pid}.*signal\.pause.*cannot be signaled: \[{child.pid}\]'):
+                fixture_processes.stop(child)
+        assert child.poll() is None, 'denied cleanup unexpectedly stopped the control'
+        assert child in fixture_processes.children, 'failed cleanup abandoned its live child'
+    finally:
+        fixture_processes.stop(child)
+
+
+def test_fixture_cleanup_never_signals_a_reused_leader_pid(fixture_processes, monkeypatch):
+    child = fixture_processes.start([sys.executable, '-B', '-c', 'pass'])
+    child.wait(timeout=5)
+    signals = []
+    with monkeypatch.context() as patch:
+        # Once wait() reaps our leader, a live process at that PID belongs to
+        # another owner, even if it leads a new group with the same ID.
+        patch.setattr(os, 'getpgid', lambda pid: pid)
+        patch.setattr(os, 'killpg', lambda group, signum: signals.append(signum))
+        fixture_processes.stop(child)
+    assert not signals, f'cleanup signaled an unverified replacement: {signals}'
+    assert not fixture_processes.children
+
+
+def test_fixture_cleanup_signals_descendants_after_leader_is_reaped(monkeypatch):
+    from types import SimpleNamespace
+    # Model an exited/reaped leader with a still-live group. No real PID is
+    # targeted: the signal boundary is replaced before stop() is called.
+    child = SimpleNamespace(pid=12345, args=['exited-fixture'], returncode=0, poll=lambda: 0,
+                            wait=lambda **_: 0, stdin=None, stdout=None, stderr=None)
+    processes = FixtureProcesses()
+    processes.children.append(child)
+    signals = []
+    def no_leader(pid):
+        raise ProcessLookupError()
+    def descendant_group(group, signum):
+        assert group == child.pid
+        if signals:
+            raise ProcessLookupError()
+        if signum:
+            signals.append(signum)
+    monkeypatch.setattr(os, 'getpgid', no_leader)
+    monkeypatch.setattr(os, 'killpg', descendant_group)
+    processes.stop(child)
+    assert signals == [signal.SIGTERM], 'reaping the leader abandoned its descendant group'
+    assert not processes.children
+
+
+@pytest.fixture
+def shell_fixture(tmp_path, fixture_processes):
     root = tmp_path / 'repo'
     (root / 'scripts/data').mkdir(parents=True)
     (root / 'scripts/ci').mkdir()
@@ -327,6 +590,14 @@ def shell_fixture(tmp_path):
                FIREBASE_CLI_BIN=str(root / 'bin/firebase'), STORAGE_RULES_RUNTIME_JAR=str(root / 'runtime.jar'),
                SPECIMEN_TEST_SQL_EMULATOR='true', ENGINE_TOOLS_DIR=str(root / 'tools'), TMPDIR=str(tmp_path),
                ENGINE_CONTRACT_LIFECYCLE=str(root / 'lifecycle.json'), ENGINE_CONTRACT_PROCESS_TOKEN='controlled-fixture')
+    env.processes = fixture_processes
+    # Hold all three reservations together so this test's ports are distinct.
+    # Release them immediately before the controlled wrappers need to bind.
+    with ExitStack() as reservations:
+        for key in ('SPECIMEN_TEST_PG_PORT', 'SPECIMEN_TEST_DC_PORT', 'SPECIMEN_TEST_STORAGE_PORT'):
+            listener = reservations.enter_context(socket.socket())
+            listener.bind(('127.0.0.1', 0))
+            env[key] = str(listener.getsockname()[1])
     for key in ['GOOGLE_APPLICATION_CREDENTIALS','FIREBASE_TOKEN','CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE','SPECIMEN_SQL_EMULATOR_HOST','FIREBASE_DATACONNECT_EMULATOR_HOST']:
         env.pop(key,None)
     (root / 'runtime.jar').write_bytes(b'fixture')
@@ -337,7 +608,132 @@ def run_shell(fixture, fault='', storage=False):
     root, env = fixture
     command = ['bash', str(root / 'scripts/data' / ('test-storage.sh' if storage else 'test-postgres.sh')),
                '--contract-output' if storage else '--python-contract-output', str(root / ('storage-out' if storage else 'sql-out'))]
-    return subprocess.run(command, env=dict(env, FIXTURE_FAULT=fault), capture_output=True, text=True, timeout=35)
+    return env.processes.run(command, env=dict(env, FIXTURE_FAULT=fault), capture_output=True, text=True, timeout=35)
+
+
+@pytest.mark.parametrize('storage', [False, True], ids=['sql', 'storage'])
+@pytest.mark.parametrize('failure', ['assertion', 'timeout'])
+def test_fixture_failure_stops_process_tree_and_releases_ports(tmp_path, storage, failure):
+    # A separate pytest run fails while its fixture tree is live: a forced
+    # assertion (only the fixture finalizer can stop that tree) or a forced
+    # subprocess wait timeout (run_shell's own cleanup). Afterwards nothing it
+    # started may be alive and its ports must bind. This test's emergency
+    # cleanup is deliberately independent of the code under test.
+    probe = tmp_path / 'test_interrupted.py'
+    probe.write_text('''
+import importlib.util, json, os, pathlib, subprocess, time
+spec = importlib.util.spec_from_file_location('harness', os.environ['HARNESS_MODULE'])
+harness = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(harness)
+shell_fixture = harness.shell_fixture
+if hasattr(harness, 'fixture_processes'):
+    fixture_processes = harness.fixture_processes
+
+def test_interrupted(shell_fixture, monkeypatch):
+    root, env = shell_fixture
+    storage = os.environ['PROBE_STORAGE'] == 'True'
+    env.update(FIXTURE_STANDALONE='true')
+    if storage:
+        env.pop('ENGINE_CONTRACT_PROCESS_TOKEN')
+        env.pop('SPECIMEN_TEST_SQL_EMULATOR')
+    marker = root / ('storage-assertions-running' if storage else 'python-running')
+    original = subprocess.Popen.communicate
+    def interrupted(child, *args, **kwargs):
+        if any(str(arg).endswith('test-storage.sh' if storage else 'test-postgres.sh') for arg in child.args):
+            pathlib.Path(os.environ['PROBE_RECORD']).write_text(json.dumps({
+                'root': str(root), 'pid': child.pid, 'group': os.getpgid(child.pid),
+                'ports': [int(env[key]) for key in ('SPECIMEN_TEST_PG_PORT', 'SPECIMEN_TEST_DC_PORT', 'SPECIMEN_TEST_STORAGE_PORT')]}))
+            deadline = time.monotonic() + 15
+            while not marker.exists() and child.poll() is None and time.monotonic() < deadline:
+                time.sleep(.02)
+            assert marker.exists(), 'failure probe never reached its live fixture tree'
+            if os.environ['PROBE_FAILURE'] != 'timeout':
+                raise AssertionError('forced fixture assertion')
+            raise subprocess.TimeoutExpired(child.args, .001)
+        return original(child, *args, **kwargs)
+    monkeypatch.setattr(subprocess.Popen, 'communicate', interrupted)
+    if os.environ['PROBE_FAILURE'] == 'assertion':
+        command = ['bash', str(root / 'scripts/data' / ('test-storage.sh' if storage else 'test-postgres.sh')),
+                   '--contract-output' if storage else '--python-contract-output', str(root / ('storage-out' if storage else 'sql-out'))]
+        options = dict(env=dict(env, FIXTURE_FAULT='hold_storage' if storage else 'hold_python'),
+                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        child = env.processes.start(command, **options) if hasattr(env, 'processes') else subprocess.Popen(command, start_new_session=True, **options)
+        interrupted(child)  # Only the pytest fixture finalizer can stop this tree.
+    harness.run_shell(shell_fixture, 'hold_storage' if storage else 'hold_python', storage=storage)
+''')
+    # Baseline runs also use private ports, so reproducing the missing teardown
+    # cannot occupy another test's default listener.
+    with socket.socket() as pg, socket.socket() as dc, socket.socket() as store:
+        for listener in (pg, dc, store):
+            listener.bind(('127.0.0.1', 0))
+        ports = [listener.getsockname()[1] for listener in (pg, dc, store)]
+    record = tmp_path / 'owner.json'
+    env = dict(os.environ, HARNESS_MODULE=str(Path(__file__).resolve()),
+               PROBE_STORAGE=str(storage), PROBE_FAILURE=failure, PROBE_RECORD=str(record),
+               PYTEST_ADDOPTS='', PYTHONDONTWRITEBYTECODE='1',
+               SPECIMEN_TEST_PG_PORT=str(ports[0]), SPECIMEN_TEST_DC_PORT=str(ports[1]),
+               SPECIMEN_TEST_STORAGE_PORT=str(ports[2]))
+    def answers(group):
+        try:
+            os.killpg(group, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            pass  # Darwin: only exited members remain, or a member denies us.
+        return bool(live_group_members(group))
+    groups = set()
+    with (tmp_path / 'pytest.log').open('w') as log:
+        child = subprocess.Popen([sys.executable, '-B', '-m', 'pytest', '-q', '-p', 'no:cacheprovider',
+                                  '--confcutdir=' + str(tmp_path), '--basetemp=' + str(tmp_path / 'nested'), str(probe)],
+                                 env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+        groups.add(child.pid)
+        try:
+            assert child.wait(timeout=35) == 1, 'failure probe must fail its inner test'
+            output = (tmp_path / 'pytest.log').read_text()
+            assert ('TimeoutExpired' if failure == 'timeout' else 'forced fixture assertion') in output, output
+            assert record.exists(), output
+            owner = json.loads(record.read_text())
+            assert owner['group'] in (child.pid, owner['pid']), owner
+            groups.add(owner['group'])
+            instances = list((Path(owner['root']) / 'instances').glob('*.json'))
+            assert instances, 'probe did not start any fixture engines'
+            started = {owner['pid'], *(json.loads(entry.read_text())['pid'] for entry in instances)}
+            survivors = live_processes(started)
+            assert not survivors, f'{failure} left fixture processes alive: {survivors}'
+            assert not live_group_members(owner['group']), f'{failure} left its process group alive'
+            for port in owner['ports']:
+                with socket.socket() as listener:
+                    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                    listener.bind(('127.0.0.1', port))
+        finally:
+            # The negative control must also clean up when run against the
+            # original file or a mutant with its teardown kill removed. Only
+            # the probe's own session and the wrapper session it recorded count.
+            try:
+                recorded = json.loads(record.read_text())
+            except (FileNotFoundError, ValueError):
+                recorded = {}
+            if recorded.get('group') in (child.pid, recorded.get('pid')):
+                groups.add(recorded['group'])
+            for signum in (signal.SIGTERM, signal.SIGKILL):
+                for group in groups:
+                    if answers(group):
+                        try:
+                            os.killpg(group, signum)
+                        except (ProcessLookupError, PermissionError):
+                            pass  # Its last live member exited meanwhile.
+                deadline = time.monotonic() + 5
+                while any(answers(group) for group in groups) and time.monotonic() < deadline:
+                    child.poll()
+                    time.sleep(.05)
+            child.wait(timeout=5)
+
+
+def test_fixture_ports_are_private(shell_fixture):
+    _, env = shell_fixture
+    ports = [int(env[key]) for key in ('SPECIMEN_TEST_PG_PORT', 'SPECIMEN_TEST_DC_PORT', 'SPECIMEN_TEST_STORAGE_PORT')]
+    assert len(set(ports)) == 3, f'fixture ports alias each other: {ports}'
+    assert not set(ports) & {5559, 9509, 9299}, f'fixture reused a shared default port: {ports}'
 
 
 @pytest.mark.parametrize('fault', ['compile_errors_exit0','seed_missing','seed_mismatch','readiness_failed','false_readiness','port_mismatch'])
@@ -505,7 +901,7 @@ def test_storage_standalone_interruption_cleans_complete_tree(shell_fixture,phas
     fault='storage_no_java' if phase=='startup' else 'hold_storage'
     marker=root/('storage-cli-running' if phase=='startup' else 'storage-assertions-running')
     command=['bash',str(root/'scripts/data/test-storage.sh'),'--contract-output',str(root/'storage-out')]
-    child=subprocess.Popen(command,env=dict(env,FIXTURE_FAULT=fault),stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+    child=env.processes.start(command,env=dict(env,FIXTURE_FAULT=fault),stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
     try:
         deadline=time.monotonic()+15
         while not marker.exists() and child.poll() is None and time.monotonic()<deadline: time.sleep(.02)
@@ -523,7 +919,7 @@ def test_storage_standalone_interruption_cleans_complete_tree(shell_fixture,phas
 @pytest.mark.parametrize('script', ['test-postgres.sh','test-storage.sh'])
 def test_wrappers_reject_unknown_arguments(shell_fixture, script):
     root,env=shell_fixture
-    result=subprocess.run(['bash',str(root/'scripts/data'/script),'--unknown'],env=dict(env,FIXTURE_FAULT='unknown_argument'),capture_output=True,text=True,timeout=5)
+    result=env.processes.run(['bash',str(root/'scripts/data'/script),'--unknown'],env=dict(env,FIXTURE_FAULT='unknown_argument'),capture_output=True,text=True,timeout=5)
     assert result.returncode==2
     assert 'unknown argument' in result.stderr.lower()
 
@@ -533,7 +929,7 @@ def assert_wrapper_rejects_before_work(fixture, script, arguments):
     scratch = root.parent / 'wrapper-scratch'
     scratch.mkdir()
     before = set(root.rglob('*'))
-    result = subprocess.run(['bash', str(root / 'scripts/data' / script), *arguments],
+    result = env.processes.run(['bash', str(root / 'scripts/data' / script), *arguments],
                             env=dict(env, TMPDIR=str(scratch)),
                             capture_output=True, text=True, timeout=5)
     assert result.returncode == 2, result.stdout + result.stderr
@@ -570,6 +966,8 @@ def test_wrappers_validate_all_ports_before_contract_output(shell_fixture, scrip
 ])
 def test_wrappers_reject_aliased_ports_before_contract_output(shell_fixture, script, flag, variable, port):
     root, env = shell_fixture
+    for key in ('SPECIMEN_TEST_PG_PORT', 'SPECIMEN_TEST_DC_PORT', 'SPECIMEN_TEST_STORAGE_PORT'):
+        env.pop(key)
     env[variable] = port
     assert_wrapper_rejects_before_work(shell_fixture, script, [flag, str(root / 'new-output')])
 
@@ -604,7 +1002,7 @@ def test_sql_wrapper_rejects_omitted_original_stage(shell_fixture):
 
 
 @pytest.mark.parametrize('mutated', [False,True])
-def test_storage_real_node_assertions_and_independent_denials(tmp_path, mutated):
+def test_storage_real_node_assertions_and_independent_denials(tmp_path, mutated, fixture_processes):
     # Response fault model only: actual storage.rules mutant needs hosted Java.
     loader=tmp_path/'fetch.mjs'
     events=tmp_path/'events.jsonl'
@@ -628,7 +1026,7 @@ globalThis.fetch=async (url,options={})=> {
  return new Response(objects.get(name),{status:200});
 };
 ''')
-    result=subprocess.run(['node','--import',str(loader),str(DATA/'storage-test.mjs')],env=dict(os.environ,
+    result=fixture_processes.run(['node','--import',str(loader),str(DATA/'storage-test.mjs')],env=dict(os.environ,
                           ENGINE_CONTRACT_NODE_EVENTS=str(events),PROBES=str(probes),ALLOW_ALL=str(mutated).lower()),
                           capture_output=True,text=True,timeout=10)
     rows=[json.loads(line) for line in events.read_text().splitlines()]
@@ -644,7 +1042,7 @@ globalThis.fetch=async (url,options={})=> {
 
 
 @pytest.mark.parametrize('fault', ['none','organization','collection','uid','role','organization_active','collection_active','can_view_sensitive','missing'])
-def test_seed_real_node_requires_exact_readback(tmp_path, fault):
+def test_seed_real_node_requires_exact_readback(tmp_path, fault, fixture_processes):
     loader=tmp_path/'seed-fetch.mjs'
     seed=tmp_path/'seed.json'
     loader.write_text(r'''
@@ -666,7 +1064,7 @@ globalThis.fetch=async()=> {
  return new Response(JSON.stringify({data:{organizationMembers:[organization],collectionMembers:process.env.SEED_FAULT==='missing'?[]:[collection]}}),{status:200});
 };
 ''')
-    result=subprocess.run(['node','--import',str(loader),str(DATA/'seed-integration.mjs')],env=dict(os.environ,
+    result=fixture_processes.run(['node','--import',str(loader),str(DATA/'seed-integration.mjs')],env=dict(os.environ,
                           SEED_FAULT=fault,ENGINE_CONTRACT_SEED_REPORT=str(seed)),capture_output=True,text=True,timeout=10)
     if fault=='none':
         assert result.returncode==0, result.stderr
@@ -680,7 +1078,7 @@ globalThis.fetch=async()=> {
 def test_sql_signal_stops_owned_engines_and_waits(shell_fixture,signum,expected):
     root,env=shell_fixture
     command=['bash',str(root/'scripts/data/test-postgres.sh'),'--python-contract-output',str(root/'sql-out')]
-    child=subprocess.Popen(command,env=dict(env,FIXTURE_FAULT='hold_python'),stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+    child=env.processes.start(command,env=dict(env,FIXTURE_FAULT='hold_python'),stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
     try:
         deadline=time.monotonic()+15
         while not (root/'python-running').exists() and child.poll() is None and time.monotonic()<deadline:
@@ -753,10 +1151,10 @@ def test_storage_registers_jar_runtime_instead_of_java_version_probe(shell_fixtu
 
 @pytest.mark.parametrize('case',['owned','reused','gone','missing'])
 @pytest.mark.parametrize('requested',[None,2,15,9])
-def test_forced_java_cleanup_binds_birth_and_pidfd(tmp_path,case,requested):
+def test_forced_java_cleanup_binds_birth_and_pidfd(tmp_path,case,requested, fixture_processes):
     # No OS signal is issued. Native pidfd/signal calls are replaced only in a
     # disposable child, and a different birth must never receive a signal.
-    result=subprocess.run(['node','--input-type=module','-e',
+    result=fixture_processes.run(['node','--input-type=module','-e',
                           f"import {{JAVA_CLEANUP_CODE}} from {json.dumps((DATA/'engine-contract-reporter.mjs').as_uri())}; console.log(JSON.stringify(JAVA_CLEANUP_CODE));"],
                           capture_output=True,text=True,timeout=5)
     assert result.returncode==0,result.stderr
@@ -779,7 +1177,7 @@ os.close=lambda fd: calls.append(['close',fd])
 '''
     arguments=['cleanup','12345',str(receipt),str(gate)]+([] if requested is None else [str(requested)])
     prelude+=f'sys.argv={arguments!r}\nexec({code!r})\nPath({str(marker)!r}).write_text(json.dumps(calls))\n'
-    result=subprocess.run([sys.executable,'-B','-c',prelude],env=dict(os.environ,PIDFD_CASE=case),capture_output=True,text=True,timeout=5)
+    result=fixture_processes.run([sys.executable,'-B','-c',prelude],env=dict(os.environ,PIDFD_CASE=case),capture_output=True,text=True,timeout=5)
     assert result.returncode==0,result.stderr
     assert json.loads(result.stdout)=={'forced':case=='owned'}
     calls=json.loads(marker.read_text())
@@ -788,7 +1186,7 @@ os.close=lambda fd: calls.append(['close',fd])
 
 
 @pytest.mark.parametrize('fault',['none','recycled_launcher','child_reparented','child_recycled','parent_recycled'])
-def test_storage_discovery_binds_every_ancestry_link(tmp_path,fault):
+def test_storage_discovery_binds_every_ancestry_link(tmp_path,fault, fixture_processes):
     # Reverse table order, an unrelated verified-JAR lookalike, and OS identity
     # changes during capture: discovery may claim only the stable owned chain.
     script=tmp_path/'ancestry.mjs'
@@ -807,7 +1205,7 @@ function inspect(pid) {
 }
 console.log(JSON.stringify(discoverStorageProcesses(rows,[root],inspect)));
 ''')
-    result=subprocess.run(['node',str(script),fault],capture_output=True,text=True,timeout=5)
+    result=fixture_processes.run(['node',str(script),fault],capture_output=True,text=True,timeout=5)
     assert result.returncode==0,result.stderr
     rows=json.loads(result.stdout)
     assert [row['pid'] for row in rows]==([102,103] if fault=='none' else [])
@@ -1001,7 +1399,7 @@ def test_storage_cleanup_rejects_live_owned_survivor(shell_fixture):
     # Keep it a direct child of this test so teardown can always kill AND reap
     # it, without leaving an orphan/zombie behind on either operating system.
     reporter.write_text(source.replace(target,"    storageOwners.push({pid:Number(env.FIXTURE_SURVIVOR_PID),...storageIdentity(Number(env.FIXTURE_SURVIVOR_PID),env)});\n"+target))
-    child=subprocess.Popen([sys.executable,'-c','import signal; signal.pause()'])
+    child=env.processes.start([sys.executable,'-c','import signal; signal.pause()'])
     try:
         (root/'instances'/f'{child.pid}.json').write_text(json.dumps({'pid':child.pid,'parent':os.getpid(),'command':'owned-survivor'}))
         env['FIXTURE_SURVIVOR_PID']=str(child.pid)
@@ -1081,7 +1479,7 @@ def storage_readiness_servers(case):
     'null_storage', 'malformed', 'closed_tcp', 'http_error', 'redirect',
     'hung_headers', 'hung_body', 'cli_exit', 'java_exit', 'download',
 ])
-def test_storage_waiter_real_loopback(tmp_path, case):
+def test_storage_waiter_real_loopback(tmp_path, case, fixture_processes):
     script = tmp_path / 'storage-ready.mjs'
     script.write_text(f"import {{waitForStorage}} from {json.dumps((DATA / 'wait-storage.mjs').as_uri())};\n" + r'''
 import assert from 'node:assert/strict';
@@ -1116,7 +1514,7 @@ finally {
 ''')
     with storage_readiness_servers(case) as (hub, storage, requests):
         start = time.monotonic()
-        result = subprocess.run(['node', str(script), str(hub), str(storage), case],
+        result = fixture_processes.run(['node', str(script), str(hub), str(storage), case],
                                 capture_output=True, text=True, timeout=5)
         seconds = time.monotonic() - start
     if case in ('ready', 'delayed', 'delayed_tcp'):
