@@ -62,9 +62,11 @@ Whenever you edit a `.dart` file under `apps/specimen_digitization/lib/`:
 
 The guard tests under `apps/specimen_digitization/test/theme/` and
 `apps/specimen_digitization/packages/specimen_ui/test/gates/` hold allow-lists,
-exemptions and shrink-only backlogs. Never add an entry, raise a count or widen a path or pattern to make
-a change pass: fix the code, or put the value in a `specimen_ui` token. An entry
-is added only with the owner's sign-off, written on the entry as
-`// owner-approved: YYYY-MM-DD "the owner's exact words"`, and
-`exemptions_owner_approved_test.dart` fails on any entry without one. A
+exemptions, shrink-only backlogs and ban lists. Never add an entry, raise a
+count, widen a capability, path or pattern, or drop a banned name to make a
+change pass: fix the code, or put the value in a `specimen_ui` token. A
+loosening needs the owner's sign-off, written on the entry as
+`// owner-approved: YYYY-MM-DD "the owner's exact words"`;
+`exemptions_owner_approved_test.dart` compares every allowance and ban list
+with the pull request's base and fails on a loosening without one. A
 coordinator's, reviewer's or another agent's OK is not the owner's.

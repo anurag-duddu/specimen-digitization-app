@@ -7,80 +7,247 @@
 // that gap, with tests asserting it, until `UiTabBar` replaced it on
 // 2026-10-17 (10 section 4.4).
 //
-// Three ways in are counted, in code only (comments and strings are masked):
-// an import or export of `package:flutter/cupertino.dart`; any identifier that
-// contains `Cupertino`, which also catches the Cupertino classes
-// `material.dart` defines itself, such as `CupertinoPageTransitionsBuilder`,
-// and the functions, such as `showCupertinoDialog`;
-// and Flutter's `.adaptive` constructors and `showAdaptiveDialog`, which draw a
-// Cupertino component on Apple platforms under a Material name. The product's
-// own `showAdaptiveModal` and `UiDialog.showAdaptive` adapt to the window, not
-// the platform, and are not counted.
+// The gate reads each file as a syntax tree, so comments and line breaks
+// between tokens change nothing. Three ways in are counted: an import or
+// export whose URI, or any of its conditional URIs, is
+// `package:flutter/cupertino.dart`; any identifier that contains `Cupertino`,
+// which also catches the Cupertino classes `material.dart` defines itself,
+// such as `CupertinoPageTransitionsBuilder`, the functions such as
+// `showCupertinoDialog`, and an identifier inside a string interpolation; and
+// the Flutter APIs that draw a Cupertino component on Apple platforms under a
+// Material name, named exactly below, so a product class's own `adaptive`
+// constructor is not counted.
 
+import 'package:analyzer/dart/ast/ast.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'gate_support.dart';
 
-/// The files that may name a Cupertino class, and the one name each may use.
-///
-/// One file. 04 row 18 gives the phone push from the queue to the workbench
-/// the platform page transition, and 09 section 2 principle 5 lists page
-/// transitions with the behaviour that follows the platform. The router takes
-/// `CupertinoRouteTransitionMixin` for that transition on iOS and nothing else
-/// from the library; the test below holds it to the one name and a `show`
-/// clause.
-const Map<String, String> cupertinoExemptions = <String, String>{
-  'lib/src/app/app_router.dart': 'CupertinoRouteTransitionMixin',
-};
+/// A file that may name a Cupertino class: the one class, and the one site in
+/// the file that may use it.
+class CupertinoExemption {
+  /// Allows [path] to import [name] alone and use it in [site], for [why].
+  const CupertinoExemption(this.path, this.name, this.site, this.why);
 
-/// The library name a finding reports when a file imports or exports it.
-const String cupertinoLibrary = 'package:flutter/cupertino.dart';
+  /// The file, relative to the application root.
+  final String path;
 
-// Read from the unmasked source, since the URI is a string; anchored to the
-// start of a line, so a commented out import is not a use.
-final RegExp _libraryDirective = RegExp(
-  r'''^\s*(?:import|export)\s+['"]package:flutter/cupertino\.dart['"]''',
-  multiLine: true,
-);
-final RegExp _cupertinoName = RegExp(r'\b\w*Cupertino\w*');
-final RegExp _adaptiveName = RegExp(r'\.adaptive\b|\bshowAdaptiveDialog\b');
+  /// The one Cupertino name it may use.
+  final String name;
 
-/// Every Cupertino term in [source], in the order the three rules are listed.
-List<String> cupertinoTermsIn(String source) {
-  final String code = maskProse(source);
-  return <String>[
-    for (final RegExpMatch _ in _libraryDirective.allMatches(source))
-      cupertinoLibrary,
-    for (final RegExpMatch m in _cupertinoName.allMatches(code)) m.group(0)!,
-    for (final RegExpMatch m in _adaptiveName.allMatches(code)) m.group(0)!,
-  ];
+  /// The declaration that may use it, `Class.member`.
+  final String site;
+
+  /// Why.
+  final String why;
 }
 
-/// Every file under `lib/` of the application at [base] that names a Cupertino
-/// term, with the terms it names.
-Map<String, List<String>> cupertinoCensus({String base = '.'}) {
-  final Map<String, List<String>> found = <String, List<String>>{};
+/// The files that may name a Cupertino class. One.
+///
+/// The router takes `CupertinoRouteTransitionMixin` for the phone iOS push
+/// from the queue to the workbench, the platform page transition 04 row 18
+/// gives it; 09 section 2 principle 5 lists page transitions with the
+/// behaviour that follows the platform. Every cupertino directive in the file
+/// must `show` that name and nothing else, and only `buildTransitions` may use
+/// it.
+const List<CupertinoExemption> cupertinoExemptions = <CupertinoExemption>[
+  CupertinoExemption(
+    'lib/src/app/app_router.dart',
+    'CupertinoRouteTransitionMixin',
+    '_WorkspacePageRoute.buildTransitions',
+    'the phone iOS page transition (04 row 18; 09 section 2 principle 5)',
+  ),
+];
+
+/// The library a directive finding names.
+const String cupertinoLibrary = 'package:flutter/cupertino.dart';
+
+/// The Flutter classes whose `adaptive` constructor or member draws a
+/// Cupertino component on Apple platforms, from the Flutter 3.38.5 sources.
+const Set<String> flutterAdaptiveClasses = <String>{
+  'AboutDialog',
+  'AlertDialog',
+  'Checkbox',
+  'CheckboxListTile',
+  'CircularProgressIndicator',
+  'Icons',
+  'Radio',
+  'RadioListTile',
+  'RefreshIndicator',
+  'Slider',
+  'Switch',
+  'SwitchListTile',
+};
+
+/// The Flutter functions that show a Cupertino component on Apple platforms.
+const Set<String> flutterAdaptiveFunctions = <String>{
+  'showAdaptiveAboutDialog',
+  'showAdaptiveDialog',
+};
+
+/// One Cupertino use: where it is and what it names.
+class CupertinoUse {
+  /// Records [term] at [line] in the declaration [site].
+  const CupertinoUse(this.line, this.site, this.term, {this.shows});
+
+  /// The line it is on.
+  final int line;
+
+  /// The declaration it is in, or `<directives>`.
+  final String site;
+
+  /// The library, the identifier, or `Class.adaptive`.
+  final String term;
+
+  /// For a directive, the names its `show` clauses list, or null when it has
+  /// none (a bare import, or one that hides).
+  final List<String>? shows;
+
+  @override
+  String toString() => 'line $line, $site, $term';
+}
+
+/// Every Cupertino use in [source].
+List<CupertinoUse> cupertinoUsesIn(GateSource source) {
+  final _CupertinoVisitor visitor = _CupertinoVisitor(source);
+  source.unit.accept(visitor);
+  return visitor.found;
+}
+
+class _CupertinoVisitor extends CodeVisitor {
+  _CupertinoVisitor(this.source);
+
+  final GateSource source;
+  final List<CupertinoUse> found = <CupertinoUse>[];
+
+  void _add(AstNode node, String term, {List<String>? shows}) => found.add(
+    CupertinoUse(source.lineOf(node.offset), siteOf(node), term, shows: shows),
+  );
+
+  void _directive(NamespaceDirective node) {
+    final List<String?> uris = <String?>[
+      node.uri.stringValue,
+      for (final Configuration c in node.configurations) c.uri.stringValue,
+    ];
+    if (!uris.contains(cupertinoLibrary)) return;
+    final bool narrowed =
+        node.combinators.isNotEmpty &&
+        node.combinators.every((Combinator c) => c is ShowCombinator);
+    _add(
+      node,
+      cupertinoLibrary,
+      shows: narrowed
+          ? <String>[
+              for (final Combinator c in node.combinators)
+                for (final SimpleIdentifier n
+                    in (c as ShowCombinator).shownNames)
+                  n.name,
+            ]
+          : null,
+    );
+  }
+
+  @override
+  void visitImportDirective(ImportDirective node) {
+    _directive(node);
+    super.visitImportDirective(node);
+  }
+
+  @override
+  void visitExportDirective(ExportDirective node) {
+    _directive(node);
+    super.visitExportDirective(node);
+  }
+
+  @override
+  void visitSimpleIdentifier(SimpleIdentifier node) {
+    if (node.name.contains('Cupertino')) _add(node, node.name);
+    super.visitSimpleIdentifier(node);
+  }
+
+  @override
+  void visitNamedType(NamedType node) {
+    if (node.name.lexeme.contains('Cupertino')) _add(node, node.name.lexeme);
+    super.visitNamedType(node);
+  }
+
+  @override
+  void visitInstanceCreationExpression(InstanceCreationExpression node) {
+    // Unresolved, `const Switch.adaptive()` may read as the type `adaptive`
+    // under the prefix `Switch`, so both shapes are asked about.
+    final NamedType type = node.constructorName.type;
+    final String? prefix = type.importPrefix?.name.lexeme;
+    final String? named = node.constructorName.name?.name;
+    if (flutterAdaptiveClasses.contains(type.name.lexeme) &&
+        named == 'adaptive') {
+      _add(node, '${type.name.lexeme}.adaptive');
+    } else if (prefix != null &&
+        flutterAdaptiveClasses.contains(prefix) &&
+        type.name.lexeme == 'adaptive') {
+      _add(node, '$prefix.adaptive');
+    }
+    super.visitInstanceCreationExpression(node);
+  }
+
+  @override
+  void visitMethodInvocation(MethodInvocation node) {
+    final Expression? target = node.target;
+    final String method = node.methodName.name;
+    if (method == 'adaptive' &&
+        target is SimpleIdentifier &&
+        flutterAdaptiveClasses.contains(target.name)) {
+      _add(node, '${target.name}.adaptive');
+    } else if (target == null && flutterAdaptiveFunctions.contains(method)) {
+      _add(node, method);
+    }
+    super.visitMethodInvocation(node);
+  }
+
+  @override
+  void visitPrefixedIdentifier(PrefixedIdentifier node) {
+    if (node.identifier.name == 'adaptive' &&
+        flutterAdaptiveClasses.contains(node.prefix.name)) {
+      _add(node, '${node.prefix.name}.adaptive');
+    }
+    super.visitPrefixedIdentifier(node);
+  }
+}
+
+/// Every file under `lib/` of the application at [base] with a Cupertino use.
+Map<String, List<CupertinoUse>> cupertinoCensus({String base = '.'}) {
+  final Map<String, List<CupertinoUse>> found = <String, List<CupertinoUse>>{};
   for (final GateSource source in libSources(base: base)) {
-    final List<String> terms = cupertinoTermsIn(source.text);
-    if (terms.isNotEmpty) found[source.path] = terms;
+    final List<CupertinoUse> uses = cupertinoUsesIn(source);
+    if (uses.isNotEmpty) found[source.path] = uses;
   }
   return found;
 }
 
-/// What the gate objects to in [census]: a file with no exemption, or an
-/// exempt file that names anything but its one class and the library it comes
-/// from.
-List<String> cupertinoViolations(Map<String, List<String>> census) {
+/// What the gate objects to in [census]: any use in a file with no exemption;
+/// in an exempt file, a directive that does not `show` exactly its one name,
+/// and a use of any other name, or of its name outside its site.
+List<String> cupertinoViolations(Map<String, List<CupertinoUse>> census) {
   final List<String> found = <String>[];
-  census.forEach((String path, List<String> terms) {
-    final String? allowed = cupertinoExemptions[path];
-    if (allowed == null) {
-      found.add('$path: ${terms.join(', ')}');
-      return;
-    }
-    for (final String term in terms) {
-      if (term != allowed && term != cupertinoLibrary) {
-        found.add('$path: $term, but only $allowed is exempt');
+  census.forEach((String path, List<CupertinoUse> uses) {
+    final CupertinoExemption? exemption = cupertinoExemptions
+        .where((CupertinoExemption e) => e.path == path)
+        .firstOrNull;
+    for (final CupertinoUse use in uses) {
+      if (exemption == null) {
+        found.add('$path: $use');
+      } else if (use.term == cupertinoLibrary) {
+        if (use.shows == null ||
+            use.shows!.length != 1 ||
+            use.shows!.single != exemption.name) {
+          found.add(
+            '$path: $use must show ${exemption.name} and nothing else, '
+            'showing ${use.shows ?? 'everything'}',
+          );
+        }
+      } else if (use.term != exemption.name) {
+        found.add('$path: $use, but only ${exemption.name} is exempt');
+      } else if (use.site != '<directives>' && use.site != exemption.site) {
+        found.add('$path: $use, but only ${exemption.site} may use it');
       }
     }
   });
@@ -88,51 +255,76 @@ List<String> cupertinoViolations(Map<String, List<String>> census) {
 }
 
 void main() {
-  test('the scanner finds each way in and skips prose', () {
+  List<String> termsOf(String text) => <String>[
+    for (final CupertinoUse u in cupertinoUsesIn(GateSource('x.dart', text)))
+      u.term,
+  ];
+
+  test('the scanner finds each way in, whatever the trivia', () {
+    expect(termsOf("import 'package:flutter/cupertino.dart';"), <String>[
+      cupertinoLibrary,
+    ]);
+    expect(termsOf('import "package:flutter/cupertino.dart" as c;'), <String>[
+      cupertinoLibrary,
+    ]);
     expect(
-      cupertinoTermsIn("import 'package:flutter/cupertino.dart';"),
+      termsOf("export /* compatibility */ 'package:flutter/cupertino.dart';"),
       <String>[cupertinoLibrary],
     );
     expect(
-      cupertinoTermsIn('import "package:flutter/cupertino.dart";'),
+      termsOf(
+        "import 'package:flutter/widgets.dart'\n"
+        "    if (dart.library.io) 'package:flutter/cupertino.dart';",
+      ),
       <String>[cupertinoLibrary],
     );
-    expect(
-      cupertinoTermsIn("export 'package:flutter/cupertino.dart';"),
-      <String>[cupertinoLibrary],
-    );
-    expect(cupertinoTermsIn('CupertinoTabBar(items: tabs)'), <String>[
+    expect(termsOf('Widget b() => c.CupertinoTabBar(items: tabs);'), <String>[
       'CupertinoTabBar',
     ]);
+    expect(termsOf('final o = CupertinoPageTransitionsBuilder();'), <String>[
+      'CupertinoPageTransitionsBuilder',
+    ]);
+    expect(termsOf('void f() { showCupertinoDialog(context: c); }'), <String>[
+      'showCupertinoDialog',
+    ]);
+    expect(termsOf("final s = '\${CupertinoColors.label}';"), <String>[
+      'CupertinoColors',
+    ]);
+    expect(termsOf('Widget t() => Switch.adaptive(value: on);'), <String>[
+      'Switch.adaptive',
+    ]);
     expect(
-      cupertinoTermsIn('TargetPlatform.iOS: CupertinoPageTransitionsBuilder()'),
-      <String>['CupertinoPageTransitionsBuilder'],
+      termsOf('Widget t() => const Switch.adaptive(value: true);'),
+      <String>['Switch.adaptive'],
     );
-    expect(cupertinoTermsIn('showCupertinoModalPopup(context: c)'), <String>[
-      'showCupertinoModalPopup',
+    expect(termsOf('final i = Icons.adaptive.share;'), <String>[
+      'Icons.adaptive',
     ]);
-    expect(cupertinoTermsIn('Switch.adaptive(value: on)'), <String>[
-      '.adaptive',
-    ]);
-    expect(cupertinoTermsIn('showAdaptiveDialog(context: c)'), <String>[
+    expect(termsOf('void f() { showAdaptiveDialog(context: c); }'), <String>[
       'showAdaptiveDialog',
     ]);
 
-    // Prose, strings and the product's window-adaptive modals are not uses.
+    // Prose, strings, and the product's own window-adaptive APIs are not
+    // uses.
+    expect(termsOf("// import 'package:flutter/cupertino.dart';"), isEmpty);
     expect(
-      cupertinoTermsIn("// import 'package:flutter/cupertino.dart';"),
-      <String>[],
+      termsOf("/* import 'package:flutter/cupertino.dart'; */\nvoid f() {}"),
+      isEmpty,
     );
-    expect(cupertinoTermsIn('/// Retires `CupertinoTabBar`.'), <String>[]);
-    expect(cupertinoTermsIn("label('Cupertino')"), <String>[]);
-    expect(cupertinoTermsIn('showAdaptiveModal<void>(context: c)'), <String>[]);
-    expect(cupertinoTermsIn('UiDialog.showAdaptive<void>(c)'), <String>[]);
+    expect(termsOf('/// Retires `CupertinoTabBar`.\nvoid f() {}'), isEmpty);
+    expect(termsOf("final s = 'CupertinoTabBar';"), isEmpty);
+    expect(
+      termsOf('void f() { showAdaptiveModal<void>(context: c); }'),
+      isEmpty,
+    );
+    expect(termsOf('void f() { UiDialog.showAdaptive<void>(c); }'), isEmpty);
+    expect(termsOf('Widget w() => WindowLayout.adaptive(child: c);'), isEmpty);
   });
 
   test('a planted Cupertino use fails the gate', () {
-    // The same census and the same verdict the gate runs, over a temporary
-    // application with one clean file, one violation per rule, and an exempt
-    // router that reaches for a second Cupertino class.
+    // The same census and verdict the gate runs, over a temporary
+    // application: a clean file, one violation per way in, and an exempt
+    // router that reaches past its one name three ways.
     final String base = plantedApplication(<String, String>{
       'lib/src/clean.dart': "import 'package:flutter/widgets.dart';\n",
       'lib/src/tab_bar.dart':
@@ -143,21 +335,37 @@ void main() {
       'lib/src/toggle.dart': 'Widget t() => Switch.adaptive(value: on);\n',
       'lib/src/app/app_router.dart':
           "import 'package:flutter/cupertino.dart' "
-          'show CupertinoRouteTransitionMixin, CupertinoButton;\n'
-          "import 'package:flutter/cupertino.dart' show showCupertinoDialog;\n",
+          'show CupertinoRouteTransitionMixin;\n'
+          "import 'package:flutter/cupertino.dart';\n"
+          "// import 'package:flutter/cupertino.dart' "
+          'show CupertinoRouteTransitionMixin;\n'
+          'class _WorkspacePageRoute {\n'
+          '  void buildTransitions() => CupertinoRouteTransitionMixin.x();\n'
+          '  void other() => CupertinoRouteTransitionMixin.x();\n'
+          '  void dialog() => showCupertinoDialog(context: c);\n'
+          '}\n',
     });
-    final List<String> violations = cupertinoViolations(
-      cupertinoCensus(base: base),
-    );
-    expect(violations, <String>[
-      'lib/src/app/app_router.dart: CupertinoButton, but only '
-          'CupertinoRouteTransitionMixin is exempt',
-      'lib/src/app/app_router.dart: showCupertinoDialog, but only '
-          'CupertinoRouteTransitionMixin is exempt',
-      'lib/src/tab_bar.dart: $cupertinoLibrary, CupertinoTabBar',
-      'lib/src/theme.dart: CupertinoPageTransitionsBuilder',
-      'lib/src/toggle.dart: .adaptive',
+    expect(cupertinoViolations(cupertinoCensus(base: base)), <String>[
+      'lib/src/app/app_router.dart: line 2, <directives>, '
+          '$cupertinoLibrary must show CupertinoRouteTransitionMixin and '
+          'nothing else, showing everything',
+      'lib/src/app/app_router.dart: line 6, _WorkspacePageRoute.other, '
+          'CupertinoRouteTransitionMixin, but only '
+          '_WorkspacePageRoute.buildTransitions may use it',
+      'lib/src/app/app_router.dart: line 7, _WorkspacePageRoute.dialog, '
+          'showCupertinoDialog, but only CupertinoRouteTransitionMixin is '
+          'exempt',
+      'lib/src/tab_bar.dart: line 1, <directives>, $cupertinoLibrary',
+      'lib/src/tab_bar.dart: line 2, bar, CupertinoTabBar',
+      'lib/src/theme.dart: line 1, t, CupertinoPageTransitionsBuilder',
+      'lib/src/toggle.dart: line 1, t, Switch.adaptive',
     ]);
+  });
+
+  test('every file under lib/ parses, so the tree is the whole file', () {
+    for (final GateSource source in libSources()) {
+      expect(source.errors, isEmpty, reason: source.path);
+    }
   });
 
   test('no file under lib/ names a Cupertino component', () {
@@ -172,39 +380,18 @@ void main() {
     );
   });
 
-  test('the iOS route takes one Cupertino name, through a show clause', () {
-    // The exemption is a transition, not a licence for the library: a bare
-    // import would let a Cupertino component in behind the same reason.
-    const String router = 'lib/src/app/app_router.dart';
-    final Map<String, List<String>> census = cupertinoCensus();
-    expect(
-      census[router],
-      isNotNull,
-      reason:
-          '$router no longer uses ${cupertinoExemptions[router]}; remove its '
-          'exemption',
-    );
-    final String source = libSources()
-        .firstWhere((GateSource s) => s.path == router)
-        .text;
-    expect(
-      RegExp(
-        r"import 'package:flutter/cupertino\.dart'\s+"
-        r'show CupertinoRouteTransitionMixin;',
-      ).hasMatch(source),
-      isTrue,
-      reason:
-          '$router should import cupertino.dart with a one-name show clause',
-    );
-  });
-
-  test('every exemption is still used', () {
-    final Map<String, List<String>> census = cupertinoCensus();
-    for (final String path in cupertinoExemptions.keys) {
+  test('every exemption is still used where it says', () {
+    final Map<String, List<CupertinoUse>> census = cupertinoCensus();
+    for (final CupertinoExemption e in cupertinoExemptions) {
       expect(
-        census.containsKey(path),
+        census[e.path]?.any(
+              (CupertinoUse u) => u.term == e.name && u.site == e.site,
+            ) ??
+            false,
         isTrue,
-        reason: '$path no longer names a Cupertino class; remove its exemption',
+        reason:
+            '${e.path} no longer uses ${e.name} in ${e.site}; remove or '
+            'correct its exemption',
       );
     }
   });

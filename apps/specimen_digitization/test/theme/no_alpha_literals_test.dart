@@ -4,122 +4,176 @@
 // over it, `ui.color.ink.withValues(alpha: .06)`, passed it, and is the same
 // thing: a colour nobody named, which a mode, a contrast check or a later
 // palette change cannot reach. The colour belongs in the theme as a role or an
-// overlay token.
+// opacity token.
 //
-// So an opacity written as a number fails: in `withValues(alpha: ...)`, in the
-// deprecated `withOpacity(...)`, in `withAlpha(...)`, in the design system's
-// own `stateLayer(...)`, which takes an opacity, in an `opacity:` argument
-// (`Opacity`, `AnimatedOpacity`) and as the amount of `Color.lerp`, which mixes
-// two roles into a third nobody named. Giving the number a name in the same
-// file does not help: `alpha: _wash` with `const double _wash = .06` reads as
-// `.06`. A name from another file is out of reach of a per-file scan; review
-// catches it. Zero and full opacity stay, because they are not a colour
-// decision: `withValues(alpha: 0)` is the role at nothing, which is what a
-// cross-fade starts from. The mechanism is the
-// geometry gate's: a per-file count that may go down, never up, and a file at
-// zero leaves the map. It reads the application's `lib/`; the package's
-// foundation is where a role and its opacity are defined (`selection` at
-// `selectionOpacity`, `stateLayer` at `hoverOpacity`).
+// The gate reads each file as a syntax tree, so comments between tokens and
+// hex spellings change nothing. An opacity is the `alpha:` of `withValues` or
+// `Color.from`, the argument of `withOpacity`, `withAlpha` or the design
+// system's `stateLayer`, the alpha of `Color.fromARGB` and `Color.fromRGBO`,
+// and the amount of `Color.lerp`, which mixes two roles into a third nobody
+// named. Each number
+// written in one counts, whatever its value, because the brief counts
+// literals: `alpha: 0` is the role at nothing, and the design system's
+// transparent role says that with a name. A name for the number declared in
+// the same file is the number, `alpha: _wash` with `const double _wash =
+// .06`; a name from another file is out of reach of a per-file reading, and
+// review catches it. Not read: the `opacity:` of `Opacity` and
+// `AnimatedOpacity`, where the tree today holds only visibility toggles
+// (`visible ? 1 : 0`); a fraction there over a coloured child is the same
+// decision, and review catches it.
+//
+// The mechanism is the geometry gate's: a per-file count that may go down,
+// never up, held to the tree exactly, and a file at zero leaves the map. It
+// reads every file under `lib/`; the package's foundation, where a role and
+// its opacity are defined, is the package's own.
 
+import 'package:analyzer/dart/ast/ast.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'gate_support.dart';
 
 /// Per-file counts on 2026-10-17, when the gate was written. Shrink only.
 ///
-/// Two: the wash under the selected destination in the shell's rail, and the
-/// shade the capture screen paints outside the crop.
+/// Four: the wash under the selected destination in the shell's rail, the
+/// shade the capture screen paints outside the crop, and two roles faded to
+/// nothing (`alpha: 0`) in the router's page and the queue's filter control.
 const Map<String, int> alphaLiteralBacklog = <String, int>{
+  'lib/src/app/app_router.dart': 1,
   'lib/src/app/shell.dart': 1,
   'lib/src/capture/capture_screen.dart': 1,
+  'lib/src/screens/queue/queue_screen.dart': 1,
 };
 
-final RegExp _withValues = RegExp(r'\.withValues\s*\(');
-final RegExp _alphaArgument = RegExp(r'\balpha\s*:');
-final RegExp _withOpacity = RegExp(r'\.withOpacity\s*\(');
-final RegExp _withAlpha = RegExp(r'\.withAlpha\s*\(');
-final RegExp _stateLayer = RegExp(r'\.stateLayer\s*\(');
-final RegExp _opacityArgument = RegExp(r'\bopacity\s*:');
-final RegExp _lerp = RegExp(r'\bColor\.lerp\s*\(');
-final RegExp _bareName = RegExp(
-  r'^\s*(?:[A-Za-z_$][\w$]*\.)?([A-Za-z_$][\w$]*)\s*$',
-);
+/// One opacity written as a number.
+class OpacityLiteral {
+  /// Records [text], the number or the name of one, at [line] in [site],
+  /// written in [call].
+  const OpacityLiteral(this.line, this.site, this.call, this.text);
 
-/// Every opacity in [source] written as a number other than none or full, as
-/// `line N, <call> <value>`.
-List<String> alphaLiteralsIn(String source) {
-  final String code = maskProse(source);
-  final List<String> found = <String>[];
+  /// The line.
+  final int line;
 
-  void check(int start, int end, String call, Set<num> allowed) {
-    final String expression = code.substring(start, end);
-    for (final RegExpMatch literal in numericLiteral.allMatches(expression)) {
-      final String text = literal.group(0)!;
-      if (allowed.contains(num.parse(text))) continue;
-      found.add('line ${lineOf(source, start)}, $call $text');
-      return;
+  /// The declaration it is in.
+  final String site;
+
+  /// Where the opacity goes: `alpha:`, `withOpacity`, `Color.lerp` and so on.
+  final String call;
+
+  /// The number as written, or `name = number`.
+  final String text;
+
+  @override
+  String toString() => 'line $line, $site, $call $text';
+}
+
+/// Every opacity written as a number in [source].
+List<OpacityLiteral> opacityLiteralsIn(GateSource source) {
+  final _OpacityVisitor visitor = _OpacityVisitor(
+    source,
+    numericConstants(source.unit),
+  );
+  source.unit.accept(visitor);
+  return visitor.found;
+}
+
+class _OpacityVisitor extends CodeVisitor {
+  _OpacityVisitor(this.source, this.constants);
+
+  final GateSource source;
+  final Map<String, Expression> constants;
+  final List<OpacityLiteral> found = <OpacityLiteral>[];
+
+  void _check(Expression value, String call) {
+    final List<Literal> literals = numericLiteralsIn(value);
+    for (final Literal literal in literals) {
+      found.add(
+        OpacityLiteral(
+          source.lineOf(literal.offset),
+          siteOf(literal),
+          call,
+          literal.toSource(),
+        ),
+      );
     }
-    // A name for the number, declared in this file.
-    final String? name = _bareName.firstMatch(expression)?.group(1);
-    if (name == null) return;
-    final RegExpMatch? declared = RegExp(
-      '\\b(?:const|final)\\s+(?:(?:double|num|int)\\s+)?'
-      '${RegExp.escape(name)}\\s*=\\s*(${numericLiteral.pattern})\\s*[;,]',
-    ).firstMatch(code);
-    if (declared == null) return;
-    final String text = declared.group(1)!;
-    if (!allowed.contains(num.parse(text))) {
-      found.add('line ${lineOf(source, start)}, $call $name = $text');
+    if (literals.isNotEmpty) return;
+    if (value is SimpleIdentifier || value is PrefixedIdentifier) {
+      final num? named = numberOf(value, constants: constants);
+      if (named != null) {
+        found.add(
+          OpacityLiteral(
+            source.lineOf(value.offset),
+            siteOf(value),
+            call,
+            '${value.toSource()} = $named',
+          ),
+        );
+      }
     }
   }
 
-  for (final RegExpMatch call in _withValues.allMatches(code)) {
-    final int close = endOfBracket(code, call.end - 1);
-    final String arguments = code.substring(call.end, close);
-    for (final RegExpMatch alpha in _alphaArgument.allMatches(arguments)) {
-      final int start = call.end + alpha.end;
-      check(start, endOfExpression(code, start), 'alpha:', <num>{0, 1});
+  Expression? _named(ArgumentList arguments, String name) => arguments.arguments
+      .whereType<NamedExpression>()
+      .where((NamedExpression e) => e.name.label.name == name)
+      .firstOrNull
+      ?.expression;
+
+  Expression? _positional(ArgumentList arguments, int index) {
+    final List<Expression> positional = <Expression>[
+      for (final Expression a in arguments.arguments)
+        if (a is! NamedExpression) a,
+    ];
+    return index < positional.length ? positional[index] : null;
+  }
+
+  void _colorConstructor(String name, ArgumentList arguments) {
+    final Expression? alpha = switch (name) {
+      'fromARGB' => _positional(arguments, 0),
+      'fromRGBO' => _positional(arguments, 3),
+      'from' => _named(arguments, 'alpha'),
+      'lerp' => _positional(arguments, 2),
+      _ => null,
+    };
+    if (alpha != null) _check(alpha, 'Color.$name');
+  }
+
+  @override
+  void visitMethodInvocation(MethodInvocation node) {
+    final String method = node.methodName.name;
+    final ArgumentList arguments = node.argumentList;
+    final Expression? target = node.target;
+    if (target is SimpleIdentifier && target.name == 'Color') {
+      _colorConstructor(method, arguments);
+    } else if (method == 'withValues') {
+      final Expression? alpha = _named(arguments, 'alpha');
+      if (alpha != null) _check(alpha, 'alpha:');
+    } else if (method == 'withOpacity' ||
+        method == 'withAlpha' ||
+        method == 'stateLayer') {
+      final Expression? value = _positional(arguments, 0);
+      if (value != null) _check(value, method);
     }
+    super.visitMethodInvocation(node);
   }
-  for (final RegExpMatch call in _withOpacity.allMatches(code)) {
-    check(call.end, endOfExpression(code, call.end), 'withOpacity', <num>{
-      0,
-      1,
-    });
-  }
-  for (final RegExpMatch call in _stateLayer.allMatches(code)) {
-    check(call.end, endOfExpression(code, call.end), 'stateLayer', <num>{0, 1});
-  }
-  for (final RegExpMatch argument in _opacityArgument.allMatches(code)) {
-    check(argument.end, endOfExpression(code, argument.end), 'opacity:', <num>{
-      0,
-      1,
-    });
-  }
-  for (final RegExpMatch call in _lerp.allMatches(code)) {
-    // The third argument is the amount.
-    int from = call.end;
-    for (int argument = 0; argument < 2 && from < code.length; argument++) {
-      from = endOfExpression(code, from) + 1;
+
+  @override
+  void visitInstanceCreationExpression(InstanceCreationExpression node) {
+    final ConstructorName constructor = node.constructorName;
+    if (constructor.type.name.lexeme == 'Color' && constructor.name != null) {
+      _colorConstructor(constructor.name!.name, node.argumentList);
+    } else if (constructor.type.importPrefix?.name.lexeme == 'Color') {
+      _colorConstructor(constructor.type.name.lexeme, node.argumentList);
     }
-    check(from, endOfExpression(code, from), 'Color.lerp', <num>{0, 1});
+    super.visitInstanceCreationExpression(node);
   }
-  for (final RegExpMatch call in _withAlpha.allMatches(code)) {
-    check(call.end, endOfExpression(code, call.end), 'withAlpha', <num>{
-      0,
-      255,
-    });
-  }
-  return found;
 }
 
 /// Every file under `lib/` of the application at [base] that writes an
 /// opacity as a number, with its findings.
-Map<String, List<String>> alphaLiteralCensus({String base = '.'}) {
-  final Map<String, List<String>> found = <String, List<String>>{};
+Map<String, List<OpacityLiteral>> alphaLiteralCensus({String base = '.'}) {
+  final Map<String, List<OpacityLiteral>> found =
+      <String, List<OpacityLiteral>>{};
   for (final GateSource source in libSources(base: base)) {
-    if (generatedFile.hasMatch(source.path)) continue;
-    final List<String> findings = alphaLiteralsIn(source.text);
+    final List<OpacityLiteral> findings = opacityLiteralsIn(source);
     if (findings.isNotEmpty) found[source.path] = findings;
   }
   return found;
@@ -127,9 +181,9 @@ Map<String, List<String>> alphaLiteralCensus({String base = '.'}) {
 
 /// What the gate objects to in [census]: a file not in the backlog, or one
 /// that holds more than its count.
-List<String> alphaLiteralViolations(Map<String, List<String>> census) {
+List<String> alphaLiteralViolations(Map<String, List<OpacityLiteral>> census) {
   final List<String> found = <String>[];
-  census.forEach((String path, List<String> findings) {
+  census.forEach((String path, List<OpacityLiteral> findings) {
     final int allowed = alphaLiteralBacklog[path] ?? 0;
     if (findings.length > allowed) {
       found.add(
@@ -142,76 +196,70 @@ List<String> alphaLiteralViolations(Map<String, List<String>> census) {
 }
 
 void main() {
-  test('the scanner reads an opacity the way a reviewer would', () {
-    expect(alphaLiteralsIn('ui.color.ink.withValues(alpha: .06)'), <String>[
-      'line 1, alpha: .06',
-    ]);
-    expect(alphaLiteralsIn('c.withValues(alpha: 0.58)'), <String>[
-      'line 1, alpha: 0.58',
-    ]);
-    expect(alphaLiteralsIn('c.withValues(red: r, alpha: t * 0.5)'), <String>[
-      'line 1, alpha: 0.5',
-    ]);
-    expect(alphaLiteralsIn('c.withOpacity(0.4)'), <String>[
-      'line 1, withOpacity 0.4',
-    ]);
-    expect(alphaLiteralsIn('c.withAlpha(20)'), <String>[
-      'line 1, withAlpha 20',
-    ]);
-    expect(alphaLiteralsIn('ui.color.stateLayer(.06)'), <String>[
-      'line 1, stateLayer .06',
-    ]);
-    expect(
-      alphaLiteralsIn('Opacity(opacity: .06, child: ColoredBox(color: ink))'),
-      <String>['line 1, opacity: .06'],
-    );
-    expect(alphaLiteralsIn('Color.lerp(ui.color.ground, ink, 0.06)!'), <String>[
-      'line 1, Color.lerp 0.06',
-    ]);
-    expect(alphaLiteralsIn('c.withAlpha(0x14)'), <String>[
-      'line 1, withAlpha 0x14',
-    ]);
+  List<String> of(String text) => <String>[
+    for (final OpacityLiteral o in opacityLiteralsIn(
+      GateSource('x.dart', text),
+    ))
+      '${o.call} ${o.text}',
+  ];
 
-    // A name for the number in the same file is the number.
+  test('the scanner reads an opacity the way the compiler does', () {
+    expect(of('final c = ui.color.ink.withValues(alpha: .06);'), <String>[
+      'alpha: .06',
+    ]);
+    expect(of('final c = ink./* overlay */withValues(alpha: .06);'), <String>[
+      'alpha: .06',
+    ]);
+    expect(of('final c = ink.withValues(alpha: 0x1 / 0x10);'), <String>[
+      'alpha: 0x1',
+      'alpha: 0x10',
+    ]);
+    expect(of('final c = ink.withValues(red: r, alpha: t * 0.5);'), <String>[
+      'alpha: 0.5',
+    ]);
+    expect(of('final c = ink.withValues(alpha: 0);'), <String>['alpha: 0']);
+    expect(of('final c = ink.withOpacity(0.4);'), <String>['withOpacity 0.4']);
+    expect(of('final c = ink.withAlpha(0x80);'), <String>['withAlpha 0x80']);
+    expect(of('final c = ui.color.stateLayer(.06);'), <String>[
+      'stateLayer .06',
+    ]);
+    expect(of('final c = Color.fromRGBO(0, 0, 0, .06);'), <String>[
+      'Color.fromRGBO .06',
+    ]);
+    expect(of('final c = const Color.fromARGB(20, 0, 0, 0);'), <String>[
+      'Color.fromARGB 20',
+    ]);
+    expect(of('final c = Color.lerp(ui.color.ink, paper, .06);'), <String>[
+      'Color.lerp .06',
+    ]);
     expect(
-      alphaLiteralsIn(
-        'static const double _wash = .06;\n'
-        'Color w() => ink.withValues(alpha: _wash);',
+      of(
+        'const opacity = .06;\n'
+        'final c = ink.withValues(alpha: opacity);',
       ),
-      <String>['line 2, alpha: _wash = .06'],
+      <String>['alpha: opacity = 0.06'],
     );
     expect(
-      alphaLiteralsIn(
+      of(
         'class _S { static const double wash = .06; }\n'
-        'Color w() => ink.withValues(alpha: _S.wash);',
+        'final c = ink.withValues(alpha: _S.wash);',
       ),
-      <String>['line 2, alpha: wash = .06'],
+      <String>['alpha: _S.wash = 0.06'],
     );
-    expect(alphaLiteralsIn('a;\nc.withValues(\n  alpha: .1,\n)'), <String>[
-      'line 3, alpha: .1',
-    ]);
 
-    // None and full, a token, another channel and prose are not opacities.
-    expect(alphaLiteralsIn('c.withValues(alpha: 0)'), isEmpty);
-    expect(alphaLiteralsIn('c.withValues(alpha: 1.0)'), isEmpty);
-    expect(alphaLiteralsIn('c.withAlpha(255)'), isEmpty);
+    // A token, a value from an animation, another channel and prose are not
+    // opacities written as numbers.
     expect(
-      alphaLiteralsIn('ui.color.stateLayer(ui.color.hoverOpacity)'),
+      of('final c = ui.color.stateLayer(ui.color.hoverOpacity);'),
       isEmpty,
     );
+    expect(of('final c = Color.lerp(a, b, animation.value);'), isEmpty);
+    expect(of('final c = ink.withValues(red: 0.5);'), isEmpty);
     expect(
-      alphaLiteralsIn('Color.lerp(a, b, animation.value)'),
+      of('final c = ink.withValues(alpha: GroundPalette.scrimOpacity);'),
       isEmpty,
-      reason: 'an amount that comes from an animation is not a colour',
     );
-    expect(alphaLiteralsIn('Opacity(opacity: visible ? 1 : 0)'), isEmpty);
-    expect(
-      alphaLiteralsIn('c.withValues(alpha: GroundPalette.scrimOpacity)'),
-      isEmpty,
-      reason: 'a token declared in the package is not in this file',
-    );
-    expect(alphaLiteralsIn('c.withValues(red: 0.5)'), isEmpty);
-    expect(alphaLiteralsIn('// was ink.withValues(alpha: .06)'), isEmpty);
+    expect(of('// ink.withValues(alpha: .06)\nvoid f() {}'), isEmpty);
   });
 
   test('a planted opacity fails the gate', () {
@@ -226,11 +274,12 @@ void main() {
           'final Color b = ink.withOpacity(.12);\n',
     });
     expect(alphaLiteralViolations(alphaLiteralCensus(base: base)), <String>[
-      'lib/src/app/shell.dart holds 2, allowed 1:\n'
-          '    line 1, alpha: .06\n'
-          '    line 2, withOpacity .12',
+      'lib/src/app/shell.dart holds 2, allowed '
+          '${alphaLiteralBacklog['lib/src/app/shell.dart'] ?? 0}:\n'
+          '    line 1, a, alpha: .06\n'
+          '    line 2, b, withOpacity .12',
       'lib/src/widgets/hover.dart holds 1, allowed 0:\n'
-          '    line 1, alpha: .08',
+          '    line 1, wash, alpha: .08',
     ]);
   });
 
@@ -250,7 +299,7 @@ void main() {
   });
 
   test('the backlog matches the tree exactly', () {
-    final Map<String, List<String>> census = alphaLiteralCensus();
+    final Map<String, List<OpacityLiteral>> census = alphaLiteralCensus();
     alphaLiteralBacklog.forEach((String path, int allowed) {
       expect(
         census[path]?.length ?? 0,

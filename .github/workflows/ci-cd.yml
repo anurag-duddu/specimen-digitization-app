@@ -188,8 +188,12 @@ jobs:
       run:
         working-directory: apps/specimen_digitization
     steps:
+      # Two commits deep, so the guard tests can read the base: the first
+      # parent of a pull request's merge commit, or the previous main.
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
 
       - name: Install Flutter
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
@@ -241,7 +245,11 @@ jobs:
       - name: Analyze Flutter code
         run: flutter analyze --fatal-infos
 
+      # The sign-off gate compares every guard allowance with the base's copy
+      # (test/theme/exemptions_owner_approved_test.dart).
       - name: Run Flutter tests
+        env:
+          GATE_BASE: HEAD^1
         run: flutter test
 
       - name: Build Flutter web release

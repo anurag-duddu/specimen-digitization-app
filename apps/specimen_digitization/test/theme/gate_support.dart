@@ -1,73 +1,52 @@
-// What the source gates added on 2026-10-17 share: the list of files they
-// read and the prose mask they read them through.
+// What the source gates added on 2026-10-17 share: the files they read, read
+// as Dart syntax trees, and the questions they ask of a tree.
 //
-// `no_literal_geometry_test.dart` owns the mask. It is the one scanner in this
-// directory that blanks strings as well as comments without shifting a line,
-// so the newer gates take it from there rather than carrying a second copy that
-// could drift from it.
+// The first version of these gates read text through a mask, and the review
+// of PR #358 showed what text cannot see: a comment between `Platform` and
+// `.isIOS`, a hex literal, a second declarator, an identifier inside a string
+// interpolation, a directive split by a comment. A syntax tree from
+// `package:analyzer` reads each of those the way the compiler reads them, so
+// the gates ask the tree.
 
 import 'dart:io';
 
+import 'package:analyzer/dart/analysis/results.dart';
+import 'package:analyzer/dart/analysis/utilities.dart';
+import 'package:analyzer/dart/ast/ast.dart';
+import 'package:analyzer/dart/ast/token.dart';
+import 'package:analyzer/dart/ast/visitor.dart';
+import 'package:analyzer/diagnostic/diagnostic.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-export 'no_literal_geometry_test.dart'
-    show generatedFile, maskProse, modelsPrefix, painterPaintBodies;
-
-/// A numeric literal that is not part of an identifier, including the
-/// leading-dot form `.06` and hex. `num.parse` reads every form it matches.
-final RegExp numericLiteral = RegExp(
-  r'(?<![A-Za-z0-9_$.])'
-  r'(?:0[xX][0-9a-fA-F]+|(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?)',
-);
-
-/// The end of the bracketed expression that opens at [open] in masked [code],
-/// one past its closing bracket.
-int endOfBracket(String code, int open) {
-  int depth = 0;
-  for (int i = open; i < code.length; i++) {
-    final String c = code[i];
-    if (c == '(' || c == '[' || c == '{') {
-      depth++;
-    } else if (c == ')' || c == ']' || c == '}') {
-      depth--;
-      if (depth == 0) return i + 1;
-    }
-  }
-  return code.length;
-}
-
-/// Where the expression that starts at [start] in masked [code] ends: the
-/// first `,`, `;` or closing bracket at its own depth.
-int endOfExpression(String code, int start) {
-  int depth = 0;
-  for (int i = start; i < code.length; i++) {
-    final String c = code[i];
-    if (c == '(' || c == '[' || c == '{') {
-      depth++;
-    } else if (c == ')' || c == ']' || c == '}') {
-      if (depth == 0) return i;
-      depth--;
-    } else if ((c == ',' || c == ';') && depth == 0) {
-      return i;
-    }
-  }
-  return code.length;
-}
-
-/// The 1-based line of [offset] in [source].
-int lineOf(String source, int offset) =>
-    '\n'.allMatches(source.substring(0, offset)).length + 1;
-
-/// One Dart file a gate reads: the path a reviewer opens and its text.
+/// One Dart file a gate reads: the path a reviewer opens, its text and its
+/// syntax tree.
 class GateSource {
-  /// Records a file's [path], relative to the application root, and [text].
-  const GateSource(this.path, this.text);
+  /// Parses [text] as the file at [path].
+  GateSource(this.path, this.text) {
+    final ParseStringResult result = parseString(
+      content: text,
+      path: '/gate/$path',
+      throwIfDiagnostics: false,
+    );
+    unit = result.unit;
+    errors = result.errors;
+  }
 
   /// The path relative to the application root, `lib/src/...`.
   final String path;
 
   /// The file as it is on disk.
   final String text;
+
+  /// Its syntax tree.
+  late final CompilationUnit unit;
+
+  /// The syntax errors the parser reported; a gate cannot trust a tree that
+  /// has any.
+  late final List<Diagnostic> errors;
+
+  /// The 1-based line of [offset].
+  int lineOf(int offset) => unit.lineInfo.getLocation(offset).lineNumber;
 }
 
 /// Every Dart file under `lib/` of the application at [base], by path relative
@@ -75,7 +54,7 @@ class GateSource {
 ///
 /// [base] is the application root, which is where `flutter test` runs. A test
 /// that plants a violation passes a temporary directory laid out the same way,
-/// so the gate it proves is the gate that runs, not a copy of its regex.
+/// so the gate it proves is the gate that runs, not a copy of it.
 List<GateSource> libSources({String base = '.'}) {
   final Directory lib = Directory(base == '.' ? 'lib' : '$base/lib');
   expect(
@@ -106,112 +85,249 @@ String plantedApplication(Map<String, String> files) {
   return root.path;
 }
 
-/// A comment or a string literal in a Dart source, by offsets.
-class ProseSpan {
-  /// Records the span from [start] to [end] and whether it is a [comment].
-  const ProseSpan(this.start, this.end, {required this.comment});
-
-  /// The offset of its first character: `/` for a comment, the quote for a
-  /// string.
-  final int start;
-
-  /// One past its last character.
-  final int end;
-
-  /// True for a comment, false for a string.
-  final bool comment;
-}
-
-/// The comments and strings of [source], in order.
-///
-/// The reading [maskProse] does, keeping which span is which, because the
-/// sign-off gate has to find the comment attached to an entry and the string
-/// that names it. `exemptions_owner_approved_test.dart` holds the two readers
-/// equal on every file either gate scans.
-List<ProseSpan> proseSpans(String source) {
-  final List<ProseSpan> spans = <ProseSpan>[];
-  int i = 0;
-  while (i < source.length) {
-    if (source.startsWith('//', i)) {
-      final int newline = source.indexOf('\n', i);
-      final int end = newline < 0 ? source.length : newline;
-      spans.add(ProseSpan(i, end, comment: true));
-      i = end;
-    } else if (source.startsWith('/*', i)) {
-      int depth = 1;
-      int j = i + 2;
-      while (j < source.length && depth > 0) {
-        if (source.startsWith('/*', j)) {
-          depth++;
-          j += 2;
-        } else if (source.startsWith('*/', j)) {
-          depth--;
-          j += 2;
-        } else {
-          j++;
-        }
+/// The declaration [node] sits in, as a reviewer names it: `Class.member`,
+/// `function`, `Class` for a class-level initializer, or `<directives>` for an
+/// import or export.
+String siteOf(AstNode node) {
+  String? member;
+  String? container;
+  for (AstNode? n = node; n != null; n = n.parent) {
+    if (n is Directive) return '<directives>';
+    if (member == null) {
+      if (n is MethodDeclaration) {
+        member = n.name.lexeme;
+      } else if (n is ConstructorDeclaration) {
+        member = n.name?.lexeme ?? '<constructor>';
+      } else if (n is FieldDeclaration) {
+        member = n.fields.variables.map((v) => v.name.lexeme).join(',');
+      } else if (n is FunctionDeclaration && n.parent is CompilationUnit) {
+        return n.name.lexeme;
+      } else if (n is TopLevelVariableDeclaration) {
+        return n.variables.variables.map((v) => v.name.lexeme).join(',');
       }
-      spans.add(ProseSpan(i, j, comment: true));
-      i = j;
-    } else if (source[i] == "'" || source[i] == '"') {
-      final int end = _stringEnd(source, i);
-      spans.add(ProseSpan(i, end, comment: false));
-      i = end;
-    } else {
-      i++;
+    }
+    if (n is ClassDeclaration) container = n.namePart.typeName.lexeme;
+    if (n is MixinDeclaration) container = n.name.lexeme;
+    if (n is EnumDeclaration) container = n.namePart.typeName.lexeme;
+    if (n is ExtensionDeclaration) container = n.name?.lexeme ?? '<extension>';
+    if (n is ExtensionTypeDeclaration) {
+      container = n.primaryConstructor.typeName.lexeme;
+    }
+    if (container != null) {
+      return member == null ? container : '$container.$member';
     }
   }
-  return spans;
+  return member ?? '<top>';
 }
 
-bool _identifierPart(String c) => RegExp(r'[A-Za-z0-9_$]').hasMatch(c);
-
-int _interpolationEnd(String source, int open) {
-  int depth = 0;
-  int i = open;
-  while (i < source.length) {
-    final String c = source[i];
-    if (c == '{') {
-      depth++;
-      i++;
-    } else if (c == '}') {
-      depth--;
-      i++;
-      if (depth == 0) return i;
-    } else if (c == "'" || c == '"') {
-      i = _stringEnd(source, i);
-    } else {
-      i++;
-    }
-  }
-  return source.length;
+/// A visitor over code alone: a doc comment's `[name]` references are prose,
+/// not uses, so comments are not visited.
+class CodeVisitor extends RecursiveAstVisitor<void> {
+  @override
+  void visitComment(Comment node) {}
 }
 
-int _stringEnd(String source, int start) {
-  final int n = source.length;
-  final String quote = source[start];
-  final bool raw =
-      start > 0 &&
-      source[start - 1] == 'r' &&
-      (start < 2 || !_identifierPart(source[start - 2]));
-  final bool triple = source.startsWith(quote * 3, start);
-  int i = start + (triple ? 3 : 1);
-  while (i < n) {
-    final String c = source[i];
-    if (!raw && c == r'\') {
-      i += 2;
-      continue;
+/// The numeric constants a file declares, by `name` and `Class.name`: every
+/// `const` or `final` variable whose initializer is a number the gate can
+/// evaluate. Later declarations of the same name do not replace earlier ones.
+Map<String, Expression> numericConstants(CompilationUnit unit) {
+  final Map<String, Expression> found = <String, Expression>{};
+  unit.accept(_ConstantCollector(found));
+  return found;
+}
+
+class _ConstantCollector extends CodeVisitor {
+  _ConstantCollector(this.found);
+
+  final Map<String, Expression> found;
+
+  @override
+  void visitVariableDeclaration(VariableDeclaration node) {
+    final Expression? initializer = node.initializer;
+    final AstNode? list = node.parent;
+    if (initializer != null &&
+        list is VariableDeclarationList &&
+        (list.isConst || list.isFinal)) {
+      final String name = node.name.lexeme;
+      found.putIfAbsent(name, () => initializer);
+      final ClassDeclaration? owner = list.parent is FieldDeclaration
+          ? node.thisOrAncestorOfType<ClassDeclaration>()
+          : null;
+      if (owner != null) {
+        found.putIfAbsent(
+          '${owner.namePart.typeName.lexeme}.$name',
+          () => initializer,
+        );
+      }
     }
-    if (!raw && c == r'$' && i + 1 < n && source[i + 1] == '{') {
-      i = _interpolationEnd(source, i + 1);
-      continue;
-    }
-    if (c == quote) {
-      if (!triple) return i + 1;
-      if (source.startsWith(quote * 3, i)) return i + 3;
-    }
-    if (!triple && c == '\n') return i;
-    i++;
+    super.visitVariableDeclaration(node);
   }
-  return n;
+}
+
+/// The value of [expression] when it is a number written in literals,
+/// operators and the [constants] of its file, or null.
+///
+/// When [literalsOnly] is true a name is not followed, so the answer is
+/// whether the expression itself is all numbers.
+num? numberOf(
+  Expression expression, {
+  Map<String, Expression> constants = const <String, Expression>{},
+  bool literalsOnly = false,
+  Set<String>? following,
+}) {
+  final Set<String> seen = following ?? <String>{};
+  num? of(Expression e) => numberOf(
+    e,
+    constants: constants,
+    literalsOnly: literalsOnly,
+    following: seen,
+  );
+  switch (expression) {
+    case IntegerLiteral(:final int? value):
+      return value;
+    case DoubleLiteral(:final double value):
+      return value;
+    case ParenthesizedExpression(:final Expression expression):
+      return of(expression);
+    case PrefixExpression(:final Token operator, :final Expression operand)
+        when operator.type == TokenType.MINUS:
+      final num? value = of(operand);
+      return value == null ? null : -value;
+    case BinaryExpression(
+      :final Expression leftOperand,
+      :final Token operator,
+      :final Expression rightOperand,
+    ):
+      final num? left = of(leftOperand);
+      final num? right = of(rightOperand);
+      if (left == null || right == null) return null;
+      switch (operator.type) {
+        case TokenType.PLUS:
+          return left + right;
+        case TokenType.MINUS:
+          return left - right;
+        case TokenType.STAR:
+          return left * right;
+        case TokenType.SLASH:
+          return right == 0 ? null : left / right;
+        case TokenType.TILDE_SLASH:
+          return right == 0 ? null : left ~/ right;
+        default:
+          return null;
+      }
+    case SimpleIdentifier(:final String name) when !literalsOnly:
+      return _follow(name, constants, seen, of);
+    case PrefixedIdentifier(:final String name) when !literalsOnly:
+      return _follow(name, constants, seen, of);
+    default:
+      return null;
+  }
+}
+
+num? _follow(
+  String name,
+  Map<String, Expression> constants,
+  Set<String> seen,
+  num? Function(Expression) of,
+) {
+  final Expression? target = constants[name];
+  if (target == null || !seen.add(name)) return null;
+  return of(target);
+}
+
+/// Every numeric literal inside [node], in source order.
+List<Literal> numericLiteralsIn(AstNode node) {
+  final List<Literal> found = <Literal>[];
+  node.accept(_LiteralCollector(found));
+  return found;
+}
+
+class _LiteralCollector extends CodeVisitor {
+  _LiteralCollector(this.found);
+
+  final List<Literal> found;
+
+  @override
+  void visitIntegerLiteral(IntegerLiteral node) => found.add(node);
+
+  @override
+  void visitDoubleLiteral(DoubleLiteral node) => found.add(node);
+}
+
+/// The value of a numeric literal node.
+num literalValue(Literal literal) => switch (literal) {
+  IntegerLiteral(:final int? value) => value ?? 0,
+  DoubleLiteral(:final double value) => value,
+  _ => throw ArgumentError('not a numeric literal: $literal'),
+};
+
+/// The comments attached to [node] as an entry of a list, set, map or
+/// argument list: the ones on its own lines before it, any inside it, and the
+/// one that follows it on its last line, after its comma.
+///
+/// A comment after an entry's comma on the same line is that entry's, never
+/// the next one's, so `'a', // owner-approved: ...` approves `'a'`.
+List<String> commentsOf(AstNode node, CompilationUnit unit) {
+  int line(int offset) => unit.lineInfo.getLocation(offset).lineNumber;
+  final List<String> found = <String>[];
+  final Token first = node.beginToken;
+  final int previousLine = first.previous == null || first.previous!.isEof
+      ? 0
+      : line(first.previous!.end);
+  for (Token? c = first.precedingComments; c != null; c = c.next) {
+    if (line(c.offset) > previousLine) found.add(c.lexeme);
+  }
+  for (Token t = first.next!; t != node.endToken.next; t = t.next!) {
+    for (Token? c = t.precedingComments; c != null; c = c.next) {
+      found.add(c.lexeme);
+    }
+  }
+  // After it on its last line, past its comma and any closing brackets and
+  // the statement's end: a comment there is the last entry's on that line.
+  const Set<TokenType> closers = <TokenType>{
+    TokenType.COMMA,
+    TokenType.CLOSE_CURLY_BRACKET,
+    TokenType.CLOSE_SQUARE_BRACKET,
+    TokenType.CLOSE_PAREN,
+    TokenType.SEMICOLON,
+  };
+  final int lastLine = line(node.end);
+  Token after = node.endToken.next!;
+  while (true) {
+    for (Token? c = after.precedingComments; c != null; c = c.next) {
+      if (line(c.offset) == lastLine) found.add(c.lexeme);
+    }
+    if (after.isEof ||
+        !closers.contains(after.type) ||
+        line(after.offset) != lastLine) {
+      break;
+    }
+    after = after.next!;
+  }
+  return found;
+}
+
+/// The comments attached to a top-level declaration: its doc comment, the
+/// comments before it, and one after it on its last line.
+List<String> declarationCommentsOf(
+  AnnotatedNode declaration,
+  CompilationUnit unit,
+) {
+  int line(int offset) => unit.lineInfo.getLocation(offset).lineNumber;
+  final List<String> found = <String>[
+    if (declaration.documentationComment case final Comment doc)
+      for (final Token t in doc.tokens) t.lexeme,
+  ];
+  for (
+    Token? c = declaration.firstTokenAfterCommentAndMetadata.precedingComments;
+    c != null;
+    c = c.next
+  ) {
+    found.add(c.lexeme);
+  }
+  final Token after = declaration.endToken.next!;
+  for (Token? c = after.precedingComments; c != null; c = c.next) {
+    if (line(c.offset) == line(declaration.end)) found.add(c.lexeme);
+  }
+  return found;
 }

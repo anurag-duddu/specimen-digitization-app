@@ -1333,11 +1333,11 @@ control, which is what one vocabulary exists to prevent (section 0, property
 | `no_stand_ins` | No `TODO(fe/` marker under the package's `lib/` | none |
 | `no_fallback_text_style` | Every gallery page and every overlay pumped under `WidgetsApp`; no `RenderParagraph` carries the framework fallback style or a double underline (11 section 5) | none |
 | `fit_matrix` | The golden matrix of 11 section 3.5: four window classes by three text scales by two modes per family page, plus the Fit page | none |
-| `no_cupertino` | No import or export of `package:flutter/cupertino.dart`, no identifier containing `Cupertino` (classes and functions such as `showCupertinoDialog`) and no `.adaptive` constructor or `showAdaptiveDialog` under `lib/`; one exemption, `CupertinoRouteTransitionMixin` in `app_router.dart` for the phone iOS page transition (04 row 18; 09 section 2 principle 5) | none |
-| `no_platform_branching` | `kIsWeb`, `defaultTargetPlatform`, `Theme.of(context).platform`, `TargetPlatform.<value>`, `Platform.is<OS>`, `Platform.operatingSystem` and `debugDefaultTargetPlatformOverride` under `lib/` only in the capability files the test names, each limited to the kinds of check it makes, with a reason | none; the capability list is the allowance |
-| `no_named_pixels` | A `const` declared `double` or `num` (or untyped with a double literal) at any scope, a `static final` or `static late final`, a top-level `final`, a `double` getter written with `=>`, or an instance or local `final double` whose value is all numbers, where the value writes a number above 1 that is not a factor of a value (`x * 2`, `x / 2`; `35 * 8` is a size); every declarator; the geometry gate's files and its `paint` allowance | per-file, shrink-only, held to the exact count |
-| `no_alpha_literals` | An opacity written as a number other than none or full in `withValues(alpha:)`, `withOpacity`, `withAlpha`, `stateLayer`, an `opacity:` argument or the amount of `Color.lerp` under `lib/`, including through a name declared in the same file | per-file, shrink-only, held to the exact count |
-| `exemptions_owner_approved` | Every allowance in the source gates (allow-lists, exemptions, backlog counts, allowed values, exempt paths and patterns) as it stood on 2026-10-17; an entry added or widened since carries `// owner-approved: YYYY-MM-DD "the owner's exact words"` | the 2026-10-17 record, shrink-only |
+| `no_cupertino` | Read as a syntax tree: no import or export of `package:flutter/cupertino.dart` (conditional URIs included), no identifier containing `Cupertino` (interpolations included), and none of Flutter's `.adaptive` constructors or `showAdaptive*` functions, named exactly so a product's own `adaptive` is not counted; one exemption, `CupertinoRouteTransitionMixin` in `_WorkspacePageRoute.buildTransitions` of `app_router.dart`, behind a one-name `show` on every cupertino directive (04 row 18; 09 section 2 principle 5) | none |
+| `no_platform_branching` | Read as a syntax tree: `kIsWeb`, `defaultTargetPlatform`, `TargetPlatform` as a type or value, `Platform` from `dart:io`, `Theme.of(context).platform` and `debugDefaultTargetPlatformOverride`, only in the declarations the test names, each with exact counts per kind and the exact places that read it; a platform fact passed as an argument is tracked to the call, not into the callee | none; the capability list is the allowance |
+| `no_named_pixels` | Read as a syntax tree: a number above 1, evaluated (hex, `280 * 1`, `35 * 8`), named by any declarator, field, local, getter or parameterless function declared `double` or `num` (or given a double), when the name is used for layout: a dimension argument or variable, a geometry constructor, a comparison or sum with a measured size, or another named size. A factor of a value (`x * 2`) and a list index are not sizes; a timeout, a zoom limit or a gesture threshold is not a layout use | per-file, shrink-only, held to the exact count |
+| `no_alpha_literals` | Read as a syntax tree: a number written as the opacity of `withValues(alpha:)`, `withOpacity`, `withAlpha`, `stateLayer`, `Color.fromARGB`, `Color.fromRGBO`, `Color.from` or the amount of `Color.lerp` under `lib/`, `0` included, or a name for one declared in the same file | per-file, shrink-only, held to the exact count |
+| `exemptions_owner_approved` | Every allowance and ban list in the source gates, evaluated from the pull request base's copy and this change's: a new entry, a higher count, a wider capability, a changed exemption, scalar or threshold, or an entry removed from a ban list carries `// owner-approved: YYYY-MM-DD "the owner's exact words"` on the entry or its declaration | the base is the record; a gate file the base lacks holds only the 2026-10-17 brief's inventory unsigned |
 
 **Amendment, fit (2026-09-16, 11 sections 1 and 2.2).** `no_literal_geometry`
 is now a census of every static size rather than four sample patterns, and it
@@ -1375,14 +1375,22 @@ in the shell, with tests asserting it, because no gate read the Cupertino
 library or the platform, and a size or an opacity given a name
 (`static const double switcherMaxWidth = 280`, `ink.withValues(alpha: .06)`)
 passed the geometry and colour gates. The five rows added to the table close
-those four routes and put every named allowance in the gates under the
-owner's sign-off. Two loosenings stay with review: an entry removed from a ban
-list (`retiredWidgets`, `callRules`, `argumentRules`) and the `paint`
-allowance, which is a function rather than a list. The two backlogs start at the tree as it stood that day, 25
-named sizes over 14 files and 2 opacities over 2, and only shrink. The tests
-live in `apps/specimen_digitization/test/theme/` and share
-`gate_support.dart`, which takes its prose mask from `no_literal_geometry`
-rather than carrying a copy.
+those four routes and put every named allowance and every ban list in the
+gates under the owner's sign-off. The first version read text through the
+prose mask, and its review (PR #358) showed that legal Dart got past it: a
+comment between tokens, a hex literal, a second declarator, an interpolation;
+the four source gates and the sign-off gate now read syntax trees from
+`package:analyzer`, a test-only dependency. Their record is the pull request
+base, read with `git show` (CI checks out two commits and sets `GATE_BASE`),
+so a change cannot grant itself an allowance by editing a list in the same
+change. Left to review, and said so in each gate: a change to a gate's own
+patterns and rules, the geometry gates' `paint` allowance, a platform fact
+passed into a callee, a name for a size or an opacity declared in another
+file, the `opacity:` of `Opacity` and `AnimatedOpacity`, and the package's
+own controls, which these two number gates do not read. The two backlogs
+start at the tree as it stood that day, 19 named sizes over 14 files and 4
+opacities over 4, and only shrink. The tests live in
+`apps/specimen_digitization/test/theme/` and share `gate_support.dart`.
 
 ## 9. Definition of done for a component
 

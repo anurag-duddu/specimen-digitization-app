@@ -1,43 +1,44 @@
 // The sign-off gate (10 section 8, `exemptions_owner_approved`).
 //
 // Every source gate here has a way to let something through: an allow-list, an
-// exemption, a backlog count, an allowed value or an exempt path. Each one lets
-// a hardcoded value, a stock component or a platform fork into the product,
+// exemption, a backlog count, an allowed value, an exempt path or pattern, a
+// threshold, and the ban lists that say what is forbidden. Each one lets a
+// hardcoded value, a stock component or a platform fork into the product,
 // which is what the owner objected to on 2026-10-17 ("i hope we arent
-// duplicating and hand-codring hardcoding"), so adding one is the owner's
-// decision and not an agent's. An allowance written after this gate needs the
-// owner's sign-off, recorded on the entry itself:
+// duplicating and hand-codring hardcoding"), so loosening one is the owner's
+// decision and not an agent's.
+//
+// The record is the pull request's base. Each allowance is read from the
+// base's copy of its gate file and from this change's copy, both as syntax
+// trees with every entry evaluated (`1 + 279` is 280), and anything this change
+// loosens needs the owner's sign-off on the entry:
 //
 //     // owner-approved: 2026-10-17 "the owner's exact words"
 //
 // on the comment lines directly above the entry, or at the end of the entry's
 // own line, after its comma; a comment on the line below belongs to the next
-// entry. The date
-// must be a real day that has happened; the words are a quotation, in straight
-// double quotes, never a paraphrase. A coordinator's or a reviewer's OK is not
-// the owner's.
+// entry. A scalar or a ban list carries it on its declaration. Loosening is: a
+// new entry; a backlog count above the base's; a capability with a new kind of
+// check, a higher count or a new reader; an exemption, scalar or threshold
+// that changed; an entry removed from a ban list. Narrowing needs nothing. The
+// date must be a real day that has happened; the words are a quotation, in
+// straight double quotes, never a paraphrase. A coordinator's or a reviewer's
+// OK is not the owner's.
 //
-// The entries on each list when the gate was written are recorded below and
-// need no annotation. That record only shrinks: an entry that leaves its list
-// leaves the record, so bringing it back is new and needs a sign-off. A backlog
-// count may fall freely and may not rise above its recorded count unsigned. A
-// file renamed in a backlog reads as a new entry: move its row in the record in
-// the same change, the one edit the record takes besides removal.
+// The base is `GATE_BASE` (CI sets it to the merge commit's first parent) or,
+// on a developer's machine, the merge base with `origin/main`. A gate file the
+// base does not have is new in this change: its entries are compared with the
+// inventory the 2026-10-17 brief named, and anything else in it needs a
+// sign-off like any other. Once the base has the file, the inventory is never
+// read again.
 //
-// It checks named allowances. Not checked here, so review catches them: an
-// entry removed from a ban list (`retiredWidgets`, `callRules`,
-// `argumentRules`), which loosens a gate, and the geometry gates' `paint`
-// allowance, which is a function rather than a list.
-//
-// The gate reads the lists from source, because a comment is not a value.
-// Three self-checks keep that reading honest: its comment reader must read
-// every file the way `maskProse` does, it must see the entry keys the compiler
-// sees, and every public constant and every private collection in a gate file
-// must be either an allowance this test checks or named below as something
-// that is not one.
+// Two self-checks keep the reading honest: the evaluated entries must equal
+// what the compiler builds for every allowance the test can import, and every
+// top-level variable in a gate file must be classified here.
 
 import 'dart:io';
 
+import 'package:analyzer/dart/ast/ast.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'gate_support.dart';
@@ -50,48 +51,66 @@ import 'no_material_components_test.dart' as components;
 import 'no_material_imports_test.dart' as imports;
 import 'no_named_pixels_test.dart' as pixels;
 import 'no_platform_branching_test.dart' as platform;
+import 'pixel_scan.dart' as pixel_scan;
+import 'platform_scan.dart' as platform_scan;
 
-/// How an allowance's entries are compared with the record.
+/// How an allowance's entries are read and what loosens it.
 enum Grant {
-  /// A list or set of paths or values, or a map from a path to its reason:
-  /// an entry is its first string, or its number.
+  /// A set or list of values, or a map from a value to its reason: an entry
+  /// is the value, and a new one loosens.
   keys,
 
-  /// A map from a path to what it may use: an entry is the path and the
-  /// value.
-  keyAndValue,
-
-  /// A list of objects: an entry is its path and the first set literal it
-  /// carries. An entry whose set is a named constant would read the next
-  /// entry's set, which reads as a widening and fails, never as a pass.
-  keyAndSet,
-
-  /// A backlog of path to count: a new path, or a count above the record.
+  /// A backlog of path to count: a new path, or a count above the base's.
   counts,
 
-  /// One value, a path or a pattern: the initializer as written.
+  /// A map from a path to what it may use: a new path, or a changed value.
+  keyAndValue,
+
+  /// A list of objects; [Allowance.keyArgs] positional arguments name an
+  /// entry and [Allowance.reasonArg] is prose. A new entry loosens, and so does
+  /// any count, set or value wider than the base's.
+  objects,
+
+  /// One value: a path, a pattern or a threshold. A change loosens.
   scalar,
+
+  /// What a gate forbids: an entry removed loosens.
+  banList,
 }
 
-/// An allowance this gate checks: a declaration in a gate file.
+/// An allowance this gate checks.
 class Allowance {
-  /// Names [declaration] in [file], compared by [grant], with [compiled] the
-  /// entries the compiler sees for a collection the test can import.
-  const Allowance(this.file, this.declaration, this.grant, [this.compiled]);
+  /// Names [declaration] in [file], read as [grant], with [compiled] the
+  /// value the compiler builds when the test can import it.
+  const Allowance(
+    this.file,
+    this.declaration,
+    this.grant, {
+    this.compiled,
+    this.keyArgs = 1,
+    this.reasonArg,
+  });
 
   /// The gate file, relative to the application root.
   final String file;
 
-  /// The constant's name.
+  /// The top-level variable.
   final String declaration;
 
-  /// How its entries are compared.
+  /// How its entries are read.
   final Grant grant;
 
-  /// The entries as the compiler sees them, by key.
-  final Iterable<String> Function()? compiled;
+  /// The entries as the compiler sees them, key to canonical value.
+  final Map<String, String> Function()? compiled;
 
-  /// The key the record and the reports use.
+  /// For [Grant.objects], how many leading positional arguments name an
+  /// entry.
+  final int keyArgs;
+
+  /// For [Grant.objects], the positional argument that is prose.
+  final int? reasonArg;
+
+  /// The key reports use.
   String get id => '$file $declaration';
 }
 
@@ -99,104 +118,161 @@ const String _theme = 'test/theme';
 const String _packageGeometry =
     'packages/specimen_ui/test/gates/no_literal_geometry_test.dart';
 
-/// Every allowance in the source gates.
+Map<String, String> _keys(Iterable<Object> values) => <String, String>{
+  for (final Object v in values) v is String ? v : _show(v): '',
+};
+
+Map<String, String> _counts(Map<String, int> m) => <String, String>{
+  for (final MapEntry<String, int> e in m.entries) e.key: '${e.value}',
+};
+
+/// Every allowance and every ban list in the source gates.
 final List<Allowance> allowances = <Allowance>[
   Allowance(
     '$_theme/icons_unique_test.dart',
     'glyphBacklog',
     Grant.counts,
-    () => icons.glyphBacklog.keys,
+    compiled: () => _counts(icons.glyphBacklog),
   ),
   Allowance(
     '$_theme/no_alpha_literals_test.dart',
     'alphaLiteralBacklog',
     Grant.counts,
-    () => alpha.alphaLiteralBacklog.keys,
-  ),
-  const Allowance(
-    '$_theme/no_color_literals_test.dart',
-    'paletteFile',
-    Grant.scalar,
+    compiled: () => _counts(alpha.alphaLiteralBacklog),
   ),
   Allowance(
     '$_theme/no_color_literals_test.dart',
     'migrationBacklog',
     Grant.counts,
-    () => colors.migrationBacklog.keys,
+    compiled: () => _counts(colors.migrationBacklog),
   ),
+  Allowance(
+    '$_theme/no_color_literals_test.dart',
+    'paletteFile',
+    Grant.scalar,
+    compiled: () => <String, String>{'': _show(colors.paletteFile)},
+  ),
+  const Allowance('$_theme/contrast_test.dart', 'nonTextMinimum', Grant.scalar),
+  const Allowance('$_theme/contrast_test.dart', 'textMinimum', Grant.scalar),
   Allowance(
     '$_theme/no_cupertino_test.dart',
     'cupertinoExemptions',
-    Grant.keyAndValue,
-    () => cupertino.cupertinoExemptions.keys,
+    Grant.objects,
+    reasonArg: 3,
+    compiled: () => <String, String>{
+      for (final cupertino.CupertinoExemption e
+          in cupertino.cupertinoExemptions)
+        e.path: _show(<Object>[e.name, e.site]),
+    },
+  ),
+  Allowance(
+    '$_theme/no_cupertino_test.dart',
+    'flutterAdaptiveClasses',
+    Grant.banList,
+    compiled: () => _keys(cupertino.flutterAdaptiveClasses),
+  ),
+  Allowance(
+    '$_theme/no_cupertino_test.dart',
+    'flutterAdaptiveFunctions',
+    Grant.banList,
+    compiled: () => _keys(cupertino.flutterAdaptiveFunctions),
   ),
   Allowance(
     '$_theme/no_literal_geometry_test.dart',
     'allowedValues',
     Grant.keys,
-    () => geometry.allowedValues.map((num v) => '$v'),
+    compiled: () => _keys(geometry.allowedValues),
   ),
-  const Allowance(
+  Allowance(
     '$_theme/no_literal_geometry_test.dart',
     'generatedFile',
     Grant.scalar,
-  ),
-  const Allowance(
-    '$_theme/no_literal_geometry_test.dart',
-    'modelsPrefix',
-    Grant.scalar,
+    compiled: () => <String, String>{
+      '': _show(_Call('RegExp', <Object?>[geometry.generatedFile.pattern])),
+    },
   ),
   Allowance(
     '$_theme/no_literal_geometry_test.dart',
     'geometryBacklog',
     Grant.counts,
-    () => geometry.geometryBacklog.keys,
+    compiled: () => _counts(geometry.geometryBacklog),
+  ),
+  Allowance(
+    '$_theme/no_literal_geometry_test.dart',
+    'modelsPrefix',
+    Grant.scalar,
+    compiled: () => <String, String>{'': _show(geometry.modelsPrefix)},
   ),
   Allowance(
     '$_theme/no_material_components_test.dart',
     'componentBacklog',
     Grant.counts,
-    () => components.componentBacklog.keys,
+    compiled: () => _counts(components.componentBacklog),
   ),
   Allowance(
-    '$_theme/no_material_imports_test.dart',
-    'infrastructureImporters',
-    Grant.keys,
-    () => imports.infrastructureImporters.keys,
-  ),
-  Allowance(
-    '$_theme/no_material_imports_test.dart',
-    'packageMaterialFiles',
-    Grant.keys,
-    () => imports.packageMaterialFiles,
+    '$_theme/no_material_components_test.dart',
+    'retiredWidgets',
+    Grant.banList,
+    compiled: () => _keys(components.retiredWidgets),
   ),
   Allowance(
     '$_theme/no_material_imports_test.dart',
     'importBacklog',
     Grant.keys,
-    () => imports.importBacklog,
+    compiled: () => _keys(imports.importBacklog),
+  ),
+  Allowance(
+    '$_theme/no_material_imports_test.dart',
+    'infrastructureImporters',
+    Grant.keys,
+    compiled: () => _keys(imports.infrastructureImporters.keys),
+  ),
+  Allowance(
+    '$_theme/no_material_imports_test.dart',
+    'packageMaterialFiles',
+    Grant.keys,
+    compiled: () => _keys(imports.packageMaterialFiles),
   ),
   Allowance(
     '$_theme/no_named_pixels_test.dart',
     'namedPixelBacklog',
     Grant.counts,
-    () => pixels.namedPixelBacklog.keys,
+    compiled: () => _counts(pixels.namedPixelBacklog),
+  ),
+  Allowance(
+    '$_theme/no_platform_branching_test.dart',
+    'generatedOptions',
+    Grant.scalar,
+    compiled: () => <String, String>{'': _show(platform.generatedOptions)},
   ),
   Allowance(
     '$_theme/no_platform_branching_test.dart',
     'platformCapabilities',
-    Grant.keyAndSet,
-    () => platform.platformCapabilities.map(
-      (platform.PlatformCapability c) => c.path,
-    ),
+    Grant.objects,
+    keyArgs: 2,
+    reasonArg: 3,
+    compiled: () => <String, String>{
+      for (final platform_scan.PlatformCapability c
+          in platform.platformCapabilities)
+        '${c.path} ${c.site}': _show(<Object>[
+          c.checks,
+          if (c.readers.isNotEmpty) <String, Object>{'readers': c.readers},
+        ]),
+    },
   ),
-  const Allowance(
-    '$_theme/no_platform_branching_test.dart',
-    'generatedOptions',
+  Allowance(
+    '$_theme/pixel_scan.dart',
+    'geometryCalls',
+    Grant.banList,
+    compiled: () => _keys(pixel_scan.geometryCalls),
+  ),
+  Allowance(
+    '$_theme/pixel_scan.dart',
+    'namedSizeFloor',
     Grant.scalar,
+    compiled: () => <String, String>{'': _show(pixel_scan.namedSizeFloor)},
   ),
-  const Allowance('$_theme/contrast_test.dart', 'textMinimum', Grant.scalar),
-  const Allowance('$_theme/contrast_test.dart', 'nonTextMinimum', Grant.scalar),
+  const Allowance('$_theme/pixel_scan.dart', '_sized', Grant.banList),
   const Allowance(_packageGeometry, 'allowedValues', Grant.keys),
   const Allowance(_packageGeometry, 'foundationFile', Grant.scalar),
   const Allowance(_packageGeometry, 'galleryPrefix', Grant.scalar),
@@ -204,317 +280,389 @@ final List<Allowance> allowances = <Allowance>[
   const Allowance(_packageGeometry, 'waveFHandoff', Grant.counts),
 ];
 
-/// The public constants in the gate files that let nothing through, and why.
+/// The top-level variables in the gate files that are neither, and why.
 const Map<String, String> notAllowances = <String, String>{
-  '$_theme/dark_mode_test.dart themes':
-      'the themes under test, not a permission',
-  '$_theme/gate_support.dart numericLiteral': 'the pattern a number is read by',
+  '$_theme/dark_mode_test.dart themes': 'the themes under test',
+  '$_theme/no_color_literals_test.dart _colorLiteral':
+      'the pattern the gate reads; review owns a change to it',
   '$_theme/no_cupertino_test.dart cupertinoLibrary':
       'the name a finding reports',
+  '$_theme/no_dashes_test.dart _stringLiteral':
+      'the pattern the gate reads; review owns a change to it',
   '$_theme/no_dashes_test.dart emDash': 'a banned character',
   '$_theme/no_dashes_test.dart enDash': 'a banned character',
+  '$_theme/icons_unique_test.dart _materialGlyph':
+      'the pattern the gate reads; review owns a change to it',
+  '$_theme/no_literal_geometry_test.dart _number':
+      'the pattern the gate reads; review owns a change to it',
+  '$_theme/no_literal_geometry_test.dart _numberPattern':
+      'the pattern the gate reads; review owns a change to it',
+  '$_theme/no_literal_geometry_test.dart _paintMethod':
+      'the pattern the gate reads; review owns a change to it',
+  '$_theme/no_literal_geometry_test.dart _painterClass':
+      'the pattern the gate reads; review owns a change to it',
   '$_theme/no_literal_geometry_test.dart argumentRules':
-      'the rules the gate applies; an entry tightens it',
+      'the rules the gate applies; review owns a change to them',
   '$_theme/no_literal_geometry_test.dart callRules':
-      'the rules the gate applies; an entry tightens it',
-  '$_theme/no_material_components_test.dart retiredWidgets':
-      'the ban list; an entry tightens it',
-  '$_theme/no_platform_branching_test.dart ioPlatform':
-      'the name a finding reports',
-  '$_theme/no_platform_branching_test.dart platformOverride':
-      'the name a finding reports',
-  '$_theme/no_platform_branching_test.dart targetPlatform':
-      'the name a finding reports',
-  '$_theme/no_platform_branching_test.dart targetPlatformValue':
-      'the name a finding reports',
-  '$_theme/no_platform_branching_test.dart webFlag':
-      'the name a finding reports',
+      'the rules the gate applies; review owns a change to them',
+  '$_theme/no_material_components_test.dart _constructors':
+      'the pattern built from retiredWidgets',
+  '$_theme/no_material_components_test.dart _extraTerms':
+      'the pattern the gate reads; review owns a change to it',
+  '$_theme/no_material_imports_test.dart _materialImport':
+      'the pattern the gate reads; review owns a change to it',
+  '$_theme/pixel_scan.dart layoutName':
+      'the definition of a layout use; review owns a change to it',
+  '$_theme/pixel_scan.dart measuredSize':
+      'the definition of a measured size; review owns a change to it',
+  '$_theme/platform_scan.dart ioPlatform': 'the name a finding reports',
+  '$_theme/platform_scan.dart platformOverride': 'the name a finding reports',
+  '$_theme/platform_scan.dart targetPlatform': 'the name a finding reports',
+  '$_theme/platform_scan.dart targetPlatformType': 'the name a finding reports',
+  '$_theme/platform_scan.dart themePlatform': 'the name a finding reports',
+  '$_theme/platform_scan.dart webFlag': 'the name a finding reports',
+  '$_theme/exemptions_owner_approved_test.dart _packageGeometry':
+      'a path this test reads',
+  '$_theme/exemptions_owner_approved_test.dart _theme':
+      'a path this test reads',
+  '$_theme/exemptions_owner_approved_test.dart allowances': 'this registry',
+  '$_theme/exemptions_owner_approved_test.dart briefInventory':
+      'read only for gate files the base does not have',
+  '$_theme/exemptions_owner_approved_test.dart notAllowances': 'this registry',
+  '$_theme/exemptions_owner_approved_test.dart newGateFiles':
+      'the files the 2026-10-17 change introduced',
+  '$_theme/exemptions_owner_approved_test.dart _approval':
+      'the sign-off pattern',
+  '$_packageGeometry _number':
+      'the pattern the gate reads; review owns a change to it',
+  '$_packageGeometry _numberPattern':
+      'the pattern the gate reads; review owns a change to it',
+  '$_packageGeometry _paintMethod':
+      'the pattern the gate reads; review owns a change to it',
+  '$_packageGeometry _painterClass':
+      'the pattern the gate reads; review owns a change to it',
   '$_packageGeometry argumentRules':
-      'the rules the gate applies; an entry tightens it',
+      'the rules the gate applies; review owns a change to them',
   '$_packageGeometry callRules':
-      'the rules the gate applies; an entry tightens it',
+      'the rules the gate applies; review owns a change to them',
 };
 
-/// The entries on each allowance when this gate was written, 2026-10-17.
-/// Shrink only.
-const Map<String, Set<String>> recordedGrants = <String, Set<String>>{
-  '$_theme/no_alpha_literals_test.dart alphaLiteralBacklog': <String>{
-    'lib/src/app/shell.dart = 1',
-    'lib/src/capture/capture_screen.dart = 1',
-  },
-  '$_theme/no_color_literals_test.dart paletteFile': <String>{
-    r"'packages/specimen_ui/lib/src/foundation/palette.dart'",
-  },
+/// The gate files the 2026-10-17 change introduced. [briefInventory] may name
+/// allowances in these and no others.
+const Set<String> newGateFiles = <String>{
+  '$_theme/no_alpha_literals_test.dart',
+  '$_theme/no_cupertino_test.dart',
+  '$_theme/no_named_pixels_test.dart',
+  '$_theme/no_platform_branching_test.dart',
+  '$_theme/pixel_scan.dart',
+};
+
+/// The entries the brief of 2026-10-17 named, for gate files the base does
+/// not have yet. `*` is every entry: the brief put the current offenders in
+/// each backlog, and each backlog is held to the tree exactly.
+///
+/// The brief is the coordinating session's, not the owner's: "the iOS route in
+/// app/app_router.dart as the only, documented exemption", nine capability
+/// files, "values > 1", and "put current offenders in the gate's backlog
+/// list". The platform checks in `app_router.dart`, `queue_screen.dart` and
+/// `app_theme.dart`, and the skipped generated options, are not here: each
+/// needs the owner's sign-off.
+const Map<String, Set<String>> briefInventory = <String, Set<String>>{
+  '$_theme/no_alpha_literals_test.dart alphaLiteralBacklog': <String>{'*'},
   '$_theme/no_cupertino_test.dart cupertinoExemptions': <String>{
-    'lib/src/app/app_router.dart -> CupertinoRouteTransitionMixin',
+    'lib/src/app/app_router.dart',
   },
-  '$_theme/no_literal_geometry_test.dart allowedValues': <String>{
-    '0',
-    '1',
-    '2',
-  },
-  '$_theme/no_literal_geometry_test.dart generatedFile': <String>{
-    r"RegExp(r'(?:^|/)(?:[^/]*\.g\.dart|firebase_options[^/]*\.dart)$')",
-  },
-  '$_theme/no_literal_geometry_test.dart modelsPrefix': <String>{
-    r"'lib/src/models'",
-  },
-  '$_theme/no_literal_geometry_test.dart geometryBacklog': <String>{
-    'lib/src/api_repository.dart = 1',
-    'lib/src/magic_link.dart = 1',
-    'lib/src/workspace.dart = 2',
-  },
-  '$_theme/no_material_imports_test.dart infrastructureImporters': <String>{
-    'lib/main.dart',
-    'lib/src/theme/app_theme.dart',
-    'lib/src/capture/capture_screen.dart',
-  },
-  '$_theme/no_material_imports_test.dart packageMaterialFiles': <String>{
-    'packages/specimen_ui/lib/src/primitives/field_core.dart',
-    'packages/specimen_ui/lib/src/foundation/theme.dart',
-    'packages/specimen_ui/lib/src/controls/overlays/tooltip.dart',
-  },
-  '$_theme/no_named_pixels_test.dart namedPixelBacklog': <String>{
-    'lib/src/app/auth_layout.dart = 1',
-    'lib/src/app/shell.dart = 1',
-    'lib/src/capture/capture_screen.dart = 1',
-    'lib/src/large_record.dart = 1',
-    'lib/src/region_editor.dart = 2',
-    'lib/src/screens/queue/queue_screen.dart = 3',
-    'lib/src/screens/sources/source_screen.dart = 1',
-    'lib/src/screens/workbench/readings_panel.dart = 1',
-    'lib/src/screens/workbench/source_pane.dart = 2',
-    'lib/src/screens/workbench/workbench_layout.dart = 6',
-    'lib/src/widgets/adaptive_form.dart = 3',
-    'lib/src/widgets/motion_reveal.dart = 1',
-    'lib/src/widgets/queue_row.dart = 1',
-    'lib/src/widgets/upload_item.dart = 1',
-  },
+  '$_theme/no_named_pixels_test.dart namedPixelBacklog': <String>{'*'},
   '$_theme/no_platform_branching_test.dart platformCapabilities': <String>{
-    'lib/firebase_options.ci.dart {targetPlatform, targetPlatformValue, webFlag}',
-    'lib/main.dart {webFlag}',
-    'lib/src/app/app_router.dart {targetPlatform, targetPlatformValue}',
-    'lib/src/auth.dart {targetPlatform, targetPlatformValue, webFlag}',
-    'lib/src/capture/capture_camera.dart {webFlag}',
-    'lib/src/email_link_source_factory_io.dart {ioPlatform}',
-    'lib/src/intake.dart {targetPlatform, targetPlatformValue, webFlag}',
-    'lib/src/magic_link_screen.dart {targetPlatform, targetPlatformValue, webFlag}',
-    'lib/src/screens/queue/queue_screen.dart {targetPlatform, targetPlatformValue, webFlag}',
-    'lib/src/screens/workbench/readings_panel.dart {webFlag}',
-    'lib/src/theme/app_theme.dart {targetPlatformValue}',
-    'lib/src/theme/motion.dart {targetPlatform, targetPlatformValue, webFlag}',
+    'lib/firebase_options.ci.dart <directives>',
+    'lib/firebase_options.ci.dart DefaultFirebaseOptions.currentPlatform',
+    'lib/main.dart main',
+    'lib/src/auth.dart emailLinkActionCodeSettings',
+    'lib/src/capture/capture_camera.dart <directives>',
+    'lib/src/capture/capture_camera.dart PlatformCaptureCamera._startStream',
+    'lib/src/capture/capture_camera.dart PlatformCaptureCamera.focusAt',
+    'lib/src/email_link_source_factory_io.dart createNativeEmailLinkSource',
+    'lib/src/intake.dart _IntakeScreenState._isWeb',
+    'lib/src/intake.dart _IntakeScreenState._nativeCameraAvailable',
+    'lib/src/intake.dart _IntakeScreenState._recoverCamera',
+    'lib/src/magic_link_screen.dart MagicLinkSignInScreen.platform',
+    'lib/src/magic_link_screen.dart applePersonalDemoPasteEnabled',
+    'lib/src/screens/workbench/readings_panel.dart '
+        '_WorkbenchReadingsState.didUpdateWidget',
+    'lib/src/theme/motion.dart SpecimenHaptics.available',
   },
-  '$_theme/no_platform_branching_test.dart generatedOptions': <String>{
-    r"'lib/firebase_options.dart'",
-  },
-  '$_theme/contrast_test.dart textMinimum': <String>{'4.5'},
-  '$_theme/contrast_test.dart nonTextMinimum': <String>{'3.0'},
-  '$_packageGeometry allowedValues': <String>{'0', '1', '2'},
-  '$_packageGeometry foundationFile': <String>{
-    r"RegExp(r'^lib/src/foundation/[^/]+\.dart$')",
-  },
-  '$_packageGeometry galleryPrefix': <String>{r"'lib/src/gallery/'"},
-  '$_packageGeometry generatedFile': <String>{
-    r"RegExp(r'(?:^|/)[^/]*\.g\.dart$')",
-  },
+  '$_theme/pixel_scan.dart namedSizeFloor': <String>{''},
 };
 
 // ---------------------------------------------------------------------------
-// Reading an allowance from source.
+// Evaluating an allowance.
 // ---------------------------------------------------------------------------
 
-/// One entry of an allowance as written: what it grants, the count when it is
-/// a backlog's, and the comments attached to it.
+/// A constructor or function call in an allowance, `PlatformCapability(...)`.
+class _Call {
+  _Call(this.name, this.positional, [this.named = const <String, Object?>{}]);
+
+  final String name;
+  final List<Object?> positional;
+  final Map<String, Object?> named;
+}
+
+String _show(Object? value) => switch (value) {
+  null => '?',
+  String() => "'$value'",
+  num() => value == value.roundToDouble() ? '${value.round()}' : '$value',
+  Map<Object?, Object?>() =>
+    '{${(value.entries.map((e) => '${_show(e.key)}: ${_show(e.value)}').toList()..sort()).join(', ')}}',
+  Set<Object?>() => '{${(value.map(_show).toList()..sort()).join(', ')}}',
+  List<Object?>() => '[${value.map(_show).join(', ')}]',
+  _Call() =>
+    '${value.name}(${<String>[...value.positional.map(_show), ...(value.named.entries.map((e) => '${e.key}: ${_show(e.value)}').toList()..sort())].join(', ')})',
+  _ => '$value',
+};
+
+/// The value of [e], or null when it is not something an allowance may be
+/// written in: literals, collections, calls of them, and the names of
+/// top-level constants in [constants].
+Object? _evaluate(Expression e, Map<String, Expression> constants) {
+  Object? of(Expression x) => _evaluate(x, constants);
+  switch (e) {
+    case SimpleStringLiteral(:final String value):
+      return value;
+    case AdjacentStrings(:final String? stringValue):
+      return stringValue;
+    case StringInterpolation():
+      return null;
+    case IntegerLiteral() || DoubleLiteral() || BinaryExpression():
+      return numberOf(e, constants: constants);
+    case PrefixExpression():
+      return numberOf(e, constants: constants);
+    case SimpleIdentifier(:final String name):
+      final Expression? target = constants[name];
+      return target == null ? null : of(target);
+    case SetOrMapLiteral(
+      :final NodeList<CollectionElement> elements,
+      :final TypeArgumentList? typeArguments,
+    ):
+      final bool map = elements.isEmpty
+          ? typeArguments?.arguments.length == 2
+          : elements.first is MapLiteralEntry;
+      if (map) {
+        final Map<String, Object?> map = <String, Object?>{};
+        for (final CollectionElement el in elements) {
+          if (el is! MapLiteralEntry) return null;
+          final Object? key = of(el.key);
+          if (key == null) return null;
+          map[key is String ? key : _show(key)] = of(el.value);
+        }
+        return map;
+      }
+      return <Object?>{
+        for (final CollectionElement el in elements)
+          el is Expression ? of(el) : null,
+      };
+    case ListLiteral(:final NodeList<CollectionElement> elements):
+      return <Object?>[
+        for (final CollectionElement el in elements)
+          el is Expression ? of(el) : null,
+      ];
+    case InstanceCreationExpression(
+      :final ConstructorName constructorName,
+      :final ArgumentList argumentList,
+    ):
+      return _call(constructorName.type.name.lexeme, argumentList, of);
+    case MethodInvocation(
+      :final SimpleIdentifier methodName,
+      :final ArgumentList argumentList,
+    ):
+      return _call(methodName.name, argumentList, of);
+    default:
+      return null;
+  }
+}
+
+_Call _call(
+  String name,
+  ArgumentList arguments,
+  Object? Function(Expression) of,
+) => _Call(
+  name,
+  <Object?>[
+    for (final Expression a in arguments.arguments)
+      if (a is! NamedExpression) of(a),
+  ],
+  <String, Object?>{
+    for (final Expression a in arguments.arguments)
+      if (a is NamedExpression) a.name.label.name: of(a.expression),
+  },
+);
+
+/// Whether [v] is written in literals. A call is allowed only as an
+/// [Grant.objects] entry or as a scalar's `RegExp`, never inside a value.
+bool _readable(Object? v, {bool call = false}) => switch (v) {
+  null => false,
+  Map<Object?, Object?>() => v.values.every(_readable),
+  Iterable<Object?>() => v.every(_readable),
+  _Call() =>
+    call && v.positional.every(_readable) && v.named.values.every(_readable),
+  _ => true,
+};
+
+/// The top-level constants of [sources], by name, for resolving an entry
+/// that names one (`webFlag` in a capability).
+Map<String, Expression> constantsOf(Iterable<GateSource> sources) {
+  final Map<String, Expression> found = <String, Expression>{};
+  for (final GateSource s in sources) {
+    for (final CompilationUnitMember d in s.unit.declarations) {
+      if (d is TopLevelVariableDeclaration) {
+        for (final VariableDeclaration v in d.variables.variables) {
+          if (v.initializer != null) {
+            found.putIfAbsent(v.name.lexeme, () => v.initializer!);
+          }
+        }
+      }
+    }
+  }
+  return found;
+}
+
+/// One entry of an allowance: its key, its canonical value, the value
+/// itself, and the comments a sign-off may be written in.
 class Entry {
-  /// Records an entry's [grant], its backlog [count] and its [comments].
-  const Entry(this.grant, this.count, this.comments);
+  Entry(this.key, this.value, this.shown, this.comments);
 
-  /// What it grants, as the record writes it.
-  final String grant;
-
-  /// The count, for a backlog entry.
-  final int? count;
-
-  /// The text of every comment attached to it.
-  final String comments;
+  final String key;
+  final Object? value;
+  final String shown;
+  final List<String> comments;
 }
 
-bool _blank(String c) => c == ' ' || c == '\n' || c == '\t' || c == '\r';
-
-String _stringValue(String source, ProseSpan span) {
-  final String text = source.substring(span.start, span.end);
-  final int quotes = text.length >= 6 && text.startsWith(text[0] * 3) ? 3 : 1;
-  return text.substring(quotes, text.length - quotes);
-}
-
-/// The comments attached to the code from [start] to [end]: the whole-line
-/// comments directly above its first line, and any comment that starts on its
-/// lines, which takes in one after its comma.
-String _attached(String source, List<ProseSpan> spans, int start, int end) {
-  final List<ProseSpan> comments = <ProseSpan>[
-    for (final ProseSpan s in spans)
-      if (s.comment) s,
-  ];
-  final List<String> found = <String>[];
-  int lineStart = source.lastIndexOf('\n', start - 1) + 1;
-  while (lineStart > 0) {
-    final int above = lineStart >= 2
-        ? source.lastIndexOf('\n', lineStart - 2) + 1
-        : 0;
-    int first = above;
-    while (first < lineStart - 1 && _blank(source[first])) {
-      first++;
-    }
-    final ProseSpan? comment = comments
-        .where((ProseSpan s) => s.start == first)
-        .firstOrNull;
-    if (comment == null) break;
-    found.add(source.substring(comment.start, comment.end));
-    lineStart = above;
-  }
-  int lineEnd = source.indexOf('\n', end);
-  if (lineEnd < 0) lineEnd = source.length;
-  for (final ProseSpan s in comments) {
-    // Inside the entry, or after it on its last line with nothing but its
-    // comma, closing brackets and the statement's end between: a comment after
-    // a second entry on the same line is that entry's.
-    final bool inside = s.start >= start && s.start < end;
-    final bool trailing =
-        s.start >= end &&
-        s.start < lineEnd &&
-        RegExp(r'^[\s,;)\]}]*$').hasMatch(source.substring(end, s.start));
-    if (inside || trailing) found.add(source.substring(s.start, s.end));
-  }
-  return found.join('\n');
-}
-
-/// The first character from [from] to [to] that is neither a comment nor
-/// white space: the start of an entry, which may be a string.
-int _codeStart(String source, List<ProseSpan> spans, int from, int to) {
-  int i = from;
-  while (i < to) {
-    final ProseSpan? comment = spans
-        .where((ProseSpan s) => s.comment && s.start == i)
-        .firstOrNull;
-    if (comment != null) {
-      i = comment.end;
-    } else if (_blank(source[i])) {
-      i++;
-    } else {
-      return i;
+/// The entries of [allowance] in [source], or null when [source] does not
+/// declare it. An entry the gate cannot evaluate is reported as `!` plus its
+/// source.
+List<Entry>? entriesOf(
+  GateSource source,
+  Allowance allowance,
+  Map<String, Expression> constants,
+) {
+  TopLevelVariableDeclaration? declaration;
+  VariableDeclaration? variable;
+  for (final CompilationUnitMember d in source.unit.declarations) {
+    if (d is! TopLevelVariableDeclaration) continue;
+    for (final VariableDeclaration v in d.variables.variables) {
+      if (v.name.lexeme == allowance.declaration) {
+        declaration = d;
+        variable = v;
+      }
     }
   }
-  return to;
-}
+  final Expression? initializer = variable?.initializer;
+  if (declaration == null || initializer == null) return null;
+  final List<String> onDeclaration = declarationCommentsOf(
+    declaration,
+    source.unit,
+  );
 
-int _statementEnd(String code, int start) {
-  int depth = 0;
-  for (int i = start; i < code.length; i++) {
-    final String c = code[i];
-    if (c == '(' || c == '[' || c == '{') depth++;
-    if (c == ')' || c == ']' || c == '}') depth--;
-    if (c == ';' && depth == 0) return i;
-  }
-  return code.length;
-}
+  // [read] is what must be written in literals: the value, and for a keyed
+  // entry its key as well.
+  Entry entry(
+    AstNode node,
+    String key,
+    Object? value, {
+    required Object? read,
+    bool call = false,
+  }) => Entry(
+    _readable(read, call: call) ? key : '!${node.toSource()}',
+    value,
+    _show(value),
+    commentsOf(node, source.unit),
+  );
 
-/// The entries of the top-level constant [name] in [source], read as [grant]
-/// reads them, or null when [source] does not declare it.
-List<Entry>? entriesOf(String source, String name, Grant grant) {
-  final String code = maskProse(source);
-  final List<ProseSpan> spans = proseSpans(source);
-  final RegExpMatch? head = RegExp(
-    '^(?:const|final)\\s[^=;]*\\b${RegExp.escape(name)}\\s*=(?!=)',
-    multiLine: true,
-  ).firstMatch(code);
-  if (head == null) return null;
-  final int end = _statementEnd(code, head.end);
-
-  if (grant == Grant.scalar) {
-    final StringBuffer value = StringBuffer();
-    for (int i = head.end; i < end; i++) {
-      final ProseSpan? inside = spans
-          .where((ProseSpan s) => s.start <= i && i < s.end)
-          .firstOrNull;
-      if (inside != null && inside.comment) continue;
-      if (inside == null && _blank(source[i])) continue;
-      value.write(source[i]);
-    }
-    final String written = value.toString().replaceAll(
-      RegExp(r',(?=[)\]}])'),
-      '',
-    );
+  if (allowance.grant == Grant.scalar) {
+    final Object? value = _evaluate(initializer, constants);
+    final bool pattern = value is _Call && value.name == 'RegExp';
     return <Entry>[
-      Entry(written, null, _attached(source, spans, head.start, end)),
+      Entry(
+        _readable(value, call: pattern) ? '' : '!${initializer.toSource()}',
+        value,
+        _show(value),
+        onDeclaration,
+      ),
     ];
   }
-
-  final int open = code.indexOf(RegExp(r'[\[{]'), head.end);
-  final int close = endOfBracket(code, open) - 1;
-  final List<Entry> entries = <Entry>[];
-  int from = open + 1;
-  while (from < close) {
-    final int to = endOfExpression(code, from);
-    final int start = _codeStart(source, spans, from, to);
-    if (start < to) {
-      entries.add(_entry(source, code, spans, start, to, grant));
+  final NodeList<CollectionElement> elements = switch (initializer) {
+    SetOrMapLiteral(:final NodeList<CollectionElement> elements) => elements,
+    ListLiteral(:final NodeList<CollectionElement> elements) => elements,
+    _ => throw StateError('${allowance.id} is not a collection literal'),
+  };
+  final List<Entry> found = <Entry>[];
+  for (final CollectionElement el in elements) {
+    if (el is MapLiteralEntry) {
+      final Object? key = _evaluate(el.key, constants);
+      final Object? value = _evaluate(el.value, constants);
+      final String k = key is String ? key : _show(key);
+      found.add(
+        entry(
+          el,
+          k,
+          allowance.grant == Grant.keys ? '' : value,
+          read: <Object?>[key, value],
+        ),
+      );
+    } else if (el is Expression) {
+      final Object? value = _evaluate(el, constants);
+      if (allowance.grant == Grant.objects && value is _Call) {
+        final String key = value.positional
+            .take(allowance.keyArgs)
+            .map((Object? p) => p is String ? p : _show(p))
+            .join(' ');
+        final List<Object?> rest = <Object?>[
+          for (int i = allowance.keyArgs; i < value.positional.length; i++)
+            if (i != allowance.reasonArg) value.positional[i],
+          if (value.named.isNotEmpty) value.named,
+        ];
+        found.add(entry(el, key, rest, read: value, call: true));
+      } else if (allowance.grant == Grant.objects) {
+        found.add(Entry('!${el.toSource()}', null, '?', const <String>[]));
+      } else {
+        found.add(
+          entry(el, value is String ? value : _show(value), '', read: value),
+        );
+      }
+    } else {
+      found.add(Entry('!${el.toSource()}', null, '?', const <String>[]));
     }
-    from = to + 1;
   }
-  return entries;
+  if (allowance.grant == Grant.banList) {
+    return <Entry>[
+      for (final Entry e in found)
+        Entry(e.key, e.value, e.shown, onDeclaration),
+    ];
+  }
+  return found;
 }
 
-Entry _entry(
-  String source,
-  String code,
-  List<ProseSpan> spans,
-  int start,
-  int end,
-  Grant grant,
-) {
-  final List<ProseSpan> strings = <ProseSpan>[
-    for (final ProseSpan s in spans)
-      if (!s.comment && s.start >= start && s.start < end) s,
-  ];
-  final int colon = code.substring(start, end).indexOf(':');
-  final String key;
-  if (strings.isNotEmpty) {
-    key = _stringValue(source, strings.first);
-  } else {
-    final RegExpMatch? number = numericLiteral.firstMatch(
-      code.substring(start, end),
+/// Whether [head] lets through no more than [base]: counts no higher, sets
+/// no wider, everything else equal.
+bool narrowerOrEqual(Object? head, Object? base) {
+  if (head is num && base is num) return head <= base;
+  if (head is Map<Object?, Object?> && base is Map<Object?, Object?>) {
+    return head.entries.every(
+      (MapEntry<Object?, Object?> e) =>
+          base.containsKey(e.key) && narrowerOrEqual(e.value, base[e.key]),
     );
-    key = number?.group(0) ?? code.substring(start, end).trim();
   }
-  final String comments = _attached(source, spans, start, end);
-  switch (grant) {
-    case Grant.counts:
-      return Entry(
-        key,
-        int.parse(code.substring(start + colon + 1, end).trim()),
-        comments,
-      );
-    case Grant.keyAndValue:
-      return Entry(
-        '$key -> ${_stringValue(source, strings[1])}',
-        null,
-        comments,
-      );
-    case Grant.keyAndSet:
-      final int set = code.indexOf('{', start);
-      final List<String> items =
-          code
-              .substring(set + 1, endOfBracket(code, set) - 1)
-              .split(',')
-              .map((String item) => item.trim())
-              .where((String item) => item.isNotEmpty)
-              .toList()
-            ..sort();
-      return Entry('$key {${items.join(', ')}}', null, comments);
-    case Grant.keys:
-    case Grant.scalar:
-      return Entry(key, null, comments);
+  if (head is Set<Object?> && base is Set<Object?>) {
+    final Set<String> b = base.map(_show).toSet();
+    return head.every((Object? v) => b.contains(_show(v)));
   }
+  if (head is List<Object?> && base is List<Object?>) {
+    if (head.length != base.length) return false;
+    for (int i = 0; i < head.length; i++) {
+      if (!narrowerOrEqual(head[i], base[i])) return false;
+    }
+    return true;
+  }
+  return _show(head) == _show(base);
 }
 
 // ---------------------------------------------------------------------------
@@ -527,8 +675,8 @@ final RegExp _approval = RegExp(
 
 /// Whether [comments] carry a sign-off dated on a real day no later than
 /// [today].
-bool ownerApproved(String comments, DateTime today) {
-  for (final RegExpMatch m in _approval.allMatches(comments)) {
+bool ownerApproved(List<String> comments, DateTime today) {
+  for (final RegExpMatch m in _approval.allMatches(comments.join('\n'))) {
     final int year = int.parse(m.group(1)!);
     final int month = int.parse(m.group(2)!);
     final int day = int.parse(m.group(3)!);
@@ -540,58 +688,101 @@ bool ownerApproved(String comments, DateTime today) {
   return false;
 }
 
-/// Every entry of [entries] that grants more than [recorded] did and carries
-/// no sign-off.
-List<String> unapproved(
-  List<Entry> entries,
-  Set<String> recorded,
-  Grant grant,
-  DateTime today,
-) {
-  final Map<String, int> recordedCounts = <String, int>{
-    if (grant == Grant.counts)
-      for (final String r in recorded)
-        r.substring(0, r.lastIndexOf(' = ')): int.parse(
-          r.substring(r.lastIndexOf(' = ') + 3),
-        ),
+/// Everything [head] loosens relative to [base] (null when the base does not
+/// have the allowance) that carries no sign-off. [bootstrap] lists the keys a
+/// gate new in this change may hold unsigned, `*` for all.
+List<String> loosenings({
+  required Allowance allowance,
+  required List<Entry> head,
+  required List<Entry>? base,
+  required DateTime today,
+  Set<String> bootstrap = const <String>{},
+}) {
+  final List<String> found = <String>[
+    for (final Entry e in head)
+      if (e.key.startsWith('!'))
+        '${e.key.substring(1)} cannot be read; write the entry as literals',
+  ];
+  final Map<String, Entry> before = <String, Entry>{
+    for (final Entry e
+        in base ??
+            head.where(
+              (Entry e) => bootstrap.contains('*') || bootstrap.contains(e.key),
+            ))
+      e.key: e,
   };
-  final List<String> found = <String>[];
-  for (final Entry entry in entries) {
-    if (ownerApproved(entry.comments, today)) continue;
-    if (grant == Grant.counts) {
-      final int? before = recordedCounts[entry.grant];
-      if (before == null) {
-        found.add('${entry.grant} = ${entry.count} is a new backlog entry');
-      } else if (entry.count! > before) {
-        found.add(
-          '${entry.grant} rose from $before to ${entry.count} in the backlog',
-        );
+  if (allowance.grant == Grant.banList) {
+    final Set<String> now = head.map((Entry e) => e.key).toSet();
+    final List<String> removed = <String>[
+      for (final String k in before.keys)
+        if (!now.contains(k)) k,
+    ];
+    if (removed.isNotEmpty &&
+        !(head.isNotEmpty && ownerApproved(head.first.comments, today))) {
+      found.add('lost ${removed.join(', ')} from what it forbids');
+    }
+    return found;
+  }
+  for (final Entry e in head) {
+    if (e.key.startsWith('!') || ownerApproved(e.comments, today)) continue;
+    final Entry? b = before[e.key];
+    final String name = e.key.isEmpty ? allowance.declaration : e.key;
+    final bool keyed = allowance.grant == Grant.keys;
+    if (b == null) {
+      found.add(keyed ? '$name is new' : '$name ${e.shown} is new');
+    } else if (allowance.grant == Grant.scalar) {
+      if (e.shown != b.shown) {
+        found.add('$name changed from ${b.shown} to ${e.shown}');
       }
-    } else if (!recorded.contains(entry.grant)) {
-      found.add('${entry.grant} is a new allowance');
+    } else if (allowance.grant == Grant.counts) {
+      if (!narrowerOrEqual(
+        num.tryParse('${e.value}') ?? e.value,
+        num.tryParse('${b.value}') ?? b.value,
+      )) {
+        found.add('$name rose from ${b.shown} to ${e.shown}');
+      }
+    } else if (!narrowerOrEqual(e.value, b.value)) {
+      found.add('$name widened from ${b.shown} to ${e.shown}');
     }
   }
   return found;
 }
 
-/// The public top-level constants of [source], and its private top-level
-/// collections, which could hold an allowance as well as a public one.
-List<String> gateConstants(String source) => <String>[
-  for (final RegExpMatch m in RegExp(
-    r'^(?:const|final)\s[^=;(]*?\b([a-zA-Z]\w*)\s*=(?!=)'
-    r'|^(?:const|final)\s+(?:List|Set|Map)<[^=;]*>\s+(_\w+)\s*=(?!=)',
-    multiLine: true,
-  ).allMatches(maskProse(source)))
-    m.group(1) ?? m.group(2)!,
-];
+// ---------------------------------------------------------------------------
+// The base.
+// ---------------------------------------------------------------------------
+
+String _git(List<String> args) {
+  final ProcessResult r = Process.runSync('git', args);
+  if (r.exitCode != 0) {
+    throw StateError('git ${args.join(' ')} failed: ${r.stderr}');
+  }
+  return (r.stdout as String).trim();
+}
+
+/// The base commit this change is compared with.
+String baseCommit() {
+  final String ref =
+      Platform.environment['GATE_BASE'] ??
+      _git(<String>['merge-base', 'HEAD', 'origin/main']);
+  return _git(<String>['rev-parse', '--verify', '$ref^{commit}']);
+}
+
+/// The base's copy of [path], relative to the application root, or null
+/// when the base does not have it.
+String? baseText(String commit, String path) {
+  final String prefix = _git(<String>['rev-parse', '--show-prefix']);
+  final ProcessResult r = Process.runSync('git', <String>[
+    'show',
+    '$commit:$prefix$path',
+  ]);
+  return r.exitCode == 0 ? r.stdout as String : null;
+}
 
 /// Every gate file, relative to the application root.
 List<String> gateFiles() => <String>[
   for (final FileSystemEntity e in Directory(_theme).listSync())
-    if (e is File &&
-        e.path.endsWith('.dart') &&
-        !e.path.endsWith('exemptions_owner_approved_test.dart'))
-      e.path,
+    if (e is File && e.path.endsWith('.dart')) e.path,
   _packageGeometry,
 ]..sort();
 
@@ -605,310 +796,361 @@ DateTime _today() {
 void main() {
   final DateTime day = DateTime(2026, 10, 17);
 
-  test('a planted allowance without a sign-off fails the gate', () {
-    const String gate = '''
-const Map<String, String> exemptions = <String, String>{
-  'lib/old.dart': 'on the list before the rule',
-  'lib/new.dart': 'added after it, unsigned',
-};
-''';
-    expect(
-      unapproved(
-        entriesOf(gate, 'exemptions', Grant.keys)!,
-        <String>{'lib/old.dart'},
-        Grant.keys,
-        day,
-      ),
-      <String>['lib/new.dart is a new allowance'],
+  List<String> diff(
+    String head,
+    String? base,
+    Allowance a, {
+    Set<String> bootstrap = const <String>{},
+  }) {
+    final GateSource h = GateSource('h.dart', head);
+    final GateSource? b = base == null ? null : GateSource('b.dart', base);
+    return loosenings(
+      allowance: a,
+      head: entriesOf(h, a, constantsOf(<GateSource>[h]))!,
+      base: b == null ? null : entriesOf(b, a, constantsOf(<GateSource>[b])),
+      today: day,
+      bootstrap: bootstrap,
     );
-  });
+  }
 
-  test('a sign-off clears it only when it is dated and quoted', () {
-    List<String> withComment(String comment) => unapproved(
-      entriesOf(
-        '''
-const Set<String> files = <String>{
-  'lib/old.dart',
-  $comment
-  'lib/new.dart',
-};
-''',
-        'files',
-        Grant.keys,
-      )!,
-      <String>{'lib/old.dart'},
-      Grant.keys,
-      day,
-    );
-    const List<String> fails = <String>['lib/new.dart is a new allowance'];
+  const Allowance files = Allowance('g.dart', 'files', Grant.keys);
+  const Allowance backlog = Allowance('g.dart', 'backlog', Grant.counts);
 
+  test('a new entry needs a sign-off, and only a real one clears it', () {
+    const String base = "const Set<String> files = <String>{'lib/old.dart'};";
+    String head(String comment) =>
+        'const Set<String> files = <String>{\n'
+        "  'lib/old.dart',\n"
+        '  $comment\n'
+        "  'lib/new.dart',\n"
+        '};\n';
+    const List<String> fails = <String>['lib/new.dart is new'];
+
+    expect(diff(head(''), base, files), fails);
     expect(
-      withComment('// owner-approved: 2026-10-17 "yes, allow it"'),
+      diff(head('// owner-approved: 2026-10-17 "yes, allow it"'), base, files),
       isEmpty,
     );
+    expect(diff(head('// owner-approved: "yes"'), base, files), fails);
+    expect(diff(head('// owner-approved: 2026-10-17'), base, files), fails);
+    expect(diff(head('// owner-approved: 2026-10-17 yes'), base, files), fails);
+    expect(diff(head('// owner-approved: 2026-10-17 ""'), base, files), fails);
     expect(
-      withComment(
-        '// The tab bar needs it.\n'
-        '  // owner-approved: 2026-10-16 "ok for the bar"',
-      ),
-      isEmpty,
+      diff(head('// owner-approved: 2026-02-30 "yes"'), base, files),
+      fails,
     );
-    expect(withComment('// owner-approved: "yes"'), fails, reason: 'no date');
-    expect(withComment('// owner-approved: 2026-10-17'), fails);
-    expect(withComment('// owner-approved: 2026-10-17 yes'), fails);
-    expect(withComment('// owner-approved: 2026-10-17 ""'), fails);
-    expect(withComment('// owner-approved: 2026-02-30 "yes"'), fails);
     expect(
-      withComment('// owner-approved: 2026-10-18 "yes"'),
+      diff(head('// owner-approved: 2026-10-18 "yes"'), base, files),
       fails,
       reason: 'a day that has not happened',
     );
-    expect(withComment('// approved by the coordinator 2026-10-17'), fails);
+    expect(
+      diff(head('// approved by the coordinator 2026-10-17'), base, files),
+      fails,
+    );
+  });
+
+  test('editing the record is not a way round: the base is the record', () {
+    // A change that adds a backlog row has nothing else to edit: the base's
+    // copy of the gate is what it is compared with.
+    const String base =
+        "const Map<String, int> backlog = <String, int>{'lib/a.dart': 1};";
+    expect(
+      diff(
+        'const Map<String, int> backlog = <String, int>{\n'
+        "  'lib/a.dart': 1,\n"
+        "  'lib/new_panel.dart': 1,\n"
+        '};\n',
+        base,
+        backlog,
+      ),
+      <String>['lib/new_panel.dart 1 is new'],
+    );
+  });
+
+  test('a backlog may fall freely and may not rise above the base', () {
+    const String base =
+        'const Map<String, int> backlog = <String, int>{\n'
+        "  'lib/fell.dart': 3, 'lib/rose.dart': 1, 'lib/signed.dart': 1,\n"
+        '};\n';
+    expect(
+      diff(
+        'const Map<String, int> backlog = <String, int>{\n'
+        "  'lib/fell.dart': 1,\n"
+        "  'lib/rose.dart': 2,\n"
+        '  // owner-approved: 2026-10-17 "fine, for now"\n'
+        "  'lib/signed.dart': 9,\n"
+        '};\n',
+        base,
+        backlog,
+      ),
+      <String>['lib/rose.dart rose from 1 to 2'],
+    );
+  });
+
+  test('an entry is evaluated, so arithmetic is not an old value', () {
+    const Allowance values = Allowance('g.dart', 'allowedValues', Grant.keys);
+    expect(
+      diff(
+        'const Set<num> allowedValues = <num>{0, 1, 2, 1 + 279};',
+        'const Set<num> allowedValues = <num>{0, 1, 2};',
+        values,
+      ),
+      <String>['280 is new'],
+    );
+    expect(
+      diff(
+        'const Set<num> allowedValues = <num>{0, 1, f()};',
+        'const Set<num> allowedValues = <num>{0, 1};',
+        values,
+      ),
+      <String>['f() cannot be read; write the entry as literals'],
+    );
+  });
+
+  test('a capability may narrow freely and may not widen unsigned', () {
+    const Allowance caps = Allowance(
+      'g.dart',
+      'caps',
+      Grant.objects,
+      keyArgs: 2,
+      reasonArg: 3,
+    );
+    const String base =
+        'const List<C> caps = <C>[\n'
+        "  C('lib/a.dart', 'A.x', <String, int>{webFlag: 2}, 'why',\n"
+        "      readers: <String, int>{'lib/a.dart A.y': 1}),\n"
+        '];\n'
+        "const String webFlag = 'kIsWeb';\n";
+    String head(String checks, String readers) =>
+        'const List<C> caps = <C>[\n'
+        "  C('lib/a.dart', 'A.x', <String, int>{$checks}, 'reworded freely',\n"
+        '      readers: <String, int>{$readers}),\n'
+        '];\n'
+        "const String webFlag = 'kIsWeb';\n"
+        "const String targetPlatform = 'defaultTargetPlatform';\n";
+    expect(diff(head('webFlag: 1', ''), base, caps), isEmpty);
+    expect(
+      diff(head('webFlag: 3', "'lib/a.dart A.y': 1"), base, caps),
+      <String>[
+        "lib/a.dart A.x widened from [{'kIsWeb': 2}, {'readers': "
+            "{'lib/a.dart A.y': 1}}] to [{'kIsWeb': 3}, {'readers': "
+            "{'lib/a.dart A.y': 1}}]",
+      ],
+    );
+    expect(
+      diff(head('webFlag: 2, targetPlatform: 1', ''), base, caps).single,
+      contains('widened'),
+    );
+    expect(
+      diff(head('webFlag: 2', "'lib/b.dart B.z': 1"), base, caps).single,
+      contains('widened'),
+    );
+  });
+
+  test('a changed scalar, and a ban list that lost an entry, need one', () {
+    const Allowance prefix = Allowance('g.dart', 'modelsPrefix', Grant.scalar);
+    expect(
+      diff(
+        "const String modelsPrefix = 'lib/src';",
+        "const String modelsPrefix = 'lib/src/models';",
+        prefix,
+      ),
+      <String>["modelsPrefix changed from 'lib/src/models' to 'lib/src'"],
+    );
+    expect(
+      diff(
+        '// owner-approved: 2026-10-17 "move the wire types"\n'
+            "const String modelsPrefix = 'lib/src';",
+        "const String modelsPrefix = 'lib/src/models';",
+        prefix,
+      ),
+      isEmpty,
+    );
+    const Allowance banned = Allowance('g.dart', 'retired', Grant.banList);
+    expect(
+      diff(
+        "const List<String> retired = <String>['Card'];",
+        "const List<String> retired = <String>['Card', 'Scaffold'];",
+        banned,
+      ),
+      <String>['lost Scaffold from what it forbids'],
+    );
+    expect(
+      diff(
+        "const List<String> retired = <String>['Card', 'Scaffold', 'Chip'];",
+        "const List<String> retired = <String>['Card', 'Scaffold'];",
+        banned,
+      ),
+      isEmpty,
+    );
   });
 
   test('a sign-off belongs to the entry it is written on', () {
-    // After an entry's comma it is that entry's; it does not reach down to
-    // the next one, and a code line between a comment and an entry cuts it.
-    const String gate = '''
-const List<String> files = <String>[
-  'lib/a.dart', // owner-approved: 2026-10-17 "a only"
-  'lib/b.dart',
-  // owner-approved: 2026-10-17 "c only"
-  'lib/c.dart',
-  'lib/d.dart',
-];
-''';
     expect(
-      unapproved(
-        entriesOf(gate, 'files', Grant.keys)!,
-        <String>{},
-        Grant.keys,
-        day,
+      diff(
+        'const List<String> files = <String>[\n'
+            "  'lib/a.dart', // owner-approved: 2026-10-17 \"a only\"\n"
+            "  'lib/b.dart',\n"
+            '  // owner-approved: 2026-10-17 "c only"\n'
+            "  'lib/c.dart',\n"
+            "  'lib/d.dart',\n"
+            '];\n',
+        'const List<String> files = <String>[];',
+        files,
       ),
-      <String>[
-        'lib/b.dart is a new allowance',
-        'lib/d.dart is a new allowance',
-      ],
+      <String>['lib/b.dart is new', 'lib/d.dart is new'],
+    );
+    expect(
+      diff(
+        "const Set<String> files = <String>{'lib/a.dart', 'lib/b.dart'}; "
+            '// owner-approved: 2026-10-17 "b"\n',
+        'const Set<String> files = <String>{};',
+        files,
+      ),
+      <String>['lib/a.dart is new'],
     );
   });
 
-  test('a trailing sign-off on a one-line list is the last entry\'s', () {
-    const String gate = '''
-const Set<String> files = <String>{'lib/a.dart', 'lib/b.dart'}; // owner-approved: 2026-10-17 "b"
-''';
+  test('a gate new in this change holds only what the brief named', () {
+    const String head =
+        'const Map<String, int> backlog = <String, int>{\n'
+        "  'lib/a.dart': 1,\n"
+        '};\n';
+    expect(diff(head, null, backlog, bootstrap: <String>{'*'}), isEmpty);
+    expect(diff(head, null, backlog), <String>['lib/a.dart 1 is new']);
     expect(
-      unapproved(
-        entriesOf(gate, 'files', Grant.keys)!,
-        <String>{},
-        Grant.keys,
-        day,
+      diff(
+        "const Set<String> files = <String>{'lib/a.dart', 'lib/b.dart'};",
+        null,
+        files,
+        bootstrap: <String>{'lib/a.dart'},
       ),
-      <String>['lib/a.dart is a new allowance'],
+      <String>['lib/b.dart is new'],
     );
   });
 
-  test('a private collection in a gate file is found', () {
-    expect(
-      gateConstants(
-        'const Map<String, int> _hiddenBacklog = <String, int>{};\n'
-        'final RegExp _pattern = RegExp(r"x");\n'
-        'const String exemptPath = "lib/x";\n',
-      ),
-      <String>['_hiddenBacklog', 'exemptPath'],
-    );
-  });
-
-  test('a backlog may fall freely and may not rise unsigned', () {
-    const String gate = '''
-const Map<String, int> backlog = <String, int>{
-  'lib/fell.dart': 1,
-  'lib/rose.dart': 4,
-  'lib/new.dart': 1,
-  'lib/signed.dart': 9, // owner-approved: 2026-10-17 "fine, for now"
-};
-''';
-    expect(
-      unapproved(
-        entriesOf(gate, 'backlog', Grant.counts)!,
-        <String>{
-          'lib/fell.dart = 3',
-          'lib/rose.dart = 2',
-          'lib/signed.dart = 1',
-        },
-        Grant.counts,
-        day,
-      ),
-      <String>[
-        'lib/rose.dart rose from 2 to 4 in the backlog',
-        'lib/new.dart = 1 is a new backlog entry',
-      ],
-    );
-  });
-
-  test('widening an entry or a path is a new allowance', () {
-    const String capabilities = '''
-const List<C> caps = <C>[
-  C('lib/main.dart', <String>{webFlag, targetPlatform}, 'reason, '
-      'reworded freely'),
-];
-''';
-    expect(
-      unapproved(
-        entriesOf(capabilities, 'caps', Grant.keyAndSet)!,
-        <String>{'lib/main.dart {webFlag}'},
-        Grant.keyAndSet,
-        day,
-      ),
-      <String>['lib/main.dart {targetPlatform, webFlag} is a new allowance'],
-    );
-    const String exemption = '''
-const Map<String, String> ex = <String, String>{
-  'lib/router.dart': 'CupertinoButton',
-};
-''';
-    expect(
-      unapproved(
-        entriesOf(exemption, 'ex', Grant.keyAndValue)!,
-        <String>{'lib/router.dart -> CupertinoRouteTransitionMixin'},
-        Grant.keyAndValue,
-        day,
-      ),
-      <String>['lib/router.dart -> CupertinoButton is a new allowance'],
-    );
-    const String prefix = '''
-/// Wire types.
-const String modelsPrefix =
-    'lib/src';
-''';
-    expect(
-      unapproved(
-        entriesOf(prefix, 'modelsPrefix', Grant.scalar)!,
-        <String>{"'lib/src/models'"},
-        Grant.scalar,
-        day,
-      ),
-      <String>["'lib/src' is a new allowance"],
-    );
-  });
-
-  test('the comment reader reads every file the way maskProse does', () {
-    // `proseSpans` is the second reader of the same grammar; blanking its
-    // spans has to give the mask, character for character, on every file the
-    // source gates and this one read.
-    final List<String> paths = <String>[
-      ...gateFiles(),
-      for (final GateSource s in libSources()) s.path,
-    ];
-    for (final String path in paths) {
-      final String source = File(path).readAsStringSync();
-      final List<int> out = List<int>.of(source.codeUnits);
-      for (final ProseSpan span in proseSpans(source)) {
-        for (int i = span.start; i < span.end; i++) {
-          if (out[i] != 0x0A) out[i] = 0x20;
-        }
-      }
-      expect(String.fromCharCodes(out), maskProse(source), reason: path);
-    }
-  });
-
-  test('the gate reads the entries the compiler sees', () {
-    for (final Allowance allowance in allowances) {
-      final List<Entry>? entries = entriesOf(
-        File(allowance.file).readAsStringSync(),
-        allowance.declaration,
-        allowance.grant,
-      );
-      expect(entries, isNotNull, reason: '${allowance.id} is not declared');
-      if (allowance.compiled == null) continue;
+  test('every gate file parses, so the tree is the whole file', () {
+    for (final String path in gateFiles()) {
       expect(
-        <String>{
-          for (final Entry e in entries!)
-            allowance.grant == Grant.keyAndValue
-                ? e.grant.split(' -> ').first
-                : allowance.grant == Grant.keyAndSet
-                ? e.grant.split(' {').first
-                : e.grant,
-        },
-        allowance.compiled!().toSet(),
-        reason: allowance.id,
+        GateSource(path, File(path).readAsStringSync()).errors,
+        isEmpty,
+        reason: path,
       );
     }
   });
 
-  test('every named constant in a gate file is classified', () {
+  final List<GateSource> heads = <GateSource>[
+    for (final String path in gateFiles())
+      GateSource(path, File(path).readAsStringSync()),
+  ];
+  final Map<String, Expression> headConstants = constantsOf(heads);
+  GateSource headOf(String path) =>
+      heads.firstWhere((GateSource s) => s.path == path);
+
+  test('the gate reads every allowance the way the compiler builds it', () {
+    for (final Allowance a in allowances) {
+      final List<Entry>? entries = entriesOf(headOf(a.file), a, headConstants);
+      expect(entries, isNotNull, reason: '${a.id} is not declared');
+      expect(
+        entries!.where((Entry e) => e.key.startsWith('!')),
+        isEmpty,
+        reason: a.id,
+      );
+      if (a.compiled == null) continue;
+      final Map<String, String> read = <String, String>{
+        for (final Entry e in entries)
+          e.key: a.grant == Grant.counts || a.grant == Grant.objects
+              ? _show(e.value)
+              : a.grant == Grant.scalar
+              ? e.shown
+              : '',
+      };
+      final Map<String, String> built = a.compiled!();
+      if (a.grant == Grant.counts) {
+        expect(read, <String, String>{
+          for (final MapEntry<String, String> e in built.entries)
+            e.key: e.value,
+        }, reason: a.id);
+      } else {
+        expect(read, built, reason: a.id);
+      }
+    }
+  });
+
+  test('every top-level variable in a gate file is classified', () {
     final Set<String> known = <String>{
       for (final Allowance a in allowances) a.id,
       ...notAllowances.keys,
     };
     final List<String> unknown = <String>[
-      for (final String file in gateFiles())
-        for (final String name in gateConstants(File(file).readAsStringSync()))
-          if (!known.contains('$file $name')) '$file $name',
+      for (final GateSource s in heads)
+        for (final CompilationUnitMember d in s.unit.declarations)
+          if (d is TopLevelVariableDeclaration)
+            for (final VariableDeclaration v in d.variables.variables)
+              if (!known.contains('${s.path} ${v.name.lexeme}'))
+                '${s.path} ${v.name.lexeme}',
     ];
     expect(
       unknown,
       isEmpty,
       reason:
-          'an allowance goes in `allowances` so its entries need a sign-off; '
-          'anything else goes in `notAllowances` with why it lets nothing '
-          'through',
+          'an allowance or a ban list goes in `allowances`, so loosening it '
+          'needs a sign-off; anything else goes in `notAllowances` with why',
     );
+    final Set<String> declared = <String>{
+      for (final GateSource s in heads)
+        for (final CompilationUnitMember d in s.unit.declarations)
+          if (d is TopLevelVariableDeclaration)
+            for (final VariableDeclaration v in d.variables.variables)
+              '${s.path} ${v.name.lexeme}',
+    };
+    expect(known.difference(declared), isEmpty, reason: 'stale rows');
   });
 
-  test('no allowance grew without the owner signing it', () {
-    final List<String> found = <String>[
-      for (final Allowance allowance in allowances)
-        for (final String problem in unapproved(
-          entriesOf(
-            File(allowance.file).readAsStringSync(),
-            allowance.declaration,
-            allowance.grant,
-          )!,
-          recordedGrants[allowance.id] ?? const <String>{},
-          allowance.grant,
-          _today(),
-        ))
-          '${allowance.id}: $problem',
+  test('the brief inventory names only allowances in new gate files', () {
+    for (final String id in briefInventory.keys) {
+      expect(
+        newGateFiles.any((String f) => id.startsWith('$f ')),
+        isTrue,
+        reason: id,
+      );
+    }
+  });
+
+  test('nothing loosened since the base without the owner signing it', () {
+    final String commit = baseCommit();
+    final List<GateSource> bases = <GateSource>[
+      for (final String path in gateFiles())
+        if (baseText(commit, path) case final String text)
+          GateSource(path, text),
     ];
+    final Map<String, Expression> baseConstants = constantsOf(bases);
+    final List<String> found = <String>[];
+    for (final Allowance a in allowances) {
+      final GateSource? base = bases
+          .where((GateSource s) => s.path == a.file)
+          .firstOrNull;
+      for (final String problem in loosenings(
+        allowance: a,
+        head: entriesOf(headOf(a.file), a, headConstants)!,
+        base: base == null ? null : entriesOf(base, a, baseConstants),
+        today: _today(),
+        bootstrap: base == null
+            ? briefInventory[a.id] ?? const <String>{}
+            : const <String>{},
+      )) {
+        found.add('${a.id}: $problem');
+      }
+    }
     expect(
       found,
       isEmpty,
       reason:
-          'fix the code instead, or ask the owner. An allowance needs '
-          '`// owner-approved: YYYY-MM-DD "the owner\'s exact words"` on '
-          'the entry (CLAUDE.md, "Gate exemptions"):\n${found.join('\n')}',
-    );
-  });
-
-  test('the record only lists entries that are still granted', () {
-    for (final Allowance allowance in allowances) {
-      final Set<String> recorded =
-          recordedGrants[allowance.id] ?? const <String>{};
-      final List<Entry> entries = entriesOf(
-        File(allowance.file).readAsStringSync(),
-        allowance.declaration,
-        allowance.grant,
-      )!;
-      final Set<String> live = <String>{for (final Entry e in entries) e.grant};
-      for (final String r in recorded) {
-        final String key = allowance.grant == Grant.counts
-            ? r.substring(0, r.lastIndexOf(' = '))
-            : r;
-        expect(
-          live.contains(key),
-          isTrue,
-          reason:
-              '${allowance.id} no longer grants $r; remove it from '
-              'recordedGrants, so bringing it back needs a sign-off',
-        );
-      }
-    }
-    expect(
-      recordedGrants.keys.toSet().difference(<String>{
-        for (final Allowance a in allowances) a.id,
-      }),
-      isEmpty,
-      reason: 'the record names an allowance that is not checked',
+          'fix the code instead, or ask the owner. A loosening needs '
+          '`// owner-approved: YYYY-MM-DD "the owner\'s exact words"` on the '
+          'entry (CLAUDE.md, "Gate exemptions"). Compared with $commit:\n'
+          '${found.join('\n')}',
     );
   });
 }
