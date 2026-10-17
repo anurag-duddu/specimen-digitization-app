@@ -77,6 +77,9 @@ final RegExp measuredSize = RegExp(
   caseSensitive: false,
 );
 
+/// A design-system size: a spacing token such as `ui.space.s4`.
+final RegExp _sizeToken = RegExp(r'\bspace\.\w+');
+
 /// Whether [other] is a measured size: it names one, or it is a local or a
 /// parameter of the enclosing functions whose name or initializer does.
 bool _measured(Expression other) {
@@ -113,8 +116,18 @@ bool _measured(Expression other) {
 /// A named number: its declaration, its value expression and where it is.
 class NamedNumber {
   /// Records [name], declared at [node] with [value], in the declaration
-  /// [site], in the file [path].
-  NamedNumber(this.path, this.name, this.site, this.node, this.value);
+  /// [site], in the file [path], read as [kind].
+  NamedNumber(
+    this.path,
+    this.name,
+    this.site,
+    this.node,
+    this.value, {
+    this.kind = NumberKind.value,
+  });
+
+  /// How it reaches layout.
+  final NumberKind kind;
 
   /// The file.
   final String path;
@@ -137,6 +150,50 @@ class NamedNumber {
 
 const Set<String> _sized = <String>{'double', 'num'};
 
+/// How a named number is read.
+enum NumberKind {
+  /// A `double` or `num`: any read can reach layout.
+  value,
+
+  /// An `int`: it reaches layout only through `.toDouble()`, so a count that
+  /// divides a width is not a size.
+  integer,
+
+  /// A list, set, map or record of `double` or `num`: an element reaches
+  /// layout through an index or a field.
+  collection,
+
+  /// A parameter's default value: used for layout when the parameter is
+  /// named for a dimension, or read on to layout in its body or its class.
+  parameter,
+}
+
+bool _sizedType(TypeAnnotation? type) => switch (type) {
+  NamedType(:final Token name) => _sized.contains(name.lexeme),
+  _ => false,
+};
+
+/// Whether [type] is a list, set, map or record whose values are `double` or
+/// `num`.
+bool _sizedCollection(TypeAnnotation? type) => switch (type) {
+  NamedType(:final Token name, :final TypeArgumentList? typeArguments) =>
+    const <String>{'List', 'Set', 'Iterable', 'Map'}.contains(name.lexeme) &&
+        typeArguments != null &&
+        _sizedType(typeArguments.arguments.last),
+  RecordTypeAnnotation(
+    :final NodeList<RecordTypeAnnotationPositionalField> positionalFields,
+    :final RecordTypeAnnotationNamedFields? namedFields,
+  ) =>
+    <TypeAnnotation>[
+      for (final RecordTypeAnnotationPositionalField f in positionalFields)
+        f.type,
+      for (final RecordTypeAnnotationNamedField f
+          in namedFields?.fields ?? const <RecordTypeAnnotationNamedField>[])
+        f.type,
+    ].any(_sizedType),
+  _ => false,
+};
+
 /// Every named number [source] declares.
 List<NamedNumber> namedNumbersIn(GateSource source) {
   final _NameVisitor visitor = _NameVisitor(source);
@@ -156,16 +213,67 @@ class _NameVisitor extends CodeVisitor {
     final AstNode? list = node.parent;
     if (value != null && list is VariableDeclarationList) {
       final TypeAnnotation? type = list.type;
-      final bool sized = type is NamedType
-          ? _sized.contains(type.name.lexeme)
-          : type == null && numberOf(value, literalsOnly: true) is double;
-      if (sized) {
+      final num? literal = numberOf(value, literalsOnly: true);
+      final bool typedLiteral = switch (value) {
+        ListLiteral(:final TypeArgumentList? typeArguments) ||
+        SetOrMapLiteral(
+          :final TypeArgumentList? typeArguments,
+        ) => typeArguments != null && _sizedType(typeArguments.arguments.last),
+        RecordLiteral() => numericLiteralsIn(
+          value,
+        ).any((Literal l) => l is DoubleLiteral),
+        _ => false,
+      };
+      final NumberKind? kind = _sizedType(type)
+          ? NumberKind.value
+          : type == null && literal is double
+          ? NumberKind.value
+          : (type is NamedType && type.name.lexeme == 'int') ||
+                (type == null && literal is int)
+          ? NumberKind.integer
+          : _sizedCollection(type) || (type == null && typedLiteral)
+          ? NumberKind.collection
+          : null;
+      if (kind != null) {
         found.add(
-          NamedNumber(source.path, node.name.lexeme, siteOf(node), node, value),
+          NamedNumber(
+            source.path,
+            node.name.lexeme,
+            siteOf(node),
+            node,
+            value,
+            kind: kind,
+          ),
         );
       }
     }
     super.visitVariableDeclaration(node);
+  }
+
+  @override
+  void visitDefaultFormalParameter(DefaultFormalParameter node) {
+    final Expression? value = node.defaultValue;
+    final NormalFormalParameter parameter = node.parameter;
+    final bool sized = switch (parameter) {
+      SimpleFormalParameter(:final TypeAnnotation? type) => _sizedType(type),
+      FieldFormalParameter() || SuperFormalParameter() =>
+        value != null && numberOf(value, literalsOnly: true) != null,
+      _ => false,
+    };
+    final String? name = parameter.name?.lexeme;
+    if (value != null && sized && name != null) {
+      found.add(
+        NamedNumber(
+          source.path,
+          name,
+          siteOf(node),
+          node,
+          value,
+          kind: NumberKind.parameter,
+        ),
+      );
+    }
+    super.visitDefaultFormalParameter(node);
   }
 
   void _function(
@@ -295,6 +403,15 @@ List<Expression> _children(Expression e) => switch (e) {
   PropertyAccess(:final Expression? target) => <Expression>[?target],
   // An index, and any arithmetic inside it, is a position in a list.
   IndexExpression(:final Expression? target) => <Expression>[?target],
+  ListLiteral(:final NodeList<CollectionElement> elements) => <Expression>[
+    for (final CollectionElement e in elements)
+      if (e is Expression) e,
+  ],
+  SetOrMapLiteral(:final NodeList<CollectionElement> elements) => <Expression>[
+    for (final CollectionElement e in elements)
+      if (e is Expression) e else if (e is MapLiteralEntry) e.value,
+  ],
+  RecordLiteral(:final NodeList<Expression> fields) => fields.toList(),
   _ => <Expression>[],
 };
 
@@ -305,7 +422,17 @@ bool reachesLayout(
   bool Function(AstNode declaration) layoutOf,
 ) {
   AstNode current = node;
-  if (node.parent is PrefixedIdentifier &&
+  final AstNode? parent0 = node.parent;
+  if (parent0 is IndexExpression && parent0.target == node) {
+    // An element of a named collection, `widths[1]`.
+    current = parent0;
+  } else if (parent0 is PrefixedIdentifier &&
+      parent0.prefix == node &&
+      RegExp(r'^\$\d+$|^[a-z]').hasMatch(parent0.identifier.name) &&
+      parent0.identifier.name != 'toDouble') {
+    // A field of a named record, `size.$1` or `size.width`.
+    current = parent0;
+  } else if (node.parent is PrefixedIdentifier &&
       (node.parent! as PrefixedIdentifier).identifier == node) {
     current = node.parent!;
   } else if (node.parent is PropertyAccess &&
@@ -336,13 +463,20 @@ bool reachesLayout(
           return _measured(other);
         }
         if (op != TokenType.QUESTION_QUESTION) {
-          // Beside a measured size the units decide: a size plus or minus
-          // it, or divided by it, makes it a size; a size times it makes it
-          // a factor, `width * (1 - scale)`.
+          // Beside a measured size or a spacing token the units decide: a
+          // size plus or minus it makes it a size, and so does it divided by
+          // a size; a size times it makes it a factor, `width * (1 - scale)`,
+          // and a size divided by it is a count or a size, `width / ratio`,
+          // so neither says it is one.
           final Expression other = parent.leftOperand == current
               ? parent.rightOperand
               : parent.leftOperand;
-          if (_measured(other)) return op != TokenType.STAR;
+          if (_measured(other) || _sizeToken.hasMatch(other.toSource())) {
+            if (op == TokenType.PLUS || op == TokenType.MINUS) return true;
+            final bool dividend = parent.leftOperand == current;
+            return dividend &&
+                (op == TokenType.SLASH || op == TokenType.TILDE_SLASH);
+          }
         }
         if (op == TokenType.QUESTION_QUESTION ||
             op == TokenType.PLUS ||
@@ -465,8 +599,26 @@ Map<String, List<String>> namedSizes(List<GateSource> sources) {
     memo[declaration] = false;
     final NamedNumber? n = byNode[declaration];
     final bool result;
-    if (n != null) {
-      result = (reads[n.name] ?? const <SimpleIdentifier>[]).any(
+    final List<SimpleIdentifier> named = n == null
+        ? const <SimpleIdentifier>[]
+        : reads[n.name] ?? const <SimpleIdentifier>[];
+    if (n != null && n.kind == NumberKind.parameter) {
+      // By its reads, not its name: `padding = 1.08` can be a multiplier.
+      result = named.any(
+        (SimpleIdentifier r) =>
+            fileOf[r] == n.path &&
+            _inParameterScope(r, n.node as DefaultFormalParameter) &&
+            reachesLayout(r, layoutOf),
+      );
+    } else if (n != null && n.kind == NumberKind.integer) {
+      result = named.any(
+        (SimpleIdentifier r) =>
+            _refersTo(r, fileOf[r]!, n) &&
+            _toDouble(r) &&
+            reachesLayout(r, layoutOf),
+      );
+    } else if (n != null) {
+      result = named.any(
         (SimpleIdentifier r) =>
             _refersTo(r, fileOf[r]!, n) && reachesLayout(r, layoutOf),
       );
@@ -507,6 +659,45 @@ Map<String, List<String>> namedSizes(List<GateSource> sources) {
         );
   }
   return found;
+}
+
+/// Whether [read] is the target of `.toDouble()`, directly or through its
+/// owner, `Owner.count.toDouble()`.
+bool _toDouble(SimpleIdentifier read) {
+  AstNode node = read;
+  final AstNode? parent = read.parent;
+  if (parent is PrefixedIdentifier && parent.identifier == read) node = parent;
+  final AstNode? call = node.parent;
+  return call is MethodInvocation &&
+      call.target == node &&
+      call.methodName.name == 'toDouble';
+}
+
+/// Whether [read] can be the parameter [parameter]: inside its function's
+/// body, or, for a `this.` or `super.` parameter, anywhere in its class or as
+/// `widget.name` and the like in the same file.
+bool _inParameterScope(
+  SimpleIdentifier read,
+  DefaultFormalParameter parameter,
+) {
+  final NormalFormalParameter p = parameter.parameter;
+  if (p is FieldFormalParameter || p is SuperFormalParameter) {
+    final ClassDeclaration? owner = parameter
+        .thisOrAncestorOfType<ClassDeclaration>();
+    final AstNode? parent = read.parent;
+    final bool member =
+        (parent is PrefixedIdentifier && parent.identifier == read) ||
+        (parent is PropertyAccess && parent.propertyName == read);
+    return member || read.thisOrAncestorOfType<ClassDeclaration>() == owner;
+  }
+  final AstNode? function = parameter.parent?.parent;
+  final FunctionBody? body = switch (function) {
+    FunctionExpression(:final FunctionBody body) => body,
+    MethodDeclaration(:final FunctionBody body) => body,
+    ConstructorDeclaration(:final FunctionBody body) => body,
+    _ => null,
+  };
+  return body != null && read.thisOrAncestorOfType<FunctionBody>() == body;
 }
 
 /// Whether [read], in the file [path], can refer to [n]: in its own file, or

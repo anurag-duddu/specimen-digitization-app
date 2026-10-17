@@ -72,6 +72,26 @@ List<GateSource> libSources({String base = '.'}) {
   ]..sort((GateSource a, GateSource b) => a.path.compareTo(b.path));
 }
 
+/// Every Dart file the product ships from the application at [base]: its own
+/// `lib/` and the design system's, `packages/specimen_ui/lib/`, by path
+/// relative to [base], sorted. A Cupertino widget or a platform fork wrapped
+/// in a `Ui*` component would otherwise reach the app with no token in it.
+List<GateSource> productSources({String base = '.'}) {
+  final String package = base == '.'
+      ? 'packages/specimen_ui/lib'
+      : '$base/packages/specimen_ui/lib';
+  final int strip = base == '.' ? 0 : base.length + 1;
+  return <GateSource>[
+    ...libSources(base: base),
+    if (Directory(package).existsSync())
+      for (final FileSystemEntity entity in Directory(
+        package,
+      ).listSync(recursive: true))
+        if (entity is File && entity.path.endsWith('.dart'))
+          GateSource(entity.path.substring(strip), entity.readAsStringSync()),
+  ]..sort((GateSource a, GateSource b) => a.path.compareTo(b.path));
+}
+
 /// Writes [files], path to text, under a new temporary application root and
 /// returns the root. The directory is deleted when the test ends.
 String plantedApplication(Map<String, String> files) {

@@ -9,18 +9,19 @@
 // The gate reads each file as a syntax tree, so comments between tokens and
 // hex spellings change nothing. An opacity is the `alpha:` of `withValues` or
 // `Color.from`, the argument of `withOpacity`, `withAlpha` or the design
-// system's `stateLayer`, the alpha of `Color.fromARGB` and `Color.fromRGBO`,
-// and the amount of `Color.lerp`, which mixes two roles into a third nobody
-// named. Each number
+// system's `stateLayer`, the alpha of `Color.fromARGB`, `Color.fromRGBO`,
+// `HSLColor.fromAHSL` and `HSVColor.fromAHSV`, and the amount of
+// `Color.lerp`, which mixes two roles into a third nobody named. Each number
 // written in one counts, whatever its value, because the brief counts
 // literals: `alpha: 0` is the role at nothing, and the design system's
-// transparent role says that with a name. A name for the number declared in
-// the same file is the number, `alpha: _wash` with `const double _wash =
-// .06`; a name from another file is out of reach of a per-file reading, and
-// review catches it. Not read: the `opacity:` of `Opacity` and
-// `AnimatedOpacity`, where the tree today holds only visibility toggles
-// (`visible ? 1 : 0`); a fraction there over a coloured child is the same
-// decision, and review catches it.
+// transparent role says that with a name. A name for the number is the
+// number: a constant, a final or a one-expression getter in the same file, a
+// public one anywhere in the application (`Washes.selected`), or the default
+// of the parameter it is read in (`{double wash = .06}`). A number passed in
+// from a caller, and one from outside the application, are review's. Not
+// read: the `opacity:` of `Opacity` and `AnimatedOpacity`, where the tree
+// today holds only visibility toggles (`visible ? 1 : 0`); a fraction there
+// over a coloured child is the same decision, and review catches it.
 //
 // The mechanism is the geometry gate's: a per-file count that may go down,
 // never up, held to the tree exactly, and a file at zero leaves the map. It
@@ -66,15 +67,59 @@ class OpacityLiteral {
   String toString() => 'line $line, $site, $call $text';
 }
 
-/// Every opacity written as a number in [source].
-List<OpacityLiteral> opacityLiteralsIn(GateSource source) {
-  final _OpacityVisitor visitor = _OpacityVisitor(
-    source,
-    numericConstants(source.unit),
-  );
+/// Every opacity written as a number in [source]. A name is resolved in
+/// [source] first, then among the public names of [pool], the rest of the
+/// application.
+List<OpacityLiteral> opacityLiteralsIn(
+  GateSource source, {
+  Map<String, Expression> pool = const <String, Expression>{},
+}) {
+  final _OpacityVisitor visitor = _OpacityVisitor(source, <String, Expression>{
+    ...pool,
+    ...numberNames(source.unit),
+  });
   source.unit.accept(visitor);
   return visitor.found;
 }
+
+/// The names [unit] gives a number: its constants and finals, and its
+/// getters that return one expression, by `name` and `Class.name`.
+Map<String, Expression> numberNames(CompilationUnit unit) {
+  final Map<String, Expression> found = numericConstants(unit);
+  for (final CompilationUnitMember d in unit.declarations) {
+    if (d is FunctionDeclaration && d.isGetter) {
+      final FunctionBody body = d.functionExpression.body;
+      if (body is ExpressionFunctionBody) {
+        found.putIfAbsent(d.name.lexeme, () => body.expression);
+      }
+    }
+    if (d is ClassDeclaration && d.body is BlockClassBody) {
+      for (final ClassMember m in (d.body as BlockClassBody).members) {
+        if (m is MethodDeclaration &&
+            m.isGetter &&
+            m.body is ExpressionFunctionBody) {
+          final Expression e = (m.body as ExpressionFunctionBody).expression;
+          found.putIfAbsent(m.name.lexeme, () => e);
+          found.putIfAbsent(
+            '${d.namePart.typeName.lexeme}.${m.name.lexeme}',
+            () => e,
+          );
+        }
+      }
+    }
+  }
+  return found;
+}
+
+/// The public names every file in [sources] gives a number, pooled.
+Map<String, Expression> publicNumberNames(
+  List<GateSource> sources,
+) => <String, Expression>{
+  for (final GateSource s in sources)
+    for (final MapEntry<String, Expression> e in numberNames(s.unit).entries)
+      if (!e.key.split('.').any((String part) => part.startsWith('_')))
+        e.key: e.value,
+};
 
 class _OpacityVisitor extends CodeVisitor {
   _OpacityVisitor(this.source, this.constants);
@@ -97,7 +142,8 @@ class _OpacityVisitor extends CodeVisitor {
     }
     if (literals.isNotEmpty) return;
     if (value is SimpleIdentifier || value is PrefixedIdentifier) {
-      final num? named = numberOf(value, constants: constants);
+      final num? named =
+          numberOf(value, constants: constants) ?? _parameterDefault(value);
       if (named != null) {
         found.add(
           OpacityLiteral(
@@ -125,6 +171,30 @@ class _OpacityVisitor extends CodeVisitor {
     return index < positional.length ? positional[index] : null;
   }
 
+  /// The default of the parameter [value] names, `{double wash = .06}`, in
+  /// the function it is read in.
+  num? _parameterDefault(Expression value) {
+    if (value is! SimpleIdentifier) return null;
+    for (AstNode? n = value.parent; n != null; n = n.parent) {
+      final FormalParameterList? parameters = switch (n) {
+        FunctionExpression(:final FormalParameterList? parameters) =>
+          parameters,
+        MethodDeclaration(:final FormalParameterList? parameters) => parameters,
+        ConstructorDeclaration(:final FormalParameterList parameters) =>
+          parameters,
+        _ => null,
+      };
+      for (final FormalParameter p in parameters?.parameters ?? const []) {
+        if (p is DefaultFormalParameter &&
+            p.name?.lexeme == value.name &&
+            p.defaultValue != null) {
+          return numberOf(p.defaultValue!, constants: constants);
+        }
+      }
+    }
+    return null;
+  }
+
   void _colorConstructor(String name, ArgumentList arguments) {
     final Expression? alpha = switch (name) {
       'fromARGB' => _positional(arguments, 0),
@@ -143,6 +213,11 @@ class _OpacityVisitor extends CodeVisitor {
     final Expression? target = node.target;
     if (target is SimpleIdentifier && target.name == 'Color') {
       _colorConstructor(method, arguments);
+    } else if (target is SimpleIdentifier &&
+        (target.name == 'HSLColor' || target.name == 'HSVColor') &&
+        method.startsWith('fromA')) {
+      final Expression? alpha = _positional(arguments, 0);
+      if (alpha != null) _check(alpha, '${target.name}.$method');
     } else if (method == 'withValues') {
       final Expression? alpha = _named(arguments, 'alpha');
       if (alpha != null) _check(alpha, 'alpha:');
@@ -172,8 +247,10 @@ class _OpacityVisitor extends CodeVisitor {
 Map<String, List<OpacityLiteral>> alphaLiteralCensus({String base = '.'}) {
   final Map<String, List<OpacityLiteral>> found =
       <String, List<OpacityLiteral>>{};
-  for (final GateSource source in libSources(base: base)) {
-    final List<OpacityLiteral> findings = opacityLiteralsIn(source);
+  final List<GateSource> sources = libSources(base: base);
+  final Map<String, Expression> pool = publicNumberNames(sources);
+  for (final GateSource source in sources) {
+    final List<OpacityLiteral> findings = opacityLiteralsIn(source, pool: pool);
     if (findings.isNotEmpty) found[source.path] = findings;
   }
   return found;
@@ -247,6 +324,23 @@ void main() {
       <String>['alpha: _S.wash = 0.06'],
     );
 
+    expect(
+      of(
+        'class _S { static double get wash => .06; }\n'
+        'final c = ink.withValues(alpha: _S.wash);',
+      ),
+      <String>['alpha: _S.wash = 0.06'],
+    );
+    expect(
+      of(
+        'Color tint(Color ink, {double wash = .06}) => ink.withOpacity(wash);',
+      ),
+      <String>['withOpacity wash = 0.06'],
+    );
+    expect(of('final c = HSLColor.fromAHSL(.4, 0, 0, .5);'), <String>[
+      'HSLColor.fromAHSL .4',
+    ]);
+
     // A token, a value from an animation, another channel and prose are not
     // opacities written as numbers.
     expect(
@@ -264,14 +358,19 @@ void main() {
 
   test('a planted opacity fails the gate', () {
     // The same census and verdict the gate runs, over a temporary
-    // application: a new file with a typed opacity, and a backlog file that
-    // gained a second one.
+    // application: a new file with a typed opacity, a backlog file that
+    // gained a second one, and an opacity named in another file.
     final String base = plantedApplication(<String, String>{
       'lib/src/widgets/hover.dart':
           'Color wash(UiThemeData ui) => ui.color.ink.withValues(alpha: .08);\n',
       'lib/src/app/shell.dart':
           'final Color a = ink.withValues(alpha: .06);\n'
           'final Color b = ink.withOpacity(.12);\n',
+      // A public name in one file, the opacity in another.
+      'lib/src/washes.dart':
+          'abstract final class Washes { static const double row = .1; }\n',
+      'lib/src/widgets/row_wash.dart':
+          'Color wash(Color ink) => ink.withValues(alpha: Washes.row);\n',
     });
     expect(alphaLiteralViolations(alphaLiteralCensus(base: base)), <String>[
       'lib/src/app/shell.dart holds 2, allowed '
@@ -280,6 +379,8 @@ void main() {
           '    line 2, b, withOpacity .12',
       'lib/src/widgets/hover.dart holds 1, allowed 0:\n'
           '    line 1, wash, alpha: .08',
+      'lib/src/widgets/row_wash.dart holds 1, allowed 0:\n'
+          '    line 1, wash, alpha: Washes.row = 0.1',
     ]);
   });
 

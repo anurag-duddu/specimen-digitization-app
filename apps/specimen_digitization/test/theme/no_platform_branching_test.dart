@@ -18,8 +18,11 @@
 // `web` is review's to judge.
 //
 // Counted, in code only (comments and strings are not code, interpolations
-// are): `kIsWeb`, `defaultTargetPlatform`, `TargetPlatform` (as a type or a
-// value), `Platform` from `dart:io`, `Theme.of(context).platform` and
+// are), in the application's `lib/` and the design system's: `kIsWeb`,
+// `kIsWasm`, `defaultTargetPlatform`, `TargetPlatform` (as a type or a
+// value), `Platform` from `dart:io`, `Theme.of(context).platform` and a
+// theme variable's `.platform`, a conditional import or export
+// (`if (dart.library.io)`), which picks code by platform, and
 // `debugDefaultTargetPlatformOverride`, which belongs in tests alone.
 
 import 'package:flutter_test/flutter_test.dart';
@@ -50,7 +53,6 @@ const List<PlatformCapability> platformCapabilities = <PlatformCapability>[
     <String, int>{webFlag: 1, targetPlatform: 1, targetPlatformType: 2},
     'the committed stand-in for the generated options, which pick a Firebase '
         'app per platform',
-    readers: <String, int>{'lib/main.dart main': 1},
   ),
   PlatformCapability(
     'lib/main.dart',
@@ -121,6 +123,18 @@ const List<PlatformCapability> platformCapabilities = <PlatformCapability>[
     },
   ),
   PlatformCapability(
+    'lib/src/email_link_browser.dart',
+    '<directives>',
+    <String, int>{conditionalImport: 1},
+    'the email link reads the browser address in a browser build only',
+  ),
+  PlatformCapability(
+    'lib/src/email_link_source_factory.dart',
+    '<directives>',
+    <String, int>{conditionalImport: 1},
+    'picks the io half, where incoming app links exist',
+  ),
+  PlatformCapability(
     'lib/src/email_link_source_factory_io.dart',
     'createNativeEmailLinkSource',
     <String, int>{ioPlatform: 2},
@@ -181,8 +195,8 @@ const List<PlatformCapability> platformCapabilities = <PlatformCapability>[
   // exemptions on PR #358)
   // owner-approved: 2026-10-17 "Mobile and tablet stay on pull to refresh web
   // nd desktop might need exception the refresh icon we already have is
-  // relevant there" (the owner, in the coordinating Claude Code session,
-  // asked which of the two answers stands for pull to refresh): pull to
+  // relevant there" (owner, coordinator Claude Code session, 2026-10-17,
+  // answer to the coordinator's question on which answer stands): pull to
   // refresh on the iOS and Android apps, phones and tablets; web and desktop
   // rely on the refresh icon, the account menu's reload control.
   PlatformCapability(
@@ -226,6 +240,13 @@ const List<PlatformCapability> platformCapabilities = <PlatformCapability>[
       'lib/src/theme/motion.dart SpecimenHaptics.selectionChanged': 1,
     },
   ),
+  PlatformCapability(
+    'packages/specimen_ui/lib/src/foundation/reduced_motion_platform.dart',
+    '<directives>',
+    <String, int>{conditionalImport: 1},
+    'the reduced-motion query Flutter 3.38.5 does not carry on the web (04 '
+        'section 6.2b)',
+  ),
 ];
 
 /// The generated options `flutterfire configure` writes. It is gitignored and
@@ -242,11 +263,12 @@ const List<PlatformCapability> platformCapabilities = <PlatformCapability>[
 /// Claude Code session, asked which existing platform checks to approve)
 const String generatedOptions = 'lib/firebase_options.dart';
 
-/// Every platform check under `lib/` of the application at [base], by file.
+/// Every platform check the product ships from the application at [base],
+/// its `lib/` and the design system's, by file.
 Map<String, List<PlatformCheck>> platformCensus({String base = '.'}) {
   final Map<String, List<PlatformCheck>> found =
       <String, List<PlatformCheck>>{};
-  for (final GateSource source in libSources(base: base)) {
+  for (final GateSource source in productSources(base: base)) {
     if (source.path == generatedOptions) continue;
     final List<PlatformCheck> checks = platformChecksIn(source);
     if (checks.isNotEmpty) found[source.path] = checks;
@@ -339,6 +361,17 @@ void main() {
       <String>[platformOverride],
     );
 
+    expect(kindsOf('final w = kIsWasm;'), <String>[wasmFlag]);
+    expect(kindsOf('bool f(ThemeData theme) => theme.platform == p;'), <String>[
+      themePlatform,
+    ]);
+    expect(
+      kindsOf(
+        "export 'a_stub.dart'\n    if (dart.library.js_interop) 'a_web.dart';",
+      ),
+      <String>[conditionalImport],
+    );
+
     // Prose and strings are not code.
     expect(
       kindsOf('/// Production always uses [kIsWeb].\nvoid f() {}'),
@@ -352,7 +385,8 @@ void main() {
     // The same census and verdict the gate runs, over a temporary
     // application: a shell that forks its bar by platform, an appearance
     // branch added inside an allowed file, an allowed declaration reaching
-    // past its counts, a forwarded predicate read by a widget, and the
+    // past its counts, a forwarded predicate read by a widget that imports
+    // it (and not by one that cannot see it), a conditional export, and the
     // generated options, which are skipped.
     const List<PlatformCapability> allowed = <PlatformCapability>[
       PlatformCapability(
@@ -376,17 +410,24 @@ void main() {
           '  static Widget look() => kIsWeb ? const A() : const B();\n'
           '}\n',
       'lib/src/widgets/row.dart':
+          "import '../theme/motion.dart';\n"
           'Widget row() => Haptics.available ? const A() : const B();\n',
+      // A file that cannot see motion.dart reads some other `Haptics`.
+      'lib/src/widgets/elsewhere.dart':
+          'Widget other() => Haptics.available ? const A() : const B();\n',
+      'lib/src/picker.dart':
+          "export 'picker_stub.dart' if (dart.library.io) 'picker_io.dart';\n",
     });
     expect(
       platformViolations(
         census: platformCensus(base: base),
-        readers: readersOf(allowed, libSources(base: base)),
+        readers: readersOf(allowed, productSources(base: base)),
         capabilities: allowed,
       ),
       <String>[
         'lib/src/app/shell.dart bar: 1 defaultTargetPlatform, allowed 0',
         'lib/src/app/shell.dart bar: 1 TargetPlatform, allowed 0',
+        'lib/src/picker.dart <directives>: 1 conditional import, allowed 0',
         'lib/src/theme/motion.dart Haptics.available: 2 kIsWeb, allowed 1',
         'lib/src/theme/motion.dart Haptics.look: 1 kIsWeb, allowed 0',
         'lib/src/theme/motion.dart Haptics.available is read 1 times by '
@@ -398,7 +439,7 @@ void main() {
   test('no declaration branches on the platform past its capability', () {
     final List<String> violations = platformViolations(
       census: platformCensus(),
-      readers: readersOf(platformCapabilities, libSources()),
+      readers: readersOf(platformCapabilities, productSources()),
     );
     expect(
       violations,
@@ -418,7 +459,7 @@ void main() {
     final Map<String, Map<String, int>> checks = checksBySite(platformCensus());
     final Map<String, Map<String, int>> readers = readersOf(
       platformCapabilities,
-      libSources(),
+      productSources(),
     );
     for (final PlatformCapability c in platformCapabilities) {
       final String site = '${c.path} ${c.site}';

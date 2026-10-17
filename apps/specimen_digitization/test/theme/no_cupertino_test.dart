@@ -2,7 +2,8 @@
 //
 // 09 section 2 principle 5: behaviour adapts, identity does not. Type, colour,
 // shape, icons, motion signature and component anatomy are ours on every
-// platform, so no file under `lib/` draws a Cupertino component. The Material
+// platform, so no file the product ships, the application's `lib/` or the
+// design system's, draws a Cupertino component. The Material
 // gates never read this library, and a `CupertinoTabBar` shipped on iOS through
 // that gap, with tests asserting it, until `UiTabBar` replaced it on
 // 2026-10-17 (10 section 4.4).
@@ -193,14 +194,31 @@ class _CupertinoVisitor extends CodeVisitor {
   void visitMethodInvocation(MethodInvocation node) {
     final Expression? target = node.target;
     final String method = node.methodName.name;
-    if (method == 'adaptive' &&
-        target is SimpleIdentifier &&
-        flutterAdaptiveClasses.contains(target.name)) {
-      _add(node, '${target.name}.adaptive');
-    } else if (target == null && flutterAdaptiveFunctions.contains(method)) {
+    // `Switch.adaptive()`, or `m.Switch.adaptive()` through an import prefix.
+    final String? owner = switch (target) {
+      SimpleIdentifier(:final String name) => name,
+      PrefixedIdentifier(:final SimpleIdentifier identifier) => identifier.name,
+      _ => null,
+    };
+    if (method == 'adaptive' && flutterAdaptiveClasses.contains(owner)) {
+      _add(node, '$owner.adaptive');
+    } else if ((target == null || target is SimpleIdentifier) &&
+        flutterAdaptiveFunctions.contains(method)) {
       _add(node, method);
     }
     super.visitMethodInvocation(node);
+  }
+
+  @override
+  void visitPropertyAccess(PropertyAccess node) {
+    // `m.Icons.adaptive` through an import prefix.
+    final Expression? target = node.target;
+    if (node.propertyName.name == 'adaptive' &&
+        target is PrefixedIdentifier &&
+        flutterAdaptiveClasses.contains(target.identifier.name)) {
+      _add(node, '${target.identifier.name}.adaptive');
+    }
+    super.visitPropertyAccess(node);
   }
 
   @override
@@ -213,10 +231,12 @@ class _CupertinoVisitor extends CodeVisitor {
   }
 }
 
-/// Every file under `lib/` of the application at [base] with a Cupertino use.
+/// Every file the product ships from the application at [base], its `lib/`
+/// and the design system's, with a Cupertino use. A Cupertino widget wrapped
+/// as a `Ui*` component would otherwise reach the app with no token in it.
 Map<String, List<CupertinoUse>> cupertinoCensus({String base = '.'}) {
   final Map<String, List<CupertinoUse>> found = <String, List<CupertinoUse>>{};
-  for (final GateSource source in libSources(base: base)) {
+  for (final GateSource source in productSources(base: base)) {
     final List<CupertinoUse> uses = cupertinoUsesIn(source);
     if (uses.isNotEmpty) found[source.path] = uses;
   }
@@ -303,6 +323,15 @@ void main() {
     expect(termsOf('void f() { showAdaptiveDialog(context: c); }'), <String>[
       'showAdaptiveDialog',
     ]);
+    expect(termsOf('Widget t() => m.Switch.adaptive(value: on);'), <String>[
+      'Switch.adaptive',
+    ]);
+    expect(termsOf('final i = m.Icons.adaptive.share;'), <String>[
+      'Icons.adaptive',
+    ]);
+    expect(termsOf('void f() { m.showAdaptiveDialog(context: c); }'), <String>[
+      'showAdaptiveDialog',
+    ]);
 
     // Prose, strings, and the product's own window-adaptive APIs are not
     // uses.
@@ -323,8 +352,9 @@ void main() {
 
   test('a planted Cupertino use fails the gate', () {
     // The same census and verdict the gate runs, over a temporary
-    // application: a clean file, one violation per way in, and an exempt
-    // router that reaches past its one name three ways.
+    // application: a clean file, one violation per way in, an exempt router
+    // that reaches past its one name three ways, and a Cupertino widget
+    // wrapped inside the design system.
     final String base = plantedApplication(<String, String>{
       'lib/src/clean.dart': "import 'package:flutter/widgets.dart';\n",
       'lib/src/tab_bar.dart':
@@ -333,6 +363,8 @@ void main() {
       'lib/src/theme.dart':
           'const Object t = CupertinoPageTransitionsBuilder();\n',
       'lib/src/toggle.dart': 'Widget t() => Switch.adaptive(value: on);\n',
+      'packages/specimen_ui/lib/src/controls/ui_tabs.dart':
+          'Widget tabs() => CupertinoTabBar(items: tabs);\n',
       'lib/src/app/app_router.dart':
           "import 'package:flutter/cupertino.dart' "
           'show CupertinoRouteTransitionMixin;\n'
@@ -359,16 +391,18 @@ void main() {
       'lib/src/tab_bar.dart: line 2, bar, CupertinoTabBar',
       'lib/src/theme.dart: line 1, t, CupertinoPageTransitionsBuilder',
       'lib/src/toggle.dart: line 1, t, Switch.adaptive',
+      'packages/specimen_ui/lib/src/controls/ui_tabs.dart: line 1, tabs, '
+          'CupertinoTabBar',
     ]);
   });
 
-  test('every file under lib/ parses, so the tree is the whole file', () {
-    for (final GateSource source in libSources()) {
+  test('every product file parses, so the tree is the whole file', () {
+    for (final GateSource source in productSources()) {
       expect(source.errors, isEmpty, reason: source.path);
     }
   });
 
-  test('no file under lib/ names a Cupertino component', () {
+  test('no product file names a Cupertino component', () {
     final List<String> violations = cupertinoViolations(cupertinoCensus());
     expect(
       violations,

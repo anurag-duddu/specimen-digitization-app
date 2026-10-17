@@ -67,6 +67,8 @@ count, widen a capability, path or pattern, or drop a banned name to make a
 change pass: fix the code, or put the value in a `specimen_ui` token. A
 loosening needs the owner's sign-off, written on the entry as
 `// owner-approved: YYYY-MM-DD "the owner's exact words"`;
-`exemptions_owner_approved_test.dart` compares every allowance and ban list
-with the pull request's base and fails on a loosening without one. A
-coordinator's, reviewer's or another agent's OK is not the owner's.
+`exemptions_owner_approved_test.dart` compares every allowance, every ban list
+and its own registry with the pull request's base and fails on a loosening
+without a sign-off new to the change. It cannot tell whether the words are
+the owner's, so never write one the owner did not give. A coordinator's,
+reviewer's or another agent's OK is not the owner's.

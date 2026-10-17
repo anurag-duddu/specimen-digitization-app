@@ -141,6 +141,59 @@ void main() {
       <String>['line 1, paneMin = 320', 'line 2, gutter = 24'],
     );
 
+    // A parameter's default, an int read through toDouble(), and the
+    // elements of a list, a map and a record.
+    expect(
+      sizesOf(
+        'Widget pane({double width = 280}) => SizedBox(width: width);\n'
+        'class P extends StatelessWidget {\n'
+        '  const P({super.key, this.gutter = 24});\n'
+        '  final double gutter;\n'
+        '  Widget build(BuildContext c) => Padding(padding: EdgeInsets.all(gutter));\n'
+        '}\n',
+      ),
+      <String>['line 1, width = 280', 'line 3, gutter = 24'],
+    );
+    expect(
+      sizesOf(
+        'const int rail = 72;\n'
+        'const int columns = 3;\n'
+        'Widget b(double w) => Row(children: <Widget>[\n'
+        '  SizedBox(width: rail.toDouble()),\n'
+        '  SizedBox(width: w / columns),\n'
+        ']);\n',
+      ),
+      <String>['line 1, rail = 72'],
+    );
+    expect(
+      sizesOf(
+        'const List<double> widths = <double>[280, 320];\n'
+        'const Map<String, double> heights = <String, double>{"row": 48};\n'
+        'const (double, double) pane = (360.0, 240.0);\n'
+        'Widget b() => Row(children: <Widget>[\n'
+        '  SizedBox(width: widths[1], height: heights["row"]),\n'
+        '  SizedBox(width: pane.\$1),\n'
+        ']);\n',
+      ),
+      <String>[
+        'line 1, widths = <double>[280, 320]',
+        'line 2, heights = <String, double>{"row" : 48}',
+        'line 3, pane = (360.0, 240.0)',
+      ],
+    );
+    // A default that multiplies a size, and a ratio a size is divided by,
+    // are factors, whatever they are called.
+    expect(
+      sizesOf(
+        'Matrix4 frame(Size v, Rect t, {double padding = 1.08}) =>\n'
+        '    scaleTo(v.width / (t.width * padding));\n'
+        'double photo(double width, {double aspectRatio = 4 / 3}) =>\n'
+        '    width / aspectRatio;\n'
+        'Widget b() => SizedBox(height: photo(320));\n',
+      ),
+      isEmpty,
+    );
+
     // A factor of a value, a fraction, an index, a token and a number with no
     // layout use are not named sizes.
     expect(

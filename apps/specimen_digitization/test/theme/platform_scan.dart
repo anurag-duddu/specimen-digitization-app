@@ -20,6 +20,8 @@ const String targetPlatformType = 'TargetPlatform';
 const String ioPlatform = 'Platform';
 const String themePlatform = 'Theme.platform';
 const String platformOverride = 'debugDefaultTargetPlatformOverride';
+const String wasmFlag = 'kIsWasm';
+const String conditionalImport = 'conditional import';
 
 /// A declaration allowed to ask which platform it runs on.
 class PlatformCapability {
@@ -93,7 +95,7 @@ class _PlatformVisitor extends CodeVisitor {
   @override
   void visitSimpleIdentifier(SimpleIdentifier node) {
     switch (node.name) {
-      case webFlag || targetPlatform || platformOverride:
+      case webFlag || wasmFlag || targetPlatform || platformOverride:
         _add(node, node.name);
       case targetPlatformType:
         _add(node, targetPlatformType);
@@ -121,8 +123,31 @@ class _PlatformVisitor extends CodeVisitor {
         target.target is SimpleIdentifier &&
         (target.target! as SimpleIdentifier).name == 'Theme') {
       _add(node, themePlatform);
+    } else if (node.propertyName.name == 'platform' && _themeLike(target)) {
+      _add(node, themePlatform);
     }
     super.visitPropertyAccess(node);
+  }
+
+  @override
+  void visitPrefixedIdentifier(PrefixedIdentifier node) {
+    if (node.identifier.name == 'platform' && _themeLike(node.prefix)) {
+      _add(node, themePlatform);
+    }
+    super.visitPrefixedIdentifier(node);
+  }
+
+  /// A theme held in a variable, `theme.platform`, asks the same question as
+  /// `Theme.of(context).platform`.
+  static bool _themeLike(Expression? target) =>
+      target is SimpleIdentifier &&
+      RegExp('theme', caseSensitive: false).hasMatch(target.name);
+
+  @override
+  void visitConfiguration(Configuration node) {
+    // `import 'a.dart' if (dart.library.io) 'b.dart'` picks code by platform.
+    _add(node, conditionalImport);
+    super.visitConfiguration(node);
   }
 }
 
@@ -151,13 +176,58 @@ bool isInstanceMember(GateSource source, String site) {
   return false;
 }
 
+/// The files [source] can see: itself, and every file it reaches through
+/// imports and exports, conditional ones included, within [sources].
+Set<String> visibleFrom(GateSource source, Map<String, GateSource> byPath) {
+  final Set<String> seen = <String>{source.path};
+  final List<String> queue = <String>[source.path];
+  while (queue.isNotEmpty) {
+    final GateSource? s = byPath[queue.removeLast()];
+    if (s == null) continue;
+    for (final Directive d in s.unit.directives) {
+      if (d is! NamespaceDirective) continue;
+      for (final String? uri in <String?>[
+        d.uri.stringValue,
+        for (final Configuration c in d.configurations) c.uri.stringValue,
+      ]) {
+        final String? path = uri == null ? null : resolveUri(s.path, uri);
+        if (path != null && seen.add(path)) queue.add(path);
+      }
+    }
+  }
+  return seen;
+}
+
+/// The path, relative to the application root, that [uri] in the file
+/// [from] names, or null for a library outside the product.
+String? resolveUri(String from, String uri) {
+  const String app = 'package:specimen_digitization/';
+  const String package = 'package:specimen_ui/';
+  if (uri.startsWith(app)) return 'lib/${uri.substring(app.length)}';
+  if (uri.startsWith(package)) {
+    return 'packages/specimen_ui/lib/${uri.substring(package.length)}';
+  }
+  if (uri.contains(':')) return null;
+  final List<String> parts = from.split('/')..removeLast();
+  for (final String segment in uri.split('/')) {
+    if (segment == '..') {
+      if (parts.isNotEmpty) parts.removeLast();
+    } else if (segment != '.') {
+      parts.add(segment);
+    }
+  }
+  return parts.join('/');
+}
+
 /// Where each of [capabilities] is read in [sources], `path site` to count.
 ///
-/// A private member is read only in its own file. A top-level declaration is
-/// read by name anywhere. A static member is read as `Owner.member`, or bare
-/// inside its own file. An instance member is read through any object other
-/// than `super`, or bare inside its own file. A named argument's label and the
-/// declaration itself are not reads.
+/// A read counts only in a file that can see the declaration: its own file,
+/// or one that reaches it through imports and exports. There, a private
+/// member is read only in its own file; a top-level declaration is read by
+/// name; a static member as `Owner.member`, or bare inside its own class; an
+/// instance member through any object other than `super`, or bare inside its
+/// own class. A named argument's label and the declaration itself are not
+/// reads.
 Map<String, Map<String, int>> readersOf(
   List<PlatformCapability> capabilities,
   List<GateSource> sources,
@@ -175,7 +245,18 @@ Map<String, Map<String, int>> readersOf(
       '${c.path} ${c.site}': <String, int>{},
   };
   for (final GateSource source in sources) {
-    source.unit.accept(_ReaderVisitor(source, capabilities, instance, found));
+    final Set<String> visible = visibleFrom(source, byPath);
+    source.unit.accept(
+      _ReaderVisitor(
+        source,
+        <PlatformCapability>[
+          for (final PlatformCapability c in capabilities)
+            if (visible.contains(c.path)) c,
+        ],
+        instance,
+        found,
+      ),
+    );
   }
   return found;
 }
