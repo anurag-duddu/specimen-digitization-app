@@ -49,7 +49,7 @@ class GoogleFirebaseSignInAdapter {
         final provider = GoogleAuthProvider()
           ..setCustomParameters({
             'prompt': 'select_account',
-            if (hint != null) 'login_hint': hint,
+            'login_hint': ?hint,
           });
         // No await before opening the popup: preserve browser user activation.
         return await _auth.signInWithPopup(provider);

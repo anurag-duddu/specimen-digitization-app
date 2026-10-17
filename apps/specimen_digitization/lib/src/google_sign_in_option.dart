@@ -166,6 +166,9 @@ class _GoogleSignInButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final UiSpace space = context.ui.space;
+    // Google's compact padding includes one optical half step.
+    final double providerPadding = space.s2 + space.s1;
     final bool dark = context.ui.color.brightness == Brightness.dark;
     final bool ios = !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
     final Color label = dark
@@ -193,11 +196,11 @@ class _GoogleSignInButton extends StatelessWidget {
           ),
         ),
         child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 48),
+          constraints: const BoxConstraints(minHeight: UiDensity.hitBox),
           child: Padding(
             padding: EdgeInsets.symmetric(
-              horizontal: ios ? 16 : 12,
-              vertical: 12,
+              horizontal: ios ? space.s4 : providerPadding,
+              vertical: providerPadding,
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
