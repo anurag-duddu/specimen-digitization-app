@@ -623,3 +623,35 @@ regexes = [
   '''^\s*"hashed_secret": "1bac6e1315f867dad8cada8d8e892d1dcd5e735a",?\s*$''', # pragma: allowlist secret (public response checksum scanner identifier)
   '''^\s*"hashed_secret": "b0cddc32cafe2e41ae160cea04ba22b04ab96b86",?\s*$''', # pragma: allowlist secret (public response checksum scanner identifier)
 ]
+
+[[rules.allowlists]]
+description = "Exact scanner SHA-1 identifiers of the engine-contract toolchain pins, shared wire fixture values and engine job runner paths; see SECRET_SCAN_REVIEW.md"
+condition = "AND"
+paths = ['''(?:^|/)\.secrets\.baseline$''']
+regexTarget = "line"
+regexes = [
+  '''^\s*"hashed_secret": "4e053c740a8a9b1fa4ffe7d95e81278a99e5ccd4",?\s*$''', # pragma: allowlist secret (engine job runner tool paths)
+  '''^\s*"hashed_secret": "07a4593b6f7f875bb650c2263406d4da24c2345a",?\s*$''', # pragma: allowlist secret (published SHA-256 pin of an approved engine download)
+  '''^\s*"hashed_secret": "f92babbd4bddd1527d1656e2d319924beae14f7b",?\s*$''', # pragma: allowlist secret (published SHA-256 pin of an approved engine download)
+  '''^\s*"hashed_secret": "13685940fb69a045ed2a0b5800962f51155d0948",?\s*$''', # pragma: allowlist secret (published SHA-256 pin of an approved engine download)
+  '''^\s*"hashed_secret": "5d876c14b2eb6b173d3dd0d4715df50b4cb352a4",?\s*$''', # pragma: allowlist secret (synthetic shared-wire fixture value)
+]
+
+[[rules.allowlists]]
+description = "Exact synthetic shared-wire request idempotency key; see SECRET_SCAN_REVIEW.md"
+condition = "AND"
+paths = ['''^tests/fixtures/general_api_contracts\.json$''']
+regexTarget = "line"
+regexes = [
+  '''^\s*"Idempotency-Key": "7651ca196a03f7cc18d5625844ca3b2fdc68a62d7b19c691c3b222ad40a77aa8",?\s*$''', # pragma: allowlist secret (reviewed fixed synthetic request value)
+]
+
+[[rules.allowlists]]
+description = "Exact public CocoaPods AppAuth and GTMAppAuth specification checksums; see SECRET_SCAN_REVIEW.md"
+condition = "AND"
+paths = ['''^apps/specimen_digitization/ios/Podfile\.lock$''']
+regexTarget = "line"
+regexes = [
+  '''^\s*AppAuth: ef4da5a3fc2e10b90c09a0a94a9baeaedc0341d5\s*$''', # pragma: allowlist secret (public podspec checksum)
+  '''^\s*GTMAppAuth: 217a876b249c3c585a54fd6f73e6b58c4f5c4238\s*$''', # pragma: allowlist secret (public podspec checksum)
+]
