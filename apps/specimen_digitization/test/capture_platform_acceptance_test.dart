@@ -274,6 +274,27 @@ void main() {
     );
     expect(plist, contains('<string>FlutterSceneDelegate</string>'));
     expect(plist, contains('<string>UIWindowScene</string>'));
+    // One window scene, the Flutter one. Whitespace is collapsed so the
+    // assertions do not depend on the plist's indentation.
+    final String flat = plist.replaceAll(RegExp(r'\s+'), ' ');
+    expect(
+      flat,
+      contains('<key>UIApplicationSupportsMultipleScenes</key> <false/>'),
+      reason: 'Flutter does not support multiple scenes yet.',
+    );
+    expect(
+      RegExp('<key>UISceneConfigurationName</key>').allMatches(flat),
+      hasLength(1),
+    );
+    expect(
+      flat,
+      contains('<key>UISceneStoryboardFile</key> <string>Main</string>'),
+    );
+    expect(
+      File('ios/Runner/Base.lproj/Main.storyboard').readAsStringSync(),
+      contains('customClass="FlutterViewController"'),
+      reason: 'The scene builds its window from the Main storyboard.',
+    );
     expect(
       delegate,
       contains('FlutterImplicitEngineDelegate'),
