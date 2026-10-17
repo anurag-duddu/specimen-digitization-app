@@ -73,22 +73,31 @@ List<GateSource> libSources({String base = '.'}) {
 }
 
 /// Every Dart file the product ships from the application at [base]: its own
-/// `lib/` and the design system's, `packages/specimen_ui/lib/`, by path
-/// relative to [base], sorted. A Cupertino widget or a platform fork wrapped
-/// in a `Ui*` component would otherwise reach the app with no token in it.
+/// `lib/` and the `lib/` of every package it keeps under `packages/`, the
+/// design system's among them, by path relative to [base], sorted. A
+/// Cupertino widget or a platform fork wrapped in a `Ui*` component, or in a
+/// new package of the application's own, would otherwise reach the app with
+/// no token in it. `third_party/` holds upstream code the application vendors
+/// with its provenance, and is not read.
 List<GateSource> productSources({String base = '.'}) {
-  final String package = base == '.'
-      ? 'packages/specimen_ui/lib'
-      : '$base/packages/specimen_ui/lib';
+  final Directory packages = Directory(
+    base == '.' ? 'packages' : '$base/packages',
+  );
   final int strip = base == '.' ? 0 : base.length + 1;
   return <GateSource>[
     ...libSources(base: base),
-    if (Directory(package).existsSync())
-      for (final FileSystemEntity entity in Directory(
-        package,
-      ).listSync(recursive: true))
-        if (entity is File && entity.path.endsWith('.dart'))
-          GateSource(entity.path.substring(strip), entity.readAsStringSync()),
+    if (packages.existsSync())
+      for (final FileSystemEntity package in packages.listSync())
+        if (package is Directory &&
+            Directory('${package.path}/lib').existsSync())
+          for (final FileSystemEntity entity in Directory(
+            '${package.path}/lib',
+          ).listSync(recursive: true))
+            if (entity is File && entity.path.endsWith('.dart'))
+              GateSource(
+                entity.path.substring(strip),
+                entity.readAsStringSync(),
+              ),
   ]..sort((GateSource a, GateSource b) => a.path.compareTo(b.path));
 }
 

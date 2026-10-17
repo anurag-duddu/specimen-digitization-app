@@ -8,9 +8,13 @@
 //
 // The name. Every declarator of every variable declared `double` or `num`, or
 // declared without a type and given a double (`final w = 280.0`), at the top
-// level, as a field or as a local, and every getter, and every method or
-// function with no parameters, that returns `double` or `num` from one
-// expression.
+// level, as a field or as a local; a field given its value in a constructor's
+// initializer list (`: width = 280`); a parameter's default, counted by its
+// reads, in its body or its initializer list, or, for a `super.` parameter
+// named for a dimension, by the superclass it is handed to; and every getter,
+// and every method or function with no parameters, that returns `double` or
+// `num` from one expression. An `int` counts through `.toDouble()`, and a
+// list, map or record of sizes through an index or a field.
 //
 // The number. Its value is evaluated, so `0x118`, `280 * 1` and `35 * 8` are
 // the sizes they are. A number that multiplies a value or divides one is a
@@ -18,7 +22,8 @@
 // not either. A size is a number above 1, the brief's threshold.
 //
 // The use. The name is used for layout when one of its reads reaches, through
-// arithmetic, a conditional, `min`, `max`, `clamp` or rounding: an argument or
+// arithmetic, a conditional, a switch's case, `min`, `max`, `clamp` or
+// rounding: an argument or
 // a variable whose name holds a dimension word (`width`, `maxHeight`,
 // `heightCap`, `padding`, `cornerRadius`, an edge such as `top`); an argument
 // of a geometry constructor (`EdgeInsets`, `BoxConstraints`, `Size`,
@@ -29,6 +34,11 @@
 // for a timeout, a zoom limit, a gesture's travel ratio or a count is not a
 // layout decision and is not counted. A size declared and never read is not
 // counted until something reads it.
+//
+// Not read, and left to review: an enum's constructor arguments
+// (`wide(280)`), an assignment or a cascade (`..strokeWidth = stroke`), a
+// constructor not named above (`FixedColumnWidth`), and an `int` turned into
+// a double other than by `.toDouble()` (`rail * 1.0`).
 
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/token.dart';
@@ -251,6 +261,47 @@ class _NameVisitor extends CodeVisitor {
   }
 
   @override
+  void visitConstructorFieldInitializer(ConstructorFieldInitializer node) {
+    // `const Box() : width = 280`, and `: _w = width` after a parameter's
+    // default: the field's value, written in the constructor rather than at
+    // the field.
+    final TypeAnnotation? type = _fieldType(node);
+    final NumberKind? kind = _sizedType(type)
+        ? NumberKind.value
+        : type is NamedType && type.name.lexeme == 'int'
+        ? NumberKind.integer
+        : null;
+    if (kind != null) {
+      found.add(
+        NamedNumber(
+          source.path,
+          node.fieldName.name,
+          siteOf(node),
+          node,
+          node.expression,
+          kind: kind,
+        ),
+      );
+    }
+    super.visitConstructorFieldInitializer(node);
+  }
+
+  /// The declared type of the field [node] initialises, from its class.
+  static TypeAnnotation? _fieldType(ConstructorFieldInitializer node) {
+    final ClassBody? body = node.thisOrAncestorOfType<ClassDeclaration>()?.body;
+    if (body is! BlockClassBody) return null;
+    for (final ClassMember m in body.members) {
+      if (m is FieldDeclaration &&
+          m.fields.variables.any(
+            (VariableDeclaration v) => v.name.lexeme == node.fieldName.name,
+          )) {
+        return m.fields.type;
+      }
+    }
+    return null;
+  }
+
+  @override
   void visitDefaultFormalParameter(DefaultFormalParameter node) {
     final Expression? value = node.defaultValue;
     final NormalFormalParameter parameter = node.parameter;
@@ -412,6 +463,10 @@ List<Expression> _children(Expression e) => switch (e) {
       if (e is Expression) e else if (e is MapLiteralEntry) e.value,
   ],
   RecordLiteral(:final NodeList<Expression> fields) => fields.toList(),
+  // A switch picks one of its cases' values; its patterns are not values.
+  SwitchExpression(:final NodeList<SwitchExpressionCase> cases) => <Expression>[
+    for (final SwitchExpressionCase c in cases) c.expression,
+  ],
   _ => <Expression>[],
 };
 
@@ -491,6 +546,18 @@ bool reachesLayout(
       case ConditionalExpression(:final Expression condition):
         if (condition == current) return false;
         current = parent;
+      case SwitchExpressionCase(:final Expression expression):
+        // A case's value is the switch's; its pattern and guard are not.
+        if (expression != current) return false;
+        current = parent.parent!;
+      case ConstructorFieldInitializer(
+        :final SimpleIdentifier fieldName,
+        :final Expression expression,
+      ):
+        // `: _w = width`: the field holds it from here on. The field's own
+        // name on the left is not a read.
+        if (expression != current) return false;
+        return layoutName.hasMatch(fieldName.name) || layoutOf(parent);
       case MethodInvocation(:final SimpleIdentifier methodName):
         if (const <String>{
           'min',
@@ -604,12 +671,18 @@ Map<String, List<String>> namedSizes(List<GateSource> sources) {
         : reads[n.name] ?? const <SimpleIdentifier>[];
     if (n != null && n.kind == NumberKind.parameter) {
       // By its reads, not its name: `padding = 1.08` can be a multiplier.
-      result = named.any(
-        (SimpleIdentifier r) =>
-            fileOf[r] == n.path &&
-            _inParameterScope(r, n.node as DefaultFormalParameter) &&
-            reachesLayout(r, layoutOf),
-      );
+      // A `super.` parameter is read by the superclass, which this file may
+      // not hold, under the same name: named for a dimension, it is one.
+      final DefaultFormalParameter parameter = n.node as DefaultFormalParameter;
+      result =
+          (parameter.parameter is SuperFormalParameter &&
+              layoutName.hasMatch(n.name)) ||
+          named.any(
+            (SimpleIdentifier r) =>
+                fileOf[r] == n.path &&
+                _inParameterScope(r, parameter) &&
+                reachesLayout(r, layoutOf),
+          );
     } else if (n != null && n.kind == NumberKind.integer) {
       result = named.any(
         (SimpleIdentifier r) =>
@@ -691,6 +764,11 @@ bool _inParameterScope(
     return member || read.thisOrAncestorOfType<ClassDeclaration>() == owner;
   }
   final AstNode? function = parameter.parent?.parent;
+  // A constructor's initializer list, `: _w = width`, reads its parameters.
+  if (function is ConstructorDeclaration &&
+      read.thisOrAncestorOfType<ConstructorInitializer>()?.parent == function) {
+    return true;
+  }
   final FunctionBody? body = switch (function) {
     FunctionExpression(:final FunctionBody body) => body,
     MethodDeclaration(:final FunctionBody body) => body,

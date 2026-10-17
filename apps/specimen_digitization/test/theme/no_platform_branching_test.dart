@@ -18,12 +18,17 @@
 // `web` is review's to judge.
 //
 // Counted, in code only (comments and strings are not code, interpolations
-// are), in the application's `lib/` and the design system's: `kIsWeb`,
-// `kIsWasm`, `defaultTargetPlatform`, `TargetPlatform` (as a type or a
-// value), `Platform` from `dart:io`, `Theme.of(context).platform` and a
-// theme variable's `.platform`, a conditional import or export
-// (`if (dart.library.io)`), which picks code by platform, and
-// `debugDefaultTargetPlatformOverride`, which belongs in tests alone.
+// are), in the application's `lib/` and every package under `packages/`:
+// `kIsWeb`, `kIsWasm`, `defaultTargetPlatform`, `TargetPlatform` (as a type
+// or a value), `Platform` from `dart:io`, `Theme.of(context).platform` and
+// the `.platform` of a theme held in a variable (initialised from
+// `Theme.of`, typed `ThemeData`, or named for a theme), a scroll behaviour's
+// `getPlatform`, `identical(0, 0.0)` and `0.0 is int`, which are true only on
+// the web, a conditional import or export (`if (dart.library.io)`), which
+// picks code by platform, and `debugDefaultTargetPlatformOverride`, which
+// belongs in tests alone. A read of a capability counts in its own library's
+// files and in every file that imports it, directly, through an export or
+// a part's library, with or without a prefix.
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -371,6 +376,31 @@ void main() {
       ),
       <String>[conditionalImport],
     );
+    // A theme under any name, the scroll behaviour's platform, and the
+    // number tests that are true only on the web.
+    expect(
+      kindsOf(
+        'Widget f(BuildContext c) {\n'
+        '  final t = Theme.of(c);\n'
+        "  return t.platform.name == 'iOS' ? a : b;\n"
+        '}',
+      ),
+      <String>[themePlatform],
+    );
+    expect(kindsOf('final a = m.Theme.of(c).platform;'), <String>[
+      themePlatform,
+    ]);
+    expect(
+      kindsOf("final a = ScrollConfiguration.of(c).getPlatform(c).name;"),
+      <String>[scrollPlatform],
+    );
+    expect(kindsOf('const bool web = identical(0, 0.0);'), <String>[
+      numberWebTest,
+    ]);
+    expect(kindsOf('const bool web = 0.0 is int;'), <String>[numberWebTest]);
+    expect(kindsOf('final same = identical(a, b);'), isEmpty);
+    expect(kindsOf('final same = identical(0, 1);'), isEmpty);
+    expect(kindsOf('final n = value is int;'), isEmpty);
 
     // Prose and strings are not code.
     expect(
@@ -386,8 +416,9 @@ void main() {
     // application: a shell that forks its bar by platform, an appearance
     // branch added inside an allowed file, an allowed declaration reaching
     // past its counts, a forwarded predicate read by a widget that imports
-    // it (and not by one that cannot see it), a conditional export, and the
-    // generated options, which are skipped.
+    // it, by a part of a library that imports it and through an import
+    // prefix (and not by one that cannot see it), a conditional export, and
+    // the generated options, which are skipped.
     const List<PlatformCapability> allowed = <PlatformCapability>[
       PlatformCapability(
         'lib/src/theme/motion.dart',
@@ -395,6 +426,12 @@ void main() {
         <String, int>{webFlag: 1},
         'planted',
         readers: <String, int>{'lib/src/theme/motion.dart Haptics.buzz': 1},
+      ),
+      PlatformCapability(
+        'lib/src/widgets/host.dart',
+        '_hostWeb',
+        <String, int>{webFlag: 1},
+        'planted: a private fact its part can read',
       ),
     ];
     final String base = plantedApplication(<String, String>{
@@ -415,6 +452,18 @@ void main() {
       // A file that cannot see motion.dart reads some other `Haptics`.
       'lib/src/widgets/elsewhere.dart':
           'Widget other() => Haptics.available ? const A() : const B();\n',
+      // A part sees what its library imports; a prefix is the same import.
+      'lib/src/widgets/host.dart':
+          "import '../theme/motion.dart';\n"
+          "part 'part.dart';\n"
+          'bool get _hostWeb => kIsWeb;\n',
+      'lib/src/widgets/part.dart':
+          "part of 'host.dart';\n"
+          'Widget inPart() => Haptics.available ? const A() : const B();\n'
+          'Widget partWeb() => _hostWeb ? const A() : const B();\n',
+      'lib/src/widgets/prefixed.dart':
+          "import '../theme/motion.dart' as m;\n"
+          'Widget prefixed() => m.Haptics.available ? const A() : const B();\n',
       'lib/src/picker.dart':
           "export 'picker_stub.dart' if (dart.library.io) 'picker_io.dart';\n",
     });
@@ -431,7 +480,13 @@ void main() {
         'lib/src/theme/motion.dart Haptics.available: 2 kIsWeb, allowed 1',
         'lib/src/theme/motion.dart Haptics.look: 1 kIsWeb, allowed 0',
         'lib/src/theme/motion.dart Haptics.available is read 1 times by '
+            'lib/src/widgets/part.dart inPart, allowed 0',
+        'lib/src/theme/motion.dart Haptics.available is read 1 times by '
+            'lib/src/widgets/prefixed.dart prefixed, allowed 0',
+        'lib/src/theme/motion.dart Haptics.available is read 1 times by '
             'lib/src/widgets/row.dart row, allowed 0',
+        'lib/src/widgets/host.dart _hostWeb is read 1 times by '
+            'lib/src/widgets/part.dart partWeb, allowed 0',
       ],
     );
   });

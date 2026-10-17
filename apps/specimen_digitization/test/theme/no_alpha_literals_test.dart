@@ -15,13 +15,15 @@
 // written in one counts, whatever its value, because the brief counts
 // literals: `alpha: 0` is the role at nothing, and the design system's
 // transparent role says that with a name. A name for the number is the
-// number: a constant, a final or a one-expression getter in the same file, a
-// public one anywhere in the application (`Washes.selected`), or the default
-// of the parameter it is read in (`{double wash = .06}`). A number passed in
-// from a caller, and one from outside the application, are review's. Not
-// read: the `opacity:` of `Opacity` and `AnimatedOpacity`, where the tree
-// today holds only visibility toggles (`visible ? 1 : 0`); a fraction there
-// over a coloured child is the same decision, and review catches it.
+// number: a constant, a final, or a getter, function or method with no
+// parameters that returns one expression, in the same file, a public one
+// anywhere in the application (`Washes.selected`), or the default of the
+// parameter it is read in (`{double wash = .06}`). A number passed in from a
+// caller, and one from outside the application, are review's. Not read: any
+// `opacity:` argument (`Opacity`, `AnimatedOpacity`, `FadeTransition`,
+// `Image` and the rest), where the tree today holds visibility toggles
+// (`visible ? 1 : 0`) and animations; a fraction there over a coloured child
+// is the same decision, and review catches it.
 //
 // The mechanism is the geometry gate's: a per-file count that may go down,
 // never up, held to the tree exactly, and a file at zero leaves the map. It
@@ -83,11 +85,14 @@ List<OpacityLiteral> opacityLiteralsIn(
 }
 
 /// The names [unit] gives a number: its constants and finals, and its
-/// getters that return one expression, by `name` and `Class.name`.
+/// getters, functions and methods with no parameters that return one
+/// expression, by `name` and `Class.name`, as the named pixel gate reads them.
 Map<String, Expression> numberNames(CompilationUnit unit) {
   final Map<String, Expression> found = numericConstants(unit);
+  bool bare(FormalParameterList? parameters) =>
+      parameters == null || parameters.parameters.isEmpty;
   for (final CompilationUnitMember d in unit.declarations) {
-    if (d is FunctionDeclaration && d.isGetter) {
+    if (d is FunctionDeclaration && bare(d.functionExpression.parameters)) {
       final FunctionBody body = d.functionExpression.body;
       if (body is ExpressionFunctionBody) {
         found.putIfAbsent(d.name.lexeme, () => body.expression);
@@ -96,7 +101,7 @@ Map<String, Expression> numberNames(CompilationUnit unit) {
     if (d is ClassDeclaration && d.body is BlockClassBody) {
       for (final ClassMember m in (d.body as BlockClassBody).members) {
         if (m is MethodDeclaration &&
-            m.isGetter &&
+            bare(m.parameters) &&
             m.body is ExpressionFunctionBody) {
           final Expression e = (m.body as ExpressionFunctionBody).expression;
           found.putIfAbsent(m.name.lexeme, () => e);
@@ -141,6 +146,35 @@ class _OpacityVisitor extends CodeVisitor {
       );
     }
     if (literals.isNotEmpty) return;
+    // A function or method with no parameters is a name for what it returns,
+    // `fade()` or `Washes.row()`.
+    final Expression? called = switch (value) {
+      MethodInvocation(
+        :final Expression? target,
+        :final SimpleIdentifier methodName,
+        :final ArgumentList argumentList,
+      )
+          when argumentList.arguments.isEmpty &&
+              (target == null || target is SimpleIdentifier) =>
+        constants[target == null
+            ? methodName.name
+            : '${(target as SimpleIdentifier).name}.${methodName.name}'],
+      _ => null,
+    };
+    if (called != null) {
+      final num? named = numberOf(called, constants: constants);
+      if (named != null) {
+        found.add(
+          OpacityLiteral(
+            source.lineOf(value.offset),
+            siteOf(value),
+            call,
+            '${value.toSource()} = $named',
+          ),
+        );
+      }
+      return;
+    }
     if (value is SimpleIdentifier || value is PrefixedIdentifier) {
       final num? named =
           numberOf(value, constants: constants) ?? _parameterDefault(value);
@@ -232,11 +266,24 @@ class _OpacityVisitor extends CodeVisitor {
 
   @override
   void visitInstanceCreationExpression(InstanceCreationExpression node) {
+    // `const Color.fromRGBO(...)` names its class as the type; written
+    // without `const`, the parser may read the class as an import prefix.
     final ConstructorName constructor = node.constructorName;
-    if (constructor.type.name.lexeme == 'Color' && constructor.name != null) {
-      _colorConstructor(constructor.name!.name, node.argumentList);
-    } else if (constructor.type.importPrefix?.name.lexeme == 'Color') {
-      _colorConstructor(constructor.type.name.lexeme, node.argumentList);
+    final String? type = constructor.name != null
+        ? constructor.type.name.lexeme
+        : constructor.type.importPrefix?.name.lexeme;
+    final String? named =
+        constructor.name?.name ??
+        (constructor.type.importPrefix == null
+            ? null
+            : constructor.type.name.lexeme);
+    if (type == 'Color' && named != null) {
+      _colorConstructor(named, node.argumentList);
+    } else if ((type == 'HSLColor' || type == 'HSVColor') &&
+        named != null &&
+        named.startsWith('fromA')) {
+      final Expression? alpha = _positional(node.argumentList, 0);
+      if (alpha != null) _check(alpha, '$type.$named');
     }
     super.visitInstanceCreationExpression(node);
   }
@@ -340,6 +387,25 @@ void main() {
     expect(of('final c = HSLColor.fromAHSL(.4, 0, 0, .5);'), <String>[
       'HSLColor.fromAHSL .4',
     ]);
+    expect(
+      of('Color c() => const HSLColor.fromAHSL(.06, 0, 0, .5).toColor();'),
+      <String>['HSLColor.fromAHSL .06'],
+    );
+    expect(of('final c = const HSVColor.fromAHSV(.2, 0, 0, 1);'), <String>[
+      'HSVColor.fromAHSV .2',
+    ]);
+    expect(of('const Color c = Color.fromRGBO(0, 0, 0, .06);'), <String>[
+      'Color.fromRGBO .06',
+    ]);
+    expect(
+      of(
+        'double fade() => .06;\n'
+        'class _S { static double row() => .1; }\n'
+        'final a = ink.withValues(alpha: fade());\n'
+        'final b = ink.withOpacity(_S.row());',
+      ),
+      <String>['alpha: fade() = 0.06', 'withOpacity _S.row() = 0.1'],
+    );
 
     // A token, a value from an animation, another channel and prose are not
     // opacities written as numbers.

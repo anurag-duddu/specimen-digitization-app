@@ -2,8 +2,9 @@
 //
 // 09 section 2 principle 5: behaviour adapts, identity does not. Type, colour,
 // shape, icons, motion signature and component anatomy are ours on every
-// platform, so no file the product ships, the application's `lib/` or the
-// design system's, draws a Cupertino component. The Material
+// platform, so no file the product ships, the application's `lib/` or that of
+// a package it keeps under `packages/` (the design system's among them), draws
+// a Cupertino component. The Material
 // gates never read this library, and a `CupertinoTabBar` shipped on iOS through
 // that gap, with tests asserting it, until `UiTabBar` replaced it on
 // 2026-10-17 (10 section 4.4).
@@ -354,8 +355,15 @@ void main() {
     // The same census and verdict the gate runs, over a temporary
     // application: a clean file, one violation per way in, an exempt router
     // that reaches past its one name three ways, and a Cupertino widget
-    // wrapped inside the design system.
+    // wrapped inside the design system and inside a second package of the
+    // application's own; vendored upstream code under third_party/ is not
+    // the product's to count.
     final String base = plantedApplication(<String, String>{
+      'packages/zz_native/lib/zz_native.dart':
+          "import 'package:flutter/cupertino.dart';\n"
+          'Widget zzTabs() => const CupertinoTabBar(items: tabs);\n',
+      'third_party/app_links/lib/app_links.dart':
+          "import 'package:flutter/cupertino.dart';\n",
       'lib/src/clean.dart': "import 'package:flutter/widgets.dart';\n",
       'lib/src/tab_bar.dart':
           "import 'package:flutter/cupertino.dart';\n"
@@ -392,6 +400,10 @@ void main() {
       'lib/src/theme.dart: line 1, t, CupertinoPageTransitionsBuilder',
       'lib/src/toggle.dart: line 1, t, Switch.adaptive',
       'packages/specimen_ui/lib/src/controls/ui_tabs.dart: line 1, tabs, '
+          'CupertinoTabBar',
+      'packages/zz_native/lib/zz_native.dart: line 1, <directives>, '
+          '$cupertinoLibrary',
+      'packages/zz_native/lib/zz_native.dart: line 2, zzTabs, '
           'CupertinoTabBar',
     ]);
   });

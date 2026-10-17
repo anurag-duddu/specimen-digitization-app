@@ -181,6 +181,49 @@ void main() {
         'line 3, pane = (360.0, 240.0)',
       ],
     );
+    // A field given its size in the initializer list, a default handed on
+    // through it, a `super.` default named for a dimension, and a size picked
+    // by a switch.
+    expect(
+      sizesOf(
+        'class B extends StatelessWidget {\n'
+        '  const B({super.key}) : width = 280;\n'
+        '  final double width;\n'
+        '  Widget build(BuildContext c) => SizedBox(width: width);\n'
+        '}\n'
+        'class P extends StatelessWidget {\n'
+        '  const P({super.key, double width = 320}) : _w = width;\n'
+        '  final double _w;\n'
+        '  Widget build(BuildContext c) => SizedBox(width: _w);\n'
+        '}\n'
+        'class S extends SizedBox {\n'
+        '  const S({super.key, super.width = 360, super.child});\n'
+        '}\n'
+        'const double paneWidth = 400;\n'
+        'Widget w(bool wide) =>\n'
+        '    SizedBox(width: switch (wide) { true => paneWidth, false => 0 });\n',
+      ),
+      <String>[
+        'line 2, width = 280',
+        'line 7, width = 320',
+        'line 12, width = 360',
+        'line 14, paneWidth = 400',
+      ],
+    );
+    // A count handed to a field, and a switch's pattern, are not sizes.
+    expect(
+      sizesOf(
+        'class G extends StatelessWidget {\n'
+        '  const G({super.key, double columns = 3}) : _c = columns;\n'
+        '  final double _c;\n'
+        '  Widget build(BuildContext c) => Grid(count: _c);\n'
+        '}\n'
+        'const double limit = 600;\n'
+        'Widget w(double v) =>\n'
+        '    Text(switch (v) { < limit => "small", _ => "large" });\n',
+      ),
+      isEmpty,
+    );
     // A default that multiplies a size, and a ratio a size is divided by,
     // are factors, whatever they are called.
     expect(

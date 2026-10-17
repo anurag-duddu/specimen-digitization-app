@@ -32,8 +32,15 @@
 // sign-off like any other. Once the base has the file, the inventory is never
 // read again.
 //
-// Two self-checks keep the reading honest: the evaluated entries must equal
-// what the compiler builds for every allowance the test can import, and every
+// The registry, `allowances`, is compared the same way, by its own rule: the
+// base's copy is read under that fixed name whatever this change calls its
+// list, and compared with the list this test runs, so an allowance cannot
+// leave it, be read another way or be renamed without a sign-off on the
+// registry's declaration, and renaming the registry is itself a failure.
+//
+// Three self-checks keep the reading honest: the evaluated entries must equal
+// what the compiler builds for every allowance the test can import, the
+// registry declared under its name must be the list the test runs, and every
 // top-level variable in a gate file must be classified here.
 
 import 'dart:io';
@@ -135,6 +142,12 @@ Map<String, String> _keys(Iterable<Object> values) => <String, String>{
 Map<String, String> _counts(Map<String, int> m) => <String, String>{
   for (final MapEntry<String, int> e in m.entries) e.key: '${e.value}',
 };
+
+/// The registry's name in every copy of this file. The base's registry is
+/// read under this name whatever this change calls its own list, and this
+/// change must declare the list it runs under it, so a rename takes nothing
+/// out of the comparison ([registryProblems]).
+const String registryName = 'allowances';
 
 /// Every allowance and every ban list in the source gates.
 final List<Allowance> allowances = <Allowance>[
@@ -283,18 +296,9 @@ final List<Allowance> allowances = <Allowance>[
     compiled: () => <String, String>{'': _show(pixel_scan.namedSizeFloor)},
   ),
   const Allowance('$_theme/pixel_scan.dart', '_sized', Grant.banList),
-  // The registry itself, compared with the base's copy of this file: an
-  // allowance may not leave the list or change how it is read, and the brief
-  // inventory and the new gate files may not grow, without a sign-off.
-  Allowance(
-    _self,
-    'allowances',
-    Grant.banList,
-    keyArgs: 3,
-    compiled: () => <String, String>{
-      for (final Allowance a in allowances) a.registryKey: '',
-    },
-  ),
+  // The registry's own lists: the brief inventory and the new gate files may
+  // not grow without a sign-off. The registry itself is compared by
+  // [registryProblems], under its fixed name.
   Allowance(
     _self,
     'briefInventory',
@@ -362,11 +366,17 @@ const Map<String, String> notAllowances = <String, String>{
   '$_theme/platform_scan.dart webFlag': 'the name a finding reports',
   '$_theme/platform_scan.dart wasmFlag': 'the name a finding reports',
   '$_theme/platform_scan.dart conditionalImport': 'the name a finding reports',
+  '$_theme/platform_scan.dart scrollPlatform': 'the name a finding reports',
+  '$_theme/platform_scan.dart numberWebTest': 'the name a finding reports',
   '$_theme/exemptions_owner_approved_test.dart _packageGeometry':
       'a path this test reads',
   '$_theme/exemptions_owner_approved_test.dart _theme':
       'a path this test reads',
   '$_theme/exemptions_owner_approved_test.dart notAllowances': 'this registry',
+  '$_theme/exemptions_owner_approved_test.dart allowances':
+      'the registry, compared with the base by registryProblems',
+  '$_theme/exemptions_owner_approved_test.dart registryName':
+      'the name the base\'s registry is read under; review owns a change to it',
   '$_theme/exemptions_owner_approved_test.dart _approval':
       'the sign-off pattern',
   '$_packageGeometry _number':
@@ -891,6 +901,72 @@ List<String> loosenings({
   return found;
 }
 
+/// What [head], this change's copy of this file, does to the registry: the
+/// list [running] is what this test runs, and [base], the base's copy (null
+/// when the base does not have this file), is read under [name].
+///
+/// The registry must be declared under [name], and what it declares there
+/// must be [running]; an allowance the base's registry holds and [running]
+/// does not, or holds read another way, is lost from what the gate checks,
+/// and needs a sign-off new to this change on the registry's declaration.
+List<String> registryProblems({
+  required GateSource head,
+  required GateSource? base,
+  required List<Allowance> running,
+  required DateTime today,
+  String name = registryName,
+}) {
+  final Allowance registry = Allowance(
+    head.path,
+    name,
+    Grant.banList,
+    keyArgs: 3,
+  );
+  final List<String> found = <String>[];
+  final List<Entry>? declared = entriesOf(
+    head,
+    registry,
+    constantsOf(<GateSource>[head]),
+  );
+  final Set<String> now = <String>{
+    for (final Allowance a in running) a.registryKey,
+  };
+  if (declared == null) {
+    found.add(
+      '`$name` is not declared; the registry keeps its name, so the base '
+      'can be read',
+    );
+  } else {
+    final Set<String> keys = declared.map((Entry e) => e.key).toSet();
+    if (keys.length != now.length || !keys.containsAll(now)) {
+      found.add('the registry this test runs is not the `$name` declared');
+    }
+  }
+  if (base == null) return found;
+  final List<Entry>? before = entriesOf(
+    base,
+    registry,
+    constantsOf(<GateSource>[base]),
+  );
+  if (before == null) {
+    found.add(
+      'the base declares no `$name`; the registry keeps its name, so the '
+      'base can be read',
+    );
+    return found;
+  }
+  final List<String> comments = declared?.firstOrNull?.comments ?? <String>[];
+  for (final String problem in loosenings(
+    allowance: registry,
+    head: <Entry>[for (final String k in now) Entry(k, '', '', comments)],
+    base: before,
+    today: today,
+  )) {
+    found.add('$name: $problem');
+  }
+  return found;
+}
+
 // ---------------------------------------------------------------------------
 // The base.
 // ---------------------------------------------------------------------------
@@ -1279,6 +1355,69 @@ void main() {
     );
   });
 
+  test('renaming the registry takes nothing out of the comparison', () {
+    // Round 3's plant: every `allowances` in the file renamed, the fixed name
+    // included, and an allowance dropped from the list at the same time.
+    const String base =
+        'final List<Allowance> allowances = <Allowance>[\n'
+        "  Allowance('g.dart', 'backlog', Grant.counts),\n"
+        "  Allowance('g.dart', 'caps', Grant.objects, keyArgs: 2, reasonArg: 3),\n"
+        '];\n';
+    String without(String name, {String comment = ''}) =>
+        '${comment}final List<Allowance> $name = <Allowance>[\n'
+        "  Allowance('g.dart', 'caps', Grant.objects, keyArgs: 2, reasonArg: 3),\n"
+        '];\n';
+    const List<Allowance> running = <Allowance>[
+      Allowance('g.dart', 'caps', Grant.objects, keyArgs: 2, reasonArg: 3),
+    ];
+    List<String> problems(String head, {String name = registryName}) =>
+        registryProblems(
+          head: GateSource('h.dart', head),
+          base: GateSource('b.dart', base),
+          running: running,
+          today: day,
+          name: name,
+        );
+    const String lost =
+        'allowances: lost g.dart backlog Grant.counts from what it forbids';
+
+    expect(
+      problems(without('allowances2'), name: 'allowances2'),
+      <String>[
+        'the base declares no `allowances2`; the registry keeps its name, so '
+            'the base can be read',
+      ],
+      reason: 'the regex rename, fixed name and all',
+    );
+    expect(
+      problems(without('allowances2')),
+      <String>[
+        '`allowances` is not declared; the registry keeps its name, so the base '
+            'can be read',
+        lost,
+      ],
+      reason: 'the list renamed, the fixed name kept',
+    );
+    expect(problems(without('allowances')), <String>[lost]);
+    expect(
+      problems(
+        without(
+          'allowances',
+          comment: '// owner-approved: 2026-10-17 "drop the backlog"\n',
+        ),
+      ),
+      isEmpty,
+    );
+    expect(
+      problems(base),
+      <String>[
+        'the registry this test runs is not the `allowances` declared',
+        lost,
+      ],
+      reason: 'a declared registry the test does not run is no registry',
+    );
+  });
+
   test('a capability that drops its readers has narrowed', () {
     const Allowance caps = Allowance(
       'g.dart',
@@ -1371,6 +1510,18 @@ void main() {
     }
   });
 
+  test('the registry declared under its name is the list this test runs', () {
+    expect(
+      registryProblems(
+        head: headOf(_self),
+        base: null,
+        running: allowances,
+        today: _today(),
+      ),
+      isEmpty,
+    );
+  });
+
   test('every top-level variable in a gate file is classified', () {
     final Set<String> known = <String>{
       for (final Allowance a in allowances) a.id,
@@ -1437,6 +1588,14 @@ void main() {
       )) {
         found.add('${a.id}: $problem');
       }
+    }
+    for (final String problem in registryProblems(
+      head: headOf(_self),
+      base: bases.where((GateSource s) => s.path == _self).firstOrNull,
+      running: allowances,
+      today: _today(),
+    )) {
+      found.add('$_self: $problem');
     }
     expect(
       found,

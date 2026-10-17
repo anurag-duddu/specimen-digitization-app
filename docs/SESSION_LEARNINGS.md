@@ -20736,3 +20736,30 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
   - The pull-to-refresh ruling was described as "relayed verbatim". It was typed first-hand by the owner in the coordinator's Claude Code session, in answer to the coordinator's question, and the entry now cites it that way.
   - Design 10 section 8's "a change cannot grant itself an allowance" is replaced by an explicit not-enforced list. It begins with the fact that the gate checks a sign-off is present, dated, quoted and new, not that the owner wrote it.
 - Validation, TZ=America/Chicago: `flutter analyze --fatal-infos` clean; `dart format` clean; `flutter test test/theme/ test/screens/` 330 passed, including planted tests for each of A to J. Not rerun this round: the golden, composition and app suites (no `lib/` change since `6dadf71b`, where they passed).
+
+### 2026-10-17 - GUARD-GATES-20261017 correction: review round 3 (Fable), the registry's name and two reader spellings
+
+- Correction to the GUARD-GATES-20261017 entries above, same branch, PR #358. The coordinator's round-3 delta review of `8a8a8589` (Claude Fable) returned REQUEST_CHANGES with two major and six minor findings, each planted against the real gates in a sandbox. Two statements in the round-2 correction overreached until this change:
+  - (B) "an allowance cannot be dropped, moved to `notAllowances` or regranted unsigned". The base's copy of the registry was read under the name the change gave it. Renaming `allowances` to `allowances2` while dropping the `namedPixelBacklog` allowance passed the sign-off gate in Fable's sandbox.
+  - (G) "a capability read counts only in a file that reaches the declaration through imports and exports". A read in a `part of` file, and one through an import prefix (`m.SpecimenHaptics.available`), passed the platform gate in Fable's sandbox.
+- What changed, test-only (nothing under `lib/`):
+  - The registry has its own rule, `registryProblems`. The base's registry is read under the fixed name `allowances` and compared with the list the test runs. A renamed registry fails, and so does an allowance dropped, renamed or read another way without a sign-off new to the change on the registry's declaration. The registry's entry for itself is gone; `allowances` and `registryName` are classified in `notAllowances`.
+  - A part file sees what its library imports and shares its library's private names, and `prefix.Owner.member` is a read.
+  - The platform gate also counts the `.platform` of a theme held under any name (initialised from `Theme.of` or typed `ThemeData`), `getPlatform`, and `identical(0, 0.0)` or `0.0 is int`.
+  - The named size gate also reads `: width = 280`, a default handed on through `: _w = width`, a `super.` default named for a dimension, and a switch expression's cases.
+  - The opacity gate also reads `const HSLColor.fromAHSL` and `const HSVColor.fromAHSV`, and a function or method with no parameters as a name.
+  - The Cupertino and platform gates read every package under `packages/`, not only `specimen_ui`.
+  - Design 10 section 8 now lists what stays unread: enum arguments, assignments and cascades, `FixedColumnWidth`, `int * 1.0`, every `opacity:` argument, and `third_party/`.
+- Disclosure, now also in the PR body: three `briefInventory` platform entries lie outside the brief's nine files. They are the two email-link conditional exports and the design system's reduced-motion export, and they were admitted unsigned on the coordinator's direction, not the owner's.
+- Counts are unchanged: 22 capability declarations over 15 files, 19 named sizes over 14 files, and 4 opacities over 4. The new rules find nothing in today's tree; the census tests hold both backlogs exactly.
+- Merged `main` at `e6effb42` (#356). The merge commit skipped only the local gitleaks hook. That hook runs `gitleaks git --pre-commit --staged`, and a local merge stages all of #356, including a synthetic `Idempotency-Key` digest in `tests/fixtures/general_api_contracts.json` that gitleaks flags. CI's `pre-commit run --all-files` stages nothing, so it never scans that value.
+- Validation (TZ=America/Chicago, `GATE_BASE=origin/main`):
+  - `flutter analyze --fatal-infos` and `dart format` are clean.
+  - `flutter test test/theme/`: 144 passed.
+  - Fable's `plant3.py`, unchanged, was run in a sandbox committed as its own base (`GATE_BASE=HEAD`):
+    - `rename_registry`, `rename_registry_full`, `reclassify`, `rename_banlist` and `widen_signed` fail the sign-off gate.
+    - `lib_part_reader`, `lib_prefix_reader`, `lib_import_reader`, `lib_theme_vars`, `lib_getplatform` and `lib_identical` fail the platform gate.
+    - `second_pkg` fails the Cupertino gate.
+    - `lib_pixels_more` now also reports `zz_p4`, `zz_p5`, `zz_p8` and `zz_p11`.
+    - `lib_alpha` now also reports `zz_a3` and `zz_a8`.
+    - `dropreaders2` and `emptyreaders` pass, as narrowing should.

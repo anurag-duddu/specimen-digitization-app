@@ -22,6 +22,11 @@ const String themePlatform = 'Theme.platform';
 const String platformOverride = 'debugDefaultTargetPlatformOverride';
 const String wasmFlag = 'kIsWasm';
 const String conditionalImport = 'conditional import';
+const String scrollPlatform = 'getPlatform';
+
+/// `identical(0, 0.0)` or `0.0 is int`: true only where numbers are
+/// JavaScript's, so a web test with no platform token in it.
+const String numberWebTest = 'identical(0, 0.0)';
 
 /// A declaration allowed to ask which platform it runs on.
 class PlatformCapability {
@@ -84,10 +89,16 @@ List<PlatformCheck> platformChecksIn(GateSource source) {
 }
 
 class _PlatformVisitor extends CodeVisitor {
-  _PlatformVisitor(this.source);
+  _PlatformVisitor(this.source) {
+    source.unit.accept(_ThemeNames(themes));
+  }
 
   final GateSource source;
   final List<PlatformCheck> found = <PlatformCheck>[];
+
+  /// The names that hold a theme in this file: a variable initialised from
+  /// `Theme.of(...)`, and a variable, field or parameter typed `ThemeData`.
+  final Set<String> themes = <String>{};
 
   void _add(AstNode node, String kind) =>
       found.add(PlatformCheck(source.lineOf(node.offset), siteOf(node), kind));
@@ -118,12 +129,7 @@ class _PlatformVisitor extends CodeVisitor {
   void visitPropertyAccess(PropertyAccess node) {
     final Expression? target = node.target;
     if (node.propertyName.name == 'platform' &&
-        target is MethodInvocation &&
-        target.methodName.name == 'of' &&
-        target.target is SimpleIdentifier &&
-        (target.target! as SimpleIdentifier).name == 'Theme') {
-      _add(node, themePlatform);
-    } else if (node.propertyName.name == 'platform' && _themeLike(target)) {
+        (isThemeOf(target) || _themeLike(target))) {
       _add(node, themePlatform);
     }
     super.visitPropertyAccess(node);
@@ -137,17 +143,97 @@ class _PlatformVisitor extends CodeVisitor {
     super.visitPrefixedIdentifier(node);
   }
 
-  /// A theme held in a variable, `theme.platform`, asks the same question as
+  /// A theme held in a variable, `theme.platform` or `t.platform` after
+  /// `final t = Theme.of(context)`, asks the same question as
   /// `Theme.of(context).platform`.
-  static bool _themeLike(Expression? target) =>
+  bool _themeLike(Expression? target) =>
       target is SimpleIdentifier &&
-      RegExp('theme', caseSensitive: false).hasMatch(target.name);
+      (themes.contains(target.name) ||
+          RegExp('theme', caseSensitive: false).hasMatch(target.name));
+
+  @override
+  void visitMethodInvocation(MethodInvocation node) {
+    final String name = node.methodName.name;
+    final List<Expression> arguments = node.argumentList.arguments;
+    if (name == scrollPlatform) {
+      // `ScrollConfiguration.of(context).getPlatform(context)`.
+      _add(node, scrollPlatform);
+    } else if (name == 'identical' &&
+        node.target == null &&
+        arguments.length == 2 &&
+        _literalType(arguments.first) != null &&
+        _literalType(arguments.last) != null &&
+        _literalType(arguments.first) != _literalType(arguments.last)) {
+      _add(node, numberWebTest);
+    }
+    super.visitMethodInvocation(node);
+  }
+
+  @override
+  void visitIsExpression(IsExpression node) {
+    final TypeAnnotation type = node.type;
+    if (_literalType(node.expression) != null &&
+        type is NamedType &&
+        (type.name.lexeme == 'int' || type.name.lexeme == 'double')) {
+      _add(node, numberWebTest);
+    }
+    super.visitIsExpression(node);
+  }
+
+  /// `int` or `double` for a number written as a literal, or null.
+  static String? _literalType(Expression e) => switch (e) {
+    IntegerLiteral() => 'int',
+    DoubleLiteral() => 'double',
+    PrefixExpression(:final Expression operand) => _literalType(operand),
+    ParenthesizedExpression(:final Expression expression) => _literalType(
+      expression,
+    ),
+    _ => null,
+  };
 
   @override
   void visitConfiguration(Configuration node) {
     // `import 'a.dart' if (dart.library.io) 'b.dart'` picks code by platform.
     _add(node, conditionalImport);
     super.visitConfiguration(node);
+  }
+}
+
+/// Whether [e] is `Theme.of(...)`, through an import prefix or not.
+bool isThemeOf(Expression? e) =>
+    e is MethodInvocation &&
+    e.methodName.name == 'of' &&
+    switch (e.target) {
+      SimpleIdentifier(:final String name) => name == 'Theme',
+      PrefixedIdentifier(:final SimpleIdentifier identifier) =>
+        identifier.name == 'Theme',
+      _ => false,
+    };
+
+class _ThemeNames extends CodeVisitor {
+  _ThemeNames(this.names);
+
+  final Set<String> names;
+
+  static bool _themeData(TypeAnnotation? type) =>
+      type is NamedType && type.name.lexeme == 'ThemeData';
+
+  @override
+  void visitVariableDeclaration(VariableDeclaration node) {
+    final AstNode? list = node.parent;
+    if (isThemeOf(node.initializer) ||
+        (list is VariableDeclarationList && _themeData(list.type))) {
+      names.add(node.name.lexeme);
+    }
+    super.visitVariableDeclaration(node);
+  }
+
+  @override
+  void visitSimpleFormalParameter(SimpleFormalParameter node) {
+    if (_themeData(node.type) && node.name != null) {
+      names.add(node.name!.lexeme);
+    }
+    super.visitSimpleFormalParameter(node);
   }
 }
 
@@ -176,20 +262,46 @@ bool isInstanceMember(GateSource source, String site) {
   return false;
 }
 
-/// The files [source] can see: itself, and every file it reaches through
-/// imports and exports, conditional ones included, within [sources].
+/// The library [source] belongs to: the file itself, or, for a part, the file
+/// that declares it, named by `part of 'uri'` or `part of name`.
+String libraryOf(GateSource source, Map<String, GateSource> byPath) {
+  for (final Directive d in source.unit.directives) {
+    if (d is! PartOfDirective) continue;
+    final String? uri = d.uri?.stringValue;
+    if (uri != null) return resolveUri(source.path, uri) ?? source.path;
+    final String? name = d.libraryName?.toSource();
+    for (final GateSource s in byPath.values) {
+      if (s.unit.directives.any(
+        (Directive l) => l is LibraryDirective && l.name?.toSource() == name,
+      )) {
+        return s.path;
+      }
+    }
+  }
+  return source.path;
+}
+
+/// The files [source] can see: itself, its library, and every file its
+/// library reaches through imports and exports, conditional ones included,
+/// within [sources], with the parts of each. A part sees what its library
+/// sees, and a library sees its parts.
 Set<String> visibleFrom(GateSource source, Map<String, GateSource> byPath) {
-  final Set<String> seen = <String>{source.path};
-  final List<String> queue = <String>[source.path];
+  final String library = libraryOf(source, byPath);
+  final Set<String> seen = <String>{source.path, library};
+  final List<String> queue = <String>[library];
   while (queue.isNotEmpty) {
     final GateSource? s = byPath[queue.removeLast()];
     if (s == null) continue;
     for (final Directive d in s.unit.directives) {
-      if (d is! NamespaceDirective) continue;
-      for (final String? uri in <String?>[
-        d.uri.stringValue,
-        for (final Configuration c in d.configurations) c.uri.stringValue,
-      ]) {
+      final List<String?> uris = switch (d) {
+        NamespaceDirective() => <String?>[
+          d.uri.stringValue,
+          for (final Configuration c in d.configurations) c.uri.stringValue,
+        ],
+        PartDirective() => <String?>[d.uri.stringValue],
+        _ => const <String?>[],
+      };
+      for (final String? uri in uris) {
         final String? path = uri == null ? null : resolveUri(s.path, uri);
         if (path != null && seen.add(path)) queue.add(path);
       }
@@ -199,14 +311,14 @@ Set<String> visibleFrom(GateSource source, Map<String, GateSource> byPath) {
 }
 
 /// The path, relative to the application root, that [uri] in the file
-/// [from] names, or null for a library outside the product.
+/// [from] names, or null for a `dart:` library. Another package is where the
+/// application keeps its own, `packages/<name>/lib/`; one from pub is not
+/// among the sources, so nothing is read there.
 String? resolveUri(String from, String uri) {
   const String app = 'package:specimen_digitization/';
-  const String package = 'package:specimen_ui/';
   if (uri.startsWith(app)) return 'lib/${uri.substring(app.length)}';
-  if (uri.startsWith(package)) {
-    return 'packages/specimen_ui/lib/${uri.substring(package.length)}';
-  }
+  final RegExpMatch? package = RegExp(r'^package:(\w+)/(.*)$').firstMatch(uri);
+  if (package != null) return 'packages/${package[1]}/lib/${package[2]}';
   if (uri.contains(':')) return null;
   final List<String> parts = from.split('/')..removeLast();
   for (final String segment in uri.split('/')) {
@@ -222,18 +334,22 @@ String? resolveUri(String from, String uri) {
 /// Where each of [capabilities] is read in [sources], `path site` to count.
 ///
 /// A read counts only in a file that can see the declaration: its own file,
-/// or one that reaches it through imports and exports. There, a private
-/// member is read only in its own file; a top-level declaration is read by
-/// name; a static member as `Owner.member`, or bare inside its own class; an
-/// instance member through any object other than `super`, or bare inside its
-/// own class. A named argument's label and the declaration itself are not
-/// reads.
+/// a part of the same library, or one that reaches it through imports and
+/// exports. There, a private member is read only in its own library; a
+/// top-level declaration is read by name, or through an import prefix; a
+/// static member as `Owner.member` or `prefix.Owner.member`, or bare inside
+/// its own class; an instance member through any object other than `super`,
+/// or bare inside its own class. A named argument's label and the declaration
+/// itself are not reads.
 Map<String, Map<String, int>> readersOf(
   List<PlatformCapability> capabilities,
   List<GateSource> sources,
 ) {
   final Map<String, GateSource> byPath = <String, GateSource>{
     for (final GateSource s in sources) s.path: s,
+  };
+  final Map<String, String> libraries = <String, String>{
+    for (final GateSource s in sources) s.path: libraryOf(s, byPath),
   };
   final Map<String, bool> instance = <String, bool>{
     for (final PlatformCapability c in capabilities)
@@ -255,6 +371,7 @@ Map<String, Map<String, int>> readersOf(
         ],
         instance,
         found,
+        libraries,
       ),
     );
   }
@@ -262,12 +379,19 @@ Map<String, Map<String, int>> readersOf(
 }
 
 class _ReaderVisitor extends CodeVisitor {
-  _ReaderVisitor(this.source, this.capabilities, this.instance, this.found);
+  _ReaderVisitor(
+    this.source,
+    this.capabilities,
+    this.instance,
+    this.found,
+    this.libraries,
+  );
 
   final GateSource source;
   final List<PlatformCapability> capabilities;
   final Map<String, bool> instance;
   final Map<String, Map<String, int>> found;
+  final Map<String, String> libraries;
 
   @override
   void visitSimpleIdentifier(SimpleIdentifier node) {
@@ -284,7 +408,10 @@ class _ReaderVisitor extends CodeVisitor {
 
   bool _reads(SimpleIdentifier node, PlatformCapability c) {
     final bool sameFile = source.path == c.path;
-    if (c.member.startsWith('_') && !sameFile) return false;
+    final bool sameLibrary =
+        (libraries[source.path] ?? source.path) ==
+        (libraries[c.path] ?? c.path);
+    if (c.member.startsWith('_') && !sameLibrary) return false;
     if (sameFile && siteOf(node) == c.site) return false;
     final AstNode? parent = node.parent;
     if (parent is Label) return false;
@@ -311,6 +438,8 @@ class _ReaderVisitor extends CodeVisitor {
     // A top-level declaration reached through an import prefix.
     if (c.owner == null) return target is SimpleIdentifier;
     if (instance['${c.path} ${c.site}']!) return true;
-    return target is SimpleIdentifier && target.name == c.owner;
+    // `Owner.member`, or `prefix.Owner.member` through an import prefix.
+    return (target is SimpleIdentifier && target.name == c.owner) ||
+        (target is PrefixedIdentifier && target.identifier.name == c.owner);
   }
 }
