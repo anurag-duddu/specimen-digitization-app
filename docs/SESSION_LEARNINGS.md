@@ -21139,3 +21139,29 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
 - Reusable learnings. (0) The drain tests' fake clock starts at 2026-09-23, but a save mid-run stamps `work_available_at` with the real time (`storage.work_available_at` calls `now()`). A test that needs such a run to be due in the next execution must move the fake clock past the real time first. Otherwise the run silently never comes due and the drain reports `drained`. (a) A resend after an ambiguous failure needs two things: a server-side guard that refuses a duplicate, and a client that can tell "my first send committed" from "someone else wrote". Here the guard is the revision check plus the receipt key, and the client check is the receipt digest. Without the second, a committed fence save would surface as `FenceLost` and stall the collection for the fence lease, which is the task deadline plus 60 s. (b) SQL Connect returns UUIDs without hyphens, so never compare a returned id with a local hyphenated one as strings. The receipt check here compares revision and request digest only, because the receipt's key already names the document. (c) The drain's fence is the only state that survives an execution, so any bound on cross-execution behavior (hand-overs, crashes) belongs in it, read from the value `acquire` returned, because `hold` rewrites the document while the execution runs.
 - Not done, on purpose. No scheduler. No change to the job's `maxRetries`, to queue order or to record policy: no record is blocked for crashing. The five research queue mutations sent through `execute` (`Schedule/FinishResearchDerivationV1`, `Schedule/Finish/ParkResearchRetryV1`) are still sent once, because their repeat safety was not verified. Projection inserts are not resent; they are already non-fatal.
 - Not confirmed: the fix in production. It needs the runtime release after merge (`deploy_models.py` redefines the worker job) and a real dropped connection to exercise it. The 2b02009d record's current state was not read.
+
+
+### Firebase login integrated canonical pass, 2026-10-17
+
+- Task `01a147ea-7efb-7e22-8821-e42395a135fc`, `codex/login-firebase-launch`,
+  worktree `9030`, PR #371: full canonical r6 `scripts/ci/verify.sh` passed
+  with exit 0 at `67cb8747fc767a41d82ad8384db2dae06f8fb680` (tree
+  `d38480a9f56d0f4a50475446f3881931449cd04d`), integrating main PR #369.
+  All 18,163 Python tests executed exactly once: 18,114 passed, 49 skipped.
+  Repository hooks, UI strings, both analyses, 1,307 design-system tests,
+  3,056 app tests plus seven expected skips, formatting, release web build
+  and route/security-header smoke passed. Local deployment metadata remains
+  unstamped, so this is not live release evidence.
+- Independent G51 source review approved 67cb8747 against c4335b61 with no
+  findings. The complete original PR CI/CD run 39066511718 and Runtime
+  candidate run 39066511694 passed on 54eafa33. Neither run qualifies a
+  subsequent head; required hosted checks still run on the updated candidate.
+- Main then advanced to `69bd6469` through PR #358, adding the theme guard
+  tests, a test-only analyzer dependency, the queue capability refactor and
+  the CI guard-base setting. Integrate it and exercise its new guard tests
+  against the login changes. Preserve the completed canonical result's source
+  binding; do not describe a reused result as a fresh run on a later head.
+- The App Check key was read through the existing owner credential without
+  changes: SCORE integration, web.app allowed, matching Firebase Enterprise
+  registration. The Chrome execution error's cause remains Not confirmed.
+  No production mutation or owner setup has occurred at this checkpoint.
