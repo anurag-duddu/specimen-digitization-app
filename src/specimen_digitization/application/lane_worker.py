@@ -461,12 +461,12 @@ class DrainWorker:
         execution waits for it in request order. The next execution starts when
         that retry is within its reach or requested work is due; a failed read
         counts as work. After MAX_CRASH_HANDOVERS crashes in a row with no step
-        saved, none starts. Each step here is best effort and never replaces
-        the original error.
+        saved, none starts. The idle hand-over count is reset, as the plain
+        release a crash made before reset it. Each step here is best effort and
+        never replaces the original error.
         """
         name = type(error).__name__
         crashes = 1 if drain.progress else previous.get("crashes_without_progress", 0) + 1
-        idle = 0 if drain.progress else previous.get("handovers_without_progress", 0)
         retries = dict(drain.retries)
         try:
             if fence.specimen_id is not None:
@@ -478,7 +478,7 @@ class DrainWorker:
             LOGGER.warning("drain crash: run in flight not read: %s", type(exc).__name__)
         first = min(retries.items(), key=lambda item: item[1], default=None)
         try:
-            fence.release(first and (first[0], first[1].isoformat()), idle, crashes)
+            fence.release(first and (first[0], first[1].isoformat()), 0, crashes)
         except Exception as exc:  # noqa: BLE001 - still held, so no execution could take it
             LOGGER.warning("drain crash (%s): fence not released: %s", name, type(exc).__name__)
             return
@@ -593,7 +593,7 @@ class DrainWorker:
                 for key in [k for k, at in drain.retries.items() if at <= self.clock()]:
                     del drain.retries[key]  # Due now, so the queue returns it.
                 continue
-            run, progressed = self._step_until_stopped(principal, fence, ident, stop)
+            run, progressed = self._step_until_stopped(principal, fence, ident, stop, drain)
             if ident not in summary["processed"]:
                 summary["processed"].append(ident)
             if progressed:
@@ -608,8 +608,12 @@ class DrainWorker:
             else:
                 drain.retries.pop(ident, None)
 
-    def _step_until_stopped(self, principal, fence, ident, stop):
-        """Step one run until it stops; the run and whether any step saved."""
+    def _step_until_stopped(self, principal, fence, ident, stop, drain=None):
+        """Step one run until it stops; the run and whether any step saved.
+
+        Each saved step also marks `drain` as progressing at once, so a later
+        step's unexpected error does not count the execution as one without
+        progress (`_crashed`)."""
         fence.hold(ident)
         progressed, conflicts = False, 0
         before = self.repository.get(principal.scope, ident)
@@ -642,6 +646,8 @@ class DrainWorker:
                     return run, True  # Verified native queue retirement, no scientific save.
                 return run, progressed  # Leased or otherwise waiting.
             progressed = True
+            if drain is not None:
+                drain.progress = True
             if run.disposition or run.stage in STOPPED or self._stopped(stop):
                 return run, progressed
             before = specimen

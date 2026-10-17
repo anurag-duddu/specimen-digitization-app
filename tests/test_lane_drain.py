@@ -1573,3 +1573,44 @@ def test_a_crash_that_cannot_release_the_fence_starts_no_execution(tmp_path):
     # Still held, so a new execution could not take the collection.
     assert CollectionFence(repository, SCOPE, WORKER, "exec-b", clock=clock).read()["holder"] == "exec-a"
     assert continuation.calls == 0
+
+
+def test_a_step_saved_before_a_crash_counts_as_progress(lane):
+    queued(lane.repository, "a-long", minutes=30)
+
+    class SavingThenDropping(ScriptedWorkflow):
+        """In each execution, one step saves and the next loses its connection."""
+
+        def step(self, principal, ident):
+            if len(self.steps) % 2:
+                self.steps.append(ident)
+                raise requests.ConnectionError("Remote end closed connection without response")
+            return super().step(principal, ident)
+
+    long_run = SavingThenDropping(lane.repository, lane.clock, {"a-long": ["progress"]})
+    continuation = Continuation()
+    for index in range(4):
+        # A saved step makes the run due at the save's wall-clock time
+        # (storage.work_available_at), so this clock must be past it.
+        lane.clock.now = datetime.now(timezone.utc) + timedelta(seconds=2)
+        with pytest.raises(requests.ConnectionError):
+            worker(
+                lane.repository, long_run, lane.clock,
+                execution=f"exec-{index}", continuation=continuation,
+            ).run(stop=None)
+        assert fence(lane).read()["crashes_without_progress"] == 1
+    assert lane.repository.get(SCOPE, "a-long").version == 5
+    assert continuation.calls == 4
+
+
+def test_a_crash_resets_the_idle_hand_over_count_as_before(lane):
+    queued(lane.repository, "a-stuck", minutes=30)
+    earlier = fence(lane, "exec-earlier")
+    earlier.acquire()
+    earlier.release(idle=2)
+    with pytest.raises(requests.ConnectionError):
+        worker(
+            lane.repository, DroppedConnection(lane.repository, lane.clock, always=True),
+            lane.clock, continuation=Continuation(),
+        ).run(stop=None)
+    assert fence(lane).read()["handovers_without_progress"] == 0
