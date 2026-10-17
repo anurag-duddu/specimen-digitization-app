@@ -8,6 +8,8 @@ library;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show FontLoader, rootBundle;
 
+import 'google_sign_in_brand.dart';
+
 /// The two families and the assets behind them.
 abstract final class UiFonts {
   /// The package that owns the font assets.
@@ -68,18 +70,22 @@ abstract final class UiFonts {
   @visibleForTesting
   static void resetLicenseRegistrationForTest() => _licenceRegistered = false;
 
-  /// Loads both faces into the current binding under their prefixed names.
+  /// Loads both faces, and Google's for its button, into the current binding
+  /// under their prefixed names.
   ///
   /// Used by `flutter_test_config.dart` in this package and in the
   /// application, so that every golden renders in the product typeface. The
   /// v1 goldens rendered in the platform sans, which is the defect this
-  /// closes.
+  /// closes. Google Sans is the third file because `UiGoogleSignInButton`
+  /// measures and draws its label in it: without it a test sees the button at
+  /// the width of the test font, not the width a person sees.
   static Future<void> loadForTest(
     Future<ByteData> Function(String path) load,
   ) async {
     for (final (String family, String asset) in <(String, String)>[
       (sansFamily, sansAsset),
       (monoFamily, monoAsset),
+      (GoogleSignInBrand.prefixedFontFamily, GoogleSignInBrand.fontAsset),
     ]) {
       final FontLoader loader = FontLoader(family);
       loader.addFont(load(asset));

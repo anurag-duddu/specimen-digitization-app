@@ -22,6 +22,12 @@ dev_dependencies:
   flutter_lints: ^6.0.0
 
 flutter:
+  # The Google "G" and the licence and provenance that travel with Google Sans.
+  # `UiGoogleSignInButton` draws them, so a consumer gets the button whole by
+  # depending on the package (design 10 section 4.1).
+  assets:
+    - assets/google-sign-in/
+
   # Declared here rather than in the app so that a consumer gets the families
   # by depending on the package. Flutter prefixes a package font family with
   # "packages/specimen_ui/", which is what UiType resolves them under.
@@ -32,3 +38,9 @@ flutter:
     - family: Geist Mono
       fonts:
         - asset: assets/fonts/GeistMonoVF.ttf
+    # Google's own face for Google's own button, which its branding requires.
+    # It is not a product face: nothing but `UiGoogleSignInButton` reads it.
+    - family: GoogleSignInSans
+      fonts:
+        - asset: assets/google-sign-in/GoogleSans-Medium.ttf
+          weight: 500
