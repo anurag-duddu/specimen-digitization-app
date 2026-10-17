@@ -21442,3 +21442,53 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
   - The live `specimen-sam` template carries `run.googleapis.com/health-check-disabled: "true"`, which `scripts/ops/deploy.py` `sam_argv` does not set. Its source is Not confirmed.
   - A parse attempt that runs after its extraction was given up makes no model call, but `record_step`'s parse branch still records it `reserved`. Not measured here.
   - A rerun of 19f0f1f6 is not part of this task.
+
+
+### 2026-10-17 - LOGIN-JOURNEY-FIREBASE live acceptance and original-tab recovery
+
+- Task 01a147ea-7efb-7e22-8821-e42395a135fc, worktree 9030. Repair PR #374
+  advanced to `238317a39d4fcfc04d34c4bc08a5cc01e8d0cd14`, tree
+  `243e01760308b7261aed3a2cbf92d2c415411333`, after merging main c73b13a4.
+  Independent G51 review found no issues. Full local `scripts/ci/verify.sh`
+  passed: 18,225 Python passed / 49 skipped; 1,307 design-system passed;
+  3,098 application passed / seven skipped; analysis, formatting, release web
+  build and 13-route/five-header smoke passed. This head was pushed with normal
+  hooks. Fresh hosted checks are pending at this entry; prior normal/cold
+  engine qualification is retained only for unchanged engine-tier inputs.
+- Hosting CI/CD 39076037970 passed on c73b13a4 and the public marker matches.
+  The redesigned entry, recipient/sent stage and sign-out were observed live.
+  A real Firebase link delivered at 22:55 UTC completed in an owned Chrome
+  Guest return tab and opened the exact intended Insects Queue. No account or
+  membership was created or modified; no worker or specimen action ran.
+- Correction to the preceding baseline observation: on this new live build the
+  original Guest tab received the verified session but encountered typed app
+  verification failure. Check access again did not recover; a normal browser
+  reload did restore the intended Queue. Thus the failure is not limited to
+  the earlier directly browser-controlled QA tab. The global Chrome debugging
+  banner remained present; its causal role is Not confirmed. The owned Guest
+  tabs were signed out and closed; the user's primary session was preserved.
+- Evidence: this task's `recovery-implementation/live-login-acceptance-c73b13a4.json`
+  and six live screenshots. These prove real web email delivery/return and
+  sign-out, not seamless original-tab completion or physical native handoff.
+  Data release 39076037949 failed the Google provisioning step; Runtime
+  39076037991 did not deploy. API /version remained 69bd6469. Full release is
+  incomplete; Google remains hidden and its missing permission is unidentified.
+- New branch `codex/login-appcheck-recovery` starts from qualified 238317a3.
+  It implements bounded web recovery after a matching external-session handoff,
+  preserving the internal route and awaiting serialized email cleanup. A typed
+  first-access App Check failure may reload once; no token broadcast, SDK
+  private-state modification, security-enforcement change or authorization
+  bypass is introduced. Native keeps its existing retry. Independent patch
+  review, integrated canonical verification and live fix acceptance are pending.
+- Firebase built-in links remain the chosen email scope. The optional code/link
+  sender implementation is preserved at 18288554 on
+  `codex/login-journey-complete` and must not be pruned. A direct owner question
+  about deferring Google versus keeping it in this launch is pending; no
+  additional IAM grant or release-gate change has been made.
+- The integrated recovery patch matches the frozen temporary candidate in all
+  11 code/test files. Its seven focused suites passed 126 tests (22 new), and
+  pinned Flutter 3.38.5 analysis and formatting passed. The first wider run
+  exposed a test-owned timer disposed after the framework invariant check;
+  moving disposal into the test finally block fixed the fixture without
+  weakening assertions or changing production timers. Canonical verification
+  and hosted/live acceptance remain pending.

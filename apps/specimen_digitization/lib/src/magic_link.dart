@@ -211,6 +211,23 @@ class MagicLinkController extends ChangeNotifier {
   int _sendEpoch = 0;
   Future<void> _storageWrites = Future<void>.value();
   String email = '';
+  String? _emailSentInThisPage;
+  int _handoffGeneration = 0;
+
+  /// Changes when a new request, local link or alternate sign-in supersedes
+  /// the request that could have completed in another tab.
+  int get handoffGeneration => _handoffGeneration;
+
+  /// Called synchronously before dispatching another provider's sign-in.
+  void beginAlternateSignIn() {
+    _emailSentInThisPage = null;
+    _handoffGeneration++;
+    _changed();
+  }
+
+  /// A successful request made by this controller, never restored preferences.
+  /// This is a recovery hint, not proof of authentication or collection access.
+  String? get emailSentInThisPage => _emailSentInThisPage;
   String? message;
 
   /// A failed request can coexist with a previously sent link.
@@ -305,6 +322,7 @@ class MagicLinkController extends ChangeNotifier {
       return;
     }
     _sendEpoch++;
+    _emailSentInThisPage = null;
     email = '';
     sent = false;
     busy = false;
@@ -405,6 +423,8 @@ class MagicLinkController extends ChangeNotifier {
           if (superseded != null && !identical(superseded, _inFlight)) {
             _acknowledgeLink(superseded);
           }
+          _handoffGeneration++;
+          _emailSentInThisPage = null;
           _link = _IncomingEmailLink(
             value,
             digest,
@@ -467,6 +487,8 @@ class MagicLinkController extends ChangeNotifier {
     }
     email = normalized;
     final int epoch = ++_sendEpoch;
+    _handoffGeneration++;
+    _emailSentInThisPage = null;
     final previousLink = _link;
     busy = true;
     message = null;
@@ -480,6 +502,7 @@ class MagicLinkController extends ChangeNotifier {
       await access.sendSignInLink(email);
       if (_disposed || epoch != _sendEpoch) return;
       sent = true;
+      _emailSentInThisPage = normalized;
       message = emailLinkSentMessage;
     } catch (error) {
       if (!_disposed && epoch == _sendEpoch) {
@@ -506,6 +529,8 @@ class MagicLinkController extends ChangeNotifier {
     }
     email = normalized;
     final target = _link!;
+    _handoffGeneration++;
+    _emailSentInThisPage = null;
     target.retryable = false;
     _inFlight = target;
     busy = true;
@@ -564,6 +589,8 @@ class MagicLinkController extends ChangeNotifier {
     if (busy || !initialized || _disposed) return;
     busy = true;
     if (_link != null) _clearLink();
+    _handoffGeneration++;
+    _emailSentInThisPage = null;
     email = '';
     sent = false;
     message = null;
