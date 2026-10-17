@@ -49,6 +49,16 @@ class _OversizedPhoto extends XFile {
   Future<int> length() async => intakeMaximumBytes + 1;
 }
 
+class _UnavailableCheckRepository extends TestRepository {
+  int checks = 0;
+
+  @override
+  Future<Json> preflight(CollectionScope scope, IntakeFile file) async {
+    checks++;
+    throw StateError('Synthetic check failure');
+  }
+}
+
 class _UnreadablePhoto extends XFile {
   _UnreadablePhoto() : super('unreadable.png');
 
@@ -348,6 +358,47 @@ void main() {
       await tester.pumpWidget(_app(repository));
       await tester.pumpAndSettle();
       expect(tester.widget<UiSegmented<bool>>(_mode).value, isTrue);
+    },
+  );
+
+  testWidgets(
+    'unavailable photo check explains what to do without banned terms',
+    (tester) async {
+      final repository = _UnavailableCheckRepository();
+      final photo = XFile.fromData(
+        File('test/fixtures/synthetic-label.png').readAsBytesSync(),
+        path: 'photo.png',
+        name: 'photo.png',
+      );
+      await _pump(tester, _app(repository, files: [photo]));
+      await chooseFiles(tester);
+      await tester.ensureVisible(find.text('File details'));
+      await tester.tap(find.text('File details'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Send for server check'));
+      await tester.tap(find.text('Send for server check'));
+      await tester.pumpAndSettle();
+      expect(repository.checks, 1);
+      const message = 'Photo not checked. Try again.';
+      expect(find.text(message), findsOneWidget);
+      expect(message.split(' ').length, lessThanOrEqualTo(8));
+      expect(message.length, lessThanOrEqualTo(55));
+      expect(
+        tester.widget<Text>(find.text(message)).data,
+        isNot(
+          matches(
+            RegExp(
+              r'\b(Intake queue|main Queue|derivative|server offset|offset|classification|checksum|SHA-256|preflight|server check|codec|collection profile|runtime|batch|upload handle|Not calibrated|failed|invalid|please|sorry|we)\b',
+              caseSensitive: false,
+            ),
+          ),
+        ),
+      );
+      expect(
+        find.textContaining('The server check did not run.'),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
     },
   );
 

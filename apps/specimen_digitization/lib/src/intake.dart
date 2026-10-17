@@ -165,6 +165,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
 
   String get _captureOwner => '${widget.userId}:${widget.scope.key}';
   static const String _captureKey = 'pending-camera-owner-v1';
+  static const String _captureSensitiveKey = '$_captureKey:sensitive';
   String get _autoIngestKey =>
       'camera-auto-ingest-v1:${widget.userId}:${widget.scope.key}';
 
@@ -414,11 +415,12 @@ class _IntakeScreenState extends State<IntakeScreen> {
     );
   }
 
-  /// The pre-existing `image_picker` path, unchanged, including the owner
-  /// marker that makes interrupted-capture recovery possible on Android.
+  /// The `image_picker` path. Its recovery marker preserves ownership and
+  /// the pending photo's declaration, not a preference for the next session.
   Future<List<XFile>> _devicePicker() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setString(_captureKey, _captureOwner);
+    await prefs.setBool(_captureSensitiveKey, _sensitive);
     try {
       final XFile? image = await ImagePicker().pickImage(
         source: ImageSource.camera,
@@ -428,6 +430,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
     } finally {
       if (prefs.getString(_captureKey) == _captureOwner) {
         await prefs.remove(_captureKey);
+        await prefs.remove(_captureSensitiveKey);
       }
     }
   }
@@ -497,6 +500,10 @@ class _IntakeScreenState extends State<IntakeScreen> {
         widget.recoverCamera != null) {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       if (!mounted || prefs.getString(_captureKey) != _captureOwner) return;
+      final Object? declaration = prefs.get(_captureSensitiveKey);
+      // Older markers used the previous Sensitive default. Missing or
+      // malformed declarations must never downgrade a recovered photo.
+      final bool sensitive = declaration is bool ? declaration : true;
       setState(() => _choosing = true);
       try {
         final List<XFile> files;
@@ -510,7 +517,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
               (lost.file == null ? <XFile>[] : <XFile>[lost.file!]);
         }
         if (!mounted) return;
-        await _acceptFiles(files, camera: true);
+        await _acceptFiles(files, camera: true, sensitive: sensitive);
         if (mounted && files.isNotEmpty) {
           setState(() => _error = 'Recovered a photo. Check it, then send.');
         }
@@ -521,6 +528,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
       } finally {
         if (prefs.getString(_captureKey) == _captureOwner) {
           await prefs.remove(_captureKey);
+          await prefs.remove(_captureSensitiveKey);
         }
         if (mounted) setState(() => _choosing = false);
       }
@@ -532,7 +540,11 @@ class _IntakeScreenState extends State<IntakeScreen> {
   /// Reads every chosen file, measures what this device can measure, and adds
   /// a row for each. A file this client refuses gets a Skipped row carrying
   /// its own reason rather than a banner the next rejection overwrites.
-  Future<int> _acceptFiles(List<XFile> files, {required bool camera}) async {
+  Future<int> _acceptFiles(
+    List<XFile> files, {
+    required bool camera,
+    bool? sensitive,
+  }) async {
     int admitted = 0;
     for (final XFile file in files) {
       try {
@@ -652,9 +664,10 @@ class _IntakeScreenState extends State<IntakeScreen> {
           // Reselecting a queued file retains its declaration, including a
           // batch created before an item request was interrupted. A restored
           // server handle is resumed, never recreated with this local value.
-          // New selections use the visible declaration, off by default.
+          // Recovery supplies the pending photo's declaration. Other new
+          // selections use the visible declaration, off by default.
           // Resumed server uploads retain their existing classification.
-          sensitive: old?.file?.sensitive ?? _sensitive,
+          sensitive: old?.file?.sensitive ?? sensitive ?? _sensitive,
           width: encodedDimensions?.width,
           height: encodedDimensions?.height,
         );
@@ -724,8 +737,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
         setState(
           () => entry.preflightError = e is ApiFailure
               ? e.message
-              : 'The server check did not run. Retry, or have your '
-                    'collection access confirmed.',
+              : 'Photo not checked. Try again.',
         );
       }
     } finally {

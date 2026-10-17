@@ -38,6 +38,7 @@ void main() {
     WidgetTester tester,
     ApiSpecimenRepository repository, {
     required VoidCallback onComplete,
+    Future<List<XFile>> Function(bool)? pickImages,
   }) async {
     await tester.binding.setSurfaceSize(const Size(1000, 2200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -50,9 +51,11 @@ void main() {
             scope: scope,
             userId: 'owner',
             onComplete: onComplete,
-            pickImages: (_) async => [
-              XFile.fromData(bytes, path: 'source.png', name: 'source.png'),
-            ],
+            pickImages:
+                pickImages ??
+                (_) async => [
+                  XFile.fromData(bytes, path: 'source.png', name: 'source.png'),
+                ],
           ),
         ),
       ),
@@ -95,6 +98,112 @@ void main() {
     expect(bodies, hasLength(2));
     expect(bodies.map((body) => body['sensitive']), [false, false]);
   });
+
+  test(
+    'legacy intake defaults to Sensitive in both creation requests',
+    () async {
+      final bodies = <Json>[];
+      final repo = repository((request) async {
+        expect(request.method, 'POST');
+        expect(
+          request.url.path,
+          anyOf(endsWith('/batches'), endsWith('/items')),
+        );
+        final body = jsonDecode(request.body) as Json;
+        bodies.add(body);
+        return http.Response(
+          jsonEncode({
+            'batch_id': 'b',
+            'upload_id': 'u',
+            'sensitive': body['sensitive'],
+          }),
+          200,
+        );
+      });
+      addTearDown(repo.close);
+      await repo.createIntake(
+        scope,
+        IntakeFile(
+          name: 'source.png',
+          bytes: bytes,
+          mimeType: 'image/png',
+          sha256: digest,
+          method: 'files',
+        ),
+        'legacy-default',
+      );
+      expect(bodies.map((body) => body['sensitive']), [true, true]);
+    },
+  );
+
+  testWidgets(
+    'switching off keeps photo A Sensitive when reselected and photo B off',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final secondBytes = File(
+        'test/fixtures/synthetic-wide-label.png',
+      ).readAsBytesSync();
+      final photoA = XFile.fromData(bytes, path: 'a.png', name: 'a.png');
+      final photoB = XFile.fromData(secondBytes, path: 'b.png', name: 'b.png');
+      var chosen = photoA;
+      final batches = <Json>[];
+      final items = <Json>[];
+      final sizes = <String, int>{};
+      var accepted = 0;
+      final repo = repository((request) async {
+        if (request.url.path.endsWith('/batches')) {
+          final body = jsonDecode(request.body) as Json;
+          batches.add(body);
+          return http.Response(
+            jsonEncode({
+              'batch_id': 'b${batches.length}',
+              'sensitive': body['sensitive'],
+            }),
+            200,
+          );
+        }
+        if (request.url.path.endsWith('/items')) {
+          final body = jsonDecode(request.body) as Json;
+          items.add(body);
+          final id = 'u${items.length}';
+          sizes[id] = body['size_bytes'] as int;
+          return http.Response(
+            jsonEncode({'upload_id': id, 'sensitive': body['sensitive']}),
+            200,
+          );
+        }
+        final segments = request.url.pathSegments;
+        final id = segments[segments.indexOf('uploads') + 1];
+        return http.Response(
+          jsonEncode({'upload_id': id, 'offset': sizes[id], 'revision': 2}),
+          200,
+        );
+      });
+      addTearDown(repo.close);
+      await mount(
+        tester,
+        repo,
+        onComplete: () => accepted++,
+        pickImages: (_) async => [chosen],
+      );
+      await selectSensitivity(tester, 'Sensitive');
+      await choose(tester);
+      await selectSensitivity(tester, 'Not sensitive');
+      chosen = photoB;
+      await choose(tester);
+      chosen = photoA;
+      await choose(tester);
+      expect(batches, isEmpty);
+      await submit(tester);
+      expect(batches.map((body) => body['sensitive']), [true, false]);
+      expect(
+        {for (final body in items) body['filename']: body['sensitive']},
+        {'a.png': true, 'b.png': false},
+      );
+      expect(items, hasLength(2));
+      expect(accepted, 2);
+    },
+  );
 
   test('a conflicting batch stops before creating its item', () async {
     var items = 0;
