@@ -466,7 +466,7 @@ class DrainWorker:
         never replaces the original error.
         """
         name = type(error).__name__
-        crashes = 1 if drain.progress else previous.get("crashes_without_progress", 0) + 1
+        crashes = 0 if drain.progress else previous.get("crashes_without_progress", 0) + 1
         retries = dict(drain.retries)
         try:
             if fence.specimen_id is not None:

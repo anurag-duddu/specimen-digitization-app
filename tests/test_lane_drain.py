@@ -1479,7 +1479,7 @@ def test_an_unexpected_crash_hands_the_queue_over_once_and_still_ends_the_execut
     assert continuation.calls == 1
     left = fence(lane).read()
     assert (left["holder"], left["specimen_id"]) == (None, "b-dropped")
-    assert left["crashes_without_progress"] == 1
+    assert left["crashes_without_progress"] == 0
 
     # The execution it started drains the rest in request order.
     summary = worker(
@@ -1598,7 +1598,7 @@ def test_a_step_saved_before_a_crash_counts_as_progress(lane):
                 lane.repository, long_run, lane.clock,
                 execution=f"exec-{index}", continuation=continuation,
             ).run(stop=None)
-        assert fence(lane).read()["crashes_without_progress"] == 1
+        assert fence(lane).read()["crashes_without_progress"] == 0
     assert lane.repository.get(SCOPE, "a-long").version == 5
     assert continuation.calls == 4
 
