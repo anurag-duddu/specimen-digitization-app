@@ -208,6 +208,8 @@ class MagicLinkController extends ChangeNotifier {
   bool initialized = false, busy = false, sent = false;
   bool _disposed = false;
   bool _initializing = false;
+  int _sendEpoch = 0;
+  Future<void> _storageWrites = Future<void>.value();
   String email = '';
   String? message;
 
@@ -269,18 +271,46 @@ class MagicLinkController extends ChangeNotifier {
     return accepted;
   }
 
-  Future<void> _remember({bool clearEmail = false}) async {
-    try {
-      await storage.write(
-        RememberedEmailLink(
-          email: clearEmail || email.isEmpty ? null : email,
-          retryAt: _retryAt,
-        ),
-      );
-    } catch (_) {
-      // Storage may be disabled in private browsing. Cross-browser confirmation
-      // remains available; no raw exception or account data is logged.
+  Future<void> _remember({bool clearEmail = false}) {
+    final value = RememberedEmailLink(
+      email: clearEmail || email.isEmpty ? null : email,
+      retryAt: _retryAt,
+    );
+    // A session can complete in another browser tab while a previous local
+    // write is pending. Preserve write order so cleanup is the final value.
+    _storageWrites = _storageWrites.then((_) async {
+      try {
+        await storage.write(value);
+      } catch (_) {
+        // Storage may be disabled in private browsing. Cross-browser
+        // confirmation remains available; no account data is logged.
+      }
+    });
+    return _storageWrites;
+  }
+
+  /// Clears a sent request completed by a matching, verified session event.
+  ///
+  /// The application must establish signed-in and verified state before
+  /// calling this method. An incoming link still owns its explicit confirmation
+  /// and cleanup, even if Firebase publishes a session before it completes.
+  Future<void> reconcileVerifiedSession(String verifiedEmail) async {
+    final normalized = normalizedStaffEmail(verifiedEmail);
+    if (_disposed ||
+        !initialized ||
+        normalized == null ||
+        normalized != email ||
+        _link != null ||
+        _inFlight != null) {
+      return;
     }
+    _sendEpoch++;
+    email = '';
+    sent = false;
+    busy = false;
+    message = null;
+    _changed();
+    await _remember(clearEmail: true);
   }
 
   Future<void> initialize() async {
@@ -436,6 +466,7 @@ class MagicLinkController extends ChangeNotifier {
       return;
     }
     email = normalized;
+    final int epoch = ++_sendEpoch;
     final previousLink = _link;
     busy = true;
     message = null;
@@ -444,19 +475,23 @@ class MagicLinkController extends ChangeNotifier {
     // Persist before dispatch so a refresh or uncertain response retains the
     // same address/cooldown. No automatic SDK retry is scheduled by this UI.
     await _remember();
-    if (_disposed) return;
+    if (_disposed || epoch != _sendEpoch) return;
     try {
       await access.sendSignInLink(email);
-      if (_disposed) return;
+      if (_disposed || epoch != _sendEpoch) return;
       sent = true;
       message = emailLinkSentMessage;
     } catch (error) {
-      if (!_disposed) message = emailLinkError(error);
+      if (!_disposed && epoch == _sendEpoch) {
+        message = emailLinkError(error);
+      }
     } finally {
-      busy = false;
-      _changed();
-      if (!_disposed && _link != null && !identical(_link, previousLink)) {
-        unawaited(complete(email));
+      if (epoch == _sendEpoch) {
+        busy = false;
+        _changed();
+        if (!_disposed && _link != null && !identical(_link, previousLink)) {
+          unawaited(complete(email));
+        }
       }
     }
   }

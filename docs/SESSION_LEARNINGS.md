@@ -20900,3 +20900,95 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
   comparator change is authorized by this correction.
 - Final reference validation, renewed exact-head source review, complete
   canonical run, hosted CI and all release/live gates remain pending here.
+
+### Login code-and-link correction, 2026-10-17
+
+- Task `01a147ea-7efb-7e22-8821-e42395a135fc`, branch
+  `codex/login-journey-complete`, worktree `9030`: the owner clarified that the
+  same sign-in email must contain a short verification code and a magic link.
+  Pasting the full link is not an acceptable substitute. The original browser
+  tab must receive completed authentication; native link return must be tested
+  against actual platform associations. References are the Plain flow
+  `ce779e11-e45f-4a02-b2c2-128c4ba402ae` and Mobbin flow
+  `feee70ed-a591-4f71-8730-c7f73655cd0e`. No candidate was pushed or deployed.
+- Candidate `874c491d3b5b4753a4f5239652b98f9a0dfabd7b` received renewed
+  independent G51 source approval. Exactly 28 intentional icon references
+  passed 29 normal macOS comparisons including the overflow ratchet. The
+  unsigned iOS release build and CI-equivalent Android debug build passed with
+  synthetic configuration, unchanged source hashes and clean tracked state.
+  These results do not establish code-based email authentication or installed
+  native delivery. External reports remain in `recovery-implementation/`.
+- Canonical r3 passed repository hooks and began the complete 18,143-test Python
+  collection with two workers. The coordinator stopped its own runner on the
+  owner's code-and-link correction; normal worker cleanup completed and the
+  verifier exited 130. This run is INCOMPLETE. No unrelated process was stopped.
+- The owner explicitly authorized the existing six-permission
+  `owner_setup.sh --auth-only` setup if the Google release reports missing
+  permissions. That authorization does not expand the command to new email
+  delivery, user-management or token-signing permissions.
+- Short-code delivery, email transport, original-tab acceptance and native
+  association readiness are being investigated before implementation continues.
+  Full canonical verification, hosted CI and launch remain Not confirmed.
+
+### Paired-email implementation and integration checkpoint, 2026-10-17
+
+- Task `01a147ea-7efb-7e22-8821-e42395a135fc`, `codex/login-journey-complete`,
+  worktree `9030`, after `874c491d`: implemented the actual six-digit code field
+  and single code-plus-link email service. Both choices use the same Firebase
+  email-link credential; no custom tokens, new identity system, account deletion
+  or collection membership grants are introduced. Client proofs and credentials
+  remain in memory; private CAS state encrypts the link and hashes the code.
+- Current focused evidence: 99 service tests; 226 combined backend/API/runtime/
+  public-build-setting tests; 32 narrow owner-setup tests; 38 focused UI tests;
+  Flutter static analysis. The API test run initially hit sandbox-denied local
+  sockets, then passed after ordinary escalation. The first UI run caught a
+  misleading resend busy label and a test caret-scroll timing issue; the label
+  was corrected and the test waits for the actual keyboard scroll to settle.
+  No assertion, comparator, required check or secret scanner was weakened.
+- Independent dirty-source review found resend429 could discard a still-valid
+  challenge; the client now preserves it only for definitive rate-limit rejection
+  to the same recipient. Three new regressions bring its paired-email suite to
+  20 passing tests. Exact-head review and the full canonical run remain pending.
+- PR #367 has merged to `origin/main` as `835f197a`, moving Google's button/font
+  into the design system. This checkpoint precedes local integration so both
+  that work and this login journey are preserved before fresh captures/checks.
+- Sender metadata inspection found Firebase default email, no custom SMTP
+  runtime configuration and no named mail secret. A sender choice is pending.
+  `--email-auth-only --email-secret-version=N` is prepared/tested separately
+  from the already conditionally authorized Google `--auth-only`; it has not
+  been run or authorized. No production change or email send occurred.
+- Browser same-origin two-tab acceptance is in progress with an isolated Auth
+  emulator, not a live account. Native association files were empty and the
+  personal iOS profile lacks associated domains. Bucket retention metadata is
+  Not confirmed: gcloud token refresh requested interactive reauthentication.
+  No staging flag-off build is described as the completed requested login.
+
+### Owner selects Firebase-built-in email for launch, 2026-10-17
+
+- Task `01a147ea-7efb-7e22-8821-e42395a135fc`: after being told that Firebase's
+  standard email has no per-message numeric code, the owner explicitly directed
+  “we should do what firebase has for now” and requested options for the missing
+  capability. The current release therefore uses Firebase's built-in magic link,
+  the redesigned whole journey, original-tab session synchronization and Google.
+  This is an owner scope decision, superseding the earlier paired-email launch
+  requirement; it is not an agent decision to hide an unfinished code option.
+- Paired-email work is preserved at `18288554` on
+  `codex/login-journey-complete`, with normal commit hooks passed. The launch
+  branch is `codex/login-firebase-launch` from `874c491d` in worktree `9030`.
+  Its inherited journal retains the implementation checkpoint. No SMTP routes,
+  sender secret, email-code flag or new email-auth IAM mode is being launched.
+- The Firebase-only branch keeps the independently tested session cleanup and
+  iOS link-handler ownership fixes and will integrate PR #367 locally before
+  fresh capture, canonical checks and exact-head review. No production change,
+  real account handoff or release is claimed by this checkpoint.
+- Additional deferred-candidate evidence: 667 release/owner configuration tests
+  passed with one intentional skip (see the saved log for the exact total);
+  isolated browser tests established original-tab authentication, same UID,
+  intended-route preservation, synchronized sign-out and signed-out reload.
+  Browser mail and collection data were synthetic. Fresh Firebase-only browser
+  acceptance is still required after source integration.
+- Read-only bucket metadata obtained through the existing Firebase CLI identity
+  confirms no reported retention lock, default event hold or object versioning;
+  soft deletion retains replaced/deleted generations for seven days. No bucket
+  setting was changed. This corrects the earlier “Not confirmed” retention read
+  after the separate gcloud session could not refresh its token.

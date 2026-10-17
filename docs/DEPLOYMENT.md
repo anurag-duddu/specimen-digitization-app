@@ -1316,8 +1316,11 @@ that shape only, and is forwarded on main pushes independently of the API pair.
 `false`, default false). Main pushes alone may forward `true` to expose the
 secondary Google action; the API/App Check pair must already be configured.
 This switch does not provision a Firebase provider. Leave it off until Google
-is enabled in Firebase and a real allowed account has been tested. Email links
-remain the primary method. Provider configuration follows the production
+is enabled in Firebase and automated provider contracts pass. Then test a real
+allowed account, cancellation/retry and email fallback in the released flow
+before calling login complete. If acceptance fails, disable the flag and rerun
+all jobs of the current merged main push CI/CD run; manual dispatch does not
+deploy. Email links remain the primary method. Provider configuration follows the production
 workflow rules above; no workstation deployment is authorized by this switch.
 Native Google sign-in also defaults off and requires its separate native build
 flag and actual OAuth client/callback registration. Web build success does not

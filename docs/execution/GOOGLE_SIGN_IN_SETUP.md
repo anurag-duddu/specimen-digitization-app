@@ -100,18 +100,24 @@ on `main`. Do not run the provisioning script or Firebase deploy locally.
 
 Hosting and Data release start independently on a merge. Keep
 `SPECIMEN_GOOGLE_SIGN_IN_ENABLED` off during the initial provisioning release.
-After Data release has verified the live provider, activate Google's web
-button through the reviewed Hosting configuration path in a subsequent
-release. A provider GET alone does not prove the sign-in journey works.
+After Data release has verified the live provider and automated contracts pass,
+set the public repository variable to `true`, then rerun **all jobs** of the
+current merged main push CI/CD run (or use the next protected main merge).
+An explicit manual Hosting dispatch does not deploy or forward the flag, and a
+failed-jobs-only rerun cannot reuse another attempt's web artifact. A provider
+GET alone does not prove the sign-in journey works.
 
 Check the released app, public deployment marker, all three workflow outcomes,
 and API version according to `docs/DEPLOYMENT.md`. Then check a real browser
 handoff, cancellation/retry, successful admission, and the email fallback.
 Account interaction requires the user's own participation or explicit
 authorization; synthetic tests cannot establish museum account eligibility.
+These live checks are required before calling the login release complete; they
+follow button activation so the released flow can actually be exercised.
 If Google reports an organization policy block, record its actual error and
 request the specific Workspace app approval. Email stays available. If the
-provider itself fails, keep the Google flag off and fix forward through a PR.
+provider itself fails, disable the Google flag, rerun the complete current main
+push CI/CD workflow, and fix forward through a PR.
 
 ## References
 

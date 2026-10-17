@@ -1,12 +1,13 @@
 # Login improvements
 
-## Required behavior (corrected 2026-10-17)
+## Required behavior (owner decision, 2026-10-17)
 
 Keep at most two sign-in methods. Email links are the primary method. Google
 sign-in is the second method, delivered after the provider is configured and
 verified for this Firebase application. A hidden, unconfigured button does not
-complete this requirement. A separate institution SAML/OIDC connection and email one-time
-codes are outside this change.
+complete this requirement. The owner explicitly chose Firebase's built-in email for this release after
+learning that its standard email cannot include a short numeric code. A separate
+institution SAML/OIDC connection and custom email delivery are deferred.
 
 Entering an email in this app sends a sign-in link. Logging into Gmail to open
 that message is separate from federating this app with the museum's identity
@@ -25,10 +26,17 @@ content without a surrounding card. Keep the current action and identity easy
 to recognize, with concise instructions and contextual help.
 
 After sending, show the recipient, Change email and a primary Open Gmail action.
-Resend retains its cooldown. A disclosed paste-link input recovers a handoff that
-opened on another device or failed to return; it uses the same trusted-link and
-Firebase checks and never persists the pasted action code. Opening Gmail is an
-external website handoff, not authentication or a promise to open its native app.
+Resend retains its cooldown. The production full-URL paste field is removed; it
+is not a substitute for the requested numeric code. Opening Gmail is an external
+website handoff, not authentication or a promise to open its native app.
+
+Completing the Firebase link in another tab updates the original tab when both
+share the same origin/profile and supported Firebase persistence. Preserve the
+original intended collection route and clear stale sent-email state after
+authentication. The browser and mail client choose which tab opens or receives
+focus; the app cannot force exact tab reuse or share sessions across origins.
+Native link return still requires a signed app with working domain associations;
+source code alone does not qualify the installed-device path.
 
 ## Evidence and design decisions
 
@@ -73,7 +81,8 @@ and iOS apps exist. Native OAuth client registration and physical handoff are
 not confirmed. No provider settings were changed by this inspection.
 
 `SPECIMEN_GOOGLE_SIGN_IN_ENABLED` defaults to false. Enable it only after Google
-is configured in Firebase and real account eligibility is tested. Native also
+is configured in Firebase and automated provider checks pass. Then exercise a
+real allowed account in the released flow before calling the release complete. Native also
 requires `SPECIMEN_GOOGLE_NATIVE_ENABLED` and actual platform/client setup.
 Google support does not establish that institution policy permits this OAuth
 application. The user has chosen not to involve museum IT at this stage.
@@ -97,7 +106,7 @@ work. Prune only owned merged work after preserving the append-only session log.
   and form, with before/after evidence at web, tablet and phone sizes.
 - Open Gmail acts only on a deliberate tap, reports failure without private
   platform details, and ignores stale completion after changing the recipient.
-- Pasted links reject foreign hosts, wrong actions, duplicate codes and foreign
+- Returned links reject foreign hosts, wrong actions, duplicate codes and foreign
   continuations before Firebase. Do not read the clipboard in the background.
 - Phone keyboard, 200% text, landscape, dark mode and reduced motion retain
   readable content and reachable actions throughout the journey.
@@ -116,3 +125,22 @@ Primary references: [Firebase Flutter federation](https://firebase.google.com/do
 [Google button branding](https://developers.google.com/identity/branding-guidelines),
 [Firebase provider configuration](https://firebase.google.com/docs/auth/configure-providers-cli),
 and [Firebase session revocation](https://firebase.google.com/docs/auth/admin/manage-sessions).
+
+## Options for a short code later
+
+1. **Firebase built-in email (chosen now):** magic-link sign-in, concise inbox
+   stage, resend/change-email recovery and shared-tab session completion. No
+   additional email service or museum SSO configuration is needed.
+2. **One email with both code and link:** keep Firebase identity and add an
+   owned transactional email sender. The tested implementation is preserved on
+   `codex/login-journey-complete` at `18288554`; sender setup, separate narrowly
+   scoped runtime permissions and real delivery acceptance remain prerequisites.
+   Nothing from that custom sender service is being activated in this release.
+
+The exact [Perplexity iOS reference](https://mobbin.com/flows/feee70ed-a591-4f71-8730-c7f73655cd0e)
+shows Check your email and Enter code manually. The exact
+[Plain reference](https://mobbin.com/flows/ce779e11-e45f-4a02-b2c2-128c4ba402ae)
+shows email-first SSO, Google and Last used. Their email bodies were not verified;
+the same-email code-and-link requirement came directly from the owner. These
+references guide hierarchy and recognition without claiming their provider
+capabilities are built into Firebase.

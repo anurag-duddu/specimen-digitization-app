@@ -105,8 +105,6 @@ class MagicLinkSignInScreen extends StatefulWidget {
 
 class _MagicLinkSignInScreenState extends State<MagicLinkSignInScreen> {
   final _email = TextEditingController();
-  final _manualLink = TextEditingController();
-  bool _manualLinkExpanded = false;
   bool _openingInbox = false;
   String? _inboxError;
   int _inboxAttempt = 0;
@@ -151,16 +149,12 @@ class _MagicLinkSignInScreenState extends State<MagicLinkSignInScreen> {
       _inboxAttempt++;
       _openingInbox = false;
       _inboxError = null;
-      _manualLink.clear();
-      _manualLinkExpanded = false;
     }
     if (controller.handlingLink != _lastHandlingLink) {
       _lastHandlingLink = controller.handlingLink;
       _inboxAttempt++;
       _openingInbox = false;
       _inboxError = null;
-      _manualLink.clear();
-      _manualLinkExpanded = false;
     }
     setState(() {});
   }
@@ -171,7 +165,6 @@ class _MagicLinkSignInScreenState extends State<MagicLinkSignInScreen> {
     controller.removeListener(_changed);
     if (widget.controller == null) controller.dispose();
     _inboxAttempt++;
-    _manualLink.dispose();
     _email.dispose();
     super.dispose();
   }
@@ -243,14 +236,6 @@ class _MagicLinkSignInScreenState extends State<MagicLinkSignInScreen> {
     });
   }
 
-  void _useManualLink() {
-    if (controller.busy || _googleBusy || !controller.initialized) return;
-    final link = _manualLink.text;
-    // Never retain the action code after handing it to the trusted-link parser.
-    _manualLink.clear();
-    controller.acceptPastedLink(link);
-  }
-
   static String _submitLabel(
     MagicLinkController controller, {
     required bool confirm,
@@ -286,7 +271,7 @@ class _MagicLinkSignInScreenState extends State<MagicLinkSignInScreen> {
           purpose: confirm
               ? 'Use the email address that received this link.'
               : sent
-              ? 'Your sign-in link is ready in your inbox.'
+              ? 'Use the sign-in link in your email.'
               : 'Use your fieldmuseum.org email.',
           icon: controller.hasError
               ? UiIcons.error
@@ -452,39 +437,6 @@ class _MagicLinkSignInScreenState extends State<MagicLinkSignInScreen> {
                   ),
                 ),
               ),
-            if (sent && !pasteDemo) ...[
-              SizedBox(height: ui.space.s3),
-              UiButton(
-                label: 'Use email link',
-                variant: UiButtonVariant.ghost,
-                trailing: _manualLinkExpanded
-                    ? UiIcons.collapse
-                    : UiIcons.expand,
-                onPressed: busy
-                    ? null
-                    : () => setState(
-                        () => _manualLinkExpanded = !_manualLinkExpanded,
-                      ),
-              ),
-              if (_manualLinkExpanded) ...[
-                SizedBox(height: ui.space.s3),
-                UiField(
-                  label: 'Paste the full sign-in link',
-                  controller: _manualLink,
-                  enabled: !busy,
-                  keyboardType: TextInputType.url,
-                  textInputAction: TextInputAction.done,
-                  autocorrect: false,
-                  onSubmitted: (_) => _useManualLink(),
-                ),
-                SizedBox(height: ui.space.s3),
-                UiButton(
-                  label: 'Sign in',
-                  variant: UiButtonVariant.secondary,
-                  onPressed: busy ? null : _useManualLink,
-                ),
-              ],
-            ],
             if (pasteDemo && sent) ...[
               SizedBox(height: ui.space.s3),
               UiButton(
