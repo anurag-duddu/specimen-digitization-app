@@ -271,9 +271,12 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
       await prefs.remove(_storageKey);
       return false;
     }
-    final List<Json> stored = objects(
-      jsonDecode(prefs.getString(_storageKey) ?? '[]'),
-    );
+    List<Json> stored = const <Json>[];
+    try {
+      stored = objects(jsonDecode(prefs.getString(_storageKey) ?? '[]'));
+    } catch (_) {
+      // A damaged saved list must not block new uploads. This save replaces it.
+    }
     for (final ManifestEntry entry in entries) {
       if (stored.any(
         (row) =>

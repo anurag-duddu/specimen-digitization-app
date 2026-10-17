@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
@@ -1502,6 +1503,48 @@ void main() {
         session.close();
       },
     );
+  }
+
+  for (final String saved in ['not json', '{"unexpected":true}', '[17]']) {
+    test('G1 sends a new photo after restoring $saved', () async {
+      final String storageKey = 'upload-handles-v1:broken:${scope.key}';
+      SharedPreferences.setMockInitialValues({storageKey: saved});
+      final TransferRepository repository = TransferRepository()
+        ..holdFirst = false
+        ..completionResponse = {
+          'specimen_id': 'new-photo',
+          'status': 'pending',
+        };
+      final IntakeTransferSession session = IntakeTransferSession(
+        repository,
+        scope,
+        'broken',
+      );
+      addTearDown(session.close);
+      await session.restore();
+      expect(session.restoreError, 'Earlier photos could not be restored.');
+      expect(session.entries, isEmpty);
+
+      final ManifestEntry photo = entry('new-photo');
+      session.entries.add(photo);
+      Object? sendError;
+      try {
+        await session.start();
+      } catch (error) {
+        sendError = error;
+      }
+      expect(repository.started, ['new-photo.jpg']);
+      expect(sendError, isNull);
+      expect(repository.completions, 1);
+      expect(photo.file, isNull);
+      expect(intakeStatus(photo).status, 'Starting');
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final dynamic rewritten = jsonDecode(prefs.getString(storageKey)!);
+      expect(rewritten, isA<List<dynamic>>());
+      expect(rewritten, hasLength(1));
+      expect(rewritten.single['specimen_id'], 'new-photo');
+      expect(rewritten.single['upload_id'], photo.digest);
+    });
   }
 
   test('an unreadable saved list uses the short restore banner', () async {
