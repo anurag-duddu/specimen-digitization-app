@@ -6,11 +6,16 @@ from urllib.parse import urlsplit
 
 
 def validate(env):
+    google = env.get("SPECIMEN_GOOGLE_SIGN_IN_ENABLED", "false")
+    if google not in ("", "true", "false"):
+        raise ValueError("invalid Google sign-in setting: expected true or false")
     api = env.get("SPECIMEN_API_BASE_URL", "")
     key = env.get("SPECIMEN_RECAPTCHA_SITE_KEY", "")
     if env.get("SPECIMEN_AUTH_EMULATOR_HOST") or env.get("SPECIMEN_LOCAL_SYNTHETIC", "false") != "false":
         raise ValueError("production cannot use emulator or synthetic settings")
     if not api and not key:
+        if google == "true":
+            raise ValueError("Google sign-in requires the public API and App Check settings")
         return  # Existing Hosting setup screen remains releasable before bootstrap.
     if not api or not key:
         raise ValueError("public API URL and App Check site key must be configured together")

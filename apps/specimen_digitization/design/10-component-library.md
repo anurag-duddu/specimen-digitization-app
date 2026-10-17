@@ -78,6 +78,7 @@ apps/specimen_digitization/packages/specimen_ui/
   CHANGELOG.md
   LICENSES/OFL-Geist.txt
   assets/fonts/GeistVF.ttf, GeistMonoVF.ttf
+  assets/google-sign-in/       Google's G, Google Sans Medium and their licence, for UiGoogleSignInButton only
   lib/specimen_ui.dart         barrel: exports foundation, primitives, controls
   lib/gallery.dart             barrel: exports UiGallery (debug only)
   lib/testing.dart             barrel: the glass pane counters, for test harnesses
@@ -493,6 +494,87 @@ the disc of 09 section 1. It is the one widget in the package that reads
 `WindowClass`, because it is an arrangement rather than a control. `UiDialog`
 and `UiSheet` adopt it for their actions and patterns use it for form footers,
 so no screen writes its own `Row` of buttons.
+
+**`UiGoogleSignInButton`.** Added 2026-10-17. Google's "Sign in with Google"
+button as one component of the system, drawn identically on every platform.
+Before it, the button was a private widget in the application that padded its
+content by `defaultTargetPlatform` (16 and 12 on iOS, 12 and 10 elsewhere), drew
+a 4 dp rectangle, and held four sizes as constants, which 09 section 2
+principle 5 ("Behaviour adapts, identity does not") and the platform and
+named-size gates forbid. The owner decided it in the coordinator Claude Code
+session on 2026-10-17 at about 17:41Z: "Make the Google button one design-system
+component that looks the same on every platform while following Google's
+branding". Where sign-in with Google is offered stays the application's
+decision and is not this control's.
+
+Anatomy, from Google's "Sign in with Google branding guidelines"
+(<https://developers.google.com/identity/branding-guidelines>, the custom
+button section, updated 2026-07-07): Google's pill, 40 high at normal text, a
+1 dp outline drawn inside the edge, the standard colour "G" in a 20 by 20 box, the label in
+Google Sans Medium 14/20, and paddings of 12 before the G, 10 between the G and
+the label and 12 after it. Fill, outline and label colour are Google's Light
+theme in a light window and its Dark theme in a dark one (`GoogleSignInPalette`).
+The label is "Sign in with Google", one of the three the page recommends, and
+never "Google" alone. Every measurement is a named constant of
+`GoogleSignInBrand` in `foundation/google_sign_in_brand.dart`, each with the
+figure of the page it comes from: a third party's brand is not ours to retune,
+so it is not a token, and the foundation is where the package gate
+(`no_literal_geometry`) already allows a size to be a number. The component
+itself writes none, and reads no platform: no `kIsWeb`, no
+`defaultTargetPlatform`, no `Platform`, no theme `platform`. A test pumps it on
+every `TargetPlatform`, in both modes, and compares size, semantics and pixels.
+
+The page prints two figures. This component draws the one it labels "Android &
+Web (mobile + desktop)" everywhere, iPhone included, and does not read the one
+for iOS (44 high, paddings of 16, 12 and 16, Roboto Medium), because one look on
+every platform was the decision. The page does not say whether Google's brand
+review accepts the first figure in an iPhone app; that is not verified.
+
+The pill is a deliberate brand exception to the system's shape. The page
+pre-approves two shapes, "Rectangular" and "Pill", and the figure it publishes
+for a custom button is the pill. The system's command buttons are the 8 dp
+superellipse (`UiButton` draws `Squircle.border(ui.shape.inner)`; the word
+"Capsule" at the head of its entry above is out of date), and this button keeps
+Google's, because a third party's brand is not ours to reshape. It draws its
+stadium from `StadiumBorder` directly, not from `ui.shape.capsule`, which
+`shape.dart` reserves for intrinsically rounded forms.
+
+Behaviour is the control contract. It is a `Pressable`, so the hit box is 48 dp
+with the 40 dp button inside it, the focus ring is a stadium around the
+pill, hover and press lift the button toward its label colour at 8 and 12
+percent in light and 10 and 14 in dark (Google's colours at rest are unchanged),
+and the press layer takes its duration from `ui.motion`, so
+`MediaQuery.disableAnimations` snaps it. The component starts no animation of
+its own. Semantics `button`, label "Sign in with Google", the G excluded.
+`busy` refuses activation, keeps focus and keeps the enabled paint, as
+`UiButton.loading` does. A disabled button (null `onPressed`, not busy) gives
+`disabledReason` on its hint and on a tooltip, and is painted from the system's
+disabled tokens as `UiButton`'s is (03 section 3.6): the label in
+`disabled.content`, the 1 dp outline in `disabled.outline`, on Google's own fill,
+with the G drawn exactly as enabled. No opacity touches the button: 03 section
+3.6 rejects Material's 38 percent by name because it measures under 3:1 here,
+and an alpha over the G would change the colour the page says is not to change.
+The page does not describe a disabled button, so these are the system's
+choices, not Google's. Measured with the WCAG 2.2 formulas in the component's
+test: light, the label is 5.74:1 on Google's `#FFFFFF` and the outline 3.95:1 on
+it, 3.78:1 on `ground` and 3.95:1 on `paper`; dark, the label is 7.81:1 on
+Google's `#131314` and the outline 4.70:1 on it, 4.78:1 on `ground` and 4.50:1
+on `paper`. The floors are 4.5:1 for the label and 3:1 for the outline. Its
+licence is registered beside Geist's in `UiFonts.registerLicense`, so Google
+Sans is listed on the application's licence page.
+
+Four departures, stated rather than hidden. The shape is Google's pill, as
+above. Its label wraps onto a second line
+at a width or text size that does not hold it, where every other label ends in
+an ellipsis, because an ellipsis cuts Google's call to action to "Sign in with
+Go"; clause 13 is therefore not claimed and the contract test leaves it off.
+The G keeps 20 by 20 at every text size, because the page says its size does
+not change, so only the height grows (60 at 200 percent). And it takes the width
+its content needs and does not stretch to the column, as `UiButton` does
+(`UiButtonRow` stacks actions at their own widths). It is not on the actions gallery page yet: adding a specimen
+moves the family goldens in all their combinations, and this change is the
+component and its adoption. Retires the private `_GoogleSignInButton` of
+`lib/src/google_sign_in_option.dart`.
 
 ### 4.2 Inputs family
 

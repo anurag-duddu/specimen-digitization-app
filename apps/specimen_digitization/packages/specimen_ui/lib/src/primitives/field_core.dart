@@ -39,6 +39,7 @@ class FieldCore extends StatefulWidget {
     this.inputFormatters,
     this.keyboardType,
     this.textInputAction,
+    this.autofillHints = const <String>[],
     this.textCapitalization = TextCapitalization.none,
     this.onChanged,
     this.onSubmitted,
@@ -80,6 +81,9 @@ class FieldCore extends StatefulWidget {
 
   /// What the action key does.
   final TextInputAction? textInputAction;
+
+  /// Platform autofill purposes, forwarded unchanged to the text editor.
+  final Iterable<String>? autofillHints;
 
   /// How the platform capitalises.
   final TextCapitalization textCapitalization;
@@ -211,6 +215,7 @@ class _FieldCoreState extends State<FieldCore> {
         inputFormatters: widget.inputFormatters,
         keyboardType: widget.keyboardType,
         textInputAction: widget.textInputAction,
+        autofillHints: widget.autofillHints,
         textCapitalization: widget.textCapitalization,
         onChanged: widget.onChanged,
         onSubmitted: widget.onSubmitted,

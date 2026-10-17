@@ -511,6 +511,40 @@ Gitleaks then flags the five scanner identifiers, so one new rule-local AND allo
 matches only those exact `hashed_secret` lines inside `.secrets.baseline`. No file,
 path or field pattern is excluded from either scanner.
 
+## 2026-10-17 shared-wire fixture Gitleaks correction
+
+The preceding engine-contract audit covered the scanner identifier but omitted
+Gitleaks' finding on the actual synthetic `Idempotency-Key` line. The exporter
+passes that fixed value to its in-process TestClient using emulator adapters,
+SQLite and synthetic identity and membership. Python and Dart contract tests
+assert the same value; it is not an authentication credential. Its recomputed
+SHA-1 matches the previously reviewed baseline identifier
+`5d876c14b2eb6b173d3dd0d4715df50b4cb352a4`.
+
+The additional `generic-api-key` rule-local AND allowlist requires both the exact
+`tests/fixtures/general_api_contracts.json` path and the complete anchored field
+line containing that one fixed value. The fixture, exporter, default rules and
+existing exceptions remain unchanged. A different value, path or field, and
+credentials adjacent to or appended on the same line, remain subject to scanning.
+Validation of those controls is recorded in SESSION_LEARNINGS.
+
+
+## 2026-10-17 public CocoaPods specification checksums
+
+Adding Google's native sign-in dependency introduces AppAuth 2.1.0 and
+GTMAppAuth 5.0.0. Gitleaks classifies their `SPEC CHECKSUMS` values as generic
+API keys because their names contain Auth. CocoaPods 1.16.2 computes these
+values as SHA-1 of the public podspec file bytes. Independent recomputation
+against the installed trunk specifications matches both locked values; the
+specifications point to openid/AppAuth-iOS tag 2.1.0 and google/GTMAppAuth tag
+5.0.0 respectively. These are public dependency integrity metadata.
+
+A separate rule-local AND exception matches only the exact iOS Podfile.lock
+path and each complete anchored dependency-name/checksum line. It excludes no
+whole file or general checksum pattern. Different values, paths and fields,
+and adjacent or appended credential text, continue to be scanned. Control
+execution is recorded in SESSION_LEARNINGS.
+
 ## 2026-10-17 shared-wire fixture idempotency key: reviewed Gitleaks false positive
 
 Pinned Gitleaks 8.30.1 reports `tests/fixtures/general_api_contracts.json` line 23 as
