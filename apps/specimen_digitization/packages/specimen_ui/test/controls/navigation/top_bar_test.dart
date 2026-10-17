@@ -1,5 +1,9 @@
 // The top bar (10 section 4.4, `UiTopBar`).
 
+import 'dart:ui' as dart_ui;
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -17,6 +21,7 @@ Widget _bar({
   bool? scrolledUnder,
   EdgeInsets padding = EdgeInsets.zero,
   double? width = 800,
+  UiTopBarForm form = UiTopBarForm.page,
 }) => Builder(
   builder: (BuildContext context) {
     final Widget bar = UiTopBar(
@@ -25,6 +30,7 @@ Widget _bar({
       center: center,
       actions: actions,
       scrolledUnder: scrolledUnder,
+      form: form,
     );
     return MediaQuery(
       data: MediaQuery.of(context).copyWith(padding: padding),
@@ -402,5 +408,319 @@ void main() {
           'what it was given and the title ellipsises instead',
     );
     expect(find.byType(UiIcon), findsNWidgets(4));
+  });
+
+  // ---------------------------------------------------------------------
+  // The workspace form (10 section 4.4, amended 2026-10-17): the compact
+  // shell's header, one surface with the status strip above it.
+  // ---------------------------------------------------------------------
+  group('workspace form', () {
+    const List<Widget> discs = <Widget>[
+      SizedBox.square(key: ValueKey<String>('env'), dimension: 48),
+      SizedBox.square(key: ValueKey<String>('account'), dimension: 48),
+    ];
+    const Widget switcher = SizedBox(
+      key: ValueKey<String>('switcher'),
+      width: 160,
+      height: 48,
+    );
+
+    Widget workspace({
+      EdgeInsets padding = EdgeInsets.zero,
+      bool? scrolledUnder,
+      Widget leading = switcher,
+      List<Widget> actions = discs,
+      double? width = 390,
+    }) => Align(
+      // Pinned to the window's top left so positions read as a phone's do.
+      alignment: Alignment.topLeft,
+      child: _bar(
+        form: UiTopBarForm.workspace,
+        leading: leading,
+        actions: actions,
+        padding: padding,
+        scrolledUnder: scrolledUnder,
+        width: width,
+      ),
+    );
+
+    /// The painted colour at [at], read from the pixels the bar produced.
+    Future<dart_ui.Color> colourAt(
+      WidgetTester tester,
+      GlobalKey boundaryKey,
+      Offset at,
+    ) async {
+      final RenderRepaintBoundary boundary = tester
+          .renderObject<RenderRepaintBoundary>(find.byKey(boundaryKey));
+      return (await tester.runAsync(() async {
+        final dart_ui.Image image = await boundary.toImage();
+        final ByteData data = (await image.toByteData(
+          format: dart_ui.ImageByteFormat.rawRgba,
+        ))!;
+        final int i = (at.dy.toInt() * image.width + at.dx.toInt()) * 4;
+        final dart_ui.Color colour = dart_ui.Color.fromARGB(
+          255,
+          data.getUint8(i),
+          data.getUint8(i + 1),
+          data.getUint8(i + 2),
+        );
+        image.dispose();
+        return colour;
+      }))!;
+    }
+
+    for (final Brightness mode in Brightness.values) {
+      for (final bool? scrolled in <bool?>[null, false, true]) {
+        testWidgets(
+          'paints paper under the top inset and the bar, ${mode.name}, '
+          'scrolledUnder $scrolled',
+          (WidgetTester tester) async {
+            final GlobalKey boundary = GlobalKey();
+            await tester.pumpWidget(
+              uiHarness(
+                brightness: mode,
+                child: RepaintBoundary(
+                  key: boundary,
+                  child: workspace(
+                    padding: const EdgeInsets.only(top: 47),
+                    scrolledUnder: scrolled,
+                  ),
+                ),
+              ),
+            );
+            await tester.pumpAndSettle();
+            final UiThemeData ui = tester.element(find.byType(UiTopBar)).ui;
+            final Rect bar = tester.getRect(find.byType(UiTopBar));
+            expect(bar.top, 0);
+            expect(bar.height, 47 + 64, reason: 'inset plus 8, 48 and 8');
+            final dart_ui.Color paper = ui.color.paper;
+            final int want = paper.toARGB32();
+            // Inside the status strip, at the bar's first row, in its gutter,
+            // and on its last pixel row: all one colour, and it is paper.
+            for (final Offset at in <Offset>[
+              const Offset(3, 1),
+              const Offset(3, 23),
+              const Offset(3, 46),
+              const Offset(3, 47),
+              const Offset(3, 80),
+              Offset(bar.width - 3, 10),
+              Offset(bar.width - 3, bar.height - 1),
+            ]) {
+              final dart_ui.Color painted = await colourAt(
+                tester,
+                boundary,
+                at,
+              );
+              expect(
+                painted.toARGB32(),
+                want,
+                reason: 'the bar is not paper at $at in ${mode.name}',
+              );
+            }
+          },
+        );
+      }
+    }
+
+    testWidgets('it owns no glass: opaque ground, no blur, no pane', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        uiHarness(
+          child: workspace(
+            padding: const EdgeInsets.only(top: 24),
+            scrolledUnder: true,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(GlassSurface), findsNothing);
+      expect(find.byType(BackdropFilter), findsNothing);
+      expect(glassPaneCount(), 0);
+      final UiThemeData ui = tester.element(find.byType(UiTopBar)).ui;
+      final ColoredBox ground = tester.widget<ColoredBox>(
+        find
+            .descendant(
+              of: find.byType(UiTopBar),
+              matching: find.byType(ColoredBox),
+            )
+            .first,
+      );
+      expect(ground.color, ui.color.paper);
+    });
+
+    testWidgets('the page form is not changed by it: transparent, 16 gutter', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        uiHarness(
+          child: _bar(
+            title: 'Queue',
+            padding: const EdgeInsets.only(top: 47),
+            scrolledUnder: false,
+            leading: const SizedBox.square(
+              key: ValueKey<String>('back'),
+              dimension: 48,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final UiThemeData ui = tester.element(find.byType(UiTopBar)).ui;
+      expect(
+        find.descendant(
+          of: find.byType(UiTopBar),
+          matching: find.byWidgetPredicate(
+            (Widget w) => w is ColoredBox && w.color == ui.color.paper,
+          ),
+        ),
+        findsNothing,
+        reason: 'the page form paints no ground over a page',
+      );
+      expect(tester.getSize(find.byType(UiTopBar)).height, 47 + 56);
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey<String>('back'))).dx,
+        16,
+        reason: 'the page form keeps its 16 dp gutter',
+      );
+    });
+
+    for (final UiDensityMode density in UiDensityMode.values) {
+      testWidgets('it is 64 dp of bar, 8 dp of air around 48 dp controls, '
+          'at ${density.name} density', (WidgetTester tester) async {
+        await tester.pumpWidget(
+          uiHarness(
+            density: density,
+            child: workspace(padding: const EdgeInsets.only(top: 24)),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(tester.getSize(find.byType(UiTopBar)), const Size(390, 24 + 64));
+        final Rect lead = tester.getRect(
+          find.byKey(const ValueKey<String>('switcher')),
+        );
+        expect(lead.left, 8, reason: 'a 8 dp gutter');
+        expect(lead.top, 24 + 8, reason: '8 dp under the inset');
+        final Rect env = tester.getRect(
+          find.byKey(const ValueKey<String>('env')),
+        );
+        final Rect account = tester.getRect(
+          find.byKey(const ValueKey<String>('account')),
+        );
+        expect(account.right, 390 - 8, reason: 'a 8 dp gutter at the end');
+        expect(env.right, account.left, reason: 'the actions touch');
+        expect(env.top, 24 + 8);
+        expect(account.top, 24 + 8);
+      });
+    }
+
+    testWidgets('it grows with a tall control and keeps 8 dp above and below', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        uiHarness(
+          child: workspace(
+            padding: const EdgeInsets.only(top: 47),
+            leading: const SizedBox(
+              key: ValueKey<String>('switcher'),
+              width: 160,
+              height: 64.25,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.getSize(find.byType(UiTopBar)).height, 47 + 8 + 64.25 + 8);
+      final Rect lead = tester.getRect(
+        find.byKey(const ValueKey<String>('switcher')),
+      );
+      expect(lead.top, 47 + 8);
+      expect(
+        tester.getRect(find.byType(UiTopBar)).bottom - lead.bottom,
+        8,
+        reason: '8 dp under the tallest control',
+      );
+    });
+
+    testWidgets('side insets are inside the ground and outside the gutters', (
+      WidgetTester tester,
+    ) async {
+      // A phone on its side: the view has to be as wide as the bar.
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(844, 390);
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        uiHarness(
+          size: const Size(844, 390),
+          child: workspace(
+            width: 844,
+            padding: const EdgeInsets.only(left: 44, right: 24),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.getRect(find.byType(UiTopBar)).left, 0);
+      expect(tester.getRect(find.byType(UiTopBar)).right, 844);
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey<String>('switcher'))).dx,
+        44 + 8,
+      );
+      expect(
+        tester.getRect(find.byKey(const ValueKey<String>('account'))).right,
+        844 - 24 - 8,
+      );
+    });
+
+    testWidgets('the leading slot takes what the actions leave and is cut, '
+        'not overflowed', (WidgetTester tester) async {
+      final List<FlutterErrorDetails> reported = <FlutterErrorDetails>[];
+      final FlutterExceptionHandler? previous = FlutterError.onError;
+      FlutterError.onError = reported.add;
+      await tester.pumpWidget(
+        uiHarness(
+          child: workspace(
+            width: 360,
+            leading: const SizedBox(
+              key: ValueKey<String>('switcher'),
+              width: 2000,
+              height: 48,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      FlutterError.onError = previous;
+      expect(
+        reported.where(
+          (FlutterErrorDetails d) => d.toString().contains('overflow'),
+        ),
+        isEmpty,
+      );
+      final Rect lead = tester.getRect(
+        find.byKey(const ValueKey<String>('switcher')),
+      );
+      expect(lead.left, 8);
+      expect(
+        lead.right,
+        tester.getRect(find.byKey(const ValueKey<String>('env'))).left,
+        reason: 'the leading slot is bounded by the first action',
+      );
+    });
+
+    testWidgets('the order mirrors under RTL', (WidgetTester tester) async {
+      await tester.pumpWidget(
+        uiHarness(textDirection: TextDirection.rtl, child: workspace()),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester.getRect(find.byKey(const ValueKey<String>('switcher'))).right,
+        390 - 8,
+        reason: 'the switcher is at the start, which is the right in RTL',
+      );
+      expect(
+        tester.getRect(find.byKey(const ValueKey<String>('account'))).left,
+        8,
+      );
+    });
   });
 }

@@ -59,12 +59,12 @@ Finder uiTooltipped(String message) => find.byWidgetPredicate(
 ///
 /// The pill and the collapsed rail draw a glyph and publish the name as a
 /// tooltip; the extended rail draws the word under the glyph; the sidebar
-/// draws a row titled with it.
+/// draws a row titled with it; the compact tab bar is a `Pressable` cell per
+/// destination, so it is matched once, by its label, like the rest.
 Finder uiDestination(String label) => find.byWidgetPredicate(
   (Widget widget) =>
       (widget is UiTooltip && widget.message == label) ||
       (widget is UiListRow && widget.title == label) ||
-      widget.key == ValueKey<String>('mobile-nav-${label.toLowerCase()}') ||
       (widget is Pressable && widget.semanticsLabel == label),
   description: 'navigation destination "$label"',
 );

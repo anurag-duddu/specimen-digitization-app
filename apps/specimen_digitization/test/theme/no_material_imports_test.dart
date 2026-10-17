@@ -20,14 +20,14 @@ import 'package:flutter_test/flutter_test.dart';
 
 /// The application files that may import `material.dart`, and why.
 ///
-/// The bridge, transitions and explicitly requested native compact navigation.
-/// The component gate permits only the shell's one native NavigationBar;
-/// every remaining retired component stays forbidden across the same tree.
+/// The bridge and the transitions. The shell was on this list for the native
+/// compact `NavigationBar` requested on 2026-09-29, until the compact bottom
+/// tab bar became one brand component on every platform (`UiTabBar`,
+/// 2026-10-17; 10 section 4.4). Every retired component is now forbidden
+/// across the whole tree with no exception.
 const Map<String, String> infrastructureImporters = <String, String>{
   'lib/main.dart': 'the carrier MaterialApp, which is the bridge itself',
   'lib/src/theme/app_theme.dart': 'it builds the bridge ThemeData',
-  'lib/src/app/shell.dart':
-      'the native phone NavigationBar requested on 2026-09-29',
   'lib/src/capture/capture_screen.dart':
       'MaterialPageRoute, the pushed form of the same transition',
 };
@@ -75,19 +75,18 @@ List<String> importersUnder(String root) {
 }
 
 void main() {
-  test('the shell imports only the native navigation component family', () {
-    final String source = File(
-      'lib/src/app/shell.dart',
-    ).readAsStringSync().replaceAll(_materialImport, '');
-    final Set<String> members = RegExp(
-      r'\bmaterial\.(\w+)',
-    ).allMatches(source).map((RegExpMatch match) => match.group(1)!).toSet();
-    expect(members, <String>{
-      'NavigationBar',
-      'NavigationBarTheme',
-      'NavigationBarThemeData',
-      'NavigationDestination',
-    });
+  test('the shell imports neither Material nor Cupertino', () {
+    // The shell once imported both to draw a stock bar per platform. The tab
+    // bar is `UiTabBar` now, and nothing in the shell has a reason to name
+    // either library's components again.
+    final String source = File('lib/src/app/shell.dart').readAsStringSync();
+    expect(_materialImport.hasMatch(source), isFalse);
+    expect(
+      RegExp(r"import\s+'package:flutter/cupertino\.dart'").hasMatch(source),
+      isFalse,
+    );
+    expect(RegExp(r'\bmaterial\.\w+').hasMatch(source), isFalse);
+    expect(RegExp(r'\bcupertino\.\w+').hasMatch(source), isFalse);
   });
 
   test('no file under lib/ gained a Material import', () {
@@ -110,7 +109,7 @@ void main() {
   test('every named infrastructure importer still needs it', () {
     // The list is a statement about today, not a permission that outlives its
     // reason: a file that stops importing it comes off, so the next reader
-    // sees four names and four live reasons.
+    // sees the names that remain and a live reason for each.
     final List<String> found = importersUnder('lib');
     infrastructureImporters.forEach((String path, String why) {
       expect(

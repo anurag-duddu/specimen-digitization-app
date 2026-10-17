@@ -23,8 +23,15 @@ const List<double> textScales = <double>[1.0, 1.3, 1.5, 2.0];
 final Finder switcher = find.bySemanticsLabel(
   RegExp('^Authorized collection,'),
 );
-final Finder collectionHeader = find.byKey(
-  const ValueKey('global-sidebar-collection'),
+
+/// The box the switcher sits in: the docked sidebar's collection header, or,
+/// where enlarged text puts the shell in its phone layout, the shell's one
+/// compact top bar (10 section 4.4, `UiTopBar` in its workspace form).
+final Finder collectionHeader = find.byWidgetPredicate(
+  (Widget widget) =>
+      widget.key == const ValueKey<String>('global-sidebar-collection') ||
+      widget.key == const ValueKey<String>('shell-top-bar'),
+  description: 'the collection header (sidebar or compact top bar)',
 );
 
 void main() {

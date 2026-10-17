@@ -17,12 +17,13 @@ import '../golden/golden_harness.dart';
 import '../ui_finders.dart';
 import '../reading_region_comparison_test.dart' show selectLabel;
 
-Finder _nativeBar(TargetPlatform platform) => platform == TargetPlatform.iOS
-    ? find.byType(cupertino.CupertinoTabBar)
-    : find.byType(material.NavigationBar);
+/// The compact bottom tab bar. One brand component on every platform
+/// (10 section 4.4, `UiTabBar`), so the platform picks nothing here and the
+/// same finder serves both columns of every test below.
+Finder _tabBar(TargetPlatform platform) => find.byType(UiTabBar);
 
 Finder _tab(TargetPlatform platform, String label) =>
-    find.descendant(of: _nativeBar(platform), matching: find.text(label));
+    find.descendant(of: _tabBar(platform), matching: find.text(label));
 
 Finder get _record => find.byType(ReviewWorkbench);
 Finder get _backToSpecimens => uiIconButton('Back to specimens');
@@ -80,11 +81,7 @@ TextEditingController _draft(WidgetTester tester) =>
     tester.widget<UiField>(uiField('Accepted label text')).controller!;
 
 int _selectedTab(WidgetTester tester, TargetPlatform platform) =>
-    platform == TargetPlatform.iOS
-    ? tester
-          .widget<cupertino.CupertinoTabBar>(_nativeBar(platform))
-          .currentIndex
-    : tester.widget<material.NavigationBar>(_nativeBar(platform)).selectedIndex;
+    tester.widget<UiTabBar>(_tabBar(platform)).currentIndex;
 
 void _expectNoSidebar() {
   expect(find.byKey(const ValueKey('global-rail')), findsNothing);
@@ -122,7 +119,7 @@ void main() {
         final error = find.textContaining('The service could not be reached.');
         expect(error.hitTestable(), findsOneWidget);
         expect(uiButton('Retry').hitTestable(), findsOneWidget);
-        expect(_nativeBar(platform), findsOneWidget);
+        expect(_tabBar(platform), findsOneWidget);
         repository.fail = false;
         await _tap(tester, uiButton('Retry'));
         expect(error, findsNothing);
@@ -158,7 +155,7 @@ void main() {
           findsOneWidget,
         );
         expect(find.byType(QueueRow), findsNWidgets(3));
-        expect(_nativeBar(platform), findsOneWidget);
+        expect(_tabBar(platform), findsOneWidget);
         expect(tester.takeException(), isNull);
       },
     );
@@ -174,13 +171,10 @@ void main() {
         (tester) async {
           await _pump(tester, platform, location: location);
           final record = location == goldenSpecimenLocation;
-          expect(_nativeBar(platform), record ? findsNothing : findsOneWidget);
-          expect(
-            platform == TargetPlatform.iOS
-                ? find.byType(material.NavigationBar)
-                : find.byType(cupertino.CupertinoTabBar),
-            findsNothing,
-          );
+          expect(_tabBar(platform), record ? findsNothing : findsOneWidget);
+          // Neither platform's stock bar is drawn, on either platform.
+          expect(find.byType(material.NavigationBar), findsNothing);
+          expect(find.byType(cupertino.CupertinoTabBar), findsNothing);
           if (record) {
             expect(_backToSpecimens.hitTestable(), findsOneWidget);
           } else {
@@ -203,7 +197,7 @@ void main() {
           expect(
             bounds.bottom,
             lessThanOrEqualTo(
-              record ? 844 : tester.getRect(_nativeBar(platform)).top,
+              record ? 844 : tester.getRect(_tabBar(platform)).top,
             ),
           );
           expect(tester.takeException(), isNull);
@@ -224,13 +218,13 @@ void main() {
           ),
         );
         expect(_record, findsOneWidget);
-        expect(_nativeBar(platform), findsNothing);
+        expect(_tabBar(platform), findsNothing);
         expect(_backToSpecimens.hitTestable(), findsOneWidget);
         _expectNoSidebar();
         await _tap(tester, _backToSpecimens);
         expect(_record, findsNothing);
         expect(find.byType(QueuePane), findsOneWidget);
-        expect(_nativeBar(platform), findsOneWidget);
+        expect(_tabBar(platform), findsOneWidget);
         expect(tester.state(find.byType(QueuePane)), same(list));
         expect(tester.getRect(find.byType(QueuePane)).left, 0);
         expect(tester.getRect(find.byType(QueuePane)).width, 390);
@@ -247,7 +241,7 @@ void main() {
         final router = GoRouter.of(tester.element(_record));
         await _edit(tester, 'Keep this transcription');
         final draft = _draft(tester);
-        expect(_nativeBar(platform), findsNothing);
+        expect(_tabBar(platform), findsNothing);
         router.go(goldenIntakeLocation);
         await tester.pumpAndSettle();
         expect(find.text('Discard unsaved corrections?'), findsOneWidget);
@@ -255,7 +249,7 @@ void main() {
         expect(tester.state(_record), same(state));
         expect(_draft(tester), same(draft));
         expect(draft.text, 'Keep this transcription');
-        expect(_nativeBar(platform), findsNothing);
+        expect(_tabBar(platform), findsNothing);
         expect(
           router.routerDelegate.currentConfiguration.uri.toString(),
           goldenSpecimenLocation,
@@ -285,7 +279,7 @@ void main() {
           final state = tester.state(_record);
           await _edit(tester, 'Unsaved reading');
           final draft = _draft(tester);
-          expect(_nativeBar(platform), findsNothing);
+          expect(_tabBar(platform), findsNothing);
           Future<void> requestBack() async {
             if (platformBack) {
               unawaited(tester.binding.handlePopRoute());
@@ -297,17 +291,17 @@ void main() {
 
           await requestBack();
           expect(find.text('Discard unsaved corrections?'), findsOneWidget);
-          expect(_nativeBar(platform), findsNothing);
+          expect(_tabBar(platform), findsNothing);
           await _tap(tester, uiButton('Keep editing'));
           expect(tester.state(_record), same(state));
           expect(_draft(tester), same(draft));
           expect(draft.text, 'Unsaved reading');
-          expect(_nativeBar(platform), findsNothing);
+          expect(_tabBar(platform), findsNothing);
           await requestBack();
           await _tap(tester, uiButton('Discard changes').hitTestable());
           expect(_record, findsNothing);
           expect(find.byType(QueuePane), findsOneWidget);
-          expect(_nativeBar(platform), findsOneWidget);
+          expect(_tabBar(platform), findsOneWidget);
           expect(_selectedTab(tester, platform), 0);
           _expectNoSidebar();
           expect(tester.takeException(), isNull);
@@ -330,7 +324,7 @@ void main() {
             (widget) => widget is QueueRow && widget.id == goldenSpecimenId,
           ),
         );
-        expect(_nativeBar(platform), findsNothing);
+        expect(_tabBar(platform), findsNothing);
         expect(tester.getRect(_backToSpecimens).top, greaterThanOrEqualTo(44));
         await _edit(tester, 'Continue with keyboard');
         tester.view.viewInsets = const FakeViewPadding(bottom: 300);
@@ -341,14 +335,14 @@ void main() {
           tester.getRect(uiField('Accepted label text')).bottom,
           lessThanOrEqualTo(544),
         );
-        expect(_nativeBar(platform), findsNothing);
+        expect(_tabBar(platform), findsNothing);
         expect(_draft(tester).text, 'Continue with keyboard');
         tester.view.viewInsets = const FakeViewPadding();
         await tester.pumpAndSettle();
-        expect(_nativeBar(platform), findsNothing);
+        expect(_tabBar(platform), findsNothing);
         await _tap(tester, _backToSpecimens);
         await _tap(tester, uiButton('Discard changes').hitTestable());
-        expect(_nativeBar(platform), findsOneWidget);
+        expect(_tabBar(platform), findsOneWidget);
         expect(
           tester.getRect(_tab(platform, 'Intake')).bottom,
           lessThanOrEqualTo(844 - 34),
@@ -359,7 +353,7 @@ void main() {
 
     _testOn(
       platform,
-      '$platform 320px at double text keeps native navigation usable',
+      '$platform 320px at double text keeps tab navigation usable',
       (tester) async {
         await _pump(tester, platform, size: const Size(320, 844), scale: 2);
         _expectNoSidebar();
@@ -396,7 +390,7 @@ void main() {
           expect(tester.state(_record), same(state));
           expect(_draft(tester), same(draft));
           expect(draft.text, 'Same record through rotation');
-          expect(_nativeBar(platform), findsNothing);
+          expect(_tabBar(platform), findsNothing);
           if (size.height < 600 || size.width < 768) {
             _expectNoSidebar();
             expect(tester.getRect(_record).left, 0);

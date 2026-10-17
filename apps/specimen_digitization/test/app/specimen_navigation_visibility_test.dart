@@ -24,6 +24,7 @@ Finder get _back => uiIconButton(AppShell.backLabel);
 void _expectRecordNavigation() {
   expect(_record, findsOneWidget);
   expect(_tabs, findsNothing);
+  expect(find.byType(UiTabBar), findsNothing);
   expect(find.byType(NavigationBar), findsNothing);
   expect(find.byType(cupertino.CupertinoTabBar), findsNothing);
   expect(find.byKey(const ValueKey('global-rail')), findsNothing);

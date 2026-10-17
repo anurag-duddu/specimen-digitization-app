@@ -89,6 +89,7 @@ class UiTooltip extends StatefulWidget {
     required Widget this.child,
     this.placement = PopoverPlacement.above,
     this.enabled = true,
+    this.excludeSemantics = false,
     this.style,
   }) : builder = null,
        reason = null;
@@ -106,6 +107,7 @@ class UiTooltip extends StatefulWidget {
     this.reason,
     this.placement = PopoverPlacement.above,
     this.enabled = true,
+    this.excludeSemantics = false,
     this.style,
   }) : message = null,
        child = null;
@@ -131,6 +133,19 @@ class UiTooltip extends StatefulWidget {
 
   /// False to suppress the tooltip without changing the tree around it.
   final bool enabled;
+
+  /// True to keep the open pane out of the semantics tree altogether.
+  ///
+  /// False by default: the pane publishes the message as its label and as its
+  /// `tooltip`, which is right for a control that does not say the word
+  /// itself. The pane's semantics live beneath the `OverlayPortal` that draws
+  /// it, so a caller that folds the tooltip into the control with
+  /// `MergeSemantics` folds the open pane in too, and the control reads its own
+  /// word twice and acquires a tooltip it did not have. A caller whose
+  /// semantics label already carries the whole message, such as a tab whose
+  /// word is cut, sets this: the pane is then only a picture, and the control's
+  /// label, role, state and actions are the same open and closed.
+  final bool excludeSemantics;
 
   /// Overrides the resolved style. A code review event (10 section 1.5).
   final UiTooltipStyle? style;
@@ -219,6 +234,7 @@ class _UiTooltipState extends State<UiTooltip> {
         style: style,
         dismissLabel: _fromTouch ? _dismissLabel(context) : null,
         onDismiss: _hide,
+        excludeSemantics: widget.excludeSemantics,
       ),
       child: MouseRegion(
         onEnter: (PointerEnterEvent _) => _pointerEntered(),
@@ -253,20 +269,25 @@ class _TooltipPane extends StatelessWidget {
     required this.style,
     required this.dismissLabel,
     required this.onDismiss,
+    required this.excludeSemantics,
   });
 
   final String message;
   final UiTooltipStyle style;
   final String? dismissLabel;
   final VoidCallback onDismiss;
+  final bool excludeSemantics;
 
   @override
-  Widget build(BuildContext context) => DefaultTextStyle(
-    // A tooltip is drawn in the overlay, where the host's own style is
-    // whatever the overlay sits in. The pane publishes the product's style so
-    // the message is never set in the framework fallback (11 section 5).
-    style: context.ui.defaultTextStyle,
-    child: _pane(),
+  Widget build(BuildContext context) => ExcludeSemantics(
+    excluding: excludeSemantics,
+    child: DefaultTextStyle(
+      // A tooltip is drawn in the overlay, where the host's own style is
+      // whatever the overlay sits in. The pane publishes the product's style
+      // so the message is never set in the framework fallback (11 section 5).
+      style: context.ui.defaultTextStyle,
+      child: _pane(),
+    ),
   );
 
   Widget _pane() => Semantics(

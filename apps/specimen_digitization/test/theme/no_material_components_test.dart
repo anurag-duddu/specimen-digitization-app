@@ -82,30 +82,20 @@ final RegExp _constructors = RegExp(
 /// Empty since the cleanup slot, which took the last entry: the transparent
 /// `Scaffold` in `app_router.dart` that stood over the collection subtree
 /// while its screens still needed a `Material` ancestor and a messenger. The
-/// gate forbids the retired widgets under `lib/`, with only the explicitly
-/// requested native phone NavigationBar site described below.
+/// gate forbids the retired widgets under `lib/` with no exception. It had one,
+/// the explicitly requested native phone `NavigationBar` in the shell
+/// (2026-09-29), until the compact bottom tab bar became one brand component
+/// on every platform (`UiTabBar`, 2026-10-17; 10 section 4.4).
 ///
 /// `lib/src/theme/` was out of scope while it was the adapter layer that
 /// configured those widgets. It is scanned now: the six adapter files are
 /// gone and the bridge that is left builds no component at all.
 const Map<String, int> componentBacklog = <String, int>{};
 
-// The 2026-09-29 native phone-navigation requirement permits one platform
-// NavigationBar in the shell. Other retired components and other sites retain
-// the existing ban; this is a named native control, not a component backlog.
-const String nativeNavigationPath = 'lib/src/app/shell.dart';
-final RegExp _nativeNavigation = RegExp(r'\bmaterial\.NavigationBar\(');
-
 /// Counts the retired widgets in [source], ignoring line comments so a
 /// comment naming a widget does not read as a use of it.
-int countIn(String source, {String? path}) {
-  String code = source.replaceAll(RegExp(r'//.*'), '');
-  if (path == nativeNavigationPath) {
-    final RegExpMatch? native = _nativeNavigation.firstMatch(code);
-    if (native != null) {
-      code = code.replaceRange(native.start, native.end, '');
-    }
-  }
+int countIn(String source) {
+  final String code = source.replaceAll(RegExp(r'//.*'), '');
   return _constructors.allMatches(code).length +
       _extraTerms.allMatches(code).length;
 }
@@ -117,7 +107,7 @@ Map<String, int> measure() {
   final Map<String, int> found = <String, int>{};
   for (final FileSystemEntity entity in root.listSync(recursive: true)) {
     if (entity is! File || !entity.path.endsWith('.dart')) continue;
-    final int count = countIn(entity.readAsStringSync(), path: entity.path);
+    final int count = countIn(entity.readAsStringSync());
     if (count > 0) found[entity.path] = count;
   }
   return found;
@@ -125,27 +115,18 @@ Map<String, int> measure() {
 
 void main() {
   test(
-    'native navigation permission is limited to one qualified shell site',
+    'the shell has no exemption: a stock NavigationBar there is counted',
     () {
+      // The native phone navigation permission of 2026-09-29 is gone. The tab
+      // bar is `UiTabBar`, so the one file that used to be allowed a platform
+      // `NavigationBar` is held to the same ban as every other.
+      expect(countIn('material.NavigationBar()'), 1);
+      expect(countIn('NavigationBar()'), 1);
+      expect(countIn('material.NavigationBar(); material.NavigationBar()'), 2);
       expect(
-        countIn('material.NavigationBar()', path: nativeNavigationPath),
+        countIn(File('lib/src/app/shell.dart').readAsStringSync()),
         0,
-      );
-      expect(
-        countIn(
-          'material.NavigationBar(); material.NavigationBar()',
-          path: nativeNavigationPath,
-        ),
-        1,
-      );
-      expect(countIn('NavigationBar()', path: nativeNavigationPath), 1);
-      expect(countIn('material.NavigationBar()', path: 'lib/other.dart'), 1);
-      expect(
-        countIn(
-          'material.NavigationBar(); material.TextButton()',
-          path: nativeNavigationPath,
-        ),
-        1,
+        reason: 'the shell draws UiTabBar, not a stock bar',
       );
     },
   );

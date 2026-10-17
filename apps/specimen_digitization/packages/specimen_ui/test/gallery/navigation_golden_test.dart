@@ -2,7 +2,9 @@
 //
 // The taste review for slot C4: the pill at two, three and five destinations,
 // the rail collapsed and extended, the sidebar, a page frame with a sky, a top
-// bar, an action bar and a pill, and the top bar at rest and scrolled under.
+// bar, an action bar and a pill, and the top bar at rest and scrolled under,
+// then the bottom tab bar (`UiTabBar`, added at the foot of the page on
+// 2026-10-17, which is why the window below is taller than it was).
 // A change to any of them shows as a diff here before it shows on a screen.
 //
 // The page is rendered on its own rather than inside the whole gallery, so
@@ -19,7 +21,7 @@ import 'package:specimen_ui/specimen_ui.dart';
 import '../harness/control_contract.dart';
 
 /// Tall enough to hold the whole page, at the gallery's own width.
-const Size navigationWindow = Size(1180, 1220);
+const Size navigationWindow = Size(1180, 1840);
 
 void main() {
   final GalleryPage page = familyPages.firstWhere(

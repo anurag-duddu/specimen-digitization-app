@@ -51,6 +51,12 @@ monochrome product mark. Navigation, collection selection and account actions
 retain their existing layout, keyboard, semantics and responsive behavior.
 The shell adds no screen-specific component family.
 
+Amended 2026-10-17: the compact shell's header is `UiTopBar` in its workspace
+form (10 section 4.4), solid `paper` as section 3 says shell chrome is, and
+the ground covers the top safe inset as well as the bar, so the status strip
+and the bar are one surface on every tab. The compact tab bar does the same
+under the bottom inset.
+
 ## 5. Invariants
 
 - `ground`, `paper` and `matte` stay mode-aware and tokenized.
