@@ -855,6 +855,7 @@ class _CaptureScreenState extends State<CaptureScreen>
     return Column(
       children: <Widget>[
         Expanded(
+          flex: 2,
           child: Surface(
             role: SurfaceRole.matte,
             radius: ui.shape.sheet,
@@ -908,88 +909,91 @@ class _CaptureScreenState extends State<CaptureScreen>
             ),
           ),
         ),
-        ConstrainedBox(
-          constraints: BoxConstraints(
-            maxHeight: math.min(
-              ui.space.readingMax,
-              MediaQuery.sizeOf(context).height / 2,
+        Flexible(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: math.min(
+                ui.space.readingMax,
+                MediaQuery.sizeOf(context).height / 2,
+              ),
             ),
-          ),
-          child: SingleChildScrollView(
-            padding: EdgeInsetsDirectional.all(ui.space.s4),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                Text('Photo ${_acceptedCount + 1}', style: ui.type.title),
-                SizedBox(height: ui.space.s2),
-                Text(
-                  'All labels sharp and in frame?',
-                  style: ui.type.body.copyWith(color: ui.color.ink),
-                ),
-                if (_editError != null) ...<Widget>[
-                  SizedBox(height: ui.space.s3),
-                  UiBanner(message: _editError!, tone: UiBannerTone.blocked),
-                ],
-                SizedBox(height: ui.space.s4),
-                if (_cropping) _cropControls(context),
-                if (_cropping) SizedBox(height: ui.space.s4),
-                if (_cropping)
-                  UiButtonRow(
-                    primary: UiButton(
-                      key: const ValueKey<String>('capture-apply-crop'),
-                      label: _editing ? 'Applying crop' : 'Apply crop',
-                      leading: UiIcons.check,
-                      onPressed: _editing ? null : _applyCrop,
-                    ),
-                    secondary: UiButton(
-                      label: 'Cancel crop',
-                      variant: UiButtonVariant.secondary,
-                      onPressed: _editing
-                          ? null
-                          : () => setState(() => _cropping = false),
-                    ),
-                  )
-                else ...<Widget>[
-                  Row(
-                    children: <Widget>[
-                      UiButton(
-                        key: const ValueKey<String>('capture-rotate'),
-                        label: _editing ? 'Rotating' : 'Rotate',
-                        variant: UiButtonVariant.secondary,
-                        leading: UiIcons.rotateView,
-                        onPressed: _editing ? null : _rotate,
+            child: SingleChildScrollView(
+              padding: EdgeInsetsDirectional.all(ui.space.s4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Text('Photo ${_acceptedCount + 1}', style: ui.type.title),
+                  SizedBox(height: ui.space.s2),
+                  Text(
+                    'All labels sharp and in frame?',
+                    style: ui.type.body.copyWith(color: ui.color.ink),
+                  ),
+                  if (_editError != null) ...<Widget>[
+                    SizedBox(height: ui.space.s3),
+                    UiBanner(message: _editError!, tone: UiBannerTone.blocked),
+                  ],
+                  SizedBox(height: ui.space.s4),
+                  if (_cropping) _cropControls(context),
+                  if (_cropping) SizedBox(height: ui.space.s4),
+                  if (_cropping)
+                    UiButtonRow(
+                      primary: UiButton(
+                        key: const ValueKey<String>('capture-apply-crop'),
+                        label: _editing ? 'Applying crop' : 'Apply crop',
+                        leading: UiIcons.check,
+                        onPressed: _editing ? null : _applyCrop,
                       ),
-                      SizedBox(width: ui.space.s2),
-                      UiButton(
-                        key: const ValueKey<String>('capture-crop'),
-                        label: 'Crop',
+                      secondary: UiButton(
+                        label: 'Cancel crop',
                         variant: UiButtonVariant.secondary,
-                        leading: UiIcons.correctRegions,
                         onPressed: _editing
                             ? null
-                            : () => setState(() {
-                                _crop = const Rect.fromLTWH(
-                                  0.06,
-                                  0.06,
-                                  0.88,
-                                  0.88,
-                                );
-                                _cropping = true;
-                              }),
+                            : () => setState(() => _cropping = false),
                       ),
-                    ],
-                  ),
-                  if (widget.onCaptured != null)
-                    UiSwitch(
-                      key: const ValueKey('capture-review-sensitive'),
-                      label: _sensitiveLabel,
-                      value: _reviewSensitive,
-                      onChanged: _editing
-                          ? null
-                          : (value) => setState(() => _reviewSensitive = value),
+                    )
+                  else ...<Widget>[
+                    Row(
+                      children: <Widget>[
+                        UiButton(
+                          key: const ValueKey<String>('capture-rotate'),
+                          label: _editing ? 'Rotating' : 'Rotate',
+                          variant: UiButtonVariant.secondary,
+                          leading: UiIcons.rotateView,
+                          onPressed: _editing ? null : _rotate,
+                        ),
+                        SizedBox(width: ui.space.s2),
+                        UiButton(
+                          key: const ValueKey<String>('capture-crop'),
+                          label: 'Crop',
+                          variant: UiButtonVariant.secondary,
+                          leading: UiIcons.correctRegions,
+                          onPressed: _editing
+                              ? null
+                              : () => setState(() {
+                                  _crop = const Rect.fromLTWH(
+                                    0.06,
+                                    0.06,
+                                    0.88,
+                                    0.88,
+                                  );
+                                  _cropping = true;
+                                }),
+                        ),
+                      ],
                     ),
+                    if (widget.onCaptured != null)
+                      UiSwitch(
+                        key: const ValueKey('capture-review-sensitive'),
+                        label: _sensitiveLabel,
+                        value: _reviewSensitive,
+                        onChanged: _editing
+                            ? null
+                            : (value) =>
+                                  setState(() => _reviewSensitive = value),
+                      ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),

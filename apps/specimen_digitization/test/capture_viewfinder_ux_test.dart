@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:camera/camera.dart' show XFile;
@@ -276,6 +277,59 @@ void main() {
       _expectEvicted(last);
     },
   );
+
+  for (final size in [const Size(568, 320), const Size(667, 375)]) {
+    testWidgets(
+      'F3 short review keeps photo and equal reachable decisions at $size scale=2.0',
+      (tester) async {
+        await _pump(
+          tester,
+          CaptureScreen(
+            camera: () async => FakeCaptureCamera(),
+            onCaptured: (_) {},
+          ),
+          scale: 2,
+        );
+        await takeOne(tester);
+        final photo = find.byWidgetPredicate(
+          (widget) =>
+              widget is Image && widget.semanticLabel == 'The photo you took',
+        );
+        await _cachedKey(tester, photo);
+        tester.view.padding = const FakeViewPadding(top: 24);
+        tester.view.viewPadding = const FakeViewPadding(top: 24);
+        tester.view.physicalSize = size;
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(
+          tester.getSize(photo).height,
+          greaterThanOrEqualTo(math.max(80, size.height / 4)),
+        );
+        for (final label in ['Retake', 'Send']) {
+          await tester.ensureVisible(_button(label));
+          await tester.pumpAndSettle();
+          expect(_button(label).hitTestable(), findsOneWidget);
+          expect(
+            tester.getSize(_button(label)).height,
+            greaterThanOrEqualTo(48),
+          );
+        }
+        expect(
+          tester.getSize(_button('Retake')).width,
+          tester.getSize(_button('Send')).width,
+        );
+        expect(
+          tester.getSize(
+            find.byKey(const ValueKey('capture-review-Retake-surface')),
+          ),
+          tester.getSize(
+            find.byKey(const ValueKey('capture-review-Send-surface')),
+          ),
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   for (final wired in [false, true]) {
     testWidgets(
