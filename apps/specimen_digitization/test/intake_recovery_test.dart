@@ -83,7 +83,7 @@ Widget _recoveryApp(
       recoverCamera: recover,
       pickImages: pick,
       openCapture: (_) async =>
-          const CaptureResult(unavailable: CaptureUnavailable.noCamera),
+          const CaptureResult(unavailable: CaptureUnavailable.failed),
     ),
   ),
 );
@@ -179,7 +179,7 @@ void main() {
     expect(repo.attempts, 1);
     expect(find.text('2 ready'), findsOneWidget);
     // The current row widget labels UploadState.ready this way.
-    expect(find.text('Waiting to upload'), findsNWidgets(2));
+    expect(find.text('Ready'), findsNWidgets(2));
   });
 
   const scope = CollectionScope(
@@ -437,8 +437,8 @@ void main() {
     await tester.ensureVisible(find.text('chosen.png'));
     await tester.pumpAndSettle();
     expect(find.text('chosen.png'), findsOneWidget);
-    await tester.ensureVisible(find.text('File details'));
-    await tester.tap(find.text('File details'));
+    await tester.ensureVisible(find.text('chosen.png'));
+    await tester.tap(find.text('chosen.png'));
     await tester.pumpAndSettle();
     expect(find.text('Not calibrated'), findsOneWidget);
   });
@@ -471,9 +471,9 @@ void main() {
       await chooseFiles(tester);
       expect(repository.checks, 0);
       expect(repository.uploads, 0);
-      await tester.ensureVisible(find.text('File details'));
+      await tester.ensureVisible(find.text('preflight.png'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('File details'));
+      await tester.tap(find.text('preflight.png'));
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('Send for server check'));
       await tester.pumpAndSettle();

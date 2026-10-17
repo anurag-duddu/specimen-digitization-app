@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -5,13 +6,41 @@ import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 // Intake uses whole-image previews; the Queue keeps its small thumbnail.
-class IntakePhoto extends StatelessWidget {
+class IntakePhoto extends StatefulWidget {
   const IntakePhoto({super.key, required this.bytes, required this.side});
 
   final Uint8List? bytes;
   final double side;
 
   static const String viewLabel = 'View photo';
+
+  @override
+  State<IntakePhoto> createState() => _IntakePhotoState();
+}
+
+class _IntakePhotoState extends State<IntakePhoto> {
+  Uint8List? get bytes => widget.bytes;
+  double get side => widget.side;
+  final _providers = <ImageProvider<Object>>{};
+
+  void _evictPreviews() {
+    for (final provider in _providers) {
+      unawaited(provider.evict());
+    }
+    _providers.clear();
+  }
+
+  @override
+  void didUpdateWidget(covariant IntakePhoto oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.bytes, bytes)) _evictPreviews();
+  }
+
+  @override
+  void dispose() {
+    _evictPreviews();
+    super.dispose();
+  }
 
   Widget _image(BuildContext context, double width, {bool semantic = false}) {
     final ui = context.ui;
@@ -23,13 +52,15 @@ class IntakePhoto extends StatelessWidget {
       ),
     );
     if (bytes == null) return placeholder;
-    return Image.memory(
-      bytes!,
+    final provider = ResizeImage.resizeIfNeeded(
+      math.max(1, (width * MediaQuery.devicePixelRatioOf(context)).ceil()),
+      null,
+      MemoryImage(bytes!),
+    );
+    _providers.add(provider);
+    return Image(
+      image: provider,
       fit: BoxFit.contain,
-      cacheWidth: math.max(
-        1,
-        (width * MediaQuery.devicePixelRatioOf(context)).ceil(),
-      ),
       gaplessPlayback: true,
       excludeFromSemantics: !semantic,
       semanticLabel: semantic ? 'Selected photograph' : null,
@@ -81,9 +112,9 @@ class IntakePhoto extends StatelessWidget {
       );
     }
     return UiTooltip(
-      message: viewLabel,
+      message: IntakePhoto.viewLabel,
       child: Pressable(
-        semanticsLabel: viewLabel,
+        semanticsLabel: IntakePhoto.viewLabel,
         onPressed: () => _view(context),
         radius: context.ui.shape.inner,
         builder: (context, states) => visual,

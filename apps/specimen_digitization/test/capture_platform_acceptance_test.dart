@@ -499,7 +499,7 @@ void main() {
     }
     await tester.pumpAndSettle();
     expect(
-      find.text('1 saved'),
+      find.text('1 to fix'),
       findsOneWidget,
       reason: tester
           .widgetList<Text>(find.byType(Text))

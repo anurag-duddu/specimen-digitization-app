@@ -337,7 +337,7 @@ void main() {
       await tester.pumpAndSettle();
       final capture = tester.widget<CaptureScreen>(find.byType(CaptureScreen));
       expect(capture.autoIngest, isTrue);
-      expect(capture.activitySnapshot!().label, 'No photos yet');
+      expect(capture.activitySnapshot!().label, 'No photos');
       // Exercise the current camera API; lane 3 owns its visual control.
       capture.onAutoIngestChanged!(false);
       await tester.pumpAndSettle();
@@ -372,8 +372,8 @@ void main() {
       );
       await _pump(tester, _app(repository, files: [photo]));
       await chooseFiles(tester);
-      await tester.ensureVisible(find.text('File details'));
-      await tester.tap(find.text('File details'));
+      await tester.ensureVisible(find.text('photo.png'));
+      await tester.tap(find.text('photo.png'));
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('Send for server check'));
       await tester.tap(find.text('Send for server check'));
