@@ -1,12 +1,10 @@
-/// Adaptive collection navigation: native phone tabs and a spacious sidebar.
+/// Adaptive collection navigation: the brand phone tab bar and a spacious
+/// sidebar.
 library;
 
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/cupertino.dart' as cupertino;
-import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart' as material;
 import 'package:flutter/widgets.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -409,63 +407,21 @@ class _AppShellState extends State<AppShell> {
         ),
       );
 
-  Widget _mobileNav(BuildContext context) {
-    final ui = context.ui;
-    final selected = widget.destination.index;
-    Widget icon(int index) => UiIcon(
-      AppShell.destinations[index].icon,
-      key: ValueKey<String>(
-        'mobile-nav-${AppShell.destinations[index].label.toLowerCase()}',
-      ),
-      current: index == selected,
-      color: index == selected ? ui.color.ink : ui.color.inkSecondary,
-    );
-    void select(int index) => _select(WorkspaceDestination.values[index]);
-    if (defaultTargetPlatform == TargetPlatform.iOS) {
-      return cupertino.CupertinoTabBar(
-        key: const ValueKey<String>('mobile-navigation'),
-        currentIndex: selected,
-        onTap: select,
-        backgroundColor: ui.color.paper,
-        activeColor: ui.color.ink,
-        inactiveColor: ui.color.inkSecondary,
-        height: math.max(56, 32 + MediaQuery.textScalerOf(context).scale(16)),
-        items: <cupertino.BottomNavigationBarItem>[
-          for (var i = 0; i < AppShell.destinations.length; i++)
-            cupertino.BottomNavigationBarItem(
-              icon: icon(i),
-              label: AppShell.destinations[i].label,
-            ),
-        ],
-      );
-    }
-    return material.NavigationBarTheme(
-      data: material.NavigationBarThemeData(
-        labelTextStyle: WidgetStatePropertyAll(
-          ui.type.label.copyWith(color: ui.color.ink),
-        ),
-      ),
-      child: material.NavigationBar(
-        key: const ValueKey<String>('mobile-navigation'),
-        // Keep the compact content height separate from the native safe inset.
-        height: UiType.heightAround(ui.space.s16, ui.type.label, context),
-        animationDuration: ui.motion.navigationGlide,
-        selectedIndex: selected,
-        onDestinationSelected: select,
-        backgroundColor: ui.color.paper,
-        indicatorColor: ui.color.ink.withValues(alpha: .08),
-        surfaceTintColor: GroundPalette.transparent,
-        elevation: 0,
-        destinations: <Widget>[
-          for (var i = 0; i < AppShell.destinations.length; i++)
-            material.NavigationDestination(
-              icon: icon(i),
-              label: AppShell.destinations[i].label,
-            ),
-        ],
-      ),
-    );
-  }
+  /// The compact bottom tab bar.
+  ///
+  /// One brand component on every platform (10 section 4.4, `UiTabBar`): the
+  /// window class chose it, and the platform only supplies the safe inset
+  /// under it. A `CupertinoTabBar` here and a `NavigationBar` there were two
+  /// products' identities in one app (09 section 2 principle 5).
+  Widget _mobileNav(BuildContext context) => UiTabBar(
+    key: const ValueKey<String>('mobile-navigation'),
+    destinations: AppShell.destinations,
+    currentIndex: widget.destination.index,
+    iconKeyOf: (index) => ValueKey<String>(
+      'mobile-nav-${AppShell.destinations[index].label.toLowerCase()}',
+    ),
+    onSelect: (index) => _select(WorkspaceDestination.values[index]),
+  );
 
   Widget _toggleButton() => UiIconButton(
     icon: UiIcons.sidebar,
