@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
@@ -102,7 +101,7 @@ class _GoogleSignInOptionState extends State<GoogleSignInOption> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        _GoogleSignInButton(
+        UiGoogleSignInButton(
           busy: _controller.busy,
           onPressed: widget.enabled && !_controller.busy
               ? () => unawaited(_signIn())
@@ -141,99 +140,6 @@ class _GoogleSignInOptionState extends State<GoogleSignInOption> {
           const AdministratorContactLine(),
         ],
       ],
-    );
-  }
-}
-
-/// Google's prescribed appearance with scalable text and our interaction
-/// primitive. The official mark and font sources are bundled with the assets.
-class _GoogleSignInButton extends StatelessWidget {
-  const _GoogleSignInButton({
-    required this.busy,
-    this.onPressed,
-    this.disabledReason,
-  });
-
-  final bool busy;
-  final VoidCallback? onPressed;
-  final String? disabledReason;
-
-  // These dimensions belong to the provider's branding, not product controls.
-  static const double _radius = 4;
-  static const double _iconSize = 20;
-  static const double _fontSize = 14;
-  static const double _lineHeight = 20 / 14;
-
-  @override
-  Widget build(BuildContext context) {
-    final UiSpace space = context.ui.space;
-    // Google's compact padding includes one optical half step.
-    final double providerPadding = space.s2 + space.s1;
-    final bool dark = context.ui.color.brightness == Brightness.dark;
-    final bool ios = !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
-    final Color label = dark
-        ? GoogleSignInPalette.labelDark
-        : GoogleSignInPalette.labelLight;
-    const BorderRadius radius = BorderRadius.all(Radius.circular(_radius));
-    return Pressable(
-      semanticsLabel: 'Sign in with Google',
-      busy: busy,
-      onPressed: onPressed,
-      disabledReason: disabledReason,
-      radius: _radius,
-      shape: const RoundedRectangleBorder(borderRadius: radius),
-      stateLayerColour: label,
-      builder: (BuildContext context, Set<WidgetState> states) => DecoratedBox(
-        decoration: BoxDecoration(
-          color: dark
-              ? GoogleSignInPalette.fillDark
-              : GoogleSignInPalette.fillLight,
-          borderRadius: radius,
-          border: Border.all(
-            color: dark
-                ? GoogleSignInPalette.borderDark
-                : GoogleSignInPalette.borderLight,
-          ),
-        ),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: UiDensity.hitBox),
-          child: Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: ios ? space.s4 : providerPadding,
-              vertical: providerPadding,
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: <Widget>[
-                Image.asset(
-                  'assets/google-sign-in/google-g.png',
-                  width: _iconSize,
-                  height: _iconSize,
-                  fit: BoxFit.contain,
-                  excludeFromSemantics: true,
-                ),
-                SizedBox(width: ios ? 12 : 10),
-                Flexible(
-                  child: Text(
-                    'Sign in with Google',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      // Do not inherit the product font's package prefix.
-                      // This provider font belongs to the application bundle.
-                      inherit: false,
-                      fontFamily: 'GoogleSignInSans',
-                      fontSize: _fontSize,
-                      height: _lineHeight,
-                      fontWeight: FontWeight.w500,
-                      color: label,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

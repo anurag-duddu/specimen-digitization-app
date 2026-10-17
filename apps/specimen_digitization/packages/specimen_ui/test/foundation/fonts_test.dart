@@ -49,6 +49,52 @@ void main() {
     );
   });
 
+  test(
+    'the licence page lists Google Sans beside the Geist families',
+    () async {
+      // Only this package's registrations, so what comes back is what an
+      // application that builds `UiThemeData` adds to its licence page.
+      LicenseRegistry.reset();
+      addTearDown(LicenseRegistry.reset);
+      UiFonts.resetLicenseRegistrationForTest();
+      UiFonts.registerLicense();
+      final List<LicenseEntry> entries = await LicenseRegistry.licenses
+          .toList();
+      String text(LicenseEntry entry) =>
+          entry.paragraphs.map((LicenseParagraph p) => p.text).join('\n');
+
+      final Iterable<LicenseEntry> google = entries.where(
+        (LicenseEntry entry) => entry.packages.contains('Google Sans'),
+      );
+      expect(
+        google,
+        hasLength(1),
+        reason: 'one Google Sans entry, not one per theme',
+      );
+      expect(
+        text(google.single),
+        contains('SIL OPEN FONT LICENSE Version 1.1'),
+      );
+      expect(
+        text(google.single),
+        contains('Google Sans Project Authors'),
+        reason: 'the copyright notice the licence asks to travel with the font',
+      );
+      expect(google.single.packages, <String>[
+        'Google Sans',
+      ], reason: 'the entry names the family it licenses');
+
+      final Iterable<LicenseEntry> geist = entries.where(
+        (LicenseEntry entry) => entry.packages.contains(UiFonts.sans),
+      );
+      expect(geist, hasLength(1), reason: 'Geist is still listed, once');
+      expect(
+        geist.single.packages,
+        containsAll(<String>[UiFonts.sans, UiFonts.mono]),
+      );
+    },
+  );
+
   test('a numeral role carries tabular figures', () {
     // 09 section 4.1: every count, catalogue number, coordinate, duration and
     // version number is tabular, so a changed digit is visible by position.
