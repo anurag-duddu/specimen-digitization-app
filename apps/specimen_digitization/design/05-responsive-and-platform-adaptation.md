@@ -85,9 +85,11 @@ a tablet at 200 percent text drew the phone's tab bar beside a desktop's
 centred dialog. The boundaries are the shell's unchanged, so the captures and
 the device check of #347 and #350 still describe what ships. The list pane is
 312 dp rather than the shell's 320: `UiRail` is 72 dp where the hand-built
-column was 64, and the 8 dp come out of the pane so the content keeps its width
-at every docked window (at 1180 by 820 a record 8 dp narrower moved its
-decision bar's previous and next into the overflow menu). What the values buy is
+column was 64, and the 8 dp come out of the pane, so while the list pane is
+open the content keeps its width (at 1180 by 820 a record 8 dp narrower moved
+its decision bar's previous and next into the overflow menu). Where the pane
+is closed, a docked window under 1100 or a pane the reviewer closed, the
+content starts at the rail's 72 dp edge rather than 64 and is 8 dp narrower. What the values buy is
 written beside them in `window.dart`, and
 `packages/specimen_ui/test/foundation/window_test.dart` pins every boundary
 from both sides. Why one rule: the owner's words of 2026-10-17 quoted in 10
