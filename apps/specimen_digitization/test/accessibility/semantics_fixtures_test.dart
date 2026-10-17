@@ -489,10 +489,10 @@ void main() {
         const Column(
           children: <Widget>[
             LoadingAnnouncement(thing: 'queue', visible: true),
-            SkeletonRow(),
-            SkeletonRow(),
-            SkeletonRow(),
-            SkeletonBlock(),
+            UiSkeleton.row(),
+            UiSkeleton.row(),
+            UiSkeleton.row(),
+            UiSkeleton.line(height: 56),
           ],
         ),
         settle: false,
@@ -554,8 +554,8 @@ void main() {
             child: const Column(
               children: <Widget>[
                 LoadingAnnouncement(thing: 'queue'),
-                SkeletonRow(),
-                SkeletonRow(),
+                UiSkeleton.row(),
+                UiSkeleton.row(),
               ],
             ),
           ),

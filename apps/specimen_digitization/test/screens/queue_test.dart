@@ -117,7 +117,7 @@ void main() {
     });
   });
 
-  testWidgets('empty review views show only a concise absence message', (
+  testWidgets('empty review views name the absence with no action', (
     tester,
   ) async {
     await pumpQueue(tester, ScriptedRepository());
@@ -129,9 +129,17 @@ void main() {
     }.entries) {
       await pickSpecimenQueue(tester, view.key);
       expect(find.text(view.value), findsOneWidget);
+      // The one empty state component, as every other absence in the app
+      // (10 section 4.5), rather than a bare line of text.
       expect(
-        find.descendant(of: pane, matching: find.byType(UiEmptyState)),
-        findsNothing,
+        find.descendant(
+          of: pane,
+          matching: find.ancestor(
+            of: find.text(view.value),
+            matching: find.byType(UiEmptyState),
+          ),
+        ),
+        findsOneWidget,
       );
       expect(
         find.descendant(of: pane, matching: find.byType(UiButton)),

@@ -1,78 +1,13 @@
-/// Loading placeholders (10 sections 4.5 and 5; 04 section 2.5; 06 section 3).
+/// The one live "Loading" node (10 section 4.5; 06 section 3).
 ///
-/// Tonal blocks on `UiSkeleton`, no shimmer. A shimmer is a sweep across the
-/// content, and a sweep is decoration; what is left is a slow opacity pulse
-/// that stops outright under reduced motion. Placeholders are hidden from the
-/// semantics tree and paired with exactly one live "Loading" node.
+/// The placeholders themselves are `UiSkeleton` from `specimen_ui`, drawn at
+/// each call site in the shape of the content they stand for; they are
+/// outside the semantics tree. This is what a screen reader hears instead.
 library;
 
 import 'package:flutter/semantics.dart';
 import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
-
-/// One tonal bar. The building block of [SkeletonRow] and [SkeletonBlock].
-class SkeletonBar extends StatelessWidget {
-  const SkeletonBar({super.key, required this.widthFactor, this.height});
-
-  /// Fraction of the available width, 0 to 1.
-  final double widthFactor;
-
-  /// Bar height. Defaults to one line of body text with its leading.
-  final double? height;
-
-  @override
-  Widget build(BuildContext context) =>
-      UiSkeleton.line(widthFactor: widthFactor, height: height);
-}
-
-/// Three bars at 60, 40 and 80 percent width, standing in for one row of
-/// text. Excluded from the semantics tree.
-class SkeletonRow extends StatelessWidget {
-  const SkeletonRow({super.key});
-
-  /// The three widths, in order.
-  static const List<double> widthFactors = <double>[0.6, 0.4, 0.8];
-
-  @override
-  Widget build(BuildContext context) {
-    final UiThemeData ui = context.ui;
-    return ExcludeSemantics(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          for (int i = 0; i < widthFactors.length; i++) ...<Widget>[
-            if (i > 0) SizedBox(height: ui.space.s1),
-            SkeletonBar(widthFactor: widthFactors[i]),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-/// A single rectangle standing in for a block of content, such as a thumbnail
-/// or a panel. Excluded from the semantics tree.
-class SkeletonBlock extends StatelessWidget {
-  const SkeletonBlock({super.key, this.width, this.height});
-
-  /// Width in logical pixels. Fills the parent when null.
-  final double? width;
-
-  /// Height in logical pixels. Defaults to the expanded row height.
-  final double? height;
-
-  @override
-  Widget build(BuildContext context) {
-    final UiThemeData ui = context.ui;
-    return ExcludeSemantics(
-      child: SizedBox(
-        width: width,
-        child: UiSkeleton.line(height: height ?? ui.space.rowExpanded),
-      ),
-    );
-  }
-}
 
 /// The one live node that says something is loading.
 ///

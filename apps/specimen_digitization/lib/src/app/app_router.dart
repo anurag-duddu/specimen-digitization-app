@@ -583,8 +583,8 @@ class _SourceRouteState extends State<_SourceRoute> {
                 .where((RegisteredSource s) => s.id == widget.sourceId)
                 .firstOrNull;
             if (found == null) {
-              return EmptyState(
-                icon: UiIcons.queue.defaultGlyph,
+              return const UiEmptyState(
+                icon: UiIcons.queue,
                 title: 'Source not found',
                 body: 'This source is not registered to the open collection.',
               );
@@ -606,8 +606,8 @@ class _NoSourceSupport extends StatelessWidget {
   const _NoSourceSupport();
 
   @override
-  Widget build(BuildContext context) => EmptyState(
-    icon: UiIcons.queue.defaultGlyph,
+  Widget build(BuildContext context) => const UiEmptyState(
+    icon: UiIcons.queue,
     title: 'Sources not available',
     body: 'This build reads uploads only. Add photographs from Intake.',
   );

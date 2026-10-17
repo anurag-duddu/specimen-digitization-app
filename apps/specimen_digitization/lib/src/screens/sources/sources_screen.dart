@@ -102,15 +102,17 @@ class _SourcesScreenState extends State<SourcesScreen> {
           textScaler: MediaQuery.textScalerOf(context),
         );
         final Widget? state = failure != null
-            ? EmptyState(
-                icon: UiIcons.syncProblem.defaultGlyph,
+            ? UiEmptyState(
+                icon: UiIcons.syncProblem,
                 title: 'Sources not loaded',
                 body: failure.message,
-                actionLabel: 'Retry',
-                onAction: () {
-                  setState(() => _error = null);
-                  _load();
-                },
+                action: UiButton(
+                  label: 'Retry',
+                  onPressed: () {
+                    setState(() => _error = null);
+                    _load();
+                  },
+                ),
               )
             : sources == null
             ? const Column(
@@ -118,12 +120,12 @@ class _SourcesScreenState extends State<SourcesScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   LoadingAnnouncement(thing: 'the registered sources'),
-                  SkeletonRow(),
+                  UiSkeleton.row(),
                 ],
               )
             : sources.isEmpty
-            ? EmptyState(
-                icon: UiIcons.source.defaultGlyph,
+            ? const UiEmptyState(
+                icon: UiIcons.source,
                 title: 'No sources registered',
                 body: SourcesScreenCopy.noneBody,
               )
