@@ -519,21 +519,32 @@ for the editor, so the marker states what the header is and no gate reads a
 new number off it.
 
 ### 4.4 Intake and capture
-One scroll: the batch header, the capture card, the pre-upload checks, the
-manifest, each a section with an `s6` gap; the upload action in the decision
-bar slot; the pill visible.
+**Bulk intake, 2026-10-17.** Add photos → review the batch → Submit → intake
+progress → specimen pipeline. One photo creates one specimen. Acquisition
+never creates a specimen. The existing scientific Queue retains Needs Human,
+Cleared, and Deferred.
 
-**Amendment, wave A slot A3 (2026-09-17), placed by polish 3.** The checks
-are under the manifest, not over it. Section 2.5 asks for the manifest's first
-row inside the first viewport, and at 200 percent text on a phone the chrome
-takes 122 dp and leaves 722: the batch header is 137 of it and the capture
-card 320, so the manifest starts at 643 with the checks after it and at 964,
-below the fold, with the checks before it. The order also reads better: the
-confirmation that releases a batch sits next to the control that sends it.
-The capture card carries the capture alone; `IntakeChecks` carries the
-caveats, the checklist, the confirmation and, where there is no frame to hold
-it, the upload action, which otherwise goes in the frame's action bar while
-there is a batch to send.
+An empty workspace introduces sources. A populated workspace has one compact
+Add photos action, the actual save status, and a virtualized image grid.
+`UiPhotoTile` preserves the whole image. Its checkbox selects photos for
+editing; inclusion is a separate, explicit choice. Removal has Undo. Sensitivity
+actions name their scope. The only primary batch action is Submit N photos.
+Items requiring attention stay in the draft and are counted beside that action.
+
+The grid owns vertical scrolling. An inspector sits beside it on wide windows
+and uses a full-screen route on compact windows, with zoom and previous/next.
+Continuous camera capture has a persistent thumbnail tray and Review count;
+local retention may briefly hold the shutter, but network transfer never does.
+There is no compulsory per-photo review step or competing capture-mode segment.
+
+The intake progress screen owns its list and reports a fixed submitted total,
+measured transfer progress, and per-photo outcomes. It links to specimens after
+handoff and never redraws scientific processing stages. Add more photos opens
+a separate draft. Cancellation affects remaining work; accepted specimens stay.
+
+Full-shell previews and regression tests live in `test/bulk_intake_test.dart`.
+Keep empty, populated, saving, failure, progress, and inspector compositions
+aligned at phone, tablet, and desktop widths, including 200% text.
 
 ### 4.5 Sources
 One scroll: a heading (V2-4), the import action, the rows; the pill visible.

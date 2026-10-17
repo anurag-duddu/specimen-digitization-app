@@ -1154,6 +1154,12 @@ The workflow has three jobs.
      request first, so the public invoker binding is missing. The three checks
      share about three minutes of retries while the new revision starts.
 
+   - `scripts/release/deploy_intake.py` defines the private `specimen-intake`
+     job using the API digest, one task, one CPU, 1 GiB memory, two retries, and
+     a 3,600-second timeout. It verifies the definition and scoped API invoker
+     grant without executing imports. Owner provisioning and the client enablement
+     order are described in `docs/execution/BULK_PHOTO_INTAKE.md`.
+
    - `scripts/release/deploy_models.py` deploys SAM by digest with the committed
      checkpoint, pinned secrets, 600-second startup probe, maximum one instance,
      and minimum zero at both the service and revision levels. It moves all

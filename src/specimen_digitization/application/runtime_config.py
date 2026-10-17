@@ -64,6 +64,8 @@ class RuntimeConfig:
     worker_job: str | None = None
     sources: tuple[RegisteredSource, ...] = ()
     collection_bindings: tuple[tuple[str, str], ...] = ()
+    intake_job: str | None = None
+    intake_oauth: tuple[tuple[str, dict], ...] = ()
 
     @classmethod
     def from_env(cls, env=None):
@@ -133,6 +135,18 @@ class RuntimeConfig:
         ):
             raise ValueError("Frozen readiness object and generation required")
         worker_job, sources = lane_settings(env, project, bucket)
+        intake_job = env.get('SPECIMEN_INTAKE_JOB') or None
+        if intake_job and (not JOB_NAME.fullmatch(intake_job) or intake_job.split('/')[1] != project):
+            raise ValueError('SPECIMEN_INTAKE_JOB must name a job in the configured project')
+        try:
+            intake_oauth = json.loads(env.get('SPECIMEN_INTAKE_OAUTH_JSON') or '{}')
+            if not isinstance(intake_oauth, dict) or set(intake_oauth) - {'google_drive', 'dropbox'}:
+                raise ValueError()
+            for provider in intake_oauth.values():
+                if not isinstance(provider, dict) or 'client_secret' in provider:
+                    raise ValueError()
+        except (ValueError, TypeError):
+            raise ValueError('Intake OAuth configuration must contain provider settings and secret references only') from None
         return cls(
             port,
             project,
@@ -146,6 +160,8 @@ class RuntimeConfig:
             worker_job=worker_job,
             sources=sources,
             collection_bindings=collection_bindings(env),
+            intake_job=intake_job,
+            intake_oauth=tuple(intake_oauth.items()),
         )
 
 
