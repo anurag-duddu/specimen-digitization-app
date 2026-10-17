@@ -301,6 +301,8 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
       // Also preserve another session's true flag on ordinary saves. This
       // narrows the multi-session race; read/modify/write is NOT atomic. Two
       // sessions that both read false before either writes can still dispatch.
+      // A failed write below is "restored" only in this entry's memory (see the
+      // note at the failed-write branch about stores that cache a failed write).
       if (automaticStart.automaticStartAttempted) return false;
       automaticStart.automaticStartAttempted = true;
     }
@@ -334,8 +336,12 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
     if (!saved && automaticStart != null) {
       automaticStart.automaticStartAttempted = false;
       // At most one attempt per timer firing: the caller removed its due flag.
-      // Only a later successful status read can arm another timer (including
-      // the fresh read on foreground resume). Never retry from finally here.
+      // On stores that do not cache a failed write, a later successful status
+      // read (including the fresh read on foreground resume) can arm another
+      // timer. Never retry from finally here. Android's commit() updates its
+      // in-memory map even when the disk write fails, so the next save reads
+      // the consumed flag back: there the flag stays consumed, the photo stays
+      // Starting with no action, and it never double-starts.
       return false;
     }
     // Ordinary saves retain their best-effort behavior on a false write result.
