@@ -189,7 +189,21 @@ if name=='python':
 if name=='node':
  target=pathlib.Path(args[0]).name if args else ''
  if target=='engine-contract-reporter.mjs': os.execv(os.environ['REAL_NODE'],[os.environ['REAL_NODE'],*args])
- if target=='wait-local.mjs': sys.exit(19 if fault=='readiness_failed' else 0)
+ if target=='wait-local.mjs':
+  if fault=='readiness_failed': sys.exit(19)
+  if fault=='false_readiness': sys.exit(0)
+  # Identity publication precedes bind; the private TCP listener must be ready.
+  # Keep the real wait-local helper's ten-second budget and its negative controls.
+  import socket
+  host,port=os.environ['FIREBASE_DATACONNECT_EMULATOR_HOST'].rsplit(':',1)
+  assert host=='127.0.0.1'
+  deadline=time.monotonic()+10
+  while (remaining:=deadline-time.monotonic())>0:
+   try:
+    with socket.create_connection((host,int(port)),timeout=min(.1,remaining)): sys.exit(0)
+   except OSError:
+    time.sleep(max(0,min(.1,deadline-time.monotonic())))
+  sys.exit(19)
  if target=='seed-integration.mjs':
   if fault!='seed_missing':
    seed=json.loads((root/'seed.json').read_text())
@@ -736,6 +750,36 @@ def test_fixture_ports_are_private(shell_fixture):
     ports = [int(env[key]) for key in ('SPECIMEN_TEST_PG_PORT', 'SPECIMEN_TEST_DC_PORT', 'SPECIMEN_TEST_STORAGE_PORT')]
     assert len(set(ports)) == 3, f'fixture ports alias each other: {ports}'
     assert not set(ports) & {5559, 9509, 9299}, f'fixture reused a shared default port: {ports}'
+
+
+def test_fixture_wait_local_waits_for_listener(shell_fixture):
+    root, env = shell_fixture
+    # Reserve the expected port without listening: readiness cannot succeed
+    # until this test releases the controlled startup delay with listen().
+    with socket.socket() as listener:
+        listener.bind(('127.0.0.1', 0))
+        env['FIREBASE_DATACONNECT_EMULATOR_HOST'] = f'127.0.0.1:{listener.getsockname()[1]}'
+        waiter = env.processes.start([str(root / 'bin/node'), str(root / 'scripts/data/wait-local.mjs')],
+                                     env=dict(env, FIXTURE_FAULT=''))
+        deadline = time.monotonic() + 5
+        while not (root / 'calls.jsonl').exists() and waiter.poll() is None and time.monotonic() < deadline:
+            time.sleep(.01)
+        assert (root / 'calls.jsonl').exists(), 'synthetic waiter never started'
+        with pytest.raises(subprocess.TimeoutExpired):
+            waiter.wait(timeout=1)
+        listener.listen(1)
+        assert waiter.wait(timeout=5) == 0, 'synthetic waiter did not observe its ready listener'
+
+
+@pytest.mark.parametrize('fault,code', [('readiness_failed', 19), ('false_readiness', 0)])
+def test_fixture_wait_local_preserves_faults(shell_fixture, fault, code):
+    root, env = shell_fixture
+    with socket.socket() as listener:
+        listener.bind(('127.0.0.1', 0))
+        env['FIREBASE_DATACONNECT_EMULATOR_HOST'] = f'127.0.0.1:{listener.getsockname()[1]}'
+        result = env.processes.run([str(root / 'bin/node'), str(root / 'scripts/data/wait-local.mjs')],
+                                   env=dict(env, FIXTURE_FAULT=fault), timeout=5)
+        assert result.returncode == code
 
 
 @pytest.mark.parametrize('fault', ['compile_errors_exit0','seed_missing','seed_mismatch','readiness_failed','false_readiness','port_mismatch'])

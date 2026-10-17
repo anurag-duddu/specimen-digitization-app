@@ -21010,3 +21010,44 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
 - Not confirmed: the button on an iPhone, an Android phone or in a browser (no device or browser check was made); Google's brand review of the Android and web figure in an iPhone app; the application's licence page itself (only the bundle contents and the registry were checked); the whole application suite (focused files only, the machine was loaded); `scripts/ci/verify.sh` as one script; hosted CI at the new head; a re-review of the new head.
 - Failed approaches and traps. (1) Copying #358's whole `pubspec.yaml` into the scratch tree would have put the application's `assets/google-sign-in/` and font declaration back, a directory that no longer exists; only the `analyzer` line was taken. (2) In zsh, `git show "$B:apps/..."` reads `:a` as a path modifier; write `${B}:apps/...`, and a bare `echo ====` fails with "= not found". (3) A second `createGesture(kind: mouse)` plus `addPointer` in one test trips the mouse tracker assertion; make one pointer and move it. (4) `matchesGoldenFile(find.byKey(...))` with no `RepaintBoundary` around the key captured the whole window here, so a sheet's picture includes the ground around it. (5) A disabled state taken from Material's default (38 percent) looks reasonable in a golden and fails the system's own contrast floors; check a new control's disabled paint against 03 section 3.6 before choosing one, as `UiButton` already does.
 - Reusable learning. A design system component that draws an asset or a font has to own the file, or the application's `pubspec.yaml` is a second place a consumer must know about: the G and Google Sans moved into the package and `UiFonts.loadForTest` is the one seam both test configs already call, so tests measure the label in the face a person sees. A file that code reads from the bundle has to be a declared asset: `LICENSES/OFL-Geist.txt` was read for the licence page and never bundled, which only showed once a test iterated `LicenseRegistry.licenses`. To prove "looks the same on every platform", compare pixels (precache the image under `runAsync`, then `toImage` and `toByteData`) across every `TargetPlatform` and check the pixels are not blank; the same read of a region proves the G is untouched by a state.
+
+
+### Firebase login integration and verification repair, 2026-10-17
+
+- Task `01a147ea-7efb-7e22-8821-e42395a135fc`, branch
+  `codex/login-firebase-launch`, worktree `9030`: committed Firebase-only session
+  completion as `619ec39d`, then merged main `835f197a` locally as `e3454c38`.
+  PR #367's shared Google button, assets, fonts and journal entry are preserved.
+  Paired code/email work remains separately preserved at `18288554` and is not
+  included in this launch branch.
+- Independent G51 source review approved exact head `e3454c38` and tree
+  `668a5940e6f5387745c2b0d4107079f8aa1b0f76`. Fresh Firebase-only focused tests
+  passed 88 cases. Isolated Chrome with the real Firebase Auth emulator verified
+  matching identities in two tabs, original-tab authentication and intended
+  route, synchronized sign-out, cleared sent state and signed-out reload. The
+  runner initially matched both the heading and its accessibility announcement;
+  three heading-role selectors correct the runner, without application changes.
+- Fresh visual QA produced 58 PNGs in six passing capture tests. All 274 source
+  hashes and 98 prior PNGs stayed unchanged. The comparison baseline is offline
+  build `86d9dab7`, explicitly not claimed as production. Independent inspection
+  added no product finding. Fresh unsigned iOS release and Android debug builds
+  passed in 107.3 and 34.4 seconds; all 1,442 build-input hashes stayed stable.
+  Native temporary configs were removed; the CI Dart placeholder was preserved.
+- Canonical r4 passed all normal hooks, then failed in the SQL/Storage shell
+  test fixture: the required SQL prefix returned `sql.ready.restored1: readiness
+  port failed: connect ECONNREFUSED` before any Storage assertion ran. Cleanup
+  passed with no survivors and ports released. A focused unchanged rerun passed,
+  but that did not qualify the canonical run. The owned failing shard was
+  interrupted to flush its traceback; the coordinator then cleaned its workers
+  and exited 130. This run is FAILED/INCOMPLETE, not a passing gate.
+- A deterministic regression proved the fixture's fake `wait-local` returned
+  success while its reserved port was not listening. The narrow correction waits
+  for the actual loopback listener within the existing ten-second helper budget.
+  The deliberate `readiness_failed` and `false_readiness` controls, production
+  reporter, 35-second wrapper timeout and cleanup assertions are unchanged.
+  Baseline regression failed; all six candidate and applied focused cases passed.
+  Independent review approved the fix. A fresh complete canonical run is required.
+- Reports, captures and logs remain under external `recovery-implementation/`,
+  including exact source/build hashes. Browser mail and collection data were
+  synthetic. Real email delivery, live Google, signed-device return, hosted CI,
+  protected merge and three-workflow release are Not confirmed at this checkpoint.
