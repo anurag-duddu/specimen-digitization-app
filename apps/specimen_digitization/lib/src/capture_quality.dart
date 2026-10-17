@@ -194,10 +194,10 @@ class CapturePreviewReading {
   /// saying. Never a verdict on the photograph.
   String? get hint {
     if (brightFraction > glareHintFraction) {
-      return 'Bright areas are clipping. Check for glare before you capture.';
+      return 'Bright spots. Check for glare.';
     }
     if (darkFraction > shadowHintFraction) {
-      return 'Dark areas are clipping. Check the lighting before you capture.';
+      return 'Dark areas. Check the lighting.';
     }
     return null;
   }
