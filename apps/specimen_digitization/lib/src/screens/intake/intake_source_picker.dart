@@ -367,6 +367,14 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
     pickerSession = newAuthSession();
     try {
       await openPicker(pickerSession!);
+      if (mounted) {
+        setState(() {
+          folder = null;
+          cursor = null;
+          parents.clear();
+          entries = [];
+        });
+      }
     } catch (_) {
       pickerSession?.close();
       pickerSession = null;
@@ -391,6 +399,7 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
   }
 
   Future<void> folderAccess() async {
+    closePicker();
     final existing = connections
         .where(
           (row) =>
@@ -501,6 +510,7 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
     final result = await c.call('POST', '/connections/$id/disconnect');
     connections.removeWhere((row) => row['id'] == id);
     connections.add(result);
+    linkAccounts.removeWhere((_, value) => value == id);
     if (result['error'] is Map) {
       message = textOf((result['error'] as Map)['message']);
     }
@@ -551,6 +561,27 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
       )
       .toList();
 
+  List<Json> recoverableAccounts(String provider) => connections
+      .where(
+        (row) =>
+            row['provider'] == provider &&
+            row['state'] != 'connected' &&
+            row['state'] != 'disconnected' &&
+            row['account_id'] != null,
+      )
+      .toList();
+
+  Future<void> connectLinkProvider(String provider) {
+    final known = recoverableAccounts(provider);
+    return known.length == 1
+        ? connect(
+            known.single['access'] as String,
+            provider: provider,
+            reconnectId: known.single['id'] as String,
+          )
+        : connect('folders', provider: provider);
+  }
+
   String accountLabel(Json row) {
     final label = textOf(
       row['account_label'],
@@ -599,6 +630,87 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
     if (mounted) setState(() => administratorDetailsCopied = true);
   }
 
+  Set<String> get linkedProviders => {
+    for (final value in links.text.split(RegExp(r'\s+')))
+      if ([
+        'drive.google.com',
+        'docs.google.com',
+      ].contains(Uri.tryParse(value)?.host))
+        'google_drive'
+      else if ([
+        'dropbox.com',
+        'www.dropbox.com',
+      ].contains(Uri.tryParse(value)?.host))
+        'dropbox',
+  };
+
+  Widget connectionOptions(
+    String provider, {
+    String? selectedId,
+  }) => UiMenuTrigger(
+    semanticsLabel: '${providerName(provider)} options',
+    items: [
+      if (widget.provider != 'url' &&
+          provider == 'google_drive' &&
+          activeConnection?['state'] == 'connected')
+        UiMenuItem(
+          label: folder == null ? 'Browse folders' : 'Choose photos',
+          onSelected: busy
+              ? null
+              : () => unawaited(folder == null ? folderAccess() : picker()),
+        ),
+      UiMenuItem(
+        label: 'Use another account',
+        onSelected: busy
+            ? null
+            : () => unawaited(
+                connect(
+                  widget.provider == 'url' ? 'folders' : defaultAccess,
+                  provider: provider,
+                ),
+              ),
+      ),
+      for (final account in connections.where(
+        (row) =>
+            row['provider'] == provider &&
+            row['state'] != 'connected' &&
+            row['state'] != 'disconnected' &&
+            row['account_id'] != null &&
+            row['id'] != selectedId,
+      ))
+        UiMenuItem(
+          label: 'Reconnect ${textOf(account['account_label'], 'account')}',
+          onSelected: busy
+              ? null
+              : () => unawaited(
+                  connect(
+                    account['access'] as String,
+                    provider: provider,
+                    reconnectId: account['id'] as String,
+                  ),
+                ),
+        ),
+      if (selectedId != null)
+        UiMenuItem(
+          label: 'Disconnect',
+          onSelected: busy ? null : () => unawaited(disconnect(selectedId)),
+        ),
+      for (final account in connections.where(
+        (row) =>
+            row['provider'] == provider &&
+            row['state'] == 'disconnected' &&
+            row['error'] is Map,
+      ))
+        UiMenuItem(
+          label:
+              'Retry disconnecting ${textOf(account['account_label'], 'account')}',
+          onSelected: busy
+              ? null
+              : () => unawaited(disconnect(account['id'] as String)),
+        ),
+    ],
+  );
+
   @override
   Widget build(BuildContext context) {
     final ui = context.ui;
@@ -617,31 +729,71 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (widget.provider == 'url') ...[
-          for (final provider in ['google_drive', 'dropbox']) ...[
-            if (connectedAccounts(provider).isNotEmpty)
-              accountChoice(
-                provider,
-                linkAccounts[provider],
-                (id) => setState(() => linkAccounts[provider] = id),
-              ),
-            UiButton(
-              label: connectedAccounts(provider).isEmpty
-                  ? 'Connect ${providerName(provider)}'
-                  : 'Use another ${providerName(provider)} account',
-              variant: UiButtonVariant.ghost,
-              onPressed: busy
-                  ? null
-                  : () => connect('folders', provider: provider),
-            ),
-          ],
           UiField(
             label: 'Photo or folder links',
             controller: links,
+            onChanged: (_) => setState(() {}),
             minLines: 2,
             maxLines: 5,
             helpText:
                 'One direct image, Drive, Dropbox, or registered storage link per line.',
           ),
+          for (final provider in linkedProviders) ...[
+            SizedBox(height: ui.space.s3),
+            if (connectedAccounts(provider).isEmpty &&
+                recoverableAccounts(provider).length == 1)
+              Text(
+                accountLabel(recoverableAccounts(provider).single),
+                style: ui.type.bodySmall,
+              ),
+            if (connectedAccounts(provider).isEmpty &&
+                !(connectionFailed && failedProvider == provider))
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: UiButton(
+                  label:
+                      '${recoverableAccounts(provider).length == 1 ? 'Reconnect' : 'Connect'} ${providerName(provider)}',
+                  variant: UiButtonVariant.secondary,
+                  onPressed: busy ? null : () => connectLinkProvider(provider),
+                ),
+              )
+            else if (connectedAccounts(provider).isNotEmpty)
+              Row(
+                children: [
+                  Expanded(
+                    child:
+                        connectedAccounts(provider).length == 1 &&
+                            connectedAccounts(provider).single['id'] ==
+                                linkAccounts[provider]
+                        ? Text(
+                            '${providerName(provider)} · ${accountLabel(connectedAccounts(provider).single)}',
+                            style: ui.type.bodySmall,
+                          )
+                        : accountChoice(
+                            provider,
+                            linkAccounts[provider],
+                            (id) => setState(() => linkAccounts[provider] = id),
+                          ),
+                  ),
+                  connectionOptions(
+                    provider,
+                    selectedId: linkAccounts[provider],
+                  ),
+                ],
+              ),
+            if (connectedAccounts(provider).isEmpty &&
+                recoverableAccounts(provider).isNotEmpty)
+              Align(
+                alignment: AlignmentDirectional.centerEnd,
+                child: connectionOptions(
+                  provider,
+                  selectedId: recoverableAccounts(provider).length == 1
+                      ? recoverableAccounts(provider).single['id'] as String
+                      : null,
+                ),
+              ),
+          ],
+          SizedBox(height: ui.space.s3),
           UiButton(
             label: 'Review links',
             onPressed: busy ? null : resolveLinks,
@@ -665,94 +817,66 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
                     }),
             ),
         ] else ...[
-          if (!connected && available.isEmpty) ...[
+          if (!connected && available.isEmpty && !connectionFailed) ...[
             Text(
-              'Connect ${providerName(widget.provider)} to choose photos for this batch.',
+              'Import photos from ${providerName(widget.provider)}.',
               style: ui.type.body,
-            ),
-            SizedBox(height: ui.space.s2),
-            Text(
-              'Your account stays connected for next time. Only photos you choose are imported; originals stay in place.',
-              style: ui.type.bodySmall,
             ),
             SizedBox(height: ui.space.s4),
           ],
-          if (available.length > 1 || (available.isNotEmpty && !connected))
-            accountChoice(widget.provider, connectionId, chooseAccount),
-          if (connected) ...[
-            const Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: UiChip(label: 'Connected'),
-            ),
-            SizedBox(height: ui.space.s2),
-            if (available.length == 1)
-              Text(accountLabel(activeConnection!), style: ui.type.body),
-            SizedBox(height: ui.space.s3),
-            Wrap(
-              spacing: ui.space.s2,
-              runSpacing: ui.space.s2,
+          if (available.isNotEmpty ||
+              activeConnection?['account_id'] != null) ...[
+            Row(
               children: [
-                if (widget.provider == 'google_drive')
-                  UiButton(
-                    label: 'Choose photos',
-                    onPressed: busy ? null : picker,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (available.length > 1 ||
+                          (available.isNotEmpty && !connected))
+                        accountChoice(
+                          widget.provider,
+                          connectionId,
+                          chooseAccount,
+                        )
+                      else
+                        Text(
+                          accountLabel(activeConnection!),
+                          style: ui.type.body,
+                        ),
+                      if (connected)
+                        Text('Connected', style: ui.type.bodySmall),
+                    ],
                   ),
-                if (activeConnection?['access'] != 'folders')
-                  UiButton(
-                    label: 'Browse folders',
-                    variant: UiButtonVariant.secondary,
-                    onPressed: busy ? null : folderAccess,
-                  ),
-                UiButton(
-                  label: 'Use another account',
-                  variant: UiButtonVariant.ghost,
-                  onPressed: busy ? null : () => connect(defaultAccess),
                 ),
-                UiButton(
-                  label: 'Disconnect',
-                  variant: UiButtonVariant.ghost,
-                  onPressed: busy ? null : () => disconnect(connectionId!),
-                ),
+                connectionOptions(widget.provider, selectedId: connectionId),
               ],
             ),
-          ] else if (!connectionFailed)
+            SizedBox(height: ui.space.s3),
+          ],
+          if (connected && widget.provider == 'google_drive' && folder == null)
             UiButton(
-              label: available.isEmpty
-                  ? 'Connect ${providerName(widget.provider)}'
-                  : 'Use another account',
+              label: 'Choose photos',
+              variant: entries.isEmpty && selected.isEmpty
+                  ? UiButtonVariant.primary
+                  : UiButtonVariant.secondary,
+              onPressed: busy ? null : picker,
+            )
+          else if (!connected && !connectionFailed && available.isEmpty)
+            UiButton(
+              label: 'Connect ${providerName(widget.provider)}',
               onPressed: busy ? null : () => connect(defaultAccess),
             ),
-          for (final connection in connections.where(
-            (row) => row['state'] == 'disconnected' && row['error'] is Map,
-          ))
-            UiButton(
-              label:
-                  'Retry disconnecting ${textOf(connection['account_label'], 'account')}',
-              variant: UiButtonVariant.secondary,
-              onPressed: busy
-                  ? null
-                  : () => disconnect(connection['id'] as String),
+          if (available.isEmpty &&
+              activeConnection?['account_id'] == null &&
+              connections.any(
+                (row) => row['state'] == 'disconnected' && row['error'] is Map,
+              ))
+            Align(
+              alignment: AlignmentDirectional.centerEnd,
+              child: connectionOptions(widget.provider),
             ),
         ],
-        for (final account in connections.where(
-          (row) =>
-              row['state'] != 'connected' &&
-              row['state'] != 'disconnected' &&
-              row['account_id'] != null &&
-              row['id'] != connectionId,
-        ))
-          UiButton(
-            label:
-                'Reconnect ${textOf(account['account_label'], 'account')} to resume imports',
-            variant: UiButtonVariant.secondary,
-            onPressed: busy
-                ? null
-                : () => connect(
-                    account['access'] as String,
-                    provider: account['provider'] as String,
-                    reconnectId: account['id'] as String,
-                  ),
-          ),
         if (connectingProvider != null)
           Padding(
             padding: EdgeInsets.symmetric(vertical: ui.space.s3),
@@ -769,36 +893,13 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
               child: Text(message!, style: ui.type.bodySmall),
             ),
           ),
-        if (recoveryAction == 'administrator') ...[
-          Text(
-            'Share these details with your administrator, then retry when access is available.',
-            style: ui.type.bodySmall,
-          ),
-          UiButton(
-            label: administratorDetailsCopied
-                ? 'Administrator details copied'
-                : 'Copy administrator details',
-            leading: UiIcons.copy,
-            variant: UiButtonVariant.secondary,
-            onPressed: busy ? null : copyAdministratorDetails,
-          ),
-        ],
         if (recoveryAction == 'file_access')
           Text(
-            'Ask the file owner for download access, use an account with access, or choose another source. Your other selections are retained.',
+            'Ask the owner for access or choose another photo.',
             style: ui.type.bodySmall,
           ),
         if (connectionFailed && !busy) ...[
           UiButton(label: 'Retry connection', onPressed: retryConnection),
-          if (activeConnection?['account_id'] != null)
-            UiButton(
-              label: 'Use another account',
-              variant: UiButtonVariant.ghost,
-              onPressed: () => connect(
-                activeConnection!['access'] as String,
-                provider: activeConnection!['provider'] as String,
-              ),
-            ),
         ] else if (message != null &&
             retryAction != null &&
             (recoveryAction == 'retry' || recoveryAction == 'administrator'))
@@ -806,6 +907,28 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
             label: 'Retry',
             variant: UiButtonVariant.secondary,
             onPressed: busy ? null : () => run(retryAction!),
+          ),
+        if (recoveryAction == 'administrator')
+          UiDisclosure(
+            title: 'Administrator help',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Share the details, then retry after access is restored.',
+                  style: ui.type.bodySmall,
+                ),
+                SizedBox(height: ui.space.s2),
+                UiButton(
+                  label: administratorDetailsCopied
+                      ? 'Administrator details copied'
+                      : 'Copy administrator details',
+                  leading: UiIcons.copy,
+                  variant: UiButtonVariant.secondary,
+                  onPressed: busy ? null : copyAdministratorDetails,
+                ),
+              ],
+            ),
           ),
         if (parents.isNotEmpty)
           UiButton(
@@ -819,18 +942,26 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
                     await browse();
                   }),
           ),
-        if (sourceId != null || folder != null) ...[
-          UiCheckbox(
-            label: 'Include subfolders',
-            value: includeSubfolders,
-            onChanged: (value) => setState(() => includeSubfolders = value),
+        if (sourceId != null || folder != null)
+          UiDisclosure(
+            title: 'Folder options',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                UiCheckbox(
+                  label: 'Include subfolders',
+                  value: includeSubfolders,
+                  onChanged: (value) =>
+                      setState(() => includeSubfolders = value),
+                ),
+                UiButton(
+                  label: 'Select folder photos',
+                  variant: UiButtonVariant.secondary,
+                  onPressed: busy ? null : selectFolder,
+                ),
+              ],
+            ),
           ),
-          UiButton(
-            label: 'Select folder photos',
-            variant: UiButtonVariant.secondary,
-            onPressed: busy ? null : selectFolder,
-          ),
-        ],
         if (!busy && folder != null && entries.isEmpty)
           Text('No photos in this folder.', style: ui.type.bodySmall),
         if (entries.isNotEmpty)
@@ -911,11 +1042,6 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
                 'Add ${selected.length} ${selected.length == 1 ? 'photo' : 'photos'}',
             onPressed: busy || selected.isEmpty ? null : addSelected,
           ),
-        SizedBox(height: ui.space.s2),
-        Text(
-          'Selected photos are copied into your private draft. Originals stay in their source.',
-          style: ui.type.bodySmall,
-        ),
       ],
     );
   }

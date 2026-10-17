@@ -521,12 +521,19 @@ new number off it.
 ### 4.4 Intake and capture
 
 Cloud-source sheets use a connector progression: Connect → provider consent →
-Connected account → photo selection. Keep the account visible alongside selection;
-use a single-choice account selector when more than one is available. Show
-administrator guidance only in response to a confirmed connection failure, beside
-Retry and Copy administrator details. Preserve both the error reason and prior
-photo selections while users resolve access outside the app. Do not show an
-approval-pending state unless the provider confirms one.
+photo selection. Before connection, show one brief description and one Connect
+action. After connection, keep the account in one compact row; put switching,
+disconnect/reconnect, and optional Google folder access in its overflow menu.
+Use a single-choice selector only when accounts need choosing. Folder-wide
+selection and opt-in subfolders belong in a collapsed Folder options disclosure.
+
+After a confirmed failure, show the reason and Retry. Put administrator guidance
+and Copy administrator details in a collapsed Administrator help disclosure.
+Preserve the reason and prior selections. Do not invent an approval-pending state.
+Link import starts with the link field and exposes only the providers named in
+entered links. Do not repeat privacy paragraphs or account-management buttons
+around selection; provider consent carries permission review.
+
 **Bulk intake, 2026-10-17.** Add photos → review the batch → Submit → intake
 progress → specimen pipeline. One photo creates one specimen. Acquisition
 never creates a specimen. The existing scientific Queue retains Needs Human,

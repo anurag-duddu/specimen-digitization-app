@@ -75,25 +75,35 @@ selected provider account; multiple connections are never silently substituted.
 
 ### Connector interaction
 
-Drive and Dropbox start with **Connect**, continue through provider consent, and
-immediately open photo selection. Google reuses the user-opened sign-in popup for
-Picker; Dropbox opens its folder browser in the source sheet. Returning users
-reuse saved accounts. A single connected account is selected automatically;
-multiple accounts require an explicit choice. Folder browsing requests Google's
-additional access only when the user chooses that action.
+Drive and Dropbox start with one short description and **Connect**, continue
+through provider consent, and immediately open photo selection. Google reuses the
+user-opened sign-in popup for Picker; Dropbox opens its folder browser in the
+source sheet. Returning users see their saved account and photo selection. A
+single connected account is selected automatically; multiple accounts require an
+explicit choice. Keep account switching, disconnect/reconnect, and Google's
+optional folder access in the provider's overflow menu. Folder-wide selection
+and subfolder inclusion live under **Folder options**; subfolders stay opt-in.
 
-Show configuration, authorization, and organization-policy failures after the
-connection attempt, with the confirmed reason, Retry, and (when appropriate)
-Copy administrator details. Copying preserves the reason on screen. Users can
-share these details outside the app and retry after access changes; the app does
-not send a notification or claim that an approval request exists. Connection
-failures retain successful selections. A failed Picker launch retries selection
-with the connected account rather than repeating consent.
+Do not repeat privacy explanations, account-management buttons, or permission
+choices around the import action. Import links starts with the link field; only
+providers found in entered links expose connection/account controls. Direct
+image links do not show unrelated connectors.
 
-Connector references inspected in Mobbin: [Attio's saved storage accounts](https://mobbin.com/screens/288d76c3-b7b9-4812-8304-2bd83ce4f0c4)
-for available/connected separation, and [Dropbox Dash's denied connection](https://mobbin.com/screens/f10e8de9-fc45-47d7-8ada-238f1ea8d062)
-for retry and administrator guidance after failure. These are interaction
-references, not evidence of our provider or institutional acceptance.
+After a failed attempt, show the confirmed reason and Retry. Administrator
+instructions and copying are under **Administrator help**, initially collapsed.
+Copying preserves the reason on screen. Users can share the details outside the
+app and retry after access changes; the app sends no notification and invents no
+approval request. Failures retain successful selections. A failed Picker launch
+retries selection with the connected account rather than repeating consent.
+
+References inspected for this simplification:
+- [Claude's connector rows](https://mobbin.com/screens/e6ade293-ed67-4901-8d3c-4196c31b842e): provider, connection state/action, and secondary management.
+- [Attio's storage-connection flow](https://mobbin.com/flows/518e0a7f-f070-40ca-b66e-ecfc969591e3): connect a provider; manage a saved account only after opening its disclosure.
+- [ChatGPT's connection flow](https://mobbin.com/flows/72826030-df1b-43b4-884e-cafad0cc2e06): authorize at the provider and return to the task. This Mobbin example is GitHub/Codex, not Drive; [OpenAI's Drive instructions](https://help.openai.com/en/articles/10929079-internal-knowledge-google-workspace-admin-managed-setup) confirm the connect, account, consent, and return sequence.
+
+These are interaction references, not evidence of our provider or institutional
+acceptance. The earlier Dropbox Dash failure reference informed recovery behavior,
+but its guidance is not a template for the normal import screen.
 
 Account authorization, organization policy, application membership and individual
 file access produce distinct recovery states. The UI never invents an approval

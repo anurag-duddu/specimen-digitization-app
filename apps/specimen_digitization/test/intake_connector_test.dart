@@ -19,6 +19,7 @@ class ConnectorRepository implements BulkIntakeRepository {
   Json? pending;
   String? emptyAccount;
   bool loseCompletionReply = false;
+  bool nestedFolders = false;
   Completer<Json>? delayedPoll;
   Json account(String id, String provider, {String access = 'folders'}) => {
     'id': id,
@@ -94,7 +95,10 @@ class ConnectorRepository implements BulkIntakeRepository {
     if (path.endsWith('/browse')) {
       if (path.split('/')[2] == emptyAccount) return {'items': <Json>[]};
       return {
+        if (nestedFolders) 'next_cursor': 'next',
         'items': [
+          if (nestedFolders && body?['folder'] == '')
+            {'id': 'folder', 'filename': 'Folder', 'kind': 'folder'},
           {
             'id': 'photo',
             'filename': 'photo.jpg',
@@ -210,7 +214,176 @@ Future<void> press(WidgetTester tester, String label) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> openOptions(WidgetTester tester, String provider) async {
+  await tester.tap(
+    find.byWidgetPredicate(
+      (widget) =>
+          widget is UiMenuTrigger &&
+          widget.semanticsLabel == '$provider options',
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
 void main() {
+  testWidgets(
+    'pasted link reconnects the only expired account with its original identity',
+    (tester) async {
+      final repository = ConnectorRepository();
+      repository.accounts.add({
+        ...repository.account('expired', 'google_drive'),
+        'state': 'needs_authorization',
+        'error': {'message': 'Sign in again.', 'action': 'connect'},
+      });
+      await mount(tester, repository, 'url');
+      await tester.enterText(
+        find.byType(EditableText),
+        'https://drive.google.com/file/d/photo/view',
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('expired@example.test'), findsOneWidget);
+      await press(tester, 'Reconnect Google Drive');
+      final create = repository.calls.firstWhere(
+        (c) => c.$1 == 'POST' && c.$2 == '/connections',
+      );
+      expect(create.$3!['reconnect_id'], 'expired');
+      expect(create.$3!['access'], 'folders');
+      expect(find.text('Google Drive · expired@example.test'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'switching Google selection mode clears folder navigation and retains selections',
+    (tester) async {
+      final repository = ConnectorRepository()..nestedFolders = true;
+      repository.accounts.add(repository.account('saved', 'google_drive'));
+      final sessions = await mount(tester, repository, 'google_drive');
+      await tester.tap(find.text('photo.jpg'));
+      await tester.pumpAndSettle();
+      await press(tester, 'Folder');
+      expect(find.text('Back to folder'), findsOneWidget);
+      expect(find.text('Load more files'), findsOneWidget);
+      await openOptions(tester, 'Google Drive');
+      await tester.tap(find.text('Choose photos'));
+      await tester.pumpAndSettle();
+      expect(sessions.single.pickerUrl, isNotNull);
+      expect(find.text('Back to folder'), findsNothing);
+      expect(find.text('Load more files'), findsNothing);
+      expect(find.text('Folder options'), findsNothing);
+      expect(find.text('Add 1 photo'), findsOneWidget);
+      await openOptions(tester, 'Google Drive');
+      await tester.tap(find.text('Browse folders'));
+      await tester.pumpAndSettle();
+      expect(sessions.single.closed, isTrue);
+      expect(
+        repository.calls.any((c) => c.$1 == 'POST' && c.$2 == '/connections'),
+        isFalse,
+      );
+      expect(find.text('Folder options'), findsOneWidget);
+      expect(find.text('Add 1 photo'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'new connection has one action and no account-management controls',
+    (tester) async {
+      await mount(tester, ConnectorRepository(), 'google_drive', scale: 2);
+      expect(find.byType(UiButton), findsOneWidget);
+      expect(find.text('Connect Google Drive'), findsOneWidget);
+      expect(find.byType(UiMenuTrigger), findsNothing);
+      expect(find.textContaining('administrator'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'account tools and additional Google access are explicit menu actions',
+    (tester) async {
+      final repository = ConnectorRepository();
+      repository.accounts.add(
+        repository.account('saved', 'google_drive', access: 'files'),
+      );
+      await mount(tester, repository, 'google_drive');
+      expect(find.text('Choose photos'), findsOneWidget);
+      expect(find.text('Disconnect'), findsNothing);
+      expect(find.text('Browse folders'), findsNothing);
+      expect(repository.calls.any((c) => c.$1 == 'POST'), isFalse);
+      await openOptions(tester, 'Google Drive');
+      await tester.tap(find.text('Browse folders'));
+      await tester.pumpAndSettle();
+      final create = repository.calls.firstWhere(
+        (c) => c.$1 == 'POST' && c.$2 == '/connections',
+      );
+      expect(create.$3!['access'], 'folders');
+      expect(find.text('photo.jpg'), findsOneWidget);
+      expect(find.text('Include subfolders'), findsNothing);
+      await tester.tap(find.text('Folder options'));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<UiCheckbox>(
+              find.widgetWithText(UiCheckbox, 'Include subfolders'),
+            )
+            .value,
+        isFalse,
+      );
+      expect(find.text('Select folder photos'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'link import only offers the connector required by entered links',
+    (tester) async {
+      final repository = ConnectorRepository();
+      await mount(tester, repository, 'url');
+      expect(find.text('Connect Google Drive'), findsNothing);
+      expect(find.text('Connect Dropbox'), findsNothing);
+      await tester.enterText(
+        find.byType(EditableText),
+        'https://example.test/photo.jpg',
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(UiMenuTrigger), findsNothing);
+      expect(find.text('Connect Google Drive'), findsNothing);
+      await tester.enterText(
+        find.byType(EditableText),
+        'https://drive.google.com/file/d/photo/view',
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Connect Google Drive'), findsOneWidget);
+      expect(find.text('Connect Dropbox'), findsNothing);
+      expect(repository.calls.any((c) => c.$1 == 'POST'), isFalse);
+      await tester.enterText(
+        find.byType(EditableText),
+        'https://www.dropbox.com/s/photo',
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Connect Google Drive'), findsNothing);
+      expect(find.text('Connect Dropbox'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'disconnecting a link account clears its selection without removing the link',
+    (tester) async {
+      final repository = ConnectorRepository();
+      repository.accounts.add(repository.account('saved', 'dropbox'));
+      await mount(tester, repository, 'url');
+      const url = 'https://www.dropbox.com/s/photo';
+      await tester.enterText(find.byType(EditableText), url);
+      await tester.pumpAndSettle();
+      await openOptions(tester, 'Dropbox');
+      await tester.tap(find.text('Disconnect'));
+      await tester.pumpAndSettle();
+      expect(find.text('Connect Dropbox'), findsOneWidget);
+      expect(
+        tester.widget<EditableText>(find.byType(EditableText)).controller.text,
+        url,
+      );
+      expect(find.byType(UiSelect<String>), findsNothing);
+    },
+  );
+
   testWidgets(
     'status reconciliation clears reconnect after a lost completion acknowledgement',
     (tester) async {
@@ -299,7 +472,10 @@ void main() {
         repository.account('valid', 'google_drive'),
       ]);
       await mount(tester, repository, 'google_drive');
-      await press(tester, 'Reconnect expired@example.test to resume imports');
+      expect(find.text('Reconnect expired@example.test'), findsNothing);
+      await openOptions(tester, 'Google Drive');
+      await tester.tap(find.text('Reconnect expired@example.test'));
+      await tester.pumpAndSettle();
       final create = repository.calls.firstWhere(
         (c) => c.$1 == 'POST' && c.$2 == '/connections',
       );
@@ -354,8 +530,12 @@ void main() {
       expect(find.textContaining('administrator'), findsNothing);
       await press(tester, 'Connect Google Drive');
       expect(find.text('Provider setup is unavailable.'), findsOneWidget);
-      expect(find.text('Copy administrator details'), findsOneWidget);
+      expect(find.text('Copy administrator details'), findsNothing);
+      expect(find.text('Import photos from Google Drive.'), findsNothing);
       expect(find.text('Retry connection'), findsOneWidget);
+      await tester.tap(find.text('Administrator help'));
+      await tester.pumpAndSettle();
+      expect(find.text('Copy administrator details'), findsOneWidget);
       expect(find.textContaining('pending'), findsNothing);
       expect(sessions.single.closed, isTrue);
       expect(tester.takeException(), isNull);
@@ -455,6 +635,8 @@ void main() {
       const reason = 'Your organization prevents this connection.';
       expect(find.text(reason), findsOneWidget);
       expect(find.text('Connected'), findsNothing);
+      await tester.tap(find.text('Administrator help'));
+      await tester.pumpAndSettle();
       await press(tester, 'Copy administrator details');
       expect(copied, contains(reason));
       expect(find.text(reason), findsOneWidget);
