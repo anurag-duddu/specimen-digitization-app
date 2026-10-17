@@ -27,6 +27,7 @@ import 'models.dart';
 import 'screens/intake/capture_card.dart';
 import 'screens/intake/manifest_entry.dart';
 import 'screens/intake/manifest_panel.dart';
+import 'screens/intake/intake_status.dart';
 import 'screens/intake/intake_transfer_session.dart';
 import 'widgets/motion_reveal.dart';
 import 'widgets/upload_item.dart';
@@ -75,15 +76,24 @@ class IntakeScreen extends StatefulWidget {
     required this.onComplete,
     this.onBrowseSources,
     this.pickImages,
+    this.pickFiles,
     this.recoverCamera,
     this.openCapture,
     this.cameraFactory,
     this.webOverride,
+    this.onViewSpecimens,
+    this.restoreAccess,
+    this.accessVerified = false,
   });
   final SpecimenRepository repository;
   final CollectionScope scope;
   final String userId;
   final VoidCallback onComplete;
+  final VoidCallback? onViewSpecimens;
+
+  /// Rechecks authorization for this same user and collection.
+  final Future<bool> Function()? restoreAccess;
+  final bool accessVerified;
 
   /// Opens the registered sources for this collection.
   ///
@@ -94,6 +104,9 @@ class IntakeScreen extends StatefulWidget {
   /// Test seam for both sources. When set, it replaces the file picker and
   /// the camera entirely.
   final Future<List<XFile>> Function(bool camera)? pickImages;
+
+  /// File-only picker seam, including the camera's Choose files fallback.
+  final Future<List<XFile>> Function()? pickFiles;
 
   /// Test seam for the interrupted-capture recovery path.
   final Future<List<XFile>> Function()? recoverCamera;
@@ -123,7 +136,8 @@ class _IntakeScreenState extends State<IntakeScreen> {
 
   /// What the published action bar last said, so the frame is told once per
   /// change rather than once per frame.
-  ({bool busy, int pending, bool current})? _publishedUpload;
+  ({bool busy, int pending, bool current, bool signInRequired})?
+  _publishedUpload;
 
   bool get _busy => _session.busy;
   bool _sensitive = false;
@@ -134,6 +148,9 @@ class _IntakeScreenState extends State<IntakeScreen> {
   bool _autoIngestLoaded = false;
   bool _transferRefreshScheduled = false;
   String? _error;
+  Future<void> _cameraAdmissions = Future<void>.value();
+  XFile? _lastCameraFile;
+  ManifestEntry? _lastCameraEntry;
 
   /// The session's [IntakeTransferSession.movedToQueue] already spoken for,
   /// so a photo that moves to the main Queue is announced once, and a route
@@ -200,6 +217,26 @@ class _IntakeScreenState extends State<IntakeScreen> {
     _session.attachHandoff(_transferRefresh);
     unawaited(_loadAutoIngest());
     _recoverCamera();
+    _resumeVerifiedSession();
+  }
+
+  void _resumeVerifiedSession() {
+    final session = _session;
+    if (!widget.accessVerified || !session.signInRequired) return;
+    scheduleMicrotask(() {
+      if (mounted && identical(session, _session) && widget.accessVerified) {
+        unawaited(session.resumeAfterSignIn());
+      }
+    });
+  }
+
+  Future<void> _restoreAccess() async {
+    final session = _session;
+    if (await widget.restoreAccess?.call() == true &&
+        mounted &&
+        identical(session, _session)) {
+      await session.resumeAfterSignIn();
+    }
   }
 
   /// Upload acceptance and the later main-Queue handoff both refresh the
@@ -216,6 +253,12 @@ class _IntakeScreenState extends State<IntakeScreen> {
 
   void _sessionChanged() {
     if (!mounted) return;
+    if (_lastCameraEntry != null &&
+        (!_entries.contains(_lastCameraEntry) ||
+            _lastCameraEntry!.state != UploadState.ready)) {
+      _lastCameraFile = null;
+      _lastCameraEntry = null;
+    }
     final int moved = _session.movedToQueue - _announcedMoves;
     if (moved > 0) {
       _announcedMoves = _session.movedToQueue;
@@ -226,7 +269,9 @@ class _IntakeScreenState extends State<IntakeScreen> {
         _holdPhotos = true;
       }
     }
-    if (_entries.isEmpty && _photosFocus.hasFocus) {
+    if (_entries.isEmpty &&
+        _session.departureCount == 0 &&
+        _photosFocus.hasFocus) {
       // The Photos section is about to close, now or after a last row's
       // exit. Wherever focus is inside it (a row, Stop, the summary), it
       // goes to the screen heading rather than to nowhere or to whatever
@@ -296,6 +341,9 @@ class _IntakeScreenState extends State<IntakeScreen> {
       _error = null;
       unawaited(_loadAutoIngest());
     }
+    if (!oldWidget.accessVerified && widget.accessVerified) {
+      _resumeVerifiedSession();
+    }
   }
 
   @override
@@ -317,29 +365,30 @@ class _IntakeScreenState extends State<IntakeScreen> {
 
   // ------------------------------------------------------------------ input
 
-  Future<void> _chooseFiles() => _collect(
-    camera: false,
-    load: () async => widget.pickImages != null
-        ? await widget.pickImages!(false)
-        : await openFiles(
-            acceptedTypeGroups: <XTypeGroup>[
-              const XTypeGroup(
-                label: 'Photos',
-                extensions: <String>[
-                  'jpg',
-                  'jpeg',
-                  'png',
-                  'heic',
-                  'heif',
-                  'tif',
-                  'tiff',
-                  'dng',
-                ],
-                uniformTypeIdentifiers: <String>['public.image'],
-              ),
-            ],
-          ),
-  );
+  Future<void> _chooseFiles() => _collect(camera: false, load: _pickFiles);
+
+  Future<List<XFile>> _pickFiles() async => widget.pickFiles != null
+      ? await widget.pickFiles!()
+      : widget.pickImages != null
+      ? await widget.pickImages!(false)
+      : await openFiles(
+          acceptedTypeGroups: <XTypeGroup>[
+            const XTypeGroup(
+              label: 'Photos',
+              extensions: <String>[
+                'jpg',
+                'jpeg',
+                'png',
+                'heic',
+                'heif',
+                'tif',
+                'tiff',
+                'dng',
+              ],
+              uniformTypeIdentifiers: <String>['public.image'],
+            ),
+          ],
+        );
 
   Future<void> _takePhotograph() => _collect(camera: true, load: _capture);
 
@@ -362,23 +411,31 @@ class _IntakeScreenState extends State<IntakeScreen> {
     await prefs.setBool(_autoIngestKey, value);
   }
 
-  /// The capture route first, the device camera app second.
-  ///
-  /// `image_picker` stays as the fallback because it is the only path that
-  /// works when the in-app camera cannot start: no camera reported, camera
-  /// permission refused, or a controller that will not initialise. The reason
-  /// is shown as a plain sentence before the fallback runs.
+  /// Follow the camera's offered fallback: permission/no-camera failures
+  /// choose existing photos; a native controller failure may use the OS camera.
   Future<List<XFile>> _capture() async {
+    final session = _session;
+    final sensitive = _sensitive;
     if (widget.pickImages != null) return widget.pickImages!(true);
     if (_cameraAvailable) {
       final CaptureResult result = await _openCapture();
       if (!result.needsFallback) {
         return result.streamed ? <XFile>[] : result.files;
       }
-      if (mounted) {
-        setState(() => _error = result.unavailable!.message);
+      if (!mounted || !identical(session, _session)) return <XFile>[];
+      Future<List<XFile>> chooseExistingPhotos() async {
+        final files = await _pickFiles();
+        if (!mounted || !identical(session, _session)) return <XFile>[];
+        await _acceptFiles(files, camera: false, sensitive: sensitive);
+        return <XFile>[];
       }
-      if (!_nativeCameraAvailable) return <XFile>[];
+
+      // Browsers and desktops have no separate operating-system camera.
+      if (!_nativeCameraAvailable) return chooseExistingPhotos();
+      // Permission and no-camera fallbacks explicitly offer Choose files.
+      if (result.unavailable != CaptureUnavailable.failed) {
+        return chooseExistingPhotos();
+      }
     }
     return _devicePicker();
   }
@@ -393,7 +450,10 @@ class _IntakeScreenState extends State<IntakeScreen> {
         await Navigator.of(context, rootNavigator: true).push(
           CaptureScreen.route(
             widget.cameraFactory ?? _platformCamera,
-            onAccepted: _acceptCameraPhoto,
+            onCaptured: _acceptCameraPhoto,
+            canRemovePhoto: _canRemoveCameraPhoto,
+            removePhoto: _removeCameraPhoto,
+            initialSensitive: _sensitive,
             autoIngest: _autoIngest,
             onAutoIngestChanged: (bool value) =>
                 unawaited(_setAutoIngest(value)),
@@ -402,17 +462,54 @@ class _IntakeScreenState extends State<IntakeScreen> {
             deviceFallbackAvailable: _nativeCameraAvailable,
           ),
         );
+    _lastCameraFile = null;
+    _lastCameraEntry = null;
     return result ?? const CaptureResult();
   }
 
-  void _acceptCameraPhoto(XFile file) {
+  void _acceptCameraPhoto(CapturedPhoto photo) {
     // Admission and upload run under the intake route while the viewfinder
     // stays on top. Each accepted photograph can start before Done is tapped.
-    unawaited(
-      _acceptFiles(<XFile>[file], camera: true).then((int admitted) async {
-        if (admitted > 0) await _session.start();
-      }),
-    );
+    final session = _session;
+    _lastCameraFile = null;
+    _lastCameraEntry = null;
+    _cameraAdmissions = _cameraAdmissions.then((_) async {
+      if (!mounted || !identical(session, _session)) return;
+      ManifestEntry? admittedEntry;
+      final admitted = await _acceptFiles(
+        <XFile>[photo.file],
+        camera: true,
+        sensitive: photo.sensitive,
+        onAdmitted: (entry) => admittedEntry = entry,
+      );
+      // In Review mode the camera's explicit Send authorizes this admission.
+      if (admitted > 0 && mounted && identical(session, _session)) {
+        _lastCameraFile = photo.file;
+        _lastCameraEntry = admittedEntry;
+        session.changed();
+        unawaited(session.start());
+      }
+    });
+  }
+
+  bool _canRemoveCameraPhoto(XFile file) {
+    final entry = _lastCameraEntry;
+    return mounted &&
+        identical(file, _lastCameraFile) &&
+        entry != null &&
+        _entries.contains(entry) &&
+        entry.state == UploadState.ready &&
+        !entry.checking &&
+        entry.session == null;
+  }
+
+  bool _removeCameraPhoto(XFile file) {
+    if (!_canRemoveCameraPhoto(file)) return false;
+    final entry = _lastCameraEntry!;
+    _lastCameraFile = null;
+    _lastCameraEntry = null;
+    _session.remove(entry);
+    return true;
   }
 
   /// The `image_picker` path. Its recovery marker preserves ownership and
@@ -439,18 +536,31 @@ class _IntakeScreenState extends State<IntakeScreen> {
     required bool camera,
     required Future<List<XFile>> Function() load,
   }) async {
+    final session = _session;
+    final sensitive = _sensitive;
     setState(() {
       _choosing = true;
       _error = null;
     });
     try {
-      final int admitted = await _acceptFiles(await load(), camera: camera);
+      final files = await load();
+      if (!mounted || !identical(session, _session)) return;
+      final int admitted = await _acceptFiles(
+        files,
+        camera: camera,
+        sensitive: sensitive,
+      );
       // The in-app camera streams only photographs the operator explicitly
       // sent. A platform picker cannot host that review UI, so manual mode
       // leaves its photograph ready in the Intake queue for the page action.
       // An empty return (including streamed captures) or a local refusal is
       // not an instruction to restart photographs already waiting in Intake.
-      if (camera && _autoIngest && admitted > 0) unawaited(_session.start());
+      if (camera &&
+          _autoIngest &&
+          admitted > 0 &&
+          identical(session, _session)) {
+        unawaited(session.start());
+      }
     } catch (_) {
       if (mounted) {
         setState(() => _error = 'Picker did not open. Try Choose files.');
@@ -544,11 +654,17 @@ class _IntakeScreenState extends State<IntakeScreen> {
     List<XFile> files, {
     required bool camera,
     bool? sensitive,
+    ValueChanged<ManifestEntry>? onAdmitted,
   }) async {
+    final session = _session;
+    final declaration = sensitive ?? _sensitive;
+    bool owns() => mounted && identical(session, _session);
     int admitted = 0;
     for (final XFile file in files) {
+      if (!owns()) return admitted;
       try {
         final int size = await file.length();
+        if (!owns()) return admitted;
         if (size == 0 || size > intakeMaximumBytes) {
           _skip(
             key: 'size:${file.name}:$size',
@@ -560,6 +676,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
           continue;
         }
         final Uint8List bytes = await file.readAsBytes();
+        if (!owns()) return admitted;
         final String digest = sha256.convert(bytes).toString();
         final String extension = file.name.split('.').last.toLowerCase();
         final String mime = switch (extension) {
@@ -630,6 +747,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
             /* An unsupported decoder or unavailable measurement is not a quality pass. */
           }
         }
+        if (!owns()) return admitted;
         if (excessiveResolution) {
           _skip(
             key: 'resolution:$digest',
@@ -644,15 +762,21 @@ class _IntakeScreenState extends State<IntakeScreen> {
                   e.digest == digest && e.state != UploadState.skipped,
             )
             .firstOrNull;
+        if (!mounted || !identical(session, _session)) return admitted;
         if (old != null &&
             (old.settled ||
                 old.checking ||
-                old.state == UploadState.uploading)) {
-          _skip(
-            key: 'selected:$digest:${_entries.length}',
-            name: file.name,
-            why: 'Already in the list',
-          );
+                old.state == UploadState.uploading ||
+                (old.state == UploadState.ready && old.file != null))) {
+          if (UiToastHost.maybeOf(context) != null) {
+            UiToasts.show(
+              context,
+              message: 'Already in the list',
+              icon: UiIcons.copy,
+            );
+          } else {
+            setState(() => _error = 'Already in the list');
+          }
           continue;
         }
         final IntakeFile input = IntakeFile(
@@ -667,7 +791,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
           // Recovery supplies the pending photo's declaration. Other new
           // selections use the visible declaration, off by default.
           // Resumed server uploads retain their existing classification.
-          sensitive: old?.file?.sensitive ?? sensitive ?? _sensitive,
+          sensitive: old?.file?.sensitive ?? declaration,
           width: encodedDimensions?.width,
           height: encodedDimensions?.height,
         );
@@ -693,9 +817,11 @@ class _IntakeScreenState extends State<IntakeScreen> {
             );
           }
         });
+        onAdmitted?.call(old ?? _entries.last);
         _session.changed();
         admitted++;
       } catch (_) {
+        if (!owns()) return admitted;
         _skip(
           key: 'read:${file.name}:${_entries.length}',
           name: file.name,
@@ -718,77 +844,74 @@ class _IntakeScreenState extends State<IntakeScreen> {
     _session.remove(entry);
   }
 
+  void _setPhotoSensitivity(ManifestEntry entry, bool sensitive) {
+    final file = entry.file;
+    if (file == null ||
+        entry.state != UploadState.ready ||
+        entry.checking ||
+        entry.session != null ||
+        !_entries.contains(entry)) {
+      return;
+    }
+    entry.file = IntakeFile(
+      name: file.name,
+      bytes: file.bytes,
+      mimeType: file.mimeType,
+      sha256: file.sha256,
+      method: file.method,
+      sensitive: sensitive,
+      width: file.width,
+      height: file.height,
+    );
+    _session.changed();
+  }
+
   // ------------------------------------------------------------ server work
 
   Future<void> _preflight(ManifestEntry entry) async {
+    final session = _session;
     final IntakeFile? file = entry.file;
-    if (file == null) return;
-    setState(() {
-      entry.checking = true;
-      entry.preflightError = null;
-    });
+    if (file == null ||
+        session.busy ||
+        entry.checking ||
+        !session.entries.contains(entry)) {
+      return;
+    }
+    bool owns() =>
+        mounted &&
+        identical(session, _session) &&
+        session.entries.contains(entry) &&
+        identical(entry.file, file);
+    entry.checking = true;
+    entry.preflightError = null;
+    session.changed();
     try {
       final Json result = await widget.repository.preflight(widget.scope, file);
-      if (mounted && identical(entry.file, file)) {
-        setState(() => entry.preflight = result);
-      }
+      if (owns()) entry.preflight = result;
     } catch (e) {
-      if (mounted) {
-        setState(
-          () => entry.preflightError = e is ApiFailure
-              ? e.message
-              : 'Photo not checked. Try again.',
-        );
+      if (owns()) {
+        entry.preflightError = e is ApiFailure
+            ? e.message
+            : 'Photo not checked. Try again.';
       }
     } finally {
-      if (mounted) setState(() => entry.checking = false);
+      entry.checking = false;
+      if (owns()) session.changed();
     }
   }
 
   Future<void> _send() => _session.start();
 
   CaptureActivity _captureActivity() {
-    if (_entries.isEmpty) {
-      return const CaptureActivity(label: 'No photos yet');
-    }
-    final int uploading = _entries
-        .where(
-          (ManifestEntry entry) =>
-              entry.state == UploadState.uploading || entry.checking,
-        )
-        .length;
-    final int processing = _entries
-        .where((ManifestEntry entry) => entry.state == UploadState.processing)
-        .length;
-    final int uploaded = _entries
-        .where((ManifestEntry entry) => entry.state == UploadState.accepted)
-        .length;
-    final int handedOff = _entries
-        .where((ManifestEntry entry) => entry.state == UploadState.inMainQueue)
-        .length;
-    final int attention = _entries
-        .where(
-          (ManifestEntry entry) =>
-              entry.state == UploadState.failed ||
-              entry.state == UploadState.interrupted ||
-              entry.state == UploadState.processingBlocked,
-        )
-        .length;
     final ManifestEntry? active = _entries
         .where((ManifestEntry entry) => entry.state == UploadState.uploading)
         .firstOrNull;
-    final List<String> parts = <String>[
-      if (uploading > 0) '$uploading sending',
-      if (uploaded + processing > 0) '${uploaded + processing} saved',
-      if (handedOff > 0) '$handedOff sent',
-      if (attention > 0) '$attention not sent',
-    ];
     return CaptureActivity(
-      label: parts.isEmpty
-          ? '${_entries.length} ${_entries.length == 1 ? 'photo' : 'photos'}'
-          : parts.join(', '),
+      label: _session.summary,
       progress: active?.progress,
-      problem: attention > 0,
+      problem: _entries.any(
+        (entry) => intakeStatus(entry).tone == IntakeTone.error,
+      ),
     );
   }
 
@@ -886,7 +1009,10 @@ class _IntakeScreenState extends State<IntakeScreen> {
     // progress is on the manifest, where the denominator is.
     label: intakeUploadLabel(uploading: _busy, pending: _pendingCount),
     leading: UiIcons.cloudUpload,
-    onPressed: _busy || _pendingCount == 0 ? null : _send,
+    onPressed: _busy || _pendingCount == 0 || _session.signInRequired
+        ? null
+        : _send,
+    disabledReason: _session.signInRequired ? intakeSignedOutReason : null,
   );
 
   /// Puts the upload action in the frame's action bar (13 section 3.3).
@@ -906,11 +1032,13 @@ class _IntakeScreenState extends State<IntakeScreen> {
   void _publishUpload({required bool current}) {
     final UiScaffoldSlots? slots = _slots;
     if (slots == null) return;
-    final ({bool busy, int pending, bool current}) state = (
-      busy: _busy,
-      pending: _pendingCount,
-      current: current,
-    );
+    final ({bool busy, int pending, bool current, bool signInRequired}) state =
+        (
+          busy: _busy,
+          pending: _pendingCount,
+          current: current,
+          signInRequired: _session.signInRequired,
+        );
     if (state == _publishedUpload) return;
     _publishedUpload = state;
     slots.setActionBar(
@@ -940,16 +1068,22 @@ class _IntakeScreenState extends State<IntakeScreen> {
     bool scrollable = true,
   }) => IntakeManifest(
     entries: _entries,
+    activity: _session,
     busy: _busy,
     stopping: _busy && _stopRequested,
     onStop: _session.stop,
     onRemove: _remove,
     onServerCheck: _preflight,
     onRetry: (ManifestEntry entry) => unawaited(_session.start(only: entry)),
+    onChooseFile: _chooseFiles,
+    onSensitivityChanged: _setPhotoSensitivity,
+    onViewSpecimens: widget.onViewSpecimens,
+    sent: _session.sentCount,
+    duplicates: _session.duplicateCount,
     padding: padding,
     scrollable: scrollable,
     onExitsSettled: _exitsSettled,
-    hostHandlesEmptyFocus: true,
+    hostHandlesEmptyFocus: _session.departureCount == 0,
   );
 
   /// The one message slot, revealed above the sections.
@@ -1007,6 +1141,17 @@ class _IntakeScreenState extends State<IntakeScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       _errorSlot(context),
+                      if (_session.signInRequired)
+                        UiBanner(
+                          message: intakeSignedOutReason,
+                          tone: UiBannerTone.blocked,
+                          actionLabel: widget.restoreAccess == null
+                              ? null
+                              : 'Check access',
+                          onAction: widget.restoreAccess == null
+                              ? null
+                              : _restoreAccess,
+                        ),
                       _batchHeader(context),
                       SizedBox(height: layout.gap),
                       _captureCard(context, minDropHeight: 0),
@@ -1015,7 +1160,10 @@ class _IntakeScreenState extends State<IntakeScreen> {
                       // The section closes the way a banner does when the
                       // main Queue takes its last photo (motion, row 10).
                       MotionReveal(
-                        visible: _entries.isNotEmpty || _holdPhotos,
+                        visible:
+                            _entries.isNotEmpty ||
+                            _holdPhotos ||
+                            _session.departureCount > 0,
                         child: Focus(
                           focusNode: _photosFocus,
                           includeSemantics: false,
