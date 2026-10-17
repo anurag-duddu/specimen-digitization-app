@@ -87,6 +87,10 @@ DateTime? queueUpdatedAt(Specimen specimen) {
 class QueueScreen extends StatelessWidget {
   const QueueScreen({super.key});
 
+  /// The pull to refresh wrapper around the list, present in the iOS and
+  /// Android apps.
+  static const Key pullToRefreshKey = ValueKey<String>('queue-pull-to-refresh');
+
   @override
   Widget build(BuildContext context) {
     final shell = AppSidebarScope.maybeOf(context);
@@ -706,12 +710,18 @@ class _QueuePaneState extends State<QueuePane> {
       ],
     );
 
-    // Pull to refresh is a touch gesture, and on the web it fights the
-    // browser's own pull to refresh, so it is offered on the two touch
-    // platforms only (motion catalog, row 21). The list is never cleared
-    // while the refresh is out: the rows that are there stay there.
+    // Pull to refresh is a touch gesture of the phone and tablet apps, and on
+    // the web it fights the browser's own pull to refresh, so it is offered
+    // on iOS and Android only (motion catalog, row 21). Web and desktop
+    // refresh from the account menu's reload control, as the owner confirmed
+    // on 2026-10-17. The list is never cleared while the refresh is out: the
+    // rows that are there stay there.
     return _pullToRefresh
-        ? _PullToRefresh(onRefresh: controller.refresh, child: list)
+        ? _PullToRefresh(
+            key: QueueScreen.pullToRefreshKey,
+            onRefresh: controller.refresh,
+            child: list,
+          )
         : list;
   }
 
@@ -1270,7 +1280,11 @@ class _LoadMoreButton extends StatelessWidget {
 // entry in 10 section 4, which 10 section 10 asks for before a new component
 // exists.
 class _PullToRefresh extends StatefulWidget {
-  const _PullToRefresh({required this.onRefresh, required this.child});
+  const _PullToRefresh({
+    super.key,
+    required this.onRefresh,
+    required this.child,
+  });
 
   /// What a completed pull asks for.
   final Future<void> Function() onRefresh;
