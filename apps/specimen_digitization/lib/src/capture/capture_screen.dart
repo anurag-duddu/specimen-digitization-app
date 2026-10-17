@@ -7,10 +7,9 @@
 /// uncalibrated exposure hint, a review step, and a batch mode that returns
 /// to the viewfinder after each accepted photograph.
 ///
-/// The preview is the evidence, so the frame carries no sky and no
-/// navigation and the controls float over the pixels: a `glass.floating`
-/// capsule at the top for leaving, and the shutter and the counter at the
-/// bottom.
+/// The preview is the evidence, so the frame carries no sky or navigation.
+/// The close and send-mode controls sit above it, with a thumbnail, shutter
+/// and Done below it.
 ///
 /// What this screen does not do, stated rather than faked: it does not detect
 /// the specimen, does not verify that anything is inside the guides, does not
@@ -33,9 +32,6 @@ import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import '../capture_quality.dart';
-import '../screens/intake/capture_card.dart'
-    show cameraSendImmediatelyLabel, cameraSendImmediatelyBody;
-import '../widgets/not_calibrated_chip.dart';
 import 'capture_camera.dart';
 import 'capture_orientation.dart';
 import 'capture_photo_editor.dart';
@@ -54,6 +50,15 @@ class CaptureActivity {
   final bool problem;
 }
 
+/// An accepted photo and the sensitivity selected when it was taken or reviewed.
+@immutable
+class CapturedPhoto {
+  const CapturedPhoto({required this.file, required this.sensitive});
+
+  final XFile file;
+  final bool sensitive;
+}
+
 /// What the capture route hands back to the intake screen.
 @immutable
 class CaptureResult {
@@ -66,8 +71,8 @@ class CaptureResult {
   /// Photographs the operator accepted, in capture order. May be empty.
   final List<XFile> files;
 
-  /// Set when the operator explicitly chooses the device camera after the
-  /// in-app camera becomes unavailable. Back and Cancel leave this unset.
+  /// Set when the operator explicitly chooses the fallback after the in-app
+  /// camera becomes unavailable. Back and Close leave this unset.
   final CaptureUnavailable? unavailable;
 
   /// Each accepted file was handed to intake while the viewfinder stayed open.
@@ -78,15 +83,23 @@ class CaptureResult {
 }
 
 /// The viewfinder, review step and batch counter.
+///
+/// Sensitive controls appear in the viewfinder and review only when
+/// [onCaptured] is supplied. Without it, no [CapturedPhoto] is produced;
+/// [onAccepted] and [CaptureResult.files] continue to carry files only.
 class CaptureScreen extends StatefulWidget {
   const CaptureScreen({
     super.key,
     required this.camera,
     this.onAccepted,
+    this.onCaptured,
+    this.initialSensitive = false,
     this.autoIngest = false,
     this.onAutoIngestChanged,
     this.activity,
     this.activitySnapshot,
+    this.statusLabel,
+    this.statusBlocked = false,
     this.deviceFallbackAvailable = true,
   });
 
@@ -96,6 +109,15 @@ class CaptureScreen extends StatefulWidget {
 
   /// Called for each accepted image without waiting for the whole batch.
   final ValueChanged<XFile>? onAccepted;
+
+  /// Receives the same accepted file with its per-photo sensitivity.
+  /// When both callbacks are supplied, each is called once for that photo.
+  /// Supplying this callback enables both Sensitive controls. When null,
+  /// neither control is shown and no [CapturedPhoto] is produced.
+  final ValueChanged<CapturedPhoto>? onCaptured;
+
+  /// The starting choice for this camera session; never persisted here.
+  final bool initialSensitive;
 
   /// When true, the shutter sends the photograph to Intake immediately.
   final bool autoIngest;
@@ -109,27 +131,58 @@ class CaptureScreen extends StatefulWidget {
   /// Reads a plain, camera-safe summary of the intake queue.
   final CaptureActivity Function()? activitySnapshot;
 
+  /// Optional batch summary, already composed by Intake. When non-null, this
+  /// and [statusBlocked] override [activitySnapshot], even on [activity] ticks.
+  /// A directly embedded widget can receive new values from its parent.
+  /// Values passed to [route] are fixed when it is pushed; use [activity] and
+  /// [activitySnapshot] for live updates while that route is open.
+  final String? statusLabel;
+
+  /// Whether [statusLabel] describes a photo the operator needs to fix.
+  /// Used only when [statusLabel] is non-null, overriding the snapshot's tone
+  /// even on [activity] ticks. Values passed to [route] are fixed when pushed;
+  /// live route status must use [activity] and [activitySnapshot] instead.
+  final bool statusBlocked;
+
   /// Whether a separate operating-system camera app is a meaningful fallback.
   /// Browser and desktop webcams have no second camera path to offer.
   final bool deviceFallbackAvailable;
 
   /// The route the intake screen pushes.
+  ///
+  /// Both Sensitive controls appear only when [onCaptured] is non-null.
+  /// Otherwise no [CapturedPhoto] is produced; [onAccepted] and the result
+  /// still carry files only. [initialSensitive] initializes those controls.
+  ///
+  /// [statusLabel] and [statusBlocked] are captured when the route is pushed;
+  /// rebuilding its builder does not supply new values. A non-null
+  /// [statusLabel] overrides [activitySnapshot], including its tone via
+  /// [statusBlocked], even while [activity] ticks. Pass [activity] and
+  /// [activitySnapshot] without [statusLabel] to keep the route status live.
   static Route<CaptureResult> route(
     CaptureCameraFactory camera, {
     ValueChanged<XFile>? onAccepted,
+    ValueChanged<CapturedPhoto>? onCaptured,
+    bool initialSensitive = false,
     bool autoIngest = false,
     ValueChanged<bool>? onAutoIngestChanged,
     Listenable? activity,
     CaptureActivity Function()? activitySnapshot,
+    String? statusLabel,
+    bool statusBlocked = false,
     bool deviceFallbackAvailable = true,
   }) => MaterialPageRoute<CaptureResult>(
     builder: (BuildContext context) => CaptureScreen(
       camera: camera,
       onAccepted: onAccepted,
+      onCaptured: onCaptured,
+      initialSensitive: initialSensitive,
       autoIngest: autoIngest,
       onAutoIngestChanged: onAutoIngestChanged,
       activity: activity,
       activitySnapshot: activitySnapshot,
+      statusLabel: statusLabel,
+      statusBlocked: statusBlocked,
       deviceFallbackAvailable: deviceFallbackAvailable,
     ),
     fullscreenDialog: true,
@@ -157,7 +210,7 @@ class CaptureScreen extends StatefulWidget {
 
   /// What the shutter is called. A control that draws no word needs one
   /// (10 section 11).
-  static const String shutterLabel = 'Take photograph';
+  static const String shutterLabel = 'Take photo';
 
   @override
   State<CaptureScreen> createState() => _CaptureScreenState();
@@ -165,6 +218,8 @@ class CaptureScreen extends StatefulWidget {
 
 class _CaptureScreenState extends State<CaptureScreen>
     with WidgetsBindingObserver {
+  static const _sensitiveLabel = 'Sensitive';
+
   final List<XFile> _accepted = <XFile>[];
   CaptureCamera? _camera;
   StreamSubscription<CapturePreviewReading>? _subscription;
@@ -177,6 +232,8 @@ class _CaptureScreenState extends State<CaptureScreen>
   bool _capturing = false;
   bool _editing = false;
   bool _autoIngest = false;
+  bool _sensitive = false;
+  bool _reviewSensitive = false;
   bool _cropping = false;
   bool _foreground = true;
   int _cameraGeneration = 0;
@@ -184,6 +241,9 @@ class _CaptureScreenState extends State<CaptureScreen>
   Rect _crop = const Rect.fromLTWH(0.06, 0.06, 0.88, 0.88);
   XFile? _review;
   Uint8List? _reviewBytes;
+  Uint8List? _lastShotBytes;
+  ImageProvider? _lastShotThumbnail;
+  int? _thumbnailWidth;
   CaptureDimensions? _reviewDimensions;
   String? _editError;
   String? _captureError;
@@ -193,7 +253,39 @@ class _CaptureScreenState extends State<CaptureScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _autoIngest = widget.autoIngest;
+    _sensitive = widget.initialSensitive;
     _requestCameraStart();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final ui = context.ui;
+    final width =
+        ((ui.space.targetMin + ui.space.s2) *
+                MediaQuery.devicePixelRatioOf(context))
+            .ceil();
+    if (_thumbnailWidth != width) {
+      _thumbnailWidth = width;
+      _setLastShotBytes(_lastShotBytes);
+    }
+  }
+
+  void _setLastShotBytes(Uint8List? bytes) {
+    final previous = _lastShotThumbnail;
+    _lastShotBytes = bytes;
+    _lastShotThumbnail = bytes == null
+        ? null
+        : ResizeImage.resizeIfNeeded(_thumbnailWidth, null, MemoryImage(bytes));
+    if (previous != _lastShotThumbnail) unawaited(previous?.evict());
+  }
+
+  void _setReviewBytes(Uint8List? bytes) {
+    final previous = _reviewBytes;
+    _reviewBytes = bytes;
+    if (previous != null && !identical(previous, bytes)) {
+      unawaited(MemoryImage(previous).evict());
+    }
   }
 
   @override
@@ -359,6 +451,7 @@ class _CaptureScreenState extends State<CaptureScreen>
     final CaptureCamera? camera = _camera;
     if (camera == null || _capturing) return;
     final int generation = _cameraGeneration;
+    final bool sensitive = _sensitive;
     bool isCurrent() =>
         mounted &&
         _foreground &&
@@ -384,7 +477,7 @@ class _CaptureScreenState extends State<CaptureScreen>
           bytes: bytes,
         );
         if (!isCurrent()) return;
-        _accept(normalized);
+        _accept(normalized, bytes: bytes, sensitive: sensitive);
         return;
       }
       final CaptureDimensions dimensions = await captureDimensions(bytes);
@@ -396,7 +489,8 @@ class _CaptureScreenState extends State<CaptureScreen>
       if (!isCurrent()) return;
       setState(() {
         _review = review;
-        _reviewBytes = bytes;
+        _setReviewBytes(bytes);
+        _reviewSensitive = sensitive;
         _reviewDimensions = dimensions;
         _cropping = false;
         _editError = null;
@@ -404,8 +498,7 @@ class _CaptureScreenState extends State<CaptureScreen>
     } on FormatException {
       if (isCurrent()) {
         setState(
-          () => _captureError =
-              'The photograph could not be read. Take it again, or return to Intake and choose the file.',
+          () => _captureError = 'Photo could not be read. Take it again.',
         );
       }
     } on CaptureCameraUnavailable catch (error) {
@@ -465,7 +558,7 @@ class _CaptureScreenState extends State<CaptureScreen>
 
   void _retake() => setState(() {
     _review = null;
-    _reviewBytes = null;
+    _setReviewBytes(null);
     _reviewDimensions = null;
     _cropping = false;
     _editError = null;
@@ -476,23 +569,32 @@ class _CaptureScreenState extends State<CaptureScreen>
   void _use() {
     final XFile? file = _review;
     if (file == null) return;
-    _accept(file);
+    _accept(file, bytes: _reviewBytes!, sensitive: _reviewSensitive);
   }
 
-  void _accept(XFile file) {
+  void _accept(
+    XFile file, {
+    required Uint8List bytes,
+    required bool sensitive,
+  }) {
     final ValueChanged<XFile>? onAccepted = widget.onAccepted;
+    final ValueChanged<CapturedPhoto>? onCaptured = widget.onCaptured;
     setState(() {
       _acceptedCount++;
-      // A streamed photograph is owned by Intake as soon as the callback
-      // returns. Keeping it here would retain image bytes for the whole batch.
-      if (onAccepted == null) _accepted.add(file);
+      // A streamed photo is owned by Intake as soon as the callback returns.
+      // Keep no result-file list for either streaming interface.
+      if (onAccepted == null && onCaptured == null) _accepted.add(file);
+      // The resized provider bounds decoded pixels, but its cache key also
+      // retains the encoded bytes. Evict the old key when replacing the photo.
+      _setLastShotBytes(bytes);
       _review = null;
-      _reviewBytes = null;
+      _setReviewBytes(null);
       _reviewDimensions = null;
       _cropping = false;
       _editError = null;
     });
     onAccepted?.call(file);
+    onCaptured?.call(CapturedPhoto(file: file, sensitive: sensitive));
   }
 
   void _setAutoIngest(bool value) {
@@ -532,29 +634,53 @@ class _CaptureScreenState extends State<CaptureScreen>
     });
   }
 
-  Widget _cropControls(BuildContext context) => Wrap(
-    spacing: context.ui.space.s2,
-    runSpacing: context.ui.space.s2,
-    children: [
-      for (final (label, dx, dy, grow) in <(String, double, double, double)>[
-        ('Move left', -CaptureScreen.cropAdjustment, 0, 0),
-        ('Move right', CaptureScreen.cropAdjustment, 0, 0),
-        ('Move up', 0, -CaptureScreen.cropAdjustment, 0),
-        ('Move down', 0, CaptureScreen.cropAdjustment, 0),
-        ('Expand frame', 0, 0, CaptureScreen.cropAdjustment),
-        ('Reduce frame', 0, 0, -CaptureScreen.cropAdjustment),
-      ])
-        UiButton(
-          label: label,
-          variant: UiButtonVariant.secondary,
-          onPressed: _editing
-              ? null
-              : () => _adjustCrop(dx: dx, dy: dy, grow: grow),
-          disabledReason: _editing
-              ? 'Wait for this photo edit to finish.'
-              : null,
-        ),
-    ],
+  Widget _cropControls(BuildContext context) => SingleChildScrollView(
+    scrollDirection: Axis.horizontal,
+    child: Row(
+      children: [
+        for (final (label, icon, dx, dy, grow)
+            in <(String, IconSpec, double, double, double)>[
+              (
+                'Move left',
+                UiIcons.previous,
+                -CaptureScreen.cropAdjustment,
+                0,
+                0,
+              ),
+              ('Move right', UiIcons.next, CaptureScreen.cropAdjustment, 0, 0),
+              (
+                'Move up',
+                UiIcons.collapse,
+                0,
+                -CaptureScreen.cropAdjustment,
+                0,
+              ),
+              ('Move down', UiIcons.expand, 0, CaptureScreen.cropAdjustment, 0),
+              (
+                'Expand frame',
+                UiIcons.enterFullscreen,
+                0,
+                0,
+                CaptureScreen.cropAdjustment,
+              ),
+              (
+                'Reduce frame',
+                UiIcons.exitFullscreen,
+                0,
+                0,
+                -CaptureScreen.cropAdjustment,
+              ),
+            ])
+          UiIconButton(
+            icon: icon,
+            semanticsLabel: label,
+            tooltip: label,
+            onPressed: _editing
+                ? null
+                : () => _adjustCrop(dx: dx, dy: dy, grow: grow),
+          ),
+      ],
+    ),
   );
 
   Future<void> _edit({int quarterTurns = 0, Rect? crop}) async {
@@ -576,7 +702,7 @@ class _CaptureScreenState extends State<CaptureScreen>
       final String original = _review?.name ?? 'camera-photo';
       final String stem = original.replaceFirst(RegExp(r'\.[^.]+$'), '');
       setState(() {
-        _reviewBytes = result.bytes;
+        _setReviewBytes(result.bytes);
         _reviewDimensions = CaptureDimensions(result.width, result.height);
         _review = XFile.fromData(
           result.bytes,
@@ -587,26 +713,22 @@ class _CaptureScreenState extends State<CaptureScreen>
         _cropping = false;
         _crop = const Rect.fromLTWH(0.06, 0.06, 0.88, 0.88);
       });
-    } on CaptureEditSizeException catch (error) {
-      if (mounted) setState(() => _editError = error.message);
     } catch (_) {
       if (mounted) {
-        setState(
-          () => _editError =
-              'This edit could not be applied. Retake the photograph or send it unchanged.',
-        );
+        setState(() => _editError = 'Edit not applied. Retake or send as is.');
       }
     } finally {
       if (mounted) setState(() => _editing = false);
     }
   }
 
-  void _finish() {
+  void _finish({CaptureUnavailable? unavailable}) {
     if (!mounted) return;
     Navigator.of(context).pop(
       CaptureResult(
         files: List<XFile>.unmodifiable(_accepted),
-        streamed: widget.onAccepted != null,
+        streamed: widget.onAccepted != null || widget.onCaptured != null,
+        unavailable: unavailable,
       ),
     );
   }
@@ -614,6 +736,8 @@ class _CaptureScreenState extends State<CaptureScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _setLastShotBytes(null);
+    _setReviewBytes(null);
     _foreground = false;
     ++_cameraGeneration;
     final StreamSubscription<CapturePreviewReading>? subscription =
@@ -654,12 +778,6 @@ class _CaptureScreenState extends State<CaptureScreen>
     }
   }
 
-  /// "1 photograph in this batch", pluralised, so the operator can leave the
-  /// screen knowing what leaving costs.
-  static String counterLabel(int count) => count == 1
-      ? '1 photograph in this batch'
-      : '$count photographs in this batch';
-
   @override
   Widget build(BuildContext context) => PopScope<CaptureResult>(
     canPop: false,
@@ -695,33 +813,63 @@ class _CaptureScreenState extends State<CaptureScreen>
     return _viewfinder(camera);
   }
 
+  Widget _closeButton() => UiIconButton(
+    icon: UiIcons.close,
+    semanticsLabel: CaptureScreen.closeLabel,
+    tooltip: CaptureScreen.closeLabel,
+    onPressed: _finish,
+  );
+
   Widget _unavailableBody() {
     final UiThemeData ui = context.ui;
-    return Center(
-      child: SingleChildScrollView(
-        padding: EdgeInsetsDirectional.all(ui.space.s6),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: ui.space.readingMax),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              Semantics(
-                container: true,
-                liveRegion: true,
-                child: Text(
-                  _unavailable!.message,
-                  style: ui.type.bodyLarge.copyWith(color: ui.color.ink),
-                ),
-              ),
-              SizedBox(height: ui.space.s6),
-              UiButtonRow(
-                primary: UiButton(label: 'Back to Intake', onPressed: _finish),
-              ),
-            ],
+    return Column(
+      children: [
+        Padding(
+          padding: EdgeInsetsDirectional.symmetric(
+            horizontal: ui.space.s4,
+            vertical: ui.space.s2,
+          ),
+          child: Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: _closeButton(),
           ),
         ),
-      ),
+        Expanded(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: EdgeInsetsDirectional.all(ui.space.s6),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: ui.space.readingMax),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    Semantics(
+                      container: true,
+                      liveRegion: true,
+                      child: Text(
+                        _unavailable!.message,
+                        style: ui.type.bodyLarge.copyWith(color: ui.color.ink),
+                      ),
+                    ),
+                    SizedBox(height: ui.space.s6),
+                    UiButtonRow(
+                      primary: UiButton(
+                        label:
+                            widget.deviceFallbackAvailable &&
+                                _unavailable == CaptureUnavailable.failed
+                            ? 'Use phone camera'
+                            : 'Choose files',
+                        onPressed: () => _finish(unavailable: _unavailable),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -730,6 +878,7 @@ class _CaptureScreenState extends State<CaptureScreen>
     return Column(
       children: <Widget>[
         Expanded(
+          flex: 2,
           child: Surface(
             role: SurfaceRole.matte,
             radius: ui.shape.sheet,
@@ -742,7 +891,7 @@ class _CaptureScreenState extends State<CaptureScreen>
                       _reviewBytes!,
                       fit: BoxFit.contain,
                       gaplessPlayback: true,
-                      semanticLabel: 'The photograph you took',
+                      semanticLabel: 'The photo you took',
                     ),
                   );
                 }
@@ -764,7 +913,7 @@ class _CaptureScreenState extends State<CaptureScreen>
                         height: shown.height,
                         fit: BoxFit.fill,
                         gaplessPlayback: true,
-                        semanticLabel: 'The photograph you took',
+                        semanticLabel: 'The photo you took',
                       ),
                     ),
                     Center(
@@ -783,183 +932,242 @@ class _CaptureScreenState extends State<CaptureScreen>
             ),
           ),
         ),
-        ConstrainedBox(
-          constraints: BoxConstraints(
-            maxHeight: math.min(
-              ui.space.readingMax,
-              MediaQuery.sizeOf(context).height / 2,
+        Flexible(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: math.min(
+                ui.space.readingMax,
+                MediaQuery.sizeOf(context).height / 2,
+              ),
             ),
-          ),
-          child: SingleChildScrollView(
-            padding: EdgeInsetsDirectional.all(ui.space.s4),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                Text(
-                  _cropping
-                      ? 'Drag the frame to keep only the specimen and labels you need.'
-                      : 'Check the smallest text, the glare and that every label is inside the frame.',
-                  style: ui.type.body.copyWith(color: ui.color.ink),
-                ),
-                if (_editError != null) ...<Widget>[
-                  SizedBox(height: ui.space.s3),
-                  UiBanner(message: _editError!, tone: UiBannerTone.blocked),
-                ],
-                SizedBox(height: ui.space.s4),
-                if (_cropping) _cropControls(context),
-                if (_cropping) SizedBox(height: ui.space.s4),
-                if (_cropping)
-                  UiButtonRow(
-                    primary: UiButton(
-                      key: const ValueKey<String>('capture-apply-crop'),
-                      label: _editing ? 'Applying crop' : 'Apply crop',
-                      leading: UiIcons.check,
-                      onPressed: _editing ? null : _applyCrop,
-                    ),
-                    secondary: UiButton(
-                      label: 'Cancel crop',
-                      variant: UiButtonVariant.secondary,
-                      onPressed: _editing
-                          ? null
-                          : () => setState(() => _cropping = false),
-                    ),
-                  )
-                else ...<Widget>[
-                  Wrap(
-                    spacing: ui.space.s2,
-                    runSpacing: ui.space.s2,
-                    children: <Widget>[
-                      UiButton(
-                        key: const ValueKey<String>('capture-rotate'),
-                        label: _editing ? 'Rotating' : 'Rotate',
-                        variant: UiButtonVariant.secondary,
-                        leading: UiIcons.rotateView,
-                        onPressed: _editing ? null : _rotate,
+            child: SingleChildScrollView(
+              padding: EdgeInsetsDirectional.all(ui.space.s4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Text('Photo ${_acceptedCount + 1}', style: ui.type.title),
+                  SizedBox(height: ui.space.s2),
+                  Text(
+                    'All labels sharp and in frame?',
+                    style: ui.type.body.copyWith(color: ui.color.ink),
+                  ),
+                  if (_editError != null) ...<Widget>[
+                    SizedBox(height: ui.space.s3),
+                    UiBanner(message: _editError!, tone: UiBannerTone.blocked),
+                  ],
+                  SizedBox(height: ui.space.s4),
+                  if (_cropping) _cropControls(context),
+                  if (_cropping) SizedBox(height: ui.space.s4),
+                  if (_cropping)
+                    UiButtonRow(
+                      primary: UiButton(
+                        key: const ValueKey<String>('capture-apply-crop'),
+                        label: _editing ? 'Applying crop' : 'Apply crop',
+                        leading: UiIcons.check,
+                        onPressed: _editing ? null : _applyCrop,
                       ),
-                      UiButton(
-                        key: const ValueKey<String>('capture-crop'),
-                        label: 'Crop',
+                      secondary: UiButton(
+                        label: 'Cancel crop',
                         variant: UiButtonVariant.secondary,
-                        leading: UiIcons.correctRegions,
                         onPressed: _editing
                             ? null
-                            : () => setState(() {
-                                _crop = const Rect.fromLTWH(
-                                  0.06,
-                                  0.06,
-                                  0.88,
-                                  0.88,
-                                );
-                                _cropping = true;
-                              }),
+                            : () => setState(() => _cropping = false),
                       ),
-                    ],
-                  ),
-                  SizedBox(height: ui.space.s4),
-                  UiButtonRow(
-                    primary: UiButton(
-                      key: const ValueKey<String>('capture-send'),
-                      label: 'Send for processing',
-                      leading: UiIcons.check,
-                      onPressed: _editing ? null : _use,
+                    )
+                  else ...<Widget>[
+                    Row(
+                      children: <Widget>[
+                        UiButton(
+                          key: const ValueKey<String>('capture-rotate'),
+                          label: _editing ? 'Rotating' : 'Rotate',
+                          variant: UiButtonVariant.secondary,
+                          leading: UiIcons.rotateView,
+                          onPressed: _editing ? null : _rotate,
+                        ),
+                        SizedBox(width: ui.space.s2),
+                        UiButton(
+                          key: const ValueKey<String>('capture-crop'),
+                          label: 'Crop',
+                          variant: UiButtonVariant.secondary,
+                          leading: UiIcons.correctRegions,
+                          onPressed: _editing
+                              ? null
+                              : () => setState(() {
+                                  _crop = const Rect.fromLTWH(
+                                    0.06,
+                                    0.06,
+                                    0.88,
+                                    0.88,
+                                  );
+                                  _cropping = true;
+                                }),
+                        ),
+                      ],
                     ),
-                    secondary: UiButton(
-                      label: 'Retake',
-                      variant: UiButtonVariant.secondary,
-                      leading: UiIcons.retry,
-                      onPressed: _editing ? null : _retake,
-                    ),
-                  ),
+                    if (widget.onCaptured != null)
+                      UiSwitch(
+                        key: const ValueKey('capture-review-sensitive'),
+                        label: _sensitiveLabel,
+                        value: _reviewSensitive,
+                        onChanged: _editing
+                            ? null
+                            : (value) =>
+                                  setState(() => _reviewSensitive = value),
+                      ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),
+        if (!_cropping)
+          Padding(
+            padding: EdgeInsetsDirectional.fromSTEB(
+              ui.space.s4,
+              0,
+              ui.space.s4,
+              ui.space.s4,
+            ),
+            child: _reviewDecisions(),
+          ),
       ],
     );
   }
 
+  Widget _reviewDecisions() {
+    final send = UiButton(
+      key: const ValueKey<String>('capture-send'),
+      label: 'Send',
+      onPressed: _editing ? null : _use,
+    );
+    final retake = UiButton(
+      label: 'Retake',
+      variant: UiButtonVariant.secondary,
+      onPressed: _editing ? null : _retake,
+    );
+    final width = math.max(
+      send.intrinsicWidth(context),
+      retake.intrinsicWidth(context),
+    );
+    return UiButtonRow(
+      primary: _EqualWidthButton(button: send, width: width),
+      secondary: _EqualWidthButton(button: retake, width: width),
+    );
+  }
+
   Widget _activityBar(BuildContext context) {
-    final Listenable? activity = widget.activity;
-    final CaptureActivity Function()? snapshot = widget.activitySnapshot;
-    if (activity == null || snapshot == null) return const SizedBox.shrink();
+    Widget summary(BuildContext context) {
+      final current = widget.statusLabel != null
+          ? CaptureActivity(
+              label: widget.statusLabel!,
+              problem: widget.statusBlocked,
+            )
+          : widget.activitySnapshot?.call();
+      if (current == null || current.label.isEmpty) {
+        return const SizedBox.shrink();
+      }
+      final ui = context.ui;
+      return Column(
+        key: const ValueKey('capture-intake-activity'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Semantics(
+            container: true,
+            liveRegion: true,
+            child: Text(
+              current.label,
+              style: ui.type.bodySmall.copyWith(
+                color: current.problem
+                    ? ui.color.status.blocked.content
+                    : ui.color.inkSecondary,
+              ),
+            ),
+          ),
+          if (current.progress != null) ...[
+            SizedBox(height: ui.space.s2),
+            UiProgress.bar(
+              value: current.progress,
+              semanticsLabel: 'Sending photos',
+            ),
+          ],
+        ],
+      );
+    }
+
+    final activity = widget.activity;
+    if (activity == null) return summary(context);
     return AnimatedBuilder(
       animation: activity,
-      builder: (BuildContext context, Widget? _) {
-        final UiThemeData ui = context.ui;
-        final CaptureActivity current = snapshot();
-        return Surface(
-          key: const ValueKey<String>('capture-intake-activity'),
-          role: SurfaceRole.ground,
-          hairline: true,
-          radius: ui.shape.inner,
-          padding: EdgeInsetsDirectional.all(ui.space.s3),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Semantics(
-                container: true,
-                liveRegion: true,
-                child: Text(
-                  current.label,
-                  style: ui.type.bodySmall.copyWith(
-                    color: current.problem
-                        ? ui.color.status.blocked.content
-                        : ui.color.inkSecondary,
-                  ),
-                ),
-              ),
-              if (current.progress != null) ...<Widget>[
-                SizedBox(height: ui.space.s2),
-                UiProgress.bar(
-                  value: current.progress,
-                  semanticsLabel: 'Current Intake upload progress',
-                ),
-              ],
-            ],
-          ),
-        );
-      },
+      builder: (context, _) => summary(context),
     );
   }
 
   Widget _viewfinder(CaptureCamera camera) {
-    final UiThemeData ui = context.ui;
-    return LayoutBuilder(
-      builder: (BuildContext context, BoxConstraints constraints) {
-        final Widget preview = _viewfinderPreview(camera);
-        final Widget guidance = _viewfinderGuidance();
-        final Widget controls = _viewfinderControls();
-        // A short, wide allocation has room for controls beside the evidence.
-        // This is the available window, not a device or orientation guess.
-        if (constraints.maxWidth >= WindowClass.mediumMin &&
-            constraints.maxWidth > constraints.maxHeight) {
-          return Row(
-            children: <Widget>[
-              Expanded(child: preview),
-              SizedBox(
-                width: math.min(ui.space.readingMax, constraints.maxWidth / 2),
-                child: Column(
-                  children: <Widget>[
-                    Expanded(child: guidance),
-                    controls,
+    final ui = context.ui;
+    return Column(
+      children: [
+        Padding(
+          padding: EdgeInsetsDirectional.symmetric(
+            horizontal: ui.space.s4,
+            vertical: ui.space.s2,
+          ),
+          child: Row(
+            children: [
+              _closeButton(),
+              SizedBox(width: ui.space.s2),
+              Expanded(
+                child: UiSegmented<bool>(
+                  key: const ValueKey('capture-auto-ingest'),
+                  segments: const [
+                    UiSegment(value: false, label: 'Review'),
+                    UiSegment(value: true, label: 'Send now'),
                   ],
+                  value: _autoIngest,
+                  onChanged: _capturing ? null : _setAutoIngest,
                 ),
               ),
             ],
-          );
-        }
-        // After the scaled primary controls have their natural height, give
-        // the photograph two shares and scrollable secondary copy one share.
-        return Column(
-          children: <Widget>[
-            Expanded(flex: 2, child: preview),
-            Expanded(child: guidance),
-            controls,
-          ],
-        );
-      },
+          ),
+        ),
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final preview = _viewfinderPreview(camera);
+              final guidance = _viewfinderGuidance();
+              final controls = _viewfinderControls();
+              // Use the available window, not the device or its orientation.
+              if (constraints.maxWidth >= WindowClass.mediumMin &&
+                  constraints.maxWidth > constraints.maxHeight) {
+                return Row(
+                  children: [
+                    Expanded(child: preview),
+                    SizedBox(
+                      width: math.min(
+                        ui.space.readingMax,
+                        constraints.maxWidth / 2,
+                      ),
+                      child: Column(
+                        children: [
+                          Expanded(child: guidance),
+                          controls,
+                        ],
+                      ),
+                    ),
+                  ],
+                );
+              }
+              return Column(
+                children: [
+                  Expanded(flex: 2, child: preview),
+                  Expanded(child: guidance),
+                  controls,
+                ],
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 
@@ -1009,24 +1217,6 @@ class _CaptureScreenState extends State<CaptureScreen>
             ),
             if (_focusPoint != null)
               _FocusMark(at: _focusPoint!, locked: _focusLocked),
-            // The one capsule over the pixels: the way out of the
-            // camera, floating rather than welded into a bar, so the
-            // preview keeps the whole window.
-            PositionedDirectional(
-              top: ui.space.s4,
-              end: ui.space.s4,
-              child: GlassSurface(
-                level: GlassLevel.floating,
-                capsule: true,
-                padding: EdgeInsetsDirectional.all(ui.space.s1),
-                child: UiIconButton(
-                  icon: UiIcons.close,
-                  semanticsLabel: CaptureScreen.closeLabel,
-                  tooltip: CaptureScreen.closeLabel,
-                  onPressed: _finish,
-                ),
-              ),
-            ),
           ],
         );
       },
@@ -1034,110 +1224,177 @@ class _CaptureScreenState extends State<CaptureScreen>
   }
 
   Widget _viewfinderGuidance() {
-    final UiThemeData ui = context.ui;
-    final String? hint = _reading?.hint;
+    final ui = context.ui;
+    final hint = _reading?.hint;
     return SingleChildScrollView(
-      key: const ValueKey<String>('capture-guidance'),
+      key: const ValueKey('capture-guidance'),
       padding: EdgeInsetsDirectional.all(ui.space.s4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Semantics(
-            container: true,
-            liveRegion: true,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                const NotCalibratedChip(),
-                SizedBox(height: ui.space.s2),
-                Text(
-                  hint ??
-                      (_reading == null
-                          ? 'Exposure is not measured on this device.'
-                          : 'No clipping measured in this frame.'),
-                  style: ui.type.body.copyWith(color: ui.color.ink),
-                ),
-              ],
-            ),
+        children: [
+          Text(
+            'Fit specimen and labels inside',
+            style: ui.type.body.copyWith(color: ui.color.ink),
           ),
-          if (_captureError != null) ...<Widget>[
-            SizedBox(height: ui.space.s3),
-            UiBanner(
-              message: _captureError!,
-              tone: UiBannerTone.blocked,
-              dismissLabel: 'Dismiss message',
-              onDismiss: () => setState(() => _captureError = null),
+          if (hint != null) ...[
+            SizedBox(height: ui.space.s2),
+            Semantics(
+              container: true,
+              liveRegion: true,
+              child: Text(
+                hint,
+                key: const ValueKey('capture-exposure-hint'),
+                style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+              ),
             ),
           ],
+          if (_captureError != null) ...[
+            SizedBox(height: ui.space.s3),
+            UiBanner(message: _captureError!, tone: UiBannerTone.blocked),
+          ],
           SizedBox(height: ui.space.s2),
-          Text(
-            'Framing, focus and label coverage are not checked here.',
-            style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
-          ),
-          SizedBox(height: ui.space.s3),
           _activityBar(context),
-          SizedBox(height: ui.space.s3),
-          Text(
-            _autoIngest
-                ? cameraSendImmediatelyBody
-                : 'Review and adjust each photo before sending it.',
-            style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
-          ),
         ],
       ),
     );
   }
 
   Widget _viewfinderControls() {
-    final UiThemeData ui = context.ui;
+    final ui = context.ui;
+    final thumbnail = _lastShotThumbnail;
     return Padding(
       padding: EdgeInsetsDirectional.all(ui.space.s4),
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          Semantics(
-            container: true,
-            liveRegion: true,
-            child: Text(
-              counterLabel(_acceptedCount),
-              style: ui.type.body.copyWith(color: ui.color.ink),
+        children: [
+          if (widget.onCaptured != null) ...[
+            UiSwitch(
+              key: const ValueKey('capture-sensitive'),
+              label: _sensitiveLabel,
+              value: _sensitive,
+              onChanged: _capturing
+                  ? null
+                  : (value) => setState(() => _sensitive = value),
             ),
-          ),
-          SizedBox(height: ui.space.s2),
+            SizedBox(height: ui.space.s2),
+          ],
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
+            children: [
               Expanded(
-                child: Text(cameraSendImmediatelyLabel, style: ui.type.label),
+                child: Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: Semantics(
+                    container: true,
+                    liveRegion: true,
+                    label: _acceptedCount == 1
+                        ? '1 photo'
+                        : '$_acceptedCount photos',
+                    excludeSemantics: true,
+                    child: Stack(
+                      key: const ValueKey('capture-last-shot'),
+                      children: [
+                        SizedBox.square(
+                          dimension: ui.space.targetMin + ui.space.s2,
+                          child: thumbnail == null
+                              ? const UiIcon(UiIcons.image)
+                              : Image(
+                                  image: thumbnail,
+                                  fit: BoxFit.cover,
+                                  gaplessPlayback: true,
+                                  errorBuilder: (context, error, stack) =>
+                                      const UiIcon(UiIcons.image),
+                                ),
+                        ),
+                        PositionedDirectional(
+                          bottom: 0,
+                          end: 0,
+                          child: UiBadge(_acceptedCount),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
-              SizedBox(width: ui.space.s3),
-              UiSwitch(
-                key: const ValueKey<String>('capture-auto-ingest'),
-                label: cameraSendImmediatelyLabel,
-                showLabel: false,
-                value: _autoIngest,
-                onChanged: _capturing ? null : _setAutoIngest,
-              ),
-            ],
-          ),
-          SizedBox(height: ui.space.s3),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: <Widget>[
               _Shutter(
-                key: const ValueKey<String>('capture-shutter'),
+                key: const ValueKey('capture-shutter'),
                 onPressed: _capturing ? null : _capture,
               ),
-              SizedBox(width: ui.space.s4),
-              UiButton(
-                label: CaptureScreen.doneLabel,
-                variant: UiButtonVariant.secondary,
-                onPressed: _finish,
+              Expanded(
+                child: Align(
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: UiButton(
+                    label: CaptureScreen.doneLabel,
+                    variant: UiButtonVariant.secondary,
+                    onPressed: _finish,
+                  ),
+                ),
               ),
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// UiButton's capsule hugs its label even inside a wider box. Use its style
+/// and pressable with an explicit surface width for this equal-choice pair.
+class _EqualWidthButton extends UiButton {
+  _EqualWidthButton({required UiButton button, required this.width})
+    : super(
+        key: button.key,
+        label: button.label,
+        variant: button.variant,
+        onPressed: button.onPressed,
+      );
+
+  final double width;
+
+  @override
+  double intrinsicWidth(BuildContext context) => width;
+
+  @override
+  Widget build(BuildContext context) {
+    final ui = context.ui;
+    final style = UiButtonStyle.resolve(
+      ui,
+      variant,
+      size,
+      textScaler: MediaQuery.textScalerOf(context),
+    );
+    return Pressable(
+      semanticsLabel: label,
+      onPressed: onPressed,
+      radius: ui.shape.inner,
+      stateLayerColour: style.overlay,
+      builder: (context, states) => DecoratedBox(
+        key: ValueKey('capture-review-$label-surface'),
+        decoration: ShapeDecoration(
+          color: style.background.resolve(states),
+          shape: Squircle.border(
+            ui.shape.inner,
+            side: style.side.resolve(states) ?? BorderSide.none,
+          ),
+        ),
+        child: SizedBox(
+          width: width,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: style.minHeight),
+            child: Padding(
+              padding: style.padding,
+              child: Center(
+                heightFactor: 1,
+                child: UiLabel(
+                  label,
+                  style: style.label.copyWith(
+                    color: style.foreground.resolve(states),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

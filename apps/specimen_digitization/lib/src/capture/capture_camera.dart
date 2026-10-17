@@ -24,19 +24,13 @@ import '../capture_quality.dart';
 /// act on. Never a code, never a stack.
 enum CaptureUnavailable {
   /// The device reported no usable camera.
-  noCamera('This device did not report a camera. Choose a file instead.'),
+  noCamera('No camera found.'),
 
   /// Camera permission is not granted.
-  permission(
-    'Camera access is turned off for this app. Turn it on in device '
-    'settings, or choose a file instead.',
-  ),
+  permission('Camera access is off. Turn it on in Settings.'),
 
   /// The camera is present but did not start.
-  failed(
-    'The camera did not start on this device. Take the photograph with the '
-    'device camera app, or choose a file instead.',
-  );
+  failed('Camera did not start.');
 
   const CaptureUnavailable(this.message);
 
