@@ -15,6 +15,7 @@ export 'src/foundation/density.dart';
 export 'src/foundation/fields.dart';
 export 'src/foundation/fonts.dart';
 export 'src/foundation/glass.dart';
+export 'src/foundation/google_sign_in_brand.dart';
 export 'src/foundation/icons.dart';
 export 'src/foundation/layout.dart';
 export 'src/foundation/motion.dart';
