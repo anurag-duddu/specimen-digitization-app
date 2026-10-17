@@ -44,6 +44,63 @@ void main() {
     semantics.dispose();
   });
 
+  for (final serverSensitive in <bool?>[true, false, null]) {
+    testWidgets(
+      'restored row and details use server sensitivity $serverSensitive',
+      (tester) async {
+        final semantics = tester.ensureSemantics();
+        final entry = entryIn(UploadState.ready);
+        final file = entry.file!;
+        // Reselection can use the opposite local default, but resumes the
+        // existing handle without changing its server classification.
+        entry.file = IntakeFile(
+          name: file.name,
+          bytes: file.bytes,
+          mimeType: file.mimeType,
+          sha256: file.sha256,
+          method: file.method,
+          sensitive: serverSensitive == false,
+        );
+        entry.session = {
+          'upload_id': 'restored',
+          if (serverSensitive != null) 'sensitive': serverSensitive,
+        };
+        await pumpManifest(tester, [entry], size: const Size(390, 844));
+        final spoken = serverSensitive == null
+            ? 'sensitivity not available'
+            : serverSensitive
+            ? 'sensitive'
+            : 'not sensitive';
+        expect(
+          find.bySemanticsLabel('specimen.png, Ready, $spoken'),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: find.byType(IntakeManifestRow),
+            matching: find.text('Sensitive'),
+          ),
+          serverSensitive == true ? findsOneWidget : findsNothing,
+        );
+        await tester.tap(find.text('specimen.png'));
+        await tester.pumpAndSettle();
+        final detail = serverSensitive == null
+            ? 'Existing upload, classification unchanged'
+            : serverSensitive
+            ? 'Sensitive'
+            : 'Not sensitive';
+        expect(
+          find.descendant(
+            of: find.byType(UiSheet),
+            matching: find.text(detail),
+          ),
+          findsOneWidget,
+        );
+        semantics.dispose();
+      },
+    );
+  }
+
   testWidgets('an open sensitivity menu tolerates its photo finishing', (
     tester,
   ) async {

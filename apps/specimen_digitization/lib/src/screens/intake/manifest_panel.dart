@@ -573,6 +573,15 @@ class IntakeManifestRow extends StatelessWidget {
   /// What the server check control is called.
   static const String serverCheckLabel = 'Send for server check';
 
+  bool? get _sensitive {
+    final handle = entry.session;
+    if (handle == null) return entry.file?.sensitive;
+    // Reselected bytes can carry a different local default. Once a handle
+    // exists, only its reported classification describes the saved upload.
+    final value = handle['sensitive'];
+    return value is bool ? value : null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
@@ -589,10 +598,7 @@ class IntakeManifestRow extends StatelessWidget {
       IntakeTone.processing => UiIcons.processing,
       _ => UiIcons.time,
     };
-    final serverSensitive = entry.session?['sensitive'];
-    final sensitive =
-        entry.file?.sensitive ??
-        (serverSensitive is bool ? serverSensitive : null);
+    final sensitive = _sensitive;
     return UploadItem(
       name: entry.label,
       state: entry.displayState,
@@ -668,6 +674,7 @@ class IntakeManifestRow extends StatelessWidget {
 
   Widget _sheet(BuildContext context) {
     final ui = context.ui;
+    final sensitive = _sensitive;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
@@ -681,9 +688,9 @@ class IntakeManifestRow extends StatelessWidget {
             ),
           ),
         Text(
-          entry.file?.sensitive == false
+          sensitive == false
               ? 'Not sensitive'
-              : entry.file?.sensitive == true
+              : sensitive == true
               ? 'Sensitive'
               : 'Existing upload, classification unchanged',
           style: ui.type.body,
