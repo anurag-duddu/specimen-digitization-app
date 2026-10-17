@@ -456,6 +456,58 @@ void main() {
     expect(session.summary, '1 sent');
   });
 
+  testWidgets('G4 Stop during a start allows Start after a failed reply', (
+    tester,
+  ) async {
+    final Completer<Json> reply = Completer<Json>();
+    final StartRepository repository = StartRepository()..pendingStart = reply;
+    final IntakeTransferSession session = automaticSession(repository);
+    addTearDown(session.close);
+    await session.start();
+    final ManifestEntry photo = session.entries.single;
+    await tester.pump(const Duration(seconds: 60));
+    expect(repository.keys, hasLength(1));
+    expect(session.busy, isTrue);
+    session.stop();
+    expect(session.stopping, isTrue);
+    reply.complete({
+      ..._summary(),
+      'dispatch': {'status': 'failed'},
+    });
+    await tester.pump();
+    expect(session.busy, isFalse);
+    expect(intakeStatus(photo).action, IntakeAction.start);
+    repository.pendingStart = null;
+    await session.retryProcessing(photo);
+    expect(repository.keys, hasLength(2));
+    expect(session.stopping, isFalse);
+  });
+
+  for (final bool manual in [false, true]) {
+    testWidgets(
+      'G4 idle Stop does not block ${manual ? 'manual' : 'automatic'} Start',
+      (tester) async {
+        final StartRepository repository = StartRepository()
+          ..dispatch = 'failed';
+        final IntakeTransferSession session = automaticSession(repository);
+        addTearDown(session.close);
+        await session.start();
+        final ManifestEntry photo = session.entries.single;
+        if (manual) await tester.pump(const Duration(seconds: 60));
+        expect(session.busy, isFalse);
+        session.stop();
+        if (manual) {
+          expect(intakeStatus(photo).action, IntakeAction.start);
+          await session.retryProcessing(photo);
+        } else {
+          await tester.pump(const Duration(seconds: 60));
+        }
+        expect(repository.keys, hasLength(manual ? 2 : 1));
+        expect(session.stopping, isFalse);
+      },
+    );
+  }
+
   testWidgets('F1 resume reads status before using an overdue start offer', (
     tester,
   ) async {

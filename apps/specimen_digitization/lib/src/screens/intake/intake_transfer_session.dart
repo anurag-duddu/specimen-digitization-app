@@ -343,7 +343,10 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Stops after the current transfer. Pending retries return to Ready.
   void stop() {
-    stopping = true;
+    // Stop waits for an in-flight start too; it cannot cancel a request already
+    // sent. Apply its reply, then clear the latch so a reported failure can
+    // offer a working Start action. When idle, there is nothing to wait for.
+    stopping = busy;
     _resumeSending = false;
     _resumeOnly = null;
     for (final ManifestEntry entry in entries) {
@@ -809,9 +812,10 @@ class IntakeTransferSession extends ChangeNotifier with WidgetsBindingObserver {
         _pauseForSignIn();
       }
     } finally {
+      entry.checking = false;
+      busy = false;
+      stopping = false;
       if (!_closed) {
-        entry.checking = false;
-        busy = false;
         changed();
         _scheduleProcessingPoll();
         _resumeAutomaticWork();
