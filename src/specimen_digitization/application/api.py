@@ -374,7 +374,7 @@ def summary(specimen: Specimen, role: str = "viewer") -> dict:
         ),
     }
 
-    if role in {"operator", "reviewer", "manager", "admin"} and can_reassess_locations(run):
+    if role in {"operator", "reviewer", "manager", "admin"} and can_reassess_locations(run, specimen=specimen):
         result["available_actions"].append("reassess_locations")
     if run.blocker == "external_outcome_unknown":
         result["available_actions"] = [
@@ -2696,7 +2696,7 @@ def create_app(
                     )
                 if body.action == "reassess_locations":
                     protected = current_human_location_fields(repository, s)
-                    fields = requeue_location_reassessment(s.run, protected)
+                    fields = requeue_location_reassessment(s.run, protected, specimen=s)
                     if not fields:
                         raise Conflict("Location reassessment requires completed research, unsettled automatic locations and a remaining attempt")
                     action_event = AuditEvent(actor=user, action=body.action, reason=body.reason,
@@ -2704,6 +2704,8 @@ def create_app(
                             "fields": {field: s.run.fields[field].model_dump(mode="json") for field in fields if field in s.run.fields}},
                         after={"run_id": s.run.id, "attempt": s.run.dependencies["location_reassessment"]["attempt"],
                             "fields": fields})
+                    if authorization := s.run.dependencies["location_reassessment"].get("authorization_id"):
+                        action_event.after["authorization_id"] = authorization
                     s.run.disposition = None
                     s.run.stage = "plan"
                 elif body.action in {"retry", "resume"}:

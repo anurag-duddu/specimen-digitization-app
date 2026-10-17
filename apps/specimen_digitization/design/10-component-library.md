@@ -842,9 +842,29 @@ a change the two glyph weights and the label colour cross-fade over
 are the pill's: `tab` per cell with `selected`, inside a `tabBar` group, the
 label in the node. `Left` and `Right` move focus (wrapping, mirrored under
 RTL), `Enter` and `Space` select, and the focus ring is drawn inside the cell
-because the bar touches the screen's edges and its neighbours. `UiTabBar`
-takes an optional `iconKeyOf` so a shell or a test can find and measure a
-glyph without the bar knowing about either. It retires `CupertinoTabBar` and
+because the bar touches the screen's edges and its neighbours.
+
+Narrow windows (amended 2026-10-17). Equal cells are only equal while each
+keeps its 48 dp hit box (`UiTabBarStyle.cellMin`, 10 section 2 clause 2). Where
+the bar's width divided by its destinations would fall under that, five
+destinations in a 200 dp column being 40 dp cells, the bar lays its cells at 48
+dp inside the library's `EdgeFadedRow`, the way `UiPillNav` does (11 section
+3.3, the compact variant of a navigation row): it scrolls, the edge with more
+beyond it fades, and the current destination is scrolled into view when the bar
+is built and when it changes (`EdgeFadedRow.revealInitially`, because a bar can
+open on any destination). Otherwise the cells are equal and nothing scrolls, so
+a two destination bar on a phone is exactly as before. In the scrolling form the
+`tabBar` group sits inside the scroller, because a scroller publishes a node
+and every child of a `tabBar` node has to be a tab; arrow keys also scroll the
+cell they focus into view, because `FocusNode.requestFocus` does not; and the
+focus ring is still drawn inside the cell. A label the cell cannot hold ends in
+an ellipsis and carries the whole word in a `UiTooltip` (10 section 2 clause
+15), on hover and on a long press, armed only on a cut label. The tooltip is
+around the cell and not in `UiLabel.tooltip`: a tooltip's own tap handler is
+the innermost, so inside the cell it took the tap on the word and the tab
+selected nothing. The cell's semantics label already carries the whole word, so
+a tab still reads once. `UiTabBar` takes an optional `iconKeyOf` so a shell or a
+test can find and measure a glyph without the bar knowing about either. It retires `CupertinoTabBar` and
 the compact `NavigationBar` from the shell: `AppShell` draws `UiTabBar` on
 every platform at the compact window class and no longer branches on
 `defaultTargetPlatform`. `UiPillNav` stays in the library for a window that

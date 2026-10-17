@@ -34,6 +34,7 @@ class EdgeFadedRow extends StatefulWidget {
     required this.index,
     required this.length,
     required this.fadeExtent,
+    this.revealInitially = false,
   });
 
   /// The row, at its own intrinsic width.
@@ -49,6 +50,16 @@ class EdgeFadedRow extends StatefulWidget {
   /// control, because a primitive makes no styling decisions of its own.
   final double fadeExtent;
 
+  /// True to bring item [index] into view when the row is first built, and
+  /// not only when [index] changes.
+  ///
+  /// False by default, which is what a strip or a pill that always opens on
+  /// its first item wants. A bar that can open on any of its items, such as
+  /// the tab bar on a deep link, sets it, so the first frame already shows
+  /// where the reviewer is. The jump has no animation: nothing was on screen
+  /// to travel from.
+  final bool revealInitially;
+
   @override
   State<EdgeFadedRow> createState() => _EdgeFadedRowState();
 }
@@ -60,6 +71,11 @@ class _EdgeFadedRowState extends State<EdgeFadedRow> {
   void initState() {
     super.initState();
     _controller.addListener(_edgesChanged);
+    if (widget.revealInitially) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (Duration _) => _scroll(animate: false),
+      );
+    }
   }
 
   @override
@@ -88,14 +104,14 @@ class _EdgeFadedRowState extends State<EdgeFadedRow> {
     WidgetsBinding.instance.addPostFrameCallback((Duration _) => _scroll());
   }
 
-  void _scroll() {
+  void _scroll({bool animate = true}) {
     if (!mounted || !_controller.hasClients || widget.length < 2) return;
     final ScrollPosition position = _controller.position;
     final double target =
         position.maxScrollExtent *
         (widget.index.clamp(0, widget.length - 1) / (widget.length - 1));
     final MotionTokens motion = context.ui.motion;
-    if (motion.reduced) {
+    if (!animate || motion.reduced) {
       _controller.jumpTo(target);
       return;
     }
