@@ -11,6 +11,8 @@ import 'email_link_source.dart';
 const staffEmailMessage = 'Use your fieldmuseum.org email address.';
 const emailLinkReturnUrl = 'https://specimen-digitization.web.app/';
 const emailLinkCooldown = Duration(seconds: 60);
+const emailLinkSentMessage =
+    'Check your inbox and spam folder. Open the link to sign in.';
 const _emailLinkWebHost = 'specimen-digitization.web.app';
 const _emailLinkNativeHost = 'specimen-digitization.firebaseapp.com';
 const _emailLinkNativePath = '/__/auth/links';
@@ -208,6 +210,9 @@ class MagicLinkController extends ChangeNotifier {
   bool _initializing = false;
   String email = '';
   String? message;
+
+  /// A failed request can coexist with a previously sent link.
+  bool get hasError => message != null && message != emailLinkSentMessage;
   _IncomingEmailLink? _link;
   _IncomingEmailLink? _inFlight;
   StreamSubscription<EmailLinkDelivery>? _linkSubscription;
@@ -432,7 +437,7 @@ class MagicLinkController extends ChangeNotifier {
       await access.sendSignInLink(email);
       if (_disposed) return;
       sent = true;
-      message = 'Check your inbox and spam folder. Open the link to sign in.';
+      message = emailLinkSentMessage;
     } catch (error) {
       if (!_disposed) message = emailLinkError(error);
     } finally {

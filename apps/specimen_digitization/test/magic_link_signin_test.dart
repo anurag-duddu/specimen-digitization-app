@@ -64,7 +64,7 @@ void main() {
           home: SignInScreen(session: FirebaseSession(NoNetworkAuth())),
         ),
       );
-      expect(find.text('Send sign-in link'), findsOneWidget);
+      expect(find.text('Send link'), findsOneWidget);
       expect(find.widgetWithText(UiField, 'Password'), findsNothing);
       expect(find.text('Reset password'), findsNothing);
       expect(find.textContaining('fieldmuseum.org'), findsWidgets);
@@ -85,7 +85,7 @@ void main() {
       find.byType(UiField).first,
       'staff@fieldmuseum.org.attacker.test',
     );
-    await tester.tap(find.text('Send sign-in link'));
+    await tester.tap(find.text('Send link'));
     await tester.pump();
     expect(
       find.text('Use your fieldmuseum.org email address.'),
