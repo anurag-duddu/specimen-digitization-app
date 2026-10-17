@@ -117,6 +117,55 @@ void main() {
     handle.dispose();
   });
 
+  testWidgets('excludeSemantics keeps the open pane out of the tree, merged '
+      'or not; the default publishes it', (WidgetTester tester) async {
+    final SemanticsHandle handle = tester.ensureSemantics();
+    for (final bool exclude in <bool>[false, true]) {
+      await tester.pumpWidget(
+        uiHarness(
+          child: MergeSemantics(
+            child: UiTooltip(
+              message: _message,
+              excludeSemantics: exclude,
+              child: Semantics(
+                label: _message,
+                button: true,
+                excludeSemantics: true,
+                // Something a pointer can hit, which a bare box is not.
+                child: const ColoredBox(
+                  key: ValueKey<String>('described'),
+                  color: Color(0x00000000),
+                  child: SizedBox(width: 80, height: 48),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.longPress(find.byKey(const ValueKey<String>('described')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text(_message), findsOneWidget, reason: 'the pane is open');
+      final SemanticsData data = tester
+          .getSemantics(find.byKey(const ValueKey<String>('described')))
+          .getSemanticsData();
+      if (exclude) {
+        expect(data.label, _message, reason: 'the control reads its own word');
+        expect(data.tooltip, isEmpty);
+      } else {
+        expect(
+          data.label,
+          isNot(_message),
+          reason: 'folded in, the pane gives the control its word twice',
+        );
+        expect(data.tooltip, _message);
+      }
+      await tester.pump(UiTooltipStyle.touchDuration);
+      await tester.pumpAndSettle();
+    }
+    handle.dispose();
+  });
+
   testWidgets('it never takes focus from the control it describes', (
     WidgetTester tester,
   ) async {

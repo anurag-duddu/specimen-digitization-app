@@ -304,9 +304,11 @@ class UiTabBar extends StatelessWidget {
           index: current,
           length: count,
           fadeExtent: style.fadeExtent,
-          // A bar can open on any destination, so the first frame already
-          // shows the one the reviewer is on.
+          // A bar can open on any destination, so the row starts on the one
+          // the reviewer is on, before its first frame is painted. The
+          // cells are `cellMin` wide, which is the row's own width.
           revealInitially: true,
+          extent: style.cellMin * count,
           child: row,
         );
       },
@@ -515,8 +517,8 @@ class _TabCell extends StatelessWidget {
     // `MergeSemantics`, because every child of a `tabBar` node has to be a
     // tab and the tooltip's wrapper would otherwise publish a node between
     // the list and the tab. The cell's semantics label already carries the
-    // whole word and the tooltip adds no node of its own, so the tab reads
-    // once.
+    // whole word, and the open pane is kept out of semantics
+    // (`excludeSemantics`), so the tab reads once, open or closed.
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         final bool cut =
@@ -524,7 +526,15 @@ class _TabCell extends StatelessWidget {
             constraints.maxWidth;
         if (!cut) return cell;
         return MergeSemantics(
-          child: UiTooltip(message: destination.label, child: cell),
+          child: UiTooltip(
+            message: destination.label,
+            // The cell's own label already carries the whole word. Without
+            // this the open pane's semantics, which live beneath the portal
+            // and so inside the merge, give the tab the word twice and a
+            // tooltip it should not have.
+            excludeSemantics: true,
+            child: cell,
+          ),
         );
       },
     );
