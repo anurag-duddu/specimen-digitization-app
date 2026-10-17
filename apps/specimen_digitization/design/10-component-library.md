@@ -1333,10 +1333,10 @@ control, which is what one vocabulary exists to prevent (section 0, property
 | `no_stand_ins` | No `TODO(fe/` marker under the package's `lib/` | none |
 | `no_fallback_text_style` | Every gallery page and every overlay pumped under `WidgetsApp`; no `RenderParagraph` carries the framework fallback style or a double underline (11 section 5) | none |
 | `fit_matrix` | The golden matrix of 11 section 3.5: four window classes by three text scales by two modes per family page, plus the Fit page | none |
-| `no_cupertino` | No import or export of `package:flutter/cupertino.dart`, no `Cupertino` identifier and no `.adaptive` constructor or `showAdaptiveDialog` under `lib/`; one exemption, `CupertinoRouteTransitionMixin` in `app_router.dart` for the phone iOS page transition (04 row 18; 09 section 2 principle 5) | none |
-| `no_platform_branching` | `kIsWeb`, `defaultTargetPlatform`, `TargetPlatform.<value>`, `Platform.is<OS>` and `debugDefaultTargetPlatformOverride` under `lib/` only in the capability files the test names, each limited to the kinds of check it makes, with a reason | none; the capability list is the allowance |
-| `no_named_pixels` | A `const` declared `double` or `num`, or untyped with a double literal, at any scope, a `static final` or top-level `final`, or a `double` getter written with `=>`, whose value writes a number above 1 that is not a factor (`x * 2`, `x / 2`); the geometry gate's files and its `paint` allowance | per-file, shrink-only, held to the exact count |
-| `no_alpha_literals` | An opacity written as a number other than none or full in `withValues(alpha:)`, `withOpacity`, `withAlpha` or `stateLayer` under `lib/` | per-file, shrink-only, held to the exact count |
+| `no_cupertino` | No import or export of `package:flutter/cupertino.dart`, no identifier containing `Cupertino` (classes and functions such as `showCupertinoDialog`) and no `.adaptive` constructor or `showAdaptiveDialog` under `lib/`; one exemption, `CupertinoRouteTransitionMixin` in `app_router.dart` for the phone iOS page transition (04 row 18; 09 section 2 principle 5) | none |
+| `no_platform_branching` | `kIsWeb`, `defaultTargetPlatform`, `Theme.of(context).platform`, `TargetPlatform.<value>`, `Platform.is<OS>`, `Platform.operatingSystem` and `debugDefaultTargetPlatformOverride` under `lib/` only in the capability files the test names, each limited to the kinds of check it makes, with a reason | none; the capability list is the allowance |
+| `no_named_pixels` | A `const` declared `double` or `num` (or untyped with a double literal) at any scope, a `static final` or `static late final`, a top-level `final`, a `double` getter written with `=>`, or an instance or local `final double` whose value is all numbers, where the value writes a number above 1 that is not a factor of a value (`x * 2`, `x / 2`; `35 * 8` is a size); every declarator; the geometry gate's files and its `paint` allowance | per-file, shrink-only, held to the exact count |
+| `no_alpha_literals` | An opacity written as a number other than none or full in `withValues(alpha:)`, `withOpacity`, `withAlpha`, `stateLayer`, an `opacity:` argument or the amount of `Color.lerp` under `lib/`, including through a name declared in the same file | per-file, shrink-only, held to the exact count |
 | `exemptions_owner_approved` | Every allowance in the source gates (allow-lists, exemptions, backlog counts, allowed values, exempt paths and patterns) as it stood on 2026-10-17; an entry added or widened since carries `// owner-approved: YYYY-MM-DD "the owner's exact words"` | the 2026-10-17 record, shrink-only |
 
 **Amendment, fit (2026-09-16, 11 sections 1 and 2.2).** `no_literal_geometry`
@@ -1375,8 +1375,10 @@ in the shell, with tests asserting it, because no gate read the Cupertino
 library or the platform, and a size or an opacity given a name
 (`static const double switcherMaxWidth = 280`, `ink.withValues(alpha: .06)`)
 passed the geometry and colour gates. The five rows added to the table close
-those four routes and put every way a gate lets something through under the
-owner's sign-off. The two backlogs start at the tree as it stood that day, 25
+those four routes and put every named allowance in the gates under the
+owner's sign-off. Two loosenings stay with review: an entry removed from a ban
+list (`retiredWidgets`, `callRules`, `argumentRules`) and the `paint`
+allowance, which is a function rather than a list. The two backlogs start at the tree as it stood that day, 25
 named sizes over 14 files and 2 opacities over 2, and only shrink. The tests
 live in `apps/specimen_digitization/test/theme/` and share
 `gate_support.dart`, which takes its prose mask from `no_literal_geometry`

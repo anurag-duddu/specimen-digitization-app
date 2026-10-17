@@ -7,10 +7,15 @@
 // overlay token.
 //
 // So an opacity written as a number fails: in `withValues(alpha: ...)`, in the
-// deprecated `withOpacity(...)`, in `withAlpha(...)` and in the design
-// system's own `stateLayer(...)`, which takes an opacity. Zero and full opacity
-// stay, because they are not a colour decision: `withValues(alpha: 0)` is the
-// role at nothing, which is what a cross-fade starts from. The mechanism is the
+// deprecated `withOpacity(...)`, in `withAlpha(...)`, in the design system's
+// own `stateLayer(...)`, which takes an opacity, in an `opacity:` argument
+// (`Opacity`, `AnimatedOpacity`) and as the amount of `Color.lerp`, which mixes
+// two roles into a third nobody named. Giving the number a name in the same
+// file does not help: `alpha: _wash` with `const double _wash = .06` reads as
+// `.06`. A name from another file is out of reach of a per-file scan; review
+// catches it. Zero and full opacity stay, because they are not a colour
+// decision: `withValues(alpha: 0)` is the role at nothing, which is what a
+// cross-fade starts from. The mechanism is the
 // geometry gate's: a per-file count that may go down, never up, and a file at
 // zero leaves the map. It reads the application's `lib/`; the package's
 // foundation is where a role and its opacity are defined (`selection` at
@@ -34,6 +39,11 @@ final RegExp _alphaArgument = RegExp(r'\balpha\s*:');
 final RegExp _withOpacity = RegExp(r'\.withOpacity\s*\(');
 final RegExp _withAlpha = RegExp(r'\.withAlpha\s*\(');
 final RegExp _stateLayer = RegExp(r'\.stateLayer\s*\(');
+final RegExp _opacityArgument = RegExp(r'\bopacity\s*:');
+final RegExp _lerp = RegExp(r'\bColor\.lerp\s*\(');
+final RegExp _bareName = RegExp(
+  r'^\s*(?:[A-Za-z_$][\w$]*\.)?([A-Za-z_$][\w$]*)\s*$',
+);
 
 /// Every opacity in [source] written as a number other than none or full, as
 /// `line N, <call> <value>`.
@@ -42,13 +52,24 @@ List<String> alphaLiteralsIn(String source) {
   final List<String> found = <String>[];
 
   void check(int start, int end, String call, Set<num> allowed) {
-    for (final RegExpMatch literal in numericLiteral.allMatches(
-      code.substring(start, end),
-    )) {
+    final String expression = code.substring(start, end);
+    for (final RegExpMatch literal in numericLiteral.allMatches(expression)) {
       final String text = literal.group(0)!;
-      if (allowed.contains(double.parse(text))) continue;
+      if (allowed.contains(num.parse(text))) continue;
       found.add('line ${lineOf(source, start)}, $call $text');
       return;
+    }
+    // A name for the number, declared in this file.
+    final String? name = _bareName.firstMatch(expression)?.group(1);
+    if (name == null) return;
+    final RegExpMatch? declared = RegExp(
+      '\\b(?:const|final)\\s+(?:(?:double|num|int)\\s+)?'
+      '${RegExp.escape(name)}\\s*=\\s*(${numericLiteral.pattern})\\s*[;,]',
+    ).firstMatch(code);
+    if (declared == null) return;
+    final String text = declared.group(1)!;
+    if (!allowed.contains(num.parse(text))) {
+      found.add('line ${lineOf(source, start)}, $call $name = $text');
     }
   }
 
@@ -68,6 +89,20 @@ List<String> alphaLiteralsIn(String source) {
   }
   for (final RegExpMatch call in _stateLayer.allMatches(code)) {
     check(call.end, endOfExpression(code, call.end), 'stateLayer', <num>{0, 1});
+  }
+  for (final RegExpMatch argument in _opacityArgument.allMatches(code)) {
+    check(argument.end, endOfExpression(code, argument.end), 'opacity:', <num>{
+      0,
+      1,
+    });
+  }
+  for (final RegExpMatch call in _lerp.allMatches(code)) {
+    // The third argument is the amount.
+    int from = call.end;
+    for (int argument = 0; argument < 2 && from < code.length; argument++) {
+      from = endOfExpression(code, from) + 1;
+    }
+    check(from, endOfExpression(code, from), 'Color.lerp', <num>{0, 1});
   }
   for (final RegExpMatch call in _withAlpha.allMatches(code)) {
     check(call.end, endOfExpression(code, call.end), 'withAlpha', <num>{
@@ -126,6 +161,32 @@ void main() {
     expect(alphaLiteralsIn('ui.color.stateLayer(.06)'), <String>[
       'line 1, stateLayer .06',
     ]);
+    expect(
+      alphaLiteralsIn('Opacity(opacity: .06, child: ColoredBox(color: ink))'),
+      <String>['line 1, opacity: .06'],
+    );
+    expect(alphaLiteralsIn('Color.lerp(ui.color.ground, ink, 0.06)!'), <String>[
+      'line 1, Color.lerp 0.06',
+    ]);
+    expect(alphaLiteralsIn('c.withAlpha(0x14)'), <String>[
+      'line 1, withAlpha 0x14',
+    ]);
+
+    // A name for the number in the same file is the number.
+    expect(
+      alphaLiteralsIn(
+        'static const double _wash = .06;\n'
+        'Color w() => ink.withValues(alpha: _wash);',
+      ),
+      <String>['line 2, alpha: _wash = .06'],
+    );
+    expect(
+      alphaLiteralsIn(
+        'class _S { static const double wash = .06; }\n'
+        'Color w() => ink.withValues(alpha: _S.wash);',
+      ),
+      <String>['line 2, alpha: wash = .06'],
+    );
     expect(alphaLiteralsIn('a;\nc.withValues(\n  alpha: .1,\n)'), <String>[
       'line 3, alpha: .1',
     ]);
@@ -137,6 +198,17 @@ void main() {
     expect(
       alphaLiteralsIn('ui.color.stateLayer(ui.color.hoverOpacity)'),
       isEmpty,
+    );
+    expect(
+      alphaLiteralsIn('Color.lerp(a, b, animation.value)'),
+      isEmpty,
+      reason: 'an amount that comes from an animation is not a colour',
+    );
+    expect(alphaLiteralsIn('Opacity(opacity: visible ? 1 : 0)'), isEmpty);
+    expect(
+      alphaLiteralsIn('c.withValues(alpha: GroundPalette.scrimOpacity)'),
+      isEmpty,
+      reason: 'a token declared in the package is not in this file',
     );
     expect(alphaLiteralsIn('c.withValues(red: 0.5)'), isEmpty);
     expect(alphaLiteralsIn('// was ink.withValues(alpha: .06)'), isEmpty);

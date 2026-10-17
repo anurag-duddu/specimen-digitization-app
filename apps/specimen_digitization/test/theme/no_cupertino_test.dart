@@ -9,8 +9,9 @@
 //
 // Three ways in are counted, in code only (comments and strings are masked):
 // an import or export of `package:flutter/cupertino.dart`; any identifier that
-// starts with `Cupertino`, which also catches the Cupertino classes
-// `material.dart` defines itself, such as `CupertinoPageTransitionsBuilder`;
+// contains `Cupertino`, which also catches the Cupertino classes
+// `material.dart` defines itself, such as `CupertinoPageTransitionsBuilder`,
+// and the functions, such as `showCupertinoDialog`;
 // and Flutter's `.adaptive` constructors and `showAdaptiveDialog`, which draw a
 // Cupertino component on Apple platforms under a Material name. The product's
 // own `showAdaptiveModal` and `UiDialog.showAdaptive` adapt to the window, not
@@ -41,7 +42,7 @@ final RegExp _libraryDirective = RegExp(
   r'''^\s*(?:import|export)\s+['"]package:flutter/cupertino\.dart['"]''',
   multiLine: true,
 );
-final RegExp _cupertinoName = RegExp(r'\bCupertino\w*');
+final RegExp _cupertinoName = RegExp(r'\b\w*Cupertino\w*');
 final RegExp _adaptiveName = RegExp(r'\.adaptive\b|\bshowAdaptiveDialog\b');
 
 /// Every Cupertino term in [source], in the order the three rules are listed.
@@ -107,6 +108,9 @@ void main() {
       cupertinoTermsIn('TargetPlatform.iOS: CupertinoPageTransitionsBuilder()'),
       <String>['CupertinoPageTransitionsBuilder'],
     );
+    expect(cupertinoTermsIn('showCupertinoModalPopup(context: c)'), <String>[
+      'showCupertinoModalPopup',
+    ]);
     expect(cupertinoTermsIn('Switch.adaptive(value: on)'), <String>[
       '.adaptive',
     ]);
@@ -139,13 +143,16 @@ void main() {
       'lib/src/toggle.dart': 'Widget t() => Switch.adaptive(value: on);\n',
       'lib/src/app/app_router.dart':
           "import 'package:flutter/cupertino.dart' "
-          'show CupertinoRouteTransitionMixin, CupertinoButton;\n',
+          'show CupertinoRouteTransitionMixin, CupertinoButton;\n'
+          "import 'package:flutter/cupertino.dart' show showCupertinoDialog;\n",
     });
     final List<String> violations = cupertinoViolations(
       cupertinoCensus(base: base),
     );
     expect(violations, <String>[
       'lib/src/app/app_router.dart: CupertinoButton, but only '
+          'CupertinoRouteTransitionMixin is exempt',
+      'lib/src/app/app_router.dart: showCupertinoDialog, but only '
           'CupertinoRouteTransitionMixin is exempt',
       'lib/src/tab_bar.dart: $cupertinoLibrary, CupertinoTabBar',
       'lib/src/theme.dart: CupertinoPageTransitionsBuilder',

@@ -10,15 +10,25 @@
 // So a `const` declared `double` or `num`, at the top level, as a static
 // member or as a local, fails when its initializer writes a number above 1.
 // An untyped `const` fails the same way when that number is written as a
-// double, `280.0`. A `static final`, a top-level `final` and a `double` getter
-// written with `=>` are read the same way, because each is a name for a
-// number and swapping `const` for one of them must not pass. A number that
-// multiplies, or divides by, is a factor in a derivation rather than a size,
-// so `targetMin * 2` passes and `24.0 + inset` does not. Fractions of a size, 0 to 1, are what 11 section 1 asks
-// for and stay. The mechanism is the geometry gate's: a per-file count that may
-// go down, never up, and a file at zero leaves the map. It reads the same files
-// that gate reads, `lib/` without generated files and without the wire types
-// under `lib/src/models`, and makes its one allowance: the `paint` method of a
+// double, `280.0`. A `static final` (or `static late final`), a top-level
+// `final` and a `double` getter written with `=>` are read the same way,
+// because each is a name for a number and swapping `const` for one of them
+// must not pass. An instance or local `final double` is read only when its
+// value is all numbers, `final double width = 280;`, since a local computed
+// from a size the layout was given is what 11 section 1 asks for. Every
+// declarator of `const double a = 1, b = 280;` is read.
+//
+// A number that multiplies a value, or divides one, is a factor in a
+// derivation rather than a size: `targetMin * 2` passes and `24.0 + inset`
+// does not. A value written only in numbers has nothing to derive from, so
+// `35 * 8` and `2 * 140` fail. Fractions of a size, 0 to 1, are what 11
+// section 1 asks for and stay. Not read: a list of numbers, a getter with a
+// block body and a method; review catches those.
+//
+// The mechanism is the geometry gate's: a per-file count that may go down,
+// never up, and a file at zero leaves the map. It reads the same files that
+// gate reads, `lib/` without generated files and without the wire types under
+// `lib/src/models`, and makes its one allowance: the `paint` method of a
 // `CustomPainter`, where geometry is arithmetic on the size the canvas was
 // given.
 
@@ -51,20 +61,55 @@ const Map<String, int> namedPixelBacklog = <String, int>{
   'lib/src/widgets/upload_item.dart': 1,
 };
 
+const String _identifier = r'[A-Za-z_$][\w$]*';
+
+/// The four ways a name is given a number, one named group pair each. The
+/// last, an instance or local `final`, counts only a value written in numbers.
 final RegExp _namedNumber = RegExp(
-  r'\b(?:const|static\s+final)\s+(?:(double|num)\s+)?([A-Za-z_$][\w$]*)'
-  r'\s*=(?!=)'
-  r'|^final\s+(double|num)\s+([A-Za-z_$][\w$]*)\s*=(?!=)'
-  r'|\b(double|num)\s+get\s+([A-Za-z_$][\w$]*)\s*=>',
+  '\\b(?:const|static\\s+(?:late\\s+)?final)\\s+(?:(?<constType>double|num)\\s+)?'
+  '(?<constName>$_identifier)\\s*=(?!=)'
+  '|^final\\s+(?<topType>double|num)\\s+(?<topName>$_identifier)\\s*=(?!=)'
+  '|\\b(?<getType>double|num)\\s+get\\s+(?<getName>$_identifier)\\s*=>'
+  '|\\b(?:late\\s+)?final\\s+(?<localType>double|num)\\s+'
+  '(?<localName>$_identifier)\\s*=(?!=)',
   multiLine: true,
 );
+final RegExp _nextDeclarator = RegExp('^,\\s*($_identifier)\\s*=(?!=)');
+final RegExp _numberAtStart = RegExp('^(?:${numericLiteral.pattern})');
+final RegExp _numberAtEnd = RegExp('(?:${numericLiteral.pattern})\$');
 
-/// Whether the number from [start] to [end] in [code] multiplies, or is the
-/// divisor: `x * 2`, `2 * x`, `x / 2`.
+/// Whether [expression] is written in numbers alone, operators aside.
+bool _onlyNumbers(String expression) =>
+    !RegExp(r'[A-Za-z_$]').hasMatch(expression.replaceAll(numericLiteral, ''));
+
+/// Whether the number from [start] to [end] in [code] multiplies a value, or
+/// divides one: `x * 2`, `2 * x`, `x / 2`, but not `35 * 8`.
 bool _isFactor(String code, int start, int end) {
   final String before = code.substring(0, start).trimRight();
   final String after = code.substring(end).trimLeft();
-  return before.endsWith('*') || before.endsWith('/') || after.startsWith('*');
+  if (before.endsWith('*') || before.endsWith('/')) {
+    return !_numberAtEnd.hasMatch(
+      before.substring(0, before.length - 1).trimRight(),
+    );
+  }
+  if (after.startsWith('*')) {
+    return !_numberAtStart.hasMatch(after.substring(1).trimLeft());
+  }
+  return false;
+}
+
+/// Whether [initializer] writes a size: a number above 1 that is not a factor,
+/// written as a double unless the declaration is [typed].
+bool _holdsSize(String initializer, {required bool typed}) {
+  final bool derived = !_onlyNumbers(initializer);
+  return numericLiteral
+      .allMatches(initializer)
+      .any(
+        (RegExpMatch m) =>
+            num.parse(m.group(0)!) > 1 &&
+            (typed || m.group(0)!.contains(RegExp('[.eE]'))) &&
+            !(derived && _isFactor(initializer, m.start, m.end)),
+      );
 }
 
 /// Every named constant in [source] that holds a size above 1, as
@@ -80,28 +125,33 @@ List<String> namedPixelsIn(String source) {
     )) {
       continue;
     }
+    final bool local = declaration.namedGroup('localName') != null;
     final bool typed =
-        (declaration.group(1) ??
-            declaration.group(3) ??
-            declaration.group(5)) !=
+        (declaration.namedGroup('constType') ??
+            declaration.namedGroup('topType') ??
+            declaration.namedGroup('getType') ??
+            declaration.namedGroup('localType')) !=
         null;
-    final String name =
-        declaration.group(2) ?? declaration.group(4) ?? declaration.group(6)!;
-    final int end = endOfExpression(code, declaration.end);
-    final String initializer = code.substring(declaration.end, end);
-    final bool holdsSize = numericLiteral
-        .allMatches(initializer)
-        .any(
-          (RegExpMatch m) =>
-              double.parse(m.group(0)!) > 1 &&
-              (typed || m.group(0)!.contains(RegExp('[.eE]'))) &&
-              !_isFactor(initializer, m.start, m.end),
+    String name =
+        declaration.namedGroup('constName') ??
+        declaration.namedGroup('topName') ??
+        declaration.namedGroup('getName') ??
+        declaration.namedGroup('localName')!;
+    int from = declaration.end;
+    while (true) {
+      final int end = endOfExpression(code, from);
+      final String initializer = code.substring(from, end);
+      if ((!local || _onlyNumbers(initializer)) &&
+          _holdsSize(initializer, typed: typed)) {
+        found.add(
+          'line ${lineOf(source, declaration.start)}, '
+          '$name = ${initializer.trim()}',
         );
-    if (holdsSize) {
-      found.add(
-        'line ${lineOf(source, declaration.start)}, '
-        '$name = ${initializer.trim()}',
-      );
+      }
+      final RegExpMatch? next = _nextDeclarator.firstMatch(code.substring(end));
+      if (next == null) break;
+      name = next.group(1)!;
+      from = end + next.end;
     }
   }
   return found;
@@ -174,6 +224,37 @@ void main() {
     ]);
     expect(namedPixelsIn('static double get _gap => 24.0 + inset;'), <String>[
       'line 1, _gap = 24.0 + inset',
+    ]);
+    expect(namedPixelsIn('static late final double _w = 280;'), <String>[
+      'line 1, _w = 280',
+    ]);
+    expect(
+      namedPixelsIn('class S {\n  final double switcherMaxWidth = 280;\n}'),
+      <String>['line 2, switcherMaxWidth = 280'],
+    );
+    expect(namedPixelsIn('void f() {\n  final double gap = 12;\n}'), <String>[
+      'line 2, gap = 12',
+    ]);
+    expect(namedPixelsIn('const double _a = 1, _w = 280;'), <String>[
+      'line 1, _w = 280',
+    ]);
+    expect(namedPixelsIn('static const double w = 0x118;'), <String>[
+      'line 1, w = 0x118',
+    ]);
+
+    // A value written only in numbers has nothing to derive from, so its
+    // products are sizes.
+    expect(namedPixelsIn('static const double w = 35 * 8;'), <String>[
+      'line 1, w = 35 * 8',
+    ]);
+    expect(namedPixelsIn('static const double w = 2 * 140;'), <String>[
+      'line 1, w = 2 * 140',
+    ]);
+    expect(namedPixelsIn('static const double w = 280 * 1.0;'), <String>[
+      'line 1, w = 280 * 1.0',
+    ]);
+    expect(namedPixelsIn('static const double w = kGap * 2 * 3;'), <String>[
+      'line 1, w = kGap * 2 * 3',
     ]);
 
     // A fraction, a token, an int count and prose are not sizes, and neither

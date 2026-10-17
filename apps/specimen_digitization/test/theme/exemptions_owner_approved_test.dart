@@ -10,8 +10,9 @@
 //
 //     // owner-approved: 2026-10-17 "the owner's exact words"
 //
-// on the comment lines directly above the entry, or after the entry on its own
-// line. The date
+// on the comment lines directly above the entry, or at the end of the entry's
+// own line, after its comma; a comment on the line below belongs to the next
+// entry. The date
 // must be a real day that has happened; the words are a quotation, in straight
 // double quotes, never a paraphrase. A coordinator's or a reviewer's OK is not
 // the owner's.
@@ -19,13 +20,21 @@
 // The entries on each list when the gate was written are recorded below and
 // need no annotation. That record only shrinks: an entry that leaves its list
 // leaves the record, so bringing it back is new and needs a sign-off. A backlog
-// count may fall freely and may not rise above its recorded count unsigned.
+// count may fall freely and may not rise above its recorded count unsigned. A
+// file renamed in a backlog reads as a new entry: move its row in the record in
+// the same change, the one edit the record takes besides removal.
+//
+// It checks named allowances. Not checked here, so review catches them: an
+// entry removed from a ban list (`retiredWidgets`, `callRules`,
+// `argumentRules`), which loosens a gate, and the geometry gates' `paint`
+// allowance, which is a function rather than a list.
 //
 // The gate reads the lists from source, because a comment is not a value.
 // Three self-checks keep that reading honest: its comment reader must read
-// every file the way `maskProse` does, it must see the entries the compiler
-// sees, and every public constant in a gate file must be either an allowance
-// this test checks or named below as something that is not one.
+// every file the way `maskProse` does, it must see the entry keys the compiler
+// sees, and every public constant and every private collection in a gate file
+// must be either an allowance this test checks or named below as something
+// that is not one.
 
 import 'dart:io';
 
@@ -52,7 +61,9 @@ enum Grant {
   /// value.
   keyAndValue,
 
-  /// A list of objects: an entry is its path and the first set it carries.
+  /// A list of objects: an entry is its path and the first set literal it
+  /// carries. An entry whose set is a named constant would read the next
+  /// entry's set, which reads as a widening and fails, never as a pass.
   keyAndSet,
 
   /// A backlog of path to count: a new path, or a count above the record.
@@ -364,9 +375,15 @@ String _attached(String source, List<ProseSpan> spans, int start, int end) {
   int lineEnd = source.indexOf('\n', end);
   if (lineEnd < 0) lineEnd = source.length;
   for (final ProseSpan s in comments) {
-    if (s.start >= start && s.start < lineEnd) {
-      found.add(source.substring(s.start, s.end));
-    }
+    // Inside the entry, or after it on its last line with nothing but its
+    // comma, closing brackets and the statement's end between: a comment after
+    // a second entry on the same line is that entry's.
+    final bool inside = s.start >= start && s.start < end;
+    final bool trailing =
+        s.start >= end &&
+        s.start < lineEnd &&
+        RegExp(r'^[\s,;)\]}]*$').hasMatch(source.substring(end, s.start));
+    if (inside || trailing) found.add(source.substring(s.start, s.end));
   }
   return found.join('\n');
 }
@@ -557,13 +574,15 @@ List<String> unapproved(
   return found;
 }
 
-/// The public top-level constants of [source].
-List<String> publicConstants(String source) => <String>[
+/// The public top-level constants of [source], and its private top-level
+/// collections, which could hold an allowance as well as a public one.
+List<String> gateConstants(String source) => <String>[
   for (final RegExpMatch m in RegExp(
-    r'^(?:const|final)\s[^=;(]*?\b([a-zA-Z]\w*)\s*=(?!=)',
+    r'^(?:const|final)\s[^=;(]*?\b([a-zA-Z]\w*)\s*=(?!=)'
+    r'|^(?:const|final)\s+(?:List|Set|Map)<[^=;]*>\s+(_\w+)\s*=(?!=)',
     multiLine: true,
   ).allMatches(maskProse(source)))
-    m.group(1)!,
+    m.group(1) ?? m.group(2)!,
 ];
 
 /// Every gate file, relative to the application root.
@@ -576,9 +595,11 @@ List<String> gateFiles() => <String>[
   _packageGeometry,
 ]..sort();
 
+/// Today in the zone furthest ahead, UTC+14, so an owner who dates a sign-off
+/// east of the machine running the test is not refused for a few hours.
 DateTime _today() {
-  final DateTime now = DateTime.now();
-  return DateTime(now.year, now.month, now.day);
+  final DateTime ahead = DateTime.now().toUtc().add(const Duration(hours: 14));
+  return DateTime(ahead.year, ahead.month, ahead.day);
 }
 
 void main() {
@@ -668,6 +689,32 @@ const List<String> files = <String>[
         'lib/b.dart is a new allowance',
         'lib/d.dart is a new allowance',
       ],
+    );
+  });
+
+  test('a trailing sign-off on a one-line list is the last entry\'s', () {
+    const String gate = '''
+const Set<String> files = <String>{'lib/a.dart', 'lib/b.dart'}; // owner-approved: 2026-10-17 "b"
+''';
+    expect(
+      unapproved(
+        entriesOf(gate, 'files', Grant.keys)!,
+        <String>{},
+        Grant.keys,
+        day,
+      ),
+      <String>['lib/a.dart is a new allowance'],
+    );
+  });
+
+  test('a private collection in a gate file is found', () {
+    expect(
+      gateConstants(
+        'const Map<String, int> _hiddenBacklog = <String, int>{};\n'
+        'final RegExp _pattern = RegExp(r"x");\n'
+        'const String exemptPath = "lib/x";\n',
+      ),
+      <String>['_hiddenBacklog', 'exemptPath'],
     );
   });
 
@@ -788,16 +835,14 @@ const String modelsPrefix =
     }
   });
 
-  test('every public constant in a gate file is classified', () {
+  test('every named constant in a gate file is classified', () {
     final Set<String> known = <String>{
       for (final Allowance a in allowances) a.id,
       ...notAllowances.keys,
     };
     final List<String> unknown = <String>[
       for (final String file in gateFiles())
-        for (final String name in publicConstants(
-          File(file).readAsStringSync(),
-        ))
+        for (final String name in gateConstants(File(file).readAsStringSync()))
           if (!known.contains('$file $name')) '$file $name',
     ];
     expect(

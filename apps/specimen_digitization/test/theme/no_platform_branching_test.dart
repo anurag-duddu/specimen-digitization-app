@@ -13,8 +13,9 @@
 // `main.dart` is not a licence to branch on iOS there.
 //
 // Counted, in code only (comments and strings are masked): `kIsWeb`,
-// `defaultTargetPlatform`, `TargetPlatform.<value>`, `Platform.is<OS>` and
-// `Platform.operatingSystem` from `dart:io`, and
+// `defaultTargetPlatform`, `Theme.of(context).platform` (counted with it, as
+// the same question asked through the theme), `TargetPlatform.<value>`,
+// `Platform.is<OS>` and `Platform.operatingSystem` from `dart:io`, and
 // `debugDefaultTargetPlatformOverride`, which belongs in tests alone.
 
 import 'package:flutter_test/flutter_test.dart';
@@ -125,6 +126,7 @@ const String generatedOptions = 'lib/firebase_options.dart';
 
 final RegExp _platformCheck = RegExp(
   r'\b(?:kIsWeb|defaultTargetPlatform|debugDefaultTargetPlatformOverride)\b'
+  r'|\bTheme\.of\(\s*\w+\s*\)\s*\.platform\b'
   r'|\bTargetPlatform\.\w+'
   r'|\bPlatform\.(?:is\w+|operatingSystem\w*)',
 );
@@ -132,6 +134,7 @@ final RegExp _platformCheck = RegExp(
 /// The kind a matched check reports under.
 String platformCheckKind(String match) {
   if (match.startsWith('TargetPlatform.')) return targetPlatformValue;
+  if (match.startsWith('Theme.')) return targetPlatform;
   if (match.startsWith('Platform.')) return ioPlatform;
   return match;
 }
@@ -183,6 +186,10 @@ void main() {
       ioPlatform,
     ]);
     expect(platformChecksIn('Platform.operatingSystem'), <String>[ioPlatform]);
+    expect(
+      platformChecksIn("Theme.of(context).platform.name == 'iOS'"),
+      <String>[targetPlatform],
+    );
     expect(
       platformChecksIn('debugDefaultTargetPlatformOverride = null;'),
       <String>[platformOverride],

@@ -14,9 +14,10 @@ export 'no_literal_geometry_test.dart'
     show generatedFile, maskProse, modelsPrefix, painterPaintBodies;
 
 /// A numeric literal that is not part of an identifier, including the
-/// leading-dot form `.06`.
+/// leading-dot form `.06` and hex. `num.parse` reads every form it matches.
 final RegExp numericLiteral = RegExp(
-  r'(?<![A-Za-z0-9_$.])(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?',
+  r'(?<![A-Za-z0-9_$.])'
+  r'(?:0[xX][0-9a-fA-F]+|(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?)',
 );
 
 /// The end of the bracketed expression that opens at [open] in masked [code],
