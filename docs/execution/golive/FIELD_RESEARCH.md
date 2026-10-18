@@ -440,7 +440,12 @@ handover runs field research instead of the six specialists:
      on the label (2b02009d's decided reading writes "Seliban Riv." over
      "Mt. Apo", given as two candidates), but it still cuts none: it is no
      piece of a candidate, and no place of a candidate in the reading lies
-     partly inside it (`agreement._cut_candidate`). Those candidates are
+     partly inside it (`agreement._cut_candidate`). Nor does it extend one
+     (round 1 of #379's review, finding 3): a line of it that holds a
+     candidate holds no other letter or digit, only punctuation and spaces
+     between its candidates, so "Seliban Riv." over "near Mt. Apo" beside
+     the candidate "Mt. Apo" is refused, as "near Mt. Apo" on one line is. A
+     line holding no candidate may join them. Those candidates are
      then parts of it, not rival texts of the label (`agreement.labels`),
      and where the label has no decided transcript every reader must write
      it, line breaks, letter case and spacing aside. Every other check holds
@@ -592,13 +597,32 @@ handover runs field research instead of the six specialists:
      105526329's precise location "Yepocapa, 4800ft.", read from the
      transcript, goes to review beside the elevation "4800ft." (the brief
      leaves elevations out of the locality), while "Volcan Barva" beside
-     "2000 msnm" settles. An organiser's candidate is never refused here,
-     and two fields that both settle the same text from the transcript
+     "2000 msnm" settles. An organiser's candidate is never refused here
+     (but for the one case below), and two fields that both settle the same text from the transcript
      (105526328's "trap" as the habitat and as the method) both go to
      review. A field whose answer is refused on its own does not claim:
      a date and a collection code that both read "IV-24-48" settle the
      date, since the code holds a date (below) and settles nothing, and
      the code goes to review as text the date holds.
+     One overlap goes the other way (the live rerun on 616ae010 of
+     2026-10-18): a place read from the transcript whose text another
+     field's value, settled in the same attempt, overlaps only partly (at
+     each overlap neither text holds the other: `step._partly`) settles,
+     and that other field goes to review with the same reason, naming the
+     place, whether its answer gave a candidate or text read from the
+     transcript. A label line often begins with another field's text and
+     runs on into the locality. Then the place's expert leaves that text
+     out, while the other field's answer runs on into the locality's words.
+     e98a924c's label 2 begins "CNHM. E Slope Mt." over "McKinley, Davao
+     Prov.". The organiser filed the whole first line as the collection
+     code, whose expert kept it, and the precise location's expert read
+     "E Slope Mt." / "McKinley, Davao Prov.". The locality went to review
+     until then; now it settles, and the collection code, which holds the
+     locality's words (its brief says a place is no code), goes to review.
+     A place that holds another field's whole text ("CNHM. E Slope Mt." /
+     "McKinley, Davao Prov." beside the code "CNHM."), or lies wholly
+     inside it, still goes to review, as does one beside a value settled
+     before this attempt or by a person, which is not researched again.
    - **Text plainly of another kind** (the answer check and the step,
      `agreement._holds_another_kind`; finding 2 of the review of
      6fd595b3b). A place field (country, province or state, county, city,
@@ -1125,7 +1149,17 @@ handover runs field research instead of the six specialists:
        itself and the no-match answers for "U.S.B.I.L."), every one of its
        answers was refused, and its county was refused `NO_COUNTRY`; "USA" is confirmed as the
        United States, so Illinois and Coles County settle and derive it.
-       Two readers who write "USA" and "Canada" leave the places for review;
+       Two readers who write "USA" and "Canada" leave the places for review,
+       whether or not the organiser filed "Canada" (round 1 of #379's
+       review, finding 2). The step reads every line of any reading that
+       writes a country, province or county text of the record. It sets
+       aside what the fields hold (every field's organiser candidates,
+       literals and verbatims, where the line writes them), then weighs what
+       is left group by group, split at commas, semicolons, colons, brackets
+       and slashes. A group keeps the country check in force unless it holds
+       no letter, is only unit words, holds a date, an elevation or a range,
+       was found by none of the sources asked (3781e440's "U.S.B.I.L."), or
+       is confirmed as that same nation (`step._unplaced_text`);
      - a county also needs the province its reading writes to have a
        settled value ("The province the label gives is not settled, so
        this county cannot be confirmed inside it.", `agreement.NO_PROVINCE`;
@@ -2529,9 +2563,16 @@ third rerun of 2026-10-18, `agreement.set_aside`, `agreement.confirmed_place`):
   readings (`application.first_pass.reading_differences`, the differences
   the label's first pass judges), each with text on the other side; that
   text is neither the text's place name nor one letter from it; it is
-  written, as whole words, in one of the other reader's texts for another
-  field (the organiser's candidates and the other fields' literals,
-  `step._claimed_texts`); and the other reader writes the text nowhere.
+  written, as whole words, in one of the other reader's texts for a field
+  of another kind than a place (the organiser's candidates and those
+  fields' literals, `step._claimed_texts`): a taxon, a collector ("Chas."),
+  a date ("1945"); and the other reader writes the text nowhere. Another
+  place field's text there is never such text (round 1 of #379's review,
+  finding 1): "Mexico" where the other reader writes "Texas", that
+  reader's province, is two readings of one place, and the country stays
+  for review. Words of another kind are not a place's reading of that ink,
+  so they leave the country text one reader's word, uncorroborated, while
+  the country itself is derived from places settled on their own.
   d10333ff's determination label had no decided transcript in three runs
   (its first pass reached its token cap once and chose no reading twice):
   reader 3A writes "Panama" where 3B writes "Panorpa", 3B's taxon. Its label

@@ -569,7 +569,7 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending, r
     if found is None:
         return None  # _refusal has refused it already.
     basis, candidate = found.basis, found.candidate
-    confirmed = _confirmed_country(places, received) if task.key != "country" else {}
+    confirmed = _confirmed_country(run, readings, places, received) if task.key != "country" else {}
     named = [by_name[n] for n in dict.fromkeys(answer.reading_names) if n in by_name and answer.literal in by_name[n].text]
     decided = {r.region_id: r for r in readings if r.input_source == "decided_transcript"}
     rows = {item.id: item for item in run.evidence}
@@ -613,24 +613,85 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending, r
     return None
 
 
-def _confirmed_country(places: Mapping[str, Mapping[str, frozenset[str]]],
+def _confirmed_country(run, readings: Sequence[Reading], places: Mapping[str, Mapping[str, frozenset[str]]],
         received: Mapping[str, Sequence[SourceAnswer]] | None) -> dict:
     """The nation the gazetteers confirm the record's country texts as, for
     the parents check (_misfit, agreement.parents_refusal's `confirmed`):
     agreement.confirmed_place on the country texts of every reading
     (`places`, before this attempt changed any value), checked against the
     answers every field received (`received`): an expert may look up another
-    field's text. Empty when the record writes no country, or its texts are
-    not all confirmed as one nation. 3781e440 writes only reader 2B's "USA",
-    which Wikidata's answer for "United States of America" confirms as the
-    United States."""
+    field's text. Empty when the record writes no country, when its texts
+    are not all confirmed as one nation, or when a reading writes other text
+    on a line of the record's places that may be another country
+    (_unplaced_text: another reader's "Canada: Ill. Coles Co." with no
+    candidate filed for "Canada"; round 1 of #379's review, finding 2).
+    3781e440 writes only reader 2B's "USA", which Wikidata's answer for
+    "United States of America" confirms as the United States; its reader 2A
+    writes "U.S.B.I.L." there, which every source asked found nothing for."""
     from .agreement import confirmed_place
 
     texts = sorted(frozenset().union(*places.get("country", {}).values())) if places.get("country") else []
     if not texts:
         return {}
-    found = confirmed_place([item for items in (received or {}).values() for item in items], texts, "country")
-    return {"country": found} if found is not None else {}
+    answers = [item for items in (received or {}).values() for item in items]
+    found = confirmed_place(answers, texts, "country")
+    if found is None or _unplaced_text(run, readings, places, answers, found) is not None:
+        return {}
+    return {"country": found}
+
+
+# Where a line's text splits into the groups _unplaced_text weighs.
+PLACE_LINE_SEPARATORS = re.compile(r"[,;:()\[\]/]")
+
+
+def _unplaced_text(run, readings: Sequence[Reading], places: Mapping[str, Mapping[str, frozenset[str]]],
+        answers: Sequence[SourceAnswer], nation) -> str | None:
+    """Text a reading writes on a line of the record's places that may name
+    another country than `nation` (an agreement.PlaceField), or None. The
+    lines are those of every reading that write a country, province or
+    county text of the record as whole words (`places`, any reading's). On
+    each, the text every field holds is set aside: every place field's
+    texts, every field's organiser candidates (_candidates), literals and
+    verbatims, each where the line writes it as whole words. What is left,
+    split at commas, semicolons, colons, brackets and slashes, is weighed
+    group by group, and a group counts for nothing when it holds no letter,
+    is only unit words (agreement.place_name is empty), holds a date, an
+    elevation or a range (written.other_kind), was asked of the sources and
+    found by none (agreement.ruled_out: 3781e440's "U.S.B.I.L."), or is
+    confirmed as that same nation (agreement.confirmed_place). The first
+    group left is returned: "Canada" of "Canada: Ill. Coles Co.", which no
+    candidate files."""
+    from . import written
+    from .agreement import confirmed_place, place_keys, place_name, ruled_out, verbatim_runs
+
+    anchors = {text for key in ("country", "province_state", "county")
+        for texts in places.get(key, {}).values() for text in texts}
+    held = {text for texts_by_reading in places.values() for texts in texts_by_reading.values() for text in texts}
+    held |= {candidate.literal for found in _candidates(run, readings).values() for candidate in found}
+    for value in run.fields.values():
+        held |= {text for text in (value.literal, *value.verbatim_by_observation.values()) if text}
+    parts = {part.strip() for text in held for part in text.split("\n") if part.strip()}
+
+    def same(found) -> bool:
+        return found is not None and ((found.authority_id is not None and found.authority_id == nation.authority_id)
+            or bool(place_keys(found.texts) & place_keys(nation.texts)))
+
+    for reading in readings:
+        for line in reading.text.split("\n"):
+            if not any(verbatim_runs(line, text) for text in anchors):
+                continue
+            free = list(line)
+            for text in parts:
+                for start, end in verbatim_runs(line, text):
+                    free[start:end] = " " * (end - start)
+            for group in PLACE_LINE_SEPARATORS.split("".join(free)):
+                group = group.strip()
+                if (not any(char.isalpha() for char in group) or not place_name(group)
+                        or written.other_kind(group, place=True) is not None or ruled_out(answers, group)
+                        or same(confirmed_place(answers, [group], "country"))):
+                    continue
+                return group
+    return None
 
 
 def _record_code(value: FieldValue, answers: Iterable[SourceAnswer]) -> str | None:
@@ -760,8 +821,21 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
     goes to review. A place inside the precise location, or an elevation
     copied to the other unit, is one kind; an elevation or a date inside
     the precise location is not. Two fields that both settle the same text
-    from the transcript both go to review."""
-    from .agreement import TRANSCRIPT, literal_basis, may_share_text, written_runs
+    from the transcript both go to review.
+
+    One overlap is the other way round: a place read from the transcript
+    whose text another field, settled in this same attempt, overlaps only
+    partly (_partly: at each overlap neither holds the other) stands, and
+    that other field goes to review instead. A label line that begins with
+    another field's text and runs on into the locality is read so by the
+    place's expert, who leaves that text out, while the other field's
+    answer runs into the locality's words: e98a924c's collection code
+    "CNHM. E Slope Mt." (the organiser's candidate, the whole first line)
+    beside its precise location "E Slope Mt.\\nMcKinley, Davao Prov." (run
+    629f91eb on 616ae010). A place that holds another field's whole text,
+    or lies wholly inside it, still yields, as does one beside a value
+    settled before this attempt or by a person."""
+    from .agreement import FIELD_KINDS, TRANSCRIPT, literal_basis, may_share_text, written_runs
 
     evidence = {item.id: item for item in run.evidence}
     by_name = {reading.name: reading for reading in readings}
@@ -791,13 +865,36 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
     for key, value in run.fields.items():
         if key not in researched and _claims_text(key, value, human):
             claims.append((key, _value_spans(value, readings, evidence)))
-    taken = {}
+    taken: dict[str, str] = {}
+    yielded: dict[str, str] = {}
     for key, spans in mine.items():
-        other = next((other for other, theirs in claims
-            if other != key and not may_share_text(key, other) and _overlap(spans, theirs)), None)
+        place = FIELD_KINDS.get(key) == "place"
+        partial, other = [], None
+        for claimant, theirs in claims:
+            if claimant == key or may_share_text(key, claimant) or not _overlap(spans, theirs):
+                continue
+            if place and claimant in settled and _partly(spans, theirs):
+                partial.append(claimant)
+                continue
+            other = claimant
+            break
         if other is not None:
             taken[key] = other
+        else:
+            for claimant in partial:
+                yielded.setdefault(claimant, key)
+    for claimant, key in yielded.items():
+        taken.setdefault(claimant, key)
     return taken
+
+
+def _partly(spans, others) -> bool:
+    """Whether the spans overlap the others only partly: some overlap, in the
+    same reading, and at each neither holds the other (_taken)."""
+    pairs = [(start, end, other_start, other_end) for name, start, end in spans
+        for other, other_start, other_end in others if name == other and start < other_end and other_start < end]
+    return bool(pairs) and all(not (other_start <= start and end <= other_end) and not (start <= other_start
+        and other_end <= end) for start, end, other_start, other_end in pairs)
 
 
 def _taken_value(task, outcome, other: str, evidence) -> FieldValue:
@@ -1831,21 +1928,30 @@ def _first_pass(run, tasks_by_key: Mapping[str, FieldTask], ordered: Sequence[Fi
 
 def _claimed_texts(run, tasks_by_key: Mapping[str, FieldTask], readings: Sequence[Reading],
         key: str) -> dict[str, frozenset[str]]:
-    """Each reading's texts for the fields other than `key`, for
+    """Each reading's texts for the fields of another kind than `key`'s, for
     agreement.disputed: the organiser's candidates for those fields (their
-    tasks'), and each other field's literal where the reading writes it as
+    tasks'), and each such field's literal where the reading writes it as
     whole words, after this attempt's answers (d10333ff's taxon "Panorpa",
-    which only reader 3B writes)."""
-    from .agreement import verbatim_runs
+    which only reader 3B writes). Fields of one kind (agreement.FIELD_KINDS)
+    are left out: for the country, another place field's text at that point
+    ("Texas" where the other reader writes "Mexico") is a rival reading of
+    the same place, never text of another kind (round 1 of #379's review,
+    finding 1)."""
+    from .agreement import FIELD_KINDS, verbatim_runs
+
+    kind = FIELD_KINDS.get(key, key)
+
+    def another_kind(other: str) -> bool:
+        return other != key and FIELD_KINDS.get(other, other) != kind
 
     found: dict[str, set[str]] = {}
     for other, task in tasks_by_key.items():
-        if other != key:
+        if another_kind(other):
             for candidate in task.candidates:
                 if candidate.literal.strip():
                     found.setdefault(candidate.reading, set()).add(candidate.literal)
     for other, value in run.fields.items():
-        if other != key and value.literal and value.literal.strip():
+        if another_kind(other) and value.literal and value.literal.strip():
             for reading in readings:
                 if verbatim_runs(reading.text, value.literal):
                     found.setdefault(reading.name, set()).add(value.literal)
