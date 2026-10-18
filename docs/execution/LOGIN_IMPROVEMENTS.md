@@ -38,6 +38,21 @@ focus; the app cannot force exact tab reuse or share sessions across origins.
 Native link return still requires a signed app with working domain associations;
 source code alone does not qualify the installed-device path.
 
+The waiting web page can receive a verified Firebase session while its App Check
+instance still cannot supply a token. For a successful email request made in
+that page, a matching external session and the first typed
+`app_check_unavailable` access failure permit one page reload. Await remembered
+email cleanup, preserve the validated intended route and recheck the identity
+before reloading. This is a recovery hint, not proof that the other tab used an
+email link. Successful access, another error, sign-out, a changed identity or a
+new local sign-in attempt cancels the hint. Restored preferences and an already
+authenticated startup cannot arm it, so a reload cannot loop.
+
+The same specific web failure offers **Reload app** as an explicit recovery.
+Native platforms and other access failures retain their supported retry action.
+Reloading recreates the normal Firebase/App Check clients; it does not copy
+tokens between tabs, change verification enforcement or grant collection access.
+
 ## Evidence and design decisions
 
 The Mobbin study inspected 60 distinct flows and 280 captured screens across web

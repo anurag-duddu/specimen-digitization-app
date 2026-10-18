@@ -475,6 +475,7 @@ class _MagicLinkSignInScreenState extends State<MagicLinkSignInScreen> {
                     !controller.sent &&
                     !confirm,
                 onBusyChanged: (busy) {
+                  if (busy) controller.beginAlternateSignIn();
                   if (mounted) setState(() => _googleBusy = busy);
                 },
               ),

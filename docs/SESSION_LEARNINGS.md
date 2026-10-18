@@ -21442,3 +21442,127 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
   - The live `specimen-sam` template carries `run.googleapis.com/health-check-disabled: "true"`, which `scripts/ops/deploy.py` `sam_argv` does not set. Its source is Not confirmed.
   - A parse attempt that runs after its extraction was given up makes no model call, but `record_step`'s parse branch still records it `reserved`. Not measured here.
   - A rerun of 19f0f1f6 is not part of this task.
+
+
+### 2026-10-17 - LOGIN-JOURNEY-FIREBASE live acceptance and original-tab recovery
+
+- Task 01a147ea-7efb-7e22-8821-e42395a135fc, worktree 9030. Repair PR #374
+  advanced to `238317a39d4fcfc04d34c4bc08a5cc01e8d0cd14`, tree
+  `243e01760308b7261aed3a2cbf92d2c415411333`, after merging main c73b13a4.
+  Independent G51 review found no issues. Full local `scripts/ci/verify.sh`
+  passed: 18,225 Python passed / 49 skipped; 1,307 design-system passed;
+  3,098 application passed / seven skipped; analysis, formatting, release web
+  build and 13-route/five-header smoke passed. This head was pushed with normal
+  hooks. Fresh hosted checks are pending at this entry; prior normal/cold
+  engine qualification is retained only for unchanged engine-tier inputs.
+- Hosting CI/CD 39076037970 passed on c73b13a4 and the public marker matches.
+  The redesigned entry, recipient/sent stage and sign-out were observed live.
+  A real Firebase link delivered at 22:55 UTC completed in an owned Chrome
+  Guest return tab and opened the exact intended Insects Queue. No account or
+  membership was created or modified; no worker or specimen action ran.
+- Correction to the preceding baseline observation: on this new live build the
+  original Guest tab received the verified session but encountered typed app
+  verification failure. Check access again did not recover; a normal browser
+  reload did restore the intended Queue. Thus the failure is not limited to
+  the earlier directly browser-controlled QA tab. The global Chrome debugging
+  banner remained present; its causal role is Not confirmed. The owned Guest
+  tabs were signed out and closed; the user's primary session was preserved.
+- Evidence: this task's `recovery-implementation/live-login-acceptance-c73b13a4.json`
+  and six live screenshots. These prove real web email delivery/return and
+  sign-out, not seamless original-tab completion or physical native handoff.
+  Data release 39076037949 failed the Google provisioning step; Runtime
+  39076037991 did not deploy. API /version remained 69bd6469. Full release is
+  incomplete; Google remains hidden and its missing permission is unidentified.
+- New branch `codex/login-appcheck-recovery` starts from qualified 238317a3.
+  It implements bounded web recovery after a matching external-session handoff,
+  preserving the internal route and awaiting serialized email cleanup. A typed
+  first-access App Check failure may reload once; no token broadcast, SDK
+  private-state modification, security-enforcement change or authorization
+  bypass is introduced. Native keeps its existing retry. Independent patch
+  review, integrated canonical verification and live fix acceptance are pending.
+- Firebase built-in links remain the chosen email scope. The optional code/link
+  sender implementation is preserved at 18288554 on
+  `codex/login-journey-complete` and must not be pruned. A direct owner question
+  about deferring Google versus keeping it in this launch is pending; no
+  additional IAM grant or release-gate change has been made.
+- The integrated recovery patch matches the frozen temporary candidate in all
+  11 code/test files. Its seven focused suites passed 126 tests (22 new), and
+  pinned Flutter 3.38.5 analysis and formatting passed. The first wider run
+  exposed a test-owned timer disposed after the framework invariant check;
+  moving disposal into the test finally block fixed the fixture without
+  weakening assertions or changing production timers. Canonical verification
+  and hosted/live acceptance remain pending.
+- Independent review of recovery d8537355/tree ded5c076 reported NOT APPROVED
+  for stale successful-send provenance across an intervening identity/sign-out
+  sequence. No access bypass was found. Its canonical run was intentionally
+  interrupted during Python shards (exit 130); it is incomplete, not passing.
+  The runner cleaned its owned workers before any source edits. The narrow
+  correction and a deterministic regression are required before a new run.
+- Before PR #374 merge: fresh CI/CD 39078159542 and Runtime candidate
+  CI 39078159561 passed on exact 238317a3, including both native builds. The
+  ordinary engine artifact passed strict 891-input/53-stage validation. Main
+  remains c73b13a4; strict required checks, administrator enforcement and
+  conversation resolution are enabled, with force pushes/deletions disabled.
+  Merge is authorized by the owner; no bypass or branch pruning is requested.
+- PR #374 merged normally at 23:26:37 UTC as
+  `1b1a0b08de42e0d9c5eeb64de647e10bba380a93`. Protected runs started:
+  Hosting 39079047147, Data 39079047193, Runtime 39079047127. Completion
+  remains Not confirmed; source merge does not establish a release. The
+  successful engine job ended 601 seconds before the final shard on the PR.
+- The stale-provenance finding was reproduced on unchanged d8537355 in both
+  reported sequences. The correction invalidates the successful-send hint on
+  established identity changes or signed-in to signed-out transitions, while
+  preserving initial duplicate signed-out events. The expanded focused suite
+  passed 130 tests (26 new recovery cases); the negative baseline is retained
+  in this task's external evidence. Fresh final review and full canonical run
+  are required; interrupted d853 results are not reused as a passing gate.
+
+- Final source review approved recovery `39c7f22e` / tree `ee7e22a9`.
+  Its fresh canonical run then failed one architecture gate: the new
+  `app_reload_factory.dart` conditional export was not a registered platform
+  capability. Python passed 18,225 / 49 skipped; design-system passed 1,307;
+  application passed 3,123 / seven skipped / one failed. The formatter,
+  release build and route smoke did not run. This is a failed canonical run,
+  not a release qualification.
+- The correction consolidates selection into the existing conditional
+  `email_link_browser.dart` boundary: its web/stub implementations reexport
+  the unchanged reload adapters. The extra conditional factory and main
+  import are removed. No platform scanner, capability allowance, assertion
+  or required check was changed. Independent review approved this bounded
+  integration, and the architecture plus recovery suites passed all 31 tests.
+  Fresh full canonical verification remains required before push.
+- PR #374 Hosting run 39079047147 succeeded at 23:40:04 UTC and the public
+  marker matches exact merge `1b1a0b08`, run/attempt 39079047147/1. Runtime
+  candidate 39079047085 also succeeded. Data 39079047193 failed Google setup;
+  its bounded diagnostic says CLI exit 2, provider_provision, HTTP 200, with
+  no API code, status, reason or permission. That last recognized response
+  does not establish success or a new permission diagnosis. One field-masked
+  owner read at 23:30:59 UTC returned HTTP 404: Google provider remains absent.
+  No further grant or blind retry was made. Runtime's Data dependency failed;
+  full three-workflow release remains incomplete. The owner Google scope
+  question is still unanswered. The optional deferral is prepared externally
+  only; no flag, provisioning intent, or release gate has changed.
+
+- Recovery implementation `57b1ec4cfce4dc82db3692c18855add24ee8a3aa`, tree
+  `f9df0d60661e899b0ea372161034f98db3c4253a`, passed the complete required
+  `scripts/ci/verify.sh`: 18,225 Python / 49 skipped; 1,307 design-system;
+  3,124 application / seven skipped; both analyzers; 585 formatted files with
+  zero changes; production web build; 13-route/five-header smoke. The root
+  checkout was clean after the run, and fresh origin/main remained 1b1a0b08.
+  The independent reviewer approved this exact source. Retained artifacts:
+  `canonical-appcheck-recovery-57b1ec4c-result.json` and
+  `independent-review-57b1ec4c.json` in this task's external evidence directory.
+  The following journal-only commit records that qualification; hosted checks
+  must run on the final PR head. Production automatic recovery is Not confirmed
+  until protected Hosting release and a fresh real two-tab email journey.
+- Additional offline recovery-screen QA passed four cases and five inspected
+  captures on the same 57b1ec4c source: mobile at 100%/200%, tablet and desktop.
+  Reload controls measured 56px normally and 76px at 200%, were hit-testable,
+  and invoked only the recording callback once. No blocking visual issue;
+  secondary diagnostic banner text ellipsizes on mobile while full recovery
+  guidance stays visible. This is not native-device or live-browser acceptance.
+  Attempts one and two failed before widget assertions due to SDK cache
+  sandbox access and omitted package_graph metadata in the external harness.
+  Both failures are retained. The third run corrected only the external runner
+  environment/metadata, with unchanged application source and Dart assertions;
+  source, package metadata and the clean root checkout were verified afterward.
