@@ -158,7 +158,10 @@ class EffectModel(WrapperModel):
         self.role, self.binding = role, binding
         # JSON snapshot prevents a mutable caller mapping changing resumed pins.
         self.pins = json.loads(json.dumps(dict(pins), sort_keys=True))
-        settings = dict(model_settings or {})
+        # The wrapped model's own settings (a route's request options,
+        # model_gateway.HuggingFaceInferenceRoute) reach every request under the
+        # caller's, so each request must carry them too.
+        settings = {**dict(getattr(wrapped, "settings", None) or {}), **dict(model_settings or {})}
         if settings.get("max_tokens", binding.max_tokens) != binding.max_tokens:
             raise ModelGatewayBlocked("model_settings_differ_from_pin")
         settings["max_tokens"] = binding.max_tokens
