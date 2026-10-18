@@ -22311,3 +22311,37 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   prepared runtime secrets, accepted real Gmail connections, captured on device,
   or established submission-to-final-Queue acceptance. Preserve the unmerged
   worktree and private configuration; do not prune needed work.
+
+## 2026-10-18: hosted engine contract correction after bulk intake verification
+
+- Same task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch
+  `codex/compare-photo-intake-ux`, worktree `5da8`, PR #368. Published head
+  `3d734564dba9d2bf994617ec06762f60713f584e` contains the approved implementation
+  and a 29-line journal-only successor; G51 independently approved that exact
+  successor after confirming no runtime/test/config changes from `79067f90`.
+- Hosted run `39097054658`, SQL and Storage engine contracts job
+  `117585573733`, failed four SQL authorization cases. The Memberships operation
+  correctly returns the newly selected `collection { name }`, but the independent
+  admin-row oracle omitted that field; its strict equality failed. The preceding
+  local canonical suite passed, but does not run this separate real-engine job.
+  Storage did not run after the SQL failure. Do not describe that hosted run as
+  green or weaken/drop the exact membership, role, sensitivity or denial checks.
+- Narrow oracle projection repair and real local engine validation are in progress.
+  Sanitized job log: `/private/tmp/specimen-intake-ci-sql-3d734564.clean.log`.
+  Any correction requires renewed review, required verification and hosted checks.
+  No merge, deployment, IAM change, provider upload or paid intake occurred.
+- Task-local cleanup stopped only two orphaned Python test fixtures (fake postgres
+  and SQL Connect CLI from pytest-640) after matching their exact scripts and
+  reparented process identities, and confirmed both exited. No real engine/cloud
+  process or unmerged worktree was removed.
+- Follow-up before freezing the correction: the one-file oracle repair includes
+  the authoritative nested collection name and rejects wrong/missing names,
+  extra nested fields and null collections. Focused oracle replay: 241 passed,
+  6 deselected; independent adapter-list replay: 46 passed, 201 deselected.
+  Independent source review found no unresolved issues. These are replay tests,
+  not evidence that the hosted database or Storage engines passed.
+- Real local engine validation is unavailable on this Darwin/ARM64 host: the
+  existing wrappers require the approved Ubuntu 24/Linux AMD64 toolchain,
+  PostgreSQL 16, Java 21 and pinned Linux emulator binaries. No guard or test
+  inventory was relaxed, no engine installed, and no local engine run claimed.
+  The protected hosted engine job must qualify the successor commit.
