@@ -77,9 +77,11 @@ def reported_usage(
       ``request_limit=2``; with a limit the answers did not use up there is no
       such proof, and the call is held.
     - In a ``completed`` call (one that returned its output), the output
-      tool's return: Pydantic AI queues it as the last message, after the
-      answer that ended the call, and nothing sends it. Every request before
-      that answer was answered, or the call could not have gone on.
+      tool's return: Pydantic AI queues it as the last message, a request of
+      tool returns alone, after the answer that ended the call, and nothing
+      sends it. Every request before that answer was answered, or the call
+      could not have gone on. A last request holding anything else (a retry
+      prompt) proves nothing, and the call is held.
 
     None in every other case: a sent request with no counted answer (a reply
     the model client could not read, which the provider may still have
@@ -93,7 +95,11 @@ def reported_usage(
     limit = getattr(usage_limits, "request_limit", None)
     one_more = sent == answered + 1 and (
         stopped
-        or (completed and messages[-1].kind == "request")
+        or (
+            completed
+            and messages[-1].kind == "request"
+            and all(p.part_kind == "tool-return" for p in messages[-1].parts)
+        )
         or (limit is not None and answered >= limit)
     )
     answers = [m for m in messages if m.kind == "response"]

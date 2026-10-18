@@ -132,6 +132,24 @@ def test_a_completed_call_counts_every_answer_and_not_its_output_tools_return():
     }
 
 
+def test_a_completed_call_whose_last_request_is_not_a_tool_return_stays_unknown():
+    # Only the output tool's return is proof of a request never sent. A retry
+    # prompt in its place may have been sent, so the call is held.
+    from pydantic_ai.messages import ModelRequest, RetryPromptPart, UserPromptPart
+    from pydantic_ai.usage import RunUsage
+
+    from specimen_digitization.application.reliability import reported_usage
+
+    request = ModelRequest(parts=[UserPromptPart("x")])
+    answer = ModelResponse(
+        parts=[ToolCallPart("final_result", {"selected_reader": "null"})],
+        usage=RequestUsage(input_tokens=1_076, output_tokens=1_101),
+    )
+    retry = ModelRequest(parts=[RetryPromptPart("invalid", tool_name="final_result")])
+    usage = RunUsage(requests=1, input_tokens=1_076, output_tokens=1_101)
+    assert reported_usage([request, answer, retry], usage, completed=True) is None
+
+
 def test_an_answer_the_client_could_not_read_leaves_the_spend_unknown():
     # The second request was sent; what came back was not counted, and the
     # provider may have billed it.
