@@ -22345,3 +22345,18 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   PostgreSQL 16, Java 21 and pinned Linux emulator binaries. No guard or test
   inventory was relaxed, no engine installed, and no local engine run claimed.
   The protected hosted engine job must qualify the successor commit.
+- Hosted Python shard 8 also failed at
+  `scripts/ops/test_simple_owner_setup.py::test_shellcheck_passes` (job
+  `117585719885`): its ShellCheck flagged SC2015 in the intake checkout guard.
+  The guard now uses an explicit conditional requiring the same four files,
+  preserving the error and failure behavior. No permission or cloud behavior
+  changed. Focused owner setup tests passed 77/77 with cached ShellCheck 0.11.0
+  explicitly on PATH; independent source review found no issues.
+- Oracle successor `a8528d674979194f07fcfa92d01d16f9cbcbe3c5`, tree
+  `41e2ca0893f1b57c90d2e529141d5dde53e95456`, received exact-head G51 approval.
+  Its canonical attempt was deliberately interrupted during pre-commit after
+  discovering the additional hosted lint failure; it did not complete and is
+  not qualification evidence. Both fixes require the next frozen verification.
+- Engine selection remains nine real-engine nodes. The 241 oracle replay cases
+  are explicitly invoked; this filename is outside default pytest discovery.
+  They are not included in the default shard totals or the nine engine cases.

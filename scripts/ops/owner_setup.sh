@@ -1476,11 +1476,12 @@ main() {
   if [ "$INTAKE_ONLY" -eq 1 ]; then
     if [ "$AUTH_ONLY" -eq 1 ] || [ "$SETUP_ONLY" -eq 1 ] || [ "$REDEPLOY_WEB" -eq 1 ]; then bad_usage; fi
     INTAKE_REPOSITORY_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
-    [ -f "$INTAKE_REPOSITORY_ROOT/scripts/ci/runtime_settings.py" ] && \
-      [ -f "$INTAKE_REPOSITORY_ROOT/scripts/release/deploy_models.py" ] && \
-      [ -f "$INTAKE_REPOSITORY_ROOT/scripts/ops/intake_config.py" ] && \
-      [ -f "$INTAKE_REPOSITORY_ROOT/scripts/ops/intake_picker_key.py" ] || \
+    if [ ! -f "$INTAKE_REPOSITORY_ROOT/scripts/ci/runtime_settings.py" ] || \
+      [ ! -f "$INTAKE_REPOSITORY_ROOT/scripts/release/deploy_models.py" ] || \
+      [ ! -f "$INTAKE_REPOSITORY_ROOT/scripts/ops/intake_config.py" ] || \
+      [ ! -f "$INTAKE_REPOSITORY_ROOT/scripts/ops/intake_picker_key.py" ]; then
       die '--intake-only requires the repository checkout; run bash scripts/ops/owner_setup.sh --intake-only there'
+    fi
     command -v uv > /dev/null 2>&1 || die '--intake-only requires uv for the locked repository runtime'
   fi
   # The two waits a test may shorten: after new access (and, half as long again, before the
