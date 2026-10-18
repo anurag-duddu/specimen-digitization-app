@@ -17,7 +17,7 @@ import re
 import string
 import time
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from pydantic_ai import Agent, BinaryContent, ModelRetry
 from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.messages import ModelMessagesTypeAdapter
@@ -38,6 +38,8 @@ from .domain import (
 
 _TOKEN = re.compile(r"\w+|[^\w\s]")
 UNRESOLVED_VERDICTS = frozenset({"neither", "uncertain"})
+# The texts a first pass has written for "no reader" in place of JSON null.
+NULL_TEXTS = frozenset({"null", "none", ""})
 SYNTHETIC_RATIONALE = "Synthetic fixture: no visual evidence."
 _PREAMBLE = (
     "Independent readers transcribed the attached label image. Their raw "
@@ -184,6 +186,20 @@ class FirstPassOutput(BaseModel):
     reader_notes: dict[str, str] = Field(
         description="One short note per reader letter."
     )
+
+    @field_validator("selected_reader", mode="before")
+    @classmethod
+    def _null_written_as_text(cls, value):
+        """A pick written as the text "null", "None" or "" is no pick (null).
+
+        GLM-5.3-Flash on Novita writes the JSON null this field asks for as a
+        string, and writes it again on the output retry, so the whole answer was
+        refused as malformed (HARNESS.md section 3, "A first pass's null written
+        as text"). Such a value names no reader, so it never selects a reading.
+        """
+        if isinstance(value, str) and value.strip().lower() in NULL_TEXTS:
+            return None
+        return value
 
 
 def output_problems(output: FirstPassOutput, letters, count: int) -> list[str]:
@@ -373,7 +389,10 @@ def first_pass_direct(adapter, specimen, region, readings) -> FirstPassDecision:
             completion_state="validated_output"
             if result is not None
             else "usage_limit",
-            parameters=agent.model_settings,
+            # The settings every request carried: the route's own (its request
+            # options, model_gateway) under the agent's.
+            parameters={**(model.settings or {}), **(agent.model_settings or {})}
+            or None,
             provider_model_id=getattr(last, "model_name", None),
             input_asset_id=specimen.asset.id,
             input_crop_ref=adapter.blobs.put(image),

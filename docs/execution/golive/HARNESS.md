@@ -434,6 +434,22 @@ from the lines in any other way is still malformed.
 `docs/product-requirements/HUGGINGFACE_MODEL_ROUTING.md` ("How a reader's
 answer is read") has the rule and the recorded answers.
 
+**A first pass's null written as text** (2026-10-18). An answer whose
+`selected_reader` is the text "null", "None" or "" (in any case, with spaces
+around it ignored) picks no reader, as JSON null does; it is not malformed.
+GLM-5.3-Flash on Novita writes the null the schema asks for that way. In
+Logfire, from 2026-10-12 03:00 to 2026-10-18 14:45 UTC, 16 traces hold a
+first-pass run that ended "Exceeded maximum output retries", and each of the 16
+holds an answer whose `selected_reader` is the string "null"; three more traces
+hold one in a run that did not end so. The retries mostly wrote "null" again
+(once "None", once ""), so each of those runs failed as
+`model_malformed_response`, with no verdicts recorded for its label. Such an
+answer is now used: its verdicts, rationale and notes are recorded, and it
+selects no reading (G19), from its first request. Any other text that is not a
+reader's letter ("a", "C", "neither") is still refused and gets the output
+retry. The raw response keeps the text as it was sent. Tests:
+`tests/test_first_pass_null_text.py`.
+
 **Tracing.** The agent carries no instrumentation override; it inherits the
 lane's global setting (content on, binary off in approved-content mode, S3 T5).
 The pinned managed prompt reaches the call's span through Pydantic AI's
@@ -559,7 +575,7 @@ report. Neither pick changes.
 
 | Route | Model | Provider | Input | Use |
 |---|---|---|---|---|
-| `first-pass-glm` | `zai-org/GLM-5.3-Flash` | `novita` | text, image | the first pass (sections 3 and 4) |
+| `first-pass-glm` | `zai-org/GLM-5.3-Flash` | `novita`, sent `reasoning_effort: low` | text, image | the first pass (sections 3 and 4) |
 | `harness-deepseek` | `deepseek-ai/DeepSeek-V4.1-Flash` | `deepinfra` | text | the harness; provisional until the acceptance lab re-measures it with the real harness and G29's prompt |
 
 The harness uses DeepInfra, which the `handwriting-muse` reader already uses,
@@ -609,6 +625,100 @@ requests (the answer and one output retry), and a stop once the run passes
 16,000 tokens in all (Pydantic AI checks the total after each response). A route
 that takes images needs the `--image` fixture and is sent it; a text-only route
 is sent a synthetic sentence, never an image, and refuses `--image`.
+
+**Together and Fireworks** (2026-10-18). The owner approved both providers,
+in his words typed in the go-live coordinator session on 2026-10-18 and quoted
+in the coordinator's brief for this change: "More reliable inference provider
+like fireworks together also work" and "Hold. The let's just move to a reliable
+provider if novita is a problem for now." Neither can serve these routes yet.
+With the production token (Secret Manager `huggingface-runtime-token`, version
+2, the one the runtime reads), every request to either was answered HTTP 402
+with the router's body `{"error":"Pay-as-you go is not enabled for provider
+together yet."}` (`fireworks-ai` the same): through `first_pass_direct` for
+`zai-org/GLM-5.3-Flash`, through the reader's `_transcribe_direct` for
+`meta-models/Muse-Glimmer-30B` (Together), and in one-token text calls. In the
+same text calls Novita, DeepInfra, Baseten, `zai-org` and Featherless answered.
+Hugging Face bills a routed request only for a provider integrated with its
+pay-as-you-go billing; any other provider needs a custom provider key, set in
+the account's Inference Providers settings, and is then billed by that
+provider directly (https://huggingface.co/docs/inference-providers/pricing).
+That needs a Together or Fireworks account, which only the owner can open;
+with the key set, a route moves by changing its `provider` (below). Why the
+probe of 2026-10-12 got 8 of 8 from Together is not confirmed (which token it
+used is not recorded). So:
+
+- `first-pass-glm` stays on Novita, which has been reliable as a service since
+  2026-10-12 (the only errors in its 141 chat spans to 2026-10-18 14:45 UTC
+  are three HTTP 504 at the router's 120 s), and sends `reasoning_effort: low`
+  (below). Its two causes of failure in that time were reasoning that reached
+  the output cap and a null pick written as text (section 3).
+- `handwriting-muse` stays on DeepInfra. Together refuses it the same way;
+  DeepInfra answered 4 of 4 real crops through `_transcribe_direct` in 3 to
+  15 s. Of its 34 errors in Logfire from 2026-10-11 to 2026-10-18 (all at the
+  reader's 60 s request timeout), 29 fell on 2026-10-12 and 5 on 2026-10-17;
+  none of its 110 calls on 2026-10-18 failed. Moving a reader also strands
+  runs in flight (below).
+
+**The first pass's reasoning bound** (2026-10-18). Novita runs GLM-5.3-Flash
+with its reasoning on and counts the reasoning as output tokens: from
+2026-10-12 03:00 to 2026-10-18 14:45 UTC, 29 of the route's 141 chat spans
+stopped at the 4,096-token cap with finish reason "length", and 26 of its 119
+first-pass runs ended with no answer. DeepInfra, on which the route was chosen
+(below), runs it with little reasoning: its 13 first-pass chat spans from
+2026-10-05 to 2026-10-11 used at most 440 output tokens, and its first passes in
+the probe below a median of 254. In one-call text tests on Novita,
+`thinking: {"type": "disabled"}`, `enable_thinking: false`,
+`chat_template_kwargs.enable_thinking: false` and `reasoning_effort: "none"`
+left 68 to 145 reasoning tokens, where the default used 52 to 106;
+`reasoning_effort: "low"` used 0 to 19, and "minimal" 6. The
+probe then ran the first pass itself, `first_pass_direct` with only the route's
+provider and request option overridden, on 12 real labels of 9 recorded runs
+(the label crops and readings of saved run graphs, read only; d10333ff's label
+3 among them, whose first pass Novita cut off at the cap on 2026-10-17). The
+"null rule" column re-reads each recorded malformed answer as section 3 now
+reads it; for the first 12 calls of the default and "low" arms the answers
+were not recorded, so those are unknown.
+
+| Provider and option | Calls | Answers | At the cap | Malformed | Answers with the null rule | Median s | 90th percentile s | Median output tokens | USD per call |
+|---|---|---|---|---|---|---|---|---|---|
+| Together, Fireworks | 1 each | 0 (HTTP 402) | | | | 0.3 | | | 0 |
+| Novita, default | 22 | 10 | 6 | 6 | 12, 3 unknown | 52.1 | 106.9 | 1,981 | 0.00146 |
+| Novita, `reasoning_effort: medium` | 24 | 16 | 0 | 8 | 22 | 19.9 | 42.1 | 567 | 0.00059 |
+| Novita, `reasoning_effort: low` | 37 | 24 | 0 | 13 | 32, 5 unknown | 13.3 | 24.9 | 318 | 0.00040 |
+| DeepInfra, default | 12 | 12 | 0 | 0 | 12 | 4.2 | 5.1 | 254 | 0.00029 |
+| Novita, "low", this change's code (the null rule in place) | 12 | 12 | 0 | 0 | 12 | 13.2 | 17.4 | 294 | 0.00031 |
+
+"Low" ended the cap stops in this probe, cut the median call from 52 s to 13 s
+and its cost by almost three quarters, and keeps answers near the size the route
+was chosen on; with the null rule every one of its recorded answers was usable.
+On the six labels where both the default and "low" picked a reader, every pick
+agreed on three; on 2b02009d (the default "VII" twice, "low" once "VIII" and
+once "VII") and cb903c0e (one of three "low" picks took the other reader) they
+partly agree, and on 19f0f1f6 they differ (the default once took
+"Chelotoni[unreadable]", "low" twice "Chelotonic"). On 9cc24b07's catalog
+label, where the default never picked, "low" twice picked the reading the image
+shows ("FMNHINS 4486775"). No scoring against a reference reading was run, so
+this is no measure of accuracy. DeepInfra answered fastest and cleanly on the
+day, but it refused 22 of 29 live calls a week earlier, and the route stays on
+the provider that has been up. The option is a route field
+(`HuggingFaceInferenceRoute.request_options`), sent in every request through
+Pydantic AI's `extra_body` and recorded in each first-pass call's `parameters`.
+Tests: `tests/test_first_pass_reasoning_bound.py`.
+
+**Runs started before a route changes.** A request option is not part of a
+run's pin (`dependencies.routes` keeps model id and provider), so a run started
+before this change sends `reasoning_effort: low` at its next first pass, and
+that call records it; nothing blocks. A move of `first-pass-glm` to another
+provider of the same model (Together, once its key is set) is carried by the
+existing repin rule (`first-pass-same-model-provider-repin-v1`): an ordinary
+first pass pinned to the old provider is repinned before it is sent, and one
+already blocked as `pinned_model_route_unavailable` is repinned by the drain's
+recovery (`tests/test_first_pass_stuck_recovery.py`); the evidence pilot's
+runs are excluded. A reader has no such rule: a run whose `handwriting-muse`
+pin names the old provider blocks its reading as
+`pinned_model_route_unavailable`, and its `parse` refuses with
+`pinned_model_route_changed_requires_new_run`, so moving a reader's provider
+needs every run not yet past `parse` reprocessed.
 
 **How they were chosen.** The ten pilot slides, cropped by hand to their left
 label, were read by both readers (19 of 20 readings; 9 labels disagree). Each

@@ -35,6 +35,10 @@ class HuggingFaceInferenceRoute:
     required_input_modalities: tuple[str, ...] = ("text", "image")
     requires_structured_output: bool = True
     structured_output_mode: Literal["tool"] = "tool"
+    # Provider-specific fields sent in the body of every request on this route,
+    # as (name, value) pairs; each one measured to have its effect on the
+    # route's provider (HARNESS.md section 5).
+    request_options: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
         if self.structured_output_mode != "tool":
@@ -85,6 +89,10 @@ STAGE_HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxy
             # first-pass calls (HTTP 429/503); Novita answered 8 of 8 at the
             # same price and already serves the handwriting-qwen reader.
             provider="novita",
+            # Novita runs the model's hidden reasoning in full, which stopped
+            # about a fifth of first passes at the 4,096-token cap; "low" keeps
+            # answers near the size the route was chosen on (HARNESS.md 5).
+            request_options=(("reasoning_effort", "low"),),
         ),
         "harness-deepseek": HuggingFaceInferenceRoute(
             route_id="harness-deepseek",
@@ -194,4 +202,9 @@ class HuggingFaceModelGateway:
                 "supports_json_schema_output": False,
                 "default_structured_output_mode": route.structured_output_mode,
             },
+            # Model-level defaults: every agent on this route sends them, and
+            # Pydantic AI merges them under each agent's and run's own settings.
+            settings={"extra_body": dict(route.request_options)}
+            if route.request_options
+            else None,
         )
