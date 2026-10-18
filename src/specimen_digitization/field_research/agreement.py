@@ -42,7 +42,10 @@ fields' outcomes:
    "Epipsocus" quoting "cfr. Epipsocus" or "Epipsocus?"; 1c of #289's fifth
    review); a qualifier on the line above counts only standing alone on
    that line ("cf." above "Epipsocus sp. 1", never "Danum Valley NR"). The
-   step's unmatched taxon (owner decision B) meets these rules too.
+   step's unmatched taxon (owner decision B) meets these rules too. For a
+   place value field (point 4), a candidate or a reader's verbatim that
+   names no place (names_no_place: only unit words, f35af3a5's "Prov.") is
+   no candidate at all, here and in point 3.
 3. Readers and labels that disagree (B1; G19, G20, G27, G32). From the
    field's candidates and the organiser's per-reader verbatims, whatever
    state the organiser gave the field, each label that writes the field
@@ -292,10 +295,21 @@ class Refusal:
     differ: bool = False
 
 
+def names_no_place(task: FieldTask, text: str) -> bool:
+    """For a place value field, whether a text the organiser left names no
+    place at all: by the place comparison key (place_name) it is nothing but
+    unit words and punctuation, as f35af3a5's candidate "Prov." for the
+    province, cut from "Davao, Prov." (the batch rerun of 2026-10-18). Such
+    a text is no literal of the field: it neither constrains an answer's
+    literal (_cut_candidate) nor counts as a reader's text (labels)."""
+    return task.key in PLACE_VALUE_FIELDS and not place_name(text)
+
+
 def reader_literals(task: FieldTask, readings: Sequence[Reading]) -> dict[str, set[str]]:
     """Each reading's literals for the field, collapsed: the organiser's
     candidates, and the per-reader verbatims it left (a reading named by its
-    observation, a raw reading first)."""
+    observation, a raw reading first), less a place's texts that name no
+    place (names_no_place)."""
     by_name = {r.name: r for r in readings}
     by_observation: dict[str, str] = {}
     for reading in readings:
@@ -303,22 +317,23 @@ def reader_literals(task: FieldTask, readings: Sequence[Reading]) -> dict[str, s
             by_observation[reading.observation_id] = reading.name
     found: dict[str, set[str]] = {}
     for candidate in task.candidates:
-        if candidate.reading in by_name and candidate.literal.strip():
+        if candidate.reading in by_name and candidate.literal.strip() and not names_no_place(task, candidate.literal):
             found.setdefault(candidate.reading, set()).add(collapse(candidate.literal))
     for observation, text in task.current.verbatim_by_observation.items():
         name = by_observation.get(observation)
-        if name is not None and text and text.strip():
+        if name is not None and text and text.strip() and not names_no_place(task, text):
             found.setdefault(name, set()).add(collapse(text))
     return found
 
 
 def candidates_by_reading(task: FieldTask, readings: Sequence[Reading]) -> dict[str, dict[str, str]]:
     """Each reading's candidate literals for the field: collapsed, to the
-    literal exactly as its candidate gives it."""
+    literal exactly as its candidate gives it; for a place value field, none
+    that names no place (names_no_place)."""
     names = {r.name for r in readings}
     found: dict[str, dict[str, str]] = {}
     for candidate in task.candidates:
-        if candidate.reading in names and candidate.literal.strip():
+        if candidate.reading in names and candidate.literal.strip() and not names_no_place(task, candidate.literal):
             found.setdefault(candidate.reading, {}).setdefault(collapse(candidate.literal), candidate.literal)
     return found
 
@@ -553,9 +568,10 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
         "A resolved literal is one of the organiser's candidate literals for every reading you "
         "name (on a label with a decided transcript, that reading's), whole and exactly as the "
         f"candidate gives it. Candidates for the readings you named: {shown}. Never shorten or "
-        "extend a candidate. When no candidate is the right text, the literal may be text that "
-        "each reading you name writes itself: whole words within one line, cutting no word and "
-        "no candidate. Copy it and name only readings that have it, or answer "
+        "extend a candidate. When no candidate is the right text (the organiser may have given "
+        "this field another field's text, or a place of another kind), the literal may be text "
+        "that each reading you name writes itself for this field: whole words within one line, "
+        "cutting no word and no candidate. Copy it and name only readings that have it, or answer "
         "several_possibilities or sources_cannot_resolve."))
 
 

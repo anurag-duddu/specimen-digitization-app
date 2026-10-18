@@ -381,7 +381,16 @@ handover runs field research instead of the six specialists:
      review ("The label writes a longer scientific name than this value.").
      A keyed line's "taxon:", an author and year, a sex sign or "sp. 1" are
      no longer name. Other fields' candidates are not checked against their
-     quotes.
+     quotes. For a place field (country, province or state, county, city), a
+     candidate or a reader's verbatim that names no place, nothing but unit
+     words and punctuation by the place comparison key ("Prov.", "Co."), is
+     no literal of the field at all (`agreement.names_no_place`): it is
+     neither cut nor extended by an answer and is no reader's text in the
+     agreement rules below. The second rerun of 2026-10-18 had f35af3a5's
+     organiser give the province "Prov.", cut from "Davao, Prov.": the
+     answer "Davao, Prov." was refused as extending it and "Prov." as no
+     place asked of it, so the field fell back; "Davao, Prov." now settles
+     as text read from the transcript.
    - **Or text read from the transcript** (the coordinator's ruling of
      2026-10-09, after the real runs of that day: 105526328's collecting
      date "IV-24-48", which both readers of its label write and parse_date
@@ -830,11 +839,15 @@ handover runs field research instead of the six specialists:
      "county", "second-level administrative division"; "city", "town",
      "village", "human settlement", "municipality", each also as "... of
      ..."), NGA's feature codes ("A.PCL..."; "A.ADM1"; "A.ADM2"; "P....").
-     A county's Wikidata lookup names "second-level administrative
-     division" among a place's kinds when its classes reach that class
-     (step 4), so Wikidata's municipio Yepocapa, "municipality of
-     Guatemala", is at a city's level and, for a county, at a county's
-     level too. GEOLocate settles only a
+     A county's or a province's Wikidata lookup (`sources.LEVEL_FIELDS`)
+     names "second-level administrative division" among a place's kinds
+     when its classes reach that class, and "first-level administrative
+     division" when they reach that one (step 4), so Wikidata's municipio
+     Yepocapa, "municipality of Guatemala", is at a city's level and, for a
+     county, at a county's level too, and Bahia, "federative unit of
+     Brazil", is at a province's level for a province (until the second
+     rerun of 2026-10-18 only a county's lookup read the classes, and
+     19f0f1f6's province "Bahia" fell back). GEOLocate settles only a
      city, with all its candidates at a city's level: for a country, a
      province or state, or a county its candidate is a part of the query
      itself (its country, its state or county part, or else its place part),
@@ -1781,7 +1794,14 @@ elevation is derived first, and only for a field a person has not decided):
    and date-identified briefs say so for their fields. (In the real run of
    2026-10-09 105526326's city and 105526329's date identified were answered
    sources_cannot_resolve where the labels lack them.)
-   The resolver's fallback, put in place of an answer the expert never gave
+   The resolver's fallback qualifies only for a county or a city whose
+   every text is a settled place's above it (below), which rests on that
+   place's text, never on the expert's. Its reason, when every answer the
+   expert gave failed its checks, is "None of the expert's answers passed
+   the checks against the readings and the sources' answers.", and no
+   fallback's reason ends with a note of a source the expert could not
+   reach, as it is no answer of the expert's (the second rerun of
+   2026-10-18 read such notes as Getty TGN's fault). Otherwise the resolver's fallback, put in place of an answer the expert never gave
    (out of attempts with no checked answer when asked once more, or answers
    that failed their checks), is sources_cannot_resolve, so it never
    qualifies. An expert's answer when asked once more is its own and
@@ -2025,8 +2045,10 @@ possibilities. A written place is one field's: a province is never also
 the county (`agreement.IS_THE_PROVINCE`). Once every place is in (after
 `step._repeats_a_place`), a county, then a city, researched in this
 attempt whose expert's answer left it ambiguous or unresolved (an answer
-and no failure, not label_lacks_value, not the resolver's fallback, not
-finalized without a model call) is made what label_lacks_value makes it
+and no failure, not label_lacks_value, not finalized without a model call;
+the resolver's fallback too, as f35af3a5's city "Davao", cut from the
+settled province "Davao, Prov.", in the second rerun of 2026-10-18) is made
+what label_lacks_value makes it
 when every text the label gives it is the text of a settled place above it
 (`step._only_a_place_above`, `step._held_above`): not present, citing the
 answer's sources, its reason 'The readings write no county of their own:

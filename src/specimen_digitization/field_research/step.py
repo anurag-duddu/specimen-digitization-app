@@ -1898,7 +1898,10 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     label does not state (mark_not_on_label); the keys derived are returned.
     Last, a field whose expert's answer stood although a source it asked
     could not be reached (FieldOutcome.unreachable) ends its reason with a
-    note naming that source (_unreachable_note). ``decisions`` collects, per
+    note naming that source (_unreachable_note); the resolver's fallback is
+    no answer of the expert's, and its reason gets no such note (the second
+    rerun of 2026-10-18 blamed Getty TGN for answers that had failed their
+    checks). ``decisions`` collects, per
     field, the codes of the checks and rules that decided it (trace_fields).
     """
     from .agreement import PLACE_ORDER
@@ -1972,7 +1975,7 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     rows = {item.id: item for item in run.evidence}
     for outcome in outcomes:
         value = run.fields.get(outcome.key)
-        if (outcome.failure is None and outcome.unreachable and outcome.key in tasks_by_key
+        if (outcome.failure is None and outcome.unreachable and not outcome.fallback and outcome.key in tasks_by_key
                 and outcome.key not in human and value is not None and value.layer != "derived"):
             value.reason = " ".join(part for part in (value.reason, _unreachable_note(outcome, value, rows))
                 if part)
@@ -2729,9 +2732,12 @@ def _only_a_place_above(run, tasks_by_key: Mapping[str, FieldTask], applied: Map
         decisions: dict[str, dict]) -> dict[str, tuple[str, str]]:
     """A county or a city researched in this attempt whose expert's answer
     left it ambiguous or unresolved (an answer and no failure, not
-    label_lacks_value, not the resolver's fallback, not finalized without a
-    model call), when every text the label gives it is the text of a
-    settled place above it (_held_above), names no place of its own: one
+    label_lacks_value, not finalized without a model call; the resolver's
+    fallback too, as this rests on the settled place's text and the
+    organiser's, never on the expert's: f35af3a5's city "Davao", cut from
+    the settled province "Davao, Prov.", on 2026-10-18), when every text
+    the label gives it is the text of a settled place above it
+    (_held_above), names no place of its own: one
     written place is one field's (agreement.IS_THE_PROVINCE: a province is
     never also the county), so 93e61763's "Chimaltenango," on the line its
     province settled on, as the department, is no county, however many
@@ -2753,7 +2759,7 @@ def _only_a_place_above(run, tasks_by_key: Mapping[str, FieldTask], applied: Map
         task, outcome, value = tasks_by_key.get(key), applied.get(key), run.fields.get(key)
         answer = outcome.answer if outcome is not None else None
         if (task is None or answer is None or key in human or outcome.failure is not None
-                or answer.outcome == "label_lacks_value" or outcome.fallback or outcome.finalized_without_model
+                or answer.outcome == "label_lacks_value" or outcome.finalized_without_model
                 or value is None or value.state not in (ValueState.AMBIGUOUS, ValueState.UNRESOLVED)):
             continue
         held = _held_above(run, key, task, answer, readings, evidence={item.id: item for item in run.evidence},

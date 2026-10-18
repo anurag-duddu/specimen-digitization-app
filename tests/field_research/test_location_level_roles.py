@@ -528,3 +528,84 @@ def test_an_island_with_namesakes_elsewhere_confirms_no_initials(tmp_path):
     run = rig.specimen.run
     settle(rig, Scripted({**APO_EXPERTS, "precise_location": answering(LACKS)}), tools=Stored(rig.blobs))
     assert run.fields["country"].state == ValueState.AMBIGUOUS
+
+
+# ---- the second rerun of 2026-10-18: a candidate that names no place -------
+
+# f35af3a5's label as the organiser read it in the second rerun: the province
+# "Prov." and the city "Davao", both cut from the line "Davao, Prov. 3300'".
+CUT_LINE = label_with(**NO_PLACE_LINES) + "\nE. slope Mt. McKinley\nDavao, Prov. 3300'\nMindanao, P.I."
+CUT_CANDIDATES = candidates(("country", "P.I.", "Mindanao, P.I."), ("province_state", "Prov.", "Davao, Prov. 3300'"),
+    ("city", "Davao", "Davao, Prov. 3300'"))
+P_I_COUNTRY = expert(("wikidata", "Philippine Islands"), answer=settled_on("P.I.", "Philippines", "wikidata:Q928"))
+DAVAO_PROV = expert(("wikidata", "Davao Province, Philippines"), answer=settled_on("Davao, Prov.", "Davao",
+    "wikidata:Q15095071"))
+
+
+def falling_back(*queries):
+    """The resolver's fallback for an expert whose every answer failed its
+    checks (experts.UNCHECKED), after these lookups, with Getty TGN out."""
+    from specimen_digitization.field_research import experts
+
+    async def script(task, readings, tools):
+        found = [await tools.lookup(source, query, field_key=task.key) for source, query in queries]
+        return FieldOutcome(task.key, FieldAnswer(outcome="sources_cannot_resolve", explanation=experts.UNCHECKED),
+            evidence=[item.evidence for item in found if item.evidence], model_calls=5, fallback=True,
+            unreachable=("tgn",))
+    return script
+
+
+def test_a_candidate_of_only_a_unit_word_is_no_literal_of_a_place(tmp_path):
+    """The organiser's "Prov." names no place (agreement.names_no_place), so
+    it neither is the province's literal nor stops the reading's own text
+    "Davao, Prov." from being one; a city's or a habitat's candidate is not
+    read so."""
+    rig = build_rig(tmp_path, CUT_LINE, candidates=CUT_CANDIDATES)
+    readings = field_step.run_readings(rig.specimen.run)
+    _, tasks, _ = field_step.build_tasks(rig.specimen.run)
+    province = next(task for task in tasks if task.key == "province_state")
+    assert agreement.names_no_place(province, "Prov.") and not agreement.names_no_place(province, "Davao, Prov.")
+    habitat = next(task for task in tasks if task.key == "habitat")
+    assert not agreement.names_no_place(habitat, "Prov.")
+    named = [readings[0]]
+    assert agreement.literal_refusal(province, readings, literal="Davao, Prov.", named=named) is None
+    assert agreement.literal_basis(province, readings, "Davao, Prov.", named) == agreement.TRANSCRIPT
+
+
+def test_the_province_settles_on_its_line_beside_a_candidate_of_only_its_unit_word(tmp_path):
+    """f35af3a5 in the second rerun (Logfire trace 01a14cb1647b82ebd23c10434cbc1629):
+    the province's expert gave "Davao, Prov.", refused for extending the
+    candidate "Prov.", then "Prov.", refused as no place asked of it, and fell
+    back. The city's expert, offered "Davao", fell back too, and both reasons
+    named Getty TGN, which caused neither. Now the province settles on its
+    line; the city, whose only text is the province's, is not on the label;
+    and no fallback's reason names an unreachable source. On c38f4fd4 the
+    province is refused and the city is unresolved, its reason naming TGN."""
+    rig = build_rig(tmp_path, CUT_LINE, candidates=CUT_CANDIDATES)
+    run = rig.specimen.run
+    settle(rig, Scripted({"country": P_I_COUNTRY, "province_state": DAVAO_PROV, "county": answering(LACKS),
+        "city": falling_back(("wikidata", "Davao, Philippines")), "precise_location": answering(LACKS)}),
+        tools=Stored(rig.blobs))
+    province = run.fields["province_state"]
+    assert (province.state, province.literal, province.normalized, province.authority_id) == (
+        ValueState.SUPPORTED, "Davao, Prov.", "Davao", "wikidata:Q15095071")
+    city = run.fields["city"]
+    assert (city.state, city.literal) == (ValueState.NOT_PRESENT, None)
+    assert city.reason.startswith(field_step.PLACE_ABOVE_NOT_ON_LABEL.format(
+        key="city", text="Davao", field="Province/State"))
+    assert "could not be reached" not in city.reason
+    assert "city" in cleared_as_not_on_label(run) and not reasons_for(run, "city")
+
+
+def test_a_fallback_that_stays_open_does_not_blame_an_unreachable_source(tmp_path):
+    """A fallback is no answer of the expert's: its reason says the answers
+    failed their checks, and names no source it could not reach."""
+    from specimen_digitization.field_research import experts
+
+    rig = build_rig(tmp_path, CUT_LINE, candidates=CUT_CANDIDATES)
+    run = rig.specimen.run
+    settle(rig, Scripted({"country": P_I_COUNTRY, "province_state": falling_back(("wikidata", "Davao, Philippines")),
+        "county": answering(LACKS), "city": answering(LACKS), "precise_location": answering(LACKS)}),
+        tools=Stored(rig.blobs))
+    province = run.fields["province_state"]
+    assert (province.state, province.reason) == (ValueState.UNRESOLVED, experts.UNCHECKED)
