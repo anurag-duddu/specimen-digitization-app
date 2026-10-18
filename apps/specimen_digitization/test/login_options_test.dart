@@ -166,6 +166,74 @@ void main() {
     expect(sizes.values.first.height, UiDensity.hitBox);
   });
 
+  for (final size in <Size>[
+    const Size(320, 568),
+    const Size(390, 844),
+    const Size(768, 1024),
+    const Size(1024, 768),
+    const Size(1440, 900),
+  ]) {
+    for (final scale in <double>[1, 2]) {
+      testWidgets('login actions align with the field at $size, scale $scale', (
+        tester,
+      ) async {
+        final access = FakeLinkAccess();
+        final controller = emailController(access);
+        addTearDown(controller.dispose);
+        await controller.initialize();
+        await pumpLogin(
+          tester,
+          MagicLinkSignInScreen(
+            access: access,
+            controller: controller,
+            google: FakeGoogleAccess(),
+          ),
+          size: size,
+          scale: scale,
+        );
+        final send = find.byWidgetPredicate(
+          (widget) => widget is UiButton && widget.label == 'Send link',
+        );
+        expect(tester.widget<UiButton>(send).size, UiSize.md);
+        final googleFace = find.descendant(
+          of: find.byType(UiGoogleSignInButton),
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is DecoratedBox &&
+                widget.decoration is ShapeDecoration &&
+                (widget.decoration as ShapeDecoration).color ==
+                    GoogleSignInPalette.fillLight,
+          ),
+        );
+        final fieldRect = tester.getRect(find.byType(UiField));
+        final googleRect = tester.getRect(googleFace);
+        final sendRect = tester.getRect(send);
+        expect(googleRect.left, closeTo(fieldRect.left, 0.01));
+        expect(googleRect.right, closeTo(fieldRect.right, 0.01));
+        expect(sendRect.left, closeTo(fieldRect.left, 0.01));
+        expect(sendRect.right, closeTo(fieldRect.right, 0.01));
+        final logo = find.descendant(
+          of: find.byType(UiGoogleSignInButton),
+          matching: find.byType(Image),
+        );
+        expect(tester.getSize(logo), const Size(20, 20));
+        expect(
+          tester
+              .renderObject<RenderParagraph>(find.text('Sign in with Google'))
+              .didExceedMaxLines,
+          isFalse,
+        );
+        expect(tester.takeException(), isNull);
+        await controller.send('staff@fieldmuseum.org');
+        await tester.pumpAndSettle();
+        final resend = find.byWidgetPredicate(
+          (widget) => widget is UiButton && widget.label == 'Resend link',
+        );
+        expect(tester.widget<UiButton>(resend).size, UiSize.lg);
+      });
+    }
+  }
+
   testWidgets('disposing during Google sign-in never calls parent again', (
     tester,
   ) async {
