@@ -152,14 +152,13 @@ def test_a_locality_after_another_fields_text_settles_and_that_field_goes_to_rev
     the locality goes to review and the code settles."""
     rig = build_rig(tmp_path, CNHM_A, CNHM_B, decided=decided, candidates=CODE_LINE)
     run = rig.specimen.run
-    decisions: dict[str, dict] = {}
     settle(rig, Scripted({**NO_PLACES, "collection_code": resolved("CNHM. E Slope Mt.", *(["1A"] if decided else [])),
         "precise_location": resolved(TWO_LINES, *(["1A"] if decided else []))}))
     locality, code = run.fields["precise_location"], run.fields["collection_code"]
     assert (locality.state, locality.literal) == (ValueState.SUPPORTED, TWO_LINES)
     assert field_checks(run, {"precise_location"}) == []
     assert code.state == ValueState.UNRESOLVED
-    assert code.reason.startswith(field_step.TAKEN.format(other="Precise Location"))
+    assert code.reason.startswith("This text runs into the value found for Precise Location.")
 
 
 def test_a_locality_that_holds_another_fields_whole_text_still_goes_to_review(tmp_path):

@@ -53,6 +53,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
+from typing import NamedTuple
 
 import logfire
 
@@ -644,50 +645,117 @@ def _confirmed_country(run, readings: Sequence[Reading], places: Mapping[str, Ma
 PLACE_LINE_SEPARATORS = re.compile(r"[,;:()\[\]/]")
 
 
+def _residue_words() -> frozenset[str]:
+    """The words that, alone, name no place on a line of places
+    (_unplaced_text), folded, periods dropped: what written's tables read
+    around an elevation or a date (its headings, approximate words,
+    elevation words, units and their parts, months, range joiners), and a
+    collector's or a determiner's mark (written.PERSON_MARKS, and "lg").
+    "alt." of "alt. 1200 m", "coll." of "coll. 12.vi.1948", "leg." beside a
+    collector's name (round 1 of #381's review, finding 1)."""
+    from . import written
+
+    return (written.HEADINGS | written.APPROXIMATE | written.ELEVATION_WORDS | frozenset(written.UNIT_OF)
+        | written.UNIT_PARTS | written.MONTH_WORDS | written.JOINERS | written.PERSON_MARKS | frozenset({"lg"}))
+
+
+# A run of letters, as _unplaced_text splits what is left of a group into words.
+LETTERS = re.compile(r"[^\W\d_]+")
+
+
 def _unplaced_text(run, readings: Sequence[Reading], places: Mapping[str, Mapping[str, frozenset[str]]],
         answers: Sequence[SourceAnswer], nation) -> str | None:
     """Text a reading writes on a line of the record's places that may name
-    another country than `nation` (an agreement.PlaceField), or None. The
-    lines are those of every reading that write a country, province or
-    county text of the record as whole words (`places`, any reading's). On
-    each, the text every field holds is set aside: every place field's
-    texts, every field's organiser candidates (_candidates), literals and
-    verbatims, each where the line writes it as whole words. What is left,
-    split at commas, semicolons, colons, brackets and slashes, is weighed
-    group by group, and a group counts for nothing when it holds no letter,
-    is only unit words (agreement.place_name is empty), holds a date, an
-    elevation or a range (written.other_kind), was asked of the sources and
-    found by none (agreement.ruled_out: 3781e440's "U.S.B.I.L."), or is
-    confirmed as that same nation (agreement.confirmed_place). The first
-    group left is returned: "Canada" of "Canada: Ill. Coles Co.", which no
-    candidate files."""
+    another country than `nation` (an agreement.PlaceField), or None.
+
+    The lines are those of every reading that write a country, province or
+    county text of the record as whole words (`places`, any reading's). On a
+    label whose readers all have the same number of lines, each reader's
+    line at the same place (by its index) as such a line of another reader
+    is read too: reader 1B's "Canada" over "Ill." over "Coles Co." where only
+    1A's "USA" / "Ill." / "Coles Co." are filed (round 1 of #380's review,
+    finding 3). Readers whose line counts differ (one reads a printed
+    header the other skips, or joins two lines) would pair the wrong lines,
+    so then each reader's own place lines alone are read (round 1 of #381's
+    review, finding 2).
+
+    On each line, the text the fields hold is set aside where the line
+    writes it as whole words: every place field's texts and every field's
+    organiser candidates (_candidates), and the literals and verbatims of
+    every supported value. A value not settled holds nothing: the country
+    expert's own "Canada", kept as an unresolved literal, is still weighed
+    (finding 2).
+
+    What is left, split at commas, semicolons, colons, brackets and
+    slashes, is weighed group by group, with any date, elevation or range in
+    it set aside first (written.other_kind, as often as it finds one:
+    "Canada 1948", "Canada 1200 ft"; finding 4). A group then counts for
+    nothing when it holds no letter, is only unit words (agreement.place_name
+    is empty), is only words that name no place (_residue_words: the "alt."
+    an elevation leaves, the "leg." beside a collector), was asked of the
+    sources and found by none (agreement.ruled_out: 3781e440's
+    "U.S.B.I.L."), names that nation (one of its names, or an abbreviation
+    of one by the letter rule: "United States", "U.S." and "US" beside the
+    United States; round 1 of #381's review, finding 3), or is confirmed as
+    that same nation (agreement.confirmed_place). The first group left is
+    returned: "Canada" of "Canada: Ill. Coles Co.", which no candidate
+    files."""
     from . import written
+    from .abbreviations import fits
     from .agreement import confirmed_place, place_keys, place_name, ruled_out, verbatim_runs
+
+    residue = _residue_words()
 
     anchors = {text for key in ("country", "province_state", "county")
         for texts in places.get(key, {}).values() for text in texts}
     held = {text for texts_by_reading in places.values() for texts in texts_by_reading.values() for text in texts}
     held |= {candidate.literal for found in _candidates(run, readings).values() for candidate in found}
     for value in run.fields.values():
-        held |= {text for text in (value.literal, *value.verbatim_by_observation.values()) if text}
+        if value.state == ValueState.SUPPORTED:
+            held |= {text for text in (value.literal, *value.verbatim_by_observation.values()) if text}
     parts = {part.strip() for text in held for part in text.split("\n") if part.strip()}
 
     def same(found) -> bool:
         return found is not None and ((found.authority_id is not None and found.authority_id == nation.authority_id)
             or bool(place_keys(found.texts) & place_keys(nation.texts)))
 
+    def names_the_nation(group: str) -> bool:
+        return place_name(group) in place_keys(nation.texts) or any(fits(group, name) for name in nation.texts)
+
+    def places_nothing(group: str) -> bool:
+        words = LETTERS.findall(written.fold(group))
+        return bool(words) and all(word in residue for word in words)
+
+    def weighed(group: str) -> str:
+        # Each date, elevation or range in the group is another field's text.
+        for _ in range(len(group)):
+            found = written.other_kind(group, place=True)
+            if found is None or not found[1] or found[1] not in group:
+                break
+            group = group.replace(found[1], " ", 1)
+        return group.strip()
+
+    lines_of = {reading.name: reading.text.split("\n") for reading in readings}
+    own = {reading.name: {index for index, line in enumerate(lines_of[reading.name])
+        if any(verbatim_runs(line, text) for text in anchors)} for reading in readings}
+    regions: dict[str, list[Reading]] = {}
     for reading in readings:
-        for line in reading.text.split("\n"):
-            if not any(verbatim_runs(line, text) for text in anchors):
-                continue
-            free = list(line)
+        regions.setdefault(reading.region_id, []).append(reading)
+    for reading in readings:
+        lines = lines_of[reading.name]
+        group_of = regions[reading.region_id]
+        indices = set(own[reading.name])
+        if len({len(lines_of[other.name]) for other in group_of}) == 1:
+            indices |= {index for other in group_of for index in own[other.name]}
+        for index in sorted(indices):
+            free = list(lines[index])
             for text in parts:
-                for start, end in verbatim_runs(line, text):
+                for start, end in verbatim_runs(lines[index], text):
                     free[start:end] = " " * (end - start)
             for group in PLACE_LINE_SEPARATORS.split("".join(free)):
-                group = group.strip()
-                if (not any(char.isalpha() for char in group) or not place_name(group)
-                        or written.other_kind(group, place=True) is not None or ruled_out(answers, group)
+                group = weighed(group)
+                if (not any(char.isalpha() for char in group) or not place_name(group) or places_nothing(group)
+                        or ruled_out(answers, group) or names_the_nation(group)
                         or same(confirmed_place(answers, [group], "country"))):
                     continue
                 return group
@@ -724,6 +792,20 @@ def _settling(task, answer, sources):
 
 # A literal read from the transcript that is also another kind of field's text.
 TAKEN = "This text, read from the transcript, is also the value found for {other}."
+# A value whose text runs on into a place read from the transcript, which
+# overlaps it only partly and settles (_taken, _partly): e98a924c's
+# collection code "CNHM. E Slope Mt.", the organiser's candidate, beside its
+# precise location "E Slope Mt.\nMcKinley, Davao Prov.".
+RUNS_INTO = "This text runs into the value found for {other}."
+
+
+class Taken(NamedTuple):
+    """Why _taken sends a field to review: the field whose value holds its
+    text, and whether that field is a place it only runs into (`partly`:
+    RUNS_INTO) rather than one holding its text (TAKEN)."""
+
+    other: str
+    partly: bool = False
 
 
 def _inside_a_token(text: str, index: int) -> bool:
@@ -801,7 +883,7 @@ def _value_spans(value: FieldValue, readings: Sequence[Reading], evidence: Mappi
 
 
 def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldOutcome],
-        readings: Sequence[Reading], settled: Mapping[str, FieldValue]) -> dict[str, str]:
+        readings: Sequence[Reading], settled: Mapping[str, FieldValue]) -> dict[str, Taken]:
     """The fields whose resolved answer gives a literal its expert read in the
     transcript (agreement.literal_basis: TRANSCRIPT) when that same text is
     claimed for a field of another kind (agreement.may_share_text), each
@@ -865,7 +947,7 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
     for key, value in run.fields.items():
         if key not in researched and _claims_text(key, value, human):
             claims.append((key, _value_spans(value, readings, evidence)))
-    taken: dict[str, str] = {}
+    taken: dict[str, Taken] = {}
     yielded: dict[str, str] = {}
     for key, spans in mine.items():
         place = FIELD_KINDS.get(key) == "place"
@@ -879,12 +961,15 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
             other = claimant
             break
         if other is not None:
-            taken[key] = other
+            taken[key] = Taken(other)
         else:
             for claimant in partial:
                 yielded.setdefault(claimant, key)
     for claimant, key in yielded.items():
-        taken.setdefault(claimant, key)
+        # The place that stands is the field it runs into (RUNS_INTO), even
+        # when its own text read from the transcript also met that place.
+        if claimant not in taken or taken[claimant].other == key:
+            taken[claimant] = Taken(key, partly=True)
     return taken
 
 
@@ -897,15 +982,20 @@ def _partly(spans, others) -> bool:
         and other_end <= end) for start, end, other_start, other_end in pairs)
 
 
-def _taken_value(task, outcome, other: str, evidence) -> FieldValue:
+def _taken_value(task, outcome, taker: Taken, evidence) -> FieldValue:
     """A field whose text from the transcript another kind of field claims
-    (_taken): unresolved, for a person, with the reason naming that field."""
+    (_taken): unresolved, for a person, with the reason naming that field;
+    or a field whose text runs into a place that settles (`taker.partly`),
+    whose reason says so (RUNS_INTO; round 1 of #380's review, finding 1:
+    the collection code's candidate was neither read from the transcript
+    nor the precise location's value)."""
     from .prompts import FIELD_LABELS
 
     answer = outcome.answer
     cited = [e for e in answer.source_evidence_ids if e in evidence and evidence[e].kind != "literal"]
+    reason = (RUNS_INTO if taker.partly else TAKEN).format(other=FIELD_LABELS.get(taker.other, taker.other))
     return _unsettled(task, ValueState.UNRESOLVED, literal=task.current.literal, cited=cited,
-        reason=f"{TAKEN.format(other=FIELD_LABELS.get(other, other))} {answer.explanation}")
+        reason=f"{reason} {answer.explanation}")
 
 
 NEAR_SPELLING_RULES = "field-research-places-v1"
@@ -1490,7 +1580,7 @@ def _taxon_literals(run, tasks: Sequence[FieldTask], outcomes: Sequence[FieldOut
 
 
 def _apply_answers(run, tasks_by_key: Mapping[str, FieldTask], ordered: Sequence[FieldOutcome], *,
-        taken: Mapping[str, str], human, readings, by_name, evidence: dict, asset_id, blobs, date_rules,
+        taken: Mapping[str, Taken], human, readings, by_name, evidence: dict, asset_id, blobs, date_rules,
         received: Mapping[str, Sequence[SourceAnswer]], places, final: bool,
         decisions: dict[str, dict]) -> tuple[dict[str, FieldOutcome], dict[str, list[str]]]:
     """Each outcome, in `ordered` (the places from the country down), as its
@@ -1510,7 +1600,7 @@ def _apply_answers(run, tasks_by_key: Mapping[str, FieldTask], ordered: Sequence
         decision = decisions.setdefault(task.key, {})
         before = len(run.evidence)
         if task.key in taken:
-            decision["refusal"] = "taken"
+            decision["refusal"] = "runs_into" if taken[task.key].partly else "taken"
             run.fields[task.key] = _taken_value(task, outcome, taken[task.key], evidence)
         else:
             run.fields[task.key] = _field_value(run, task, outcome, readings=readings, by_name=by_name,
