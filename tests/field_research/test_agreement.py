@@ -2125,15 +2125,19 @@ SECOND_ONLY = ("Chimaltenango", "tgn:municipio-chimaltenango", "municipalities, 
     "(political entities)", (("Chimaltenango", "tgn:1000565"), ("Guatemala", "tgn:7005493")))
 
 
-@pytest.mark.parametrize(("source", "query", "authority", "made", "reason"), [
-    # NGA's answer also holds the department (A.ADM1): the expert's check.
-    ("nga", "Chimaltenango", "nga:-1132766", (), "FIRST_LEVEL_TOO"),
-    # A made-up answer with the municipio alone: it is the settled province's text.
-    ("tgn", "Chimaltenango", "tgn:municipio-chimaltenango", [("tgn", "Chimaltenango", [SECOND_ONLY])],
-        "IS_THE_PROVINCE"),
+@pytest.mark.parametrize(("source", "query", "authority", "made"), [
+    # NGA's answer also holds the department (A.ADM1): the expert's check (FIRST_LEVEL_TOO).
+    ("nga", "Chimaltenango", "nga:-1132766", ()),
+    # A made-up answer with the municipio alone: it is the settled province's text
+    # (IS_THE_PROVINCE).
+    ("tgn", "Chimaltenango", "tgn:municipio-chimaltenango", [("tgn", "Chimaltenango", [SECOND_ONLY])]),
 ], ids=["nga-department-too", "the-provinces-text"])
-def test_a_department_written_alone_invents_no_county(tmp_path, source, query, authority, made, reason):
-    """On 6cb6de8e the county settles on the municipio in both cases."""
+def test_a_department_written_alone_invents_no_county(tmp_path, source, query, authority, made):
+    """On 6cb6de8e the county settles on the municipio in both cases. Its
+    only text is the settled province's, so it is not on the label
+    (step._only_a_place_above); on c38f4fd4 it stayed for review, ambiguous
+    with the refusal's reason (the shape 93e61763 and 9cc24b07 were left in on
+    2026-10-17)."""
     rig = build_rig(tmp_path, DEPARTMENT_ALONE)
     run = rig.specimen.run
     settle(rig, Scripted({
@@ -2143,7 +2147,27 @@ def test_a_department_written_alone_invents_no_county(tmp_path, source, query, a
         "city": answering(LACKS)}), tools=Recorded(rig.blobs, made))
     assert run.fields["province_state"].state == ValueState.SUPPORTED
     county = run.fields["county"]
-    assert county.state != ValueState.SUPPORTED and county.reason.startswith(getattr(agreement, reason))
+    assert (county.state, county.literal, county.authority_id) == (ValueState.NOT_PRESENT, None, None)
+    assert county.reason.startswith(field_step.PLACE_ABOVE_NOT_ON_LABEL.format(
+        key="county", text="Chimaltenango", field="Province/State"))
+    assert "county" in cleared_as_not_on_label(run) and not reasons_for(run, "county")
+
+
+def test_a_county_on_the_settled_provinces_record_or_text_is_refused_as_the_province():
+    """parents_refusal's IS_THE_PROVINCE, which the step's county refuses on
+    before _only_a_place_above finds that county no text of its own: the
+    province's record, or one of its texts, letter case and punctuation
+    aside, with its unit words kept."""
+    province = agreement.PlaceField(("Davao Prov.", "Davao"), "wikidata:Q15095071")
+    country = agreement.PlaceField(("Philippines",), "nga:-2445615", "PH")
+    def refused(name, authority_id, literal):
+        candidate = SourceCandidate(name, authority_id, "A.ADM2", parents=(
+            PlaceRef("Davao", "wikidata:Q15095071"), PlaceRef("PH", None, "PH")))
+        return agreement.parents_refusal("county", candidate, agreement.ASKED, written={},
+            settled={"country": country, "province_state": province}, literal=literal)
+    assert refused("Davao", "nga:davao-second", "Davao Prov.").reason == agreement.IS_THE_PROVINCE
+    assert refused("Davao", "wikidata:Q15095071", "Davao City").reason == agreement.IS_THE_PROVINCE
+    assert refused("Tagum", "nga:tagum-second", "Tagum") is None
 
 
 # A Philippine province written with its unit word stays the province.
@@ -2151,22 +2175,24 @@ PHILIPPINE_PROVINCE = label_with(country="Philippines", province_state="Davao Pr
 DAVAO_SECOND = ("Davao", "nga:davao-second", "A.ADM2", (("Davao", None), ("PH", None, "PH")))
 
 
-@pytest.mark.parametrize(("county", "made", "reason"), [
+@pytest.mark.parametrize(("county", "made"), [
     # The expert finds no second-level unit: the label names no county.
-    (answering(LACKS), (), None),
-    # Wikidata's province: its class is a first-level administrative division.
-    (from_tgn("Davao Province", "Davao Prov.", "Davao", "wikidata:Q15095071", source="wikidata"), (),
-        "NO_PLACE"),
+    (answering(LACKS), ()),
+    # Wikidata's province: its class is a first-level administrative division (NO_PLACE).
+    (from_tgn("Davao Province", "Davao Prov.", "Davao", "wikidata:Q15095071", source="wikidata"), ()),
     # A source that also held the province at the second level (as GeoNames codes
     # Philippine provinces ADM2, tests/fixtures/georeferencing/geonames_PH.txt)
-    # still finds the province's own text: no county.
+    # still finds the province's own text: no county (IS_THE_PROVINCE).
     (from_tgn("Davao Province", "Davao Prov.", "Davao", "nga:davao-second", source="nga"),
-        [("nga", "Davao Province", [DAVAO_SECOND])], "IS_THE_PROVINCE"),
+        [("nga", "Davao Province", [DAVAO_SECOND])]),
 ], ids=["lacks", "wikidata-first-level", "a-second-level-record"])
-def test_a_philippine_province_with_its_unit_word_is_never_a_county(tmp_path, county, made, reason):
+def test_a_philippine_province_with_its_unit_word_is_never_a_county(tmp_path, county, made):
     """The province "Davao Prov." settles on Wikidata's province of Davao,
     asked as "Davao Province", inside the nation NGA settles. On 6cb6de8e
-    the third county settles."""
+    the third county settles. A refused county whose only text is the
+    province's is not on the label (step._only_a_place_above); on c38f4fd4
+    it stayed for review with the refusal's reason (f35af3a5's shape of
+    2026-10-17)."""
     rig = build_rig(tmp_path, PHILIPPINE_PROVINCE)
     run = rig.specimen.run
     settle(rig, Scripted({
@@ -2177,10 +2203,8 @@ def test_a_philippine_province_with_its_unit_word_is_never_a_county(tmp_path, co
     province = run.fields["province_state"]
     assert (province.state, province.literal, province.normalized) == (ValueState.SUPPORTED, "Davao Prov.", "Davao")
     found = run.fields["county"]
-    if reason is None:
-        assert found.state == ValueState.NOT_PRESENT
-        return
-    assert found.state != ValueState.SUPPORTED and found.reason.startswith(getattr(agreement, reason))
+    assert (found.state, found.literal, found.authority_id) == (ValueState.NOT_PRESENT, None, None)
+    assert "county" in cleared_as_not_on_label(run) and not reasons_for(run, "county")
 
 
 # A US county under its state still settles, with its unit word written out.
