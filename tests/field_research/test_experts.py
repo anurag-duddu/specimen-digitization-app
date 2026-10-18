@@ -288,7 +288,7 @@ def test_an_expert_that_keeps_inventing_a_value_goes_to_review():
     # Not an outage, so never a retry: a person reads the field.
     assert outcome.failure is None
     assert outcome.answer == FieldAnswer(outcome="sources_cannot_resolve", explanation=experts.UNCHECKED)
-    assert experts.UNCHECKED == "The expert's answer could not be checked against the readings and sources."
+    assert experts.UNCHECKED == "None of the expert's answers passed the checks against the readings and the sources' answers."
     assert outcome.evidence == [GBIF_EVIDENCE]  # what it gathered is still reported
     assert outcome.model_calls == 4
     # The resolver's answer, not the expert's (owner decision B never clears on it).

@@ -90,6 +90,66 @@ def test_a_call_that_could_still_send_a_request_stays_unknown():
     assert failure_of(agent, limits).usage is None
 
 
+def answering(*answers):
+    """A model whose answers are `(selected_reader, input_tokens, output_tokens)`."""
+    queue = list(answers)
+
+    def respond(messages, info):
+        reader, input_tokens, output_tokens = queue.pop(0)
+        return ModelResponse(
+            parts=[ToolCallPart(info.output_tools[0].name, {"selected_reader": reader})],
+            usage=RequestUsage(input_tokens=input_tokens, output_tokens=output_tokens),
+            finish_reason="stop",
+        )
+
+    return Agent(FunctionModel(respond, model_name="local"), output_type=Pick), queue
+
+
+def test_a_completed_call_counts_every_answer_and_not_its_output_tools_return():
+    from specimen_digitization.application.reliability import reported_usage
+
+    # 19f0f1f6's parse: one answer, 1,627 in and 1,077 out. After it the agent
+    # queues the output tool's return, which nothing sends.
+    agent, _ = answering((1, 1_627, 1_077))
+    result = run_agent_bounded(agent, "x", timeout_seconds=10, usage_limits=LIMITS)
+    messages = result.all_messages()
+    assert [m.kind for m in messages] == ["request", "response", "request"]
+    assert {p.part_kind for p in messages[-1].parts} == {"tool-return"}
+    # Before: counted as a request sent and not answered, so unknown.
+    assert reported_usage(messages, result.usage) is None
+    assert reported_usage(messages, result.usage, completed=True) == {
+        "input_tokens": 1_627,
+        "output_tokens": 1_077,
+    }
+    # A malformed answer, then its retry answered: both were billed.
+    agent, queue = answering(("null", 1_076, 1_101), (1, 1_200, 30))
+    result = run_agent_bounded(agent, "x", timeout_seconds=10, usage_limits=LIMITS)
+    assert queue == []
+    assert [m.kind for m in result.all_messages()] == ["request", "response"] * 2 + ["request"]
+    assert reported_usage(result.all_messages(), result.usage, completed=True) == {
+        "input_tokens": 2_276,
+        "output_tokens": 1_131,
+    }
+
+
+def test_a_completed_call_whose_last_request_is_not_a_tool_return_stays_unknown():
+    # Only the output tool's return is proof of a request never sent. A retry
+    # prompt in its place may have been sent, so the call is held.
+    from pydantic_ai.messages import ModelRequest, RetryPromptPart, UserPromptPart
+    from pydantic_ai.usage import RunUsage
+
+    from specimen_digitization.application.reliability import reported_usage
+
+    request = ModelRequest(parts=[UserPromptPart("x")])
+    answer = ModelResponse(
+        parts=[ToolCallPart("final_result", {"selected_reader": "null"})],
+        usage=RequestUsage(input_tokens=1_076, output_tokens=1_101),
+    )
+    retry = ModelRequest(parts=[RetryPromptPart("invalid", tool_name="final_result")])
+    usage = RunUsage(requests=1, input_tokens=1_076, output_tokens=1_101)
+    assert reported_usage([request, answer, retry], usage, completed=True) is None
+
+
 def test_an_answer_the_client_could_not_read_leaves_the_spend_unknown():
     # The second request was sent; what came back was not counted, and the
     # provider may have billed it.
