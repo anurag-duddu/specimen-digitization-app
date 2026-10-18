@@ -21903,7 +21903,7 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
 
 ### 2026-10-18 - LOCATION-REVIEW-FOLLOWUPS #379's review findings 1-3 and e98a924c's collection code
 
-- Task: the location coordinator's follow-up after PR #379 merged (`616ae010`) and went live, toward the owner's standing ask that the location harness be complete. Branch `claude/location-review-followups` from `origin/main` `616ae010`, worktree `.claude/worktrees/agent-ac667de59ee32e1ba`. PR: opened from this branch (see the PR list).
+- Task: the location coordinator's follow-up after PR #379 merged (`616ae010`) and went live, toward the owner's standing ask that the location harness be complete. Branch `claude/location-review-followups` from `origin/main` `616ae010`, worktree `.claude/worktrees/agent-ac667de59ee32e1ba`. PR #380 (https://github.com/anurag-duddu/specimen-digitization-app/pull/380).
 - Finding 2 (correctness, done first):
   - Problem: #379's `step._confirmed_country` read the record's country texts only through `agreement.reader_literals`, the organiser's candidates and verbatims. Another reader's "Canada: Ill. Coles Co." with no candidate filed for "Canada" let the state and county settle, and the country derived as the United States, where main before #379 refused `NO_COUNTRY`.
   - Fix: `step._unplaced_text` reads every line of any reading that writes a country, province or county text of the record.
@@ -21925,6 +21925,7 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
 - Validation:
   - New tests: `tests/field_research/test_location_review_followups.py`, 15 tests. On main `616ae010` 5 fail by assertion and 10 pass. The 5 are the unfiled "Canada", the "Texas" counterpart, "near Mt. Apo" over two lines, and e98a924c's shape with and without a decided transcript. The 10 that pass are guards.
   - `tests/field_research`: 3,037 passed. With the nine related suites and #378's two test files: 3,492 passed.
+  - Full Python suite at `bbc88c46` (`scripts/ci/python_shards.py local --count 6`): 16,172 passed, 47 skipped, 1 failed and 2 errors. These are the same three that fail on base in this environment: the general API contract fixture regeneration, and two upload HTTP setup errors that need the worktree's own `.venv/bin/specimen-api`.
 - Offline replay:
   - Same script as #379's. For e98a924c's live run the collection code is researched in the same attempt, as live: no reassessment marker, the location fields and the code reset to unresolved.
   - Control on main `616ae010`: that run gives back its saved values (precise location `taken`, code supported).
