@@ -21960,5 +21960,6 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
     - 18 more tests in `test_location_review_round2.py` (25 in all). On the reviewed head `7884f700` 11 fail: the six heading lines, both line-count shifts, and "US", "U.S." and "United States". The 7 that pass there are the five bare forms ("1200 ft", "1948", "12.vi.1948", "1200-1500 m", "1200 m a.s.l.") and "U.S.A." / "USA.".
     - On main `0346a26e` all 18 pass, as the review reports main's outcomes.
     - `tests/field_research`: 3,062 passed. With the related suites and #378's two test files: 3,517 passed.
+    - Full Python suite at `35d5da57`: 16,197 passed, 47 skipped, and the same 1 failed and 2 errors as on base in this environment.
     - The 19-run replay is unchanged: main and branch give every field of every run the same value, and the only difference is still e98a924c's collection-code reason.
   - Reusable learning: a guard that refuses more must be probed against the shapes main settles, not only the shapes it is meant to catch. Here the heading a masked number leaves, and readers whose line counts differ, were ordinary label shapes absent from the 19 recorded runs.
