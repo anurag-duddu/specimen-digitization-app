@@ -704,6 +704,14 @@ headings are semantic headings and announce a changed task. A state icon
 supports the heading instead of replacing it. Named busy states use the
 existing reduced-motion-aware progress primitive.
 
+The entry field and its two available actions share the form width. The email
+entry action uses the standard `md` primary button: 40 dp visual in pointer
+density, 48 in touch density, with its 48 dp target preserved. Google's action
+uses the shared rectangular brand component, 40 dp visual inside a 48 dp target.
+The controls grow with their own label metrics at larger text sizes; exact
+visual-height equality at every density or text scale is not required. Link
+confirmation and resend keep their existing sizes and behaviour.
+
 The entry field and primary action become an inbox state after sending:
 recognizable mail symbol, recipient and the supported inbox-opening action.
 Resend and its wait are subordinate recovery. Received-link confirmation,

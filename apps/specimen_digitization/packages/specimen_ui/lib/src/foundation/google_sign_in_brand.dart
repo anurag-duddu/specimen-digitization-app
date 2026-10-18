@@ -15,7 +15,7 @@
 /// updated 2026-07-07 UTC, the section "Create a custom Sign in with Google
 /// Button". Its figure for Android and web,
 /// <https://developers.google.com/static/identity/images/branding_guide_android_web_spec.png>,
-/// gives the 40 high pill, the paddings of 12, 10 and 12, the 20 by 20 "G" and
+/// gives the 40 high button, the paddings of 12, 10 and 12, the 20 by 20 "G" and
 /// "Google Sans Medium 14/20". The page prints a second figure for iOS
 /// (`branding_guide_ios_spec.png`: 44 high, paddings of 16, 12 and 16,
 /// Roboto Medium) and nothing here reads it: the owner decided that the button
@@ -48,6 +48,11 @@ abstract final class GoogleSignInBrand {
   /// The visual only. The hit box around it is the system's 48 dp, which the
   /// page leaves to the app: a transparent 4 dp on each side.
   static const double height = 40;
+
+  /// The rectangular variant's corner radius, from Google's HTML button
+  /// configurator on [guidelinesUrl] (`border-radius: 4px`). Rectangular and
+  /// pill shapes are both approved; this component uses the rectangle.
+  static const double cornerRadius = 4;
 
   /// The "G" logo's box: 20 by 20. The page says the logo's size and colour
   /// are not to be changed, so it does not scale with the text.

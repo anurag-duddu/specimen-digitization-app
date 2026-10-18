@@ -269,6 +269,145 @@ def test_completed_operation_error_is_detected_despite_http_success(tmp_path):
     assert all(canary not in message for canary in PRIVATE_CANARIES)
 
 
+def operation_transcript(name, *, poll_url=None, provision_status="200", provision_url=PROVISION_URL):
+    # CLI 15.8.0 forwards response.body.name to OperationPoller; apiv2 only
+    # prepends the fixed API prefix and a slash when the name has none.
+    if poll_url is None:
+        poll_url = "https://firebase.googleapis.com/v1beta1" + (
+            name if name.startswith("/") else "/" + name)
+    return "\n".join([
+        debug_response("status", provision_status, url=provision_url),
+        debug_response("body", json.dumps({"name": name}), url=provision_url),
+        debug_response("status", "200", method="GET", url=poll_url),
+        debug_response("body", json.dumps({"done": True, **private_api_error(code=7)}),
+                       method="GET", url=poll_url),
+    ])
+
+
+@pytest.mark.parametrize("name", [
+    "operations/private-operation-id:1.2",
+    f"projects/{auth.NUMBER}/locations/global/operations/private-operation-id:1.2",
+    "/operations/private-operation-id:1.2",
+])
+def test_server_operation_name_correlates_completed_error_without_leaking_name(tmp_path, name):
+    # Synthetic resource names exercise the pinned CLI contract, not a claim
+    # about the shape of the discarded production response.
+    (tmp_path / "firebase-debug.log").write_text(operation_transcript(name))
+    message = auth.cli_failure_diagnostic(SimpleNamespace(stdout="", stderr=""), tmp_path)
+    assert message == ("CLI response diagnostic: stage=provider_operation http=200 api_code=7 "
+                       "api_status=PERMISSION_DENIED reason=IAM_PERMISSION_DENIED "
+                       "permission=firebaseauth.configs.update")
+    assert all(canary not in message for canary in PRIVATE_CANARIES)
+    assert name not in message and "https://" not in message and len(message) < 256
+
+
+@pytest.mark.parametrize("poll_url", [
+    OPERATION_URL,  # Even the old recognized grammar must match the learned name.
+    "https://firebase.googleapis.com/v1beta1/operations/different:1.2",
+    "https://firebase.googleapis.com/v1beta1/operations/private-operation-id:1.2/extra",
+    "https://firebase.googleapis.com/v1beta1/operations/private-operation-id:1.2?key=private",
+    "https://firebase.googleapis.com/v1beta1/operations/private-operation-id:1.2#private",
+    "https://firebase.googleapis.com.evil.test/v1beta1/operations/private-operation-id:1.2",
+])
+def test_learned_operation_cannot_borrow_another_poll_response(poll_url):
+    assert auth._cli_observation(operation_transcript(
+        "operations/private-operation-id:1.2", poll_url=poll_url)) == {
+            "stage": "provider_provision", "http": 200}
+
+
+@pytest.mark.parametrize("name", [
+    None, False, 7, [], {}, "", "operations/" + "x" * 2048,
+    "https://private.example.test/operations/id", "//private.example.test/operations/id",
+    "https:operations/id", "operations/id?access_token=private", "operations/id#private",
+    "operations/../id", "operations/./id", "../operations/id", "operations//id",
+    "operations/id/", "operations/%2e%2e/id", "operations/id%3Fkey=private",
+    "operations\\id", "operations/id\nprivate", "operations/id\rprivate",
+    "operations/id\tprivate", "operations/id\x00private", "operations/id private",
+    "operations/id\u2028private", "operations/id\x7fprivate",
+])
+def test_untrusted_operation_name_cannot_authorize_poll_diagnostics(name):
+    # A malformed response disables legacy uncorrelated operation matching too.
+    assert auth._cli_observation(operation_transcript(name, poll_url=OPERATION_URL)) == {
+        "stage": "provider_provision", "http": 200}
+
+
+@pytest.mark.parametrize("status", ["400", "403", "500"])
+def test_failed_provision_response_does_not_authorize_poll_diagnostics(status):
+    assert auth._cli_observation(operation_transcript(
+        "operations/private-operation-id:1.2", provision_status=status)) == {
+            "stage": "provider_provision", "http": int(status)}
+
+
+def test_untrusted_provision_response_cannot_teach_an_operation_name():
+    text = operation_transcript("operations/private-operation-id:1.2",
+                                provision_url="https://private.example.test/provision")
+    assert auth._cli_observation(text) == {}
+
+
+def test_operation_name_requires_a_paired_provision_response():
+    text = operation_transcript("operations/private-operation-id:1.2")
+    assert auth._cli_observation("\n".join(text.splitlines()[1:])) == {}
+    text = text.replace(debug_response("status", "200"), "\n".join([
+        debug_response("status", "200"),
+        debug_response("status", "200", url="https://private.example.test/unrelated"),
+    ]), 1)
+    assert auth._cli_observation(text) == {"stage": "provider_provision", "http": 200}
+
+
+def test_new_provision_response_invalidates_previous_operation_name():
+    first = operation_transcript("operations/first:1.2").splitlines()[:2]
+    second = operation_transcript("operations/second:1.2",
+                                   poll_url="https://firebase.googleapis.com/v1beta1/operations/first:1.2")
+    assert auth._cli_observation("\n".join([*first, second])) == {
+        "stage": "provider_provision", "http": 200}
+
+
+def test_correlated_operation_http_error_omits_arbitrary_message():
+    name = "operations/private-operation-id:1.2"
+    prefix = operation_transcript(name).splitlines()[:2]
+    text = "\n".join([*prefix,
+        "Error: Failed to provision Firebase app: Request to "
+        f"https://firebase.googleapis.com/v1beta1/{name} had HTTP Error: 403, "
+        + " ".join(PRIVATE_CANARIES)])
+    assert auth._cli_observation(text) == {"stage": "provider_operation", "http": 403}
+
+
+def test_provision_http_error_invalidates_previously_learned_operation():
+    lines = operation_transcript("operations/private-operation-id:1.2").splitlines()
+    text = "\n".join([*lines[:2],
+        f"Error: Request to {PROVISION_URL} had HTTP Error: 403, " + PRIVATE_CANARIES[0],
+        *lines[2:]])
+    assert auth._cli_observation(text) == {"stage": "provider_provision", "http": 403}
+
+
+def test_error_body_cannot_teach_operation_name_despite_success_http():
+    name = "operations/private-operation-id:1.2"
+    text = operation_transcript(name).splitlines()
+    text[1] = debug_response("body", json.dumps({"name": name, **private_api_error(code=7)}))
+    assert auth._cli_observation("\n".join(text)) == {
+        "stage": "provider_provision", "http": 200, "api_code": 7,
+        "api_status": "PERMISSION_DENIED", "reason": "IAM_PERMISSION_DENIED",
+        "permission": "firebaseauth.configs.update"}
+
+
+def test_successful_correlated_operation_does_not_extract_response_secrets(tmp_path):
+    name = "operations/private-operation-id:1.2"
+    text = operation_transcript(name).splitlines()[:3]
+    text.append(debug_response("body", json.dumps({
+        "name": name, "done": True, "response": {"clientSecret": " ".join(PRIVATE_CANARIES)},
+    }), method="GET", url="https://firebase.googleapis.com/v1beta1/" + name))
+    (tmp_path / "firebase-debug.log").write_text("\n".join(text))
+    assert auth.cli_failure_diagnostic(SimpleNamespace(stdout="", stderr=""), tmp_path) == (
+        "CLI response diagnostic: stage=provider_operation http=200")
+
+
+def test_operation_correlation_is_not_shared_between_independent_output_sources(tmp_path):
+    lines = operation_transcript("operations/private-operation-id:1.2").splitlines()
+    (tmp_path / "firebase-debug.log").write_text("\n".join(lines[:2]))
+    assert auth.cli_failure_diagnostic(SimpleNamespace(stdout="\n".join(lines[2:]), stderr=""), tmp_path) == (
+        "CLI response diagnostic: stage=provider_provision http=200")
+
+
 @pytest.mark.parametrize("method,url,stage", [
     ("POST", f"https://cloudresourcemanager.googleapis.com/v1/projects/{auth.PROJECT}:testIamPermissions", "permission_check"),
     ("GET", f"https://cloudresourcemanager.googleapis.com/v1/projects/{auth.NUMBER}", "project_read"),

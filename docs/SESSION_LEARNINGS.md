@@ -21983,3 +21983,198 @@ writes occurred in that dry run. A subsequent `--auth-only` application attempt
 was rejected by automatic approval review because the production IAM recipient
 and scope required explicit authorization. Both concrete auth and intake setup
 approvals were requested together; cloud setup remained unapplied when recorded.
+
+### 2026-10-18 UTC — Login recovery merge and partial release
+
+- Task `01a147ea-7efb-7e22-8821-e42395a135fc`, worktree `9030`, branch
+  `codex/login-appcheck-recovery`: exact final head `0cf7a102` passed independent
+  G51 review and fresh hosted CI/CD 39082345693 plus Runtime candidate
+  39082345699. All required checks passed; native builds passed. The final
+  head differs from fully canonical-qualified `57b1ec4c` only by a verified
+  append to this journal. No checks or assertions were relaxed.
+- PR #375 merged normally as `c38f4fd4a096d09e37e8e395f87889f2faa5648b`
+  at 00:33:23 UTC. The merge tree exactly matches reviewed head `0cf7a102`.
+  Main Runtime candidate 39083195885 passed. Hosting 39083195854 is still
+  running at this entry; deployment and fresh original-tab acceptance remain
+  Not confirmed. A later append will record the final Hosting and browser result.
+- Data 39083195853 failed at "Enable and verify Google alongside email
+  sign-in": CLI exit 2, stage provider_provision, last recognized HTTP 200,
+  no concrete API reason or missing permission. Runtime 39083195857 built
+  and pushed all images successfully, but its Data dependency failed and
+  deployment was skipped. A fresh public API /version read still reports
+  `69bd6469cde211cb822936f9ac033b9453a80404`; full release is NOT green.
+- A bounded read-only CLI/source inspection found no concrete invocation or
+  schema defect. The initial HTTP 200 precedes operation polling and must not
+  be presented as provisioning success. The diagnostic operation-name matcher
+  could omit differently shaped operation names, but this is not established
+  as the live failure. No further cloud audit, grants, retries, feature-flag
+  changes or release-gate changes were performed. Google remains hidden.
+- Before pruning, live GitHub confirmed PR #371 and #374 merged their exact
+  local heads `ecbc150f` and `238317a3`; remote lookup found no remaining
+  task branch heads. Only merged local predecessor branches are eligible for
+  normal safe deletion. Preserve current recovery branch and this closeout,
+  and preserve unmerged `codex/login-journey-complete` at `18288554` (custom
+  code-plus-link work has no configured sender and was never deployed).
+
+- Final c38 Hosting outcome: CI/CD 39083195854 succeeded at 00:46:28 UTC;
+  protected deployment and public smoke passed. Independent public marker
+  matches exact `c38f4fd4`, run 39083195854, attempt 1. Native, web, repository,
+  engine and Python checks all passed. Runtime candidate also passed; the
+  separate Data/Runtime failures recorded above remain unresolved.
+- Fresh real email acceptance on c38 passed in a new owned Chrome Guest
+  profile. One request at 00:47:17 UTC produced the matching 00:47 email;
+  no resend was needed. The actual delivered link signed in the second tab
+  to the intended Insects collection with a clean route. The original tab
+  reached the same authorized collection without manual reload. Sign-out
+  propagated to both tabs and cleared stale sent/email state. Screenshot
+  evidence and `live-login-acceptance-c38f4fd4.json` are retained externally.
+  The precise automatic reload count was not instrumented; its bound is
+  covered by tests. Physical native-app email return remains Not confirmed.
+- Closed only the owned Guest window and cleared in-memory link variables;
+  the user's existing signed-in app and Chrome audio window were preserved.
+  Safely deleted merged local predecessor branches and stale remote-tracking
+  refs; retained current source, journal and unmerged custom-email branch.
+- The owner explicitly answered "Keep Google in this launch." Google is
+  required, so this is not a completed launch. No deferral was applied.
+- Google diagnostic follow-up branch `codex/login-google-operation-diagnostics`
+  starts from c38 and preserves this journal. A concrete parser/CLI mismatch
+  was found: the script assumed a narrow operation name, but CLI 15.8.0 uses
+  the server-returned name. Exact safe-name correlation now preserves only
+  bounded error output. Three synthetic cases failed before the repair; the
+  focused suite passed 174 after it. Deleted live raw logs cannot establish
+  that their operation name had this shape; this repair may still yield only
+  the known PERMISSION_DENIED code, and is not a provisioning fix by itself.
+- A documented Firebase managed-agent binding was checked read-only. The
+  first gcloud attempt exited 1 without a recognized HTTP status; its cause
+  was unknown and no policy was returned. A single alternative field-masked
+  read using the existing owner Firebase session succeeded at 00:52:04 UTC:
+  the exact managed agent has one unconditional
+  `roles/firebase.managementServiceAgent` binding. No restoration is needed
+  from this evidence, and no additional IAM grant was made. The internal
+  ProvisionFirebaseApp endpoint has no complete public IAM contract; neither
+  extra caller OAuth permissions nor a support-email change is established
+  as the remedy. No raw policy, unrelated principals or tokens were saved.
+
+
+## 2026-10-17: login launch activation and provider-button consistency
+
+- Task `01a147ea-7efb-7e22-8821-e42395a135fc`, coordinator `/root`, worktree
+  `/Users/anuragduddu/.codex/worktrees/9030/specimen-digitization-app`, branch
+  `codex/login-google-operation-diagnostics`, base diagnostic commit `cc4f9b83`.
+  The owner kept Google in this launch and then flagged the inconsistent small
+  Google pill beside the full-width email action. Existing authorization covers
+  design, build, test, fix, protected launch and safe pruning.
+- Superseding release evidence: main `c38f4fd4` Data run `39083195853` attempt 2
+  and Runtime run `39083195857` attempt 2 succeeded. These reruns were initiated
+  externally, not by this coordinator. Data reported "Google provider already
+  enabled; existing client retained." The previously failing provider-creation
+  path was not exercised. The unmerged diagnostic repair did not cause this
+  success. A masked owner read returned HTTP 200, enabled=true, the expected
+  resource and a valid client ID; clientSecret was never requested. No additional
+  IAM grants, provider writes or workstation deployment were made.
+- The coordinator set the existing public repository UI flag
+  `SPECIMEN_GOOGLE_SIGN_IN_ENABLED=true` and reran all jobs of the existing main
+  push Hosting run `39083195854`. Attempt 2 passed all checks and deployed; public
+  smoke completed 2026-10-18 01:21:31 UTC. The public marker matches exact c38,
+  run and attempt; served main.dart.js SHA-256
+  `9705bc4764ff55381fa65bf44b199b78465f48f0aa609dcc62afc5e79a8100fd`
+  matches the digest-verified tested artifact, whose build log records flag=true.
+  Runtime /version independently matches c38, readiness is 200 and the public
+  unauthenticated session check returns the expected 401. Warm/process was
+  skipped; no fresh specimen-processing acceptance is claimed.
+- Exact `cc4f9b83` canonical verification completed cleanly, exit 0 at
+  2026-10-18 01:17:19 UTC: 18,272 Python passes / 49 skips (18,321 collected,
+  each executed once across six shards), 1,307 design-system tests, 3,124 app
+  tests / 7 skips, both analyzers clean, 585 formatted files / zero changes,
+  release web build and 13 route / five header smoke checks passed. The local
+  unstamped marker check was skipped as expected. Independent review approved
+  that exact source/tree. This qualification does not cover the subsequent UI
+  correction described below.
+- Provider-button correction: the earlier recorded owner rule required one
+  Google component with the same look across platforms and Google's branding;
+  it did not require a content-hugging pill. Google explicitly permits rectangular
+  and pill variants. The shared component now follows the default rectangular
+  HTML configurator: 4 dp corners, fixed 12 dp start/end inset, 20 dp logo,
+  10 dp gap, and an expanding centered label region. Bounded forms fill their
+  available width; unbounded contexts retain intrinsic sizing. Logo, font and
+  brand colors are unchanged. A narrow optional Pressable focus-shape override
+  lets the focus ring follow this rectangle; all existing defaults remain.
+  Only initial Send link uses medium sizing; confirmation and resend keep large.
+  Authentication/provider behavior is unchanged by this correction.
+- Focused correction validation: 41 package tests, 33 login tests and four
+  no-update Google golden comparisons passed; both focused analyses are clean.
+  Only the four directly affected Google button golden images were regenerated
+  for the intentional shape/alignment change. Assertions for logo/color,
+  platform consistency, keyboard focus, RTL and large text remain. Twelve
+  offline production-widget entry captures completed against stable source;
+  coordinator inspected desktop, tablet, mobile, dark, keyboard and 200 percent
+  Google entry scenes. Authentication in these images is synthetic. Fresh
+  canonical verification, exact-head review and protected release of this UI
+  correction remain pending at the time of this entry.
+- Live Google acceptance on c38 attempt 2: an owned Chrome museum-profile tab
+  initially restored an older cached UI/session with app-verification failure;
+  normal refresh loaded the current two-method entry. A background automation
+  click was pop-up blocked; a native browser interaction opened Google's account
+  picker. Closing that owned provider tab restored enabled email and Google
+  choices with cancellation guidance. Retrying, choosing aduddu@fieldmuseum.org
+  and continuing with only the displayed name/profile and email scopes completed
+  Google's callback. No Workspace policy rejection occurred. The app correctly
+  showed the museum account, but collection admission is NOT CONFIRMED: local
+  app verification failed with typed app_check_unavailable. One supported Reload
+  app returned briefly to the intended collection route before the same failure.
+  The browser SDK reports appCheck/recaptcha-error. No CAPTCHA challenge was
+  visible. No protection was disabled, cookie store reset, extension changed,
+  or collection membership granted to make this pass. Earlier successful real
+  email-link acceptance in a fresh Guest profile remains separate evidence.
+- Evidence directory:
+  `/Users/anuragduddu/.codex/visualizations/2026/10/17/01a147ea-7efb-7e22-8821-e42395a135fc/login-study/recovery-implementation/`:
+  `data-runtime-c38f4fd4-attempt2-final.json`,
+  `hosting-google-activation-c38-attempt2/hosting-verification.json`,
+  `canonical-google-operation-cc4f9b83-result.json`,
+  `google-button-consistency-local.json`, `button-alignment-captures/manifest.json`
+  and `live-google-acceptance-c38-attempt2.json`. Earlier failed-attempt reports
+  are preserved. Physical installed-app authentication is Not confirmed.
+
+
+## 2026-10-17: login button correction qualified for protected integration
+
+- Task: `01a147ea-7efb-7e22-8821-e42395a135fc`; branch
+  `codex/login-google-operation-diagnostics`, worktree `9030`.
+- UI correction committed as `dc83030d2412a1cdc142ec2e5cc9875a725f7eae`,
+  tree `c76ebda2609ac8d4664b3e9281aeba6dcb7ddead`; inherited diagnostic
+  repair remains `cc4f9b8308c59d4435dd90b8fb52555c87b82e7c`.
+- Full `PYTHON_TEST_SHARDS=6 bash scripts/ci/verify.sh` passed on the clean
+  exact `dc83030d` head from 2026-10-18 01:40:37 to 02:01:52 UTC:
+  18,272 Python tests passed / 49 skipped, all 18,321 collected exactly once;
+  1,309 design-system tests passed; 3,134 app tests passed / 7 skipped;
+  both analyzers clean; 585 files formatted with no changes; release web
+  build and 13-route/five-header smoke passed. The local unstamped deployment
+  marker was intentionally not a production assertion. Final worktree clean.
+- G51 independent review approved all 19 changed files at the exact head/tree,
+  with no findings. The reviewer checked all 12 retained entry captures,
+  four changed Google goldens and tracked source/image hashes. A separate
+  reviewer approved the UI delta; its inherited diagnostic approval was
+  explicitly attributed to the independent diagnostic reviewer.
+- Evidence is under the existing external `login-study/recovery-implementation/`
+  directory: `canonical-google-button-dc83030d-result.json` and corresponding
+  log; `independent-full-review-dc83030d.json`; and
+  `full-review-dc83030d-source-verification.json`. This closeout append changes
+  only the journal; code validation remains bound to `dc83030d` and hosted
+  checks must qualify the eventual PR head before merge.
+- Additional bounded App Check investigation captured one instrumented native
+  Chrome reload. Enterprise JS, reCAPTCHA assets, anchor and clr requests
+  returned HTTP 200; no App Check token-exchange request was observed. The
+  museum identity remained authenticated but collection admission still
+  failed with local app verification. HTTP 200 does not establish successful
+  reCAPTCHA execution. No bodies, headers, query values or tokens retained.
+- Pinned SDK/Flutter source does not support a missing initialization await or
+  Flutter body-clearing fix. The documented related SDK concurrency repair
+  predates the deployed SDK. No speculative upgrade, storage reset, browser
+  security change or enforcement reduction was made. The owner has a pending
+  optional check in their usual browser. Evidence: `appcheck-resource-trace-c38.json`
+  and `appcheck-upstream-bounded-search-c38.json`.
+- At this entry, the button correction is not deployed and has no PR yet.
+  Current live release remains `c38f4fd4` with all three attempt-2 workflows
+  green. Full collection admission after Google in the tested Chrome profile
+  and physical installed-app authentication are Not confirmed. Preserve the
+  unmerged `codex/login-journey-complete` branch and primary worktree.

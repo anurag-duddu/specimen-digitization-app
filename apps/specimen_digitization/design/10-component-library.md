@@ -509,9 +509,10 @@ decision and is not this control's.
 
 Anatomy, from Google's "Sign in with Google branding guidelines"
 (<https://developers.google.com/identity/branding-guidelines>, the custom
-button section, updated 2026-07-07): Google's pill, 40 high at normal text, a
-1 dp outline drawn inside the edge, the standard colour "G" in a 20 by 20 box, the label in
-Google Sans Medium 14/20, and paddings of 12 before the G, 10 between the G and
+button section, updated 2026-07-07): the rectangular variant, 40 high at normal
+text, a 1 dp outline drawn inside the edge, the standard colour "G" in a
+20 by 20 box, the label in Google Sans Medium 14/20, and paddings of 12 before
+the G, 10 between the G and
 the label and 12 after it. Fill, outline and label colour are Google's Light
 theme in a light window and its Dark theme in a dark one (`GoogleSignInPalette`).
 The label is "Sign in with Google", one of the three the page recommends, and
@@ -530,18 +531,19 @@ for iOS (44 high, paddings of 16, 12 and 16, Roboto Medium), because one look on
 every platform was the decision. The page does not say whether Google's brand
 review accepts the first figure in an iPhone app; that is not verified.
 
-The pill is a deliberate brand exception to the system's shape. The page
-pre-approves two shapes, "Rectangular" and "Pill", and the figure it publishes
-for a custom button is the pill. The system's command buttons are the 8 dp
-superellipse (`UiButton` draws `Squircle.border(ui.shape.inner)`; the word
-"Capsule" at the head of its entry above is out of date), and this button keeps
-Google's, because a third party's brand is not ours to reshape. It draws its
-stadium from `StadiumBorder` directly, not from `ui.shape.capsule`, which
-`shape.dart` reserves for intrinsically rounded forms.
+The page pre-approves both "Rectangular" and "Pill". The owner required one
+shared appearance across platforms, not a pill or an intrinsic width. The
+component uses the rectangular variant, with the 4 px corner radius in Google's
+HTML configurator (checked 2026-10-17), so it fits the form's rectangular
+controls. It draws `RoundedRectangleBorder` from the named brand radius. The
+product's own command buttons retain their 8 dp superellipse; Google's font,
+logo and colours remain distinct. `Pressable` accepts an optional focus-shape
+override for this rounded rectangle; omitting it preserves every existing
+control's focus contour.
 
 Behaviour is the control contract. It is a `Pressable`, so the hit box is 48 dp
-with the 40 dp button inside it, the focus ring is a stadium around the
-pill, hover and press lift the button toward its label colour at 8 and 12
+with the 40 dp button inside it, the focus ring follows its rounded
+rectangle, hover and press lift the button toward its label colour at 8 and 12
 percent in light and 10 and 14 in dark (Google's colours at rest are unchanged),
 and the press layer takes its duration from `ui.motion`, so
 `MediaQuery.disableAnimations` snaps it. The component starts no animation of
@@ -563,15 +565,19 @@ on `paper`. The floors are 4.5:1 for the label and 3:1 for the outline. Its
 licence is registered beside Geist's in `UiFonts.registerLicense`, so Google
 Sans is listed on the application's licence page.
 
-Four departures, stated rather than hidden. The shape is Google's pill, as
-above. Its label wraps onto a second line
-at a width or text size that does not hold it, where every other label ends in
+The brand shape remains distinct from the product superellipse. Its label
+wraps onto a second line at a width or text size that does not hold it, where
+every other label ends in
 an ellipsis, because an ellipsis cuts Google's call to action to "Sign in with
 Go"; clause 13 is therefore not claimed and the contract test leaves it off.
-The G keeps 20 by 20 at every text size, because the page says its size does
-not change, so only the height grows (60 at 200 percent). And it takes the width
-its content needs and does not stretch to the column, as `UiButton` does
-(`UiButtonRow` stacks actions at their own widths). It is not on the actions gallery page yet: adding a specimen
+The G keeps 20 by 20 at every text size. Its height grows to at least 60 at
+200 percent, and further when the label wraps. Its boundary fills a bounded
+parent width, aligning with the login field and primary action. In an unbounded
+parent it takes its intrinsic width. As in the HTML configurator's default wide
+layout, the G stays 12 dp from the start; after its 10 dp gap, the label is
+centred in the remaining space with 12 dp at the end. These insets mirror in
+RTL. Expanding the boundary never stretches the artwork.
+It is not on the actions gallery page yet: adding a specimen
 moves the family goldens in all their combinations, and this change is the
 component and its adoption. Retires the private `_GoogleSignInButton` of
 `lib/src/google_sign_in_option.dart`.

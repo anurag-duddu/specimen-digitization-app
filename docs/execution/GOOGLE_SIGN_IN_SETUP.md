@@ -52,6 +52,10 @@ bounded status/error identifiers. Raw CLI output, API payloads and private
 debug logs are never published. A last observed response is diagnostic context,
 not proof that a particular permission is missing; a generic exit code alone
 does not authorize additional grants.
+The diagnostic correlates polling with the exact safe operation name returned
+by a successful provisioning response, following the pinned CLI URL format.
+The name remains private; only the same finite status/error fields are emitted.
+An unmatched operation contributes no error details.
 
 ## One-time permission setup
 

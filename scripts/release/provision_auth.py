@@ -185,10 +185,14 @@ def google_ready(provider):
             and isinstance(client, str) and bool(re.fullmatch(r"[A-Za-z0-9-]+\.apps\.googleusercontent\.com", client)))
 
 
-def _cli_stage(method, url):
+def _cli_stage(method, url, *, operation_url=None, operation_seen=False):
+    if method == "GET" and operation_url is not None and url == operation_url:
+        return "provider_operation"
     base, separator, query = url.partition("?")
     stage = next((stage for verb, pattern, stage in _CLI_STAGES
                   if method == verb and re.fullmatch(pattern, base)), None)
+    if stage == "provider_operation" and operation_seen:
+        return None
     if not separator:
         return stage
     # apiv2 response records omit query parameters, but responseToError uses
@@ -205,6 +209,26 @@ def _cli_stage(method, url):
             or any(key == "pageSize" and not re.fullmatch(r"[1-9][0-9]{0,3}", value) for key, value in fields)):
         return None
     return stage
+
+
+def _cli_operation_url(body):
+    """Correlate a safe server-returned resource name; never emit it."""
+    try:
+        data = json.loads(body)
+    except (ValueError, RecursionError):
+        return None
+    name = data.get("name") if isinstance(data, dict) and "error" not in data else None
+    if (not isinstance(name, str) or not 1 <= len(name) <= 2048
+            or not re.fullmatch(r"[A-Za-z0-9_./:~-]+", name)):
+        return None
+    parts = name.removeprefix("/").split("/")
+    if (any(part in {"", ".", ".."} for part in parts) or ":" in parts[0]
+            or "operations" not in parts[:-1]):
+        return None
+    # CLI 15.8.0 provision.js passes name unchanged to OperationPoller.
+    # apiv2.doRequest adds a leading slash, then requestURL prefixes this host
+    # and version. No decoding, URL joining or untrusted origin is involved.
+    return "https://firebase.googleapis.com/v1beta1" + (name if name.startswith("/") else "/" + name)
 
 
 def _structured_cli_error(body):
@@ -250,31 +274,40 @@ def _cli_observation(text):
     if not isinstance(text, str) or len(text) > DIAGNOSTIC_LIMIT:
         return {}
     result, response_key = {}, None
+    operation_url, operation_seen = None, False
     for line in text.splitlines():
         if len(line) > DIAGNOSTIC_LINE_LIMIT:
             continue
         match = _RESPONSE_LINE.fullmatch(line)
         if match:
             kind, method, url, payload = match.groups()
-            stage = _cli_stage(method, url)
+            stage = _cli_stage(method, url, operation_url=operation_url, operation_seen=operation_seen)
             if kind == "status":
                 # An intervening unknown response cannot donate its body to a
                 # previous recognized request, even when a URL is repeated.
                 response_key = None
+                if stage == "provider_provision":
+                    operation_url = None
+                    operation_seen = bool(re.fullmatch(r"2[0-9]{2}", payload))
                 if stage and re.fullmatch(r"[1-5][0-9]{2}", payload):
                     result = {"stage": stage, "http": int(payload)}
                     response_key = (method, url)
             elif stage and response_key == (method, url):
                 result.update(_structured_cli_error(payload))
+                if stage == "provider_provision" and 200 <= result["http"] < 300:
+                    operation_url = _cli_operation_url(payload)
             continue
         match = _CLI_HTTP_ERROR.fullmatch(line)
         if match:
             url, status = match.groups()
             # responseToError omits the method; infer it only for an endpoint
             # with a single known verb in this pinned Auth provisioning path.
-            stages = {_cli_stage(verb, url) for verb in ("GET", "POST")} - {None}
+            stages = {_cli_stage(verb, url, operation_url=operation_url, operation_seen=operation_seen)
+                      for verb in ("GET", "POST")} - {None}
             if len(stages) == 1:
                 stage = stages.pop()
+                if stage == "provider_provision":
+                    operation_url, operation_seen = None, False
                 if result.get("stage") != stage or result.get("http") != int(status):
                     result = {"stage": stage, "http": int(status)}
                 response_key = None

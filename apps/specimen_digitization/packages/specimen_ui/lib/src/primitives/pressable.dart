@@ -75,6 +75,7 @@ class Pressable extends StatefulWidget {
     this.excludeFromSemantics = false,
     this.stateLayerColour,
     this.focusRing = true,
+    this.focusShape,
     this.insetFocusRing = false,
   });
 
@@ -119,6 +120,13 @@ class Pressable extends StatefulWidget {
 
   /// True when the control is a capsule.
   final bool capsule;
+
+  /// Overrides the focus contour for a control with an explicit [shape].
+  ///
+  /// Omit to keep the normal capsule or superellipse ring. A branded rounded
+  /// rectangle supplies its contour and [radius] without changing other
+  /// controls.
+  final FocusRingShape? focusShape;
 
   /// True to scale the visual to 0.98 while pressed on a touch window.
   final bool scaleOnPress;
@@ -361,9 +369,11 @@ class _PressableState extends State<Pressable> {
       inset: widget.insetFocusRing,
       color: widget.insetFocusRing ? widget.stateLayerColour : null,
       radius: widget.radius ?? ui.shape.inner,
-      shape: widget.capsule
-          ? FocusRingShape.stadium
-          : FocusRingShape.superellipse,
+      shape:
+          widget.focusShape ??
+          (widget.capsule
+              ? FocusRingShape.stadium
+              : FocusRingShape.superellipse),
       child: visual,
     );
     final double hit = widget.minHitBox ?? UiDensity.hitBox;
