@@ -645,17 +645,39 @@ def _confirmed_country(run, readings: Sequence[Reading], places: Mapping[str, Ma
 PLACE_LINE_SEPARATORS = re.compile(r"[,;:()\[\]/]")
 
 
+def _residue_words() -> frozenset[str]:
+    """The words that, alone, name no place on a line of places
+    (_unplaced_text), folded, periods dropped: what written's tables read
+    around an elevation or a date (its headings, approximate words,
+    elevation words, units and their parts, months, range joiners), and a
+    collector's or a determiner's mark (written.PERSON_MARKS, and "lg").
+    "alt." of "alt. 1200 m", "coll." of "coll. 12.vi.1948", "leg." beside a
+    collector's name (round 1 of #381's review, finding 1)."""
+    from . import written
+
+    return (written.HEADINGS | written.APPROXIMATE | written.ELEVATION_WORDS | frozenset(written.UNIT_OF)
+        | written.UNIT_PARTS | written.MONTH_WORDS | written.JOINERS | written.PERSON_MARKS | frozenset({"lg"}))
+
+
+# A run of letters, as _unplaced_text splits what is left of a group into words.
+LETTERS = re.compile(r"[^\W\d_]+")
+
+
 def _unplaced_text(run, readings: Sequence[Reading], places: Mapping[str, Mapping[str, frozenset[str]]],
         answers: Sequence[SourceAnswer], nation) -> str | None:
     """Text a reading writes on a line of the record's places that may name
     another country than `nation` (an agreement.PlaceField), or None.
 
     The lines are those of every reading that write a country, province or
-    county text of the record as whole words (`places`, any reading's), and
-    on each label the line at the same place, by its index, of every other
-    reader of that label: reader 1B's "Canada" over "Ill." over "Coles Co."
-    where only 1A's "USA" / "Ill." / "Coles Co." are filed (round 1 of
-    #380's review, finding 3).
+    county text of the record as whole words (`places`, any reading's). On a
+    label whose readers all have the same number of lines, each reader's
+    line at the same place (by its index) as such a line of another reader
+    is read too: reader 1B's "Canada" over "Ill." over "Coles Co." where only
+    1A's "USA" / "Ill." / "Coles Co." are filed (round 1 of #380's review,
+    finding 3). Readers whose line counts differ (one reads a printed
+    header the other skips, or joins two lines) would pair the wrong lines,
+    so then each reader's own place lines alone are read (round 1 of #381's
+    review, finding 2).
 
     On each line, the text the fields hold is set aside where the line
     writes it as whole words: every place field's texts and every field's
@@ -669,13 +691,20 @@ def _unplaced_text(run, readings: Sequence[Reading], places: Mapping[str, Mappin
     it set aside first (written.other_kind, as often as it finds one:
     "Canada 1948", "Canada 1200 ft"; finding 4). A group then counts for
     nothing when it holds no letter, is only unit words (agreement.place_name
-    is empty), was asked of the sources and found by none
-    (agreement.ruled_out: 3781e440's "U.S.B.I.L."), or is confirmed as that
-    same nation (agreement.confirmed_place). The first group left is
+    is empty), is only words that name no place (_residue_words: the "alt."
+    an elevation leaves, the "leg." beside a collector), was asked of the
+    sources and found by none (agreement.ruled_out: 3781e440's
+    "U.S.B.I.L."), names that nation (one of its names, or an abbreviation
+    of one by the letter rule: "United States", "U.S." and "US" beside the
+    United States; round 1 of #381's review, finding 3), or is confirmed as
+    that same nation (agreement.confirmed_place). The first group left is
     returned: "Canada" of "Canada: Ill. Coles Co.", which no candidate
     files."""
     from . import written
+    from .abbreviations import fits
     from .agreement import confirmed_place, place_keys, place_name, ruled_out, verbatim_runs
+
+    residue = _residue_words()
 
     anchors = {text for key in ("country", "province_state", "county")
         for texts in places.get(key, {}).values() for text in texts}
@@ -690,6 +719,13 @@ def _unplaced_text(run, readings: Sequence[Reading], places: Mapping[str, Mappin
         return found is not None and ((found.authority_id is not None and found.authority_id == nation.authority_id)
             or bool(place_keys(found.texts) & place_keys(nation.texts)))
 
+    def names_the_nation(group: str) -> bool:
+        return place_name(group) in place_keys(nation.texts) or any(fits(group, name) for name in nation.texts)
+
+    def places_nothing(group: str) -> bool:
+        words = LETTERS.findall(written.fold(group))
+        return bool(words) and all(word in residue for word in words)
+
     def weighed(group: str) -> str:
         # Each date, elevation or range in the group is another field's text.
         for _ in range(len(group)):
@@ -700,23 +736,27 @@ def _unplaced_text(run, readings: Sequence[Reading], places: Mapping[str, Mappin
         return group.strip()
 
     lines_of = {reading.name: reading.text.split("\n") for reading in readings}
-    indices: dict[str, set[int]] = {}
+    own = {reading.name: {index for index, line in enumerate(lines_of[reading.name])
+        if any(verbatim_runs(line, text) for text in anchors)} for reading in readings}
+    regions: dict[str, list[Reading]] = {}
     for reading in readings:
-        indices.setdefault(reading.region_id, set()).update(index for index, line in enumerate(lines_of[reading.name])
-            if any(verbatim_runs(line, text) for text in anchors))
+        regions.setdefault(reading.region_id, []).append(reading)
     for reading in readings:
         lines = lines_of[reading.name]
-        for index in sorted(indices.get(reading.region_id, ())):
-            if index >= len(lines):
-                continue
+        group_of = regions[reading.region_id]
+        indices = set(own[reading.name])
+        if len({len(lines_of[other.name]) for other in group_of}) == 1:
+            indices |= {index for other in group_of for index in own[other.name]}
+        for index in sorted(indices):
             free = list(lines[index])
             for text in parts:
                 for start, end in verbatim_runs(lines[index], text):
                     free[start:end] = " " * (end - start)
             for group in PLACE_LINE_SEPARATORS.split("".join(free)):
                 group = weighed(group)
-                if (not any(char.isalpha() for char in group) or not place_name(group)
-                        or ruled_out(answers, group) or same(confirmed_place(answers, [group], "country"))):
+                if (not any(char.isalpha() for char in group) or not place_name(group) or places_nothing(group)
+                        or ruled_out(answers, group) or names_the_nation(group)
+                        or same(confirmed_place(answers, [group], "country"))):
                     continue
                 return group
     return None

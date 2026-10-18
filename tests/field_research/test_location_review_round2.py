@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import pytest
 from test_location_last_gaps import (
+    COLES,
     COLES_B,
     COLES_CANDIDATES,
     COUNTRY_LOOKUPS,
@@ -138,4 +139,79 @@ def test_a_date_alone_on_the_place_line_holds_nothing_back(tmp_path):
     is set aside and leaves nothing."""
     first = COLES_B.replace("U.S.B.I.L.: Coles Co.,", "1-9 June 1979: Ill. Coles Co.")
     run, _ = coles(tmp_path, first, country=fallback(*COUNTRY_LOOKUPS))
+    assert (run.fields["country"].layer, run.fields["country"].parsed) == ("derived", "United States")
+
+
+# ---- round 1 of #381's review ----------------------------------------------
+
+def pair(tmp_path, first, second, candidates=COLES_CANDIDATES):
+    """3781e440's experts on these two readings: the country falls back, the
+    state and the county settle; the country's layer and value, and the
+    refusals of the state and the county."""
+    rig = build_rig(tmp_path, first, second, candidates=candidates)
+    run, decisions = rig.specimen.run, {}
+    prepared, outcomes, calls = research(rig, Scripted({"country": fallback(*COUNTRY_LOOKUPS),
+        "province_state": STATE, "county": COUNTY, "city": answering(LACKS),
+        "precise_location": answering(LACKS)}), tools=Answers(rig.blobs))
+    apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    return (run.fields["country"].layer, run.fields["country"].parsed,
+        decisions["province_state"].get("refusal"), decisions["county"].get("refusal"))
+
+
+DERIVED = ("derived", "United States", None, None)
+
+
+def placed_on(line):
+    """The organiser's candidates for 1A's place line `line`: the country,
+    the state and the county."""
+    return [*COLLECTORS, ("country", "1A", "USA", line), ("province_state", "1A", "Ill.", line),
+        ("county", "1A", "Coles Co.", line)]
+
+
+@pytest.mark.parametrize("line", [
+    # The heading, the approximate word or the collector's mark an elevation
+    # or a date leaves behind names no place.
+    "USA: Ill. Coles Co. alt. 1200 m", "USA: Ill. Coles Co. elev. 1200 ft", "USA: Ill. Coles Co. ca. 1200 m",
+    "USA: Ill. Coles Co. coll. 12.vi.1948", "USA: Ill. Coles Co. elev 500 m",
+    "USA: Ill., elev. 1200 ft, Coles Co.",
+    # Bare numbers, dates and ranges leave nothing.
+    "USA: Ill. Coles Co. 1200 ft", "USA: Ill. Coles Co. 1948", "USA: Ill. Coles Co. 12.vi.1948",
+    "USA: Ill. Coles Co. 1200-1500 m", "USA: Ill. Coles Co. 1200 m a.s.l.",
+])
+def test_an_elevation_or_a_date_on_the_place_line_leaves_nothing_that_holds_the_country_back(tmp_path, line):
+    """Round 1 of #381's review, finding 1: masking only the number of "alt.
+    1200 m" left "alt.", which held the derivation back (7884f700). Main
+    0346a26e derives the United States for each line, and so does this."""
+    first = label_with(**NO_PLACE_LINES) + f"\n{line}\nFox Ridge State Park"
+    assert pair(tmp_path, first, COLES_B, placed_on(line)) == DERIVED
+
+
+LOCALITY = [*COLES_CANDIDATES, ("precise_location", "1A", "Fox Ridge State Park", "Fox Ridge State Park")]
+
+
+@pytest.mark.parametrize(("second", "candidates"), [
+    # 1B reads a printed header 1A skipped: its lines are one later.
+    ("Field Museum\n" + COLES, LOCALITY),
+    # 1B joins two lines: its place line is one earlier, and 1A's place line's
+    # index is 1B's "Fox Ridge State Park", which no candidate files.
+    (COLES.replace("Synthetic grassland\ncollection_method", "Synthetic grassland collection_method"),
+        COLES_CANDIDATES),
+], ids=["a-header-line-more", "two-lines-joined"])
+def test_readers_whose_line_counts_differ_are_not_paired_by_index(tmp_path, second, candidates):
+    """Round 1 of #381's review, finding 2: pairing lines by index over
+    readers with different line counts read the line beside the place
+    line ("leg. J. Smith", "Fox Ridge State Park") and held the derivation
+    back (7884f700). Main 0346a26e derives the United States, and so does
+    this; "Canada" on a line of its own, where the line counts agree, still
+    holds it back (test_a_country_on_a_line_of_its_own_still_holds_the_places_back)."""
+    assert pair(tmp_path, COLES, second, candidates) == DERIVED
+
+
+@pytest.mark.parametrize("first_line", ["US", "U.S.", "United States", "U.S.A.", "USA."])
+def test_the_same_nation_on_a_line_of_its_own_holds_nothing_back(tmp_path, first_line):
+    """Round 1 of #381's review, finding 3: "US", "U.S." and "United States"
+    there were refused on 7884f700, which compared them only with the name
+    the sources were asked ("United States of America"). Each names the
+    United States, by its own name or by the letter rule."""
+    run, _ = lined(tmp_path, first_line)
     assert (run.fields["country"].layer, run.fields["country"].parsed) == ("derived", "United States")
