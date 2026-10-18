@@ -381,7 +381,20 @@ handover runs field research instead of the six specialists:
      review ("The label writes a longer scientific name than this value.").
      A keyed line's "taxon:", an author and year, a sex sign or "sp. 1" are
      no longer name. Other fields' candidates are not checked against their
-     quotes.
+     quotes. For a place field (country, province or state, county, city), a
+     candidate or a reader's verbatim that names no place, nothing but unit
+     words and punctuation by the place comparison key ("Prov.", "Co."), is
+     no literal of the field (`agreement.names_no_place`): it is neither cut
+     nor extended by an answer and is no reader's text in the agreement
+     rules below. It still shows that its reading writes the field, for the
+     parents check of step 5 (`step._place_texts`): a county or a city under
+     a province written "Davao, Prov." settles only inside that province once
+     it settles (NO_PROVINCE). And it still counts as text the organiser
+     found for rule A's condition 5. The second rerun of 2026-10-18 had f35af3a5's
+     organiser give the province "Prov.", cut from "Davao, Prov.": the
+     answer "Davao, Prov." was refused as extending it and "Prov." as no
+     place asked of it, so the field fell back; "Davao, Prov." now settles
+     as text read from the transcript.
    - **Or text read from the transcript** (the coordinator's ruling of
      2026-10-09, after the real runs of that day: 105526328's collecting
      date "IV-24-48", which both readers of its label write and parse_date
@@ -739,8 +752,13 @@ handover runs field research instead of the six specialists:
    - **Readers and labels that disagree (G20, G27, G32).** Whatever state the
      organiser gave the field, each label that writes it settles on its own:
      a label with a decided transcript on its decided reading's one candidate
-     literal (a label whose decided reading writes nothing for the field takes
-     no part); a label whose readers each write the same text, letter case
+     literal, or, when that reading has several texts for the field (the
+     organiser's, and the answer's text read from the transcript: 48a71d53's
+     "Mindanao," and "Davao Prov."), only through the field's approved
+     sources as for readers that differ (below), on one of its candidate
+     literals (a label whose decided
+     reading writes nothing for the field takes no part); a label whose
+     readers each write the same text, letter case
      and spacing aside, on its first reader's spelling (readers that differ
      only so agree, the coordinator's ruling of 2026-10-09: texts compare
      after NFC, casefolding and removing every space and line break,
@@ -754,7 +772,19 @@ handover runs field research instead of the six specialists:
      answer about it, and every other has a captured no_match answer
      about it and no success or ambiguous one. An error, a timeout or a text
      never asked about is not a no-match; a later gazetteer reply that step
-     4 says is still read as no match is one. For a place field (country,
+     4 says is still read as no match is one. For a place field, a text its
+     gazetteers found only as another kind of place than the field's counts
+     as found by none too (`agreement.found_only_elsewhere`; the batch
+     rerun of 2026-10-17, where 48a71d53's and cb903c0e's province went to
+     review beside "Mindanao,", an island): every Getty TGN, Wikidata or NGA
+     success or ambiguous answer about it lists candidates, those of two or
+     more of these gazetteers hold one of its name (one answer's list may be
+     cut short: Wikidata's holds at most seven), each of those has a kind,
+     and none of that name or one letter from it is at the field's level.
+     GEOLocate's answers count
+     only for a city, where any candidate keeps the text; an abbreviated
+     text ("Ill.") never counts so, as it may stand for a name no source was
+     asked. For a place field (country,
      province or state, county, city) such a label also settles when every
      text its readers write is confirmed and one authority_id confirms them
      all: the readers name that place ("Yepocapa," and "Yepocapa", both
@@ -813,11 +843,15 @@ handover runs field research instead of the six specialists:
      "county", "second-level administrative division"; "city", "town",
      "village", "human settlement", "municipality", each also as "... of
      ..."), NGA's feature codes ("A.PCL..."; "A.ADM1"; "A.ADM2"; "P....").
-     A county's Wikidata lookup names "second-level administrative
-     division" among a place's kinds when its classes reach that class
-     (step 4), so Wikidata's municipio Yepocapa, "municipality of
-     Guatemala", is at a city's level and, for a county, at a county's
-     level too. GEOLocate settles only a
+     A county's or a province's Wikidata lookup (`sources.LEVEL_FIELDS`)
+     names "second-level administrative division" among a place's kinds
+     when its classes reach that class, and "first-level administrative
+     division" when they reach that one (step 4), so Wikidata's municipio
+     Yepocapa, "municipality of Guatemala", is at a city's level and, for a
+     county, at a county's level too, and Bahia, "federative unit of
+     Brazil", is at a province's level for a province (until the second
+     rerun of 2026-10-18 only a county's lookup read the classes, and
+     19f0f1f6's province "Bahia" fell back). GEOLocate settles only a
      city, with all its candidates at a city's level: for a country, a
      province or state, or a county its candidate is a part of the query
      itself (its country, its state or county part, or else its place part),
@@ -936,6 +970,24 @@ handover runs field research instead of the six specialists:
        inside it: that field's settling candidate names it among its
        parents, by record, or by its text, value or expansion
        (`step._corroborate`, once every place is in, from the city up).
+       Or else when another place the label writes below it (the
+       organiser's text for a province, county, city or precise location)
+       lies inside it by the attempt's answers about that text: among the
+       Getty TGN, Wikidata and NGA answers about it, those of two or more
+       of these gazetteers hold candidates of its name that name a parent
+       (one answer's list may be cut short: Wikidata's holds at most
+       seven), and every such candidate in those answers lies inside it
+       (`step._placed_inside`; a candidate that names no parent, a ship or
+       a film, is left aside, and GEOLocate's parents come from the query,
+       so its answers count for nothing). The value then also cites those
+       answers and its reason ends 'The initials "P.I." read as "Philippine
+       Islands" because the label's "Mt. Apo" lies inside it: each place of
+       that name that the Wikidata and NGA GEOnet Names Server answers
+       about it put somewhere is there.' (2b02009d, whose only places below
+       "P.I." were the island "Mindanao", which NGA also holds as villages
+       in Honduras and Guatemala, and "Mt. Apo", each of whose namesakes
+       with a parent in the Wikidata and NGA answers is in the
+       Philippines.)
        Otherwise the field is ambiguous, for review, with a reason naming
        the initials ('The initials "P.I." fit "Philippine Islands", but no
        other place on the label was found inside it, so the initials alone
@@ -1733,7 +1785,9 @@ elevation is derived first, and only for a field a person has not decided):
    (label_lacks_value), with no failure, in this attempt; or, for a precise
    location, its expert's answer gives only an administrative marker
    beside the places settled (below, "An administrative marker is no
-   precise location"). Every field but
+   precise location"); or, for a county or a city, its every text is a
+   settled place's above it (below, "A county or a city that is only a
+   settled place's text"). Every field but
    the identified-by IRN gets its expert (step 2), so the answer is the
    model's; no lookup is required, since a field such as the habitat has no
    source to search. The shared brief has the expert answer
@@ -1744,7 +1798,14 @@ elevation is derived first, and only for a field a person has not decided):
    and date-identified briefs say so for their fields. (In the real run of
    2026-10-09 105526326's city and 105526329's date identified were answered
    sources_cannot_resolve where the labels lack them.)
-   The resolver's fallback, put in place of an answer the expert never gave
+   The resolver's fallback qualifies only for a county or a city whose
+   every text is a settled place's above it (below), where the names the
+   expert's lookups asked about stand for what it tried. Its reason, when every answer the
+   expert gave failed its checks, is "None of the expert's answers passed
+   the checks against the readings and the sources' answers.", and no
+   fallback's reason ends with a note of a source the expert could not
+   reach, as it is no answer of the expert's (the second rerun of
+   2026-10-18 read such notes as Getty TGN's fault). Otherwise the resolver's fallback, put in place of an answer the expert never gave
    (out of attempts with no checked answer when asked once more, or answers
    that failed their checks), is sources_cannot_resolve, so it never
    qualifies. An expert's answer when asked once more is its own and
@@ -1801,7 +1862,14 @@ elevation is derived first, and only for a field a person has not decided):
    precise location "E. slope Mt. McKinley", or the town "Yepocapa" as a
    precise location beside the settled city "Yepocapa". "Lee" beside the
    city "Leesburg", or "Cook County" inside the precise location "Cook
-   County Forest Preserve", does not count. For a precise location, the
+   County Forest Preserve", does not count. For a county or a city, a
+   text also counts as absent when every place it stands, less the
+   punctuation around it, lies inside where a settled place above it
+   stands, each of that place's texts only in a reading that writes it once,
+   and a reader's verbatim it keeps only when it names that place
+   (`step._places_above`, `step._within`): 48a71d53's "Davao Prov.",
+   which the organiser offered as the county, under its settled province
+   "Davao Prov.". For a precise location, the
    texts still left count as absent when, beside the places settled, they
    write only an administrative marker next to the settled place of its
    level, or readers differ only in one (below): the organiser's
@@ -1971,6 +2039,56 @@ beside a settled place is the marker check's alone: "Yepocapa, Mun." is
 not present where the profile lists the precise location
 (`_no_finer_place`) and settles as its text where it does not, as above.
 "Yepocapa" also settles when the city did not settle.
+
+**A county or a city that is only a settled place's text (the batch rerun
+of 2026-10-17).** 93e61763's, 9cc24b07's, d3fb389f's and f35af3a5's
+county went to review although their labels name no county: the county's
+expert answered the province line ("Chimaltenango,", "Davao, Prov."),
+whose name its sources also hold at the second level, as several
+possibilities. A written place is one field's: a province is never also
+the county (`agreement.IS_THE_PROVINCE`). Once every place is in (after
+`step._repeats_a_place`), a county, then a city, researched in this
+attempt whose expert's answer left it ambiguous or unresolved (an answer
+and no failure, not label_lacks_value, not finalized without a model call; the resolver's
+fallback too, when its expert asked at least one source and every name its
+lookups asked about, the query's first comma-separated part, is taken as an
+option of its answer: f35af3a5's city in the second rerun of 2026-10-18 asked
+about "Davao", cut from the settled province "Davao, Prov.", and "Davao
+City", a name the label does not write, while a fallback that asked about a
+town the label writes, "Tagum", keeps the field) is made what
+label_lacks_value makes it
+when every text the label gives it is the text of a settled place above it
+(`step._only_a_place_above`, `step._held_above`): not present, citing the
+answer's sources, its reason 'The readings write no county of their own:
+"Chimaltenango," is the text of the Province/State field.' followed by the
+expert's explanation; the rows its value added and its transcript_literal
+finding are dropped. This holds whether or not every source the expert
+asked answered, since the text is the settled place's either way. Its
+trace keeps the code of a step check that refused the expert's resolved
+answer first (`first_level_too`, `is_the_province`), and otherwise names
+"place_above_text_only". The texts are the organiser's and the answer's
+literal and options. One that stands in the readings is the place's text
+where every place it stands, less the punctuation around it, lies inside
+where that place's text stands: its literal, and each reader's verbatim it
+keeps when that verbatim names the place (by the place comparison key the
+literal, value or an expansion, or one letter from one: 93e61763's
+"Chimaltenago"; never another reader's other text the field keeps, as
+48a71d53's province keeps 1B's "Mindanao" beside its literal "Davao
+Prov."), each only in a reading that writes it once, so the second
+"Chimaltenango" of "Chimaltenango, Chimaltenango" is no province's. An option no reading
+writes is the place's when it is one of the place's names, or one letter
+from one (9cc24b07's "Chimaltenango Department" for the province written
+"Chimaltenago"); one whose words a reading writes otherwise is a text of
+the label no place above holds, which keeps the field; and any other is a
+source's name for a place the label does not write (f35af3a5's "Davao
+City"), which is left aside. At least one text must be the place's. Rule
+A then judges it as a field whose expert found none: when it clears, its
+reason starts 'Not on the label: the readings write no county of their
+own;', its check row's excerpt says the readings write only the text of a
+settled place above it (its record names that place's field), and the
+clearance rules accept that excerpt for a county or a city. A county or a
+city with a text no settled place above holds, or with no place above
+settled, keeps its expert's answer.
 
 **A taxon with no genus (B).** A taxon whose label names no genus for its
 morphocode ("sp. 30" with a sex sign, and no genus written beside it)
@@ -2331,6 +2449,18 @@ parents then narrow their children. An ambiguous town cannot choose a county,
 and conflicting written administrative places or distinct authority matches
 remain unresolved. This uses the answers already captured during the attempt;
 it makes no additional lookup and does not reopen an exhausted attempt.
+
+A blank ambiguous country can be derived from qualified administrative parents
+when every retained country alternative (including other labels and readers)
+has a fresh, directly matching gazetteer record at a recognized lower level,
+and no matching record has a recognized country level. Unmodeled source kinds
+provide neither level proof nor country counterproof; an alternative with no
+recognized lower-level proof stays ambiguous. Human decisions, actual country
+disputes, unknown alternatives and incompatible parent countries still block
+replacement. If derivation cannot complete, the original ambiguity is retained.
+An explicitly selected authority record supplies its own ancestry; another
+same-name record cannot supply parents for it. This changes no attempt or
+spending authorization and does not apply archived answers to a live record.
 
 On 2026-10-16 the owner authorized one additional same-run location reassessment
 for specimen `ebfc6171-bf2f-56b8-a35b-442798810461`, run

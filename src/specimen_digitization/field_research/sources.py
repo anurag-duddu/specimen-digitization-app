@@ -12,12 +12,13 @@ The rules that decide an answer stay where they are: GBIF's in
 application.taxonomy_tool.verify_taxon, GEOLocate's in research_harness.sources
 and the historical gazetteers' in research_harness.historical_gazetteers. A
 source problem is an answer with a plain note, never an exception; only a blob
-store failure raises. A county's Wikidata lookup also reads, in at most
-CLASS_READS more requests, the subclass chains of its places' classes, and a
-place whose chains reach Wikidata's second-level administrative division
-(and not its first-level one) has that class among its kinds
-(ApprovedSources._levels); that answer is cached apart from other fields'
-answers to the same query. When Getty TGN's reconciliation service refuses a
+store failure raises. A county's or a province's Wikidata lookup
+(LEVEL_FIELDS) also reads, in at most CLASS_READS more requests, the
+subclass chains of its places' classes, and a place whose chains reach
+Wikidata's second-level administrative division (and not its first-level
+one) has that class among its kinds, one whose chains reach the first-level
+one that class (ApprovedSources._levels); that answer is cached apart from
+other fields' answers to the same query. When Getty TGN's reconciliation service refuses a
 request or cannot be reached, TGN is searched through Getty's SPARQL endpoint
 instead (historical_gazetteers), and the note says so and that this search
 does not match accents or word stems; its answer is then never a success, and
@@ -103,10 +104,16 @@ EXCERPT_LIMIT = 2_000
 NOTE_LIMIT = 300  # of the note that heads an excerpt
 MAX_TAXA = 10
 MAX_KINDS = 3
-# How many requests a county's Wikidata lookup may spend reading its places' classes
-# (ApprovedSources._levels): a Guatemalan municipio's class reaches the
+# The fields whose Wikidata lookups read their places' class chains
+# (ApprovedSources._levels): a county's, since 2026-10-12, and a province's or
+# state's, since 19f0f1f6's "Bahia" (2026-10-18), whose Wikidata kind "federative
+# unit of Brazil" names no first-level kind agreement.PLACE_LEVELS knows,
+# while its class chain reaches the first-level administrative division.
+LEVEL_FIELDS = frozenset({FieldKey.COUNTY, FieldKey.PROVINCE_STATE})
+# How many requests a county's or a province's Wikidata lookup may spend reading its
+# places' classes (ApprovedSources._levels): a Guatemalan municipio's class reaches the
 # second-level administrative division in one, a US county's in two (probed
-# 2026-10-12).
+# 2026-10-12), and Brazil's "federative unit" the first-level one in two (2026-10-18).
 CLASS_READS = 2
 # Each read of classes is sent once, never retried (_get's ATTEMPTS), so a
 # county's lookup sends at most CLASS_READS more requests (Codex's review of
@@ -198,9 +205,9 @@ def cache_key(source_id: str, query: str, field_key: str) -> str:
     except for GBIF, where case is part of a scientific name ("apis" names no
     genus, and verify_taxon reads them apart). A GEOLocate query is its JSON
     object with sorted keys, and its field too, because geolocate_verdict
-    checks the claimed value against the field. A county's Wikidata query
-    carries its field too: only its answer reads the classes' levels
-    (ApprovedSources._levels)."""
+    checks the claimed value against the field. A county's or a province's
+    Wikidata query (LEVEL_FIELDS) carries its field too: only its answer
+    reads the classes' levels (ApprovedSources._levels)."""
     text = query
     if source_id == "geolocate":
         try:
@@ -210,7 +217,7 @@ def cache_key(source_id: str, query: str, field_key: str) -> str:
         if isinstance(parsed, dict):
             text = json.dumps(parsed, sort_keys=True, ensure_ascii=False)
         text = f"{field_key}\n{text}"
-    elif source_id == "wikidata" and field_key == FieldKey.COUNTY:
+    elif source_id == "wikidata" and field_key in LEVEL_FIELDS:
         text = f"{field_key}\n{text}"
     text = " ".join(unicodedata.normalize("NFC", text).split())
     return text if source_id == "gbif" else text.casefold()
@@ -725,9 +732,10 @@ class ApprovedSources:
     A "gbif" query is a taxon name; a "geolocate" query is place words from the
     field's place out to its country, or the JSON interpretation itself
     (`interpretation`); a "tgn", "wikidata" or "nga" query is a place name,
-    searched up to its first comma (`place_name`). A county's Wikidata
-    answer also gives each place its classes put at the second level that
-    level's kind (`_levels`).
+    searched up to its first comma (`place_name`). A county's or a
+    province's Wikidata answer (LEVEL_FIELDS) also gives each place whose
+    classes reach the second or the first level that level's kind
+    (`_levels`).
 
     `blobs` is the application's blob store (application.storage.BlobStore),
     `client` the AsyncClient every request goes through. `place_text` is the
@@ -1088,13 +1096,13 @@ class ApprovedSources:
         if status not in ANSWERED or not fetched:
             return _answer(source_id, query, status, note)
         levels: Mapping[str, frozenset[str]] = {}
-        if source_id == "wikidata" and field_key == FieldKey.COUNTY and places:
+        if source_id == "wikidata" and field_key in LEVEL_FIELDS and places:
             levels = await self._levels(policy, places, fetched)
         candidates = tuple(
             _place(source_id, place, levels.get(place.record_id, frozenset())) for place in places
         )
-        # Up to three responses answer one query, and for a county's Wikidata
-        # lookup up to CLASS_READS more (`_levels`): one record names each
+        # Up to three responses answer one query, and for a county's or a
+        # province's Wikidata lookup up to CLASS_READS more (`_levels`): one record names each
         # stored response and its digest, and that record is the evidence.
         record = json.dumps(
             {
