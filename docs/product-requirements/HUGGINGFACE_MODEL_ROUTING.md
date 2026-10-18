@@ -87,10 +87,14 @@ first-pass call refuses a route outside its role (HARNESS.md section 5).
 A route may also carry request options: provider-specific fields sent in the
 body of every request on it (`HuggingFaceInferenceRoute.request_options`, sent
 as Pydantic AI's `extra_body`). They are not part of the pin. Since 2026-10-18
-`first-pass-glm` sends `reasoning_effort: low`, which Novita honours for
-GLM-5.3-Flash; in the 2026-10-18 probe no call with it stopped at the output
-cap. Each first-pass call records it with its parameters (HARNESS.md section 5,
-"The first pass's reasoning bound").
+`first-pass-glm` sends `reasoning_effort: medium`, which Novita honours for
+GLM-5.3-Flash; in the 2026-10-18 probes no call with it stopped at the output
+cap, and scored against reference readings it was the setting to keep
+(HARNESS.md section 5, "The first pass's reasoning bound"). Each first-pass
+call records it with its parameters. An option is measured on the route's
+provider and travels with the route, so moving the route to another provider
+means measuring the option there again or clearing it: a provider that refuses
+a field rejects every request (`model_request_rejected`).
 
 The owner approved Together and Fireworks as providers on 2026-10-18 ("More
 reliable inference provider like fireworks together also work"; "Hold. The

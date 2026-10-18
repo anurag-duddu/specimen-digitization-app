@@ -37,7 +37,9 @@ class HuggingFaceInferenceRoute:
     structured_output_mode: Literal["tool"] = "tool"
     # Provider-specific fields sent in the body of every request on this route,
     # as (name, value) pairs; each one measured to have its effect on the
-    # route's provider (HARNESS.md section 5).
+    # route's provider (HARNESS.md section 5). They travel with the route, so
+    # a change of provider re-measures them there or clears them: a provider
+    # that refuses a field rejects every request (model_request_rejected).
     request_options: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
@@ -90,9 +92,11 @@ STAGE_HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxy
             # same price and already serves the handwriting-qwen reader.
             provider="novita",
             # Novita runs the model's hidden reasoning in full, which stopped
-            # about a fifth of first passes at the 4,096-token cap; "low" keeps
-            # answers near the size the route was chosen on (HARNESS.md 5).
-            request_options=(("reasoning_effort", "low"),),
+            # about a fifth of first passes at the 4,096-token cap. "medium"
+            # ended the cap stops and scored best against the reference
+            # readings (HARNESS.md 5). Measured on Novita only: a provider
+            # move re-measures it or clears it.
+            request_options=(("reasoning_effort", "medium"),),
         ),
         "harness-deepseek": HuggingFaceInferenceRoute(
             route_id="harness-deepseek",

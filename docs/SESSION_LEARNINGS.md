@@ -21990,3 +21990,32 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
   - Related suites (first pass, readers, gateway, preflight and the cost meter's lane and program-budget tests): 479 passed, 1 skipped. `tests/field_research`: 3,062 passed. All with `PYTHONPATH=src`, `LANG`/`LC_ALL=en_US.UTF-8`, `TZ=America/Chicago`, the main checkout's venv.
   - Full Python suite at `d729ff10` (`scripts/ci/python_shards.py local --count 6`): 16,212 passed, 47 skipped, 1 failed and 2 errors. The failure is `test_general_api_contract_fixtures.py::test_fixture_bytes_match_regeneration`, which fails the same way on base `8b3b5254` here; the errors are the two `test_upload_completion_http.py` setups that need the worktree's own `.venv/bin/specimen-api`, as in earlier entries.
   - `pre-commit run --files` on the seven changed files: passed. No Dart changed. `scripts/ci/verify.sh` was not run whole (its Flutter gates cover no changed file).
+
+### 2026-10-18 - RELIABLE-PROVIDERS round 2: the first pass's picks scored, and the route sends "medium"
+
+- Follows the RELIABLE-PROVIDERS entry above (PR #382). The G51 review (APPROVE of `1b3c9fd1`, https://github.com/anurag-duddu/specimen-digitization-app/pull/382#issuecomment-6251902140) raised three non-blocking findings. The coordinator asked, before merge, for finding 1 to be settled by scoring "low" and "medium" picks against reference readings and keeping the better setting ("If medium is as good or better, switch the route to medium"), with a spend cap of USD 0.75, plus a test for finding 2 and the wording of finding 3.
+- Method: `first_pass_direct` on the branch head's code (the null rule in place), Novita, only `reasoning_effort` varying. Labels and references:
+  - the eight pilot left labels of S4's T1 scoring (`~/specimen-golive/runs/t1-routes`), with those crops and readings, against S4's `TRUTH`;
+  - four pilot labels in production runs (9cc24b07 = subject 105526330's barcode label, 01b79931 = 105526321, e98a924c = 105526322, cb903c0e = 105526325's right label), against S8's eyes-on table and S4's truth, each checked against the crop;
+  - six labels where a reader wrote "[unreadable]", with no reference (19f0f1f6, d10333ff label 3, two of 2c6ef7b0, ebfc6171, f9d55015).
+  No human-checked transcript of any of them exists locally. "Low" and "medium" ran six times on each referenced label, the default three times; each arm ran three times on each "[unreadable]" label.
+- Result on the referenced labels:
+  - Pick precision: medium 34 of 45 (76%), low 29 of 39 (74%), default 10 of 13 (77%).
+  - Calls ending right (a right pick, or no pick where no reader is right): medium 56 of 73, low 51 of 72, default 19 of 36.
+  - Wrong picks: medium 11, low 10, default 3.
+  - Missed picks (no pick where a reader was right): medium 6, low 11, default 7.
+  - Calls with no answer: the default 7 of 36 at the cap.
+  - Fluent-trap verdicts right: medium 16 of 19, low 16 of 18, default 5 of 6.
+  - On the "[unreadable]" labels, text picked over "[unreadable]": medium 2 of 18, low 4 of 18, default 2 of 7.
+  - Cap stops over all calls: default 18 of 54, medium 0 of 91, low 0 of 90. No malformed answer in any arm.
+  - Median seconds: medium 15.8, low 11.3, default 48.8. Mean USD per call: 0.00055, 0.00038, 0.00162.
+  The full table is in HARNESS.md section 5, "The picks, scored".
+- Choice: `reasoning_effort: medium`. Its picks were as precise as low's and it left fewer right labels undecided, with the same wrong-pick count. Cost and latency decided nothing. Every measure differs by a few picks at most.
+- Wrong picks remain with every setting, about one call in seven at medium or low. Most fall on labels where both readers are partly wrong and no pick is right: e98a924c, 01b79931 and 105526323. Each of medium and low also twice picked the fluent reading of a trap. G19 does not catch these, because the verdicts err with the pick.
+- Finding 2: `research_harness/gateway.py` `EffectModel` now folds the wrapped model's own settings (a route's request options) into `expected_settings`, so an option on `harness-deepseek` would not block its requests; it has none. Test: `tests/test_harness_route_options.py`.
+- Finding 3: HARNESS.md section 5, HUGGINGFACE_MODEL_ROUTING.md and the `model_gateway` comments now say that a provider move measures the route's request options there again, or clears them (a provider that refuses a field rejects every request, `model_request_rejected`).
+- Spend, round 2: USD 0.1715 measured over 235 recorded calls; no call without reported usage. With round 1, the probes spent about USD 0.25.
+- Reusable learnings:
+  - (a) S8's pilot locality table normalises spellings. cb903c0e's label reads "Mckimley", the table "McKinley". A table made for georeferencing is not a literal reference; check the crop at each difference.
+  - (b) GLM's first-pass picks vary run to run on the same label and setting. Three runs a label could not separate two settings; six runs left them within a few picks. Size a pick comparison by repeats, not by labels alone.
+  - (c) T1's saved crops and readings (`~/specimen-golive/runs/t1-routes`) can drive `first_pass_direct` directly: a one-region asset per crop, and the newest saved production run as the template for profile, pins and pinned prompt.

@@ -4,10 +4,11 @@ From 2026-10-12 03:00 to 2026-10-18 14:45 UTC, 29 of the 141 `chat
 zai-org/GLM-5.3-Flash` spans in Logfire stopped at the 4,096-token output cap
 with finish reason "length", and 26 of the 119 first-pass runs ended with no
 answer: Novita counts the model's hidden reasoning in its output tokens. Novita
-honours the OpenAI-style `reasoning_effort` request field for this model; in
-the 2026-10-18 probe no first pass sent with "low" stopped at the cap
-(HARNESS.md section 5, "The first pass's reasoning bound"). The route sends
-`reasoning_effort: low` in every request, through the gateway's model
+honours the OpenAI-style `reasoning_effort` request field for this model. In
+the 2026-10-18 probes no first pass sent with "medium" or "low" stopped at the
+cap, and scored against reference readings "medium" decided the most labels
+rightly (HARNESS.md section 5, "The first pass's reasoning bound"). The route
+sends `reasoning_effort: medium` in every request, through the gateway's model
 settings, and the first pass records it with the call's parameters. These tests
 drive the real gateway and `first_pass_direct` over an offline HTTP transport:
 no live model request is made.
@@ -39,7 +40,7 @@ from specimen_digitization.model_gateway import (
 from test_first_pass import INCOMPLETE, MUSE, QWEN, REGION, VALID, pinned_route, reading
 
 ROUTE = HUGGINGFACE_ROUTES["first-pass-glm"]
-BOUND = {"reasoning_effort": "low"}
+BOUND = {"reasoning_effort": "medium"}
 
 
 def png(width, height):
@@ -89,7 +90,7 @@ def offline_provider(monkeypatch, route, answers):
     return sent
 
 
-def test_the_first_pass_route_asks_novita_for_low_reasoning():
+def test_the_first_pass_route_asks_novita_for_medium_reasoning():
     assert (ROUTE.model_id, ROUTE.provider) == ("zai-org/GLM-5.3-Flash", "novita")
     assert dict(ROUTE.request_options) == BOUND
     # Only the first pass's route carries a request option.
@@ -126,7 +127,7 @@ def test_every_first_pass_request_carries_the_bound_and_the_call_records_it(
     )
 
     assert len(sent) == 2
-    assert [body["reasoning_effort"] for body in sent] == ["low", "low"]
+    assert [body["reasoning_effort"] for body in sent] == ["medium", "medium"]
     assert [body["max_tokens"] for body in sent] == [4_096, 4_096]
     assert decision.selected_observation_id == readings[1].id
     assert decision.call.parameters == {"extra_body": BOUND, "max_tokens": 4_096}

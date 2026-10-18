@@ -575,7 +575,7 @@ report. Neither pick changes.
 
 | Route | Model | Provider | Input | Use |
 |---|---|---|---|---|
-| `first-pass-glm` | `zai-org/GLM-5.3-Flash` | `novita`, sent `reasoning_effort: low` | text, image | the first pass (sections 3 and 4) |
+| `first-pass-glm` | `zai-org/GLM-5.3-Flash` | `novita`, sent `reasoning_effort: medium` | text, image | the first pass (sections 3 and 4) |
 | `harness-deepseek` | `deepseek-ai/DeepSeek-V4.1-Flash` | `deepinfra` | text | the harness; provisional until the acceptance lab re-measures it with the real harness and G29's prompt |
 
 The harness uses DeepInfra, which the `handwriting-muse` reader already uses,
@@ -642,15 +642,18 @@ Hugging Face bills a routed request only for a provider integrated with its
 pay-as-you-go billing; any other provider needs a custom provider key, set in
 the account's Inference Providers settings, and is then billed by that
 provider directly (https://huggingface.co/docs/inference-providers/pricing).
-That needs a Together or Fireworks account, which only the owner can open;
-with the key set, a route moves by changing its `provider` (below). Why the
-probe of 2026-10-12 got 8 of 8 from Together is not confirmed (which token it
-used is not recorded). So:
+That needs a Together or Fireworks account, which only the owner can open.
+With the key set, a route moves by changing its `provider` and by measuring its
+request options on the new provider again, or clearing them: the options travel
+with the route, `reasoning_effort` was measured on Novita only, and a provider
+that refuses a field rejects every request (`model_request_rejected`). The repin
+rule for runs in flight is below. Why the probe of 2026-10-12 got 8 of 8 from
+Together is not confirmed (which token it used is not recorded). So:
 
 - `first-pass-glm` stays on Novita, which has been reliable as a service since
   2026-10-12 (the only errors in its 141 chat spans to 2026-10-18 14:45 UTC
-  are three HTTP 504 at the router's 120 s), and sends `reasoning_effort: low`
-  (below). Its two causes of failure in that time were reasoning that reached
+  are three HTTP 504 at the router's 120 s), and sends `reasoning_effort:
+  medium` (below). Its two causes of failure in that time were reasoning that reached
   the output cap and a null pick written as text (section 3).
 - `handwriting-muse` stays on DeepInfra. Together refuses it the same way;
   DeepInfra answered 4 of 4 real crops through `_transcribe_direct` in 3 to
@@ -686,28 +689,78 @@ were not recorded, so those are unknown.
 | Novita, `reasoning_effort: medium` | 24 | 16 | 0 | 8 | 22 | 19.9 | 42.1 | 567 | 0.00059 |
 | Novita, `reasoning_effort: low` | 37 | 24 | 0 | 13 | 32, 5 unknown | 13.3 | 24.9 | 318 | 0.00040 |
 | DeepInfra, default | 12 | 12 | 0 | 0 | 12 | 4.2 | 5.1 | 254 | 0.00029 |
-| Novita, "low", this change's code (the null rule in place) | 12 | 12 | 0 | 0 | 12 | 13.2 | 17.4 | 294 | 0.00031 |
+| Novita, "low", with the null rule (commit `d729ff10`) | 12 | 12 | 0 | 0 | 12 | 13.2 | 17.4 | 294 | 0.00031 |
 
-"Low" ended the cap stops in this probe, cut the median call from 52 s to 13 s
-and its cost by almost three quarters, and keeps answers near the size the route
-was chosen on; with the null rule every one of its recorded answers was usable.
-On the six labels where both the default and "low" picked a reader, every pick
-agreed on three; on 2b02009d (the default "VII" twice, "low" once "VIII" and
-once "VII") and cb903c0e (one of three "low" picks took the other reader) they
-partly agree, and on 19f0f1f6 they differ (the default once took
-"Chelotoni[unreadable]", "low" twice "Chelotonic"). On 9cc24b07's catalog
-label, where the default never picked, "low" twice picked the reading the image
-shows ("FMNHINS 4486775"). No scoring against a reference reading was run, so
-this is no measure of accuracy. DeepInfra answered fastest and cleanly on the
-day, but it refused 22 of 29 live calls a week earlier, and the route stays on
-the provider that has been up. The option is a route field
+Both "low" and "medium" ended the cap stops; with the null rule every recorded
+"low" answer and 22 of 24 "medium" answers were usable. That probe did not score
+the picks. The review of PR #382 asked for that before relying on "low": on
+19f0f1f6, "low" twice picked "Chelotonic" over the reading with "[unreadable]",
+and a pick whose verdicts err the same way passes G19 and becomes the decided
+transcript.
+
+**The picks, scored** (2026-10-18). A second probe ran `first_pass_direct` on
+the branch's code (the null rule in place), on Novita, with the request option
+the only difference between arms. Its labels: the eight pilot left labels whose
+differences S4's scoring of the T1 measurement covers (below), with those crops
+and readings, scored against S4's reading of the full-resolution crops, the
+reference that measurement used; and the four pilot labels among the 12
+above (9cc24b07 is subject 105526330's barcode label, 01b79931 subject
+105526321's, e98a924c subject 105526322's, cb903c0e subject 105526325's right
+label), scored against S8's reading of the slides
+(`~/specimen-golive/research/S8-pilot-localities.md`) and S4's where they cover
+the difference, each checked against the crop. On cb903c0e the crop reads
+"Mckimley", which S8's table gives as "McKinley", so the reader who wrote "m"
+is right there. No human-checked transcript of these labels exists; both
+references are earlier sessions' readings of the images. A pick is right when
+the reference supports that reader at every difference that is more than
+capitalization, as G19 asks; where neither reader is right, no pick is right,
+and a call "ends right" when it picks a right reader or, where none is right,
+picks none. "Low" and "medium" ran six times on each of the 12 labels
+("medium" once more, a smoke call, on 105526329), the default three times. Six
+labels where one reader wrote "[unreadable]" (19f0f1f6, d10333ff's label 3,
+two of 2c6ef7b0, ebfc6171, f9d55015) have no reference; each arm ran three
+times on each, to count how often it picked the reader whose text stands where
+the other wrote "[unreadable]".
+
+| Novita, option | Calls on scored labels | Right picks | Wrong picks | Missed picks | Right with no pick | No answer (cap) | Pick precision | Calls ending right | Fluent-trap verdicts right | Text picked over "[unreadable]" | Median s | 90th percentile s | Median output tokens | USD per call |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| default | 36 | 10 | 3 | 7 | 9 | 7 | 10 of 13 | 19 of 36 | 5 of 6 | 2 of 7 | 48.8 | 100.7 | 3,033 | 0.00162 |
+| `medium` | 73 | 34 | 11 | 6 | 22 | 0 | 34 of 45 | 56 of 73 | 16 of 19 | 2 of 18 | 15.8 | 33.6 | 555 | 0.00055 |
+| `low` | 72 | 29 | 10 | 11 | 22 | 0 | 29 of 39 | 51 of 72 | 16 of 18 | 4 of 18 | 11.3 | 19.2 | 302 | 0.00038 |
+
+The fluent traps are the two "Chimaltenago" labels (one reader wrote the
+correct spelling the label lacks) and cb903c0e's "Mckimley". Seconds, tokens
+and cost are over every call of the arm, the "[unreadable]" labels included;
+the default stopped at the cap in 18 of its 54 calls, "medium" and "low" in
+none of 91 and 90, and no answer of any arm was malformed. "Medium" is the
+setting kept: its picks were right as often as "low"'s (76% against 74%), it
+left fewer labels undecided that a reader had right (6 against 11), so more
+calls ended right (77% against 71%), and it picked text over "[unreadable]"
+half as often. Its wrong picks match "low"'s (11 of 73 against 10 of 72); the
+difference on every measure is within a few picks. The default's picks were as
+precise (10 of 13), but a fifth of its calls on these labels had no answer and
+it left more labels undecided that a reader had right. Cost and latency
+decided nothing. Every setting still makes wrong picks, about one call in seven
+on these labels with "medium" or "low". Most are on three labels: e98a924c (the
+reading without the foot mark and the side code), 01b79931 (a slide code) and
+105526323 ("+" or the female sign where the label has "&"). Each of the two arms also
+twice picked the fluent reading of a trap (cb903c0e's "Mckinley" once and a
+"Chimaltenango" once). No answered call of the second probe picked 19f0f1f6's
+"Chelotonic"; all seven picked no reader there. On d10333ff's label 3,
+"medium" twice and "low" once picked the reading ending "det 2051", where the
+print reads 2021. DeepInfra answered fastest and cleanly on the day, but it
+refused 22 of 29 live calls a week earlier, and the route stays on the
+provider that has been up. The option is a route field
 (`HuggingFaceInferenceRoute.request_options`), sent in every request through
 Pydantic AI's `extra_body` and recorded in each first-pass call's `parameters`.
-Tests: `tests/test_first_pass_reasoning_bound.py`.
+Tests: `tests/test_first_pass_reasoning_bound.py`. The harness's gateway counts
+a route's options as part of the settings each request must carry
+(`research_harness/gateway.py`, `tests/test_harness_route_options.py`), so an
+option on `harness-deepseek` would not block its requests; it has none.
 
 **Runs started before a route changes.** A request option is not part of a
 run's pin (`dependencies.routes` keeps model id and provider), so a run started
-before this change sends `reasoning_effort: low` at its next first pass, and
+before this change sends `reasoning_effort: medium` at its next first pass, and
 that call records it; nothing blocks. A move of `first-pass-glm` to another
 provider of the same model (Together, once its key is set) is carried by the
 existing repin rule (`first-pass-same-model-provider-repin-v1`): an ordinary
