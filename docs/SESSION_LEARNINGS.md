@@ -21900,3 +21900,37 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
     - The sweep of #377's runs now also changes the first rerun's two settled precise locations, because each expert's first answer was two lines and now passes: 2b02009d's "Mt. Apo" becomes "Seliban Riv.\nMt. Apo", and e98a924c's "McKinley, Davao Prov." becomes "E Slope Mt.\nMcKinley, Davao Prov.".
     - Everything else in the sweep is unchanged, and the four country runs still derive the United States.
   - Reusable learning (e): `checks.collapse` already reads a line break as a space, so most comparisons never depended on lines. The one-line rule lives in `verbatim_runs`, `_agreeing_spans`/`holding_clauses` and the plain `literal in reading.text` checks. Keeping the value's literal exactly as the reading writes it, line break included, lets every `in reading.text` check downstream stand unchanged.
+
+### 2026-10-18 - LOCATION-REVIEW-FOLLOWUPS #379's review findings 1-3 and e98a924c's collection code
+
+- Task: the location coordinator's follow-up after PR #379 merged (`616ae010`) and went live, toward the owner's standing ask that the location harness be complete. Branch `claude/location-review-followups` from `origin/main` `616ae010`, worktree `.claude/worktrees/agent-ac667de59ee32e1ba`. PR: opened from this branch (see the PR list).
+- Finding 2 (correctness, done first):
+  - Problem: #379's `step._confirmed_country` read the record's country texts only through `agreement.reader_literals`, the organiser's candidates and verbatims. Another reader's "Canada: Ill. Coles Co." with no candidate filed for "Canada" let the state and county settle, and the country derived as the United States, where main before #379 refused `NO_COUNTRY`.
+  - Fix: `step._unplaced_text` reads every line of any reading that writes a country, province or county text of the record.
+    - It sets aside what any field holds there: every field's organiser candidates, literals and verbatims, where the line writes them as whole words.
+    - It splits the rest at `, ; : ( ) [ ] /` and checks each group.
+    - A group is let through when it holds no letter, is only unit words, holds a date, an elevation or a range (`written.other_kind`), was found by none of the sources asked (`agreement.ruled_out`: 3781e440's "U.S.B.I.L."), or is confirmed as the same nation.
+    - Any other group keeps `NO_COUNTRY`.
+- Finding 1:
+  - Problem: `agreement.disputed` with `step._claimed_texts` accepted any other field's text as the other reader's counterpart.
+  - Decision: narrowed to fields of another kind than places (`agreement.FIELD_KINDS`). A taxon, a collector or a date there is another kind of reading of that ink. Another place field's text ("Texas" where the other reader writes "Mexico") is a rival reading of the same place, and the country stays for review.
+  - FIELD_RESEARCH.md says so; tests pin the province case and the taxon, collector and date cases.
+- Finding 3:
+  - Problem: an across-lines literal "Seliban Riv.\nnear Mt. Apo" with candidates "Seliban Riv." and "Mt. Apo" passed as text read from the transcript, while "near Mt. Apo" on one line is `NOT_CANDIDATE`.
+  - Fix in `agreement._cut_candidate`: a line of the run that holds a candidate holds no other letter or digit, so that literal is now `NOT_CANDIDATE`. A line holding no candidate may still join them, as e98a924c's lines do (none filed).
+- Live finding (e98a924c, run `629f91eb` on `616ae010`; Logfire trace `01a14e035a03b2d08c94fbadc8294b64`):
+  - The expert's precise-location literal was "E Slope Mt.\nMcKinley, Davao Prov.", without "CNHM.". The organiser had filed the whole first line "CNHM. E Slope Mt." as the collection code (both readers), and the code's expert kept that candidate.
+  - `step._taken` checks only literals read from the transcript, so the code, an organiser candidate, settled and claimed its text. The two texts overlap only partly ("E Slope Mt."), and the locality went to review.
+  - Fix: a place read from the transcript that another field's value settled in the same attempt overlaps only partly (`step._partly`) now settles, and that field goes to review instead, named in the reason. A place that holds the other text whole, lies inside it, or sits beside a value settled before this attempt or by a person still yields.
+- Validation:
+  - New tests: `tests/field_research/test_location_review_followups.py`, 15 tests. On main `616ae010` 5 fail by assertion and 10 pass. The 5 are the unfiled "Canada", the "Texas" counterpart, "near Mt. Apo" over two lines, and e98a924c's shape with and without a decided transcript. The 10 that pass are guards.
+  - `tests/field_research`: 3,037 passed. With the nine related suites and #378's two test files: 3,492 passed.
+- Offline replay:
+  - Same script as #379's. For e98a924c's live run the collection code is researched in the same attempt, as live: no reassessment marker, the location fields and the code reset to unresolved.
+  - Control on main `616ae010`: that run gives back its saved values (precise location `taken`, code supported).
+  - Branch: the precise location settles "E Slope Mt.\nMcKinley, Davao Prov." and the collection code goes to review (`taken` by the precise location).
+  - The other 18 runs replayed in #379 (3781e440, d10333ff's three runs, e98a924c's and 2b02009d's d5a6502d runs, and #377's twelve) give the same values on main and branch.
+- Reusable learnings:
+  - (a) A replay that must research a non-location field cannot use the location-reassessment marker: `active_keys` narrows research to location fields, and a marker naming another field is refused whole. Reset the fields by hand instead.
+  - (b) The organiser may file a whole label line as one field's candidate (here a code plus the locality's first words). A guard that examines only literals read from the transcript (`_taken`'s "mine") lets such a candidate claim text unchecked.
+- Not done, on purpose: no production write, no rerun, no deploy. e98a924c's collection code now goes to review rather than settling on "CNHM."; the harness never shortens an expert's literal.

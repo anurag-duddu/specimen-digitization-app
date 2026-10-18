@@ -626,14 +626,21 @@ def _cut_candidate(task: FieldTask, readings: Sequence[Reading], literal: str,
     consecutive lines (ACROSS_LINES: it holds a line break) may hold whole
     candidates, the organiser's lines of one locality joined in their order
     on the label (2b02009d's "Seliban Riv." and "Mt. Apo"): it cuts a
-    candidate only when it is a piece of one, or when one of the candidate's
+    candidate when it is a piece of one, or when one of the candidate's
     places in the reading lies partly inside one of its runs and partly
-    outside (runs_across_lines). None otherwise."""
+    outside (runs_across_lines). It extends one when a line of a run holds a
+    candidate and other words besides ("near Mt. Apo" of "Seliban Riv." /
+    "near Mt. Apo", as "near Mt. Apo" on one line extends "Mt. Apo"; round 1
+    of #379's review, finding 3): a line holding a candidate holds no letter
+    or digit but its candidates', only punctuation and spaces between them. A
+    line holding none may join them (e98a924c's lines, no candidate filed).
+    None otherwise."""
     want = collapse(literal)
     allowed = candidates_by_reading(task, readings)
     across = task.key in ACROSS_LINES and "\n" in literal
     for reading in dict.fromkeys(_deciding(r, readings) for r in named):
         spans = runs_across_lines(reading.text, literal) if across else []
+        places: list[tuple[int, int, str]] = []
         for text, given in allowed.get(reading.name, {}).items():
             if text == want:
                 continue
@@ -649,7 +656,20 @@ def _cut_candidate(task: FieldTask, readings: Sequence[Reading], literal: str,
                 stop = at + len(given)
                 if any(start < stop and at < end and not (start <= at and stop <= end) for start, end in spans):
                     return reading.name, given
+                if any(start <= at and stop <= end for start, end in spans):
+                    places.append((at, stop, given))
                 at = flat.find(_flat(given), at + 1)
+        for start, end in spans:
+            for offset, line in _lines(reading.text):
+                first, last = max(start, offset), min(end, offset + len(line))
+                held = [(at, stop, given) for at, stop, given in places if first <= at and stop <= last]
+                if first >= last or not held:
+                    continue
+                left = list(reading.text[first:last])
+                for at, stop, _ in held:
+                    left[at - first:stop - first] = " " * (stop - at)
+                if any(char.isalnum() for char in left):
+                    return reading.name, held[0][2]
     return None
 
 
@@ -1068,8 +1088,8 @@ def evidence_only(text: str, reading: Reading, readings: Sequence[Reading]) -> b
 def disputed(text: str, reading: Reading, readings: Sequence[Reading],
         claimed: Mapping[str, Iterable[str]]) -> bool:
     """Whether the readers of the reading's label dispute the text where the
-    reading writes it: the other reader reads that very ink as another
-    field's text. The label has no decided transcript and exactly one other
+    reading writes it: the other reader reads that very ink as the text of a
+    field of another kind. The label has no decided transcript and exactly one other
     reader, which writes the text nowhere; each run of the text in the
     reading (verbatim_runs) lies wholly inside the token differences between
     the two readings (application.first_pass.reading_differences: the
@@ -1077,12 +1097,16 @@ def disputed(text: str, reading: Reading, readings: Sequence[Reading],
     the other reader's side; that side, joined, is neither the text's place
     name (place_name) nor a spelling one letter from it (one_letter_apart);
     and it is written, as whole words, in one of the other reader's texts for
-    another field (`claimed`, by reading name: the organiser's candidates and
-    the other fields' literals). d10333ff's determination label: reader 3A
-    writes "Panama" where 3B writes "Panorpa", 3B's taxon. A reader that
-    leaves the text out (no text on its side) disputes nothing, nor does one
-    that writes it with other accents or one letter off ("Panamá"), nor one
-    whose other words no field holds (two spellings of one country)."""
+    a field of another kind (`claimed`, by reading name: the organiser's
+    candidates and those fields' literals; step._claimed_texts leaves out
+    every place field). d10333ff's determination label: reader 3A writes
+    "Panama" where 3B writes "Panorpa", 3B's taxon; a collector's "Chas." or
+    a date's "1945" there is another kind too. A reader that leaves the text
+    out (no text on its side) disputes nothing, nor does one that writes it
+    with other accents or one letter off ("Panamá"), nor one whose other
+    words no such field holds: two spellings of one country, or another
+    place field's text ("Texas" where the other writes "Mexico"), a rival
+    reading of the same place."""
     from specimen_digitization.application.first_pass import reading_differences
 
     group = [r for r in readings if r.region_id == reading.region_id]
