@@ -46,7 +46,7 @@ from .storage import (
     verify_review_decision_row,
 )
 from .workflow import OperationalBlock, crop_bytes
-from .reliability import ReadingStopped, run_agent_bounded
+from .reliability import ReadingStopped, run_agent_bounded, stopped_usage
 from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.usage import UsageLimits
 
@@ -1199,7 +1199,7 @@ class ProductionAdapters:
         except UsageLimitExceeded as exc:
             # Stopped by its token limits or cut off at its output cap: a failed
             # reading with a known outcome, not an unknown one (#153).
-            raise ReadingStopped("model_usage_limit") from exc
+            raise ReadingStopped("model_usage_limit", stopped_usage(exc)) from exc
         latency_seconds = time.monotonic() - started
         # Preserve every provider response (including retries), excluding image-bearing requests.
         responses = [m for m in result.all_messages() if m.kind == "response"]
@@ -1263,7 +1263,7 @@ class ProductionAdapters:
                 "provider": selected.provider,
             }:
                 raise OperationalBlock("pinned_model_route_changed_requires_new_run")
-        extract_with_agent(gateway, self.blobs, specimen)
+        return extract_with_agent(gateway, self.blobs, specimen)
 
     def lookup(self, name):
         return self.taxonomy.lookup(name)
@@ -1354,7 +1354,7 @@ class Sam3Service:
         from .collection_profiles import SegmentationSettings
         from .domain import LookupStatus, Region
         from .reliability import AdapterFailure
-        from .sam3_effect import canonical_sha256
+        from .sam3_effect import canonical_sha256, instance_accounting
         from ..hub_models import SAM3_MODEL
 
         try:
@@ -1450,6 +1450,9 @@ class Sam3Service:
             "settings": settings.model_dump(mode="json"),
             "request_sha256": canonical_sha256(request),
             "elapsed_seconds": result.elapsed_seconds,
+            # The instance time SAM 3 reported the request used: what Cloud Run
+            # bills for it (lane_costs.record_segmentation); None if it sent none.
+            "instance": instance_accounting(envelope.get("instance")),
         }
         if envelope["validation"] != "valid":
             raise OperationalBlock("sam3_" + envelope["validation"])

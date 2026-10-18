@@ -21481,3 +21481,288 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
 - Read-only planning found frontend/backend mailbox admission excludes the requested personal account, Firebase has no account for it, release settings lack provider configuration and bulk feature forwarding, and the current intake handoff starts an unscoped shared worker. Implementation will reconcile current main, provide exact server-owned external admission, real provider configuration, and collection-scoped dedicated job routing with isolated worker membership.
 - Team: Astra/max connections lead, Astra/max intake delivery lead, Sol/max independent integration QA; root coordinates runtime/provisioning/release and owns Git operations. No account/provider/IAM/release change or real E2E result yet. Existing three guard-entry approvals remain unresolved; owner quotations will not be invented.
 - Current GitHub inspection: main `c38f4fd4` protected, #368 OPEN/draft at `a5978572`, merge state DIRTY. First local merge attempt stopped before changes because prior append-only session notes were uncommitted; preserve those by committing before retry.
+
+### 2026-10-17 - LOGIN-JOURNEY-FIREBASE pre-merge closeout for PR 371
+
+- Task 01a147ea-7efb-7e22-8821-e42395a135fc, worktree 9030, branch
+  `codex/login-firebase-launch`: release candidate
+  `ecbc150f8e350ab57a1ead30c02fe899b14e81e9`, tree
+  `3c9af751a733368b0848379bd51579b6ada7c47d`, integrates main
+  `69bd6469cde211cb822936f9ac033b9453a80404`. PR #371:
+  https://github.com/anurag-duddu/specimen-digitization-app/pull/371.
+- Exact-head hosted CI/CD 39069497515 and Runtime candidate CI 39069497512
+  completed successfully. The full Python aggregate, mandatory engine contracts,
+  repository checks, Flutter analysis/tests/web build, Android and unsigned iOS
+  compilation all passed. Independent G51 reviewer approved this exact head and
+  tree with no findings. The source review and complete job JSON are retained in
+  this task's login-study/recovery-implementation artifacts.
+- Fresh local follow-up after PR #358 integration: 3,098 app tests passed with
+  seven expected skips; analyzer, formatting, web build and route/header smoke
+  passed; 956 affected Python workflow contracts passed. Full canonical r6
+  remains bound to 67cb8747, as recorded above, and is not relabeled as an
+  exact-ecbc canonical run. Hosted full-collection evidence now covers ecbc.
+- Scope remains Firebase built-in email links plus protected Google setup.
+  Paired code/link work at 18288554 on `codex/login-journey-complete` is retained
+  and must not be pruned. No custom sender, code-email service, or native
+  installed-app acceptance is claimed.
+- Before merge: production release, live Google handoff and real email fallback
+  are Not confirmed. Baseline Chrome App Check reCAPTCHA failure predates this
+  change and remains a separate live acceptance issue. The user authorized only
+  the exact auth-only owner setup if the protected Google step reports missing
+  permissions; the helper is reviewed, but no IAM setup has run.
+
+
+### 2026-10-17 - LOGIN-JOURNEY-FIREBASE production blockers and fix-forward
+
+- Task 01a147ea-7efb-7e22-8821-e42395a135fc: PR #371 merged as
+  `86555f1f8ad9a58014e03156e3336e19f5bd0ffe` at 21:20:46Z. Its tree equals
+  the independently reviewed ecbc150f tree. Follow-up branch
+  `codex/login-auth-diagnostics` starts at this merged commit in worktree 9030;
+  the preceding local closeout append was preserved.
+- Main CI/CD 39070548112 attempt 1 failed Python shard 8 at
+  `test_storage_cleanup_rejects_live_owned_survivor`: cleanup failure and the
+  exact survivor matched, but the expected passed storage assertion stage was
+  absent. This same tree passed the PR run. Hosting did not deploy; no rerun or
+  relaxed assertion is substituted for diagnosing the failure.
+- Data release 39070548128 attempt 1 reached the new Auth step and failed an
+  Auth GET with HTTP 403. The user's first-hand authorization for the exact
+  `bash scripts/ops/owner_setup.sh --auth-only` was exercised using the existing
+  same-owner Firebase credential, a private temporary token file, and a fresh
+  isolated gcloud configuration. The reviewed script was unchanged. It reported
+  two changes and zero failures; independent readback found exactly the six
+  reviewed permissions and one unconditional binding solely to the existing
+  Data identity. Temporary token/configuration paths were removed. No general
+  owner setup, other grants or workstation deployment ran.
+- Data attempt 2 passed the direct Auth reads but the pinned CLI exited 2.
+  Read-only audit counts establish one Firebase PERMISSION_DENIED in the exact
+  Data identity/time window, but do not identify a denied permission. Nested
+  audit-field projection was rejected, and later method/presence reads returned
+  server errors. No extra IAM grant is justified from these observations. Google
+  remains absent; passwordless email and authorized domains are unchanged.
+- Runtime 39070548062 did not deploy because Data failed. Overall release is
+  incomplete. The fix-forward work preserves all required gates and adds
+  bounded diagnostics without printing raw CLI/API payloads. Actual repair,
+  fresh checks and live sign-in acceptance remain Not confirmed at this entry.
+
+
+### 2026-10-17 - LOGIN-JOURNEY-FIREBASE reviewed release repair
+
+- Same task/worktree, branch `codex/login-auth-diagnostics`, base 86555f1f.
+  The production engine reporter created a child's log only when that child
+  emitted output, but Storage readiness could read the file earlier. A temporary
+  delayed-output reproduction failed at the same survivor assertion with an
+  ENOENT log read. The original hosted failure did not print this stderr, so
+  this establishes the reproduced race, not direct proof of the hosted cause.
+- The reporter now exclusively creates its owned log at mode 0600 before spawn.
+  The permanent quiet-child regression covers direct and standalone layouts
+  without timing sleeps. Both cases failed on the old reporter; the corrected
+  seven-case selection passed, then all 236 engine harness tests passed in
+  237.09 seconds. Existing assertions, download checks, readiness limits and
+  process cleanup behavior are unchanged; survivor failure messages now include
+  the bounded synthetic lifecycle and stderr for diagnosis.
+- Firebase CLI diagnostics inspect only bounded private output and emit fixed
+  endpoint-stage labels, numeric codes, finite status/reason/permission names,
+  or `unrecognized`. URLs, query values, raw response/error messages and secrets
+  are never published. Mutation calls, release guards, CLI version, retries and
+  timeouts are unchanged. All 127 focused tests passed, independently rerun by
+  the replacement reviewer; secret canaries and unsafe/private-log cases are
+  covered. No further production call or IAM change occurred.
+- Replacement independent review found no issues in the combined working diff.
+  Exact committed-head review, complete canonical verification and hosted
+  normal/cold engine qualification are still pending at this entry. The new
+  diagnostics do not themselves fix or identify the provider denial.
+
+
+### 2026-10-17 - LOGIN-JOURNEY-FIREBASE PR 374 qualification and concurrent main integration
+
+- Task 01a147ea-7efb-7e22-8821-e42395a135fc, worktree 9030, branch
+  `codex/login-auth-diagnostics`, PR #374: exact head
+  `5bf9c32295ec93fcbc619542210e47ec7f4a423e`, tree
+  `ec2f106827cbc3f56b7e3e09b32739285f46c35f`, passed independent G51 review
+  with no findings and full local `scripts/ci/verify.sh`: 18,185 Python passed,
+  49 skipped; 1,307 design-system passed; 3,098 app passed, seven skipped;
+  analysis, formatting, release web build and 13-route/five-header smoke passed.
+- Required PR CI/CD 39074066885 and Runtime candidate CI 39074066854 passed.
+  Normal qualification 39074076384 and cold qualification 39074087513 passed
+  in full. All three engine artifacts passed strict validation with 53 stages
+  and 889 source fingerprints. Engine completion from the first job was
+  165/147/176 seconds versus last shard 1,234/767/1,026 seconds for normal,
+  cold and PR respectively. Evidence is retained under this task's
+  `recovery-implementation/engine-qualification-5bf9c322/qualification.json`.
+- Main advanced to c73b13a4 (PR #373 cost-ledger changes) before merge. The only
+  changed-path overlap is the append-only session log. Integrate main locally,
+  preserve both entries, verify engine input identity and rerun exact-head
+  required checks; the old head's successful runs are not relabeled as new runs.
+- Data release 39070548128 attempt 3, on merged 86555f1f, again failed Auth
+  with pinned CLI exit 2 after more than an hour of IAM propagation time.
+  A tightly scoped read-only audit found one ProvisionFirebaseApp status-7
+  record. ErrorInfo, authorizationInfo and bounded message matching identify no
+  permission. No further grant or repeated audit read is justified by this
+  evidence. The original six-permission setup remains the only IAM change.
+- A fresh native-only Chrome Guest session received a real museum email link,
+  reached the authorized Insects Queue, and eventually updated its original
+  tab on public build 69bd6469. A native-only tab in the existing museum Chrome
+  profile also reached Queue. The earlier browser-controlled QA tab's reCAPTCHA
+  error therefore does not establish a general production/profile outage.
+  That owned QA tab and the Guest probe were closed; user sessions remain.
+- The existing live build already synchronizes tabs after authentication. The
+  new controller cleans remembered/sent state and invalidates late request
+  completions, including after sign-out; it does not force tab focus or promise
+  faster synchronization. New production UI, Google admission and installed
+  native-app return remain Not confirmed at this entry. The paired code/link
+  branch `codex/login-journey-complete` at 18288554 remains preserved.
+### 2026-10-17 - COST-LEDGER-20261017: runs are charged what their calls cost
+
+- Task: make the cost ledger charge runs close to what they really cost. Branch `claude/cost-ledger-settles-reported-usage`, worktree `adoring-elgamal-a9b492`, PR #373. Started from the coordinator session's brief; the owner added, typed in this session: "remember I want actual costs attributed properly."
+- Evidence, read-only, from the 11-record batch of 2026-10-17 (run graphs over Data Connect `executeGraphqlRead` and Storage GET; Logfire `Run isolated specimen model` spans; Cloud Monitoring `billable_instance_time` and the `specimen-sam` request log):
+  - The runs were charged 5,458,988 micro-dollars, of which 4,857,355 was held at reservation: segmentation 11 x 182,321 and 32 model calls 2,851,824.
+  - 26 of the 32 held model calls had reported tokens. Every malformed one made two requests, both answered. One of the 26, a reading whose answer was lost when the worker crashed, cannot settle, because its run never received the tokens. So 25 would have settled.
+  - Cloud Monitoring counts 4,167.98 billable instance-seconds for `specimen-sam` over two instances, about 446,490 at the list instance-based rates. 84% of that was idle time. The invoice, free tier and all, was not read.
+- What changed:
+  - A failed model call whose provider reported every request's tokens is recorded `failed` at their cost (`computed`). That covers an answer that stayed malformed after its retry and a call stopped by its limits. `reliability.reported_usage` decides whether the tokens are complete. The usage crosses the model child (`model_runtime`) and reaches `lane_costs.record_step` through `workflow`.
+  - Parse records its extraction's input and output tokens, priced at `profile.routes[0]`, the route it calls.
+  - `sam3_server.InstanceMeter` reports each request's own seconds and the instance's idle seconds before it, in an `X-Specimen-Instance` header, never in the stored response. `lane_costs.segmentation_instance_cost` prices that report at Cloud Run's instance-based rates, which are new in price list `pilot-prices-2026-10-17`. The instance's first request also pays the start (plus 30 s), the boost, and the last idle wait and shutdown (930 s).
+  - Unknown spend stays reserved in full: a timeout, a 5xx, a 429 after an answer, a child with no answer, a reply the client could not read, an answer without usage, and a SAM call with no report. Reservation sizing, the USD 1 run limit and the USD 28 allowance are unchanged.
+- Under the fix the batch would have been charged 1,538,413. Of that, 1,099,743 settles: the models' 628,099 at their tokens and SAM's 471,644, against the 446,490 of billable instance time at list rates. SAM's 471,644 assumes no gap between the container starting and the server's clock; with the 30 s the cost record allows for, it is 461,084. The other 438,670 stays held for seven calls whose spend is unknown: one first pass answered 504, five Muse readings that timed out, and one reading whose answer was lost. Per specimen it is in the PR body. That is a computation over the read-only extraction (script in the session notes folder), Not confirmed by a test. The SAM part is pinned by `test_the_batch_of_2026_10_17_is_charged_close_to_what_cloud_run_billed`.
+- Durable learnings:
+  - Pydantic AI 2.54's message history holds a request from just before it is sent, and a malformed answer's retry prompt is queued after the last answer before "Exceeded maximum output retries" is raised. So "every request has an answer" undercounts. The proof that the queued request was not sent is the call's own `request_limit`: once two answers are counted, Pydantic AI refuses a third request.
+  - Pydantic AI adds an answer's tokens to `RunUsage` before it checks the token limits. It counts the answer in `usage.requests` and keeps it in the messages only after the check passes. A call stopped by `total_tokens_limit` therefore has the stopped answer's tokens in usage but not in its messages.
+  - Pydantic AI's `FunctionModel` estimates usage when a scripted answer reports none. A test of "no reported usage" must build the messages itself.
+  - `specimen-sam` runs with `cpu-throttling: "false"`, so it is on instance-based billing: idle time is billed, up to 15 minutes after the last request. Request seconds are not its cost, and a flat per-call idle margin overcharges batches about 3x, because consecutive calls share one instance.
+- Failed approach: the first `reported_usage` required one counted answer per request in the messages. It returned None for every malformed answer, because of the queued retry prompt. The existing child-lab malformed tests still passed while asserting `reserved`, which exposed it. An unexpected pass on a test that should change is a signal.
+- Validation:
+  - The new and updated test files pass on the head.
+  - Before the review fixes, 303 tests passed across the cost, SAM, first-pass, model-runtime, routes and lost-reading suites.
+  - The full suite in one process reached 32% with no failure. It was stopped before the merge of `main`, so its full result is Not confirmed locally. CI's result is on PR #373.
+  - Every new and updated test fails on `origin/main` `69bd6469`, checked in a throwaway worktree.
+  - `pre-commit` ran on every commit with all hooks.
+  - Review (G51): Fable reviewed `d75d8e7d` (notes `review-d75d8e7d.md` in the session notes folder) and requested changes. One should-fix (this entry) and ten nits. Seven nits are fixed in `791eb2af` and this entry. One, the unmeasured 30 s start allowance, is the first follow-up below. Two are left as theoretical: an answer the token limit refused that reported no input tokens, and a `computed` row with outcome `unknown`, which the code cannot reach. Its verdict on the final head is recorded on the PR.
+- Follow-ups, not done here:
+  - After the first runs on the new SAM image, compare the charged segmentation with Cloud Monitoring's `billable_instance_time` for the same window. Also compare the server's first idle report with the instance's start in its log; that checks the 30 s allowed for the time before the server's clock (`SAM_STARTUP_SLACK_SECONDS`).
+  - The live `specimen-sam` template carries `run.googleapis.com/health-check-disabled: "true"`, which `scripts/ops/deploy.py` `sam_argv` does not set. Its source is Not confirmed.
+  - A parse attempt that runs after its extraction was given up makes no model call, but `record_step`'s parse branch still records it `reserved`. Not measured here.
+  - A rerun of 19f0f1f6 is not part of this task.
+
+
+### 2026-10-17 - LOGIN-JOURNEY-FIREBASE live acceptance and original-tab recovery
+
+- Task 01a147ea-7efb-7e22-8821-e42395a135fc, worktree 9030. Repair PR #374
+  advanced to `238317a39d4fcfc04d34c4bc08a5cc01e8d0cd14`, tree
+  `243e01760308b7261aed3a2cbf92d2c415411333`, after merging main c73b13a4.
+  Independent G51 review found no issues. Full local `scripts/ci/verify.sh`
+  passed: 18,225 Python passed / 49 skipped; 1,307 design-system passed;
+  3,098 application passed / seven skipped; analysis, formatting, release web
+  build and 13-route/five-header smoke passed. This head was pushed with normal
+  hooks. Fresh hosted checks are pending at this entry; prior normal/cold
+  engine qualification is retained only for unchanged engine-tier inputs.
+- Hosting CI/CD 39076037970 passed on c73b13a4 and the public marker matches.
+  The redesigned entry, recipient/sent stage and sign-out were observed live.
+  A real Firebase link delivered at 22:55 UTC completed in an owned Chrome
+  Guest return tab and opened the exact intended Insects Queue. No account or
+  membership was created or modified; no worker or specimen action ran.
+- Correction to the preceding baseline observation: on this new live build the
+  original Guest tab received the verified session but encountered typed app
+  verification failure. Check access again did not recover; a normal browser
+  reload did restore the intended Queue. Thus the failure is not limited to
+  the earlier directly browser-controlled QA tab. The global Chrome debugging
+  banner remained present; its causal role is Not confirmed. The owned Guest
+  tabs were signed out and closed; the user's primary session was preserved.
+- Evidence: this task's `recovery-implementation/live-login-acceptance-c73b13a4.json`
+  and six live screenshots. These prove real web email delivery/return and
+  sign-out, not seamless original-tab completion or physical native handoff.
+  Data release 39076037949 failed the Google provisioning step; Runtime
+  39076037991 did not deploy. API /version remained 69bd6469. Full release is
+  incomplete; Google remains hidden and its missing permission is unidentified.
+- New branch `codex/login-appcheck-recovery` starts from qualified 238317a3.
+  It implements bounded web recovery after a matching external-session handoff,
+  preserving the internal route and awaiting serialized email cleanup. A typed
+  first-access App Check failure may reload once; no token broadcast, SDK
+  private-state modification, security-enforcement change or authorization
+  bypass is introduced. Native keeps its existing retry. Independent patch
+  review, integrated canonical verification and live fix acceptance are pending.
+- Firebase built-in links remain the chosen email scope. The optional code/link
+  sender implementation is preserved at 18288554 on
+  `codex/login-journey-complete` and must not be pruned. A direct owner question
+  about deferring Google versus keeping it in this launch is pending; no
+  additional IAM grant or release-gate change has been made.
+- The integrated recovery patch matches the frozen temporary candidate in all
+  11 code/test files. Its seven focused suites passed 126 tests (22 new), and
+  pinned Flutter 3.38.5 analysis and formatting passed. The first wider run
+  exposed a test-owned timer disposed after the framework invariant check;
+  moving disposal into the test finally block fixed the fixture without
+  weakening assertions or changing production timers. Canonical verification
+  and hosted/live acceptance remain pending.
+- Independent review of recovery d8537355/tree ded5c076 reported NOT APPROVED
+  for stale successful-send provenance across an intervening identity/sign-out
+  sequence. No access bypass was found. Its canonical run was intentionally
+  interrupted during Python shards (exit 130); it is incomplete, not passing.
+  The runner cleaned its owned workers before any source edits. The narrow
+  correction and a deterministic regression are required before a new run.
+- Before PR #374 merge: fresh CI/CD 39078159542 and Runtime candidate
+  CI 39078159561 passed on exact 238317a3, including both native builds. The
+  ordinary engine artifact passed strict 891-input/53-stage validation. Main
+  remains c73b13a4; strict required checks, administrator enforcement and
+  conversation resolution are enabled, with force pushes/deletions disabled.
+  Merge is authorized by the owner; no bypass or branch pruning is requested.
+- PR #374 merged normally at 23:26:37 UTC as
+  `1b1a0b08de42e0d9c5eeb64de647e10bba380a93`. Protected runs started:
+  Hosting 39079047147, Data 39079047193, Runtime 39079047127. Completion
+  remains Not confirmed; source merge does not establish a release. The
+  successful engine job ended 601 seconds before the final shard on the PR.
+- The stale-provenance finding was reproduced on unchanged d8537355 in both
+  reported sequences. The correction invalidates the successful-send hint on
+  established identity changes or signed-in to signed-out transitions, while
+  preserving initial duplicate signed-out events. The expanded focused suite
+  passed 130 tests (26 new recovery cases); the negative baseline is retained
+  in this task's external evidence. Fresh final review and full canonical run
+  are required; interrupted d853 results are not reused as a passing gate.
+
+- Final source review approved recovery `39c7f22e` / tree `ee7e22a9`.
+  Its fresh canonical run then failed one architecture gate: the new
+  `app_reload_factory.dart` conditional export was not a registered platform
+  capability. Python passed 18,225 / 49 skipped; design-system passed 1,307;
+  application passed 3,123 / seven skipped / one failed. The formatter,
+  release build and route smoke did not run. This is a failed canonical run,
+  not a release qualification.
+- The correction consolidates selection into the existing conditional
+  `email_link_browser.dart` boundary: its web/stub implementations reexport
+  the unchanged reload adapters. The extra conditional factory and main
+  import are removed. No platform scanner, capability allowance, assertion
+  or required check was changed. Independent review approved this bounded
+  integration, and the architecture plus recovery suites passed all 31 tests.
+  Fresh full canonical verification remains required before push.
+- PR #374 Hosting run 39079047147 succeeded at 23:40:04 UTC and the public
+  marker matches exact merge `1b1a0b08`, run/attempt 39079047147/1. Runtime
+  candidate 39079047085 also succeeded. Data 39079047193 failed Google setup;
+  its bounded diagnostic says CLI exit 2, provider_provision, HTTP 200, with
+  no API code, status, reason or permission. That last recognized response
+  does not establish success or a new permission diagnosis. One field-masked
+  owner read at 23:30:59 UTC returned HTTP 404: Google provider remains absent.
+  No further grant or blind retry was made. Runtime's Data dependency failed;
+  full three-workflow release remains incomplete. The owner Google scope
+  question is still unanswered. The optional deferral is prepared externally
+  only; no flag, provisioning intent, or release gate has changed.
+
+- Recovery implementation `57b1ec4cfce4dc82db3692c18855add24ee8a3aa`, tree
+  `f9df0d60661e899b0ea372161034f98db3c4253a`, passed the complete required
+  `scripts/ci/verify.sh`: 18,225 Python / 49 skipped; 1,307 design-system;
+  3,124 application / seven skipped; both analyzers; 585 formatted files with
+  zero changes; production web build; 13-route/five-header smoke. The root
+  checkout was clean after the run, and fresh origin/main remained 1b1a0b08.
+  The independent reviewer approved this exact source. Retained artifacts:
+  `canonical-appcheck-recovery-57b1ec4c-result.json` and
+  `independent-review-57b1ec4c.json` in this task's external evidence directory.
+  The following journal-only commit records that qualification; hosted checks
+  must run on the final PR head. Production automatic recovery is Not confirmed
+  until protected Hosting release and a fresh real two-tab email journey.
+- Additional offline recovery-screen QA passed four cases and five inspected
+  captures on the same 57b1ec4c source: mobile at 100%/200%, tablet and desktop.
+  Reload controls measured 56px normally and 76px at 200%, were hit-testable,
+  and invoked only the recording callback once. No blocking visual issue;
+  secondary diagnostic banner text ellipsizes on mobile while full recovery
+  guidance stays visible. This is not native-device or live-browser acceptance.
+  Attempts one and two failed before widget assertions due to SDK cache
+  sandbox access and omitted package_graph metadata in the external harness.
+  Both failures are retained. The third run corrected only the external runner
+  environment/metadata, with unchanged application source and Dart assertions;
+  source, package metadata and the clean root checkout were verified afterward.

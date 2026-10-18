@@ -32,7 +32,8 @@ PROMPT_FRAMING_TOKENS = 512
 IMAGE_SLACK_TOKENS = 256
 # Match the deployed SAM profile: 600s startup at boosted 8 vCPU, 300s
 # request, 10s boosted post-start and 10s shutdown. Idle warming belongs to
-# the cumulative infrastructure budget. Request seconds never refund startup.
+# the cumulative infrastructure budget. Request seconds never refund startup:
+# a call settles at the instance time it reports (lane_costs.segmentation_instance_cost).
 SAM_STARTUP_SECONDS = 600
 SAM_REQUEST_SECONDS = 300
 SAM_BOOST_SECONDS = 10

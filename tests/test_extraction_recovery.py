@@ -32,7 +32,7 @@ from test_first_pass_given_up import given_up_findings
 from test_first_pass_stuck_recovery import drain_worker, later
 from test_first_pass_transient_recovery import comparison_lab, comparison_step
 from test_lane_routes import PARSE_RESERVATION
-from test_rate_limit_refusal import FAILURE, ChildLab, drains, lab, requests
+from test_rate_limit_refusal import FAILURE, ChildLab, drains, lab, requests, research_state
 
 
 class ExtractionLab(ChildLab):
@@ -156,7 +156,18 @@ def test_a_malformed_extraction_is_given_up_at_once(tmp_path, monkeypatch):
     assert (run.stage, run.blocker, run.disposition) == ("finalized", None, Disposition.REVIEW)
     assert run.attempts["parse"] == 1 and requests(tmp_path, "extract") == 2
     assert extraction_findings(run) == ["extraction_given_up:model_malformed_response"]
-    assert parse_calls(run) == [(1, "failed", "reserved", PARSE_RESERVATION, "model_malformed_response")]
+    # Its provider reported both requests' tokens: 2,000 in and 80 out, at the
+    # price of the route it calls (handwriting-qwen, 0.20 and 0.70 per million).
+    assert parse_calls(run) == [(1, "failed", "computed", 456, "model_malformed_response")]
+    [call] = [c for c in run.paid_calls if c["step"] == "parse"]
+    assert (call["route_id"], call["usage"]) == (
+        "handwriting-qwen",
+        {"input_tokens": 2_000, "output_tokens": 80},
+    )
+    assert research_state(backend, specimen)["ordinary_reservations"]["parse:1"] == {
+        "reserved_micros": PARSE_RESERVATION,
+        "settled_micros": 456,
+    }
 
 
 def test_an_extraction_stopped_by_its_limits_is_given_up_at_once(tmp_path, monkeypatch):

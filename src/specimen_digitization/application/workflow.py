@@ -815,6 +815,10 @@ class Workflow:
         # The code of a model call the provider refused before any work (an HTTP
         # 429 to its first request): it is recorded at no cost (lane_costs).
         refusal = None
+        # The tokens the provider reported for the step's model call: a failed
+        # call's (reliability.reported_usage), or parse's extraction. Recorded at
+        # what they cost (lane_costs.record_step); None stays reserved in full.
+        call_usage = None
         observed = len(run.observations)
         # The run's fields, evidence and usage before parse touches them; put
         # back when parse does not end (below).
@@ -905,6 +909,7 @@ class Workflow:
                     # again: the step completes with no observation, and the
                     # region stays one reading short.
                     reading_failure = stopped.code
+                    call_usage = stopped.usage
                     _log_step_failure(
                         run,
                         step,
@@ -921,6 +926,7 @@ class Workflow:
                     # with no observation, and the record goes to review.
                     reading_failure = failure.code
                     refusal = failure.code if failure.refused else None
+                    call_usage = failure.usage
                     circuit_failure = failure.status.value
                     circuit_retry_after = failure.retry_after_seconds
                     _log_step_failure(
@@ -959,6 +965,7 @@ class Workflow:
                     give_up(run, region.id, failure.code)
                     reading_failure = failure.code
                     refusal = failure.code if failure.refused else None
+                    call_usage = failure.usage
                     circuit_failure = failure.status.value
                     circuit_retry_after = failure.retry_after_seconds
                     _log_step_failure(
@@ -1065,7 +1072,7 @@ class Workflow:
                 # extract from the first check (unmetered) still extract.
                 if hasattr(self.adapters, "extract") and not extraction_given_up(run):
                     try:
-                        self.adapters.extract(proposal)
+                        call_usage = self.adapters.extract(proposal)
                     except (AdapterFailure, ReadingStopped) as failure:
                         if not self.extraction_has_no_attempt_left(run, step, failure):
                             raise  # Retried, or a block that names its cause (below).
@@ -1075,6 +1082,7 @@ class Workflow:
                         # above stands, and what does not settle goes to review.
                         give_up_the_extraction(run, failure.code)
                         reading_failure = failure.code
+                        call_usage = failure.usage
                         status = {}
                         if isinstance(failure, AdapterFailure):
                             refusal = failure.code if failure.refused else None
@@ -1282,6 +1290,7 @@ class Workflow:
             ):
                 reading_failure = exc.code
             refusal = exc.code if exc.refused else None
+            call_usage = exc.usage
             circuit_failure = exc.status.value
             circuit_retry_after = exc.retry_after_seconds
             run.blocker = "external_outcome_unknown" if outcome_unknown else exc.code
@@ -1390,6 +1399,7 @@ class Workflow:
             # never comes here: a known refusal stays known past its deadline,
             # while an unknown bill remains fully reserved.
             refusal = None
+            call_usage = None
             # Field research's meter knows what its calls cost even when the
             # step overran: its paid call stays, so the settlement below frees
             # the rest of its reservation.
@@ -1442,6 +1452,7 @@ class Workflow:
                 self.clock,
                 failure=reading_failure,
                 refusal=refusal,
+                usage=call_usage,
             )
         if billable and not run.profile.synthetic:
             if self.settle_retained_cost is not None:

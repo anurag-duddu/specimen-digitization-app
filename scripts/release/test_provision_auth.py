@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 from types import SimpleNamespace
@@ -210,6 +211,243 @@ def test_cli_is_pinned_auth_only_and_logs_no_raw_output(monkeypatch, capsys, fai
         assert calls[1][-1] == "--non-interactive"
     assert all(not path.exists() for path in directories)
     assert "PRIVATE-RESPONSE" not in str(capsys.readouterr())
+
+
+PROVISION_URL = "https://firebase.googleapis.com/v1alpha/firebase:provisionFirebaseApp"
+OPERATION_URL = "https://firebase.googleapis.com/v1beta1/operations/provision-example_123"
+PRIVATE_CANARIES = ["secret-token-canary", "secret-client-canary", "private@example.test",
+                    "https://private.example.test/credential", "private-operation-id"]
+
+
+def debug_response(kind, payload, *, method="POST", url=PROVISION_URL, prefix="file"):
+    # Exact CLI 15.8.0 logger.js and apiv2.js formats; no live log contents.
+    prefixes = {"file": "[debug] [2026-10-17T21:00:00.000Z] ",
+                "console": "[2026-10-17T21:00:00.000Z] ", "plain": ""}
+    return f"{prefixes[prefix]}<<< [apiv2][{kind}] {method} {url} {payload}"
+
+
+def private_api_error(**overrides):
+    error = {"code": 403, "status": "PERMISSION_DENIED", "message": " ".join(PRIVATE_CANARIES),
+             "clientSecret": PRIVATE_CANARIES[1], "details": [
+                 {"@type": "type.googleapis.com/google.rpc.ErrorInfo", "reason": "IAM_PERMISSION_DENIED",
+                  "domain": PRIVATE_CANARIES[2], "metadata": {"permission": "firebaseauth.configs.update",
+                  "accessToken": PRIVATE_CANARIES[0], "resource": PRIVATE_CANARIES[3]}},
+                 {"@type": "type.googleapis.com/google.rpc.Help", "links": [
+                     {"description": PRIVATE_CANARIES[1], "url": PRIVATE_CANARIES[3]}]},
+             ]}
+    return {"error": {**error, **overrides}}
+
+
+@pytest.mark.parametrize("prefix", ["file", "console", "plain"])
+def test_real_cli_response_formats_keep_only_enumerated_error_fields(tmp_path, prefix):
+    text = "\n".join([
+        "[debug] Authorization: Bearer " + PRIVATE_CANARIES[0],
+        debug_response("status", "403", prefix=prefix),
+        debug_response("body", json.dumps(private_api_error()), prefix=prefix),
+        f"Error: Failed to provision Firebase app: Request to {PROVISION_URL} had HTTP Error: 403, "
+        + " ".join(PRIVATE_CANARIES),
+    ])
+    (tmp_path / "firebase-debug.log").write_text(text)
+    message = auth.cli_failure_diagnostic(SimpleNamespace(stdout="", stderr=""), tmp_path)
+    assert message == ("CLI response diagnostic: stage=provider_provision http=403 api_code=403 "
+                       "api_status=PERMISSION_DENIED reason=IAM_PERMISSION_DENIED "
+                       "permission=firebaseauth.configs.update")
+    assert all(canary not in message for canary in PRIVATE_CANARIES)
+    assert "https://" not in message and "@" not in message
+
+
+def test_completed_operation_error_is_detected_despite_http_success(tmp_path):
+    url = OPERATION_URL.replace("provision-example_123", PRIVATE_CANARIES[4])
+    text = "\n".join([
+        debug_response("status", "200", method="GET", url=url),
+        debug_response("body", json.dumps({"done": True, **private_api_error(code=7)}), method="GET", url=url),
+    ])
+    (tmp_path / "firebase-debug.log").write_text(text)
+    message = auth.cli_failure_diagnostic(SimpleNamespace(stderr="", stdout=""), tmp_path)
+    assert "stage=provider_operation http=200 api_code=7 api_status=PERMISSION_DENIED" in message
+    assert all(canary not in message for canary in PRIVATE_CANARIES)
+
+
+@pytest.mark.parametrize("method,url,stage", [
+    ("POST", f"https://cloudresourcemanager.googleapis.com/v1/projects/{auth.PROJECT}:testIamPermissions", "permission_check"),
+    ("GET", f"https://cloudresourcemanager.googleapis.com/v1/projects/{auth.NUMBER}", "project_read"),
+    ("GET", f"https://firebase.googleapis.com/v1beta1/projects/{auth.PROJECT}", "firebase_project_read"),
+    ("GET", f"https://firebase.googleapis.com/v1beta1/projects/{auth.NUMBER}/webApps", "web_app_list"),
+    ("POST", PROVISION_URL, "provider_provision"),
+    ("GET", OPERATION_URL, "provider_operation"),
+    ("GET", f"https://firebase.googleapis.com/v1beta1/projects/{auth.PROJECT}/operations/example", "provider_operation"),
+])
+def test_only_known_endpoint_shapes_are_mapped_to_fixed_stages(method, url, stage):
+    assert auth._cli_observation(debug_response("status", "503", method=method, url=url)) == {
+        "stage": stage, "http": 503}
+
+
+@pytest.mark.parametrize("url", [
+    PROVISION_URL.replace("firebase.googleapis.com", "firebase.googleapis.com.evil.test"),
+    PROVISION_URL.replace("https://", "https://private@example.test@"),
+    PROVISION_URL + "?access_token=secret-token-canary", PROVISION_URL + "#secret-token-canary",
+    PROVISION_URL + "/extra", PROVISION_URL.replace("https://", "http://"),
+    "https://firebase.googleapis.com/v1beta1/projects/another-project/webApps",
+    "https://firebase.googleapis.com/v1beta1/projects/specimen-digitization/secrets/example",
+])
+def test_unknown_or_credential_bearing_urls_never_become_diagnostics(url):
+    assert auth._cli_observation(debug_response("status", "403", url=url)) == {}
+    assert auth._cli_observation(f"Error: Request to {url} had HTTP Error: 403, private") == {}
+
+
+@pytest.mark.parametrize("payload", ["099", "600", "403 secret", "True", "-1"])
+def test_malformed_http_status_is_not_reported(payload):
+    assert auth._cli_observation(debug_response("status", payload)) == {}
+
+
+@pytest.mark.parametrize("body", ["{broken", "[]", "null", '{"error": "private"}',
+                                "[" * 2000 + "]" * 2000])
+def test_malformed_bodies_keep_only_the_known_http_observation(body):
+    text = debug_response("status", "403") + "\n" + debug_response("body", body)
+    assert auth._cli_observation(text) == {"stage": "provider_provision", "http": 403}
+
+
+@pytest.mark.parametrize("code", [True, False, 0, 17, 399, 600, 7.0, "403", [403], {"code": 403}])
+def test_unbounded_or_wrong_type_error_fields_are_omitted(code):
+    body = private_api_error(code=code, status=PRIVATE_CANARIES[0], details=[
+        {"@type": "type.googleapis.com/google.rpc.ErrorInfo", "reason": PRIVATE_CANARIES[1],
+         "metadata": {"permission": PRIVATE_CANARIES[2]}},
+        {"@type": "unrecognized", "reason": "IAM_PERMISSION_DENIED",
+         "metadata": {"permission": "firebaseauth.configs.update"}},
+    ])
+    assert auth._structured_cli_error(json.dumps(body)) == {
+        "api_code": "unrecognized", "api_status": "unrecognized",
+        "reason": "unrecognized", "permission": "unrecognized"}
+
+
+@pytest.mark.parametrize("reason,permission", [
+    ("SERVICE_DISABLED", "serviceusage.services.enable"),
+    ("BILLING_DISABLED", "serviceusage.services.get"),
+    ("ACCESS_TOKEN_SCOPE_INSUFFICIENT", "serviceusage.services.use"),
+    ("ACCESS_TOKEN_TYPE_UNSUPPORTED", "clientauthconfig.brands.create"),
+    ("ACCOUNT_TYPE_UNSUPPORTED", "clientauthconfig.clients.create"),
+    ("CREDENTIAL_TYPE_UNSUPPORTED", "firebase.clients.create"),
+    ("RESOURCE_USAGE_RESTRICTION_VIOLATED", "clientauthconfig.clients.get"),
+    ("ENDPOINT_USAGE_RESTRICTION_VIOLATED", "resourcemanager.projects.get"),
+])
+def test_public_api_restriction_reasons_and_permissions_are_preserved(reason, permission):
+    body = private_api_error(details=[
+        {"@type": "type.googleapis.com/google.rpc.ErrorInfo", "reason": reason,
+         "metadata": {"permission": permission, "credential": PRIVATE_CANARIES[0]}},
+    ])
+    assert auth._structured_cli_error(json.dumps(body)) == {
+        "api_code": 403, "api_status": "PERMISSION_DENIED", "reason": reason, "permission": permission}
+
+
+@pytest.mark.parametrize("query", ["pageSize=100", "pageSize=100&pageToken=secret-token-canary%2Fnext"])
+def test_web_app_pagination_in_real_cli_error_url_is_classified_without_query_values(query):
+    url = f"https://firebase.googleapis.com/v1beta1/projects/{auth.PROJECT}/webApps?{query}"
+    # listFirebaseApps logs responseToError.message as a debug line. apiv2's
+    # ordinary status/body records use requestURL without this query string.
+    text = f"[debug] [2026-10-17T21:00:00.000Z] Request to {url} had HTTP Error: 403, private"
+    assert auth._cli_observation(text) == {"stage": "web_app_list", "http": 403}
+    assert auth._cli_observation(debug_response("status", "403", method="GET", url=url)) == {
+        "stage": "web_app_list", "http": 403}
+
+
+@pytest.mark.parametrize("query", ["access_token=secret-token-canary", "pageSize=100&token=private",
+                                 "pageSize=100&pageSize=200", "pageSize=private", "pageToken=",
+                                 "pageSize=100#secret-token-canary", "pageSize=100&pageToken=x&other=y"])
+def test_unrecognized_query_shapes_are_not_classified(query):
+    url = f"https://firebase.googleapis.com/v1beta1/projects/{auth.PROJECT}/webApps?{query}"
+    assert auth._cli_observation(debug_response("status", "403", method="GET", url=url)) == {}
+    assert auth._cli_observation(debug_response("status", "403", method="GET", url=OPERATION_URL + "?" + query)) == {}
+
+
+def test_structured_error_requires_the_matching_response_record():
+    body = debug_response("body", json.dumps(private_api_error()))
+    assert auth._cli_observation(body) == {}
+    text = "\n".join([debug_response("status", "403"),
+                       debug_response("status", "403", url="https://unknown.example.test"), body])
+    assert auth._cli_observation(text) == {"stage": "provider_provision", "http": 403}
+    text = "\n".join([debug_response("status", "403"), body,
+                       debug_response("status", "200", method="GET", url=OPERATION_URL)])
+    assert auth._cli_observation(text) == {"stage": "provider_operation", "http": 200}
+
+
+@pytest.mark.parametrize("log_kind", ["missing", "directory", "symlink", "hardlink", "fifo", "oversize", "binary"])
+def test_unsafe_or_unreadable_debug_log_uses_bounded_console_fallback(tmp_path, log_kind):
+    path = tmp_path / "firebase-debug.log"
+    if log_kind == "directory":
+        path.mkdir()
+    elif log_kind in {"symlink", "hardlink"}:
+        target = tmp_path / "private-other-file"
+        target.write_text(debug_response("status", "401") + "\n" + PRIVATE_CANARIES[0])
+        path.symlink_to(target) if log_kind == "symlink" else os.link(target, path)
+    elif log_kind == "fifo":
+        os.mkfifo(path)
+    elif log_kind == "oversize":
+        path.write_text(debug_response("status", "401") + "\n" + "x" * auth.DIAGNOSTIC_LIMIT)
+    elif log_kind == "binary":
+        path.write_bytes(debug_response("status", "401").encode() + b"\xff")
+    assert auth._private_cli_log(tmp_path) == ""
+    done = SimpleNamespace(stdout=PRIVATE_CANARIES[1], stderr=(
+        f"Error: Failed to provision Firebase app: Request to {PROVISION_URL} had HTTP Error: 400, "
+        + " ".join(PRIVATE_CANARIES)))
+    assert auth.cli_failure_diagnostic(done, tmp_path) == (
+        "CLI response diagnostic: stage=provider_provision http=400")
+
+
+def test_private_log_read_error_is_bounded(monkeypatch, tmp_path):
+    def refuse(*args):
+        raise PermissionError(" ".join(PRIVATE_CANARIES))
+
+    monkeypatch.setattr(auth.os, "open", refuse)
+    assert auth.cli_failure_diagnostic(SimpleNamespace(stdout="", stderr=""), tmp_path) == (
+        "CLI diagnostic unavailable")
+
+
+def test_private_log_growth_past_size_limit_is_refused(monkeypatch, tmp_path):
+    path = tmp_path / "firebase-debug.log"
+    path.write_bytes(b"x" * (auth.DIAGNOSTIC_LIMIT + 1))
+    actual_stat = os.stat(path)
+    monkeypatch.setattr(auth.os, "fstat", lambda fd: SimpleNamespace(
+        st_mode=actual_stat.st_mode, st_size=1, st_nlink=1))
+    assert auth._private_cli_log(tmp_path) == ""
+
+
+def test_oversize_captured_output_and_lines_are_not_parsed(tmp_path):
+    line = debug_response("status", "403")
+    assert auth._cli_observation(line + "\n" + "x" * auth.DIAGNOSTIC_LIMIT) == {}
+    assert auth._cli_observation("Error: Request to " + PROVISION_URL + " had HTTP Error: 403, "
+                                 + "x" * auth.DIAGNOSTIC_LINE_LIMIT) == {}
+    done = SimpleNamespace(stdout="not a debug record " + line, stderr=" ".join(PRIVATE_CANARIES))
+    assert auth.cli_failure_diagnostic(done, tmp_path) == "CLI diagnostic unavailable"
+
+
+@pytest.mark.parametrize("timeout", [False, True])
+def test_cli_failure_reads_private_log_before_cleanup_without_changing_command(monkeypatch, capsys, timeout):
+    folders = []
+
+    def run(argv, **kwargs):
+        folders.append(Path(kwargs["cwd"]))
+        if argv[-1] == "--version":
+            assert kwargs["timeout"] == 30
+            return SimpleNamespace(returncode=0, stdout="15.8.0\n")
+        assert argv[1:7] == ["deploy", "--only", "auth", "--project", auth.PROJECT, "--config"]
+        assert kwargs["timeout"] == 300 and argv[-1] == "--non-interactive"
+        (folders[-1] / "firebase-debug.log").write_text("\n".join([
+            debug_response("status", "403"), debug_response("body", json.dumps(private_api_error())),
+        ]))
+        if timeout:
+            raise subprocess.TimeoutExpired(argv, 300, output=" ".join(PRIVATE_CANARIES))
+        return SimpleNamespace(returncode=2, stdout=" ".join(PRIVATE_CANARIES), stderr=PRIVATE_CANARIES[0])
+
+    monkeypatch.setattr(auth.subprocess, "run", run)
+    with pytest.raises(auth.Failure) as caught:
+        auth.run_cli("/pinned/firebase", auth.AUTH_CONFIG)
+    message = str(caught.value)
+    assert ("Pinned Auth CLI did not complete" if timeout else "Pinned Auth CLI exited 2") in message
+    assert "stage=provider_provision http=403 api_code=403" in message
+    assert "raw output omitted" in message
+    assert all(canary not in message for canary in PRIVATE_CANARIES)
+    assert len(folders) == 2 and all(not path.exists() for path in folders)
+    assert capsys.readouterr() == ("", "")
 
 
 class Response:

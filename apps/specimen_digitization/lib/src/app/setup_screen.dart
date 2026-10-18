@@ -41,6 +41,7 @@ class SetupScreen extends StatefulWidget {
     this.session,
     this.setupMessage,
     this.controller,
+    this.reloadApp,
   });
 
   /// The signed in account, when there is one.
@@ -51,6 +52,9 @@ class SetupScreen extends StatefulWidget {
 
   /// The collection controller, when the build has a collection API.
   final WorkspaceController? controller;
+
+  /// A real web page reload. Absent on native platforms.
+  final Future<void> Function()? reloadApp;
 
   /// Which state the inputs describe.
   static SetupState stateOf({
@@ -70,6 +74,28 @@ class SetupScreen extends StatefulWidget {
 
 class _SetupScreenState extends State<SetupScreen> {
   bool _signingOut = false;
+  bool _reloading = false;
+
+  Future<void> _reload() async {
+    if (_reloading || _signingOut) return;
+    setState(() {
+      _reloading = true;
+      _message = null;
+    });
+    try {
+      await widget.reloadApp!();
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _message =
+              'Use your browser’s Reload button to restart app verification.';
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _reloading = false);
+    }
+  }
+
   String? _message;
 
   Future<void> _signOut() async {
@@ -106,6 +132,9 @@ class _SetupScreenState extends State<SetupScreen> {
       session: widget.session,
     );
     final UiThemeData ui = context.ui;
+    final bool canReload =
+        widget.reloadApp != null &&
+        controller?.error?.appVerificationUnavailable == true;
     final String title = switch (state) {
       SetupState.unconfigured => 'Collection connection required',
       SetupState.checking => 'Checking collection access',
@@ -117,7 +146,10 @@ class _SetupScreenState extends State<SetupScreen> {
       SetupState.checking => 'Finding the collections you can open.',
       SetupState.unassigned =>
         'Ask your administrator to assign one, then check again.',
-      SetupState.unverified => 'Check your connection, then try again.',
+      SetupState.unverified =>
+        canReload
+            ? 'Reload the app to restart app verification.'
+            : 'Check your connection, then try again.',
     };
 
     return UiScaffold(
@@ -160,12 +192,14 @@ class _SetupScreenState extends State<SetupScreen> {
           if (controller != null && state != SetupState.checking) ...<Widget>[
             SizedBox(height: ui.space.s6),
             UiButton(
-              label: 'Check access again',
+              label: canReload ? 'Reload app' : 'Check access again',
               expand: true,
               size: UiSize.lg,
-              loading: controller.loading,
-              onPressed: controller.loading
+              loading: controller.loading || _reloading,
+              onPressed: controller.loading || _reloading || _signingOut
                   ? null
+                  : canReload
+                  ? _reload
                   : () => unawaited(controller.checkAccess()),
             ),
           ],

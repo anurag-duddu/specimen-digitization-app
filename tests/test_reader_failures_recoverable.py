@@ -580,6 +580,35 @@ def test_a_reading_stopped_by_its_limits_is_recorded_failed_and_stays_reserved(
     assert ledger_total(app) == run.usage.reserved_cost_micros
 
 
+def test_a_reading_stopped_with_its_tokens_reported_costs_what_they_cost(
+    tmp_path, monkeypatch
+):
+    # Stopped by its limits after its provider reported its tokens: a known
+    # cost, which settles (2026-10-17; reliability.reported_usage).
+    from specimen_digitization.application.lane_costs import model_cost
+    from specimen_digitization.application.reliability import ReadingStopped
+    from test_lane_costs import ledger_total
+
+    usage = {"input_tokens": 15_000, "output_tokens": 2_000}
+    app, principal, row = priced_reader_lab(
+        tmp_path, monkeypatch, ReadingStopped("model_usage_limit", usage)
+    )
+    run = drain_priced(app, principal, row["specimen_id"])
+    step = step_of(run, 1)
+    assert run.blocker is None and run.stage == "finalized", run.blocker
+    assert run.attempts[step] == 1 and step in run.completed_steps
+    [call] = [c for c in run.paid_calls if c["step"] == step]
+    cost = model_cost(run.profile.execution.price_list, "handwriting-muse", 15_000, 2_000)
+    assert (call["outcome"], call["failure_code"], call["cost_basis"], call["usage"]) == (
+        "failed",
+        "model_usage_limit",
+        "computed",
+        usage,
+    )
+    assert call["cost_micros"] == cost < call["reserved_micros"]
+    assert ledger_total(app) == run.usage.reserved_cost_micros
+
+
 def first_failure(tmp_path, monkeypatch):
     """A priced run whose reader failed once and waits for its retry."""
     from specimen_digitization.application.reliability import AdapterFailure

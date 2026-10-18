@@ -12,6 +12,41 @@ from ..hub_models import SAM3_MODEL
 SAM3_IMPLEMENTATION = "transformers/5.14.0;torch/2.8.0;cpu"
 SHA256 = re.compile(r"^[a-f0-9]{64}$")
 GENERATION = re.compile(r"^[1-9][0-9]*$")
+# The instance time a SAM 3 request used, beside its answer (sam3_server.InstanceMeter).
+INSTANCE_HEADER = "X-Specimen-Instance"
+INSTANCE_KEYS = {"first", "idle_seconds", "request_seconds"}
+# No instance lives a day: anything longer is not a measurement.
+INSTANCE_MAX_SECONDS = 86_400
+
+
+def instance_accounting(value):
+    """The instance time SAM 3 reported for a request, or None when it is not that.
+
+    Three keys: whether the request was its instance's first, the instance
+    seconds before it, and its own seconds, each finite and within a day. A
+    missing or malformed report is unknown instance time: the call stays
+    reserved in full (lane_costs.record_segmentation).
+    """
+    if not isinstance(value, dict) or value.keys() != INSTANCE_KEYS:
+        return None
+    if type(value["first"]) is not bool:
+        return None
+    seconds = [value["idle_seconds"], value["request_seconds"]]
+    if not all(
+        type(n) in (int, float) and math.isfinite(n) and 0 <= n <= INSTANCE_MAX_SECONDS
+        for n in seconds
+    ):
+        return None
+    return dict(value)
+
+
+def _instance_header(raw):
+    if not raw or len(raw) > 256:
+        return None
+    try:
+        return instance_accounting(json.loads(raw))
+    except ValueError:
+        return None
 
 
 def canonical_bytes(value):
@@ -437,6 +472,7 @@ def _exchange(payload, bearer, validate):
                     "http_status": response.status_code,
                     "validation": validation,
                     "body_base64": base64.b64encode(raw).decode(),
+                    "instance": _instance_header(response.headers.get(INSTANCE_HEADER)),
                 },
                 separators=(",", ":"),
             ).encode()

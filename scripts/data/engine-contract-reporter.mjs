@@ -213,6 +213,7 @@ async function harness(kind, argv) {
   }
   function launch(command,args,role) {
     const log=path.join(scratch,`${role}.log`);
+    writeFileSync(log,'',{mode:0o600,flag:'wx'});
     const child=spawn(command,args,{cwd:kind==='storage'?scratch:root,env,stdio:['ignore','pipe','pipe']});
     child.engine=true;
     let spawnError;
