@@ -21542,3 +21542,27 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
   full three-workflow release remains incomplete. The owner Google scope
   question is still unanswered. The optional deferral is prepared externally
   only; no flag, provisioning intent, or release gate has changed.
+
+- Recovery implementation `57b1ec4cfce4dc82db3692c18855add24ee8a3aa`, tree
+  `f9df0d60661e899b0ea372161034f98db3c4253a`, passed the complete required
+  `scripts/ci/verify.sh`: 18,225 Python / 49 skipped; 1,307 design-system;
+  3,124 application / seven skipped; both analyzers; 585 formatted files with
+  zero changes; production web build; 13-route/five-header smoke. The root
+  checkout was clean after the run, and fresh origin/main remained 1b1a0b08.
+  The independent reviewer approved this exact source. Retained artifacts:
+  `canonical-appcheck-recovery-57b1ec4c-result.json` and
+  `independent-review-57b1ec4c.json` in this task's external evidence directory.
+  The following journal-only commit records that qualification; hosted checks
+  must run on the final PR head. Production automatic recovery is Not confirmed
+  until protected Hosting release and a fresh real two-tab email journey.
+- Additional offline recovery-screen QA passed four cases and five inspected
+  captures on the same 57b1ec4c source: mobile at 100%/200%, tablet and desktop.
+  Reload controls measured 56px normally and 76px at 200%, were hit-testable,
+  and invoked only the recording callback once. No blocking visual issue;
+  secondary diagnostic banner text ellipsizes on mobile while full recovery
+  guidance stays visible. This is not native-device or live-browser acceptance.
+  Attempts one and two failed before widget assertions due to SDK cache
+  sandbox access and omitted package_graph metadata in the external harness.
+  Both failures are retained. The third run corrected only the external runner
+  environment/metadata, with unchanged application source and Dart assertions;
+  source, package metadata and the clean root checkout were verified afterward.
