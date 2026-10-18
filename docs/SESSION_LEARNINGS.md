@@ -21566,3 +21566,75 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
   Both failures are retained. The third run corrected only the external runner
   environment/metadata, with unchanged application source and Dart assertions;
   source, package metadata and the clean root checkout were verified afterward.
+
+
+### 2026-10-18 UTC — Login recovery merge and partial release
+
+- Task `01a147ea-7efb-7e22-8821-e42395a135fc`, worktree `9030`, branch
+  `codex/login-appcheck-recovery`: exact final head `0cf7a102` passed independent
+  G51 review and fresh hosted CI/CD 39082345693 plus Runtime candidate
+  39082345699. All required checks passed; native builds passed. The final
+  head differs from fully canonical-qualified `57b1ec4c` only by a verified
+  append to this journal. No checks or assertions were relaxed.
+- PR #375 merged normally as `c38f4fd4a096d09e37e8e395f87889f2faa5648b`
+  at 00:33:23 UTC. The merge tree exactly matches reviewed head `0cf7a102`.
+  Main Runtime candidate 39083195885 passed. Hosting 39083195854 is still
+  running at this entry; deployment and fresh original-tab acceptance remain
+  Not confirmed. A later append will record the final Hosting and browser result.
+- Data 39083195853 failed at "Enable and verify Google alongside email
+  sign-in": CLI exit 2, stage provider_provision, last recognized HTTP 200,
+  no concrete API reason or missing permission. Runtime 39083195857 built
+  and pushed all images successfully, but its Data dependency failed and
+  deployment was skipped. A fresh public API /version read still reports
+  `69bd6469cde211cb822936f9ac033b9453a80404`; full release is NOT green.
+- A bounded read-only CLI/source inspection found no concrete invocation or
+  schema defect. The initial HTTP 200 precedes operation polling and must not
+  be presented as provisioning success. The diagnostic operation-name matcher
+  could omit differently shaped operation names, but this is not established
+  as the live failure. No further cloud audit, grants, retries, feature-flag
+  changes or release-gate changes were performed. Google remains hidden.
+- Before pruning, live GitHub confirmed PR #371 and #374 merged their exact
+  local heads `ecbc150f` and `238317a3`; remote lookup found no remaining
+  task branch heads. Only merged local predecessor branches are eligible for
+  normal safe deletion. Preserve current recovery branch and this closeout,
+  and preserve unmerged `codex/login-journey-complete` at `18288554` (custom
+  code-plus-link work has no configured sender and was never deployed).
+
+- Final c38 Hosting outcome: CI/CD 39083195854 succeeded at 00:46:28 UTC;
+  protected deployment and public smoke passed. Independent public marker
+  matches exact `c38f4fd4`, run 39083195854, attempt 1. Native, web, repository,
+  engine and Python checks all passed. Runtime candidate also passed; the
+  separate Data/Runtime failures recorded above remain unresolved.
+- Fresh real email acceptance on c38 passed in a new owned Chrome Guest
+  profile. One request at 00:47:17 UTC produced the matching 00:47 email;
+  no resend was needed. The actual delivered link signed in the second tab
+  to the intended Insects collection with a clean route. The original tab
+  reached the same authorized collection without manual reload. Sign-out
+  propagated to both tabs and cleared stale sent/email state. Screenshot
+  evidence and `live-login-acceptance-c38f4fd4.json` are retained externally.
+  The precise automatic reload count was not instrumented; its bound is
+  covered by tests. Physical native-app email return remains Not confirmed.
+- Closed only the owned Guest window and cleared in-memory link variables;
+  the user's existing signed-in app and Chrome audio window were preserved.
+  Safely deleted merged local predecessor branches and stale remote-tracking
+  refs; retained current source, journal and unmerged custom-email branch.
+- The owner explicitly answered "Keep Google in this launch." Google is
+  required, so this is not a completed launch. No deferral was applied.
+- Google diagnostic follow-up branch `codex/login-google-operation-diagnostics`
+  starts from c38 and preserves this journal. A concrete parser/CLI mismatch
+  was found: the script assumed a narrow operation name, but CLI 15.8.0 uses
+  the server-returned name. Exact safe-name correlation now preserves only
+  bounded error output. Three synthetic cases failed before the repair; the
+  focused suite passed 174 after it. Deleted live raw logs cannot establish
+  that their operation name had this shape; this repair may still yield only
+  the known PERMISSION_DENIED code, and is not a provisioning fix by itself.
+- A documented Firebase managed-agent binding was checked read-only. The
+  first gcloud attempt exited 1 without a recognized HTTP status; its cause
+  was unknown and no policy was returned. A single alternative field-masked
+  read using the existing owner Firebase session succeeded at 00:52:04 UTC:
+  the exact managed agent has one unconditional
+  `roles/firebase.managementServiceAgent` binding. No restoration is needed
+  from this evidence, and no additional IAM grant was made. The internal
+  ProvisionFirebaseApp endpoint has no complete public IAM contract; neither
+  extra caller OAuth permissions nor a support-email change is established
+  as the remedy. No raw policy, unrelated principals or tokens were saved.
