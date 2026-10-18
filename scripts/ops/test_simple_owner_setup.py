@@ -1121,7 +1121,9 @@ def test_intake_only_defaults_are_minimal_idempotent_and_start_nothing(tmp_path,
     assert run.code == 0, run.err
     state = harness.state()
     assert state["roles"]["specimenIntakeSecretCreate"]["permissions"] == ["secretmanager.secrets.create"]
-    assert state["roles"]["specimenIntakeTokenVersions"]["permissions"] == ["secretmanager.versions.access", "secretmanager.versions.add"]
+    assert state["roles"]["specimenIntakeTokenVersions"]["permissions"] == [
+        "secretmanager.versions.access", "secretmanager.versions.add", "secretmanager.versions.destroy",
+        "secretmanager.versions.get", "secretmanager.versions.list"]
     added = [row for row in state["policies"][f"project/{PROJECT}"] if row["role"].startswith(CUSTOM + "specimenIntake")]
     assert len(added) == 2 and all(row["members"] == [API] for row in added)
     create = next(row for row in added if row["role"].endswith("Create"))
@@ -1143,6 +1145,35 @@ def test_intake_only_dry_run_changes_nothing_and_emits_only_bounded_commands(tmp
     assert run.code == 0 and not run.writes and harness.state() == before, run.err
     assert len(run.printed) >= 4 and not run.starts
     assert all(command[0] == "gcloud" for command in run.printed)
+
+
+def test_intake_version_recovery_and_retirement_never_cover_fixed_or_foreign_secrets(tmp_path):
+    harness = intake_harness(tmp_path)
+    run = harness.run("--intake-only")
+    assert run.code == 0, run.err
+    state = harness.state()
+    role = CUSTOM + "specimenIntakeTokenVersions"
+    permissions = state["roles"]["specimenIntakeTokenVersions"]["permissions"]
+    assert permissions == ["secretmanager.versions.access", "secretmanager.versions.add",
+        "secretmanager.versions.destroy", "secretmanager.versions.get", "secretmanager.versions.list"]
+    bindings = [row for row in state["policies"][f"project/{PROJECT}"] if row["role"] == role]
+    assert len(bindings) == 1 and bindings[0]["members"] == [API]
+    expression = bindings[0]["condition"]["expression"]
+    match = re.fullmatch(r'resource\.name\.matches\("(.+)"\)', expression)
+    assert match is not None
+    pattern = re.compile(match[1])
+    parent = "projects/716045864126/secrets/specimen-intake-00000000-0000-0000-0000-000000000001"
+    assert pattern.fullmatch(parent) and pattern.fullmatch(parent + "/versions/1")
+    refused = [parent + "/versions/latest", parent + "/versions/0", parent + "/versions/1/more",
+        parent.replace("716045864126", "another-project"), parent.replace("000000000001", "000000000001-extra")]
+    refused += [f"projects/716045864126/secrets/{name}{suffix}"
+        for name in ("specimen-google-drive-client", "specimen-dropbox-client", "specimen-cloud-import-config",
+                     "specimen-external-emails", "specimen-collection-job-routes", "specimen-collection-bindings")
+        for suffix in ("", "/versions/1")]
+    assert all(pattern.fullmatch(resource) is None for resource in refused)
+    assert not any(row["role"] == role for key, rows in state["policies"].items()
+        if key != f"project/{PROJECT}" for row in rows)
+    assert not run.starts
 
 
 def test_intake_only_grants_exact_config_versions_and_private_job_invokers(tmp_path):

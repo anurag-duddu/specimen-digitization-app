@@ -22178,3 +22178,107 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   green. Full collection admission after Google in the tested Chrome profile
   and physical installed-app authentication are Not confirmed. Preserve the
   unmerged `codex/login-journey-complete` branch and primary worktree.
+
+
+## 2026-10-17: bulk intake full verification and credential lifecycle review
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`; branch
+  `codex/compare-photo-intake-ux`, worktree `5da8`, PR #368.
+- Implementation commit `00f9a51c` and merge head
+  `a9cccdf1ed5206fa92c6e38744fe5a143c845e63` incorporate main
+  `75cb3dfbbea20e0b80d1def16352a4805c5d20be`. The complete
+  `bash scripts/ci/verify.sh` passed on that unchanged head: 18,516 Python
+  passes and 49 skips across all six shards (18,565 collected, accounted for
+  exactly once); 1,309 specimen_ui tests; 3,185 app tests and seven skips;
+  analyzers, formatting, release web build and loopback route/security-header
+  checks passed. Log: `/private/tmp/specimen-intake-verify-01a149fc.log`.
+  This is local verification, not a deployed or live integration result.
+- Independent review subsequently reproduced two credential-lifecycle issues:
+  every expired access-token refresh appended a billable Secret Manager version
+  indefinitely; every abandoned OAuth attempt also retained a PKCE secret.
+  Dropbox reconnect could replace the stored credential without revoking the
+  previous refresh family, so a later disconnect revoked only the replacement.
+  The reviewer explicitly withdrew the prior source approval pending repair.
+- Provider revocation is not interchangeable: revoking an old Google credential
+  can invalidate the replacement project's grant, while Dropbox token-family
+  revocation is specific. Replacement, uncertain Secret Manager writes, process
+  death, and disconnect races require durable reconciliation before retirement.
+  Disabling an old secret version does not end its storage billing; destruction
+  does. Cleanup must exclude pinned application client credentials.
+- Lifecycle repair and focused regression tests are in progress after the full
+  baseline verifier completed. That baseline does not qualify the subsequent
+  repair. No source push, merge, runtime deployment, Gmail connector acceptance,
+  native capture acceptance, or cleanup is established by this entry.
+- The exact production IAM/setup approval questions remain pending following
+  automatic approval review's rejection of the attempted auth-only setup. No
+  denied IAM action was retried through a different tool or console.
+
+- Follow-up to the entry above: retained the complete baseline verifier log at
+  `/Users/anuragduddu/.codex/visualizations/2026/10/17/01a149fc-3649-75c1-a121-11c19de12cb8/bulk-intake-research/implementation/verify-a9cccdf1.log`.
+  The integration QA lane corrected authoritative collection names through the
+  existing server-only Memberships query, scoped dynamic credential version
+  listing/destruction without granting access to pinned client credentials, and
+  first-creation job definition convergence. Missing invoker grants still fail
+  the runtime release, and processing remains success-gated; private definitions
+  can be completed for one subsequent resource-level owner setup pass.
+- Focused integration validation: 53 API/collection tests, 21 setup tests and
+  629 release/provisioning/deployment-policy tests passed; these groups may
+  overlap and are not a unique combined test count. Actionlint, shellcheck,
+  secret scanning and diff checks passed. Independent review found no P1/P2
+  in that delta. Credential lifecycle review and final exact-head review remain
+  pending. A misplaced pre-existing test assertion was caught as a NameError
+  in the first combined run, restored to its owning test and verified by rerun.
+- Fresh read-only auth dry run still proposes one role update. Revised intake
+  dry run validates the restricted Picker key and six private configuration
+  versions, proposing five IAM changes and zero failures with optional runtime
+  pins still disabled. It performs no live changes or worker execution. The
+  pending setup authorization must explicitly include dynamic UUID credential
+  version list/destroy; fixed client/configuration secrets are excluded.
+- The real Gmail acceptance sequence is prepared privately in
+  `/private/tmp/specimen-intake-acceptance-01a149fc/real-gmail-web-acceptance.md`.
+  User-authorized reversible test-file preparation is allowed while preserving
+  originals; no additional file-selection approval gate is invented. Dropbox
+  remains Development/Only you. Google app verification, personal-account
+  success and institution policy remain separate acceptance boundaries.
+
+## 2026-10-18: bulk intake recovery repairs before final qualification
+
+- Continuation of task `01a149fc-3649-75c1-a121-11c19de12cb8`, worktree
+  `5da8`, branch `codex/compare-photo-intake-ux`, PR #368, after `a9cccdf1`.
+- Secret Manager consistency required a second repair: use confirmed numbered
+  references directly, retain exact destroyed-version intervals without treating
+  gaps as destroyed, and confirm uncertain destruction through exact version
+  metadata. List absence is not proof. Durable revocation claims serialize
+  disconnect/reconnect cleanup; rejection paths now retain issued credentials
+  for non-promoting cleanup rather than clearing the intent before revocation.
+  Rejected Google reconnects preserve an accepted connection by destroying the
+  rejected local credential without project-wide revocation; a provider grant
+  may remain in the user's Google account until revoked there.
+- A 500-file selection previously performed serial metadata work in one request.
+  The repair freezes IDs first, checkpoints each checked photo under a fenced
+  lease, and returns bounded-chunk progress. This is resumable work, not a claim
+  that every provider/SQL request completes within a strict time limit. Same-account
+  reconnection must restore the retained selection; other accounts stay separate.
+- Focused evidence during final repair: 49 lifecycle tests; 45 source/selection
+  tests; 25 Flutter connector tests passed. These overlap other runs and are not
+  a unique combined total. One earlier broader provisional run had 255 passes,
+  one stale immediate-selection expectation, and two sandbox-denied loopback
+  binds; it is not final qualification. Final canonical and exact-head independent
+  review remain pending at this append.
+- Correction to the prior intake dry-run entry: the final dynamic credential role
+  needs access/add/get/list/destroy, scoped to the exact project's UUID credential
+  namespace. Final read-only dry run passed with five proposed IAM changes and
+  zero failures (`/private/tmp/specimen-intake-final-dryrun-01a149fc.log`). No live
+  grants, secret provisioning, worker execution, or budget reset occurred.
+- Automatic approval review still requires the exact production IAM authorization.
+  A consolidated question names the service accounts, credential namespace,
+  restricted Picker key, six configuration versions and resource-specific job
+  grants. User-authorized routine technical choices continue independently.
+  Live Gmail/provider/device/Queue acceptance and release remain Not confirmed.
+
+- Final focused freeze: credential/source/selection suite passed 94 tests;
+  connector widgets passed 26 tests including lost reconnect acknowledgement.
+  Independent reviewer reran 59 credential/selection tests and found no remaining
+  P1/P2 in the repaired source. Flutter analyzer, focused secret scan, shellcheck
+  and diff check passed. This supersedes the in-progress focused counts above;
+  canonical qualification and the new committed-head review follow separately.

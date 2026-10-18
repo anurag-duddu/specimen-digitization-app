@@ -13,10 +13,20 @@ from test_application import TOKEN, image_bytes
 
 
 class Secrets:
-    def __init__(self): self.values = {'client-secret': {'client_secret': 'fixture-secret'}}  # pragma: allowlist secret -- synthetic fixture
+    def __init__(self):
+        self.values = {'client-secret': {'client_secret': 'fixture-secret'}}  # pragma: allowlist secret -- synthetic fixture
+        self.destroyed = set()
     def write(self, id, value):
         ref = id + ':' + str(len(self.values)); self.values[ref] = dict(value); return ref
     def read(self, ref): return dict(self.values[ref])
+    def version_key(self, ref):
+        id, version = ref.rsplit(':', 1)
+        return id, int(version)
+    def list_versions(self, id):
+        return [ref for ref in self.values if ref.startswith(id + ':') and ref not in self.destroyed]
+    def owns(self, id, ref): return self.version_key(ref)[0] == id
+    def destroy(self, ref): self.destroyed.add(ref)
+    def version_state(self, ref): return 'DESTROYED' if ref in self.destroyed else 'ENABLED'
 
 
 class Response:
@@ -397,11 +407,15 @@ def test_native_drive_picker_uses_exact_scope_and_persists_confirmed_selection(c
     assert response.status_code == 200
     value = response.json()
     assert 'secret_ref' not in value
-    assert value['selection']['items'][0]['source']['version'] == '7'
-    assert value['selection']['failures'][0]['error']['code'] == 'file_access'
-    assert len(reads) == 2
+    assert value['selection']['state'] == 'selecting'
+    assert value['selection']['progress'] == {'processed': 0, 'total': 2}
+    assert value['selection']['items'] == [] and reads == []
     status = client.get(root + f"/connections/{native['id']}/picker/{native['picker_id']}").json()
-    assert status == value['selection']
+    assert status['state'] == 'selected'
+    assert status['items'][0]['source']['version'] == '7'
+    assert status['failures'][0]['error']['code'] == 'file_access'
+    assert len(reads) == 2
+    assert client.get(root + f"/connections/{native['id']}/picker/{native['picker_id']}").json() == status
     assert len(reads) == 2
     assert manager.service.list(p, 'intake_draft')['items'] == []
     assert manager.service.repo.list(p.scope) == []

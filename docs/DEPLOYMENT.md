@@ -1216,6 +1216,11 @@ The workflow has three jobs.
      a 3,600-second timeout. It verifies the definition and scoped API invoker
      grant without executing imports. Owner provisioning and the client enablement
      order are described in `docs/execution/BULK_PHOTO_INTAKE.md`.
+     It creates and reads back every intake definition before checking invoker
+     policies. After a successful API smoke, the scientific-definition step also
+     runs when intake policy verification fails, so all missing jobs can receive
+     one owner setup pass. The intake failure still fails the release; processing
+     requires every preceding step to succeed.
      Optional numbered pins in `runtime_settings.py` add exact external-email
      admission, provider configuration and collection routing. When the routes
      pin is configured, both definition scripts also define private dedicated
@@ -1224,7 +1229,8 @@ The workflow has three jobs.
      the existing actor and cumulative allowance. Unset optional pins add no
      secret dependency or dedicated job. The owner's repository-only
      `owner_setup.sh --intake-only` grants bounded OAuth credential creation,
-     numbered dynamic-version access/addition, separately pinned configuration
+     numbered dynamic-version access/addition, parent-scoped metadata listing/inspection
+     and retired/orphan version destruction, separately pinned configuration
      reads and scoped job invokers; it starts no release or execution.
      Its optional `--intake-config-dir ABS` validates and preflights the entire
      private configuration bundle before any IAM or configuration write,

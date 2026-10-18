@@ -102,13 +102,13 @@ class CloudSource:
         else:
             shared_parts(source.object_id)
 
-    def request(self, p, connection_id, method, path, *, content=False, **kwargs):
+    def request(self, p, connection_id, method, path, *, content=False, timeout=20, **kwargs):
         self.connection(p, connection_id)
         headers = dict(kwargs.pop('headers', {}), Authorization='Bearer ' + self.manager.token(p, connection_id))
         base = 'https://www.googleapis.com/drive/v3/' if self.provider == 'google_drive' else (
             'https://content.dropboxapi.com/2/' if content else 'https://api.dropboxapi.com/2/')
         response = self.manager.http.request(method, base + path, headers=headers,
-            timeout=20, allow_redirects=False, **kwargs)
+            timeout=timeout, allow_redirects=False, **kwargs)
         check_response(response, self.provider)
         return response
 
@@ -128,16 +128,16 @@ class CloudSource:
             source=dict(provider=self.provider, connection_id=connection_id, object_id=id,
                         version=str(raw.get('version', raw.get('rev', ''))) if not folder else None))
 
-    def metadata(self, p, connection_id, object_id):
+    def metadata(self, p, connection_id, object_id, *, timeout=20):
         if self.provider == 'google_drive':
             object_id, headers = drive_ref(object_id)
-            return self.request(p, connection_id, 'GET', 'files/' + object_id, headers=headers,
+            return self.request(p, connection_id, 'GET', 'files/' + object_id, headers=headers, timeout=timeout,
                 params={'fields': 'id,name,mimeType,version,size,resourceKey,capabilities(canDownload,canListChildren)', 'supportsAllDrives': 'true'}).json()
         shared = shared_parts(object_id)
         if shared:
-            return self.request(p, connection_id, 'POST', 'sharing/get_shared_link_metadata',
+            return self.request(p, connection_id, 'POST', 'sharing/get_shared_link_metadata', timeout=timeout,
                 json={'url': shared[0], **({'path': shared[1]} if shared[1] else {})}).json()
-        return self.request(p, connection_id, 'POST', 'files/get_metadata', json={'path': object_id}).json()
+        return self.request(p, connection_id, 'POST', 'files/get_metadata', json={'path': object_id}, timeout=timeout).json()
 
     def browse(self, p, connection_id, folder='', cursor=None, recursive=False):
         self.connection(p, connection_id, folders=True)

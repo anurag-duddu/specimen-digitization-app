@@ -13,12 +13,14 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from pydantic import Field
 
 from .domain import Record
-from .intake_connections import safe_connection, picked_file_ids, PICKER_IMAGE_TYPES
+from .intake_connections import safe_connection, PICKER_IMAGE_TYPES
 from .intake_sources import ImportProblem, public_url
 from .source_registry import validate_object_name
 from .source_reader import SourceListingIncomplete
 from .intake_cloud_sources import EXTENSIONS
 from .intake_models import SourceReference, MAX_BYTES
+from .intake_selection import PickerSelection, selection_reply
+from .storage import Conflict
 
 
 class ConnectionInput(Record):
@@ -70,23 +72,16 @@ def install_source_routes(app, prefix, service, manager, *, identity, principal,
         doc = manager.get(p, id, connected=True)
         return service.sources.providers[doc['provider']]
 
-    def selection_rows(p, connection_id, ids):
-        adapter = provider(p, connection_id)
-        rows, failures = [], []
-        for id in dict.fromkeys(ids):
-            try:
-                rows.append(adapter.row(connection_id, adapter.metadata(p, connection_id, id)))
-            except ImportProblem as exc:
-                failures.append(dict(id=id, error=exc.intake_problem))
-        return dict(items=rows, failures=failures)
+    selection_rows = PickerSelection(service, provider, clock=manager.clock) if manager else None
 
-    def native_selection(p, pending):
+    def native_selection(p, pending, *, advance=True):
         # An authenticated completion retains the IDs before exchange. Polling
         # can finish metadata validation after a lost completion reply.
         if pending['state'] == 'authorized':
-            pending.update(selection_rows(p, pending['connection_id'], pending['picked_file_ids']), state='selected')
-            pending = service.save(p, 'intake_oauth', pending)
-        return dict(state=pending['state'], items=pending.get('items', []), failures=pending.get('failures', []))
+            pending = selection_rows.begin(p, pending, pending['picked_file_ids'], pending['id'])
+        if advance and pending['state'] == 'selecting':
+            pending = selection_rows.advance(p, pending['id'])
+        return selection_reply(pending)
 
     @app.post(root + '/source-preview')
     def source_preview(organization_id: str, collection_id: str, body: SourceReference, user=Depends(identity)):
@@ -140,7 +135,7 @@ def install_source_routes(app, prefix, service, manager, *, identity, principal,
         result = safe_connection(connection)
         pending = service.read(p, 'intake_oauth', manager.decode_state(body.state)['id'])
         if pending.get('native_picker') and connection['state'] == 'connected':
-            result['selection'] = native_selection(p, pending)
+            result['selection'] = native_selection(p, pending, advance=False)
         return result
 
     @app.get(root + '/connections/{connection_id}')
@@ -318,8 +313,17 @@ def install_source_routes(app, prefix, service, manager, *, identity, principal,
         if pending['connection_id'] != connection_id or (pending['purpose'] != 'picker' and not native):
             raise ValueError('Invalid picker session')
         if native:
+            if pending['state'] == 'exchanging':
+                try:
+                    manager.recover(p, connection_id)
+                except ImportProblem as exc:
+                    if exc.intake_problem['code'] != 'credential_write_pending':
+                        raise
+                pending = service.read(p, 'intake_oauth', picker_id)
             return native_selection(p, pending)
-        return dict(state=pending['state'], items=pending.get('items', []), failures=pending.get('failures', []))
+        if pending['state'] == 'selecting':
+            pending = selection_rows.advance(p, pending['id'])
+        return selection_reply(pending)
 
     @app.post('/v1/intake/picker/bootstrap')
     def picker_bootstrap(body: PickerBootstrap):
@@ -350,7 +354,7 @@ async function loaded(){
  .setCallback(async data=>{if(data.action===google.picker.Action.PICKED){
   const r=await fetch('/v1/intake/picker/selection',{method:'POST',headers:{'Content-Type':'application/json'},
    body:JSON.stringify({state:config.state,ids:data.docs.map(d=>d.id)})});
-  document.getElementById('status').textContent=r.ok?'Photos selected. Return to the app to review them.':'Could not retain the selection. Return to the app and try again.';
+  document.getElementById('status').textContent=r.ok?'Selection saved. Return to the app to check your photos.':'Could not retain the selection. Return to the app and try again.';
  }}).build();picker.setVisible(true);
 });}
 </script><script nonce="NONCE" src="https://apis.google.com/js/api.js?onload=loaded"></script>'''.replace('NONCE', nonce).replace('IMAGE_TYPES', PICKER_IMAGE_TYPES)
@@ -361,15 +365,13 @@ async function loaded(){
     def picker_selection(body: PickerInput):
         p = state_principal(body.state)
         pending = manager.verify_pending(p, body.state, 'picker_selection')
-        pending['state'] = 'selecting'
-        pending = service.save(p, 'intake_oauth', pending)
-        for id in body.ids:
-            if len(picked_file_ids(id)) != 1:
-                raise ValueError('Invalid Drive file')
-        selection = selection_rows(p, pending['connection_id'], body.ids)
         parent = service.read(p, 'intake_oauth', pending['picker_id'])
-        parent.update(state='selected', **selection)
-        service.save(p, 'intake_oauth', parent)
-        pending['state'] = 'selected'
-        service.save(p, 'intake_oauth', pending)
-        return dict(selected=len(selection['items']), failures=selection['failures'])
+        if parent['purpose'] != 'picker' or parent['connection_id'] != pending['connection_id']:
+            raise ValueError('Invalid Picker selection')
+        parent = selection_rows.begin(p, parent, body.ids, pending['id'])
+        pending['state'] = 'consumed'
+        try:
+            service.save(p, 'intake_oauth', pending)
+        except Conflict:
+            pass  # The frozen parent already owns this exact selection.
+        return dict(state=parent['state'], selected=len(parent['selection_ids']), failures=[])

@@ -84,9 +84,13 @@ source sheet. Native clients use Google's system-browser Picker during OAuth
 provider returns selected file IDs to the HTTPS callback; the app then completes
 the connection with its original session proof. Returning native users choose
 files through that same provider flow, preserving the saved account identity.
-The server validates each selected file and retains the selection for authenticated
-polling after a lost completion reply. Selection does not create a draft or submit
-a specimen. Returning users see their saved account and photo selection. A
+The server retains all selected IDs before checking metadata. Authenticated polls
+check at most five files with a cooperative three-second budget between files,
+checkpointing each result and showing processed/total progress. Provider credential
+reconciliation and a single request can take longer; a lost reply resumes from the
+saved cursor. Reconnecting the same account preserves this selection and its
+partial results. Selection does not create a draft or submit a specimen.
+Returning users see their saved account and photo selection. A
 single connected account is selected automatically; multiple accounts require an
 explicit choice. Keep account switching, disconnect/reconnect, and Google's
 optional folder access in the provider's overflow menu. Folder-wide selection
@@ -119,8 +123,9 @@ file access produce distinct recovery states. The UI never invents an approval
 request or says approval is pending without a provider-confirmed state. A personal
 Google account cannot establish institutional acceptance.
 
-OAuth refresh tokens and PKCE verifier material stay in Secret Manager. Client
-secret references pin numeric versions. OAuth completion requires the same signed-in
+OAuth tokens stay in Secret Manager. The initiating client proof supplies PKCE;
+SQL stores only its hash/challenge, never a verifier secret. Client-secret
+references pin numeric versions. OAuth completion requires the same signed-in
 application user and an initiating session proof that is never put in the provider
 URL. The callback forwards its one-use code to the original browser window or native
 app; it does not exchange credentials itself or expose the code through polling.
@@ -131,6 +136,10 @@ revocation and exposes a retry if revocation could not be confirmed.
 Reconnect preserves the connection identity used by queued photos and verifies
 the provider account identity before replacing credentials. A different account
 requires a new connection and an explicit new source selection.
+When rejecting a Google reconnect, the app preserves the prior accepted
+credential and destroys the rejected local token payload without revoking the
+entire provider grant. That rejected grant may remain at Google until the owner
+revokes it in their Google account settings.
 
 Google Picker needs a short-lived access token in browser memory. Its one-use
 bootstrap is in the URL fragment, removed from browser history before a POST
@@ -151,9 +160,11 @@ Only the existing protected main workflows deploy. `runtime-release.yml` defines
 and verifies the intake job using `scripts/release/deploy_intake.py`; it does not
 execute a transfer. The API runtime identity needs the existing SQL/blob grants,
 access to the pinned worker actor UID secret, and an invoker grant on the intake
-job. The owner setup script includes those grants. On first creation, the job
-must exist before its resource-level IAM binding can be applied; a missing grant
-fails verification and is fixed through owner setup and the protected workflow.
+job. The owner setup script includes those grants. On first creation, every
+intake definition is created and read back before its invoker policy is checked.
+If that check fails after a successful API smoke, the workflow still defines the
+reviewed scientific job; the release remains failed and starts no processing.
+One owner setup pass can then grant all missing jobs before the protected rerun.
 No workstation deployment is a substitute.
 
 Provider provisioning remains explicit. Configure `SPECIMEN_INTAKE_OAUTH_JSON`
@@ -163,9 +174,11 @@ at the API's `/v1/intake/oauth/callback`. Google also requires `picker_api_key` 
 `picker_app_id`, restricted to the intended Picker use and origins. These are
 real owner-provisioned values, not sample credentials. The API and intake worker
 must receive the same reviewed configuration. The API identity requires creation
-of connection-token secrets plus access/add-version grants restricted to the
-`specimen-intake-` prefix, and access to the separately pinned client-secret
-versions. Do not give it blanket secret-reading or deletion privileges.
+of connection-token secrets plus version access/addition, metadata-only version
+listing/inspection and retired/orphan version destruction restricted to exact
+`specimen-intake-<UUID>` parents and their numbered versions. Separately pinned
+client/configuration secrets remain outside that namespace. This grants no
+project secret listing, secret deletion or blanket secret access.
 
 The optional pins in `scripts/ci/runtime_settings.py` start unset. A positive
 number in `OPTIONAL_SECRET_VERSIONS` activates only its real, provisioned secret:
@@ -189,13 +202,18 @@ dedicated jobs and leaves existing deployment inputs unchanged.
 
 The bounded owner command is `bash scripts/ops/owner_setup.sh --intake-only`
 (add `--dry-run` to inspect). This mode needs the checkout and `uv`, grants only
-secret container creation on the project, add/access on numbered dynamic credential
-versions, and the separately pinned configuration/client reads. It also grants
+secret container creation on the project; add/access/get/list/destroy for dynamic
+credential versions; and the separately pinned configuration/client reads. Version
+listing recovers uncertain writes on the exact connection parent; destruction
+retires only predecessors or orphans after authoritative connection state is
+saved, retaining the credential when provider revocation still needs it. Exact
+numbered-version metadata reads confirm a lost destroy acknowledgement without
+relying on a possibly stale version list. It also grants
 private invoker/read permissions on configured dedicated jobs. It starts no
 release or job. `INTAKE_PROVIDER_APIS` can explicitly name Drive and Picker;
 enabling either requires pinned provider configuration and client-secret
-prerequisites. No provider API is enabled by default. A newly defined job can
-need a second owner setup pass before the protected release verifies its IAM.
+prerequisites. No provider API is enabled by default. Newly defined jobs can
+need a second owner setup pass before the protected release verifies their IAM.
 
 To provision private values, add `--intake-config-dir /absolute/private/path`
 to that same owner command. Each approved `<secret-name>.json` file contains

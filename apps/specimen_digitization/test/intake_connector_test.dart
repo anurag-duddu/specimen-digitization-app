@@ -19,6 +19,10 @@ class ConnectorRepository implements BulkIntakeRepository {
   Json? pending;
   String? emptyAccount;
   bool loseCompletionReply = false;
+  bool deferNativeSelection = false;
+  int authorizations = 0;
+  final List<Json> pickerReplies = [];
+  final Map<String, List<Json>> pickerRepliesById = {};
   bool nestedFolders = false;
   Completer<Json>? delayedPoll;
   Json account(String id, String provider, {String access = 'folders'}) => {
@@ -61,6 +65,7 @@ class ConnectorRepository implements BulkIntakeRepository {
           details: {'action': 'administrator'},
         );
       }
+      authorizations++;
       pending = {
         ...body!,
         'id': body['reconnect_id'] ?? 'new',
@@ -69,7 +74,9 @@ class ConnectorRepository implements BulkIntakeRepository {
         if (body['return_origin'] == null &&
             body['provider'] == 'google_drive' &&
             body['access'] == 'files')
-          'picker_id': 'native-picker',
+          'picker_id': authorizations == 1
+              ? 'native-picker'
+              : 'native-picker-$authorizations',
       };
       return pending!;
     }
@@ -107,6 +114,14 @@ class ConnectorRepository implements BulkIntakeRepository {
           ],
           'failures': <Json>[],
         };
+        if (deferNativeSelection) {
+          row['selection'] = {
+            'state': 'selecting',
+            'items': <Json>[],
+            'failures': <Json>[],
+            'progress': {'processed': 0, 'total': 500},
+          };
+        }
       }
       accounts.removeWhere((a) => a['id'] == row['id']);
       accounts.add(row);
@@ -145,7 +160,10 @@ class ConnectorRepository implements BulkIntakeRepository {
       }
       return {'id': 'picker', 'url': 'https://api.example/picker'};
     }
-    if (path.contains('/picker/')) return {'state': 'pending'};
+    if (path.contains('/picker/')) {
+      final replies = pickerRepliesById[path.split('/').last] ?? pickerReplies;
+      return replies.isEmpty ? {'state': 'pending'} : replies.removeAt(0);
+    }
     if (path.endsWith('/disconnect')) {
       final index = accounts.indexWhere((a) => a['id'] == path.split('/')[2]);
       accounts[index] = {...accounts[index], 'state': 'disconnected'};
@@ -608,6 +626,180 @@ void main() {
       hasLength(1),
     );
   });
+
+  testWidgets(
+    'native selection keeps polling and displays durable progress until selected',
+    (tester) async {
+      final repository = ConnectorRepository()..deferNativeSelection = true;
+      repository.pickerReplies.addAll([
+        {
+          'state': 'selecting',
+          'items': <Json>[],
+          'failures': <Json>[],
+          'progress': {'processed': 5, 'total': 500},
+        },
+        {
+          'state': 'selected',
+          'items': [
+            {
+              'id': 'finished-photo',
+              'filename': 'finished-photo.jpg',
+              'supported': true,
+              'source': {
+                'provider': 'google_drive',
+                'connection_id': 'new',
+                'object_id': 'finished-photo',
+                'version': '1',
+              },
+            },
+          ],
+          'failures': <Json>[],
+        },
+      ]);
+      await mount(tester, repository, 'google_drive', native: true);
+      await press(tester, 'Connect Google Drive');
+      expect(find.text('Checking 0 of 500 photos…'), findsOneWidget);
+      expect(find.text('finished-photo.jpg'), findsNothing);
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+      expect(find.text('Checking 5 of 500 photos…'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+      expect(find.text('finished-photo.jpg'), findsOneWidget);
+      expect(find.textContaining('Checking '), findsNothing);
+      expect(
+        repository.calls.where(
+          (call) => call.$2 == '/connections/new/picker/native-picker',
+        ),
+        hasLength(2),
+      );
+      expect(
+        repository.calls.any(
+          (call) => call.$2.contains('/draft') || call.$2.contains('/submit'),
+        ),
+        isFalse,
+      );
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  for (final (native, lostReply) in [
+    (false, false),
+    (true, false),
+    (true, true),
+  ]) {
+    testWidgets(
+      'same-account reconnect resumes retained selection: native=$native lostReply=$lostReply',
+      (tester) async {
+        final repository = ConnectorRepository()..deferNativeSelection = true;
+        repository.pickerReplies.addAll([
+          {
+            'state': 'selecting',
+            'items': <Json>[],
+            'failures': <Json>[],
+            'progress': {'processed': 5, 'total': 500},
+            'error': {
+              'message': 'Reconnect this account to finish checking photos.',
+              'action': 'connect',
+            },
+          },
+          {
+            'state': 'selected',
+            'items': [
+              {
+                'id': 'retained-photo',
+                'filename': 'retained-photo.jpg',
+                'supported': true,
+              },
+            ],
+            'failures': <Json>[],
+          },
+        ]);
+        await mount(tester, repository, 'google_drive', native: native);
+        await press(tester, 'Connect Google Drive');
+        await tester.pump(const Duration(seconds: 3));
+        await tester.pumpAndSettle();
+        expect(
+          find.text('Reconnect this account to finish checking photos.'),
+          findsOneWidget,
+        );
+        repository.deferNativeSelection = false;
+        repository.loseCompletionReply = lostReply;
+        repository.pickerRepliesById['native-picker-2'] = [
+          {'state': 'selected', 'items': <Json>[], 'failures': <Json>[]},
+        ];
+        await press(tester, 'Retry connection');
+        if (lostReply) {
+          expect(find.text('retained-photo.jpg'), findsNothing);
+          await tester.pump(const Duration(seconds: 3));
+          await tester.pumpAndSettle();
+        }
+        expect(find.text('retained-photo.jpg'), findsOneWidget);
+        expect(find.text('native-photo.jpg'), findsNothing);
+        final starts = repository.calls
+            .where((call) => call.$1 == 'POST' && call.$2 == '/connections')
+            .toList();
+        expect(starts, hasLength(2));
+        expect(starts.last.$3!['reconnect_id'], 'new');
+        final originalPicker = native ? 'native-picker' : 'picker';
+        expect(
+          repository.calls.where(
+            (call) => call.$2 == '/connections/new/picker/$originalPicker',
+          ),
+          hasLength(2),
+        );
+        expect(
+          repository.calls.where(
+            (call) => call.$2.endsWith('/picker/native-picker-2'),
+          ),
+          hasLength(lostReply ? 1 : 0),
+        );
+        expect(
+          repository.calls.where(
+            (call) => call.$1 == 'POST' && call.$2.endsWith('/picker'),
+          ),
+          hasLength(native ? 0 : 1),
+        );
+        await tester.pumpWidget(const SizedBox());
+      },
+    );
+  }
+
+  testWidgets(
+    'recovered OAuth rejection surfaces its reason and stops that picker poll',
+    (tester) async {
+      final repository = ConnectorRepository()
+        ..loseCompletionReply = true
+        ..deferNativeSelection = true;
+      repository.pickerReplies.add({
+        'state': 'failed',
+        'items': <Json>[],
+        'failures': <Json>[],
+        'error': {
+          'message': 'The provider did not grant the requested access.',
+          'action': 'administrator',
+        },
+      });
+      await mount(tester, repository, 'google_drive', native: true);
+      await press(tester, 'Connect Google Drive');
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('The provider did not grant the requested access.'),
+        findsOneWidget,
+      );
+      expect(find.text('Administrator help'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 6));
+      await tester.pumpAndSettle();
+      expect(
+        repository.calls.where(
+          (call) => call.$2 == '/connections/new/picker/native-picker',
+        ),
+        hasLength(1),
+      );
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 
   for (final returning in [false, true]) {
     testWidgets(

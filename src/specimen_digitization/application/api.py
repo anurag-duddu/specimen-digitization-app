@@ -822,7 +822,7 @@ def create_app(
             "items": [
                 {
                     "collection_id": m["collection_id"],
-                    "display_name": "Insects",
+                    "display_name": m.get("collection_name") or m["collection_id"],
                     "role": m["role"],
                     "profiles": [p.model_dump(mode="json") for p in registry.profiles],
                     "profile_registry_version": registry.version,

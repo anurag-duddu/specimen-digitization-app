@@ -153,3 +153,43 @@ def test_intake_release_defines_shared_then_dedicated_without_executing(monkeypa
     assert json.loads(calls[1][1]["SPECIMEN_WORKER_SCOPE_JSON"])["collection_id"] == SCOPE.split("/")[1]
     assert checked == [call[1] for call in calls]
     assert not any("execute" in arg for command, _ in calls for arg in command)
+
+
+def test_missing_first_intake_policy_does_not_prevent_defining_the_dedicated_job(monkeypatch):
+    deployed, checked, policies = [], [], []
+    monkeypatch.setattr(intake, "release_context", lambda env: SHA)
+    monkeypatch.setattr(intake, "collection_routes", lambda: {SCOPE: ROUTE})
+    def run(command, **kwargs):
+        assert command[:4] == ["gcloud", "run", "jobs", "deploy"]
+        assert not any(word in command for word in ("execute", "--execute-now", "--overrides"))
+        deployed.append(command[4])
+    monkeypatch.setattr(intake.subprocess, "run", run)
+    def read(group, name, operation=None):
+        if operation:
+            assert deployed == checked == ["specimen-intake", "specimen-intake-e2e"]
+            policies.append(name)
+        return {"name": name}
+    monkeypatch.setattr(intake, "read", read)
+    monkeypatch.setattr(intake, "verify_definition", lambda resource, *args, **kwargs: checked.append(resource["name"]))
+    # A newly created job has no invoker grant. This must still fail the release.
+    with pytest.raises(ValueError, match="invoker grant is missing"):
+        intake.main(["deploy_intake.py", image("api")])
+    assert deployed == ["specimen-intake", "specimen-intake-e2e"]
+    assert policies == ["specimen-intake"]
+
+
+def test_runtime_definition_convergence_keeps_smoke_cancellation_and_processing_guards():
+    import yaml
+    workflow = yaml.load((Path(__file__).resolve().parents[2] / ".github/workflows/runtime-release.yml").read_text(), Loader=yaml.BaseLoader)
+    steps = workflow["jobs"]["release"]["steps"]
+    smoke = next(step for step in steps if step.get("id") == "api_smoke")
+    transfer = next(step for step in steps if step.get("id") == "intake")
+    model = next(step for step in steps if "deploy_models.py" in step.get("run", ""))
+    process = next(step for step in steps if step.get("name") == "Warm SAM and process the queued work")
+    assert steps.index(smoke) < steps.index(transfer) < steps.index(model) < steps.index(process)
+    assert smoke["run"] == "scripts/release/smoke_api.sh" and "if" not in smoke
+    assert "continue-on-error" not in transfer and "if" not in transfer
+    assert model["if"] == "${{ !cancelled() && steps.api_smoke.outcome == 'success' && (success() || steps.intake.outcome == 'failure') }}"
+    assert "continue-on-error" not in model
+    assert process["if"] == "success() && github.event_name == 'workflow_dispatch' && inputs.process_queued"
+    assert not any("continue-on-error" in step for step in steps)

@@ -111,18 +111,23 @@ jobs:
           IMAGE: ${{ needs.build.outputs.image }}
         run: uv run python scripts/release/deploy_api.py "$IMAGE"
       - name: Smoke the public API
+        id: api_smoke
         run: scripts/release/smoke_api.sh
       - name: Define the private intake transfer job
+        id: intake
         env:
           IMAGE: ${{ needs.build.outputs.image }}
         run: uv run python scripts/release/deploy_intake.py "$IMAGE"
       - name: Deploy private SAM at minimum zero and define the worker job
+        # Finish reviewed definitions after a first-creation intake IAM failure,
+        # leaving that failure red. One owner pass can grant every missing job.
+        if: ${{ !cancelled() && steps.api_smoke.outcome == 'success' && (success() || steps.intake.outcome == 'failure') }}
         env:
           SAM_IMAGE: ${{ needs.build.outputs.sam }}
           WORKER_IMAGE: ${{ needs.build.outputs.worker }}
         run: uv run python scripts/release/deploy_models.py "$SAM_IMAGE" "$WORKER_IMAGE"
       - name: Warm SAM and process the queued work
-        if: github.event_name == 'workflow_dispatch' && inputs.process_queued
+        if: success() && github.event_name == 'workflow_dispatch' && inputs.process_queued
         timeout-minutes: 70
         run: uv run python scripts/release/process_worker.py process
       - name: Restore and verify SAM minimum zero

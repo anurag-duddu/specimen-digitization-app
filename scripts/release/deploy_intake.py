@@ -83,6 +83,10 @@ def main(argv):
             path.write_text(''.join(f'{k}: {json.dumps(v)}\n' for k, v in sorted(values.items())))
             subprocess.run(command(image, sha, path, job_name=name), check=True)
         verify_definition(read('jobs', name), image, sha, expected_env=values)
+    # Define every reviewed job before checking owner-managed invokers. A first
+    # release can then expose all missing resources for one bounded setup pass.
+    # The release still fails until every policy below is verified.
+    for name, _ in jobs:
         verify_policy(read('jobs', name, 'get-iam-policy'))
         print(f'Verified private intake job {name} at {sha}; no transfer executed')
 

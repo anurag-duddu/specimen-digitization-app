@@ -275,6 +275,7 @@ class SqlConnectRepository:
             {
                 "organization_id": str(UUID(m["organizationId"])),
                 "collection_id": str(UUID(m["collectionId"])),
+                "collection_name": (m.get("collection") or {}).get("name"),
                 "role": m["role"],
                 "can_view_sensitive": m["canViewSensitive"],
             }

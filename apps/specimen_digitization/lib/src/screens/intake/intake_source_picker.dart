@@ -35,6 +35,7 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
   final Map<String, String> linkAccounts = {};
   final List<(String, String)> parents = [];
   String? connectionId, sourceId, folder, cursor, pickerId, message;
+  ({String connectionId, String pickerId, String accountId})? selectionToResume;
   bool busy = false, includeSubfolders = false, polling = false;
   bool administratorDetailsCopied = false;
   Timer? timer;
@@ -209,7 +210,14 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
     String? reconnectId,
     IntakeAuthSession? initiatingSession,
   }) async {
-    closePicker();
+    final retained = selectionToResume;
+    final resumeSelection =
+        retained != null &&
+        reconnectId == retained.connectionId &&
+        connectionId == retained.connectionId &&
+        activeConnection?['account_id'] == retained.accountId;
+    closePicker(keepSelection: resumeSelection);
+    if (resumeSelection) pickerId = retained.pickerId;
     final name = provider ?? widget.provider;
     failedProvider = name;
     connectingProvider = name;
@@ -256,12 +264,17 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
         cursor = null;
         parents.clear();
         entries = [];
-        if (widget.provider == 'url') {
+        if (resumeSelection &&
+            completed['id'] == retained.connectionId &&
+            completed['account_id'] == retained.accountId) {
+          pickerId = retained.pickerId;
+          await refreshSelection();
+        } else if (widget.provider == 'url') {
           linkAccounts[name] = completed['id'] as String;
         } else if (nativePicker) {
           retryAction = pick;
           if (completed['selection'] is Map) {
-            applySelection(
+            await updateSelection(
               Map<String, dynamic>.from(completed['selection'] as Map),
             );
           }
@@ -293,6 +306,9 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
     closePicker();
     if (!mounted) return;
     setState(() {
+      message = null;
+      recoveryAction = null;
+      retryAction = pick;
       entries = objects(picker['items']);
       final failures = objects(picker['failures']);
       if (failures.isNotEmpty) {
@@ -300,6 +316,76 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
             '${entries.length} available · ${failures.length} need access or another selection. Available photos are retained.';
       }
     });
+  }
+
+  Future<void> updateSelection(Json picker) async {
+    if (!mounted) return;
+    final retained = selectionToResume;
+    final error = picker['error'];
+    if (picker['state'] == 'failed') {
+      // Stop polling the failed authorization while retaining the original
+      // selection for another attempt with the same provider account.
+      closePicker(keepSelection: retained != null);
+      setState(() {
+        message = error is Map
+            ? textOf(error['message'])
+            : 'The connection could not be completed. Try again.';
+        recoveryAction = error is Map ? error['action'] as String? : 'connect';
+        failedProvider = widget.provider;
+        retryAction = pick;
+      });
+      return;
+    }
+    if (retained != null &&
+        pickerId != retained.pickerId &&
+        connectionId == retained.connectionId &&
+        activeConnection?['account_id'] == retained.accountId &&
+        activeConnection?['state'] == 'connected' &&
+        ['authorized', 'selecting', 'selected'].contains(picker['state'])) {
+      // A lost reconnect reply may recover through the new native OAuth
+      // session. Resume the original IDs rather than its new Picker selection.
+      pickerId = retained.pickerId;
+      await refreshSelection();
+      return;
+    }
+    if (picker['state'] == 'selected') {
+      applySelection(picker);
+      return;
+    }
+    if (picker['progress'] is! Map) return;
+    final progress = picker['progress'] as Map;
+    final account = activeConnection?['account_id'];
+    if (connectionId != null && pickerId != null && account is String) {
+      selectionToResume = (
+        connectionId: connectionId!,
+        pickerId: pickerId!,
+        accountId: account,
+      );
+    }
+    setState(() {
+      message = error is Map
+          ? textOf(error['message'])
+          : 'Checking ${progress['processed']} of ${progress['total']} photos…';
+      recoveryAction = error is Map ? error['action'] as String? : null;
+      failedProvider = widget.provider;
+      retryAction = refreshSelection;
+    });
+  }
+
+  Future<void> refreshSelection() async {
+    final requestedConnection = connectionId;
+    final requestedPicker = pickerId;
+    if (requestedConnection == null || requestedPicker == null) return;
+    final picker = await c.call(
+      'GET',
+      '/connections/$requestedConnection/picker/$requestedPicker',
+    );
+    if (!mounted ||
+        connectionId != requestedConnection ||
+        pickerId != requestedPicker) {
+      return;
+    }
+    await updateSelection(picker);
   }
 
   Future<void> poll() async {
@@ -332,20 +418,7 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
         }
       }
       if (pickerId != null) {
-        final requestedPicker = pickerId;
-        final picker = await c.call(
-          'GET',
-          '/connections/$requestedConnection/picker/$requestedPicker',
-        );
-        if (!mounted ||
-            busy ||
-            connectionId != requestedConnection ||
-            pickerId != requestedPicker) {
-          return;
-        }
-        if (picker['state'] == 'selected') {
-          applySelection(picker);
-        }
+        await refreshSelection();
       }
     } catch (_) {
       /* Keep the confirmed connection state while offline. */
@@ -375,10 +448,11 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
     }
   }
 
-  void closePicker() {
+  void closePicker({bool keepSelection = false}) {
     pickerId = null;
     pickerSession?.close();
     pickerSession = null;
+    if (!keepSelection) selectionToResume = null;
   }
 
   Future<void> picker() => run(pick);
