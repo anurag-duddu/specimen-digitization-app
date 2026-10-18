@@ -7,6 +7,17 @@ product typeface, icon registry, or theme. They are declared in this package's
 `pubspec.yaml`; until 2026-10-17 they sat in the application's own `assets/`,
 and the move changed none of the font, the licence or the logo.
 
+The control uses Google's approved rectangular treatment. The 4 px corner
+radius is from the HTML button configurator on the
+[branding page](https://developers.google.com/identity/branding-guidelines),
+checked on 2026-10-17. The Flutter boundary fills its bounded form width; the
+20 by 20 logo and its aspect ratio do not stretch. The Google Sans font,
+colours and source assets below are unchanged. Width and shape are shared
+across platforms, while an unbounded parent gets the intrinsic content width.
+The configurator's default wide layout anchors the logo 12 dp from the start,
+then gives the centred label the remaining space after a 10 dp gap and before
+the 12 dp end inset. Insets mirror in RTL; enlarged text can wrap.
+
 - `google-g.png` is Google's unmodified standard color gradient G from
   <https://developers.google.com/static/identity/images/g-logo.png>, downloaded
   2026-10-16. SHA-256:
@@ -52,7 +63,7 @@ font.save('GoogleSans-Medium.ttf')
 Button colors, font, logo, and padding follow Google's current branding guide:
 <https://developers.google.com/identity/branding-guidelines>, updated
 2026-07-07. The component draws the Android and web figure of the guide's custom
-button section (a 40 high pill, paddings of 12, 10 and 12, a 20 by 20 logo,
+button section (40 high, paddings of 12, 10 and 12, a 20 by 20 logo,
 Google Sans Medium 14/20) on every platform; the guide's separate iOS figure
 (44 high, paddings of 16, 12 and 16, Roboto Medium) is not used. The Google
 logo is preserved with `BoxFit.contain`. The button uses real, wrapping text

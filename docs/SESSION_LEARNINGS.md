@@ -21638,3 +21638,83 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
   ProvisionFirebaseApp endpoint has no complete public IAM contract; neither
   extra caller OAuth permissions nor a support-email change is established
   as the remedy. No raw policy, unrelated principals or tokens were saved.
+
+
+## 2026-10-17: login launch activation and provider-button consistency
+
+- Task `01a147ea-7efb-7e22-8821-e42395a135fc`, coordinator `/root`, worktree
+  `/Users/anuragduddu/.codex/worktrees/9030/specimen-digitization-app`, branch
+  `codex/login-google-operation-diagnostics`, base diagnostic commit `cc4f9b83`.
+  The owner kept Google in this launch and then flagged the inconsistent small
+  Google pill beside the full-width email action. Existing authorization covers
+  design, build, test, fix, protected launch and safe pruning.
+- Superseding release evidence: main `c38f4fd4` Data run `39083195853` attempt 2
+  and Runtime run `39083195857` attempt 2 succeeded. These reruns were initiated
+  externally, not by this coordinator. Data reported "Google provider already
+  enabled; existing client retained." The previously failing provider-creation
+  path was not exercised. The unmerged diagnostic repair did not cause this
+  success. A masked owner read returned HTTP 200, enabled=true, the expected
+  resource and a valid client ID; clientSecret was never requested. No additional
+  IAM grants, provider writes or workstation deployment were made.
+- The coordinator set the existing public repository UI flag
+  `SPECIMEN_GOOGLE_SIGN_IN_ENABLED=true` and reran all jobs of the existing main
+  push Hosting run `39083195854`. Attempt 2 passed all checks and deployed; public
+  smoke completed 2026-10-18 01:21:31 UTC. The public marker matches exact c38,
+  run and attempt; served main.dart.js SHA-256
+  `9705bc4764ff55381fa65bf44b199b78465f48f0aa609dcc62afc5e79a8100fd`
+  matches the digest-verified tested artifact, whose build log records flag=true.
+  Runtime /version independently matches c38, readiness is 200 and the public
+  unauthenticated session check returns the expected 401. Warm/process was
+  skipped; no fresh specimen-processing acceptance is claimed.
+- Exact `cc4f9b83` canonical verification completed cleanly, exit 0 at
+  2026-10-18 01:17:19 UTC: 18,272 Python passes / 49 skips (18,321 collected,
+  each executed once across six shards), 1,307 design-system tests, 3,124 app
+  tests / 7 skips, both analyzers clean, 585 formatted files / zero changes,
+  release web build and 13 route / five header smoke checks passed. The local
+  unstamped marker check was skipped as expected. Independent review approved
+  that exact source/tree. This qualification does not cover the subsequent UI
+  correction described below.
+- Provider-button correction: the earlier recorded owner rule required one
+  Google component with the same look across platforms and Google's branding;
+  it did not require a content-hugging pill. Google explicitly permits rectangular
+  and pill variants. The shared component now follows the default rectangular
+  HTML configurator: 4 dp corners, fixed 12 dp start/end inset, 20 dp logo,
+  10 dp gap, and an expanding centered label region. Bounded forms fill their
+  available width; unbounded contexts retain intrinsic sizing. Logo, font and
+  brand colors are unchanged. A narrow optional Pressable focus-shape override
+  lets the focus ring follow this rectangle; all existing defaults remain.
+  Only initial Send link uses medium sizing; confirmation and resend keep large.
+  Authentication/provider behavior is unchanged by this correction.
+- Focused correction validation: 41 package tests, 33 login tests and four
+  no-update Google golden comparisons passed; both focused analyses are clean.
+  Only the four directly affected Google button golden images were regenerated
+  for the intentional shape/alignment change. Assertions for logo/color,
+  platform consistency, keyboard focus, RTL and large text remain. Twelve
+  offline production-widget entry captures completed against stable source;
+  coordinator inspected desktop, tablet, mobile, dark, keyboard and 200 percent
+  Google entry scenes. Authentication in these images is synthetic. Fresh
+  canonical verification, exact-head review and protected release of this UI
+  correction remain pending at the time of this entry.
+- Live Google acceptance on c38 attempt 2: an owned Chrome museum-profile tab
+  initially restored an older cached UI/session with app-verification failure;
+  normal refresh loaded the current two-method entry. A background automation
+  click was pop-up blocked; a native browser interaction opened Google's account
+  picker. Closing that owned provider tab restored enabled email and Google
+  choices with cancellation guidance. Retrying, choosing aduddu@fieldmuseum.org
+  and continuing with only the displayed name/profile and email scopes completed
+  Google's callback. No Workspace policy rejection occurred. The app correctly
+  showed the museum account, but collection admission is NOT CONFIRMED: local
+  app verification failed with typed app_check_unavailable. One supported Reload
+  app returned briefly to the intended collection route before the same failure.
+  The browser SDK reports appCheck/recaptcha-error. No CAPTCHA challenge was
+  visible. No protection was disabled, cookie store reset, extension changed,
+  or collection membership granted to make this pass. Earlier successful real
+  email-link acceptance in a fresh Guest profile remains separate evidence.
+- Evidence directory:
+  `/Users/anuragduddu/.codex/visualizations/2026/10/17/01a147ea-7efb-7e22-8821-e42395a135fc/login-study/recovery-implementation/`:
+  `data-runtime-c38f4fd4-attempt2-final.json`,
+  `hosting-google-activation-c38-attempt2/hosting-verification.json`,
+  `canonical-google-operation-cc4f9b83-result.json`,
+  `google-button-consistency-local.json`, `button-alignment-captures/manifest.json`
+  and `live-google-acceptance-c38-attempt2.json`. Earlier failed-attempt reports
+  are preserved. Physical installed-app authentication is Not confirmed.
