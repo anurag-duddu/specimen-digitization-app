@@ -22282,3 +22282,32 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   P1/P2 in the repaired source. Flutter analyzer, focused secret scan, shellcheck
   and diff check passed. This supersedes the in-progress focused counts above;
   canonical qualification and the new committed-head review follow separately.
+
+- Final code commit `79067f9057255c2621693539fa412d0f369efb5b`, tree
+  `5130208865dd282a231794b0873142fd7f6310ed`, passed the complete canonical
+  `bash scripts/ci/verify.sh` with a clean worktree at completion on
+  2026-10-18 04:23 UTC: 18,580 Python passes / 49 skips, all 18,629 collected
+  exactly once across six shards; 1,309 specimen_ui tests; 3,190 app tests /
+  seven skips; both analyzers clean; 605 files formatted without changes;
+  release web build and 13-route/five-security-header smoke passed.
+  Local deployment marker was unstamped and intentionally skipped.
+  Durable log: `/Users/anuragduddu/.codex/visualizations/2026/10/17/01a149fc-3649-75c1-a121-11c19de12cb8/bulk-intake-research/implementation/verify-79067f90.log`.
+- Independent G51 reviewer approved that exact SHA/tree and cumulative 169-file
+  PR diff with no unresolved P1/P2, including all 21 final repair files. This
+  supersedes the withdrawn `a9cccdf1` approval. Reviewer independently passed
+  59 credential/selection tests and 19 intake setup tests; these overlap the
+  canonical suite. This append changes only the journal; a successor-head
+  review still confirms that narrow delta before merge.
+- Private Gmail acceptance preparation identified three genuine pilot originals
+  (105526321, 105526324, 105526329), verified against retained source hashes and
+  G31's explicit non-sensitive classification. Candidate manifest and plan are
+  in `/private/tmp/specimen-intake-acceptance-01a149fc/`; public licensing is Not
+  established. No uploads or submissions occurred. The 500-copy review plan is
+  distinct from 500 unique originals/device-memory acceptance and includes no
+  scientific Submit. Actual allowance must be reread before paid acceptance.
+- The Mac is locked; owner Chrome interaction could not proceed. Production IAM
+  setup remains pending explicit bounded approval after the automatic reviewer
+  rejection. This session has not merged, deployed, granted IAM, provisioned the
+  prepared runtime secrets, accepted real Gmail connections, captured on device,
+  or established submission-to-final-Queue acceptance. Preserve the unmerged
+  worktree and private configuration; do not prune needed work.
