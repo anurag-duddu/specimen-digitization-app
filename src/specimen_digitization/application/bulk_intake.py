@@ -398,14 +398,20 @@ class IntakeService:
             wake = self.save(p, 'intake_job', wake)
         except Conflict:
             return dict(status='coalesced')
-        outcome = self.dispatch_intake()
-        status = outcome.get('status') if isinstance(outcome, dict) else getattr(outcome, 'status', None)
-        if status != 'requested':
-            wake['lease_until'] = 0
-            try:
-                self.save(p, 'intake_job', wake)
-            except Conflict:
-                pass
+        status = None
+        try:
+            outcome = self.dispatch_intake(p)
+            status = outcome.get('status') if isinstance(outcome, dict) else getattr(outcome, 'status', None)
+        finally:
+            if status != 'requested':
+                # An exception can mean either a refused start or a lost ACK.
+                # Release the wake lease so a user retry can reconcile promptly;
+                # the intake job's own CAS lease still prevents duplicate work.
+                wake['lease_until'] = 0
+                try:
+                    self.save(p, 'intake_job', wake)
+                except Conflict:
+                    pass
         return outcome
 
     def submission(self, p, id):

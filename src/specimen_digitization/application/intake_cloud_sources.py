@@ -54,15 +54,23 @@ def check_response(response, provider):
         body = response.json()
     except ValueError:
         body = {}
+    if not isinstance(body, dict):
+        body = {}
     if provider == 'google_drive':
         error = body.get('error', {})
-        reasons = {e.get('reason') for e in error.get('errors', [])} if isinstance(error, dict) else set()
+        reasons = {e.get('reason') for e in error.get('errors', []) if isinstance(e, dict)} if isinstance(error, dict) else set()
+        if isinstance(error, dict):
+            reasons.update(detail.get('reason') for detail in error.get('details', []) if isinstance(detail, dict))
     else:
         reasons = {body.get('error', {}).get('.tag')} if isinstance(body.get('error'), dict) else set()
     if status == 401:
         raise ImportProblem('authorization_expired', 'Connect this account again to continue.', 'connect', False)
     if 'domainPolicy' in reasons:
         raise ImportProblem('institution_policy', 'Your organization blocks this operation. Ask IT to review this app.', 'administrator', False)
+    if reasons & {'accessNotConfigured', 'SERVICE_DISABLED', 'API_KEY_INVALID', 'API_KEY_SERVICE_BLOCKED', 'API_KEY_HTTP_REFERRER_BLOCKED'}:
+        raise ImportProblem('provider_configuration', 'This connection needs application setup. Ask your administrator to check the provider configuration.', 'administrator', False)
+    if reasons & {'insufficientPermissions', 'ACCESS_TOKEN_SCOPE_INSUFFICIENT', 'missing_scope'}:
+        raise ImportProblem('connection_permissions', 'This account connection is missing the required access. Connect again and allow the requested permissions.', 'connect', False)
     if status == 429 or reasons & {'rateLimitExceeded', 'userRateLimitExceeded'}:
         error = ImportProblem('rate_limited', 'The provider is busy. This transfer will retry shortly.')
         retry = response.headers.get('Retry-After', '30')

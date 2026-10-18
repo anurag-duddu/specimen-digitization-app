@@ -171,6 +171,22 @@ def test_bindings_translate_private_identifiers_and_stay_private():
         published_registry({COLLECTION_UUID: "no-such-collection"})
 
 
+def test_intake_test_collection_inherits_profile_and_uses_existing_program_ledger():
+    from specimen_digitization.application.lane import queue
+
+    test_collection = '00000000-0000-4000-8000-0000000000e2'
+    bound = published_registry({COLLECTION_UUID: 'insects', test_collection: 'intake-e2e'})
+    assert published_registry().resolve('intake-e2e').reason == 'unknown_collection'
+    assert bound.resolve(test_collection).profile.digest == pilot().digest
+    assert bound.bound_collections('insects') == [COLLECTION_UUID]
+    specimen = specimen_with(Run(profile=Profile(synthetic=False)))
+    specimen.scope = Scope(organization_id=SYNTHETIC_ORG, collection_id=test_collection)
+    queue(specimen, bound, USER)
+    assert specimen.run.stage == 'pending'
+    assert specimen.run.profile.execution.program_ledger_collection == COLLECTION_UUID
+    assert specimen.run.profile.execution.program_allowance_micros == pilot().processing.program_allowance.allowance_micros
+
+
 def test_classify_gives_the_run_every_field_with_its_group(tmp_path):
     run = Run(
         profile=Profile(synthetic=False),
@@ -332,7 +348,7 @@ def test_production_app_passes_the_published_registries(monkeypatch):
             else config.project
         ),
     )
-    monkeypatch.setattr(runtime_auth, "firebase_verifier", lambda *_: None)
+    monkeypatch.setattr(runtime_auth, "firebase_verifier", lambda *_, **__: None)
     monkeypatch.setattr(runtime_health, "install_health", lambda *_, **__: None)
     monkeypatch.setattr(runtime_health, "cloud_probe", lambda *_: None)
     monkeypatch.setattr(runtime_health, "DependencyReadiness", lambda *_: None)

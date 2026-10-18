@@ -933,12 +933,12 @@ class SqlConnectRepository:
             rows = self.execute('ListActiveIntakeJobs', dict(self.variables(scope), afterId=after, limit=100)).get('items', [])
             for row in rows:
                 value = row['payload']
-                if value.get('state') != 'waiting' or value.get('sensitive') is not False or value['id'] != row['id']:
+                if value.get('state') != 'waiting' or value.get('sensitive') is not False or value['id'] != str(UUID(row['id'])):
                     raise Conflict('Intake job inventory mismatch')
                 yield value
             if len(rows) < 100:
                 return
-            after = rows[-1]['id']
+            after = str(UUID(rows[-1]['id']))
 
     def private_document_page(self, scope, kind, owner, after, limit, include_sensitive=False):
         from .intake_models import PRIVATE_KINDS

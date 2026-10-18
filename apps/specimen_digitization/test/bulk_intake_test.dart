@@ -47,6 +47,14 @@ class BulkFixtureRepository extends GoldenRepository
     'state': submitted ? 'submitted' : 'draft',
     'name': 'Photo batch',
     'created_at': '2026-10-17',
+    'entries': photos
+        .map(
+          (photo) => {
+            for (final key in ['id', 'included', 'removed', 'photo_sensitive'])
+              key: photo[key],
+          },
+        )
+        .toList(),
   };
   Json get batch => {
     'id': 'submission',
@@ -121,8 +129,11 @@ class BulkFixtureRepository extends GoldenRepository
       return draft;
     }
     if (path == '/drafts/draft/submit') {
+      if (body!['expected_revision'] != revision) {
+        throw const ApiFailure('The draft changed.', code: 'conflict');
+      }
       submitted = true;
-      submittedIds = List<String>.from(body!['item_ids'] as List);
+      submittedIds = List<String>.from(body['item_ids'] as List);
       return batch;
     }
     if (path == '/submissions/submission') return batch;

@@ -149,11 +149,11 @@ void main() {
   });
 
   for (final email in <String?>[
-    'outside@example.org',
-    'staff@sub.fieldmuseum.org',
-    'staff@fieldmuseum.org.example.org',
+    'outside@@example.org',
+    'staff@sub..fieldmuseum.org',
+    'staff@fieldmuseum.org.example.org.',
     'staff@fіeldmuseum.org',
-    'other@infinative.com',
+    'other@infinative.com ',
     null,
   ]) {
     test('rejected returned email never emits authenticated: $email', () async {
@@ -245,9 +245,26 @@ void main() {
   });
 
   test(
+    'verified external identity reaches the ordinary server admission check',
+    () async {
+      final user = GoogleUserFixture(email: 'tester.external@gmail.com');
+      final signingIn = session.signInWithGoogle();
+      auth.publish(user);
+      await flushEvents();
+      await expectBlocked(user);
+      auth.popup.complete(GoogleCredentialFixture(user));
+      expect(await signingIn, GoogleSignInOutcome.signedIn);
+      expect(await session.token(), 'credential-free-token-fixture');
+      // No collection or role is created by the Firebase adapter.
+      expect(session.userId, user.uid);
+      expect(auth.signOutCalls, 0);
+    },
+  );
+
+  test(
     'cleanup failure quarantines rejected user until explicit cleanup retry',
     () async {
-      final user = GoogleUserFixture(email: 'outside@example.org');
+      final user = GoogleUserFixture(email: 'outside@@example.org');
       auth.failSignOut = true;
       final signingIn = session.signInWithGoogle();
       auth.publish(user);

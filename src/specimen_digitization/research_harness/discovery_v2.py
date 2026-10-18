@@ -276,7 +276,9 @@ class ResearchDiscoveryV2(ResearchDiscovery):
             return
         interrupted = None
         try:
-            outcome = await asyncio.to_thread(self.worker_dispatcher.start)
+            from ..application.lane_dispatch import dispatch_for_scope
+
+            outcome = await asyncio.to_thread(dispatch_for_scope, self.worker_dispatcher, principal.scope)
         except BaseException as error:
             outcome = None
             interrupted = error

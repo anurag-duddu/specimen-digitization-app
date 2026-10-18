@@ -60,7 +60,8 @@ Source browsers provide an explicitly requested, authenticated image preview
 using the same decoding limits in temporary private staging. Links name the
 selected provider account; multiple connections are never silently substituted.
 
-- Google Picker uses `drive.file`. Folder browsing requires a separate
+- Google Picker uses `drive.file` without combining previously granted scopes.
+  Folder browsing requires a separate
   `drive.readonly` connection. Resource keys on shared links are preserved.
 - Dropbox shared files and folders use authenticated read-only sharing APIs,
   including relative paths within folder links; they do not become anonymous
@@ -78,7 +79,14 @@ selected provider account; multiple connections are never silently substituted.
 Drive and Dropbox start with one short description and **Connect**, continue
 through provider consent, and immediately open photo selection. Google reuses the
 user-opened sign-in popup for Picker; Dropbox opens its folder browser in the
-source sheet. Returning users see their saved account and photo selection. A
+source sheet. Native clients use Google's system-browser Picker during OAuth
+(`trigger_onepick=true`), with `drive.file` as the only requested scope. The
+provider returns selected file IDs to the HTTPS callback; the app then completes
+the connection with its original session proof. Returning native users choose
+files through that same provider flow, preserving the saved account identity.
+The server validates each selected file and retains the selection for authenticated
+polling after a lost completion reply. Selection does not create a draft or submit
+a specimen. Returning users see their saved account and photo selection. A
 single connected account is selected automatically; multiple accounts require an
 explicit choice. Keep account switching, disconnect/reconnect, and Google's
 optional folder access in the provider's overflow menu. Folder-wide selection
@@ -93,8 +101,9 @@ After a failed attempt, show the confirmed reason and Retry. Administrator
 instructions and copying are under **Administrator help**, initially collapsed.
 Copying preserves the reason on screen. Users can share the details outside the
 app and retry after access changes; the app sends no notification and invents no
-approval request. Failures retain successful selections. A failed Picker launch
-retries selection with the connected account rather than repeating consent.
+approval request. Failures retain successful selections. A failed web Picker launch
+retries selection with the connected account. Native Picker retries use the
+provider's required consent and selection flow.
 
 References inspected for this simplification:
 - [Claude's connector rows](https://mobbin.com/screens/e6ade293-ed67-4901-8d3c-4196c31b842e): provider, connection state/action, and secondary management.
@@ -126,8 +135,10 @@ requires a new connection and an explicit new source selection.
 Google Picker needs a short-lived access token in browser memory. Its one-use
 bootstrap is in the URL fragment, removed from browser history before a POST
 exchange, and never included in the server request URL. Picker pages and callbacks
-are uncached with a restrictive CSP and no referrer. Refresh tokens never reach
-that page.
+are uncached with a restrictive CSP. OAuth callbacks send no referrer; the web
+Picker page sends only its origin so a restricted developer key can verify the
+site. Refresh tokens never reach that page. Native clients receive selected IDs
+through their callback and do not open the hosted JavaScript Picker.
 
 ## Provisioning and rollout
 
@@ -156,9 +167,95 @@ of connection-token secrets plus access/add-version grants restricted to the
 `specimen-intake-` prefix, and access to the separately pinned client-secret
 versions. Do not give it blanket secret-reading or deletion privileges.
 
+The optional pins in `scripts/ci/runtime_settings.py` start unset. A positive
+number in `OPTIONAL_SECRET_VERSIONS` activates only its real, provisioned secret:
+`specimen-external-emails` supplies `SPECIMEN_EXTERNAL_EMAIL_ALLOWLIST_JSON`,
+`specimen-cloud-import-config` supplies `SPECIMEN_INTAKE_OAUTH_JSON`, and
+`specimen-collection-job-routes` supplies `SPECIMEN_COLLECTION_WORKER_JOBS_JSON`.
+The API/intake receive the first two; API, intake and scientific workers receive
+the same routes pin. Client-secret names and numbered versions are listed in
+`OAUTH_CLIENT_SECRET_VERSIONS`. Configuration and client-secret names must stay
+outside the dynamic `specimen-intake-<UUID>` credential namespace.
+
+Each routes entry maps an exact `organization UUID/collection UUID` to
+`worker_job`, `intake_job` and the existing `actor_uid`. The release reads that
+one numbered secret privately and defines the corresponding dedicated jobs in
+the existing project and region. Their names start with `specimen-worker-` and
+`specimen-intake-`; each keeps the original resource limits, actor secret,
+source image and cumulative budget ledger. Their environment fixes
+`SPECIMEN_WORKER_SCOPE_JSON` and their own continuation jobs. Shared workers
+derive exclusions from the same routing secret. An unset routes pin creates no
+dedicated jobs and leaves existing deployment inputs unchanged.
+
+The bounded owner command is `bash scripts/ops/owner_setup.sh --intake-only`
+(add `--dry-run` to inspect). This mode needs the checkout and `uv`, grants only
+secret container creation on the project, add/access on numbered dynamic credential
+versions, and the separately pinned configuration/client reads. It also grants
+private invoker/read permissions on configured dedicated jobs. It starts no
+release or job. `INTAKE_PROVIDER_APIS` can explicitly name Drive and Picker;
+enabling either requires pinned provider configuration and client-secret
+prerequisites. No provider API is enabled by default. A newly defined job can
+need a second owner setup pass before the protected release verifies its IAM.
+
+To provision private values, add `--intake-config-dir /absolute/private/path`
+to that same owner command. Each approved `<secret-name>.json` file contains
+exactly `{"version": 1, "value": ...}`; its `value` alone becomes the secret
+payload. The approved names are the three optional configuration secrets above,
+`specimen-google-drive-client`, `specimen-dropbox-client`, and
+`specimen-collection-bindings`. Client values contain only `client_secret`.
+Every local shape and every remote target is checked before any write, including
+IAM. Matching versions are skipped; differing/disabled targets and skipped
+version numbers are refused. Missing containers are created, then one numbered
+version is appended and privately compared with the file. Values and provider
+error output are never printed. Runtime pins remain unchanged.
+
+The binding value must preserve every current mapping and contain exactly one
+`intake-e2e` mapping, either already present or added. A routing value must name
+that collection, the original pinned worker actor, and dedicated jobs in this
+project/region. Google configuration must refer to the matching approved client
+secret version, the exact API callback and the same Picker project number.
+After provisioning, activating the verified numbers still requires the reviewed
+runtime-settings change and protected release.
+
+Before submitting E2E work, verify that all definitions carry the reviewed
+routes pin and that older shared executions have finished. A running execution
+retains its original image/environment; updating its job does not retrofit scope
+exclusions. The isolated test collection inherits the Insects profile through a
+distinct collection node, preserving the original unique budget-ledger binding.
+
+Google setup must enable both the Drive and Picker APIs. The OAuth client must
+register the exact API callback URL. The web Picker key's website restrictions
+must include the API origin serving the Picker and `https://docs.google.com/*`,
+and its API restrictions allow only Picker. Backend Drive calls use the OAuth
+bearer token. The `picker_app_id` is the
+project number of the same Google Cloud project that owns the OAuth client.
+Dropbox needs an application that can read existing files (Full Dropbox content
+access), the exact HTTPS callback, offline access, and these read scopes:
+`account_info.read files.metadata.read files.content.read sharing.read`.
+Users connect to the configured application; they do not create their own OAuth
+applications. Provider application setup, user consent, organizational policy and
+individual file permissions are separate requirements and recovery messages.
+
+Application sign-in is a separate boundary. The client validates email syntax;
+the server checks verified Firebase identity and App Check, then the institution
+domain or an exact server-owned external-account allowlist. Optional external
+addresses are configured through `SPECIMEN_EXTERNAL_EMAIL_ALLOWLIST_JSON`, a JSON
+array supplied from a pinned server secret. It accepts no domain wildcards and
+does not normalize provider-specific dot or plus aliases. Admission grants no
+collection role: current SQL Connect membership still decides collection access
+and every write. The actual user must complete normal sign-in, provider account
+choice, consent and selection. None of those steps is established by a successful
+mock or by provisioning an allowlist entry.
+
+Secret Manager may return numeric project resource names even when creation used
+the project ID. Credential reads accept only the configured project ID and exact
+configured project number, with numbered secret versions in either form.
+
 Google OAuth verification and an institution's app-access decision are separate.
 See [Google scope guidance](https://developers.google.com/workspace/drive/api/guides/api-specific-auth)
 and [shared-link resource keys](https://developers.google.com/workspace/drive/api/guides/resource-keys).
+Native Picker follows [Google's desktop and mobile integration contract](https://developers.google.com/workspace/drive/picker/guides/desktop-mobile-picker);
+web key restrictions follow [the official web Picker guide](https://developers.google.com/workspace/drive/picker/guides/web-picker#configure_your_environment).
 Dropbox shared links follow the [official SDK/API contracts](https://dropbox-sdk-python.readthedocs.io/en/latest/api/sharing.html).
 
 ## Acceptance evidence boundaries

@@ -77,8 +77,9 @@ this exact setup run, as specified in `docs/DEPLOYMENT.md`.
 
 | Permission | Purpose |
 | --- | --- |
+| `clientauthconfig.clients.create` | Required with `firebase.projects.update` to register the reviewed Android signing fingerprints on the existing Firebase app. |
 | `firebase.clients.get` | Read the existing Firebase app. |
-| `firebase.clients.list` | Resolve the existing web app; no client creation permission. |
+| `firebase.clients.list` | Resolve the existing web app. |
 | `firebase.projects.get` | Read the Firebase project used by the CLI. |
 | `firebase.projects.update` | Required by the pinned CLI's Auth deploy preflight/provisioning path. |
 | `firebaseauth.configs.get` | Read email/domain and Google provider configuration. |
@@ -88,8 +89,10 @@ Auth configuration permissions are project-wide. IAM cannot restrict this role
 to the `google.com` provider or to the read fields used by this script. In
 particular, the provider resource schema includes `clientSecret`; the field
 mask protects this implementation's reads, not every possible use of the role.
-The role includes no user management, password-hash, Secret Manager, IAM,
-client creation or Hosting permissions. The existing workflow's main-only WIF
+The role includes no user management, password-hash, Secret Manager, IAM or
+Hosting permissions. Client creation is required by the Firebase SHA registration
+API; the release limits it to fixed fingerprints on the existing Android app.
+The existing workflow's main-only WIF
 conditions and environment remain unchanged.
 
 Permission selection is based on the exact pinned CLI source and documented

@@ -21766,3 +21766,220 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
   Both failures are retained. The third run corrected only the external runner
   environment/metadata, with unchanged application source and Dart assertions;
   source, package metadata and the clean root checkout were verified afterward.
+
+### 2026-10-17 — Real account and cloud-source integration lane
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, agent
+  `/root/connections_lead`, branch `codex/compare-photo-intake-ux`, worktree
+  `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`, PR #368.
+  Handoff base is `a15504c5f1da9a2f65747067f55041050e24375c`; this lane's
+  changes are uncommitted in the shared checkout. The coordinator owns final
+  integration, review, commit, push and protected releases.
+- Implemented a server-owned exact external-email allowlist while retaining
+  verified Firebase identity, App Check and current collection permissions.
+  Client email validation checks syntax so approved external accounts can
+  complete ordinary sign-in; Firebase authentication alone grants no collection
+  membership. Config rejects wildcard entries and does not fold Gmail aliases.
+  No personal test mailbox was added to public application source.
+- Google native file selection follows the documented system-browser OAuth
+  Picker flow with only `drive.file`; web continues to use JavaScript Picker.
+  Selected IDs become durable metadata only after authenticated callback
+  completion, and polling can recover the selection. Folder consent remains
+  separate. Provider setup, institution policy, expired authorization and file
+  permission failures now have distinct actionable results. A source
+  configuration failure does not establish an institutional denial.
+- Fixed Secret Manager token references: writes can return the configured
+  project's numeric resource name even when requested by project ID. Reads
+  accept only that configured ID or number and a numeric version, rejecting
+  other projects. Regression coverage exercises the write-to-read round trip.
+- Validation actually run: the wider focused Python auth/source/API/lane suite
+  passed 226 tests; the final narrower auth/source rerun passed 143 tests. Nine
+  focused Flutter suites passed 179 tests. Full application Flutter analysis
+  reported no issues; formatting and `git diff --check` passed. These are local
+  tests with doubles, not real provider or deployed acceptance. Initial runs
+  failed on sandbox loopback binding/SDK cache access, stale verifier test
+  signatures, one nonexistent test path and assertions for the former client
+  domain restriction; corrected commands/fixtures and explicit server denial
+  coverage passed on rerun. No assertion or required release check was disabled.
+- Updated `docs/execution/BULK_PHOTO_INTAKE.md` with actual Google/Dropbox
+  prerequisites and independent app membership, app configuration, user
+  consent, institution policy and file permission boundaries. Integration
+  caught an optional secret env-name mismatch; the release lane confirmed it
+  restored `SPECIMEN_INTAKE_OAUTH_JSON`, matching the existing parser.
+- Not confirmed: real external-account sign-in, provider-console setup,
+  production token-secret permissions, real Drive/Dropbox consent and private
+  staging, physical native Picker behavior, Submit through the scoped specimen
+  pipeline, authoritative Queue disposition, and institutional acceptance.
+  This lane made no cloud changes, guard entries, commits, pushes or releases.
+  Final integrated `scripts/ci/verify.sh`, exact-head independent review and
+  protected-release verification remain the coordinator's follow-ups. The
+  ignored CI Firebase-options placeholder supplied by the intake lane remains
+  available for the coordinator's local verification.
+
+
+### 2026-10-17 — bulk-intake reliability and collection worker boundaries
+
+- Session: `01a149fc-3649-75c1-a121-11c19de12cb8`, delegated lane
+  `/root/intake_delivery_lead`; branch `codex/compare-photo-intake-ux`, worktree
+  `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`, shared
+  checkout HEAD `a15504c5f1da9a2f65747067f55041050e24375c`. Changes remain
+  uncommitted for the coordinator; no pull request, push, merge, deployment,
+  cloud mutation, provider connection, or live scientific run by this lane.
+- Added immutable server-owned collection-to-job dispatch across intake,
+  scientific handoff, explicit processing, derivation and research retry.
+  Dedicated workers validate exact scope, configured actor, continuation job,
+  and Cloud Run job identity before inventory; shared workers exclude every
+  dedicated route before inventory. Intake applies the boundary before reading
+  jobs or changing to a job owner's verified actor. Continuations keep their
+  own fixed jobs and send no invocation overrides.
+- The existing application actor remains shared because the cumulative program
+  ledger is creator-guarded. The explicitly bound operational `intake-e2e` node
+  inherits Insects' unchanged profile while leaving the original Insects ledger
+  binding unique. No published museum tree/profile bytes, ledger copy/reset,
+  scientific Queue semantics, or budget changes were introduced by this lane.
+- Fixed SQL Connect intake inventory UUID spelling normalization, and release
+  the wake lease after exceptional/unconfirmed starts so a prompt user retry
+  can reconcile without a stale coalescing result. Flutter Submit now compares
+  selected photos' inclusion/removal/sensitivity with the latest manifest;
+  changed reviewed photos require a new click, and unseen rows stay unselected.
+- Validation: 212 focused Python tests passed for scope routing, bulk intake,
+  profiles, readiness, derivation API, worker starts and drain; 78 worker actor,
+  drain CLI and research retry tests passed; the subsequently added scoped
+  public retry regression passed separately (291 passing test executions).
+  The 27 Flutter bulk intake/review/retake tests passed, including existing
+  500-photo layout and retained-camera coverage. `git diff --check` passed.
+  This is offline/local validation, not deployed or physical-device acceptance.
+- Failed setup attempts: a research test import needed the existing harness
+  directory on PYTHONPATH; uv cache access was sandbox restricted, so tests ran
+  through the repository virtualenv. Existing verifier stubs needed `**kwargs`
+  after the parallel auth interface update. Flutter initially lacked the ignored
+  Firebase options file; the unchanged CI placeholder enabled local tests.
+  Flutter SDK cache access required the approved shell escalation. The ignored
+  placeholder is retained for the coordinator's canonical gate; no goldens were
+  regenerated or guards weakened.
+- Rollout/acceptance still required: final independent source review and full
+  canonical gate; matching route maps on API/shared/dedicated jobs; exact
+  dedicated scope/actor/own-job settings and fixed continuations; old shared
+  executions must end before dedicated test work is created. Confirm live SQL
+  inventory spelling and real persistence/restart/retry/uncertain-ack behavior,
+  personal-Gmail authorization and providers, physical continuous camera/privacy
+  recovery, and final disposition plus authoritative scientific Queue membership.
+  These remain Not confirmed by this lane. Synthetic staging/Submit/handoff
+  tests do not establish that end-to-end acceptance.
+
+### 2026-10-17 — Cloud source listing completeness repair
+
+- Follow-up in task `01a149fc-3649-75c1-a121-11c19de12cb8`, agent
+  `/root/connections_lead`, branch `codex/compare-photo-intake-ux`, worktree
+  `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`, PR #368,
+  uncommitted on `a15504c5f1da9a2f65747067f55041050e24375c`.
+- Independent review found that the GCS SDK's `max_results` counts folder
+  markers too. Applying the file limit to that raw count before filtering could
+  accept 500 selected photos while silently omitting a 501st photo. The reader
+  now counts actual files across pages and preserves the legacy list return
+  contract: a complete list or `limit + 1` file rows signaling overflow.
+- A separate raw scan budget has one additional lookahead entry, so hitting
+  that budget cannot masquerade as EOF. Exceeding it, or receiving a file with
+  missing size metadata, raises an explicit incomplete-listing error. The
+  intake routes ask for a smaller folder or a retry instead of returning a
+  partial selection. The existing inventory caller also fails before saving
+  a snapshot when listing completeness is unknown.
+- Validation actually run: 115 focused source-reader, inventory, intake-source
+  and authorization tests passed, with one existing dependency deprecation
+  warning; `git diff --check` passed. New tests use the real GCS SDK iterator
+  with local paginated replies, including one marker plus 4,500 unsupported
+  files plus 501 JPEGs, marker-only pages, partial final EOF, exact scan-bound
+  EOF, overflow beyond that bound, and missing file metadata. An initial test
+  request-count assertion also counted the SDK's background bucket-property
+  lookup; the fixture now answers bucket properties separately from object
+  pages. No source behavior or safety assertion was weakened.
+- No cloud mutations or commits occurred. Live Storage acceptance is Not
+  confirmed. The stable source delta was handed directly to `/root/release_review`
+  for independent review; root retains canonical verification and release work.
+
+
+## 2026-10-17 — Native Google/device readiness (task 01a149fc-3649-75c1-a121-11c19de12cb8, delegated device_acceptance)
+
+- Branch/worktree: `codex/compare-photo-intake-ux`, `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`. Source changes remain uncommitted for root integration; no delegated commit or PR was created.
+- Read-only evidence: connected Android A142/API36 has installed 1.0.0+10, camera permission granted and Firebase email-link domain approved. iPhone 14 Pro Max/iOS27.0.1 has installed 1.0.0+8 and paired developer access. Exact installed source SHAs, current app identity/collection, App Check token success, camera capture and authoritative Queue acceptance: Not confirmed. No launch, install, capture, authentication, cloud write or paid work occurred in this lane.
+- Fresh Firebase SDK metadata contains existing web/iOS OAuth clients; cached primary-checkout SDK files predate them. Existing Android Firebase app has no registered signing certificates (read-only SHA-list returned an empty array). Its installed signature matches the local debug certificate; this identifies the signing certificate, not the installed source commit.
+- Source repair: protected `provision_auth.py` now reconciles only the fixed existing active Android app and two confirmed public certificate fingerprints, adding missing entries once and verifying complete readback while retaining all existing certificates. The existing main Data-release guard remains ahead of authentication/network. iOS Info.plist adds the existing public Google client IDs and reversed callback scheme while retaining `specimenintake`. No ignored SDK files were changed.
+- Validation actually run: `uv run pytest -q scripts/release/test_provision_auth.py` passed 151 tests; `plutil -lint apps/specimen_digitization/ios/Runner/Info.plist` passed; owned-file `git diff --check` passed. No Flutter execution or canonical verification was run by this lane.
+- Reusable constraint: Firebase's primary IAM permissions table documents `clientauthconfig.clients.create` as additional to `firebase.projects.update` for Android SHA registration. Root owns the matching auth-only role/test/documentation extension; broad `firebase.clients.update` was not inferred. Certificate readback alone does not establish an Android OAuth client or actual native Google sign-in.
+- Follow-ups: independent source review; root canonical gate and protected merge/release; refresh ignored real SDK configurations after CI-placeholder verification; qualify native Google and email-link handoff and App Check on both exact native candidates; perform actual 30 consecutive captures, persistent draft/grid, explicit submission and server-backed intake-queue reconciliation per device. Keep later main Queue acceptance separate.
+
+## 2026-10-17 — Bulk intake production integration, pre-verification checkpoint
+
+Task `01a149fc-3649-75c1-a121-11c19de12cb8`, coordinator `/root`, branch
+`codex/compare-photo-intake-ux`, worktree `5da8/specimen-digitization-app`, PR #368.
+This entry follows the team scope checkpoint `8000fcb4` and main integration
+`a15504c5`. The owner authorized build, test, QA, bug fixes, merge, protected
+release, real Gmail E2E in an isolated collection, and safe pruning. The owner
+subsequently delegated reversible technical choices: “Any two way door decision,
+you don't need me.” The two intake platform capability declarations and two
+network-policy durations record that exact delegation; scans and guard ratchets
+remain enforced.
+
+- Integrated actual-email allowlisting, isolated collection worker routing with
+  the existing worker actor and cumulative ledger, conditional intake-e2e
+  collection profile, additive E2E bootstrap, native Google configuration,
+  provider token storage and pinned configuration provisioning. No fresh budget
+  or global worker drain was introduced.
+- Independent reviewer reproduced GCS folder-marker truncation hiding the 501st
+  eligible photo. The repair counts files across pages and fails explicitly on
+  an uncertain bounded scan. Focused reader/source suites: 115 passed. Reviewer
+  inspected the repair and native/auth/worker/release changes; exact-head G51
+  approval is still pending.
+- Root focused results: bootstrap/data/runtime settings 235 passed; earlier
+  deployment contracts 583 passed; narrow platform/geometry/owner gates 26
+  passed; auth-only owner setup 11 passed. Combined native/auth/deployment run:
+  802 passed, 1 skipped, 1 failed because the new plist contract was not in the
+  frontend-focused workflow list. Fixed by adding its test module to that list
+  and the inventory expectation, preserving coverage; rerun pending. Pre-commit
+  passed before the final Picker helper and workflow-list delta. Canonical
+  scripts/ci/verify.sh on the final combined source: Not confirmed.
+- Explicitly approved Drive OAuth client was created with the exact production
+  API origin and /v1/intake/oauth/callback. Dropbox console now has Specimen
+  Photo Intake under the Gmail-linked account; after explicit content-access
+  and API-terms approvals, its four read-only scopes and exact callback were
+  saved, and implicit OAuth was disabled. Secrets remain in private0600
+  provisioning files outside Git. Cloud Secret Manager provisioning, account
+  connection, file import, submission and live acceptance: Not confirmed.
+- Automatic approval initially rejected selecting Full Dropbox; no bypass was
+  used. Owner then specifically approved the read-only folder connector and
+  creation/terms. Dropbox's development status currently allows only its owner;
+  public provider approval remains separate from personal-account E2E.
+- Google Picker needs both the application origin and docs.google.com referrers
+  on its Picker-only browser API key. The independently reviewed owner helper
+  creates a restricted key once, reconciles uncertain outcomes by deterministic
+  identity, and refuses conflicting keys/configuration. Independent mocked
+  helper/config verification: 39 passed. No key or IAM cloud writes yet.
+- Auth-only live dry run requires one custom-role update adding
+  clientauthconfig.clients.create for Firebase's fixed Android SHA registration;
+  existing binding needs no change. API Keys service is already enabled. Latest
+  observed old shared worker execution47dzr completed with runningCount0; recheck
+  after scoped runtime release and before adding E2E membership/content.
+- Device audit/readiness is recorded separately above. Real Gmail sign-in,
+  personal Drive/Dropbox consent/import, physical capture, native attestation,
+  scientific Queue disposition, merge, protected deployment, and cleanup all
+  remain Not confirmed at this checkpoint. Do not conflate source tests with
+  those outcomes.
+
+### Coordinator checkpoint correction and final provisioning preparation
+
+Same task/worktree/PR as the preceding checkpoint. The static iOS plist test is
+now `tests/test_native_google_configuration.py`, included in frontend-focused
+coverage. Keeping it outside `scripts/release` preserves the existing strict
+Hosting/release script boundary; that policy test was not loosened. Four
+secret-scan false positives in newly tracked files were annotated precisely as
+resource names/references or synthetic values. First commit attempt stopped on
+those findings; no hook was bypassed.
+
+The Picker lane completed 114 passed, 1 skipped across helper/config/owner tests;
+independent helper/config verification was 39 passed. Actual combined private
+Google/Dropbox configuration dry run succeeded: six numbered versions to append,
+one restricted Picker key, and five current IAM changes, zero failures. No cloud
+writes occurred in that dry run. A subsequent `--auth-only` application attempt
+was rejected by automatic approval review because the production IAM recipient
+and scope required explicit authorization. Both concrete auth and intake setup
+approvals were requested together; cloud setup remained unapplied when recorded.

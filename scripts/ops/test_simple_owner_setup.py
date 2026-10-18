@@ -94,7 +94,7 @@ RETIRE = ("RELEASE_AUTHORIZED_SHA", "RELEASE_BUDGET_LEDGER_SHA256", "RELEASE_INP
           f"secret {MAPS_KEY} and the read of its version 1 by specimen-worker-runtime")
 # Any of these words in a gcloud command line, and any of these gh commands, changes something; the fakes' own
 # "write" flag is checked against them.
-MUTATING = {"add-iam-policy-binding", "remove-iam-policy-binding", "set-iam-policy", "create", "update", "undelete",
+MUTATING = {"add-iam-policy-binding", "remove-iam-policy-binding", "set-iam-policy", "create", "update", "undelete", "enable",
             "delete", "assign-roles", "update-oidc", "set", "deploy"}
 GH_WRITES = {("variable", "set"), ("secret", "set"), ("workflow", "run"), ("run", "rerun")}
 RUNS = f"https://github.com/{REPOSITORY}/actions/runs/"
@@ -260,9 +260,32 @@ def gcloud(argv, state, entry):
             return 1
         print(words[3])
         return 0
+    if words[:3] == ["run", "jobs", "describe"] and len(words) == 4:
+        expect(flags, {"region": "us-east4", "project": PROJECT, "format": "value(metadata.name)"})
+        if words[3] not in state.get("jobs", ["specimen-intake", "specimen-intake-e2e", "specimen-worker-e2e"]):
+            print("NOT_FOUND", file=sys.stderr)
+            return 1
+        print(words[3])
+        return 0
     if words == ["projects", "describe", PROJECT]:
         expect(flags, {"format": "value(projectNumber)"})
         print(state["project_number"])
+        return 0
+    if words == ["services", "list"]:
+        name = flags.get("filter", "").removeprefix("config.name=")
+        expect(flags, {"enabled": None, "project": PROJECT, "filter": f"config.name={name}", "format": "value(config.name)"})
+        if name not in {"drive.googleapis.com", "picker.googleapis.com"}:
+            raise Unsupported("unreviewed provider API")
+        if name in state.get("enabled_provider_apis", []):
+            print(name)
+        return 0
+    if words[:2] == ["services", "enable"] and len(words) == 3:
+        name = words[2]
+        expect(flags, {"project": PROJECT})
+        if name not in {"drive.googleapis.com", "picker.googleapis.com"}:
+            raise Unsupported("unreviewed provider API")
+        entry["write"] = True
+        state.setdefault("enabled_provider_apis", []).append(name)
         return 0
     for group, (kind, scope) in KINDS.items():
         if tuple(words[:len(group)]) == group and len(words) == len(group) + 2 and words[len(group)] in POLICY_VERBS:
@@ -1006,7 +1029,7 @@ def test_preflight_stops_before_any_change(tmp_path, change, message):
 
 
 AUTH_ROLE = "specimenAuthConfiguration"
-AUTH_PERMISSIONS = ["firebase.clients.get", "firebase.clients.list", "firebase.projects.get",
+AUTH_PERMISSIONS = ["clientauthconfig.clients.create", "firebase.clients.get", "firebase.clients.list", "firebase.projects.get",
                     "firebase.projects.update", "firebaseauth.configs.get", "firebaseauth.configs.update"]
 AUTH_CREATE = ["gcloud", "iam", "roles", "create", AUTH_ROLE, f"--project={PROJECT}",
                "--title=Specimen Auth configuration",
@@ -1079,6 +1102,152 @@ def test_auth_only_failed_grant_stops_without_other_setup(tmp_path):
     run = harness.run("--auth-only")
     assert run.code == 1 and run.ran == [AUTH_GRANT] and harness.state() == initial
     assert not run.starts and not run.sleeps and "1 failure(s)" in run.out
+
+
+def intake_harness(tmp_path, metadata="PIN\tapi\tspecimen-worker-actor-uid\t1\nJOB\tintake\tspecimen-intake", shell=SHELLS[0]):
+    harness = Harness(tmp_path, {**live_state(), "gh_signed_in": False}, shell)
+    (tmp_path / "bin/gh").unlink()
+    (tmp_path / "intake-metadata").write_text(metadata)
+    uv = tmp_path / "bin/uv"
+    uv.write_text('#!/bin/sh\ncat "$FAKE_ROOT/intake-metadata"\n')
+    uv.chmod(0o755)
+    return harness
+
+
+@pytest.mark.parametrize("shell", SHELLS)
+def test_intake_only_defaults_are_minimal_idempotent_and_start_nothing(tmp_path, shell):
+    harness = intake_harness(tmp_path, shell=shell)
+    run = harness.run("--intake-only")
+    assert run.code == 0, run.err
+    state = harness.state()
+    assert state["roles"]["specimenIntakeSecretCreate"]["permissions"] == ["secretmanager.secrets.create"]
+    assert state["roles"]["specimenIntakeTokenVersions"]["permissions"] == ["secretmanager.versions.access", "secretmanager.versions.add"]
+    added = [row for row in state["policies"][f"project/{PROJECT}"] if row["role"].startswith(CUSTOM + "specimenIntake")]
+    assert len(added) == 2 and all(row["members"] == [API] for row in added)
+    create = next(row for row in added if row["role"].endswith("Create"))
+    assert create["condition"] is None
+    restricted = next(row for row in added if row["role"].endswith("Versions"))["condition"]["expression"]
+    assert 'projects/716045864126/secrets/specimen-intake-' in restricted
+    assert '/versions/[1-9][0-9]*' in restricted and restricted.endswith('?$")')
+    assert not run.starts and not run.sleeps
+    assert "older shared executions have finished" in run.out
+    assert all(not any(word in command for word in ("deploy", "execute", "delete", "set-iam-policy")) for command in run.ran)
+    again = harness.run("--intake-only")
+    assert again.code == 0 and not again.writes, again.err
+
+
+def test_intake_only_dry_run_changes_nothing_and_emits_only_bounded_commands(tmp_path):
+    harness = intake_harness(tmp_path)
+    before = harness.state()
+    run = harness.run("--intake-only", "--dry-run")
+    assert run.code == 0 and not run.writes and harness.state() == before, run.err
+    assert len(run.printed) >= 4 and not run.starts
+    assert all(command[0] == "gcloud" for command in run.printed)
+
+
+def test_intake_only_grants_exact_config_versions_and_private_job_invokers(tmp_path):
+    metadata = "\n".join(["PIN\tapi\tspecimen-cloud-import-config\t2", "PIN\tworker\tspecimen-collection-job-routes\t3",
+        "PIN\trelease\tspecimen-collection-job-routes\t3", "PIN\tapi\tspecimen-google-drive-client\t4",
+        "JOB\tintake\tspecimen-intake-e2e", "JOB\tworker\tspecimen-worker-e2e"])
+    harness = intake_harness(tmp_path, metadata)
+    run = harness.run("--intake-only")
+    assert run.code == 0, run.err
+    state = harness.state()
+    config = state["policies"]["secret/specimen-cloud-import-config"]
+    assert config == [binding(ACCESSOR, [API], pin("specimen-cloud-import-config", 2))]
+    route = state["policies"]["secret/specimen-collection-job-routes"]
+    assert route == [binding(ACCESSOR, [WORKER, RELEASE], pin("specimen-collection-job-routes", 3))]
+    assert state["policies"]["job/specimen-intake-e2e"] == [binding("roles/run.invoker", [API])]
+    worker = state["policies"]["job/specimen-worker-e2e"]
+    assert worker == [binding("roles/run.invoker", [API, WORKER]), binding(CUSTOM + "specimenWorkerRead", [API])]
+    assert not run.starts and not any("secretmanager.admin" in str(command) for command in run.ran)
+
+
+@pytest.mark.parametrize("args", [("--intake-only", "--intake-only"), ("--intake-only", "--auth-only"),
+                                  ("--setup-only", "--intake-only"), ("--intake-only", "--redeploy-web")])
+def test_intake_only_rejects_other_setup_modes_before_tools(tmp_path, args):
+    run = intake_harness(tmp_path).run(*args)
+    assert run.code != 0 and not run.calls and "Usage:" in run.err
+
+
+def test_copied_intake_mode_requires_checkout_before_any_cloud_read(tmp_path):
+    harness = intake_harness(tmp_path)
+    copied = tmp_path / "owner_setup.sh"
+    copied.write_text(SCRIPT.read_text())
+    run = harness.run("--intake-only", script=copied)
+    assert run.code != 0 and not run.calls and "requires the repository checkout" in run.err
+
+
+def test_intake_only_enables_explicit_provider_apis_once_and_never_starts_a_job(tmp_path):
+    harness = intake_harness(tmp_path, "API\tdrive.googleapis.com\nAPI\tpicker.googleapis.com")
+    dry = harness.run("--intake-only", "--dry-run")
+    assert dry.code == 0 and not dry.writes, dry.err
+    assert [row for row in dry.printed if row[1:3] == ["services", "enable"]] == [
+        ["gcloud", "services", "enable", "drive.googleapis.com", f"--project={PROJECT}"],
+        ["gcloud", "services", "enable", "picker.googleapis.com", f"--project={PROJECT}"]]
+    apply = harness.run("--intake-only")
+    assert apply.code == 0 and harness.state()["enabled_provider_apis"] == ["drive.googleapis.com", "picker.googleapis.com"], apply.err
+    again = harness.run("--intake-only")
+    assert again.code == 0 and not again.writes and not again.starts, again.err
+
+
+@pytest.mark.parametrize("args", [("--intake-config-dir", "/private/config"),
+                                  ("--intake-only", "--intake-config-dir"),
+                                  ("--intake-only", "--intake-config-dir", "relative/config")])
+def test_private_configuration_directory_requires_explicit_intake_mode_and_absolute_path(tmp_path, args):
+    run = intake_harness(tmp_path).run(*args)
+    assert run.code != 0 and not run.calls and "Usage:" in run.err
+
+
+def test_refused_configuration_bundle_precedes_every_iam_write(tmp_path):
+    harness = intake_harness(tmp_path)
+    (tmp_path / "bin/uv").write_text('#!/bin/sh\ncase "$*" in *intake_config.py*) exit 1;; esac\ncat "$FAKE_ROOT/intake-metadata"\n')
+    run = harness.run("--intake-only", "--intake-config-dir", str(tmp_path))
+    assert run.code != 0 and not run.writes and not run.starts, run.err
+    assert not any(call["argv"][:2] == ["iam", "roles"] for call in run.calls)
+
+
+@pytest.mark.parametrize("args", [("--intake-picker-key",), ("--intake-only", "--intake-picker-key"),
+    ("--intake-picker-key", "--intake-config-dir", "/private/config"),
+    ("--intake-only", "--intake-config-dir", "/private/config", "--intake-picker-key", "--intake-picker-key")])
+def test_picker_key_requires_explicit_intake_mode_and_configuration_directory(tmp_path, args):
+    run = intake_harness(tmp_path).run(*args)
+    assert run.code != 0 and not run.calls and "Usage:" in run.err
+
+
+def test_picker_key_helper_receives_dry_run_and_precedes_setup_grants(tmp_path):
+    harness = intake_harness(tmp_path)
+    uv = tmp_path / "bin/uv"
+    uv.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$FAKE_ROOT/uv-invocations"\n'
+        'case "$*" in *intake_picker_key.py*) exit 0;; esac\ncat "$FAKE_ROOT/intake-metadata"\n')
+    run = harness.run("--intake-only", "--intake-config-dir", str(tmp_path), "--intake-picker-key", "--dry-run")
+    assert run.code == 0 and not run.writes and not run.starts, run.err
+    calls = (tmp_path / "uv-invocations").read_text().splitlines()
+    assert len(calls) == 2 and "intake_picker_key.py" in calls[0] and "deploy_models.py" in calls[1]
+    assert f"--directory {tmp_path} --dry-run" in calls[0] and "intake_config.py" not in calls[0]
+
+
+def test_picker_key_failure_precedes_every_iam_write(tmp_path):
+    harness = intake_harness(tmp_path)
+    (tmp_path / "bin/uv").write_text('#!/bin/sh\ncase "$*" in *intake_picker_key.py*) exit 1;; esac\n'
+        'cat "$FAKE_ROOT/intake-metadata"\n')
+    run = harness.run("--intake-only", "--intake-config-dir", str(tmp_path), "--intake-picker-key")
+    assert run.code != 0 and not run.writes and not run.starts, run.err
+    assert not any(call["argv"][:2] == ["iam", "roles"] for call in run.calls)
+
+
+def test_intake_setup_skips_missing_job_until_its_first_protected_definition(tmp_path):
+    harness = intake_harness(tmp_path)
+    state = harness.state()
+    state["jobs"] = []
+    harness.save(state)
+    run = harness.run("--intake-only")
+    assert run.code == 0 and not run.starts, run.err
+    assert "does not exist yet" in run.out
+    assert not any(command[1:4] == ["run", "jobs", "add-iam-policy-binding"] for command in run.ran)
+    assert any(row["role"] == ACCESSOR and API in row["members"]
+        and row["condition"] == pin("specimen-worker-actor-uid", 1)
+        for row in harness.state()["policies"]["secret/specimen-worker-actor-uid"])
 
 
 def grants(run):
@@ -1611,12 +1780,20 @@ def test_runs_with_no_terminal_from_a_lone_copy_outside_the_repository(tmp_path)
     steady = re.compile(r"owner-setup\.\w+")
     assert steady.sub("owner-setup", run.out) == steady.sub("owner-setup", usual.out)
     text = SCRIPT.read_text()
-    # Nothing relative to its own location or to a checkout, and nothing about a terminal's size.
-    assert not re.findall(r"\$0\b|BASH_SOURCE|\bdirname\b|\bgit\b|\btput\b|\bstty\b|COLUMNS", text)
+    # Only the explicitly selected intake mode locates its checkout. The
+    # original modes still work from this lone copy, as exercised above.
+    locator = '    INTAKE_REPOSITORY_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)'
+    assert text.count(locator) == 1
+    assert not re.findall(r"\$0\b|BASH_SOURCE|\bdirname\b|\bgit\b|\btput\b|\bstty\b|COLUMNS", text.replace(locator, ""))
     # Every read in the script takes its lines from a file or a variable, never from the caller.
     reads = [line.strip() for line in text.splitlines() if re.search(r"(?:^|;|IFS=)\s*read\b", line)]
     assert reads == ["while IFS= read -r line; do"] * 3
-    assert len(re.findall(r'^ *done <<?<? "\$', text, re.MULTILINE)) == 3
+    # The additional tab-separated intake reader also consumes a captured
+    # variable, never the caller's input.
+    assert text.count('  while IFS="$TAB" read -r kind who name version; do') == 1
+    metadata_end = '  done <<< "$metadata"'
+    assert text.count(metadata_end) == 1
+    assert len(re.findall(r'^ *done <<?<? "\$', text.replace(metadata_end, ""), re.MULTILINE)) == 3
 
 
 def program_reads(run):

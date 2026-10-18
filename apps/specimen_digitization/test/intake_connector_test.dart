@@ -66,6 +66,10 @@ class ConnectorRepository implements BulkIntakeRepository {
         'id': body['reconnect_id'] ?? 'new',
         'state': 'needs_authorization',
         'authorization_url': 'https://provider.example/oauth',
+        if (body['return_origin'] == null &&
+            body['provider'] == 'google_drive' &&
+            body['access'] == 'files')
+          'picker_id': 'native-picker',
       };
       return pending!;
     }
@@ -83,6 +87,25 @@ class ConnectorRepository implements BulkIntakeRepository {
         row['error'] = {
           'message': 'Your organization prevents this connection.',
           'action': 'administrator',
+        };
+      }
+      if (body?['picked_file_ids'] == 'native-photo') {
+        row['selection'] = {
+          'state': 'selected',
+          'items': [
+            {
+              'id': 'native-photo',
+              'filename': 'native-photo.jpg',
+              'supported': true,
+              'source': {
+                'provider': 'google_drive',
+                'connection_id': row['id'],
+                'object_id': 'native-photo',
+                'version': '1',
+              },
+            },
+          ],
+          'failures': <Json>[],
         };
       }
       accounts.removeWhere((a) => a['id'] == row['id']);
@@ -143,14 +166,20 @@ class ConnectorRepository implements BulkIntakeRepository {
 }
 
 class ConnectorSession implements IntakeAuthSession {
+  ConnectorSession({this.native = false});
+  final bool native;
   bool keepOpen = false, closed = false;
   String? pickerUrl;
   @override
-  String get returnOrigin => 'https://app.example';
+  String? get returnOrigin => native ? null : 'https://app.example';
   @override
   Future<Json> authenticate(String url, {bool keepOpen = false}) async {
     this.keepOpen = keepOpen;
-    return {'state': 'state', 'code': 'code'};
+    return {
+      'state': 'state',
+      'code': 'code',
+      if (native) 'picked_file_ids': 'native-photo',
+    };
   }
 
   @override
@@ -164,6 +193,7 @@ Future<List<ConnectorSession>> mount(
   ConnectorRepository repository,
   String provider, {
   double scale = 1,
+  bool native = false,
 }) async {
   final sessions = <ConnectorSession>[];
   final controller = BulkIntakeController(
@@ -193,7 +223,7 @@ Future<List<ConnectorSession>> mount(
               controller: controller,
               provider: provider,
               authSessionFactory: () {
-                final session = ConnectorSession();
+                final session = ConnectorSession(native: native);
                 sessions.add(session);
                 return session;
               },
@@ -578,6 +608,55 @@ void main() {
       hasLength(1),
     );
   });
+
+  for (final returning in [false, true]) {
+    testWidgets(
+      'native Google Picker returns provider selection without hosted JS: returning=$returning',
+      (tester) async {
+        final repository = ConnectorRepository();
+        if (returning) {
+          repository.accounts.add(
+            repository.account('saved', 'google_drive', access: 'files'),
+          );
+        }
+        final sessions = await mount(
+          tester,
+          repository,
+          'google_drive',
+          native: true,
+        );
+        await press(
+          tester,
+          returning ? 'Choose photos' : 'Connect Google Drive',
+        );
+        expect(find.text('native-photo.jpg'), findsOneWidget);
+        expect(sessions, hasLength(1));
+        expect(sessions.single.keepOpen, isFalse);
+        expect(sessions.single.pickerUrl, isNull);
+        expect(sessions.single.closed, isTrue);
+        final start = repository.calls.firstWhere(
+          (call) => call.$1 == 'POST' && call.$2 == '/connections',
+        );
+        expect(start.$3!['return_origin'], isNull);
+        expect(start.$3!['access'], 'files');
+        expect(start.$3!['reconnect_id'], returning ? 'saved' : null);
+        final completion = repository.calls.singleWhere(
+          (call) => call.$2 == '/connections/complete',
+        );
+        expect(completion.$3!['picked_file_ids'], 'native-photo');
+        expect(
+          repository.calls.any((call) => call.$2.endsWith('/picker')),
+          isFalse,
+        );
+        expect(
+          repository.calls.any(
+            (call) => call.$2.contains('/draft') || call.$2.contains('/submit'),
+          ),
+          isFalse,
+        );
+      },
+    );
+  }
 
   testWidgets(
     'reopening a connected folder account resumes browsing without consent',

@@ -11,6 +11,18 @@ from .source_reader import GcsSourceReader
 from .source_registry import SourceRegistry
 
 
+def scoped_dispatcher(config, lane):
+    """Resolve only reviewed server-owned job routes for authenticated collections."""
+    from .lane_dispatch import CollectionJobDispatcher
+    default = dispatcher_from_value(config.worker_job if lane == 'worker_job' else config.intake_job)
+    routes = dict(config.collection_worker_jobs)
+    if not routes:
+        return default
+    return CollectionJobDispatcher(default, {
+        scope: dispatcher_from_value(route[lane]) for scope, route in routes.items()
+    })
+
+
 def lane_wiring(config):
     """The processing lane's production inputs (LANE.md T1); empty when unconfigured."""
     from .collection_profiles import published_registry
@@ -23,7 +35,7 @@ def lane_wiring(config):
         "source_reader": GcsSourceReader(project=config.project)
         if config.sources
         else None,
-        "worker_dispatcher": dispatcher_from_value(config.worker_job),
+        "worker_dispatcher": scoped_dispatcher(config, 'worker_job'),
     }
 
 
@@ -73,16 +85,17 @@ def production_app(config=None):
         repository=repository,
         blobs=blobs,
         adapters=ProductionAdapters(blobs),
-        identity_verifier=firebase_verifier(firebase_app, config.app_ids, check_app),
+        identity_verifier=firebase_verifier(firebase_app, config.app_ids, check_app,
+            external_email_allowlist=config.external_email_allowlist),
         memberships=repository.memberships,
         origins=list(config.origins),
         research_version="v2",
         research_derivation_ready=DeployedDerivationWorker(config, provenance, wiring['worker_dispatcher']),
         schedule_derivation=partial(schedule_derivation, repository),
         research_capture_blobs=GcsImmutableBlobs(blobs.bucket),
-        intake_dispatcher=dispatcher_from_value(config.intake_job),
+        intake_dispatcher=scoped_dispatcher(config, 'intake_job'),
         intake_oauth_config=dict(config.intake_oauth),
-        intake_secret_store=SecretManagerTokens(config.project) if config.intake_oauth else None,
+        intake_secret_store=SecretManagerTokens(config.project, project_number=config.project_number) if config.intake_oauth else None,
         **wiring,
     )
     install_health(

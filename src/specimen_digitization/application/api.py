@@ -54,7 +54,6 @@ from .lane import (
     refuse_sensitive,
     run_status,
 )
-from .lane_dispatch import UNCONFIGURED
 from .policy import finalize
 from .reliability import has_active_lease
 from .production import actor_uid, verified_actor_context
@@ -600,11 +599,13 @@ def create_app(
         }:
             background_tasks.add_task(process_background, p, s.id)
         elif mode != "synthetic" and work_available_at(s) is not None:
-            start_worker()
+            start_worker(p.scope)
 
     # Outside synthetic mode the worker job does the processing (LANE.md T1).
-    def start_worker():
-        return worker_dispatcher.start() if worker_dispatcher else UNCONFIGURED
+    def start_worker(scope):
+        from .lane_dispatch import dispatch_for_scope
+
+        return dispatch_for_scope(worker_dispatcher, scope)
 
     def request_processing(s, actor):
         """Leave a new or resumed run pending; synthetic runs drain in-process."""
@@ -1191,7 +1192,7 @@ def create_app(
             )
         finally:
             if pending_intake:
-                start_worker()
+                start_worker(p.scope)
 
     @app.get(prefix + "/uploads/{upload_id}")
     def upload(organization_id: str, upload_id: str, user=Depends(identity)):
@@ -1347,7 +1348,7 @@ def create_app(
         if mode == "synthetic" and not duplicate:
             background_tasks.add_task(process_background, p, specimen.id)
         elif not duplicate and specimen.run.stage == "pending":
-            start_worker()
+            start_worker(p.scope)
         return completed_upload(p, response)
 
     def history_access(user, organization_id, specimen_id):
@@ -2816,7 +2817,7 @@ def create_app(
                 f"The run is {run_status(s.run)}; a run action continues it",
             )
         response.status_code = 202
-        dispatch = start_worker().model_dump()
+        dispatch = start_worker(p.scope).model_dump()
         return dict(in_line(p, s, summary(s, p.role)), dispatch=dispatch)
 
     # Research uses the same verifier and current membership source as the
@@ -2914,7 +2915,7 @@ def create_app(
         discovery=discovery, load_specimen=load_research_specimen,
         ready=research_derivation_ready, schedule_derivation=schedule_derivation,
         capture_blobs=research_capture_blobs,
-        wake_worker=worker_dispatcher.start if worker_dispatcher is not None else None)
+        wake_worker=(lambda p: start_worker(p.scope)) if worker_dispatcher is not None else None)
     app.include_router(create_derivation_router(derivation,
         verified_principal_dependency=research_principal))
     app.state.research_derivation = derivation
@@ -2925,12 +2926,13 @@ def create_app(
     from .intake_worker import IntakeWorker
     from .intake_sources import IntakeSources
     from .intake_source_routes import install_source_routes
+    from .lane_dispatch import dispatch_for_scope
     intake = IntakeService(repository, blobs,
         authorize=lambda p: principal(p.user_id, p.scope.organization_id, p.scope.collection_id, write=True),
         classify=lambda p, sensitive: sensitivity_access(p.user_id, p, sensitive),
         queue_specimen=lambda s, user: queue_on_intake(s, registry, user) if mode != 'synthetic' else None,
-        dispatch_pipeline=lambda p, s: process_background(p, s.id) if mode == 'synthetic' else start_worker(),
-        dispatch_intake=intake_dispatcher.start if intake_dispatcher else None,
+        dispatch_pipeline=lambda p, s: process_background(p, s.id) if mode == 'synthetic' else start_worker(p.scope),
+        dispatch_intake=(lambda p: dispatch_for_scope(intake_dispatcher, p.scope)) if intake_dispatcher else None,
         sources=intake_sources or IntakeSources(source_registry=source_registry, source_reader=source_reader),
         codec_policy=codec_policy, synthetic=mode == 'synthetic')
     app.state.intake = intake

@@ -541,7 +541,16 @@ PUBLISHED_PROFILES = Path(__file__).with_name("profiles") / "published.json"
 def published_registry(
     bindings: Mapping[str, str] | None = None,
 ) -> CollectionProfileRegistry:
-    """The published profiles (LANE.md T4) with the deployment's private bindings."""
+    """The published profiles (LANE.md T4) with private collection bindings.
+
+    The explicitly bound intake-e2e operational collection inherits Insects'
+    unchanged policy. Its distinct node keeps the canonical Insects budget
+    ledger binding unique without adding a test collection to the museum tree.
+    """
+    bindings = dict(bindings or {})
+    content = json.loads(PUBLISHED_PROFILES.read_text())
+    if 'intake-e2e' in bindings.values():
+        content['nodes'].append(dict(id='intake-e2e', parent_id='insects', name='Intake test collection'))
     return CollectionProfileRegistry.model_validate(
-        dict(json.loads(PUBLISHED_PROFILES.read_text()), bindings=dict(bindings or {}))
+        dict(content, bindings=bindings)
     )

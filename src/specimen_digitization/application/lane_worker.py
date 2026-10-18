@@ -18,6 +18,7 @@ from uuid import NAMESPACE_URL, uuid5
 from .domain import AuditEvent, Principal, Scope
 from .storage import Conflict, Missing, digest
 from .workflow import OperationalBlock
+from .worker_scope import WorkerScopePolicy, worker_scope_from_env
 
 LOGGER = logging.getLogger(__name__)
 LANE_ROLES = {"operator", "reviewer", "manager", "admin"}
@@ -75,6 +76,7 @@ class DrainSettings:
     actor_uid: str
     bindings: dict = field(default_factory=dict)
     worker_job: str = ""
+    scope_policy: WorkerScopePolicy = field(default_factory=WorkerScopePolicy)
 
 
 def exact_uid(value) -> bool:
@@ -118,7 +120,8 @@ def drain_settings(env) -> DrainSettings:
     job = env.get("SPECIMEN_WORKER_JOB", "")
     if job and not JOB_NAME.fullmatch(job):
         raise ValueError("SPECIMEN_WORKER_JOB must be projects/*/locations/*/jobs/*")
-    return DrainSettings(actor, dict(collection_bindings(env)), job)
+    return DrainSettings(actor, dict(collection_bindings(env)), job,
+                         worker_scope_from_env(env, lane='worker'))
 
 
 def moment(value):

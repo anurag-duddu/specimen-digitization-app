@@ -772,11 +772,30 @@ class BulkIntakeController extends ChangeNotifier {
     error = null;
     changed();
     try {
-      final chosen = visible
-          .where((item) => item.canSubmit && !item.id.startsWith('local:'))
-          .map((i) => i.id)
-          .toList();
+      final reviewed = {
+        for (final item in visible.where(
+          (item) => item.canSubmit && !item.id.startsWith('local:'),
+        ))
+          item.id: item.sensitive,
+      };
+      final chosen = reviewed.keys.toList();
       final current = await call('GET', '/drafts/${draft!.id}');
+      final latestEntries = {
+        for (final entry in objects(current['entries'])) entry['id']: entry,
+      };
+      if (reviewed.entries.any((photo) {
+        final entry = latestEntries[photo.key];
+        return entry == null ||
+            entry['included'] != true ||
+            entry['removed'] != false ||
+            entry['photo_sensitive'] != photo.value;
+      })) {
+        await refreshDraft();
+        throw const ApiFailure(
+          'This batch changed. Review the updated photos before submitting.',
+          code: 'draft_changed',
+        );
+      }
       final result = await call(
         'POST',
         '/drafts/${draft!.id}/submit',

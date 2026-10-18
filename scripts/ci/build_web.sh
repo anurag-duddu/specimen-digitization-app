@@ -26,5 +26,8 @@ if [[ "${GITHUB_ACTIONS:-}" == "true" && "${GITHUB_EVENT_NAME:-}" == "push" && "
   if [[ "${SPECIMEN_GOOGLE_SIGN_IN_ENABLED:-false}" == "true" ]]; then
     args+=("--dart-define=SPECIMEN_GOOGLE_SIGN_IN_ENABLED=true")
   fi
+  if [[ "${BULK_INTAKE_ENABLED:-false}" == "true" ]]; then
+    args+=("--dart-define=BULK_INTAKE_ENABLED=true")
+  fi
 fi
 flutter build web "${args[@]}"

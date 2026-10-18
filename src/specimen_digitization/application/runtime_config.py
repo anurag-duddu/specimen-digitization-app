@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 from urllib.parse import urlsplit
+from uuid import UUID
 
 from .lane_dispatch import JOB_NAME
 from .source_registry import RegisteredSource, SourceRegistry
@@ -66,6 +67,8 @@ class RuntimeConfig:
     collection_bindings: tuple[tuple[str, str], ...] = ()
     intake_job: str | None = None
     intake_oauth: tuple[tuple[str, dict], ...] = ()
+    external_email_allowlist: tuple[str, ...] = ()
+    collection_worker_jobs: tuple[tuple[str, dict], ...] = ()
 
     @classmethod
     def from_env(cls, env=None):
@@ -162,7 +165,49 @@ class RuntimeConfig:
             collection_bindings=collection_bindings(env),
             intake_job=intake_job,
             intake_oauth=tuple(intake_oauth.items()),
+            external_email_allowlist=external_email_allowlist(env),
+            collection_worker_jobs=collection_worker_jobs(env, project),
         )
+
+
+def external_email_allowlist(env):
+    """Extra exact identities remain private server configuration, never a domain grant."""
+    from .runtime_auth import validated_external_emails
+    try:
+        value = json.loads(env.get('SPECIMEN_EXTERNAL_EMAIL_ALLOWLIST_JSON') or '[]')
+        if not isinstance(value, list):
+            raise ValueError()
+        return tuple(sorted(validated_external_emails(value)))
+    except (ValueError, TypeError):
+        raise ValueError('External email admission requires a JSON list of exact addresses') from None
+
+
+def collection_worker_jobs(env, project=None):
+    """Private, immutable collection routing; clients cannot choose job identities."""
+    project = project or env.get('SPECIMEN_FIREBASE_PROJECT', 'specimen-digitization')
+    try:
+        value = json.loads(env.get('SPECIMEN_COLLECTION_WORKER_JOBS_JSON') or '{}')
+        if not isinstance(value, dict) or len(value) > 100:
+            raise ValueError()
+        routes, jobs = {}, set()
+        for key, route in value.items():
+            organization, collection = key.split('/')
+            canonical = str(UUID(organization)) + '/' + str(UUID(collection))
+            if canonical in routes or not isinstance(route, dict) or set(route) != {'worker_job', 'intake_job', 'actor_uid'}:
+                raise ValueError()
+            actor = route['actor_uid']
+            if not isinstance(actor, str) or not 1 <= len(actor) <= 128 or not actor.isprintable() or actor != actor.strip():
+                raise ValueError()
+            for lane in ('worker_job', 'intake_job'):
+                job = route[lane]
+                if (not isinstance(job, str) or not JOB_NAME.fullmatch(job)
+                    or job.split('/')[1] != project or job in jobs):
+                    raise ValueError()
+                jobs.add(job)
+            routes[canonical] = dict(route)
+        return tuple(sorted(routes.items()))
+    except (ValueError, TypeError, AttributeError):
+        raise ValueError('Collection worker routing requires exact scopes, actors and distinct project jobs') from None
 
 
 def collection_bindings(env):

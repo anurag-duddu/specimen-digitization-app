@@ -13,9 +13,10 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from pydantic import Field
 
 from .domain import Record
-from .intake_connections import safe_connection
+from .intake_connections import safe_connection, picked_file_ids, PICKER_IMAGE_TYPES
 from .intake_sources import ImportProblem, public_url
 from .source_registry import validate_object_name
+from .source_reader import SourceListingIncomplete
 from .intake_cloud_sources import EXTENSIONS
 from .intake_models import SourceReference, MAX_BYTES
 
@@ -33,6 +34,7 @@ class ConnectionComplete(Record):
     code: str = Field(default='', max_length=4096)
     error: str | None = Field(default=None, max_length=200)
     session_proof: str = Field(pattern=r'^[a-f0-9]{64}$')
+    picked_file_ids: str = Field(default='', max_length=100499)
 
 
 class BrowseInput(Record):
@@ -67,6 +69,24 @@ def install_source_routes(app, prefix, service, manager, *, identity, principal,
             raise ImportProblem('provider_not_configured', 'Cloud connections need administrator setup.', 'administrator', False)
         doc = manager.get(p, id, connected=True)
         return service.sources.providers[doc['provider']]
+
+    def selection_rows(p, connection_id, ids):
+        adapter = provider(p, connection_id)
+        rows, failures = [], []
+        for id in dict.fromkeys(ids):
+            try:
+                rows.append(adapter.row(connection_id, adapter.metadata(p, connection_id, id)))
+            except ImportProblem as exc:
+                failures.append(dict(id=id, error=exc.intake_problem))
+        return dict(items=rows, failures=failures)
+
+    def native_selection(p, pending):
+        # An authenticated completion retains the IDs before exchange. Polling
+        # can finish metadata validation after a lost completion reply.
+        if pending['state'] == 'authorized':
+            pending.update(selection_rows(p, pending['connection_id'], pending['picked_file_ids']), state='selected')
+            pending = service.save(p, 'intake_oauth', pending)
+        return dict(state=pending['state'], items=pending.get('items', []), failures=pending.get('failures', []))
 
     @app.post(root + '/source-preview')
     def source_preview(organization_id: str, collection_id: str, body: SourceReference, user=Depends(identity)):
@@ -116,7 +136,12 @@ def install_source_routes(app, prefix, service, manager, *, identity, principal,
         p = access(organization_id, collection_id, user)
         if manager is None:
             raise ImportProblem('provider_not_configured', 'Cloud connections need administrator setup.', 'administrator', False)
-        return safe_connection(manager.complete(p, body.state, body.code, body.session_proof, body.error))
+        connection = manager.complete(p, body.state, body.code, body.session_proof, body.error, body.picked_file_ids)
+        result = safe_connection(connection)
+        pending = service.read(p, 'intake_oauth', manager.decode_state(body.state)['id'])
+        if pending.get('native_picker') and connection['state'] == 'connected':
+            result['selection'] = native_selection(p, pending)
+        return result
 
     @app.get(root + '/connections/{connection_id}')
     def connection(organization_id: str, collection_id: str, connection_id: str, user=Depends(identity)):
@@ -159,7 +184,10 @@ def install_source_routes(app, prefix, service, manager, *, identity, principal,
             validate_object_name(source, path)
         if not path.endswith('/'):
             raise ValueError('Choose a registered folder')
-        rows = service.sources.storage.list_objects(source.bucket, path, 5000)
+        try:
+            rows = service.sources.storage.list_objects(source.bucket, path, 5000)
+        except SourceListingIncomplete as exc:
+            raise ImportProblem('incomplete_search', 'Could not list every file in this folder. Choose a smaller folder or try again.', 'choose_source', False) from exc
         if len(rows) > 5000:
             raise ImportProblem('folder_limit', 'Choose a smaller folder to review all of its contents.', 'choose_source', False)
         result, folders = [], set()
@@ -240,12 +268,18 @@ def install_source_routes(app, prefix, service, manager, *, identity, principal,
         return access(fields['organization'], fields['collection'], fields['user'])
 
     @app.get('/v1/intake/oauth/callback', response_class=HTMLResponse)
-    def callback(state: str, code: str = '', error: str | None = None):
+    def callback(state: str, code: str = '', error: str | None = None, picked_file_ids: str = ''):
         p = state_principal(state)
         pending = manager.verify_pending(p, state, 'oauth')
         if len(code) > 4096 or (error and len(error) > 200):
             raise ValueError('Invalid connection response')
-        payload = dict(state=state, code=code, error=error)
+        if picked_file_ids and (not pending.get('native_picker') or len(picked_file_ids) > 100499):
+            raise ValueError('Unexpected file selection')
+        # Validate callback syntax without treating a redirect as authorization.
+        from .intake_connections import picked_file_ids as parse_picked_files
+        parse_picked_files(picked_file_ids)
+        payload = dict(state=state, code=code, error=error,
+            **({'picked_file_ids': picked_file_ids} if pending.get('native_picker') else {}))
         headers = {'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'}
         # This endpoint never exchanges or stores the code. Only its original
         # application window/device receives it and can prove the initiating
@@ -280,8 +314,11 @@ def install_source_routes(app, prefix, service, manager, *, identity, principal,
     def picker_status(organization_id: str, collection_id: str, connection_id: str, picker_id: str, user=Depends(identity)):
         p = access(organization_id, collection_id, user)
         pending = service.read(p, 'intake_oauth', picker_id)
-        if pending['connection_id'] != connection_id or pending['purpose'] != 'picker':
+        native = pending['purpose'] == 'oauth' and pending.get('native_picker')
+        if pending['connection_id'] != connection_id or (pending['purpose'] != 'picker' and not native):
             raise ValueError('Invalid picker session')
+        if native:
+            return native_selection(p, pending)
         return dict(state=pending['state'], items=pending.get('items', []), failures=pending.get('failures', []))
 
     @app.post('/v1/intake/picker/bootstrap')
@@ -307,7 +344,7 @@ async function loaded(){
  if(!response.ok){document.getElementById('status').textContent='This picker session expired. Return to the app and choose files again.';return;}
  const config=await response.json();
  gapi.load('picker',()=>{
- const view=new google.picker.DocsView().setMimeTypes('image/jpeg,image/png,image/tiff,image/heic,image/heif');
+ const view=new google.picker.DocsView().setMimeTypes('IMAGE_TYPES');
  const picker=new google.picker.PickerBuilder().addView(view).setOAuthToken(config.token).setDeveloperKey(config.key)
  .setAppId(config.app).setOrigin(location.origin).enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
  .setCallback(async data=>{if(data.action===google.picker.Action.PICKED){
@@ -316,8 +353,8 @@ async function loaded(){
   document.getElementById('status').textContent=r.ok?'Photos selected. Return to the app to review them.':'Could not retain the selection. Return to the app and try again.';
  }}).build();picker.setVisible(true);
 });}
-</script><script nonce="NONCE" src="https://apis.google.com/js/api.js?onload=loaded"></script>'''.replace('NONCE', nonce)
-        return HTMLResponse(page, headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer',
+</script><script nonce="NONCE" src="https://apis.google.com/js/api.js?onload=loaded"></script>'''.replace('NONCE', nonce).replace('IMAGE_TYPES', PICKER_IMAGE_TYPES)
+        return HTMLResponse(page, headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'strict-origin',
             'Content-Security-Policy': f"default-src 'none'; script-src 'nonce-{nonce}' https://apis.google.com https://www.gstatic.com; frame-src https://docs.google.com https://drive.google.com; connect-src 'self' https://www.googleapis.com; style-src 'unsafe-inline'; img-src https://*.googleusercontent.com https://www.gstatic.com; frame-ancestors 'none'"})
 
     @app.post('/v1/intake/picker/selection')
@@ -326,16 +363,13 @@ async function loaded(){
         pending = manager.verify_pending(p, body.state, 'picker_selection')
         pending['state'] = 'selecting'
         pending = service.save(p, 'intake_oauth', pending)
-        adapter = provider(p, pending['connection_id'])
-        rows, failures = [], []
-        for id in dict.fromkeys(body.ids):
-            try:
-                rows.append(adapter.row(pending['connection_id'], adapter.metadata(p, pending['connection_id'], id)))
-            except ImportProblem as exc:
-                failures.append(dict(id=id, error=exc.intake_problem))
+        for id in body.ids:
+            if len(picked_file_ids(id)) != 1:
+                raise ValueError('Invalid Drive file')
+        selection = selection_rows(p, pending['connection_id'], body.ids)
         parent = service.read(p, 'intake_oauth', pending['picker_id'])
-        parent.update(state='selected', items=rows, failures=failures)
+        parent.update(state='selected', **selection)
         service.save(p, 'intake_oauth', parent)
         pending['state'] = 'selected'
         service.save(p, 'intake_oauth', pending)
-        return dict(selected=len(rows), failures=failures)
+        return dict(selected=len(selection['items']), failures=selection['failures'])

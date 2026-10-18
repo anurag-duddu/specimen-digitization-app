@@ -23,7 +23,19 @@
 		<key>CFBundleVersion</key>
 		<string>$(FLUTTER_BUILD_NUMBER)</string>
 		<key>CFBundleURLTypes</key>
-		<array><dict><key>CFBundleURLSchemes</key><array><string>specimenintake</string></array></dict></array>
+		<array>
+			<dict><key>CFBundleURLSchemes</key><array><string>specimenintake</string></array></dict>
+			<dict>
+				<key>CFBundleTypeRole</key><string>Editor</string>
+				<key>CFBundleURLSchemes</key>
+				<array><string>com.googleusercontent.apps.716045864126-6m846krhsfsucmkmpkte88ra6kirv12a</string></array>
+			</dict>
+		</array>
+		<!-- Public OAuth identifiers of the existing Firebase iOS/web clients. -->
+		<key>GIDClientID</key>
+		<string>716045864126-6m846krhsfsucmkmpkte88ra6kirv12a.apps.googleusercontent.com</string>
+		<key>GIDServerClientID</key>
+		<string>716045864126-9g71pv45aeqimivdl8de5m7tm4ilk6gj.apps.googleusercontent.com</string>
 		<key>NSCameraUsageDescription</key>
 		<string>Photograph specimen labels for review in your museum collection.</string>
 		<key>NSPhotoLibraryUsageDescription</key>

@@ -83,6 +83,7 @@ def main():
     from .domain import Principal, Scope
     from .production import verified_actor_context
     from .runtime_config import RuntimeConfig
+    from .worker_scope import worker_scope_from_env
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--max-seconds', type=int, default=3300)
@@ -92,6 +93,10 @@ def main():
     worker = os.environ.get('SPECIMEN_WORKER_ACTOR_UID')
     if not worker:
         parser.error('A configured worker identity is required')
+    try:
+        scope_policy = worker_scope_from_env(os.environ, lane='intake')
+    except ValueError as exc:
+        parser.error(str(exc))
     app = production_app(RuntimeConfig.from_env())
     service = app.state.intake
     deadline = service.clock() + args.max_seconds
@@ -100,7 +105,7 @@ def main():
     while service.clock() < deadline:
         pending = []
         with verified_actor_context(worker):
-            memberships = service.repo.memberships(worker)
+            memberships = scope_policy.memberships(service.repo.memberships(worker))
         for membership in memberships:
             scope = Scope(organization_id=membership['organization_id'], collection_id=membership['collection_id'])
             with verified_actor_context(worker):

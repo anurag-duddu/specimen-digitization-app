@@ -203,7 +203,7 @@ def test_committed_submission_outbox_recovers_after_materialization_crash(tmp_pa
     monkeypatch.setattr(service, '_materialize_submission', original)
     # Reopening the queue must recover without a manually running worker.
     wakes = []
-    service.dispatch_intake = lambda: wakes.append(True) or {'status': 'requested'}
+    service.dispatch_intake = lambda p: wakes.append(p.scope) or {'status': 'requested'}
     listed = service.list(p, 'intake_submission')
     assert len(listed['items']) == 1 and wakes
     IntakeWorker(service).drain(p)
@@ -232,7 +232,7 @@ def test_failed_launch_is_visible_and_batch_retry_is_idempotent(tmp_path):
     app = local_app(tmp_path, TOKEN)
     client = TestClient(app)
     service = app.state.intake
-    service.dispatch_intake = lambda: DispatchOutcome(status='failed')
+    service.dispatch_intake = lambda p: DispatchOutcome(status='failed')
     batch = draft(client)
     item, _ = add(client, batch)
     result = submit(client, batch, [item])
@@ -267,7 +267,32 @@ def test_submission_retry_revalidates_complete_local_bytes_after_worker_failure(
     assert service.submission(p, submission['id'])['counts'] == {'sent': 1}
 
 
-def test_production_worker_inventory_fetches_payload_pages_without_per_job_reads(monkeypatch):
+def test_exceptional_worker_start_releases_wake_lease_for_immediate_retry(tmp_path):
+    from specimen_digitization.application.bulk_intake import ident
+
+    service = local_app(tmp_path, TOKEN).state.intake
+    p = Principal(user_id='synthetic-reviewer', scope=Scope(
+        organization_id=PREFIX.split('/')[-1], collection_id=SYNTHETIC_COLLECTION), role='reviewer')
+    service.clock = lambda: 100
+    calls = []
+    def start(principal):
+        calls.append(principal.scope)
+        if len(calls) == 1:
+            raise TimeoutError('private start details')
+        return {'status': 'requested'}
+    service.dispatch_intake = start
+    first = service.enqueue(p, 'saved-submission', 'submit')
+    assert first['error']['code'] == 'worker_unavailable'
+    wake_id = ident(p.scope.model_dump_json(), 'intake-wakeup')
+    assert service.repo.document(p.scope, 'intake_job', wake_id)['lease_until'] == 0
+    second = service.enqueue(p, 'saved-submission', 'submit')
+    assert second['error'] is None
+    assert calls == [p.scope, p.scope]
+    assert service.repo.document(p.scope, 'intake_job', wake_id)['lease_until'] == 160
+
+
+@pytest.mark.parametrize('compact_uuid', [False, True])
+def test_production_worker_inventory_fetches_payload_pages_without_per_job_reads(monkeypatch, compact_uuid):
     from uuid import UUID
     from specimen_digitization.application.production import SqlConnectRepository, verified_actor_context
     repo = SqlConnectRepository(session=object())
@@ -277,7 +302,8 @@ def test_production_worker_inventory_fetches_payload_pages_without_per_job_reads
         calls.append(operation)
         after = variables['afterId']
         page = [row for row in rows if row['id'] > after][:variables['limit']]
-        return {'items': [dict(id=row['id'], payload=row) for row in page]}
+        assert not after or str(UUID(after)) == after
+        return {'items': [dict(id=UUID(row['id']).hex if compact_uuid else row['id'], payload=row) for row in page]}
     monkeypatch.setattr(repo, 'execute', execute)
     with verified_actor_context('worker'):
         result = list(repo.active_intake_jobs(Scope(organization_id=PREFIX.split('/')[-1], collection_id=SYNTHETIC_COLLECTION)))

@@ -17,6 +17,7 @@ from .storage import Conflict
 
 GOOGLE_FILE = 'https://www.googleapis.com/auth/drive.file'
 GOOGLE_READ = 'https://www.googleapis.com/auth/drive.readonly'
+PICKER_IMAGE_TYPES = 'image/jpeg,image/png,image/tiff,image/heic,image/heif,image/dng,image/x-adobe-dng'
 DROPBOX_SCOPES = 'account_info.read files.metadata.read files.content.read sharing.read'
 PROVIDERS = {
     'google_drive': ('https://accounts.google.com/o/oauth2/v2/auth', 'https://oauth2.googleapis.com/token'),
@@ -26,19 +27,26 @@ PROVIDERS = {
 
 class SecretManagerTokens:
     """Dedicated per-connection secrets. Configuration pins client secret versions."""
-    def __init__(self, project, session=None):
+    def __init__(self, project, session=None, *, project_number=None):
         if not re.fullmatch(r'[a-z][a-z0-9-]{4,61}[a-z0-9]', project):
             raise ValueError('Invalid secret project')
+        if project_number is not None and not re.fullmatch(r'[1-9][0-9]*', str(project_number)):
+            raise ValueError('Invalid secret project number')
         if session is None:
             import google.auth
             from google.auth.transport.requests import AuthorizedSession
             credentials, _ = google.auth.default(scopes=['https://www.googleapis.com/auth/cloud-platform'])
             session = AuthorizedSession(credentials)
         self.project, self.session = project, session
+        self.project_aliases = {project} | ({str(project_number)} if project_number else set())
+
+    def _validate_ref(self, ref):
+        match = re.fullmatch(r'projects/([^/]+)/secrets/[a-zA-Z0-9_-]+/versions/[1-9][0-9]*', ref)
+        if match is None or match[1] not in self.project_aliases:
+            raise ValueError('A numbered secret version in the configured project is required')
 
     def read(self, ref):
-        if not re.fullmatch(r'projects/' + re.escape(self.project) + r'/secrets/[a-zA-Z0-9_-]+/versions/[1-9][0-9]*', ref):
-            raise ValueError('A numbered secret version is required')
+        self._validate_ref(ref)
         response = self.session.get('https://secretmanager.googleapis.com/v1/' + ref + ':access', timeout=15)
         if response.status_code != 200:
             raise ImportProblem('credential_storage', 'Connection credentials are unavailable. Ask your administrator.', 'administrator', False)
@@ -57,12 +65,39 @@ class SecretManagerTokens:
             json={'payload': {'data': base64.b64encode(json.dumps(value).encode()).decode()}}, timeout=15)
         if response.status_code != 200:
             raise ImportProblem('credential_storage', 'Connection credentials could not be saved. Try connecting again.', 'connect', False)
-        return response.json()['name']
+        ref = response.json()['name']
+        self._validate_ref(ref)
+        return ref
 
 
 def safe_connection(doc):
     return {key: doc[key] for key in ('id', 'provider', 'access', 'state', 'account_label', 'account_id', 'revision') if key in doc} | (
         {'error': doc['error']} if doc.get('error') else {})
+
+
+def picked_file_ids(value):
+    """Native Picker callback data is untrusted and bounded before metadata reads."""
+    ids = value.split(',') if value else []
+    if len(ids) > 500 or any(not re.fullmatch(r'[A-Za-z0-9_-]{1,200}', id) for id in ids):
+        raise ValueError('Select at most 500 valid Drive files')
+    return list(dict.fromkeys(ids))
+
+
+def oauth_failure(response, *, refreshing=False):
+    try:
+        body = response.json()
+    except ValueError:
+        body = {}
+    error = body.get('error') if isinstance(body, dict) else None
+    error = error if isinstance(error, str) else None
+    if error in {'invalid_client', 'unauthorized_client', 'redirect_uri_mismatch'}:
+        return ImportProblem('provider_configuration', 'This connection needs application setup. Ask your administrator to check the provider configuration.', 'administrator', False)
+    if error in {'admin_policy_enforced', 'org_internal'}:
+        return ImportProblem('institution_policy', 'Your organization prevents this connection. Ask IT to review this app.', 'administrator', False)
+    if response.status_code == 429 or response.status_code >= 500:
+        return ImportProblem('provider_unavailable', 'The provider is temporarily unavailable. Try again shortly.', 'retry' if refreshing else 'connect', refreshing)
+    return ImportProblem('authorization_expired' if refreshing else 'authorization_failed',
+        'This account needs to be connected again.' if refreshing else 'This authorization expired or was refused. Connect again.', 'connect', False)
 
 
 class ConnectionManager:
@@ -136,25 +171,33 @@ class ConnectionManager:
         connection = self.service.save(p, 'intake_connection', connection)
         verifier = secrets.token_urlsafe(64)
         verifier_ref = self.secrets.write(str(uuid4()), {'verifier': verifier})
+        native_picker = provider == 'google_drive' and access == 'files' and return_origin is None
         pending, state = self.pending(p, id, 'oauth', {'verifier_ref': verifier_ref,
             'session_hash': hashlib.sha256(session_proof.encode()).hexdigest(), 'return_origin': return_origin,
-            'expected_account_id': connection.get('account_id')})
+            'expected_account_id': connection.get('account_id'), 'native_picker': native_picker})
         challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip('=')
         params = dict(client_id=config['client_id'], redirect_uri=config['redirect_uri'], response_type='code',
             state=state, code_challenge=challenge, code_challenge_method='S256')
         if provider == 'google_drive':
             params.update(scope=GOOGLE_FILE if access == 'files' else GOOGLE_READ,
-                          access_type='offline', include_granted_scopes='true', prompt='consent select_account')
+                          access_type='offline', include_granted_scopes='false', prompt='consent select_account')
+            if native_picker:
+                params.update(trigger_onepick='true', allow_multiple='true', mimetypes=PICKER_IMAGE_TYPES)
         else:
             params.update(scope=DROPBOX_SCOPES, token_access_type='offline', force_reapprove='true')
-        return dict(safe_connection(connection), authorization_url=PROVIDERS[provider][0] + '?' + urlencode(params))
+        return dict(safe_connection(connection), authorization_url=PROVIDERS[provider][0] + '?' + urlencode(params),
+                    **({'picker_id': pending['id']} if native_picker else {}))
 
-    def complete(self, p, state, code, session_proof, error=None):
+    def complete(self, p, state, code, session_proof, error=None, selected_files=''):
         pending = self.verify_pending(p, state, 'oauth')
         if not hmac.compare_digest(pending['session_hash'], hashlib.sha256(session_proof.encode()).hexdigest()):
             raise PermissionError('Return to the application session that began this connection')
+        if selected_files and not pending.get('native_picker'):
+            raise ValueError('File selection does not belong to this connection session')
+        selected_ids = picked_file_ids(selected_files)
         pending['state'] = 'exchanging'
-        self.service.save(p, 'intake_oauth', pending)  # one use, including lost replies
+        pending['picked_file_ids'] = selected_ids
+        pending = self.service.save(p, 'intake_oauth', pending)  # one use, including lost replies
         connection = self.get(p, pending['connection_id'])
         if connection['state'] == 'disconnected':
             raise ImportProblem('connection_cancelled', 'This connection was cancelled. Start a new connection.', 'connect', False)
@@ -169,27 +212,41 @@ class ConnectionManager:
             raise ValueError('An authorization code is required')
         provider = connection['provider']; config = self.config[provider]
         client_secret = self.secrets.read(config['client_secret_ref'])['client_secret']
-        response = self.http.post(PROVIDERS[provider][1], data=dict(client_id=config['client_id'], client_secret=client_secret,
-            code=code, grant_type='authorization_code', redirect_uri=config['redirect_uri'],
-            code_verifier=self.secrets.read(pending['verifier_ref'])['verifier']), timeout=20)
+        try:
+            response = self.http.post(PROVIDERS[provider][1], data=dict(client_id=config['client_id'], client_secret=client_secret,
+                code=code, grant_type='authorization_code', redirect_uri=config['redirect_uri'],
+                code_verifier=self.secrets.read(pending['verifier_ref'])['verifier']), timeout=20)
+        except requests.RequestException:
+            raise ImportProblem('provider_unavailable', 'The provider could not finish connecting. Connect again.', 'connect', False) from None
         if response.status_code != 200:
-            raise ImportProblem('authorization_failed', 'This authorization expired or was refused. Connect again.', 'connect', False)
+            raise oauth_failure(response)
         token = response.json()
         required = GOOGLE_FILE if connection['access'] == 'files' else GOOGLE_READ
-        if provider == 'google_drive' and required not in token.get('scope', '').split():
-            raise ImportProblem('scope_declined', 'The requested access was not granted. Choose files with limited access or ask IT about folder access.', 'connect', False)
+        scopes = set(token.get('scope', '').split())
+        if (provider == 'google_drive' and (required not in scopes or (pending.get('native_picker') and scopes != {GOOGLE_FILE}))) or (
+                provider == 'dropbox' and not set(DROPBOX_SCOPES.split()) <= scopes):
+            self._revoke(provider, token)
+            raise ImportProblem('scope_declined', 'The requested access was not granted. Connect again and allow the requested access, or choose another source.', 'connect', False)
         if not token.get('refresh_token') or not token.get('access_token'):
             raise ImportProblem('offline_access_required', 'Connect again and allow access so unfinished imports can resume.', 'connect', False)
         token['expires_at'] = self.clock() + token.get('expires_in', 3600)
         if provider == 'google_drive':
             account = self.http.get('https://www.googleapis.com/drive/v3/about', params={'fields': 'user(emailAddress,displayName,permissionId)'},
                                    headers={'Authorization': 'Bearer ' + token['access_token']}, timeout=15)
-            info = account.json().get('user', {}) if account.status_code == 200 else {}
+            if account.status_code != 200:
+                self._revoke(provider, token)
+                from .intake_cloud_sources import check_response
+                check_response(account, provider)
+            info = account.json().get('user', {})
             account_id, label = info.get('permissionId'), info.get('emailAddress', 'Google Drive')
         else:
             account = self.http.post('https://api.dropboxapi.com/2/users/get_current_account',
                                      headers={'Authorization': 'Bearer ' + token['access_token']}, timeout=15)
-            info = account.json() if account.status_code == 200 else {}
+            if account.status_code != 200:
+                self._revoke(provider, token)
+                from .intake_cloud_sources import check_response
+                check_response(account, provider)
+            info = account.json()
             account_id, label = info.get('account_id'), info.get('email', 'Dropbox')
         if not account_id or (pending.get('expected_account_id') and account_id != pending['expected_account_id']):
             self._revoke(provider, token)
@@ -197,10 +254,13 @@ class ConnectionManager:
         connection.update(secret_ref=self.secrets.write(connection['id'], token), state='connected', account_id=account_id, account_label=label)
         connection.pop('error', None)
         try:
-            return self.service.save(p, 'intake_connection', connection)
+            connection = self.service.save(p, 'intake_connection', connection)
         except Conflict:
             self._revoke(provider, token)
             raise ImportProblem('connection_changed', 'The connection changed. Connect again.', 'connect', False) from None
+        pending['state'] = 'authorized'
+        self.service.save(p, 'intake_oauth', pending)
+        return connection
 
     def token(self, p, id):
         connection = self.get(p, id, connected=True)
@@ -211,13 +271,15 @@ class ConnectionManager:
         response = self.http.post(PROVIDERS[connection['provider']][1], data=dict(
             client_id=config['client_id'], client_secret=self.secrets.read(config['client_secret_ref'])['client_secret'],
             grant_type='refresh_token', refresh_token=value['refresh_token']), timeout=20)
-        if response.status_code in {400, 401}:
-            connection['state'] = 'needs_authorization'
-            self.service.save(p, 'intake_connection', connection)
-            raise ImportProblem('authorization_expired', 'This account needs to be connected again.', 'connect', False)
         if response.status_code != 200:
-            raise ImportProblem('provider_unavailable', 'The provider is temporarily unavailable. Retry later.')
+            problem = oauth_failure(response, refreshing=True)
+            if problem.intake_problem['code'] == 'authorization_expired':
+                connection['state'] = 'needs_authorization'
+                self.service.save(p, 'intake_connection', connection)
+            raise problem
         fresh = response.json()
+        if not isinstance(fresh, dict) or not isinstance(fresh.get('access_token'), str) or not fresh['access_token']:
+            raise ImportProblem('provider_unavailable', 'The provider did not return a usable connection token. Retry shortly.')
         value.update(fresh, expires_at=self.clock() + fresh.get('expires_in', 3600))
         connection['secret_ref'] = self.secrets.write(id, value)
         try:
@@ -231,6 +293,8 @@ class ConnectionManager:
         return value['access_token']
 
     def _revoke(self, provider, token):
+        if not token.get('access_token'):
+            return False
         try:
             if provider == 'google_drive':
                 response = self.http.post('https://oauth2.googleapis.com/revoke',

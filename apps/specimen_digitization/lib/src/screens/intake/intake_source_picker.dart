@@ -199,14 +199,23 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
     String access, {
     String? provider,
     String? reconnectId,
-  }) => run(() async {
+  }) => run(
+    () => connectAccount(access, provider: provider, reconnectId: reconnectId),
+  );
+
+  Future<void> connectAccount(
+    String access, {
+    String? provider,
+    String? reconnectId,
+    IntakeAuthSession? initiatingSession,
+  }) async {
     closePicker();
     final name = provider ?? widget.provider;
     failedProvider = name;
     connectingProvider = name;
     reconnectAction = () =>
         connect(access, provider: name, reconnectId: reconnectId);
-    final session = newAuthSession();
+    final session = initiatingSession ?? newAuthSession();
     authSession = session;
     final proof = intakeClientId() + intakeClientId();
     try {
@@ -227,9 +236,11 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
           name == 'google_drive' &&
           access == 'files' &&
           widget.provider != 'url';
+      final nativePicker = continueToPicker && session.returnOrigin == null;
+      if (nativePicker) pickerId = result['picker_id'] as String?;
       final response = await session.authenticate(
         result['authorization_url'] as String,
-        keepOpen: continueToPicker,
+        keepOpen: continueToPicker && !nativePicker,
       );
       if (!mounted) return;
       final completed = await c.call(
@@ -247,6 +258,13 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
         entries = [];
         if (widget.provider == 'url') {
           linkAccounts[name] = completed['id'] as String;
+        } else if (nativePicker) {
+          retryAction = pick;
+          if (completed['selection'] is Map) {
+            applySelection(
+              Map<String, dynamic>.from(completed['selection'] as Map),
+            );
+          }
         } else if (continueToPicker) {
           pickerSession?.close();
           pickerSession = session;
@@ -269,7 +287,20 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
       authSession = null;
       connectingProvider = null;
     }
-  });
+  }
+
+  void applySelection(Json picker) {
+    closePicker();
+    if (!mounted) return;
+    setState(() {
+      entries = objects(picker['items']);
+      final failures = objects(picker['failures']);
+      if (failures.isNotEmpty) {
+        message =
+            '${entries.length} available · ${failures.length} need access or another selection. Available photos are retained.';
+      }
+    });
+  }
 
   Future<void> poll() async {
     if (busy || polling || connectionId == null) return;
@@ -313,17 +344,7 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
           return;
         }
         if (picker['state'] == 'selected') {
-          closePicker();
-          if (mounted) {
-            setState(() {
-              entries = objects(picker['items']);
-              final failures = objects(picker['failures']);
-              if (failures.isNotEmpty) {
-                message =
-                    '${entries.length} available · ${failures.length} need access or another selection. Available photos are retained.';
-              }
-            });
-          }
+          applySelection(picker);
         }
       }
     } catch (_) {
@@ -364,7 +385,20 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker> {
 
   Future<void> pick() async {
     closePicker();
-    pickerSession = newAuthSession();
+    final session = newAuthSession();
+    if (session.returnOrigin == null) {
+      // Native Picker is part of the provider's system-browser consent flow.
+      // Reconnect preserves the account that owns any already selected photos.
+      return connectAccount(
+        'files',
+        provider: 'google_drive',
+        reconnectId: activeConnection?['access'] == 'files'
+            ? connectionId
+            : null,
+        initiatingSession: session,
+      );
+    }
+    pickerSession = session;
     try {
       await openPicker(pickerSession!);
       if (mounted) {

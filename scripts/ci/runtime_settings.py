@@ -8,6 +8,8 @@ not known yet; a role that needs one is not deployed, and the receipt names it.
 """
 from __future__ import annotations
 
+import re
+
 from specimen_digitization.hub_models import SAM3_MODEL
 
 PENDING = None  # Not known yet; the role that needs it is not deployed.
@@ -22,13 +24,52 @@ WORKER_JOB = f"{PREFIX}/jobs/specimen-worker"
 INTAKE_JOB = f"{PREFIX}/jobs/specimen-intake"
 WORKER_EMAIL = f"specimen-worker-runtime@{PROJECT}.iam.gserviceaccount.com"
 
-# Secret Manager versions, pinned by number once the owner creates them (T4); never "latest".
-SECRET_VERSIONS = {
+# Secret Manager versions, pinned by number once provisioned; never "latest".
+CORE_SECRET_VERSIONS = {
     "huggingface-runtime-token": 2,
     "specimen-worker-logfire": 1,
     "specimen-source-registry": 1,
     "specimen-collection-bindings": 1,
     "specimen-worker-actor-uid": 1,
+}
+
+# Opt in only after the owner provisions the real value and the numbered
+# version is reviewed. None adds no reference to any deployed role.
+OPTIONAL_SECRET_VERSIONS = {
+    "specimen-external-emails": None,
+    "specimen-cloud-import-config": None,
+    "specimen-collection-job-routes": None,
+}
+# Provider client secrets are independent of dynamically created token secrets.
+# Names here must never start with specimen-intake-.
+OAUTH_CLIENT_SECRET_VERSIONS = {}
+INTAKE_PROVIDER_APIS = ()  # Optional reviewed subset: drive.googleapis.com, picker.googleapis.com.
+INTAKE_OPTIONAL_ENV = {
+    "SPECIMEN_EXTERNAL_EMAIL_ALLOWLIST_JSON": "specimen-external-emails",
+    "SPECIMEN_INTAKE_OAUTH_JSON": "specimen-cloud-import-config",
+    "SPECIMEN_COLLECTION_WORKER_JOBS_JSON": "specimen-collection-job-routes",
+}
+
+
+def optional_secret_env(role):
+    """Absent pins preserve existing deployments; malformed pins stop locally."""
+    for name, version in {**OPTIONAL_SECRET_VERSIONS, **OAUTH_CLIENT_SECRET_VERSIONS}.items():
+        if (not re.fullmatch(r"[a-z][a-z0-9-]{0,254}", name)
+            or name.startswith("specimen-intake-")
+            or (name in OAUTH_CLIENT_SECRET_VERSIONS and name in CORE_SECRET_VERSIONS | OPTIONAL_SECRET_VERSIONS)
+            or (version is not None and (type(version) is not int or version < 1))
+            or (name in OAUTH_CLIENT_SECRET_VERSIONS and version is None)):
+            raise ValueError("Intake configuration requires separate, numbered secret references")
+    if role not in {"api", "intake", "worker"}:
+        raise ValueError("Unknown intake runtime role")
+    return {env: name for env, name in INTAKE_OPTIONAL_ENV.items()
+        if OPTIONAL_SECRET_VERSIONS[name] is not None
+        and (role != "worker" or env == "SPECIMEN_COLLECTION_WORKER_JOBS_JSON")}
+
+SECRET_VERSIONS = {
+    **CORE_SECRET_VERSIONS,
+    **OPTIONAL_SECRET_VERSIONS,
+    **OAUTH_CLIENT_SECRET_VERSIONS,
 }
 
 # The API's public 50-byte readiness marker, which the owner uploads; its content is
@@ -66,7 +107,8 @@ API = {
         "SPECIMEN_INTAKE_JOB": INTAKE_JOB,
     },
     "secret_env": {"LOGFIRE_TOKEN": "specimen-worker-logfire", "SPECIMEN_SOURCE_REGISTRY_JSON": "specimen-source-registry",
-                   "SPECIMEN_COLLECTION_BINDINGS_JSON": "specimen-collection-bindings"},
+                   "SPECIMEN_COLLECTION_BINDINGS_JSON": "specimen-collection-bindings",
+                   **optional_secret_env("api")},
 }
 
 # Private transfer/validation work uses the API image, without inference keys.
@@ -98,7 +140,8 @@ WORKER = {
             "SPECIMEN_WORKER_JOB": WORKER_JOB},  # The drain hands work left at its deadline to the next execution.
     "secret_env": {"HF_TOKEN": "huggingface-runtime-token", "LOGFIRE_TOKEN": "specimen-worker-logfire",
                    "SPECIMEN_WORKER_ACTOR_UID": "specimen-worker-actor-uid",
-                   "SPECIMEN_COLLECTION_BINDINGS_JSON": "specimen-collection-bindings"},
+                   "SPECIMEN_COLLECTION_BINDINGS_JSON": "specimen-collection-bindings",
+                   **optional_secret_env("worker")},
 }
 
 SAM = {

@@ -4,15 +4,20 @@
 # the runtime release and the web app build, each started on main and followed to its end.
 # Safe to run again: every step reads the live state first and changes only what is missing.
 #
-# Usage: owner_setup.sh [--dry-run] [--setup-only | --redeploy-web | --auth-only]
+# Usage: owner_setup.sh [--dry-run] [--setup-only | --redeploy-web | --auth-only | --intake-only]
 #   --dry-run       read the live state and print every command that would run; change and start nothing.
 #   --setup-only    do the setup and stop; start no release.
 #   --redeploy-web  build and publish the web app again even when its variables were already set.
 #   --auth-only     grant only the existing data identity's Auth configuration role; start no release.
+#   --intake-only   provision only reviewed intake permissions/APIs; needs this repository and uv; start nothing.
+#   --intake-config-dir ABS  with --intake-only, validate/provision fixed private configuration files first.
+#   --intake-picker-key  with the two intake options, create/reconcile the dedicated restricted Google Picker key.
 #
 # Self-contained: it reads no other file of the repository and nothing relative to its own
 # location, so a copy fetched from main runs from any directory. It needs no terminal either:
 # no question is asked, no pager is used, and every tool it starts reads from /dev/null.
+# The opt-in --intake-only mode instead reads this checkout's committed pins
+# and the one pinned routing secret through a read-only metadata exporter.
 #
 # Needs gcloud signed in as a project Owner (or IAM admin plus Cloud SQL admin) and gh signed
 # in with admin rights on the repository. --auth-only needs only the project IAM administrator;
@@ -120,6 +125,10 @@ DRY_RUN=0
 SETUP_ONLY=0
 REDEPLOY_WEB=0
 AUTH_ONLY=0
+INTAKE_ONLY=0
+INTAKE_REPOSITORY_ROOT=''
+INTAKE_CONFIG_DIR=''
+INTAKE_PICKER_KEY=0
 STARTED=0
 COMPLETE=0
 CHANGE_WORD=change
@@ -163,13 +172,16 @@ POLL_SECONDS=15
 FIND_SECONDS=5
 
 usage() {
-  printf 'Usage: owner_setup.sh [--dry-run] [--setup-only | --redeploy-web | --auth-only]\n'
+  printf 'Usage: owner_setup.sh [--dry-run] [--setup-only | --redeploy-web | --auth-only | --intake-only]\n'
   printf '  (no flag)       do the setup, then start the data release, the runtime release and, when the\n'
   printf '                  repository variables changed, the web app build; follow each to its end.\n'
   printf '  --dry-run       read the live state and print every command that would run; change and start nothing.\n'
   printf '  --setup-only    do the setup and stop; start no release.\n'
   printf '  --redeploy-web  build and publish the web app again even when its variables were already set.\n'
   printf '  --auth-only     grant only Auth configuration access to the existing data identity; start nothing.\n'
+  printf '  --intake-only   provision only reviewed intake grants/APIs from this checkout; start nothing.\n'
+  printf '  --intake-config-dir ABS  with --intake-only, provision approved private numbered JSON configuration first.\n'
+  printf '  --intake-picker-key  with --intake-only and --intake-config-dir, provision the dedicated restricted Picker key.\n'
 }
 
 bad_usage() {
@@ -506,7 +518,7 @@ preflight() {
   command -v gcloud > /dev/null 2>&1 || die "gcloud is not on PATH: install the Google Cloud SDK"
   account=$(gcloud config get-value account 2> /dev/null < /dev/null) || account=''
   [ -n "$account" ] || die "gcloud is not signed in: run gcloud auth login"
-  if [ "$AUTH_ONLY" -eq 0 ]; then
+  if [ "$AUTH_ONLY" -eq 0 ] && [ "$INTAKE_ONLY" -eq 0 ]; then
     command -v gh > /dev/null 2>&1 || die "gh is not on PATH: install the GitHub CLI"
     gh auth status > /dev/null 2>&1 < /dev/null || die "gh is not signed in: run gh auth login"
     login=$(gh api user --jq .login 2> /dev/null < /dev/null) || login='(not shown by gh)'
@@ -517,7 +529,7 @@ preflight() {
   fi
   [ "$number" = "$PROJECT_NUMBER" ] || die "project $PROJECT has number $number, expected $PROJECT_NUMBER"
   printf 'Google Cloud account: %s\n' "$account"
-  if [ "$AUTH_ONLY" -eq 0 ]; then printf 'GitHub account: %s\n' "$login"; fi
+  if [ "$AUTH_ONLY" -eq 0 ] && [ "$INTAKE_ONLY" -eq 0 ]; then printf 'GitHub account: %s\n' "$login"; fi
   printf 'Project: %s (%s)\n' "$PROJECT" "$PROJECT_NUMBER"
   printf 'Repository: %s\n' "$REPOSITORY"
   if [ "$DRY_RUN" -eq 1 ]; then
@@ -533,15 +545,102 @@ auth_release_grants() {
   # CLI15.8.0 preflights projects.update/configs.update, lists the existing
   # web app and reads its project. The release verifies only non-secret Auth
   # fields. Config access is project-wide; partial response fields keep this
-  # script from fetching provider secrets. No user, hash, Secret Manager,
-  # client creation, IAM or Hosting permission is granted.
+  # script from fetching provider secrets. Firebase SHA registration also
+  # requires clientauthconfig.clients.create for the existing Android app.
+  # No user, hash, Secret Manager, IAM or Hosting permission is granted.
   ensure_role specimenAuthConfiguration 'Specimen Auth configuration' \
     'Provision Google for the existing Firebase app and verify Auth configuration; no user or hash permissions.' \
+    clientauthconfig.clients.create \
     firebase.clients.get firebase.clients.list firebase.projects.get firebase.projects.update \
     firebaseauth.configs.get firebaseauth.configs.update
   # Do not bind an existing role if its permissions could not be reconciled.
   if [ "$FAILURE_COUNT" -ne "$failures_before" ]; then return 0; fi
   grant project "$PROJECT" "$DATA" "$CUSTOM/specimenAuthConfiguration"
+}
+
+intake_grants() {
+  local metadata kind who name version member enabled job_name failures_before=$FAILURE_COUNT
+  heading 'Intake setup only: bounded token storage and reviewed pinned configuration'
+  if [ -n "$INTAKE_CONFIG_DIR" ]; then
+    local config_args=(--directory "$INTAKE_CONFIG_DIR")
+    local config_helper=intake_config.py
+    if [ "$INTAKE_PICKER_KEY" -eq 1 ]; then config_helper=intake_picker_key.py; fi
+    if [ "$DRY_RUN" -eq 1 ]; then config_args+=(--dry-run); fi
+    # The helper validates every local and remote target before its first
+    # append. Failure here precedes even the IAM writes below.
+    if ! SPECIMEN_OWNER_SETUP_MODE=intake uv run --frozen --project "$INTAKE_REPOSITORY_ROOT" python \
+        "$INTAKE_REPOSITORY_ROOT/scripts/ops/$config_helper" "${config_args[@]}" < /dev/null; then
+      die 'private intake configuration was refused; no intake IAM grant changed'
+    fi
+  fi
+  if ! metadata=$(uv run --frozen --project "$INTAKE_REPOSITORY_ROOT" python \
+      "$INTAKE_REPOSITORY_ROOT/scripts/release/deploy_models.py" --intake-setup < /dev/null); then
+    die 'could not read reviewed intake metadata; no intake grant changed'
+  fi
+  # Create is authorized on the parent project, before a secret exists. It
+  # grants no read, write-version, list, IAM, deletion or rotation permission.
+  ensure_role specimenIntakeSecretCreate 'Specimen intake credential creation' \
+    'Create credential containers only; no secret read, version write, IAM, list or delete.' \
+    secretmanager.secrets.create
+  ensure_role specimenIntakeTokenVersions 'Specimen intake credential versions' \
+    'Add and access numbered versions of dynamic intake credentials only.' \
+    secretmanager.versions.add secretmanager.versions.access
+  ensure_role specimenWorkerRead 'Specimen worker readiness read' \
+    'Read only the deployed specimen worker definition for API readiness.' run.jobs.get
+  if [ "$FAILURE_COUNT" -ne "$failures_before" ]; then return 0; fi
+  grant project "$PROJECT" "$API" "$CUSTOM/specimenIntakeSecretCreate"
+  grant project "$PROJECT" "$API" "$CUSTOM/specimenIntakeTokenVersions" specimen_intake_token_versions \
+    "resource.name.matches(\"^projects/$PROJECT_NUMBER/secrets/specimen-intake-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}(/versions/[1-9][0-9]*)?\$\")"
+  while IFS="$TAB" read -r kind who name version; do
+    [ -n "$kind" ] || continue
+    case $kind in
+      PIN)
+        case $who in
+          api) member=$API ;;
+          worker) member=$WORKER ;;
+          release) member=$RELEASE ;;
+          *) die 'intake metadata contains an unknown runtime role' ;;
+        esac
+        pinned_secret "$member" "$name" "$version"
+        ;;
+      JOB)
+        # The exporter emits job names only. Scope and actor values never
+        # enter setup output. A first release may create the job before its
+        # resource-level grant is possible; rerun setup after that creation.
+        if ! job_name=$(gcloud run jobs describe "$name" "--region=$REGION" "--project=$PROJECT" \
+            '--format=value(metadata.name)' 2> "$WORK/stderr" < /dev/null); then
+          if grep -Eq 'NOT_FOUND|Cannot find|not found' "$WORK/stderr"; then
+            note "job $name does not exist yet; rerun intake setup after the protected release defines it"
+            continue
+          fi
+          die 'could not verify an intake job exists; no job grant changed'
+        fi
+        [ "$job_name" = "$name" ] || die 'intake job metadata differs; no job grant changed'
+        grant job "$name" "$API" roles/run.invoker
+        if [ "$who" = worker ]; then
+          grant job "$name" "$WORKER" roles/run.invoker
+          grant job "$name" "$API" "$CUSTOM/specimenWorkerRead"
+        fi
+        ;;
+      API)
+        name=$who
+        if ! enabled=$(gcloud services list --enabled "--project=$PROJECT" \
+            "--filter=config.name=$name" '--format=value(config.name)' < /dev/null); then
+          die 'could not read a required provider API'
+        fi
+        if [ "$enabled" = "$name" ]; then
+          in_place "provider API $name is enabled"
+        elif [ -z "$enabled" ]; then
+          change "enable reviewed provider API $name"
+          run gcloud services enable "$name" "--project=$PROJECT"
+        else
+          die 'provider API read returned an unexpected service'
+        fi
+        ;;
+      *) die 'intake metadata contains an unknown operation' ;;
+    esac
+  done <<< "$metadata"
+  note 'No job was executed. Before E2E submission, confirm older shared executions have finished; deployed definitions do not replace running executions.'
 }
 
 # Removes one expired grant by its exact live condition; never --all, which would also drop
@@ -1324,7 +1423,9 @@ summary() {
 
 main() {
   local base=${TMPDIR:-/tmp} arg
-  for arg in "$@"; do
+  while [ "$#" -gt 0 ]; do
+    arg=$1
+    shift
     case $arg in
       --dry-run)
         if [ "$DRY_RUN" -eq 1 ]; then bad_usage; fi
@@ -1343,6 +1444,23 @@ main() {
         if [ "$AUTH_ONLY" -eq 1 ]; then bad_usage; fi
         AUTH_ONLY=1
         ;;
+      --intake-only)
+        if [ "$INTAKE_ONLY" -eq 1 ]; then bad_usage; fi
+        INTAKE_ONLY=1
+        ;;
+      --intake-config-dir)
+        if [ -n "$INTAKE_CONFIG_DIR" ] || [ "$#" -eq 0 ]; then bad_usage; fi
+        INTAKE_CONFIG_DIR=$1
+        shift
+        case $INTAKE_CONFIG_DIR in
+          /*) ;;
+          *) bad_usage ;;
+        esac
+        ;;
+      --intake-picker-key)
+        if [ "$INTAKE_PICKER_KEY" -eq 1 ]; then bad_usage; fi
+        INTAKE_PICKER_KEY=1
+        ;;
       -h | --help)
         usage
         exit 0
@@ -1352,6 +1470,18 @@ main() {
   done
   if [ "$SETUP_ONLY" -eq 1 ] && [ "$REDEPLOY_WEB" -eq 1 ]; then bad_usage; fi
   if [ "$AUTH_ONLY" -eq 1 ] && { [ "$SETUP_ONLY" -eq 1 ] || [ "$REDEPLOY_WEB" -eq 1 ]; }; then bad_usage; fi
+  if [ -n "$INTAKE_CONFIG_DIR" ] && [ "$INTAKE_ONLY" -ne 1 ]; then bad_usage; fi
+  if [ "$INTAKE_PICKER_KEY" -eq 1 ] && { [ "$INTAKE_ONLY" -ne 1 ] || [ -z "$INTAKE_CONFIG_DIR" ]; }; then bad_usage; fi
+  if [ "$INTAKE_ONLY" -eq 1 ]; then
+    if [ "$AUTH_ONLY" -eq 1 ] || [ "$SETUP_ONLY" -eq 1 ] || [ "$REDEPLOY_WEB" -eq 1 ]; then bad_usage; fi
+    INTAKE_REPOSITORY_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+    [ -f "$INTAKE_REPOSITORY_ROOT/scripts/ci/runtime_settings.py" ] && \
+      [ -f "$INTAKE_REPOSITORY_ROOT/scripts/release/deploy_models.py" ] && \
+      [ -f "$INTAKE_REPOSITORY_ROOT/scripts/ops/intake_config.py" ] && \
+      [ -f "$INTAKE_REPOSITORY_ROOT/scripts/ops/intake_picker_key.py" ] || \
+      die '--intake-only requires the repository checkout; run bash scripts/ops/owner_setup.sh --intake-only there'
+    command -v uv > /dev/null 2>&1 || die '--intake-only requires uv for the locked repository runtime'
+  fi
   # The two waits a test may shorten: after new access (and, half as long again, before the
   # one retry), and between two readings of a run (a third of it while a new run shows up).
   SETTLE_SECONDS=${OWNER_SETUP_SETTLE_SECONDS:-120}
@@ -1370,6 +1500,14 @@ main() {
   NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   preflight
   STARTED=1
+  if [ "$INTAKE_ONLY" -eq 1 ]; then
+    intake_grants
+    printf 'Intake setup only: %s change(s), %s failure(s). No release or worker execution started.\n' \
+      "$CHANGE_COUNT" "$FAILURE_COUNT"
+    COMPLETE=1
+    if [ "$FAILURE_COUNT" -gt 0 ]; then exit 1; fi
+    return 0
+  fi
   if [ "$AUTH_ONLY" -eq 1 ]; then
     auth_release_grants
     printf 'Auth setup only: %s change(s), %s failure(s). No providers, variables, other grants or releases changed.\n' \

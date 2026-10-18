@@ -5,7 +5,7 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 from specimen_digitization.application.api import local_app, SYNTHETIC_ORG, SYNTHETIC_COLLECTION
 from specimen_digitization.application.domain import Principal, Scope
-from specimen_digitization.application.intake_connections import ConnectionManager, GOOGLE_FILE, GOOGLE_READ
+from specimen_digitization.application.intake_connections import ConnectionManager, SecretManagerTokens, GOOGLE_FILE, GOOGLE_READ, DROPBOX_SCOPES
 from specimen_digitization.application.intake_cloud_sources import CloudSource, check_response, shared_parts, shared_ref
 from specimen_digitization.application.intake_sources import PublicImageReader, ImportProblem
 from specimen_digitization.application.intake_models import SourceReference
@@ -152,6 +152,40 @@ def test_registered_source_keeps_sensitive_listing_gate(tmp_path):
     assert client.get(root + '/sources', headers=HEADERS).json()['items'] == []
 
 
+def test_storage_selection_does_not_hide_the_501st_photo_after_a_folder_marker(tmp_path):
+    from source_fixtures import SOURCE_ID, OBJECT_PREFIX, HEADERS, paged_gcs_reader, source_client
+
+    objects = [{'name': OBJECT_PREFIX}]
+    objects += [{'name': OBJECT_PREFIX + f'a-unsupported-{i:04}.txt', 'size': '12', 'generation': '1'} for i in range(4500)]
+    objects += [{'name': OBJECT_PREFIX + f'b-photo-{i:03}.jpg', 'size': '12', 'generation': '1'} for i in range(501)]
+    reader, calls = paged_gcs_reader(objects)
+    client = source_client(tmp_path / 'app', tmp_path / 'objects', reader=reader)
+    root = f'/v1/organizations/{SYNTHETIC_ORG}/collections/{SYNTHETIC_COLLECTION}/intake'
+
+    response = client.post(root + f'/sources/{SOURCE_ID}/select-folder', headers=HEADERS, json={})
+
+    assert response.status_code == 422, response.text
+    assert response.json()['error']['code'] == 'folder_limit'
+    assert len(calls) == 6
+
+
+def test_storage_selection_reports_incomplete_marker_scan(tmp_path, monkeypatch):
+    from source_fixtures import SOURCE_ID, OBJECT_PREFIX, HEADERS, paged_gcs_reader, source_client
+    from specimen_digitization.application import source_reader
+
+    monkeypatch.setattr(source_reader, 'MIN_LISTING_SCAN_LIMIT', 5001)
+    objects = [{'name': OBJECT_PREFIX + f'folder-{i}/'} for i in range(5001)]
+    objects.append({'name': OBJECT_PREFIX + 'hidden.jpg', 'size': '12', 'generation': '1'})
+    reader, _ = paged_gcs_reader(objects)
+    client = source_client(tmp_path / 'app', tmp_path / 'objects', reader=reader)
+    root = f'/v1/organizations/{SYNTHETIC_ORG}/collections/{SYNTHETIC_COLLECTION}/intake'
+
+    response = client.post(root + f'/sources/{SOURCE_ID}/select-folder', headers=HEADERS, json={})
+
+    assert response.status_code == 422, response.text
+    assert response.json()['error']['code'] == 'incomplete_search'
+
+
 def test_expired_dropbox_access_requires_refresh_then_revocation(connected):
     _, manager = connected
     calls = []
@@ -296,3 +330,128 @@ def test_connection_setup_failure_has_browser_readable_recovery(tmp_path, provid
     assert error['details']['action'] == 'administrator'
     assert error['retryable'] is False
     assert 'setup' in error['message']
+
+
+def test_secret_store_roundtrip_accepts_only_configured_project_id_and_number():
+    import base64
+    from uuid import uuid4
+    id = str(uuid4())
+    ref = f'projects/123456789/secrets/specimen-intake-{id}/versions/2'
+    stored, calls = {}, []
+    def post(url, **kwargs):
+        calls.append(url)
+        if url.endswith(':addVersion'):
+            stored.update(kwargs['json'])
+            return Response({'name': ref})
+        return Response()
+    def get(url, **kwargs):
+        calls.append(url)
+        return Response(stored)
+    store = SecretManagerTokens('fixture-project', SimpleNamespace(post=post, get=get), project_number='123456789')
+    assert store.write(id, {'verifier': 'credential-free-fixture'}) == ref
+    assert store.read(ref) == {'verifier': 'credential-free-fixture'}
+    assert store.read(ref.replace('123456789', 'fixture-project')) == {'verifier': 'credential-free-fixture'}
+    calls.clear()
+    for invalid in [ref.replace('123456789', '987654321'), ref.replace('123456789', 'another-project'), ref.replace('/2', '/latest')]:
+        with pytest.raises(ValueError): store.read(invalid)
+    assert calls == []
+    assert json.loads(base64.b64decode(stored['payload']['data']))['verifier'] == 'credential-free-fixture'
+
+
+def test_native_drive_picker_uses_exact_scope_and_persists_confirmed_selection(connected):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from specimen_digitization.application.intake_source_routes import install_source_routes
+    p, manager = connected
+    native = manager.connect(p, 'google_drive', 'files', 'a' * 64)
+    query = parse_qs(urlsplit(native['authorization_url']).query)
+    assert query['scope'] == [GOOGLE_FILE]
+    assert query['include_granted_scopes'] == ['false']
+    assert query['trigger_onepick'] == ['true']
+    assert query['allow_multiple'] == ['true']
+    assert 'image/jpeg' in query['mimetypes'][0]
+    state = query['state'][0]
+    reads = []
+    def metadata(method, url, **kwargs):
+        reads.append(url)
+        if url.endswith('/denied'):
+            return Response(status=403)
+        return Response({'id': 'photo', 'name': 'photo.png', 'mimeType': 'image/png', 'version': '7'})
+    manager.http = SimpleNamespace(
+        post=lambda *a, **kw: Response({'access_token': 'access', 'refresh_token': 'refresh', 'scope': GOOGLE_FILE}),
+        get=lambda *a, **kw: Response({'user': {'permissionId': 'provider-account', 'emailAddress': 'fixture@example.test'}}),
+        request=metadata)
+    manager.service.sources.providers['google_drive'] = CloudSource(manager, 'google_drive')
+    app = FastAPI()
+    install_source_routes(app, '/v1/organizations/{organization_id}', manager.service, manager,
+        identity=lambda: p.user_id, principal=lambda *a, **kw: p)
+    client = TestClient(app)
+    callback = client.get('/v1/intake/oauth/callback', params={'state': state, 'code': 'one-use-code', 'picked_file_ids': 'photo,denied,photo'}, follow_redirects=False)
+    assert callback.status_code == 303
+    assert parse_qs(urlsplit(callback.headers['location']).fragment)['picked_file_ids'] == ['photo,denied,photo']
+    assert manager.get(p, native['id'])['state'] == 'needs_authorization'
+    assert reads == []
+    root = f'/v1/organizations/{p.scope.organization_id}/collections/{p.scope.collection_id}/intake'
+    response = client.post(root + '/connections/complete', json={'state': state, 'code': 'one-use-code',
+        'session_proof': 'a' * 64, 'picked_file_ids': 'photo,denied,photo'})
+    assert response.status_code == 200
+    value = response.json()
+    assert 'secret_ref' not in value
+    assert value['selection']['items'][0]['source']['version'] == '7'
+    assert value['selection']['failures'][0]['error']['code'] == 'file_access'
+    assert len(reads) == 2
+    status = client.get(root + f"/connections/{native['id']}/picker/{native['picker_id']}").json()
+    assert status == value['selection']
+    assert len(reads) == 2
+    assert manager.service.list(p, 'intake_draft')['items'] == []
+    assert manager.service.repo.list(p.scope) == []
+
+
+def test_native_selection_requires_original_session_proof_before_exchange(connected):
+    p, manager = connected
+    native = manager.connect(p, 'google_drive', 'files', 'a' * 64)
+    state = parse_qs(urlsplit(native['authorization_url']).query)['state'][0]
+    with pytest.raises(PermissionError):
+        manager.complete(p, state, 'code', 'b' * 64, selected_files='photo')
+    assert manager.verify_pending(p, state, 'oauth')['state'] == 'pending'
+    for files in ['photo/invalid', 'photo,,other', ','.join(['photo'] * 501)]:
+        with pytest.raises(ValueError):
+            manager.complete(p, state, 'code', 'a' * 64, selected_files=files)
+    assert manager.verify_pending(p, state, 'oauth')['state'] == 'pending'
+
+
+@pytest.mark.parametrize('scope', [GOOGLE_READ, GOOGLE_FILE + ' ' + GOOGLE_READ])
+def test_native_picker_refuses_missing_or_combined_grants(connected, scope):
+    p, manager = connected
+    native = manager.connect(p, 'google_drive', 'files', 'a' * 64)
+    state = parse_qs(urlsplit(native['authorization_url']).query)['state'][0]
+    manager.http = SimpleNamespace(post=lambda *a, **kw: Response({'access_token': 'access', 'refresh_token': 'refresh', 'scope': scope}))
+    with pytest.raises(ImportProblem) as error:
+        manager.complete(p, state, 'code', 'a' * 64, selected_files='photo')
+    assert error.value.intake_problem['code'] == 'scope_declined'
+    assert manager.get(p, native['id'])['state'] == 'needs_authorization'
+
+
+@pytest.mark.parametrize('provider,scope', [('google_drive', GOOGLE_FILE), ('dropbox', DROPBOX_SCOPES)])
+def test_oauth_client_configuration_failure_is_not_institution_policy(connected, provider, scope):
+    p, manager = connected
+    native = manager.connect(p, provider, 'files' if provider == 'google_drive' else 'folders', 'a' * 64)
+    state = parse_qs(urlsplit(native['authorization_url']).query)['state'][0]
+    manager.http = SimpleNamespace(post=lambda *a, **kw: Response({'error': 'invalid_client'}, status=401))
+    with pytest.raises(ImportProblem) as error:
+        manager.complete(p, state, 'code', 'a' * 64)
+    assert error.value.intake_problem['code'] == 'provider_configuration'
+    assert error.value.intake_problem['action'] == 'administrator'
+    assert manager.get(p, native['id'])['state'] == 'needs_authorization'
+
+
+@pytest.mark.parametrize('body,code,action', [
+    ({'error': {'errors': [{'reason': 'accessNotConfigured'}]}}, 'provider_configuration', 'administrator'),
+    ({'error': {'details': [{'reason': 'SERVICE_DISABLED'}]}}, 'provider_configuration', 'administrator'),
+    ({'error': {'details': [{'reason': 'ACCESS_TOKEN_SCOPE_INSUFFICIENT'}]}}, 'connection_permissions', 'connect'),
+])
+def test_drive_application_setup_and_scope_errors_are_not_file_denials(body, code, action):
+    with pytest.raises(ImportProblem) as error:
+        check_response(Response(body, 403), 'google_drive')
+    assert error.value.intake_problem['code'] == code
+    assert error.value.intake_problem['action'] == action

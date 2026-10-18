@@ -3,7 +3,8 @@
 
 Existing Google clients are retained. Only a missing Google provider uses the
 pinned Firebase CLI's provisioning API; an existing disabled provider receives
-an enabled-only patch. No users, email settings or domains are written here.
+an enabled-only patch. The existing Android app receives only missing reviewed
+signing fingerprints. No users, email settings or domains are written here.
 """
 from __future__ import annotations
 
@@ -27,6 +28,18 @@ AUTH_ROOT = f"https://identitytoolkit.googleapis.com/admin/v2/projects/{PROJECT}
 GOOGLE_URL = AUTH_ROOT + "/defaultSupportedIdpConfigs/google.com"
 CONFIG_URL = AUTH_ROOT + "/config"
 APPS_URL = f"https://firebase.googleapis.com/v1beta1/projects/{PROJECT}/webApps"
+ANDROID_APP = "1:716045864126:android:6d2aeda8bc992e16c8e2ef"
+ANDROID_PACKAGE = "org.fieldmuseum.specimen_digitization"
+ANDROID_URL = f"https://firebase.googleapis.com/v1beta1/projects/{PROJECT}/androidApps/{ANDROID_APP}"
+ANDROID_SHA_URL = ANDROID_URL + "/sha"
+# Public fingerprints of the existing installed app's local debug signing
+# certificate, confirmed against the device on 2026-10-17. Not a private key;
+# these qualify that native build only, not a future Play/store certificate.
+ANDROID_CERTIFICATES = (
+    ("SHA_1", "965AF4A75A172610AB91A7C26B82ECF992847A0A"),  # pragma: allowlist secret
+    ("SHA_256", "D9985088766052569AA69E6E00DA6A45977D018B48153A0E41C4F7C3B868180F"),  # pragma: allowlist secret
+)
+ANDROID_SHA_FIELDS = "certificates(certType,shaHash)"
 GOOGLE_FIELDS = "name,enabled,clientId"
 PRESERVED_FIELDS = "authorizedDomains,signIn(email(enabled,passwordRequired))"
 DOMAINS = {f"{PROJECT}.firebaseapp.com", f"{PROJECT}.web.app"}
@@ -355,6 +368,48 @@ def provision(api, cli, config):
     print("Google provider enabled and verified; existing email and domains preserved")
 
 
+def certificate_key(certificate):
+    """Normalize only complete SHA-1/SHA-256 fingerprints, never arbitrary text."""
+    if not isinstance(certificate, dict):
+        raise Failure("Android certificate metadata is invalid; stop and inspect")
+    kind, value = certificate.get("certType"), certificate.get("shaHash")
+    length = {"SHA_1": 40, "SHA_256": 64}.get(kind) if isinstance(kind, str) else None
+    if length is None or not isinstance(value, str) or not re.fullmatch(
+            rf"(?:[0-9A-Fa-f]{{{length}}}|[0-9A-Fa-f]{{2}}(?::[0-9A-Fa-f]{{2}}){{{length // 2 - 1}}})", value):
+        raise Failure("Android certificate metadata is invalid; stop and inspect")
+    return kind, value.replace(":", "").upper()
+
+
+def android_certificates(api):
+    # sha.list returns one complete certificates array; unlike app listings it
+    # has no pagination. An omitted repeated field denotes the empty list.
+    result = api.call("GET", ANDROID_SHA_URL, fields=ANDROID_SHA_FIELDS)
+    certificates = result.get("certificates", [])
+    if not isinstance(certificates, list):
+        raise Failure("Android certificate list is invalid; stop and inspect")
+    return {certificate_key(certificate) for certificate in certificates}
+
+
+def provision_android_signing(api):
+    """Add only the fixed installed certificate to the existing Firebase app."""
+    app = api.call("GET", ANDROID_URL, fields="appId,packageName,state")
+    if app != {"appId": ANDROID_APP, "packageName": ANDROID_PACKAGE, "state": "ACTIVE"}:
+        raise Failure("Expected the existing active production Android app; no certificates changed")
+    before = android_certificates(api)
+    missing = [certificate for certificate in ANDROID_CERTIFICATES if certificate not in before]
+    for kind, fingerprint in missing:
+        # Api sends writes once. An uncertain result stops this run; the next
+        # protected release lists again before considering another addition.
+        created = api.call("POST", ANDROID_SHA_URL, fields="certType,shaHash",
+                           body={"certType": kind, "shaHash": fingerprint})
+        if certificate_key(created) != (kind, fingerprint):
+            raise Failure("Android certificate addition could not be verified; stop and inspect")
+    after = android_certificates(api)
+    if not (before | set(ANDROID_CERTIFICATES)).issubset(after):
+        raise Failure("Android certificate readback differs; stop and inspect without removing certificates")
+    print("Android signing fingerprints verified; existing certificates retained")
+
+
 def main():
     try:
         checked_out = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True,
@@ -368,7 +423,9 @@ def main():
         from google.auth.transport.requests import AuthorizedSession
 
         credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
-        provision(Api(AuthorizedSession(credentials)), cli, config)
+        api = Api(AuthorizedSession(credentials))
+        provision(api, cli, config)
+        provision_android_signing(api)
     except Exception as error:
         message = str(error) if isinstance(error, Failure) else f"{type(error).__name__}; no response content logged"
         print(f"Auth provisioning failed: {message}", file=sys.stderr)

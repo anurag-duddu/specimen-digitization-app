@@ -756,7 +756,7 @@ def _execute_drain(args, deadline):
             repository,
             workflow,
             settings.actor_uid,
-            repository.memberships,
+            lambda user: settings.scope_policy.memberships(repository.memberships(user)),
             execution_id=holder,
             continuation=dispatcher.start if dispatcher else lambda: UNCONFIGURED,
             deadline_seconds=remaining,
