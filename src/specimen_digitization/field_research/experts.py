@@ -79,7 +79,11 @@ LOGGER = logging.getLogger(__name__)
 # policy_blocked is a refused query or an unqualified source, not an outage.
 SOURCE_OUTAGES = OPERATIONAL - {LookupStatus.POLICY}
 EXHAUSTED = "The expert used all its attempts without settling this field."
-UNCHECKED = "The expert's answer could not be checked against the readings and sources."
+# The resolver's fallback when every answer the expert gave failed its checks
+# (the readings, the candidates and the sources' answers); never an outage's
+# reason, which is a failure (the second rerun of 2026-10-18 read "could not
+# be checked" beside "Getty TGN could not be reached" as the source's fault).
+UNCHECKED = "None of the expert's answers passed the checks against the readings and the sources' answers."
 # A provider's answer that says the request ran out of time: 408 Request
 # Timeout and 504 Gateway Timeout. Its field is a timeout (timed_out); every
 # other status is a model error.

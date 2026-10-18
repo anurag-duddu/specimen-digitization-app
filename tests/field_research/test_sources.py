@@ -1886,7 +1886,9 @@ async def test_a_gazetteer_chain_retries_a_failed_step(tmp_path):
     tools, server, _, _ = make(tmp_path, reply)
     answer = await tools.lookup("wikidata", "Davao Province", field_key="province_state")
     assert answer.status is LookupStatus.SUCCESS
-    assert len(server.requests) == 4
+    # The refused search, its retry, the entities, and one read of the place's
+    # classes, which a province's lookup makes as a county's does (LEVEL_FIELDS).
+    assert len(server.requests) == 5
 
 
 @pytest.mark.asyncio
@@ -2169,6 +2171,42 @@ def test_a_county_kind_whose_classes_reach_the_first_level_is_at_no_county_s_lev
     for read in (frozenset({wikidata.SECOND_LEVEL}), frozenset()):
         answer = SimpleNamespace(source_id="wikidata", candidates=[approved_sources._place("wikidata", place, read)])
         assert [c.authority_id for c in agreement.at_level("county", answer)] == ["wikidata:Q9"]
+
+
+@pytest.mark.asyncio
+async def test_a_provinces_wikidata_lookup_reads_its_places_levels_as_a_countys_does(tmp_path):
+    """19f0f1f6's province "Bahia" (the second rerun of 2026-10-18): Wikidata
+    names Bahia only "federative unit of Brazil", a kind no province's level
+    in agreement.PLACE_LEVELS knows, while its class chain reaches the
+    first-level division. A county's lookup read that chain, a province's did
+    not, so the province never settled on it. A province's lookup reads it
+    now (LEVEL_FIELDS); a city's still does not."""
+    tools, _, _, _ = make(tmp_path, county_gazetteers())
+
+    def kinds(answer):
+        return {candidate.authority_id: candidate.kind for candidate in answer.candidates}
+
+    county = await tools.lookup("wikidata", "Yepocapa", field_key="county")
+    province = await tools.lookup("wikidata", "Yepocapa", field_key="province_state")
+    city = await tools.lookup("wikidata", "Yepocapa", field_key="city")
+    assert kinds(province) == kinds(county)
+    assert any(SECOND_LEVEL_KIND in (kind or "") for kind in kinds(province).values())
+    assert not any(SECOND_LEVEL_KIND in (kind or "") for kind in kinds(city).values())
+
+
+def test_a_first_level_unit_named_by_its_own_class_is_at_a_provinces_level_by_its_chain():
+    """Why a province's lookup reads the chain: "federative unit of Brazil"
+    alone is at no province's level, and with the first-level class that its
+    chain reaches it is."""
+    from types import SimpleNamespace
+
+    from specimen_digitization.application.georef_places import Place, Ref
+    from specimen_digitization.field_research import agreement
+
+    place = Place(source="wikidata", record_id="Q40430", name="Bahia", kinds=(Ref("Q1", "federative unit of Brazil"),))
+    for read, found in ((frozenset(), []), (frozenset({wikidata.FIRST_LEVEL}), ["wikidata:Q40430"])):
+        answer = SimpleNamespace(source_id="wikidata", candidates=[approved_sources._place("wikidata", place, read)])
+        assert [c.authority_id for c in agreement.at_level("province_state", answer)] == found
 
 
 def test_a_first_level_class_leaves_a_province_at_its_level():
