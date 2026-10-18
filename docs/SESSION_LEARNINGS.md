@@ -22360,3 +22360,20 @@ approvals were requested together; cloud setup remained unapplied when recorded.
 - Engine selection remains nine real-engine nodes. The 241 oracle replay cases
   are explicitly invoked; this filename is outside default pytest discovery.
   They are not included in the default shard totals or the nine engine cases.
+- Both CI corrections are frozen in `c58662c05f6581e7eb7fe69cacebce5954d4018d`,
+  tree `5fe42229f75f1827d0a0225640750c8762839f21`; independent G51 review
+  approved that exact head with no unresolved findings. Its complete canonical
+  verification passed with a clean worktree on 2026-10-18 04:55 UTC: 18,581
+  Python passes / 48 skips, all 18,629 collected exactly once across six shards;
+  1,309 specimen_ui tests; 3,190 app tests / seven skips; both analyzers clean;
+  605 Dart files unchanged by formatting; release web build and 13-route,
+  five-security-header smoke passed. ShellCheck was explicitly on PATH so its
+  Python test ran rather than skipped. The local unstamped deployment marker
+  remains intentionally skipped. This qualifies local source only.
+- Durable canonical log:
+  `/Users/anuragduddu/.codex/visualizations/2026/10/17/01a149fc-3649-75c1-a121-11c19de12cb8/bulk-intake-research/implementation/verify-c58662c0.log`.
+  The old hosted run finished with only the corrected engine-oracle and
+  ShellCheck failures (plus their failed aggregate); the successor hosted
+  checks remain required. Production IAM authorization is still pending and
+  no merge, deployment, secret provisioning, provider import or live specimen
+  acceptance occurred. Preserve this unmerged work and private configuration.
