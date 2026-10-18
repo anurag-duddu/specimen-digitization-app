@@ -11,6 +11,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent))
 import intake_picker_key as picker  # noqa: E402
 from test_intake_config import ACTOR, COLLECTION, TOKEN, Cloud, values, write_bundle  # noqa: E402
+from test_intake_config import synthetic_core_pins  # noqa: E402,F401 -- shared autouse fake-store baseline
 
 KEY_VALUE = "synthetic-private-picker-key-value"
 

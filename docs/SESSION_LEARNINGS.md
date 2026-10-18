@@ -22693,3 +22693,25 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   1. A narrow exact-pin metadata repair is required before activation; no broader
   secret access is needed. Private provider configs and runtime pins remain
   inactive until actual provisioning and readback.
+
+### 2026-10-18: current binding-version setup repair before intake activation
+
+- Same task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch/worktree
+  `codex/compare-photo-intake-ux` / `5da8`, PR #368, integrated base `44575b8b`.
+  `intake_setup_metadata()` now exports the exact resolved collection-bindings
+  version for both API and worker identities, refusing invalid or inconsistent
+  pins. Existing version-scoped IAM grants remain unchanged; no broad access
+  was added. Synthetic setup fixtures explicitly model their baseline rather
+  than assuming production optional configuration stays disabled forever.
+- Integration QA: 172 focused provisioning/model/configuration/Picker/owner
+  tests passed, with cached ShellCheck available. A separate 98-case check
+  using an in-memory prospective configuration (bindings 2; optional/provider
+  versions 1) passed without editing or activating runtime settings. Secret
+  scan and `git diff --check` passed. Independent reviewer found no P1/P2
+  issue in the five-file repair and verified the clean main merge preserved
+  both parents' non-overlapping changes and ordered session-log entries.
+- Google admin verification remains incomplete. Its Touch ID prompt expired;
+  the existing sign-in tab was restored to Continue for the owner. No production
+  configuration, provider bytes, membership, runtime pins, or IAM changed.
+  Real connector and deployed intake acceptance: Not confirmed. Full canonical
+  verification and hosted checks are required for this integrated candidate.

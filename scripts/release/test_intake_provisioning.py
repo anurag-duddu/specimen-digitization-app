@@ -17,6 +17,25 @@ ROUTE = {"actor_uid": "private-worker-actor", "worker_job": models.settings.PREF
 SECRET = "specimen-collection-job-routes"  # pragma: allowlist secret (resource name, not credential)
 
 
+@pytest.fixture(autouse=True)
+def unprovisioned_optional_settings(monkeypatch):
+    """Exercise optional setup without depending on the production activation."""
+    settings = models.settings
+    names = set(settings.OPTIONAL_SECRET_VERSIONS)
+    clients = set(settings.OAUTH_CLIENT_SECRET_VERSIONS)
+    monkeypatch.setattr(settings, "OPTIONAL_SECRET_VERSIONS", dict.fromkeys(names))
+    monkeypatch.setattr(settings, "OAUTH_CLIENT_SECRET_VERSIONS", {})
+    monkeypatch.setattr(settings, "INTAKE_PROVIDER_APIS", ())
+    monkeypatch.setattr(settings, "SECRET_VERSIONS", {
+        **{name: version for name, version in settings.SECRET_VERSIONS.items() if name not in names | clients},
+        **dict.fromkeys(names),
+    })
+    for spec in (settings.API, settings.INTAKE, settings.WORKER):
+        monkeypatch.setitem(spec, "secret_env", {
+            env: name for env, name in spec["secret_env"].items() if name not in names
+        })
+
+
 def enable_routes(monkeypatch):
     monkeypatch.setitem(models.settings.OPTIONAL_SECRET_VERSIONS, SECRET, 3)
     monkeypatch.setitem(models.settings.SECRET_VERSIONS, SECRET, 3)
@@ -31,7 +50,39 @@ def test_unprovisioned_defaults_add_no_secret_dependency_or_route_read(monkeypat
         assert models.settings.optional_secret_env(role) == {}
     monkeypatch.setattr(models.subprocess, "run", lambda *args, **kwargs: pytest.fail("unexpected cloud read"))
     assert models.collection_routes() == {}
-    assert models.intake_setup_metadata() == ["PIN\tapi\tspecimen-worker-actor-uid\t1", "JOB\tintake\tspecimen-intake"]
+    version = models.settings.SECRET_VERSIONS["specimen-collection-bindings"]
+    assert models.intake_setup_metadata() == ["PIN\tapi\tspecimen-worker-actor-uid\t1",
+        f"PIN\tapi\tspecimen-collection-bindings\t{version}",
+        f"PIN\tworker\tspecimen-collection-bindings\t{version}", "JOB\tintake\tspecimen-intake"]
+
+
+@pytest.mark.parametrize("version", [1, 2, 7])
+def test_owner_metadata_grants_the_resolved_binding_version_to_both_runtime_identities(monkeypatch, version):
+    name = "specimen-collection-bindings"
+    monkeypatch.setitem(models.settings.CORE_SECRET_VERSIONS, name, version)
+    monkeypatch.setitem(models.settings.SECRET_VERSIONS, name, version)
+    monkeypatch.setattr(models.subprocess, "run", lambda *args, **kwargs: pytest.fail("unexpected cloud read"))
+    rows = [row for row in models.intake_setup_metadata() if name in row]
+    assert rows == [f"PIN\tapi\t{name}\t{version}", f"PIN\tworker\t{name}\t{version}"]
+    assert all(models.settings.SECRET_VERSIONS[spec["secret_env"]["SPECIMEN_COLLECTION_BINDINGS_JSON"]] == version
+        for spec in (models.settings.API, models.settings.INTAKE, models.settings.WORKER))
+
+
+@pytest.mark.parametrize("fault", ["latest", True, None, 0, -1, "core_mismatch", "api", "intake", "worker"])
+def test_owner_metadata_refuses_invalid_or_inconsistent_collection_binding_pins(monkeypatch, fault):
+    name = "specimen-collection-bindings"
+    if fault == "core_mismatch":
+        monkeypatch.setitem(models.settings.CORE_SECRET_VERSIONS, name, 7)
+        monkeypatch.setitem(models.settings.SECRET_VERSIONS, name, 2)
+    elif fault in ("api", "intake", "worker"):
+        spec = {"api": models.settings.API, "intake": models.settings.INTAKE, "worker": models.settings.WORKER}[fault]
+        monkeypatch.delitem(spec["secret_env"], "SPECIMEN_COLLECTION_BINDINGS_JSON")
+    else:
+        monkeypatch.setitem(models.settings.CORE_SECRET_VERSIONS, name, fault)
+        monkeypatch.setitem(models.settings.SECRET_VERSIONS, name, fault)
+    monkeypatch.setattr(models.subprocess, "run", lambda *args, **kwargs: pytest.fail("unexpected cloud read"))
+    with pytest.raises(ValueError, match="same numbered runtime pin"):
+        models.intake_setup_metadata()
 
 
 @pytest.mark.parametrize("version", [True, 0, -1, "1", "latest"])

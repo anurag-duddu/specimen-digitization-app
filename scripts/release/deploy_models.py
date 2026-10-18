@@ -105,7 +105,14 @@ def scoped_job_env(base, scope, route):
 def intake_setup_metadata():
     """Bounded owner setup input: names and versions, never secret contents."""
     optional = settings.optional_secret_env("api")
+    bindings = "specimen-collection-bindings"
+    version = settings.SECRET_VERSIONS[bindings]
+    if (type(version) is not int or version < 1 or settings.CORE_SECRET_VERSIONS[bindings] != version
+        or any(spec["secret_env"].get("SPECIMEN_COLLECTION_BINDINGS_JSON") != bindings
+               for spec in (settings.API, settings.INTAKE, settings.WORKER))):
+        raise ValueError("Collection bindings require the same numbered runtime pin")
     rows = [f"PIN\tapi\tspecimen-worker-actor-uid\t{settings.CORE_SECRET_VERSIONS['specimen-worker-actor-uid']}",
+            f"PIN\tapi\t{bindings}\t{version}", f"PIN\tworker\t{bindings}\t{version}",
             "JOB\tintake\tspecimen-intake"]
     for name in sorted(set(optional.values())):
         rows.append(f"PIN\tapi\t{name}\t{settings.OPTIONAL_SECRET_VERSIONS[name]}")

@@ -1104,7 +1104,9 @@ def test_auth_only_failed_grant_stops_without_other_setup(tmp_path):
     assert not run.starts and not run.sleeps and "1 failure(s)" in run.out
 
 
-def intake_harness(tmp_path, metadata="PIN\tapi\tspecimen-worker-actor-uid\t1\nJOB\tintake\tspecimen-intake", shell=SHELLS[0]):
+def intake_harness(tmp_path, metadata="PIN\tapi\tspecimen-worker-actor-uid\t1\n"
+        "PIN\tapi\tspecimen-collection-bindings\t1\nPIN\tworker\tspecimen-collection-bindings\t1\n"
+        "JOB\tintake\tspecimen-intake", shell=SHELLS[0]):
     harness = Harness(tmp_path, {**live_state(), "gh_signed_in": False}, shell)
     (tmp_path / "bin/gh").unlink()
     (tmp_path / "intake-metadata").write_text(metadata)
@@ -1192,6 +1194,23 @@ def test_intake_only_grants_exact_config_versions_and_private_job_invokers(tmp_p
     worker = state["policies"]["job/specimen-worker-e2e"]
     assert worker == [binding("roles/run.invoker", [API, WORKER]), binding(CUSTOM + "specimenWorkerRead", [API])]
     assert not run.starts and not any("secretmanager.admin" in str(command) for command in run.ran)
+
+
+@pytest.mark.parametrize("version", [2, 7])
+def test_intake_only_advances_binding_reads_for_api_and_worker_without_broadening(tmp_path, version):
+    name = "specimen-collection-bindings"
+    metadata = f"PIN\tapi\t{name}\t{version}\nPIN\tworker\t{name}\t{version}"
+    harness = intake_harness(tmp_path, metadata)
+    before = harness.state()["policies"][f"secret/{name}"]
+    dry = harness.run("--intake-only", "--dry-run")
+    assert dry.code == 0 and not dry.writes and not dry.starts, dry.err
+    assert harness.state()["policies"][f"secret/{name}"] == before
+    run = harness.run("--intake-only")
+    assert run.code == 0 and not run.starts, run.err
+    assert harness.state()["policies"][f"secret/{name}"] == before + [
+        binding(ACCESSOR, [API, WORKER], pin(name, version))]
+    again = harness.run("--intake-only")
+    assert again.code == 0 and not again.writes and not again.starts, again.err
 
 
 @pytest.mark.parametrize("args", [("--intake-only", "--intake-only"), ("--intake-only", "--auth-only"),
@@ -1461,11 +1480,16 @@ def test_fresh_project_gets_every_role_and_pins_every_secret_read(fresh, setting
         "specimenRuntimeConnector", "specimenApiUserLookup"]
     assert run.conditions()["condition-1-specimen_source_inventory_only.yaml"] == SQL  # with its live description
     granted = grants(run)
-    # Strict, against the settings: the API runtime reads exactly its secrets at their pinned versions, and the
-    # data release its one.
+    # This self-contained setup fixture represents its original core baseline.
+    # Optional intake activation and the binding-version advance use the
+    # separate --intake-only metadata path, checked above with exact versions.
     assert f"serviceAccount:{settings.API['service_account']}" == API
-    api = {(f"secret/{secret}", API, ACCESSOR, *list(pin(secret, settings.SECRET_VERSIONS[secret]).values())[:2])
-           for secret in settings.API["secret_env"].values()}
+    optional = set(getattr(settings, "OPTIONAL_SECRET_VERSIONS", {}))
+    core_pins = {secret: settings.SECRET_VERSIONS[secret]
+                 for secret in settings.API["secret_env"].values() if secret not in optional}
+    core_pins["specimen-collection-bindings"] = 1
+    api = {(f"secret/{secret}", API, ACCESSOR, *list(pin(secret, version).values())[:2])
+           for secret, version in core_pins.items()}
     assert {grant for grant in owned(granted) if grant[0].startswith("secret/")} == api | {
         grant for grant in ADDED if grant[0].startswith("secret/")}
     # Strict, against this file: what the script grants the worker and SAM 3 today, so a lost line is noticed.

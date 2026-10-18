@@ -17,6 +17,13 @@ TOKEN = "synthetic-private-client-value"
 BASE = {str(UUID(int=100 + i)): f"node-{i}" for i in range(18)}
 
 
+@pytest.fixture(autouse=True)
+def synthetic_core_pins(monkeypatch):
+    """The fake store starts before provisioning, regardless of live pins."""
+    monkeypatch.setitem(config.settings.CORE_SECRET_VERSIONS, "specimen-collection-bindings", 1)
+    monkeypatch.setitem(config.settings.CORE_SECRET_VERSIONS, "specimen-worker-actor-uid", 1)
+
+
 class Cloud:
     def __init__(self):
         self.values = {"specimen-collection-bindings": {1: config.canonical(BASE)},
