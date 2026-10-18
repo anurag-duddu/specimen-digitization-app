@@ -22377,3 +22377,36 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   checks remain required. Production IAM authorization is still pending and
   no merge, deployment, secret provisioning, provider import or live specimen
   acceptance occurred. Preserve this unmerged work and private configuration.
+
+## 2026-10-18: bulk intake CI repaired; production setup remains pending
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch
+  `codex/compare-photo-intake-ux`, worktree `5da8`, PR #368. Published head
+  `71333f59cd143b8114bfa6ed6ef43a275f7a09ef`, tree
+  `5fa42874d408a48ed99250448f1cd2025e93e7c3`, received exact-head G51 source
+  approval. It adds only 17 journal lines to canonically verified `c58662c0`.
+- Hosted CI/CD run `39098848625` and runtime candidate run `39098848632`
+  passed on the published head. Authoritative GitHub readback at 05:10 UTC
+  confirmed all three branch-required checks (Python aggregate, Flutter/web,
+  repository checks) passed, as did all 12 Python shards, Android/iOS builds,
+  runtime candidate validation/images and SQL/Storage engine contracts.
+  Hosting deployment was correctly skipped for this pull request.
+- Engine job `117590780900` passed nine real SQL tests, process restart and
+  database restore checks, and Storage denial/original-byte checks; its mandatory
+  evidence verifier passed. Retained sanitized log:
+  `/Users/anuragduddu/.codex/visualizations/2026/10/17/01a149fc-3649-75c1-a121-11c19de12cb8/bulk-intake-research/implementation/ci-engine-71333f59.log`.
+  This supersedes the failed old-head engine/ShellCheck runs; emulator success
+  remains separate from production-connected Gmail and physical-device acceptance.
+- PR remains draft and unmerged. Automatic approval review's production IAM
+  rejection still requires the pending exact service-account/grant authorization.
+  No denied action was routed around that rejection. Prepared private provider
+  configuration is not provisioned or activated; isolated collection membership,
+  protected release, normal Gmail provider imports and final specimen Queue
+  acceptance remain Not confirmed. Native attestation/signing and managed-account
+  acceptance limitations remain as recorded above; no budget was reset or spent
+  on new scientific work in this verification phase.
+- User's production technical autonomy preference is recorded. Routine reversible
+  technical choices did not require new user decisions; the IAM prompt is an
+  automatic-review permission boundary. Preserve the unmerged worktree and private
+  setup/acceptance files. This final append is intentionally left uncommitted so
+  it does not replace the exact reviewed, hosted-green PR head during the block.
