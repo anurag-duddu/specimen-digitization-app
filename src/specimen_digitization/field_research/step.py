@@ -1951,10 +1951,11 @@ def _corroborate(run, tasks_by_key: Mapping[str, FieldTask], applied: Mapping[st
     So "Mindanao, P.I."
     keeps the Philippines when its province "Davao, Prov." settles on a
     province of the Philippines. Or else when another place the label writes
-    lies inside it by every source record of its name that names a parent
-    (_placed_inside: 2b02009d's "Mt. Apo" beside "P.I.", whose every Mount
-    Apo in Wikidata and NGA is in the Philippines); the value then cites
-    those answers and its reason names that place (PLACED_INSIDE). Otherwise
+    lies inside it by the answers of two or more gazetteers about it
+    (_placed_inside: 2b02009d's "Mt. Apo" beside "P.I.": each Mount Apo that
+    Wikidata's and NGA's answers put somewhere is in the Philippines); the
+    value then cites those answers and its reason names that place
+    (PLACED_INSIDE). Otherwise
     the value is ambiguous, for review,
     with a reason naming the initials (agreement.initialism_alone), and the
     rows its settling added are dropped, with the transcript_literal finding
@@ -1989,13 +1990,13 @@ def _corroborate(run, tasks_by_key: Mapping[str, FieldTask], applied: Mapping[st
             continue
         placed = _placed_inside(run, tasks_by_key, received, key, field)
         if placed is not None:
-            text, found = placed
+            text, found, sources = placed
             for evidence_id in found:
                 if evidence_id not in value.evidence_ids:
                     value.evidence_ids.append(evidence_id)
                 value.evidence_relations.setdefault(evidence_id, "supports")
             value.reason = " ".join(part for part in (value.reason, PLACED_INSIDE.format(
-                literal=value.literal, expansion=expansion, text=text)) if part)
+                literal=value.literal, expansion=expansion, text=text, sources=_source_names(sources))) if part)
             continue
         task, answer = tasks_by_key[key], applied[key].answer
         dropped = set(added.get(key, ()))
@@ -2013,31 +2014,33 @@ def _corroborate(run, tasks_by_key: Mapping[str, FieldTask], applied: Mapping[st
 
 
 # The note a place settled on initials gets when another place the label
-# writes lies inside it by every source record of that place's name
+# writes lies inside it by the gazetteers' answers about that place
 # (_corroborate, _placed_inside).
 PLACED_INSIDE = ('The initials "{literal}" read as "{expansion}" because the label\'s "{text}" lies inside it: '
-    "every place of that name the sources place is there.")
+    "each place of that name that the {sources} answers about it put somewhere is there.")
 
 
 def _placed_inside(run, tasks_by_key: Mapping[str, FieldTask], received: Mapping[str, Sequence[SourceAnswer]],
-        key: str, field) -> tuple[str, list[str]] | None:
+        key: str, field) -> tuple[str, list[str], list[str]] | None:
     """For a place value settled on initials (_corroborate), another place the
     label writes, below its field (a province, county, city or precise
     location's text: the organiser's texts for that field, _organiser_texts,
     where they stand in a reading), that lies inside it by its own evidence:
-    the Getty TGN, Wikidata and NGA answers captured in this attempt about
-    that text (agreement.about; success or ambiguous, their evidence stored)
-    hold candidates of its name (place_name) that name a parent, and every
-    such candidate lies inside the value (agreement.lies_in: its record,
+    among the Getty TGN, Wikidata and NGA answers captured in this attempt
+    about that text (agreement.about; success or ambiguous, their evidence
+    stored), those of two or more of these gazetteers hold candidates of its
+    name (place_name) that name a parent, as one answer's list may be cut
+    short (Wikidata's holds at most seven), and every such candidate in
+    those answers lies inside the value (agreement.lies_in: its record,
     names or country code). A candidate that names no parent (a ship, a
     film) is left aside, and one of the name elsewhere stops it: 2b02009d's
     "Mindanao" is also a village in Honduras and in Guatemala for NGA, so it
-    confirms nothing, while its "Mt. Apo" is a Mount Apo only in the
-    Philippines, for Wikidata and NGA alike. A text of the value's own
-    names (its literal, value and expansions) is never another place.
-    GEOLocate's candidates take their parents from the query and confirm
-    nothing. Returns (that text, the evidence ids of the answers holding
-    such candidates), or None."""
+    confirms nothing, while each Mount Apo that Wikidata's and NGA's answers
+    put somewhere is in the Philippines. A text of the value's own names
+    (its literal, value and expansions) is never another place. GEOLocate's
+    candidates take their parents from the query and confirm nothing.
+    Returns (that text, the evidence ids of the answers holding such
+    candidates, the ids of their sources), or None."""
     from .agreement import PLACE_ANSWERED, PLACE_ORDER, about, lies_in, place_keys, place_name
     from .contracts import GAZETTEERS
 
@@ -2053,13 +2056,14 @@ def _placed_inside(run, tasks_by_key: Mapping[str, FieldTask], received: Mapping
             want = place_name(text)
             if not spans or not want or want in own:
                 continue
-            named = {answer.evidence.id: [candidate for candidate in answer.candidates
-                if place_name(candidate.name) == want and candidate.parents]
+            named = {answer.evidence.id: (answer.source_id, [candidate for candidate in answer.candidates
+                if place_name(candidate.name) == want and candidate.parents])
                 for answer in answers if about(answer, text)}
-            found = [evidence_id for evidence_id, candidates in named.items() if candidates]
-            if found and all(lies_in(candidate, key, field) for candidates in named.values()
+            found = [evidence_id for evidence_id, (_, candidates) in named.items() if candidates]
+            sources = list(dict.fromkeys(named[evidence_id][0] for evidence_id in found))
+            if len(sources) >= 2 and all(lies_in(candidate, key, field) for _, candidates in named.values()
                     for candidate in candidates):
-                return text, found
+                return text, found, sources
     return None
 
 
@@ -2556,10 +2560,17 @@ def _places_above(run, key: str, readings: Sequence[Reading], evidence: Mapping[
     the readings of its labels (_value_spans), and each reader's verbatim it
     keeps where that reader's reading writes it (_occurrences), each only in
     a reading that writes it once: in "Chimaltenango, Chimaltenango" which
-    one is the province's is unknown. A field whose text stands nowhere so is
-    left out. Its names are those texts, its value and the expansions it
-    settled through."""
-    from .agreement import PLACE_ORDER
+    one is the province's is unknown. A verbatim counts only when it names
+    the place: by the place comparison key it is the literal, the value or
+    an expansion it settled through, or one letter from one (93e61763's
+    "Chimaltenago" for "Chimaltenango"), and never another reader's other
+    text the field keeps (48a71d53's 1B "Mindanao" beside the literal
+    "Davao Prov."). A field whose text stands nowhere so is left out. Its
+    names are those texts, its value and the expansions it settled
+    through."""
+    from specimen_digitization.application.georef_locality import one_letter_apart
+
+    from .agreement import PLACE_ORDER, place_name
 
     def once(spans):
         return {span for span in spans if sum(name == span[0] for name, _, _ in spans) == 1}
@@ -2569,14 +2580,16 @@ def _places_above(run, key: str, readings: Sequence[Reading], evidence: Mapping[
         value = run.fields.get(other)
         if value is None or not _claims_text(other, value, human):
             continue
+        own = [name for name in (value.literal, value.normalized, value.parsed, *_expansions(other, value, evidence))
+            if name]
+        verbatims = {observation: text for observation, text in value.verbatim_by_observation.items()
+            if text and any(place_name(text) == place_name(name) or one_letter_apart(text, name) for name in own)}
         spans = once(_value_spans(value, readings, evidence))
-        for observation, text in value.verbatim_by_observation.items():
+        for observation, text in verbatims.items():
             spans |= once(_occurrences(text, [r for r in readings if r.observation_id == observation]))
         if not spans:
             continue
-        names = (value.literal, *value.verbatim_by_observation.values(), value.normalized, value.parsed,
-            *_expansions(other, value, evidence))
-        found.append((other, frozenset(spans), tuple(name for name in names if name)))
+        found.append((other, frozenset(spans), tuple(dict.fromkeys([*own, *verbatims.values()]))))
     return found
 
 
@@ -2658,8 +2671,11 @@ def _only_a_place_above(run, tasks_by_key: Mapping[str, FieldTask], applied: Map
     province settled on, as the department, is no county, however many
     second-level units of that name the sources hold. It is not present, as
     label_lacks_value makes it, citing the sources the answer cites, with a
-    reason naming the field that holds the text (PLACE_ABOVE); the rows its
-    value added and its transcript_literal finding are dropped. The county
+    reason naming the field that holds the text (PLACE_ABOVE), whether or not
+    every source its expert asked answered, since the text is the settled
+    place's either way; the rows its value added and its transcript_literal
+    finding are dropped. Its trace keeps the code of a check that refused
+    the expert's resolved answer, else names "place_above_text_only". The county
     first, so a city never counts a county made so. Rule A then judges it as
     a field whose expert found none (mark_not_on_label). Returns {key: (the
     text, the field holding it)} for rule A. Checked once every place is in."""
@@ -2687,7 +2703,8 @@ def _only_a_place_above(run, tasks_by_key: Mapping[str, FieldTask], applied: Map
         text, field = held[0], FIELD_LABELS.get(held[1], held[1])
         run.fields[key] = _unsettled(task, ValueState.NOT_PRESENT, cited=cited,
             reason=f"{PLACE_ABOVE.format(key=named, text=text, field=field)} {answer.explanation}")
-        decisions.setdefault(key, {})["refusal"] = "place_above_text_only"
+        # A check that refused the expert's answer first keeps its code.
+        decisions.setdefault(key, {}).setdefault("refusal", "place_above_text_only")
         found[key] = (text, field)
     return found
 
@@ -2914,7 +2931,8 @@ def trace_fields(run, tasks: Sequence[FieldTask], outcomes: Sequence[FieldOutcom
     that a precise location's answer gives no place: _no_finer_place; or,
     "place_text_only", that its settled literal is only a settled place's
     text: _repeats_a_place; or "place_above_text_only", that a county's or a
-    city's every text is a settled place's above it: _only_a_place_above) and
+    city's every text is a settled place's above it, when no check refused
+    its answer first: _only_a_place_above) and
     the rule that decided the field (``decisions``: apply_outcomes); each
     lookup as source and status, the sources that answered and those that
     could not be reached. The literal, the value, the authority and the

@@ -955,18 +955,21 @@ handover runs field research instead of the six specialists:
        (`step._corroborate`, once every place is in, from the city up).
        Or else when another place the label writes below it (the
        organiser's text for a province, county, city or precise location)
-       lies inside it by every record the gazetteers hold of that name:
-       the Getty TGN, Wikidata and NGA answers of the attempt about that
-       text hold candidates of its name that name a parent, and every one
-       of those lies inside it (`step._placed_inside`; a candidate that
-       names no parent, a ship or a film, is left aside, and GEOLocate's
-       parents come from the query, so its answers count for nothing). The
-       value then also cites those answers and its reason ends 'The
-       initials "P.I." read as "Philippine Islands" because the label's
-       "Mt. Apo" lies inside it: every place of that name the sources
-       place is there.' (2b02009d, whose only places below "P.I." were the
-       island "Mindanao", which NGA also holds as villages in Honduras and
-       Guatemala, and "Mt. Apo", which Wikidata and NGA hold only in the
+       lies inside it by the attempt's answers about that text: among the
+       Getty TGN, Wikidata and NGA answers about it, those of two or more
+       of these gazetteers hold candidates of its name that name a parent
+       (one answer's list may be cut short: Wikidata's holds at most
+       seven), and every such candidate in those answers lies inside it
+       (`step._placed_inside`; a candidate that names no parent, a ship or
+       a film, is left aside, and GEOLocate's parents come from the query,
+       so its answers count for nothing). The value then also cites those
+       answers and its reason ends 'The initials "P.I." read as "Philippine
+       Islands" because the label's "Mt. Apo" lies inside it: each place of
+       that name that the Wikidata and NGA GEOnet Names Server answers
+       about it put somewhere is there.' (2b02009d, whose only places below
+       "P.I." were the island "Mindanao", which NGA also holds as villages
+       in Honduras and Guatemala, and "Mt. Apo", each of whose namesakes
+       with a parent in the Wikidata and NGA answers is in the
        Philippines.)
        Otherwise the field is ambiguous, for review, with a reason naming
        the initials ('The initials "P.I." fit "Philippine Islands", but no
@@ -1838,7 +1841,8 @@ elevation is derived first, and only for a field a person has not decided):
    County Forest Preserve", does not count. For a county or a city, a
    text also counts as absent when every place it stands, less the
    punctuation around it, lies inside where a settled place above it
-   stands, each of that place's texts only in a reading that writes it once
+   stands, each of that place's texts only in a reading that writes it once,
+   and a reader's verbatim it keeps only when it names that place
    (`step._places_above`, `step._within`): 48a71d53's "Davao Prov.",
    which the organiser offered as the county, under its settled province
    "Davao Prov.". For a precise location, the
@@ -2028,13 +2032,20 @@ when every text the label gives it is the text of a settled place above it
 answer's sources, its reason 'The readings write no county of their own:
 "Chimaltenango," is the text of the Province/State field.' followed by the
 expert's explanation; the rows its value added and its transcript_literal
-finding are dropped, and its trace names "place_above_text_only". The
-texts are the organiser's and the answer's literal and options. One that
-stands in the readings is the place's text where every place it stands,
-less the punctuation around it, lies inside where that place's text
-stands: its literal, and each reader's verbatim it keeps, each only in a
-reading that writes it once, so the second "Chimaltenango" of
-"Chimaltenango, Chimaltenango" is no province's. An option no reading
+finding are dropped. This holds whether or not every source the expert
+asked answered, since the text is the settled place's either way. Its
+trace keeps the code of a step check that refused the expert's resolved
+answer first (`first_level_too`, `is_the_province`), and otherwise names
+"place_above_text_only". The texts are the organiser's and the answer's
+literal and options. One that stands in the readings is the place's text
+where every place it stands, less the punctuation around it, lies inside
+where that place's text stands: its literal, and each reader's verbatim it
+keeps when that verbatim names the place (by the place comparison key the
+literal, value or an expansion, or one letter from one: 93e61763's
+"Chimaltenago"; never another reader's other text the field keeps, as
+48a71d53's province keeps 1B's "Mindanao" beside its literal "Davao
+Prov."), each only in a reading that writes it once, so the second
+"Chimaltenango" of "Chimaltenango, Chimaltenango" is no province's. An option no reading
 writes is the place's when it is one of the place's names, or one letter
 from one (9cc24b07's "Chimaltenango Department" for the province written
 "Chimaltenago"); one whose words a reading writes otherwise is a text of

@@ -10,8 +10,8 @@ location-rerun-inventory-2026-10-17.md, "Shapes still open").
   holds names no place of its own (step._only_a_place_above): 93e61763's,
   9cc24b07's, d3fb389f's and f35af3a5's department or province line.
 - Initials settle when another place the label writes lies inside them by
-  every source record of its name (step._placed_inside): 2b02009d's
-  "Mt. Apo" beside "P.I.".
+  the answers of two or more gazetteers about it (step._placed_inside):
+  2b02009d's "Mt. Apo" beside "P.I.".
 
 The answers are made up in the shape the run graphs of 2026-10-17 store them
 (each candidate's name, record, kind and parents, as their evidence
@@ -386,6 +386,68 @@ def test_a_county_left_open_beside_an_unsettled_province_keeps_its_answer(tmp_pa
     assert run.fields["county"].state == ValueState.AMBIGUOUS
 
 
+# A department written alone that the organiser also offered as the city:
+# Chimaltenango is the department and its capital town.
+DEPARTMENT_CITY = label_with(**NO_PLACE_LINES) + "\nChimaltenango,\nGuatemala"
+DEPARTMENT_CITY_CANDIDATES = candidates(("country", "Guatemala", "Guatemala"),
+    ("province_state", "Chimaltenango", "Chimaltenango,"), ("city", "Chimaltenango", "Chimaltenango,"))
+
+
+@pytest.mark.parametrize(("extra", "options", "kept"), [
+    # Its only text is the department's line: no town of its own.
+    ("", ["Chimaltenango"], False),
+    # A town the label writes on a line of its own keeps the city's answer.
+    ("\nAcatenango", ["Chimaltenango", "Acatenango"], True),
+], ids=["the-departments-line", "a-town-of-its-own"])
+def test_a_city_on_the_settled_departments_line_is_not_on_the_label(tmp_path, extra, options, kept):
+    """The city branch of step._only_a_place_above: the city's expert, whose
+    sources know a town Chimaltenango, answers the department's line as the
+    town or the department. On c38f4fd4 the city is ambiguous, for review."""
+    rig = build_rig(tmp_path, DEPARTMENT_CITY + extra, candidates=DEPARTMENT_CITY_CANDIDATES)
+    run = rig.specimen.run
+    settle(rig, Scripted({"country": GUATEMALA,
+        "province_state": expert(("tgn", "Chimaltenango"), answer=settled_on("Chimaltenango", None, "tgn:1000565")),
+        "county": answering(LACKS),
+        "city": answering(FieldAnswer(outcome="several_possibilities", options=options,
+            explanation="The town or the department.")),
+        "precise_location": answering(LACKS)}), tools=Stored(rig.blobs))
+    assert run.fields["province_state"].state == ValueState.SUPPORTED
+    city = run.fields["city"]
+    if kept:
+        assert city.state == ValueState.AMBIGUOUS and "mandatory_unresolved:city" in run.reasons
+        return
+    assert (city.state, city.literal) == (ValueState.NOT_PRESENT, None)
+    assert city.reason.startswith(field_step.PLACE_ABOVE_NOT_ON_LABEL.format(
+        key="city", text="Chimaltenango", field="Province/State"))
+    assert "city" in cleared_as_not_on_label(run) and not reasons_for(run, "city")
+
+
+@pytest.mark.parametrize("option", [
+    # Written in both readings: 1A's "Mindanao," lies inside no province text.
+    "Mindanao,",
+    # An option no reading writes so, which only the province's names could hold.
+    "MINDANAO",
+], ids=["written", "by-name"])
+def test_a_readers_other_text_the_province_keeps_is_no_text_of_the_province(tmp_path, option):
+    """With no reading decided, 48a71d53's province keeps reader 1B's organiser
+    text "Mindanao" as 1B's verbatim beside its literal "Davao Prov.": that
+    text does not name the province (step._places_above), so a county
+    answered as the island is no province's text and keeps its expert's
+    answer. On 835f549e the option "MINDANAO" was taken by name for the
+    province's text, and the county was not present."""
+    rig = build_rig(tmp_path, DAVAO, DAVAO.replace("J. Smith", "J. Smlth"), candidates=DAVAO_CANDIDATES)
+    run = rig.specimen.run
+    settle(rig, Scripted({"country": COUNTRY,
+        "province_state": expert(*PROVINCE_LOOKUPS, answer=settled_on("Davao Prov.", "Davao",
+            "wikidata:Q15095071", cite=2)),
+        "county": answering(FieldAnswer(outcome="several_possibilities", options=[option],
+            explanation="The island.")),
+        "city": answering(LACKS), "precise_location": answering(LACKS)}), tools=Stored(rig.blobs))
+    province = run.fields["province_state"]
+    assert province.state == ValueState.SUPPORTED and "Mindanao" in province.verbatim_by_observation.values()
+    assert run.fields["county"].state == ValueState.AMBIGUOUS
+
+
 # ---- initials located by another place of the label (shape 3) -------------
 
 # 2b02009d's labels: "P.I." under "Mindanao", and "Mt. Apo" below "Seliban Riv.".
@@ -418,7 +480,7 @@ def test_initials_settle_beside_a_mountain_every_source_places_inside_them(tmp_p
     assert (country.state, country.literal, country.normalized, country.authority_id) == (
         ValueState.SUPPORTED, "P.I.", "Philippines", "wikidata:Q928")
     assert country.reason.endswith(field_step.PLACED_INSIDE.format(literal="P.I.",
-        expansion="Philippine Islands", text="Mt. Apo"))
+        expansion="Philippine Islands", text="Mt. Apo", sources="Wikidata and NGA GEOnet Names Server"))
     apo = {row.id for row in run.evidence if row.excerpt and row.excerpt.startswith(("Apo Mountain", "Mount Apo"))}
     assert len(apo) == 2 and all(country.evidence_relations[i] == "supports" for i in apo)
     assert not reasons_for(run, "country")
@@ -441,6 +503,20 @@ def test_initials_stay_ambiguous_when_the_other_place_is_not_only_inside_them(tm
     country = run.fields["country"]
     assert (country.state, country.literal) == (ValueState.AMBIGUOUS, None)
     assert country.reason.startswith(agreement.initialism_alone("P.I.", "Philippine Islands"))
+
+
+def test_one_gazetteers_answer_alone_confirms_no_initials(tmp_path):
+    """The precise location's expert asked Wikidata alone about "Mt. Apo":
+    its answer holds at most seven candidates, so a Mount Apo elsewhere may
+    be cut from it, and a second gazetteer must place the name too."""
+    rig = build_rig(tmp_path, APO, candidates=APO_CANDIDATES)
+    run = rig.specimen.run
+    settle(rig, Scripted({**APO_EXPERTS, "precise_location": expert(MOUNT_APO[0],
+        answer=lambda found: FieldAnswer(outcome="resolved", literal="Mt. Apo", reading_names=["1A"],
+            source_evidence_ids=[found[0].evidence.id], explanation="The mountain, as written."))}),
+        tools=Stored(rig.blobs))
+    assert run.fields["precise_location"].state == ValueState.SUPPORTED
+    assert run.fields["country"].state == ValueState.AMBIGUOUS
 
 
 def test_an_island_with_namesakes_elsewhere_confirms_no_initials(tmp_path):

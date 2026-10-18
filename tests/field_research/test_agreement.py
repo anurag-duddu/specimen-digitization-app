@@ -2125,22 +2125,35 @@ SECOND_ONLY = ("Chimaltenango", "tgn:municipio-chimaltenango", "municipalities, 
     "(political entities)", (("Chimaltenango", "tgn:1000565"), ("Guatemala", "tgn:7005493")))
 
 
-@pytest.mark.parametrize(("source", "query", "authority", "made"), [
-    # NGA's answer also holds the department (A.ADM1): the expert's check (FIRST_LEVEL_TOO).
-    ("nga", "Chimaltenango", "nga:-1132766", ()),
-    # A made-up answer with the municipio alone: it is the settled province's text
-    # (IS_THE_PROVINCE).
-    ("tgn", "Chimaltenango", "tgn:municipio-chimaltenango", [("tgn", "Chimaltenango", [SECOND_ONLY])]),
+def settle_deciding(rig, resolver, **kwargs):
+    """settle, returning the step's per-field decisions (apply_outcomes)."""
+    from test_step import TODAY, research
+
+    prepared, outcomes, calls = research(rig, resolver, **kwargs)
+    decisions: dict[str, dict] = {}
+    field_step.apply_outcomes(rig.specimen.run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls,
+        decisions=decisions)
+    field_step.finalize_fields(rig.specimen.run, None, outcomes, specimen=rig.specimen, blobs=rig.blobs,
+        today=TODAY)
+    return decisions
+
+
+@pytest.mark.parametrize(("source", "query", "authority", "made", "refused"), [
+    # NGA's answer also holds the department (A.ADM1): the expert's check.
+    ("nga", "Chimaltenango", "nga:-1132766", (), "first_level_too"),
+    # A made-up answer with the municipio alone: it is the settled province's text.
+    ("tgn", "Chimaltenango", "tgn:municipio-chimaltenango", [("tgn", "Chimaltenango", [SECOND_ONLY])],
+        "is_the_province"),
 ], ids=["nga-department-too", "the-provinces-text"])
-def test_a_department_written_alone_invents_no_county(tmp_path, source, query, authority, made):
+def test_a_department_written_alone_invents_no_county(tmp_path, source, query, authority, made, refused):
     """On 6cb6de8e the county settles on the municipio in both cases. Its
     only text is the settled province's, so it is not on the label
     (step._only_a_place_above); on c38f4fd4 it stayed for review, ambiguous
     with the refusal's reason (the shape 93e61763 and 9cc24b07 were left in on
-    2026-10-17)."""
+    2026-10-17). Its trace still names the check that refused the answer."""
     rig = build_rig(tmp_path, DEPARTMENT_ALONE)
     run = rig.specimen.run
-    settle(rig, Scripted({
+    decisions = settle_deciding(rig, Scripted({
         "country": PLACES_329["country"],
         "province_state": from_tgn("Chimaltenango, Guatemala", "Chimaltenango", None, "tgn:1000565"),
         "county": from_tgn(query, "Chimaltenango", None, authority, source=source),
@@ -2151,6 +2164,7 @@ def test_a_department_written_alone_invents_no_county(tmp_path, source, query, a
     assert county.reason.startswith(field_step.PLACE_ABOVE_NOT_ON_LABEL.format(
         key="county", text="Chimaltenango", field="Province/State"))
     assert "county" in cleared_as_not_on_label(run) and not reasons_for(run, "county")
+    assert decisions["county"] == {"refusal": refused, "rule": "A_not_on_label"}
 
 
 def test_a_county_on_the_settled_provinces_record_or_text_is_refused_as_the_province():
@@ -2175,18 +2189,19 @@ PHILIPPINE_PROVINCE = label_with(country="Philippines", province_state="Davao Pr
 DAVAO_SECOND = ("Davao", "nga:davao-second", "A.ADM2", (("Davao", None), ("PH", None, "PH")))
 
 
-@pytest.mark.parametrize(("county", "made"), [
+@pytest.mark.parametrize(("county", "made", "refused"), [
     # The expert finds no second-level unit: the label names no county.
-    (answering(LACKS), ()),
-    # Wikidata's province: its class is a first-level administrative division (NO_PLACE).
-    (from_tgn("Davao Province", "Davao Prov.", "Davao", "wikidata:Q15095071", source="wikidata"), ()),
+    (answering(LACKS), (), None),
+    # Wikidata's province: its class is a first-level administrative division.
+    (from_tgn("Davao Province", "Davao Prov.", "Davao", "wikidata:Q15095071", source="wikidata"), (),
+        "no_place"),
     # A source that also held the province at the second level (as GeoNames codes
     # Philippine provinces ADM2, tests/fixtures/georeferencing/geonames_PH.txt)
-    # still finds the province's own text: no county (IS_THE_PROVINCE).
+    # still finds the province's own text: no county.
     (from_tgn("Davao Province", "Davao Prov.", "Davao", "nga:davao-second", source="nga"),
-        [("nga", "Davao Province", [DAVAO_SECOND])]),
+        [("nga", "Davao Province", [DAVAO_SECOND])], "is_the_province"),
 ], ids=["lacks", "wikidata-first-level", "a-second-level-record"])
-def test_a_philippine_province_with_its_unit_word_is_never_a_county(tmp_path, county, made):
+def test_a_philippine_province_with_its_unit_word_is_never_a_county(tmp_path, county, made, refused):
     """The province "Davao Prov." settles on Wikidata's province of Davao,
     asked as "Davao Province", inside the nation NGA settles. On 6cb6de8e
     the third county settles. A refused county whose only text is the
@@ -2195,7 +2210,7 @@ def test_a_philippine_province_with_its_unit_word_is_never_a_county(tmp_path, co
     2026-10-17)."""
     rig = build_rig(tmp_path, PHILIPPINE_PROVINCE)
     run = rig.specimen.run
-    settle(rig, Scripted({
+    decisions = settle_deciding(rig, Scripted({
         "country": from_tgn("Philippines", "Philippines", None, "nga:-2445615", source="nga"),
         "province_state": from_tgn("Davao Province", "Davao Prov.", "Davao", "wikidata:Q15095071",
             source="wikidata"),
@@ -2205,6 +2220,8 @@ def test_a_philippine_province_with_its_unit_word_is_never_a_county(tmp_path, co
     found = run.fields["county"]
     assert (found.state, found.literal, found.authority_id) == (ValueState.NOT_PRESENT, None, None)
     assert "county" in cleared_as_not_on_label(run) and not reasons_for(run, "county")
+    assert decisions["county"] == ({"rule": "A_not_on_label"} if refused is None
+        else {"refusal": refused, "rule": "A_not_on_label"})
 
 
 # A US county under its state still settles, with its unit word written out.
