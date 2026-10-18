@@ -608,9 +608,12 @@ handover runs field research instead of the six specialists:
      2026-10-18): a place read from the transcript whose text another
      field's value, settled in the same attempt, overlaps only partly (at
      each overlap neither text holds the other: `step._partly`) settles,
-     and that other field goes to review with the same reason, naming the
-     place, whether its answer gave a candidate or text read from the
-     transcript. A label line often begins with another field's text and
+     and that other field goes to review, whether its answer gave a
+     candidate or text read from the transcript, with a reason of its own
+     naming the place: "This text runs into the value found for <field>."
+     (`step.RUNS_INTO`; until round 1 of #380's review it was given the
+     reason above, which says its text was read from the transcript and is
+     the place's value, neither of which need be true). A label line often begins with another field's text and
      runs on into the locality. Then the place's expert leaves that text
      out, while the other field's answer runs on into the locality's words.
      e98a924c's label 2 begins "CNHM. E Slope Mt." over "McKinley, Davao
@@ -1151,13 +1154,21 @@ handover runs field research instead of the six specialists:
        United States, so Illinois and Coles County settle and derive it.
        Two readers who write "USA" and "Canada" leave the places for review,
        whether or not the organiser filed "Canada" (round 1 of #379's
-       review, finding 2). The step reads every line of any reading that
-       writes a country, province or county text of the record. It sets
-       aside what the fields hold (every field's organiser candidates,
-       literals and verbatims, where the line writes them), then weighs what
-       is left group by group, split at commas, semicolons, colons, brackets
-       and slashes. A group keeps the country check in force unless it holds
-       no letter, is only unit words, holds a date, an elevation or a range,
+       review, finding 2). The step reads each line of any reading that
+       writes a country, province or county text of the record, and, on
+       each label, the line at the same place (by its index) of every
+       other reader of that label, so reader 1B's "Canada" over "Ill." over
+       "Coles Co.", beside 1A's filed "USA" over the same two lines, is read
+       too (round 1 of #380's review, finding 3). On each, it sets aside
+       what the fields hold, where the line writes it: every field's
+       organiser candidates, and the literals and verbatims of every
+       supported value, never of a value left unsettled, so the country
+       expert's own unresolved "Canada" holds nothing (finding 2). It then
+       weighs what is left group by group, split at commas, semicolons,
+       colons, brackets and slashes, after setting aside each date,
+       elevation or range a group holds ("1948" of "Canada 1948", "1200 ft"
+       of "Canada 1200 ft"; finding 4). A group keeps the country check in
+       force unless what is left of it holds no letter, is only unit words,
        was found by none of the sources asked (3781e440's "U.S.B.I.L."), or
        is confirmed as that same nation (`step._unplaced_text`);
      - a county also needs the province its reading writes to have a
