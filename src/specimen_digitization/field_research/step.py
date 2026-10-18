@@ -421,9 +421,9 @@ def _literal_row(key: str, reading: Reading, literal: str, asset_id, blobs, *, t
     candidate (agreement.TRANSCRIPT), the row cites its first run of whole
     words (agreement.verbatim_runs), and its record says so ("basis":
     "transcript")."""
-    from .agreement import verbatim_runs
+    from .agreement import written_runs
 
-    runs = verbatim_runs(reading.text, literal) if transcript else []
+    runs = written_runs(key, reading.text, literal) if transcript else []
     quote_start, quote_end, start, end = _excerpt_span(reading.text, literal, runs[0][0] if runs else None)
     excerpt = reading.text[quote_start:quote_end]
     record = json.dumps({"field_key": key, "reading": reading.name, "region_id": reading.region_id,
@@ -761,7 +761,7 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
     copied to the other unit, is one kind; an elevation or a date inside
     the precise location is not. Two fields that both settle the same text
     from the transcript both go to review."""
-    from .agreement import TRANSCRIPT, literal_basis, may_share_text, verbatim_runs
+    from .agreement import TRANSCRIPT, literal_basis, may_share_text, written_runs
 
     evidence = {item.id: item for item in run.evidence}
     by_name = {reading.name: reading for reading in readings}
@@ -787,7 +787,7 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
         if task is not None and named and literal_basis(task, readings, literal, named) == TRANSCRIPT:
             regions = {r.region_id for r in named}
             mine[outcome.key] = frozenset((r.name, start, end) for r in readings if r.region_id in regions
-                for start, end in verbatim_runs(r.text, literal))
+                for start, end in written_runs(outcome.key, r.text, literal))
     for key, value in run.fields.items():
         if key not in researched and _claims_text(key, value, human):
             claims.append((key, _value_spans(value, readings, evidence)))
@@ -2000,6 +2000,7 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     received: dict[str, list[SourceAnswer]] = {}
     for call in calls:
         received.setdefault(call.field_key, []).append(call.answer)
+    outcomes = _across_lines(outcomes, by_name)
     outcomes = _reconcile_location_outcomes(run, tasks_by_key, outcomes, readings=readings,
         received=received, evidence=evidence, human=human)
     # The places first, from the country down: a place below it settles only
@@ -2058,6 +2059,29 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
             value.reason = " ".join(part for part in (value.reason, _unreachable_note(outcome, value, rows))
                 if part)
     return derived
+
+
+def _across_lines(outcomes: Sequence[FieldOutcome], by_name: Mapping[str, Reading]) -> tuple[FieldOutcome, ...]:
+    """Each resolved answer of a field whose literal may run over consecutive
+    lines (agreement.ACROSS_LINES: precise location) with its literal as the
+    readings it names write it (agreement.across_lines), when it gives a
+    space for a line break or a line break for a space, as the experts'
+    check gives it (experts._Expert._across_lines); every other outcome as
+    it is."""
+    from .agreement import ACROSS_LINES, across_lines
+
+    found = []
+    for outcome in outcomes:
+        answer = outcome.answer
+        if (outcome.key in ACROSS_LINES and answer is not None and answer.outcome == "resolved"
+                and answer.literal and answer.reading_names
+                and all(name in by_name for name in answer.reading_names)
+                and not all(answer.literal in by_name[name].text for name in answer.reading_names)):
+            literal = across_lines(outcome.key, [by_name[name] for name in answer.reading_names], answer.literal)
+            if literal is not None:
+                outcome = replace(outcome, answer=answer.model_copy(update={"literal": literal}))
+        found.append(outcome)
+    return tuple(found)
 
 
 def _source_names(source_ids: Iterable[str]) -> str:

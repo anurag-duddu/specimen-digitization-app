@@ -21874,3 +21874,28 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
   - (d) The organiser may leave no candidates at all (run `8a91d868`: no `bounded_extraction_v1` rows), so a rule that reads "another field's text" must also read the other fields' literals, not only the organiser's candidates.
 - Not done, on purpose: no production write, no rerun, no deploy; no change to the first pass, its cap or its reservation (cost code; PR #378 in flight). d10333ff's run `8a91d868` province stays ambiguous: label 1's first pass failed, 1A reads "BLOOMINGTON" where 1B reads "ILLINOIS", and its expert's "ILLINOIS" read from the transcript was refused `NOT_EVERY_READER`; the country now derives from Edgar County there, the province does not.
 - Not confirmed: what live experts will answer on a rerun (for 3781e440, whether its country expert cites the expansion answer after the new retry text, or falls back and the country is derived); the fresh rerun of 3781e440 on `d5a6502d` was still `retry_scheduled` when this entry was written and is not replayed.
+- Gap 3, added to this PR on the coordinator's request of 2026-10-18 ("a precise_location written on two lines"; the owner's standing ask, the location harness complete):
+  - Diagnosis, from the rerun on `d5a6502d`: run graphs of e98a924c run `3b011cbf` and 2b02009d run `95361b46`, read-only; recorded answers from Logfire traces `01a14d9de4639f6a1bc67eeed064e978` and `01a14d899720cdc22d4e889db6374a70`. Both precise locations fell back (`UNCHECKED`).
+    - e98a924c's label 2 has no decided transcript (its first pass was given up), and both readers write "CNHM. E Slope Mt." over "McKinley, Davao Prov.". All three answers gave "E Slope Mt. McKinley, Davao Prov." and were refused "Reading 2A does not contain the literal ... exactly".
+    - 2b02009d's label 3 decided on 3A, "Seliban Riv." over "Mt. Apo", which the organiser gave as two candidates. Its two two-line answers were refused `NOT_CANDIDATE` (they extend "Seliban Riv."); its third answer, "Mt. Apo" alone, was refused `DIFFER` (the decided reading's other text "Seliban Riv.").
+  - Outcome:
+    - Precise location (`agreement.ACROSS_LINES`) may run over consecutive lines (`agreement.runs_across_lines`, `written_runs`).
+    - An answer with a space for a line break is read as the readers' own text (`agreement.across_lines`, in `experts._Expert._across_lines` and `step._across_lines`), so the value keeps the line break.
+    - Such a literal may hold whole candidates in their order but cuts none (`_cut_candidate`), and the candidates it holds are parts of it, not rival texts (`labels`).
+    - Every reader of a label with no decided transcript must write it, line breaks, case and spacing aside (`_agreeing_spans_across`, `_holding_across`).
+    - Every other field keeps one line. FIELD_RESEARCH.md: point 2's "Or text read from the transcript". The precise location brief says a locality may run over its lines; the shared brief's "never spanning two lines" stays for every other field.
+  - Validation:
+    - 13 more tests in `tests/field_research/test_location_last_gaps.py` (31 in all).
+    - On base `d5a6502d` the 13 give 8 failed and 5 passed:
+      - two fail because `runs_across_lines` or `across_lines` does not exist there;
+      - the expert-check test fails on the refusal itself ("does not contain the literal ... exactly");
+      - five fail by assertion: the two-line `refusal`, the holds-a-date reason, both step tests, and the readers-differ test, which base refuses `NOT_CANDIDATE` rather than as readers that differ;
+      - the 5 that pass are guards: a run that cuts "Mt. Apo", a piece of a candidate, and a city over two lines, at the check and, for the cut run and the city, through the step.
+    - The whole module on base: 22 failed, 9 passed.
+    - `tests/field_research`: 3,022 passed. With the related suites and #378's two test files: 3,477 passed.
+  - Offline replay (same script and method):
+    - The control on base gives back every saved location value of both runs.
+    - Branch: e98a924c's precise location settles "E Slope Mt.\nMcKinley, Davao Prov." and 2b02009d's "Seliban Riv.\nMt. Apo", each on its expert's first recorded answer. No other location field of the two runs changes.
+    - The sweep of #377's runs now also changes the first rerun's two settled precise locations, because each expert's first answer was two lines and now passes: 2b02009d's "Mt. Apo" becomes "Seliban Riv.\nMt. Apo", and e98a924c's "McKinley, Davao Prov." becomes "E Slope Mt.\nMcKinley, Davao Prov.".
+    - Everything else in the sweep is unchanged, and the four country runs still derive the United States.
+  - Reusable learning (e): `checks.collapse` already reads a line break as a space, so most comparisons never depended on lines. The one-line rule lives in `verbatim_runs`, `_agreeing_spans`/`holding_clauses` and the plain `literal in reading.text` checks. Keeping the value's literal exactly as the reading writes it, line break included, lets every `in reading.text` check downstream stand unchanged.

@@ -419,7 +419,35 @@ handover runs field research instead of the six specialists:
      "6400" of "6400'" as metres). It may cut or extend no candidate of
      that reading ("Sept. '46" beside the candidate "3 Sept. '46", "San
      Pedro Sacatepequez" beside the candidate "San Pedro"): the answer is
-     then refused as above. A date or an elevation so read is never one end
+     then refused as above.
+     Precise location, the label's verbatim locality, is the one exception
+     (`agreement.ACROSS_LINES`; the coordinator's request of 2026-10-18,
+     after the third rerun, where two of its experts fell back). Labels
+     often write a locality over consecutive lines, and then its literal
+     may run over them: a run of whole words over consecutive lines of
+     each reading the answer names, starting at a word's edge on its first
+     line and ending at one on its last, with no blank line
+     (`agreement.runs_across_lines`, `agreement.written_runs`). Its value
+     keeps the line breaks as the readings write them. An answer that
+     gives a space for a line break (or a line break for a space) is read
+     as the text every reading it names writes so (`agreement.across_lines`,
+     in the expert's check and in the step): e98a924c's both readers write
+     "CNHM. E Slope Mt." over "McKinley, Davao Prov.", and the answer "E
+     Slope Mt. McKinley, Davao Prov." is their "E Slope Mt.\nMcKinley,
+     Davao Prov.". Readers that break the lines at different words write no
+     one text, and the answer is sent back. Such a literal may hold whole
+     candidates, the organiser's lines of one locality joined in their order
+     on the label (2b02009d's decided reading writes "Seliban Riv." over
+     "Mt. Apo", given as two candidates), but it still cuts none: it is no
+     piece of a candidate, and no place of a candidate in the reading lies
+     partly inside it (`agreement._cut_candidate`). Those candidates are
+     then parts of it, not rival texts of the label (`agreement.labels`),
+     and where the label has no decided transcript every reader must write
+     it, line breaks, letter case and spacing aside. Every other check holds
+     as on one line: it holds no date, elevation or range of them
+     (`_holds_another_kind`), and every reading it names writes it. Every
+     other field, the place fields among them, keeps its literal on one
+     line. A date or an elevation so read is never one end
      of a range (`agreement._part_of_range`, PR #300's review and finding 1
      of its review of 6fd595b3b): where a reading it is read from writes
      it, the comma- or semicolon-separated part of the line holding it may

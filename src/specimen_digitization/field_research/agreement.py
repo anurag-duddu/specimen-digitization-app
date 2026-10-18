@@ -457,6 +457,82 @@ def verbatim_runs(text: str, literal: str) -> list[tuple[int, int]]:
     return found
 
 
+# The fields whose literal may run over consecutive lines of one reading:
+# precise location, the label's verbatim locality, which labels often write
+# over two lines (e98a924c's "E Slope Mt." / "McKinley, Davao Prov.", the
+# organiser's two candidates "Seliban Riv." and "Mt. Apo" on 2b02009d's two
+# lines; the third rerun of 2026-10-18). Every other field, places among
+# them, keeps its literal on one line.
+ACROSS_LINES = frozenset({"precise_location"})
+
+
+def _flat(text: str) -> str:
+    """The text with each line break read as a space: the same length, so an
+    offset in it is the same offset in the text."""
+    return text.replace("\n", " ")
+
+
+def runs_across_lines(text: str, literal: str) -> list[tuple[int, int]]:
+    """Where the text writes the literal, which holds a line break, exactly as
+    a run of whole words over consecutive lines, as (start, end): it starts
+    at a word's edge on its first line and ends at one on its last line
+    (_edges), every line between lies wholly inside it, and no line of it is
+    blank. Empty when the literal holds no line break or is not so written."""
+    found: list[tuple[int, int]] = []
+    if ("\n" not in literal or literal != literal.strip()
+            or any(not line.strip() for line in literal.split("\n"))):
+        return found
+    at = text.find(literal)
+    while at >= 0:
+        end = at + len(literal)
+        first_start, first = _line_of(text, at, at)
+        last_start, last = _line_of(text, end, end)
+        starts, _ = _edges(first)
+        _, ends = _edges(last)
+        if at - first_start in starts and end - last_start in ends:
+            found.append((at, end))
+        at = text.find(literal, at + 1)
+    return found
+
+
+def written_runs(key: str, text: str, literal: str) -> list[tuple[int, int]]:
+    """Where the text writes the field `key`'s literal as a run of whole
+    words: within one line (verbatim_runs), or, for a field in ACROSS_LINES
+    whose literal holds a line break, over consecutive lines
+    (runs_across_lines)."""
+    if key in ACROSS_LINES and "\n" in literal:
+        return runs_across_lines(text, literal)
+    return verbatim_runs(text, literal)
+
+
+def across_lines(key: str, readings: Sequence[Reading], literal: str) -> str | None:
+    """For a field in ACROSS_LINES, the text each of these readings writes for
+    the literal over consecutive lines, its line breaks as the readings write
+    them, when the literal reads each line break as a space or a line break
+    (_flat) and every reading writes that one text so (runs_across_lines):
+    e98a924c's expert gave "E Slope Mt. McKinley, Davao Prov.", which both
+    readers of its label write as "E Slope Mt.\\nMcKinley, Davao Prov.".
+    None for any other field, when no reading is given, or when a reading
+    writes no such text or several."""
+    if key not in ACROSS_LINES or not readings or not literal or literal != literal.strip():
+        return None
+    want = _flat(literal)
+    found: set[str] = set()
+    for reading in readings:
+        flat = _flat(reading.text)
+        texts = set()
+        at = flat.find(want)
+        while at >= 0:
+            written = reading.text[at:at + len(want)]
+            if "\n" in written and runs_across_lines(reading.text, written):
+                texts.add(written)
+            at = flat.find(want, at + 1)
+        if len(texts) != 1:
+            return None
+        found |= texts
+    return found.pop() if len(found) == 1 else None
+
+
 def _agreeing_spans(text: str, literal: str) -> list[tuple[str, int, int]]:
     """Each run of whole words within one line of the text (as verbatim_runs
     reads them) that is the literal, letter case and spacing aside
@@ -483,6 +559,51 @@ def agreeing_runs(text: str, literal: str) -> list[str]:
     return list(dict.fromkeys(line[start:end] for line, start, end in _agreeing_spans(text, literal)))
 
 
+def _agreeing_spans_across(text: str, literal: str) -> list[tuple[int, int]]:
+    """Each run of whole words over one or more consecutive lines of the text
+    that is the literal, letter case, spacing and line breaks aside
+    (agreement_key), as (start, end) in the text: it starts at a word's edge
+    of its line and ends at one of its line (_edges)."""
+    want = agreement_key(literal)
+    if not want or not any(char.isalnum() for char in want) or want not in agreement_key(text):
+        return []
+    starts: list[int] = []
+    ends: set[int] = set()
+    for offset, line in _lines(text):
+        line_starts, line_ends = _edges(line)
+        starts.extend(offset + index for index in sorted(line_starts))
+        ends.update(offset + index for index in line_ends)
+    found = []
+    for start in dict.fromkeys(starts):
+        for end in sorted(ends):
+            if end > start and agreement_key(text[start:end]) == want:
+                found.append((start, end))
+    return list(dict.fromkeys(found))
+
+
+def _holding_across(text: str, start: int, end: int) -> str:
+    """The text holding the span [start, end) over consecutive lines: from
+    just after the last comma or semicolon before it on its first line to
+    just before the first one at or after its end on its last line (_clause),
+    each line's edge where it has none."""
+    first_start, first = _line_of(text, start, start)
+    last_start, last = _line_of(text, end, end)
+    return text[first_start + _clause(first, start - first_start, start - first_start)[0]:
+        last_start + _clause(last, end - last_start, end - last_start)[1]]
+
+
+def _within_runs(text: str, piece: str, spans: Sequence[tuple[int, int]]) -> bool:
+    """Whether the text writes `piece` (line breaks read as spaces) and every
+    place it does lies wholly inside one of the spans."""
+    flat, want = _flat(text), _flat(piece)
+    places = []
+    at = flat.find(want) if want else -1
+    while at >= 0:
+        places.append((at, at + len(want)))
+        at = flat.find(want, at + 1)
+    return bool(places) and all(any(start <= at and stop <= end for start, end in spans) for at, stop in places)
+
+
 def holding_clauses(text: str, literal: str) -> list[str]:
     """The clauses of the text that hold the literal: for each run that is
     the literal, letter case and spacing aside (_agreeing_spans), the comma-
@@ -501,13 +622,34 @@ def _cut_candidate(task: FieldTask, readings: Sequence[Reading], literal: str,
     """A candidate of a reading the answer names (its label's decided reading,
     on a label with one) that the literal cuts or extends, as (reading,
     candidate literal): one holds the other and they differ ("Sept. '46" and
-    "3 Sept. '46", "Danaus" and "Danaus plexippus", B2). None otherwise."""
+    "3 Sept. '46", "Danaus" and "Danaus plexippus", B2). A literal over
+    consecutive lines (ACROSS_LINES: it holds a line break) may hold whole
+    candidates, the organiser's lines of one locality joined in their order
+    on the label (2b02009d's "Seliban Riv." and "Mt. Apo"): it cuts a
+    candidate only when it is a piece of one, or when one of the candidate's
+    places in the reading lies partly inside one of its runs and partly
+    outside (runs_across_lines). None otherwise."""
     want = collapse(literal)
     allowed = candidates_by_reading(task, readings)
+    across = task.key in ACROSS_LINES and "\n" in literal
     for reading in dict.fromkeys(_deciding(r, readings) for r in named):
+        spans = runs_across_lines(reading.text, literal) if across else []
         for text, given in allowed.get(reading.name, {}).items():
-            if text != want and (want in text or text in want):
+            if text == want:
+                continue
+            if want in text:
                 return reading.name, given
+            if not across:
+                if text in want:
+                    return reading.name, given
+                continue
+            flat = _flat(reading.text)
+            at = flat.find(_flat(given))
+            while at >= 0:
+                stop = at + len(given)
+                if any(start < stop and at < end and not (start <= at and stop <= end) for start, end in spans):
+                    return reading.name, given
+                at = flat.find(_flat(given), at + 1)
     return None
 
 
@@ -517,15 +659,16 @@ def literal_basis(task: FieldTask, readings: Sequence[Reading], literal: str,
     candidate literal of every reading it names (candidate_literal).
     TRANSCRIPT: it is not, but each of those readings (its label's decided
     reading, on a label with one) writes it as a run of whole words within
-    one line (verbatim_runs), and it cuts or extends no candidate of that
-    reading (_cut_candidate): the expert read it in the transcript itself
-    (the owner's design: experts with every raw transcription). None
-    otherwise."""
+    one line (verbatim_runs; for precise location, over consecutive lines
+    when it holds a line break: written_runs), and it cuts or extends no
+    candidate of that reading (_cut_candidate): the expert read it in the
+    transcript itself (the owner's design: experts with every raw
+    transcription). None otherwise."""
     if not named:
         return None
     if candidate_literal(task, readings, literal, named) is not None:
         return CANDIDATE
-    if (all(verbatim_runs(_deciding(reading, readings).text, literal) for reading in named)
+    if (all(written_runs(task.key, _deciding(reading, readings).text, literal) for reading in named)
             and _cut_candidate(task, readings, literal, named) is None):
         return TRANSCRIPT
     return None
@@ -576,7 +719,11 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
         "extend a candidate. When no candidate is the right text (the organiser may have given "
         "this field another field's text, or a place of another kind), the literal may be text "
         "that each reading you name writes itself for this field: whole words within one line, "
-        "cutting no word and no candidate. Copy it and name only readings that have it, or answer "
+        "cutting no word and no candidate. "
+        + ("A locality written over consecutive lines may run over them: copy those lines as the "
+           "reading writes them, holding whole candidates in their order on the label and cutting none. "
+           if task.key in ACROSS_LINES else "")
+        + "Copy it and name only readings that have it, or answer "
         "several_possibilities or sources_cannot_resolve."))
 
 
@@ -1062,15 +1209,32 @@ def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[Sourc
     allowed = candidates_by_reading(task, readings)
     sourced = bool(frozenset(task.tools) & SOURCE_IDS)
     read_on = frozenset(reading.region_id for reading in named) if transcript is not None else frozenset()
+    # A literal over consecutive lines (ACROSS_LINES): each reader's runs of it.
+    across = transcript is not None and task.key in ACROSS_LINES and "\n" in transcript
+    spans_of: dict[str, list[tuple[int, int]]] = {}
     regions: dict[str, list[Reading]] = {}
     for reading in readings:
         regions.setdefault(reading.region_id, []).append(reading)
         if reading.region_id in read_on:
-            runs = agreeing_runs(reading.text, transcript)
+            if across:
+                spans_of[reading.name] = _agreeing_spans_across(reading.text, transcript)
+                runs = [reading.text[start:end] for start, end in spans_of[reading.name]]
+            else:
+                runs = agreeing_runs(reading.text, transcript)
             if runs:
                 literals.setdefault(reading.name, set()).update(collapse(run) for run in runs)
-            if verbatim_runs(reading.text, transcript):
+            if written_runs(task.key, reading.text, transcript):
                 allowed.setdefault(reading.name, {}).setdefault(collapse(transcript), transcript)
+    if across:
+        # The texts a reader's run of the literal holds wholly are parts of it
+        # (the organiser's "Seliban Riv." and "Mt. Apo" of 2b02009d's two
+        # lines), not rival texts of the field.
+        by_name = {reading.name: reading for reading in readings}
+        whole = collapse(transcript)
+        for name, spans in spans_of.items():
+            if spans and name in literals:
+                literals[name] = {text for text in literals[name]
+                    if text == whole or not _within_runs(by_name[name].text, text, spans)}
     found: dict[str, Label] = {}
     for region, group in regions.items():
         decided = next((r for r in group if r.input_source == DECIDED), None)
@@ -1093,7 +1257,9 @@ def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[Sourc
             # Each reader's clauses holding the text agree, letter case and
             # spacing aside, or the readers write different text around it
             # ("trap" and "light trap", "Yepocapa" and "near Yepocapa").
-            held = {r.name: holding_clauses(r.text, transcript) for r in group}
+            held = {r.name: (list(dict.fromkeys(_holding_across(r.text, start, end)
+                for start, end in spans_of.get(r.name, ()))) if across else holding_clauses(r.text, transcript))
+                for r in group}
             keys = {frozenset(agreement_key(clause) for clause in clauses) for clauses in held.values() if clauses}
             if len(keys) > 1:
                 found[region] = Label(texts | frozenset(collapse(clause) for clauses in held.values()

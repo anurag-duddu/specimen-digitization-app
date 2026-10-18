@@ -16,6 +16,10 @@
   other reader's "BONITELL", no longer hold back the country the settled
   Illinois and Edgar County derive (`agreement.set_aside`,
   `step._country_alternatives_are_lower_places`).
+- e98a924c and 2b02009d (the rerun on d5a6502d): a precise location written
+  over two lines had no answer that passed, as a literal stayed on one
+  line. Precise location now runs over consecutive lines
+  (`agreement.ACROSS_LINES`, `runs_across_lines`, `across_lines`).
 
 The answers are made up in the shape the run graphs of 2026-10-18 store them
 (each candidate's name, record, kind and parents, as their evidence excerpts
@@ -33,6 +37,7 @@ from types import SimpleNamespace
 import pytest
 import test_step
 from PIL import Image
+from pydantic_ai import ModelRetry
 from test_location_level_roles import NO_PLACE_LINES, Stored, expert, settled_on, several
 from test_step import (
     COLLECTORS,
@@ -41,6 +46,7 @@ from test_step import (
     Scripted,
     answering,
     build_rig,
+    field_checks,
     label_with,
     research,
     settle,
@@ -51,6 +57,7 @@ from specimen_digitization.application.domain import (
     Evidence, FieldValue, LookupStatus, Observation, Region, ValueState,
 )
 from specimen_digitization.application.harness import ExtractionCandidate, ExtractionOutput, apply_candidates
+from specimen_digitization.application.integrity import verify_evidence
 from specimen_digitization.application.region_pixels import region_png
 from specimen_digitization.application.storage import LocalBlobs, SQLiteRepository
 from specimen_digitization.application.workflow import SyntheticAdapters, Workflow
@@ -451,3 +458,174 @@ def test_a_country_text_its_label_does_not_dispute_still_holds_the_country_for_r
     run = edgar(tmp_path, second, (*EDGAR_CANDIDATES, *((TAXON_2B,) if taxon else ())))
     assert run.fields["county"].authority_id == "wikidata:Q484124"
     assert run.fields["country"].state == ValueState.AMBIGUOUS
+
+
+# ---- a precise location written over consecutive lines (gap 3) -------------
+
+MCKINLEY = "CNHM. E Slope Mt.\nMcKinley, Davao Prov.\nMindanao, P.I.\n6-Sept-1946, Elev.6400"
+MCKINLEY_LINES = "E Slope Mt.\nMcKinley, Davao Prov."
+APO_3A, APO_3B = "Seliban Riv.\nMt. Apo", "Seliban Riv.\nMi. Apo"
+
+
+def test_a_run_of_whole_words_over_consecutive_lines():
+    assert agreement.runs_across_lines(MCKINLEY, MCKINLEY_LINES) == [(6, 6 + len(MCKINLEY_LINES))]
+    # A word cut at either end, a blank line, or a literal on one line is no such run.
+    assert agreement.runs_across_lines(MCKINLEY, "Slope Mt.\nMcKin") == []
+    assert agreement.runs_across_lines("Seliban Riv.\n\nMt. Apo", "Seliban Riv.\n\nMt. Apo") == []
+    assert agreement.runs_across_lines(MCKINLEY, "E Slope Mt.") == []
+    # Only precise location runs over lines; every other field keeps one line.
+    assert agreement.written_runs("precise_location", MCKINLEY, MCKINLEY_LINES) == [(6, 6 + len(MCKINLEY_LINES))]
+    assert agreement.written_runs("city", MCKINLEY, MCKINLEY_LINES) == []
+
+
+def two_readers_of(first, second, *, decided=False):
+    return (Reading("2A", "label2", "obs2a", "decided_transcript" if decided else "raw_reading", first),
+        Reading("2B", "label2", "obs2b", "raw_reading", second))
+
+
+def test_a_space_for_a_line_break_is_the_text_the_readings_write():
+    """e98a924c's expert gave "E Slope Mt. McKinley, Davao Prov.", which both
+    readers write over two lines."""
+    readings = two_readers_of(MCKINLEY, MCKINLEY.replace("Elev.6400", "Elev. 6400"))
+    given = "E Slope Mt. McKinley, Davao Prov."
+    assert agreement.across_lines("precise_location", readings, given) == MCKINLEY_LINES
+    assert agreement.across_lines("city", readings, given) is None
+    # Readers who break the lines at different words write no one text.
+    other = MCKINLEY.replace("E Slope Mt.\nMcKinley,", "E Slope\nMt. McKinley,")
+    assert agreement.across_lines("precise_location", two_readers_of(MCKINLEY, other), given) is None
+
+
+def test_the_experts_check_takes_a_locality_over_two_lines():
+    """e98a924c on 2026-10-18 (run 3b011cbf): label 2's first pass was given
+    up, both readers write the locality over two lines, and every answer
+    ("E Slope Mt. McKinley, Davao Prov.", from 2A and 2B) was refused: "Reading
+    2A does not contain the literal ... exactly". On d5a6502d it is refused."""
+    readings = two_readers_of(MCKINLEY, MCKINLEY.replace("Elev.6400", "Elev. 6400"))
+    task = FieldTask("precise_location", False, FieldValue(), (), ("geolocate", "tgn", "wikidata", "nga"))
+    made = experts._Expert(task, readings, SimpleNamespace(sources=("geolocate", "tgn", "wikidata", "nga")), None)
+    given = FieldAnswer(outcome="resolved", literal="E Slope Mt. McKinley, Davao Prov.", reading_names=["2A", "2B"],
+        explanation="Both readers write the locality over two lines.")
+    checked = made.validate(given)
+    assert (checked.literal, checked.reading_names) == (MCKINLEY_LINES, ["2A", "2B"])
+    # Readers that break it at different words: the literal is in neither as written.
+    split = MCKINLEY.replace("E Slope Mt.\nMcKinley,", "E Slope\nMt. McKinley,")
+    other = experts._Expert(task, two_readers_of(MCKINLEY, split),
+        SimpleNamespace(sources=("geolocate", "tgn", "wikidata", "nga")), None)
+    with pytest.raises(ModelRetry, match="consecutive lines"):
+        other.validate(given)
+
+
+def apo_task(key="precise_location"):
+    candidates = tuple(Candidate(reading, quote, literal, f"row-{reading}-{index}")
+        for index, (reading, quote, literal) in enumerate((
+            ("2A", "Seliban Riv.", "Seliban Riv."), ("2A", "Mt. Apo", "Mt. Apo"),
+            ("2B", "Seliban Riv.", "Seliban Riv."), ("2B", "Mi. Apo", "Mi. Apo"))))
+    return FieldTask(key, False, FieldValue(), candidates, ("geolocate", "tgn", "wikidata", "nga"))
+
+
+def test_the_organisers_two_lines_joined_in_their_order_settle_the_precise_location():
+    """2b02009d on 2026-10-18 (run 95361b46): label 3's decided transcript
+    (3A) writes "Seliban Riv." over "Mt. Apo", and the organiser split it into
+    two candidates. The expert's "Seliban Riv.\\nMt. Apo" was refused, as it
+    extends the candidate "Seliban Riv." (on d5a6502d, NOT_CANDIDATE)."""
+    readings = two_readers_of(APO_3A, APO_3B, decided=True)
+    common = dict(named=[readings[0]], value=None, authority_id=None, cited=[], received=[])
+    assert agreement.refusal(apo_task(), readings, literal=APO_3A, **common) is None
+    assert agreement.literal_basis(apo_task(), readings, APO_3A, [readings[0]]) == agreement.TRANSCRIPT
+
+
+@pytest.mark.parametrize(("key", "literal"), [
+    # A run that cuts a candidate: "Mt." of "Mt. Apo".
+    ("precise_location", "Seliban Riv.\nMt."),
+    # A piece of the two lines, on one: still a candidate's piece ("Riv." of "Seliban Riv.").
+    ("precise_location", "Riv."),
+    # Every other field keeps its literal on one line.
+    ("city", APO_3A),
+], ids=["cuts-a-candidate", "piece-of-a-candidate", "city-over-two-lines"])
+def test_a_literal_over_lines_still_cuts_no_candidate_and_only_a_locality_runs_over_lines(key, literal):
+    readings = two_readers_of(APO_3A, APO_3B, decided=True)
+    refused = agreement.literal_refusal(apo_task(key), readings, literal=literal, named=[readings[0]])
+    assert refused is not None and refused.reason == agreement.NOT_CANDIDATE
+
+
+def test_a_locality_over_lines_holds_no_other_fields_text():
+    """Nothing outside the locality's lines: a run that goes on to the date
+    line holds a date, another field's text."""
+    readings = two_readers_of(MCKINLEY, MCKINLEY)
+    task = FieldTask("precise_location", False, FieldValue(), (), ("geolocate",))
+    refused = agreement.literal_refusal(task, readings, named=[readings[0]],
+        literal="Mindanao, P.I.\n6-Sept-1946")
+    assert refused is not None and refused.reason == agreement.HOLDS_A_DATE
+
+
+# e98a924c's and 2b02009d's locality lines on test_step's label.
+LOCALITY_A = label_with(**NO_PLACE_LINES) + "\n" + MCKINLEY + "\nshrubs, mostly forest"
+LOCALITY_B = label_with(**NO_PLACE_LINES) + "\n" + MCKINLEY + "\nShrubs, Mostly forest"
+NO_PLACES = {key: answering(LACKS) for key in ("country", "province_state", "county", "city")}
+
+
+def test_both_readers_two_line_locality_settles_through_the_step(tmp_path):
+    """e98a924c through the step: no decided transcript, both readers write
+    the locality over two lines, and the answer gives a space for the line
+    break. The value is the readers' text with its line break; its rows and
+    lineage pass the field checks and the evidence check. On d5a6502d it is
+    unresolved (the literal is in no reading)."""
+    rig = build_rig(tmp_path, LOCALITY_A, LOCALITY_B)
+    run = rig.specimen.run
+    reader_a, reader_b = run.observations
+    settle(rig, Scripted({**NO_PLACES, "precise_location": answering(FieldAnswer(outcome="resolved",
+        literal="E Slope Mt. McKinley, Davao Prov.", reading_names=["1A", "1B"],
+        explanation="Both readers write the locality over two lines."))}))
+    value = run.fields["precise_location"]
+    assert (value.state, value.literal, value.layer) == (ValueState.SUPPORTED, MCKINLEY_LINES, "settled")
+    assert value.verbatim_by_observation == {reader_a.id: MCKINLEY_LINES, reader_b.id: MCKINLEY_LINES}
+    assert field_checks(run, {"precise_location"}) == []
+    verify_evidence(rig.specimen, rig.blobs)
+
+
+APO_A = label_with(**NO_PLACE_LINES) + "\n" + APO_3A
+APO_B = label_with(**NO_PLACE_LINES) + "\n" + APO_3B
+APO_CANDIDATES = [*COLLECTORS, *(("precise_location", reader, literal, literal)
+    for reader, literal in (("1A", "Seliban Riv."), ("1A", "Mt. Apo"), ("1B", "Seliban Riv."), ("1B", "Mi. Apo")))]
+
+
+@pytest.mark.parametrize(("key", "literal", "settles"), [
+    ("precise_location", APO_3A, True),
+    # The run cuts the organiser's "Mt. Apo"; a city never runs over lines.
+    ("precise_location", "Seliban Riv.\nMt.", False),
+    ("city", APO_3A, False),
+], ids=["the-two-lines", "cuts-a-candidate", "a-city-over-two-lines"])
+def test_the_decided_readings_two_candidate_lines_settle_through_the_step(tmp_path, key, literal, settles):
+    """2b02009d through the step: the decided reading writes the locality
+    over two lines, which the organiser gave as two candidates, and the
+    answer joins them in their order. On d5a6502d it is unresolved
+    (NOT_CANDIDATE)."""
+    rig = build_rig(tmp_path, APO_A, APO_B, decided=True, candidates=APO_CANDIDATES)
+    run = rig.specimen.run
+    scripts = {**NO_PLACES, "precise_location": answering(LACKS)}
+    scripts[key] = answering(FieldAnswer(outcome="resolved", literal=literal, reading_names=["1A"],
+        explanation="The locality's two lines."))
+    settle(rig, Scripted(scripts))
+    value = run.fields[key]
+    if settles:
+        assert (value.state, value.literal, value.input_source) == (ValueState.SUPPORTED, APO_3A, "decided_transcript")
+        assert field_checks(run, {key}) == []
+        verify_evidence(rig.specimen, rig.blobs)
+    else:
+        assert value.state != ValueState.SUPPORTED
+
+
+def test_readers_who_write_the_two_lines_differently_still_go_to_review():
+    """No decided transcript: 2B writes "McKimley" where 2A writes "McKinley",
+    one letter off, so 2B writes no run of 2A's two lines and the readers
+    differ."""
+    other = MCKINLEY.replace("McKinley", "McKimley")
+    readings = two_readers_of(MCKINLEY, other)
+    task = FieldTask("precise_location", False, FieldValue(), (), ("geolocate",))
+    refused = agreement.refusal(task, readings, literal=MCKINLEY_LINES, named=[readings[0]], value=None,
+        authority_id=None, cited=[], received=[])
+    assert refused is not None and refused.differ
+    # Letter case and spacing aside, both write it: the label settles.
+    same = MCKINLEY.replace("McKinley, Davao", "MCKINLEY,  Davao")
+    assert agreement.refusal(task, two_readers_of(MCKINLEY, same), literal=MCKINLEY_LINES,
+        named=[two_readers_of(MCKINLEY, same)[0]], value=None, authority_id=None, cited=[], received=[]) is None
