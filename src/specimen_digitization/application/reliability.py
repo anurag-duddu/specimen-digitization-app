@@ -54,7 +54,9 @@ class ReadingStopped(RuntimeError):
         self.usage = usage
 
 
-def reported_usage(messages, usage, usage_limits=None, *, stopped=False) -> dict | None:
+def reported_usage(
+    messages, usage, usage_limits=None, *, stopped=False, completed=False
+) -> dict | None:
     """The tokens a model call's provider reported, when it reported every request's.
 
     ``usage`` is the call's ``RunUsage``. Pydantic AI adds an answer's tokens
@@ -74,6 +76,10 @@ def reported_usage(messages, usage, usage_limits=None, *, stopped=False) -> dict
       prompt, queued after the last answer. The production model reads all set
       ``request_limit=2``; with a limit the answers did not use up there is no
       such proof, and the call is held.
+    - In a ``completed`` call (one that returned its output), the output
+      tool's return: Pydantic AI queues it as the last message, after the
+      answer that ended the call, and nothing sends it. Every request before
+      that answer was answered, or the call could not have gone on.
 
     None in every other case: a sent request with no counted answer (a reply
     the model client could not read, which the provider may still have
@@ -85,7 +91,11 @@ def reported_usage(messages, usage, usage_limits=None, *, stopped=False) -> dict
     sent = sum(m.kind == "request" for m in messages)
     answered = usage.requests
     limit = getattr(usage_limits, "request_limit", None)
-    one_more = sent == answered + 1 and (stopped or (limit is not None and answered >= limit))
+    one_more = sent == answered + 1 and (
+        stopped
+        or (completed and messages[-1].kind == "request")
+        or (limit is not None and answered >= limit)
+    )
     answers = [m for m in messages if m.kind == "response"]
     if (
         not (sent == answered or one_more)

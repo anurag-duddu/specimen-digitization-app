@@ -335,4 +335,5 @@ def extract_with_agent(gateway, blobs, specimen):
         readings,
     )
     # Its input and output tokens apart, so its cost can be priced (lane_costs).
-    return reported_usage(result.all_messages(), result.usage)
+    # Completed: the output tool's return, queued after the answer, was never sent.
+    return reported_usage(result.all_messages(), result.usage, completed=True)
