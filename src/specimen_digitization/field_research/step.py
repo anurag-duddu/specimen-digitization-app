@@ -516,7 +516,9 @@ def _refusal(task, answer, *, readings, by_name, sources):
 def _place_texts(run, tasks_by_key: Mapping[str, FieldTask], readings) -> dict[str, dict[str, frozenset[str]]]:
     """Each place value field's texts by reading (agreement.reader_literals),
     before this attempt changes any value: its task's candidates and
-    verbatims, or the run's for a field not researched in this attempt."""
+    verbatims, or the run's for a field not researched in this attempt. A
+    text of only unit words counts here (unit_words): a reading that writes
+    "Davao, Prov." writes a province, whatever the organiser cut from it."""
     from .agreement import PLACE_ORDER, reader_literals
 
     stored = None
@@ -527,7 +529,8 @@ def _place_texts(run, tasks_by_key: Mapping[str, FieldTask], readings) -> dict[s
             stored = _candidates(run, readings) if stored is None else stored
             task = FieldTask(key=key, mandatory=False, current=run.fields.get(key) or FieldValue(),
                 candidates=tuple(stored.get(key, ())), tools=())
-        found[key] = {name: frozenset(texts) for name, texts in reader_literals(task, readings).items()}
+        found[key] = {name: frozenset(texts)
+            for name, texts in reader_literals(task, readings, unit_words=True).items()}
     return found
 
 
@@ -1949,7 +1952,7 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     # no place of its own: not present, as label_lacks_value makes it
     # (_only_a_place_above).
     above = _only_a_place_above(run, tasks_by_key, applied, added, readings, evidence=evidence,
-        decisions=decisions)
+        decisions=decisions, received=received)
     eligible = [key for key in field_keys(profile) if key not in human
         and (not reassessing or key in reassessing)]
     ambiguous_country = None
@@ -2729,19 +2732,25 @@ def _held_above(run, key: str, task: FieldTask, answer: FieldAnswer, readings: S
 
 def _only_a_place_above(run, tasks_by_key: Mapping[str, FieldTask], applied: Mapping[str, FieldOutcome],
         added: Mapping[str, Sequence[str]], readings: Sequence[Reading], *, evidence: dict,
-        decisions: dict[str, dict]) -> dict[str, tuple[str, str]]:
+        decisions: dict[str, dict],
+        received: Mapping[str, Sequence[SourceAnswer]] | None = None) -> dict[str, tuple[str, str]]:
     """A county or a city researched in this attempt whose expert's answer
     left it ambiguous or unresolved (an answer and no failure, not
-    label_lacks_value, not finalized without a model call; the resolver's
-    fallback too, as this rests on the settled place's text and the
-    organiser's, never on the expert's: f35af3a5's city "Davao", cut from
-    the settled province "Davao, Prov.", on 2026-10-18), when every text
+    label_lacks_value, not finalized without a model call), when every text
     the label gives it is the text of a settled place above it
     (_held_above), names no place of its own: one
     written place is one field's (agreement.IS_THE_PROVINCE: a province is
     never also the county), so 93e61763's "Chimaltenango," on the line its
     province settled on, as the department, is no county, however many
-    second-level units of that name the sources hold. It is not present, as
+    second-level units of that name the sources hold. The resolver's
+    fallback counts too, when its expert asked at least one source: the
+    name each of its lookups asked about (sources.place_name, the query's
+    first comma-separated part) is taken as one of its answer's options, so
+    each must be the settled place's text or a name no reading writes.
+    f35af3a5's city in the second rerun of 2026-10-18 asked about "Davao",
+    cut from the settled province "Davao, Prov.", and "Davao City"; a
+    fallback whose expert asked about a town the label writes ("Tagum")
+    keeps the field. It is not present, as
     label_lacks_value makes it, citing the sources the answer cites, with a
     reason naming the field that holds the text (PLACE_ABOVE), whether or not
     every source its expert asked answered, since the text is the settled
@@ -2752,8 +2761,10 @@ def _only_a_place_above(run, tasks_by_key: Mapping[str, FieldTask], applied: Map
     a field whose expert found none (mark_not_on_label). Returns {key: (the
     text, the field holding it)} for rule A. Checked once every place is in."""
     from .prompts import FIELD_LABELS
+    from .sources import place_name
 
     human = human_keys(run)
+    received = {} if received is None else received
     found: dict[str, tuple[str, str]] = {}
     for key, named in BELOW_A_PLACE.items():
         task, outcome, value = tasks_by_key.get(key), applied.get(key), run.fields.get(key)
@@ -2762,6 +2773,14 @@ def _only_a_place_above(run, tasks_by_key: Mapping[str, FieldTask], applied: Map
                 or answer.outcome == "label_lacks_value" or outcome.finalized_without_model
                 or value is None or value.state not in (ValueState.AMBIGUOUS, ValueState.UNRESOLVED)):
             continue
+        if outcome.fallback:
+            # The fallback keeps no answer of the expert's: what it asked the
+            # sources about stands for what it tried.
+            asked = [place_name(item.query) for item in received.get(key, ())
+                if item.query and not item.query.lstrip().startswith("{")]
+            if not asked:
+                continue
+            answer = answer.model_copy(update={"options": list(dict.fromkeys(asked))})
         held = _held_above(run, key, task, answer, readings, evidence={item.id: item for item in run.evidence},
             human=human)
         if held is None:

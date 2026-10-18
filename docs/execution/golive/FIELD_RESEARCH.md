@@ -384,9 +384,13 @@ handover runs field research instead of the six specialists:
      quotes. For a place field (country, province or state, county, city), a
      candidate or a reader's verbatim that names no place, nothing but unit
      words and punctuation by the place comparison key ("Prov.", "Co."), is
-     no literal of the field at all (`agreement.names_no_place`): it is
-     neither cut nor extended by an answer and is no reader's text in the
-     agreement rules below. The second rerun of 2026-10-18 had f35af3a5's
+     no literal of the field (`agreement.names_no_place`): it is neither cut
+     nor extended by an answer and is no reader's text in the agreement
+     rules below. It still shows that its reading writes the field, for the
+     parents check of step 5 (`step._place_texts`): a county or a city under
+     a province written "Davao, Prov." settles only inside that province once
+     it settles (NO_PROVINCE). And it still counts as text the organiser
+     found for rule A's condition 5. The second rerun of 2026-10-18 had f35af3a5's
      organiser give the province "Prov.", cut from "Davao, Prov.": the
      answer "Davao, Prov." was refused as extending it and "Prov." as no
      place asked of it, so the field fell back; "Davao, Prov." now settles
@@ -1795,8 +1799,8 @@ elevation is derived first, and only for a field a person has not decided):
    2026-10-09 105526326's city and 105526329's date identified were answered
    sources_cannot_resolve where the labels lack them.)
    The resolver's fallback qualifies only for a county or a city whose
-   every text is a settled place's above it (below), which rests on that
-   place's text, never on the expert's. Its reason, when every answer the
+   every text is a settled place's above it (below), where the names the
+   expert's lookups asked about stand for what it tried. Its reason, when every answer the
    expert gave failed its checks, is "None of the expert's answers passed
    the checks against the readings and the sources' answers.", and no
    fallback's reason ends with a note of a source the expert could not
@@ -2045,10 +2049,14 @@ possibilities. A written place is one field's: a province is never also
 the county (`agreement.IS_THE_PROVINCE`). Once every place is in (after
 `step._repeats_a_place`), a county, then a city, researched in this
 attempt whose expert's answer left it ambiguous or unresolved (an answer
-and no failure, not label_lacks_value, not finalized without a model call;
-the resolver's fallback too, as f35af3a5's city "Davao", cut from the
-settled province "Davao, Prov.", in the second rerun of 2026-10-18) is made
-what label_lacks_value makes it
+and no failure, not label_lacks_value, not finalized without a model call; the resolver's
+fallback too, when its expert asked at least one source and every name its
+lookups asked about, the query's first comma-separated part, is taken as an
+option of its answer: f35af3a5's city in the second rerun of 2026-10-18 asked
+about "Davao", cut from the settled province "Davao, Prov.", and "Davao
+City", a name the label does not write, while a fallback that asked about a
+town the label writes, "Tagum", keeps the field) is made what
+label_lacks_value makes it
 when every text the label gives it is the text of a settled place above it
 (`step._only_a_place_above`, `step._held_above`): not present, citing the
 answer's sources, its reason 'The readings write no county of their own:

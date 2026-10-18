@@ -609,3 +609,43 @@ def test_a_fallback_that_stays_open_does_not_blame_an_unreachable_source(tmp_pat
         tools=Stored(rig.blobs))
     province = run.fields["province_state"]
     assert (province.state, province.reason) == (ValueState.UNRESOLVED, experts.UNCHECKED)
+
+
+@pytest.mark.parametrize(("lookups", "why"), [
+    # It asked about a town the label writes, which no place above holds.
+    ((("wikidata", "Tagum, Philippines"), ("nga", "Tagum, Philippines")), "a town the label writes"),
+    # It asked nothing: what it tried is unknown.
+    ((), "no lookup"),
+], ids=["asked-about-tagum", "asked-nothing"])
+def test_a_fallback_keeps_a_city_its_expert_may_have_found_elsewhere(tmp_path, lookups, why):
+    """Round 3 of #377's review (B2): a fallback keeps no answer of the
+    expert's, so the names its lookups asked about stand for what it tried.
+    The label also writes "Tagum", which the organiser filed for no field.
+    The city stays for review."""
+    rig = build_rig(tmp_path, CUT_LINE.replace("\nMindanao, P.I.", "\nTagum\nMindanao, P.I."),
+        candidates=CUT_CANDIDATES)
+    run = rig.specimen.run
+    settle(rig, Scripted({"country": P_I_COUNTRY, "province_state": DAVAO_PROV, "county": answering(LACKS),
+        "city": falling_back(*lookups), "precise_location": answering(LACKS)}), tools=Stored(rig.blobs))
+    assert run.fields["province_state"].state == ValueState.SUPPORTED
+    assert run.fields["city"].state == ValueState.UNRESOLVED and "mandatory_unresolved:city" in run.reasons
+
+
+def test_a_province_written_only_as_its_unit_word_still_holds_a_county_to_it(tmp_path):
+    """Round 3 of #377's review (B1): the organiser cut the province to
+    "Prov." from "Davao, Prov.", which is then no literal, but the reading
+    still writes a province. A county (the municipality "Tagum") is
+    confirmed only inside a settled province (NO_PROVINCE), so it does not
+    settle beside a province left ambiguous."""
+    text = label_with(**NO_PLACE_LINES) + "\nTagum\nDavao, Prov. 3300'\nMindanao, P.I."
+    tagum = {("nga", "Tagum"): [("Tagum", "nga:tagum", "A.ADM2", (("Davao del Norte", None, None), PH_CODE), None)]}
+    rig = build_rig(tmp_path, text, candidates=candidates(("country", "P.I.", "Mindanao, P.I."),
+        ("province_state", "Prov.", "Davao, Prov. 3300'"), ("county", "Tagum", "Tagum")))
+    run = rig.specimen.run
+    settle(rig, Scripted({"country": P_I_COUNTRY,
+        "province_state": answering(FieldAnswer(outcome="several_possibilities",
+            options=["Davao del Norte", "Davao del Sur"], explanation="Several provinces of that name.")),
+        "county": expert(("nga", "Tagum, Philippines"), answer=settled_on("Tagum", None, "nga:tagum")),
+        "city": answering(LACKS), "precise_location": answering(LACKS)}), tools=Stored(rig.blobs, tagum))
+    county = run.fields["county"]
+    assert county.state == ValueState.UNRESOLVED and county.reason.startswith(agreement.NO_PROVINCE)

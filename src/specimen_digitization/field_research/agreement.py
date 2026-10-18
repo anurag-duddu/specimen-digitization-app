@@ -301,15 +301,19 @@ def names_no_place(task: FieldTask, text: str) -> bool:
     unit words and punctuation, as f35af3a5's candidate "Prov." for the
     province, cut from "Davao, Prov." (the batch rerun of 2026-10-18). Such
     a text is no literal of the field: it neither constrains an answer's
-    literal (_cut_candidate) nor counts as a reader's text (labels)."""
+    literal (_cut_candidate) nor counts as a reader's text (labels). It
+    still shows that its reading writes the field, for the parents check
+    (step._place_texts, parents_refusal's NO_PROVINCE)."""
     return task.key in PLACE_VALUE_FIELDS and not place_name(text)
 
 
-def reader_literals(task: FieldTask, readings: Sequence[Reading]) -> dict[str, set[str]]:
+def reader_literals(task: FieldTask, readings: Sequence[Reading], *,
+        unit_words: bool = False) -> dict[str, set[str]]:
     """Each reading's literals for the field, collapsed: the organiser's
     candidates, and the per-reader verbatims it left (a reading named by its
     observation, a raw reading first), less a place's texts that name no
-    place (names_no_place)."""
+    place (names_no_place) unless `unit_words` keeps them, as for the
+    parents check, which asks only whether a reading writes the field."""
     by_name = {r.name: r for r in readings}
     by_observation: dict[str, str] = {}
     for reading in readings:
@@ -317,11 +321,12 @@ def reader_literals(task: FieldTask, readings: Sequence[Reading]) -> dict[str, s
             by_observation[reading.observation_id] = reading.name
     found: dict[str, set[str]] = {}
     for candidate in task.candidates:
-        if candidate.reading in by_name and candidate.literal.strip() and not names_no_place(task, candidate.literal):
+        if candidate.reading in by_name and candidate.literal.strip() and (
+                unit_words or not names_no_place(task, candidate.literal)):
             found.setdefault(candidate.reading, set()).add(collapse(candidate.literal))
     for observation, text in task.current.verbatim_by_observation.items():
         name = by_observation.get(observation)
-        if name is not None and text and text.strip() and not names_no_place(task, text):
+        if name is not None and text and text.strip() and (unit_words or not names_no_place(task, text)):
             found.setdefault(name, set()).add(collapse(text))
     return found
 
