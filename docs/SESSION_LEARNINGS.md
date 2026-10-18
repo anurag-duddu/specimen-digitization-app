@@ -21718,3 +21718,47 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
   `google-button-consistency-local.json`, `button-alignment-captures/manifest.json`
   and `live-google-acceptance-c38-attempt2.json`. Earlier failed-attempt reports
   are preserved. Physical installed-app authentication is Not confirmed.
+
+
+## 2026-10-17: login button correction qualified for protected integration
+
+- Task: `01a147ea-7efb-7e22-8821-e42395a135fc`; branch
+  `codex/login-google-operation-diagnostics`, worktree `9030`.
+- UI correction committed as `dc83030d2412a1cdc142ec2e5cc9875a725f7eae`,
+  tree `c76ebda2609ac8d4664b3e9281aeba6dcb7ddead`; inherited diagnostic
+  repair remains `cc4f9b8308c59d4435dd90b8fb52555c87b82e7c`.
+- Full `PYTHON_TEST_SHARDS=6 bash scripts/ci/verify.sh` passed on the clean
+  exact `dc83030d` head from 2026-10-18 01:40:37 to 02:01:52 UTC:
+  18,272 Python tests passed / 49 skipped, all 18,321 collected exactly once;
+  1,309 design-system tests passed; 3,134 app tests passed / 7 skipped;
+  both analyzers clean; 585 files formatted with no changes; release web
+  build and 13-route/five-header smoke passed. The local unstamped deployment
+  marker was intentionally not a production assertion. Final worktree clean.
+- G51 independent review approved all 19 changed files at the exact head/tree,
+  with no findings. The reviewer checked all 12 retained entry captures,
+  four changed Google goldens and tracked source/image hashes. A separate
+  reviewer approved the UI delta; its inherited diagnostic approval was
+  explicitly attributed to the independent diagnostic reviewer.
+- Evidence is under the existing external `login-study/recovery-implementation/`
+  directory: `canonical-google-button-dc83030d-result.json` and corresponding
+  log; `independent-full-review-dc83030d.json`; and
+  `full-review-dc83030d-source-verification.json`. This closeout append changes
+  only the journal; code validation remains bound to `dc83030d` and hosted
+  checks must qualify the eventual PR head before merge.
+- Additional bounded App Check investigation captured one instrumented native
+  Chrome reload. Enterprise JS, reCAPTCHA assets, anchor and clr requests
+  returned HTTP 200; no App Check token-exchange request was observed. The
+  museum identity remained authenticated but collection admission still
+  failed with local app verification. HTTP 200 does not establish successful
+  reCAPTCHA execution. No bodies, headers, query values or tokens retained.
+- Pinned SDK/Flutter source does not support a missing initialization await or
+  Flutter body-clearing fix. The documented related SDK concurrency repair
+  predates the deployed SDK. No speculative upgrade, storage reset, browser
+  security change or enforcement reduction was made. The owner has a pending
+  optional check in their usual browser. Evidence: `appcheck-resource-trace-c38.json`
+  and `appcheck-upstream-bounded-search-c38.json`.
+- At this entry, the button correction is not deployed and has no PR yet.
+  Current live release remains `c38f4fd4` with all three attempt-2 workflows
+  green. Full collection admission after Google in the tested Chrome profile
+  and physical installed-app authentication are Not confirmed. Preserve the
+  unmerged `codex/login-journey-complete` branch and primary worktree.
