@@ -652,3 +652,52 @@ Team A, composition. A1 first, then A2 to A4 in parallel from its merge.
 
 Team B, release readiness, runs beside team A; its slots touch no screen.
 See `docs/execution/FRONT_END_REFACTOR.md` section 3I.
+
+## 7. Login journey composition, 2026-10-17
+
+The login redesign replaces the centered mark and 400 dp column prescribed
+by 05 section 3.1 and 07 section 2 for the production email journey and its
+collection-access states. Keeping that composition was an agent recommendation,
+not a user instruction to limit the redesign to copy changes. The user asked
+for the complete flow across web, tablet and mobile, recognizable actions,
+less explanatory text and at most two sign-in methods.
+
+`SignInLayout` separates a compact product and Field Museum masthead from the
+current task. The task uses the existing `DialogWidths.standard` measure,
+480 dp, on medium and wider allocations. It has a solid paper surface and a
+hairline, with no elevation or decorative background. At compact it is
+top-aligned on the page, with no visible frame or inner padding. The same
+widget ancestry remains mounted across widths so a resize does not replace a
+focused email field. Identity summaries are rows, not additional cards.
+
+One vertical scroll contains masthead, stage and contextual help. Gutters are
+`s4` at compact and `s6` above; the wider stage owns its `s8` inset. Bottom
+clearance includes the keyboard. Headings, recipient text and help wrap at
+the reader's text scale; they have no fixed-height or line-count cap. Stage
+headings are semantic headings and announce a changed task. A state icon
+supports the heading instead of replacing it. Named busy states use the
+existing reduced-motion-aware progress primitive.
+
+The entry field and primary action become an inbox state after sending:
+recognizable mail symbol, recipient and the supported inbox-opening action.
+Resend and its wait are subordinate recovery. Received-link confirmation,
+expired links, retryable failures and collection access each present their
+own current task and available remedy. Authentication and collection access
+remain separate. Success resumes the permitted destination without another
+welcome or confirmation page. Help follows the stage in the same scroll.
+
+The retained Mobbin references are [Plain](https://mobbin.com/flows/ce779e11-e45f-4a02-b2c2-128c4ba402ae)
+for a framed entry and named destinations,
+[Lemni](https://mobbin.com/flows/5040dbbc-e748-4547-8368-57eb1cc40bea)
+for a distinct inbox state, [Loops](https://mobbin.com/flows/f2b258bf-038b-47db-9640-3d9a1c522896)
+and [Mesh](https://mobbin.com/flows/5007394f-ec6e-4368-8663-2236e509e153)
+for the mail handoff, and [Asana](https://mobbin.com/flows/efb6f8a8-1274-40e3-97aa-a3663a10bd93)
+for recognizable account identity. Their screenshots establish visible
+patterns, not measured usability or provider correctness. Tablet adaptation
+is an implementation decision, not a claim of native tablet source evidence.
+
+Fresh captures must show the new entry, sent, return, error and access
+composition at the supported widths, with keyboard insets, 200 percent text,
+dark mode and reduced motion. Earlier captures remain historical evidence;
+unchanged pixels are not the acceptance criterion for this redesign. The
+existing security, accessibility, composition and release gates still apply.

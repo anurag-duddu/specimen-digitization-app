@@ -180,6 +180,9 @@ abstract final class UiIcons {
   /// Help and the glossary.
   static const IconSpec help = IconSpec(PhosphorIconsRegular.lifebuoy);
 
+  /// Email delivery and inbox handoff.
+  static const IconSpec email = IconSpec(PhosphorIconsRegular.envelopeSimple);
+
   /// The account menu.
   static const IconSpec account = IconSpec(PhosphorIconsRegular.userCircle);
 
@@ -433,6 +436,7 @@ abstract final class UiIcons {
     'unmeasured': unmeasured,
     'help': help,
     'account': account,
+    'email': email,
     'signOut': signOut,
     'settings': settings,
     'keyboard': keyboard,

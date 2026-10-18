@@ -30,6 +30,7 @@ APPROVED_DEPLOY_SCRIPTS = {
     ROOT / "scripts/release/deploy_api.py",
     ROOT / "scripts/release/deploy_models.py",
     ROOT / "scripts/release/process_worker.py",
+    ROOT / "scripts/release/provision_auth.py",
 }
 # The operator's plain runtime deploy (scripts/ops/README.md) may issue only its two Cloud Run deploys, the SAM 3
 # service and the worker job; any other deploy command in it still fails. The exemption is for the hand bring-up and

@@ -1,0 +1,10 @@
+{
+  "auth": {
+    "providers": {
+      "googleSignIn": {
+        "oAuthBrandDisplayName": "Specimen Digitization",
+        "supportEmail": "anurag@infinative.com"
+      }
+    }
+  }
+}

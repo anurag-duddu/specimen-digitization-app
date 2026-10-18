@@ -27,7 +27,12 @@ from .organiser import (
     format_locator,
     request_text,
 )
-from .reliability import ReadingStopped, run_agent_bounded
+from .reliability import (
+    ReadingStopped,
+    reported_usage,
+    run_agent_bounded,
+    stopped_usage,
+)
 
 COMPETING = "Competing source-supported extraction candidates"
 LEAD = "Only the other reader's reading states a value: kept as evidence, not as the value"
@@ -315,7 +320,7 @@ def extract_with_agent(gateway, blobs, specimen):
         # Stopped by its token limits or cut off at its output cap: a known
         # outcome with no answer, as a reader's is (#153). The workflow gives
         # the extraction up and the run goes on (Workflow, step "parse").
-        raise ReadingStopped(EXTRACTION_USAGE_LIMIT) from exc
+        raise ReadingStopped(EXTRACTION_USAGE_LIMIT, stopped_usage(exc)) from exc
     run.usage.tokens += result.usage.input_tokens + result.usage.output_tokens
     raw = ModelMessagesTypeAdapter.dump_json(
         [m for m in result.all_messages() if m.kind == "response"]
@@ -329,3 +334,5 @@ def extract_with_agent(gateway, blobs, specimen):
         hashlib.sha256(raw).hexdigest(),
         readings,
     )
+    # Its input and output tokens apart, so its cost can be priced (lane_costs).
+    return reported_usage(result.all_messages(), result.usage)

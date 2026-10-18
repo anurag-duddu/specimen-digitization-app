@@ -21,7 +21,7 @@ import time
 from typing import Literal
 from uuid import UUID, NAMESPACE_URL, uuid5
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from PIL import Image
@@ -30,12 +30,63 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from ..hub_models import SAM3_MODEL
 from .collection_profiles import Sam3Parameters, SegmentationSettings
 from .domain import Region
-from .sam3_effect import canonical_bytes
+from .sam3_effect import INSTANCE_HEADER, canonical_bytes
+
+# When this process had imported the server, which is soon after it started:
+# the first request's instance time counts from here (InstanceMeter). The
+# cost record adds the start before it (lane_costs.SAM_STARTUP_SLACK_SECONDS).
+PROCESS_STARTED = time.monotonic()
 
 SAM3_IMPLEMENTATION = "transformers/5.14.0;torch/2.8.0;cpu"
 MAX_PIXELS = 16_000_000
 MAX_BYTES = 25_000_000
 MAX_MASK_BYTES = 2_000_000
+
+
+class InstanceMeter:
+    """The instance time each request used, reported beside its answer.
+
+    Cloud Run bills specimen-sam by instance, CPU always allocated: its whole
+    life from start to shutdown, idle time included. A request's own seconds
+    and the instance seconds before it (since the last request ended, or, for
+    the instance's first request, since the process started) together cover
+    the instance's life up to the request's end. The idle wait after its last
+    request is charged to its first (lane_costs.segmentation_instance_cost).
+    Every request counts, an answer or a refusal; only answers report it, in
+    the INSTANCE_HEADER header, never in the stored response a repeat returns.
+    """
+
+    def __init__(self, started=PROCESS_STARTED, clock=time.monotonic):
+        self.started, self.clock = started, clock
+        self.lock = threading.Lock()
+        self.begun = self.active = 0
+        self.ended = None
+
+    def begin(self):
+        with self.lock:
+            now = self.clock()
+            since = self.started if self.ended is None else self.ended
+            # Time another request was running was its time, not idle time.
+            idle = 0.0 if self.active else max(0.0, now - since)
+            visit = {"first": self.begun == 0, "idle": idle, "began": now}
+            self.begun += 1
+            self.active += 1
+            return visit
+
+    def report(self, visit):
+        return json.dumps(
+            {
+                "first": visit["first"],
+                "idle_seconds": round(visit["idle"], 3),
+                "request_seconds": round(max(0.0, self.clock() - visit["began"]), 3),
+            },
+            separators=(",", ":"),
+        )
+
+    def end(self):
+        with self.lock:
+            self.active -= 1
+            self.ended = max(self.ended or 0.0, self.clock())
 
 
 def digest(raw: bytes) -> str:
@@ -782,8 +833,11 @@ def serving_mode(env):
     raise RuntimeError("sam3_requires_authorized_cloud_run_launch")
 
 
-def create_app(segmenter, authenticate, *, hard_deadline=False, deadline_seconds=120):
+def create_app(
+    segmenter, authenticate, *, hard_deadline=False, deadline_seconds=120, meter=None
+):
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+    meter = meter or InstanceMeter()
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(request, exc):
@@ -817,7 +871,7 @@ def create_app(segmenter, authenticate, *, hard_deadline=False, deadline_seconds
         return {"status": "live"}
 
     @app.post("/v1/segment")
-    def segment(request: SegmentRequest, http_request: Request):
+    def segment(request: SegmentRequest, http_request: Request, response: Response):
         # A hosting request timeout does not stop model execution. A hard process
         # deadline does; durable claims ensure that restart cannot replay it.
         timer = (
@@ -830,18 +884,22 @@ def create_app(segmenter, authenticate, *, hard_deadline=False, deadline_seconds
         from ..observability import sam3_trace_span, flush_production_observability
         from .worker_deadline import WorkerDeadline
         owner = WorkerDeadline(time.monotonic() + deadline_seconds)
+        visit = meter.begin()
         try:
             with owner.scope():
                 try:
                     with sam3_trace_span(request, http_request.headers):
-                        return segmenter.segment(request)
+                        answer = segmenter.segment(request)
                 finally:
                     flush_production_observability()
+            response.headers[INSTANCE_HEADER] = meter.report(visit)
+            return answer
         except HTTPException:
             raise
         except Exception:
             raise HTTPException(503, "sam3_failed_requires_reconciliation") from None
         finally:
+            meter.end()
             if timer:
                 timer.cancel()
 

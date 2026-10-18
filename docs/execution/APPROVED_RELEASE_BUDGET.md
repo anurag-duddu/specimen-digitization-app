@@ -238,3 +238,17 @@ USD 1 specimen-run limit is unchanged. See the dated approval in
 [`golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator).
 Whether the Cloud Billing budget alert is moved from USD 25 to USD 30 is Not
 confirmed (owner to check).
+
+## Amendment, 2026-10-17 (cost settlement)
+
+The 2026-10-05 correction above holds every SAM call at its full reservation,
+because request seconds do not measure the instance's billed life. `specimen-sam`
+is billed by instance, idle time included. SAM 3 now reports each request's
+instance time: its own seconds, and the instance's idle seconds before it. A
+call settles at that, at Cloud Run's instance-based rates. The instance's start,
+its CPU boost and its last idle wait are charged to its first call (PLAN 4.3,
+note of 2026-10-17). A call without that report still keeps its full
+reservation, and warm idle time past what Cloud Run allows a scaled-to-zero
+instance stays with the infrastructure ceiling. Failed model calls whose
+provider reported their tokens now settle at those tokens. Reservations, the
+USD 1 specimen-run limit and the USD 28 allowance are unchanged.

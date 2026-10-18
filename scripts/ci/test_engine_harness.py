@@ -189,7 +189,21 @@ if name=='python':
 if name=='node':
  target=pathlib.Path(args[0]).name if args else ''
  if target=='engine-contract-reporter.mjs': os.execv(os.environ['REAL_NODE'],[os.environ['REAL_NODE'],*args])
- if target=='wait-local.mjs': sys.exit(19 if fault=='readiness_failed' else 0)
+ if target=='wait-local.mjs':
+  if fault=='readiness_failed': sys.exit(19)
+  if fault=='false_readiness': sys.exit(0)
+  # Identity publication precedes bind; the private TCP listener must be ready.
+  # Keep the real wait-local helper's ten-second budget and its negative controls.
+  import socket
+  host,port=os.environ['FIREBASE_DATACONNECT_EMULATOR_HOST'].rsplit(':',1)
+  assert host=='127.0.0.1'
+  deadline=time.monotonic()+10
+  while (remaining:=deadline-time.monotonic())>0:
+   try:
+    with socket.create_connection((host,int(port)),timeout=min(.1,remaining)): sys.exit(0)
+   except OSError:
+    time.sleep(max(0,min(.1,deadline-time.monotonic())))
+  sys.exit(19)
  if target=='seed-integration.mjs':
   if fault!='seed_missing':
    seed=json.loads((root/'seed.json').read_text())
@@ -274,7 +288,8 @@ if name in ('postgres','dc','firebase','java'):
    deadline=time.monotonic()+1
    while not (root/'instances'/(str(owned.pid)+'.json')).exists() and time.monotonic()<deadline: time.sleep(.001)
    assert (root/'instances'/(str(owned.pid)+'.json')).exists(),'fixture Java identity was not published'
-  (root/'storage-cli-running').touch(); print('Downloading forbidden runtime' if fault=='storage_download' else 'Storage fixture started',flush=True)
+  (root/'storage-cli-running').touch()
+  if fault!='storage_quiet': print('Downloading forbidden runtime' if fault=='storage_download' else 'Storage fixture started',flush=True)
   while True:
    if (root/'hub-requested').exists() and fault in ('storage_ready_cli_exit','storage_ready_java_exit'):
     if child and child.poll() is None: child.terminate(); child.wait(timeout=1)
@@ -738,6 +753,36 @@ def test_fixture_ports_are_private(shell_fixture):
     assert not set(ports) & {5559, 9509, 9299}, f'fixture reused a shared default port: {ports}'
 
 
+def test_fixture_wait_local_waits_for_listener(shell_fixture):
+    root, env = shell_fixture
+    # Reserve the expected port without listening: readiness cannot succeed
+    # until this test releases the controlled startup delay with listen().
+    with socket.socket() as listener:
+        listener.bind(('127.0.0.1', 0))
+        env['FIREBASE_DATACONNECT_EMULATOR_HOST'] = f'127.0.0.1:{listener.getsockname()[1]}'
+        waiter = env.processes.start([str(root / 'bin/node'), str(root / 'scripts/data/wait-local.mjs')],
+                                     env=dict(env, FIXTURE_FAULT=''))
+        deadline = time.monotonic() + 5
+        while not (root / 'calls.jsonl').exists() and waiter.poll() is None and time.monotonic() < deadline:
+            time.sleep(.01)
+        assert (root / 'calls.jsonl').exists(), 'synthetic waiter never started'
+        with pytest.raises(subprocess.TimeoutExpired):
+            waiter.wait(timeout=1)
+        listener.listen(1)
+        assert waiter.wait(timeout=5) == 0, 'synthetic waiter did not observe its ready listener'
+
+
+@pytest.mark.parametrize('fault,code', [('readiness_failed', 19), ('false_readiness', 0)])
+def test_fixture_wait_local_preserves_faults(shell_fixture, fault, code):
+    root, env = shell_fixture
+    with socket.socket() as listener:
+        listener.bind(('127.0.0.1', 0))
+        env['FIREBASE_DATACONNECT_EMULATOR_HOST'] = f'127.0.0.1:{listener.getsockname()[1]}'
+        result = env.processes.run([str(root / 'bin/node'), str(root / 'scripts/data/wait-local.mjs')],
+                                   env=dict(env, FIXTURE_FAULT=fault), timeout=5)
+        assert result.returncode == code
+
+
 @pytest.mark.parametrize('fault', ['compile_errors_exit0','seed_missing','seed_mismatch','readiness_failed','false_readiness','port_mismatch'])
 def test_sql_wrapper_requires_compile_seed_and_readiness(shell_fixture, fault):
     if fault=='port_mismatch':
@@ -845,6 +890,31 @@ def test_storage_wrapper_complete_inventory(shell_fixture,layout):
     assert [r['id'] for r in lifecycle['node_events']]==selection['connector_groups']+selection['storage_assertions']
     assert [r['id'] for r in lifecycle['processes']]==selection['processes']
     if layout=='standalone': assert_storage_tree_stopped(shell_fixture,lifecycle)
+
+
+@pytest.mark.parametrize('layout', ['direct', 'standalone'])
+def test_storage_readiness_accepts_quiet_cli_with_private_log(shell_fixture, layout):
+    root, env = shell_fixture
+    if layout == 'standalone':
+        env['FIXTURE_STANDALONE'] = 'true'
+    control = run_shell(shell_fixture)
+    assert control.returncode == 0, control.stdout + control.stderr
+    # A ready child need not write stdout/stderr. The reporter owns its log
+    # before spawn; readiness must not race that child's first output event.
+    result = run_shell(shell_fixture, 'storage_quiet', storage=True)
+    lifecycle = json.loads((root / 'lifecycle.json').read_text())
+    diagnostics = result.stdout + result.stderr + json.dumps(lifecycle)
+    assert result.returncode == 0, diagnostics
+    stages = [(row['id'], row['outcome']) for row in lifecycle['stages']]
+    assert ('storage.ready', 'passed') in stages, diagnostics
+    assert ('storage.assertions', 'passed') in stages, diagnostics
+    assert lifecycle['cleanup']['outcome'] == 'passed', diagnostics
+    logs = list((root / 'storage-out').glob('private-*/storage.cli.log'))
+    assert len(logs) == 1, logs
+    assert logs[0].read_bytes() == b''
+    assert logs[0].stat().st_mode & 0o777 == 0o600
+    if layout == 'standalone':
+        assert_storage_tree_stopped(shell_fixture, lifecycle)
 
 
 def assert_storage_tree_stopped(fixture,lifecycle,cleanup='passed'):
@@ -1411,7 +1481,7 @@ def test_storage_cleanup_rejects_live_owned_survivor(shell_fixture):
         lifecycle=json.loads((root/'lifecycle.json').read_text())
         assert lifecycle['cleanup']['outcome']=='failed',lifecycle['cleanup']
         assert lifecycle['cleanup']['survivors']==[child.pid],lifecycle['cleanup']
-        assert ('storage.assertions','passed') in [(row['id'],row['outcome']) for row in lifecycle['stages']]
+        assert ('storage.assertions','passed') in [(row['id'],row['outcome']) for row in lifecycle['stages']], result.stdout+result.stderr+json.dumps(lifecycle)
     finally:
         child.kill()
         child.wait(timeout=5)

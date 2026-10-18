@@ -31,4 +31,19 @@ void main() {
       reason: 'Debug, Profile, and Release must sign with the entitlement.',
     );
   });
+
+  test('app_links exclusively owns iOS deep-link delivery', () {
+    final String info = File('ios/Runner/Info.plist').readAsStringSync();
+
+    expect(
+      RegExp(
+        r'<key>FlutterDeepLinkingEnabled</key>\s*<false\s*/>',
+      ).allMatches(info),
+      hasLength(1),
+    );
+    expect(
+      RegExp(r'<key>FlutterDeepLinkingEnabled</key>').allMatches(info),
+      hasLength(1),
+    );
+  });
 }

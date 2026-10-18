@@ -195,21 +195,27 @@ void main() {
       await tester.pump();
       expect(find.text('Sending link…'), findsOneWidget);
       expect(
-        tester.widget<UiButton>(find.byType(UiButton).first).onPressed,
+        tester
+            .widget<UiButton>(find.widgetWithText(UiButton, 'Sending link…'))
+            .onPressed,
         isNull,
       );
       access.sendWait!.complete();
       await tester.pumpAndSettle();
       expect(find.text('Resend link'), findsOneWidget);
       expect(
-        tester.widget<UiButton>(find.byType(UiButton).first).onPressed,
+        tester
+            .widget<UiButton>(find.widgetWithText(UiButton, 'Resend link'))
+            .onPressed,
         isNull,
       );
       expect(find.text('You can request another link in 60s.'), findsOneWidget);
       now = now.add(const Duration(seconds: 61));
       await tester.pump(const Duration(seconds: 1));
       expect(
-        tester.widget<UiButton>(find.byType(UiButton).first).onPressed,
+        tester
+            .widget<UiButton>(find.widgetWithText(UiButton, 'Resend link'))
+            .onPressed,
         isNotNull,
       );
       await tester.tap(find.text('Change email'));
