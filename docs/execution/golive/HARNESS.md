@@ -715,7 +715,9 @@ references are earlier sessions' readings of the images. A pick is right when
 the reference supports that reader at every difference that is more than
 capitalization, as G19 asks; where neither reader is right, no pick is right,
 and a call "ends right" when it picks a right reader or, where none is right,
-picks none. "Low" and "medium" ran six times on each of the 12 labels
+picks none. S4's own pick rule for T1 was looser (it accepted Muse on 105526323
+and 105526330 and any pick on 105526321); under it one more "medium" pick is
+right (35 of 45), "low"'s are unchanged, and the choice below stands. "Low" and "medium" ran six times on each of the 12 labels
 ("medium" once more, a smoke call, on 105526329), the default three times. Six
 labels where one reader wrote "[unreadable]" (19f0f1f6, d10333ff's label 3,
 two of 2c6ef7b0, ebfc6171, f9d55015) have no reference; each arm ran three
@@ -743,9 +745,10 @@ it left more labels undecided that a reader had right. Cost and latency
 decided nothing. Every setting still makes wrong picks, about one call in seven
 on these labels with "medium" or "low". Most are on three labels: e98a924c (the
 reading without the foot mark and the side code), 01b79931 (a slide code) and
-105526323 ("+" or the female sign where the label has "&"). Each of the two arms also
-twice picked the fluent reading of a trap (cb903c0e's "Mckinley" once and a
-"Chimaltenango" once). No answered call of the second probe picked 19f0f1f6's
+105526323 ("+" or the female sign where the label has "&"). "Medium" also picked
+the fluent reading of a trap three times (cb903c0e's "Mckinley" once, and
+"Chimaltenango" on 105526329 and on 105526330), "low" twice (cb903c0e once,
+105526329 once). No answered call of the second probe picked 19f0f1f6's
 "Chelotonic"; all seven picked no reader there. On d10333ff's label 3,
 "medium" twice and "low" once picked the reading ending "det 2051", where the
 print reads 2021. DeepInfra answered fastest and cleanly on the day, but it
