@@ -22019,3 +22019,8 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
   - (a) S8's pilot locality table normalises spellings. cb903c0e's label reads "Mckimley", the table "McKinley". A table made for georeferencing is not a literal reference; check the crop at each difference.
   - (b) GLM's first-pass picks vary run to run on the same label and setting. Three runs a label could not separate two settings; six runs left them within a few picks. Size a pick comparison by repeats, not by labels alone.
   - (c) T1's saved crops and readings (`~/specimen-golive/runs/t1-routes`) can drive `first_pass_direct` directly: a one-region asset per crop, and the newest saved production run as the template for profile, pins and pinned prompt.
+- Validation actually run (round 2, commit `55de70b5`):
+  - Red, on the previous head `1b3c9fd1`'s code (a copy of its `src` on `PYTHONPATH`): 3 fail and 3 pass. The 3 that fail are the route's "medium", every first-pass request carrying it, and the harness settings pin holding a wrapped model's option (it shows `{'max_tokens': 128}`). The 3 that pass are guards: both reader routes send no option, and the harness route carries none.
+  - The touched files with `test_model_gateway.py`, `test_first_pass_null_text.py` and `test_research_harness_agents.py`: 77 passed.
+  - Full Python suite at `55de70b5` (`scripts/ci/python_shards.py local --count 6`): 16,214 passed, 47 skipped, 1 failed and 2 errors. These are the same three as at `d729ff10` and on base in this environment: `test_fixture_bytes_match_regeneration`, and the two `test_upload_completion_http.py` setups.
+  - `pre-commit run --files` on the seven changed files: passed.
