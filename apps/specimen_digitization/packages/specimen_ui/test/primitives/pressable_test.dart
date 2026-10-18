@@ -93,6 +93,69 @@ void main() {
     expect(tester.getSize(find.byType(SizedBox).first).height, 40);
   });
 
+  testWidgets('an explicit rounded rectangle rings its own contour', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      uiHarness(
+        child: Pressable(
+          semanticsLabel: 'Sign in',
+          onPressed: () {},
+          autofocus: true,
+          radius: 4,
+          focusShape: FocusRingShape.roundedRectangle,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+          builder: (context, states) => const SizedBox(width: 120, height: 40),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final ring = tester.widget<FocusRing>(find.byType(FocusRing));
+    expect(ring.visible, isTrue);
+    expect(ring.shape, FocusRingShape.roundedRectangle);
+    expect(ring.radius, 4);
+    expect(
+      tester.renderObject(
+        find.descendant(
+          of: find.byType(FocusRing),
+          matching: find.byType(CustomPaint),
+        ),
+      ),
+      paints
+        ..rrect(
+          rrect: RRect.fromRectAndRadius(
+            const Rect.fromLTWH(0, 0, 120, 40),
+            const Radius.circular(4),
+          ),
+        )
+        ..rrect(
+          rrect: RRect.fromRectAndRadius(
+            const Rect.fromLTWH(-3, -3, 126, 46),
+            const Radius.circular(8),
+          ),
+        ),
+    );
+  });
+
+  testWidgets('omitting a focus override keeps existing contours', (
+    WidgetTester tester,
+  ) async {
+    for (final capsule in [false, true]) {
+      await tester.pumpWidget(
+        uiHarness(
+          child: Builder(
+            builder: (context) =>
+                _box(context, onPressed: () {}, capsule: capsule),
+          ),
+        ),
+      );
+      expect(
+        tester.widget<FocusRing>(find.byType(FocusRing)).shape,
+        capsule ? FocusRingShape.stadium : FocusRingShape.superellipse,
+      );
+    }
+  });
+
   testWidgets('a tap fires the callback and a disabled tap does not', (
     WidgetTester tester,
   ) async {
