@@ -21893,6 +21893,7 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
       - the 5 that pass are guards: a run that cuts "Mt. Apo", a piece of a candidate, and a city over two lines, at the check and, for the cut run and the city, through the step.
     - The whole module on base: 22 failed, 9 passed.
     - `tests/field_research`: 3,022 passed. With the related suites and #378's two test files: 3,477 passed.
+    - Full Python suite at `53da75b4` (`scripts/ci/python_shards.py local --count 6`): 16,157 passed, 47 skipped, 1 failed and 2 errors, the same three that fail on base `d5a6502d` in this environment (above).
   - Offline replay (same script and method):
     - The control on base gives back every saved location value of both runs.
     - Branch: e98a924c's precise location settles "E Slope Mt.\nMcKinley, Davao Prov." and 2b02009d's "Seliban Riv.\nMt. Apo", each on its expert's first recorded answer. No other location field of the two runs changes.
