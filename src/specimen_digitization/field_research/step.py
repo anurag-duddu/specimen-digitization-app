@@ -421,9 +421,9 @@ def _literal_row(key: str, reading: Reading, literal: str, asset_id, blobs, *, t
     candidate (agreement.TRANSCRIPT), the row cites its first run of whole
     words (agreement.verbatim_runs), and its record says so ("basis":
     "transcript")."""
-    from .agreement import verbatim_runs
+    from .agreement import written_runs
 
-    runs = verbatim_runs(reading.text, literal) if transcript else []
+    runs = written_runs(key, reading.text, literal) if transcript else []
     quote_start, quote_end, start, end = _excerpt_span(reading.text, literal, runs[0][0] if runs else None)
     excerpt = reading.text[quote_start:quote_end]
     record = json.dumps({"field_key": key, "reading": reading.name, "region_id": reading.region_id,
@@ -550,7 +550,10 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending, r
     attempt has not done with it (a county needs its province settled). A place settled on
     text its expert read in the transcript (transcript_code) is written by
     each reading that writes that text as whole words
-    (agreement.verbatim_runs)."""
+    (agreement.verbatim_runs). A country no answer settled does not hold a
+    place back when the gazetteers' answers, of any field, confirm every
+    country text of every reading as one nation that the place lies in
+    (_confirmed_country)."""
     from .agreement import (
         PLACE_ORDER,
         PLACE_VALUE_FIELDS,
@@ -566,6 +569,7 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending, r
     if found is None:
         return None  # _refusal has refused it already.
     basis, candidate = found.basis, found.candidate
+    confirmed = _confirmed_country(places, received) if task.key != "country" else {}
     named = [by_name[n] for n in dict.fromkeys(answer.reading_names) if n in by_name and answer.literal in by_name[n].text]
     decided = {r.region_id: r for r in readings if r.input_source == "decided_transcript"}
     rows = {item.id: item for item in run.evidence}
@@ -603,10 +607,30 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending, r
                 if key in pending or value is None or value.state != ValueState.SUPPORTED or not value.literal:
                     unsettled.add(key)
         refused = parents_refusal(task.key, candidate, basis, written=written, settled=settled,
-            literal=answer.literal, unsettled=frozenset(unsettled))
+            literal=answer.literal, unsettled=frozenset(unsettled), confirmed=confirmed)
         if refused is not None:
             return refused
     return None
+
+
+def _confirmed_country(places: Mapping[str, Mapping[str, frozenset[str]]],
+        received: Mapping[str, Sequence[SourceAnswer]] | None) -> dict:
+    """The nation the gazetteers confirm the record's country texts as, for
+    the parents check (_misfit, agreement.parents_refusal's `confirmed`):
+    agreement.confirmed_place on the country texts of every reading
+    (`places`, before this attempt changed any value), checked against the
+    answers every field received (`received`): an expert may look up another
+    field's text. Empty when the record writes no country, or its texts are
+    not all confirmed as one nation. 3781e440 writes only reader 2B's "USA",
+    which Wikidata's answer for "United States of America" confirms as the
+    United States."""
+    from .agreement import confirmed_place
+
+    texts = sorted(frozenset().union(*places.get("country", {}).values())) if places.get("country") else []
+    if not texts:
+        return {}
+    found = confirmed_place([item for items in (received or {}).values() for item in items], texts, "country")
+    return {"country": found} if found is not None else {}
 
 
 def _record_code(value: FieldValue, answers: Iterable[SourceAnswer]) -> str | None:
@@ -737,7 +761,7 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
     copied to the other unit, is one kind; an elevation or a date inside
     the precise location is not. Two fields that both settle the same text
     from the transcript both go to review."""
-    from .agreement import TRANSCRIPT, literal_basis, may_share_text, verbatim_runs
+    from .agreement import TRANSCRIPT, literal_basis, may_share_text, written_runs
 
     evidence = {item.id: item for item in run.evidence}
     by_name = {reading.name: reading for reading in readings}
@@ -763,7 +787,7 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
         if task is not None and named and literal_basis(task, readings, literal, named) == TRANSCRIPT:
             regions = {r.region_id for r in named}
             mine[outcome.key] = frozenset((r.name, start, end) for r in readings if r.region_id in regions
-                for start, end in verbatim_runs(r.text, literal))
+                for start, end in written_runs(outcome.key, r.text, literal))
     for key, value in run.fields.items():
         if key not in researched and _claims_text(key, value, human):
             claims.append((key, _value_spans(value, readings, evidence)))
@@ -1805,7 +1829,31 @@ def _first_pass(run, tasks_by_key: Mapping[str, FieldTask], ordered: Sequence[Fi
         if copy.fields[key].state == ValueState.SUPPORTED and copy.fields[key].layer in SETTLED_LAYERS}
 
 
-def _country_alternatives_are_lower_places(run, task, outcome, *, readings, received, fresh) -> bool:
+def _claimed_texts(run, tasks_by_key: Mapping[str, FieldTask], readings: Sequence[Reading],
+        key: str) -> dict[str, frozenset[str]]:
+    """Each reading's texts for the fields other than `key`, for
+    agreement.disputed: the organiser's candidates for those fields (their
+    tasks'), and each other field's literal where the reading writes it as
+    whole words, after this attempt's answers (d10333ff's taxon "Panorpa",
+    which only reader 3B writes)."""
+    from .agreement import verbatim_runs
+
+    found: dict[str, set[str]] = {}
+    for other, task in tasks_by_key.items():
+        if other != key:
+            for candidate in task.candidates:
+                if candidate.literal.strip():
+                    found.setdefault(candidate.reading, set()).add(candidate.literal)
+    for other, value in run.fields.items():
+        if other != key and value.literal and value.literal.strip():
+            for reading in readings:
+                if verbatim_runs(reading.text, value.literal):
+                    found.setdefault(reading.name, set()).add(value.literal)
+    return {name: frozenset(texts) for name, texts in found.items()}
+
+
+def _country_alternatives_are_lower_places(run, task, outcome, *, readings, received, fresh,
+        claimed: Mapping[str, Iterable[str]] | None = None) -> bool:
     """Fresh lower-place proof for every alternative, without country counterproof.
 
     Keep every original country alternative, including other labels, alongside
@@ -1813,8 +1861,30 @@ def _country_alternatives_are_lower_places(run, task, outcome, *, readings, rece
     ordinary derivation still requires compatible qualified parent ancestry.
     Only recognized source kinds prove a level. Nonempty unmodeled kinds give
     neither lower-place proof nor country counterproof; missing kinds fail closed.
+
+    Two kinds of alternative hold nothing back (the third rerun of 2026-10-18):
+    - text that stands on no reading a field may settle on
+      (agreement.set_aside): a decided label's other reader's text its
+      decided reading does not write (G19), or text the two readers of a
+      label with no decided transcript dispute, the other reader writing
+      another field's text at that very point (`claimed`, _claimed_texts).
+      d10333ff's label 3, a determination label whose first pass reached its
+      token cap in one run and chose no reading in the next two, has 3A
+      "Panama" where 3B writes "Panorpa", its taxon; its label 1 was decided
+      in two of the three runs ("ILLINOIS", beside 1B's "BONITELL"). Such
+      text no longer competes with the place another label settles;
+    - text the gazetteers confirm as the very nation every newly settled
+      child lies in (agreement.confirmed_place: "USA" beside Coles County).
     """
-    from .agreement import PLACE_ANSWERED, at_level, literal_refusal, verbatim_runs
+    from .agreement import (
+        PLACE_ANSWERED,
+        at_level,
+        confirmed_place,
+        lies_in,
+        literal_refusal,
+        set_aside,
+        verbatim_runs,
+    )
     from .contracts import GAZETTEERS
     from .location_reassessment import protected_keys
 
@@ -1830,14 +1900,13 @@ def _country_alternatives_are_lower_places(run, task, outcome, *, readings, rece
         and source.evidence is not None and source.evidence.id in fresh]
     # A newly settled administrative child must cite the direct gazetteer
     # record that names its country; a GEOLocate query part is never ancestry.
-    if not any(child is not None and child.state == ValueState.SUPPORTED
-            and child.layer in {"settled", "verbatim"} and child.authority_id
-            and source.evidence.id in child.evidence_ids
-            and child.evidence_relations.get(source.evidence.id) in {"supports", "decides"}
-            and any(candidate.authority_id == child.authority_id and candidate.parents
-                and candidate.parents[-1].name for candidate in at_level(key, source))
-            for key in ("province_state", "county") if (child := run.fields.get(key)) is not None
-            for source in captured):
+    children = [candidate for key in ("province_state", "county") if (child := run.fields.get(key)) is not None
+        and child.state == ValueState.SUPPORTED and child.layer in {"settled", "verbatim"} and child.authority_id
+        for source in captured if source.evidence.id in child.evidence_ids
+        and child.evidence_relations.get(source.evidence.id) in {"supports", "decides"}
+        for candidate in at_level(key, source)
+        if candidate.authority_id == child.authority_id and candidate.parents and candidate.parents[-1].name]
+    if not children:
         return False
     by_name = {reading.name: reading for reading in readings}
     alternatives = [(literal, tuple(readings)) for literal in answer.options]
@@ -1848,6 +1917,11 @@ def _country_alternatives_are_lower_places(run, task, outcome, *, readings, rece
     alternatives.extend((literal, tuple(reading for reading in readings if reading.observation_id == observation))
         for observation, literal in task.current.verbatim_by_observation.items())
     for literal, possible in alternatives:
+        if literal and set_aside(literal, readings, claimed or {}):
+            continue
+        nation = confirmed_place(captured, [literal], "country") if literal else None
+        if nation is not None and all(lies_in(child, "country", nation) for child in children):
+            continue
         named = [reading for reading in possible if literal and verbatim_runs(reading.text, literal)]
         if not named or literal_refusal(task, readings, literal=literal, named=named) is not None:
             return False
@@ -1926,6 +2000,7 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     received: dict[str, list[SourceAnswer]] = {}
     for call in calls:
         received.setdefault(call.field_key, []).append(call.answer)
+    outcomes = _across_lines(outcomes, by_name)
     outcomes = _reconcile_location_outcomes(run, tasks_by_key, outcomes, readings=readings,
         received=received, evidence=evidence, human=human)
     # The places first, from the country down: a place below it settles only
@@ -1958,7 +2033,8 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     ambiguous_country = None
     if "country" in eligible and _country_alternatives_are_lower_places(run, tasks_by_key.get("country"),
             next((outcome for outcome in outcomes if outcome.key == "country"), None),
-            readings=readings, received=received, fresh=fresh):
+            readings=readings, received=received, fresh=fresh,
+            claimed=_claimed_texts(run, tasks_by_key, readings, "country")):
         ambiguous_country = run.fields["country"]
         run.fields["country"] = ambiguous_country.model_copy(update={"state": ValueState.UNRESOLVED})
     derived = derive.fill(run, eligible=eligible, asset_id=asset_id, blobs=blobs, received=received)
@@ -1983,6 +2059,29 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
             value.reason = " ".join(part for part in (value.reason, _unreachable_note(outcome, value, rows))
                 if part)
     return derived
+
+
+def _across_lines(outcomes: Sequence[FieldOutcome], by_name: Mapping[str, Reading]) -> tuple[FieldOutcome, ...]:
+    """Each resolved answer of a field whose literal may run over consecutive
+    lines (agreement.ACROSS_LINES: precise location) with its literal as the
+    readings it names write it (agreement.across_lines), when it gives a
+    space for a line break or a line break for a space, as the experts'
+    check gives it (experts._Expert._across_lines); every other outcome as
+    it is."""
+    from .agreement import ACROSS_LINES, across_lines
+
+    found = []
+    for outcome in outcomes:
+        answer = outcome.answer
+        if (outcome.key in ACROSS_LINES and answer is not None and answer.outcome == "resolved"
+                and answer.literal and answer.reading_names
+                and all(name in by_name for name in answer.reading_names)
+                and not all(answer.literal in by_name[name].text for name in answer.reading_names)):
+            literal = across_lines(outcome.key, [by_name[name] for name in answer.reading_names], answer.literal)
+            if literal is not None:
+                outcome = replace(outcome, answer=answer.model_copy(update={"literal": literal}))
+        found.append(outcome)
+    return tuple(found)
 
 
 def _source_names(source_ids: Iterable[str]) -> str:

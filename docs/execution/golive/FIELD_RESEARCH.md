@@ -419,7 +419,35 @@ handover runs field research instead of the six specialists:
      "6400" of "6400'" as metres). It may cut or extend no candidate of
      that reading ("Sept. '46" beside the candidate "3 Sept. '46", "San
      Pedro Sacatepequez" beside the candidate "San Pedro"): the answer is
-     then refused as above. A date or an elevation so read is never one end
+     then refused as above.
+     Precise location, the label's verbatim locality, is the one exception
+     (`agreement.ACROSS_LINES`; the coordinator's request of 2026-10-18,
+     after the third rerun, where two of its experts fell back). Labels
+     often write a locality over consecutive lines, and then its literal
+     may run over them: a run of whole words over consecutive lines of
+     each reading the answer names, starting at a word's edge on its first
+     line and ending at one on its last, with no blank line
+     (`agreement.runs_across_lines`, `agreement.written_runs`). Its value
+     keeps the line breaks as the readings write them. An answer that
+     gives a space for a line break (or a line break for a space) is read
+     as the text every reading it names writes so (`agreement.across_lines`,
+     in the expert's check and in the step): e98a924c's both readers write
+     "CNHM. E Slope Mt." over "McKinley, Davao Prov.", and the answer "E
+     Slope Mt. McKinley, Davao Prov." is their "E Slope Mt.\nMcKinley,
+     Davao Prov.". Readers that break the lines at different words write no
+     one text, and the answer is sent back. Such a literal may hold whole
+     candidates, the organiser's lines of one locality joined in their order
+     on the label (2b02009d's decided reading writes "Seliban Riv." over
+     "Mt. Apo", given as two candidates), but it still cuts none: it is no
+     piece of a candidate, and no place of a candidate in the reading lies
+     partly inside it (`agreement._cut_candidate`). Those candidates are
+     then parts of it, not rival texts of the label (`agreement.labels`),
+     and where the label has no decided transcript every reader must write
+     it, line breaks, letter case and spacing aside. Every other check holds
+     as on one line: it holds no date, elevation or range of them
+     (`_holds_another_kind`), and every reading it names writes it. Every
+     other field, the place fields among them, keeps its literal on one
+     line. A date or an elevation so read is never one end
      of a range (`agreement._part_of_range`, PR #300's review and finding 1
      of its review of 6fd595b3b): where a reading it is read from writes
      it, the comma- or semicolon-separated part of the line holding it may
@@ -801,7 +829,19 @@ handover runs field research instead of the six specialists:
      GBIF's decided candidate for the whole name it writes (a success
      answer), as the one candidate at a place field's level when it has that
      name (a success or ambiguous answer; see Places), or, for precise
-     location, as a success answer's candidate of that name; a place source
+     location, as a success answer's candidate of that name. A place text
+     written as an abbreviation is also confirmed as the one candidate at
+     the field's level of an answer asked an expansion its letters fit
+     (P4 below, the rule a value settles on such an expansion by), whatever
+     that candidate's name: 3781e440's reader 2B writes "USA: Ill. Coles
+     Co." and 2A "U.S.B.I.L.: Coles Co.,", and Wikidata's answers for
+     "United States of America" and "Illinois" confirm 2B's "USA" and
+     "Ill." (the third rerun of 2026-10-18; until then only a candidate of
+     the text's own name did, and the state went to review, `DIFFER`).
+     Initials so confirmed still settle only with another place inside them
+     (Initials, below). An answer that cites only the lookup of "USA" itself,
+     whose one nation is "United States", is sent back to cite the answer
+     asked the expansion. A place source
      was asked about a text when the text is the query's first
      comma-separated part: the only name a gazetteer searches (the part
      before the first comma) and the place GEOLocate looks for. The rest of
@@ -1069,7 +1109,23 @@ handover runs field research instead of the six specialists:
        Wikidata's one department for "San Pedro", in Paraguay, never settles
        a Guatemalan province. A country needs no parent. A place that waits
        for a country whose research failed is researched again with it on
-       the retry;
+       the retry. A country that no answer settled holds no place back when
+       the reading writes none, writes the place's own misfiled text there,
+       or when the Getty TGN, Wikidata and NGA answers of any field confirm
+       every country text of every reading of the record as one nation
+       (`agreement.confirmed_place`: each text confirmed as above, of its own
+       name or through an expansion, and every candidate at a nation's level
+       of an answer about it or its expansion that same nation), and the
+       place lies in that nation (`step._confirmed_country`). A country
+       field left with no value and no text is then derived from the place
+       (`derive.fill`, as for a label that writes no country), and one left
+       ambiguous may be (the country derivation below); the text never
+       supplies the value. 3781e440's country expert never cited Wikidata's
+       answer for "United States of America" (only its answer for "USA"
+       itself and the no-match answers for "U.S.B.I.L."), every one of its
+       answers was refused, and its county was refused `NO_COUNTRY`; "USA" is confirmed as the
+       United States, so Illinois and Coles County settle and derive it.
+       Two readers who write "USA" and "Canada" leave the places for review;
      - a county also needs the province its reading writes to have a
        settled value ("The province the label gives is not settled, so
        this county cannot be confirmed inside it.", `agreement.NO_PROVINCE`;
@@ -2461,6 +2517,33 @@ replacement. If derivation cannot complete, the original ambiguity is retained.
 An explicitly selected authority record supplies its own ancestry; another
 same-name record cannot supply parents for it. This changes no attempt or
 spending authorization and does not apply archived answers to a live record.
+
+Two kinds of country alternative no longer hold that derivation back (the
+third rerun of 2026-10-18, `agreement.set_aside`, `agreement.confirmed_place`):
+- text no reading a field may settle on writes. Every reading that writes it
+  is either a decided label's other reader whose decided reading does not
+  write it (G19: that reader is evidence only, `agreement.evidence_only`),
+  or one of the two readers of a label with no decided transcript where the
+  other reader writes other words at that very point (`agreement.disputed`):
+  each run of the text lies wholly inside the token differences of the two
+  readings (`application.first_pass.reading_differences`, the differences
+  the label's first pass judges), each with text on the other side; that
+  text is neither the text's place name nor one letter from it; it is
+  written, as whole words, in one of the other reader's texts for another
+  field (the organiser's candidates and the other fields' literals,
+  `step._claimed_texts`); and the other reader writes the text nowhere.
+  d10333ff's determination label had no decided transcript in three runs
+  (its first pass reached its token cap once and chose no reading twice):
+  reader 3A writes "Panama" where 3B writes "Panorpa", 3B's taxon. Its label
+  1 settles Edgar County (and, in two of the runs, Illinois), and the
+  country is derived as the United States. A reader that writes the text too, writes it with other
+  accents or one letter off, leaves the line out, or writes there words no
+  field holds keeps the country for review, as do both readers writing
+  "Panama";
+- text the gazetteers confirm as the very nation every newly settled child
+  lies in ("USA" beside Coles County).
+
+Such text still counts as its label's text everywhere else (G20 and G32).
 
 On 2026-10-16 the owner authorized one additional same-run location reassessment
 for specimen `ebfc6171-bf2f-56b8-a35b-442798810461`, run

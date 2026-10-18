@@ -446,6 +446,7 @@ class _Expert:
             )
         names = answer.reading_names
         if answer.outcome == "resolved":
+            answer = self._across_lines(answer)
             names = self._validate_resolved(answer, received)
         elif answer.outcome == "label_lacks_value":
             if answer.literal or answer.value or answer.authority_id:
@@ -460,6 +461,20 @@ class _Expert:
             self.by_label[_label(n)].name if _label(n) in self.by_label else n for n in names
         ]
         return answer.model_copy(update={"reading_names": canonical})
+
+    def _across_lines(self, answer: FieldAnswer) -> FieldAnswer:
+        """A precise location written over consecutive lines, given with a
+        space for a line break (or a line break for a space), as the text the
+        readings it names write (agreement.across_lines): e98a924c's "E Slope
+        Mt. McKinley, Davao Prov." is "E Slope Mt.\\nMcKinley, Davao Prov." in
+        both readers. The answer as it is otherwise."""
+        literal = answer.literal
+        named = [self.by_label[_label(n)] for n in answer.reading_names if _label(n) in self.by_label]
+        if (not literal or not named or len(named) != len(answer.reading_names)
+                or all(literal in reading.text for reading in named)):
+            return answer
+        found = agreement.across_lines(self.task.key, named, literal)
+        return answer.model_copy(update={"literal": found}) if found is not None else answer
 
     def _validate_resolved(
         self, answer: FieldAnswer, received: Mapping[str, SourceAnswer]
@@ -488,6 +503,9 @@ class _Expert:
                     f"Reading {reading.name} does not contain the literal {literal!r} exactly. "
                     "Copy the literal character for character from the readings you name, "
                     "and name only readings that contain it."
+                    + (" A locality written over consecutive lines is copied with its line breaks "
+                       "(or a space for each), and every reading you name writes it the same way."
+                       if key in agreement.ACROSS_LINES else "")
                 )
             # A written rule (G41's unit, G45's slide codes) that refuses this literal.
             if (refusal := extraction_refusal(key, literal, reading.text)) is not None:
