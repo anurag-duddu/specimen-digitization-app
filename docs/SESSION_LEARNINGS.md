@@ -22715,3 +22715,25 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   configuration, provider bytes, membership, runtime pins, or IAM changed.
   Real connector and deployed intake acceptance: Not confirmed. Full canonical
   verification and hosted checks are required for this integrated candidate.
+
+### 2026-10-18: integrated intake candidate passes canonical verification
+
+- Same task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch/worktree
+  `codex/compare-photo-intake-ux` / `5da8`, PR #368. Independent G51 source
+  review approved exact code head `6fc70000a3504bc4a6a950ebae030447b761d776`
+  (tree `90e3df8c905bb562913d6dac1bd4e88d74ae756e`) with no unresolved findings.
+- Full `scripts/ci/verify.sh` exited 0 on that head: 18,772 Python tests passed,
+  48 skipped, all 18,820 collected tests accounted for exactly once across six
+  shards; 1,309 design-system tests and 3,190 app tests passed (seven app skips);
+  both analyzers, formatting, release web build and 13-route/five-header smoke
+  passed. Cached ShellCheck was available. Durable local log:
+  `/Users/anuragduddu/.codex/visualizations/2026/10/17/01a149fc-3649-75c1-a121-11c19de12cb8/bulk-intake-research/implementation/verify-6fc70000.log`.
+- GitHub main remains `0eeab118ffcac113089d683ba2b584431bb65639`. New hosted
+  checks must qualify the updated published candidate; previous green checks
+  on `71333f59` are not substituted. This entry changes no tested code.
+- Production setup is blocked on Google's identity verification: the existing
+  CLI admin session expired; the owner Chrome passkey page waits at Continue,
+  and the Mac is now locked. No production setup was applied in this release
+  continuation. Runtime pins and client flags stay inactive. Deployment,
+  Gmail/provider E2E, native capture and final scientific Queue acceptance:
+  Not confirmed. No branch/worktree pruning occurred.
