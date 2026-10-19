@@ -63,9 +63,9 @@ Today a specimen costs about 2.9 cents in total, 1.7 cents of it AI
 
 - Nemotron reading and parsing: about the same AI cost as today, and much
   faster.
-- Nemotron in every step: roughly 4 times today's AI cost (an estimate).
-  Most of that is field research, where today's model benefits from heavy
-  prompt caching.
+- Nemotron in every step: about 3.5 times the AI cost of today's steps,
+  estimated the same way from measured per-call costs. Most of that is
+  field research, where today's model benefits from heavy prompt caching.
 
 ## What free credits would let us do
 

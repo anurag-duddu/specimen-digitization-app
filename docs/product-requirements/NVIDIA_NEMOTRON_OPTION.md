@@ -95,6 +95,12 @@ the published profile.
 The API and the worker each load the profiles. Both must carry the same
 value, and `scripts/ci/test_runtime_settings.py` checks that.
 
+The registry keeps its published version (`run.profile_registry_version`);
+the profile version is what names the option. The older evidence-pilot
+launch path (`worker_launch.py`, `evidence_pilot.py`) still requires
+today's reader pair, so it refuses a profile with the readers stage on.
+The production drain does not use it.
+
 ### Turning it on
 
 Production runs with the switch unset. Turning it on is a pull request that
@@ -121,6 +127,13 @@ properly."
   pixels (16-pixel patches merged 2 by 2), at most 3,328 tokens an image
   (`max_num_patches` 13,312 / 4), from the model's `preprocessor_config.json`.
   Reservations then size a reading by its crop, as for Qwen and Muse.
+  Not confirmed: whether the preprocessor rounds a small image up
+  (`min_num_patches` 1,024), so that the rule undercounts it. Nemotron
+  reported 1,096 input tokens on a 530 by 609 crop where Qwen reported 884
+  for the same prompt, which tokenizer differences could also explain.
+  Reader reservations sit at the stage floor and the meter settles
+  reported tokens, so only the first pass's input guard leans on the rule,
+  with 32,768 tokens of room.
 - The first-pass row carries GLM's request bounds: `max_input_tokens`
   32,768 and `max_output_tokens` 4,096.
 - Stage costs gain `transcribe:handwriting-nemotron` at the same floor as
@@ -296,6 +309,8 @@ day and code.
   tool choice "auto". The route's `forced_tool_choice_disables_thinking`
   sends "auto", so the option's first-pass route reasons ("low"; "medium" was
   no better at 58% precision).
+  It replaces a "required" the agent resolved itself; a tool choice a
+  caller names explicitly is sent as named, and no caller names one today.
 - With reasoning, 56 of 180 calls ran out of room at the 4,096-token answer
   cap that `reliability.run_agent_bounded` puts on every request (about 2,800
   output tokens a call on average). A label with no answer is left undecided
