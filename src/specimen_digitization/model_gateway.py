@@ -81,6 +81,13 @@ class HuggingFaceInferenceRoute:
             "image",
         }.issubset(self.required_input_modalities)
 
+    @property
+    def served_model_name(self) -> str:
+        """The model name its requests carry: on the router, "model_id:provider"."""
+        if self.transport == "router":
+            return f"{self.model_id}:{self.provider}"
+        return self.model_id
+
 
 INITIAL_HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxyType(
     {
@@ -129,8 +136,57 @@ STAGE_HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxy
         ),
     }
 )
+# The NVIDIA option (docs/product-requirements/NVIDIA_NEMOTRON_OPTION.md): one
+# model, Nemotron 3.5 Super VL, for each stage SPECIMEN_NVIDIA_STAGES turns on
+# (application/model_option.py). Baseten is its only Hugging Face provider, and
+# huggingface_hub 1.18 has no helper for it, so the router serves these routes.
+NEMOTRON_MODEL_ID = "nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4"
+NVIDIA_HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxyType(
+    {
+        "handwriting-nemotron": HuggingFaceInferenceRoute(
+            route_id="handwriting-nemotron",
+            logical_capability="handwriting_transcriber",
+            model_id=NEMOTRON_MODEL_ID,
+            provider="baseten",
+            transport="router",
+        ),
+        "first-pass-nemotron": HuggingFaceInferenceRoute(
+            route_id="first-pass-nemotron",
+            logical_capability="transcription_first_pass",
+            model_id=NEMOTRON_MODEL_ID,
+            provider="baseten",
+            transport="router",
+            # Measured settings (NVIDIA_NEMOTRON_OPTION.md section 7, on
+            # Baseten): the reasoning effort the first pass thinks at, and the
+            # unforced output tool without which it skips its reasoning (see
+            # forced_tool_choice_disables_thinking). Change them here.
+            request_options=(("reasoning_effort", "low"),),
+            forced_tool_choice_disables_thinking=True,
+        ),
+        "harness-nemotron": HuggingFaceInferenceRoute(
+            route_id="harness-nemotron",
+            logical_capability="field_harness",
+            model_id=NEMOTRON_MODEL_ID,
+            provider="baseten",
+            transport="router",
+            required_input_modalities=("text",),
+        ),
+    }
+)
+# The routes a profile may name as readers: the initial pair and the option's.
+READER_HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxyType(
+    {
+        **INITIAL_HUGGINGFACE_ROUTES,
+        "handwriting-nemotron": NVIDIA_HUGGINGFACE_ROUTES["handwriting-nemotron"],
+    }
+)
+# Every registered route: a run pinned to any of them resolves.
 HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxyType(
-    {**INITIAL_HUGGINGFACE_ROUTES, **STAGE_HUGGINGFACE_ROUTES}
+    {
+        **INITIAL_HUGGINGFACE_ROUTES,
+        **STAGE_HUGGINGFACE_ROUTES,
+        **NVIDIA_HUGGINGFACE_ROUTES,
+    }
 )
 
 
@@ -232,7 +288,6 @@ class HuggingFaceModelGateway:
                 bill_to=self._bill_to or None,
                 **timeout_options,
             )
-            model_name = f"{route.model_id}:{route.provider}"
         else:
             client = AsyncInferenceClient(
                 provider=route.provider,
@@ -240,7 +295,6 @@ class HuggingFaceModelGateway:
                 bill_to=self._bill_to or None,
                 **timeout_options,
             )
-            model_name = route.model_id
         provider = HuggingFaceProvider(
             hf_client=client, api_key=self._token.get_secret_value()
         )
@@ -252,7 +306,7 @@ class HuggingFaceModelGateway:
         # The HF adapter sends a function schema, not native response_format.
         # Keep the transport explicit even if a future provider profile changes.
         return model_class(
-            model_name,
+            route.served_model_name,
             provider=provider,
             profile={
                 "supports_tools": True,

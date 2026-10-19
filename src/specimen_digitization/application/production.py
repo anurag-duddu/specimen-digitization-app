@@ -23,7 +23,7 @@ from pydantic_ai.messages import ModelMessagesTypeAdapter
 
 from ..model_gateway import (
     HUGGINGFACE_ROUTES,
-    INITIAL_HUGGINGFACE_ROUTES,
+    READER_HUGGINGFACE_ROUTES,
     HuggingFaceModelGateway,
 )
 from ..prompts import CollectionPromptInputs, PromptName, resolve_prompt, ResolvedPrompt
@@ -1035,10 +1035,12 @@ class ProductionAdapters:
             name.value: resolve_prompt(name, inputs).model_dump(mode="json")
             for name in PromptName
         }
+        # A reader is pinned from the reader routes only (the initial pair and
+        # the NVIDIA option's); a stage route named as a reader raises.
         routes = {
             route: {
-                "model_id": INITIAL_HUGGINGFACE_ROUTES[route].model_id,
-                "provider": INITIAL_HUGGINGFACE_ROUTES[route].provider,
+                "model_id": READER_HUGGINGFACE_ROUTES[route].model_id,
+                "provider": READER_HUGGINGFACE_ROUTES[route].provider,
             }
             for route in run.profile.routes
         }

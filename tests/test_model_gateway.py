@@ -96,9 +96,11 @@ def test_gateway_resolves_both_transcription_routes() -> None:
 
     routes = gateway.routes_for_capability("handwriting_transcriber")
 
+    # The NVIDIA option's reader is registered too; a profile names two of them.
     assert {route.route_id for route in routes} == {
         "handwriting-qwen",
         "handwriting-muse",
+        "handwriting-nemotron",
     }
 
 
@@ -231,8 +233,15 @@ def test_first_pass_and_harness_routes_are_pinned_on_reader_providers() -> None:
         for route in gateway.routes_for_capability("handwriting_transcriber")
     }
     assert {first_pass.model_id, harness.model_id}.isdisjoint(readers)
-    assert gateway.routes_for_capability("transcription_first_pass") == (first_pass,)
-    assert gateway.routes_for_capability("field_harness") == (harness,)
+    # Each role also has the NVIDIA option's route (NVIDIA_NEMOTRON_OPTION.md).
+    assert gateway.routes_for_capability("transcription_first_pass") == (
+        first_pass,
+        gateway.route("first-pass-nemotron"),
+    )
+    assert gateway.routes_for_capability("field_harness") == (
+        harness,
+        gateway.route("harness-nemotron"),
+    )
 
 
 def test_a_route_serves_a_role_with_images_only_in_that_role_with_image_input() -> None:
@@ -347,8 +356,8 @@ def test_route_rejects_an_unknown_transport(transport: str) -> None:
         )
 
 
-def _sent_tool_choice(monkeypatch: pytest.MonkeyPatch, route: HuggingFaceInferenceRoute):
-    """The tool_choice a structured-output request on this route carries."""
+def _sent_request(monkeypatch: pytest.MonkeyPatch, route: HuggingFaceInferenceRoute):
+    """The URL and body of a structured-output request on this route."""
     from pydantic import BaseModel
 
     class Answer(BaseModel):
@@ -370,7 +379,7 @@ def _sent_tool_choice(monkeypatch: pytest.MonkeyPatch, route: HuggingFaceInferen
     )
 
     def handler(request: httpx.Request) -> httpx.Response:
-        sent.append(json.loads(request.content))
+        sent.append((str(request.url), json.loads(request.content)))
         return httpx.Response(200, json=reply)
 
     monkeypatch.setattr(
@@ -382,7 +391,13 @@ def _sent_tool_choice(monkeypatch: pytest.MonkeyPatch, route: HuggingFaceInferen
     agent = Agent(gateway.model_for(route.route_id), output_type=Answer)
 
     assert agent.run_sync("Seven.").output == Answer(value=7)
-    (body,) = sent
+    (request,) = sent
+    return request
+
+
+def _sent_tool_choice(monkeypatch: pytest.MonkeyPatch, route: HuggingFaceInferenceRoute):
+    """The tool_choice a structured-output request on this route carries."""
+    _, body = _sent_request(monkeypatch, route)
     return body["tool_choice"], body.get("reasoning_effort")
 
 
@@ -423,3 +438,78 @@ def test_routes_force_the_output_tool_by_default(monkeypatch: pytest.MonkeyPatch
 def test_pydantic_ai_still_resolves_tool_choice_through_the_overridden_hook() -> None:
     """If pydantic-ai renames the hook, a reasoning route silently forces its tool again."""
     assert isinstance(vars(HuggingFaceModel)["_get_tool_choice"], staticmethod)
+
+
+NEMOTRON = "nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4"
+
+
+def test_the_nvidia_option_serves_one_model_on_baseten_through_the_router() -> None:
+    """docs/product-requirements/NVIDIA_NEMOTRON_OPTION.md section 1."""
+    from specimen_digitization.model_gateway import (
+        NVIDIA_HUGGINGFACE_ROUTES,
+        READER_HUGGINGFACE_ROUTES,
+        STAGE_HUGGINGFACE_ROUTES,
+    )
+
+    reader = NVIDIA_HUGGINGFACE_ROUTES["handwriting-nemotron"]
+    first_pass = NVIDIA_HUGGINGFACE_ROUTES["first-pass-nemotron"]
+    harness = NVIDIA_HUGGINGFACE_ROUTES["harness-nemotron"]
+
+    assert set(NVIDIA_HUGGINGFACE_ROUTES) == {
+        "handwriting-nemotron",
+        "first-pass-nemotron",
+        "harness-nemotron",
+    }
+    for route in (reader, first_pass, harness):
+        assert (route.model_id, route.provider, route.transport) == (
+            NEMOTRON,
+            "baseten",
+            "router",
+        )
+    assert (reader.logical_capability, reader.required_input_modalities) == (
+        "handwriting_transcriber",
+        ("text", "image"),
+    )
+    assert (first_pass.logical_capability, first_pass.required_input_modalities) == (
+        "transcription_first_pass",
+        ("text", "image"),
+    )
+    assert (harness.logical_capability, harness.required_input_modalities) == (
+        "field_harness",
+        ("text",),
+    )
+    assert reader.request_options == harness.request_options == ()
+    assert not reader.forced_tool_choice_disables_thinking
+    assert not harness.forced_tool_choice_disables_thinking
+    assert first_pass.request_options == (("reasoning_effort", "low"),)
+    assert first_pass.forced_tool_choice_disables_thinking is True
+    # A run pinned to any route resolves; the pilot's readers stay the initial two.
+    assert dict(HUGGINGFACE_ROUTES) == {
+        **INITIAL_HUGGINGFACE_ROUTES,
+        **STAGE_HUGGINGFACE_ROUTES,
+        **NVIDIA_HUGGINGFACE_ROUTES,
+    }
+    assert set(INITIAL_HUGGINGFACE_ROUTES) == {"handwriting-qwen", "handwriting-muse"}
+    assert dict(READER_HUGGINGFACE_ROUTES) == {
+        **INITIAL_HUGGINGFACE_ROUTES,
+        "handwriting-nemotron": reader,
+    }
+
+
+@pytest.mark.parametrize(
+    "route_id,expected",
+    [
+        ("handwriting-nemotron", ("required", None)),
+        # The first pass reasons, so it lets the model choose its output tool.
+        ("first-pass-nemotron", ("auto", "low")),
+        ("harness-nemotron", ("required", None)),
+    ],
+)
+def test_an_nvidia_route_calls_the_router_with_its_pinned_provider(
+    monkeypatch: pytest.MonkeyPatch, route_id: str, expected: tuple
+) -> None:
+    url, body = _sent_request(monkeypatch, HUGGINGFACE_ROUTES[route_id])
+
+    assert url == "https://router.huggingface.co/v1/chat/completions"
+    assert body["model"] == f"{NEMOTRON}:baseten"
+    assert (body["tool_choice"], body.get("reasoning_effort")) == expected
