@@ -112,6 +112,8 @@ def test_the_slide_pilot_profile_carries_the_specified_settings():
         "segment": 45_000,
         "transcribe:handwriting-qwen": 20_000,
         "transcribe:handwriting-muse": 20_000,
+        # The NVIDIA option's reader (NVIDIA_NEMOTRON_OPTION.md section 3).
+        "transcribe:handwriting-nemotron": 20_000,
         "first_pass": 20_000,
         "parse": 20_000,
     }

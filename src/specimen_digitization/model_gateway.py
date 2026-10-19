@@ -20,6 +20,11 @@ from pydantic_ai.models.huggingface import HuggingFaceModel
 from pydantic_ai.providers.huggingface import HuggingFaceProvider
 
 
+# Hugging Face's OpenAI-compatible router. A "model:provider" name pins one
+# concrete provider there, billed through the same token and bill-to org.
+HUGGINGFACE_ROUTER_URL = "https://router.huggingface.co/v1"
+
+
 class ModelGatewayConfigurationError(RuntimeError):
     """Raised when a model route or its credential is not configured safely."""
 
@@ -41,10 +46,27 @@ class HuggingFaceInferenceRoute:
     # a change of provider re-measures them there or clears them: a provider
     # that refuses a field rejects every request (model_request_rejected).
     request_options: tuple[tuple[str, str], ...] = ()
+    # "provider": huggingface_hub's own helper for the provider builds the
+    # request. "router": HF's router receives "model_id:provider", for a
+    # provider the installed client has no helper for (baseten in
+    # huggingface_hub 1.18). Either way one concrete provider serves it.
+    transport: Literal["provider", "router"] = "provider"
+    # True when the provider answers a forced tool call without the model's
+    # reasoning (Nemotron 3.5 Super VL on baseten: 0-1 reasoning tokens with a
+    # forced tool, 1,516 with "auto", measured 2026-10-18). The route's requests
+    # then think (its request options turn reasoning on), and Pydantic AI sends
+    # tool_choice "auto" in place of a "required" it resolved itself, as
+    # ModelProfile.forced_tool_choice_disables_thinking does for the providers
+    # whose Pydantic AI models honour it (its HuggingFaceModel does not).
+    forced_tool_choice_disables_thinking: bool = False
 
     def __post_init__(self) -> None:
         if self.structured_output_mode != "tool":
             raise ValueError("Hugging Face routes use schema-validated tool output.")
+        if self.transport not in {"provider", "router"}:
+            raise ValueError(
+                "A Hugging Face route's transport is 'provider' or 'router'."
+            )
         disallowed_provider_policies = {"", "auto", "fastest", "cheapest", "preferred"}
         if self.provider.strip().lower() in disallowed_provider_policies:
             raise ValueError(
@@ -58,6 +80,25 @@ class HuggingFaceInferenceRoute:
             "text",
             "image",
         }.issubset(self.required_input_modalities)
+
+    @property
+    def served_model_name(self) -> str:
+        """The model name its requests carry: on the router, "model_id:provider"."""
+        if self.transport == "router":
+            return f"{self.model_id}:{self.provider}"
+        return self.model_id
+
+    def matches_model(self, model: HuggingFaceModel) -> bool:
+        """Whether ``model`` (HuggingFaceModelGateway.model_for) calls this
+        route's model at its concrete provider, by either transport."""
+        client = model.provider.client
+        if self.transport == "router":
+            return (
+                model.model_name == self.served_model_name
+                and client.provider is None
+                and client.model == HUGGINGFACE_ROUTER_URL
+            )
+        return model.model_name == self.model_id and client.provider == self.provider
 
 
 INITIAL_HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxyType(
@@ -107,8 +148,57 @@ STAGE_HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxy
         ),
     }
 )
+# The NVIDIA option (docs/product-requirements/NVIDIA_NEMOTRON_OPTION.md): one
+# model, Nemotron 3.5 Super VL, for each stage SPECIMEN_NVIDIA_STAGES turns on
+# (application/model_option.py). Baseten is its only Hugging Face provider, and
+# huggingface_hub 1.18 has no helper for it, so the router serves these routes.
+NEMOTRON_MODEL_ID = "nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4"
+NVIDIA_HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxyType(
+    {
+        "handwriting-nemotron": HuggingFaceInferenceRoute(
+            route_id="handwriting-nemotron",
+            logical_capability="handwriting_transcriber",
+            model_id=NEMOTRON_MODEL_ID,
+            provider="baseten",
+            transport="router",
+        ),
+        "first-pass-nemotron": HuggingFaceInferenceRoute(
+            route_id="first-pass-nemotron",
+            logical_capability="transcription_first_pass",
+            model_id=NEMOTRON_MODEL_ID,
+            provider="baseten",
+            transport="router",
+            # Measured settings (NVIDIA_NEMOTRON_OPTION.md section 7, on
+            # Baseten): the reasoning effort the first pass thinks at, and the
+            # unforced output tool without which it skips its reasoning (see
+            # forced_tool_choice_disables_thinking). Change them here.
+            request_options=(("reasoning_effort", "low"),),
+            forced_tool_choice_disables_thinking=True,
+        ),
+        "harness-nemotron": HuggingFaceInferenceRoute(
+            route_id="harness-nemotron",
+            logical_capability="field_harness",
+            model_id=NEMOTRON_MODEL_ID,
+            provider="baseten",
+            transport="router",
+            required_input_modalities=("text",),
+        ),
+    }
+)
+# The routes a profile may name as readers: the initial pair and the option's.
+READER_HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxyType(
+    {
+        **INITIAL_HUGGINGFACE_ROUTES,
+        "handwriting-nemotron": NVIDIA_HUGGINGFACE_ROUTES["handwriting-nemotron"],
+    }
+)
+# Every registered route: a run pinned to any of them resolves.
 HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxyType(
-    {**INITIAL_HUGGINGFACE_ROUTES, **STAGE_HUGGINGFACE_ROUTES}
+    {
+        **INITIAL_HUGGINGFACE_ROUTES,
+        **STAGE_HUGGINGFACE_ROUTES,
+        **NVIDIA_HUGGINGFACE_ROUTES,
+    }
 )
 
 
@@ -128,6 +218,22 @@ class ArgumentPreservingHuggingFaceModel(HuggingFaceModel):
         call = HuggingFaceModel._map_tool_call(t)
         call["function"]["arguments"] = t.args_as_json_str()
         return call
+
+
+class UnforcedOutputToolHuggingFaceModel(ArgumentPreservingHuggingFaceModel):
+    """Let the model choose the tool where a forced tool call skips its reasoning.
+
+    Pydantic AI resolves an agent that must end in its output tool to
+    tool_choice "required". A provider that answers a forced tool call without
+    the model's reasoning (HuggingFaceInferenceRoute.forced_tool_choice_disables_thinking)
+    gets "auto" instead; a text answer then earns the agent's usual retry.
+    """
+
+    def _get_tool_choice(self, model_settings, model_request_parameters):  # type: ignore[override]
+        tools, tool_choice = HuggingFaceModel._get_tool_choice(
+            model_settings, model_request_parameters
+        )
+        return tools, "auto" if tool_choice == "required" else tool_choice
 
 
 class HuggingFaceModelGateway:
@@ -187,19 +293,32 @@ class HuggingFaceModelGateway:
             if self._timeout_seconds is not None
             else {}
         )
-        client = AsyncInferenceClient(
-            provider=route.provider,
-            api_key=self._token.get_secret_value(),
-            bill_to=self._bill_to or None,
-            **timeout_options,
-        )
+        if route.transport == "router":
+            client = AsyncInferenceClient(
+                base_url=HUGGINGFACE_ROUTER_URL,
+                api_key=self._token.get_secret_value(),
+                bill_to=self._bill_to or None,
+                **timeout_options,
+            )
+        else:
+            client = AsyncInferenceClient(
+                provider=route.provider,
+                api_key=self._token.get_secret_value(),
+                bill_to=self._bill_to or None,
+                **timeout_options,
+            )
         provider = HuggingFaceProvider(
             hf_client=client, api_key=self._token.get_secret_value()
         )
+        model_class = (
+            UnforcedOutputToolHuggingFaceModel
+            if route.forced_tool_choice_disables_thinking
+            else ArgumentPreservingHuggingFaceModel
+        )
         # The HF adapter sends a function schema, not native response_format.
         # Keep the transport explicit even if a future provider profile changes.
-        return ArgumentPreservingHuggingFaceModel(
-            route.model_id,
+        return model_class(
+            route.served_model_name,
             provider=provider,
             profile={
                 "supports_tools": True,

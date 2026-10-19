@@ -408,8 +408,9 @@ def test_a_step_without_recorded_calls_stays_reserved(tmp_path):
 
 def test_the_pilot_pins_the_prices_read_on_2026_09_24():
     prices = published_registry().resolve("insects").profile.processing.price_list
-    # 2026-10-17: the same prices, with SAM 3's instance-based rates added.
-    assert (prices.version, prices.as_of) == ("pilot-prices-2026-10-17", "2026-09-24")
+    # 2026-10-17: the same prices, with SAM 3's instance-based rates added;
+    # 2026-10-18: with the NVIDIA option's rows added (test_the_nvidia_rows_...).
+    assert (prices.version, prices.as_of) == ("pilot-prices-2026-10-18", "2026-09-24")
     qwen, muse = prices.models["handwriting-qwen"], prices.models["handwriting-muse"]
     assert (qwen.input_micros_per_million, qwen.output_micros_per_million) == (
         200_000,
@@ -441,6 +442,39 @@ def test_the_pilot_pins_the_prices_read_on_2026_09_24():
         segmentation.instance_vcpu_micros_per_million_seconds,
         segmentation.instance_gib_micros_per_million_seconds,
     ) == (18_000_000, 2_000_000)
+
+
+def test_the_nvidia_rows_price_nemotron_on_baseten_at_its_list_price():
+    """NVIDIA_NEMOTRON_OPTION.md section 3: USD 0.20 in and 0.50 out per million
+    tokens on every route, context 1,048,576; the reader's image rule from the
+    model's preprocessor, the first pass's request bounds as GLM's."""
+    profile = published_registry().resolve("insects").profile
+    prices = profile.processing.price_list
+    rate = {
+        "input_micros_per_million": 200_000,
+        "output_micros_per_million": 500_000,
+        "context_tokens": 1_048_576,
+    }
+    source = (
+        "https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4"
+        "/blob/main/preprocessor_config.json"
+    )
+    assert prices.models["handwriting-nemotron"].model_dump(exclude_none=True) == {
+        **rate,
+        # 16-pixel patches merged 2 by 2; max_num_patches 13,312 / 4.
+        "image_tokens": {"pixels_per_token": 32, "max_tokens": 3_328, "source": source},
+    }
+    assert prices.models["first-pass-nemotron"].model_dump(exclude_none=True) == {
+        **rate,
+        "max_input_tokens": 32_768,
+        "max_output_tokens": 4_096,
+    }
+    assert prices.models["harness-nemotron"].model_dump(exclude_none=True) == rate
+    assert source in prices.sources
+    assert "https://router.huggingface.co/v1/models" in prices.sources
+    # The same floor as the other readers.
+    stages = profile.processing.stage_cost_micros
+    assert stages.for_step("transcribe:region-1:handwriting-nemotron") == 20_000
 
 
 def settled_run(tmp_path, cost_basis="computed", billed=None, allowance=True):

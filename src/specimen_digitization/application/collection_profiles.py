@@ -540,8 +540,21 @@ PUBLISHED_PROFILES = Path(__file__).with_name("profiles") / "published.json"
 
 def published_registry(
     bindings: Mapping[str, str] | None = None,
+    *,
+    environ: Mapping[str, str] | None = None,
 ) -> CollectionProfileRegistry:
-    """The published profiles (LANE.md T4) with the deployment's private bindings."""
-    return CollectionProfileRegistry.model_validate(
+    """The published profiles (LANE.md T4) with the deployment's private bindings.
+
+    With SPECIMEN_NVIDIA_STAGES on (``environ``, the process environment by
+    default), each profile loads as its NVIDIA variant (model_option.py); a
+    value it does not know raises.
+    """
+    import os
+
+    from .model_option import nvidia_stages, nvidia_variant
+
+    stages = nvidia_stages(os.environ if environ is None else environ)
+    registry = CollectionProfileRegistry.model_validate(
         dict(json.loads(PUBLISHED_PROFILES.read_text()), bindings=dict(bindings or {}))
     )
+    return nvidia_variant(registry, stages)
