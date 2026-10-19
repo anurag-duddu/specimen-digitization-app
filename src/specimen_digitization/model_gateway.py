@@ -20,6 +20,11 @@ from pydantic_ai.models.huggingface import HuggingFaceModel
 from pydantic_ai.providers.huggingface import HuggingFaceProvider
 
 
+# Hugging Face's OpenAI-compatible router. A "model:provider" name pins one
+# concrete provider there, billed through the same token and bill-to org.
+HUGGINGFACE_ROUTER_URL = "https://router.huggingface.co/v1"
+
+
 class ModelGatewayConfigurationError(RuntimeError):
     """Raised when a model route or its credential is not configured safely."""
 
@@ -41,10 +46,19 @@ class HuggingFaceInferenceRoute:
     # a change of provider re-measures them there or clears them: a provider
     # that refuses a field rejects every request (model_request_rejected).
     request_options: tuple[tuple[str, str], ...] = ()
+    # "provider": huggingface_hub's own helper for the provider builds the
+    # request. "router": HF's router receives "model_id:provider", for a
+    # provider the installed client has no helper for (baseten in
+    # huggingface_hub 1.18). Either way one concrete provider serves it.
+    transport: Literal["provider", "router"] = "provider"
 
     def __post_init__(self) -> None:
         if self.structured_output_mode != "tool":
             raise ValueError("Hugging Face routes use schema-validated tool output.")
+        if self.transport not in {"provider", "router"}:
+            raise ValueError(
+                "A Hugging Face route's transport is 'provider' or 'router'."
+            )
         disallowed_provider_policies = {"", "auto", "fastest", "cheapest", "preferred"}
         if self.provider.strip().lower() in disallowed_provider_policies:
             raise ValueError(
@@ -187,19 +201,29 @@ class HuggingFaceModelGateway:
             if self._timeout_seconds is not None
             else {}
         )
-        client = AsyncInferenceClient(
-            provider=route.provider,
-            api_key=self._token.get_secret_value(),
-            bill_to=self._bill_to or None,
-            **timeout_options,
-        )
+        if route.transport == "router":
+            client = AsyncInferenceClient(
+                base_url=HUGGINGFACE_ROUTER_URL,
+                api_key=self._token.get_secret_value(),
+                bill_to=self._bill_to or None,
+                **timeout_options,
+            )
+            model_name = f"{route.model_id}:{route.provider}"
+        else:
+            client = AsyncInferenceClient(
+                provider=route.provider,
+                api_key=self._token.get_secret_value(),
+                bill_to=self._bill_to or None,
+                **timeout_options,
+            )
+            model_name = route.model_id
         provider = HuggingFaceProvider(
             hf_client=client, api_key=self._token.get_secret_value()
         )
         # The HF adapter sends a function schema, not native response_format.
         # Keep the transport explicit even if a future provider profile changes.
         return ArgumentPreservingHuggingFaceModel(
-            route.model_id,
+            model_name,
             provider=provider,
             profile={
                 "supports_tools": True,

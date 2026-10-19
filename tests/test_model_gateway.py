@@ -270,3 +270,78 @@ def test_preflight_accepts_the_new_routes_when_the_catalog_serves_them() -> None
         assert validate_route(HUGGINGFACE_ROUTES[route_id], catalog)["ready"]
     # The pilot launch and the release check read the initial set as the readers.
     assert set(INITIAL_HUGGINGFACE_ROUTES) == {"handwriting-qwen", "handwriting-muse"}
+
+
+def test_a_router_route_pins_its_provider_in_the_model_name_and_keeps_org_billing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A provider the installed client has no helper for is pinned on HF's router.
+
+    huggingface_hub 1.18 has no ``baseten`` helper, the only provider of
+    Nemotron 3.5 Super VL on 2026-10-18. The router's ``model:provider`` name
+    pins the same concrete provider, billed through the same token and org.
+    """
+    route = HuggingFaceInferenceRoute(
+        route_id="router-example",
+        logical_capability="handwriting_transcriber",
+        model_id="example/vision-model",
+        provider="baseten",
+        transport="router",
+    )
+    sent: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(request)
+        return httpx.Response(200, json=_completion({"role": "assistant", "content": "ok"}))
+
+    monkeypatch.setattr(
+        hf_http,
+        "_GLOBAL_ASYNC_CLIENT_FACTORY",
+        lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )
+    gateway = HuggingFaceModelGateway(
+        token="hf_test", bill_to="field-museum", routes={route.route_id: route}
+    )
+
+    assert Agent(gateway.model_for(route.route_id)).run_sync("Say ok.").output == "ok"
+    (request,) = sent
+    assert str(request.url) == "https://router.huggingface.co/v1/chat/completions"
+    assert json.loads(request.content)["model"] == "example/vision-model:baseten"
+    assert request.headers["x-hf-bill-to"] == "field-museum"
+    assert request.headers["authorization"] == "Bearer hf_test"
+
+
+def test_a_provider_route_still_goes_through_the_provider_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeClient:
+        def __init__(self, **kwargs: object) -> None:
+            captured["client"] = kwargs
+
+    monkeypatch.setattr(model_gateway, "AsyncInferenceClient", FakeClient)
+    monkeypatch.setattr(model_gateway, "HuggingFaceProvider", lambda **kwargs: None)
+    monkeypatch.setattr(
+        model_gateway,
+        "ArgumentPreservingHuggingFaceModel",
+        lambda name, **kwargs: captured.setdefault("model_name", name),
+    )
+
+    HuggingFaceModelGateway(token="hf_test").model_for("handwriting-qwen")
+
+    assert captured["client"]["provider"] == "novita"
+    assert "base_url" not in captured["client"]
+    assert captured["model_name"] == "Qwen/Qwen3-VL-30B-A3B-Instruct"
+
+
+@pytest.mark.parametrize("transport", ["", "auto", "openai"])
+def test_route_rejects_an_unknown_transport(transport: str) -> None:
+    with pytest.raises(ValueError, match="transport"):
+        HuggingFaceInferenceRoute(
+            route_id="unsafe",
+            logical_capability="handwriting_transcriber",
+            model_id="example/model",
+            provider="baseten",
+            transport=transport,  # type: ignore[arg-type]
+        )
