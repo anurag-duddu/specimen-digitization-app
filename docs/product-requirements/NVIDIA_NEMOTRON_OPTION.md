@@ -135,6 +135,17 @@ properly."
 - Parse runs on reader A's route, so with the readers stage on it is
   reserved and charged at Nemotron's row. Its reservation is two whole
   requests at the route's context, as today.
+- What a call reserves before it is sent, in micro-dollars (pinned in
+  `tests/test_nvidia_option.py`): a Nemotron reading 20,000 (the stage
+  floor; a pilot crop's worst case is lower), parse 423,528, first pass
+  423,528 (GLM's is 318,670), one field-research expert request 10,727. Two
+  first-pass calls whose outcome stays unknown hold 847,056 of the USD 1 run
+  limit, so a third waits; with GLM a third fits.
+- The research harness's older "on" mode pins DeepSeek's tokenizer files
+  for its request bound, so it refuses `harness-nemotron`
+  (`research_committed_tokenizer_unpinned`) before any paid call until
+  Nemotron's own files are pinned. Production's field research ("fields"
+  mode) does not use those pins.
 
 ## 4. Secrets and release configuration
 
@@ -217,8 +228,140 @@ and the UX writing checklist), not part of this option.
 
 ## 7. Measured on real labels
 
-Method, spend and every number: [section 7 is filled from the measurement
-runs of 2026-10-18; see the PR description until then].
+Measured on 2026-10-18, stage by stage, through the app's own code, with
+only the stage's model changed. Spend: USD 2.43 at list price, of a USD 5
+cap. The inputs, scripts and raw results are saved outside the repository
+in `~/specimen-golive/runs/nvidia-nemotron-20261018/` (README there).
+
+The labels are the ten pilot slides: handwritten 1946 labels from Mindanao
+(Philippines) and 1948 labels from Yepocapa (Guatemala). No human-checked
+transcript of them exists. The references are earlier sessions' readings of
+the full-resolution images: S8's table of what each label says, S4's verdict
+on each disagreement between the readers, and the field values in
+`tests/fixtures/field_model_pilot_rows.json`. Each reference was checked
+against the crop at every difference. The sample is small, so a difference
+of a few points is noise; the large differences are not.
+
+### Verdict per stage
+
+| Stage | Nemotron compared with today | Recommendation |
+|---|---|---|
+| Readers | Weaker alone, never failed, 4x faster, same cost; with Muse it covers as many facts as today's pair | Ready: the best NVIDIA stage |
+| Parse | About as accurate as Qwen, fewer wrongly filled fields, 20x faster, cheaper, less repeatable | Ready; it follows the readers stage |
+| First pass | Wrong picks as rare as GLM's, but a third of labels left undecided and 3x the cost | Not yet: keep GLM |
+| Field research | Half of its field experts fail the answer checks; dearer than DeepSeek | Not yet: keep DeepSeek |
+
+### Readers
+
+15 label crops (the ten left labels, plus the right-hand locality label of
+slides 324-328), 3 readings each, the app's literal-transcription prompt and
+agent. Each reading was scored against 98 reference facts, 75 of them the
+facts the field experts rely on (dates, codes, collectors, places,
+elevations).
+
+| Reader | Calls | Failed | Facts right | Key facts right | Median s | List USD a reading |
+|---|---|---|---|---|---|---|
+| Muse (today's reader B) | 45 | 0 | 91.5% | 92.9% | 9.3 | 0.00150 |
+| Qwen (today's reader A) | 45 | 12 | 69.0% (91.4% of answered) | 69.8% | 9.7 | 0.00029 |
+| Nemotron | 45 | 0 | 76.2% | 76.4% | 2.2 | 0.00033 |
+
+How often at least one of the two readers had a fact right, which is what
+the first pass can choose from: Muse with Nemotron 94.9%, Muse with Qwen
+94.6%, Nemotron with Qwen 89.8%. So Nemotron takes reader A's place, not
+Muse's.
+
+Nemotron reads places well (87 of 96) and is weakest on handwritten digits:
+it read the writer's "2" as "a" or "D" in codes and dates (`IV- a9-68-4`,
+`IV-D3-48`), dropped the foot mark from elevations, and of the 8 readings in which it
+copied the printed catalog number beside a label, 2 had it one digit off
+(slide 326, 4486778 for 4486779). Qwen's 12 failures were its output failing validation
+twice, always on the same five labels; that is a finding about today's
+reader, outside this option.
+
+### First pass
+
+PR #382's scored set: 12 labels with a reference (6 calls each) and 6 labels
+where a reader wrote "[unreadable]" (3 calls each), through
+`first_pass_direct`. GLM's rows are PR #382's "medium" calls from the same
+day and code.
+
+| First pass | Calls | Pick precision | Wrong picks | No answer | Fluent traps caught | Median s | List USD a call |
+|---|---|---|---|---|---|---|---|
+| GLM, reasoning "medium" (today) | 91 | 76% | 15% | 0% | 16 of 19 | 15.8 | 0.00055 |
+| Nemotron, no reasoning (Baseten's default) | 90 | 34% | 38% | 22% | 1 of 14 | 1.1 | 0.00054 |
+| Nemotron, reasoning "low" | 180 | 66% | 15% | 35% | 17 of 24 | 6.8 | 0.00173 |
+
+- Baseten skips Nemotron's reasoning whenever a tool call is forced, and
+  structured output forces one: 0-1 reasoning tokens against 1,516 with
+  tool choice "auto". The route's `forced_tool_choice_disables_thinking`
+  sends "auto", so the option's first-pass route reasons ("low"; "medium" was
+  no better at 58% precision).
+- With reasoning, 56 of 180 calls ran out of room at the 4,096-token answer
+  cap that `reliability.run_agent_bounded` puts on every request (about 2,800
+  output tokens a call on average). A label with no answer is left undecided
+  and goes to review, which is safe but does no work. Raising that global
+  cap is a separate decision, not made here.
+- Without reasoning, 20 answers were malformed: notes for each reader written
+  as one string, then keyed "Reader A", and "None" written as text.
+
+### Parse
+
+The ten slides, 3 calls each, same reader texts for both arms, through
+`harness.extract_with_agent`.
+
+| Parse | Failed | Main fields right / partial / wrong / missing (of 180) | Wrongly filled | Same result on repeat | Median s | List USD a call |
+|---|---|---|---|---|---|---|
+| Qwen (today) | 0 | 117 / 16 / 15 / 32 | 14 | 96.7% | 23.5 | 0.00085 |
+| Nemotron | 0 | 112 / 15 / 9 / 44 | 4 | 67.5% | 1.2 | 0.00069 |
+
+Nemotron took a slide-preparation code for a date in 3 calls; Qwen put
+those codes into the collection code or catalog number in 24 calls and
+Nemotron in 13. Qwen silently corrected the label's misspelling
+"Chimaltenago" in all 9 calls, so the verbatim check dropped those
+candidates. Nemotron kept the label's spelling, but filed the department as
+the county 4 times of 9.
+
+### Field research
+
+The ten slides once each, and four of them twice, per model, through the
+production step (`field_research.step.production_step()`), with GBIF,
+Catalogue of Life and Global Names live and geography switched off.
+
+| Field research | Runs failed | Experts whose answer failed the checks | Label fields right / wrong / review (of 41) | Derived fields right / wrong / review (of 50) | Collection date right | Median s | List USD a slide |
+|---|---|---|---|---|---|---|---|
+| DeepSeek (today) | 0 | 0 of 266 | 32 / 3 / 6 | 37 / 9 / 4 | 13 of 14 | 10.4 | 0.0433 |
+| Nemotron | 0 | 132 of 266 | 14 / 2 / 25 | 3 / 28 / 19 | 0 of 14 | 4.0 | 0.0745 |
+
+- Nemotron wrote the text "None" into empty fields (206 of 559 answers) and
+  made up authority identifiers such as `wikidata:Q123456`, which the
+  evidence checks rightly refuse. 18 answers were malformed. Turning its
+  reasoning on made it worse (16 of 19 experts failed on one slide).
+- Hugging Face bills DeepSeek at about 12% of list here, because the 20
+  experts share a cached prompt: about USD 0.005 a slide. Nemotron at
+  Baseten's cached rate would be about USD 0.03.
+- Not measured: place fields (geography was off) and the effect of a first
+  pass (both stages saw two raw readings).
+- Nemotron's prompt tokens never exceeded the request's bytes (at most 0.28
+  tokens a byte), so the field-research budget's byte-level assumption
+  holds for it.
+
+### Cost per specimen
+
+From the measured per-call costs, for a slide with two labels (two readings
+and one first pass per label, one parse, one field research), at list price
+except field research, which uses Hugging Face's billed rate for DeepSeek
+and Baseten's cached rate for Nemotron:
+
+| Pipeline | AI cost a specimen (estimate) |
+|---|---|
+| Today | about 1.1 cents |
+| Nemotron readers and parse (recommended) | about 1.1 cents |
+| Nemotron in every stage | about 4.0 cents |
+
+The billed-cost workbook of 2026-10-18 measured today's actual cost at about
+2.9 cents a specimen, 1.7 of it AI and 1.2 machines; the estimate above is
+lower because it leaves out retries, failed calls and slides with more
+labels. The comparison between rows is what the estimate is for.
 
 ## 8. If NVIDIA offers credits on its own API
 
@@ -235,8 +378,10 @@ need no code change.
 
 ## 9. Sources
 
-- Research notes (2026-10-18): candidates, providers, prices, terms.
-- Route surface map (2026-10-18): every file the option touches.
+- Research notes (2026-10-18): candidates, providers, prices, terms
+  (`nemotron-research.md` in the measurement folder of section 7).
+- Route surface map (2026-10-18): every file the option touches
+  (`route-surface-map.md`, same folder).
 - Model card: https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4
 - Provider mapping: https://huggingface.co/api/models/nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4?expand[]=inferenceProviderMapping
 - Router catalog and prices: https://router.huggingface.co/v1/models
