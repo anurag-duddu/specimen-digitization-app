@@ -345,3 +345,81 @@ def test_route_rejects_an_unknown_transport(transport: str) -> None:
             provider="baseten",
             transport=transport,  # type: ignore[arg-type]
         )
+
+
+def _sent_tool_choice(monkeypatch: pytest.MonkeyPatch, route: HuggingFaceInferenceRoute):
+    """The tool_choice a structured-output request on this route carries."""
+    from pydantic import BaseModel
+
+    class Answer(BaseModel):
+        value: int
+
+    sent: list[dict[str, object]] = []
+    reply = _completion(
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "final_result", "arguments": '{"value": 7}'},
+                }
+            ],
+        }
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(json.loads(request.content))
+        return httpx.Response(200, json=reply)
+
+    monkeypatch.setattr(
+        hf_http,
+        "_GLOBAL_ASYNC_CLIENT_FACTORY",
+        lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )
+    gateway = HuggingFaceModelGateway(token="hf_test", routes={route.route_id: route})
+    agent = Agent(gateway.model_for(route.route_id), output_type=Answer)
+
+    assert agent.run_sync("Seven.").output == Answer(value=7)
+    (body,) = sent
+    return body["tool_choice"], body.get("reasoning_effort")
+
+
+def test_a_route_that_reasons_only_unforced_sends_auto_tool_choice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Nemotron 3.5 Super VL on baseten skips its reasoning when a tool is forced.
+
+    Measured 2026-10-18 through HF's router with reasoning_effort "high": a
+    forced tool ("required" or named) answered with 0-1 reasoning tokens, "auto"
+    with 1,516. Such a route lets the model choose the output tool.
+    """
+    route = HuggingFaceInferenceRoute(
+        route_id="reasoning-example",
+        logical_capability="transcription_first_pass",
+        model_id="example/vision-model",
+        provider="baseten",
+        transport="router",
+        request_options=(("reasoning_effort", "high"),),
+        forced_tool_choice_disables_thinking=True,
+    )
+
+    assert _sent_tool_choice(monkeypatch, route) == ("auto", "high")
+
+
+def test_routes_force_the_output_tool_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    route = HuggingFaceInferenceRoute(
+        route_id="forced-example",
+        logical_capability="transcription_first_pass",
+        model_id="example/vision-model",
+        provider="baseten",
+        transport="router",
+    )
+
+    assert _sent_tool_choice(monkeypatch, route) == ("required", None)
+
+
+def test_pydantic_ai_still_resolves_tool_choice_through_the_overridden_hook() -> None:
+    """If pydantic-ai renames the hook, a reasoning route silently forces its tool again."""
+    assert isinstance(vars(HuggingFaceModel)["_get_tool_choice"], staticmethod)

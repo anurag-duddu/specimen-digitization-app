@@ -51,6 +51,14 @@ class HuggingFaceInferenceRoute:
     # provider the installed client has no helper for (baseten in
     # huggingface_hub 1.18). Either way one concrete provider serves it.
     transport: Literal["provider", "router"] = "provider"
+    # True when the provider answers a forced tool call without the model's
+    # reasoning (Nemotron 3.5 Super VL on baseten: 0-1 reasoning tokens with a
+    # forced tool, 1,516 with "auto", measured 2026-10-18). The route's requests
+    # then think (its request options turn reasoning on), and Pydantic AI sends
+    # tool_choice "auto" in place of a "required" it resolved itself, as
+    # ModelProfile.forced_tool_choice_disables_thinking does for the providers
+    # whose Pydantic AI models honour it (its HuggingFaceModel does not).
+    forced_tool_choice_disables_thinking: bool = False
 
     def __post_init__(self) -> None:
         if self.structured_output_mode != "tool":
@@ -144,6 +152,22 @@ class ArgumentPreservingHuggingFaceModel(HuggingFaceModel):
         return call
 
 
+class UnforcedOutputToolHuggingFaceModel(ArgumentPreservingHuggingFaceModel):
+    """Let the model choose the tool where a forced tool call skips its reasoning.
+
+    Pydantic AI resolves an agent that must end in its output tool to
+    tool_choice "required". A provider that answers a forced tool call without
+    the model's reasoning (HuggingFaceInferenceRoute.forced_tool_choice_disables_thinking)
+    gets "auto" instead; a text answer then earns the agent's usual retry.
+    """
+
+    def _get_tool_choice(self, model_settings, model_request_parameters):  # type: ignore[override]
+        tools, tool_choice = HuggingFaceModel._get_tool_choice(
+            model_settings, model_request_parameters
+        )
+        return tools, "auto" if tool_choice == "required" else tool_choice
+
+
 class HuggingFaceModelGateway:
     """Build Pydantic AI models from explicit Hugging Face routes."""
 
@@ -220,9 +244,14 @@ class HuggingFaceModelGateway:
         provider = HuggingFaceProvider(
             hf_client=client, api_key=self._token.get_secret_value()
         )
+        model_class = (
+            UnforcedOutputToolHuggingFaceModel
+            if route.forced_tool_choice_disables_thinking
+            else ArgumentPreservingHuggingFaceModel
+        )
         # The HF adapter sends a function schema, not native response_format.
         # Keep the transport explicit even if a future provider profile changes.
-        return ArgumentPreservingHuggingFaceModel(
+        return model_class(
             model_name,
             provider=provider,
             profile={
