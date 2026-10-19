@@ -88,6 +88,18 @@ class HuggingFaceInferenceRoute:
             return f"{self.model_id}:{self.provider}"
         return self.model_id
 
+    def matches_model(self, model: HuggingFaceModel) -> bool:
+        """Whether ``model`` (HuggingFaceModelGateway.model_for) calls this
+        route's model at its concrete provider, by either transport."""
+        client = model.provider.client
+        if self.transport == "router":
+            return (
+                model.model_name == self.served_model_name
+                and client.provider is None
+                and client.model == HUGGINGFACE_ROUTER_URL
+            )
+        return model.model_name == self.model_id and client.provider == self.provider
+
 
 INITIAL_HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxyType(
     {

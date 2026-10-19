@@ -418,3 +418,57 @@ def test_the_not_on_label_list_follows_the_published_version(tmp_path, monkeypat
     # Another version keeps its own (empty) entry.
     assert not_on_label_fields("zoology_insects_slides", "1.0.1+nvidia.readers") == frozenset()
 
+
+# The six-specialist harness ("on" mode, not production's "fields" mode).
+
+
+def _effect_model(wrapped, route_id):
+    from specimen_digitization.model_gateway import HUGGINGFACE_ROUTES
+    from specimen_digitization.research_harness.gateway import EffectModel, ModelBinding
+
+    route = HUGGINGFACE_ROUTES[route_id]
+    binding = ModelBinding(route_id, route.model_id, route.provider, 4096, 211_764, "prices")
+    scope = SimpleNamespace(specimen_id="specimen", job_id="job", generation=1)
+    return EffectModel(wrapped, broker=None, scope=scope, lease=None, role="role",
+        binding=binding, pins={"field_keys": []}, request_guard=lambda *_: {})
+
+
+@pytest.mark.parametrize("route_id", ["harness-nemotron", "harness-deepseek"])
+def test_an_effect_model_accepts_the_gateways_model_of_either_transport(route_id):
+    from specimen_digitization.model_gateway import HuggingFaceModelGateway
+
+    wrapped = HuggingFaceModelGateway(token="hf_test").model_for(route_id)
+
+    assert _effect_model(wrapped, route_id).binding.route_id == route_id
+
+
+@pytest.mark.parametrize(
+    "built,bound",
+    [
+        ("harness-deepseek", "harness-nemotron"),
+        ("harness-nemotron", "harness-deepseek"),
+        ("handwriting-qwen", "harness-nemotron"),
+    ],
+)
+def test_an_effect_model_refuses_another_routes_model(built, bound):
+    from specimen_digitization.model_gateway import HuggingFaceModelGateway
+    from specimen_digitization.research_harness.gateway import ModelGatewayBlocked
+
+    wrapped = HuggingFaceModelGateway(token="hf_test").model_for(built)
+
+    with pytest.raises(ModelGatewayBlocked, match="wrapped_model_does_not_match_qualified_gateway"):
+        _effect_model(wrapped, bound)
+
+
+def test_on_mode_pins_refuse_a_harness_model_whose_tokenizer_is_not_pinned():
+    # The request bound cites DeepSeek's tokenizer files (committed_pins.TOKENIZER_PIN);
+    # they prove nothing about Nemotron's, so its "on"-mode job is not pinned.
+    from specimen_digitization.research_harness.committed_pins import build_committed_pins
+
+    variant = published_registry(environ={SETTING: "field_research"}).resolve("insects").profile
+    published = published_registry(environ={}).resolve("insects").profile
+
+    with pytest.raises(ValueError, match="research_committed_tokenizer_unpinned"):
+        build_committed_pins(variant, organization_id="org", collection_id="insects")
+    pins = build_committed_pins(published, organization_id="org", collection_id="insects")
+    assert {row["route_id"] for row in pins["sources"]["model_prices"].values()} == {"harness-deepseek"}

@@ -230,6 +230,10 @@ class HFCollectionClassifier:
                 raise _Blocked("classifier_sync_worker_required")
             remaining()
             model = self.gateway.model_for(config.route_id)
+            # In production the gateway holds only the configured route, built
+            # with the default provider transport (classifier_runtime's
+            # _classifier_child), so the model is named by its model id and the
+            # client by its provider; no router route (model_gateway) is here.
             if model.model_name != config.expected_model_id or (
                 isinstance(model, HuggingFaceModel)
                 and model.client.provider != config.expected_provider

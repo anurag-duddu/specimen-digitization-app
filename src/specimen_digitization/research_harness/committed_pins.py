@@ -107,6 +107,10 @@ TOKENIZER_PIN = {
     "tokenizer_json_sha256": "c90dfa01249db1be4245780a052ede752e1361c612ac6d08e2bdada7d599476b",  # pragma: allowlist secret (Hugging Face file digest) gitleaks:allow
     "chat_template_jinja_sha256": "d959d804d5101b79a49b6ff1bf3c54cd5affa9a5a78c503d925f3090040b31c3",  # pragma: allowlist secret (Hugging Face file digest) gitleaks:allow
 }
+# The model those files belong to. The bound proves nothing about another
+# model's tokenizer, so a harness route of another model (the NVIDIA option's
+# harness-nemotron) gets no committed pins until its own files are pinned here.
+TOKENIZER_PIN_MODEL = "deepseek-ai/DeepSeek-V4.1-Flash"
 
 # The largest serialized request the guard admits, and its local size bound. The
 # tokenizer is byte-level BPE, so every token covers at least one rendered
@@ -219,6 +223,8 @@ def _harness_binding(profile: PublishedProfile):
     if route_id is None or prices is None or route_id not in prices.models:
         raise ValueError("research_committed_harness_route_unavailable")
     route = HUGGINGFACE_ROUTES[route_id]
+    if route.model_id != TOKENIZER_PIN_MODEL:
+        raise ValueError("research_committed_tokenizer_unpinned")
     # The route's row in the profile's price list. For harness-deepseek
     # (deepseek-ai/DeepSeek-V4.1-Flash on DeepInfra) it is the list price,
     # USD 0.20 / 0.60 per 1M input / output tokens, read 2026-10-02 from the
