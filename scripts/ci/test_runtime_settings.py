@@ -88,6 +88,20 @@ def test_only_worker_turns_the_research_harness_on():
     assert all(SETTING not in S.ROLES[role]["env"] for role in ("api", "sam"))
 
 
+def test_the_api_and_the_worker_carry_the_same_nvidia_option():
+    # NVIDIA_NEMOTRON_OPTION.md section 2: both processes load the published
+    # profiles; the API copies a run's prices at queue time and the worker picks
+    # its routes at classify, so a run never mixes the two options. Unset in
+    # both is the production default (the option is off).
+    from specimen_digitization.application.model_option import SETTING, nvidia_stages
+
+    api, worker = (S.ROLES[role]["env"] for role in ("api", "worker"))
+    if SETTING in api or SETTING in worker:
+        assert api.get(SETTING) == worker.get(SETTING)
+        nvidia_stages(worker)  # A value the processes accept.
+    assert SETTING not in S.ROLES["sam"]["env"]
+
+
 def test_worker_job_passes_the_real_drain_parser_and_settings_check(monkeypatch, capsys):
     from specimen_digitization import observability
     from specimen_digitization.application import worker
