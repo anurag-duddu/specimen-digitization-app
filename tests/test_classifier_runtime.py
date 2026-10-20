@@ -75,7 +75,23 @@ def slow_classifier_factory(payload):
     return local_classifier_factory(payload)
 
 
-def exercise_configured_classifier(tmp_path):
+def exercise_configured_classifier(tmp_path, monkeypatch):
+    from specimen_digitization.application import bounded_effect
+
+    run_isolated = bounded_effect.run_isolated
+    isolated_results = []
+
+    def observe_isolated(*args, **kwargs):
+        result = run_isolated(*args, **kwargs)
+        isolated_results.append({
+            "status": result.status,
+            "reason": result.reason,
+            "elapsed_seconds": result.elapsed_seconds,
+            "cleanup_complete": result.cleanup_complete,
+        })
+        return result
+
+    monkeypatch.setattr(bounded_effect, "run_isolated", observe_isolated)
     blobs = LocalBlobs(tmp_path / "blobs")
     repo = SQLiteRepository(tmp_path / "state.db")
     config = HFClassifierConfig(
@@ -85,7 +101,9 @@ def exercise_configured_classifier(tmp_path):
         prompt_text="Inspect the approved image and return only allowed collection candidates.",
         prompt_version="synthetic-prompt-v1",
         approved=True,
-        total_deadline_seconds=5,
+        # This success fixture covers fresh imports, provenance, export and IPC.
+        # The separate timeout test retains its intentionally short effect clock.
+        total_deadline_seconds=30,
     )
     facade = ConfiguredClassifier(
         blobs, config, allow_sensitive=True, effect=local_classifier_factory
@@ -108,6 +126,7 @@ def exercise_configured_classifier(tmp_path):
             work["blocker"],
             work["run"]["reasons"],
             classification,
+            isolated_results,
         )
         assert classification["calibration_version"] is None
         assert classification["model_version"] == config.expected_model_id
@@ -162,5 +181,5 @@ def test_classifier_factory_timeout_keeps_durable_unknown_without_automatic_retr
         assert after["run"]["usage"]["external_calls"] == calls
 
 
-def test_http_configured_classifier_pins_scope_source_route_and_provenance(tmp_path):
-    exercise_configured_classifier(tmp_path)
+def test_http_configured_classifier_pins_scope_source_route_and_provenance(tmp_path, monkeypatch):
+    exercise_configured_classifier(tmp_path, monkeypatch)

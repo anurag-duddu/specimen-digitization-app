@@ -1,4 +1,5 @@
 """Protected definition only: these tests never contact Cloud Run."""
+import argparse
 import copy
 import importlib.util
 from pathlib import Path
@@ -33,6 +34,17 @@ def test_intake_definition_never_executes_and_uses_api_digest():
     release.verify_definition(definition(), IMAGE, SHA)
     with pytest.raises(ValueError): release.command(IMAGE.split('@')[0] + ':latest', SHA, Path('/tmp/env.yaml'))
     with pytest.raises(ValueError): release.release_context({'GITHUB_REF': 'refs/heads/main'})
+
+
+@pytest.mark.parametrize('job_name', ['specimen-intake', 'specimen-intake-e2e'])
+def test_container_arguments_parse_as_one_flag_value(job_name):
+    command = release.command(IMAGE, SHA, Path('/tmp/env.yaml'), job_name=job_name)
+    # Exercise option parsing: a separate value starting with "-m," is an
+    # option token, so "--args" has no value. Equals-form binds it correctly.
+    parser = argparse.ArgumentParser(allow_abbrev=False)
+    parser.add_argument('--args', type=lambda value: value.split(','))
+    parsed, _ = parser.parse_known_args(command[5:])
+    assert parsed.args == ['-m', 'specimen_digitization.application.intake_worker', '--max-seconds', '3300']
 
 
 @pytest.mark.parametrize('field,value', [('taskCount', 2), ('parallelism', 2)])
