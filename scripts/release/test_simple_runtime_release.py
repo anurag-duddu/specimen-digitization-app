@@ -171,7 +171,8 @@ def test_each_job_runs_exactly_its_reviewed_steps_and_the_yaml_only_calls_script
                                 'uv run python scripts/release/deploy_intake.py "$IMAGE"',
                                 'uv run python scripts/release/deploy_models.py "$SAM_IMAGE" "$WORKER_IMAGE"',
                                 "uv run python scripts/release/process_worker.py process",
-                                "uv run python scripts/release/process_worker.py cool"]
+                                "uv run python scripts/release/process_worker.py cool",
+                                "uv run python scripts/release/keep_images.py"]
     for name in ("wait_for_data.sh", "push_image.sh", "smoke_api.sh"):
         path = ROOT / "scripts/release" / name
         assert os.access(path, os.X_OK) and "set -euo pipefail" in path.read_text()
@@ -187,7 +188,7 @@ def test_the_image_digest_and_the_github_token_reach_only_the_steps_that_use_the
     assert env["build"] == [{}] * 8
     assert env["release"] == [{}, {}, {}, {}, {"IMAGE": "${{ needs.build.outputs.image }}"}, {},
         {"IMAGE": "${{ needs.build.outputs.image }}"},
-        {"SAM_IMAGE": "${{ needs.build.outputs.sam }}", "WORKER_IMAGE": "${{ needs.build.outputs.worker }}"}, {}, {}]
+        {"SAM_IMAGE": "${{ needs.build.outputs.sam }}", "WORKER_IMAGE": "${{ needs.build.outputs.worker }}"}, {}, {}, {}]
     assert [step.get("id") for step in JOBS["build"]["steps"]] == [None, None, None, "push", None, "worker", None, "sam"]
     # No cloud token passes through the YAML: push_image.sh asks gcloud for one from the sign-in step's credential file.
     assert "token_format" not in TEXT and "access_token" not in TEXT and "REGISTRY_TOKEN" not in TEXT
