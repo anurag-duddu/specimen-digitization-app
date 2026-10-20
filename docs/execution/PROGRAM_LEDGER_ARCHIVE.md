@@ -6,8 +6,11 @@ and what is left for the owner.
 
 ## What grew
 
-Measured read-only on 2026-10-20 (storage footprint review, sections 3 and 8;
-counts re-read the same day with `executeGraphqlRead` aggregates):
+Measured read-only on 2026-10-20. Payload sizes come from the storage footprint
+review of that day (sections 3 and 8), a session note kept outside the
+repository (`storage-footprint-2026-10-20.md`, in the side-session notes of
+session local_e3ae4073). The counts and the disk figures were re-read the same day
+with `executeGraphqlRead` aggregates and Cloud Monitoring:
 
 - The ledger is one `worker_cursor` document in the Data Connect table
   `AuxiliaryDocument`. Every charge saved it through `SaveDocumentV2`, and that
@@ -16,9 +19,9 @@ counts re-read the same day with `executeGraphqlRead` aggregates):
   had grown from 58 B to 214,678 B (913 ordinary and 99 research effects), so
   the versions held 197 MB of JSON: about half the final size times the number
   of saves. Saves grow with paid steps, so those bytes grew with their square.
-- Cloud SQL `disk/bytes_used` went from 234.7 MB (2026-09-21) to 393.4 MB
-  (2026-10-20). The disk is 10 GiB, `PD_SSD`, with automatic storage increase
-  off.
+- Cloud SQL `disk/bytes_used` went from 234.7 MB (daily maximum at the start of
+  the 30-day window, 2026-09-20 to 09-21) to 393.4 MB (2026-10-20). The disk is
+  10 GiB, `PD_SSD`, with automatic storage increase off.
 
 Nothing reads those versions. The compare-and-set uses the document's
 `revision`; a resend is recognized by its `AuxiliaryReceipt`;
@@ -55,7 +58,8 @@ Why the invariants hold:
 
 The existing head drains on its own: each save past the threshold archives up
 to 64 effects, so the 1,012 effects of 2026-10-20 leave the head over about 16
-charges. No existing row is changed or deleted. This needs no schema, connector
+charges. The head document is updated as before; no existing version row is
+changed or deleted. This needs no schema, connector
 or data release change: archives go through the existing `CreateDocumentV2` and
 `SaveDocumentV2`, which already accept `worker_cursor` documents from the
 worker's actor.
@@ -71,8 +75,9 @@ on 2026-10-20 the same harness stored about 4 KB per paid step at 100, 400 and
 ## Left for the owner
 
 **Pruning the old versions: not needed.** The 2,003 existing version rows stay.
-They are about 197 MB of JSON, roughly 85 MB on disk if PostgreSQL compresses
-them as the review estimated (2.3 times), against a 10 GiB disk. They no longer
+They are about 197 MB of JSON; on disk they take less, not measured (the review
+found 35.8 MB after zlib, and 2.3 times compression for the database's JSON
+overall, which would be about 85 MB), against a 10 GiB disk. They no longer
 grow. Deleting them might not lower the disk figure either: PostgreSQL mostly
 keeps freed space for new rows of the same table rather than handing it back
 without a table rewrite. If the owner ever wants them gone, it is a one-off SQL
