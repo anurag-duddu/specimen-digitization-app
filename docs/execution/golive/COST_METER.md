@@ -234,9 +234,23 @@ pass.
   (`DrainWorker._allocate_costs`). There is no scheduler: worker executions
   are started by intake and actions, by the drain's own continuation and by
   `POST .../costs/refresh`.
+- It runs only when that drain's sweep completed its pass (`status`
+  `complete`: the pass reached the last page of the records it may see that
+  were saved since its watermark; sensitive records' rows come from their own
+  saves). Otherwise, for
+  instance while the first sweep after a release still has pages to go or
+  when the sweep failed, it logs `cost allocation skipped:
+  cost_allocation_waiting_for_sweep`, reads and writes nothing and leaves the
+  cursor: a SAM 3 residual computed against missing paid calls would be too
+  high.
 - A pass allocates the complete billing days after the collection's cursor,
   from 2026-10-01 on the first pass, at most 7 days. A day is complete three
-  hours after it ends. A pass stops after 45 seconds or at the drain window's
+  hours after it ends. Each pass also allocates again the last 2 complete
+  billing days that are already allocated (`REALLOCATE_DAYS`), writing the same
+  ids, so a paid call or a save recorded after its day was first allocated
+  counts while the day is among those two; an unchanged row keeps its
+  `updatedAt`, and the cursor never moves back. Rows of older days stay as
+  they were written. A pass stops after 45 seconds or at the drain window's
   close, checked before each Cloud Monitoring page and each day, and at a stop
   signal, checked before the readings and each day; a read already sent
   finishes first (each read times out at 10 s).
@@ -365,7 +379,8 @@ Rows: `source` and `kind` `allocation`, `costBasis` `allocated`, `provider`
 `google_cloud`, `step` `allocation:<resource>`, `attempt` 1, `ordinal` 0, no
 specimen or run; `usage` is the collection's measure (for example
 `{"processing_seconds": 412.5}`); `allocationMethodDetails` holds the day,
-zone and window, the share (measure, basis `day`, `month` or `even`,
+zone and window, `reallocated_while_within_last_days` (2: the window above
+in which the day is computed again), the share (measure, basis `day`, `month` or `even`,
 numerator, denominator) and the day's allocated (for a credit, credited)
 micro-USD; a cost row also
 its rates and list micro-USD (and, but for the database, its hourly
@@ -433,8 +448,10 @@ An administrator reads only their organization's rows (`CostTotalsV1`,
 - The bucket's storage class and location (read from the series' label at run
   time); that the database is the db-f1-micro equivalent, and how a Data
   Connect trial appears on the bill.
-- The Pacific day boundary (above); late paid-call rows after a day was
-  allocated are not reallocated.
+- The Pacific day boundary (above). A paid call or save that reaches the
+  ledger only after its day has left the last two complete billing days, or
+  with no worker pass while the day was among them, leaves that day's rows as
+  they were written.
 - The intake job (`specimen-intake`) draws on the instance-based pool but its
   own cost is not allocated.
 
