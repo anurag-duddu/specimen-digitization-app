@@ -65,19 +65,30 @@ def read_url(project: str, region: str) -> str:
             f"/services/{DATA_CONNECT}:executeGraphqlRead")
 
 
+MAX_PAGES = 100
+COUNT_ROWS = "import json,sys; print(len(json.load(sys.stdin)['data']['costEntries']))"
+
+
 def curl_loop(month: str, project: str, region: str) -> str:
-    """A shell loop that pages through the month with curl. The token is Application Default Credentials'
-    own, fetched by gcloud when the command runs; this script never sees it."""
+    """A shell loop that pages through the month with curl until a page holds fewer than PAGE rows (at most
+    MAX_PAGES pages). The token is Application Default Credentials' own, fetched by gcloud when the command
+    runs; this script never sees it. A response that is not a page of rows (an error body) stops the loop and
+    stays in its file for the operator to read."""
     body = json.dumps({"query": graphql_query(month, OFFSET_MARK)}).replace(OFFSET_MARK, "'\"$OFFSET\"'")
     return "\n".join([
-        f"for OFFSET in {' '.join(str(PAGE * n) for n in range(5))}; do",
+        "OFFSET=0",
+        f"for PAGE in $(seq 1 {MAX_PAGES}); do",
+        f'  FILE="cost_rows_{month}_${{OFFSET}}.json"',
         "  curl -sS -X POST \\",
         '    -H "Authorization: Bearer $(gcloud auth application-default print-access-token)" \\',
         f'    -H "x-goog-user-project: {project}" \\',
         '    -H "Content-Type: application/json" \\',
         f"    '{read_url(project, region)}' \\",
         f"    -d '{body}' \\",
-        f'    -o "cost_rows_{month}_${{OFFSET}}.json"',
+        '    -o "$FILE" || break',
+        f'  ROWS=$(python3 -c "{COUNT_ROWS}" < "$FILE") || {{ echo "stopped: $FILE is not a page of cost rows" >&2; break; }}',
+        f'  [ "$ROWS" -lt {PAGE} ] && break',
+        f"  OFFSET=$((OFFSET + {PAGE}))",
         "done"])
 
 
@@ -106,8 +117,9 @@ def queries(month: str, project: str, region: str, table: str) -> str:
         "## 1. Meter rows (Data Connect executeGraphqlRead, every organization)",
         "",
         "Run as a project owner with Application Default Credentials (`gcloud auth application-default login`).",
-        "Each page is up to %d rows; repeat with a larger offset until a page holds fewer than that. Pass every" % PAGE,
-        "file to --meter-rows. The query as plain GraphQL (page 1):",
+        "Each page is up to %d rows. The loop below fetches page after page until one holds fewer rows than that" % PAGE,
+        "(at most %d pages), writing one file per page. Pass every file to --meter-rows. The query as plain GraphQL" % MAX_PAGES,
+        "(page 1):",
         "",
         graphql_query(month),
         "",
@@ -116,7 +128,8 @@ def queries(month: str, project: str, region: str, table: str) -> str:
         "## 2. Google bill (BigQuery standard billing export)",
         "",
         "Needs the export enabled once (see COST_RECONCILIATION.md). Set --bq-table to PROJECT.DATASET.TABLE.",
-        "Run with: bq query --nouse_legacy_sql --format=json --max_rows=1000000 '<SQL>' > google_export_%s.json" % month,
+        "Save one statement as query.sql and run: bq query --nouse_legacy_sql --format=json --max_rows=1000000 \\",
+        "  < query.sql > google_export_%s.json" % month,
         "",
         "-- by invoice month, as the statement groups it",
         sql_invoice + ";",
@@ -135,8 +148,20 @@ def queries(month: str, project: str, region: str, table: str) -> str:
     return "\n".join(out)
 
 
+class UnreadableInput(Exception):
+    """An input file that cannot be read as JSON or JSON Lines; the text says which file and why."""
+
+
 def load_json(path: str):
-    text = Path(path).read_text(encoding="utf-8")
+    """The file's JSON, or its JSON Lines as a list. A missing, unreadable, empty or non-JSON file is refused."""
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except OSError as error:
+        raise UnreadableInput(f"{path}: cannot read it ({error.strerror or type(error).__name__})") from None
+    except UnicodeDecodeError:
+        raise UnreadableInput(f"{path}: not UTF-8 text") from None
+    if not text.strip():
+        raise UnreadableInput(f"{path}: the file is empty")
     try:
         return json.loads(text)
     except ValueError:
@@ -144,14 +169,21 @@ def load_json(path: str):
     try:  # JSON Lines, as `bq` and some exports write them
         return [json.loads(line) for line in text.splitlines() if line.strip()]
     except ValueError:
-        raise SystemExit(f"error: {path} is not JSON or JSON Lines") from None
+        raise UnreadableInput(f"{path}: not JSON or JSON Lines") from None
 
 
-def merged_rows(paths: list[str]) -> list:
+def merged_rows(paths: list[str]) -> tuple[list, list[str]]:
+    """Every page's rows, and a warning for each file whose row count is a multiple of the page size: a
+    full page may mean the next one was never fetched."""
     rows: list = []
+    warnings: list[str] = []
     for path in paths:
-        rows.extend(cr.unwrap_rows(load_json(path), path, ("costEntries", "rows", "items")))
-    return rows
+        page = cr.unwrap_rows(load_json(path), path, ("costEntries", "rows", "items"))
+        if page and len(page) % PAGE == 0:
+            warnings.append(f"{path} holds exactly {len(page)} rows, a multiple of the page size ({PAGE}); the next page "
+                            "may not have been fetched. Fetch from the next offset and pass that file too.")
+        rows.extend(page)
+    return rows, warnings
 
 
 def parser() -> argparse.ArgumentParser:
@@ -200,15 +232,22 @@ def main(argv=None) -> int:
     if not args.huggingface and not args.google:
         p.error("give at least one bill: --huggingface and/or --google")
     limits = thresholds(args, p.error)
+    for out_path in (args.out_json, args.out_md):
+        if out_path and not Path(out_path).resolve().parent.is_dir():
+            p.error(f"the folder for {out_path} does not exist")
     try:
+        rows, warnings = merged_rows(args.meter_rows)
         report = cr.reconcile(
-            meter_rows=merged_rows(args.meter_rows), month=args.month, thresholds=limits, project_id=args.project,
+            meter_rows=rows, month=args.month, thresholds=limits, project_id=args.project,
             huggingface=load_json(args.huggingface) if args.huggingface else None,
             google=tuple(load_json(path) for path in args.google) if args.google else None,
-            billing_zone=args.billing_zone, free_credit_types=cr.FREE_CREDIT_TYPES | set(args.free_credit_type))
-    except cr.ReconciliationInputError as error:
+            billing_zone=args.billing_zone, free_credit_types=cr.FREE_CREDIT_TYPES | set(args.free_credit_type),
+            input_warnings=warnings)
+    except (cr.ReconciliationInputError, UnreadableInput) as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
+    for text in warnings:
+        print(f"warning: {text}", file=sys.stderr)
     markdown = cr.render_markdown(report)
     wrote = []
     if args.out_json:

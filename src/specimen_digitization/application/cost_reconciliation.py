@@ -503,13 +503,18 @@ class GoogleLine:
     sku: str
     cost: int                    # nano-USD, before credits
     free: int                    # nano-USD, free-allowance credits (zero or negative)
-    other: int                   # nano-USD, every other credit (zero or negative)
+    other_types: tuple[tuple[str, int], ...] = ()  # nano-USD per credit type, every credit that is not the free allowance
     day: date | None = None      # a console line's day, as the console shows it
     start: datetime | None = None  # an export row's usage window
     end: datetime | None = None
     project: str | None = None
     invoice_month: str | None = None
     cost_type: str | None = None
+
+    @property
+    def other(self) -> int:
+        """Nano-USD of every credit that is not the free allowance (zero or negative)."""
+        return sum(amount for _, amount in self.other_types)
 
 
 @dataclass
@@ -532,9 +537,10 @@ def _get(row: dict, dotted: str):
     return node
 
 
-def _credits(raw, free_types, where: str) -> tuple[int, int]:
+def _credits(raw, free_types, where: str) -> tuple[int, tuple[tuple[str, int], ...]]:
+    """(the free-allowance credits, every other credit summed per type), in nano-USD."""
     if raw is None:
-        return 0, 0
+        return 0, ()
     if isinstance(raw, str):
         try:
             raw = json.loads(raw)
@@ -542,18 +548,20 @@ def _credits(raw, free_types, where: str) -> tuple[int, int]:
             _fail(where, "credits is not JSON")
     if not isinstance(raw, list):
         _fail(where, "credits must be a list")
-    free = other = 0
+    free = 0
+    other: dict[str, int] = {}
     for credit in raw:
         if not isinstance(credit, dict):
             _fail(where, "a credit must be an object")
         amount = _nano(credit.get("amount") or 0, where + " credit amount")
         kind = str(credit.get("type") or "").upper()
-        name = str(credit.get("name") or credit.get("full_name") or "")
+        name = str(credit.get("name") or credit.get("full_name") or "").strip()
         if kind in free_types or (not kind and "free" in name.lower()):
             free += amount
         else:
-            other += amount
-    return free, other
+            label = kind or name or "UNTYPED"
+            other[label] = other.get(label, 0) + amount
+    return free, tuple(sorted(other.items()))
 
 
 def _export_row(raw: dict, index: int, free_types) -> GoogleLine:
@@ -564,11 +572,11 @@ def _export_row(raw: dict, index: int, free_types) -> GoogleLine:
     start, end = _get(raw, "usage_start_time"), _get(raw, "usage_end_time")
     if start is None:
         _fail(where, "needs usage_start_time")
-    free, other = _credits(raw.get("credits"), free_types, where)
+    free, other_types = _credits(raw.get("credits"), free_types, where)
     invoice, project = _get(raw, "invoice.month"), _get(raw, "project.id")
     cost_type = raw.get("cost_type")
     return GoogleLine(
-        service=service, sku=sku, cost=_nano(raw.get("cost") or 0, where + " cost"), free=free, other=other,
+        service=service, sku=sku, cost=_nano(raw.get("cost") or 0, where + " cost"), free=free, other_types=other_types,
         start=_moment(start, where + " usage_start_time"),
         end=None if end is None else _moment(end, where + " usage_end_time"),
         project=project if isinstance(project, str) else None,
@@ -587,7 +595,7 @@ def _console_line(raw: dict, index: int) -> GoogleLine:
     if credits > 0:
         _fail(where, "credits_usd must be zero or negative, as the console shows it")
     return GoogleLine(service=service, sku=sku, cost=_nano(raw.get("cost_usd"), where + " cost_usd"),
-                      free=credits, other=0, day=_day(raw.get("day"), where + " day"),
+                      free=credits, day=_day(raw.get("day"), where + " day"),
                       project=raw.get("project") if isinstance(raw.get("project"), str) else None)
 
 
@@ -687,6 +695,30 @@ def _direction(gap: int) -> str:
 
 def _explain(code: str, text: str) -> dict:
     return {"code": code, "text": text}
+
+
+def _add_credit_types(total: dict, line: GoogleLine) -> None:
+    """Add a line's other credits, per type, into ``total`` (nano-USD)."""
+    for kind, amount in line.other_types:
+        total[kind] = total.get(kind, 0) + amount
+
+
+def _rounded_types(nano_by_type: dict) -> dict:
+    """Per-type nano-USD as micro-USD, rounded once per type, in type order."""
+    return {kind: _micros(amount) for kind, amount in sorted(nano_by_type.items()) if _micros(amount) != 0}
+
+
+def _sum_types(groups) -> dict:
+    total: dict = {}
+    for group in groups:
+        for kind, amount in group.items():
+            total[kind] = total.get(kind, 0) + amount
+    return dict(sorted(total.items()))
+
+
+def types_text(by_type: dict) -> str:
+    """``PROMOTION -$0.3300, SPENDING_BASED_DISCOUNT -$0.0100``."""
+    return ", ".join(f"{kind} {usd(amount)}" for kind, amount in by_type.items())
 
 
 # ---- Hugging Face -----------------------------------------------------------
@@ -880,6 +912,8 @@ def _google_meter(rows: list[MeterRow], zone: BillingZone):
             if not row.is_credit:
                 target.allocation_rows += 1
                 if row.occurred is not None:
+                    # The billing day in the zone in use, not the UTC date: an allocation row is stamped at the start of
+                    # its billing day, which falls on the same date in UTC, UTC-5 and Pacific only for midnight Pacific.
                     target.alloc_days.add(zone.local_day(row.occurred))
         else:
             target.direct_micros += row.cost
@@ -918,7 +952,7 @@ def _google_lines(bill: GoogleBill, month: str, zone: BillingZone, project_id: s
 def _google_section(rows: list[MeterRow], bill: GoogleBill | None, month: str, zone: BillingZone,
                     project_id: str | None, limits: Thresholds, day_check: dict | None) -> tuple[dict, dict]:
     per, unplaced, other_meter, any_allocation, unassigned_credit = _google_meter(rows, zone)
-    families = {name: {"cost": 0, "free": 0, "other": 0, "days": {}, "skus": {}} for name, _ in GOOGLE_FAMILIES}
+    families = {name: {"cost": 0, "free": 0, "other": {}, "days": {}, "skus": {}} for name, _ in GOOGLE_FAMILIES}
     unmetered: dict[tuple, dict] = {}
     source = None
     other_projects = {"lines": 0, "cost_micros": 0, "free_micros": 0}
@@ -932,26 +966,29 @@ def _google_section(rows: list[MeterRow], bill: GoogleBill | None, month: str, z
                 cell = families[family]
                 cell["cost"] += line.cost
                 cell["free"] += line.free
-                cell["other"] += line.other
+                _add_credit_types(cell["other"], line)
                 cell["days"][day] = cell["days"].get(day, 0) + line.cost
                 cell["skus"][line.sku] = cell["skus"].get(line.sku, 0) + line.cost
             else:
                 label = (line.service, line.sku if line.cost_type not in ("tax", "rounding_error")
                          else f"({line.cost_type})")
-                cell = unmetered.setdefault(label, {"cost": 0, "free": 0, "other": 0})
+                cell = unmetered.setdefault(label, {"cost": 0, "free": 0, "other": {}})
                 cell["cost"] += line.cost
                 cell["free"] += line.free
-                cell["other"] += line.other
+                _add_credit_types(cell["other"], line)
     result_families = []
     for name, label in GOOGLE_FAMILIES:
         m, b = per[name], families[name]
-        cost, free, other = _micros(b["cost"]), _micros(b["free"]), _micros(b["other"])
+        cost, free = _micros(b["cost"]), _micros(b["free"])
+        other_types = _rounded_types(b["other"])
+        other = sum(other_types.values())
         billed_after = cost + free
         gap = m.after_micros - billed_after
         flagged = bill is not None and limits.exceeded(gap, billed_after)
         entry = {
             "family": name, "label": label,
             "billed_cost_micros": cost, "billed_credits_micros": free, "billed_other_credits_micros": other,
+            "billed_other_credits_by_type": other_types,
             "billed_net_micros": billed_after + other, "billed_after_allowance_micros": billed_after,
             "meter_list_micros": m.list_micros, "meter_after_allowance_micros": m.after_micros,
             "meter_credits_micros": m.after_micros - m.list_micros,
@@ -966,15 +1003,23 @@ def _google_section(rows: list[MeterRow], bill: GoogleBill | None, month: str, z
         if flagged:
             entry["explanations"] = _google_explanations(entry, b, any_allocation, zone, day_check, other_projects)
         result_families.append(entry)
-    unmetered_lines = [{"service": s, "sku": k, "cost_micros": _micros(c["cost"]), "credits_micros": _micros(c["free"]),
-                        "other_credits_micros": _micros(c["other"]),
-                        "net_micros": _micros(c["cost"]) + _micros(c["free"])}
-                       for (s, k), c in sorted(unmetered.items(), key=lambda item: (-item[1]["cost"], item[0]))]
+    unmetered_lines = []
+    for (service, sku), c in sorted(unmetered.items(), key=lambda item: (-item[1]["cost"], item[0])):
+        types = _rounded_types(c["other"])
+        cost, free = _micros(c["cost"]), _micros(c["free"])
+        unmetered_lines.append({
+            "service": service, "sku": sku, "cost_micros": cost, "credits_micros": free,
+            "other_credits_micros": sum(types.values()), "other_credits_by_type": types,
+            "after_allowance_micros": cost + free, "net_micros": cost + free + sum(types.values())})
+    unmetered_types = _sum_types([l["other_credits_by_type"] for l in unmetered_lines])
     google = {
         "supplied": bill is not None, "source": source, "families": result_families,
         "unmetered": {"lines": unmetered_lines,
                       "cost_micros": sum(l["cost_micros"] for l in unmetered_lines),
                       "credits_micros": sum(l["credits_micros"] for l in unmetered_lines),
+                      "other_credits_micros": sum(l["other_credits_micros"] for l in unmetered_lines),
+                      "other_credits_by_type": unmetered_types,
+                      "after_allowance_micros": sum(l["after_allowance_micros"] for l in unmetered_lines),
                       "net_micros": sum(l["net_micros"] for l in unmetered_lines)},
         "other_projects": other_projects, "lines_outside_month": other_months, "invoice_month_shift": invoice_shift,
         "meter_unplaced": {"rows": unplaced.rows, "cost_micros": unplaced.after_micros},
@@ -982,13 +1027,19 @@ def _google_section(rows: list[MeterRow], bill: GoogleBill | None, month: str, z
     }
     fam_billed = sum(f["billed_after_allowance_micros"] for f in result_families)
     fam_meter = sum(f["meter_after_allowance_micros"] for f in result_families)
+    other_total = sum(f["billed_other_credits_micros"] for f in result_families) + google["unmetered"]["other_credits_micros"]
+    cost_total = sum(f["billed_cost_micros"] for f in result_families) + google["unmetered"]["cost_micros"]
+    free_total = sum(f["billed_credits_micros"] for f in result_families) + google["unmetered"]["credits_micros"]
     google["totals"] = {
-        "billed_micros": fam_billed + google["unmetered"]["net_micros"],
+        "billed_micros": fam_billed + google["unmetered"]["after_allowance_micros"],
         "billed_families_micros": fam_billed,
-        "billed_unmetered_micros": google["unmetered"]["net_micros"],
-        "billed_other_credits_micros": sum(f["billed_other_credits_micros"] for f in result_families)
-        + sum(l["other_credits_micros"] for l in unmetered_lines),
-        "billed_credits_micros": sum(f["billed_credits_micros"] for f in result_families) + google["unmetered"]["credits_micros"],
+        "billed_unmetered_micros": google["unmetered"]["after_allowance_micros"],
+        "billed_cost_micros": cost_total,
+        "billed_credits_micros": free_total,
+        "billed_other_credits_micros": other_total,
+        "billed_other_credits_by_type": _sum_types([f["billed_other_credits_by_type"] for f in result_families]
+                                                   + [unmetered_types]),
+        "billed_net_micros": cost_total + free_total + other_total,
         "metered_micros": fam_meter + unplaced.after_micros + unassigned_credit,
         "metered_families_micros": fam_meter,
         "meter_credits_micros": sum(f["meter_credits_micros"] for f in result_families) + unassigned_credit,
@@ -1020,17 +1071,28 @@ def _google_explanations(entry: dict, billed: dict, any_allocation: bool, zone: 
         out.append(_explain("held_calls", f"{usd(entry['meter_held_micros'])} of the meter's figure is held: direct SAM 3 "
                             "calls with unknown spend counted at their full reservation."))
     credit_gap = entry["meter_credits_micros"] - entry["billed_credits_micros"]
+    others = entry["billed_other_credits_by_type"]
+    hint = ""
+    if others:
+        hint = (f"The bill's lines for this family carry other credits ({types_text(others)}); if one of these types is "
+                f"the free tier, re-run with --free-credit-type <TYPE> ({', '.join(others)}).")
     if credit_gap * gap > 0 and abs(credit_gap) * 2 >= abs(gap):
-        text = (f"The meter's free allowance is {usd(-entry['meter_credits_micros'])} and the bill's is "
-                f"{usd(-entry['billed_credits_micros'])}; the difference ({usd(abs(credit_gap))}) accounts for at least "
-                "half of the gap.")
+        text = (f"The meter's free allowance is {usd(-entry['meter_credits_micros'])} and the bill's (credit type "
+                f"FREE_TIER by default) is {usd(-entry['billed_credits_micros'])}; the difference "
+                f"({usd(abs(credit_gap))}) accounts for at least half of the gap.")
+        if hint:
+            text += " " + hint
         if credit_gap < 0:
-            text += " Google's free tier is shared by every project on the billing account"
+            text += " Otherwise, Google's free tier" if hint else " Google's free tier"
+            text += " is shared by every project on the billing account"
             text += (f"; the export shows {usd(-other_projects['free_micros'])} of free-tier credit on other projects."
                      if other_projects["free_micros"] < 0 else "; other projects' usage may have used part of it.")
         elif entry["meter_credits_micros"] == 0:
             text += " The meter holds no free-allowance rows for this family."
         out.append(_explain("free_allowance", text))
+    elif hint:
+        out.append(_explain("other_credits", f"{hint} They are not subtracted in the comparison; Google's net charge for "
+                            f"this family was {usd(entry['billed_net_micros'])}."))
     if name == "specimen-worker" and below:
         out.append(_explain("intake_jobs", "The Jobs SKUs bill every Cloud Run job of the project. The intake jobs share them "
                             "and are not metered."))
@@ -1127,14 +1189,17 @@ STRUCTURAL_GAPS = (
 
 def reconcile(*, meter_rows, huggingface=None, google=None, month: str, thresholds: Thresholds | None = None,
               route_models: dict[str, str] | None = None, project_id: str | None = None,
-              billing_zone: str = DEFAULT_BILLING_ZONE, free_credit_types=FREE_CREDIT_TYPES) -> dict:
+              billing_zone: str = DEFAULT_BILLING_ZONE, free_credit_types=FREE_CREDIT_TYPES,
+              input_warnings=()) -> dict:
     """Compare one month of meter rows with the supplied bills.
 
     ``meter_rows``: CostEntry rows (a list, or a Data Connect response holding
     ``costEntries``). ``huggingface``: either bill shape of ``parse_huggingface``.
     ``google``: one document, or a tuple of documents (see ``parse_google``). Either bill
     may be None; its section then says it was not supplied. ``project_id`` keeps
-    only that project's export rows (others are totalled apart).
+    only that project's export rows (others are totalled apart). ``input_warnings``
+    are texts the caller noticed about its input files (a possibly truncated page);
+    the report carries them under ``warnings``.
     """
     month_of(month)
     limits = thresholds or Thresholds()
@@ -1151,9 +1216,16 @@ def reconcile(*, meter_rows, huggingface=None, google=None, month: str, threshol
     g_billed = gg["totals"]["billed_micros"] if gg["supplied"] else 0
     hf_metered, g_metered = hf["totals"]["metered_micros"], gg["totals"]["metered_micros"]
     other_metered = meter_other["cost_micros"]
+    g_other = gg["totals"]["billed_other_credits_micros"] if gg["supplied"] else 0
     totals = {
         "billed_micros": hf_billed + g_billed,
+        "billed_net_micros": hf_billed + g_billed + g_other,
         "billed_huggingface_micros": hf_billed, "billed_google_micros": g_billed,
+        "billed_google_cost_micros": gg["totals"]["billed_cost_micros"] if gg["supplied"] else 0,
+        "billed_google_credits_micros": gg["totals"]["billed_credits_micros"] if gg["supplied"] else 0,
+        "billed_google_other_credits_micros": g_other,
+        "billed_google_other_credits_by_type": gg["totals"]["billed_other_credits_by_type"] if gg["supplied"] else {},
+        "billed_google_net_micros": gg["totals"]["billed_net_micros"] if gg["supplied"] else 0,
         "billed_google_unmetered_micros": gg["totals"]["billed_unmetered_micros"] if gg["supplied"] else 0,
         "metered_micros": meter_total,
         "metered_huggingface_micros": hf_metered, "metered_google_micros": g_metered,
@@ -1176,6 +1248,7 @@ def reconcile(*, meter_rows, huggingface=None, google=None, month: str, threshol
                    "google_source": gg["source"], "google_project": project_id,
                    "meter_has_allocation_rows": any(r.is_allocation for r in rows)},
         "huggingface": hf, "google": gg, "meter_other": meter_other, "totals": totals, "flags": flags,
+        "warnings": [str(text) for text in input_warnings],
         "structural_gaps": list(STRUCTURAL_GAPS),
     }
 
@@ -1224,6 +1297,11 @@ def _table(headers: list[str], body: list[list[str]]) -> list[str]:
     return lines
 
 
+def _other_cell(micros: int, by_type: dict) -> str:
+    """An amount of other credits and, when there is any, the types that make it up."""
+    return f"{usd(micros)} ({', '.join(by_type)})" if by_type else usd(micros)
+
+
 def _gap_text(gap: int, percent) -> str:
     if gap == 0:
         return "no difference"
@@ -1237,13 +1315,15 @@ def render_markdown(report: dict) -> str:
     limit = report["thresholds"]
     out = [f"# Cost meter check, {month}", ""]
     hf, gg, other = report["huggingface"], report["google"], report["meter_other"]
+    other_credits = t["billed_google_other_credits_micros"]
+    net_note = f" ({usd(t['billed_net_micros'])} net of {usd(abs(other_credits))} of other credits)" if other_credits else ""
     if hf["supplied"] and gg["supplied"]:
-        out.append(f"Billed: {usd(t['billed_micros'])}. Metered: {usd(t['metered_micros'])}. "
+        out.append(f"Billed: {usd(t['billed_micros'])} after the free tier{net_note}. Metered: {usd(t['metered_micros'])}. "
                    f"Overall, {_gap_text(t['gap_micros'], t['gap_percent'])}.")
     else:
         supplied = "Hugging Face" if hf["supplied"] else "Google Cloud" if gg["supplied"] else None
-        lead = (f"Billed: {usd(t['billed_micros'])} (only the {supplied} bill was supplied)." if supplied
-                else "No bill was supplied.")
+        lead = (f"Billed: {usd(t['billed_micros'])} after the free tier{net_note}; only the {supplied} bill was supplied."
+                if supplied else "No bill was supplied.")
         out.append(f"{lead} Metered: {usd(t['metered_micros'])}, every row of the month. "
                    "The overall comparison is partial; the like-for-like line below is the one to read.")
     out.append("")
@@ -1252,15 +1332,25 @@ def render_markdown(report: dict) -> str:
     else:
         out.append("- Hugging Face: no bill supplied.")
     if gg["supplied"]:
-        out.append(f"- Google Cloud (after the free allowance): billed {usd(t['billed_google_micros'])}, of which "
+        by_type = t["billed_google_other_credits_by_type"]
+        others = f"other credits {usd(other_credits)} ({types_text(by_type)})" if other_credits else "no other credits"
+        out.append(f"- Google Cloud: cost {usd(t['billed_google_cost_micros'])}, free-tier credits "
+                   f"{usd(t['billed_google_credits_micros'])}, {others}; net charge {usd(t['billed_google_net_micros'])}. "
+                   f"Compared after the free tier: billed {usd(t['billed_google_micros'])}, of which "
                    f"{usd(t['billed_google_unmetered_micros'])} is for services the meter does not cover; "
                    f"metered {usd(t['metered_google_micros'])}.")
+        if other_credits:
+            out.append("- The meter holds no counterpart to the other credits, so the comparison does not subtract them. "
+                       f"If one of these types is the free tier ({', '.join(by_type)}), re-run with "
+                       "--free-credit-type <TYPE>.")
     else:
         out.append("- Google Cloud: no bill supplied.")
     if t["metered_other_micros"]:
         out.append(f"- Tool calls and other rows with no bill to compare: {usd(t['metered_other_micros'])}.")
     out.append(f"- Like for like (the services the meter covers): billed {usd(t['comparable_billed_micros'])}, "
                f"metered {usd(t['comparable_metered_micros'])}; {_gap_text(t['comparable_gap_micros'], t['comparable_gap_percent'])}.")
+    if report["warnings"]:
+        out += ["", "## Warnings", ""] + [f"- {text}" for text in report["warnings"]]
     out += ["", f"## What needs a look ({len(report['flags'])})", ""]
     if not report["flags"]:
         out.append(f"No gap is above the limit of the larger of {usd(limit['absolute_micros'])} and "
@@ -1290,17 +1380,19 @@ def render_markdown(report: dict) -> str:
     if gg["supplied"] or any(f["meter_rows"] for f in gg["families"]):
         out += ["", "## Google Cloud, by cost family", ""]
         body = [[f["label"], usd(f["billed_cost_micros"]), usd(f["billed_credits_micros"]),
-                 usd(f["billed_after_allowance_micros"]), usd(f["meter_list_micros"]),
+                 _other_cell(f["billed_other_credits_micros"], f["billed_other_credits_by_type"]),
+                 usd(f["billed_net_micros"]), usd(f["billed_after_allowance_micros"]), usd(f["meter_list_micros"]),
                  usd(f["meter_after_allowance_micros"]), usd(f["gap_micros"]),
                  "n/a" if f["gap_percent"] is None else f"{f['gap_percent']:.1f}%", "yes" if f["flagged"] else ""]
                 for f in gg["families"]]
-        out += _table(["Family", "Billed", "Free allowance (bill)", "Billed after allowance", "Meter before allowance",
-                       "Meter after allowance", "Gap", "Gap %", "Flagged"], body)
+        out += _table(["Family", "Cost", "Free-tier credits", "Other credits", "Net charge", "Billed after free tier",
+                       "Meter before free tier", "Meter after free tier", "Gap", "Gap %", "Flagged"], body)
         if gg["unmetered"]["lines"]:
             out += ["", "### Google lines the meter does not cover", ""]
             shown = gg["unmetered"]["lines"][:15]
-            out += _table(["Service", "SKU", "Cost", "Credits", "Net"],
-                          [[l["service"], l["sku"], usd(l["cost_micros"]), usd(l["credits_micros"]), usd(l["net_micros"])]
+            out += _table(["Service", "SKU", "Cost", "Free-tier credits", "Other credits", "Net charge"],
+                          [[l["service"], l["sku"], usd(l["cost_micros"]), usd(l["credits_micros"]),
+                            _other_cell(l["other_credits_micros"], l["other_credits_by_type"]), usd(l["net_micros"])]
                            for l in shown])
             if len(gg["unmetered"]["lines"]) > len(shown):
                 out.append(f"\n{len(gg['unmetered']['lines']) - len(shown)} smaller lines are in the JSON report.")

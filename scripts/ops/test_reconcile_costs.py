@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
 from pathlib import Path
 import re
-import shlex
+import shutil
 import subprocess
 import sys
 
@@ -91,17 +92,80 @@ def test_the_bigquery_table_is_the_operators_and_a_december_window_rolls_into_ja
     assert "TIMESTAMP('2026-11-30') AND usage_start_time < TIMESTAMP('2027-01-02')" in out
 
 
-def test_the_curl_loop_sends_the_same_query_with_each_offset_and_never_handles_a_token():
+FAKE_CURL = '''#!PYTHON
+import json, os, sys
+args = sys.argv[1:]
+log = os.environ["FAKE_LOG"]
+calls = sum(1 for _ in open(log)) if os.path.exists(log) else 0
+plan = json.loads(os.environ["FAKE_PAGES"])
+size = plan[min(calls, len(plan) - 1)]
+query = json.loads(args[args.index("-d") + 1])["query"]
+offset = int(query.split("offset: ")[1].split(")")[0])
+with open(log, "a") as handle:
+    handle.write(json.dumps({"offset": offset, "header": args[args.index("-H") + 1], "query": query}) + "\\n")
+body = ({"data": {"costEntries": [{"id": str(offset + i)} for i in range(size)]}} if size is not None
+        else {"error": {"message": "denied"}})
+with open(args[args.index("-o") + 1], "w") as out:
+    json.dump(body, out)
+'''
+
+
+def run_loop(tmp_path, plan, shell="bash"):
+    """Run the printed curl loop with a stand-in curl (page sizes from ``plan``; None is an error body) and a
+    stand-in gcloud, so nothing leaves the machine. Returns the offsets asked for, the files written and stderr."""
+    shell_path = shutil.which(shell)
+    if shell_path is None:
+        pytest.skip(f"{shell} is not installed")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "curl").write_text(FAKE_CURL.replace("PYTHON", sys.executable))
+    (bin_dir / "gcloud").write_text("#!/bin/sh\necho fake-token\n")
+    for name in ("curl", "gcloud"):
+        (bin_dir / name).chmod(0o755)
+    work = tmp_path / "work"
+    work.mkdir()
+    environment = {**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}", "FAKE_LOG": str(work / "calls.log"),
+                   "FAKE_PAGES": json.dumps(plan)}
+    result = subprocess.run([shell_path, "-c", cli.curl_loop("2026-10", "specimen-digitization", "us-east4")], cwd=work,
+                            env=environment, capture_output=True, text=True, timeout=120)
+    log = work / "calls.log"
+    calls = [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
+    files = sorted(path.name for path in work.glob("cost_rows_*"))
+    return result, calls, files
+
+
+@pytest.mark.parametrize("shell", ["bash", "zsh"])
+def test_the_curl_loop_pages_until_a_short_page_with_each_offset_and_never_handles_a_token(tmp_path, shell):
+    result, calls, files = run_loop(tmp_path, [1000] * 7 + [250], shell)
+    assert result.returncode == 0 and result.stderr == ""
+    assert [c["offset"] for c in calls] == [0, 1000, 2000, 3000, 4000, 5000, 6000, 7000]
+    assert files == sorted(f"cost_rows_2026-10_{offset}.json" for offset in range(0, 8000, 1000))
+    assert all(c["query"] == cli.graphql_query("2026-10", c["offset"]) for c in calls)
+    assert {c["header"] for c in calls} == {"Authorization: Bearer fake-token"}  # gcloud's answer reaches only curl
+
+
+def test_the_curl_loop_stops_after_a_short_empty_failed_or_endless_page(tmp_path):
+    cases = {"short first page": ([12], [0]), "an empty page ends it": ([1000, 1000, 0], [0, 1000, 2000]),
+             "a full page and an error body": ([1000, None], [0, 1000])}
+    for name, (plan, offsets) in cases.items():
+        folder = tmp_path / name.replace(" ", "_")
+        folder.mkdir()
+        result, calls, _ = run_loop(folder, plan)
+        assert [c["offset"] for c in calls] == offsets, name
+        if None in plan:
+            assert "stopped: cost_rows_2026-10_1000.json is not a page of cost rows" in result.stderr
+    # An API that ignores the offset and always answers a full page cannot keep it running for ever.
+    endless = tmp_path / "endless"
+    endless.mkdir()
+    _, calls, files = run_loop(endless, [1000])
+    assert len(calls) == len(files) == cli.MAX_PAGES == 100
+
+
+def test_the_curl_loop_text_names_no_fixed_page_count_and_the_queries_say_it_continues():
     loop = cli.curl_loop("2026-10", "specimen-digitization", "us-east4")
-    assert loop.startswith("for OFFSET in 0 1000 2000 3000 4000; do") and loop.endswith("done")
-    assert "gcloud auth application-default print-access-token" in loop
-    command = " ".join(line.strip().rstrip("\\") for line in loop.splitlines()[1:-1])
-    argv = shlex.split(command)
-    assert argv[:3] == ["curl", "-sS", "-X"]
-    body = json.loads(argv[argv.index("-d") + 1].replace("$OFFSET", "2000"))
-    assert body == {"query": cli.graphql_query("2026-10", 2000)}
-    assert "offset: 2000)" in body["query"] and argv[argv.index("-o") + 1] == "cost_rows_2026-10_${OFFSET}.json"
-    assert "Bearer $(gcloud" in " ".join(argv)
+    assert "for OFFSET in" not in loop and "OFFSET=$((OFFSET + 1000))" in loop and '[ "$ROWS" -lt 1000 ] && break' in loop
+    code, out, _ = run("--month", "2026-10", "--print-queries")
+    assert code == 0 and "until one holds fewer rows than that" in out and "< query.sql > google_export_2026-10.json" in out
 
 
 def test_the_graphql_reads_only_and_names_every_column_the_check_uses():
@@ -193,18 +257,77 @@ def test_bad_arguments_exit_with_status_two_and_say_what_to_fix(tmp_path, args, 
     assert code == 2 and out == "" and message in err
 
 
-def test_an_unreadable_input_stops_with_a_named_error_and_writes_nothing(tmp_path):
+UNREADABLE = {  # kind -> (how to make the file, what the error says)
+    "missing": ("missing", "cannot read it (No such file or directory)"),
+    "empty": ("", "the file is empty"),
+    "blank": ("  \n\t\n", "the file is empty"),
+    "not_json": ("{{", "not JSON or JSON Lines"),
+    "not_utf8": (b"\xff\xfe\x00\xff", "not UTF-8 text"),
+    "directory": ("directory", "cannot read it (Is a directory)"),
+}
+
+
+@pytest.mark.parametrize("flag", ["--meter-rows", "--huggingface", "--google"])
+@pytest.mark.parametrize("kind", sorted(UNREADABLE))
+def test_a_missing_empty_or_unreadable_input_exits_two_with_an_error_line_and_writes_nothing(tmp_path, flag, kind):
+    content, message = UNREADABLE[kind]
+    bad = tmp_path / f"{kind}.json"
+    if kind == "directory":
+        bad.mkdir()
+    elif kind != "missing":
+        bad.write_bytes(content if isinstance(content, bytes) else content.encode())
+    good = {"--meter-rows": write(tmp_path, "m.json", [row(1, 1)]), "--huggingface": write(tmp_path, "hf.json", {"days": {}}),
+            "--google": write(tmp_path, "g.json", {"lines": []})}
+    good[flag] = str(bad)
+    out_json, out_md = tmp_path / "never.json", tmp_path / "never.md"
+    code, out, err = run("--month", "2026-10", "--meter-rows", good["--meter-rows"], "--huggingface", good["--huggingface"],
+                         "--google", good["--google"], "--out-json", str(out_json), "--out-md", str(out_md))
+    assert code == 2 and out == "", (code, err)
+    assert err == f"error: {bad}: {message}\n", err
+    assert not out_json.exists() and not out_md.exists()
+
+
+def test_a_file_that_reads_but_is_the_wrong_shape_also_exits_two_and_writes_nothing(tmp_path):
     meter = write(tmp_path, "m.json", [row(1, 1)])
     out_json = tmp_path / "never.json"
-    for name, value, message in (("bad_hf.json", {"histogram": 7}, "huggingface histogram: unrecognized layout"),
-                                 ("bad_google.json", {"nope": 1}, "google bill: expected a list"),
-                                 ("not_json.json", "{{", "is not JSON or JSON Lines")):
-        path = write(tmp_path, name, value)
-        flag = "--google" if name == "bad_google.json" else "--huggingface"
-        code, out, err = run("--month", "2026-10", "--meter-rows", meter, flag, path, "--out-json", str(out_json))
-        assert code != 0 and out == "" and message in err, (name, err)
+    for name, value, flag, message in (("bad_hf.json", {"histogram": 7}, "--huggingface", "huggingface histogram: unrecognized layout"),
+                                       ("bad_google.json", {"nope": 1}, "--google", "google bill: expected a list")):
+        code, out, err = run("--month", "2026-10", "--meter-rows", meter, flag, write(tmp_path, name, value),
+                             "--out-json", str(out_json))
+        assert code == 2 and out == "" and f"error: {message}" in err, (name, err)
     assert not out_json.exists()
     bad_rows = write(tmp_path, "bad_rows.json", [{"provider": "huggingface", "resource": "x", "month": "2026-10"}])
     code, _, err = run("--month", "2026-10", "--meter-rows", bad_rows, "--huggingface",
                        write(tmp_path, "empty.json", {"days": {}}))
     assert code == 2 and "error: meter row 0 costMicros" in err
+    # An empty list of rows is a valid (empty) page, unlike an empty file.
+    code, _, _ = run("--month", "2026-10", "--meter-rows", write(tmp_path, "none.json", []), "--huggingface",
+                     write(tmp_path, "days.json", {"days": {}}), "--out-json", str(tmp_path / "ok.json"))
+    assert code == 0
+
+
+def test_an_output_folder_that_does_not_exist_is_refused_before_anything_is_read(tmp_path):
+    files = inputs(tmp_path)
+    code, out, err = run(*args_for(files, "--out-md", str(tmp_path / "no_such_folder" / "r.md")))
+    assert code == 2 and out == "" and "does not exist" in err
+
+
+def test_a_page_file_holding_a_multiple_of_the_page_size_is_warned_about(tmp_path):
+    rows = [row(index, 1) for index in range(1, 2001)]
+    hf = write(tmp_path, "hf.json", {"days": {}})
+    out_json, out_md = str(tmp_path / "r.json"), str(tmp_path / "r.md")
+    full, partial = write(tmp_path, "full.json", {"data": {"costEntries": rows[:1000]}}), write(tmp_path, "part.json", rows[1000:1999])
+    code, out, err = run("--month", "2026-10", "--meter-rows", full, "--meter-rows", partial, "--huggingface", hf,
+                         "--out-json", out_json, "--out-md", out_md)
+    assert code == 0
+    assert err.count("warning:") == 1 and f"{full} holds exactly 1000 rows, a multiple of the page size (1000)" in err
+    report = json.loads(Path(out_json).read_text())
+    assert report["warnings"] == [err.removeprefix("warning: ").strip()] and report["inputs"]["meter_rows_in_month"] == 1999
+    assert f"## Warnings\n\n- {report['warnings'][0]}\n" in Path(out_md).read_text()
+    # Two full pages in one file warn once for the file; a short page and an empty list do not warn.
+    both = write(tmp_path, "both.json", rows)
+    code, _, err = run("--month", "2026-10", "--meter-rows", both, "--huggingface", hf, "--out-json", out_json)
+    assert code == 0 and "holds exactly 2000 rows" in err
+    code, _, err = run("--month", "2026-10", "--meter-rows", partial, "--meter-rows", write(tmp_path, "none.json", []),
+                       "--huggingface", hf, "--out-json", out_json)
+    assert code == 0 and err == "" and json.loads(Path(out_json).read_text())["warnings"] == []

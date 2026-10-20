@@ -72,10 +72,14 @@ Run as a project owner with Application Default Credentials
 owner has). The query reads `CostEntry` for the month across every
 organization, 1,000 rows a page, ordered by key. Run the printed `curl` loop,
 which sends the query to the service's `executeGraphqlRead` endpoint with an
-offset of 0, 1000, 2000 and so on, and stop at the first page that holds fewer
-than 1,000 rows. Pass every page file to `--meter-rows` (repeatable); a row
-that appears on two pages counts once. The endpoint refuses mutations. The
-query asks for the columns the check uses and not `usage`.
+offset of 0, 1000, 2000 and so on until a page holds fewer than 1,000 rows
+(at most 100 pages), writing one file per page; a response that is not a page
+of rows (an error body) stops the loop and stays in its file. Pass every page
+file to `--meter-rows` (repeatable); a row that appears on two pages counts
+once. If a file holds a multiple of 1,000 rows, the command warns (on standard
+error and under "Warnings" in the report) that the next page may not have been
+fetched. The endpoint refuses mutations. The query asks for the columns the
+check uses and not `usage`.
 
 The file may be the response (`{"data": {"costEntries": [...]}}`), the list of
 rows, or one row per line.
@@ -171,8 +175,14 @@ estimate, not a figure from a Google page).
 - Google compares billed-after-allowance (cost plus free-allowance credits)
   with the meter after the free allowance, and reports the meter before it
   against the bill's cost as `gap_list_micros`. Credits of the free-allowance
-  type are `FREE_TIER` (add others with `--free-credit-type`); every other
-  credit (a promotion, say) is kept apart and not compared.
+  type are `FREE_TIER` (add others with `--free-credit-type`). Every other
+  credit (a promotion, a no-cost trial, a discount) is not subtracted in the
+  comparison, because the meter has no counterpart to it, but it is never
+  hidden: the headline gives the cost, the free-tier credits, the other credits
+  by type and the net charge, the family and unmetered tables carry an "Other
+  credits" column naming the types and a "Net charge" column, and the JSON has
+  `billed_other_credits_by_type` and `billed_net_micros` for each family and for
+  the Google total.
 - The total is flagged when both bills were supplied and the whole-month gap
   exceeds the limit; the like-for-like total leaves out the Google lines the
   meter does not cover and the rows that have no bill.
@@ -189,7 +199,8 @@ estimate, not a figure from a Google page).
 | `day_boundary` | Hugging Face | At least half of the daily gaps (by absolute size, and more than half the limit) sit on the month's first or last UTC day |
 | `no_allocation_rows` | Google | The meter is below the bill and holds no allocation rows for the month |
 | `missing_allocation_days` | Google | The meter is below the bill and the family has billed days with no allocation row; says if only the bill's latest day is missing |
-| `free_allowance` | Google | The free-allowance difference points the same way as the gap and is at least half of it; names the shared free tier when the meter allowed more than the bill gave |
+| `free_allowance` | Google | The free-allowance difference points the same way as the gap and is at least half of it. When the family's lines carry other credit types it names them first, with the `--free-credit-type` re-run to try if one is the free tier, and blames the shared free tier only "otherwise", when the meter allowed more than the bill gave |
+| `other_credits` | Google | A flagged family has other credit types and `free_allowance` did not apply: names them and the net charge |
 | `intake_jobs` | Google worker | The meter is below the bill: Jobs SKUs also bill the intake jobs |
 | `storage_non_bytes` | Google storage | The meter is below the bill and some billed Cloud Storage SKUs are operations or transfer |
 | `day_boundary` / `billing_zone` | Google | The billing-day check finds another zone fits the console's days better than the zone in use |
@@ -248,9 +259,13 @@ uv run --frozen python scripts/ops/reconcile_costs.py --month 2026-10 \
 ```
 
 Without `--out-md` the Markdown report is printed. An input the check cannot
-read stops it with `error: ...` and exit status 2 and writes nothing. Either
-bill may be left out; its section then says so, and the overall comparison is
-marked partial.
+read stops it with `error: <file>: <why>` on standard error and exit status 2,
+and writes nothing: a path that does not exist or cannot be opened, a
+directory, a file that is empty or only whitespace, a file that is not UTF-8
+text, text that is neither JSON nor JSON Lines, or a file whose content is not
+one of the shapes above. A folder for `--out-json` or `--out-md` that does not
+exist is refused the same way before any input is read. Either bill may be left
+out; its section then says so, and the overall comparison is marked partial.
 
 ## Not confirmed
 

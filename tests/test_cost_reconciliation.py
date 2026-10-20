@@ -394,7 +394,7 @@ def test_google_export_rows_map_to_families_with_the_free_allowance_kept_apart()
     assert [(l["service"], l["sku"], l["net_micros"]) for l in unmetered["lines"]] == [
         ("Artifact Registry", "Artifact Registry Storage", 40_000), ("Tax", "(tax)", 10_000),
         ("Secret Manager", "Secret access operations", 0)]
-    assert unmetered["net_micros"] == 50_000
+    assert (unmetered["after_allowance_micros"], unmetered["net_micros"], unmetered["other_credits_micros"]) == (50_000, 50_000, 0)
     assert g["totals"]["billed_micros"] == 100_000 + 550_000 + 0 + 30_000 + 130_000 + 50_000 == 860_000
     assert g["totals"]["metered_families_micros"] == 100_000 + 200_000 + 0 + 30_000 + 130_000 == 460_000
     assert g["totals"]["billed_other_credits_micros"] == -10_000
@@ -484,7 +484,7 @@ def test_console_lines_give_the_same_families_and_other_free_credit_types_can_be
                for f in g["families"]}
     assert figures == {"specimen-sam": (330_000, -230_000, 100_000), "specimen-worker": (60_000, -50_000, 10_000),
                        "specimen-api": (20_000, -20_000, 0), "storage": (0, 0, 0), "database": (110_000, 0, 110_000)}
-    assert g["unmetered"]["net_micros"] == 40_000
+    assert g["unmetered"]["after_allowance_micros"] == g["unmetered"]["net_micros"] == 40_000
     with pytest.raises(ReconciliationInputError, match="zero or negative"):
         parse_google({"lines": [dict(lines["lines"][1], credits_usd=0.23)]})
     # An export credit of another type counts as the free allowance only when the operator says so.
@@ -531,6 +531,109 @@ def test_rows_of_other_projects_and_other_invoice_months_are_counted_apart():
     assert report["google"]["other_projects"]["cost_micros"] == 400_000
     everything = reconcile(meter_rows=[], google=rows, month=MONTH)  # no project given: all rows count
     assert family(everything, "specimen-worker")["billed_cost_micros"] == 700_000
+
+
+def test_credits_of_other_types_are_shown_by_type_per_family_and_in_the_headline():
+    bill = [
+        # The Data Connect no-cost Cloud SQL trial arrives as a credit: 330,000 cost, -330,000 PROMOTION, charge 0.
+        export("Cloud SQL", SQL_MICRO, 0.33, credits=[(-0.33, "PROMOTION")]),
+        # SAM: 400,000 cost, -300,000 free tier, -20,000 DISCOUNT: 100,000 after the free tier, 80,000 charged.
+        export("Cloud Run", SAM_CPU, 0.40, credits=[(-0.30, "FREE_TIER"), (-0.02, "DISCOUNT")]),
+        # An unmetered service: 40,000 cost, -10,000 PROMOTION.
+        export("Artifact Registry", "Artifact Registry Storage", 0.04, credits=[(-0.01, "PROMOTION")]),
+    ]
+    meter_rows = [meter("google_cloud", "cloud-sql", 330_000, method="specimens-held", stage="database"),
+                  meter("google_cloud", "sam3", 100_000, kind="service")]
+    report = reconcile(meter_rows=meter_rows, huggingface={"days": {}}, google=bill, month=MONTH, project_id=PROJECT)
+    database, sam = family(report, "database"), family(report, "specimen-sam")
+    assert (database["billed_cost_micros"], database["billed_credits_micros"], database["billed_other_credits_micros"],
+            database["billed_net_micros"], database["billed_after_allowance_micros"]) == (330_000, 0, -330_000, 0, 330_000)
+    assert database["billed_other_credits_by_type"] == {"PROMOTION": -330_000}
+    assert (sam["billed_other_credits_by_type"], sam["billed_net_micros"]) == ({"DISCOUNT": -20_000}, 80_000)
+    assert not database["flagged"] and not sam["flagged"]   # the meter matches what the free tier leaves
+    [artifact] = report["google"]["unmetered"]["lines"]
+    assert (artifact["other_credits_by_type"], artifact["after_allowance_micros"], artifact["net_micros"]) == (
+        {"PROMOTION": -10_000}, 40_000, 30_000)
+    totals = report["totals"]
+    assert (totals["billed_google_cost_micros"], totals["billed_google_credits_micros"],
+            totals["billed_google_other_credits_micros"], totals["billed_google_net_micros"]) == (
+        770_000, -300_000, -360_000, 110_000)
+    assert totals["billed_google_other_credits_by_type"] == {"DISCOUNT": -20_000, "PROMOTION": -340_000}
+    assert (totals["billed_micros"], totals["billed_net_micros"]) == (470_000, 110_000)
+    text = render_markdown(report)
+    assert text.splitlines()[2].startswith("Billed: $0.4700 after the free tier ($0.1100 net of $0.3600 of other credits).")
+    assert ("- Google Cloud: cost $0.7700, free-tier credits -$0.3000, other credits -$0.3600 "
+            "(DISCOUNT -$0.0200, PROMOTION -$0.3400); net charge $0.1100.") in text
+    assert "--free-credit-type <TYPE>" in text
+    assert "| Cloud SQL | $0.3300 | $0.0000 | -$0.3300 (PROMOTION) | $0.0000 | $0.3300 |" in text
+    assert "| Artifact Registry | Artifact Registry Storage | $0.0400 | $0.0000 | -$0.0100 (PROMOTION) | $0.0300 |" in text
+    # No other credit: the headline carries no net note and the Google line says there is none.
+    plain = render_markdown(reconcile(meter_rows=[], google={"lines": []}, huggingface={"days": {}}, month=MONTH))
+    assert "net of" not in plain and "no other credits" in plain and "--free-credit-type" not in plain
+
+
+def test_a_free_tier_typed_differently_is_named_before_the_shared_free_tier_is_blamed():
+    rows = [meter("google_cloud", "sam3", 100_000, kind="service", when="2026-10-16T12:00:00Z"),
+            meter("google_cloud", "specimen-sam", 230_000, method="sam-residual", stage="label_finding",
+                  when="2026-10-16T07:00:00Z"),
+            meter("google_cloud", "specimen-sam", -230_000, list_cost=0, method="free-allowance", stage="label_finding",
+                  when="2026-10-16T07:00:00Z")]  # list 330,000; after the allowance 100,000
+    bill = [export("Cloud Run", SAM_CPU, 0.23, credits=[(-0.23, "SPENDING_BASED_DISCOUNT")]), export("Cloud Run", SAM_MEMORY, 0.10)]
+    sam = family(reconcile(meter_rows=rows, google=bill, month=MONTH, project_id=PROJECT), "specimen-sam")
+    assert (sam["billed_credits_micros"], sam["billed_other_credits_by_type"]) == (0, {"SPENDING_BASED_DISCOUNT": -230_000})
+    assert sam["gap_micros"] == -230_000 and codes(sam) == ["free_allowance"]
+    text = sam["explanations"][0]["text"]
+    assert "other credits (SPENDING_BASED_DISCOUNT -$0.2300)" in text
+    assert "re-run with --free-credit-type <TYPE> (SPENDING_BASED_DISCOUNT)" in text
+    assert text.index("SPENDING_BASED_DISCOUNT") < text.index("Otherwise, Google's free tier is shared by every project")
+    # Told the type, the comparison closes.
+    fixed = reconcile(meter_rows=rows, google=bill, month=MONTH, project_id=PROJECT,
+                      free_credit_types={"FREE_TIER", "SPENDING_BASED_DISCOUNT"})
+    assert family(fixed, "specimen-sam")["gap_micros"] == 0 and fixed["flags"] == []
+    # With no other credit on the family the wording is the plain one.
+    plain = [export("Cloud Run", SAM_CPU, 0.23, credits=[(-0.03, "FREE_TIER")]), export("Cloud Run", SAM_MEMORY, 0.10)]
+    text = family(reconcile(meter_rows=rows, google=plain, month=MONTH, project_id=PROJECT),
+                  "specimen-sam")["explanations"][0]["text"]
+    assert "other credits" not in text and "Otherwise" not in text and "shared by every project" in text
+
+
+def test_other_credits_on_a_flagged_family_get_their_own_explanation():
+    # Worker: 600,000 cost, -100,000 PROMOTION, no meter rows: flagged, and the credit is not what explains it.
+    bill = [export("Cloud Run", JOBS_CPU, 0.60, "2026-10-15T12:00:00Z", credits=[(-0.10, "PROMOTION")])]
+    rows = [meter("google_cloud", "specimen-sam", 1_000, method="sam-residual", stage="label_finding",
+                  when="2026-10-15T07:00:00Z")]
+    worker = family(reconcile(meter_rows=rows, google=bill, month=MONTH, project_id=PROJECT), "specimen-worker")
+    assert worker["gap_micros"] == -600_000 and "other_credits" in codes(worker)
+    text = next(e["text"] for e in worker["explanations"] if e["code"] == "other_credits")
+    assert "(PROMOTION -$0.1000)" in text and "net charge for this family was $0.5000" in text
+
+
+def test_warnings_the_caller_passes_reach_the_report_and_the_markdown():
+    plain = reconcile(meter_rows=[], huggingface={"days": {}}, month=MONTH)
+    assert plain["warnings"] == [] and "## Warnings" not in render_markdown(plain)
+    report = reconcile(meter_rows=[], huggingface={"days": {}}, month=MONTH, input_warnings=("page.json holds exactly 1000 rows",))
+    assert report["warnings"] == ["page.json holds exactly 1000 rows"]
+    assert "## Warnings\n\n- page.json holds exactly 1000 rows\n" in render_markdown(report)
+
+
+def test_nano_usd_are_rounded_to_the_nearest_micro_away_from_zero():
+    micros = cr._micros
+    assert [micros(n) for n in (0, 499, 500, 501, 1_499, 1_500, 1_501)] == [0, 0, 1, 1, 1, 2, 2]
+    assert [micros(-n) for n in (499, 500, 1_499, 1_500)] == [0, -1, -1, -2]
+    bill = hf({"2026-10-10": {QWEN: (1, 2_000_001_500)}})  # 2,000,001.5 micro-USD rounds up to 2,000,002
+    qwen = model(reconcile(meter_rows=[], huggingface=bill, month=MONTH), QWEN)
+    assert qwen["billed_micros"] == 2_000_002
+
+
+def test_allocation_days_are_read_in_the_billing_zone_not_as_the_utc_date():
+    # 04:00Z on the 16th is 21:00 on the 15th in Pacific, 23:00 on the 15th in UTC-5, and the 16th in UTC.
+    rows = [meter("google_cloud", "specimen-worker", 200_000, method="worker-processing-time", stage="worker",
+                  when="2026-10-16T04:00:00Z")]
+    bill = [export("Cloud Run", JOBS_CPU, 0.60, "2026-10-15T12:00:00Z")]
+    days = {zone: family(reconcile(meter_rows=rows, google=bill, month=MONTH, project_id=PROJECT, billing_zone=zone),
+                         "specimen-worker")["allocation_days"]
+            for zone in ("America/Los_Angeles", "UTC-5", "UTC")}
+    assert days == {"America/Los_Angeles": ["2026-10-15"], "UTC-5": ["2026-10-15"], "UTC": ["2026-10-16"]}
 
 
 # ---- the billing-day check --------------------------------------------------
@@ -656,7 +759,7 @@ def test_empty_inputs_make_an_empty_report_that_still_renders():
     assert report["huggingface"]["models"] == []
     assert [f["billed_after_allowance_micros"] for f in report["google"]["families"]] == [0] * 5
     text = render_markdown(report)
-    assert "No gap is above the limit" in text and "Billed: $0.0000. Metered: $0.0000." in text
+    assert "No gap is above the limit" in text and "Billed: $0.0000 after the free tier. Metered: $0.0000." in text
     assert reconcile(meter_rows={"data": {"costEntries": []}}, huggingface={"histogram": []}, google=[], month=MONTH)["flags"] == []
 
 
@@ -669,7 +772,7 @@ def test_a_bill_that_was_not_supplied_is_left_out_not_counted_as_zero():
     text = render_markdown(report)
     assert "no bill supplied" in text and text.splitlines()[2].startswith("No bill was supplied. Metered: $2.0000")
     only_google = render_markdown(reconcile(meter_rows=rows, google={"lines": []}, month=MONTH))
-    assert "(only the Google Cloud bill was supplied)" in only_google
+    assert "only the Google Cloud bill was supplied" in only_google
     assert "Overall, " not in only_google and "like-for-like line" in only_google
 
 
