@@ -621,11 +621,11 @@ def shell_fixture(tmp_path, fixture_processes):
     return root, env
 
 
-def run_shell(fixture, fault='', storage=False):
+def run_shell(fixture, fault='', storage=False, *, timeout=35):
     root, env = fixture
     command = ['bash', str(root / 'scripts/data' / ('test-storage.sh' if storage else 'test-postgres.sh')),
                '--contract-output' if storage else '--python-contract-output', str(root / ('storage-out' if storage else 'sql-out'))]
-    return env.processes.run(command, env=dict(env, FIXTURE_FAULT=fault), capture_output=True, text=True, timeout=35)
+    return env.processes.run(command, env=dict(env, FIXTURE_FAULT=fault), capture_output=True, text=True, timeout=timeout)
 
 
 @pytest.mark.parametrize('storage', [False, True], ids=['sql', 'storage'])
@@ -946,7 +946,11 @@ def test_storage_standalone_startup_failure_cleans_partial_tree(shell_fixture,fa
     root,env=shell_fixture
     env['FIXTURE_STANDALONE']='true'
     assert run_shell(shell_fixture).returncode==0
-    result=run_shell(shell_fixture,fault,storage=True)
+    # The missing-Java control waits all 100 startup polls. Darwin's native
+    # process-birth inspections also consume wall time; let fenced cleanup
+    # finish before the fixture's independent emergency watchdog fires.
+    timeout=60 if fault=='storage_no_java' else 35
+    result=run_shell(shell_fixture,fault,storage=True,timeout=timeout)
     assert result.returncode!=0 and reason in result.stderr,result.stdout+result.stderr
     lifecycle=json.loads((root/'lifecycle.json').read_text())
     assert_storage_tree_stopped(shell_fixture,lifecycle,cleanup='failed' if fault=='storage_download' else 'passed')

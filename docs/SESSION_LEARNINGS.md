@@ -22886,3 +22886,72 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   matched existing non-sensitive pilot records; duplication is collection
   scoped. Read the ledger/executions again before a bounded real submission.
   Gmail/provider import, final Queue and native acceptance remain Not confirmed.
+
+### 2026-10-20 — bulk intake release continuation and real provider sources
+
+- Task: `01a149fc-3649-75c1-a121-11c19de12cb8`; branch
+  `codex/compare-photo-intake-ux`; worktree
+  `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`; PR #368.
+  Frozen code head `71b50f53916f0061decb7a72a515b9696c21b1ec`, tree
+  `a56440d6d3f0765c301c5fa8fc6340e8ff0ba13e`, independently G51 approved.
+- Canonical retry with 12 shards was rejected before collection: the local
+  runner supports 1–6, unlike hosted CI's 12. A sandbox-only retry could not
+  write Flutter engine.stamp; standard approved cache/network access restored
+  the pinned toolchain. No contract was changed to bypass these restrictions.
+- Read-only Firebase accounts:lookup initially returned403 without a quota
+  project; the same existing owner credential with x-goog-user-project returned
+  HTTP200 and no Gmail identity. No IAM expansion, fabricated user, custom
+  token or impersonation was used. Ordinary released sign-in must create the
+  account before protected additive E2E membership bootstrap.
+- Prepared real sources through the user's normal Chrome account sessions:
+  private `Specimen Intake E2E - 2026-10-20` folders in Gmail Drive and Dropbox,
+  containing approved non-sensitive original subject_105526321.jpeg (Drive)
+  and subject_105526324.jpeg (Dropbox). Both native provider UIs confirmed one
+  completed upload and displayed the specimen. Dropbox folder read Only you;
+  no shared links or sharing changes. Blocked Dropbox's unrelated local-device
+  access request; the upload still completed. Skipped optional onboarding and
+  installed no software. These are source preparation, not app connector,
+  Submit, pipeline or Queue acceptance.
+- Read-only release preflight confirmed one-route definitions precede the
+  missing named-job policy checks. Inspect actual results before applying
+  resource-level invoker/read grants, then retry protected Runtime on main with
+  process_queued=false. Check no old executions before E2E worker membership,
+  and refresh original cumulative budget immediately before Submit.
+- Private provider-review preparation records actual scopes, pre-Submit
+  staging, retained blobs after discard/disconnect and downstream-provider
+  disclosure requirements. Public product/privacy pages, operator facts,
+  Google folder-scope verification/security assessment and Dropbox production
+  approval remain unresolved; personal-account tests do not prove them.
+- Canonical six-shard Python run at `71b50f53` completed all18,901 tests exactly
+  once:18,851passed,48skipped,2failed; exit1 stopped before Flutter gates.
+  Log `/private/tmp/specimen-intake-verify-71b50f53-six-shards.log`; shard
+  artifacts `specimen-python-shards-a1tk848z` under the OS temporary directory.
+  This is a failed canonical run, not an approval. Concurrent unrelated Python
+  and Flutter tests were observed on the machine; none were altered or stopped.
+- Exact first failure: the intentionally missing-Java Storage negative fixture
+  hit its independent35-second outer subprocess watchdog before readiness
+  failure/cleanup reporting completed. The trace names TimeoutExpired35 and
+  matches the retained fixture with405 synthetic process inspections. The
+  bounded test-only correction permits60seconds for only that negative case;
+  other defaults and all birth-bound cleanup/readiness assertions remain.
+- Exact second failure: the actual-worker-handler cutoff test lacked its
+  startup marker after a2.013-second run. Its budget includes a fresh Python
+  process and cold worker/API imports. After other shards stopped, isolated
+  diagnostics at2seconds and10seconds both reached the actual handler and
+  returned deadline_exceeded/overall_deadline with complete cleanup and no late
+  SDK action. Thus startup sensitivity under load is supported; no production
+  cutoff failure is established. Only this test now has10seconds plus a marker
+  assertion that reports IsolatedResult on failure. Production deadlines and
+  shutdown behavior are unchanged. Focused regression results follow below.
+- Focused verification of the two test-only repairs: 8 engine startup,
+  registration, interruption and survivor-rejection controls passed (228
+  deselected, 62.54 seconds); 23 worker cutoff, parent-deadline and bounded-
+  effect controls passed (19.17 seconds). An initial focused command named a
+  nonexistent test_worker_deadline.py and ran no tests; the corrected command
+  used test_worker_parent_deadline.py. The isolated 2/10-second diagnostic was
+  synthetic and used stubbed services; it is not live pipeline acceptance.
+- Independent reviewer inspected both exact diffs and failure traces, found
+  no P1/P2, and confirmed the original short synthetic/resistant-descendant
+  controls and production logic remain unchanged. Frozen-head review and a
+  fresh full canonical run are required before this candidate is published;
+  existing or focused results do not substitute for that full run.
