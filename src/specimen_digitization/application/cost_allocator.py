@@ -6,11 +6,15 @@ collection's cursor (at most ALLOCATION_DAYS a pass): it reads Cloud
 Monitoring for the invoice month so far, reads the deployment's
 per-collection measures for the day (CostAllocationInputsV1), writes this
 collection's rows (UpsertCostAllocationsV1) and then moves the cursor past
-that day. It is bounded by a time budget and fails open: a failure is logged
-by code, nothing more is written, and the drain goes on as it would have.
-Before the owner's ``--cost-meter-only`` setup the worker may not read
-Monitoring: one warning, ``cost_allocation_monitoring_unavailable``, no row
-and no cursor change.
+that day. Each pass also allocates the last REALLOCATE_DAYS complete days
+already allocated again, by the same ids, so a paid call recorded late
+counts; it never moves the cursor back. It runs only when this drain's sweep
+completed its pass: until the ledger's paid calls are caught up, a SAM 3
+residual would be computed against charges still missing. It is bounded by a
+time budget and fails open: a failure is logged by code, nothing more is
+written, and the drain goes on as it would have. Before the owner's
+``--cost-meter-only`` setup the worker may not read Monitoring: one warning,
+``cost_allocation_monitoring_unavailable``, no row and no cursor change.
 """
 
 from __future__ import annotations
@@ -28,6 +32,7 @@ ALLOCATION_DAYS = 7
 ROWS_PER_CALL = 200
 OPERATIONS = ("cost_allocation_inputs", "send_cost_allocations", "document", "put_document")
 UNAVAILABLE = "cost_allocation_monitoring_unavailable"
+WAITING = "cost_allocation_waiting_for_sweep"
 
 
 class _OutOfTime(Exception):
@@ -114,15 +119,23 @@ class CostAllocator:
             self._inputs[day] = tenants(repository.cost_allocation_inputs(scope, start, end, first, MAX_GAP_SECONDS))
         return self._inputs[day]
 
-    def run(self, repository, scope, *, job_collections=(), stop=None, until=None) -> dict:
-        """Allocate the collection's due days; never raises. ``until`` ends it early."""
-        from .cost_allocation import allocate_day, day_bounds, due_days, month_start
+    def run(self, repository, scope, *, job_collections=(), stop=None, until=None, swept=False) -> dict:
+        """Allocate the collection's due days and its recent days again; never raises.
 
-        result = {"status": "unsupported", "days": 0, "rows": 0, "through": None}
+        ``swept`` says this drain's cost sweep completed its pass, so the
+        ledger holds the collection's paid calls; without it nothing is read
+        or written. ``until`` ends the pass early.
+        """
+        from .cost_allocation import allocate_day, day_bounds, due_days, month_start, reallocation_days
+
+        result = {"status": "unsupported", "days": 0, "reallocated": 0, "rows": 0, "through": None}
         if not all(callable(getattr(repository, name, None)) for name in OPERATIONS):
             return result
         if self._stopped:
             return {**result, "status": self._stopped}
+        if not swept:
+            LOGGER.info("cost allocation skipped: %s", WAITING)
+            return {**result, "status": "waiting_for_sweep"}
         started = self.clock()
         stop_at = started + timedelta(seconds=self.seconds)
         if until is not None:
@@ -145,8 +158,11 @@ class CostAllocator:
             LOGGER.warning("cost allocation stopped: %s", _code(error))
             return {**result, "status": "failed"}
         result.update(status="current", through=through and through.isoformat())
-        days = due_days(through, self.clock(), self.days)
-        if not days:
+        now = self.clock()
+        days = due_days(through, now, self.days)
+        # Already allocated, so before every due day: written again, the cursor left as it is.
+        again = reallocation_days(through, now)
+        if not days and not again:
             return result
         mine = (scope.organization_id, scope.collection_id)
         served = sorted({tuple(key) for key in job_collections} | {mine})
@@ -154,8 +170,9 @@ class CostAllocator:
         try:
             if out_of_time():
                 raise _OutOfTime()
-            usage = self._read_usage(day_bounds(month_start(days[0]))[0], day_bounds(days[-1])[1], stop_at)
-            for day in days:
+            ordered = again + days
+            usage = self._read_usage(day_bounds(month_start(ordered[0]))[0], day_bounds(ordered[-1])[1], stop_at)
+            for day in ordered:
                 if out_of_time():
                     raise _OutOfTime()
                 collections = self._tenants(repository, scope, day)
@@ -164,6 +181,9 @@ class CostAllocator:
                         if (row["organization_id"], row["collection_id"]) == mine]
                 for at in range(0, len(rows), ROWS_PER_CALL):
                     result["rows"] += repository.send_cost_allocations(scope, rows[at:at + ROWS_PER_CALL])
+                if day in again:
+                    result["reallocated"] += 1
+                    continue
                 # The cursor moves only once every row of the day is written.
                 stored = repository.put_document(
                     scope, CURSOR_KIND, cursor_id(scope),
@@ -171,7 +191,8 @@ class CostAllocator:
                 revision = stored["revision"]
                 result["days"] += 1
                 result["through"] = day.isoformat()
-            result["status"] = "partial" if due_days(days[-1], self.clock(), 1) else "complete"
+            last = days[-1] if days else through
+            result["status"] = "partial" if due_days(last, self.clock(), 1) else "complete"
         except _OutOfTime:
             pass
         except Exception as error:  # noqa: BLE001 - the meter never stops the drain

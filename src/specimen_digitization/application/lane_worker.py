@@ -606,30 +606,32 @@ class DrainWorker:
                         result["skipped"])
         return result
 
-    def _allocate_costs(self, scope, stop=None):
+    def _allocate_costs(self, scope, stop=None, sweep=None):
         """Split shared Google costs onto the collection (cost_allocator.CostAllocator.run).
 
-        After the sweep, before any run is stepped: bounded by the allocation's
-        own budget and never past the window's close. Logged as counts; a
-        failure never stops the drain.
+        After the sweep, before any run is stepped, and only when that sweep
+        completed its pass (``sweep`` is its result): bounded by the
+        allocation's own budget and never past the window's close. Logged as
+        counts; a failure never stops the drain.
         """
         if self.cost_allocation is None:
             return None
+        swept = isinstance(sweep, dict) and sweep.get("status") == "complete"
         try:
             result = self.cost_allocation.run(self.repository, scope, job_collections=self._job_collections,
-                                              stop=stop, until=self.close_at)
+                                              stop=stop, until=self.close_at, swept=swept)
         except Exception as exc:  # noqa: BLE001 - the meter never stops the drain
             LOGGER.warning("cost allocation skipped: %s", type(exc).__name__)
             return None
         if result["status"] != "unsupported":
-            LOGGER.info("cost allocation %s: %d days, %d rows sent", result["status"], result["days"],
-                        result["rows"])
+            LOGGER.info("cost allocation %s: %d days, %d again, %d rows sent", result["status"], result["days"],
+                        result.get("reallocated", 0), result["rows"])
         return result
 
     def _drain(self, drain, fence, previous, stop, summary):
         principal = drain.principal
-        self._sweep_costs(principal.scope, stop)
-        self._allocate_costs(principal.scope, stop)
+        swept = self._sweep_costs(principal.scope, stop)
+        self._allocate_costs(principal.scope, stop, swept)
         summary["recovered"] += self._recover_blocked(drain, stop)
         resume = self._resume(drain, previous)
         while True:

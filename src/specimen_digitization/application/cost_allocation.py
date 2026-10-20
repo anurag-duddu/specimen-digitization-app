@@ -33,6 +33,9 @@ BILLING_ZONE = "America/Los_Angeles"
 COMPLETE_AFTER = timedelta(hours=3)
 # The first billing day the meter allocates.
 FIRST_DAY = date(2026, 10, 1)
+# Every pass allocates the last this many complete days again, by the same ids,
+# so a paid call or a save recorded after its day was first allocated counts.
+REALLOCATE_DAYS = 2
 # A gap between two of a worker's saves counts at most this long: the longest
 # step lease a profile may set (domain.ExecutionPolicy.lease_seconds, le=900).
 MAX_GAP_SECONDS = 900
@@ -110,6 +113,19 @@ def due_days(through: date | None, now: datetime, limit: int) -> list[date]:
         days.append(day)
         day += timedelta(days=1)
     return days
+
+
+def reallocation_days(through: date | None, now: datetime) -> list[date]:
+    """The last REALLOCATE_DAYS complete days already allocated (through ``through``).
+
+    Each pass computes them again, so a paid call or save recorded after its
+    day was first allocated is reflected; older days' rows stay as written.
+    """
+    if through is None:
+        return []
+    last = latest_complete_day(now)
+    days = [last - timedelta(days=back) for back in range(REALLOCATE_DAYS - 1, -1, -1)]
+    return [day for day in days if FIRST_DAY <= day <= through]
 
 
 def month_start(day: date) -> date:
@@ -410,7 +426,9 @@ def _row(day, key, resource, stage, method, cost, list_cost, usage, details, tab
 def _window(day: date) -> dict:
     start, end = day_bounds(day)
     return {"billing_day": day.isoformat(), "time_zone": BILLING_ZONE, "start": start.isoformat(),
-            "end": end.isoformat(), "hours": len(day_hours(day))}
+            "end": end.isoformat(), "hours": len(day_hours(day)),
+            # Computed again at every pass while among the last complete days; then left as written.
+            "reallocated_while_within_last_days": REALLOCATE_DAYS}
 
 
 def _share(measure, basis, weights, key) -> dict:

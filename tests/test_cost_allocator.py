@@ -9,7 +9,7 @@ from uuid import NAMESPACE_URL, uuid5
 
 import pytest
 
-from specimen_digitization.application import cost_allocator
+from specimen_digitization.application import cost_allocator, cost_sweep
 from specimen_digitization.application.cost_allocation import day_bounds, day_hours
 from specimen_digitization.application.cost_allocator import CURSOR_KIND, CostAllocator, cursor_id
 from specimen_digitization.application.cost_monitoring import MonitoringClient, MonitoringFailed, MonitoringUnavailable
@@ -17,7 +17,7 @@ from specimen_digitization.application.domain import Scope
 from specimen_digitization.application.lane_worker import DrainWorker
 from specimen_digitization.application.storage import Conflict, Missing
 
-from test_cost_sweep import CostingMember, Recording
+from test_cost_sweep import CostingMember, Recording, collection as swept_collection
 from test_lane_drain import COLLECTION, ORG, WORKER, Clock, NonSensitiveMember, ScriptedWorkflow, queued
 
 UTC = timezone.utc
@@ -130,8 +130,9 @@ def test_the_cursor_is_the_worker_s_own_document_per_collection():
 
 def test_every_due_day_is_written_for_this_collection_only_and_the_cursor_follows_each_day():
     repo, monitoring = Repo(), Monitoring()
-    result = allocator(monitoring).run(repo, SCOPE, job_collections=SERVED)
-    assert result == {"status": "complete", "days": 4, "rows": result["rows"], "through": "2026-10-04"}
+    result = allocator(monitoring).run(repo, SCOPE, swept=True, job_collections=SERVED)
+    assert result == {"status": "complete", "days": 4, "reallocated": 0, "rows": result["rows"],
+                      "through": "2026-10-04"}
     assert repo.days() == ["2026-10-01", "2026-10-02", "2026-10-03", "2026-10-04"]
     assert {(row["organization_id"], row["collection_id"]) for _, rows in repo.sent for row in rows} == {
         (ORG, COLLECTION)}
@@ -143,20 +144,67 @@ def test_every_due_day_is_written_for_this_collection_only_and_the_cursor_follow
         (datetime(2026, 10, 1, 7, tzinfo=UTC), day_bounds(date(2026, 10, 4))[1])}
     assert [(start, end, first, gap) for _, start, end, first, gap in repo.inputs] == [
         (*day_bounds(date(2026, 10, n)), datetime(2026, 10, 1, 7, tzinfo=UTC), 900) for n in range(1, 5)]
-    # Nothing more is due until the 5th ends: no read, no write.
-    again = Repo()
-    again.documents = dict(repo.documents)
-    later = allocator(monitoring := Monitoring()).run(again, SCOPE, job_collections=SERVED)
-    assert later == {"status": "current", "days": 0, "rows": 0, "through": "2026-10-04"}
-    assert again.sent == [] and monitoring.calls == []
+    # Before the first day ends nothing is due and nothing is allocated again: no read, no write.
+    early = allocator(monitoring := Monitoring(), clock=lambda: datetime(2026, 10, 2, 9, tzinfo=UTC))
+    assert early.run(Repo(), SCOPE, swept=True, job_collections=SERVED) == {
+        "status": "current", "days": 0, "reallocated": 0, "rows": 0, "through": None}
+    assert monitoring.calls == []
+
+
+class Late(Repo):
+    """A SAM 3 call of this collection reached the ledger after its day was first allocated."""
+
+    def cost_allocation_inputs(self, scope, day_start, day_end, month_start, gap_seconds):
+        rows = super().cost_allocation_inputs(scope, day_start, day_end, month_start, gap_seconds)
+        rows[0] = {**rows[0], "sam_direct_micros": "3500"}
+        return rows
+
+
+def residuals(repo):
+    return {row["billing_day"]: row["cost_micros"] for _, rows in repo.sent for row in rows
+            if row["allocation_method_id"] == "sam-residual"}
+
+
+def test_the_last_two_complete_days_are_allocated_again_and_older_days_stay_as_written():
+    repo = Repo()
+    allocator().run(repo, SCOPE, swept=True, job_collections=SERVED)
+    first = residuals(repo)
+    # 50 s x 104 = 5,200 less 500 charged, as 10 : 10.
+    assert first == {f"2026-10-0{n}": 2_350 for n in range(1, 5)}
+    later = Late()
+    later.documents = dict(repo.documents)
+    result = allocator().run(later, SCOPE, swept=True, job_collections=SERVED)
+    assert result == {"status": "complete", "days": 0, "reallocated": 2, "rows": result["rows"],
+                      "through": "2026-10-04"}
+    # The late 3,000 counts on the two most recent days; the 1st and 2nd keep what they were written with.
+    assert residuals(later) == {"2026-10-03": 850, "2026-10-04": 850}
+    assert later.cursor() == repo.cursor() == {"sensitive": False, "allocated_through": "2026-10-04", "revision": 4}
+    details = next(row for _, rows in later.sent for row in rows)["allocation_method_details"]
+    assert details["reallocated_while_within_last_days"] == 2
+    # Once the 5th is complete it is due, and the 4th and 5th are the two allocated again.
+    after = Late()
+    after.documents = dict(later.documents)
+    result = allocator(clock=lambda: NOW + timedelta(days=1)).run(after, SCOPE, swept=True, job_collections=SERVED)
+    assert (result["days"], result["reallocated"], result["through"]) == (1, 1, "2026-10-05")
+    assert sorted(residuals(after)) == ["2026-10-04", "2026-10-05"]
+
+
+def test_a_pass_whose_sweep_is_not_caught_up_reads_and_writes_nothing(caplog):
+    repo, monitoring = Repo(), Monitoring()
+    with caplog.at_level(logging.INFO):
+        result = allocator(monitoring).run(repo, SCOPE, job_collections=SERVED)
+    assert result["status"] == "waiting_for_sweep"
+    assert repo.sent == [] and repo.inputs == [] and repo.documents == {} and monitoring.calls == []
+    assert [record.getMessage() for record in caplog.records] == [
+        "cost allocation skipped: cost_allocation_waiting_for_sweep"]
 
 
 def test_a_second_collection_of_the_execution_reuses_the_readings_and_writes_its_own_rows():
     repo, monitoring = Repo(), Monitoring()
     shared = allocator(monitoring)
-    shared.run(repo, SCOPE, job_collections=SERVED)
+    shared.run(repo, SCOPE, swept=True, job_collections=SERVED)
     reads = len(monitoring.calls)
-    result = shared.run(repo, SECOND, job_collections=SERVED)
+    result = shared.run(repo, SECOND, swept=True, job_collections=SERVED)
     assert result["status"] == "complete" and len(monitoring.calls) == reads
     assert len(repo.inputs) == 4  # each day's measures, once for both collections
     second = [row for scope, rows in repo.sent if scope == SECOND for row in rows]
@@ -166,9 +214,9 @@ def test_a_second_collection_of_the_execution_reuses_the_readings_and_writes_its
 
 def test_the_day_bound_leaves_the_rest_to_the_next_run():
     repo = Repo()
-    assert allocator(days=2).run(repo, SCOPE, job_collections=SERVED)["status"] == "partial"
+    assert allocator(days=2).run(repo, SCOPE, swept=True, job_collections=SERVED)["status"] == "partial"
     assert repo.cursor()["allocated_through"] == "2026-10-02" and repo.days() == ["2026-10-01", "2026-10-02"]
-    result = allocator(days=2).run(repo, SCOPE, job_collections=SERVED)
+    result = allocator(days=2).run(repo, SCOPE, swept=True, job_collections=SERVED)
     assert (result["status"], result["through"]) == ("complete", "2026-10-04")
 
 
@@ -177,8 +225,8 @@ def test_without_monitoring_access_nothing_is_written_the_cursor_stays_and_one_w
     repo, monitoring = Repo(), Monitoring(error=error)
     shared = allocator(monitoring)
     with caplog.at_level(logging.WARNING):
-        first = shared.run(repo, SCOPE, job_collections=SERVED)
-        second = shared.run(repo, SECOND, job_collections=SERVED)
+        first = shared.run(repo, SCOPE, swept=True, job_collections=SERVED)
+        second = shared.run(repo, SECOND, swept=True, job_collections=SERVED)
     assert first["status"] == second["status"] == "monitoring_unavailable"
     assert repo.sent == [] and repo.inputs == [] and repo.documents == {}
     assert len(monitoring.calls) == 1  # the second collection does not ask again
@@ -190,8 +238,8 @@ def test_another_monitoring_failure_is_logged_by_code_and_ends_the_execution_s_a
     repo, monitoring = Repo(), Monitoring(error=MonitoringFailed("http_503"))
     shared = allocator(monitoring)
     with caplog.at_level(logging.WARNING):
-        assert shared.run(repo, SCOPE, job_collections=SERVED)["status"] == "failed"
-        assert shared.run(repo, SECOND, job_collections=SERVED)["status"] == "failed"
+        assert shared.run(repo, SCOPE, swept=True, job_collections=SERVED)["status"] == "failed"
+        assert shared.run(repo, SECOND, swept=True, job_collections=SERVED)["status"] == "failed"
     assert repo.sent == [] and repo.documents == {} and len(monitoring.calls) == 1
     assert "cost allocation stopped: http_503" in caplog.text
 
@@ -200,7 +248,7 @@ def test_a_refused_write_leaves_the_cursor_on_the_last_day_written(caplog):
     repo = Repo()
     repo.fail_send = lambda rows: rows[0]["billing_day"] == "2026-10-02"
     with caplog.at_level(logging.WARNING):
-        result = allocator().run(repo, SCOPE, job_collections=SERVED)
+        result = allocator().run(repo, SCOPE, swept=True, job_collections=SERVED)
     assert (result["status"], result["through"], result["days"]) == ("failed", "2026-10-01", 1)
     assert repo.cursor()["allocated_through"] == "2026-10-01"
     assert "cost allocation stopped: cost_allocations_refused" in caplog.text
@@ -209,14 +257,14 @@ def test_a_refused_write_leaves_the_cursor_on_the_last_day_written(caplog):
 def test_a_cursor_taken_meanwhile_stops_the_pass_without_moving_it():
     repo = Repo()
     repo.fail_put = Conflict("revision conflict")
-    result = allocator().run(repo, SCOPE, job_collections=SERVED)
+    result = allocator().run(repo, SCOPE, swept=True, job_collections=SERVED)
     assert (result["status"], result["days"]) == ("failed", 0) and repo.cursor() is None
 
 
 def test_an_unpriced_bucket_location_holds_the_day(caplog):
     repo = Repo()
     with caplog.at_level(logging.WARNING):
-        result = allocator(Monitoring(location="asia-south2")).run(repo, SCOPE, job_collections=SERVED)
+        result = allocator(Monitoring(location="asia-south2")).run(repo, SCOPE, swept=True, job_collections=SERVED)
     assert result["status"] == "failed" and repo.sent == [] and repo.cursor() is None
     assert "cost allocation stopped: cost_allocation_storage_location_unpriced" in caplog.text
 
@@ -225,17 +273,17 @@ def test_an_unreadable_cursor_is_logged_and_nothing_is_written(caplog):
     repo = Repo()
     repo.documents[(COLLECTION, CURSOR_KIND, cursor_id(SCOPE))] = {"revision": 1, "allocated_through": "soon"}
     with caplog.at_level(logging.WARNING):
-        assert allocator().run(repo, SCOPE, job_collections=SERVED)["status"] == "failed"
+        assert allocator().run(repo, SCOPE, swept=True, job_collections=SERVED)["status"] == "failed"
     assert repo.sent == [] and "cost_allocation_cursor_unreadable" in caplog.text
 
 
 def test_a_stop_ends_the_pass_between_days_and_a_closed_window_before_any_read():
     repo, stop = Repo(), threading.Event()
     repo.after_send = stop.set
-    result = allocator().run(repo, SCOPE, job_collections=SERVED, stop=stop)
+    result = allocator().run(repo, SCOPE, swept=True, job_collections=SERVED, stop=stop)
     assert (result["status"], result["through"]) == ("partial", "2026-10-01")
     monitoring = Monitoring()
-    result = allocator(monitoring).run(Repo(), SCOPE, job_collections=SERVED, until=NOW)
+    result = allocator(monitoring).run(Repo(), SCOPE, swept=True, job_collections=SERVED, until=NOW)
     assert (result["status"], result["days"]) == ("partial", 0) and monitoring.calls == []
 
 
@@ -270,6 +318,10 @@ class Allocating(CostingMember):
         return len(rows)
 
 
+def collection_of_one():
+    return swept_collection(1)
+
+
 class SpyAllocation:
     def __init__(self, repository, error=None):
         self.repository, self.error, self.calls = repository, error, []
@@ -302,6 +354,41 @@ def test_each_drain_allocates_after_the_sweep_and_before_any_run_is_stepped(tmp_
     assert repository.order[:3] == ["sweep", "allocate", "step"]
     [(scope, kwargs)] = allocation.calls
     assert scope == SCOPE and kwargs["until"] == worker.close_at and kwargs["job_collections"] == ((ORG, COLLECTION),)
+
+
+@pytest.mark.parametrize("sweep,swept", [
+    ({"status": "complete"}, True), ({"status": "partial"}, False), ({"status": "failed"}, False),
+    ({"status": "unsupported"}, False), (RuntimeError("PRIVATE-CANARY"), False),
+])
+def test_the_drain_allocates_only_after_a_completed_sweep(tmp_path, monkeypatch, sweep, swept):
+    def swept_as(*args, **kwargs):
+        if isinstance(sweep, Exception):
+            raise sweep
+        return {"pages": 1, "specimens": 0, "rows": 0, "skipped": 0, **sweep}
+
+    monkeypatch.setattr(cost_sweep, "sweep", swept_as)
+    clock = Clock()
+    repository = CostingMember(tmp_path / "lane.sqlite3", {})
+    queued(repository, ident(77), minutes=5)
+    allocation = SpyAllocation(repository)
+    assert drain(repository, clock, allocation).run()["processed"] == [ident(77)]
+    [(_, kwargs)] = allocation.calls
+    assert kwargs["swept"] is swept
+
+
+def test_a_first_execution_whose_sweep_fails_allocates_nothing(tmp_path, caplog):
+    clock = Clock()
+    clock.now = NOW
+    repository = Allocating(tmp_path / "lane.sqlite3", collection_of_one())
+    repository.fake.fail_page = 1  # the sweep's first page fails: the ledger is not caught up
+    queued(repository, ident(77), minutes=5)
+    with caplog.at_level(logging.INFO):
+        summary = drain(repository, clock, allocator(clock=clock)).run()
+    assert summary["processed"] == [ident(77)]
+    assert "allocate" not in repository.order
+    assert "cost allocation skipped: cost_allocation_waiting_for_sweep" in caplog.text
+    with pytest.raises(Missing):
+        repository.document(SCOPE, CURSOR_KIND, cursor_id(SCOPE))
 
 
 def test_a_failing_allocation_never_stops_the_drain(tmp_path, caplog):

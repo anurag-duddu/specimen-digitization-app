@@ -66,7 +66,8 @@ def test_the_worker_allocates_its_collection_s_day_and_the_administrator_sees_it
         worker.put_document(scope, "worker_cursor", cursor_id(scope),
                             {"sensitive": False, "allocated_through": (day - timedelta(days=1)).isoformat()}, 0)
         allocator = CostAllocator(Monitoring(day), job="specimen-worker", bucket=None, days=1)
-        result = allocator.run(worker, scope, job_collections=[(scope.organization_id, scope.collection_id)])
+        result = allocator.run(worker, scope, swept=True,
+                               job_collections=[(scope.organization_id, scope.collection_id)])
         assert result["status"] in {"complete", "partial"} and result["days"] == 1, result
         assert result["through"] == day.isoformat() and result["rows"] > 0
     finally:
