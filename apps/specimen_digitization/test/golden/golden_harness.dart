@@ -20,6 +20,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/main.dart';
 import 'package:specimen_digitization/src/app/routes.dart';
+import 'package:specimen_digitization/src/costs.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/sources.dart';
 import 'package:specimen_digitization/src/theme/app_theme.dart';
@@ -27,6 +28,7 @@ import 'package:specimen_digitization/src/workspace.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 import 'package:specimen_ui/testing.dart';
 
+import '../costs/cost_fixtures.dart';
 import '../widget_test.dart' show TestRepository, TestSession;
 
 /// The four windows the north star's adaptation row names.
@@ -288,6 +290,9 @@ String get goldenSourcesLocation =>
 /// One registered source in the fixture collection.
 String get goldenSourceLocation =>
     AppRoutes.sourceOf(encodeCollectionKey(goldenCollection), 'src-1');
+
+/// What the organization's work costs. It names no collection.
+String get goldenCostsLocation => AppRoutes.costs;
 
 /// The record location for the fixture collection.
 String get goldenSpecimenLocation => goldenSpecimenLocationOf(goldenSpecimenId);
@@ -756,6 +761,56 @@ class GoldenSourceRepository extends GoldenRepository
     'duplicates': 0,
     'items': <Map<String, dynamic>>[],
   });
+}
+
+/// The repository the costs goldens and route tests read.
+///
+/// One collection in the fixture organization, held with [permissions], and a
+/// cost meter behind it that answers in the server's own wire shape. An
+/// administrator by default, because the costs are an administrator's.
+class GoldenCostRepository extends GoldenRepository implements CostRepository {
+  GoldenCostRepository({
+    this.permissions = const <String>['admin'],
+    FakeCostRepository? meter,
+  }) : meter = meter ?? FakeCostRepository();
+
+  /// The role the signed-in account holds on the collection.
+  final List<String> permissions;
+
+  /// The cost meter, which remembers every request made of it.
+  final FakeCostRepository meter;
+
+  @override
+  Future<List<CollectionScope>> scopes() async => <CollectionScope>[
+    CollectionScope(
+      organizationId: costOrganization,
+      collectionId: 'insects',
+      name: 'Synthetic Insects',
+      permissions: permissions,
+    ),
+  ];
+
+  @override
+  Future<CostReport> costs(
+    String organizationId, {
+    required String from,
+    required String to,
+  }) => meter.costs(organizationId, from: from, to: to);
+
+  @override
+  Future<bool> refreshCosts(String organizationId) =>
+      meter.refreshCosts(organizationId);
+
+  @override
+  Future<void> setCostLimit(
+    String organizationId, {
+    String? collectionId,
+    int? micros,
+  }) => meter.setCostLimit(
+    organizationId,
+    collectionId: collectionId,
+    micros: micros,
+  );
 }
 
 /// The glass budget for one window (09 section 3.3; 10 section 8,

@@ -1394,11 +1394,13 @@ handover runs field research instead of the six specialists:
    | `evidence_harness_blocked:elapsed_budget_exhausted` | Evidence check time limit reached | An evidence check reached its time limit. |
    | `cost_budget_exhausted` | Cost limit reached | Processing stopped at a cost limit. |
    | `program_allowance_exhausted` | Spending allowance reached | Processing stopped at the program's spending allowance. |
+   | `tenant_budget_exhausted` | Monthly cost limit reached | Processing stopped at a monthly cost limit set for the organization or a collection. |
    | `pilot_launch_budget_exhausted` | Pilot cost limit reached | The pilot's cost limit would be crossed. |
    | `pilot_cohort_reading_budget_insufficient` | Reading cost limit too low | The cost limit does not cover the planned readings. |
    | `approved_cost_budget_unavailable` | Cost settings not available | The approved cost settings for this run are not available. |
    | `research_budget_state_unavailable` | Saved cost totals not readable | The saved cost totals for this record could not be read. |
    | `program_allowance_ledger_unavailable` | Allowance totals not readable | The program's spending totals could not be read. |
+   | `tenant_budget_unavailable` | Monthly totals not readable | The monthly spending limits or totals could not be read. |
    | `program_allowance_unavailable` | Spending allowance not set up | The program's spending allowance is not set up for this collection. |
    | `pilot_run_budget_not_approved` | Run limits do not fit the pilot | The run's approved limits do not fit the pilot launch. |
    | `pilot_stage_cost_reservations_mismatch` | Stage cost settings differ | The run's stage cost settings differ from the pilot launch. |

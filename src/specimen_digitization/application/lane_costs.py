@@ -296,7 +296,8 @@ def step_outcome(run, step):
 
 
 def settle_step(repository, principal, specimen, step, reserved, clock=None):
-    """Settle the run's budget and the program ledger to what the step's calls cost.
+    """Settle the run's budget, the program ledger and any monthly cap ledger the
+    attempt reserved in to what the step's calls cost.
 
     Only when every call recorded for the attempt reported usage or a billed
     amount, or was refused before any work (a known zero). A reserved call, or a
@@ -324,27 +325,31 @@ def settle_step(repository, principal, specimen, step, reserved, clock=None):
     else:
         run.usage.reserved_cost_micros += cost - reserved
         settlements[key] = envelope
-    if policy.program_allowance_micros is None:
-        return
-    ledger = ProgramLedger(
-        repository,
-        Scope(
-            organization_id=principal.scope.organization_id,
-            collection_id=policy.program_ledger_collection,
-        ),
-        clock=clock,
-    )
-    position = ledger.settle(
-        policy.program_allowance_micros,
-        reserved,
-        cost,
-        specimen_id=specimen.id,
-        run_id=run.id,
-        step=step,
-        attempt=attempt,
-    )
-    if position is not None:
-        run.program_allowance = position
+    if policy.program_allowance_micros is not None:
+        ledger = ProgramLedger(
+            repository,
+            Scope(
+                organization_id=principal.scope.organization_id,
+                collection_id=policy.program_ledger_collection,
+            ),
+            clock=clock,
+        )
+        position = ledger.settle(
+            policy.program_allowance_micros,
+            reserved,
+            cost,
+            specimen_id=specimen.id,
+            run_id=run.id,
+            step=step,
+            attempt=attempt,
+        )
+        if position is not None:
+            run.program_allowance = position
+    from .tenant_budget import settle_step as settle_tenant_budget
+
+    # The monthly cap ledgers the attempt reserved in, in the month it reserved
+    # in (TENANT_BUDGETS.md); nothing when it reserved in none.
+    settle_tenant_budget(repository, principal, specimen, step, attempt, reserved, cost, clock)
 
 
 def record_step(

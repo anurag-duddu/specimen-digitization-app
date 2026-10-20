@@ -22997,6 +22997,178 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   Queue, physical camera and institutional acceptance remain Not confirmed.
   Merge, protected release, client activation and live acceptance are pending.
 
+### 2026-10-20 — bulk intake PR #368 merged; protected releases started
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch
+  `codex/compare-photo-intake-ux`, worktree
+  `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`.
+  Independent G51 review approved exact journal-only successor
+  `7d935a72a2930bfa90035854d0db0c78e0ddfba9`, tree
+  `03e79b9d5870c66209a490f1e8909e96bf8538a4`, with no P1/P2. All23 applicable
+  hosted checks passed on this head; PR Hosting deployment correctly skipped.
+  CI/CD39466027555 and Runtime candidate CI39466027630 succeeded.
+- Immediately before normal protected merge, main still matched ba007d4c,
+  the local tree was clean, PR head matched7d935a72, merge state was CLEAN,
+  and no review thread remained unresolved. No admin override, required-check
+  bypass, force push or branch-protection change was used.
+- PR #368 merged at2026-10-20T17:40:17Z as
+  `3350648862ab23dab6f6337481b2be8840a27caa`. Main-push Hosting CI/CD39468106835,
+  Data39468106836, Runtime39468106897 and Runtime candidate CI39468107065
+  started on that SHA. Release completion, client activation, Gmail provider
+  acceptance and final scientific Queue acceptance are still Not confirmed.
+  Preserve the branch/worktree and this pending release log until reconciliation.
+
+### 2026-10-20 — first protected data release exposes missing base permission
+
+- Same task/worktree as above. Fix-forward branch
+  `codex/fix-intake-auth-permission` starts from merged main33506488 and retains
+  the pending append-only release record.
+- Data39468106836 completed database/connector/Storage and pinned georeferencing
+  dataset steps, then failed `Enable and verify Google alongside email sign-in`.
+  The Google provider was already enabled and retained. The following Android
+  SHA POST returned403. Runtime39468106897 failed its same-commit Data wait;
+  its deployment step did not run. Client flags remain disabled.
+- Read-only Cloud Audit Logs give the exact failure at
+  2026-10-20T17:43:06.721913Z: Firebase AndroidAppService.CreateShaCertificate,
+  permission `firebase.clients.update`, granted=false on the existing project.
+  Firebase's Cloud Audit Logs reference documents that base permission.
+  Its general IAM page separately lists `clientauthconfig.clients.create` as
+  an additional permission; adding only that additional permission was
+  insufficient. The existing Auth role has the other seven reviewed permissions.
+- Repair scope is one missing permission on the existing data release role,
+  with corresponding contract and deployment-guide correction. Do not grant
+  Firebase Admin/Editor, manually add certificates, bypass the failed release,
+  or weaken App Check. Validation, source review, protected repair release,
+  and real Gmail acceptance are pending.
+- Minimal repair prepared in owner_setup.sh, its existing contract suite and
+  both deployment/Google sign-in guides. Focused checks passed:13Auth-only
+  setup cases,197Auth provisioning cases, shell syntax, pinned ShellCheck and
+  diff check. The regression starts with the actual seven-permission shape,
+  verifies one role update to exactly eight with the existing binding unchanged,
+  no other writes or release starts, and an idempotent second run.
+- Independent review found no P1/P2 in that repair and confirmed the documented
+  missing-grant exception: DEPLOYMENT's failed-release procedure directs the
+  owner-authorized setup script for missing grants, then protected release
+  retries. That permits this bounded setup repair while the owner-script
+  correction follows full canonical/G51/hosted PR qualification. Application
+  deployment source remains merged33506488; no hand deployment is permitted.
+  The permission is project-scoped Firebase app-configuration authority, not a
+  SHA-only IAM permission; the existing protected provisioner bounds operations
+  to its exact app and reviewed fingerprints. Exact-head approval follows freeze.
+
+### 2026-10-20 — protected runtime exposes intake argument parsing defect
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch
+  `codex/fix-intake-auth-permission`, same 5da8 worktree. Applied the reviewed
+  Auth-only setup repair from e895e930: exactly one role update, zero failures,
+  existing recipient unchanged. Live role readback has the exact eight
+  permissions. Data39468106836 attempt2 then passed, including Google provider
+  and Android fingerprint provisioning. Hosting39468106835 attempt1 passed;
+  its public marker and the public API /version both report merged33506488.
+- Protected Runtime39470159238 on33506488 with process_queued=false passed
+  Data wait, all image checks, API deployment and API smoke. Intake job creation
+  failed before creating either intake job: gcloud treats the separate value
+  starting `-m,` as an option, so `--args` has no argument. SAM and the shared
+  scientific worker subsequently deployed and verified. The dedicated E2E
+  scientific job was created, then correctly failed its missing invoker check.
+  The error's generic `specimen-worker` label refers to the dedicated job in
+  that loop; readback confirms the shared worker already had both invokers.
+- Repaired only intake command serialization to one `--args=...` argv token.
+  Both shared and dedicated names reproduce the old parsing failure in an
+  offline option-parser regression. The fixed focused release/ops suite passed
+  106 tests. The existing scientific worker constructor already uses equals
+  form. Independent source review found no P1/P2; job arguments, images,
+  limits, identity, secret pins, policy checks and no-execution behavior remain
+  unchanged. Full verification and exact-head/hosted qualification are pending.
+- The e895e930 canonical run was deliberately interrupted (exit130) after the
+  newly observed release defect required a source correction. It is not a
+  pass. All its processes exited before editing. Restart the complete canonical
+  verifier on the corrected frozen source; do not reuse its partial shards.
+- Authorized intake-only setup dry-run and application each reported exactly
+  three changes and zero failures: API/worker invokers and API definition read
+  on specimen-worker-e2e. Missing intake jobs were explicitly skipped; they
+  still need protected definition and the existing bounded setup grants.
+  No job or release was started by setup. Fresh shared execution read observed
+  109 retained executions, zero without completionTime, zero running; repeat
+  before granting original worker access to the new test collection.
+- Google sign-in activation is independent of intake jobs. Following the
+  documented post-Data activation path and independent review, set only
+  SPECIMEN_GOOGLE_SIGN_IN_ENABLED=true and reran all jobs of current-main push
+  Hosting39468106835 (attempt2). Bulk intake remains unset/default false.
+  This is a rebuild through protected Hosting, not a manual deploy. Real Gmail
+  sign-in, collection membership, imports, Submit and final Queue remain
+  Not confirmed. No provider or native acceptance is inferred from these runs.
+
+### 2026-10-20 — corrected release candidate qualification and live read preparation
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch
+  `codex/fix-intake-auth-permission`, worktree
+  `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`.
+  Independent G51 code/security review approved exact clean
+  `d629bf739716e9e3365729e85c2ecf523bcc0767`, tree
+  `6f7831a31f93bf8780fbe822db2dedcfe9dad562`, covering both the Auth permission
+  and intake argument repairs. No P1/P2 findings; this source approval does
+  not substitute for canonical/hosted checks or production acceptance.
+- Read back specimen-worker-e2e after the authorized setup: exactly the API
+  and worker identities under roles/run.invoker and the API identity under
+  specimenWorkerRead, with no public binding. Both intake definitions remain
+  absent until the protected argument repair releases.
+- Real Gmail Firebase account lookup still returned zero users. No account
+  was administratively created. A private read-only helper now uses the locked
+  Python environment and trusted CA bundle; the system Python's absent CA
+  chain had refused the first read, and certificate validation stayed enabled.
+- Corrected the private acceptance helper/guide to take actual specimen IDs
+  from submission-item results, not draft/submission/item IDs, and to require
+  finalized non-synthetic processing separately from terminal disposition.
+  Historical executions alone are not attribution to the actual submission.
+  Pilot scope remains exactly the two approved distinct provider originals.
+- First real read-only helper execution succeeded at2026-10-20T18:17:11Z:
+  one exhausted SQL page, zero specimen and Queue records, and no test
+  collection yet. This is pre-provisioning evidence only, not the required
+  after-Saved/pre-Submit proof. Private observation is
+  authoritative-baseline-20261020T181711172719Z.private.json. Runtime checks
+  correctly remain false while intake jobs are absent; no live import,
+  normal-user Queue, scientific completion or native acceptance is implied.
+- Canonical d629bf73 reported a real failure in
+  test_http_configured_classifier_pins_scope_source_route_and_provenance:
+  completed child provenance existed, but the parent retained
+  external_outcome_unknown after a5.866-second call against a5-second total
+  budget. The separate timeout/unknown/no-automatic-retry case passed. The
+  isolated result reason was not retained, so budget exhaustion is a supported
+  hypothesis rather than a recorded reason. Shard1 finished with1failed,
+  5450passed and5skipped. After obtaining its full traceback, interrupted the
+  remaining run (exit130) to address the failure and integrate newer main.
+  This run is not a canonical pass; the entire corrected integration will be
+  requalified. Log /private/tmp/specimen-intake-verify-d629bf73.log and shard
+  artifacts specimen-python-shards-3wmfk9qk retain the actual partial results.
+- Main advanced independently through PR #386 to
+  cd8be7d2a193f5efdf5b7bab4c403f892499c965, adding the cost meter. Narrow independent
+  integration review confirmed the four-field E2E bootstrap, dedicated routing,
+  existing actor and original G30 ProgramLedger admission/cap are unchanged.
+  CostEntry reporting is not a replacement allowance. Do not use costs/refresh
+  as a read-only check: it starts worker drains. Preserve these main changes
+  when integrating the release repairs and rerun required qualification.
+- Hosting39468106835 attempt2 passed; public marker reports33506488, the same
+  run/attempt and Google-enabled build. In normal Chrome, observed the Google
+  button, cancelled the chooser, observed the recovered cancellation message
+  and enabled email/Google choices, retried, selected the exact Gmail account
+  and completed ordinary identity consent. The live app recognized
+  anurag.duddu@gmail.com and displayed no collection assigned. Read-only Auth
+  lookup confirms one verified, active Google-provider identity. This is real
+  Gmail sign-in/cancellation/retry evidence, not an administrative fake user.
+- With fresh109shared executions all complete and zero running, prepared only
+  the approved four bootstrap identifiers from that real UID. Set the private
+  data-production artifact via stdin and dispatched protected Data39476572585
+  on current maincd8be7d2. It passed and reported creation of the missing test
+  collection/memberships with no content or work submitted. The normal Gmail
+  Check access again action then opened Intake E2E. Read-only observation at
+  2026-10-20T18:41:40Z confirmed the correct collection/parent and zero specimen
+  and Queue rows. This does not yet prove the after-Saved/pre-Submit boundary.
+- Safe browser evidence: gmail-live-sign-in-20261020.png and
+  gmail-live-collection-access-20261020.png in this task's visualization
+  implementation directory. API/version now reports current maincd8be7d2.
+  Bulk remains disabled. Provider consent/import, Submit, final scientific
+  Queue, public provider approval and real native camera remain Not confirmed.
 ### 2026-10-20 - COST-METER-PR1 the cost meter's ledger of record, backfill sweep and admin cost totals
 
 - Owner's words, typed 2026-10-20 and relayed by the coordinator session (local_e3ae4073): "Yes, build the in-app tenant cost meter (option A): per organization and collection totals, per-tenant budget caps, shared Google costs split by usage, monthly check against the real bills." This is PR 1 of five, to the coordinator's design contract (`cost-meter-design-2026-10-20.md`, the "table", "Writes (PR 1)" and "API contract" sections). Claude agent, worktree agent-a9bb5a91976a19136, branch `claude/tenant-cost-meter-ledger` from origin/main ba007d4c; PR #386. Nothing deployed; no gcloud or firebase command; no production read; no model call.
@@ -23025,3 +23197,146 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   - Full Python suite (`scripts/ci/python_shards.py local --count 6`) on `992c2fb7`: 16,491 passed, 47 skipped, 3 failed: `test_sam3_runtime.py::test_sam_total_deadline_durable_unknown_and_no_retry` (two cases) and `test_reader_failures_recoverable.py::test_a_reader_whose_deadline_passes_is_retried_not_blocked`. Run alone at load about 20 to 24 they failed on that head and on `origin/main` `cd8be7d2` alike (wall-time deadline tests).
   - After merging `cd8be7d2`: the ledger, cost-meter and drain files with the new test, 282 passed, 1 skipped. `pre-commit run --files` on the changed files: passed. No Dart changed.
 - G51 review: APPROVE of `992c2fb7` (https://github.com/anurag-duddu/specimen-digitization-app/pull/388#issuecomment-6298266379), no blocking findings. Its wording findings were answered in the docs and the PR body (where the storage review lives, the dates, version rows rather than rows, the old versions' on-disk size as unmeasured, which red tests fail with `AttributeError`). Not changed: five older tests still read the head's effect maps directly, which holds while they stay under 16 effects.
+### 2026-10-20 — Intake repair integration and classifier fixture qualification
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch
+  `codex/fix-intake-auth-permission`, worktree
+  `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`.
+  Locally merged main `cd8be7d2a193f5efdf5b7bab4c403f892499c965` as
+  `74f5576b6153271d8a0b3afcca3c0fcbf247f01a`; both append-only logs survived.
+  Independent review confirmed the six Auth/argv repair files remain identical
+  to reviewed `d629bf73` and incoming cost-meter source remains identical to main.
+- Current-main Runtime `39475816367` reproduced the same intake `--args`
+  parser failure. No hand deployment or processing was substituted. Protected
+  Data bootstrap `39476572585` succeeded, and Gmail's normal live collection
+  access plus the post-bootstrap empty SQL/Queue baseline were recorded above.
+- The interrupted `d629bf73` canonical run was not a pass. Its positive
+  classifier fixture returned `external_outcome_unknown` after 5.866 seconds
+  with a five-second total clock, despite completed child provenance at about
+  4.864 seconds after input creation. The generic result does not establish
+  the exact isolation failure reason. The positive fixture now allows 30
+  seconds for fresh interpreter/imports, work, export and IPC; a delegating
+  observer records the real isolation status/reason/elapsed/cleanup on failure.
+  Production clocks and behavior are unchanged. The negative two-second
+  timeout/no-automatic-retry case is unchanged, and all exact configuration,
+  source, model and provenance assertions remain in place.
+- Validation actually run after integration: 32 focused classifier runtime,
+  tracing and worker-wiring tests passed in 12.99 seconds; `git diff --check`
+  passed. QA changed only `tests/test_classifier_runtime.py` and performed no
+  cloud or repository commits. Full canonical verification on this integrated
+  candidate and final exact-head G51/hosted checks remain pending. Bulk remains
+  disabled; real connector import, Submit, scientific finalization, public
+  provider and native acceptance remain Not confirmed.
+
+### 2026-10-20 — Intake repair canonical qualification before PR publication
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch/worktree
+  `codex/fix-intake-auth-permission` in `5da8/specimen-digitization-app`.
+  Integrated source `7a8e4e9766115e73f49eaf583dc8542143c66efe`, tree
+  `61eb9f7f8b107fe059c838cc44a29e91f9c59e6b`, remained clean and unchanged
+  throughout `scripts/ci/verify.sh`, which exited zero. Full Python inventory:
+  18,958 passed plus 50 skipped equals 19,008, with complete exact-once shard
+  accounting. Both the positive classifier fixture and unchanged two-second
+  negative control passed in shard 2. The design-system suite passed 1,309;
+  the app suite passed 3,190 with 7 skips. Both analyses, repository/secret
+  checks, formatting (605 files, zero changes), web build and all declared
+  route/security-header smoke checks passed. This is local qualification,
+  not a claim of native-device or provider acceptance.
+- Durable local evidence: `/private/tmp/specimen-intake-verify-7a8e4e97.log`
+  and `specimen-python-shards-rccbh014` under the task's macOS temporary
+  directory. Independent G51 source/journal review approved the exact source
+  and tree above with no P1/P2 findings. This append changes only the journal;
+  final PR-head review and hosted checks are still required.
+- Main remained protected at `cd8be7d2a193f5efdf5b7bab4c403f892499c965`.
+  Its Hosting run `39475816905` succeeded; both public web and API markers
+  reported that SHA. Its Runtime run still failed at the known intake argument
+  parser, so this was not a complete intake release. Google sign-in is live;
+  Bulk remains off until compatible private jobs and their IAM verify.
+- The reviewed private owner observer ran only scoped GraphQL reads and found
+  zero Gmail-owned drafts, items, submissions, results, jobs and specimens in
+  Intake E2E at `2026-10-20T18:56:42.852081Z`, with every page exhausted and
+  unchanged inventory/membership readback. No content or processing was
+  started. This establishes a metadata baseline, not normal-user import proof.
+  Its private artifact is `intake-metadata-baseline-20261020T185642852081Z.private.json`.
+  Real connector consent/import, pre-Submit staging proof, explicit submission,
+  scientific finalization, institutional/public-provider and native acceptance
+  remain Not confirmed.
+
+### 2026-10-20 - REGISTRY-CLEANUP Artifact Registry cleanup policy (dry run) and the deployed/rollback tags
+
+- Asked by the coordinator session local_e3ae4073 (via local_420c7c0a) after the read-only storage measurement of 2026-10-20: `specimen-runtime` held 289 images, 46.9 GiB, about USD 4.69 a month, 286 no longer in service, about 0.55 GB more per release, no cleanup policy. Branch `claude/agitated-dubinsky-8fa7dc`, worktree schema-redesign-thread-ba6f67, base `ba007d4c`.
+- Built: `owner_setup.sh` step "Image registry": the role `specimenRuntimeImageTags` (tags create/update, no delete) for `specimen-runtime-release` on the repository only, `--no-immutable-tags`, and the committed policy in dry-run mode (`keep-newest` 5 per package, `keep-deployed` tag prefixes `deployed`/`rollback`, `delete-old` any version after 1 day). `scripts/release/keep_images.py`, the last step of the runtime release (`if: always()`). It reads the policy back (before setup it passes with a note). Then, for every service and job the release defines (`specimen-api`, `specimen-sam`, `specimen-worker`, `specimen-intake`, and the collection jobs of the pinned routes), it points `deployed-<name>` at the digest in service and `rollback-<name>` at the previous one, and reads both back. Docs: DEPLOYMENT.md "Image registry cleanup".
+- Reusable learnings:
+  - (a) With `dockerConfig.immutableTags: true`, Google never deletes a tagged image, by policy or by hand ("If a repository has immutable tags enabled, tagged artifacts can't be deleted"). Every release image here carries a unique tag, so no cleanup policy can work until tags may move.
+  - (b) A cleanup policy is a fixed rule set and cannot name a digest that changes with each release. Protect what is in service with a keep rule on tag prefixes plus a release step that moves those tags.
+  - (c) A cleanup dry run reports what it would delete only in Data Access audit logs (`BatchDeleteVersions`, `validateOnly`). This project has no `auditConfigs` (read 2026-10-20), so the cloud dry run is invisible. Evaluate the rules offline against the live version listing instead.
+  - (d) gcloud 582 sends a policy file's enums as written and durations as "<n>.0s"; the API stores "86400s". `value(cleanupPolicies)` prints a sorted-key Python repr joined by ";", and `value[separator="|"](...)` keeps empty fields (`True||` for the 2026-10-20 repository). The SDK's own printer can be driven offline (`resource_printer.Print` on an apitools message) to pin such strings without a cloud call.
+  - (e) Since PR #368 one image package serves several runtimes: the api image runs `specimen-api`, `specimen-intake` and the `specimen-intake-<x>` collection jobs, and the worker image runs `specimen-worker-<x>` too. After a partial release they can hold different digests, so anything that tracks "the deployed image" must be per runtime, not per package.
+  - (f) The auto-mode classifier refused to write the owner-setup step while it applied the policy with `--no-dry-run` ("Blind Apply", "Cloud Storage Mass Delete"). It accepted the same step in dry-run mode.
+- Offline dry run, read-only, live listing of 2026-10-20 under the documented rules: 274 of 289 versions would go (api 108, worker 84, sam 82), 15 stay; the digest each runtime ran was the newest of its package.
+- PR: #389 (https://github.com/anurag-duddu/specimen-digitization-app/pull/389). The branch merged origin/main at `33506488` (PR #368) before review.
+- Validation actually run: after the merge, `scripts/release` + `scripts/ops` + `tests/test_deployment_policy.py` gave 1,264 passed and 1 skipped. The full suite in 6 local shards on the pre-merge commit `0cb8556c` gave 16,288 passed and 8 failed. The failures are load-sensitive deadline tests and the known `test_fixture_bytes_match_regeneration`, at a machine load of 30 to 50; the diff touches no `src/` or `tests/` file. `pre-commit run` on the changed files passed. The fail-first check was seen: without `keep-deployed`, the simulator deletes the 48-hour-old deployed and rollback images.
+- Not done, on purpose: no production change; the owner runs `owner_setup.sh` once after the merge (one step). Turning dry run off is a follow-up PR (`--dry-run` to `--no-dry-run` and `DRY_RUN` together) plus one more owner run.
+- G51 review, by Codex (gpt-6.1-sol, reasoning xhigh, read-only `codex exec`) at the user's request in this session; each verdict pasted verbatim on the PR. Round 1, REQUEST_CHANGES of `c60ec324`: a P1 (owner setup lifted immutability before dry run was in place, which would have armed a deleting policy set elsewhere) and four P2s (keep the revisions that actually take traffic, not the latest ready one; bind the tags role only after it reconciled; a failed route read must not stop the fixed runtimes; docs overreach). Round 2, REQUEST_CHANGES of `281af313`: reordered traffic swapped the extra tags, leaving a gap. Round 3, REQUEST_CHANGES of `e9057e9e`: an interrupted rotation lost rollback on retry, and a spare could be reused too early. Round 4, APPROVE of `edc2af43` (https://github.com/anurag-duddu/specimen-digitization-app/pull/389#issuecomment-6299197775).
+- Reusable learning (g): a release step that moves tags to protect images needs (1) stable extra slots, so a digest that stays in service keeps its extra tag (the main digest changes tags on purpose during rotation); (2) protect-then-repurpose ordering, so a tag leaves an image only when another tag holds it or it is no longer needed; and (3) the tag the plan derives state from (here `deployed-<name>`, the source of rollback) moved only after the intended rollback is established, so retries preserve the intended deployed/rollback rotation. Test it by failing after every write and then retrying, not only by checking the failed state.
+
+### 2026-10-20 - COST-METER-CAPS optional monthly budget caps per organization and collection (cost meter PR 2)
+
+- Owner's words, typed 2026-10-20 and relayed by the coordinator session: "Yes, build the in-app tenant cost meter (option A): per organization and collection totals, per-tenant budget caps, shared Google costs split by usage, monthly check against the real bills." Built from the coordinator's brief and its design note `cost-meter-design-2026-10-20.md` (sections "Hard constraints" and "Caps (PR 2)"). Branch `claude/tenant-cost-meter-caps`, worktree `agent-a9d15ffc8457e81f5`, base `ba007d4c`. PR: #387 (https://github.com/anurag-duddu/specimen-digitization-app/pull/387).
+- Built: the `TenantBudgetCap` table and the `TenantBudgetCapsV1` / `SetTenantBudgetCapV1` operations; `application/tenant_budget.py` (monthly ledgers with `ProgramLedger`'s semantics, `cap_positions` for the cost report); its wiring beside `reserve_step`, in `lane_costs.settle_step`, `Workflow._ledger_settlement`, the RESEARCH_LIMITS check, `FieldResearchStep.reservation` and `ProgramEffectBroker.before_send`; `SqlConnectRepository.tenant_caps` / `set_tenant_cap`; `PUT /v1/organizations/{org}/costs/caps`; app words for `tenant_budget_exhausted` and `tenant_budget_unavailable`. How it works: `docs/execution/golive/TENANT_BUDGETS.md`. No cap is set anywhere: a cap's value is the owner's spending decision.
+- Deliberate test changes: `tests/field_research/test_field_research_e2e.py` now pins two `TenantBudgetCapsV1` calls in the field-research step (its headroom, then its reservation); `FakeDataConnect` answers both new operations; `blocker_words_test.dart` lists the two codes and reads `application/tenant_budget.py` as a backend source; `blocker_plain_words_test.dart` has their cases; `scripts/data/engine-contract-selection.json` gains the stage `sql.tenant-budget` (no pinned count changes).
+- Reusable learnings:
+  - (a) The Data Connect emulator (3.2.0) returns an `Int64` field as a JSON string (`tenant-budget-test.mjs` prints the type); read both a decimal string and a number.
+  - (b) A worktree under the main checkout (`.claude/worktrees/...`) whose `pyproject.toml` has no `[tool.pytest.ini_options]` makes pytest walk up to the main checkout's `pyproject.toml`, which had that section on 2026-10-20 (pytest printed `rootdir` and `inifile` there). `PYTEST_ADDOPTS="-c /dev/null --rootdir=$PWD"` avoids that for most files but makes `scripts/ci/test_engine_contract_gate.py` error 180 times ("collected Python inventory mismatch or duplicate"); an untracked empty `pytest.ini` in the worktree root (never committed) passed all 244.
+- Not done, on purpose: no cap set; no screen to set one; the cost report's GET (PR 1) is to call `cap_positions` once both PRs are in `main`.
+- Validation actually run: full Python suite (`scripts/ci/python_shards.py local --count 4`, head `b4809867`, an untracked empty `pytest.ini` in the worktree): 18,594 passed, 49 skipped, 4 failed, all four wall-clock deadline tests at machine load 25 to 51 (`test_reader_effect_timeout`, `test_worker_cleanup_cutoff`, `test_reader_failures_recoverable::test_a_reader_whose_deadline_passes_is_retried_not_blocked`, `test_sam3_runtime::test_sam_total_deadline_durable_unknown_and_no_retry[success]`), which fail the same way alone with origin/main's `src` first on `PYTHONPATH`. The 69 new tests pass; each changed source file put back to origin/main in a scratch `src` makes its tests fail (counts in the PR). Flutter: `flutter analyze --fatal-infos` clean, `dart format` clean, `blocker_words_test.dart` and `blocker_plain_words_test.dart` 94 passed (13 fail with main's words). `check_ui_strings.py` 0 violations; `schema_gate.py` against origin/main: additive; `pre-commit run --files` on the changed files: passed. `scripts/data/tenant-budget-test.mjs` passed in an uncommitted local run against `scripts/data/serve-local.sh` (darwin emulator 3.2.0, PostgreSQL 18.6); the engine contract stage `sql.tenant-budget` runs only in CI (Linux, PostgreSQL 16): Not confirmed until CI runs it. Not run: `scripts/ci/verify.sh` as a whole, the full Flutter suite.
+
+### 2026-10-20 - COST-METER-PR4 monthly reconciliation of the meter against the Hugging Face and Google bills
+
+- Owner's words, typed 2026-10-20 and relayed by the coordinator session (local_e3ae4073): "Yes, build the in-app tenant cost meter (option A): per organization and collection totals, per-tenant budget caps, shared Google costs split by usage, monthly check against the real bills." This is PR 4 of five, to the coordinator's design contract (`cost-meter-design-2026-10-20.md`, "Reconciliation"). Claude agent, worktree agent-a9b87872d00c15b9f, branch `claude/tenant-cost-meter-reconciliation` from origin/main 6c0d7c46; PR #393. Offline operator tooling: nothing deployed; no gcloud, bq, curl or firebase command run; no production read; no model call.
+- Built: `application/cost_reconciliation.py` (pure: `reconcile`, `render_markdown`); `scripts/ops/reconcile_costs.py` (`--month`, `--meter-rows`, `--huggingface`, `--google`, `--out-json`, `--out-md`, `--print-queries`, thresholds, `--project`, `--billing-zone`, `--free-credit-type`, `--bq-table`); `docs/execution/golive/COST_RECONCILIATION.md`, linked from COST_METER.md. `--print-queries` only prints the read-only `executeGraphqlRead` query and curl loop, two BigQuery export queries and a browser-console line that reads the usage page's `data-props`.
+- Decisions, for the reviewer: a gap is `metered - billed`; Hugging Face compares the bill with settled plus held and also reports the settled-only gap; Google compares cost plus free-allowance credits with the meter after its free allowance, and keeps any other credit apart; bill amounts are summed as integer nano-USD and rounded to micro-USD once per figure, so tables add up; the route-to-model map is built from `model_gateway.HUGGINGFACE_ROUTES` at run time (a test checks every route the published profile names is in it); instance-based Cloud Run SKUs are read as `specimen-sam` because the standard export does not name the service; the US Pacific day rule is written out in the module (since 2007), so the billing-day check needs no tz database, and a test compares it with `zoneinfo` hour by hour for 2026 where that exists; the billing-day check compares hourly export rows cut under UTC, America/Los_Angeles and UTC-5 with the console's daily lines, and names no winner when the second best is within USD 0.01 (the console rounds to cents).
+- Validation actually run (uncommitted local runs on 2026-10-20, no hosted CI yet; `LANG`/`LC_ALL=en_US.UTF-8`, `TZ=America/Chicago`, `uv run --frozen`): `tests/test_cost_reconciliation.py` 55 passed and `scripts/ops/test_reconcile_costs.py` 15 passed; with all of `scripts/ops`, `tests/test_cost_ledger.py` and the source-tree-walking gates (test_deployment_policy, test_extraction_kind_guard, test_gadm_not_used, test_bounded_effect, test_hierarchy_approval, test_blob_publication, the three input-materialization tests): 1,079 passed, 1 skipped. Seven one-line edits to the module (the limit comparison, the tie window, held counting, the free credit type set, the Pacific rule, the request-count comparison, the Jobs mapping) each made at least one test fail; the tie-window edit survived the first test file until a near-tie case was added. `pre-commit run --files` on the changed files passed. The whole Python suite was not run: no shared code changed. The fixtures' figures are worked by hand in the tests; no real bill was read.
+- Reusable learnings: (1) A Google console day-boundary check needs both hourly export rows and the console's daily lines, and cannot separate zones unless a boundary hour carries more than the console's cent rounding. (2) A worktree-isolated agent's Bash refuses heredocs and chained commands as too complex; write the edit script to the scratchpad with the Write tool and run it with `bash` or `python3`. (3) macOS `sed` has no `\b`; use `perl -pi -e`. (4) Open the report with what was billed versus metered and keep structural gaps (intake jobs, unmetered services, shared free tier) on every run, so a reader does not mistake them for meter bugs.
+- Not confirmed: the raw field names of the usage page's `inferenceUsageMetrics` beyond `histogram`, `numRequests`, `usedNanoUsd` (the raw reader is tested only against layouts made up from those names, and fails with the keys it saw); whether the page counts refused requests; the credit type the Cloud Run free tier carries in the export (`FREE_TIER` assumed, widen with `--free-credit-type`); the billing-day zone (Pacific per Google's docs, UTC-5 in a hand reading of 2026-10-17) and the zone of `invoice.month`; that `executeGraphqlRead` accepts `limit: 1000` and the `costEntries` arguments used; how the allocation change (PR 3, not merged when this was written) writes its rows, which `meter_family` assumes; no billing export dataset existed on 2026-10-20, so the Google side needs the owner's one-time step in COST_RECONCILIATION.md; hosted CI; the first real run on October. Follow-ups: the owner enables the export; the coordinator runs the October report; `meter_family` and its tests change if PR 3 writes rows differently.
+- Review round 1 (independent G51 review at head 2054ff5d, REQUEST_CHANGES), fixed in the same branch: (B1) an input that is missing, a directory, empty, not UTF-8 or not JSON now stops the command with `error: <file>: <why>` and exit status 2 and writes nothing (before: exit 1, a traceback, or a silent run on zero rows); a missing output folder is refused before any input is read. (N1) Credits of any type other than `FREE_TIER` are shown by type in the headline, the family table and the unmetered table, with a net charge, and the `free_allowance` explanation names them (with the `--free-credit-type` re-run) before it blames the shared free tier; unmetered lines now carry `after_allowance_micros` (cost plus free tier) and `net_micros` (after every credit). (N2) The printed curl loop pages until a short page (cap 100) and the command warns, on standard error and in the report's `warnings`, when a meter-rows file holds a multiple of 1,000 rows. (N3) A test pins the nano-to-micro rounding direction; N4: a test pins that allocation days are read in the billing zone. Local runs after the fixes (same settings as above): `tests/test_cost_reconciliation.py` 61 passed and `scripts/ops/test_reconcile_costs.py` 38 passed (the printed loop is run under bash and zsh with a stand-in curl and gcloud); with all of `scripts/ops`, `tests/test_cost_ledger.py`, `tests/test_cost_api.py` and `tests/test_cost_caps_api.py`: 351 passed, 1 skipped; nine one-line edits (the micro rounding, the allocation day, the other-credit hint, the headline net note, the free-credit test, the empty-file and OSError handling, the page-size warning, the loop's stop condition) each made a test fail. Reusable learning: a documented exit status needs a test per way an input can fail (missing path, empty file, not JSON), not one `code != 0`.
+- Review round 2 (coordinator, Claude Opus 5.5): a `--huggingface` file holding only JSON `null` was read as "no bill supplied" and exited 0; `load_json` now refuses a bare null (exit 2, `error: <file>: the file holds only null`) for every input flag. An output path that is a folder is refused before any input is read, and a write that fails exits 2 and removes anything already written, so no half report is left. `scripts/ops/test_reconcile_costs.py` pins both; the four new cases fail on 08f0c4d4.
+
+### 2026-10-20 - COST-METER-5 Admin Costs view in the Flutter app (client half of the tenant cost meter)
+
+- Task: PR 5 of the in-app tenant cost meter, built for the coordinator session. The brief says the owner approved the meter on 2026-10-20; I did not see the owner's words. Branch `claude/tenant-cost-meter-costs-view`, worktree `agent-ac54db3ea91d13a73`, base `origin/main` `ba007d4c`, five commits (`0147a6cb`, `ec17b46f`, `4f7834bf`, `a9540916`, `f0c25004`) plus this entry. The server routes (`GET .../costs`, `POST .../costs/refresh`, `PUT .../costs/caps`) are other agents' PRs and were not available: the client is built to the contract in the brief and tested against a fake that answers in that wire shape and is read through the real parser.
+- Built: `lib/src/money.dart` (dollars and cents, the typed-limit reader), `lib/src/costs.dart` (typed models, `CostRepository`, `costsIn`, `costOrganizationOf`, the month list), a separate cost block in `vocabulary.dart`, the three calls in `ApiSpecimenRepository`, `lib/src/screens/costs/` (screen, limit form, access helpers), the `/costs` route, the account-menu entry, 07 section 15 and 13 section 4.7.
+- Decision, the route: `/costs` is a global location like `/help`, opened with `push`. A path under `/c/` would have had to answer to three collection rules that do not fit an organization-wide page: `frame()` in `app_router.dart` reads any path that is not intake as the queue destination, `restoreWebHistory` recognises only queue and intake tails, and the redirect sends a path that names no collection home unless `isGlobalLocation` names it. The entry also needs no new navigation destination. `push` keeps a record and its drafts mounted underneath.
+- Decision, who may ask: an `admin` role on any collection in the open collection's organization (`costOrganizationOf`). `ApiSpecimenRepository._deny` keeps the first 401 or 403 as the failure of the whole session, so the entry is hidden (not disabled) for everyone else, the route draws a sentence for them, and `costs_route_test.dart` counts requests: none for reviewer, manager, no role, an admin of another organization, or a link to `/costs`. `api_costs_test.dart` shows the reason: after one 403 the second read never leaves the client.
+- Reusable learnings:
+  - (a) A page opened with go_router `push` leaves `routerDelegate.currentConfiguration.uri` and `routeInformationProvider.value.uri` at the base route; the page on top is `currentConfiguration.last.matchedLocation` (probed in a widget test, not in a browser). Help behaves the same.
+  - (b) `GlassSurface` asserts inside a sliver list item (`SliverMultiBoxAdaptorWidget` ancestor), and `UiDataTile` defaults to a glass surface, so tiles go in `SliverToBoxAdapter` or take `UiDataTileSurface.paper`.
+  - (c) `UiButton` with a `busyLabel` reserves a leading slot even at rest; without a `leading` glyph the primary button shows an empty gap (seen in the first limit-form goldens). The form gives both buttons a glyph.
+  - (d) A test class field named `override` breaks every `@override` below it ("Not a constant expression").
+  - (e) `test/wall_time_test.dart` reads comments: naming the wall-time override in a doc comment failed it once (`costs.dart`, found by the first full run).
+  - (f) `check_ui_strings.py` bans the bare string `ok` anywhere in `lib/`, including a wire value. The meter status is parsed by enum name (`CostAllocation.fromWire`), so the wire word is written once, as an identifier.
+  - (g) `tester.enterText` applies the field's input formatters, so a test cannot type a letter into an amount field that filters them out.
+  - (h) Under the environment band (`_EnvironmentFrame`) a `UiTopBar` below it adds the status bar inset a second time; the route removes the top padding below the band. `costs_route_test.dart` ("takes the status bar's inset once") fails without that line (difference 0.0 against 47.0) and passes with it.
+  - (i) A fake that answers in microtasks never lets a loading state reach a frame; a test that wants the skeleton or its announcement has to hold the read (`FakeCostRepository.hold`).
+- Round 2 (2026-10-20, after the coordinator merged main into this branch and the final contract landed; contract in `docs/execution/golive/COST_METER.md` on `origin/claude/tenant-cost-meter-allocation` and `TENANT_BUDGETS.md` on main):
+  - `meter.allocation_status` is `never_run`, `behind` or `ok`; the first contract's `monitoring_unavailable` is gone (`CostAllocation` is now `ok`, `behind`, `neverRun`, and the old word reads as a status this client has not met). `behind` shows a band "Shared Google costs are behind." whose detail says more than two complete billing days and the billing day counted through (Pacific time); `never_run` shows "No shared Google costs have been counted."
+  - New top-level `caps_status` (`CostCapsStatus`). `unavailable` means every limit in the report is null, which is not "no limit": the limit section says "The monthly limits could not be read." with a retry, each collection row says "Limit could not be read" and is not a control, and no "Set limit" or "Change limit" is offered over a limit that cannot be seen. A report without the word, or with one this client has not met, is read as having its limits (written in `CostReport.capsUnavailable`).
+  - Every sum can be negative. `formatMicros` writes a credit in words (`$0.30 credit`, "Credit under one cent"), never with a minus sign or a dash; the 02 guidelines and the design docs say nothing about negative amounts, so this follows rule 1 of the 02 checklist. `CostAmounts.hasCosts` counts any nonzero sum, a credit sorts after every cost among stages and models, and nothing in the screen assumes a non-negative figure (there is no bar or share). A stage or model from `google_cloud` is named "Google Cloud".
+  - Explanatory words are cut back to the contract: the total is after Google's free allowance, "Before free allowance" is the list figure, and the held tile is "Held, cost unknown", the part held for calls whose cost is unknown (it said "held in full" before, which was my wording).
+  - A limit of zero is accepted and sent as zero (`TENANT_BUDGETS.md`: whole micros from 0 to 2^53 - 1; null removes). Round 1 refused zero and capped a limit at USD 1,000,000, which were my own rules, not the contract's; the bound is now the service's 2^53 - 1 micros.
+- Round 2 learnings:
+  - (j) The Write and Edit tools turn `\u2013` into the raw character, so a test that asserts the absence of dashes builds them with `String.fromCharCode`.
+  - (k) A one-line `UiBanner` message truncates at 390 dp after about 40 characters (seen in the first `costs_behind` golden, where the whole sentence was in the message); the message is short and the explanation is the `detail`.
+  - (l) `dart format` reflows a long `find.text(...)` call, so a scripted edit that quotes a test's text can miss; edit from the file's current text.
+- Round 3 (the independent review of `e0c0c4af`, REQUEST_CHANGES): a collection the server no longer lists comes back with `name: null` (`COST_METER.md`), and round 1 and 2 drew its UUID as the row's title and offered "Set limit" for an id the caps route refuses. It now reads "Collection no longer listed" with its costs, never the id, and is not a control (`CostCollection.name` is nullable, `listed`; 6 new screen tests fail on the old behavior and pass on the fix, and a model test group). Also: `started: false` says only "No update was started. Try again later." (no promise of an update); the meter band's "Update figures" is a `UiButton` under the band, busy while the request is out (so is the Figures section's), and its outcome is written under the control that was pressed and announced once; `AppShell.costsLabel` now is `CostsScreenCopy.title`. Left as the review found them: N3 (a third "access not verified" branch in the route), N5 to N7.
+- Not done, on purpose: the screen does not say what a limit does (the contract does not); no change to `SpecimenRepository`; no allow-list, exemption or backlog entry was added or changed; no existing golden was regenerated.
+- Validation actually run, from `apps/specimen_digitization` with `LANG`, `LC_ALL` = `en_US.UTF-8` and `TZ=America/Chicago`:
+  - Full app suite, first run at the implementation head before the last edits: 3,357 passed, 7 skipped, 1 failed (the `wall_time_test.dart` finding in learning (e)). Full suite again at the head these commits were cut from: 3,360 passed, 7 skipped, 0 failed. No pre-existing golden failed by a pixel ratio in either run, so no macOS drift is claimed or excluded here.
+  - `flutter analyze --fatal-infos`: no issues. `dart format --output=none --set-exit-if-changed lib test packages/specimen_ui/lib packages/specimen_ui/test`: 596 files, 0 changed.
+  - New tests: `test/costs/` (money, model, API with `MockClient`), `test/screens/costs_screen_test.dart`, `test/app/costs_route_test.dart`, plus the cost sweeps in the composition gates (no_nested_scrollables, surface_depth, chrome_budget, one_job at four windows), the fit matrix (12 cells) and the dark windows.
+  - From the repository root: `uv run python scripts/ci/check_ui_strings.py --baseline scripts/ci/ui_strings_baseline.txt`: 0 violations. `uv run pytest -q scripts/ci/test_smoke_web_routes.py`: 77 passed, after `/costs` was added to its expected route set (its route parser reads the new `GoRoute` path from `AppRoutes.costs`). `scripts/ci/smoke_web_routes.py` itself needs a web build and was not run.
+  - Round 2: full app suite at the round 2 head: 3,459 passed, 7 skipped, 0 failed; `flutter analyze --fatal-infos` no issues; `dart format --output=none --set-exit-if-changed` over the same four trees: 616 files, 0 changed; `check_ui_strings.py`: 0 violations, nothing baselined; `uv run pytest -q scripts/ci/test_smoke_web_routes.py`: 77 passed again. The cost goldens were regenerated on this Mac with the same command and `--name costs` (only the `costs*` files; 40 PNGs now: `costs_meter` became `costs_behind`, and `costs_never_run`, `costs_credit` and `costs_limits` are new), viewed by eye for the behind, never-run, credit and unreadable-limits cases.
+  - Round 3: full app suite: 3,475 passed, 7 skipped, 0 failed; `flutter analyze --fatal-infos` no issues; format check over the four trees: 616 files, 0 changed; `check_ui_strings.py`: 0 violations, nothing baselined. Only the six goldens that showed a change were regenerated (`costs_behind` and `costs_never_run` for the button under the band, `costs_collections` for the unlisted row), by `--update-goldens ... --name costs`, and viewed by eye.
+  - 34 new golden PNGs under `test/golden/images/` (`costs*`) in round 1, generated with `flutter test --update-goldens test/golden/size_classes_golden_test.dart --name costs` and viewed by eye for the compact, large, limit-form, meter and empty cases.
+- Not confirmed: anything against a real server; the wording of the stage and status names on screen (owner has not seen it); the browser address after `push` in a real browser; that a label-finding residual below zero is best called a credit (the contract calls a negative free-allowance row a credit and a negative residual only "below the per-request charges"); any run on a device, an emulator or the hosted Linux job (goldens compare on macOS only).
+- PR: #385 (https://github.com/anurag-duddu/specimen-digitization-app/pull/385), opened as a draft because the server routes ship first.

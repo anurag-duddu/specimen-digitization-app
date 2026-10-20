@@ -410,7 +410,7 @@ async function harness(kind, argv) {
       });
       await stage('postgres.createdb',()=>run(path.join(pg,'createdb'),['-h','127.0.0.1','-p',String(ports[0]),database]));
       await startConnector('initial','sql.initial');
-      for(const name of ['legacy-import-proof-schema','connector','projection','bootstrap','worker-membership','research-registration','research-send-fence','pilot-ledger','sensitivity','cost-meter']) {
+      for(const name of ['legacy-import-proof-schema','connector','projection','bootstrap','worker-membership','research-registration','research-send-fence','pilot-ledger','sensitivity','cost-meter','tenant-budget']) {
         await stage(`sql.${name}`,()=>node(`${name}-test`));
       }
       await stage('sql.indexes.initial',indexes);
