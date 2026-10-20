@@ -1275,8 +1275,10 @@ The workflow has three jobs.
      image in service gets `deployed-<name>.<n>`, which stays with its image
      while that image is in service. A tag leaves an image only when another
      tag already holds it or it is no longer needed, so a step that fails part
-     way never takes the last tag off an image that still needs one. It reads
-     the tags back, tags
+     way never takes the last tag off an image that still needs one, and
+     `deployed-<name>` moves only after `rollback-<name>` holds the image it
+     leaves, so a re-run finishes the same rotation. It reads the tags back,
+     tags
      every runtime it can read before it fails for one it cannot (a failed
      read of the collection routes included), and deletes nothing.
 

@@ -349,7 +349,7 @@ def api_cloud(rows, tags, **options):
                   tags={"api": {**tags, "deployed-specimen-intake": digest("1")},
                         "sam": {"deployed-specimen-sam": digest("2")}, "worker": {"deployed-specimen-worker": digest("3")}},
                   **options)
-    cloud.revisions.update({f"api-{mark}": image("api", mark) for mark in "abcd9"})
+    cloud.revisions.update({f"api-{mark}": image("api", mark) for mark in "abcd9045678ef"})
     return cloud
 
 
@@ -386,8 +386,8 @@ SCENARIOS = [
 
 
 @pytest.mark.parametrize("before, now, after", SCENARIOS)
-def test_tags_end_as_planned_and_a_failure_after_any_write_leaves_every_needed_image_tagged(release, before, now,
-                                                                                         after):
+def test_tags_end_as_planned_and_a_failure_after_any_write_then_a_retry_keeps_every_needed_image(release, before, now,
+                                                                                                 after):
     tags = {tag: digest(mark) for tag, mark in before.items()}
     cloud = release(api_cloud(traffic(now), tags))
     keep.main(["keep_images.py"])
@@ -395,11 +395,33 @@ def test_tags_end_as_planned_and_a_failure_after_any_write_leaves_every_needed_i
     writes = len(cloud.writes)
     # Images that were tagged and are still in service or still kept must stay tagged through every partial run.
     guarded = {digest(mark) for mark in before.values()} & {digest(mark) for mark in [*now, *after.values()]}
+    rotation = {tag: digest(after[tag]) for tag in ("deployed-specimen-api", "rollback-specimen-api") if tag in after}
     for failing in range(1, writes + 1):
         cloud = release(api_cloud(traffic(now), dict(tags), fail_at=failing))
         with pytest.raises(ValueError, match="specimen-api: CalledProcessError"):
             keep.main(["keep_images.py"])
         assert guarded <= set(api_tags(cloud).values()), (failing, api_tags(cloud))
+        # The next release, or a re-run, finishes the same rotation: the image deployed before is rollback.
+        cloud.fail_at = None
+        keep.main(["keep_images.py"])
+        held = api_tags(cloud)
+        assert {tag: held.get(tag) for tag in rotation} == rotation, (failing, held)
+        assert guarded | {digest(mark) for mark in now} <= set(held.values()), (failing, held)
+
+
+def test_a_spare_is_used_at_once_so_many_extra_tags_cost_only_the_moves_they_need(release):
+    # Eight extras keep serving images, .9 holds the old main a; traffic now goes mainly to c, and to b.
+    marks = "045678ef"
+    before = {"deployed-specimen-api": digest("a"), "rollback-specimen-api": digest("b"),
+              "deployed-specimen-api.9": digest("a"),
+              **{f"deployed-specimen-api.{number}": digest(mark) for number, mark in enumerate(marks, 1)}}
+    cloud = release(api_cloud(traffic({"c": 50, "b": 10, **{mark: 5 for mark in marks}}), before))
+    keep.main(["keep_images.py"])
+    assert [write[:2] for write in cloud.writes if write[2] == "api" and "specimen-api" in write[1]] == [
+        ["update", "deployed-specimen-api.9"], ["update", "rollback-specimen-api"], ["update", "deployed-specimen-api"]]
+    held = api_tags(cloud)
+    assert (held["deployed-specimen-api"], held["rollback-specimen-api"], held["deployed-specimen-api.9"]) == (
+        digest("c"), digest("a"), digest("b"))
 
 
 def test_a_service_with_no_traffic_fails_its_runtime_only(release):

@@ -159,27 +159,40 @@ def plan(name: str, digest: str, others: list[str], held: dict[str, str]) -> dic
 
 
 def apply(package: str, name: str, final: dict[str, str], held: dict[str, str]) -> dict[str, str]:
-    """Moves the runtime's tags to final, in an order that never leaves a digest final keeps without a tag: a tag
-    leaves its image only when that image is no longer needed or another tag already holds it. Two tags trading
-    images (a rollback to the rollback image) are broken with a spare deployed-<name>.<n> that ends at the main
-    digest. Returns final with any spare added."""
+    """Moves the runtime's tags to final without ever taking the last tag off an image final keeps: a tag leaves an
+    image only when final no longer needs it or another tag holds it. deployed-<name> moves only once
+    rollback-<name> holds the image it leaves, since plan() takes that image from deployed-<name>: a retry after a
+    failed write then plans the same rotation. When no move is safe (two tags trading images, as in a rollback to
+    the rollback image), a spare deployed-<name>.<n> first takes the image of the blocked tag, which then moves at
+    once; the spare ends at the main digest. Returns final with any spare added."""
+    deployed, rollback = f"deployed-{name}", f"rollback-{name}"
     final, current = dict(final), dict(held)
     pending = {tag: image for tag, image in final.items() if current.get(tag) != image}
+
+    def safe(tag):
+        old = current.get(tag)
+        return (old is None or old not in final.values()
+                or any(other != tag and image == old for other, image in current.items()))
+
+    def move(tag):
+        point(package, tag, pending[tag], current)
+        current[tag] = pending.pop(tag)
+
     while pending:
-        needed = set(final.values())
-        for tag in sorted(pending, key=lambda tag: (tag in current, tag)):
-            old = current.get(tag)
-            if old is None or old not in needed or any(other != tag and image == old
-                                                       for other, image in current.items()):
-                point(package, tag, pending[tag], current)
-                current[tag] = pending.pop(tag)
-                break
-        else:
-            tag = min(pending)
-            spare = fresh(f"deployed-{name}.", {*current, *final})
-            point(package, spare, current[tag], current)
-            current[spare] = current[tag]
-            final[spare] = pending[spare] = final[f"deployed-{name}"]
+        order = [tag for tag in sorted(pending, key=lambda tag: (tag in current, tag))
+                 if tag != deployed or rollback not in pending]
+        movable = [tag for tag in order if safe(tag)]
+        if movable:
+            move(movable[0])
+            continue
+        blocked = rollback if rollback in pending else order[0]
+        spare = fresh(f"{deployed}.", {*current, *final})
+        final[spare] = final[deployed]
+        point(package, spare, current[blocked], current)
+        current[spare] = current[blocked]
+        if current[spare] != final[spare]:
+            pending[spare] = final[spare]
+        move(blocked)
     return final
 
 
