@@ -1035,8 +1035,9 @@ def test_preflight_stops_before_any_change(tmp_path, change, message):
 
 
 AUTH_ROLE = "specimenAuthConfiguration"
-AUTH_PERMISSIONS = ["clientauthconfig.clients.create", "firebase.clients.get", "firebase.clients.list", "firebase.projects.get",
-                    "firebase.projects.update", "firebaseauth.configs.get", "firebaseauth.configs.update"]
+AUTH_PERMISSIONS = ["clientauthconfig.clients.create", "firebase.clients.get", "firebase.clients.list",
+                    "firebase.clients.update", "firebase.projects.get", "firebase.projects.update",
+                    "firebaseauth.configs.get", "firebaseauth.configs.update"]
 AUTH_CREATE = ["gcloud", "iam", "roles", "create", AUTH_ROLE, f"--project={PROJECT}",
                "--title=Specimen Auth configuration",
                "--description=Provision Google for the existing Firebase app and verify Auth configuration; "
@@ -1072,6 +1073,28 @@ def test_auth_only_apply_is_minimal_and_idempotent(tmp_path, shell):
     assert harness.state() == expected
     again = harness.run("--auth-only")
     assert again.code == 0 and again.writes == [] and again.printed == []
+    assert harness.state() == expected and not again.starts and not again.sleeps
+
+
+@pytest.mark.parametrize("shell", SHELLS)
+def test_auth_only_adds_missing_sha_permission_to_existing_role(tmp_path, shell):
+    initial = live_state()
+    initial["roles"][AUTH_ROLE] = {"stage": "GA", "deleted": False,
+                                    "permissions": [p for p in AUTH_PERMISSIONS if p != "firebase.clients.update"]}
+    initial["policies"][f"project/{PROJECT}"].append(binding(CUSTOM + AUTH_ROLE, [DATA]))
+    harness = Harness(tmp_path, initial, shell)
+    update = ["gcloud", "iam", "roles", "update", AUTH_ROLE, f"--project={PROJECT}",
+              f"--permissions={','.join(AUTH_PERMISSIONS)}", "--stage=GA"]
+    dry = harness.run("--auth-only", "--dry-run")
+    assert dry.code == 0 and dry.printed == [update] and not dry.writes, dry.err
+    assert harness.state() == initial and not dry.starts and not dry.sleeps
+    run = harness.run("--auth-only")
+    assert run.code == 0 and run.ran == [update], run.err
+    expected = copy.deepcopy(initial)
+    expected["roles"][AUTH_ROLE]["permissions"] = AUTH_PERMISSIONS
+    assert harness.state() == expected and not run.starts and not run.sleeps
+    again = harness.run("--auth-only")
+    assert again.code == 0 and not again.writes and not again.printed
     assert harness.state() == expected and not again.starts and not again.sleeps
 
 

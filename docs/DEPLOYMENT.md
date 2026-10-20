@@ -1072,12 +1072,16 @@ unverified result. A failure does not trigger a local deployment or broadened
 IAM grants. If the existing Data identity needs configuration permissions,
 the owner's minimal setup command is
 `bash scripts/ops/owner_setup.sh --auth-only` (add `--dry-run` to inspect first).
-It creates/reconciles one seven-permission custom role and binds only the existing
+It creates/reconciles one eight-permission custom role and binds only the existing
 Data identity; it does not replay general owner setup or start releases.
-The additional `clientauthconfig.clients.create` permission is required by
-[Firebase SHA registration](https://firebase.google.com/docs/projects/iam/permissions)
-alongside `firebase.projects.update`. The protected release registers only the
-reviewed signing fingerprints on the existing Android app and verifies them;
+[CreateShaCertificate](https://firebase.google.com/docs/projects/cloud-audit-logs#createshacertificate)
+requires the base `firebase.clients.update` permission.
+[Firebase's management-specific permission table](https://firebase.google.com/docs/projects/iam/permissions#required_permissions_for_firebase_management-specific_actions)
+also requires `clientauthconfig.clients.create` for SHA registration; it is an
+additional permission, not a replacement for `firebase.clients.update`.
+The role retains `firebase.projects.update` for the Auth CLI preflight.
+The protected release registers only the reviewed signing fingerprints on the
+existing Android app and verifies them;
 it never removes existing fingerprints.
 The owner must authorize an agent's execution first-hand, as for every other
 owner setup run. See [Google sign-in setup](execution/GOOGLE_SIGN_IN_SETUP.md)
