@@ -148,13 +148,13 @@ class ConfiguredClassifier:
                     storage = {"kind": "gcs", "bucket": facade.blobs.bucket.name}
                 else:
                     raise OperationalBlock("classifier_storage_not_supported")
-                from ..observability import model_trace_context
+                from ..observability import model_trace_context, tenant_ids
 
                 result = run_isolated(
                     facade.effect or classifier_child,
                     {
                         **pinned,
-                        "telemetry": model_trace_context(specimen.id, specimen.run.id),
+                        "telemetry": model_trace_context(specimen.id, specimen.run.id, **tenant_ids(specimen)),
                         "storage": storage,
                         "asset": specimen.asset.model_dump(mode="json"),
                         "request": request.model_dump(mode="json"),
