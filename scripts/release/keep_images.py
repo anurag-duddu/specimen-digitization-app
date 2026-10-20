@@ -4,7 +4,8 @@ scripts/ops/owner_setup.sh gives the image registry a cleanup policy: an image m
 unless it is one of the newest five of its package or carries a tag that starts with "deployed" or "rollback".
 This script reads that policy back and must find exactly the committed one. Then, for every service and job the
 release defines, it points the tag deployed-<runtime> at the image that runtime runs now and rollback-<runtime>
-at the image deployed-<runtime> named before. It deletes nothing and moves no other tag.
+at the image deployed-<runtime> named before; any other image a service still sends traffic to, or reaches by a
+revision tag, gets deployed-<runtime>.<n>. It deletes nothing and moves no other tag.
 """
 from __future__ import annotations
 
@@ -81,24 +82,35 @@ def cleanup_set_up(repository: dict) -> bool:
     raise ValueError(f"the cleanup settings of {REGISTRY} differ from the committed policy; {OWNER_HINT}")
 
 
-def runtimes() -> list[tuple[str, str, str]]:
-    """Every service and job the release defines, the collection jobs of the pinned routes included."""
-    scoped = [(package, "jobs", route[f"{lane}_job"].rsplit("/", 1)[1])
-              for route in collection_routes().values() for package, lane in (("worker", "worker"), ("api", "intake"))]
-    return [*RUNTIMES, *scoped]
+def collection_runtimes() -> list[tuple[str, str, str]]:
+    """The worker and intake jobs of each pinned collection route."""
+    return [(package, "jobs", route[f"{lane}_job"].rsplit("/", 1)[1])
+            for route in collection_routes().values() for package, lane in (("worker", "worker"), ("api", "intake"))]
 
 
-def in_service(package: str, kind: str, name: str) -> str:
-    """The digest a runtime runs now: a service's latest ready revision, which takes all traffic, or a job's."""
+def in_service(package: str, kind: str, name: str) -> list[str]:
+    """The digests a runtime runs now, the main one first. A job runs its definition's image. A service runs every
+    revision that takes traffic or has a revision tag; after a rollback by traffic that need not be the latest ready
+    one. The revision with the most traffic is the main one (on a tie, the latest ready revision)."""
     location = ["--region", settings.REGION, "--project", settings.PROJECT]
     if kind == "jobs":
         job = gcloud("run", "jobs", "describe", name, *location)
         image = job["spec"]["template"]["spec"]["template"]["spec"]["containers"][0]["image"]
-    else:
-        service = gcloud("run", "services", "describe", name, *location)
-        revision = gcloud("run", "revisions", "describe", service["status"]["latestReadyRevisionName"], *location)
+        return [checked_image(package, image).rsplit("@", 1)[1]]
+    status = gcloud("run", "services", "describe", name, *location)["status"]
+    targets = [row for row in status.get("traffic", []) if int(row.get("percent", 0)) > 0 or row.get("tag")]
+    if not targets:
+        raise ValueError(f"{name}: no revision takes traffic")
+    latest = status.get("latestReadyRevisionName")
+    targets.sort(key=lambda row: (-int(row.get("percent", 0)), row["revisionName"] != latest, row["revisionName"]))
+    digests = []
+    for row in targets:
+        revision = gcloud("run", "revisions", "describe", row["revisionName"], *location)
         image = revision.get("status", {}).get("imageDigest") or revision["spec"]["containers"][0]["image"]
-    return checked_image(package, image).rsplit("@", 1)[1]
+        digest = checked_image(package, image).rsplit("@", 1)[1]
+        if digest not in digests:
+            digests.append(digest)
+    return digests
 
 
 def kept_tags(package: str) -> dict[str, str]:
@@ -118,7 +130,7 @@ def point(package: str, tag: str, digest: str, held: dict[str, str]) -> None:
 
 
 def keep(package: str, kind: str, name: str) -> str:
-    digest = in_service(package, kind, name)
+    digest, *others = in_service(package, kind, name)
     deployed, rollback = f"deployed-{name}", f"rollback-{name}"
     held = kept_tags(package)
     previous = held.get(rollback)
@@ -127,10 +139,19 @@ def keep(package: str, kind: str, name: str) -> str:
             previous = held[deployed]
             point(package, rollback, previous, held)
         point(package, deployed, digest, held)
+    # Every other image in service gets deployed-<name>.<n>; a Cloud Run name has no dot, so these never meet
+    # another runtime's tags. One no longer needed is pointed at the main image, as the release cannot delete a tag.
+    extra = {f"{deployed}.{number}": other for number, other in enumerate(others, 1)}
+    extra.update({tag: digest for tag in held if tag.startswith(f"{deployed}.") and tag not in extra})
+    for tag, image in sorted(extra.items()):
+        if held.get(tag) != image:
+            point(package, tag, image, held)
     after = kept_tags(package)
-    if (after.get(deployed), after.get(rollback)) != (digest, previous):
+    expected = {deployed: digest, rollback: previous, **extra}
+    if {tag: after.get(tag) for tag in expected} != expected:
         raise ValueError(f"{name}: the tags {deployed} and {rollback} did not read back as set")
-    return f"kept {package} image of {name}: {deployed} {digest}, {rollback} {previous or 'none yet'}"
+    also = f", also in service {', '.join(others)}" if others else ""
+    return f"kept {package} image of {name}: {deployed} {digest}, {rollback} {previous or 'none yet'}{also}"
 
 
 def main(argv: list[str]) -> None:
@@ -144,9 +165,13 @@ def main(argv: list[str]) -> None:
               flush=True)
         return
     # Tag every runtime that can be read, then fail for any that could not: a partly failed release still keeps
-    # what it left in service.
-    failures = []
-    for package, kind, name in runtimes():
+    # what it left in service, and so does a release whose collection routes could not be read.
+    failures, found = [], list(RUNTIMES)
+    try:
+        found += collection_runtimes()
+    except (ValueError, KeyError, subprocess.CalledProcessError) as error:
+        failures.append(f"collection routes: {error!r}")
+    for package, kind, name in found:
         try:
             print(keep(package, kind, name), flush=True)
         except (ValueError, KeyError, IndexError, subprocess.CalledProcessError) as error:

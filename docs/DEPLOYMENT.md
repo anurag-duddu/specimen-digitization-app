@@ -1190,9 +1190,11 @@ The workflow has three jobs.
    `scripts/release/push_image.sh` pushes each checked image to its `api`,
    `worker` or `sam` repository under
    `us-east4-docker.pkg.dev/specimen-digitization/specimen-runtime/` with
-   the tag `sha-<commit>-<run id>-<run attempt>`. The registry does not let a
-   tag be overwritten, so the run ID and attempt keep a re-run from colliding
-   with its earlier push. The job passes the image on by digest,
+   the tag `sha-<commit>-<run id>-<run attempt>`. The run ID and attempt give
+   a re-run its own tag, so it never moves the tag of an earlier push. Once
+   the owner setup lets the registry's tags move (see
+   [Image registry cleanup](#image-registry-cleanup)), the registry itself no
+   longer refuses a moved tag. The job passes the image on by digest,
    `.../specimen-runtime/api@sha256:<digest>`, never by tag.
 3. **`release`** needs both jobs and runs in the `runtime-production`
    environment, as `specimen-runtime-release`.
@@ -1264,12 +1266,15 @@ The workflow has three jobs.
      owner setup has set it, the step says so and passes. Then, for every
      service and job the release defines (`specimen-api`, `specimen-sam`,
      `specimen-worker`, `specimen-intake` and the collection jobs of the
-     pinned routes), it reads the image digest in service (a service's latest
-     ready revision, a job's definition), points the tag `deployed-<name>` at
-     it and, when that moved the tag, points `rollback-<name>` at the image
-     `deployed-<name>` named before. It reads both tags back, tags every
-     runtime it can read before it fails for one it cannot, and deletes
-     nothing.
+     pinned routes), it reads the image digests in service: a job's
+     definition, and for a service every revision that takes traffic or has a
+     revision tag, which after a rollback by traffic need not be the latest
+     one. It points the tag `deployed-<name>` at the main one (the revision
+     with the most traffic) and, when that moved the tag, points
+     `rollback-<name>` at the image `deployed-<name>` named before. Any other
+     image in service gets `deployed-<name>.<n>`. It reads the tags back, tags
+     every runtime it can read before it fails for one it cannot (a failed
+     read of the collection routes included), and deletes nothing.
 
 A manual run may additionally select `process_queued: true` (default false).
 After deployment verification, `scripts/release/process_worker.py` warms SAM to
@@ -1394,8 +1399,13 @@ matches it.
 The image each service or job has in service, and the one it had before, are
 held by its `deployed-<name>` and `rollback-<name>` tags whatever the count, so
 the count only keeps the last few builds at hand. On 2026-10-20 the newest five of each package came to 3.30 GB of
-layers, the newest ten to 6.13 GB. The one-day floor keeps every build through
-the release that pushed it.
+layers, the newest ten to 6.13 GB. The one-day floor counts from when the
+registry first stored a version, so it keeps a new image through the release
+that pushed it; pushing a digest the registry already holds does not restart
+it, and such a version stays only while the newest-five rule or a tag keeps
+it. The first release after the owner setup can tag only what runs then:
+`rollback-<name>` appears with the next release that changes a runtime's
+image, and dry run stays on at least until the rollback tags exist.
 
 Every release image is pushed with its own `sha-<commit>-<run>-<attempt>` tag. While
 the repository's tags are immutable, Google deletes no tagged image ("If a

@@ -836,16 +836,22 @@ runtime_grants() {
   done
 }
 
-# Without a cleanup policy every pushed image stays forever, about 0.55 GB a release. The release moves two tags
-# onto the images in service, so tags must be able to move; under immutable tags the registry could also never
-# delete a tagged image, and every image is pushed with one. The policy goes in only in dry-run mode: Google
-# evaluates it and deletes nothing.
+# Without a cleanup policy every pushed image stays forever, about 0.55 GB a release. The release moves tags onto
+# the images in service, so tags must be able to move; under immutable tags the registry could also never delete a
+# tagged image, and every image is pushed with one. The policy goes in only in dry-run mode, so Google evaluates it
+# and deletes nothing, and it is in dry-run mode before tags may move: immutability is what stops a deleting
+# policy set elsewhere from removing a tagged image.
 registry_cleanup() {
-  local live immutable rest dry policies file
+  local live immutable rest dry policies file failures_before=$FAILURE_COUNT
   heading 'Image registry: a cleanup policy in dry-run mode (it deletes nothing) and the tags that keep the images in service'
   ensure_role specimenRuntimeImageTags 'Specimen runtime image tags' \
     'Point the deployed and rollback tags of the runtime images; no delete.' \
     artifactregistry.tags.create artifactregistry.tags.update
+  # Bind the role only when it holds exactly these two permissions.
+  if [ "$FAILURE_COUNT" -ne "$failures_before" ]; then
+    warn "the image registry is left as it is: the role specimenRuntimeImageTags could not be set; the next run of this script tries again"
+    return 0
+  fi
   grant repository "$REGISTRY" "$RELEASE" "$CUSTOM/specimenRuntimeImageTags"
   if [ "$HELD" -ne 1 ]; then
     warn "the cleanup policy of $REGISTRY is not set: the runtime release could not tag the images in service yet; the next run of this script tries again"
@@ -861,22 +867,22 @@ registry_cleanup() {
   rest=${live#*|}
   dry=${rest%%|*}
   policies=${rest#*|}
+  if [ "$policies" = "$CLEANUP_POLICY_LIVE" ] && [ "$dry" = True ]; then
+    in_place "the cleanup policy of $REGISTRY is the committed one, in dry-run mode"
+  else
+    file="$WORK/cleanup-policy.json"
+    printf '%s\n' "$CLEANUP_POLICY" > "$file"
+    change "set the cleanup policy of $REGISTRY in dry-run mode (nothing is deleted): keep the newest 5 images of each kind and the deployed and rollback images"
+    run gcloud artifacts repositories set-cleanup-policies "$REGISTRY" "--location=$REGION" "--project=$PROJECT" \
+      "--policy=$file" --dry-run
+    if [ "$LAST_OK" -ne 1 ]; then return 0; fi
+  fi
   if [ "$immutable" = True ]; then
     change "let tags move in $REGISTRY, so the release can move its deployed and rollback tags"
     run gcloud artifacts repositories update "$REGISTRY" "--location=$REGION" "--project=$PROJECT" --no-immutable-tags
-    if [ "$LAST_OK" -ne 1 ]; then return 0; fi
   else
     in_place "tags can move in $REGISTRY"
   fi
-  if [ "$policies" = "$CLEANUP_POLICY_LIVE" ] && [ "$dry" = True ]; then
-    in_place "the cleanup policy of $REGISTRY is the committed one, in dry-run mode"
-    return 0
-  fi
-  file="$WORK/cleanup-policy.json"
-  printf '%s\n' "$CLEANUP_POLICY" > "$file"
-  change "set the cleanup policy of $REGISTRY in dry-run mode (nothing is deleted): keep the newest 5 images of each kind and the deployed and rollback images"
-  run gcloud artifacts repositories set-cleanup-policies "$REGISTRY" "--location=$REGION" "--project=$PROJECT" \
-    "--policy=$file" --dry-run
 }
 
 # Widens one provider from push-only to push or a manual run; every other clause stays verbatim.

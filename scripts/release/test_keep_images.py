@@ -204,8 +204,11 @@ ROUTES = {"org/insects": {"worker_job": "projects/specimen-digitization/location
 class Cloud:
     """A stand-in gcloud: the repository, what each runtime runs and the tags of each package."""
 
-    def __init__(self, repository=SET_UP, running=None, tags=None, ignore_writes=False, unreadable=()):
+    def __init__(self, repository=SET_UP, running=None, tags=None, ignore_writes=False, unreadable=(), traffic=None):
         self.repository = repository
+        # A service's (latest ready revision, traffic rows) and each revision's image; by default one revision,
+        # "<service>-ready", takes all traffic and runs running[<service>].
+        self.traffic, self.revisions = traffic or {}, {}
         self.running = running or {"specimen-api": image("api", "1"), "specimen-sam": image("sam", "2"),
                                    "specimen-worker": image("worker", "3"), "specimen-intake": image("api", "1")}
         self.tags = tags or {package: {} for package in ("api", "sam", "worker")}
@@ -242,10 +245,13 @@ class Cloud:
             return {"spec": {"template": {"spec": {"template": {"spec": {
                 "containers": [{"image": self.running[words[4]]}]}}}}}}
         if words[1:4] == ["run", "services", "describe"]:
-            return {"status": {"latestReadyRevisionName": f"{words[4]}-ready"}}
+            latest, rows = self.traffic.get(words[4], (f"{words[4]}-ready", [
+                {"revisionName": f"{words[4]}-ready", "percent": 100, "latestRevision": True}]))
+            self.revisions.setdefault(f"{words[4]}-ready", self.running.get(words[4]))
+            return {"status": {"latestReadyRevisionName": latest, "traffic": rows}}
         if words[1:4] == ["run", "revisions", "describe"]:
             return {"spec": {"containers": [{"image": "unused"}]},
-                    "status": {"imageDigest": self.running[words[4].removesuffix("-ready")]}}
+                    "status": {"imageDigest": self.revisions[words[4]]}}
         raise AssertionError(f"unexpected gcloud call: {words}")
 
 
@@ -302,6 +308,55 @@ def test_each_runtime_of_one_package_keeps_its_own_image_and_the_collection_jobs
                                  "deployed-specimen-intake-insects": digest("0")}
     assert cloud.tags["worker"] == {"deployed-specimen-worker": digest("3"),
                                     "deployed-specimen-worker-insects": digest("4")}
+
+
+def test_after_a_rollback_by_traffic_the_revision_that_serves_is_kept_not_the_latest(release):
+    # Traffic was moved back to revision a; two later releases left b and c ready with no traffic.
+    cloud = Cloud(traffic={"specimen-api": ("api-c", [{"revisionName": "api-a", "percent": 100},
+                                                     {"revisionName": "api-b", "percent": 0},
+                                                     {"revisionName": "api-c", "percent": 0}])})
+    cloud.revisions.update({"api-a": image("api", "a"), "api-b": image("api", "b"), "api-c": image("api", "c")})
+    release(cloud)
+    keep.main(["keep_images.py"])
+    assert cloud.tags["api"]["deployed-specimen-api"] == digest("a")
+    assert digest("c") not in cloud.tags["api"].values()
+
+
+def test_every_image_a_service_sends_traffic_to_or_tags_is_kept_and_a_spent_extra_tag_returns_to_the_main(release):
+    split = [{"revisionName": "api-b", "percent": 10}, {"revisionName": "api-a", "percent": 90},
+             {"revisionName": "api-c", "percent": 0, "tag": "preview"}]
+    cloud = Cloud(traffic={"specimen-api": ("api-c", split)})
+    cloud.revisions.update({"api-a": image("api", "a"), "api-b": image("api", "b"), "api-c": image("api", "c")})
+    release(cloud)
+    keep.main(["keep_images.py"])
+    assert {tag: held for tag, held in cloud.tags["api"].items() if "specimen-api" in tag} == {
+        "deployed-specimen-api": digest("a"), "deployed-specimen-api.1": digest("b"),
+        "deployed-specimen-api.2": digest("c")}
+    # All traffic back on one revision: the extra tags no longer hold anything else.
+    cloud.traffic["specimen-api"] = ("api-c", [{"revisionName": "api-c", "percent": 100}])
+    keep.main(["keep_images.py"])
+    assert {tag: held for tag, held in cloud.tags["api"].items() if "specimen-api" in tag} == {
+        "deployed-specimen-api": digest("c"), "rollback-specimen-api": digest("a"),
+        "deployed-specimen-api.1": digest("c"), "deployed-specimen-api.2": digest("c")}
+
+
+def test_a_service_with_no_traffic_fails_its_runtime_only(release):
+    cloud = release(Cloud(traffic={"specimen-sam": ("sam-x", [])}))
+    with pytest.raises(ValueError, match="specimen-sam: ValueError.'specimen-sam: no revision takes traffic"):
+        keep.main(["keep_images.py"])
+    assert "deployed-specimen-worker" in cloud.tags["worker"]
+
+
+def test_unreadable_collection_routes_still_keep_the_fixed_runtimes_then_fail(release, monkeypatch):
+    cloud = release(Cloud())
+
+    def unreadable():
+        raise ValueError("Pinned collection routes could not be read; run owner setup --intake-only")
+    monkeypatch.setattr(keep, "collection_routes", unreadable)
+    with pytest.raises(ValueError, match="collection routes: ValueError"):
+        keep.main(["keep_images.py"])
+    assert [write[1] for write in cloud.writes] == [
+        "deployed-specimen-api", "deployed-specimen-sam", "deployed-specimen-worker", "deployed-specimen-intake"]
 
 
 def test_a_runtime_that_cannot_be_read_fails_the_step_after_the_others_are_tagged(release):

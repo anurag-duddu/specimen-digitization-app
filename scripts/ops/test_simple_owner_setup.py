@@ -801,8 +801,8 @@ NARROW = ["gcloud", "run", "services", "add-iam-policy-binding", SERVICE, "--reg
 UNWIDEN = ["gcloud", "projects", "remove-iam-policy-binding", PROJECT, f"--member={RELEASE}", INVOKER_ROLE,
            "--condition=None"]
 MOVES = "runtime release: the right to set who may call the API now moves from the project to the one service"
-# The image registry: the release identity may move two tags, tags may move, and the cleanup policy goes in
-# dry-run mode.
+# The image registry: the release identity may create and move tags, the cleanup policy goes in dry-run mode, and
+# only then may tags move.
 REGISTRY_AT = ["specimen-runtime", "--location=us-east4", f"--project={PROJECT}"]
 IMAGE_TAGS = [
     role_create("specimenRuntimeImageTags", "Specimen runtime image tags",
@@ -812,7 +812,7 @@ IMAGE_TAGS = [
 LET_TAGS_MOVE = ["gcloud", "artifacts", "repositories", "update", *REGISTRY_AT, "--no-immutable-tags"]
 SET_CLEANUP = ["gcloud", "artifacts", "repositories", "set-cleanup-policies", *REGISTRY_AT,
                "--policy=cleanup-policy.json", "--dry-run"]
-REGISTRY_CHANGES = [*IMAGE_TAGS, LET_TAGS_MOVE, SET_CLEANUP]
+REGISTRY_CHANGES = [*IMAGE_TAGS, SET_CLEANUP, LET_TAGS_MOVE]
 # Every change the live state needs, in the script's order, with exact arguments.
 EXPECTED = [
     *(["gcloud", "projects", "remove-iam-policy-binding", PROJECT, f"--member={DATA}", f"--role={CUSTOM}{role}",
@@ -2112,7 +2112,7 @@ def test_the_registry_gets_movable_tags_and_the_cleanup_policy_in_dry_run_mode_o
     harness = Harness(tmp_path, live_state())
     run = harness.run("--setup-only")
     assert run.code == 0, run.err
-    assert registry_writes(run) == [IMAGE_TAGS[1], LET_TAGS_MOVE, SET_CLEANUP]
+    assert registry_writes(run) == [IMAGE_TAGS[1], SET_CLEANUP, LET_TAGS_MOVE]
     [sent] = [call["policy_text"] for call in run.writes if "policy_text" in call]
     assert json.loads(sent) == [
         {"name": "keep-newest", "action": {"type": "KEEP"}, "mostRecentVersions": {"keepCount": 5}},
@@ -2142,12 +2142,12 @@ def test_a_live_policy_that_deletes_or_differs_is_set_back_to_the_committed_dry_
     assert "--no-dry-run" not in SCRIPT.read_text()
 
 
-@pytest.mark.parametrize("failing, done", [("add-iam-policy-binding", []), ("--no-immutable-tags", [LET_TAGS_MOVE])])
-def test_no_cleanup_policy_before_the_release_can_tag_and_tags_can_move(tmp_path, failing, done):
+@pytest.mark.parametrize("failing, done", [("add-iam-policy-binding", []), ("set-cleanup-policies", [SET_CLEANUP])])
+def test_no_cleanup_policy_before_the_release_can_tag_and_tags_move_only_after_dry_run_holds(tmp_path, failing, done):
     state = live_state()
     state["roles"]["specimenRuntimeImageTags"] = {"stage": "GA", "deleted": False,
                                                   "permissions": ROLES["specimenRuntimeImageTags"]}
-    if failing == "--no-immutable-tags":
+    if failing == "set-cleanup-policies":
         state["policies"]["repository/specimen-runtime"].append(
             binding(CUSTOM + "specimenRuntimeImageTags", [RELEASE]))
     harness = Harness(tmp_path, {**state, "fail": [failing]})
@@ -2157,3 +2157,32 @@ def test_no_cleanup_policy_before_the_release_can_tag_and_tags_can_move(tmp_path
     assert harness.state()["registry"] == {"immutable": True, "dry_run": False, "policies": {}}
     if not done:
         assert "WARNING: the cleanup policy of specimen-runtime is not set" in run.out
+
+
+def test_a_deleting_policy_set_elsewhere_goes_to_dry_run_before_its_tags_can_move(tmp_path):
+    harness = Harness(tmp_path, live_state())
+    assert harness.run("--setup-only").code == 0
+    state = harness.state()
+    state["registry"].update(immutable=True, dry_run=False)  # immutability is what stops this policy deleting
+    harness.save({**state, "fail": ["set-cleanup-policies"]})
+    run = harness.run("--setup-only")
+    assert run.code == 1 and registry_writes(run) == [SET_CLEANUP]
+    assert harness.state()["registry"]["immutable"] is True
+    harness.save({**harness.state(), "fail": []})
+    run = harness.run("--setup-only")
+    assert run.code == 0 and registry_writes(run) == [SET_CLEANUP, LET_TAGS_MOVE]
+    assert (harness.state()["registry"]["dry_run"], harness.state()["registry"]["immutable"]) == (True, False)
+
+
+def test_a_tags_role_that_cannot_be_set_to_its_two_permissions_is_not_bound_and_the_registry_is_left_alone(tmp_path):
+    state = live_state()
+    state["roles"]["specimenRuntimeImageTags"] = {"stage": "GA", "deleted": False, "permissions": [
+        "artifactregistry.tags.create", "artifactregistry.tags.update", "artifactregistry.versions.delete"]}
+    harness = Harness(tmp_path, {**state, "fail": ["update"]})
+    run = harness.run("--setup-only")
+    assert run.code == 1
+    assert [argv[:5] for argv in run.ran if "specimenRuntimeImageTags" in " ".join(argv)] == [
+        ["gcloud", "iam", "roles", "update", "specimenRuntimeImageTags"]]
+    assert registry_writes(run) == []
+    assert harness.state()["registry"] == {"immutable": True, "dry_run": False, "policies": {}}
+    assert "WARNING: the image registry is left as it is: the role specimenRuntimeImageTags could not be set" in run.out
