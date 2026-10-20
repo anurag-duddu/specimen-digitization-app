@@ -14,16 +14,38 @@ from specimen_digitization.application.storage import LocalBlobs
 from specimen_digitization.application.workflow import OperationalBlock
 from specimen_digitization.model_gateway import HUGGINGFACE_ROUTES
 
-STAGE_ROUTES = ["first-pass-glm", "harness-deepseek"]
+STAGE_ROUTES = ["first-pass-glm", "harness-deepseek", "first-pass-nemotron", "harness-nemotron"]
 
 
 @pytest.mark.parametrize("route", STAGE_ROUTES)
 def test_a_stage_route_named_as_a_reader_is_not_pinned(tmp_path, route):
-    # As on main: a reader is pinned from the initial reader set only.
+    # As on main: a reader is pinned from the reader set only.
     run = Run(profile=Profile(routes=("handwriting-qwen", route)))
 
     with pytest.raises(KeyError):
         production.ProductionAdapters(LocalBlobs(tmp_path)).pin_dependencies(run)
+
+
+def test_the_nvidia_reader_is_pinned_at_its_provider(tmp_path):
+    # NVIDIA_NEMOTRON_OPTION.md: Nemotron takes reader A's place, Muse stays reader B.
+    run = Run(
+        profile=Profile(
+            routes=("handwriting-nemotron", "handwriting-muse"),
+            first_pass_route="first-pass-nemotron",
+        )
+    )
+
+    pins = production.ProductionAdapters(LocalBlobs(tmp_path)).pin_dependencies(run)
+
+    nemotron = "nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4"
+    assert pins["routes"] == {
+        "handwriting-nemotron": {"model_id": nemotron, "provider": "baseten"},
+        "handwriting-muse": {
+            "model_id": "meta-models/Muse-Glimmer-30B",
+            "provider": "deepinfra",
+        },
+        "first-pass-nemotron": {"model_id": nemotron, "provider": "baseten"},
+    }
 
 
 @pytest.mark.parametrize("route", STAGE_ROUTES)

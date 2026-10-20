@@ -390,6 +390,8 @@ coordinator ruling on the mechanism:
   a run fails or is retried.
   - 2026-10-11 (harness session, PR #311): exception — a provider HTTP 429 refused before any response is recorded with basis `refused` at cost 0 and settles, releasing its reservation; a first pass or organiser call past its step deadline stays reserved in full (external_outcome_unknown), as does every other no-usage failure.
   - 2026-10-11 (camera intake recovery, PR #315): ordinary tool-free first-pass comparisons may retry transient provider/deadline failures within existing attempt and financial limits. Unknown billing stays fully reserved; only a proved first-request 429 refusal settles to zero, including one received past the elapsed deadline. The organiser and effectful stages retain their unknown-outcome block. This narrow recovery does not release held spend, raise a cap, or automatically unblock historical records; see HARNESS.md's ordinary first-pass transient recovery rule.
+  - 2026-10-17 (cost ledger session, branch `claude/cost-ledger-settles-reported-usage`): a failed model call whose provider reported every request's tokens settles at what they cost (`computed`, outcome `failed`). That covers an answer that stayed malformed after its retry and a call stopped by its limits (`reliability.reported_usage`). Parse settles at its extraction's tokens, priced at the profile's first route, which the call uses. A timeout, a transport error, a 5xx, a 429 after an answer, a child that ended without an answer, a reply the model client could not read and an answer without usage still stay reserved in full. Reservations, the USD 1 run limit and the allowance are unchanged. In the 2026-10-17 batch, 25 of the 32 held model calls would have settled. A 26th reported its tokens, but its answer was lost when the worker crashed, so its run never received them. 19f0f1f6's malformed first pass, held at 318,670, costs 1,424.
+  - 2026-10-17 correction (parse settlement session, branch `claude/parse-settles-measured-tokens`): the entry above's "Parse settles at its extraction's tokens" did not hold in production. Every completed parse of the 11-record batch stayed `reserved` at 58,164 with usage null. The extraction answers through Pydantic AI's output tool, which then queues the tool's return as one more request that is never sent, and `reliability.reported_usage` read it as a request sent and not answered. A completed call now excludes that request (`completed=True`, used by `harness.extract_with_agent`), so a completed parse whose provider reported its tokens settles at them (`computed`): 19f0f1f6's 1,627 in and 1,077 out cost 1,080. A parse whose answer reported no input tokens, whose provider answered 5xx, or whose child overran its deadline still stays reserved in full (`tests/test_parse_settles_measured_tokens.py`, `tests/test_extraction_recovery.py`). Field research is unchanged: Pydantic AI's Hugging Face model maps only prompt and completion tokens, so any cached-token count DeepInfra may send never reaches the meter, and the price list has no cached-input rate.
 - A worst case exists only where a request is bounded: every first-pass and
   harness model request carries a cap on output tokens, and each harness run a
   cap on its model requests, set from the lab's measured runs. A run that
@@ -415,6 +417,28 @@ coordinator ruling on the mechanism:
   vCPU and memory rates, and settles as `computed`; its reservation bounds
   startup, the 300-second request timeout and the 10-second shutdown, as
   S3's #132 computes.
+  - 2026-10-17 (cost ledger session, same branch): `specimen-sam` runs with CPU
+    always allocated, so Cloud Run bills it by instance: its whole life, idle
+    time included, and an idle instance lives up to 15 minutes after its last
+    request. The request seconds miss that idle time, so since 2026-10-05 every
+    SAM call had stayed reserved in full (182,321).
+    - The service now reports, beside each answer, the request's own seconds and
+      the instance's idle seconds before it (`sam3_server.InstanceMeter`). A call
+      settles at those, at Cloud Run's instance-based rates (18 and 2
+      micro-dollars a vCPU- and GiB-second, price list `pilot-prices-2026-10-17`).
+    - The instance's first call also pays its start (measured, plus 30 s before
+      the server's clock), the startup CPU boost, and the instance's last idle
+      wait and shutdown (930 s). So each run pays the instance time it caused,
+      and together the runs pay the whole life of an instance a request started.
+    - Idle time past 920 s, or a start past 600 s, is a warm minimum instance,
+      which stays with the infrastructure budget. A call with no report stays
+      reserved in full, and reservations are unchanged. A run queued before
+      this price list keeps its own copy, without instance rates, and settles
+      at the request-based rates, about 31% higher.
+    - On the 2026-10-17 batch this charges 461,084 to 471,644, depending on how
+      long each container ran before the server's clock started (0 to 30 s).
+      Cloud Monitoring's billable instance time comes to 446,490 at list rates.
+      The ledger held 2,005,531.
 
 Each paid call records its usage, its reservation and a cost computed from a
 pinned price list whose version and date are recorded, or the billed amount

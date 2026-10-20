@@ -81,8 +81,16 @@ NEVER_NOT_ON_LABEL = frozenset({
 
 
 def not_on_label_fields(profile_id: str, version: str) -> frozenset[str]:
-    """The fields of this profile version that may clear as "not on the label"."""
-    return NOT_ON_LABEL.get((profile_id, version), frozenset()) - NEVER_NOT_ON_LABEL
+    """The fields of this profile version that may clear as "not on the label".
+
+    The list depends on the label, not on the models that read it, so a
+    version's build metadata is ignored: the NVIDIA option's variant
+    "1.0.0+nvidia.readers" (application/model_option.py) clears the same
+    fields as the published "1.0.0". Semantic versioning puts build metadata
+    after the first "+".
+    """
+    published = version.partition("+")[0]
+    return NOT_ON_LABEL.get((profile_id, published), frozenset()) - NEVER_NOT_ON_LABEL
 
 
 @dataclass(frozen=True)

@@ -10,8 +10,8 @@
 /// superellipse is what made a focused field read as three edges: the two
 /// curves run together on the straight part of a corner and apart at its
 /// ends, so the eye reads a second outline rather than a ring. A superellipse
-/// is ringed by a superellipse, a capsule by a stadium and a disc by a
-/// circle, and every one of them runs concentric with the edge it rings.
+/// is ringed by a superellipse, a rounded rectangle by a rounded rectangle,
+/// a capsule by a stadium and a disc by a circle. Each follows the edge it rings.
 library;
 
 import 'package:flutter/widgets.dart';
@@ -20,12 +20,15 @@ import '../foundation/theme.dart';
 
 /// The shape a [FocusRing] follows.
 ///
-/// An enum rather than a `bool`, because the system has three shapes and a
+/// An enum rather than a `bool`, because the system has several contours and a
 /// pair of booleans would let a caller ask for two of them at once.
 enum FocusRingShape {
   /// A superellipse at the component's radius. Fields, tiles, sheets, and
   /// anything else `Squircle.border` draws.
   superellipse,
+
+  /// A rounded rectangle at the component's radius, such as a branded button.
+  roundedRectangle,
 
   /// A capsule. Buttons, chips, search fields, the navigation discs. The
   /// radius is the shorter side halved, so the ring matches `StadiumBorder`.
@@ -62,8 +65,9 @@ class FocusRing extends StatelessWidget {
   final Widget child;
 
   /// The component's own corner radius. The ring is drawn at this plus the
-  /// focus radius offset. Read only for [FocusRingShape.superellipse]; the
-  /// other two shapes take their curve from the box they are given.
+  /// focus radius offset. Read by [FocusRingShape.superellipse] and
+  /// [FocusRingShape.roundedRectangle]; the other shapes derive their curve
+  /// from the box they are given.
   final double? radius;
 
   /// The shape the component is drawn in, which is the shape of its ring.
@@ -123,6 +127,11 @@ class _FocusRingPainter extends CustomPainter {
       case FocusRingShape.superellipse:
         canvas.drawRSuperellipse(
           RSuperellipse.fromRectAndRadius(bounds, Radius.circular(radius)),
+          paint,
+        );
+      case FocusRingShape.roundedRectangle:
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(bounds, Radius.circular(radius)),
           paint,
         );
       case FocusRingShape.stadium:

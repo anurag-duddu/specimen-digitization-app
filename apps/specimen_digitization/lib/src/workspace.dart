@@ -45,6 +45,7 @@ class WorkspaceError {
     required this.actionLabel,
     required this.action,
     this.clearsAccess = false,
+    this.appVerificationUnavailable = false,
   });
 
   /// The sentence the banner carries.
@@ -59,6 +60,10 @@ class WorkspaceError {
   /// True when this failure removed collection access, so the banner is the
   /// only thing left on screen.
   final bool clearsAccess;
+
+  /// The App Check SDK could not supply a token; access was not checked.
+  /// A web host can offer a real page reload without changing authorization.
+  final bool appVerificationUnavailable;
 }
 
 /// The disposition segments over the queue (screen blueprints, section 3).
@@ -146,6 +151,7 @@ class WorkspaceController extends ChangeNotifier {
     required this.repository,
     required this.session,
     this.pollInterval = queuePollInterval,
+    this.reloadApp,
   });
 
   /// The open editor may retain a local correction that has not been saved.
@@ -168,6 +174,10 @@ class WorkspaceController extends ChangeNotifier {
 
   /// The signed in account.
   final SessionAccess session;
+
+  /// Optional host recovery for App Check token acquisition failures.
+  /// Native hosts leave this null and retain the supported access recheck.
+  final Future<void> Function()? reloadApp;
 
   /// How often the queue quietly refreshes.
   final Duration pollInterval;
@@ -1697,6 +1707,8 @@ class WorkspaceController extends ChangeNotifier {
   WorkspaceError _failureFor(Object error, {required bool denied}) {
     final ApiFailure? failure = error is ApiFailure ? error : null;
     if (denied) {
+      final canReload =
+          failure?.code == 'app_check_unavailable' && reloadApp != null;
       return WorkspaceError(
         message: session is LocalFixtureSession
             ? 'The local server did not authorize this request. Your collection '
@@ -1707,9 +1719,10 @@ class WorkspaceController extends ChangeNotifier {
             : failure!.code == 'app_check_unavailable'
             ? failure.message
             : '${failure.message} Your collection access could not be verified.',
-        actionLabel: 'Check access again',
-        action: checkAccess,
+        actionLabel: canReload ? 'Reload app' : 'Check access again',
+        action: canReload ? reloadApp! : checkAccess,
         clearsAccess: true,
+        appVerificationUnavailable: failure?.code == 'app_check_unavailable',
       );
     }
     if (failure != null && failure.conflict) {

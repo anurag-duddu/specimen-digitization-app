@@ -9,7 +9,7 @@ import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import 'administrator_contact.dart';
-import 'app/auth_layout.dart';
+import 'app/sign_in_layout.dart';
 import 'auth.dart';
 
 /// The screen a session with an unverified address sees.
@@ -60,26 +60,26 @@ class _EmailVerificationGateState extends State<EmailVerificationGate> {
     final SessionAccess access = widget.session;
     if (access is FirebaseSession && !access.staffEmailAllowed) {
       return UiScaffold(
-        body: AuthLayout(
+        body: SignInLayout(
           title: 'Use a Field Museum account',
           purpose: 'Sign in with your fieldmuseum.org email address.',
+          icon: UiIcons.account,
+          busy: _busy,
+          footer: _busy ? null : const AdministratorContactLine(),
           children: <Widget>[
+            _identity(ui, access.displayName),
+            SizedBox(height: ui.space.s6),
             if (_message != null) ...<Widget>[
               UiBanner(message: _message!, tone: UiBannerTone.blocked),
               SizedBox(height: ui.space.s4),
             ],
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: UiButton(
-                label: 'Sign out',
-                variant: UiButtonVariant.ghost,
-                onPressed: _busy
-                    ? null
-                    : () => _act(access.signOut, 'Signed out.'),
-              ),
+            UiButton(
+              label: 'Sign out',
+              loading: _busy,
+              onPressed: _busy
+                  ? null
+                  : () => _act(access.signOut, 'Signed out.'),
             ),
-            SizedBox(height: ui.space.s4),
-            const AdministratorContactLine(),
           ],
         ),
       );
@@ -92,17 +92,16 @@ class _EmailVerificationGateState extends State<EmailVerificationGate> {
     }
     final VerifiedEmailAccess verification = access as VerifiedEmailAccess;
     return UiScaffold(
-      topBar: const UiTopBar(title: 'Verify your account'),
-      body: AuthLayout(
-        wordmark: false,
-        title: 'Verify ${access.displayName}',
-        purpose:
-            'Open the link sent to ${access.displayName}, then check again.',
+      body: SignInLayout(
+        title: 'Verify your account',
+        purpose: 'Open your verification email, then check again.',
+        icon: UiIcons.email,
+        busy: _busy,
+        footer: !_busy && _message != null
+            ? const AdministratorContactLine()
+            : null,
         children: <Widget>[
-          Text(
-            'Your collection role is checked separately after verification.',
-            style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
-          ),
+          _identity(ui, access.displayName),
           if (_message != null) ...<Widget>[
             SizedBox(height: ui.space.s4),
             UiBanner(message: _message!),
@@ -111,6 +110,7 @@ class _EmailVerificationGateState extends State<EmailVerificationGate> {
           SizedBox(height: ui.space.s4),
           UiButton(
             label: _busy ? 'Checking…' : 'Check verification again',
+            expand: true,
             loading: _busy,
             onPressed: _busy
                 ? null
@@ -148,13 +148,22 @@ class _EmailVerificationGateState extends State<EmailVerificationGate> {
                   : () => _act(access.signOut, 'Signed out.'),
             ),
           ),
-          // Verification is raised before a collection is resolved, so the
-          // contact here can only come from the build stamp
-          // (pass criterion 10.3).
-          SizedBox(height: ui.space.s4),
-          const AdministratorContactLine(),
         ],
       ),
     );
   }
+
+  Widget _identity(UiThemeData ui, String name) => Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: <Widget>[
+      const ExcludeSemantics(child: UiIcon(UiIcons.account)),
+      SizedBox(width: ui.space.s2),
+      Expanded(
+        child: Text(
+          'Account: $name',
+          style: ui.type.body.copyWith(color: ui.color.ink),
+        ),
+      ),
+    ],
+  );
 }
