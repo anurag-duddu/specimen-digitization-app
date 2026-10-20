@@ -1,0 +1,13 @@
+# Optional monthly budget caps per organization and collection (cost meter,
+# docs/execution/golive/TENANT_BUDGETS.md). collectionKey is "organization" or a
+# collection id of the organization; a null cap is no cap. Settings only: what
+# the month has spent lives in the worker's ledgers. No cascade foreign key:
+# financial settings and who changed them must be retained, and the connector's
+# membership checks keep every row inside its organization.
+type TenantBudgetCap @table(key: ["organizationId", "collectionKey"]) {
+  organizationId: UUID!
+  collectionKey: String!
+  monthlyCapMicros: Int64
+  updatedBy: String!
+  updatedAt: Timestamp! @default(expr: "request.time")
+}

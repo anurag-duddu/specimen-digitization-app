@@ -63,7 +63,10 @@ def test_an_administrator_reads_the_organization_s_costs_in_the_contract_shape()
     repository.cost_totals.assert_called_once_with(ORG, "2026-09", "2026-10")
     body = response.json()
     assert set(body) == {"organization_id", "currency", "from_month", "to_month", "updated_at", "totals",
-                         "organization_cap", "collections", "months", "models", "meter"}
+                         "organization_cap", "collections", "months", "models", "meter", "caps_status"}
+    # This repository keeps no caps (no tenant_caps): every cap is null and says why
+    # (TENANT_BUDGETS.md; test_cost_caps_api.py has the caps themselves).
+    assert body["caps_status"] == "unavailable"
     assert (body["organization_id"], body["currency"], body["from_month"], body["to_month"]) == (
         ORG, "USD", "2026-09", "2026-10")
     assert (body["organization_cap"], body["meter"], body["updated_at"]) == (None, None, "2026-10-20T15:04:05Z")

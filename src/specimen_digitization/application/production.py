@@ -1128,6 +1128,35 @@ class SqlConnectRepository:
                 raise Conflict('Document sensitivity metadata mismatch')
         return [row['payload'] for row in rows]
 
+    # Optional monthly budget caps per organization and collection (cost meter,
+    # docs/execution/golive/TENANT_BUDGETS.md; dataconnect/connector/tenant_budget.gql).
+    def tenant_caps(self, scope):
+        """The organization's caps and its collection tree, read as the actor in
+        ``scope`` (any active member of that collection). Ids are normalized."""
+        from .tenant_budget import MAX_ROWS, cap_key, cap_micros
+
+        data = self.execute("TenantBudgetCapsV1", self.variables(scope))
+        rows, collections = data.get("tenantBudgetCaps"), data.get("collections")
+        if (not isinstance(rows, list) or not isinstance(collections, list)
+                or len(rows) > MAX_ROWS or len(collections) > MAX_ROWS):
+            raise Conflict("Tenant budget caps unreadable")
+        return {
+            "caps": [{"collection_key": cap_key(row["collectionKey"]),
+                "monthly_cap_micros": cap_micros(row.get("monthlyCapMicros")),
+                "updated_by": row.get("updatedBy"), "updated_at": row.get("updatedAt")}
+                for row in rows],
+            "collections": [{"id": str(UUID(row["id"])),
+                "parent_id": None if row.get("parentId") is None else str(UUID(row["parentId"]))}
+                for row in collections],
+        }
+
+    def set_tenant_cap(self, scope, collection_key, micros):
+        """Set or clear (None) one cap, as an active admin of ``scope``'s collection."""
+        from .tenant_budget import cap_key, cap_micros
+
+        self.execute("SetTenantBudgetCapV1", dict(self.variables(scope),
+            collectionKey=cap_key(collection_key), monthlyCapMicros=cap_micros(micros)), mutation=True)
+
 
 class GcsBlobs:
     def __init__(self, bucket="specimen-digitization.firebasestorage.app"):

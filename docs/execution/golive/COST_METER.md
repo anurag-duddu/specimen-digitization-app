@@ -181,7 +181,8 @@ emulator (engine contract stage `sql.cost-allocation`).
     {"month": "2026-10", "stage": "reading", "provider": "huggingface", "resource": "handwriting-qwen",
      "cost_micros": 0, "held_micros": 0, "list_cost_micros": 0, "entries": 0}
   ],
-  "meter": {"allocated_through": "2026-10-19", "allocation_status": "ok"}
+  "meter": {"allocated_through": "2026-10-19", "allocation_status": "ok"},
+  "caps_status": "ok"
 }
 ```
 
@@ -209,7 +210,15 @@ emulator (engine contract stage `sql.cost-allocation`).
   A repository without that read (the
   synthetic and SQLite ones) answers `null`; a failed read is 503
   `cost_meter_unavailable`.
-- `organization_cap` and each `cap` are `null` until the change below.
+- `organization_cap` and each `cap` are the monthly caps' positions for the
+  current UTC month, whatever the range: `{"monthly_cap_micros", "month",
+  "spent_micros", "remaining_micros"}`, or `null` where no cap is set. Spent is
+  that month's paid-call rows, settled and held, a collection's counting every
+  descendant's (TENANT_BUDGETS.md, "In the cost report"); allocation rows,
+  which no cap governs, are left out.
+- `caps_status` is `"ok"`, or `"unavailable"` when the caps (or the current
+  month's totals they need) cannot be read; the costs are then returned whole
+  with every cap `null`.
 
 `POST /v1/organizations/{organization_id}/costs/refresh` takes no body,
 answers `{"started": true}` when the worker job was started and
@@ -467,9 +476,9 @@ allows those identifiers. All of them are ids.
 
 ## What the later changes add
 
-- PR 2: per-tenant monthly caps, in a settings table, enforced beside the
-  program allowance's reservation; `organization_cap` and each `cap` become
-  `{"monthly_cap_micros", "month", "spent_micros", "remaining_micros"}`, and
+- PR 2 (#387, docs/execution/golive/TENANT_BUDGETS.md): per-tenant monthly
+  caps, in a settings table, enforced beside the program allowance's
+  reservation; `organization_cap`, each `cap` and `caps_status` above, and
   `PUT .../costs/caps` sets them.
 - PR 3 (above): shared Google costs (the SAM 3 service's idle time, the
   worker, the API, storage and the database) split by usage into `allocation`

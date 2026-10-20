@@ -103,6 +103,7 @@
     "sql.pilot-ledger",
     "sql.sensitivity",
     "sql.cost-meter",
+    "sql.tenant-budget",
     "sql.cost-allocation",
     "sql.indexes.initial",
     "sql.paging",

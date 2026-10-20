@@ -1,0 +1,39 @@
+# Optional monthly budget caps per organization and collection (cost meter,
+# docs/execution/golive/TENANT_BUDGETS.md; schema/tenant_budget_cap.gql).
+# Server operations only. The worker reads the caps before each paid step, as an
+# active member of the run's collection, with the collection tree a cap applies
+# along. An active admin of a collection of the organization sets or clears one
+# cap through the API. Neither operation reads or writes a cost or a ledger.
+query TenantBudgetCapsV1($organizationId: UUID!, $collectionId: UUID!, $actorUid: String!) @auth(level: NO_ACCESS) {
+  organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
+  collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true") { active role }
+  tenantBudgetCaps(where: {organizationId: {eq: $organizationId}}, orderBy: {collectionKey: ASC}, limit: 1001) { collectionKey monthlyCapMicros updatedAt }
+  collections(where: {organizationId: {eq: $organizationId}}, orderBy: {id: ASC}, limit: 1001) { id parentId }
+}
+
+# One cap row per organization and key, set or cleared (null) by a native
+# upsert. The key is "organization" or a collection of this organization; a cap
+# is a whole number of micros, never negative. The SQL repeats the membership
+# join, and the membership response dependency keeps the checked read and the
+# native DML in separate planner steps (research_binding_v2.gql).
+mutation SetTenantBudgetCapV1($organizationId: UUID!, $collectionId: UUID!, $collectionKey: String!, $monthlyCapMicros: Int64, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true && response.query.organizationMember.active == true && this.role == 'admin' && (vars.collectionKey == 'organization' || vars.collectionKey.matches('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'))") { active role }
+  }
+  stored: _execute(sql: """
+    INSERT INTO public.tenant_budget_cap AS existing (
+      organization_id,collection_key,monthly_cap_micros,updated_by,updated_at
+    ) SELECT $1,$3,$4,$5,statement_timestamp()
+    FROM public.organization_member om
+    JOIN public.collection_member cm ON cm.organization_id=om.organization_id AND cm.collection_id=$2
+      AND cm.uid=$5 AND cm.active AND cm.role='admin'
+    WHERE om.organization_id=$1 AND om.uid=$5 AND om.active
+      AND ($4::bigint IS NULL OR $4::bigint>=0)
+      AND ($3='organization' OR EXISTS (SELECT 1 FROM public.collection c
+        WHERE c.organization_id=$1 AND c.id::text=$3))
+    ON CONFLICT (organization_id,collection_key) DO UPDATE SET
+      monthly_cap_micros=EXCLUDED.monthly_cap_micros,updated_by=EXCLUDED.updated_by,
+      updated_at=EXCLUDED.updated_at
+    """, params: [$organizationId, $collectionId, $collectionKey, $monthlyCapMicros, $actorUid]) @check(expr: "this == 1", message: "tenant budget cap refused")
+}

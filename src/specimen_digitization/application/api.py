@@ -190,6 +190,14 @@ class ActionInput(RevisionInput):
     action: str
 
 
+# One monthly budget cap (cost meter, docs/execution/golive/TENANT_BUDGETS.md):
+# the organization's (collection_id null) or one collection's, in micros; a null
+# cap clears it. Both keys are required.
+class TenantCapInput(Record):
+    collection_id: str | None
+    monthly_cap_micros: int | None = Field(..., strict=True, ge=0, le=2**53 - 1)
+
+
 # The one role that may reconcile an unknown external outcome. It is the role the
 # pilot administrator holds; no other membership role is stricter.
 RECONCILE_ROLE = "admin"
@@ -873,10 +881,49 @@ def create_app(
                 from .cost_allocation import meter as allocation_meter
 
                 meter = allocation_meter(status(organization_id)["latest_occurred_at"], datetime.now(timezone.utc))
-            return cost_report(organization_id, first, last, read["collections"], read["groups"], meter)
+            report = cost_report(organization_id, first, last, read["collections"], read["groups"], meter)
         except (ValueError, KeyError, TypeError) as exc:
             code = "cost_collection_tree_invalid" if str(exc) == "collection_tree_cycle" else "cost_meter_unavailable"
             raise OperationalBlock(code) from exc
+        return dict(report, **cost_caps(user, organization_id, first, last, read, report))
+
+    def cost_caps(user, organization_id, first, last, read, report):
+        """The monthly caps' positions for the current UTC month, whatever the
+        range (TENANT_BUDGETS.md, COST_METER.md): spent is that month's cost
+        entries, settled and held, rolled up the collection tree. Caps that
+        cannot be read leave the report whole, with every cap null and
+        caps_status "unavailable"."""
+        from .tenant_budget import month_of, report_caps, utc_now
+
+        try:
+            reader = getattr(repository, "tenant_caps", None)
+            if not callable(reader):
+                raise OperationalBlock("cost_meter_unavailable")
+            administered = sorted(
+                m["collection_id"] for m in member_rows(user)
+                if m["organization_id"] == organization_id and m["role"] == RECONCILE_ROLE
+            )
+            answer = reader(Scope(organization_id=organization_id, collection_id=administered[0]))
+            if all(row["monthly_cap_micros"] is None for row in answer["caps"]):
+                return {"caps_status": "ok"}  # No cap set: nothing more is read.
+            month = month_of(utc_now())
+            groups = read["groups"]
+            if not first <= month <= last:
+                groups = repository.cost_totals(organization_id, month, month)["groups"]
+            positions = report_caps(answer, report["collections"], month, groups)
+        except Exception as exc:  # noqa: BLE001 - the costs stand without their caps
+            import logging
+
+            logging.getLogger(__name__).warning("Cost caps not read: %s", type(exc).__name__)
+            return {"caps_status": "unavailable"}
+        if positions is None:
+            return {"caps_status": "ok"}
+        return {
+            "organization_cap": positions["organization"],
+            "collections": [dict(item, cap=positions["collections"].get(item["collection_id"]))
+                for item in report["collections"]],
+            "caps_status": "ok",
+        }
 
     @app.post(prefix + "/costs/refresh")
     def refresh_costs(organization_id: str, user=Depends(identity)):
@@ -2880,6 +2927,66 @@ def create_app(
         response.status_code = 202
         dispatch = start_worker(p.scope).model_dump()
         return dict(in_line(p, s, summary(s, p.role)), dispatch=dispatch)
+
+    # Optional monthly budget caps (cost meter, docs/execution/golive/
+    # TENANT_BUDGETS.md). An active admin of any collection of the organization
+    # sets or clears the organization's cap or one collection's. The worker
+    # enforces them before each paid step; none is set by default.
+    @app.put(prefix + "/costs/caps")
+    def set_cost_cap(organization_id: str, body: TenantCapInput, user=Depends(identity)):
+        from uuid import UUID
+
+        from .tenant_budget import TenantBudgetUnavailable
+
+        actor_uid.set(user)
+        administered = sorted(
+            m["collection_id"]
+            for m in member_rows(user)
+            if m["organization_id"] == organization_id and m["role"] == RECONCILE_ROLE
+            and m.get("active", True) is not False
+        )
+        if not administered:
+            raise PermissionError("An organization administrator sets budget caps")
+        if not all(callable(getattr(repository, name, None)) for name in ("tenant_caps", "set_tenant_cap")):
+            return JSONResponse(status_code=503, content={"error": {
+                "code": "cost_meter_unavailable", "category": "operational",
+                "message": "This deployment keeps no budget caps", "retryable": False,
+                "request_id": uid(), "details": {},
+            }})
+        scope = Scope(organization_id=organization_id, collection_id=administered[0])
+
+        def caps():
+            try:
+                return repository.tenant_caps(scope)
+            except TenantBudgetUnavailable:
+                raise OperationalBlock("tenant_budget_unavailable") from None  # 503
+
+        key = "organization"
+        if body.collection_id is not None:
+            try:
+                key = str(UUID(body.collection_id))
+            except ValueError:
+                raise ValueError("collection_id must be a collection id") from None
+            if key not in {row["id"] for row in caps()["collections"]}:
+                raise ValueError("collection_id names no collection of this organization")
+        try:
+            repository.set_tenant_cap(scope, key, body.monthly_cap_micros)
+        except Conflict:
+            # The body was checked above: what the connector still refuses is the
+            # membership, changed since it was read (an admin row no longer active).
+            raise PermissionError("The connector refused this administrator's cap") from None
+        rows = caps()["caps"]
+        return {
+            "organization_id": organization_id,
+            "caps": [
+                {
+                    "collection_id": None if row["collection_key"] == "organization" else row["collection_key"],
+                    "monthly_cap_micros": row["monthly_cap_micros"],
+                }
+                for row in sorted(rows, key=lambda row: (row["collection_key"] != "organization", row["collection_key"]))
+                if row["monthly_cap_micros"] is not None
+            ],
+        }
 
     # Research uses the same verifier and current membership source as the
     # host, with an async lifetime so ContextVar state reaches every await and
