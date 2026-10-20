@@ -434,11 +434,9 @@ void main() {
         expect(find.text('first.jpg'), findsOneWidget);
         expect(find.text('2 sending'), findsOneWidget);
 
-        // The operator is reading the first row's progress details.
+        // The operator is reading the first row's details control.
         final Finder firstDetails = find.descendant(
-          of: find.byKey(
-            ValueKey<String>('intake-progress-details-${_digest('first')}'),
-          ),
+          of: find.byKey(ValueKey<String>(_digest('first'))),
           matching: find.byWidgetPredicate(
             (Widget w) => w is Focus || w is FocusableActionDetector,
           ),
@@ -490,73 +488,78 @@ void main() {
     );
   }
 
-  testWidgets('the Intake screen announces a move once and drops the section', (
-    WidgetTester tester,
-  ) async {
-    SharedPreferences.setMockInitialValues(
-      _saved('owner', <String, String>{'tracked': 'processing'}),
-    );
-    final Map<String, Json> summaries = <String, Json>{
-      'tracked': _summary('tracked', status: 'pending'),
-    };
-    final ApiSpecimenRepository repository = _server(summaries);
-    addTearDown(repository.close);
-    final List<String> announced = _recordAnnouncements(tester);
-    final SemanticsHandle semantics = tester.ensureSemantics();
-    await tester.binding.setSurfaceSize(const Size(1000, 2200));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    var completions = 0;
+  testWidgets(
+    'the Intake screen announces a move once and retains the completion',
+    (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues(
+        _saved('owner', <String, String>{'tracked': 'processing'}),
+      );
+      final Map<String, Json> summaries = <String, Json>{
+        'tracked': _summary('tracked', status: 'pending'),
+      };
+      final ApiSpecimenRepository repository = _server(summaries);
+      addTearDown(repository.close);
+      final List<String> announced = _recordAnnouncements(tester);
+      final SemanticsHandle semantics = tester.ensureSemantics();
+      await tester.binding.setSurfaceSize(const Size(1000, 2200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      var completions = 0;
 
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.light(),
-        home: Builder(
-          builder: (BuildContext context) => MediaQuery(
-            data: MediaQuery.of(context).copyWith(supportsAnnounce: true),
-            child: Scaffold(
-              body: IntakeScreen(
-                repository: repository,
-                scope: _scope,
-                userId: 'owner',
-                onComplete: () => completions++,
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: Builder(
+            builder: (BuildContext context) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(supportsAnnounce: true),
+              child: Scaffold(
+                body: IntakeScreen(
+                  repository: repository,
+                  scope: _scope,
+                  userId: 'owner',
+                  onComplete: () => completions++,
+                ),
               ),
             ),
           ),
         ),
-      ),
-    );
-    for (var i = 0; i < 5; i++) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
       );
-      await tester.pump();
-    }
-    expect(find.text('Photos'), findsOneWidget);
-    expect(find.text('Saved photo'), findsOneWidget);
-    expect(announced, isEmpty);
+      for (var i = 0; i < 5; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 20)),
+        );
+        await tester.pump();
+      }
+      expect(find.text('Photos'), findsOneWidget);
+      expect(find.text('Saved photo'), findsOneWidget);
+      expect(announced, isEmpty);
 
-    summaries['tracked'] = _summary('tracked', status: 'running', revision: 3);
-    final IntakeTransferSession session = intakeTransferSession(
-      repository,
-      _scope,
-      'owner',
-    );
-    await tester.runAsync(session.refreshProcessingStatuses);
-    await tester.pumpAndSettle();
+      summaries['tracked'] = _summary(
+        'tracked',
+        status: 'running',
+        revision: 3,
+      );
+      final IntakeTransferSession session = intakeTransferSession(
+        repository,
+        _scope,
+        'owner',
+      );
+      await tester.runAsync(session.refreshProcessingStatuses);
+      await tester.pumpAndSettle();
 
-    expect(find.text('Photos'), findsNothing);
-    expect(session.entries, isEmpty);
-    expect(await _savedSpecimens('owner'), isEmpty);
-    expect(announced, <String>['1 photo sent']);
-    expect(completions, 1, reason: 'the main Queue refreshes for the move');
+      expect(find.text('Photos'), findsOneWidget);
+      expect(session.entries, isEmpty);
+      expect(await _savedSpecimens('owner'), isEmpty);
+      expect(announced, <String>['1 photo sent']);
+      expect(completions, 1, reason: 'the main Queue refreshes for the move');
 
-    // Later frames and checks do not repeat it.
-    await tester.runAsync(session.refreshProcessingStatuses);
-    await tester.pumpAndSettle();
-    expect(announced, <String>['1 photo sent']);
-    semantics.dispose();
-    await tester.pumpWidget(const SizedBox());
-  });
+      // Later frames and checks do not repeat it.
+      await tester.runAsync(session.refreshProcessingStatuses);
+      await tester.pumpAndSettle();
+      expect(announced, <String>['1 photo sent']);
+      semantics.dispose();
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 
   testWidgets('two moves before one frame are one announcement of two', (
     WidgetTester tester,
@@ -591,7 +594,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('the last row collapses before the Photos section closes', (
+  testWidgets('the last row collapses while completion stays visible', (
     WidgetTester tester,
   ) async {
     final _ImmediateQueueRepository repository = _ImmediateQueueRepository();
@@ -618,11 +621,11 @@ void main() {
 
     await tester.pumpAndSettle();
     expect(find.text('lone.jpg'), findsNothing);
-    expect(find.text('Photos'), findsNothing);
+    expect(find.text('Photos'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('with animations off the last row and section go at once', (
+  testWidgets('with animations off the last row leaves and completion stays', (
     WidgetTester tester,
   ) async {
     final _ImmediateQueueRepository repository = _ImmediateQueueRepository();
@@ -641,12 +644,12 @@ void main() {
     await tester.pump();
 
     expect(find.text('still.jpg'), findsNothing);
-    expect(find.text('Photos'), findsNothing);
+    expect(find.text('Photos'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 
   for (final bool reduceMotion in <bool>[false, true]) {
-    testWidgets('focus in the last row ends on the Intake heading'
+    testWidgets('focus in the last row ends on the completion summary'
         '${reduceMotion ? ' with animations off' : ''}', (
       WidgetTester tester,
     ) async {
@@ -662,11 +665,9 @@ void main() {
       session.changed();
       await tester.pumpAndSettle();
 
-      // The operator is reading the only row's progress details.
+      // The operator is reading the only row's details control.
       final Finder details = find.descendant(
-        of: find.byKey(
-          ValueKey<String>('intake-progress-details-${_digest('focused')}'),
-        ),
+        of: find.byKey(ValueKey<String>(_digest('focused'))),
         matching: find.byWidgetPredicate(
           (Widget w) => w is Focus || w is FocusableActionDetector,
         ),
@@ -682,19 +683,18 @@ void main() {
       await tester.pump();
       await tester.pump();
       if (!reduceMotion) {
-        // Mid-exit, one handover has won: the heading, not the summary of
-        // a manifest that is about to close.
+        // Mid-exit, focus already rests on the persistent summary.
         expect(find.text('Photos'), findsOneWidget);
         expect(
           FocusManager.instance.primaryFocus?.debugLabel,
-          'Intake heading',
+          'Intake manifest summary',
         );
       }
       await tester.pumpAndSettle();
 
-      expect(find.text('Photos'), findsNothing);
+      expect(find.text('Photos'), findsOneWidget);
       final FocusNode? focused = FocusManager.instance.primaryFocus;
-      expect(focused?.debugLabel, 'Intake heading');
+      expect(focused?.debugLabel, 'Intake manifest summary');
       expect(focused?.context, isNotNull, reason: 'focus is not left nowhere');
       await tester.pumpWidget(const SizedBox());
     });
@@ -702,7 +702,7 @@ void main() {
 
   for (final bool reduceMotion in <bool>[false, true]) {
     testWidgets(
-      'focus on Stop ends on the Intake heading when the upload is queued'
+      'focus on Stop ends on the completion summary when the upload is queued'
       '${reduceMotion ? ' with animations off' : ''}',
       (WidgetTester tester) async {
         final _ImmediateQueueRepository repository = _ImmediateQueueRepository()
@@ -731,7 +731,9 @@ void main() {
         expect(stop, findsOneWidget);
         final FocusNode stopNode = Focus.of(
           tester.element(
-            find.descendant(of: stop, matching: find.text('Stop')).first,
+            find
+                .descendant(of: stop, matching: find.text('Stop sending'))
+                .first,
           ),
         );
         stopNode.requestFocus();
@@ -747,13 +749,13 @@ void main() {
         await tester.pump();
         expect(
           FocusManager.instance.primaryFocus?.debugLabel,
-          'Intake heading',
+          'Intake manifest summary',
         );
 
         await tester.pumpAndSettle();
-        expect(find.text('Photos'), findsNothing);
+        expect(find.text('Photos'), findsOneWidget);
         final FocusNode? focused = FocusManager.instance.primaryFocus;
-        expect(focused?.debugLabel, 'Intake heading');
+        expect(focused?.debugLabel, 'Intake manifest summary');
         expect(focused?.context, isNotNull);
         await tester.pumpWidget(const SizedBox());
       },

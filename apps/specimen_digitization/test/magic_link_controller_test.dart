@@ -138,16 +138,17 @@ void main() {
     'FIRST.LAST@FIELDMUSEUM.ORG',
     'a+labels@fieldmuseum.org',
     "o'brien@fieldmuseum.org",
+    'staff@sub.fieldmuseum.org',
+    'staff@fieldmuseum.org.evil.test',
+    'tester.external@gmail.com',
   ]) {
     test(
-      'accept exact staff mailbox $address',
+      'validate mailbox syntax for server admission $address',
       () => expect(normalizedStaffEmail(address), address.toLowerCase()),
     );
   }
   for (final address in [
     '',
-    'staff@sub.fieldmuseum.org',
-    'staff@fieldmuseum.org.evil.test',
     'staff@fieldmuseum.org@evil.test',
     'staff@@fieldmuseum.org',
     '@fieldmuseum.org',
@@ -167,7 +168,7 @@ void main() {
     '"staff"@fieldmuseum.org',
   ]) {
     test(
-      'reject malformed or foreign staff mailbox ${address.codeUnits}',
+      'reject malformed mailbox ${address.codeUnits}',
       () => expect(normalizedStaffEmail(address), isNull),
     );
   }
@@ -252,11 +253,11 @@ void main() {
       expect(auth.completeCalls, 1);
       expect(auth.link, testLink);
       await expectLater(
-        session.sendSignInLink('staff@other.org'),
+        session.sendSignInLink('staff@@other.org'),
         throwsFormatException,
       );
       await expectLater(
-        session.completeEmailLink('staff@other.org', testLink),
+        session.completeEmailLink('staff@@other.org', testLink),
         throwsFormatException,
       );
       await expectLater(
@@ -283,7 +284,7 @@ void main() {
       await c.send('staff@fieldmuseum.org');
       expect(access.sent, isEmpty);
       await c.initialize();
-      await c.send('staff@foreign.org');
+      await c.send('staff@@foreign.org');
       expect(access.sent, isEmpty);
       access.sendWait = Completer<void>();
       final future = c.send('STAFF@FIELDMUSEUM.ORG');
@@ -424,12 +425,25 @@ void main() {
       expect(c.handlingLink, true);
       expect(c.email, isEmpty);
       expect(access.completed, isEmpty);
-      await c.complete('staff@evil.org');
+      await c.complete('staff@@evil.org');
       expect(access.completed, isEmpty);
       await c.complete('USER@FIELDMUSEUM.ORG');
       expect(access.completed, [('user@fieldmuseum.org', link)]);
       expect(browser.clearCount, 1);
       expect(storage.value.email, isNull);
+    },
+  );
+
+  test(
+    'external email link uses Firebase and keeps server admission separate',
+    () async {
+      final auth = RecordingFirebaseAuth();
+      final session = FirebaseSession(auth);
+      await session.sendSignInLink('TESTER.EXTERNAL@GMAIL.COM');
+      expect(auth.email, 'tester.external@gmail.com');
+      await session.completeEmailLink('tester.external@gmail.com', testLink);
+      expect(auth.completeCalls, 1);
+      expect(auth.link, testLink);
     },
   );
 

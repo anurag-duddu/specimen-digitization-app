@@ -1,20 +1,12 @@
-/// One file in the intake list (10 section 5, `UploadItem`).
+/// A transfer row shared by Intake and Sources.
 ///
-/// A `UiListRow`: a 40 dp thumbnail, the file name, one line of measurements,
-/// and the state beside it. The state chip is the same component the queue
-/// uses, so a state is learned once, and it carries the quiet progress ring
-/// of the north star while bytes are moving. A failed transfer is operational,
-/// not evidentiary, so it stays in the list with a reason and a way out
-/// rather than vanishing.
-///
-/// The row is not a control: nothing opens behind a file on its way into a
-/// collection. It publishes one node carrying every fact it draws, and the
-/// remove control sits beside the row with a node of its own, which is the
-/// arrangement `SelectableRow` already uses for its checkbox and for the same
-/// reason: a `UiListRow` is one `Pressable` and drops the semantics of
-/// whatever is in its slots.
+/// Intake supplies its handoff presentation and opens diagnostics from a
+/// compact photo row. Sources retains its UploadState labels, measurements
+/// and separate remove control. Neither path nests that control in the row's
+/// own semantic button.
 library;
 
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
@@ -23,7 +15,6 @@ import 'package:specimen_ui/specimen_ui.dart';
 import 'specimen_status.dart';
 import 'status_chip.dart';
 import 'thumbnail.dart';
-import 'intake_photo.dart';
 
 /// The states one file passes through on its way into a collection.
 enum UploadState {
@@ -149,7 +140,10 @@ class UploadItem extends StatelessWidget {
     this.removeBlockedReason,
     this.details,
     this.concise = false,
-    this.stageProgress,
+    this.intakePresentation,
+    this.sensitive,
+    this.onOpen,
+    this.action,
   });
 
   /// The file name, as the operator's machine spells it.
@@ -195,9 +189,11 @@ class UploadItem extends StatelessWidget {
   /// Keeps the transfer state primary when measurements live in a disclosure.
   final bool concise;
 
-  /// Intake's journey track, which owns its status label and live semantics.
-  /// Other uses keep the shared upload presentation.
-  final Widget? stageProgress;
+  /// Intake supplies its own handoff status; Sources keeps [UploadState].
+  final StatusPresentation? intakePresentation;
+  final bool? sensitive;
+  final VoidCallback? onOpen;
+  final Widget? action;
 
   /// The remove control's name, fixed so the tests and the copy cannot drift.
   static const String removeLabel = 'Remove from this batch';
@@ -260,9 +256,7 @@ class UploadItem extends StatelessWidget {
   );
 
   Widget _item(BuildContext context, double available) {
-    if (concise && stageProgress != null) {
-      return _photoItem(context, available);
-    }
+    if (intakePresentation != null) return _intakeItem(context, available);
     final UiThemeData ui = context.ui;
     final String? blocked = removeBlockedReason;
     final String line = measurements(
@@ -284,17 +278,13 @@ class UploadItem extends StatelessWidget {
     final Widget row = Semantics(
       container: true,
       label: concise
-          ? <String>[
-              name,
-              if (stageProgress == null) state.semanticsLabel,
-              ?reason,
-            ].join(', ')
+          ? <String>[name, state.semanticsLabel, ?reason].join(', ')
           : _semanticsLabel(line),
       excludeSemantics: true,
       child: UiListRow(
         size: concise ? UiSize.sm : UiSize.md,
         title: name,
-        subtitle: concise ? (stageProgress == null ? state.label : null) : line,
+        subtitle: concise ? state.label : line,
         leading: SpecimenThumbnail(bytes: thumbnail),
         trailing: beside
             ? ConstrainedBox(
@@ -347,15 +337,7 @@ class UploadItem extends StatelessWidget {
               ),
             ),
           ),
-        if (stageProgress != null)
-          Padding(
-            padding: EdgeInsetsDirectional.only(
-              start: _textInset(ui),
-              bottom: ui.space.s2,
-            ),
-            child: stageProgress,
-          ),
-        if (stageProgress == null && concise && state == UploadState.uploading)
+        if (concise && state == UploadState.uploading)
           Padding(
             padding: EdgeInsetsDirectional.only(
               start: _textInset(ui),
@@ -391,74 +373,104 @@ class UploadItem extends StatelessWidget {
     );
   }
 
-  Widget _photoItem(BuildContext context, double available) {
+  Widget _intakeItem(BuildContext context, double available) {
     final ui = context.ui;
-    final layout = UiLayoutMetrics.fromConstraints(
-      BoxConstraints(maxWidth: available),
-      textScaler: MediaQuery.textScalerOf(context),
-    );
-    final side = available >= layout.minColumnWidth + ui.space.s16
-        ? ui.space.s10 * 4
-        : ui.space.s12 * 2;
-    final beside =
-        available - side - ui.space.s4 - ui.space.targetMin >=
-        layout.minColumnWidth / 2;
-    final summary = Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
+    final status = intakePresentation!;
+    final label = <String>[
+      name,
+      status.label,
+      sensitive == null
+          ? 'sensitivity not available'
+          : sensitive!
+          ? 'sensitive'
+          : 'not sensitive',
+      ?reason,
+    ].join(', ');
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Semantics(
-                container: true,
-                label: <String>[name, ?reason].join(', '),
-                excludeSemantics: true,
-                child: Text(name, style: ui.type.body),
+        Expanded(
+          child: Pressable(
+            semanticsLabel: label,
+            onPressed: onOpen,
+            radius: ui.shape.inner,
+            builder: (context, states) => Padding(
+              padding: EdgeInsetsDirectional.symmetric(vertical: ui.space.s2),
+              child: Row(
+                children: [
+                  _IntakeThumbnail(bytes: thumbnail),
+                  SizedBox(width: ui.space.s3),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: ui.type.body,
+                        ),
+                        Wrap(
+                          spacing: ui.space.s2,
+                          runSpacing: ui.space.s1,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            UiChip(
+                              label: status.label,
+                              status: status.triple,
+                              icon: status.progress == null
+                                  ? status.glyph
+                                  : null,
+                              leading: status.progress == null
+                                  ? null
+                                  : UiProgress.ring(
+                                      value: status.progress,
+                                      semanticsLabel: status.label,
+                                    ),
+                            ),
+                            if (sensitive == true)
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  UiIcon(
+                                    UiIcons.locked,
+                                    size: UiIconSize.inline,
+                                  ),
+                                  SizedBox(width: ui.space.s1),
+                                  Text('Sensitive', style: ui.type.bodySmall),
+                                ],
+                              ),
+                          ],
+                        ),
+                        if (reason != null)
+                          Text(
+                            reason!,
+                            maxLines:
+                                MediaQuery.textScalerOf(context).scale(1) <= 1
+                                ? 1
+                                : null,
+                            overflow:
+                                MediaQuery.textScalerOf(context).scale(1) <= 1
+                                ? TextOverflow.ellipsis
+                                : null,
+                            style: ui.type.bodySmall.copyWith(
+                              color: ui.color.inkSecondary,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ),
-            if (onRemove != null || removeBlockedReason != null)
-              UiIconButton(
-                icon: UiIcons.close,
-                semanticsLabel: removeLabel,
-                tooltip: removeLabel,
-                onPressed: onRemove,
-                disabledReason: removeBlockedReason,
-              ),
-          ],
-        ),
-        stageProgress!,
-        if (reason != null) ...[
-          SizedBox(height: ui.space.s2),
-          ExcludeSemantics(
-            child: Text(
-              reason!,
-              style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
             ),
           ),
-        ],
-        if (details != null) ...[SizedBox(height: ui.space.s2), details!],
-      ],
-    );
-    final photo = IntakePhoto(bytes: thumbnail, side: side);
-    if (!beside) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Align(alignment: AlignmentDirectional.centerStart, child: photo),
-          SizedBox(height: ui.space.s4),
-          summary,
-        ],
-      );
-    }
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        photo,
-        SizedBox(width: ui.space.s4),
-        Expanded(child: summary),
+        ),
+        if (action != null)
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: available * _stateWidthShare),
+            child: action!,
+          ),
       ],
     );
   }
@@ -470,4 +482,73 @@ class UploadItem extends StatelessWidget {
       ui.space.s3 +
       UiListRowStyle.leadingExtent +
       ui.space.s3;
+}
+
+/// Evict this row's exact preview key when its photo leaves Intake. A small
+/// decoded thumbnail must not keep a large encoded capture in ImageCache.
+class _IntakeThumbnail extends StatefulWidget {
+  const _IntakeThumbnail({this.bytes});
+  final Uint8List? bytes;
+  @override
+  State<_IntakeThumbnail> createState() => _IntakeThumbnailState();
+}
+
+class _IntakeThumbnailState extends State<_IntakeThumbnail> {
+  ImageProvider<Object>? _provider;
+
+  void _updateProvider() {
+    final bytes = widget.bytes;
+    final next = bytes == null
+        ? null
+        : ResizeImage.resizeIfNeeded(
+            (SpecimenThumbnail.side * MediaQuery.devicePixelRatioOf(context))
+                .ceil(),
+            null,
+            MemoryImage(bytes),
+          );
+    if (next == _provider) return;
+    final previous = _provider;
+    _provider = next;
+    if (previous != null) unawaited(previous.evict());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _updateProvider();
+  }
+
+  @override
+  void didUpdateWidget(covariant _IntakeThumbnail oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _updateProvider();
+  }
+
+  @override
+  void dispose() {
+    if (_provider != null) unawaited(_provider!.evict());
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final placeholder = Center(
+      child: UiIcon(UiIcons.image, size: UiIconSize.inline),
+    );
+    return SizedBox.square(
+      dimension: SpecimenThumbnail.side,
+      child: Surface(
+        role: SurfaceRole.matte,
+        radius: context.ui.shape.inner,
+        clip: true,
+        child: _provider == null
+            ? placeholder
+            : Image(
+                image: _provider!,
+                fit: BoxFit.contain,
+                errorBuilder: (_, _, _) => placeholder,
+              ),
+      ),
+    );
+  }
 }

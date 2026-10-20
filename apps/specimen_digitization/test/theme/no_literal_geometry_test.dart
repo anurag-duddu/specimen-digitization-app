@@ -68,10 +68,19 @@ const String modelsPrefix = 'lib/src/models';
 /// one policy written down but seven places to change it; they read
 /// `apiRequestTimeout` now, and `test/live_connectivity_test.dart` holds it
 /// there.
+///
+/// Intake adds two network policies under the same section 8 amendment:
+/// reconciliation polling and the external provider consent timeout. They live
+/// together in intake_timing.dart; no screen may declare its own duration.
 const Map<String, int> geometryBacklog = <String, int>{
   'lib/src/api_repository.dart': 1,
   'lib/src/magic_link.dart': 1,
   'lib/src/workspace.dart': 2,
+  // owner-approved: 2026-10-17 "Any two way door decision, you don't need me."
+  // Owner delegated this reversible choice after the two network durations
+  // were presented: three-second reconciliation and ten-minute consent.
+  // These are network policies, not visual motion or geometry.
+  'lib/src/screens/intake/intake_timing.dart': 2,
 };
 
 // ---------------------------------------------------------------------------
