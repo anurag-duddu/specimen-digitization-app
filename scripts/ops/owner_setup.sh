@@ -4,11 +4,13 @@
 # the runtime release and the web app build, each started on main and followed to its end.
 # Safe to run again: every step reads the live state first and changes only what is missing.
 #
-# Usage: owner_setup.sh [--dry-run] [--setup-only | --redeploy-web | --auth-only | --intake-only]
+# Usage: owner_setup.sh [--dry-run] [--setup-only | --redeploy-web | --auth-only | --cost-meter-only | --intake-only]
 #   --dry-run       read the live state and print every command that would run; change and start nothing.
 #   --setup-only    do the setup and stop; start no release.
 #   --redeploy-web  build and publish the web app again even when its variables were already set.
 #   --auth-only     grant only the existing data identity's Auth configuration role; start no release.
+#   --cost-meter-only  let the worker read Cloud Monitoring and create the API's requests-by-organization
+#                   log-based metric (the cost meter's shared-cost split); start no release.
 #   --intake-only   provision only reviewed intake permissions/APIs; needs this repository and uv; start nothing.
 #   --intake-config-dir ABS  with --intake-only, validate/provision fixed private configuration files first.
 #   --intake-picker-key  with the two intake options, create/reconcile the dedicated restricted Google Picker key.
@@ -21,7 +23,8 @@
 #
 # Needs gcloud signed in as a project Owner (or IAM admin plus Cloud SQL admin) and gh signed
 # in with admin rights on the repository. --auth-only needs only the project IAM administrator;
-# it does not use gh or Cloud SQL. Written for the stock macOS bash 3.2: no associative
+# it does not use gh or Cloud SQL. --cost-meter-only needs the project IAM and Logging
+# configuration rights a project Owner holds; it does not use gh or Cloud SQL either. Written for the stock macOS bash 3.2: no associative
 # arrays, no mapfile, and no pattern substitution with a computed replacement.
 
 # Bash only. Any other shell (zsh, a plain sh, bash started as sh) stops here, at lines every
@@ -112,6 +115,13 @@ readonly SQL_DESCRIPTION='Connect, IAM login and metadata only for the existing 
 readonly STAMP='[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z'
 readonly WINDOW="^request\\.time >= timestamp\\('($STAMP)'\\) && request\\.time < timestamp\\('($STAMP)'\\)\$"
 
+# The cost meter splits the API's Cloud Run cost by organization from this user-defined
+# counter over the API's request logs (docs/execution/golive/COST_METER.md).
+readonly COST_METRIC=specimen_api_requests_by_organization
+readonly COST_METRIC_FILTER='resource.type="cloud_run_revision" AND resource.labels.service_name="specimen-api" AND log_id("run.googleapis.com/requests") AND httpRequest.requestUrl:"/v1/organizations/"'
+readonly COST_METRIC_EXTRACTOR='REGEXP_EXTRACT(httpRequest.requestUrl, "/v1/organizations/([0-9a-fA-F-]{36})/")'
+readonly METRIC_FORMAT='value[separator="|"](filter,labelExtractors.organization_id)'
+
 readonly PUSH_ONLY="assertion.event_name == 'push'"
 readonly PUSH_OR_MANUAL="(assertion.event_name == 'push' || assertion.event_name == 'workflow_dispatch')"
 
@@ -125,6 +135,7 @@ DRY_RUN=0
 SETUP_ONLY=0
 REDEPLOY_WEB=0
 AUTH_ONLY=0
+COST_METER_ONLY=0
 INTAKE_ONLY=0
 INTAKE_REPOSITORY_ROOT=''
 INTAKE_CONFIG_DIR=''
@@ -144,6 +155,7 @@ WORK=''
 NOW=''
 POLICY=''
 CONDITION_FILE=''
+METRIC_FILE=''
 REPLACED=''
 COMMAND=(gcloud)
 # Release stages: what the summary says about each, and what the waits are.
@@ -172,13 +184,15 @@ POLL_SECONDS=15
 FIND_SECONDS=5
 
 usage() {
-  printf 'Usage: owner_setup.sh [--dry-run] [--setup-only | --redeploy-web | --auth-only | --intake-only]\n'
+  printf 'Usage: owner_setup.sh [--dry-run] [--setup-only | --redeploy-web | --auth-only | --cost-meter-only | --intake-only]\n'
   printf '  (no flag)       do the setup, then start the data release, the runtime release and, when the\n'
   printf '                  repository variables changed, the web app build; follow each to its end.\n'
   printf '  --dry-run       read the live state and print every command that would run; change and start nothing.\n'
   printf '  --setup-only    do the setup and stop; start no release.\n'
   printf '  --redeploy-web  build and publish the web app again even when its variables were already set.\n'
   printf '  --auth-only     grant only Auth configuration access to the existing data identity; start nothing.\n'
+  printf '  --cost-meter-only  let the worker read Cloud Monitoring and create the requests-by-organization\n'
+  printf '                  metric for the cost meter; start nothing.\n'
   printf '  --intake-only   provision only reviewed intake grants/APIs from this checkout; start nothing.\n'
   printf '  --intake-config-dir ABS  with --intake-only, provision approved private numbered JSON configuration first.\n'
   printf '  --intake-picker-key  with --intake-only and --intake-config-dir, provision the dedicated restricted Picker key.\n'
@@ -518,7 +532,7 @@ preflight() {
   command -v gcloud > /dev/null 2>&1 || die "gcloud is not on PATH: install the Google Cloud SDK"
   account=$(gcloud config get-value account 2> /dev/null < /dev/null) || account=''
   [ -n "$account" ] || die "gcloud is not signed in: run gcloud auth login"
-  if [ "$AUTH_ONLY" -eq 0 ] && [ "$INTAKE_ONLY" -eq 0 ]; then
+  if [ "$AUTH_ONLY" -eq 0 ] && [ "$INTAKE_ONLY" -eq 0 ] && [ "$COST_METER_ONLY" -eq 0 ]; then
     command -v gh > /dev/null 2>&1 || die "gh is not on PATH: install the GitHub CLI"
     gh auth status > /dev/null 2>&1 < /dev/null || die "gh is not signed in: run gh auth login"
     login=$(gh api user --jq .login 2> /dev/null < /dev/null) || login='(not shown by gh)'
@@ -529,7 +543,9 @@ preflight() {
   fi
   [ "$number" = "$PROJECT_NUMBER" ] || die "project $PROJECT has number $number, expected $PROJECT_NUMBER"
   printf 'Google Cloud account: %s\n' "$account"
-  if [ "$AUTH_ONLY" -eq 0 ] && [ "$INTAKE_ONLY" -eq 0 ]; then printf 'GitHub account: %s\n' "$login"; fi
+  if [ "$AUTH_ONLY" -eq 0 ] && [ "$INTAKE_ONLY" -eq 0 ] && [ "$COST_METER_ONLY" -eq 0 ]; then
+    printf 'GitHub account: %s\n' "$login"
+  fi
   printf 'Project: %s (%s)\n' "$PROJECT" "$PROJECT_NUMBER"
   printf 'Repository: %s\n' "$REPOSITORY"
   if [ "$DRY_RUN" -eq 1 ]; then
@@ -556,6 +572,70 @@ auth_release_grants() {
   # Do not bind an existing role if its permissions could not be reconciled.
   if [ "$FAILURE_COUNT" -ne "$failures_before" ]; then return 0; fi
   grant project "$PROJECT" "$DATA" "$CUSTOM/specimenAuthConfiguration"
+}
+
+# Writes the requests-by-organization metric's configuration for --config-from-file and sets
+# METRIC_FILE: a counter (DELTA, INT64) of the API's request log entries whose path names an
+# organization, labelled with that organization's id.
+metric_file() {
+  FILE_COUNT=$((FILE_COUNT + 1))
+  METRIC_FILE="$WORK/metric-$FILE_COUNT-$COST_METRIC.yaml"
+  {
+    yaml_field name "$COST_METRIC"
+    yaml_field description 'Specimen API requests by organization, from the request path (cost meter).'
+    yaml_field filter "$COST_METRIC_FILTER"
+    printf 'metricDescriptor:\n'
+    printf '  metricKind: DELTA\n'
+    printf '  valueType: INT64\n'
+    printf "  unit: '1'\n"
+    printf '  labels:\n'
+    printf '  - key: organization_id\n'
+    printf '    valueType: STRING\n'
+    printf "    description: 'The organization id in the request path'\n"
+    printf 'labelExtractors:\n'
+    printf '  '
+    yaml_field organization_id "$COST_METRIC_EXTRACTOR"
+  } > "$METRIC_FILE"
+  printf '    metric %s: %s\n' "$COST_METRIC" "$COST_METRIC_FILTER"
+}
+
+# Creates the metric, or sets a differing filter or label extractor back to this one. Its
+# kind, value type and label cannot change once created, so they are only ever created.
+ensure_log_metric() {
+  local live want="$COST_METRIC_FILTER|$COST_METRIC_EXTRACTOR"
+  if live=$(gcloud logging metrics describe "$COST_METRIC" "--project=$PROJECT" "--format=$METRIC_FORMAT" \
+      2> "$WORK/stderr" < /dev/null); then
+    if [ "$live" = "$want" ]; then
+      in_place "log-based metric $COST_METRIC counts API requests by organization"
+      return 0
+    fi
+    change "set log-based metric $COST_METRIC to its filter and organization label"
+    metric_file
+    run gcloud logging metrics update "$COST_METRIC" "--project=$PROJECT" "--config-from-file=$METRIC_FILE"
+  elif grep -q 'NOT_FOUND' "$WORK/stderr"; then
+    change "create log-based metric $COST_METRIC (API requests by organization)"
+    metric_file
+    run gcloud logging metrics create "$COST_METRIC" "--project=$PROJECT" "--config-from-file=$METRIC_FILE"
+  else
+    cat "$WORK/stderr" >&2
+    die "could not read log-based metric $COST_METRIC"
+  fi
+}
+
+# The cost meter's shared-cost split (docs/execution/golive/COST_METER.md): the worker may list
+# the project's Cloud Monitoring time series and do nothing else in Monitoring; the metric counts
+# the API's requests by organization from the moment it exists (never before).
+cost_meter_grants() {
+  local failures_before=$FAILURE_COUNT
+  heading 'Cost meter: the worker lists Cloud Monitoring time series; API requests are counted by organization'
+  ensure_role specimenCostMeterRead 'Specimen cost meter usage read' \
+    'List Cloud Monitoring time series for the cost meter; no metric, alert, dashboard or log access.' \
+    monitoring.timeSeries.list
+  # Do not bind an existing role if its permissions could not be reconciled.
+  if [ "$FAILURE_COUNT" -eq "$failures_before" ]; then
+    grant project "$PROJECT" "$WORKER" "$CUSTOM/specimenCostMeterRead"
+  fi
+  ensure_log_metric
 }
 
 intake_grants() {
@@ -1448,6 +1528,10 @@ main() {
         if [ "$AUTH_ONLY" -eq 1 ]; then bad_usage; fi
         AUTH_ONLY=1
         ;;
+      --cost-meter-only)
+        if [ "$COST_METER_ONLY" -eq 1 ]; then bad_usage; fi
+        COST_METER_ONLY=1
+        ;;
       --intake-only)
         if [ "$INTAKE_ONLY" -eq 1 ]; then bad_usage; fi
         INTAKE_ONLY=1
@@ -1474,6 +1558,8 @@ main() {
   done
   if [ "$SETUP_ONLY" -eq 1 ] && [ "$REDEPLOY_WEB" -eq 1 ]; then bad_usage; fi
   if [ "$AUTH_ONLY" -eq 1 ] && { [ "$SETUP_ONLY" -eq 1 ] || [ "$REDEPLOY_WEB" -eq 1 ]; }; then bad_usage; fi
+  if [ "$COST_METER_ONLY" -eq 1 ] && { [ "$SETUP_ONLY" -eq 1 ] || [ "$REDEPLOY_WEB" -eq 1 ] ||
+    [ "$AUTH_ONLY" -eq 1 ] || [ "$INTAKE_ONLY" -eq 1 ]; }; then bad_usage; fi
   if [ -n "$INTAKE_CONFIG_DIR" ] && [ "$INTAKE_ONLY" -ne 1 ]; then bad_usage; fi
   if [ "$INTAKE_PICKER_KEY" -eq 1 ] && { [ "$INTAKE_ONLY" -ne 1 ] || [ -z "$INTAKE_CONFIG_DIR" ]; }; then bad_usage; fi
   if [ "$INTAKE_ONLY" -eq 1 ]; then
@@ -1521,10 +1607,19 @@ main() {
     if [ "$FAILURE_COUNT" -gt 0 ]; then exit 1; fi
     return 0
   fi
+  if [ "$COST_METER_ONLY" -eq 1 ]; then
+    cost_meter_grants
+    printf 'Cost meter setup only: %s change(s), %s failure(s). No providers, variables, other grants or releases changed.\n' \
+      "$CHANGE_COUNT" "$FAILURE_COUNT"
+    COMPLETE=1
+    if [ "$FAILURE_COUNT" -gt 0 ]; then exit 1; fi
+    return 0
+  fi
   remove_expired_grants
   data_release_grants
   cloud_sql_role
   runtime_grants
+  cost_meter_grants
   manual_runs
   repository_variables
   bootstrap_secret

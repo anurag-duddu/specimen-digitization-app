@@ -84,9 +84,23 @@ ROLES = {
     "specimenRuntimeConnector": [
         "firebasedataconnect.connectors.impersonateMutation", "firebasedataconnect.connectors.impersonateQuery"],
     "specimenApiUserLookup": ["firebaseauth.users.get"],
+    "specimenCostMeterRead": ["monitoring.timeSeries.list"],
 }
 NEW_ROLES = ("specimenDataBootstrapRows", "specimenRuntimeInvokerPolicy", "specimenWorkerExecution",
-             "specimenGeoreferenceDatasets", "specimenWorkerRead", "specimenResearchCaptureRead")
+             "specimenGeoreferenceDatasets", "specimenWorkerRead", "specimenResearchCaptureRead",
+             "specimenCostMeterRead")
+# The cost meter's log-based metric (docs/execution/golive/COST_METER.md), written out, not composed.
+COST_METRIC = "specimen_api_requests_by_organization"
+COST_METRIC_CONFIG = {
+    "name": COST_METRIC,
+    "description": "Specimen API requests by organization, from the request path (cost meter).",
+    "filter": 'resource.type="cloud_run_revision" AND resource.labels.service_name="specimen-api" AND '
+              'log_id("run.googleapis.com/requests") AND httpRequest.requestUrl:"/v1/organizations/"',
+    "metricDescriptor": {"metricKind": "DELTA", "valueType": "INT64", "unit": "1", "labels": [
+        {"key": "organization_id", "valueType": "STRING", "description": "The organization id in the request path"}]},
+    "labelExtractors": {
+        "organization_id": 'REGEXP_EXTRACT(httpRequest.requestUrl, "/v1/organizations/([0-9a-fA-F-]{36})/")'},
+}
 MAPS_KEY = "specimen-google-maps-key"  # retired: the owner took Google Maps out of the pipeline
 LIVE_PINS = (  # member, secret, version: the nine pinned reads live on 2026-10-03, the retired Maps key among them
     (API, "specimen-worker-logfire", 1), (API, "specimen-source-registry", 1), (API, "specimen-collection-bindings", 1),
@@ -131,6 +145,7 @@ ENVIRONMENT = "data-production"
 POLICY_FORMAT = ("value(bindings.members,bindings.role,bindings.condition.title,"
                  "bindings.condition.expression,bindings.condition.description)")
 ROLE_FORMAT = 'value[separator="|"](stage,deleted,includedPermissions.list())'
+METRIC_FORMAT = 'value[separator="|"](filter,labelExtractors.organization_id)'
 PROVIDER = {"workload-identity-pool": "github-actions", "location": "global", "project": PROJECT}
 KINDS = {("projects",): ("project", {}), ("storage", "buckets"): ("bucket", {}),
          ("artifacts", "repositories"): ("repository", {"location": "us-east4", "project": PROJECT}),
@@ -246,6 +261,42 @@ def role(verb, name, flags, state, entry):
     raise Unsupported(f"gcloud iam roles {verb} {name}")
 
 
+def metric_fields(text):
+    """The filter and the organization label's extractor of a metric file, from their single-quoted lines."""
+    found = {}
+    for line in text.splitlines():
+        for key, prefix in (("filter", "filter: "), ("extractor", "  organization_id: ")):
+            if line.startswith(prefix):
+                value = line[len(prefix):]
+                if len(value) < 2 or value[0] != "'" or value[-1] != "'":
+                    raise Unsupported(f"metric line {line!r}")
+                found[key] = value[1:-1].replace("''", "'")
+    if set(found) != {"filter", "extractor"}:
+        raise Unsupported("metric file without a filter and an extractor")
+    return found
+
+
+def log_metric(verb, name, flags, state, entry):
+    metrics = state.setdefault("log_metrics", {})
+    live = metrics.get(name)
+    if verb == "describe":
+        expect(flags, {"project": PROJECT, "format": METRIC_FORMAT})
+        if live is None:
+            print(f"ERROR: (gcloud.logging.metrics.describe) NOT_FOUND: Metric {name} does not exist.", file=sys.stderr)
+            return 1
+        print("|".join([live["filter"], live["extractor"]]))
+        return 0
+    entry["write"] = True
+    if verb not in ("create", "update") or (verb == "create") != (live is None):
+        raise Unsupported(f"gcloud logging metrics {verb} {name}")
+    expect(sorted(flags), ["config-from-file", "project"])
+    expect(flags["project"], PROJECT)
+    with open(flags["config-from-file"]) as handle:
+        entry["metric_text"] = handle.read()
+    metrics[name] = {**metric_fields(entry["metric_text"]), "text": entry["metric_text"]}
+    return 0
+
+
 def gcloud(argv, state, entry):
     words = [arg for arg in argv if not arg.startswith("--")]
     flags = dict(arg[2:].split("=", 1) if "=" in arg else (arg[2:], None) for arg in argv if arg.startswith("--"))
@@ -298,6 +349,8 @@ def gcloud(argv, state, entry):
             return policy(words[len(group)], kind, scope, words[-1], flags, state, entry)
     if words[:2] == ["iam", "roles"] and len(words) == 4:
         return role(words[2], words[3], flags, state, entry)
+    if words[:2] == ["logging", "metrics"] and len(words) == 4:
+        return log_metric(words[2], words[3], flags, state, entry)
     if words[:3] == ["sql", "users", "describe"] and len(words) == 4 and words[3] not in state["sql_roles"]:
         print("ERROR: (gcloud.sql.users.describe) HTTPError 404: Not Found.", file=sys.stderr)
         return 1
@@ -649,9 +702,10 @@ class Run:
 
 
 def named(argv):
-    """The command with a condition file's temporary directory removed."""
-    return [f"--condition-from-file={Path(arg.split('=', 1)[1]).name}" if arg.startswith("--condition-from-file=")
-            else arg for arg in argv]
+    """The command with a condition or metric file's temporary directory removed."""
+    files = ("--condition-from-file=", "--config-from-file=")
+    return [f"{arg.split('=', 1)[0]}={Path(arg.split('=', 1)[1]).name}" if arg.startswith(files) else arg
+            for arg in argv]
 
 
 class Harness:
@@ -725,6 +779,17 @@ def role_create(name, title, description):
             f"--description={description}", f"--permissions={','.join(ROLES[name])}", "--stage=GA"]
 
 
+COST_ROLE_CREATE = role_create("specimenCostMeterRead", "Specimen cost meter usage read",
+                               "List Cloud Monitoring time series for the cost meter; no metric, alert, dashboard or "
+                               "log access.")
+COST_GRANT = project_grant(WORKER, "specimenCostMeterRead")
+
+
+def metric_command(verb, number):
+    return ["gcloud", "logging", "metrics", verb, COST_METRIC, f"--project={PROJECT}",
+            f"--config-from-file=metric-{number}-{COST_METRIC}.yaml"]
+
+
 def provider_update(name):
     return ["gcloud", "iam", "workload-identity-pools", "providers", "update-oidc", name,
             "--workload-identity-pool=github-actions", "--location=global", f"--project={PROJECT}",
@@ -789,6 +854,9 @@ EXPECTED = [
     ["gcloud", "secrets", "add-iam-policy-binding", "specimen-worker-actor-uid", f"--project={PROJECT}",
      f"--member={API}", f"--role={ACCESSOR}", "--condition-from-file=condition-10-specimen_worker_actor_uid_v1.yaml"],
     SAM_LISTS_BUCKET,
+    COST_ROLE_CREATE,
+    COST_GRANT,
+    metric_command("create", 11),
     *(provider_update(name) for name in PROVIDERS),
     ["gh", "variable", "set", "SPECIMEN_API_BASE_URL", "-R", REPOSITORY, "--body", API_URL],
     ["gh", "variable", "set", "SPECIMEN_RECAPTCHA_SITE_KEY", "-R", REPOSITORY, "--body", SITE_KEY],
@@ -864,7 +932,7 @@ def test_dry_run_prints_every_change_and_makes_none(tmp_path, shell):
     assert f"from the artifact file ({len(content)} bytes)" in run.out
     shown = run.out + run.err + json.dumps(run.calls)
     assert "PRIVATE-MARKER" not in shown and base64.b64encode(content).decode()[:40] not in shown
-    assert "Dry run: nothing was changed. 30 step(s) would change:" in run.out
+    assert "Dry run: nothing was changed. 33 step(s) would change:" in run.out
     assert run.printed.count(SAM_LISTS_BUCKET) == 1
     assert "--all" not in run.out
     for name in RETIRE:
@@ -872,10 +940,10 @@ def test_dry_run_prints_every_change_and_makes_none(tmp_path, shell):
     assert "Merge the pull request" in run.out.split("== Summary ==", 1)[1]
     headings = [line for line in run.out.splitlines() if line.startswith("== ")]
     assert [line.split(":")[0] for line in headings] == [
-        "== Clean-up", "== Data release", "== Cloud SQL", "== Runtime release", "== Manual runs", "== GitHub",
+        "== Clean-up", "== Data release", "== Cloud SQL", "== Runtime release", "== Cost meter", "== Manual runs", "== GitHub",
         "== GitHub", "== Retire later", "== Releases", "== Summary =="]
     assert run.sleeps == [] and run.summary.splitlines()[-1] == SAFE
-    assert "  Setup: WOULD RUN (30 change(s))" in run.summary
+    assert "  Setup: WOULD RUN (33 change(s))" in run.summary
     assert "Setup is complete" not in run.out and "State:" not in run.summary
     assert "the three database roles once (later releases only use the firebaseowner role)" in headings[2]
 
@@ -888,7 +956,7 @@ def test_apply_makes_each_change_once_and_a_second_run_makes_none(tmp_path, shel
     assert run.ran == EXPECTED and run.printed == EXPECTED
     assert run.conditions() == {name: given(held) for name, held in EXPECTED_CONDITIONS.items()}
     assert provider_update("specimen-data-release")[-1] == f"--attribute-condition={DATA_PROVIDER_AFTER}"
-    assert "29 step(s) changed:" in run.out
+    assert "32 step(s) changed:" in run.out
     assert run.ran.count(SAM_LISTS_BUCKET) == 1
 
     after = harness.state()
@@ -918,7 +986,7 @@ def test_apply_makes_each_change_once_and_a_second_run_makes_none(tmp_path, shel
             "Run this script again after the merge.") in run.out
     assert run.starts == [] and run.sleeps == []
     assert run.summary.split("Stages:\n", 1)[1].splitlines()[:5] == [
-        "  Setup: PASS (29 changed, 39 already in place)",
+        "  Setup: PASS (32 changed, 39 already in place)",
         "  Data release: SKIPPED (the simple workflows are not on main yet)",
         "  Runtime release: SKIPPED (the simple workflows are not on main yet)",
         "  Web app: SKIPPED (the simple workflows are not on main yet)",
@@ -1017,7 +1085,7 @@ def test_failed_change_does_not_stop_the_later_steps_and_the_next_run_retries_it
     run = harness.run()
     assert run.code == 1 and run.ran == EXPECTED  # every step was tried, in order
     assert "FAILED: 1 step(s) did not go through:\n  - make specimen-data-release@specimen-digitization.iam" in run.out
-    assert "28 step(s) changed:" in run.out and "Stopped before the end" not in run.err
+    assert "31 step(s) changed:" in run.out and "Stopped before the end" not in run.err
     assert "the service refused this change" in run.err
     harness.save({**harness.state(), "fail": []})
     again = harness.run()
@@ -1108,6 +1176,76 @@ def test_auth_only_failed_grant_stops_without_other_setup(tmp_path):
     run = harness.run("--auth-only")
     assert run.code == 1 and run.ran == [AUTH_GRANT] and harness.state() == initial
     assert not run.starts and not run.sleeps and "1 failure(s)" in run.out
+
+
+@pytest.mark.parametrize("shell", SHELLS)
+def test_cost_meter_only_dry_run_has_one_role_one_worker_binding_and_the_metric(tmp_path, shell):
+    initial = {**live_state(), "gh_signed_in": False}
+    harness = Harness(tmp_path, initial, shell)
+    # This narrow mode needs no GitHub CLI or private bootstrap file.
+    (tmp_path / "bin/gh").unlink()
+    run = harness.run("--cost-meter-only", "--dry-run")
+    assert run.code == 0, run.err
+    assert run.printed == [COST_ROLE_CREATE, COST_GRANT, metric_command("create", 1)] and run.writes == []
+    assert harness.state() == initial
+    assert all(call["tool"] == "gcloud" for call in run.calls)
+    assert not run.starts and not run.sleeps
+    assert "Cost meter setup only: 3 change(s), 0 failure(s)" in run.out
+
+
+@pytest.mark.parametrize("shell", SHELLS)
+def test_cost_meter_only_apply_is_minimal_and_idempotent(tmp_path, shell):
+    initial = live_state()
+    harness = Harness(tmp_path, initial, shell)
+    run = harness.run("--cost-meter-only")
+    assert run.code == 0 and run.ran == [COST_ROLE_CREATE, COST_GRANT, metric_command("create", 1)], run.err
+    # The metric's configuration, read the way gcloud reads it: exactly the counter by organization.
+    [text] = [call["metric_text"] for call in run.writes if "metric_text" in call]
+    assert yaml.safe_load(text) == COST_METRIC_CONFIG
+    expected = copy.deepcopy(initial)
+    expected["roles"]["specimenCostMeterRead"] = {"stage": "GA", "deleted": False,
+                                                  "permissions": ["monitoring.timeSeries.list"]}
+    expected["policies"][f"project/{PROJECT}"].append(binding(CUSTOM + "specimenCostMeterRead", [WORKER]))
+    expected["log_metrics"] = {COST_METRIC: {"filter": COST_METRIC_CONFIG["filter"], "text": text,
+                                             "extractor": COST_METRIC_CONFIG["labelExtractors"]["organization_id"]}}
+    assert harness.state() == expected
+    again = harness.run("--cost-meter-only")
+    assert again.code == 0 and again.writes == [] and again.printed == []
+    assert harness.state() == expected and not again.starts and not again.sleeps
+    assert f"ok: log-based metric {COST_METRIC} counts API requests by organization" in again.out
+
+
+def test_cost_meter_only_sets_a_drifted_metric_back_and_leaves_the_rest(tmp_path):
+    initial = live_state()
+    initial["roles"]["specimenCostMeterRead"] = {"stage": "GA", "deleted": False,
+                                                 "permissions": ["monitoring.timeSeries.list"]}
+    initial["policies"][f"project/{PROJECT}"].append(binding(CUSTOM + "specimenCostMeterRead", [WORKER]))
+    initial["log_metrics"] = {COST_METRIC: {"filter": 'resource.type="cloud_run_revision"', "text": "",
+                                            "extractor": COST_METRIC_CONFIG["labelExtractors"]["organization_id"]}}
+    harness = Harness(tmp_path, initial)
+    run = harness.run("--cost-meter-only")
+    assert run.code == 0 and run.ran == [metric_command("update", 1)], run.err
+    assert harness.state()["log_metrics"][COST_METRIC]["filter"] == COST_METRIC_CONFIG["filter"]
+
+
+def test_cost_meter_only_failed_role_change_cannot_bind_unreconciled_role(tmp_path):
+    initial = live_state()
+    initial["roles"]["specimenCostMeterRead"] = {"stage": "GA", "deleted": False,
+                                                 "permissions": ["monitoring.timeSeries.create"]}
+    initial["fail"] = ["iam"]
+    harness = Harness(tmp_path, initial)
+    run = harness.run("--cost-meter-only")
+    assert run.code == 1 and run.ran[0][1:4] == ["iam", "roles", "update"]
+    assert not [argv for argv in run.ran if "add-iam-policy-binding" in argv]
+    assert "1 failure(s)" in run.out and not run.starts
+
+
+@pytest.mark.parametrize("args", [("--cost-meter-only", "--cost-meter-only"), ("--cost-meter-only", "--setup-only"),
+                                  ("--redeploy-web", "--cost-meter-only"), ("--cost-meter-only", "--auth-only"),
+                                  ("--intake-only", "--cost-meter-only")])
+def test_cost_meter_only_rejects_other_setup_modes_before_tools(tmp_path, args):
+    run = Harness(tmp_path, live_state()).run(*args)
+    assert run.code != 0 and run.calls == [] and "Usage:" in run.err
 
 
 def intake_harness(tmp_path, metadata="PIN\tapi\tspecimen-worker-actor-uid\t1\n"
@@ -1370,6 +1508,7 @@ ADDED = {("job/specimen-intake", API, "roles/run.invoker", None, None),
 THEIRS = (WORKER, SAM)
 THEIR_GRANTS = {
     (f"project/{PROJECT}", WORKER, CUSTOM + "specimenRuntimeConnector", None, None),
+    (f"project/{PROJECT}", WORKER, CUSTOM + "specimenCostMeterRead", None, None),
     *((f"bucket/{BUCKET}", member, role, APP["title"], APP["expression"])
       for member in THEIRS for role in ("roles/storage.objectViewer", "roles/storage.objectCreator")),
     *((f"secret/{secret}", member, ACCESSOR, *list(pin(secret, version).values())[:2])
@@ -1405,6 +1544,8 @@ EXPECTED_FRESH_GRANTS = {
     expected_grant(f"project/{PROJECT}", API, CUSTOM + "specimenRuntimeConnector"),
     expected_grant(f"project/{PROJECT}", API, CUSTOM + "specimenApiUserLookup"),
     expected_grant(f"project/{PROJECT}", WORKER, CUSTOM + "specimenRuntimeConnector"),
+    # The cost meter reads Cloud Monitoring's usage time series (monitoring.timeSeries.list only).
+    expected_grant(f"project/{PROJECT}", WORKER, CUSTOM + "specimenCostMeterRead"),
     *(expected_grant(f"bucket/{BUCKET}", member, role, APP)
       for member in (API, WORKER, SAM)
       for role in ("roles/storage.objectViewer", "roles/storage.objectCreator")),
@@ -1511,7 +1652,7 @@ def test_fresh_project_gets_every_role_and_pins_every_secret_read(fresh, setting
         "specimenDataSchemaPublish", "specimenDataStorageRules", "specimenDataInventoryProjectRead",
         "specimenDataInventorySqlConnect", "specimenDataBootstrapRows", "specimenGeoreferenceDatasets", "specimenRuntimeRelease",
         "specimenRuntimeInvokerPolicy", "specimenWorkerExecution", "specimenWorkerRead", "specimenResearchCaptureRead",
-        "specimenRuntimeConnector", "specimenApiUserLookup"]
+        "specimenRuntimeConnector", "specimenApiUserLookup", "specimenCostMeterRead"]
     assert run.conditions()["condition-1-specimen_source_inventory_only.yaml"] == SQL  # with its live description
     granted = grants(run)
     # This self-contained setup fixture represents its original core baseline.
@@ -1750,7 +1891,7 @@ def test_first_morning_waits_for_new_access_retries_once_and_rebuilds_the_site(t
         f"web app: PASS {RUNS}400", f"web app: the site now serves commit {COMMIT}",
         "web app: the site now points at the API"]
     assert run.ran[-3:] == [NARROW, UNWIDEN, RERUN] and run.ran.index(START_RUNTIME) == len(run.ran) - 4
-    assert stages(run) == ["  Setup: PASS (31 changed, 39 already in place)", f"  Data release: PASS {RUNS}502",
+    assert stages(run) == ["  Setup: PASS (34 changed, 39 already in place)", f"  Data release: PASS {RUNS}502",
                            f"  Runtime release: PASS {RUNS}503",
                            f"  Web app: PASS {RUNS}400 (the site points at the API)"]
     assert "To read the log" not in run.summary and "--redeploy-web" not in run.summary
@@ -1804,7 +1945,7 @@ def test_dry_run_prints_the_starts_and_starts_nothing(tmp_path):
     assert run.writes == [] and run.sleeps == [] and harness.state() == state
     assert run.printed == [*EXPECTED, START_DATA, START_RUNTIME, RERUN]
     assert "  Would wait 120 seconds for the new access to take effect" in run.out.splitlines()
-    assert stages(run) == ["  Setup: WOULD RUN (29 change(s))", "  Data release: WOULD RUN",
+    assert stages(run) == ["  Setup: WOULD RUN (32 change(s))", "  Data release: WOULD RUN",
                            "  Runtime release: WOULD RUN", f"  Web app: WOULD RUN {RUNS}400"]
     # A build would run, so the site is not read now: the check would follow that build.
     assert "web app: after that build the live site would be checked for the API address" in run.out.splitlines()
@@ -2005,7 +2146,7 @@ def test_setup_only_before_the_merge_applies_the_setup_and_touches_no_workflow(t
     assert not [call for call in run.calls if call["tool"] == "gh" and call["argv"][0] in ("workflow", "run")]
     assert run.sleeps == [] and not [call for call in run.calls if call["tool"] == "curl"]
     assert run.summary.split("Stages:\n", 1)[1].splitlines()[:5] == [
-        "  Setup: PASS (29 changed, 39 already in place)", "  Data release: SKIPPED (--setup-only)",
+        "  Setup: PASS (32 changed, 39 already in place)", "  Data release: SKIPPED (--setup-only)",
         "  Runtime release: SKIPPED (--setup-only)", "  Web app: SKIPPED (--setup-only)",
         "State: SETUP DONE, RELEASES NOT STARTED (--setup-only)"]
     assert run.summary.split("Next steps:\n", 1)[1].splitlines() == [
