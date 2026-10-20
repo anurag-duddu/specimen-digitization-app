@@ -163,9 +163,13 @@ def load_json(path: str):
     if not text.strip():
         raise UnreadableInput(f"{path}: the file is empty")
     try:
-        return json.loads(text)
+        document = json.loads(text)
     except ValueError:
         pass
+    else:
+        if document is None:  # A bare null is no bill and no rows, not "not supplied".
+            raise UnreadableInput(f"{path}: the file holds only null")
+        return document
     try:  # JSON Lines, as `bq` and some exports write them
         return [json.loads(line) for line in text.splitlines() if line.strip()]
     except ValueError:
@@ -235,6 +239,8 @@ def main(argv=None) -> int:
     for out_path in (args.out_json, args.out_md):
         if out_path and not Path(out_path).resolve().parent.is_dir():
             p.error(f"the folder for {out_path} does not exist")
+        if out_path and Path(out_path).is_dir():
+            p.error(f"{out_path} is a folder, not a file")
     try:
         rows, warnings = merged_rows(args.meter_rows)
         report = cr.reconcile(
@@ -250,12 +256,18 @@ def main(argv=None) -> int:
         print(f"warning: {text}", file=sys.stderr)
     markdown = cr.render_markdown(report)
     wrote = []
-    if args.out_json:
-        Path(args.out_json).write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-        wrote.append(args.out_json)
-    if args.out_md:
-        Path(args.out_md).write_text(markdown, encoding="utf-8")
-        wrote.append(args.out_md)
+    outputs = [(path, text) for path, text in ((args.out_json, json.dumps(report, indent=2) + "\n"),
+                                               (args.out_md, markdown)) if path]
+    try:
+        for path, text in outputs:
+            Path(path).write_text(text, encoding="utf-8")
+            wrote.append(path)
+    except OSError as error:
+        for path in wrote:  # All or nothing: never leave half a report.
+            Path(path).unlink(missing_ok=True)
+        print(f"error: {error.filename or path}: cannot write it ({error.strerror or type(error).__name__})",
+              file=sys.stderr)
+        return 2
     if wrote:
         totals = report["totals"]
         print(f"{args.month}: billed {cr.usd(totals['billed_micros'])}, metered {cr.usd(totals['metered_micros'])}, "

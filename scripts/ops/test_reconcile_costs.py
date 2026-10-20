@@ -264,7 +264,28 @@ UNREADABLE = {  # kind -> (how to make the file, what the error says)
     "not_json": ("{{", "not JSON or JSON Lines"),
     "not_utf8": (b"\xff\xfe\x00\xff", "not UTF-8 text"),
     "directory": ("directory", "cannot read it (Is a directory)"),
+    "null": ("null", "the file holds only null"),
 }
+
+
+def test_an_output_that_is_a_folder_or_cannot_be_written_exits_two_and_leaves_no_half_report(tmp_path):
+    meter, hf = write(tmp_path, "m.json", [row(1, 1)]), write(tmp_path, "hf.json", {"days": {}})
+    folder = tmp_path / "already-a-folder"
+    folder.mkdir()
+    code, out, err = run("--month", "2026-10", "--meter-rows", meter, "--huggingface", hf, "--out-json", str(folder))
+    assert code == 2 and out == "" and "is a folder, not a file" in err, err
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    out_json, out_md = tmp_path / "report.json", locked / "report.md"
+    locked.chmod(0o500)
+    try:
+        code, out, err = run("--month", "2026-10", "--meter-rows", meter, "--huggingface", hf,
+                             "--out-json", str(out_json), "--out-md", str(out_md))
+    finally:
+        locked.chmod(0o700)
+    assert code == 2 and out == "", (code, err)
+    assert err.startswith(f"error: {out_md}: cannot write it"), err
+    assert not out_json.exists() and not out_md.exists()
 
 
 @pytest.mark.parametrize("flag", ["--meter-rows", "--huggingface", "--google"])
