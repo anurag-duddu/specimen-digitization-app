@@ -40,7 +40,10 @@ saves the head without the effects whose archive holds the same state. A
 research charge does not archive: it runs inside its send's lease, which should
 not wait on up to 64 writes. That removal save also marks the head
 `archives: true`, for good; a head without the mark has never let go of an
-effect, so a lookup reads no archive.
+effect, so a lookup reads no archive. That holds because no build that archives
+without marking was ever released: the commits of this pull request before the
+mark (`992c2fb7` to `10709c9f`) never ran in production. Should one ever have run
+against a ledger, set `archives: true` on that head before deploying.
 
 The monthly cap ledgers (`tenant_budget.TenantLedger`, one per cap and UTC
 month, docs/execution/golive/TENANT_BUDGETS.md) are built the same way, one

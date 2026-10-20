@@ -148,7 +148,7 @@ class ArchivedEffects:
                 except Conflict:
                     head = self.read()
         except Exception as exc:  # noqa: BLE001 - archiving is housekeeping; the charge stands
-            LOGGER.warning("program ledger archiving deferred: %s", type(exc).__name__)
+            LOGGER.warning("ledger archiving deferred: %s", type(exc).__name__)
 
 
 class ProgramLedger(ArchivedEffects):

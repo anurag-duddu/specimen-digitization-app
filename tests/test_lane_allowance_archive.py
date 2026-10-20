@@ -290,19 +290,25 @@ class Racing(Versioned):
         return super().put_document(scope, kind, ident, payload, expected)
 
 
-@pytest.mark.parametrize("moment", ["lookup", "save"])
-def test_a_reservation_racing_an_archive_pass_is_charged_once(tmp_path, moment):
+@pytest.mark.parametrize(("moment", "marked"), [("lookup", True), ("save", True), ("save", False)],
+    ids=["lookup", "save", "save_from_an_unmarked_head"])
+def test_a_reservation_racing_an_archive_pass_is_charged_once(tmp_path, moment, marked):
     path = tmp_path / "state.sqlite3"
     ledger = ledger_on(Versioned(path))
-    for i in range(100, 100 + HEAD_EFFECTS + 1):
-        reserve(ledger, i)  # One pass has archived, so the head is marked.
-    assert ledger.read()["archives"] is True and ledger.read()[ORDINARY] == {}
+    if marked:
+        for i in range(100, 100 + HEAD_EFFECTS + 1):
+            reserve(ledger, i)  # One pass has archived, so the head is marked.
+        assert ledger.read()["archives"] is True and ledger.read()[ORDINARY] == {}
     for i in range(1, HEAD_EFFECTS + 1):
         reserve(ledger, i)  # The rival's reservation is the one past HEAD_EFFECTS.
+    # Unmarked, this worker reads no archive; the rival's pass marks the head,
+    # so this worker's save conflicts and its retry finds the archive.
+    assert ("archives" in ledger.read()) is marked
     racing = Racing(path, moment, step(0))
     assert ProgramLedger(racing, SCOPE).reserve(ALLOWANCE, 1_000, **step(0)).issue is None
     assert racing.raced
-    assert ledger.read()["reserved_total_micros"] == 1_000 * (2 * HEAD_EFFECTS + 2)
+    earlier = HEAD_EFFECTS + 1 if marked else 0
+    assert ledger.read()["reserved_total_micros"] == 1_000 * (earlier + HEAD_EFFECTS + 1)
     assert ledger.effect(ORDINARY, key(step(0))) == HELD
 
 
