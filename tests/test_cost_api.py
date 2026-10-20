@@ -168,6 +168,27 @@ def test_refresh_starts_the_worker_job_through_the_dispatcher(outcome, started):
     assert repository.mock_calls == []
 
 
+def test_refresh_starts_each_collection_s_own_worker_job_once():
+    from specimen_digitization.application.lane_dispatch import CollectionJobDispatcher
+
+    insects, beetles, other = Mock(), Mock(), Mock()
+    insects.start.return_value = DispatchOutcome(status="failed", reason="http_503")
+    beetles.start.return_value = DispatchOutcome(status="requested")
+    dispatcher = CollectionJobDispatcher(None, {
+        f"{ORG}/{INSECTS}": insects, f"{ORG}/{BEETLES}": beetles, f"{OTHER_ORG}/{INSECTS}": other,
+    })
+    rows = [membership("admin"), membership("viewer", collection=BEETLES),
+            membership("admin", organization=OTHER_ORG)]
+    http, _ = client(rows, dispatcher=dispatcher)
+    with http:
+        response = http.post(f"/v1/organizations/{ORG}/costs/refresh", headers=HEADERS)
+    assert response.status_code == 200, response.text
+    assert response.json() == {"started": True}
+    insects.start.assert_called_once_with()
+    beetles.start.assert_called_once_with()
+    other.start.assert_not_called()
+
+
 def test_refresh_without_a_worker_job_starts_nothing():
     http, _ = client([membership("admin")])
     with http:

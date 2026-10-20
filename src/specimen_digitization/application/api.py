@@ -873,9 +873,22 @@ def create_app(
 
     @app.post(prefix + "/costs/refresh")
     def refresh_costs(organization_id: str, user=Depends(identity)):
-        """Start the worker job, whose drain sweeps the cost meter (cost_sweep)."""
+        """Start the worker job of each of the caller's collections in the organization,
+        once per job; each drain sweeps the cost meter (cost_sweep)."""
+        from .lane_dispatch import dispatcher_for_scope
+
         cost_administrator(user, organization_id)
-        return {"started": start_worker().status == "requested"}
+        started, seen = False, set()
+        for m in member_rows(user):
+            if m["organization_id"] != organization_id:
+                continue
+            scope = Scope(organization_id=organization_id, collection_id=m["collection_id"])
+            selected = dispatcher_for_scope(worker_dispatcher, scope)
+            if selected is None or id(selected) in seen:
+                continue
+            seen.add(id(selected))
+            started = selected.start().status == "requested" or started
+        return {"started": started}
 
     @app.post(prefix + "/images/preflight")
     async def image_preflight(
