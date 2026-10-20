@@ -34,9 +34,10 @@ UNAVAILABLE = "tenant_budget_unavailable"
 # The cap row and ledger key of the organization itself; any other key is a
 # collection id.
 ORGANIZATION = "organization"
-# Where a run records, per paid attempt, the month and the ledgers it reserved
-# in: run.dependencies[RECORD]["<step>:<attempt>"] = {"month", "keys",
-# "ledger_collection"}. Settlement reads it, never the caps.
+# Where a run records, per paid attempt, the month, the ledgers it reserved in
+# and the amount: run.dependencies[RECORD]["<step>:<attempt>"] = {"month",
+# "keys", "ledger_collection", "micros"}. Settlement reads it, never the caps,
+# and an attempt that comes round again reserves "micros" again (recorded_micros).
 RECORD = "tenant_budget"
 # The largest cap or total a ledger keeps exact (lane_worker.stored_integer).
 MAX_CAP_MICROS = 2**53 - 1
@@ -387,7 +388,8 @@ def reserve_step(repository, principal, specimen, step, cost, clock=None) -> str
         if reservation.held and ledger.key not in keys:
             keys.append(ledger.key)
             run.dependencies[RECORD] = {**_records(run), f"{step}:{attempt}": {
-                "month": month, "keys": keys, "ledger_collection": ledger.scope.collection_id}}
+                "month": month, "keys": keys, "ledger_collection": ledger.scope.collection_id,
+                "micros": cost}}
         if reservation.issue:
             return reservation.issue
     return None
@@ -452,20 +454,48 @@ def admits(repository, principal, specimen, cost, clock=None) -> str | None:
     return None
 
 
-def remaining(repository, principal, specimen, clock=None) -> int | None:
-    """The least any applicable cap has left this month, or None when no cap
-    applies (FieldResearchStep.reservation). Raises TenantBudgetUnavailable."""
+def recorded_micros(run, step) -> int | None:
+    """What the step's next attempt already reserved on a tenant ledger, by the
+    run's record, or None. Such an attempt was never sent: an attempt's intent
+    is saved with its attempt number, so the next attempt's record can only
+    come from a block saved after its reservation (a refusal later in the chain,
+    the program's allowance among them). It reserves the same amount again, so
+    every hold it made replays instead of differing from its envelope
+    (Workflow._step, FieldResearchStep.reservation). Reads nothing but the run."""
+    try:
+        record = _record(run, step, run.attempts.get(step, 0) + 1)
+    except TenantBudgetUnavailable:
+        return None  # reserve_step refuses a malformed record itself.
+    micros = None if record is None else record.get("micros")
+    return micros if type(micros) is int and micros > 0 else None
+
+
+def room(repository, principal, specimen, step, clock=None) -> tuple[int | None, int | None]:
+    """(left, held) for the step's next attempt this month: the least any
+    applicable cap has left, and the amount that attempt already holds on
+    their ledgers (a worker that reserved and stopped before saving the run
+    leaves a hold and no record), or None for either. (None, None) when no cap
+    applies. Read only (FieldResearchStep.reservation). Raises
+    TenantBudgetUnavailable."""
     clock = clock or utc_now
     caps = applicable(read_caps(repository, principal.scope), principal.scope.collection_id)
     if not caps:
-        return None
-    left = []
+        return None, None
+    run = specimen.run
+    key = ProgramLedger._ordinary_key(specimen.id, run.id, step, run.attempts.get(step, 0) + 1)
+    left, held = [], set()
     for ledger, cap in _ledgers(repository, principal, specimen, caps, month_of(clock()), clock):
         try:
-            left.append(max(0, cap - ledger.read()["reserved_total_micros"]))
-        except (Conflict, TypeError, ValueError, KeyError):
+            current = ledger.read()
+            entry = current.get("ordinary_effects", {}).get(key)
+            if entry is not None:
+                held.add(stored_integer(entry["reserved_micros"]))
+            left.append(max(0, cap - current["reserved_total_micros"]))
+        except (Conflict, TypeError, ValueError, KeyError, AttributeError):
             raise TenantBudgetUnavailable() from None
-    return min(left)
+    if len(held) > 1:
+        raise TenantBudgetUnavailable()
+    return min(left), (held.pop() if held else None)
 
 
 def applies(repository, scope) -> bool:
@@ -480,31 +510,30 @@ def cap_positions(caps, collections, month, spent_by_collection):
     ``collections`` is {collection id: parent id or None} and
     ``spent_by_collection`` is {collection id: micros spent in the month by that
     collection's own runs}. A collection's cap counts its own spend and every
-    descendant's; the organization's counts every collection's. Returns
-    {"organization": position or None, "collections": {id: position or None}},
-    a position being {"monthly_cap_micros", "month", "spent_micros",
-    "remaining_micros"}. A cycle, or a parent outside the tree, raises
-    ValueError.
+    descendant's; the organization's counts every collection's. As in the
+    cost report (cost_ledger.collection_totals), a parent that is not a listed
+    collection makes a root. Returns {"organization": position or None,
+    "collections": {id: position or None}}, a position being
+    {"monthly_cap_micros", "month", "spent_micros", "remaining_micros"}. A
+    cycle raises ValueError.
     """
-    parents = {_uuid(ident): None if parent is None else _uuid(parent)
+    listed = {_uuid(ident): None if parent is None else _uuid(parent)
         for ident, parent in collections.items()}
+    parents = {ident: parent if parent in listed else None for ident, parent in listed.items()}
     caps = {cap_key(key): cap_micros(value) for key, value in caps.items()}
     spent = {_uuid(ident): value for ident, value in spent_by_collection.items()}
     if any(type(value) is not int or value < 0 for value in spent.values()):
         raise ValueError("Spent amounts must be whole, non-negative micros")
-    totals = dict.fromkeys(parents, 0)
-    for ident, value in spent.items():
-        try:
-            chain = lineage(parents, ident)
-        except TenantBudgetUnavailable:
-            raise ValueError("The collection tree does not hold this collection") from None
-        for ancestor in chain:
-            totals[ancestor] += value
+    chains = {}
     for ident in parents:
         try:
-            lineage(parents, ident)
+            chains[ident] = lineage(parents, ident)
         except TenantBudgetUnavailable:
-            raise ValueError("The collection tree has a cycle or an unknown parent") from None
+            raise ValueError("collection_tree_cycle") from None
+    totals = dict.fromkeys(parents, 0)
+    for ident, value in spent.items():
+        for ancestor in chains.get(ident, ()):
+            totals[ancestor] += value
 
     def position(cap, used):
         if cap is None:
@@ -516,3 +545,28 @@ def cap_positions(caps, collections, month, spent_by_collection):
         "organization": position(caps.get(ORGANIZATION), sum(spent.values())),
         "collections": {ident: position(caps.get(ident), totals[ident]) for ident in parents},
     }
+
+
+def report_caps(caps_answer, collections, month, groups):
+    """The cost report's caps for ``month`` (api.py, GET .../costs): positions
+    from the caps as ``repository.tenant_caps`` returns them, the report's
+    ``collections`` ({"collection_id", "parent_id"}) and CostTotalsV1's
+    ``groups``. Spent is the month's cost entries, settled and held. None when
+    no cap is set."""
+    from .cost_ledger import _amount
+
+    caps = {}
+    for row in caps_answer["caps"]:
+        key = cap_key(row["collection_key"])
+        if key in caps:
+            raise TenantBudgetUnavailable()
+        caps[key] = cap_micros(row["monthly_cap_micros"])
+    if all(value is None for value in caps.values()):
+        return None
+    spent = {}
+    for group in groups:
+        if group["month"] == month:
+            ident = _uuid(group["collection_id"])
+            spent[ident] = spent.get(ident, 0) + _amount(group)["cost_micros"]
+    return cap_positions(caps, {item["collection_id"]: item["parent_id"] for item in collections},
+        month, spent)

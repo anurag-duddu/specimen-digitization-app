@@ -633,6 +633,13 @@ class Workflow:
             # Never more than the program's allowance has left (when that fits
             # one expert request): the step's meter has this as its cap.
             cost = self.field_research.reservation(self, principal, specimen, cost)
+        if billable and not run.profile.synthetic and cost:
+            from .tenant_budget import recorded_micros
+
+            # An attempt that already holds on a monthly cap's ledger was never
+            # sent (a refusal later in the chain blocked it): it reserves the
+            # recorded amount again, so its holds replay (TENANT_BUDGETS.md).
+            cost = recorded_micros(run, step) or cost
         # The limits on money, in the order they block: the cost settings, the
         # saved cost totals, then the run's cost ceiling.
         money_issue = None

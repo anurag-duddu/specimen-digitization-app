@@ -260,7 +260,10 @@ def test_the_program_allowance_refusing_parks_no_tenant_hold(tmp_path):
     app, specimen_id = lab(tmp_path, repository, program_total=28_000_000 - 1)
     run = drain(app, specimen_id)
     assert run.blocker == "program_allowance_exhausted"
-    # The program ledger was read before any tenant hold: the cap's ledger was never created.
+    # The cap applied, and its ledger was read, before the program's refused:
+    # nothing was held on it (the ledger was never created).
+    assert repository.cap_reads == 1
+    assert ("read", LEDGER_KIND, ledger_ident(SYNTHETIC_ORG, ORGANIZATION, MONTH)) in repository.touched
     with pytest.raises(Missing):
         stored(repository, ORGANIZATION)
     assert RECORD not in run.dependencies
@@ -282,8 +285,9 @@ def test_each_ledger_settles_to_what_the_steps_cost(tmp_path):
     assert settled == [550, 900] and len(entries) == 3
     records = run.dependencies[RECORD]
     assert set(records) == {f"{c['step']}:{c['attempt']}" for c in run.paid_calls}
+    reserved = {f"{c['step']}:{c['attempt']}": c["reserved_micros"] for c in run.paid_calls}
     assert all(record == {"month": MONTH, "keys": [ORGANIZATION, SYNTHETIC_COLLECTION, PARENT],
-        "ledger_collection": SYNTHETIC_COLLECTION} for record in records.values())
+        "ledger_collection": SYNTHETIC_COLLECTION, "micros": reserved[key]} for key, record in records.items())
 
 
 def capped_specimen(repository, cap=1_000_000, clock=lambda: MOMENT):
@@ -394,6 +398,41 @@ def test_a_reservation_in_october_settles_on_octobers_ledger_in_november(tmp_pat
     november = lambda: datetime(2026, 11, 2, tzinfo=timezone.utc)
     assert tenant_budget.reserve_step(repository, PRINCIPAL, specimen, QWEN, 20_000, november) is None
     assert ledger(repository, ORGANIZATION, "2026-11").read()["reserved_total_micros"] == 20_000
+
+
+def test_a_hold_whose_run_was_never_saved_does_not_replay_into_another_month(tmp_path):
+    # TENANT_BUDGETS.md, "The month": a worker that holds in October and stops
+    # before the run is saved leaves no record. Its retry in November reserves
+    # on November's ledger; October keeps that hold, counted and never settled
+    # (an over-count, never an under-count).
+    repository = capped(tmp_path, [(ORGANIZATION, 1_000_000)])
+    specimen = specimen_with(priced_run())
+    stopped = specimen.model_copy(deep=True)
+    october = lambda: datetime(2026, 10, 31, 23, 59, 59, tzinfo=timezone.utc)
+    november = lambda: datetime(2026, 11, 1, 0, 5, tzinfo=timezone.utc)
+    assert tenant_budget.reserve_step(repository, PRINCIPAL, stopped, QWEN, 20_000, october) is None
+    assert tenant_budget.reserve_step(repository, PRINCIPAL, specimen, QWEN, 20_000, november) is None
+    run = specimen.run
+    assert run.dependencies[RECORD][f"{QWEN}:1"]["month"] == "2026-11"
+    run.attempts[QWEN] = 1
+    record_model_usage(run, QWEN, "handwriting-qwen", input_tokens=1_000, output_tokens=500)
+    settle_step(repository, PRINCIPAL, specimen, QWEN, 20_000)
+    assert ledger(repository, ORGANIZATION, "2026-11").read()["reserved_total_micros"] == 550
+    october_ledger = ledger(repository, ORGANIZATION, "2026-10").read()
+    assert october_ledger["reserved_total_micros"] == 20_000
+    assert [entry["settled_micros"] for entry in october_ledger["ordinary_effects"].values()] == [None]
+
+
+def test_an_unsaved_hold_of_another_amount_blocks_unavailable(tmp_path):
+    # An ordinary step's reservation is recomputed from the run; when the amount a
+    # stopped worker held differs (no record to reuse), the hold does not replay
+    # and the run blocks, as the program's ledger does for a changed envelope.
+    repository = capped(tmp_path, [(ORGANIZATION, 1_000_000)])
+    specimen = specimen_with(priced_run())
+    stopped = specimen.model_copy(deep=True)
+    assert tenant_budget.reserve_step(repository, PRINCIPAL, stopped, QWEN, 20_000, lambda: MOMENT) is None
+    assert tenant_budget.reserve_step(repository, PRINCIPAL, specimen, QWEN, 30_000, lambda: MOMENT) == UNAVAILABLE
+    assert ledger(repository, ORGANIZATION).read()["reserved_total_micros"] == 20_000
 
 
 def test_the_month_is_the_utc_month():
@@ -539,6 +578,39 @@ def test_a_capped_run_resumes_on_retry_once_the_cap_allows_it(tmp_path):
     assert ledger(repository, ORGANIZATION).read()["reserved_total_micros"] == LAB_TOTAL
 
 
+def test_an_ordinary_step_refused_after_its_hold_reserves_its_recorded_amount_on_retry(tmp_path, monkeypatch):
+    # The program's allowance refuses once after the cap's ledger held SAM 3
+    # (another worker took the room meanwhile). By the retry the step's
+    # reservation would be another amount (a price list queued again, say):
+    # the attempt reserves what it recorded, so its hold replays.
+    from specimen_digitization.application import lane_allowance, lane_reservations
+
+    repository = capped(tmp_path, [(ORGANIZATION, 5_000_000)])
+    app, specimen_id = lab(tmp_path, repository)
+    real_reserve, refused = lane_allowance.reserve_step, []
+
+    def racing(*args, **kwargs):
+        if not refused:
+            refused.append(True)
+            return lane_allowance.EXHAUSTED
+        return real_reserve(*args, **kwargs)
+    monkeypatch.setattr(lane_allowance, "reserve_step", racing)
+    blocked = drain(app, specimen_id)
+    assert (blocked.blocker, blocked.dependencies[RECORD]["segment:1"]["micros"]) == (
+        "program_allowance_exhausted", SEGMENT)
+    assert app.state.workflow.adapters.segments == 0
+    real_reservation = lane_reservations.step_reservation
+    monkeypatch.setattr(lane_reservations, "step_reservation",
+        lambda run, step: SEGMENT + 1_000 if step == "segment" else real_reservation(run, step))
+    response = action(TestClient(app, raise_server_exceptions=False), specimen_id, "retry", "after-the-race")
+    assert response.status_code == 200, response.text
+    run = drain(app, specimen_id)
+    assert run.blocker != UNAVAILABLE and "segment" in run.completed_steps, run.blocker
+    assert app.state.workflow.adapters.segments == 1
+    total = ledger(repository, ORGANIZATION).read()["reserved_total_micros"]
+    assert total == program_total(repository) == run.usage.reserved_cost_micros
+
+
 # ---- lost results ------------------------------------------------------------------
 
 @pytest.mark.parametrize("allowance", [False, True], ids=["caps_only", "with_program_allowance"])
@@ -576,21 +648,34 @@ def test_a_lost_reading_the_cap_ledger_did_not_settle_stays_held(tmp_path):
 
 # ---- the read-only checks ------------------------------------------------------------
 
-def test_admits_and_remaining_read_the_least_any_cap_has_left(tmp_path):
+def test_admits_and_room_read_the_least_any_cap_has_left(tmp_path):
     repository = capped(tmp_path, [(ORGANIZATION, 1_000_000), (PARENT, 300_000)])
     seed(repository, PARENT, 100_000)
     specimen = specimen_with(priced_run())
     clock = lambda: MOMENT
-    assert tenant_budget.remaining(repository, PRINCIPAL, specimen, clock) == 200_000
+    assert tenant_budget.room(repository, PRINCIPAL, specimen, QWEN, clock) == (200_000, None)
     assert tenant_budget.admits(repository, PRINCIPAL, specimen, 200_000, clock) is None
     assert tenant_budget.admits(repository, PRINCIPAL, specimen, 200_001, clock) == EXHAUSTED
     repository.broken = Conflict("refused")
     assert tenant_budget.admits(repository, PRINCIPAL, specimen, 1, clock) == UNAVAILABLE
     with pytest.raises(tenant_budget.TenantBudgetUnavailable):
-        tenant_budget.remaining(repository, PRINCIPAL, specimen, clock)
+        tenant_budget.room(repository, PRINCIPAL, specimen, QWEN, clock)
     repository.broken, repository.caps = None, []
-    assert tenant_budget.remaining(repository, PRINCIPAL, specimen, clock) is None
+    assert tenant_budget.room(repository, PRINCIPAL, specimen, QWEN, clock) == (None, None)
     assert tenant_budget.admits(repository, PRINCIPAL, specimen, 10**12, clock) is None
+
+
+def test_room_reports_the_next_attempts_own_hold(tmp_path):
+    # A worker that reserved and stopped before saving the run leaves the hold
+    # and no record: room() finds it for the attempt that comes round again.
+    repository = capped(tmp_path, [(ORGANIZATION, 1_000_000)])
+    specimen = specimen_with(priced_run())
+    stopped = specimen.model_copy(deep=True)
+    assert tenant_budget.reserve_step(repository, PRINCIPAL, stopped, QWEN, 20_000, lambda: MOMENT) is None
+    assert RECORD not in specimen.run.dependencies
+    assert tenant_budget.recorded_micros(specimen.run, QWEN) is None
+    assert tenant_budget.room(repository, PRINCIPAL, specimen, QWEN, lambda: MOMENT) == (980_000, 20_000)
+    assert tenant_budget.recorded_micros(stopped.run, QWEN) == 20_000
 
 
 # ---- the research broker ("on" mode) -------------------------------------------------
@@ -631,6 +716,10 @@ def test_cap_positions_roll_spend_up_the_tree():
     assert positions["collections"][SYNTHETIC_COLLECTION]["spent_micros"] == 120
     assert positions["collections"][SIBLING] is None
     assert cap_positions({}, collections, MONTH, {})["organization"] is None
+    # As in the cost report, a parent that is not a listed collection makes a root.
+    rooted = cap_positions({SYNTHETIC_COLLECTION: 100}, {SYNTHETIC_COLLECTION: PARENT}, MONTH, {SYNTHETIC_COLLECTION: 30})
+    assert rooted["collections"] == {SYNTHETIC_COLLECTION: {"monthly_cap_micros": 100, "month": MONTH,
+        "spent_micros": 30, "remaining_micros": 70}}
     with pytest.raises(ValueError):
         cap_positions({}, {PARENT: SIBLING, SIBLING: PARENT}, MONTH, {})
     with pytest.raises(ValueError):

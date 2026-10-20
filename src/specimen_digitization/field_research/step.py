@@ -3855,7 +3855,11 @@ class FieldResearchStep:
         cap is what is left, and a field that does not fit goes to review.
         A monthly cap of the organization or the collection that applies
         (TENANT_BUDGETS.md) limits it the same way, by the least any of their
-        ledgers has left this month (tenant_budget.remaining, read only)."""
+        ledgers has left this month (tenant_budget.room, read only). An
+        attempt that already holds on one of those ledgers, never sent because
+        a refusal later in the chain blocked it, reserves that same amount
+        again: recomputed, the room would be smaller by its own hold, and the
+        hold could never replay."""
         from specimen_digitization.application.domain import Scope
         from specimen_digitization.application.lane_allowance import (
             LegacyLedgerUnavailable,
@@ -3863,17 +3867,23 @@ class FieldResearchStep:
         )
         from specimen_digitization.application.tenant_budget import (
             TenantBudgetUnavailable,
-            remaining,
+            recorded_micros,
+            room,
         )
 
         policy = specimen.run.profile.execution
         if headroom <= 0:
             return headroom
+        held = recorded_micros(specimen.run, FIELD_RESEARCH)
+        if held is not None:
+            return held
         try:
-            tenant_left = remaining(workflow.repository, principal, specimen, workflow.clock)
+            tenant_left, held = room(workflow.repository, principal, specimen, FIELD_RESEARCH, workflow.clock)
         except (OperationalBlock, TenantBudgetUnavailable):
             # tenant_budget.reserve_step reports it with its own code.
             return headroom
+        if held is not None:
+            return held
         if policy.program_allowance_micros is None and tenant_left is None:
             return headroom
         try:
