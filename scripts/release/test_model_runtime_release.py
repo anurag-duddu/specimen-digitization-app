@@ -128,7 +128,7 @@ def test_processing_is_opt_in_and_cleanup_runs_after_failure():
         Loader=yaml.BaseLoader)
     assert workflow["on"]["workflow_dispatch"]["inputs"]["process_queued"]["default"] == "false"
     steps = workflow["jobs"]["release"]["steps"]
-    process, cool = steps[-2:]
+    process, cool = steps[-3:-1]  # the registry step (test_keep_images.py) runs after them
     assert "inputs.process_queued" in process["if"] and "workflow_dispatch" in process["if"]
     assert "always()" in cool["if"] and "inputs.process_queued" in cool["if"]
 
