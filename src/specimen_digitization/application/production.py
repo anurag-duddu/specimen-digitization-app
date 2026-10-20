@@ -281,6 +281,7 @@ class SqlConnectRepository:
             {
                 "organization_id": str(UUID(m["organizationId"])),
                 "collection_id": str(UUID(m["collectionId"])),
+                "collection_name": (m.get("collection") or {}).get("name"),
                 "role": m["role"],
                 "can_view_sensitive": m["canViewSensitive"],
             }
@@ -1016,6 +1017,57 @@ class SqlConnectRepository:
             ):
                 raise
         return payload
+
+    def active_intake_jobs(self, scope):
+        after = ''
+        while True:
+            rows = self.execute('ListActiveIntakeJobs', dict(self.variables(scope), afterId=after, limit=100)).get('items', [])
+            for row in rows:
+                value = row['payload']
+                if value.get('state') != 'waiting' or value.get('sensitive') is not False or value['id'] != str(UUID(row['id'])):
+                    raise Conflict('Intake job inventory mismatch')
+                yield value
+            if len(rows) < 100:
+                return
+            after = str(UUID(rows[-1]['id']))
+
+    def private_document_page(self, scope, kind, owner, after, limit, include_sensitive=False):
+        from .intake_models import PRIVATE_KINDS
+        if kind not in PRIVATE_KINDS or owner != actor_uid.get() or not 1 <= limit <= 101:
+            raise PermissionError('Private intake inventory unavailable')
+        rows = self.execute('ListPrivateIntakePage', dict(self.variables(scope),
+            kind=kind, afterId=after, limit=limit, includeSensitive=include_sensitive)).get('items', [])
+        ids = [str(UUID(row['id'])) for row in rows]
+        documents = {}
+        for start in range(0, len(ids), 100):
+            documents.update({row['id']: row for row in self.private_documents(scope, kind, owner, ids[start:start + 100])})
+        return [documents[id] for id in ids if id in documents]
+
+    def commit_intake_submission(self, scope, draft, job):
+        if draft['owner_id'] != actor_uid.get() or job['owner_id'] != actor_uid.get():
+            raise PermissionError('Private submission unavailable')
+        expected = draft['revision']
+        payload = dict(draft, revision=expected + 1)
+        self.execute('CommitIntakeSubmission', dict(self.variables(scope), id=draft['id'],
+            expectedRevision=expected, sensitive=draft['sensitive'], payload=payload,
+            jobId=job['id'], jobPayload=job), mutation=True)
+        return payload
+
+    def private_documents(self, scope, kind, owner, ids):
+        from .intake_models import PRIVATE_KINDS
+        if kind not in PRIVATE_KINDS or owner != actor_uid.get() or len(ids) > 100:
+            raise PermissionError('Private intake selection unavailable')
+        if not ids:
+            return []
+        sensitive = any(m['organization_id'] == scope.organization_id
+            and m['collection_id'] == scope.collection_id and m['can_view_sensitive']
+            for m in self.memberships(owner))
+        rows = self.execute('GetPrivateIntakeItems', dict(self.variables(scope),
+            kind=kind, ids=ids, includeSensitive=sensitive)).get('items', [])
+        for row in rows:
+            if type(row.get('sensitive')) is not bool or row['payload'].get('sensitive', True) != row['sensitive']:
+                raise Conflict('Document sensitivity metadata mismatch')
+        return [row['payload'] for row in rows]
 
 
 class GcsBlobs:

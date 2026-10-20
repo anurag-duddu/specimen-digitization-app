@@ -99,7 +99,10 @@ def derivation(tmp_path):
         fixture.record = reopen(fixture)
         assert post(fixture, [choice(fixture)])["applied"] == 1
         fixture.selected = reopen(fixture)
-        fixture.app.state.research_derivation.wake_worker = lambda: fixture.wakes.append("wake")
+        def wake(principal):
+            assert principal == fixture.principal
+            fixture.wakes.append("wake")
+        fixture.app.state.research_derivation.wake_worker = wake
 
         def schedule(principal, saved, command):
             from specimen_digitization.research_harness.derivation_contracts import DerivationScheduleReceipt
