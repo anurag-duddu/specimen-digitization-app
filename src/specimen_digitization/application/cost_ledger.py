@@ -243,18 +243,23 @@ def _add(total, amount):
 
 
 def _amount(group) -> dict:
-    """One grouped row's sums: whole numbers sent as text by the connector."""
-    def whole(key):
+    """One grouped row's sums: whole numbers sent as text by the connector.
+
+    Amounts may be negative: a free-allowance credit, or a SAM 3 residual below
+    the per-request charges (cost_allocation). A count never is.
+    """
+    def whole(key, signed=True):
         value = group[key]
-        if type(value) is str and value.isascii() and value.isdigit():
+        digits = value[1:] if signed and type(value) is str and value.startswith("-") else value
+        if type(value) is str and digits and digits.isascii() and digits.isdigit():
             return int(value)
-        if type(value) is int and value >= 0:
+        if type(value) is int and (signed or value >= 0):
             return value
         raise ValueError("cost_totals_invalid")
 
     cost = whole("cost_micros")
     return {"cost_micros": cost, "held_micros": cost if group["cost_basis"] == HELD else 0,
-            "list_cost_micros": whole("list_cost_micros"), "entries": whole("entries")}
+            "list_cost_micros": whole("list_cost_micros"), "entries": whole("entries", signed=False)}
 
 
 def _uuid(value):
@@ -284,13 +289,14 @@ def collection_totals(collections: list[dict], own: dict[str, dict]) -> dict[str
 
 
 def cost_report(organization_id: str, from_month: str, to_month: str,
-                collections: list[dict], groups: list[dict]) -> dict:
+                collections: list[dict], groups: list[dict], meter: dict | None = None) -> dict:
     """The contract body of ``GET /v1/organizations/{organization_id}/costs``.
 
     ``collections`` are the organization's collections ({"id", "name",
     "parentId"}); ``groups`` are CostTotalsV1's sums per (collection, month,
-    stage, source, kind, provider, resource, cost basis). Caps and the shared
-    cost meter are not built yet: they are null.
+    stage, source, kind, provider, resource, cost basis); ``meter`` is how far
+    the shared-cost allocation has run (cost_allocation.meter). Caps are not
+    built yet: they are null.
     """
     months = months_between(from_month, to_month)
     listed = [{"collection_id": _uuid(item["id"]), "name": item.get("name"),
@@ -342,5 +348,5 @@ def cost_report(organization_id: str, from_month: str, to_month: str,
             {"month": month, "stage": stage, "provider": provider, "resource": resource, **amount}
             for (month, stage, provider, resource), amount in sorted(models.items())
         ],
-        "meter": None,
+        "meter": meter,
     }
