@@ -46,6 +46,7 @@ const Map<String, List<String>> limitFamilies = <String, List<String>>{
   'the limits on money': <String>[
     'cost_budget_exhausted',
     'program_allowance_exhausted',
+    'tenant_budget_exhausted',
     'pilot_launch_budget_exhausted',
     'pilot_cohort_reading_budget_insufficient',
   ],
@@ -54,6 +55,7 @@ const Map<String, List<String>> limitFamilies = <String, List<String>>{
     'research_budget_state_unavailable',
     'program_allowance_ledger_unavailable',
     'program_allowance_unavailable',
+    'tenant_budget_unavailable',
   ],
   'the pilot cost settings': <String>[
     'pilot_run_budget_not_approved',
@@ -67,6 +69,7 @@ const Map<String, List<String>> limitFamilies = <String, List<String>>{
 const Set<String> moneyLimits = <String>{
   'cost_budget_exhausted',
   'program_allowance_exhausted',
+  'tenant_budget_exhausted',
   'pilot_launch_budget_exhausted',
   'pilot_cohort_reading_budget_insufficient',
 };
@@ -318,9 +321,9 @@ void main() {
     /// speaks of a budget, a cost or an allowance.
     ///
     /// What this sees, and what it does not: only a code written as a string
-    /// literal in the three forms below, in six files, and only one with
-    /// "budget", "cost" or "allowance" in it. It does not see a code built or
-    /// passed on indirectly (`issue = issue or "<code>"`,
+    /// literal in the forms below, in the files the test names, and only one
+    /// with "budget", "cost" or "allowance" in it. It does not see a code
+    /// built or passed on indirectly (`issue = issue or "<code>"`,
     /// `OperationalBlock(ledger["reading_time_blocker"])`), nor a pilot launch
     /// code about capacity or time (`pilot_cohort_reading_capacity_insufficient`,
     /// `pilot_cohort_reading_time_insufficient`, `pilot_complete_*_time_insufficient`,
@@ -350,6 +353,7 @@ void main() {
         ...limitCodesIn(source('application/worker_launch.py'), raised),
         ...limitCodesIn(source('application/worker_launch.py'), assigned),
         ...limitCodesIn(source('application/lane_allowance.py'), constant),
+        ...limitCodesIn(source('application/tenant_budget.py'), constant),
         ...limitCodesIn(source('application/lane.py'), refused),
       };
       // The evidence check blocks a run as `evidence_harness_blocked:<reason>`,

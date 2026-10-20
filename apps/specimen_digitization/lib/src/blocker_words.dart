@@ -104,6 +104,13 @@ const Map<String, BlockerWords> _limitWords = <String, BlockerWords>{
     'An administrator must review it.',
     why: _costNotRecorded,
   ),
+  // An optional monthly cap of the organization or of a collection.
+  'tenant_budget_exhausted': BlockerWords(
+    'Processing stopped at a monthly cost limit set for the organization or '
+        'a collection',
+    'An administrator must review the limit.',
+    why: _costNotRecorded,
+  ),
   // A limit that could not be checked, because its settings or totals were
   // not available.
   'approved_cost_budget_unavailable': BlockerWords(
@@ -116,6 +123,10 @@ const Map<String, BlockerWords> _limitWords = <String, BlockerWords>{
   ),
   'program_allowance_ledger_unavailable': BlockerWords(
     "The program's spending totals could not be read",
+    _checkTotals,
+  ),
+  'tenant_budget_unavailable': BlockerWords(
+    'The monthly spending limits or totals could not be read',
     _checkTotals,
   ),
   'program_allowance_unavailable': BlockerWords(
