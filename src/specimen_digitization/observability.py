@@ -473,12 +473,42 @@ def sam3_trace_span(request, headers):
         finally:
             span.__exit__(None, None, None)
 
-def model_trace_context(specimen_id: str, run_id: str) -> dict[str, str]:
-    """Carry application-owned correlation IDs, never specimen content."""
+def model_trace_context(
+    specimen_id: str,
+    run_id: str,
+    *,
+    organization_id: str | None = None,
+    collection_id: str | None = None,
+) -> dict[str, str]:
+    """Carry application-owned correlation IDs, never specimen content.
+
+    The tenant ids travel as explicit keys, so the model child can name the
+    organization and collection a call is charged to; the W3C carrier itself
+    still excludes baggage (_model_trace_carrier).
+    """
+    tenant = {
+        key: value
+        for key, value in (("organization_id", organization_id), ("collection_id", collection_id))
+        if value is not None
+    }
     return {
         **_model_trace_carrier(logfire.get_context()),
         "specimen_id": specimen_id,
         "run_id": run_id,
+        **tenant,
+    }
+
+
+def tenant_ids(specimen) -> dict[str, str | None]:
+    """The organization and collection a specimen's calls are charged to.
+
+    For model_trace_context's keywords. Telemetry never fails a call: a
+    specimen without a scope (a test stand-in) names neither.
+    """
+    scope = getattr(specimen, "scope", None)
+    return {
+        "organization_id": getattr(scope, "organization_id", None),
+        "collection_id": getattr(scope, "collection_id", None),
     }
 
 
@@ -506,6 +536,8 @@ def isolated_model_span(
     for key, value in (
         ("specimen.id", context.get("specimen_id")),
         ("specimen.run.id", context.get("run_id")),
+        ("specimen.organization.id", context.get("organization_id")),
+        ("specimen.collection.id", context.get("collection_id")),
         ("specimen.region.id", region_id),
         ("specimen.route.id", route_id),
     ):
