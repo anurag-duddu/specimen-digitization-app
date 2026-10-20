@@ -76,11 +76,12 @@ LANE.md T2b and T2c):
 ## The month
 
 The UTC calendar month of the attempt's first reservation. The run records it,
-with the ledgers it reserved in, in `run.dependencies["tenant_budget"]`
-(`"<step>:<attempt>": {"month", "keys", "ledger_collection"}`). Settlement
-reads that record, never the clock or the caps: a step reserved in October and
-settled in November settles October's ledger, and a cap removed or unreadable
-since does not keep its hold. Like `ordinary_cost_settlements`, the record
+with the ledgers it reserved in and the amount, in
+`run.dependencies["tenant_budget"]`
+(`"<step>:<attempt>": {"month", "keys", "ledger_collection", "micros"}`).
+Settlement reads that record, never the clock or the caps: a step reserved in
+October and settled in November settles October's ledger, and a cap removed or
+unreadable since does not keep its hold. Like `ordinary_cost_settlements`, the record
 changes `run.dependencies` after the append-once pipeline-run row may have been
 written (HARNESS.md, #146); with no cap set nothing is recorded.
 
@@ -100,7 +101,21 @@ written (HARNESS.md, #146); with no cap set nothing is recorded.
 
 A refusal after step 2 (another worker took the room meanwhile) keeps the holds
 already made. They are on the run's record, so the same attempt replays them
-rather than reserving twice when it comes round again.
+rather than reserving twice when it comes round again (a person's retry). It
+reserves the recorded amount again (`tenant_budget.recorded_micros`), whatever
+the step's reservation would be now: field research's would be smaller by the
+attempt's own hold, and a different amount could never replay. Tested for field
+research refused by the program's allowance and by a second cap, and for SAM 3
+refused by the allowance.
+
+A worker that holds and stops before the run is saved leaves the hold and no
+record. In the same month, field research finds the hold on the ledger
+(`tenant_budget.room`) and reserves that amount again; any other step reserves
+its reservation as computed now, and an amount that differs from the hold
+blocks the run as `tenant_budget_unavailable`, as the program's ledger does. In
+a later UTC month the retry reserves on the new month's ledger, and the old
+month keeps that hold, counted and never settled: an over-count, never an
+under-count.
 
 ## Failing closed
 
@@ -128,7 +143,8 @@ queues the run again. The app names them "Monthly cost limit reached" and
 `FieldResearchStep.reservation` caps the step's headroom by the least any
 applicable ledger has left this month, as it does by the program allowance's
 remainder. When that is less than one expert request it keeps the headroom, so
-the reservation blocks the record. A retry whose run limits other than money
+the reservation blocks the record. An attempt that already holds (above)
+reserves that amount instead. A retry whose run limits other than money
 leave no room is given up on unsent unless a cap would refuse it, or cannot be
 read: then the money block is kept, as for the allowance.
 
@@ -164,19 +180,33 @@ every cap that is set:
 {"organization_id": "...", "caps": [{"collection_id": null, "monthly_cap_micros": 5000000}]}
 ```
 
-Any other member gets 403 `access_denied`; a body outside the contract, or a
-collection that is not the organization's, gets 422 `invalid_input`; a
-deployment whose store keeps no caps gets 503 `cost_meter_unavailable`. A cap
-applies from the next reservation.
+Any other member, an admin row that is not active, or a cap the connector
+refuses for the caller's membership gets 403 `access_denied`; a body outside
+the contract, or a collection that is not the organization's, gets 422
+`invalid_input`; a deployment whose store keeps no caps gets 503
+`cost_meter_unavailable`, and caps that cannot be read 503 with the message
+`tenant_budget_unavailable`. A cap applies from the next reservation.
+
+## In the cost report
+
+`GET /v1/organizations/{org}/costs` (COST_METER.md) fills `organization_cap`
+and each collection's `cap` with the cap's position for the current UTC month,
+whatever range was asked for: `{"monthly_cap_micros", "month", "spent_micros",
+"remaining_micros"}`, null where no cap is set (`tenant_budget.report_caps`).
+Spent is that month's cost entries, settled and held, and a collection's
+counts every descendant's. It can trail the worker's ledger by reservations in
+flight, which the ledger holds before a cost entry exists. The caps are read as
+one of the caller's administrator memberships in the organization; when the
+range does not include the current month, that month's totals are read once
+more, only if a cap is set. `caps_status` is `"ok"`, or `"unavailable"` when
+the caps (or that month's totals) cannot be read: the report is then returned
+whole with every cap null.
 
 ## Not in this change
 
-- No report of a cap's position yet. The cost report
-  (`GET /v1/organizations/{org}/costs`) is a separate change, PR 1, not in
-  `main` when this was written. The ledgers are creator-only worker documents
-  the API cannot read, so the report is to compute each cap's position from
-  its cost entries with `tenant_budget.cap_positions`, once both changes are
-  in `main`.
+- The report does not read the ledgers: they are creator-only worker
+  documents the API cannot read, so a cap's position comes from the cost
+  entries (above).
 - No screen sets a cap; the app only names the two blockers.
 - An organization's ledgers are shared across its collections through the
   run's `program_ledger_collection`, which `lane.queue` sets on every run the
