@@ -22997,6 +22997,178 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   Queue, physical camera and institutional acceptance remain Not confirmed.
   Merge, protected release, client activation and live acceptance are pending.
 
+### 2026-10-20 — bulk intake PR #368 merged; protected releases started
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch
+  `codex/compare-photo-intake-ux`, worktree
+  `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`.
+  Independent G51 review approved exact journal-only successor
+  `7d935a72a2930bfa90035854d0db0c78e0ddfba9`, tree
+  `03e79b9d5870c66209a490f1e8909e96bf8538a4`, with no P1/P2. All23 applicable
+  hosted checks passed on this head; PR Hosting deployment correctly skipped.
+  CI/CD39466027555 and Runtime candidate CI39466027630 succeeded.
+- Immediately before normal protected merge, main still matched ba007d4c,
+  the local tree was clean, PR head matched7d935a72, merge state was CLEAN,
+  and no review thread remained unresolved. No admin override, required-check
+  bypass, force push or branch-protection change was used.
+- PR #368 merged at2026-10-20T17:40:17Z as
+  `3350648862ab23dab6f6337481b2be8840a27caa`. Main-push Hosting CI/CD39468106835,
+  Data39468106836, Runtime39468106897 and Runtime candidate CI39468107065
+  started on that SHA. Release completion, client activation, Gmail provider
+  acceptance and final scientific Queue acceptance are still Not confirmed.
+  Preserve the branch/worktree and this pending release log until reconciliation.
+
+### 2026-10-20 — first protected data release exposes missing base permission
+
+- Same task/worktree as above. Fix-forward branch
+  `codex/fix-intake-auth-permission` starts from merged main33506488 and retains
+  the pending append-only release record.
+- Data39468106836 completed database/connector/Storage and pinned georeferencing
+  dataset steps, then failed `Enable and verify Google alongside email sign-in`.
+  The Google provider was already enabled and retained. The following Android
+  SHA POST returned403. Runtime39468106897 failed its same-commit Data wait;
+  its deployment step did not run. Client flags remain disabled.
+- Read-only Cloud Audit Logs give the exact failure at
+  2026-10-20T17:43:06.721913Z: Firebase AndroidAppService.CreateShaCertificate,
+  permission `firebase.clients.update`, granted=false on the existing project.
+  Firebase's Cloud Audit Logs reference documents that base permission.
+  Its general IAM page separately lists `clientauthconfig.clients.create` as
+  an additional permission; adding only that additional permission was
+  insufficient. The existing Auth role has the other seven reviewed permissions.
+- Repair scope is one missing permission on the existing data release role,
+  with corresponding contract and deployment-guide correction. Do not grant
+  Firebase Admin/Editor, manually add certificates, bypass the failed release,
+  or weaken App Check. Validation, source review, protected repair release,
+  and real Gmail acceptance are pending.
+- Minimal repair prepared in owner_setup.sh, its existing contract suite and
+  both deployment/Google sign-in guides. Focused checks passed:13Auth-only
+  setup cases,197Auth provisioning cases, shell syntax, pinned ShellCheck and
+  diff check. The regression starts with the actual seven-permission shape,
+  verifies one role update to exactly eight with the existing binding unchanged,
+  no other writes or release starts, and an idempotent second run.
+- Independent review found no P1/P2 in that repair and confirmed the documented
+  missing-grant exception: DEPLOYMENT's failed-release procedure directs the
+  owner-authorized setup script for missing grants, then protected release
+  retries. That permits this bounded setup repair while the owner-script
+  correction follows full canonical/G51/hosted PR qualification. Application
+  deployment source remains merged33506488; no hand deployment is permitted.
+  The permission is project-scoped Firebase app-configuration authority, not a
+  SHA-only IAM permission; the existing protected provisioner bounds operations
+  to its exact app and reviewed fingerprints. Exact-head approval follows freeze.
+
+### 2026-10-20 — protected runtime exposes intake argument parsing defect
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch
+  `codex/fix-intake-auth-permission`, same 5da8 worktree. Applied the reviewed
+  Auth-only setup repair from e895e930: exactly one role update, zero failures,
+  existing recipient unchanged. Live role readback has the exact eight
+  permissions. Data39468106836 attempt2 then passed, including Google provider
+  and Android fingerprint provisioning. Hosting39468106835 attempt1 passed;
+  its public marker and the public API /version both report merged33506488.
+- Protected Runtime39470159238 on33506488 with process_queued=false passed
+  Data wait, all image checks, API deployment and API smoke. Intake job creation
+  failed before creating either intake job: gcloud treats the separate value
+  starting `-m,` as an option, so `--args` has no argument. SAM and the shared
+  scientific worker subsequently deployed and verified. The dedicated E2E
+  scientific job was created, then correctly failed its missing invoker check.
+  The error's generic `specimen-worker` label refers to the dedicated job in
+  that loop; readback confirms the shared worker already had both invokers.
+- Repaired only intake command serialization to one `--args=...` argv token.
+  Both shared and dedicated names reproduce the old parsing failure in an
+  offline option-parser regression. The fixed focused release/ops suite passed
+  106 tests. The existing scientific worker constructor already uses equals
+  form. Independent source review found no P1/P2; job arguments, images,
+  limits, identity, secret pins, policy checks and no-execution behavior remain
+  unchanged. Full verification and exact-head/hosted qualification are pending.
+- The e895e930 canonical run was deliberately interrupted (exit130) after the
+  newly observed release defect required a source correction. It is not a
+  pass. All its processes exited before editing. Restart the complete canonical
+  verifier on the corrected frozen source; do not reuse its partial shards.
+- Authorized intake-only setup dry-run and application each reported exactly
+  three changes and zero failures: API/worker invokers and API definition read
+  on specimen-worker-e2e. Missing intake jobs were explicitly skipped; they
+  still need protected definition and the existing bounded setup grants.
+  No job or release was started by setup. Fresh shared execution read observed
+  109 retained executions, zero without completionTime, zero running; repeat
+  before granting original worker access to the new test collection.
+- Google sign-in activation is independent of intake jobs. Following the
+  documented post-Data activation path and independent review, set only
+  SPECIMEN_GOOGLE_SIGN_IN_ENABLED=true and reran all jobs of current-main push
+  Hosting39468106835 (attempt2). Bulk intake remains unset/default false.
+  This is a rebuild through protected Hosting, not a manual deploy. Real Gmail
+  sign-in, collection membership, imports, Submit and final Queue remain
+  Not confirmed. No provider or native acceptance is inferred from these runs.
+
+### 2026-10-20 — corrected release candidate qualification and live read preparation
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch
+  `codex/fix-intake-auth-permission`, worktree
+  `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`.
+  Independent G51 code/security review approved exact clean
+  `d629bf739716e9e3365729e85c2ecf523bcc0767`, tree
+  `6f7831a31f93bf8780fbe822db2dedcfe9dad562`, covering both the Auth permission
+  and intake argument repairs. No P1/P2 findings; this source approval does
+  not substitute for canonical/hosted checks or production acceptance.
+- Read back specimen-worker-e2e after the authorized setup: exactly the API
+  and worker identities under roles/run.invoker and the API identity under
+  specimenWorkerRead, with no public binding. Both intake definitions remain
+  absent until the protected argument repair releases.
+- Real Gmail Firebase account lookup still returned zero users. No account
+  was administratively created. A private read-only helper now uses the locked
+  Python environment and trusted CA bundle; the system Python's absent CA
+  chain had refused the first read, and certificate validation stayed enabled.
+- Corrected the private acceptance helper/guide to take actual specimen IDs
+  from submission-item results, not draft/submission/item IDs, and to require
+  finalized non-synthetic processing separately from terminal disposition.
+  Historical executions alone are not attribution to the actual submission.
+  Pilot scope remains exactly the two approved distinct provider originals.
+- First real read-only helper execution succeeded at2026-10-20T18:17:11Z:
+  one exhausted SQL page, zero specimen and Queue records, and no test
+  collection yet. This is pre-provisioning evidence only, not the required
+  after-Saved/pre-Submit proof. Private observation is
+  authoritative-baseline-20261020T181711172719Z.private.json. Runtime checks
+  correctly remain false while intake jobs are absent; no live import,
+  normal-user Queue, scientific completion or native acceptance is implied.
+- Canonical d629bf73 reported a real failure in
+  test_http_configured_classifier_pins_scope_source_route_and_provenance:
+  completed child provenance existed, but the parent retained
+  external_outcome_unknown after a5.866-second call against a5-second total
+  budget. The separate timeout/unknown/no-automatic-retry case passed. The
+  isolated result reason was not retained, so budget exhaustion is a supported
+  hypothesis rather than a recorded reason. Shard1 finished with1failed,
+  5450passed and5skipped. After obtaining its full traceback, interrupted the
+  remaining run (exit130) to address the failure and integrate newer main.
+  This run is not a canonical pass; the entire corrected integration will be
+  requalified. Log /private/tmp/specimen-intake-verify-d629bf73.log and shard
+  artifacts specimen-python-shards-3wmfk9qk retain the actual partial results.
+- Main advanced independently through PR #386 to
+  cd8be7d2a193f5efdf5b7bab4c403f892499c965, adding the cost meter. Narrow independent
+  integration review confirmed the four-field E2E bootstrap, dedicated routing,
+  existing actor and original G30 ProgramLedger admission/cap are unchanged.
+  CostEntry reporting is not a replacement allowance. Do not use costs/refresh
+  as a read-only check: it starts worker drains. Preserve these main changes
+  when integrating the release repairs and rerun required qualification.
+- Hosting39468106835 attempt2 passed; public marker reports33506488, the same
+  run/attempt and Google-enabled build. In normal Chrome, observed the Google
+  button, cancelled the chooser, observed the recovered cancellation message
+  and enabled email/Google choices, retried, selected the exact Gmail account
+  and completed ordinary identity consent. The live app recognized
+  anurag.duddu@gmail.com and displayed no collection assigned. Read-only Auth
+  lookup confirms one verified, active Google-provider identity. This is real
+  Gmail sign-in/cancellation/retry evidence, not an administrative fake user.
+- With fresh109shared executions all complete and zero running, prepared only
+  the approved four bootstrap identifiers from that real UID. Set the private
+  data-production artifact via stdin and dispatched protected Data39476572585
+  on current maincd8be7d2. It passed and reported creation of the missing test
+  collection/memberships with no content or work submitted. The normal Gmail
+  Check access again action then opened Intake E2E. Read-only observation at
+  2026-10-20T18:41:40Z confirmed the correct collection/parent and zero specimen
+  and Queue rows. This does not yet prove the after-Saved/pre-Submit boundary.
+- Safe browser evidence: gmail-live-sign-in-20261020.png and
+  gmail-live-collection-access-20261020.png in this task's visualization
+  implementation directory. API/version now reports current maincd8be7d2.
+  Bulk remains disabled. Provider consent/import, Submit, final scientific
+  Queue, public provider approval and real native camera remain Not confirmed.
 ### 2026-10-20 - COST-METER-PR1 the cost meter's ledger of record, backfill sweep and admin cost totals
 
 - Owner's words, typed 2026-10-20 and relayed by the coordinator session (local_e3ae4073): "Yes, build the in-app tenant cost meter (option A): per organization and collection totals, per-tenant budget caps, shared Google costs split by usage, monthly check against the real bills." This is PR 1 of five, to the coordinator's design contract (`cost-meter-design-2026-10-20.md`, the "table", "Writes (PR 1)" and "API contract" sections). Claude agent, worktree agent-a9bb5a91976a19136, branch `claude/tenant-cost-meter-ledger` from origin/main ba007d4c; PR #386. Nothing deployed; no gcloud or firebase command; no production read; no model call.
@@ -23016,3 +23188,67 @@ approvals were requested together; cloud setup remained unapplied when recorded.
 - Reusable learnings: (1) A SQL Connect `@check` expression sees only the fields its lookup selects: `this.role` with a `{ active }` selection fails to compile, the emulator then loads no connector at all and `seed-integration.mjs` fails with HTTP 503; read `connector.log` in the retained serve directory. (2) PostgreSQL `LEAST` ignores NULL, so `LEAST(gap since lag(created_at), cap)` gives the cap to a save with no earlier one in the window, which equals the full-history answer when the window starts a cap before the month. (3) The emulator database is shared by every engine-contract stage, so a deployment-wide aggregate also counts other stages' rows: assert on your own ids, and expect a split by specimens to give your fresh collection no share. (4) Projection writes send Int64 `byteSize` as text; a fake that sums them must convert. (5) In a worktree-isolated agent, heredocs whose text holds JSON-like braces and quotes (commit messages, appended test code) are refused as too complex; write the text with the Write tool and pass the file (`git commit -F`), or use Edit.
 - Failed approaches: a first commit order put the connector tests before the signed-sum change they need; it was redone with `git reset --soft` before any push.
 - Not confirmed: the Monitoring query strings against the live API (fixtures are in the documented response shape, not recorded from the project); that a custom role with only `monitoring.timeSeries.list` suffices; gcloud's `NOT_FOUND` wording and `logging metrics update --config-from-file`; the Pacific day boundary (an earlier console reading suggested 05:00Z); whether jobs share the instance-based free pool, the 1-minute job minimum in `billable_instance_time`, chronological drawing of the free tier, and this project being alone on its billing account; the bucket's storage class; the database tier and the Data Connect trial on the bill; late paid-call rows after a day is allocated are not reallocated; the intake job's cost is not allocated; hosted CI and the G51 review.
+### 2026-10-20 — Intake repair integration and classifier fixture qualification
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch
+  `codex/fix-intake-auth-permission`, worktree
+  `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`.
+  Locally merged main `cd8be7d2a193f5efdf5b7bab4c403f892499c965` as
+  `74f5576b6153271d8a0b3afcca3c0fcbf247f01a`; both append-only logs survived.
+  Independent review confirmed the six Auth/argv repair files remain identical
+  to reviewed `d629bf73` and incoming cost-meter source remains identical to main.
+- Current-main Runtime `39475816367` reproduced the same intake `--args`
+  parser failure. No hand deployment or processing was substituted. Protected
+  Data bootstrap `39476572585` succeeded, and Gmail's normal live collection
+  access plus the post-bootstrap empty SQL/Queue baseline were recorded above.
+- The interrupted `d629bf73` canonical run was not a pass. Its positive
+  classifier fixture returned `external_outcome_unknown` after 5.866 seconds
+  with a five-second total clock, despite completed child provenance at about
+  4.864 seconds after input creation. The generic result does not establish
+  the exact isolation failure reason. The positive fixture now allows 30
+  seconds for fresh interpreter/imports, work, export and IPC; a delegating
+  observer records the real isolation status/reason/elapsed/cleanup on failure.
+  Production clocks and behavior are unchanged. The negative two-second
+  timeout/no-automatic-retry case is unchanged, and all exact configuration,
+  source, model and provenance assertions remain in place.
+- Validation actually run after integration: 32 focused classifier runtime,
+  tracing and worker-wiring tests passed in 12.99 seconds; `git diff --check`
+  passed. QA changed only `tests/test_classifier_runtime.py` and performed no
+  cloud or repository commits. Full canonical verification on this integrated
+  candidate and final exact-head G51/hosted checks remain pending. Bulk remains
+  disabled; real connector import, Submit, scientific finalization, public
+  provider and native acceptance remain Not confirmed.
+
+### 2026-10-20 — Intake repair canonical qualification before PR publication
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch/worktree
+  `codex/fix-intake-auth-permission` in `5da8/specimen-digitization-app`.
+  Integrated source `7a8e4e9766115e73f49eaf583dc8542143c66efe`, tree
+  `61eb9f7f8b107fe059c838cc44a29e91f9c59e6b`, remained clean and unchanged
+  throughout `scripts/ci/verify.sh`, which exited zero. Full Python inventory:
+  18,958 passed plus 50 skipped equals 19,008, with complete exact-once shard
+  accounting. Both the positive classifier fixture and unchanged two-second
+  negative control passed in shard 2. The design-system suite passed 1,309;
+  the app suite passed 3,190 with 7 skips. Both analyses, repository/secret
+  checks, formatting (605 files, zero changes), web build and all declared
+  route/security-header smoke checks passed. This is local qualification,
+  not a claim of native-device or provider acceptance.
+- Durable local evidence: `/private/tmp/specimen-intake-verify-7a8e4e97.log`
+  and `specimen-python-shards-rccbh014` under the task's macOS temporary
+  directory. Independent G51 source/journal review approved the exact source
+  and tree above with no P1/P2 findings. This append changes only the journal;
+  final PR-head review and hosted checks are still required.
+- Main remained protected at `cd8be7d2a193f5efdf5b7bab4c403f892499c965`.
+  Its Hosting run `39475816905` succeeded; both public web and API markers
+  reported that SHA. Its Runtime run still failed at the known intake argument
+  parser, so this was not a complete intake release. Google sign-in is live;
+  Bulk remains off until compatible private jobs and their IAM verify.
+- The reviewed private owner observer ran only scoped GraphQL reads and found
+  zero Gmail-owned drafts, items, submissions, results, jobs and specimens in
+  Intake E2E at `2026-10-20T18:56:42.852081Z`, with every page exhausted and
+  unchanged inventory/membership readback. No content or processing was
+  started. This establishes a metadata baseline, not normal-user import proof.
+  Its private artifact is `intake-metadata-baseline-20261020T185642852081Z.private.json`.
+  Real connector consent/import, pre-Submit staging proof, explicit submission,
+  scientific finalization, institutional/public-provider and native acceptance
+  remain Not confirmed.
