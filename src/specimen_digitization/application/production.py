@@ -72,6 +72,10 @@ LOGGER = logging.getLogger(__name__)
 PROJECTED_SPECIMENS = 256
 # Roles whose saves also write review decisions; additive V2 admits no other.
 REVIEW_ROLES = {"reviewer", "manager", "admin"}
+# Specimens whose cost rows this process remembers sending, and the rows one
+# UpsertCostEntriesV1 call carries (the connector takes at most 500).
+COSTED_SPECIMENS = 256
+COST_ROWS_PER_CALL = 200
 
 
 class ProjectionRejected(RuntimeError):
@@ -164,6 +168,8 @@ class SqlConnectRepository:
         self.project = project
         self.graph_blobs = graph_blobs
         self._projected: OrderedDict[str, set[str]] = OrderedDict()
+        # Specimen id -> {cost row id: digest of the row as last sent}.
+        self._costed: OrderedDict[str, dict[str, str]] = OrderedDict()
         self._sizes: dict[str, int] = {}
         if emulator_host:
             if (
@@ -675,6 +681,7 @@ class SqlConnectRepository:
         committed = self._snapshot(row)
         # A replayed save still catches up rows a lost pass did not write.
         self.write_projection(principal.scope, committed, principal.role in REVIEW_ROLES)
+        self.write_costs(principal.scope, committed)
         return committed
 
     def _commit(self, principal, specimen, expected, key, request_digest):
@@ -731,7 +738,90 @@ class SqlConnectRepository:
                 raise
             return committed
         self.write_projection(principal.scope, specimen, principal.role in REVIEW_ROLES)
+        self.write_costs(principal.scope, specimen)
         return specimen
+
+    def write_costs(self, scope, specimen) -> bool:
+        """Record the active run's paid calls in the cost meter (COST_METER.md).
+
+        Only rows this process has not sent as they now stand are sent. Never
+        raises: the snapshot is the record, and the worker's sweep repairs any
+        row this pass could not write. The warning names a code, never a value.
+        """
+        from .cost_ledger import CostRowInvalid, paid_call_rows
+
+        try:
+            rows = paid_call_rows(scope.organization_id, scope.collection_id, specimen.id, specimen.run)
+            if rows:
+                self.send_cost_rows(scope, rows[0]["specimen_id"], rows)
+            return True
+        except Exception as error:
+            code = str(error) if isinstance(error, CostRowInvalid) else type(error).__name__
+            LOGGER.warning("Cost rows not written: %s", log_code(code))
+            return False
+
+    def send_cost_rows(self, scope, specimen_id, rows) -> int:
+        """Upsert one specimen's cost rows that differ from what this process sent.
+
+        Raises when the connector refuses or cannot be reached; a row counts as
+        sent only once its call is answered with every row upserted.
+        """
+        sent = self._costed.setdefault(specimen_id, {})
+        self._costed.move_to_end(specimen_id)
+        while len(self._costed) > COSTED_SPECIMENS:
+            self._costed.popitem(last=False)
+        pending = [(row, digest(row)) for row in rows]
+        pending = [(row, key) for row, key in pending if sent.get(row["id"]) != key]
+        for start in range(0, len(pending), COST_ROWS_PER_CALL):
+            chunk = pending[start:start + COST_ROWS_PER_CALL]
+            response = self.execute(
+                "UpsertCostEntriesV1",
+                dict(
+                    self.variables(scope),
+                    specimenId=specimen_id,
+                    rowsJson=json.dumps([row for row, _ in chunk], separators=(",", ":"), allow_nan=False),
+                ),
+                mutation=True,
+            )
+            if response.get("upserted") != len(chunk):
+                raise Conflict("cost_entries_refused")
+            sent.update({row["id"]: key for row, key in chunk})
+        return len(pending)
+
+    def run_paid_calls_page(self, scope, after_id, since, limit):
+        """One page of the cost sweep: each run's paid calls, from ListRunPaidCallsV1."""
+        if not 1 <= limit <= 25:
+            raise ValueError("Invalid page size")
+        row = self.execute(
+            "ListRunPaidCallsV1",
+            dict(self.variables(scope), afterId=after_id, since=since, limit=limit),
+        ).get("page")
+        if not isinstance(row, dict) or not isinstance(row.get("page_json"), str):
+            raise OperationalBlock("cost_sweep_page_unavailable")
+        page = json.loads(row["page_json"])
+        if not isinstance(page.get("items"), list) or type(page.get("specimens")) is not int:
+            raise OperationalBlock("cost_sweep_page_unavailable")
+        return page
+
+    def cost_totals(self, organization_id, from_month, to_month):
+        """The organization's collections and grouped cost sums (CostTotalsV1)."""
+        uid = actor_uid.get()
+        if not uid:
+            raise PermissionError("Verified actor context required")
+        data = self.execute(
+            "CostTotalsV1",
+            {"organizationId": organization_id, "actorUid": uid,
+             "fromMonth": from_month, "toMonth": to_month},
+        )
+        row = data.get("totals")
+        if not isinstance(row, dict) or not isinstance(row.get("totals_json"), str):
+            raise OperationalBlock("cost_meter_unavailable")
+        totals = json.loads(row["totals_json"])
+        if totals.get("admitted") is not True:
+            raise PermissionError("Cost totals need an administrator")
+        if not isinstance(totals.get("groups"), list) or not isinstance(data.get("collections"), list):
+            raise OperationalBlock("cost_meter_unavailable")
+        return {"collections": data["collections"], "groups": totals["groups"]}
 
     def write_projection(self, scope, specimen, reviewer=False) -> ProjectionResult:
         """Write the normalized rows this revision supports (DATA_CONTRACT.md 11).
@@ -1347,7 +1437,11 @@ class Sam3Service:
             self.effect,
             {
                 "endpoint": self.endpoint,
-                "telemetry": model_trace_context(specimen.id, specimen.run.id),
+                "telemetry": model_trace_context(
+                    specimen.id, specimen.run.id,
+                    organization_id=specimen.scope.organization_id,
+                    collection_id=specimen.scope.collection_id,
+                ),
                 "request": request,
                 "pins": {
                     "checkpoint_sha256": checkpoint,
@@ -1456,7 +1550,11 @@ class Sam3Service:
             self.effect,
             {
                 "endpoint": self.endpoint,
-                "telemetry": model_trace_context(specimen.id, specimen.run.id),
+                "telemetry": model_trace_context(
+                    specimen.id, specimen.run.id,
+                    organization_id=specimen.scope.organization_id,
+                    collection_id=specimen.scope.collection_id,
+                ),
                 "request": request,
                 "expected": self.expected,
                 "timeout_seconds": specimen.run.profile.execution.external_timeout_seconds,

@@ -154,7 +154,11 @@ class ConfiguredClassifier:
                     facade.effect or classifier_child,
                     {
                         **pinned,
-                        "telemetry": model_trace_context(specimen.id, specimen.run.id),
+                        "telemetry": model_trace_context(
+                            specimen.id, specimen.run.id,
+                            organization_id=specimen.scope.organization_id,
+                            collection_id=specimen.scope.collection_id,
+                        ),
                         "storage": storage,
                         "asset": specimen.asset.model_dump(mode="json"),
                         "request": request.model_dump(mode="json"),

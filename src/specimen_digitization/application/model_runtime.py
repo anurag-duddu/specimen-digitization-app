@@ -181,7 +181,11 @@ def invoke_model(
     run = specimen.run
     payload = {
         "operation": operation,
-        "telemetry": model_trace_context(specimen.id, run.id),
+        "telemetry": model_trace_context(
+            specimen.id, run.id,
+            organization_id=specimen.scope.organization_id,
+            collection_id=specimen.scope.collection_id,
+        ),
         "storage": storage_descriptor(adapter.blobs),
         "asset": specimen.asset.model_dump(mode="json"),
         "profile": run.profile.model_dump(mode="json"),

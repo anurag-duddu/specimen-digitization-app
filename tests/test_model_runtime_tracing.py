@@ -12,7 +12,9 @@ from test_application import HEADERS, PREFIX, TOKEN, intake
 from test_hardening_concurrency import repository
 from test_model_runtime import ModelAdapters, local_model_factory
 
-from specimen_digitization.application.api import SYNTHETIC_TEXT, create_app
+from specimen_digitization.application.api import (
+    SYNTHETIC_COLLECTION, SYNTHETIC_ORG, SYNTHETIC_TEXT, create_app,
+)
 from specimen_digitization.application.storage import LocalBlobs
 
 
@@ -129,7 +131,12 @@ def test_fresh_model_children_export_linked_private_spans_before_return(
         assert attrs["specimen.id"] == row["specimen_id"]
         assert attrs["specimen.run.id"] == work["run"]["id"]
         assert attrs["specimen.model.outcome"] == "completed"
-        assert set(record["telemetry"]) == {"traceparent", "specimen_id", "run_id"}
+        assert set(record["telemetry"]) == {
+            "traceparent", "specimen_id", "run_id", "organization_id", "collection_id"}
+        # The tenant the call is charged to (COST_METER.md), ids only.
+        assert record["telemetry"]["organization_id"] == SYNTHETIC_ORG
+        assert attrs["specimen.organization.id"] == SYNTHETIC_ORG
+        assert attrs["specimen.collection.id"] == SYNTHETIC_COLLECTION
         agent = next(s for s in spans if s["name"].startswith("invoke_agent "))
         chat = next(s for s in spans if s["name"].startswith("chat "))
         assert agent["parent"]["span_id"] == effect["context"]["span_id"]
@@ -231,3 +238,13 @@ def test_model_context_excludes_baggage_tracestate_and_invalid_parent(
     else:
         assert "traceparent" not in result
     assert "PRIVATE" not in json.dumps(result)
+    assert "organization_id" not in result and "collection_id" not in result
+
+
+def test_model_context_carries_the_tenant_ids_as_explicit_keys(monkeypatch):
+    from specimen_digitization.observability import model_trace_context
+
+    monkeypatch.setattr(logfire, "get_context", lambda: {"baggage": "PRIVATE-BAGGAGE"})
+    result = model_trace_context("specimen-001", "run-001", organization_id="org-1", collection_id="coll-1")
+    assert result == {"specimen_id": "specimen-001", "run_id": "run-001",
+                      "organization_id": "org-1", "collection_id": "coll-1"}
