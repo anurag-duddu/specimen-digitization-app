@@ -499,6 +499,19 @@ def model_trace_context(
     }
 
 
+def tenant_ids(specimen) -> dict[str, str | None]:
+    """The organization and collection a specimen's calls are charged to.
+
+    For model_trace_context's keywords. Telemetry never fails a call: a
+    specimen without a scope (a test stand-in) names neither.
+    """
+    scope = getattr(specimen, "scope", None)
+    return {
+        "organization_id": getattr(scope, "organization_id", None),
+        "collection_id": getattr(scope, "collection_id", None),
+    }
+
+
 @contextmanager
 def isolated_model_span(
     context: Mapping[str, str],

@@ -1,7 +1,7 @@
 """Explicit production adapters: ADC SQL Connect/GCS and approved HF routes."""
 
 from __future__ import annotations
-from ..observability import model_trace_context
+from ..observability import model_trace_context, tenant_ids
 import contextvars
 from contextlib import contextmanager
 import hashlib
@@ -1437,11 +1437,7 @@ class Sam3Service:
             self.effect,
             {
                 "endpoint": self.endpoint,
-                "telemetry": model_trace_context(
-                    specimen.id, specimen.run.id,
-                    organization_id=specimen.scope.organization_id,
-                    collection_id=specimen.scope.collection_id,
-                ),
+                "telemetry": model_trace_context(specimen.id, specimen.run.id, **tenant_ids(specimen)),
                 "request": request,
                 "pins": {
                     "checkpoint_sha256": checkpoint,
@@ -1550,11 +1546,7 @@ class Sam3Service:
             self.effect,
             {
                 "endpoint": self.endpoint,
-                "telemetry": model_trace_context(
-                    specimen.id, specimen.run.id,
-                    organization_id=specimen.scope.organization_id,
-                    collection_id=specimen.scope.collection_id,
-                ),
+                "telemetry": model_trace_context(specimen.id, specimen.run.id, **tenant_ids(specimen)),
                 "request": request,
                 "expected": self.expected,
                 "timeout_seconds": specimen.run.profile.execution.external_timeout_seconds,

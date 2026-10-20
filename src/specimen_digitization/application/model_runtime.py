@@ -5,7 +5,7 @@ from dataclasses import asdict
 from pathlib import Path
 from types import SimpleNamespace
 
-from ..observability import isolated_model_span, model_trace_context
+from ..observability import isolated_model_span, model_trace_context, tenant_ids
 from .bounded_effect import run_isolated
 from .domain import (
     Asset,
@@ -181,11 +181,7 @@ def invoke_model(
     run = specimen.run
     payload = {
         "operation": operation,
-        "telemetry": model_trace_context(
-            specimen.id, run.id,
-            organization_id=specimen.scope.organization_id,
-            collection_id=specimen.scope.collection_id,
-        ),
+        "telemetry": model_trace_context(specimen.id, run.id, **tenant_ids(specimen)),
         "storage": storage_descriptor(adapter.blobs),
         "asset": specimen.asset.model_dump(mode="json"),
         "profile": run.profile.model_dump(mode="json"),

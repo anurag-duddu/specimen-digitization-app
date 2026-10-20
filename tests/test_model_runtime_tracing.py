@@ -248,3 +248,16 @@ def test_model_context_carries_the_tenant_ids_as_explicit_keys(monkeypatch):
     result = model_trace_context("specimen-001", "run-001", organization_id="org-1", collection_id="coll-1")
     assert result == {"specimen_id": "specimen-001", "run_id": "run-001",
                       "organization_id": "org-1", "collection_id": "coll-1"}
+
+
+def test_tenant_ids_read_a_specimen_s_scope_and_never_fail_without_one():
+    from types import SimpleNamespace
+
+    from specimen_digitization.observability import model_trace_context, tenant_ids
+
+    scoped = SimpleNamespace(scope=SimpleNamespace(organization_id="org-1", collection_id="coll-1"))
+    assert tenant_ids(scoped) == {"organization_id": "org-1", "collection_id": "coll-1"}
+    # A stand-in with no scope names no tenant, and the context carries none.
+    assert tenant_ids(SimpleNamespace()) == {"organization_id": None, "collection_id": None}
+    context = model_trace_context("specimen-001", "run-001", **tenant_ids(SimpleNamespace()))
+    assert "organization_id" not in context and "collection_id" not in context
