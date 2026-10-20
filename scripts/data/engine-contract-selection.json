@@ -102,6 +102,7 @@
     "sql.research-send-fence",
     "sql.pilot-ledger",
     "sql.sensitivity",
+    "sql.cost-meter",
     "sql.indexes.initial",
     "sql.paging",
     "sql.search",
