@@ -166,7 +166,8 @@ SQL Connect emulator (engine contract stage `sql.cost-meter`).
     {"month": "2026-10", "stage": "reading", "provider": "huggingface", "resource": "handwriting-qwen",
      "cost_micros": 0, "held_micros": 0, "list_cost_micros": 0, "entries": 0}
   ],
-  "meter": null
+  "meter": null,
+  "caps_status": "ok"
 }
 ```
 
@@ -178,8 +179,15 @@ SQL Connect emulator (engine contract stage `sql.cost-meter`).
   rows. `models` sums the paid-call rows by month, stage, provider and
   resource.
 - `updated_at` is the latest `updatedAt` of the rows in range, or `null`.
-- `organization_cap`, each `cap` and `meter` are `null` until the changes
-  below.
+- `organization_cap` and each `cap` are the monthly caps' positions for the
+  current UTC month, whatever the range: `{"monthly_cap_micros", "month",
+  "spent_micros", "remaining_micros"}`, or `null` where no cap is set. Spent is
+  that month's rows, settled and held, a collection's counting every
+  descendant's (TENANT_BUDGETS.md, "In the cost report").
+- `caps_status` is `"ok"`, or `"unavailable"` when the caps (or the current
+  month's totals they need) cannot be read; the costs are then returned whole
+  with every cap `null`.
+- `meter` is `null` until PR 3.
 
 `POST /v1/organizations/{organization_id}/costs/refresh` takes no body,
 answers `{"started": true}` when the worker job was started and
@@ -198,9 +206,9 @@ allows those identifiers. All of them are ids.
 
 ## What the later changes add
 
-- PR 2: per-tenant monthly caps, in a settings table, enforced beside the
-  program allowance's reservation; `organization_cap` and each `cap` become
-  `{"monthly_cap_micros", "month", "spent_micros", "remaining_micros"}`, and
+- PR 2 (#387, docs/execution/golive/TENANT_BUDGETS.md): per-tenant monthly
+  caps, in a settings table, enforced beside the program allowance's
+  reservation; `organization_cap`, each `cap` and `caps_status` above, and
   `PUT .../costs/caps` sets them.
 - PR 3: shared Google costs (the SAM 3 service's idle time, the worker, the
   API, storage and the database) split by usage into `allocation` rows, with
