@@ -576,8 +576,29 @@ class DrainWorker:
             LOGGER.warning("blocked-run recovery skipped: %s", type(exc).__name__)
         return recovered
 
+    def _sweep_costs(self, scope, stop=None):
+        """Bring the collection's cost meter up to date (cost_sweep.sweep).
+
+        Once per collection per execution, under its fence, before any run is
+        stepped: bounded by the sweep's own budget and never past the window's
+        close. Its result is logged as counts; a failure never stops the drain.
+        """
+        from .cost_sweep import sweep
+
+        try:
+            result = sweep(self.repository, scope, clock=self.clock, stop=stop, until=self.close_at)
+        except Exception as exc:  # noqa: BLE001 - the meter never stops the drain
+            LOGGER.warning("cost sweep skipped: %s", type(exc).__name__)
+            return None
+        if result["status"] != "unsupported":
+            LOGGER.info("cost sweep %s: %d pages, %d records, %d rows sent, %d skipped",
+                        result["status"], result["pages"], result["specimens"], result["rows"],
+                        result["skipped"])
+        return result
+
     def _drain(self, drain, fence, previous, stop, summary):
         principal = drain.principal
+        self._sweep_costs(principal.scope, stop)
         summary["recovered"] += self._recover_blocked(drain, stop)
         resume = self._resume(drain, previous)
         while True:
