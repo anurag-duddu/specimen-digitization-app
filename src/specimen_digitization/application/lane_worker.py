@@ -305,8 +305,12 @@ class DrainWorker:
         deadline_seconds=3600,
         lease_seconds=None,
         max_steps_per_run=500,
+        cost_allocation=None,
     ):
         self.repository, self.workflow = repository, workflow
+        # Splits shared Google costs across tenants at each drain (cost_allocator).
+        self.cost_allocation = cost_allocation
+        self._job_collections = ()
         self.user_id, self.membership_loader = user_id, membership_loader
         self.execution_id = execution_id
         self.clock = clock or (lambda: datetime.now(timezone.utc))
@@ -347,7 +351,13 @@ class DrainWorker:
             "continuation": None,
         }
         wanted = False
-        for member in self.membership_loader(self.user_id):
+        members = list(self.membership_loader(self.user_id))
+        # The collections this job serves: the cost allocation's even split falls back to them.
+        self._job_collections = tuple(
+            (member["organization_id"], member["collection_id"])
+            for member in members if member["role"] in LANE_ROLES
+        )
+        for member in members:
             if member["role"] not in LANE_ROLES:
                 continue
             if summary["status"] == "stopped" or self._stopped(stop):
@@ -596,9 +606,30 @@ class DrainWorker:
                         result["skipped"])
         return result
 
+    def _allocate_costs(self, scope, stop=None):
+        """Split shared Google costs onto the collection (cost_allocator.CostAllocator.run).
+
+        After the sweep, before any run is stepped: bounded by the allocation's
+        own budget and never past the window's close. Logged as counts; a
+        failure never stops the drain.
+        """
+        if self.cost_allocation is None:
+            return None
+        try:
+            result = self.cost_allocation.run(self.repository, scope, job_collections=self._job_collections,
+                                              stop=stop, until=self.close_at)
+        except Exception as exc:  # noqa: BLE001 - the meter never stops the drain
+            LOGGER.warning("cost allocation skipped: %s", type(exc).__name__)
+            return None
+        if result["status"] != "unsupported":
+            LOGGER.info("cost allocation %s: %d days, %d rows sent", result["status"], result["days"],
+                        result["rows"])
+        return result
+
     def _drain(self, drain, fence, previous, stop, summary):
         principal = drain.principal
         self._sweep_costs(principal.scope, stop)
+        self._allocate_costs(principal.scope, stop)
         summary["recovered"] += self._recover_blocked(drain, stop)
         resume = self._resume(drain, previous)
         while True:
