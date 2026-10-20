@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator
 from contextlib import contextmanager
 from enum import StrEnum
 from typing import Any
@@ -66,15 +66,3 @@ def processing_stage_span(
         **attributes,
     ) as span:
         yield span
-
-
-def current_trace_context() -> dict[str, str]:
-    """Serialize the current OpenTelemetry context for an approved worker hop."""
-    return dict(logfire.get_context())
-
-
-@contextmanager
-def attach_trace_context(context: Mapping[str, str]) -> Iterator[None]:
-    """Attach explicitly propagated trace context inside a trusted worker."""
-    with logfire.attach_context(dict(context)):
-        yield

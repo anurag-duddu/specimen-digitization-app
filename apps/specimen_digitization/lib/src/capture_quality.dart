@@ -8,6 +8,11 @@ import 'package:specimen_ui/specimen_ui.dart';
 import 'widgets/caveat_text.dart';
 import 'widgets/not_calibrated_chip.dart';
 
+/// Top-level wrapper so [CaptureQuality.measure] can run via
+/// `intakeRunOffUi` / `Isolate.run` without capturing a class tear-off.
+CaptureQuality measureCaptureQuality(Uint8List rgba, int width, int height) =>
+    CaptureQuality.measure(rgba, width, height);
+
 /// Descriptive thumbnail measurements, not calibrated blur or readability grades.
 class CaptureQuality {
   const CaptureQuality({

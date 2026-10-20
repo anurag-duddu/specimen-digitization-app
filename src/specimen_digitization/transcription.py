@@ -2,24 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Literal
-
-import logfire
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from pydantic_ai import Agent, BinaryContent
+from pydantic_ai import Agent
 
 from .application.reading_declarations import DeclarationCandidates
-from .model_gateway import HuggingFaceModelGateway, ModelGatewayConfigurationError
+from .model_gateway import HuggingFaceModelGateway
 from .provider_privacy import PrivateProviderModel, agent_instrumentation
-from .prompts import (
-    CollectionPromptInputs,
-    PromptName,
-    ResolvedPrompt,
-    resolve_prompt,
-)
-from .tracing import SpecimenTraceContext
-
-SupportedImageMediaType = Literal["image/jpeg", "image/png"]
+from .prompts import PromptName, ResolvedPrompt
 
 # How a reader may write the break between two of its `lines` in
 # `verbatim_text`. A newline is what the schema asks for. Novita's server for
@@ -141,65 +130,3 @@ def build_literal_transcription_agent(
     # the image bytes are never recorded.
     agent.instrument = agent_instrumentation()
     return agent
-
-
-def transcribe_label_image(
-    gateway: HuggingFaceModelGateway,
-    *,
-    route_id: str,
-    image: bytes,
-    media_type: SupportedImageMediaType,
-    prompt_inputs: CollectionPromptInputs,
-    prompt_label: str | None = None,
-    trace_context: SpecimenTraceContext | None = None,
-) -> LiteralTranscriptionRun:
-    """Run one literal transcription without placing image bytes in trace data."""
-    route = gateway.route(route_id)
-    if not route.serves_with_images("handwriting_transcriber"):
-        # Only an image reader's route reads a label (HARNESS.md section 5).
-        raise ModelGatewayConfigurationError(
-            f"Route {route_id!r} is not a handwriting reader with image input."
-        )
-    prompt = resolve_prompt(
-        PromptName.LITERAL_TRANSCRIPTION,
-        prompt_inputs,
-        label=prompt_label,
-    )
-    agent = build_literal_transcription_agent(
-        gateway,
-        route_id=route_id,
-        prompt=prompt,
-    )
-    trace_attributes = trace_context.span_attributes() if trace_context else {}
-    with logfire.span(
-        "Transcribe specimen label",
-        **trace_attributes,
-        **{
-            "specimen.model.route_id": route.route_id,
-            "specimen.model.id": route.model_id,
-            "specimen.model.upstream_provider": route.provider,
-            "specimen.prompt.name": prompt.name.value,
-            "specimen.prompt.requested_label": prompt.requested_label,
-            "specimen.prompt.served_label": prompt.served_label or "code-default",
-            "specimen.prompt.version": prompt.version or 0,
-        },
-    ):
-        result = agent.run_sync(
-            [
-                "Produce a literal transcription of this label image.",
-                BinaryContent(data=image, media_type=media_type),
-            ]
-        )
-
-    return LiteralTranscriptionRun(
-        output=result.output,
-        route_id=route.route_id,
-        model_id=route.model_id,
-        upstream_provider=route.provider,
-        prompt_name=prompt.name,
-        prompt_requested_label=prompt.requested_label,
-        prompt_served_label=prompt.served_label,
-        prompt_version=prompt.version,
-        input_tokens=result.usage.input_tokens,
-        output_tokens=result.usage.output_tokens,
-    )

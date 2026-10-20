@@ -30,56 +30,6 @@ bool applePersonalDemoPasteEnabled({
     (platform ?? defaultTargetPlatform) == TargetPlatform.iOS &&
     (configured ?? _applePersonalDemoConfigured);
 
-class EmailLinkEntry extends StatefulWidget {
-  const EmailLinkEntry({
-    super.key,
-    required this.access,
-    required this.browser,
-    required this.builder,
-  });
-  final EmailLinkAccess access;
-  final EmailLinkBrowser browser;
-  final Widget Function(BuildContext, MagicLinkController) builder;
-  @override
-  State<EmailLinkEntry> createState() => _EmailLinkEntryState();
-}
-
-class _EmailLinkEntryState extends State<EmailLinkEntry> {
-  late final MagicLinkController controller;
-  @override
-  void initState() {
-    super.initState();
-    controller = MagicLinkController(
-      access: widget.access,
-      browser: widget.browser,
-    )..addListener(_changed);
-    unawaited(controller.initialize());
-  }
-
-  void _changed() {
-    if (mounted) setState(() {});
-  }
-
-  @override
-  void dispose() {
-    controller.removeListener(_changed);
-    controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => !controller.initialized
-      ? const UiScaffold(
-          body: Center(
-            child: UiProgress.ring(
-              semanticsLabel: 'Opening the sign-in link',
-              size: UiProgressSize.large,
-            ),
-          ),
-        )
-      : widget.builder(context, controller);
-}
-
 class MagicLinkSignInScreen extends StatefulWidget {
   const MagicLinkSignInScreen({
     super.key,

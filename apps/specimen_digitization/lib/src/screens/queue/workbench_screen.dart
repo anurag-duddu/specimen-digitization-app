@@ -211,147 +211,156 @@ class _WorkbenchScreenState extends State<WorkbenchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final WorkspaceController controller = WorkspaceScope.of(context);
-    final Specimen? specimen = controller.selected;
-    final CollectionScope? scope = controller.scope;
-    // Next and previous come from the list the queue already holds, in the
-    // order it holds it. Null at each end rather than wrapping: a queue that
-    // loops has no end, and a reviewer working it cannot tell when they are
-    // finished (pass criteria 6.5 and 7.1).
-    final Specimen? next = controller.nextSpecimen;
-    final Specimen? previous = controller.previousSpecimen;
-    final int? position = controller.selectedPosition;
-    final bool listed = position != null;
+    // Selection/mutating only — quiet list ticks must not rebuild the shell
+    // via InheritedNotifier; the open record still refreshes here.
+    final WorkspaceController controller = WorkspaceScope.read(context);
+    return ListenableBuilder(
+      listenable: controller.selectionChanges,
+      builder: (BuildContext context, Widget? _) {
+        final Specimen? specimen = controller.selected;
+        final CollectionScope? scope = controller.scope;
+        // Next and previous come from the list the queue already holds, in the
+        // order it holds it. Null at each end rather than wrapping: a queue that
+        // loops has no end, and a reviewer working it cannot tell when they are
+        // finished (pass criteria 6.5 and 7.1).
+        final Specimen? next = controller.nextSpecimen;
+        final Specimen? previous = controller.previousSpecimen;
+        final int? position = controller.selectedPosition;
+        final bool listed = position != null;
 
-    // A back gesture must not abandon a save that is in flight
-    // (motion catalog, row 19).
-    // The way out is the top bar's back, which the workbench publishes into
-    // the frame with the record's identifier and its commands (13 sections
-    // 2.4 and 4.1). The row that used to hold a back control and nothing else
-    // is gone: it repeated what the bar's leading slot is for, which is the
-    // third row of 13 section 0's table.
-    return PopScope<Object?>(
-      canPop: !controller.mutating && !_navigationBlocked,
-      onPopInvokedWithResult: _onBlockedPop,
-      child:
-          specimen == null ||
-              scope == null ||
-              !_ownsCollection ||
-              specimen.id != widget.specimenId
-          ? _Loading(id: widget.specimenId)
-          : ReviewWorkbench(
-              key: ValueKey<String>('${scope.key}:${specimen.id}'),
-              specimen: specimen,
-              onShowQueue: QueueWorkspaceScope.maybeOf(context)?.showQueue,
-              showSidebarToggle:
-                  !(AppSidebarScope.maybeOf(context)?.docked ?? false),
-              specimensExpanded:
-                  QueueWorkspaceScope.maybeOf(context)?.expanded ?? false,
-              active: _active,
-              onExitGuardChanged: _onExitGuardChanged,
-              onNavigationBlockedChanged: _onNavigationBlockedChanged,
-              loadArtifact: (ArtifactRequest artifact) =>
-                  controller.repository.artifact(scope, specimen, artifact),
-              loadHistoricalArtifact:
-                  (Specimen record, ArtifactRequest artifact) =>
-                      controller.repository.artifact(scope, record, artifact),
-              loadHistoryPage: (int after, int through) =>
-                  controller.repository.historyPage(
-                    scope,
-                    specimen.id,
-                    afterRevision: after,
-                    throughRevision: through,
-                  ),
-              onRestoreVersion:
-                  controller.repository is SpecimenHistoryRepository
-                  ? controller.restoreVersion
-                  : null,
-              fieldResearchHost: controller.repository is ApiSpecimenRepository
-                  ? (buildFields) => ResearchHost(
-                      repository:
-                          controller.repository as ApiSpecimenRepository,
-                      collection: scope,
-                      specimen: specimen,
-                      refreshRecord: () => controller.refreshSelected(),
-                      refreshEpoch: controller.selectedRefreshEpoch,
-                      refreshEnabled:
-                          _active &&
-                          controller.foreground &&
-                          !controller.mutating,
-                      onPollingPaused: (owner, paused) =>
-                          controller.setPollingPaused(owner, paused),
-                      builder: (context, researchForField) =>
-                          buildFields(researchForField),
-                    )
-                  : null,
-              loadHistoricalRevision:
-                  (int revision, String? runId, String? runSha256) =>
-                      controller.repository.historicalSpecimen(
+        // A back gesture must not abandon a save that is in flight
+        // (motion catalog, row 19).
+        // The way out is the top bar's back, which the workbench publishes into
+        // the frame with the record's identifier and its commands (13 sections
+        // 2.4 and 4.1). The row that used to hold a back control and nothing else
+        // is gone: it repeated what the bar's leading slot is for, which is the
+        // third row of 13 section 0's table.
+        return PopScope<Object?>(
+          canPop: !controller.mutating && !_navigationBlocked,
+          onPopInvokedWithResult: _onBlockedPop,
+          child:
+              specimen == null ||
+                  scope == null ||
+                  !_ownsCollection ||
+                  specimen.id != widget.specimenId
+              ? _Loading(id: widget.specimenId)
+              : ReviewWorkbench(
+                  key: ValueKey<String>('${scope.key}:${specimen.id}'),
+                  specimen: specimen,
+                  onShowQueue: QueueWorkspaceScope.maybeOf(context)?.showQueue,
+                  showSidebarToggle:
+                      !(AppSidebarScope.maybeOf(context)?.docked ?? false),
+                  specimensExpanded:
+                      QueueWorkspaceScope.maybeOf(context)?.expanded ?? false,
+                  active: _active,
+                  onExitGuardChanged: _onExitGuardChanged,
+                  onNavigationBlockedChanged: _onNavigationBlockedChanged,
+                  loadArtifact: (ArtifactRequest artifact) =>
+                      controller.repository.artifact(scope, specimen, artifact),
+                  loadHistoricalArtifact:
+                      (Specimen record, ArtifactRequest artifact) => controller
+                          .repository
+                          .artifact(scope, record, artifact),
+                  loadHistoryPage: (int after, int through) =>
+                      controller.repository.historyPage(
                         scope,
                         specimen.id,
-                        revision,
-                        runId: runId,
-                        runSha256: runSha256,
+                        afterRevision: after,
+                        throughRevision: through,
                       ),
-              collections: controller.scopes,
-              canReview: scope.permissions.any(
-                (String p) =>
-                    <String>['reviewer', 'manager', 'admin'].contains(p),
-              ),
-              canOperate: scope.permissions.any(
-                (String p) => <String>[
-                  'operator',
-                  'reviewer',
-                  'manager',
-                  'admin',
-                ].contains(p),
-              ),
-              busy:
-                  controller.mutating ||
-                  (specimen.disposition != null &&
-                      !<String>[
-                        'cleared',
-                        'needs_human_review',
-                        'deferred',
-                      ].contains(specimen.disposition)),
-              onNext: next == null ? null : () => _goTo(scope, next),
-              onPrevious: previous == null
-                  ? null
-                  : () => _goTo(scope, previous),
-              nextBlockedReason: !listed || next != null
-                  ? null
-                  : 'This is the last record loaded. Load more in the '
-                        'queue to carry on.',
-              previousBlockedReason: !listed || previous != null
-                  ? null
-                  : 'This is the first record in the queue.',
-              positionLabel: listed
-                  ? '$position of ${controller.items.length}'
-                  : null,
-              reviewerId: controller.session.userId,
-              onChange: (Json change) => controller.mutate(change, null),
-              onChangeBatch:
-                  (
-                    List<Json> changes,
-                    String reason,
-                    bool Function(Specimen, Json) stillApplies,
-                  ) => controller.mutateBatch(
-                    changes,
-                    reason,
-                    stillApplies: stillApplies,
+                  onRestoreVersion:
+                      controller.repository is SpecimenHistoryRepository
+                      ? controller.restoreVersion
+                      : null,
+                  fieldResearchHost:
+                      controller.repository is ApiSpecimenRepository
+                      ? (buildFields) => ResearchHost(
+                          repository:
+                              controller.repository as ApiSpecimenRepository,
+                          collection: scope,
+                          specimen: specimen,
+                          refreshRecord: () => controller.refreshSelected(),
+                          refreshEpoch: controller.selectedRefreshEpoch,
+                          refreshEnabled:
+                              _active &&
+                              controller.foreground &&
+                              !controller.mutating,
+                          onPollingPaused: (owner, paused) =>
+                              controller.setPollingPaused(owner, paused),
+                          builder: (context, researchForField) =>
+                              buildFields(researchForField),
+                        )
+                      : null,
+                  loadHistoricalRevision:
+                      (int revision, String? runId, String? runSha256) =>
+                          controller.repository.historicalSpecimen(
+                            scope,
+                            specimen.id,
+                            revision,
+                            runId: runId,
+                            runSha256: runSha256,
+                          ),
+                  collections: controller.scopes,
+                  canReview: scope.permissions.any(
+                    (String p) =>
+                        <String>['reviewer', 'manager', 'admin'].contains(p),
                   ),
-              verifyBatchReadback: controller.isAcknowledgedBatchReadback,
-              onRetry: (String reason) => controller.mutate(null, reason),
-              onRefresh: () => controller.refresh(),
-              onBack: _backToQueue,
-              // The shell's account menu, at the end of the record's bar in
-              // the slot every list screen's bar gives it, below large; at
-              // large the sidebar's footer carries the account (13 section
-              // 4.1, polish 3).
-              account: AppShell.accountOnRecordBar(WindowClass.of(context))
-                  ? RecordAccountActions(controller: controller)
-                  : null,
-            ),
+                  canOperate: scope.permissions.any(
+                    (String p) => <String>[
+                      'operator',
+                      'reviewer',
+                      'manager',
+                      'admin',
+                    ].contains(p),
+                  ),
+                  busy:
+                      controller.mutating ||
+                      (specimen.disposition != null &&
+                          !<String>[
+                            'cleared',
+                            'needs_human_review',
+                            'deferred',
+                          ].contains(specimen.disposition)),
+                  onNext: next == null ? null : () => _goTo(scope, next),
+                  onPrevious: previous == null
+                      ? null
+                      : () => _goTo(scope, previous),
+                  nextBlockedReason: !listed || next != null
+                      ? null
+                      : 'This is the last record loaded. Load more in the '
+                            'queue to carry on.',
+                  previousBlockedReason: !listed || previous != null
+                      ? null
+                      : 'This is the first record in the queue.',
+                  positionLabel: listed
+                      ? '$position of ${controller.items.length}'
+                      : null,
+                  reviewerId: controller.session.userId,
+                  onChange: (Json change) => controller.mutate(change, null),
+                  onChangeBatch:
+                      (
+                        List<Json> changes,
+                        String reason,
+                        bool Function(Specimen, Json) stillApplies,
+                      ) => controller.mutateBatch(
+                        changes,
+                        reason,
+                        stillApplies: stillApplies,
+                      ),
+                  verifyBatchReadback: controller.isAcknowledgedBatchReadback,
+                  onRetry: (String reason) => controller.mutate(null, reason),
+                  onRefresh: () => controller.refresh(),
+                  onBack: _backToQueue,
+                  // The shell's account menu, at the end of the record's bar in
+                  // the slot every list screen's bar gives it, below large; at
+                  // large the sidebar's footer carries the account (13 section
+                  // 4.1, polish 3).
+                  account: AppShell.accountOnRecordBar(WindowClass.of(context))
+                      ? RecordAccountActions(controller: controller)
+                      : null,
+                ),
+        );
+      },
     );
   }
 }

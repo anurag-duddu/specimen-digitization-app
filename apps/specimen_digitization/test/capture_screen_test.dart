@@ -26,6 +26,7 @@ import 'package:specimen_digitization/src/theme/app_theme.dart';
 import 'package:specimen_digitization/src/widgets/upload_item.dart';
 import 'package:specimen_digitization/src/widgets/not_calibrated_chip.dart';
 
+import 'intake_harness.dart' show pinIntakeComputeForTests;
 import 'widget_test.dart' show TestRepository;
 import 'widgets/harness.dart';
 
@@ -213,6 +214,15 @@ Future<CaptureResult?> pumpCapture(
   await tester.tap(find.text('Open camera'));
   await tester.pumpAndSettle();
   return result;
+}
+
+/// [Image.memory] with cacheWidth/Height wraps bytes in [ResizeImage].
+Uint8List imageMemoryBytes(ImageProvider<Object> provider) {
+  ImageProvider<Object> current = provider;
+  while (current is ResizeImage) {
+    current = current.imageProvider;
+  }
+  return (current as MemoryImage).bytes;
 }
 
 Future<void> takeOne(WidgetTester tester) async {
@@ -478,6 +488,8 @@ Future<void> _acceptAdmissionFile(WidgetTester tester, XFile file) async {
 }
 
 void main() {
+  setUpAll(pinIntakeComputeForTests);
+
   group('camera admission:', () {
     for (final action in ['Close', 'Done', 'Back', 'Choose files']) {
       testWidgets('zero-photo $action preserves old rows without sending', (
@@ -1214,7 +1226,7 @@ void main() {
       await tester.tap(cancel);
       await tester.pumpAndSettle();
       final image = tester.widget<Image>(find.byType(Image));
-      expect((image.image as MemoryImage).bytes, camera.captureBytes);
+      expect(imageMemoryBytes(image.image), camera.captureBytes);
       expect(find.byKey(const ValueKey('capture-send')), findsOneWidget);
       expect(tester.takeException(), isNull);
       semantics.dispose();
@@ -1602,12 +1614,13 @@ void main() {
       ),
     );
     await takeOne(tester);
-    final Uint8List before =
-        (tester.widget<Image>(find.byType(Image)).image as MemoryImage).bytes;
+    final Uint8List before = imageMemoryBytes(
+      tester.widget<Image>(find.byType(Image)).image,
+    );
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
     await waitForCameraCondition(tester, () => camera.disposed);
     expect(
-      (tester.widget<Image>(find.byType(Image)).image as MemoryImage).bytes,
+      imageMemoryBytes(tester.widget<Image>(find.byType(Image)).image),
       orderedEquals(before),
     );
 

@@ -885,11 +885,22 @@ class _CaptureScreenState extends State<CaptureScreen>
             child: LayoutBuilder(
               builder: (BuildContext context, BoxConstraints constraints) {
                 final CaptureDimensions? dimensions = _reviewDimensions;
+                final double dpr = MediaQuery.devicePixelRatioOf(context);
+                final int cacheWidth = math.max(
+                  1,
+                  (constraints.maxWidth * dpr).ceil(),
+                );
+                final int cacheHeight = math.max(
+                  1,
+                  (constraints.maxHeight * dpr).ceil(),
+                );
                 if (!_cropping || dimensions == null) {
                   return Center(
                     child: Image.memory(
                       _reviewBytes!,
                       fit: BoxFit.contain,
+                      cacheWidth: cacheWidth,
+                      cacheHeight: cacheHeight,
                       gaplessPlayback: true,
                       semanticLabel: 'The photo you took',
                     ),
@@ -903,6 +914,14 @@ class _CaptureScreenState extends State<CaptureScreen>
                   dimensions.width * scale,
                   dimensions.height * scale,
                 );
+                final int shownCacheWidth = math.max(
+                  1,
+                  (shown.width * dpr).ceil(),
+                );
+                final int shownCacheHeight = math.max(
+                  1,
+                  (shown.height * dpr).ceil(),
+                );
                 return Stack(
                   fit: StackFit.expand,
                   children: <Widget>[
@@ -912,6 +931,8 @@ class _CaptureScreenState extends State<CaptureScreen>
                         width: shown.width,
                         height: shown.height,
                         fit: BoxFit.fill,
+                        cacheWidth: shownCacheWidth,
+                        cacheHeight: shownCacheHeight,
                         gaplessPlayback: true,
                         semanticLabel: 'The photo you took',
                       ),

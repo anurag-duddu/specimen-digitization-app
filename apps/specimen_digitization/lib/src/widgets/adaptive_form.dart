@@ -46,10 +46,14 @@ const String adaptiveFormLabel = 'Form';
 /// Shows [builder] as a sheet where the window is stacked and as a dialog
 /// where it is docked (`presentsAsSheet`, 05 section 3.7).
 ///
+/// Product call sites use [showAdaptiveModal]. This entry stays for widget
+/// tests that drive a bare builder pane.
+///
 /// [width] applies to the dialog form only; the sheet is always full width.
 /// Set [dismissible] to false when the form has unsaved input, and handle the
 /// refusal inside [builder] with a `PopScope`. [semanticsLabel] names the
 /// route, which is what a screen reader announces on the way in.
+@visibleForTesting
 Future<T?> showAdaptiveForm<T>(
   BuildContext context, {
   required WidgetBuilder builder,

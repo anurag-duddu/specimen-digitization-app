@@ -249,6 +249,26 @@ class WorkspaceController extends ChangeNotifier {
   final Map<String, String> _mutationKeys = <String, String>{};
   _AwaitingBatchReadback? _awaitingBatchReadback;
 
+  /// Queue rows, cursors and list loading. Quiet polls that only replace items
+  /// notify this without rebuilding [WorkspaceScope.of] dependents.
+  final ValueNotifier<int> _listRevision = ValueNotifier<int>(0);
+
+  /// Busy strip, error banner and mutation chrome.
+  final ValueNotifier<int> _chromeRevision = ValueNotifier<int>(0);
+
+  /// Open record, selection identity and mutability for the workbench.
+  final ValueNotifier<int> _selectionRevision = ValueNotifier<int>(0);
+
+  /// Listens for queue list data: items, list loading, load-more, cursors.
+  Listenable get listChanges => _listRevision;
+
+  /// Listens for shell chrome: loading, recordLoading, mutating, loadingMore,
+  /// error.
+  Listenable get chromeChanges => _chromeRevision;
+
+  /// Listens for the open record and mutation gates the workbench needs.
+  Listenable get selectionChanges => _selectionRevision;
+
   /// Proves that a scoped, current read returned the exact all-applied batch
   /// version after an earlier readback failed. A matching revision alone is
   /// insufficient: the record-version ID, account, collection and route must
@@ -549,14 +569,26 @@ class WorkspaceController extends ChangeNotifier {
       final item = await _readSelected(scope, id);
       if (!owns()) return;
       _acceptSelected(item);
-      if (_holds == 0) {
+      final bool listTouched = _holds == 0;
+      if (listTouched) {
         _items = [
           for (final row in _items)
             if (row.id == id) item else row,
         ];
       }
       if (!quiet) _error = null;
-      _notify();
+      if (quiet) {
+        // Open-record listeners (AnimatedBuilder / selectionChanges) must
+        // wake; InheritedNotifier stays quiet when only the list moved.
+        _notify(
+          list: listTouched,
+          chrome: false,
+          selection: true,
+          inherited: true,
+        );
+      } else {
+        _notify();
+      }
     } catch (error) {
       if (!owns()) return;
       _recordFailure(error);
@@ -635,12 +667,27 @@ class WorkspaceController extends ChangeNotifier {
     _poll?.cancel();
     _search?.cancel();
     queueScroll.dispose();
+    _listRevision.dispose();
+    _chromeRevision.dispose();
+    _selectionRevision.dispose();
     super.dispose();
   }
 
-  void _notify() {
+  /// Which listeners a state change must wake. Quiet list-only polls use
+  /// [list] (and [selection] when the open record moved) without [inherited],
+  /// so [WorkspaceScope.of] dependents — the shell's structural nav especially
+  /// — do not rebuild on the 20s tick.
+  void _notify({
+    bool list = true,
+    bool chrome = true,
+    bool selection = true,
+    bool inherited = true,
+  }) {
     if (_disposed) return;
-    notifyListeners();
+    if (list) _listRevision.value++;
+    if (chrome) _chromeRevision.value++;
+    if (selection) _selectionRevision.value++;
+    if (inherited) notifyListeners();
     _drainPollAgain();
   }
 
@@ -656,7 +703,7 @@ class WorkspaceController extends ChangeNotifier {
       _deferredPage = null;
       if (_ownsQueueRead(deferred.read) && deferred.pagesEpoch == _pagesEpoch) {
         _applyPage(deferred.page, deferred.cursors);
-        _notify();
+        _notify(list: true, chrome: false, selection: false, inherited: false);
       }
     }
   }
@@ -859,7 +906,9 @@ class WorkspaceController extends ChangeNotifier {
       if (quiet && pagesEpoch != _pagesEpoch) {
         if (ownsRecord && selected != null) {
           _acceptSelected(selected);
-          _notify();
+          _notify(list: false, chrome: false, selection: true, inherited: true);
+        } else {
+          _drainPollAgain();
         }
         return;
       }
@@ -867,20 +916,38 @@ class WorkspaceController extends ChangeNotifier {
         // A row has focus or a sheet is open. Keep the answer until it does
         // not, rather than moving the list under the reviewer.
         _deferredPage = _DeferredPage(read, page, cursors, pagesEpoch);
-        if (ownsRecord && selected != null) _acceptSelected(selected);
+        final Specimen? heldSelected = ownsRecord ? selected : null;
+        if (heldSelected != null) _acceptSelected(heldSelected);
         _loading = false;
-        _notify();
+        if (heldSelected != null) {
+          _notify(list: false, chrome: false, selection: true, inherited: true);
+        } else {
+          _drainPollAgain();
+        }
         return;
       }
+      final Specimen? acceptedSelected = ownsRecord ? selected : null;
       _applyPage(page, cursors);
-      if (ownsRecord && selected != null) _acceptSelected(selected);
+      if (acceptedSelected != null) _acceptSelected(acceptedSelected);
       _loading = false;
       // A quiet poll is a background process. It may not clear a message the
       // reviewer has not read: that is what the banner's own Dismiss is for
       // (pass criterion 9.5). A refresh the reviewer asked for does clear it,
       // because they are watching the result.
       if (!quiet) _error = null;
-      _notify();
+      if (quiet) {
+        // List-only ticks skip notifyListeners so the shell (chromeChanges /
+        // WorkspaceScope.read) does not rebuild. An open-record update still
+        // notifies the ChangeNotifier for AnimatedBuilder listeners.
+        _notify(
+          list: true,
+          chrome: false,
+          selection: acceptedSelected != null,
+          inherited: acceptedSelected != null,
+        );
+      } else {
+        _notify();
+      }
     } catch (error) {
       if (!_ownsQueueRead(read)) return;
       _loading = false;
@@ -890,7 +957,7 @@ class WorkspaceController extends ChangeNotifier {
         // sentence names the age of the list, so each replacement would be
         // announced again (06 section 4, background refresh).
         if (_quietFailureReported) {
-          _notify();
+          _drainPollAgain();
           return;
         }
         _quietFailureReported = true;
