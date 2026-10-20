@@ -269,3 +269,104 @@ def test_preflight_runs_a_text_only_smoke_without_an_image(monkeypatch) -> None:
 
     assert smoke.call_args.kwargs["image_path"] is None
     assert report["live_smoke"] == {"structured_output_valid": True}
+
+
+def _catalog(routes) -> list[dict]:
+    """A router catalog that serves exactly these routes, live with tools."""
+    models: dict[str, dict] = {}
+    for route in routes:
+        model = models.setdefault(
+            route.model_id,
+            {"id": route.model_id, "architecture": {"input_modalities": ["text", "image"]},
+             "providers": []},
+        )
+        model["providers"].append(
+            {"provider": route.provider, "status": "live", "supports_tools": True}
+        )
+    return list(models.values())
+
+
+TODAY = ["handwriting-qwen", "handwriting-muse", "first-pass-glm", "harness-deepseek"]
+
+
+@pytest.mark.parametrize(
+    "value,routes",
+    [
+        (None, TODAY),
+        ("", TODAY),
+        ("first_pass", ["handwriting-qwen", "handwriting-muse", "first-pass-nemotron", "harness-deepseek"]),
+        (
+            "readers,first_pass,field_research",
+            ["handwriting-nemotron", "handwriting-muse", "first-pass-nemotron", "harness-nemotron"],
+        ),
+    ],
+)
+def test_preflight_checks_the_routes_of_the_active_option_only(monkeypatch, value, routes) -> None:
+    # A catalog with no NVIDIA route cannot block a release while the option is off.
+    monkeypatch.setattr(huggingface_preflight, "inspect_runtime_token", Mock())
+    monkeypatch.setattr(
+        huggingface_preflight,
+        "fetch_router_catalog",
+        Mock(return_value=_catalog(HUGGINGFACE_ROUTES[route_id] for route_id in routes)),
+    )
+    monkeypatch.setattr(huggingface_preflight, "verify_sam3_access", Mock())
+    if value is None:
+        monkeypatch.delenv("SPECIMEN_NVIDIA_STAGES", raising=False)
+    else:
+        monkeypatch.setenv("SPECIMEN_NVIDIA_STAGES", value)
+
+    report = huggingface_preflight.run_preflight(token="hf_test")
+
+    assert [route["route_id"] for route in report["routes"]] == routes
+    assert all(route["ready"] for route in report["routes"])
+
+
+def test_preflight_with_a_stage_on_needs_its_nvidia_route_in_the_catalog(monkeypatch) -> None:
+    monkeypatch.setattr(huggingface_preflight, "inspect_runtime_token", Mock())
+    monkeypatch.setattr(
+        huggingface_preflight,
+        "fetch_router_catalog",
+        Mock(return_value=_catalog(HUGGINGFACE_ROUTES[route_id] for route_id in TODAY)),
+    )
+    monkeypatch.setattr(huggingface_preflight, "verify_sam3_access", Mock())
+    monkeypatch.setenv("SPECIMEN_NVIDIA_STAGES", "field_research")
+
+    report = huggingface_preflight.run_preflight(token="hf_test")
+
+    assert {route["route_id"]: route["ready"] for route in report["routes"]} == {
+        "handwriting-qwen": True,
+        "handwriting-muse": True,
+        "first-pass-glm": True,
+        "harness-nemotron": False,
+    }
+
+
+def test_a_live_smoke_may_name_any_registered_route(monkeypatch) -> None:
+    run_preflight = Mock(return_value={})
+    monkeypatch.setenv("HF_TOKEN", "hf_test")
+    monkeypatch.delenv("SPECIMEN_NVIDIA_STAGES", raising=False)
+    monkeypatch.setattr(sys, "argv", ["specimen-huggingface-preflight", "--live-route", "harness-nemotron"])
+    monkeypatch.setattr(huggingface_preflight, "configure_observability", Mock())
+    monkeypatch.setattr(huggingface_preflight.logfire, "force_flush", Mock())
+    monkeypatch.setattr(huggingface_preflight, "run_preflight", run_preflight)
+
+    with pytest.raises(SystemExit):
+        huggingface_preflight.main()  # The empty report is not ready.
+
+    assert run_preflight.call_args.kwargs["live_route"] == "harness-nemotron"
+
+
+def test_a_mistyped_option_stops_preflight_naming_the_setting(monkeypatch, capsys) -> None:
+    run_preflight = Mock()
+    monkeypatch.setenv("HF_TOKEN", "hf_test")
+    monkeypatch.setenv("SPECIMEN_NVIDIA_STAGES", "gpu-secret-value")
+    monkeypatch.setattr(sys, "argv", ["specimen-huggingface-preflight"])
+    monkeypatch.setattr(huggingface_preflight, "run_preflight", run_preflight)
+
+    with pytest.raises(SystemExit) as caught:
+        huggingface_preflight.main()
+
+    assert caught.value.code == 2
+    error = capsys.readouterr().err
+    assert "SPECIMEN_NVIDIA_STAGES" in error and "gpu-secret-value" not in error
+    run_preflight.assert_not_called()

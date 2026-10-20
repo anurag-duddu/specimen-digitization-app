@@ -22784,3 +22784,39 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   preserve both the incoming NVIDIA profile variant and the intake E2E node.
   Reconcile before fresh verification; the earlier green head is not claimed
   to qualify the upcoming integrated/activated candidate.
+### 2026-10-18 - NVIDIA-OPTION Nemotron as a per-stage option behind SPECIMEN_NVIDIA_STAGES (off), measured on the pilot labels
+
+- Owner's words, typed 2026-10-18 in the coordinator session: "We have to enable Nvidia across the pipeline as another option also see how this impacts the UI and backend". Started from the coordinator session local_e3ae4073. Branch `claude/nvidia-nemotron-option`, worktree adoring-elgamal-a9b492, base `0eeab118`.
+- Built: routes `handwriting-nemotron`, `first-pass-nemotron`, `harness-nemotron`, all `nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4` on baseten through HF's router (`transport="router"`, "model_id:baseten"); a route flag `forced_tool_choice_disables_thinking`; the switch `SPECIMEN_NVIDIA_STAGES` (readers, first_pass, field_research), read in `published_registry()`, which loads a variant profile versioned `1.0.0+nvidia.<stages>`; price rows (`pilot-prices-2026-10-18`); preflight over the active option only; a runtime-settings check that the API and the worker carry the same value. Production config does not set the switch. Design and measurements: `docs/product-requirements/NVIDIA_NEMOTRON_OPTION.md`; story for NVIDIA: `docs/outreach/NEMOTRON_STORY.md`.
+- Measured (USD 2.43 at list price of a USD 5 cap; inputs, scripts and rows in `~/specimen-golive/runs/nvidia-nemotron-20261018/`): readers 15 crops x 3, Nemotron 76.2% of 98 facts, 0 failures, 2.2 s; Muse 91.5%; Qwen 69.0% with 12 of 45 failures. Muse+Nemotron cover 94.9% of facts, Muse+Qwen 94.6%. Parse: Nemotron about as accurate as Qwen, 1.2 s vs 23.5 s. First pass with reasoning "low": precision 66% vs GLM's 76%, wrong picks 15% both, 35% no answer (cap). Field research: 132 of 266 Nemotron experts failed the answer checks ("None" as text, invented ids such as `wikidata:Q123456`); DeepSeek 0. Section 7 of the design doc has every table.
+- Reusable learnings:
+  - (a) huggingface_hub 1.18 has no `baseten` helper (first in 1.26.1) and still lists `nvidia`, which the Hub no longer accepts as an inference provider. HF's router pins a provider by the model name "model_id:provider" and keeps `bill_to` (a client header), so a route can use a provider the client lacks.
+  - (b) Through the production token on 2026-10-18: baseten, deepinfra and featherless answer; fireworks-ai answers HTTP 402 "Pay-as-you go is not enabled for provider fireworks-ai yet".
+  - (c) Baseten skips Nemotron's reasoning whenever the tool call is forced ("required" or named): 0-1 reasoning tokens vs 1,516 with "auto". Pydantic AI's `forced_tool_choice_disables_thinking` profile flag does nothing on its HuggingFaceModel; the gateway's `UnforcedOutputToolHuggingFaceModel` sends "auto" instead.
+  - (d) `reliability.run_agent_bounded` caps every request at 4,096 output tokens whatever the route's price row says; a price-row `max_output_tokens` above it has no effect (an 8k arm here was in fact a second 4k arm).
+  - (e) A scorer of reader text against facts must accept the writer's own letter forms (this writer's n looks like m: "Mckimley", "Mimdanao", "Mum.") and spaces beside hyphens, or it scores ink-identical readings as wrong.
+- Not done, on purpose: the switch is not turned on anywhere (the owner's call after the NVIDIA conversation); no app (Flutter) change; the lab runner's and QA checkers' hard-coded reader prices and routes are unchanged; the older "on"-mode research harness refuses `harness-nemotron` until Nemotron's tokenizer files are pinned. Qwen's 12 failed readings (always the same five labels) are not investigated here.
+- PR: #383 (https://github.com/anurag-duddu/specimen-digitization-app/pull/383).
+- Merging this changes `model_gateway.py` and `published.json`, so field-research jobs provisioned before the deploy are held `research_committed_pins_changed`, as with PR #382.
+- Validation actually run: full Python suite (`scripts/ci/python_shards.py local --count 6`) on the implementation head `ef80bfd9`: 16,295 passed, 47 skipped, 1 failed (`test_fixture_bytes_match_regeneration`, the known local failure; the contract exporter's output is byte-identical before and after). The targeted set plus `tests/test_nvidia_option.py`: 4,671 passed, 4 skipped. `pre-commit run --files` on the changed files: passed. Each new test was seen failing before its change. No Dart changed.
+- G51 review: APPROVE of `ed50d5d6` (https://github.com/anurag-duddu/specimen-digitization-app/pull/383#issuecomment-6259882115), no blocking findings. Its five non-blocking findings were answered in the docs only: the story's all-Nemotron cost ratio now uses the estimate's own basis (about 3.7x, not "roughly 4x" beside the billed 1.7 cents); the design doc notes that the 32-pixel image rule may undercount small images (Not confirmed), that the unforced tool choice applies only to a resolved "required", that the registry keeps its published version, and that the evidence-pilot launch path refuses the readers stage.
+
+### 2026-10-20: intake reconciles current main and resumes scoped setup
+
+- Same task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch/worktree
+  `codex/compare-photo-intake-ux` / `5da8`, PR #368. Locally reconciling
+  `ba007d4c7b47fc52f8c663d8ed7396a9c6cdfcd3` into `d6cf6dab`. The registry
+  combines the private intake E2E child with NVIDIA profile variants; the
+  original Insects ledger, allowance, run cap and actor are retained. NVIDIA
+  remains off in production settings. Incoming session entries are retained.
+- Integration QA ran lane-profile and NVIDIA-option tests: 66 passed; the
+  regression exercises both option-off and readers-on with the E2E binding.
+  Diff whitespace check passed. Log:
+  `/private/tmp/specimen-intake-nvidia-merge-focused-20261020.log`. Fresh full
+  canonical verification and exact final-head independent review remain due.
+- Automatic approval review rejected the first scoped Auth IAM write before
+  execution because it required specific access authorization. The complete
+  named recipients, resources, permissions and versions were presented in
+  `production-setup-scope-20261020.txt`; the owner replied to use production
+  judgment and make these technical decisions. A bounded Auth-only retry is
+  now running. No release, live Gmail E2E or provider acceptance is claimed.

@@ -112,6 +112,8 @@ def test_the_slide_pilot_profile_carries_the_specified_settings():
         "segment": 45_000,
         "transcribe:handwriting-qwen": 20_000,
         "transcribe:handwriting-muse": 20_000,
+        # The NVIDIA option's reader (NVIDIA_NEMOTRON_OPTION.md section 3).
+        "transcribe:handwriting-nemotron": 20_000,
         "first_pass": 20_000,
         "parse": 20_000,
     }
@@ -171,20 +173,47 @@ def test_bindings_translate_private_identifiers_and_stay_private():
         published_registry({COLLECTION_UUID: "no-such-collection"})
 
 
-def test_intake_test_collection_inherits_profile_and_uses_existing_program_ledger():
+@pytest.mark.parametrize(
+    "stages,version,routes",
+    [
+        ("", "1.0.0", ("handwriting-qwen", "handwriting-muse")),
+        ("readers", "1.0.0+nvidia.readers", ("handwriting-nemotron", "handwriting-muse")),
+    ],
+    ids=["nvidia-off", "nvidia-readers"],
+)
+def test_intake_test_collection_inherits_profile_and_uses_existing_program_ledger(
+    tmp_path, monkeypatch, stages, version, routes
+):
     from specimen_digitization.application.lane import queue
 
-    test_collection = '00000000-0000-4000-8000-0000000000e2'
-    bound = published_registry({COLLECTION_UUID: 'insects', test_collection: 'intake-e2e'})
-    assert published_registry().resolve('intake-e2e').reason == 'unknown_collection'
-    assert bound.resolve(test_collection).profile.digest == pilot().digest
-    assert bound.bound_collections('insects') == [COLLECTION_UUID]
+    monkeypatch.setenv("SPECIMEN_NVIDIA_STAGES", stages)
+    original = published_registry(environ={}).resolve("insects").profile
+    test_collection = "00000000-0000-4000-8000-0000000000e2"
+    bindings = {COLLECTION_UUID: "insects", test_collection: "intake-e2e"}
+    bound = published_registry(bindings)
+    inherited = bound.resolve(test_collection).profile
+    assert published_registry().resolve("intake-e2e").reason == "unknown_collection"
+    assert inherited.digest == bound.resolve(COLLECTION_UUID).profile.digest
+    assert (inherited.version, inherited.model_routes) == (version, routes)
+    assert inherited.processing == original.processing
+    assert bound.bindings == bindings
+    assert bound.bound_collections("insects") == [COLLECTION_UUID]
+    assert bound.bound_collections("intake-e2e") == [test_collection]
     specimen = specimen_with(Run(profile=Profile(synthetic=False)))
     specimen.scope = Scope(organization_id=SYNTHETIC_ORG, collection_id=test_collection)
     queue(specimen, bound, USER)
-    assert specimen.run.stage == 'pending'
-    assert specimen.run.profile.execution.program_ledger_collection == COLLECTION_UUID
-    assert specimen.run.profile.execution.program_allowance_micros == pilot().processing.program_allowance.allowance_micros
+    assert specimen.run.stage == "pending"
+    assert specimen.run.classification_selection["collection_id"] == test_collection
+    assert specimen.run.classification_selection["actor_id"] == USER
+    assert classify_and_select(
+        specimen, bound, None, LocalBlobs(tmp_path / "blobs"), published_risk_registry()
+    ) is None
+    assert (specimen.run.profile.version, specimen.run.profile.routes) == (version, routes)
+    assert specimen.run.profile_snapshot == inherited.model_dump(mode="json")
+    execution = specimen.run.profile.execution
+    assert execution.program_ledger_collection == COLLECTION_UUID
+    assert execution.program_allowance_micros == original.processing.program_allowance.allowance_micros
+    assert execution.approved_cost_limit_micros == original.processing.run_cost_limit_micros
 
 
 def test_classify_gives_the_run_every_field_with_its_group(tmp_path):

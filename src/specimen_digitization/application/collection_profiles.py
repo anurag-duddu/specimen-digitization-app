@@ -540,17 +540,31 @@ PUBLISHED_PROFILES = Path(__file__).with_name("profiles") / "published.json"
 
 def published_registry(
     bindings: Mapping[str, str] | None = None,
+    *,
+    environ: Mapping[str, str] | None = None,
 ) -> CollectionProfileRegistry:
     """The published profiles (LANE.md T4) with private collection bindings.
 
     The explicitly bound intake-e2e operational collection inherits Insects'
     unchanged policy. Its distinct node keeps the canonical Insects budget
     ledger binding unique without adding a test collection to the museum tree.
+
+    With SPECIMEN_NVIDIA_STAGES on (``environ``, the process environment by
+    default), each profile loads as its NVIDIA variant (model_option.py); a
+    value it does not know raises.
     """
+    import os
+
+    from .model_option import nvidia_stages, nvidia_variant
+
+    stages = nvidia_stages(os.environ if environ is None else environ)
     bindings = dict(bindings or {})
     content = json.loads(PUBLISHED_PROFILES.read_text())
-    if 'intake-e2e' in bindings.values():
-        content['nodes'].append(dict(id='intake-e2e', parent_id='insects', name='Intake test collection'))
-    return CollectionProfileRegistry.model_validate(
+    if "intake-e2e" in bindings.values():
+        content["nodes"].append(
+            dict(id="intake-e2e", parent_id="insects", name="Intake test collection")
+        )
+    registry = CollectionProfileRegistry.model_validate(
         dict(content, bindings=bindings)
     )
+    return nvidia_variant(registry, stages)

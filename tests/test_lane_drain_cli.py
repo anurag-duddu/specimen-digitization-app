@@ -450,3 +450,29 @@ def test_an_unknown_harness_setting_stops_the_drain_before_any_work(
     assert (report["status"], report["reason"]) == ("blocked", "drain_configuration_invalid")
     assert "SPECIMEN_RESEARCH_HARNESS" in report["detail"]
     assert "yes-please" not in output
+
+
+@pytest.mark.parametrize("value", ["gpu-secret-value", "readers,gpu-secret-value", "first-pass"])
+def test_an_unknown_nvidia_stage_stops_the_drain_before_any_work(drain_env, capsys, value):
+    # NVIDIA_NEMOTRON_OPTION.md section 2: a mistyped value stops the process
+    # at start-up, naming the setting, never its value.
+    drain_env.setenv("SPECIMEN_NVIDIA_STAGES", value)
+
+    def nothing_constructed(*_, **__):
+        raise AssertionError("no repository before the settings are valid")
+
+    drain_env.setattr(worker, "SqlConnectRepository", nothing_constructed)
+    with pytest.raises(SystemExit) as caught:
+        cli(drain_env, "--mode", "production", "--drain", "--check-config")
+    assert caught.value.code == 2
+    output = capsys.readouterr().out
+    report = json.loads(output)
+    assert (report["status"], report["reason"]) == ("blocked", "drain_configuration_invalid")
+    assert "SPECIMEN_NVIDIA_STAGES" in report["detail"]
+    assert "gpu-secret-value" not in output
+
+
+def test_a_valid_nvidia_option_passes_the_drain_settings_check(drain_env, capsys):
+    drain_env.setenv("SPECIMEN_NVIDIA_STAGES", "readers,first_pass,field_research")
+    cli(drain_env, "--mode", "production", "--drain", "--check-config")
+    assert json.loads(capsys.readouterr().out)["status"] == "configured"
