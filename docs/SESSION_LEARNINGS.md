@@ -22955,3 +22955,44 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   controls and production logic remain unchanged. Frozen-head review and a
   fresh full canonical run are required before this candidate is published;
   existing or focused results do not substitute for that full run.
+
+### 2026-10-20 — bulk intake canonical verification passes before publication
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, PR #368, branch
+  `codex/compare-photo-intake-ux`, worktree
+  `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`.
+  Qualified code head `492bca660e3959897a0ef26b8647de112f5a8c71`, tree
+  `5ebed147a984e3e3129b7252fcc3bbd6205202eb`; no source edits during the run.
+- `scripts/ci/verify.sh` completed with exit0 and its final all-gates-passed
+  message. Pinned tools and six Python shards: all18,901 tests accounted for,
+  18,853passed/48skipped/0failed. Both previously failing fixtures passed.
+  Shared design system:1,309passed; app:3,190passed/7skipped. Both Flutter
+  analyses passed; formatting checked605files with0changes. Release web build
+  and smoke passed13routes/5headers with the gallery excluded. Local build
+  deployment.json was unstamped and explicitly skipped, not a live marker.
+  Log `/private/tmp/specimen-intake-verify-492bca66.log`; shard artifacts
+  `specimen-python-shards-5t0zddy5` in the OS temporary directory.
+- Independent G51 review approved this exact code head with no unresolved
+  P1/P2. Current main remained `ba007d4c7b47fc52f8c663d8ed7396a9c6cdfcd3`
+  immediately after verification. A journal-only successor and its review
+  preserve this qualified source; new hosted checks are still required.
+- Fresh read-only release preflight: Hosting/API and all three main releases
+  still report ba007d4c; Google sign-in remains off, Bulk defaults off. Only
+  the shared worker exists, with109retained executions and0unfinished. The
+  initial protected runtime release must create the three missing named jobs
+  before the already authorized bounded owner setup grants their policies.
+  The protected retry leaves process_queued=false.
+- Prepared a private operator guide and read-only all-page SQL/Queue/job
+  observation helper. The helper is source/syntax inspected only, not run or
+  acceptance evidence. Normal-user sign-in/Queue UI must be observed separately
+  from administrative SQL records and worker metadata.
+- An optional Cloud Billing console read requested organizational passkey
+  verification and was not completed; closed only that new tab. Existing CLI
+  project read still succeeded. No financial or security setting changed.
+  Consolidated G9 headroom is Not confirmed; preserve the original G30 ledger
+  and G9 ceiling without inventing a new per-Submit billing gate or allowance.
+- Public homepage/privacy copy is prepared privately with explicit unresolved
+  operator/contact/retention/recipient facts. Nothing was published. Provider
+  verification, broad public admission, real Gmail connector/Submit/final
+  Queue, physical camera and institutional acceptance remain Not confirmed.
+  Merge, protected release, client activation and live acceptance are pending.
