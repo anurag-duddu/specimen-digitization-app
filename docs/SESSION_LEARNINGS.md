@@ -22855,3 +22855,34 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   completed; running and unfinished counts are zero at 15:55 UTC. Repeat the
   execution and original-budget checks before any paid E2E submission. Fresh
   full canonical verification, final-head G51 review and hosted checks are due.
+
+### 2026-10-20: active-pin dry-run contract correction before release
+
+- Same task/branch/worktree/PR #368. Independent G51 code review approved
+  `56995a45216e63f06ad49a813896bbd3c5fc716c`, tree
+  `330f95ebc5202d43dcc22cfb3bd89d67fcfb5274`, conditional on canonical and
+  hosted verification. Bounded intake reconciliation then completed with
+  12 changes and zero failures: supported token IAM condition, exact-version
+  reads and Drive/Picker APIs. No job execution or deployment occurred.
+- Full canonical verification on that code head exited 1: an old ops dry-run
+  test expected collection binding version 1 although the script correctly
+  consumed committed version 2. Fixed only that test to require exactly the
+  two positive-numbered committed reads, preserving privacy and invalid-scope
+  assertions. Focused seed tests: 13 passed, 33 deselected. Independent review
+  found no P1/P2 in the repair; runtime and allowance code are unchanged.
+- Failed approach: the test edit happened before two remaining Python shards
+  finished. Their source-fingerprint guard correctly invalidated them. Do not
+  edit source or inputs while canonical verification is running, even after
+  another shard has already failed. No successful whole-suite claim is made
+  from that run. Restart full verification on the frozen successor. Diagnostic
+  log: `/private/tmp/specimen-intake-verify-56995a45.log`.
+- Dropbox console confirmed additional consenting development users enabled
+  (limit 500); production approval is still pending. Credential-free proof:
+  `bulk-intake-research/implementation/dropbox-users-confirmation-20261020.png`
+  under this task's visualization directory. No provider originals changed.
+- At 16:07 UTC the existing allowance ledger was revision 2003, reserved total
+  25,441,472 micros, leaving 2,558,528 under its unchanged 28,000,000 cap. This
+  is ledger accounting, not all infrastructure billing. Candidate originals
+  matched existing non-sensitive pilot records; duplication is collection
+  scoped. Read the ledger/executions again before a bounded real submission.
+  Gmail/provider import, final Queue and native acceptance remain Not confirmed.
