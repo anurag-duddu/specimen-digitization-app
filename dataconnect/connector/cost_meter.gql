@@ -1,0 +1,177 @@
+# The cost meter (docs/execution/golive/COST_METER.md). Service-only: Python binds
+# actorUid to verified_actor_uid. Every native statement repeats the membership
+# join, and the membership response dependency keeps the checked read and the
+# native DML in separate planner steps (research_binding_v2.gql).
+#
+# One specimen's paid-call rows, upserted by their deterministic ids. All or
+# nothing: any malformed row (an unknown kind or basis, a negative or fractional
+# cost, another scope or specimen, an id that is not the row's own derived id)
+# writes no row, and the @check then refuses the call. A row whose values are
+# unchanged keeps its updatedAt.
+mutation UpsertCostEntriesV1($organizationId: UUID!, $collectionId: UUID!, $specimenId: UUID!, $actorUid: String!, $rowsJson: String!) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true && response.query.organizationMember.active == true && this.role in ['operator', 'reviewer', 'manager', 'admin']") { active role canViewSensitive }
+    specimen(key: {organizationId: $organizationId, collectionId: $collectionId, id: $specimenId}) @check(expr: "!this.sensitive || response.query.collectionMember.canViewSensitive") { sensitive }
+  }
+  upserted: _execute(sql: """
+    WITH args AS (SELECT $5::jsonb AS doc),
+    admitted AS MATERIALIZED (
+      SELECT s.id FROM public.specimen s
+      JOIN public.organization_member om ON om.organization_id=s.organization_id AND om.uid=$4 AND om.active
+      JOIN public.collection_member cm ON cm.organization_id=s.organization_id AND cm.collection_id=s.collection_id
+        AND cm.uid=$4 AND cm.active AND cm.role IN ('operator','reviewer','manager','admin')
+      WHERE s.organization_id=$1 AND s.collection_id=$2 AND s.id=$3
+        AND (NOT s.sensitive OR cm.can_view_sensitive)
+    ),
+    incoming AS MATERIALIZED (
+      SELECT e.r FROM args CROSS JOIN LATERAL jsonb_array_elements(
+        CASE WHEN jsonb_typeof(args.doc)='array' THEN args.doc ELSE '[]'::jsonb END) AS e(r)
+    ),
+    checked AS MATERIALIZED (
+      SELECT r, COALESCE(jsonb_typeof(r)='object'
+        AND jsonb_typeof(r->'id')='string'
+        AND jsonb_typeof(r->'run_id')='string'
+        AND (r->>'run_id') ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+        AND r->>'organization_id'=$1::text AND r->>'collection_id'=$2::text
+        AND r->>'source'='paid_call' AND r->>'specimen_id'=$3::text
+        AND jsonb_typeof(r->'step')='string' AND length(r->>'step') BETWEEN 1 AND 300
+        AND jsonb_typeof(r->'stage')='string' AND length(r->>'stage') BETWEEN 1 AND 64
+        AND jsonb_typeof(r->'attempt')='number' AND (r->>'attempt') ~ '^[1-9][0-9]{0,8}$'
+        AND r->>'kind' IN ('model','service','tool')
+        AND jsonb_typeof(r->'ordinal')='number' AND (r->>'ordinal') ~ '^(0|[1-9][0-9]{0,8})$'
+        AND jsonb_typeof(r->'provider')='string' AND length(r->>'provider') BETWEEN 1 AND 64
+        AND jsonb_typeof(r->'resource')='string' AND length(r->>'resource') BETWEEN 1 AND 300
+        AND COALESCE(jsonb_typeof(r->'usage'),'null') IN ('object','null')
+        AND COALESCE(jsonb_typeof(r->'reserved_micros'),'null') IN ('number','null')
+        AND (COALESCE(jsonb_typeof(r->'reserved_micros'),'null')='null' OR (r->>'reserved_micros') ~ '^(0|[1-9][0-9]{0,14})$')
+        AND jsonb_typeof(r->'cost_micros')='number' AND (r->>'cost_micros') ~ '^(0|[1-9][0-9]{0,14})$'
+        AND jsonb_typeof(r->'list_cost_micros')='number' AND (r->>'list_cost_micros') ~ '^(0|[1-9][0-9]{0,14})$'
+        AND r->>'cost_basis' IN ('computed','billed','reserved','refused')
+        AND COALESCE(jsonb_typeof(r->'outcome'),'null') IN ('string','null') AND COALESCE(length(r->>'outcome'),0)<=64
+        AND COALESCE(jsonb_typeof(r->'failure_code'),'null') IN ('string','null') AND COALESCE(length(r->>'failure_code'),0)<=200
+        AND COALESCE(jsonb_typeof(r->'price_list_version'),'null') IN ('string','null') AND COALESCE(length(r->>'price_list_version'),0)<=64
+        AND COALESCE(jsonb_typeof(r->'price_list_as_of'),'null') IN ('string','null') AND COALESCE(length(r->>'price_list_as_of'),0)<=64
+        AND jsonb_typeof(r->'occurred_at')='string'
+        AND (r->>'occurred_at') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]{1,6})?(Z|[+-][0-9]{2}:[0-9]{2})$'
+        AND jsonb_typeof(r->'month')='string' AND (r->>'month') ~ '^[0-9]{4}-[0-9]{2}$', false) AS shaped
+      FROM incoming
+    ),
+    verified AS MATERIALIZED (
+      SELECT r, CASE WHEN shaped THEN
+          (r->>'id')=public.uuid_generate_v5('cc7d6cad-7ceb-55e7-9831-a83a5b2f8e85'::uuid,
+            'cost/'||$3::text||'/'||(r->>'run_id')||'/'||(r->>'step')||'/'||(r->>'attempt')||'/'||(r->>'kind')||'/'||(r->>'ordinal'))::text
+          AND to_char(((r->>'occurred_at')::timestamptz) AT TIME ZONE 'UTC','YYYY-MM')=r->>'month'
+        ELSE false END AS ok
+      FROM checked
+    ),
+    verdict AS MATERIALIZED (
+      SELECT count(*) BETWEEN 1 AND 500 AND bool_and(ok) AND count(DISTINCT r->>'id')=count(*)
+        AND EXISTS (SELECT 1 FROM admitted) AS ok
+      FROM verified
+    )
+    INSERT INTO public.cost_entry AS existing (
+      organization_id,collection_id,id,source,specimen_id,run_id,step,stage,attempt,kind,ordinal,
+      provider,resource,usage,reserved_micros,cost_micros,list_cost_micros,cost_basis,outcome,failure_code,
+      price_list_version,price_list_as_of,occurred_at,month,created_at,updated_at
+    ) SELECT $1,$2,(r->>'id')::uuid,'paid_call',$3,(r->>'run_id')::uuid,r->>'step',r->>'stage',
+      (r->>'attempt')::integer,r->>'kind',(r->>'ordinal')::integer,r->>'provider',r->>'resource',
+      CASE WHEN jsonb_typeof(r->'usage')='object' THEN r->'usage' END,
+      (r->>'reserved_micros')::bigint,(r->>'cost_micros')::bigint,(r->>'list_cost_micros')::bigint,
+      r->>'cost_basis',r->>'outcome',r->>'failure_code',r->>'price_list_version',r->>'price_list_as_of',
+      (r->>'occurred_at')::timestamptz,r->>'month',statement_timestamp(),statement_timestamp()
+    FROM verified WHERE (SELECT ok FROM verdict)
+    ON CONFLICT (organization_id,collection_id,id) DO UPDATE SET
+      source=EXCLUDED.source,specimen_id=EXCLUDED.specimen_id,run_id=EXCLUDED.run_id,step=EXCLUDED.step,
+      stage=EXCLUDED.stage,attempt=EXCLUDED.attempt,kind=EXCLUDED.kind,ordinal=EXCLUDED.ordinal,
+      provider=EXCLUDED.provider,resource=EXCLUDED.resource,usage=EXCLUDED.usage,
+      reserved_micros=EXCLUDED.reserved_micros,cost_micros=EXCLUDED.cost_micros,
+      list_cost_micros=EXCLUDED.list_cost_micros,cost_basis=EXCLUDED.cost_basis,outcome=EXCLUDED.outcome,
+      failure_code=EXCLUDED.failure_code,price_list_version=EXCLUDED.price_list_version,
+      price_list_as_of=EXCLUDED.price_list_as_of,occurred_at=EXCLUDED.occurred_at,month=EXCLUDED.month,
+      updated_at=CASE WHEN (existing.source,existing.specimen_id,existing.run_id,existing.step,existing.stage,
+          existing.attempt,existing.kind,existing.ordinal,existing.provider,existing.resource,existing.usage,
+          existing.reserved_micros,existing.cost_micros,existing.list_cost_micros,existing.cost_basis,
+          existing.outcome,existing.failure_code,existing.price_list_version,existing.price_list_as_of,
+          existing.occurred_at,existing.month)
+        IS DISTINCT FROM (EXCLUDED.source,EXCLUDED.specimen_id,EXCLUDED.run_id,EXCLUDED.step,EXCLUDED.stage,
+          EXCLUDED.attempt,EXCLUDED.kind,EXCLUDED.ordinal,EXCLUDED.provider,EXCLUDED.resource,EXCLUDED.usage,
+          EXCLUDED.reserved_micros,EXCLUDED.cost_micros,EXCLUDED.list_cost_micros,EXCLUDED.cost_basis,
+          EXCLUDED.outcome,EXCLUDED.failure_code,EXCLUDED.price_list_version,EXCLUDED.price_list_as_of,
+          EXCLUDED.occurred_at,EXCLUDED.month)
+        THEN EXCLUDED.updated_at ELSE existing.updated_at END
+    """, params: [$organizationId, $collectionId, $specimenId, $actorUid, $rowsJson]) @check(expr: "this > 0", message: "cost entries refused")
+}
+
+# The backfill and repair sweep: one page of specimens (id after $afterId, saved at
+# or after $since, in id order), and for each run any of their revisions held, that
+# run's paid calls from the latest revision that holds it. Every run was the active
+# run in some revision, so earlier and compacted runs are covered. Paid calls only.
+query ListRunPaidCallsV1($organizationId: UUID!, $collectionId: UUID!, $actorUid: String!, $afterId: String!, $since: Timestamp!, $limit: Int!) @auth(level: NO_ACCESS) {
+  organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
+  collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true && vars.limit > 0 && vars.limit <= 25 && (vars.afterId == '' || vars.afterId.matches('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'))") { active canViewSensitive }
+  page: _selectFirst(sql: """
+    WITH member AS MATERIALIZED (
+      SELECT cm.can_view_sensitive FROM public.organization_member om
+      JOIN public.collection_member cm ON cm.organization_id=om.organization_id AND cm.uid=om.uid
+      WHERE om.organization_id=$1 AND om.uid=$3 AND om.active AND cm.collection_id=$2 AND cm.active
+    ),
+    page AS MATERIALIZED (
+      SELECT s.organization_id, s.collection_id, s.id FROM public.specimen s CROSS JOIN member
+      WHERE s.organization_id=$1 AND s.collection_id=$2 AND s.id::text>$4 AND s.updated_at>=$5::timestamptz
+        AND (NOT s.sensitive OR member.can_view_sensitive)
+      ORDER BY s.id::text LIMIT LEAST(GREATEST($6::integer,0),25)
+    ),
+    runs AS MATERIALIZED (
+      SELECT DISTINCT ON (snap.specimen_id, snap.snapshot->'run'->>'id')
+        snap.specimen_id, snap.snapshot->'run'->>'id' AS run_id, snap.revision,
+        snap.snapshot->'run'->'paid_calls' AS paid_calls
+      FROM public.specimen_snapshot snap JOIN page ON snap.organization_id=page.organization_id
+        AND snap.collection_id=page.collection_id AND snap.specimen_id=page.id
+      WHERE snap.snapshot->'run'->>'id' IS NOT NULL
+      ORDER BY snap.specimen_id, snap.snapshot->'run'->>'id', snap.revision DESC
+    )
+    SELECT jsonb_build_object(
+      'items', COALESCE((SELECT jsonb_agg(jsonb_build_object('specimen_id', r.specimen_id::text,
+          'run_id', r.run_id, 'revision', r.revision, 'paid_calls', r.paid_calls)
+          ORDER BY r.specimen_id::text, r.run_id)
+        FROM runs r WHERE jsonb_typeof(r.paid_calls)='array' AND jsonb_array_length(r.paid_calls)>0), '[]'::jsonb),
+      'specimens', (SELECT count(*) FROM page),
+      'last_id', (SELECT max(p.id::text) FROM page p)
+    )::text AS page_json
+    """, params: [$organizationId, $collectionId, $actorUid, $afterId, $since, $limit])
+}
+
+# The organization's cost totals by collection and UTC month, for an administrator
+# of any of its collections. Sums are text, so no Int64 loses precision.
+query CostTotalsV1($organizationId: UUID!, $actorUid: String!, $fromMonth: String!, $toMonth: String!) @auth(level: NO_ACCESS) {
+  organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
+  admin: collectionMembers(where: {organizationId: {eq: $organizationId}, uid: {eq: $actorUid}, active: {eq: true}, role: {eq: "admin"}}, limit: 1) @check(expr: "this.size() == 1 && vars.fromMonth.matches('^[0-9]{4}-(0[1-9]|1[0-2])$') && vars.toMonth.matches('^[0-9]{4}-(0[1-9]|1[0-2])$') && vars.fromMonth <= vars.toMonth") { collectionId }
+  collections(where: {organizationId: {eq: $organizationId}}, orderBy: {id: ASC}, limit: 1000) { id name parentId }
+  totals: _selectFirst(sql: """
+    WITH admin AS MATERIALIZED (
+      SELECT 1 AS admitted FROM public.organization_member om
+      JOIN public.collection_member cm ON cm.organization_id=om.organization_id AND cm.uid=om.uid
+      WHERE om.organization_id=$1 AND om.uid=$2 AND om.active AND cm.active AND cm.role='admin'
+      LIMIT 1
+    ),
+    grouped AS MATERIALIZED (
+      SELECT e.collection_id, e.month, e.stage, e.source, e.kind, e.provider, e.resource, e.cost_basis,
+        sum(e.cost_micros) AS cost, sum(e.list_cost_micros) AS list_cost, count(*) AS entries,
+        max(e.updated_at) AS updated
+      FROM public.cost_entry e
+      WHERE e.organization_id=$1 AND e.month>=$3 AND e.month<=$4 AND EXISTS (SELECT 1 FROM admin)
+      GROUP BY e.collection_id, e.month, e.stage, e.source, e.kind, e.provider, e.resource, e.cost_basis
+    )
+    SELECT jsonb_build_object(
+      'admitted', EXISTS (SELECT 1 FROM admin),
+      'groups', COALESCE((SELECT jsonb_agg(jsonb_build_object('collection_id', g.collection_id::text,
+          'month', g.month, 'stage', g.stage, 'source', g.source, 'kind', g.kind, 'provider', g.provider,
+          'resource', g.resource, 'cost_basis', g.cost_basis, 'cost_micros', g.cost::text,
+          'list_cost_micros', g.list_cost::text, 'entries', g.entries::text,
+          'updated_at', to_char(g.updated AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'))
+          ORDER BY g.collection_id::text, g.month, g.stage, g.source, g.kind, g.provider, g.resource, g.cost_basis)
+        FROM grouped g), '[]'::jsonb)
+    )::text AS totals_json
+    """, params: [$organizationId, $actorUid, $fromMonth, $toMonth])
+}
