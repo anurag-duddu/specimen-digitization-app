@@ -23209,3 +23209,37 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   candidate and final exact-head G51/hosted checks remain pending. Bulk remains
   disabled; real connector import, Submit, scientific finalization, public
   provider and native acceptance remain Not confirmed.
+
+### 2026-10-20 — Intake repair canonical qualification before PR publication
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch/worktree
+  `codex/fix-intake-auth-permission` in `5da8/specimen-digitization-app`.
+  Integrated source `7a8e4e9766115e73f49eaf583dc8542143c66efe`, tree
+  `61eb9f7f8b107fe059c838cc44a29e91f9c59e6b`, remained clean and unchanged
+  throughout `scripts/ci/verify.sh`, which exited zero. Full Python inventory:
+  18,958 passed plus 50 skipped equals 19,008, with complete exact-once shard
+  accounting. Both the positive classifier fixture and unchanged two-second
+  negative control passed in shard 2. The design-system suite passed 1,309;
+  the app suite passed 3,190 with 7 skips. Both analyses, repository/secret
+  checks, formatting (605 files, zero changes), web build and all declared
+  route/security-header smoke checks passed. This is local qualification,
+  not a claim of native-device or provider acceptance.
+- Durable local evidence: `/private/tmp/specimen-intake-verify-7a8e4e97.log`
+  and `specimen-python-shards-rccbh014` under the task's macOS temporary
+  directory. Independent G51 source/journal review approved the exact source
+  and tree above with no P1/P2 findings. This append changes only the journal;
+  final PR-head review and hosted checks are still required.
+- Main remained protected at `cd8be7d2a193f5efdf5b7bab4c403f892499c965`.
+  Its Hosting run `39475816905` succeeded; both public web and API markers
+  reported that SHA. Its Runtime run still failed at the known intake argument
+  parser, so this was not a complete intake release. Google sign-in is live;
+  Bulk remains off until compatible private jobs and their IAM verify.
+- The reviewed private owner observer ran only scoped GraphQL reads and found
+  zero Gmail-owned drafts, items, submissions, results, jobs and specimens in
+  Intake E2E at `2026-10-20T18:56:42.852081Z`, with every page exhausted and
+  unchanged inventory/membership readback. No content or processing was
+  started. This establishes a metadata baseline, not normal-user import proof.
+  Its private artifact is `intake-metadata-baseline-20261020T185642852081Z.private.json`.
+  Real connector consent/import, pre-Submit staging proof, explicit submission,
+  scientific finalization, institutional/public-provider and native acceptance
+  remain Not confirmed.
