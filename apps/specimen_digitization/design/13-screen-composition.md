@@ -541,6 +541,33 @@ One scroll: a heading (V2-4), the import action, the rows; the pill visible.
 ### 4.6 Sign in, help, setup
 One scroll each; the band strip; no pill on sign in.
 
+### 4.7 Costs
+A page of its own at `/costs` (07 section 15), outside the collection frame, so
+it has no rail, no sidebar and no pill: the band when the environment is not
+production, the top bar with the back control and the page's name, then one
+scroll.
+
+| Region | Pinned | Content |
+|---|---|---|
+| Environment band | yes | The one line strip at compact, the full band above |
+| Top bar | yes | Back, "Costs" |
+| Month | scrolls | The select and its line under it |
+| Meter band | scrolls | Only when the meter says the figures may be incomplete |
+| Organization | scrolls | Three numeral tiles, one hero |
+| Organization limit | scrolls | What is left, and one button |
+| Collections | scrolls | The rows, sub-collections one step in |
+| Stages, models | scrolls | Rows, largest first |
+| Figures | scrolls | When updated, and the update button |
+
+The content is a reading column, centred, with the page's gutter as its least
+edge, and the tiles step down to fewer columns as the type grows. The page has
+no primary region of 2.5: the first screenful is the month, the organization's
+figures and its limit, and `above_the_fold` has no expectation for it. The tiles
+are panes drawn opaque (14 section 3), outside any sliver list because a pane
+in one is a repeated item (09 section 3.3), and the rows are not panes, so no
+pane sits inside another. Its pinned chrome is the band and the bar, which the
+`chrome_budget` gate measures with every other screen's.
+
 ## 5. Gates
 
 All under `apps/specimen_digitization/test/composition/`, run against every

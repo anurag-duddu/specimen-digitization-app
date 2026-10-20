@@ -543,3 +543,76 @@ Matches the sequencing in the north star: foundation and writing first, then the
 shell and queue, then the workbench, then intake and capture, then motion and
 polish, then verification. Each screen blueprint is independently mergeable
 once the foundation is in.
+
+## 15. Costs
+
+**Purpose.** Let an administrator see what the organization's work costs, month
+by month, and set the monthly limit of the organization and of each collection.
+It shows what the server's cost meter reports and works nothing out.
+
+**Reached from the account menu,** for an administrator of at least one
+collection in the open collection's organization, and for nobody else: the
+entry is hidden, never disabled, for every other account and for a build whose
+repository serves no costs. It is not a navigation destination and it is not
+under a collection, because the costs belong to the organization.
+
+**The route is `/costs`** (`AppRoutes.costs`), a global location like `/help`.
+Three rules of the collection routes would otherwise apply to it and none of
+them fits: the frame reads its destination off a collection path and takes any
+path that is not intake for the queue, `restoreWebHistory` recognises only
+collection paths, and the redirect sends a location that names no collection
+home unless `AppRoutes.isGlobalLocation` names it. It is opened with `push`,
+so a record and its unsaved drafts stay mounted
+beneath it and the top bar's back returns to them; opened as the first thing
+(a link, a reload) back goes to the collection's queue. A pushed page leaves
+the address where it was, as Help does.
+
+**An account that may not ask never asks.** The API repository keeps the first
+401 or 403 as the failure of the whole session, so a refused request cannot be
+taken back. The entry and the route ask the same question,
+`costOrganizationFor`, and the screen is built only from its answer, so a link
+to `/costs` followed by a reviewer reaches a sentence and no request.
+
+**Blueprint,** one vertical scroll in a reading column:
+
+- **Month.** A select over the current UTC month and the eleven before it,
+  with "Months are counted in UTC." under it.
+- **A meter that may be incomplete** is a band above the figures with the
+  update it offers. A meter with nothing to say is silent.
+- **Organization.** Three numeral tiles, at most one hero: the cost the meter
+  counts, the part held in full, and the cost before Google's free allowance.
+  Side by side where the width earns it and stacked where it does not. A month
+  with nothing recorded says "No costs recorded" in their place.
+- **Organization limit.** What is left of the limit, of what, and for which
+  month (the server's current month, whichever month is read), or that none is
+  set; one button to set or change it.
+- **Collections.** One row each, a sub-collection under its parent and one step
+  in, with the total including its sub-collections and its limit and what is
+  left, or "No monthly limit". The row opens the limit form.
+- **Cost by stage** and **cost by model.** Rows, largest first, a stage or a
+  provider this client has not met still named in plain words.
+- **Figures.** When they were updated, on the reader's clock, how far the costs
+  are counted, and "Update figures", which asks the server and says the figures
+  update within minutes.
+
+**The limit form** is a sheet on a stacked window and a dialog above it, the
+same for the organization and every collection: an amount in US dollars,
+checked on leaving the field and on submit, never on every keystroke; "Save
+limit", "Remove limit" where one is set, and "Cancel". The server's refusal
+keeps the form open with what was typed. The screen does not say what a limit
+does, because the contract does not.
+
+**Money** is US dollars with thousands separators and cents, an amount above
+zero and under one cent reads "Under one cent", and the unit the meter counts
+in never reaches the screen. Absence is words: "No costs recorded", "No monthly
+limit", "Update time not recorded".
+
+**States.** Skeleton and one "Loading costs for October 2026" announcement while
+a month loads; a failure with what happened and a retry; a server with no meter
+says so and offers no retry, as does a refusal, because retrying cannot resolve
+either.
+
+**Done when** an administrator can read a month's costs and set, change or
+remove a limit from this screen, no amount is drawn as zero where the meter
+recorded nothing, and an account that is not an administrator never causes a
+request.
