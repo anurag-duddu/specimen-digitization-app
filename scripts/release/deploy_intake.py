@@ -26,7 +26,7 @@ def command(image, sha, env_file, *, job_name='specimen-intake'):
         '--image', image, '--service-account', job['service_account'], '--cpu', job['cpu'],
         '--memory', job['memory'], '--tasks', '1', '--parallelism', '1', '--max-retries', str(job['max_retries']),
         '--task-timeout', str(job['timeout_seconds']), '--command', ','.join(job['command']),
-        '--args', ','.join(job['args']), '--env-vars-file', str(env_file), '--set-secrets', secrets,
+        '--args=' + ','.join(job['args']), '--env-vars-file', str(env_file), '--set-secrets', secrets,
         '--labels', f'source-sha={sha}']
 
 
