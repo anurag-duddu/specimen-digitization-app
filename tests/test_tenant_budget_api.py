@@ -27,9 +27,9 @@ HEADERS = {"Authorization": "Bearer fixture"}
 OTHER = "00000000-0000-4000-8000-0000000000b7"
 
 
-def client(tmp_path, role="admin", *, organization=support.ORG, sqlite=False):
+def client(tmp_path, role="admin", *, organization=support.ORG, sqlite=False, **row):
     members = {USER: [{"organization_id": organization, "collection_id": support.COLLECTION, "role": role,
-        "can_view_sensitive": False}]}
+        "can_view_sensitive": False, **row}]}
     fake = support.FakeDataConnect(None, members=members)
     blobs = LocalBlobs(tmp_path / "blobs")
     repository = (SQLiteRepository(tmp_path / "state.sqlite3") if sqlite
@@ -126,3 +126,32 @@ def test_a_store_that_keeps_no_caps_answers_503(tmp_path):
     reply = put(test_client, {"collection_id": None, "monthly_cap_micros": 5_000_000})
     assert reply.status_code == 503, reply.text
     assert reply.json()["error"]["code"] == "cost_meter_unavailable"
+
+
+def test_an_inactive_administrator_row_sets_nothing(tmp_path):
+    test_client, fake, _ = client(tmp_path, active=False)
+    reply = put(test_client, {"collection_id": None, "monthly_cap_micros": 5_000_000})
+    assert reply.status_code == 403, reply.text
+    assert fake.tenant_budget_caps == {} and "TenantBudgetCapsV1" not in fake.calls
+
+
+def test_a_cap_the_connector_refuses_for_this_membership_is_403(tmp_path):
+    # The connector checks the membership again; a refusal there, after the
+    # body passed every check here, is an authorization answer, not a conflict.
+    test_client, fake, _ = client(tmp_path)
+
+    def refused(variables):
+        raise support.ConnectorRefusal("tenant budget cap refused")
+    fake.op_SetTenantBudgetCapV1 = refused
+    reply = put(test_client, {"collection_id": None, "monthly_cap_micros": 5_000_000})
+    assert reply.status_code == 403, reply.text
+    assert reply.json()["error"]["code"] == "access_denied"
+
+
+def test_caps_that_cannot_be_read_are_503_before_anything_is_set(tmp_path):
+    test_client, fake, _ = client(tmp_path)
+    fake.tenant_budget_caps["organization"] = (-5, USER, "2026-10-20T00:00:00Z")  # Not a cap.
+    reply = put(test_client, {"collection_id": support.COLLECTION, "monthly_cap_micros": 1})
+    assert reply.status_code == 503, reply.text
+    assert reply.json()["error"]["message"] == "tenant_budget_unavailable"
+    assert support.COLLECTION not in fake.tenant_budget_caps and "SetTenantBudgetCapV1" not in fake.calls

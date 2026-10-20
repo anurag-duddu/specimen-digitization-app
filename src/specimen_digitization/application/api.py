@@ -874,10 +874,49 @@ def create_app(
             raise OperationalBlock("cost_meter_unavailable")
         read = totals(organization_id, first, last)
         try:
-            return cost_report(organization_id, first, last, read["collections"], read["groups"])
+            report = cost_report(organization_id, first, last, read["collections"], read["groups"])
         except (ValueError, KeyError, TypeError) as exc:
             code = "cost_collection_tree_invalid" if str(exc) == "collection_tree_cycle" else "cost_meter_unavailable"
             raise OperationalBlock(code) from exc
+        return dict(report, **cost_caps(user, organization_id, first, last, read, report))
+
+    def cost_caps(user, organization_id, first, last, read, report):
+        """The monthly caps' positions for the current UTC month, whatever the
+        range (TENANT_BUDGETS.md, COST_METER.md): spent is that month's cost
+        entries, settled and held, rolled up the collection tree. Caps that
+        cannot be read leave the report whole, with every cap null and
+        caps_status "unavailable"."""
+        from .tenant_budget import month_of, report_caps, utc_now
+
+        try:
+            reader = getattr(repository, "tenant_caps", None)
+            if not callable(reader):
+                raise OperationalBlock("cost_meter_unavailable")
+            administered = sorted(
+                m["collection_id"] for m in member_rows(user)
+                if m["organization_id"] == organization_id and m["role"] == RECONCILE_ROLE
+            )
+            answer = reader(Scope(organization_id=organization_id, collection_id=administered[0]))
+            if all(row["monthly_cap_micros"] is None for row in answer["caps"]):
+                return {"caps_status": "ok"}  # No cap set: nothing more is read.
+            month = month_of(utc_now())
+            groups = read["groups"]
+            if not first <= month <= last:
+                groups = repository.cost_totals(organization_id, month, month)["groups"]
+            positions = report_caps(answer, report["collections"], month, groups)
+        except Exception as exc:  # noqa: BLE001 - the costs stand without their caps
+            import logging
+
+            logging.getLogger(__name__).warning("Cost caps not read: %s", type(exc).__name__)
+            return {"caps_status": "unavailable"}
+        if positions is None:
+            return {"caps_status": "ok"}
+        return {
+            "organization_cap": positions["organization"],
+            "collections": [dict(item, cap=positions["collections"].get(item["collection_id"]))
+                for item in report["collections"]],
+            "caps_status": "ok",
+        }
 
     @app.post(prefix + "/costs/refresh")
     def refresh_costs(organization_id: str, user=Depends(identity)):
@@ -2890,11 +2929,14 @@ def create_app(
     def set_cost_cap(organization_id: str, body: TenantCapInput, user=Depends(identity)):
         from uuid import UUID
 
+        from .tenant_budget import TenantBudgetUnavailable
+
         actor_uid.set(user)
         administered = sorted(
             m["collection_id"]
             for m in member_rows(user)
             if m["organization_id"] == organization_id and m["role"] == RECONCILE_ROLE
+            and m.get("active", True) is not False
         )
         if not administered:
             raise PermissionError("An organization administrator sets budget caps")
@@ -2905,16 +2947,28 @@ def create_app(
                 "request_id": uid(), "details": {},
             }})
         scope = Scope(organization_id=organization_id, collection_id=administered[0])
+
+        def caps():
+            try:
+                return repository.tenant_caps(scope)
+            except TenantBudgetUnavailable:
+                raise OperationalBlock("tenant_budget_unavailable") from None  # 503
+
         key = "organization"
         if body.collection_id is not None:
             try:
                 key = str(UUID(body.collection_id))
             except ValueError:
                 raise ValueError("collection_id must be a collection id") from None
-            if key not in {row["id"] for row in repository.tenant_caps(scope)["collections"]}:
+            if key not in {row["id"] for row in caps()["collections"]}:
                 raise ValueError("collection_id names no collection of this organization")
-        repository.set_tenant_cap(scope, key, body.monthly_cap_micros)
-        rows = repository.tenant_caps(scope)["caps"]
+        try:
+            repository.set_tenant_cap(scope, key, body.monthly_cap_micros)
+        except Conflict:
+            # The body was checked above: what the connector still refuses is the
+            # membership, changed since it was read (an admin row no longer active).
+            raise PermissionError("The connector refused this administrator's cap") from None
+        rows = caps()["caps"]
         return {
             "organization_id": organization_id,
             "caps": [
