@@ -633,6 +633,13 @@ class Workflow:
             # Never more than the program's allowance has left (when that fits
             # one expert request): the step's meter has this as its cap.
             cost = self.field_research.reservation(self, principal, specimen, cost)
+        if billable and not run.profile.synthetic and cost:
+            from .tenant_budget import recorded_micros
+
+            # An attempt that already holds on a monthly cap's ledger was never
+            # sent (a refusal later in the chain blocked it): it reserves the
+            # recorded amount again, so its holds replay (TENANT_BUDGETS.md).
+            cost = recorded_micros(run, step) or cost
         # The limits on money, in the order they block: the cost settings, the
         # saved cost totals, then the run's cost ceiling.
         money_issue = None
@@ -682,13 +689,16 @@ class Workflow:
                 issue = str(error)
         if (issue in RESEARCH_LIMITS or issue == ATTEMPTS_USED) and step == FIELD_RESEARCH:
             # Money comes first: a run whose cost ceiling, cost settings or
-            # totals, or program allowance would refuse this attempt keeps that
-            # block. The allowance is only read here (lane_allowance.admits),
-            # never reserved on.
+            # totals, monthly cap or program allowance would refuse this attempt
+            # keeps that block. The caps' ledgers and the allowance are only
+            # read here (tenant_budget.admits, lane_allowance.admits), never
+            # reserved on.
             from .lane_allowance import admits
+            from .tenant_budget import admits as tenant_budget_admits
 
             money_issue = money_issue or (
-                admits(self.repository, principal, specimen, cost, self.clock)
+                tenant_budget_admits(self.repository, principal, specimen, cost, self.clock)
+                or admits(self.repository, principal, specimen, cost, self.clock)
                 if billable and not run.profile.synthetic
                 else None
             )
@@ -753,9 +763,14 @@ class Workflow:
             permit = admission.token
         if billable and not run.profile.synthetic:
             from .lane_allowance import reserve_step
+            from .tenant_budget import reserve_step as reserve_tenant_budget
 
-            # The program's allowance (LANE.md T2b), once the circuit admits the call.
-            allowance_issue = reserve_step(
+            # The program's allowance (LANE.md T2b), once the circuit admits the
+            # call, after any monthly cap of the organization or the collection
+            # (TENANT_BUDGETS.md): with none set, only the caps are read.
+            allowance_issue = reserve_tenant_budget(
+                self.repository, principal, specimen, step, cost, self.clock
+            ) or reserve_step(
                 self.repository, principal, specimen, step, cost, self.clock
             )
             if allowance_issue:
@@ -1877,18 +1892,24 @@ class Workflow:
         Only an envelope this run reserved exactly as ``settle_step`` would
         settle it: the same reservation and allowance, its numbers read back as
         exact integers (``stored_integer``: the transport may return doubles).
-        None when the run has no program allowance, the ledger cannot be read,
-        the envelope differs, or the attempt is reserved but not settled; the
-        lost attempt then stays held in full.
+        None when the ledger cannot be read, the envelope differs, or the
+        attempt is reserved but not settled; the lost attempt then stays held
+        in full. A run with no program allowance asks the monthly cap ledgers
+        the attempt reserved in (tenant_budget.settled_micros): None when it
+        reserved in none, or they do not all hold one settled amount.
         """
         from .domain import Scope
         from .lane_allowance import ProgramLedger
         from .lane_worker import stored_integer
+        from .tenant_budget import settled_micros
 
         run = specimen.run
         policy = run.profile.execution
-        if policy.program_allowance_micros is None or not reserved:
+        if not reserved:
             return None
+        if policy.program_allowance_micros is None:
+            return settled_micros(self.repository, principal, specimen, step,
+                run.attempts.get(step, 0), reserved)
         try:
             ledger = ProgramLedger(
                 self.repository,
