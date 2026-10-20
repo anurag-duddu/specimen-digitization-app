@@ -227,6 +227,8 @@ class FirebaseSession
   @override
   bool get emailVerified =>
       !_sessionBlocked && auth.currentUser?.emailVerified == true;
+  // This local check only validates a usable email. Server admission and SQL
+  // collection membership are checked by the ordinary authenticated API flow.
   bool get staffEmailAllowed =>
       !_sessionBlocked &&
       normalizedStaffEmail(auth.currentUser?.email ?? '') != null;

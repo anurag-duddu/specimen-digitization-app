@@ -8,7 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'email_link_source.dart';
 
-const staffEmailMessage = 'Use your fieldmuseum.org email address.';
+const staffEmailMessage = 'Enter a valid email address.';
 const emailLinkReturnUrl = 'https://specimen-digitization.web.app/';
 const emailLinkCooldown = Duration(seconds: 60);
 const emailLinkSentMessage =
@@ -80,15 +80,21 @@ String? _trustedEmailLink(Uri uri, Map<String, List<String>> parameters) {
   return action.toString();
 }
 
-/// ASCII mailbox syntax, the museum domain or exact authorized owner mailbox,
-/// and no whitespace/control characters.
-/// We accept case differences, not Unicode/lookalike or subdomain addresses.
+/// Validates email syntax only. The server owns exact external-account admission
+/// and current collection membership; neither is inferred by this form.
 String? normalizedStaffEmail(String raw) {
   if (raw.length > 254 || raw.contains(RegExp(r'[^\x21-\x7e]'))) return null;
   final parts = raw.split('@');
-  if (parts.length != 2 ||
-      (parts[1].toLowerCase() != 'fieldmuseum.org' &&
-          raw.toLowerCase() != 'anurag@infinative.com')) {
+  if (parts.length != 2) {
+    return null;
+  }
+  final labels = parts[1].split('.');
+  if (labels.length < 2 ||
+      labels.any(
+        (label) => !RegExp(
+          r'^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$',
+        ).hasMatch(label),
+      )) {
     return null;
   }
   final local = parts[0];

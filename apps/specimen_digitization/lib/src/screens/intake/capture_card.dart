@@ -90,7 +90,9 @@ class _IntakeCaptureCardState extends State<IntakeCaptureCard> {
       radius: ui.shape.inner,
       hairline: true,
       role: SurfaceRole.ground,
-      padding: EdgeInsetsDirectional.all(ui.space.s4),
+      padding: EdgeInsetsDirectional.all(
+        widget.hasPhotos ? ui.space.s2 : ui.space.s4,
+      ),
       child: ConstrainedBox(
         constraints: BoxConstraints(minHeight: widget.minDropHeight),
         child: _fileContent(context),
@@ -154,65 +156,68 @@ class _IntakeCaptureCardState extends State<IntakeCaptureCard> {
     );
   }
 
-  Widget _actions(BuildContext context) => Wrap(
-    spacing: context.ui.space.s2,
-    runSpacing: context.ui.space.s2,
-    children: [
-      if (widget.cameraAvailable)
-        UiButton(
-          key: const ValueKey<String>('intake-take-photograph'),
-          label: 'Take photos',
-          leading: UiIcons.camera,
-          variant: widget.web
-              ? UiButtonVariant.secondary
-              : UiButtonVariant.primary,
-          onPressed: widget.onTakePhotograph,
-          disabledReason: widget.onTakePhotograph == null
-              ? _sourceBusyMessage
-              : null,
-        ),
-      // Keep the overflow source beside Choose files when they fit. At larger
-      // text sizes the pair stacks without clipping either label.
-      OverflowBar(
-        spacing: context.ui.space.s2,
-        overflowSpacing: context.ui.space.s2,
-        children: [
-          UiButton(
-            key: const ValueKey<String>('intake-choose-files'),
-            label: 'Choose files',
-            leading: UiIcons.uploadFile,
-            variant: widget.cameraAvailable && !widget.web
-                ? UiButtonVariant.secondary
-                : UiButtonVariant.primary,
-            onPressed: widget.onChooseFiles,
-            disabledReason: widget.onChooseFiles == null
-                ? _sourceBusyMessage
-                : null,
+  Widget _actions(BuildContext context) {
+    final camera = UiButton(
+      key: const ValueKey<String>('intake-take-photograph'),
+      label: 'Take photos',
+      leading: UiIcons.camera,
+      variant: widget.web ? UiButtonVariant.secondary : UiButtonVariant.primary,
+      onPressed: widget.onTakePhotograph,
+      disabledReason: widget.onTakePhotograph == null
+          ? _sourceBusyMessage
+          : null,
+    );
+    final files = UiButton(
+      key: const ValueKey<String>('intake-choose-files'),
+      label: 'Choose files',
+      leading: UiIcons.uploadFile,
+      variant: widget.cameraAvailable && !widget.web
+          ? UiButtonVariant.secondary
+          : UiButtonVariant.primary,
+      onPressed: widget.onChooseFiles,
+      disabledReason: widget.onChooseFiles == null ? _sourceBusyMessage : null,
+    );
+    final more =
+        widget.onImportFromLink == null && widget.onBrowseSources == null
+        ? null
+        : UiMenuTrigger(
+            key: const ValueKey<String>('intake-more'),
+            label: widget.hasPhotos ? null : 'More',
+            semanticsLabel: 'More photo sources',
+            items: <UiMenuItem>[
+              if (widget.onImportFromLink != null)
+                UiMenuItem(
+                  label: 'Import from link',
+                  icon: UiIcons.sourceImport,
+                  onSelected: widget.onImportFromLink,
+                ),
+              if (widget.onBrowseSources != null)
+                UiMenuItem(
+                  label: 'Add from storage',
+                  icon: UiIcons.sources,
+                  onSelected: widget.onBrowseSources,
+                ),
+            ],
+          );
+    return Wrap(
+      spacing: context.ui.space.s2,
+      runSpacing: context.ui.space.s2,
+      children: [
+        if (widget.cameraAvailable) camera,
+        // Selected photos get the compact row. At large text the buttons
+        // wrap naturally, while the overflow action keeps its full target.
+        if (widget.hasPhotos) ...[
+          files,
+          ?more,
+        ] else
+          OverflowBar(
+            spacing: context.ui.space.s2,
+            overflowSpacing: context.ui.space.s2,
+            children: [files, ?more],
           ),
-          if (widget.onImportFromLink != null || widget.onBrowseSources != null)
-            UiMenuTrigger(
-              key: const ValueKey<String>('intake-more'),
-              label: 'More',
-              semanticsLabel: 'More photo sources',
-              items: <UiMenuItem>[
-                if (widget.onImportFromLink != null)
-                  UiMenuItem(
-                    label: 'Import from link',
-                    icon: UiIcons.sourceImport,
-                    onSelected: widget.onImportFromLink,
-                  ),
-                if (widget.onBrowseSources != null)
-                  UiMenuItem(
-                    label: 'Add from storage',
-                    icon: UiIcons.sources,
-                    onSelected: widget.onBrowseSources,
-                  ),
-              ],
-            ),
-        ],
-      ),
-    ],
-  );
+      ],
+    );
+  }
 }
 
 /// The action names the processing handoff rather than its transport detail.

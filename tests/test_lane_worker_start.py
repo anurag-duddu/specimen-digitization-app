@@ -163,7 +163,7 @@ def test_production_app_passes_the_lane_wiring(monkeypatch):
             else config.project
         ),
     )
-    monkeypatch.setattr(runtime_auth, "firebase_verifier", lambda *_: None)
+    monkeypatch.setattr(runtime_auth, "firebase_verifier", lambda *_, **__: None)
     monkeypatch.setattr(runtime_health, "install_health", lambda *_, **__: None)
     monkeypatch.setattr(runtime_health, "cloud_probe", lambda *_: None)
     monkeypatch.setattr(runtime_health, "DependencyReadiness", lambda *_: None)

@@ -486,8 +486,13 @@ def seed_secrets(actor=ACTOR, bindings=BINDINGS):
 def test_seed_dry_run_reads_both_secrets_and_prints_no_identifier():
     code, output, commands = dry("seed_allowance_ledger.py", ORG_ID=ORG)
     assert code == 0, output
-    assert find(commands, "gcloud", "secrets", "versions", "access", "1", "--secret=specimen-worker-actor-uid")
-    assert find(commands, "gcloud", "secrets", "versions", "access", "1", "--secret=specimen-collection-bindings")
+    expected = []
+    for name in ("specimen-worker-actor-uid", "specimen-collection-bindings"):
+        version = S.SECRET_VERSIONS[name]
+        assert type(version) is int and version > 0
+        expected.append(["gcloud", "secrets", "versions", "access", str(version),
+                         f"--secret={name}", f"--project={S.PROJECT}"])
+    assert commands == expected  # Exactly the committed numbered reads; no write or extra secret.
     assert ORG not in output and "as the operator credentials" in output
     assert dry("seed_allowance_ledger.py", ORG_ID=ORG.upper())[0] != 0
     assert dry("seed_allowance_ledger.py")[0] != 0

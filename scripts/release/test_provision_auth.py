@@ -71,6 +71,7 @@ def test_main_stops_before_authentication_or_network_outside_workflow(monkeypatc
     monkeypatch.setattr(auth.subprocess, "run", lambda *a, **k: SimpleNamespace(stdout="ab" * 20))
     monkeypatch.setattr(auth.os, "environ", {})
     monkeypatch.setattr(auth, "provision", lambda *a: pytest.fail("no cloud calls outside workflow"))
+    monkeypatch.setattr(auth, "provision_android_signing", lambda *a: pytest.fail("no native cloud calls outside workflow"))
     assert auth.main() == 1
     assert "only in the main Data release" in capsys.readouterr().err
 
@@ -667,3 +668,106 @@ def test_workflow_keeps_auth_after_data_and_installs_pinned_cli_before_credentia
     # Read projections cannot fetch password hashes, client secrets or users.
     assert auth.PRESERVED_FIELDS == "authorizedDomains,signIn(email(enabled,passwordRequired))"
     assert auth.GOOGLE_FIELDS == "name,enabled,clientId"
+
+
+ANDROID = {"appId": auth.ANDROID_APP, "packageName": auth.ANDROID_PACKAGE, "state": "ACTIVE"}
+CERTIFICATES = [{"certType": kind, "shaHash": value} for kind, value in auth.ANDROID_CERTIFICATES]
+
+
+def test_android_signing_adds_only_missing_fixed_certificates_and_reads_back():
+    unrelated = {"certType": "SHA_1", "shaHash": "AB" * 20}
+    api = FakeApi(ANDROID, {"certificates": [unrelated]}, *CERTIFICATES,
+                  {"certificates": [unrelated, *CERTIFICATES]})
+    auth.provision_android_signing(api)
+    assert api.calls == [
+        ("GET", auth.ANDROID_URL, {"fields": "appId,packageName,state"}),
+        ("GET", auth.ANDROID_SHA_URL, {"fields": auth.ANDROID_SHA_FIELDS}),
+        *[("POST", auth.ANDROID_SHA_URL, {"fields": "certType,shaHash", "body": certificate})
+          for certificate in CERTIFICATES],
+        ("GET", auth.ANDROID_SHA_URL, {"fields": auth.ANDROID_SHA_FIELDS}),
+    ]
+    assert not api.answers
+
+
+def test_android_signing_partial_rerun_preserves_existing_and_adds_only_missing():
+    # API responses may use lowercase colon-delimited fingerprints.
+    first = dict(CERTIFICATES[0])
+    first["shaHash"] = ":".join(first["shaHash"][i:i + 2].lower() for i in range(0, 40, 2))
+    api = FakeApi(ANDROID, {"certificates": [first]}, CERTIFICATES[1],
+                  {"certificates": CERTIFICATES})
+    auth.provision_android_signing(api)
+    assert [call[2]["body"] for call in api.calls if call[0] == "POST"] == [CERTIFICATES[1]]
+
+
+def test_android_signing_complete_rerun_is_read_only():
+    api = FakeApi(ANDROID, {"certificates": CERTIFICATES}, {"certificates": CERTIFICATES})
+    auth.provision_android_signing(api)
+    assert [call[0] for call in api.calls] == ["GET", "GET", "GET"]
+
+
+def test_android_empty_repeated_field_is_supported():
+    api = FakeApi(ANDROID, {}, *CERTIFICATES, {"certificates": CERTIFICATES})
+    auth.provision_android_signing(api)
+    assert len([call for call in api.calls if call[0] == "POST"]) == 2
+
+
+@pytest.mark.parametrize("app", [
+    {}, {**ANDROID, "state": "DELETED"}, {**ANDROID, "appId": "different"},
+    {**ANDROID, "packageName": "different.package"},
+])
+def test_android_app_must_match_before_reading_or_writing_certificates(app):
+    api = FakeApi(app)
+    with pytest.raises(auth.Failure, match="no certificates changed"):
+        auth.provision_android_signing(api)
+    assert len(api.calls) == 1
+
+
+@pytest.mark.parametrize("response", [
+    {"certificates": None}, {"certificates": {}}, {"certificates": [None]},
+    {"certificates": [{}]}, {"certificates": [{"certType": "SHA_1", "shaHash": "AB" * 32}]},
+    {"certificates": [{"certType": "SHA_256", "shaHash": "private-response"}]},
+    {"certificates": [{"certType": "SHA_1", "shaHash": " AB" * 20}]},
+    {"certificates": [{"certType": [], "shaHash": "AB" * 20}]},
+])
+def test_invalid_android_metadata_fails_before_certificate_writes(response):
+    api = FakeApi(ANDROID, response)
+    with pytest.raises(auth.Failure, match="invalid") as caught:
+        auth.provision_android_signing(api)
+    assert all(call[0] == "GET" for call in api.calls)
+    assert "private-response" not in str(caught.value)
+
+
+@pytest.mark.parametrize("created", [auth.Failure("uncertain POST"), CERTIFICATES[1], {}])
+def test_uncertain_or_wrong_android_create_stops_without_second_write(created):
+    api = FakeApi(ANDROID, {}, created)
+    with pytest.raises(auth.Failure):
+        auth.provision_android_signing(api)
+    assert [call[0] for call in api.calls] == ["GET", "GET", "POST"]
+
+
+@pytest.mark.parametrize("after", [[], [CERTIFICATES[0]], CERTIFICATES])
+def test_android_readback_requires_targets_and_retained_existing_certificates(after):
+    unrelated = {"certType": "SHA_256", "shaHash": "EF" * 32}
+    api = FakeApi(ANDROID, {"certificates": [unrelated]}, *CERTIFICATES, {"certificates": after})
+    with pytest.raises(auth.Failure, match="readback differs"):
+        auth.provision_android_signing(api)
+    assert [call[0] for call in api.calls] == ["GET", "GET", "POST", "POST", "GET"]
+
+
+def test_main_runs_native_reconciliation_after_provider_using_same_guarded_session(monkeypatch, tmp_path):
+    import google.auth
+    import google.auth.transport.requests
+
+    cli = tmp_path / "firebase"
+    cli.touch()
+    env = {**environment(tmp_path), "AUTH_RELEASE_CLI": str(cli)}
+    monkeypatch.setattr(auth.os, "environ", env)
+    monkeypatch.setattr(auth.subprocess, "run", lambda *a, **k: SimpleNamespace(stdout=env["GITHUB_SHA"]))
+    credentials, session, calls = object(), object(), []
+    monkeypatch.setattr(google.auth, "default", lambda **k: (credentials, None))
+    monkeypatch.setattr(google.auth.transport.requests, "AuthorizedSession", lambda value: session)
+    monkeypatch.setattr(auth, "provision", lambda api, *args: calls.append(("provider", api)))
+    monkeypatch.setattr(auth, "provision_android_signing", lambda api: calls.append(("native", api)))
+    assert auth.main() == 0
+    assert [call[0] for call in calls] == ["provider", "native"]
+    assert calls[0][1] is calls[1][1] and calls[0][1].session is session

@@ -312,6 +312,7 @@ jobs:
           uv run pytest -q
           scripts/ci/test_public_settings.py
           scripts/ci/test_smoke_web_routes.py
+          tests/test_native_google_configuration.py
           tests/test_deployment_policy.py
           tests/test_hosting_attempt_binding.py
           tests/test_local_review_runner.py
@@ -404,6 +405,7 @@ jobs:
           SPECIMEN_ADMIN_CONTACT: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.SPECIMEN_ADMIN_CONTACT || '' }}
           SPECIMEN_PILOT_SCOPE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.SPECIMEN_PILOT_SCOPE || '' }}
           SPECIMEN_GOOGLE_SIGN_IN_ENABLED: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.SPECIMEN_GOOGLE_SIGN_IN_ENABLED || '' }}
+          BULK_INTAKE_ENABLED: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.BULK_INTAKE_ENABLED || '' }}
         run: ../../scripts/ci/build_web.sh
 
       - name: Stamp release with its source revision

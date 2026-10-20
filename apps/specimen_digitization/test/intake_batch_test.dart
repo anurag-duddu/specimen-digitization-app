@@ -10,15 +10,14 @@ import 'dart:typed_data';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_digitization/src/intake.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/screens/intake/manifest_panel.dart';
 import 'package:specimen_digitization/src/theme/app_theme.dart';
-import 'package:specimen_digitization/src/widgets/upload_item.dart';
 
 import 'intake_harness.dart';
-import 'ui_finders.dart';
 import 'widget_test.dart' show TestRepository;
 
 const CollectionScope scope = CollectionScope(
@@ -178,7 +177,7 @@ void main() {
     await chooseFiles(tester);
 
     expect(find.text('2 to fix · 1 ready'), findsOneWidget);
-    expect(find.text('Not uploaded'), findsNWidgets(2));
+    expect(find.text('Not added'), findsNWidgets(2));
     expect(find.text('empty.png'), findsOneWidget);
     expect(find.text('notes.txt'), findsOneWidget);
     expect(find.text('Empty file. Choose another.'), findsOneWidget);
@@ -241,11 +240,13 @@ void main() {
     expect(find.byType(IntakeManifestRow), findsOneWidget);
     final Finder remove = find.descendant(
       of: find.byType(IntakeManifestRow),
-      matching: uiIconButton(UploadItem.removeLabel),
+      matching: find.byType(UiMenuTrigger),
     );
     await tester.ensureVisible(remove);
     await tester.pumpAndSettle();
     await tester.tap(remove);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Remove'));
     await tester.pumpAndSettle();
     expect(find.byType(IntakeManifestRow), findsNothing);
     expect(uploadButton, findsNothing);
