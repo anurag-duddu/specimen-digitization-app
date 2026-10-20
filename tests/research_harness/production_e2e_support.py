@@ -186,6 +186,7 @@ class FakeDataConnect:
         self.receipts = {}
         # cost_entry rows by id (dataconnect/connector/cost_meter.gql).
         self.cost_entries = {}
+        self.tenant_budget_caps = {}
         # Test hooks: an operation name -> callable(variables) raised before it runs.
         self.fail_before = {}
 
@@ -345,6 +346,34 @@ class FakeDataConnect:
         if run is not None and run.get("traceId") is None:
             run["traceId"] = variables["traceId"]
         return {"updated": 1}
+
+    # ---- monthly budget caps (dataconnect/connector/tenant_budget.gql) ----
+    # The one organization's caps, {collectionKey: (monthlyCapMicros, updatedBy,
+    # updatedAt)}; none unless a test sets one. Int64 crosses the wire here as a
+    # decimal string, one of the two forms tenant_budget.cap_micros reads.
+    def _cap_member(self, variables, roles):
+        member = self.membership(variables["actorUid"])
+        if (variables["organizationId"] != ORG or variables["collectionId"] != COLLECTION
+                or member is None or member["role"] not in roles):
+            raise ConnectorRefusal("permission denied")
+        return member
+
+    def op_TenantBudgetCapsV1(self, variables):
+        member = self._cap_member(variables, OPERATOR_ROLES + ("viewer",))
+        caps = self.tenant_budget_caps
+        return {"organizationMember": {"active": True},
+            "collectionMember": {"active": True, "role": member["role"]},
+            "tenantBudgetCaps": [{"collectionKey": key, "monthlyCapMicros": None if micros is None else str(micros),
+                "updatedAt": at} for key, (micros, _, at) in sorted(caps.items())],
+            "collections": [{"id": COLLECTION, "parentId": None}]}
+
+    def op_SetTenantBudgetCapV1(self, variables):
+        self._cap_member(variables, ("admin",))
+        key, micros = variables["collectionKey"], variables["monthlyCapMicros"]
+        if key not in {"organization", COLLECTION} or (micros is not None and (type(micros) is not int or micros < 0)):
+            raise ConnectorRefusal("tenant budget cap refused")
+        self.tenant_budget_caps[key] = (micros, variables["actorUid"], iso_now())
+        return {"stored": 1}
 
     def rows(self, table, predicate=lambda row: True):
         result = []

@@ -99,6 +99,8 @@ const Map<String, String> userFacingTerms = <String, String>{
   'research_budget_state_unavailable': 'Saved cost totals not readable',
   'program_allowance_exhausted': 'Spending allowance reached',
   'program_allowance_ledger_unavailable': 'Allowance totals not readable',
+  'tenant_budget_exhausted': 'Monthly cost limit reached',
+  'tenant_budget_unavailable': 'Monthly totals not readable',
   'program_allowance_unavailable': 'Spending allowance not set up',
   'evidence_harness_blocked:elapsed_budget_exhausted':
       'Evidence check time limit reached',
