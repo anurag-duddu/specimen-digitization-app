@@ -1881,7 +1881,7 @@ class Workflow:
         lost attempt then stays held in full.
         """
         from .domain import Scope
-        from .lane_allowance import ProgramLedger
+        from .lane_allowance import ORDINARY, ProgramLedger
         from .lane_worker import stored_integer
 
         run = specimen.run
@@ -1900,7 +1900,7 @@ class Workflow:
             key = ProgramLedger._ordinary_key(
                 specimen.id, run.id, step, run.attempts.get(step, 0)
             )
-            entry = ledger.read().get("ordinary_effects", {}).get(key)
+            entry = ledger.effect(ORDINARY, key)  # The head's, else its archive's.
             if not isinstance(entry, dict) or entry.get("settled_micros") is None:
                 return None
             if (
