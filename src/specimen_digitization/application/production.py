@@ -50,8 +50,11 @@ from .reliability import ReadingStopped, run_agent_bounded, stopped_usage
 from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.usage import UsageLimits
 
+from .upload_documents import bind_sqlite_upload_lookups
 from .worker_deadline import deadline_call, guarded
 from ..process_logging import log_code
+
+bind_sqlite_upload_lookups()
 
 actor_uid = contextvars.ContextVar("verified_actor_uid", default=None)
 

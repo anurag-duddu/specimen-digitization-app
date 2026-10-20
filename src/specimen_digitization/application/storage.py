@@ -805,34 +805,6 @@ class SQLiteRepository:
             ).fetchall()
         return [json.loads(r[0]) for r in rows]
 
-    def uploads_for_batch(
-        self, scope: Scope, batch_id: str, include_sensitive: bool = False
-    ) -> list[dict]:
-        with self.connect() as db:
-            rows = db.execute(
-                """SELECT payload FROM documents
-                   WHERE scope=? AND kind='upload'
-                     AND json_extract(payload, '$.batch_id')=?
-                     AND (? OR COALESCE(json_extract(payload, '$.sensitive'), 1)=0)
-                   ORDER BY id""",
-                (scope.model_dump_json(), batch_id, include_sensitive),
-            ).fetchall()
-        return [json.loads(r[0]) for r in rows]
-
-    def upload_by_idempotency(
-        self, scope: Scope, batch_id: str, idempotency_key: str
-    ) -> dict | None:
-        with self.connect() as db:
-            row = db.execute(
-                """SELECT payload FROM documents
-                   WHERE scope=? AND kind='upload'
-                     AND json_extract(payload, '$.batch_id')=?
-                     AND json_extract(payload, '$.idempotency_key')=?
-                   LIMIT 1""",
-                (scope.model_dump_json(), batch_id, idempotency_key),
-            ).fetchone()
-        return json.loads(row[0]) if row else None
-
     def put_document(
         self, scope: Scope, kind: str, ident: str, payload: dict, expected: int
     ) -> dict:
