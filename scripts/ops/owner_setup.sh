@@ -114,8 +114,9 @@ readonly WINDOW="^request\\.time >= timestamp\\('($STAMP)'\\) && request\\.time 
 
 # The image registry's cleanup policy, in the file format of gcloud artifacts repositories set-cleanup-policies.
 # A keep rule wins over the delete rule: an image would go a day after its push unless it is one of the newest
-# five of its kind or carries the tag the runtime release moves onto the running image (deployed) or onto the
-# one before it (rollback); scripts/release/keep_images.py moves them and reads this policy back. It is set in
+# five of its kind or carries a tag the runtime release moves, per service and job, onto the image it runs
+# (deployed-<name>) or the one before (rollback-<name>); scripts/release/keep_images.py moves them and reads
+# this policy back. It is set in
 # dry-run mode, so the registry deletes nothing; turning dry run off is a later reviewed change of its own.
 readonly CLEANUP_POLICY='[
   {"name": "keep-newest", "action": {"type": "KEEP"}, "mostRecentVersions": {"keepCount": 5}},

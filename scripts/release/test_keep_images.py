@@ -149,8 +149,8 @@ def version(package, name, hours_old, *tags):
 
 def test_the_deployed_and_rollback_images_stay_however_old_and_the_superseded_ones_go():
     history = [version("api", f"v{number}", number * 6, f"sha-{number}") for number in range(12)]
-    history[8]["tags"].append("deployed")  # 48 hours old, eight newer pushes whose releases failed
-    history[10]["tags"].append("rollback")
+    history[8]["tags"].append("deployed-specimen-api")  # 48 hours old, eight newer pushes whose releases failed
+    history[10]["tags"].append("rollback-specimen-intake")
     history.append(version("api", "untagged", 70))
     history += [version("sam", f"v{number}", 100 + number, f"sha-{number}") for number in range(3)]
     gone = deleted(keep.POLICY, history)
@@ -171,7 +171,7 @@ def test_nothing_under_a_day_old_goes_even_past_the_newest_five():
 def test_a_keep_rule_wins_over_the_delete_rule():
     history = [version("api", f"v{number}", 200 + number, f"sha-{number}") for number in range(7)]
     assert deleted(keep.POLICY, history) == {"api/v5", "api/v6"}
-    history[6]["tags"].append("rollback")
+    history[6]["tags"].append("rollback-specimen-api")
     assert deleted(keep.POLICY, history) == {"api/v5"}
 
 
@@ -197,14 +197,19 @@ def test_the_cleanup_is_set_up_only_when_the_registry_holds_exactly_the_committe
             keep.cleanup_set_up(repository)
 
 
+ROUTES = {"org/insects": {"worker_job": "projects/specimen-digitization/locations/us-east4/jobs/specimen-worker-insects",
+                          "intake_job": "projects/specimen-digitization/locations/us-east4/jobs/specimen-intake-insects"}}
+
+
 class Cloud:
     """A stand-in gcloud: the repository, what each runtime runs and the tags of each package."""
 
-    def __init__(self, repository=SET_UP, running=None, tags=None, ignore_writes=False):
+    def __init__(self, repository=SET_UP, running=None, tags=None, ignore_writes=False, unreadable=()):
         self.repository = repository
-        self.running = running or {"api": image("api", "1"), "sam": image("sam", "2"), "worker": image("worker", "3")}
-        self.tags = tags or {role: {} for role in keep.ROLES}
-        self.ignore_writes, self.calls, self.writes = ignore_writes, [], []
+        self.running = running or {"specimen-api": image("api", "1"), "specimen-sam": image("sam", "2"),
+                                   "specimen-worker": image("worker", "3"), "specimen-intake": image("api", "1")}
+        self.tags = tags or {package: {} for package in ("api", "sam", "worker")}
+        self.ignore_writes, self.unreadable, self.calls, self.writes = ignore_writes, unreadable, [], []
 
     def __call__(self, argv, env=None, capture_output=False, text=False, check=False):
         assert env["CLOUDSDK_CORE_DISABLE_PROMPTS"] == "1" and check
@@ -221,6 +226,8 @@ class Cloud:
                 held[words[4]] = flags["version"]
             return subprocess.CompletedProcess(argv, 0, "", "")
         assert argv[-1] == "--format=json", argv
+        if len(words) > 4 and words[4] in self.unreadable:
+            raise subprocess.CalledProcessError(1, argv, "", "ERROR: NOT_FOUND")
         return subprocess.CompletedProcess(argv, 0, json.dumps(self.answer(words, flags)), "")
 
     def answer(self, words, flags):
@@ -229,15 +236,16 @@ class Cloud:
         if words[1:4] == ["artifacts", "tags", "list"]:
             return [{"name": f"{PACKAGES}/{flags['package']}/tags/{tag}",
                      "version": f"{PACKAGES}/{flags['package']}/versions/{held}"}
-                    for tag, held in {"sha-x": digest("f"), **self.tags[flags["package"]]}.items()]
+                    for tag, held in {"sha-x": digest("f"), "deployed": digest("e"),  # not a runtime's tag
+                                      **self.tags[flags["package"]]}.items()]
         if words[1:4] == ["run", "jobs", "describe"]:
             return {"spec": {"template": {"spec": {"template": {"spec": {
-                "containers": [{"image": self.running["worker"]}]}}}}}}
+                "containers": [{"image": self.running[words[4]]}]}}}}}}
         if words[1:4] == ["run", "services", "describe"]:
             return {"status": {"latestReadyRevisionName": f"{words[4]}-ready"}}
         if words[1:4] == ["run", "revisions", "describe"]:
-            role = words[4].removeprefix("specimen-").removesuffix("-ready")
-            return {"spec": {"containers": [{"image": "unused"}]}, "status": {"imageDigest": self.running[role]}}
+            return {"spec": {"containers": [{"image": "unused"}]},
+                    "status": {"imageDigest": self.running[words[4].removesuffix("-ready")]}}
         raise AssertionError(f"unexpected gcloud call: {words}")
 
 
@@ -246,34 +254,62 @@ def release(monkeypatch):
     for key, value in CONTEXT.items():
         monkeypatch.setenv(key, value)
 
-    def start(cloud):
+    def start(cloud, routes=None):
         monkeypatch.setattr(keep.subprocess, "run", cloud)
+        monkeypatch.setattr(keep, "collection_routes", lambda: routes or {})
         return cloud
     return start
 
 
-def test_the_first_release_after_the_setup_tags_each_running_image_deployed(release, capsys):
+def test_the_first_release_after_the_setup_tags_each_runtimes_image_deployed(release, capsys):
     cloud = release(Cloud())
     keep.main(["keep_images.py"])
-    assert cloud.writes == [["create", "deployed", "api", digest("1")], ["create", "deployed", "sam", digest("2")],
-                            ["create", "deployed", "worker", digest("3")]]
-    assert cloud.tags["api"] == {"deployed": digest("1")}
+    assert cloud.writes == [["create", "deployed-specimen-api", "api", digest("1")],
+                            ["create", "deployed-specimen-sam", "sam", digest("2")],
+                            ["create", "deployed-specimen-worker", "worker", digest("3")],
+                            ["create", "deployed-specimen-intake", "api", digest("1")]]
     out = capsys.readouterr().out
-    assert f"kept api: deployed {digest('1')}, rollback none yet" in out
+    assert f"kept api image of specimen-api: deployed-specimen-api {digest('1')}, rollback-specimen-api none yet" in out
     assert "verified the cleanup policy of specimen-runtime (dry run: nothing is deleted)" in out
 
 
 def test_a_new_image_in_service_moves_deployed_and_the_one_before_becomes_rollback(release):
-    cloud = release(Cloud(tags={"api": {"deployed": digest("0")}, "sam": {"deployed": digest("8"),
-                                                                           "rollback": digest("7")},
-                                "worker": {"deployed": digest("3"), "rollback": digest("9")}}))
+    cloud = release(Cloud(tags={
+        "api": {"deployed-specimen-api": digest("0"), "deployed-specimen-intake": digest("1")},
+        "sam": {"deployed-specimen-sam": digest("8"), "rollback-specimen-sam": digest("7")},
+        "worker": {"deployed-specimen-worker": digest("3"), "rollback-specimen-worker": digest("9")}}))
     keep.main(["keep_images.py"])
-    assert cloud.writes == [["create", "rollback", "api", digest("0")], ["update", "deployed", "api", digest("1")],
-                            ["update", "rollback", "sam", digest("8")], ["update", "deployed", "sam", digest("2")]]
-    # The worker still runs the image it ran: neither of its tags moves.
-    assert cloud.tags == {"api": {"deployed": digest("1"), "rollback": digest("0")},
-                          "sam": {"deployed": digest("2"), "rollback": digest("8")},
-                          "worker": {"deployed": digest("3"), "rollback": digest("9")}}
+    assert cloud.writes == [["create", "rollback-specimen-api", "api", digest("0")],
+                            ["update", "deployed-specimen-api", "api", digest("1")],
+                            ["update", "rollback-specimen-sam", "sam", digest("8")],
+                            ["update", "deployed-specimen-sam", "sam", digest("2")]]
+    # The worker and the intake job still run the images they ran: none of their tags moves.
+    assert cloud.tags == {
+        "api": {"deployed-specimen-api": digest("1"), "rollback-specimen-api": digest("0"),
+                "deployed-specimen-intake": digest("1")},
+        "sam": {"deployed-specimen-sam": digest("2"), "rollback-specimen-sam": digest("8")},
+        "worker": {"deployed-specimen-worker": digest("3"), "rollback-specimen-worker": digest("9")}}
+
+
+def test_each_runtime_of_one_package_keeps_its_own_image_and_the_collection_jobs_are_kept_too(release):
+    # A partly failed release: the API service took the new image, the intake jobs still run the old one.
+    running = {"specimen-api": image("api", "1"), "specimen-sam": image("sam", "2"),
+               "specimen-worker": image("worker", "3"), "specimen-intake": image("api", "0"),
+               "specimen-worker-insects": image("worker", "4"), "specimen-intake-insects": image("api", "0")}
+    cloud = release(Cloud(running=running), routes=ROUTES)
+    keep.main(["keep_images.py"])
+    assert cloud.tags["api"] == {"deployed-specimen-api": digest("1"), "deployed-specimen-intake": digest("0"),
+                                 "deployed-specimen-intake-insects": digest("0")}
+    assert cloud.tags["worker"] == {"deployed-specimen-worker": digest("3"),
+                                    "deployed-specimen-worker-insects": digest("4")}
+
+
+def test_a_runtime_that_cannot_be_read_fails_the_step_after_the_others_are_tagged(release):
+    cloud = release(Cloud(unreadable=("specimen-sam",)))
+    with pytest.raises(ValueError, match="specimen-sam: CalledProcessError"):
+        keep.main(["keep_images.py"])
+    assert [write[1] for write in cloud.writes] == [
+        "deployed-specimen-api", "deployed-specimen-worker", "deployed-specimen-intake"]
 
 
 def test_before_the_owner_setup_nothing_is_tagged_and_the_release_passes(release, capsys):
@@ -292,19 +328,21 @@ def test_other_cleanup_settings_stop_the_step_before_any_tag_moves(release):
 
 def test_a_tag_that_does_not_read_back_as_set_fails_the_step(release):
     release(Cloud(ignore_writes=True))
-    with pytest.raises(ValueError, match="api: the deployed and rollback tags did not read back as set"):
+    with pytest.raises(ValueError, match="specimen-api: the tags deployed-specimen-api and rollback-specimen-api "
+                                         "did not read back as set"):
         keep.main(["keep_images.py"])
 
 
 @pytest.mark.parametrize("running", [
     "us-east4-docker.pkg.dev/specimen-digitization/specimen-runtime/api:sha-x",  # a tag, not a digest
-    image("sam", "1"),  # another role's image
+    image("sam", "1"),  # another package's image
     "gcr.io/elsewhere/api@" + digest("1")])
-def test_only_this_registrys_digest_of_the_role_is_tagged(release, running):
-    cloud = release(Cloud(running={"api": running, "sam": image("sam", "2"), "worker": image("worker", "3")}))
+def test_only_this_registrys_digest_of_the_package_is_tagged(release, running):
+    cloud = release(Cloud(running={"specimen-api": running, "specimen-sam": image("sam", "2"),
+                                   "specimen-worker": image("worker", "3"), "specimen-intake": image("api", "1")}))
     with pytest.raises(ValueError, match="api requires its immutable pushed image digest"):
         keep.main(["keep_images.py"])
-    assert cloud.writes == []
+    assert "deployed-specimen-api" not in [write[1] for write in cloud.writes]
 
 
 def test_the_step_runs_only_in_the_runtime_release_on_main(monkeypatch):

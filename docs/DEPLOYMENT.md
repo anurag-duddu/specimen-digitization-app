@@ -992,7 +992,7 @@ run, `workflow_dispatch`. A provider is bound to the workflow's file name, so
 renaming a workflow file breaks its sign-in. The image build identity can
 write to the image registry and cannot deploy. The deploy identity can deploy;
 in the registry it can read, and create or move tags, which it uses only for
-the `deployed` and `rollback` tags described under
+the `deployed-<runtime>` and `rollback-<runtime>` tags described under
 [Image registry cleanup](#image-registry-cleanup). It cannot delete an image.
 
 ### Data release
@@ -1261,11 +1261,15 @@ The workflow has three jobs.
    - `scripts/release/keep_images.py` runs last, also after a failed step. It
      reads the registry's cleanup settings back and must find the committed
      policy (see [Image registry cleanup](#image-registry-cleanup)); before the
-     owner setup has set it, the step says so and passes. Then, for the API,
-     SAM and the worker, it reads the image digest in service (a service's
-     latest ready revision, the job's definition), points the tag `deployed`
-     at it and, when that moved the tag, points `rollback` at the image
-     `deployed` named before. It reads both tags back. It deletes nothing.
+     owner setup has set it, the step says so and passes. Then, for every
+     service and job the release defines (`specimen-api`, `specimen-sam`,
+     `specimen-worker`, `specimen-intake` and the collection jobs of the
+     pinned routes), it reads the image digest in service (a service's latest
+     ready revision, a job's definition), points the tag `deployed-<name>` at
+     it and, when that moved the tag, points `rollback-<name>` at the image
+     `deployed-<name>` named before. It reads both tags back, tags every
+     runtime it can read before it fails for one it cannot, and deletes
+     nothing.
 
 A manual run may additionally select `process_queued: true` (default false).
 After deployment verification, `scripts/release/process_worker.py` warms SAM to
@@ -1387,13 +1391,13 @@ matches it.
 | `keep-deployed` | keep | a version with a tag that starts with `deployed` or `rollback` |
 | `delete-old` | delete | any version, tagged or not, more than one day after its push |
 
-The image each runtime has in service, and the one it had before, are held by
-the two tags whatever the count, so the count only keeps the last few builds
-at hand. On 2026-10-20 the newest five of each package came to 3.30 GB of
+The image each service or job has in service, and the one it had before, are
+held by its `deployed-<name>` and `rollback-<name>` tags whatever the count, so
+the count only keeps the last few builds at hand. On 2026-10-20 the newest five of each package came to 3.30 GB of
 layers, the newest ten to 6.13 GB. The one-day floor keeps every build through
 the release that pushed it.
 
-Every image is pushed with its own `sha-<commit>-<run>-<attempt>` tag. While
+Every release image is pushed with its own `sha-<commit>-<run>-<attempt>` tag. While
 the repository's tags are immutable, Google deletes no tagged image ("If a
 repository has immutable tags enabled, tagged artifacts can't be deleted") and
 no tag can move, so the owner setup lets tags move. Releases deploy by digest,
@@ -1402,14 +1406,13 @@ never by tag, so a tag never decides what runs.
 The policy is set in dry-run mode: Google evaluates it and deletes nothing.
 Google reports what a dry run would delete only in Data Access audit logs,
 which this project does not record (no audit configuration, read on
-2026-10-20). Turning dry run off is a pull request of
-its own that changes `--dry-run` to `--no-dry-run` in `owner_setup.sh` and
-`DRY_RUN` in `keep_images.py` together; the owner then runs the setup once
-more.
+2026-10-20). Turning dry run off is a pull request of its own that changes
+`--dry-run` to `--no-dry-run` in `owner_setup.sh` and `DRY_RUN` in
+`keep_images.py` together; the owner then runs the setup once more.
 
 Before the owner setup has set the policy, the release's last step prints
 that the cleanup is not set up and passes; nothing can be deleted then. Once
-set, any other policy, dry-run mode or immutable tags fail that step with
+set, any other policy, another dry-run setting or immutable tags fail that step with
 "the owner runs scripts/ops/owner_setup.sh once", and the setup puts the
 committed settings back.
 
