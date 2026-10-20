@@ -29,21 +29,24 @@ CORE_SECRET_VERSIONS = {
     "huggingface-runtime-token": 2,
     "specimen-worker-logfire": 1,
     "specimen-source-registry": 1,
-    "specimen-collection-bindings": 1,
+    "specimen-collection-bindings": 2,
     "specimen-worker-actor-uid": 1,
 }
 
 # Opt in only after the owner provisions the real value and the numbered
 # version is reviewed. None adds no reference to any deployed role.
 OPTIONAL_SECRET_VERSIONS = {
-    "specimen-external-emails": None,
-    "specimen-cloud-import-config": None,
-    "specimen-collection-job-routes": None,
+    "specimen-external-emails": 1,
+    "specimen-cloud-import-config": 1,
+    "specimen-collection-job-routes": 1,
 }
 # Provider client secrets are independent of dynamically created token secrets.
 # Names here must never start with specimen-intake-.
-OAUTH_CLIENT_SECRET_VERSIONS = {}
-INTAKE_PROVIDER_APIS = ()  # Optional reviewed subset: drive.googleapis.com, picker.googleapis.com.
+OAUTH_CLIENT_SECRET_VERSIONS = {
+    "specimen-google-drive-client": 1,
+    "specimen-dropbox-client": 1,
+}
+INTAKE_PROVIDER_APIS = ("drive.googleapis.com", "picker.googleapis.com")
 INTAKE_OPTIONAL_ENV = {
     "SPECIMEN_EXTERNAL_EMAIL_ALLOWLIST_JSON": "specimen-external-emails",
     "SPECIMEN_INTAKE_OAUTH_JSON": "specimen-cloud-import-config",

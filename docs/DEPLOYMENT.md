@@ -1232,6 +1232,15 @@ The workflow has three jobs.
      numbered dynamic-version access/addition, parent-scoped metadata listing/inspection
      and retired/orphan version destruction, separately pinned configuration
      reads and scoped job invokers; it starts no release or execution.
+     Dynamic credentials are restricted in IAM to Secret Manager secret and
+     version resources in this project's `specimen-intake-` namespace.
+     Application validation additionally requires UUID secret names and positive
+     numbered versions. IAM uses the supported `startsWith` function with service
+     and resource-type guards; IAM Conditions do not support regular-expression
+     `matches`. Fixed provider clients and configuration must never use that
+     dynamic namespace. Validate condition syntax with Google's
+     [`iamPolicies.lintPolicy`](https://docs.cloud.google.com/iam/docs/reference/rest/v1/iamPolicies/lintPolicy)
+     before applying a changed expression.
      Its optional `--intake-config-dir ABS` validates and preflights the entire
      private configuration bundle before any IAM or configuration write,
      creates only approved missing secrets and appends the explicitly requested

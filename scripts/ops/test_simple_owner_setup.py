@@ -38,6 +38,12 @@ PLANE = ("principalSet://iam.googleapis.com/projects/716045864126/locations/glob
          "github-actions/attribute.release_plane/")
 PLANES = ("specimen-data-release", "specimen-runtime-build", "specimen-runtime-release")
 ACCESSOR = "roles/secretmanager.secretAccessor"
+INTAKE_TOKEN_CONDITION = (
+    'resource.service == "secretmanager.googleapis.com" && '
+    '(resource.type == "secretmanager.googleapis.com/Secret" || '
+    'resource.type == "secretmanager.googleapis.com/SecretVersion") && '
+    'resource.name.startsWith("projects/716045864126/secrets/specimen-intake-")'
+)
 API_URL = "https://specimen-api-716045864126.us-east4.run.app"
 SITE_KEY = "6LfP0bEtAAAAAGtD_o-SD8EnjvgGGzVugURtWUAw"  # pragma: allowlist secret (public site key)
 ARTIFACT = "DATA_BOOTSTRAP_ARTIFACT_B64"
@@ -1131,8 +1137,8 @@ def test_intake_only_defaults_are_minimal_idempotent_and_start_nothing(tmp_path,
     create = next(row for row in added if row["role"].endswith("Create"))
     assert create["condition"] is None
     restricted = next(row for row in added if row["role"].endswith("Versions"))["condition"]["expression"]
-    assert 'projects/716045864126/secrets/specimen-intake-' in restricted
-    assert '/versions/[1-9][0-9]*' in restricted and restricted.endswith('?$")')
+    assert restricted == INTAKE_TOKEN_CONDITION
+    assert ".matches(" not in restricted
     assert not run.starts and not run.sleeps
     assert "older shared executions have finished" in run.out
     assert all(not any(word in command for word in ("deploy", "execute", "delete", "set-iam-policy")) for command in run.ran)
@@ -1149,7 +1155,7 @@ def test_intake_only_dry_run_changes_nothing_and_emits_only_bounded_commands(tmp
     assert all(command[0] == "gcloud" for command in run.printed)
 
 
-def test_intake_version_recovery_and_retirement_never_cover_fixed_or_foreign_secrets(tmp_path):
+def test_intake_version_namespace_is_service_type_and_project_scoped(tmp_path):
     harness = intake_harness(tmp_path)
     run = harness.run("--intake-only")
     assert run.code == 0, run.err
@@ -1161,18 +1167,46 @@ def test_intake_version_recovery_and_retirement_never_cover_fixed_or_foreign_sec
     bindings = [row for row in state["policies"][f"project/{PROJECT}"] if row["role"] == role]
     assert len(bindings) == 1 and bindings[0]["members"] == [API]
     expression = bindings[0]["condition"]["expression"]
-    match = re.fullmatch(r'resource\.name\.matches\("(.+)"\)', expression)
+    assert expression == INTAKE_TOKEN_CONDITION and ".matches(" not in expression
+    match = re.fullmatch(
+        r'resource\.service == "([^"]+)" && '
+        r'\(resource\.type == "([^"]+)" \|\| resource\.type == "([^"]+)"\) && '
+        r'resource\.name\.startsWith\("([^"]+)"\)',
+        expression,
+    )
     assert match is not None
-    pattern = re.compile(match[1])
+    service, secret_type, version_type, prefix = match.groups()
+
+    def allows(resource, resource_type=secret_type, resource_service=service):
+        # Model only the three documented clauses above, not a Google CEL
+        # engine. The actual emitted expression must also pass live IAM lint.
+        return (resource_service == service and resource_type in {secret_type, version_type}
+            and resource.startswith(prefix))
+
     parent = "projects/716045864126/secrets/specimen-intake-00000000-0000-0000-0000-000000000001"
-    assert pattern.fullmatch(parent) and pattern.fullmatch(parent + "/versions/1")
-    refused = [parent + "/versions/latest", parent + "/versions/0", parent + "/versions/1/more",
-        parent.replace("716045864126", "another-project"), parent.replace("000000000001", "000000000001-extra")]
+    assert allows(parent) and allows(parent + "/versions/1", version_type)
+    assert allows(parent + "/versions/2", version_type)
+    for resource, resource_type in ((parent, secret_type), (parent + "/versions/1", version_type)):
+        assert not allows(resource, resource_type, "storage.googleapis.com")
+        assert not allows(resource, resource_type, "secretmanager.googleapis.com.evil")
+        assert not allows(resource, "storage.googleapis.com/Object")
+        assert not allows(resource, "secretmanager.googleapis.com/Other")
+    refused = [parent.replace("716045864126", project)
+        for project in ("another-project", PROJECT, "7160458641260")]
+    refused += [parent.replace("specimen-intake-", prefix)
+        for prefix in ("specimen-intake", "specimen-intakeother-", "other-specimen-intake-")]
     refused += [f"projects/716045864126/secrets/{name}{suffix}"
         for name in ("specimen-google-drive-client", "specimen-dropbox-client", "specimen-cloud-import-config",
-                     "specimen-external-emails", "specimen-collection-job-routes", "specimen-collection-bindings")
+                     "specimen-external-emails", "specimen-collection-job-routes", "specimen-collection-bindings",
+                     "specimen-worker-actor-uid", "huggingface-runtime-token", "specimen-worker-logfire")
         for suffix in ("", "/versions/1")]
-    assert all(pattern.fullmatch(resource) is None for resource in refused)
+    assert all(not allows(resource, resource_type) for resource in refused
+        for resource_type in (secret_type, version_type))
+    # IAM admits this entire namespace. UUID and positive numeric-version
+    # restrictions belong to SecretManagerTokens, not to this prefix grant.
+    assert allows(prefix + "not-a-uuid")
+    assert allows(parent + "/versions/latest", version_type)
+    assert allows(parent + "/versions/0", version_type)
     assert not any(row["role"] == role for key, rows in state["policies"].items()
         if key != f"project/{PROJECT}" for row in rows)
     assert not run.starts

@@ -583,15 +583,18 @@ intake_grants() {
     'Create credential containers only; no secret read, version write, IAM, list or delete.' \
     secretmanager.secrets.create
   ensure_role specimenIntakeTokenVersions 'Specimen intake credential versions' \
-    'Add, access, inspect, list and retire numbered versions of dynamic intake credentials only.' \
+    'Add, access, inspect, list and retire versions within the dynamic intake credential namespace only.' \
     secretmanager.versions.add secretmanager.versions.access \
     secretmanager.versions.list secretmanager.versions.get secretmanager.versions.destroy
   ensure_role specimenWorkerRead 'Specimen worker readiness read' \
     'Read only the deployed specimen worker definition for API readiness.' run.jobs.get
   if [ "$FAILURE_COUNT" -ne "$failures_before" ]; then return 0; fi
   grant project "$PROJECT" "$API" "$CUSTOM/specimenIntakeSecretCreate"
+  # IAM supports startsWith, not regular-expression matches. Its boundary is
+  # this project's dynamic namespace and these two Secret Manager types;
+  # application validation additionally requires UUIDs and numbered versions.
   grant project "$PROJECT" "$API" "$CUSTOM/specimenIntakeTokenVersions" specimen_intake_token_versions \
-    "resource.name.matches(\"^projects/$PROJECT_NUMBER/secrets/specimen-intake-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}(/versions/[1-9][0-9]*)?\$\")"
+    "resource.service == \"secretmanager.googleapis.com\" && (resource.type == \"secretmanager.googleapis.com/Secret\" || resource.type == \"secretmanager.googleapis.com/SecretVersion\") && resource.name.startsWith(\"projects/$PROJECT_NUMBER/secrets/specimen-intake-\")"
   while IFS="$TAB" read -r kind who name version; do
     [ -n "$kind" ] || continue
     case $kind in

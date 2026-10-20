@@ -175,12 +175,15 @@ at the API's `/v1/intake/oauth/callback`. Google also requires `picker_api_key` 
 real owner-provisioned values, not sample credentials. The API and intake worker
 must receive the same reviewed configuration. The API identity requires creation
 of connection-token secrets plus version access/addition, metadata-only version
-listing/inspection and retired/orphan version destruction restricted to exact
-`specimen-intake-<UUID>` parents and their numbered versions. Separately pinned
+listing/inspection and retired/orphan version destruction restricted in IAM to
+this project's `specimen-intake-` Secret Manager namespace, with service and
+resource-type guards. Application validation additionally requires exact
+`specimen-intake-<UUID>` parents and positive numbered versions; IAM's supported
+prefix condition does not enforce those suffix shapes. Separately pinned
 client/configuration secrets remain outside that namespace. This grants no
 project secret listing, secret deletion or blanket secret access.
 
-The optional pins in `scripts/ci/runtime_settings.py` start unset. A positive
+The optional pins in `scripts/ci/runtime_settings.py` activate after provisioning. A positive
 number in `OPTIONAL_SECRET_VERSIONS` activates only its real, provisioned secret:
 `specimen-external-emails` supplies `SPECIMEN_EXTERNAL_EMAIL_ALLOWLIST_JSON`,
 `specimen-cloud-import-config` supplies `SPECIMEN_INTAKE_OAUTH_JSON`, and

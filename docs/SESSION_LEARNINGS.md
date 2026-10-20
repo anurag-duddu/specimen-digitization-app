@@ -22820,3 +22820,38 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   `production-setup-scope-20261020.txt`; the owner replied to use production
   judgment and make these technical decisions. A bounded Auth-only retry is
   now running. No release, live Gmail E2E or provider acceptance is claimed.
+
+### 2026-10-20: verified production connector configuration and supported IAM condition
+
+- Same task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch/worktree
+  `codex/compare-photo-intake-ux` / `5da8`, PR #368, integrated parent
+  `91c02731d838d012e4f8751223d227f8242632c9`. Auth-only owner setup succeeded:
+  existing data-release Auth role now has its exact seven permissions.
+- Intake-only setup created the dedicated Picker key with exact API/referrer
+  restrictions and six fixed configuration versions. The helper and a separate
+  private readback verified every value, the original actor and additive
+  collection bindings. Activated source pins: bindings version 2; external
+  email, cloud-import config, job routes and the two provider clients version 1;
+  Drive and Picker APIs selected. Original actor and cumulative budget remain.
+  No private values enter this log. The dedicated E2E collection is not yet
+  bootstrapped; Gmail UID and real provider/import acceptance are Not confirmed.
+- Real IAM rejected `resource.name.matches` as unsupported before the token
+  binding was written. The corrected expression uses service and Secret /
+  SecretVersion type guards plus the numeric-project `specimen-intake-` prefix.
+  IAM enforces the reserved namespace; application validators enforce UUID
+  identity and positive numbered references. Fixed configuration/client secrets
+  cannot use that prefix. Google's read-only lintPolicy returned `{}` for the
+  corrected expression. This is a cloud-validated syntax result, not simulated
+  IAM acceptance. Private safe metadata evidence:
+  `/private/tmp/specimen-intake-iam-condition-lint-20261020.json`.
+- Focused activated-pin/configuration checks: 83 passed. IAM owner-setup, syntax
+  and ShellCheck checks: 22 passed, 57 deselected. Earlier merge regression:
+  66 passed. A bounded idempotent setup reconciliation is running to apply the
+  supported condition, exact-version reads and provider APIs. New job grants
+  still follow their first protected definition; no job was executed.
+- Read-only production baseline: Hosting and API both report main `ba007d4c`;
+  CI/CD 39202837342, data 39202837275 and runtime 39202837225 succeeded. Google
+  sign-in is false and bulk flag absent. All 109 retained shared executions
+  completed; running and unfinished counts are zero at 15:55 UTC. Repeat the
+  execution and original-budget checks before any paid E2E submission. Fresh
+  full canonical verification, final-head G51 review and hosted checks are due.
