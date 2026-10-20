@@ -22996,3 +22996,62 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   verification, broad public admission, real Gmail connector/Submit/final
   Queue, physical camera and institutional acceptance remain Not confirmed.
   Merge, protected release, client activation and live acceptance are pending.
+
+### 2026-10-20 — bulk intake PR #368 merged; protected releases started
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch
+  `codex/compare-photo-intake-ux`, worktree
+  `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`.
+  Independent G51 review approved exact journal-only successor
+  `7d935a72a2930bfa90035854d0db0c78e0ddfba9`, tree
+  `03e79b9d5870c66209a490f1e8909e96bf8538a4`, with no P1/P2. All23 applicable
+  hosted checks passed on this head; PR Hosting deployment correctly skipped.
+  CI/CD39466027555 and Runtime candidate CI39466027630 succeeded.
+- Immediately before normal protected merge, main still matched ba007d4c,
+  the local tree was clean, PR head matched7d935a72, merge state was CLEAN,
+  and no review thread remained unresolved. No admin override, required-check
+  bypass, force push or branch-protection change was used.
+- PR #368 merged at2026-10-20T17:40:17Z as
+  `3350648862ab23dab6f6337481b2be8840a27caa`. Main-push Hosting CI/CD39468106835,
+  Data39468106836, Runtime39468106897 and Runtime candidate CI39468107065
+  started on that SHA. Release completion, client activation, Gmail provider
+  acceptance and final scientific Queue acceptance are still Not confirmed.
+  Preserve the branch/worktree and this pending release log until reconciliation.
+
+### 2026-10-20 — first protected data release exposes missing base permission
+
+- Same task/worktree as above. Fix-forward branch
+  `codex/fix-intake-auth-permission` starts from merged main33506488 and retains
+  the pending append-only release record.
+- Data39468106836 completed database/connector/Storage and pinned georeferencing
+  dataset steps, then failed `Enable and verify Google alongside email sign-in`.
+  The Google provider was already enabled and retained. The following Android
+  SHA POST returned403. Runtime39468106897 failed its same-commit Data wait;
+  its deployment step did not run. Client flags remain disabled.
+- Read-only Cloud Audit Logs give the exact failure at
+  2026-10-20T17:43:06.721913Z: Firebase AndroidAppService.CreateShaCertificate,
+  permission `firebase.clients.update`, granted=false on the existing project.
+  Firebase's Cloud Audit Logs reference documents that base permission.
+  Its general IAM page separately lists `clientauthconfig.clients.create` as
+  an additional permission; adding only that additional permission was
+  insufficient. The existing Auth role has the other seven reviewed permissions.
+- Repair scope is one missing permission on the existing data release role,
+  with corresponding contract and deployment-guide correction. Do not grant
+  Firebase Admin/Editor, manually add certificates, bypass the failed release,
+  or weaken App Check. Validation, source review, protected repair release,
+  and real Gmail acceptance are pending.
+- Minimal repair prepared in owner_setup.sh, its existing contract suite and
+  both deployment/Google sign-in guides. Focused checks passed:13Auth-only
+  setup cases,197Auth provisioning cases, shell syntax, pinned ShellCheck and
+  diff check. The regression starts with the actual seven-permission shape,
+  verifies one role update to exactly eight with the existing binding unchanged,
+  no other writes or release starts, and an idempotent second run.
+- Independent review found no P1/P2 in that repair and confirmed the documented
+  missing-grant exception: DEPLOYMENT's failed-release procedure directs the
+  owner-authorized setup script for missing grants, then protected release
+  retries. That permits this bounded setup repair while the owner-script
+  correction follows full canonical/G51/hosted PR qualification. Application
+  deployment source remains merged33506488; no hand deployment is permitted.
+  The permission is project-scoped Firebase app-configuration authority, not a
+  SHA-only IAM permission; the existing protected provisioner bounds operations
+  to its exact app and reviewed fingerprints. Exact-head approval follows freeze.

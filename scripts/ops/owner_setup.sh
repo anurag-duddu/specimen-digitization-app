@@ -545,13 +545,15 @@ auth_release_grants() {
   # CLI15.8.0 preflights projects.update/configs.update, lists the existing
   # web app and reads its project. The release verifies only non-secret Auth
   # fields. Config access is project-wide; partial response fields keep this
-  # script from fetching provider secrets. Firebase SHA registration also
-  # requires clientauthconfig.clients.create for the existing Android app.
+  # script from fetching provider secrets. Firebase CreateShaCertificate needs
+  # firebase.clients.update plus the additional clientauthconfig.clients.create
+  # permission for the existing Android app.
   # No user, hash, Secret Manager, IAM or Hosting permission is granted.
   ensure_role specimenAuthConfiguration 'Specimen Auth configuration' \
     'Provision Google for the existing Firebase app and verify Auth configuration; no user or hash permissions.' \
     clientauthconfig.clients.create \
-    firebase.clients.get firebase.clients.list firebase.projects.get firebase.projects.update \
+    firebase.clients.get firebase.clients.list firebase.clients.update \
+    firebase.projects.get firebase.projects.update \
     firebaseauth.configs.get firebaseauth.configs.update
   # Do not bind an existing role if its permissions could not be reconciled.
   if [ "$FAILURE_COUNT" -ne "$failures_before" ]; then return 0; fi
