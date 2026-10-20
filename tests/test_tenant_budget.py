@@ -180,6 +180,14 @@ def test_with_no_cap_set_no_ledger_is_read_or_written_and_the_run_is_unchanged(t
             stored(repository, key)
 
 
+def test_with_no_cap_set_not_even_the_runs_record_is_read(tmp_path):
+    specimen = specimen_with(priced_run())
+    specimen.run.dependencies[RECORD] = "unreadable"
+    assert tenant_budget.reserve_step(capped(tmp_path, []), PRINCIPAL, specimen, QWEN, 20_000) is None
+    assert tenant_budget.reserve_step(capped(tmp_path, [(ORGANIZATION, 1_000_000)]), PRINCIPAL, specimen, QWEN,
+        20_000) == UNAVAILABLE
+
+
 def test_a_store_that_cannot_hold_caps_reads_none(tmp_path):
     repository = NonSensitiveMember(tmp_path / "state.sqlite3")
     specimen = specimen_with(priced_run())

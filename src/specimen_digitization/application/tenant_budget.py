@@ -365,11 +365,11 @@ def reserve_step(repository, principal, specimen, step, cost, clock=None) -> str
     attempt = run.attempts.get(step, 0) + 1
     try:
         caps = applicable(read_caps(repository, principal.scope), principal.scope.collection_id)
+        if not caps:
+            return None
         record = _record(run, step, attempt)
     except TenantBudgetUnavailable:
         return UNAVAILABLE
-    if not caps:
-        return None
     month = record["month"] if record else month_of(clock())
     entry = ProgramLedger._ordinary_key(specimen.id, run.id, step, attempt)
     ledgers = _ledgers(repository, principal, specimen, caps, month, clock, record)
