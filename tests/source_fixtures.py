@@ -89,6 +89,36 @@ class CountingReader:
         return self.inner.read(bucket, object_name, generation)
 
 
+def paged_gcs_reader(objects, page_size=1000):
+    """Exercise the real GCS SDK iterator with local paginated API replies."""
+    from google.auth.credentials import AnonymousCredentials
+    from google.cloud import storage
+    from specimen_digitization.application.source_reader import GcsSourceReader
+
+    calls = []
+    client = storage.Client(
+        project="synthetic-listing", credentials=AnonymousCredentials()
+    )
+
+    def api_request(**kwargs):
+        # The SDK may also fetch bucket properties for its internal cache.
+        if kwargs["path"] == f"/b/{BUCKET}":
+            return {"name": BUCKET}
+        assert kwargs["path"] == f"/b/{BUCKET}/o"
+        params = kwargs["query_params"]
+        start = int(params.get("pageToken", "0"))
+        size = min(page_size, params.get("maxResults", page_size))
+        calls.append(dict(start=start, size=size))
+        end = min(start + size, len(objects))
+        result = {"items": objects[start:end]}
+        if end < len(objects):
+            result["nextPageToken"] = str(end)
+        return result
+
+    client._connection.api_request = api_request
+    return GcsSourceReader(client=client), calls
+
+
 def source_client(root: Path, objects: Path, sources=None, reader=None) -> TestClient:
     app = local_app(
         root / "state",

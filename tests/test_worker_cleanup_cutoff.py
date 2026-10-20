@@ -61,9 +61,12 @@ def actual_production_handler_continuation(payload):
 
 
 def test_actual_production_handler_cannot_allow_sdk_continuation(tmp_path):
+    # The total budget includes cold imports of the actual worker/API modules.
+    # Give startup room before probing the SDK continuation at that same cutoff.
     result = run_isolated(actual_production_handler_continuation,
                          {"started": str(tmp_path / "started"), "late": str(tmp_path / "late")},
-                         2, 100, process_group=True)
+                         10, 100, process_group=True)
+    assert (tmp_path / "started").is_file(), result
     assert (tmp_path / "started").read_text() == "_run.<locals>.<lambda>"
     assert result.status == "deadline_exceeded" and result.cleanup_complete
     assert not (tmp_path / "late").exists()
