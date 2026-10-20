@@ -239,6 +239,21 @@ final List<MatrixScreen> matrixScreens = <MatrixScreen>[
       location: AppRoutes.help,
     );
   }),
+  MatrixScreen('costs', (
+    WidgetTester tester,
+    Size size,
+    double scale,
+    Brightness brightness,
+  ) async {
+    await pumpGoldenApp(
+      tester,
+      window: size,
+      brightness: brightness,
+      textScale: scale,
+      location: goldenCostsLocation,
+      repository: GoldenCostRepository(),
+    );
+  }),
 ];
 
 /// Moves the record to [segment] with its shortcut, and returns the scroll

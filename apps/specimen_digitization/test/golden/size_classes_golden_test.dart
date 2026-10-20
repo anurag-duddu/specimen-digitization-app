@@ -18,11 +18,13 @@ import 'package:specimen_ui/specimen_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_digitization/src/app/routes.dart';
 import 'package:specimen_digitization/src/region_editor.dart';
+import 'package:specimen_digitization/src/screens/costs/costs_screen.dart';
 import 'package:specimen_digitization/src/screens/sources/source_screen.dart';
 import 'package:specimen_digitization/src/screens/workbench/workbench_layout.dart';
 import 'package:specimen_digitization/src/widgets/widgets.dart';
 
 import 'golden_harness.dart';
+import '../costs/cost_fixtures.dart';
 import '../ui_finders.dart';
 
 /// Runs [body] once per window and theme.
@@ -294,6 +296,194 @@ void main() {
         expect(find.text('microscopic-slides'), findsOneWidget);
         expectGlassBudget(tester, window: window);
         await expectGolden(tester, 'source__${window}__$theme');
+      });
+    });
+  });
+
+  // What the organization's work costs, which is an administrator's page. The
+  // top of the page at both text scales, the end of it (the stages, the models
+  // and how fresh the figures are), the limit form that a collection's row
+  // opens, and a month in which nothing was recorded.
+  group('costs', () {
+    Finder costsScroll() => find.descendant(
+      of: find.byType(CostsScreen),
+      matching: find.byType(Scrollable),
+    );
+
+    Future<void> scrollToEnd(WidgetTester tester) async {
+      final ScrollableState state = tester.state<ScrollableState>(
+        costsScroll().first,
+      );
+      state.position.jumpTo(state.position.maxScrollExtent);
+      await tester.pumpAndSettle();
+    }
+
+    for (final double scale in <double>[1.0, 2.0]) {
+      forEachWindowAndTheme((
+        String window,
+        Size size,
+        String theme,
+        Brightness brightness,
+      ) {
+        testWidgets('costs at $window in $theme at ${scaleTag(scale)}', (
+          WidgetTester tester,
+        ) async {
+          captureLayoutErrors();
+          await pumpGoldenApp(
+            tester,
+            window: size,
+            brightness: brightness,
+            textScale: scale,
+            location: goldenCostsLocation,
+            repository: GoldenCostRepository(),
+          );
+          expect(find.text('Cost in October 2026'), findsOneWidget);
+          expectKnownOverflow(tester, 'costs__${window}__$theme');
+          expectGlassBudget(tester, window: window);
+          await expectGolden(
+            tester,
+            'costs__${window}__${theme}__${scaleTag(scale)}',
+          );
+        });
+      });
+    }
+
+    forEachWindowAndTheme((
+      String window,
+      Size size,
+      String theme,
+      Brightness brightness,
+    ) {
+      testWidgets('costs end of page at $window in $theme', (
+        WidgetTester tester,
+      ) async {
+        captureLayoutErrors();
+        await pumpGoldenApp(
+          tester,
+          window: size,
+          brightness: brightness,
+          location: goldenCostsLocation,
+          repository: GoldenCostRepository(),
+        );
+        await scrollToEnd(tester);
+        expect(find.text('Update figures'), findsOneWidget);
+        expectKnownOverflow(tester, 'costs_end__${window}__$theme');
+        expectGlassBudget(tester, window: window);
+        await expectGolden(tester, 'costs_end__${window}__$theme');
+      });
+    });
+
+    // A meter that says the figures may be incomplete: the band above them,
+    // with the update it offers.
+    goldenThemes.forEach((String theme, Brightness brightness) {
+      testWidgets('costs with an incomplete meter at compact in $theme', (
+        WidgetTester tester,
+      ) async {
+        captureLayoutErrors();
+        await pumpGoldenApp(
+          tester,
+          window: goldenWindows['compact-390x844']!,
+          brightness: brightness,
+          location: goldenCostsLocation,
+          repository: GoldenCostRepository(
+            meter: FakeCostRepository(
+              wire: (String month) => <String, dynamic>{
+                ...costWire(month),
+                'meter': <String, dynamic>{
+                  'allocated_through': '2026-10-18',
+                  'allocation_status': 'monitoring_unavailable',
+                },
+              },
+            ),
+          ),
+        );
+        expect(find.text('Some costs may be missing.'), findsOneWidget);
+        expectKnownOverflow(tester, 'costs_meter__compact-390x844__$theme');
+        expectGlassBudget(tester, window: 'compact-390x844');
+        await expectGolden(tester, 'costs_meter__compact-390x844__$theme');
+      });
+    });
+
+    // The middle of the page on a phone, which neither the top nor the end of
+    // it shows: the collections, a sub-collection under its parent, and each
+    // one's limit.
+    goldenThemes.forEach((String theme, Brightness brightness) {
+      testWidgets('costs collections at compact in $theme', (
+        WidgetTester tester,
+      ) async {
+        captureLayoutErrors();
+        await pumpGoldenApp(
+          tester,
+          window: goldenWindows['compact-390x844']!,
+          brightness: brightness,
+          location: goldenCostsLocation,
+          repository: GoldenCostRepository(),
+        );
+        // The collections' heading at the top of the window.
+        await Scrollable.ensureVisible(
+          tester.element(find.text('Collections')),
+          alignment: 0,
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('Beetles'), findsOneWidget);
+        expectKnownOverflow(
+          tester,
+          'costs_collections__compact-390x844__$theme',
+        );
+        expectGlassBudget(tester, window: 'compact-390x844');
+        await expectGolden(
+          tester,
+          'costs_collections__compact-390x844__$theme',
+        );
+      });
+    });
+
+    for (final String window in <String>['compact-390x844', 'large-1440x900']) {
+      goldenThemes.forEach((String theme, Brightness brightness) {
+        testWidgets('costs limit form at $window in $theme', (
+          WidgetTester tester,
+        ) async {
+          captureLayoutErrors();
+          await pumpGoldenApp(
+            tester,
+            window: goldenWindows[window]!,
+            brightness: brightness,
+            location: goldenCostsLocation,
+            repository: GoldenCostRepository(),
+          );
+          final Finder row = find.byKey(
+            const ValueKey<String>('cost-collection-col-insects'),
+          );
+          await tester.ensureVisible(row);
+          await tester.pumpAndSettle();
+          await tester.tap(row);
+          await tester.pumpAndSettle();
+          expect(find.text('Now \$10.00 a month.'), findsOneWidget);
+          expectKnownOverflow(tester, 'costs_limit__${window}__$theme');
+          expectGlassBudget(tester, window: window);
+          await expectGolden(tester, 'costs_limit__${window}__$theme');
+        });
+      });
+    }
+
+    goldenThemes.forEach((String theme, Brightness brightness) {
+      testWidgets('costs for a month with nothing recorded in $theme', (
+        WidgetTester tester,
+      ) async {
+        captureLayoutErrors();
+        await pumpGoldenApp(
+          tester,
+          window: goldenWindows['compact-390x844']!,
+          brightness: brightness,
+          location: goldenCostsLocation,
+          repository: GoldenCostRepository(
+            meter: FakeCostRepository()..emptyMonths.add('2026-10'),
+          ),
+        );
+        expect(find.text('No costs recorded'), findsWidgets);
+        expectKnownOverflow(tester, 'costs_empty__compact-390x844__$theme');
+        expectGlassBudget(tester, window: 'compact-390x844');
+        await expectGolden(tester, 'costs_empty__compact-390x844__$theme');
       });
     });
   });
