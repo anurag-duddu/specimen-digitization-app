@@ -241,6 +241,7 @@ class _CaptureScreenState extends State<CaptureScreen>
   Rect _crop = const Rect.fromLTWH(0.06, 0.06, 0.88, 0.88);
   XFile? _review;
   Uint8List? _reviewBytes;
+  ImageProvider<Object>? _reviewImage;
   Uint8List? _lastShotBytes;
   ImageProvider? _lastShotThumbnail;
   int? _thumbnailWidth;
@@ -281,10 +282,25 @@ class _CaptureScreenState extends State<CaptureScreen>
   }
 
   void _setReviewBytes(Uint8List? bytes) {
-    final previous = _reviewBytes;
+    final ImageProvider<Object>? previous = _reviewImage;
     _reviewBytes = bytes;
-    if (previous != null && !identical(previous, bytes)) {
-      unawaited(MemoryImage(previous).evict());
+    if (bytes == null) {
+      _reviewImage = null;
+    } else {
+      final double pixelRatio = MediaQuery.devicePixelRatioOf(context);
+      final Size screen = MediaQuery.sizeOf(context);
+      final int cacheSide = math.max(
+        1,
+        (math.max(screen.width, screen.height) * pixelRatio).ceil(),
+      );
+      _reviewImage = ResizeImage.resizeIfNeeded(
+        cacheSide,
+        null,
+        MemoryImage(bytes),
+      );
+    }
+    if (previous != null && previous != _reviewImage) {
+      unawaited(previous.evict());
     }
   }
 
@@ -885,10 +901,11 @@ class _CaptureScreenState extends State<CaptureScreen>
             child: LayoutBuilder(
               builder: (BuildContext context, BoxConstraints constraints) {
                 final CaptureDimensions? dimensions = _reviewDimensions;
+                final ImageProvider<Object> reviewImage = _reviewImage!;
                 if (!_cropping || dimensions == null) {
                   return Center(
-                    child: Image.memory(
-                      _reviewBytes!,
+                    child: Image(
+                      image: reviewImage,
                       fit: BoxFit.contain,
                       gaplessPlayback: true,
                       semanticLabel: 'The photo you took',
@@ -907,8 +924,8 @@ class _CaptureScreenState extends State<CaptureScreen>
                   fit: StackFit.expand,
                   children: <Widget>[
                     Center(
-                      child: Image.memory(
-                        _reviewBytes!,
+                      child: Image(
+                        image: reviewImage,
                         width: shown.width,
                         height: shown.height,
                         fit: BoxFit.fill,

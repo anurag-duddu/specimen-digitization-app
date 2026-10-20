@@ -234,121 +234,129 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
-    final controller = WorkspaceScope.of(context);
-    final location = GoRouterState.of(context).uri;
-    final record = AppShell.insideRecord(location);
-    final listRoute =
-        widget.destination == WorkspaceDestination.queue && !record;
-    final busy =
-        controller.loading ||
-        controller.recordLoading ||
-        controller.mutating ||
-        controller.loadingMore;
-    final ui = context.ui;
-    // One answer for the whole window, from the design system (05 section 2,
-    // amended 2026-10-17). The intake page, the record's loading bar, the
-    // routes, the sheets and the band ask the same question of the same
-    // function, so a phone on its side that draws the tab bar also gets the
-    // sheet and the strip.
-    final arrangement = WindowArrangement.of(context);
-    _stacked = arrangement.isStacked;
-    final navVisible =
-        _stacked && !record && MediaQuery.viewInsetsOf(context).bottom == 0;
-    _expanded =
-        listRoute ||
-        (!_stacked &&
-            (_desktopExpanded ?? arrangement == WindowArrangement.listDetail));
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final textScaler = MediaQuery.textScalerOf(context);
-        final sidebarWidth = math.min(
-          WindowArrangement.listPaneWidthOf(textScaler),
-          math.max(
-            0.0,
-            constraints.maxWidth -
-                MediaQuery.paddingOf(context).horizontal -
-                UiRailStyle.minWidthOf(ui) -
-                ui.space.s4,
-          ),
-        );
-        final sidebar = _sidebar(
-          context,
-          controller,
-          canClose: !listRoute && !_stacked,
-          busy: busy,
-        );
-        return AppSidebarScope(
-          expanded: _expanded,
-          overlay: false,
-          docked: !_stacked,
-          mobileSpecimens: _stacked ? sidebar : null,
-          toggle: _toggle,
-          close: _close,
-          child: QueueWorkspaceScope(
-            expanded: _expanded,
-            showQueue: record && !_stacked ? _toggle : null,
-            hideQueue: () {},
-            child: CallbackShortcuts(
-              bindings: <ShortcutActivator, VoidCallback>{
-                if (_expanded && !listRoute && !_stacked)
-                  const SingleActivator(LogicalKeyboardKey.escape): _close,
-              },
-              child: ColoredBox(
-                color: ui.color.ground,
-                child: Column(
-                  children: <Widget>[
-                    Expanded(
-                      child: MediaQuery.removePadding(
-                        context: context,
-                        removeBottom: navVisible,
-                        child: SafeArea(
-                          top: false,
-                          left: false,
-                          right: false,
-                          bottom: _stacked && record,
-                          // The frame stays at this one place in the tree at
-                          // every arrangement, so resizing across one keeps
-                          // the open record, its drafts and its scroll: only
-                          // the `nav` slot comes and goes beside the body.
-                          child: UiScaffold(
-                            sky: AppShell.skyOf(location),
-                            header: _stacked && !record
-                                ? _compactTopBar(
-                                    controller,
-                                    listRoute: listRoute,
-                                  )
-                                : null,
-                            banner: _stacked && listRoute
-                                ? null
-                                : _Chrome(
-                                    controller: controller,
-                                    busy: busy,
-                                    window: WindowClass.of(context),
-                                  ),
-                            nav: _stacked
-                                ? null
-                                : _dockedNavigation(
-                                    context,
-                                    controller,
-                                    sidebar: sidebar,
-                                    sidebarWidth: sidebarWidth,
-                                  ),
-                            navPlacement: UiNavPlacement.edge,
-                            body: Semantics(
-                              container: true,
-                              explicitChildNodes: true,
-                              child: widget.child,
+    // Read without depending on InheritedNotifier: quiet queue polls must not
+    // rebuild structural nav. Chrome (busy strip, error) listens separately.
+    final controller = WorkspaceScope.read(context);
+    return ListenableBuilder(
+      listenable: controller.chromeChanges,
+      builder: (BuildContext context, Widget? _) {
+        final location = GoRouterState.of(context).uri;
+        final record = AppShell.insideRecord(location);
+        final listRoute =
+            widget.destination == WorkspaceDestination.queue && !record;
+        final busy =
+            controller.loading ||
+            controller.recordLoading ||
+            controller.mutating ||
+            controller.loadingMore;
+        final ui = context.ui;
+        // One answer for the whole window, from the design system (05 section 2,
+        // amended 2026-10-17). The intake page, the record's loading bar, the
+        // routes, the sheets and the band ask the same question of the same
+        // function, so a phone on its side that draws the tab bar also gets the
+        // sheet and the strip.
+        final arrangement = WindowArrangement.of(context);
+        _stacked = arrangement.isStacked;
+        final navVisible =
+            _stacked && !record && MediaQuery.viewInsetsOf(context).bottom == 0;
+        _expanded =
+            listRoute ||
+            (!_stacked &&
+                (_desktopExpanded ??
+                    arrangement == WindowArrangement.listDetail));
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final textScaler = MediaQuery.textScalerOf(context);
+            final sidebarWidth = math.min(
+              WindowArrangement.listPaneWidthOf(textScaler),
+              math.max(
+                0.0,
+                constraints.maxWidth -
+                    MediaQuery.paddingOf(context).horizontal -
+                    UiRailStyle.minWidthOf(ui) -
+                    ui.space.s4,
+              ),
+            );
+            final sidebar = _sidebar(
+              context,
+              controller,
+              canClose: !listRoute && !_stacked,
+              busy: busy,
+            );
+            return AppSidebarScope(
+              expanded: _expanded,
+              overlay: false,
+              docked: !_stacked,
+              mobileSpecimens: _stacked ? sidebar : null,
+              toggle: _toggle,
+              close: _close,
+              child: QueueWorkspaceScope(
+                expanded: _expanded,
+                showQueue: record && !_stacked ? _toggle : null,
+                hideQueue: () {},
+                child: CallbackShortcuts(
+                  bindings: <ShortcutActivator, VoidCallback>{
+                    if (_expanded && !listRoute && !_stacked)
+                      const SingleActivator(LogicalKeyboardKey.escape): _close,
+                  },
+                  child: ColoredBox(
+                    color: ui.color.ground,
+                    child: Column(
+                      children: <Widget>[
+                        Expanded(
+                          child: MediaQuery.removePadding(
+                            context: context,
+                            removeBottom: navVisible,
+                            child: SafeArea(
+                              top: false,
+                              left: false,
+                              right: false,
+                              bottom: _stacked && record,
+                              // The frame stays at this one place in the tree at
+                              // every arrangement, so resizing across one keeps
+                              // the open record, its drafts and its scroll: only
+                              // the `nav` slot comes and goes beside the body.
+                              child: UiScaffold(
+                                sky: AppShell.skyOf(location),
+                                header: _stacked && !record
+                                    ? _compactTopBar(
+                                        controller,
+                                        listRoute: listRoute,
+                                      )
+                                    : null,
+                                banner: _stacked && listRoute
+                                    ? null
+                                    : _Chrome(
+                                        controller: controller,
+                                        busy: busy,
+                                        window: WindowClass.of(context),
+                                      ),
+                                nav: _stacked
+                                    ? null
+                                    : _dockedNavigation(
+                                        context,
+                                        controller,
+                                        sidebar: sidebar,
+                                        sidebarWidth: sidebarWidth,
+                                      ),
+                                navPlacement: UiNavPlacement.edge,
+                                body: Semantics(
+                                  container: true,
+                                  explicitChildNodes: true,
+                                  child: widget.child,
+                                ),
+                              ),
                             ),
                           ),
                         ),
-                      ),
+                        if (navVisible) _mobileNav(context),
+                      ],
                     ),
-                    if (navVisible) _mobileNav(context),
-                  ],
+                  ),
                 ),
               ),
-            ),
-          ),
+            );
+          },
         );
       },
     );

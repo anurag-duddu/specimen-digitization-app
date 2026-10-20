@@ -504,109 +504,120 @@ class _QueuePaneState extends State<QueuePane> {
 
   @override
   Widget build(BuildContext context) {
-    final WorkspaceController controller = WorkspaceScope.of(context);
-    if (_search.text != controller.query && !_searchFocus.hasFocus) {
-      _search.text = controller.query;
-    }
+    // Quiet polls notify [WorkspaceController.listChanges] only; avoid
+    // depending on InheritedNotifier so the shell is not pulled along.
+    final WorkspaceController controller = WorkspaceScope.read(context);
+    return ListenableBuilder(
+      listenable: controller.listChanges,
+      builder: (BuildContext context, Widget? _) {
+        if (_search.text != controller.query && !_searchFocus.hasFocus) {
+          _search.text = controller.query;
+        }
 
-    return Shortcuts(
-      shortcuts: const <ShortcutActivator, Intent>{
-        SingleActivator(LogicalKeyboardKey.keyJ): _MoveSelectionIntent(1),
-        SingleActivator(LogicalKeyboardKey.arrowDown): _MoveSelectionIntent(1),
-        SingleActivator(LogicalKeyboardKey.keyK): _MoveSelectionIntent(-1),
-        SingleActivator(LogicalKeyboardKey.arrowUp): _MoveSelectionIntent(-1),
-        SingleActivator(LogicalKeyboardKey.enter): _OpenSelectionIntent(),
-        SingleActivator(LogicalKeyboardKey.keyS, shift: true):
-            _ToggleFocusedRowIntent(),
-        SingleActivator(LogicalKeyboardKey.slash): _FocusSearchIntent(),
-        SingleActivator(LogicalKeyboardKey.escape): _ClearSelectionIntent(),
-      },
-      child: Actions(
-        actions: <Type, Action<Intent>>{
-          _MoveSelectionIntent: CallbackAction<_MoveSelectionIntent>(
-            onInvoke: (_MoveSelectionIntent intent) {
-              if (_searchFocus.hasFocus) return null;
-              _move(intent.delta);
-              return null;
+        return Shortcuts(
+          shortcuts: const <ShortcutActivator, Intent>{
+            SingleActivator(LogicalKeyboardKey.keyJ): _MoveSelectionIntent(1),
+            SingleActivator(LogicalKeyboardKey.arrowDown): _MoveSelectionIntent(
+              1,
+            ),
+            SingleActivator(LogicalKeyboardKey.keyK): _MoveSelectionIntent(-1),
+            SingleActivator(LogicalKeyboardKey.arrowUp): _MoveSelectionIntent(
+              -1,
+            ),
+            SingleActivator(LogicalKeyboardKey.enter): _OpenSelectionIntent(),
+            SingleActivator(LogicalKeyboardKey.keyS, shift: true):
+                _ToggleFocusedRowIntent(),
+            SingleActivator(LogicalKeyboardKey.slash): _FocusSearchIntent(),
+            SingleActivator(LogicalKeyboardKey.escape): _ClearSelectionIntent(),
+          },
+          child: Actions(
+            actions: <Type, Action<Intent>>{
+              _MoveSelectionIntent: CallbackAction<_MoveSelectionIntent>(
+                onInvoke: (_MoveSelectionIntent intent) {
+                  if (_searchFocus.hasFocus) return null;
+                  _move(intent.delta);
+                  return null;
+                },
+              ),
+              _OpenSelectionIntent: CallbackAction<_OpenSelectionIntent>(
+                onInvoke: (_) {
+                  if (_searchFocus.hasFocus) return null;
+                  _openSelected();
+                  return null;
+                },
+              ),
+              _ToggleFocusedRowIntent: CallbackAction<_ToggleFocusedRowIntent>(
+                onInvoke: (_) {
+                  if (controller.mutating || _checkingDecision) return null;
+                  final focused = controller.items
+                      .where((item) => _rowFocus[item.id]?.hasFocus ?? false)
+                      .firstOrNull;
+                  if (focused != null) _selection.toggle(focused);
+                  return null;
+                },
+              ),
+              _FocusSearchIntent: CallbackAction<_FocusSearchIntent>(
+                onInvoke: (_) {
+                  if (_searchFocus.hasFocus) return null;
+                  _searchFocus.requestFocus();
+                  return null;
+                },
+              ),
+              // Escape dismisses a summoned queue or clears an ordinary queue's
+              // selection, including while search owns the caret. Descendant
+              // menus and dialogs retain their own Escape handling first.
+              _ClearSelectionIntent: CallbackAction<_ClearSelectionIntent>(
+                onInvoke: (_) {
+                  final dismiss = widget.onDismiss;
+                  if (dismiss != null) {
+                    dismiss();
+                  } else {
+                    _selection.clear();
+                  }
+                  return null;
+                },
+              ),
             },
-          ),
-          _OpenSelectionIntent: CallbackAction<_OpenSelectionIntent>(
-            onInvoke: (_) {
-              if (_searchFocus.hasFocus) return null;
-              _openSelected();
-              return null;
-            },
-          ),
-          _ToggleFocusedRowIntent: CallbackAction<_ToggleFocusedRowIntent>(
-            onInvoke: (_) {
-              if (controller.mutating || _checkingDecision) return null;
-              final focused = controller.items
-                  .where((item) => _rowFocus[item.id]?.hasFocus ?? false)
-                  .firstOrNull;
-              if (focused != null) _selection.toggle(focused);
-              return null;
-            },
-          ),
-          _FocusSearchIntent: CallbackAction<_FocusSearchIntent>(
-            onInvoke: (_) {
-              if (_searchFocus.hasFocus) return null;
-              _searchFocus.requestFocus();
-              return null;
-            },
-          ),
-          // Escape dismisses a summoned queue or clears an ordinary queue's
-          // selection, including while search owns the caret. Descendant
-          // menus and dialogs retain their own Escape handling first.
-          _ClearSelectionIntent: CallbackAction<_ClearSelectionIntent>(
-            onInvoke: (_) {
-              final dismiss = widget.onDismiss;
-              if (dismiss != null) {
-                dismiss();
-              } else {
-                _selection.clear();
-              }
-              return null;
-            },
-          ),
-        },
-        // One node so the queue receives key events before anything inside it
-        // has been focused. The list's own hold node sits lower, around the
-        // rows, so this node holding focus never freezes the poll.
-        child: Focus(
-          autofocus: true,
-          skipTraversal: true,
-          child: _ToastLayer(
-            child: KeyedSubtree(
-              key: _toastScope,
-              child: ColoredBox(
-                color: context.ui.color.paper,
-                child: Column(
-                  children: [
-                    Expanded(flex: 3, child: _body(context, controller)),
-                    if (_selection.isNotEmpty)
-                      Flexible(
-                        flex: 2,
-                        fit: FlexFit.loose,
-                        child: SingleChildScrollView(
-                          child: _QueueSelectionBar(
-                            selection: _selection,
-                            eligibility: _eligibility,
-                            checking: _checkingDecision,
-                            onRetry: () => setState(
-                              () => _refreshEligibility(force: true),
+            // One node so the queue receives key events before anything inside it
+            // has been focused. The list's own hold node sits lower, around the
+            // rows, so this node holding focus never freezes the poll.
+            child: Focus(
+              autofocus: true,
+              skipTraversal: true,
+              child: _ToastLayer(
+                child: KeyedSubtree(
+                  key: _toastScope,
+                  child: ColoredBox(
+                    color: context.ui.color.paper,
+                    child: Column(
+                      children: [
+                        Expanded(flex: 3, child: _body(context, controller)),
+                        if (_selection.isNotEmpty)
+                          Flexible(
+                            flex: 2,
+                            fit: FlexFit.loose,
+                            child: SingleChildScrollView(
+                              child: _QueueSelectionBar(
+                                selection: _selection,
+                                eligibility: _eligibility,
+                                checking: _checkingDecision,
+                                onRetry: () => setState(
+                                  () => _refreshEligibility(force: true),
+                                ),
+                                onDecide: (kind) =>
+                                    unawaited(_decideOnSelection(kind)),
+                              ),
                             ),
-                            onDecide: (kind) =>
-                                unawaited(_decideOnSelection(kind)),
                           ),
-                        ),
-                      ),
-                  ],
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -969,7 +980,7 @@ class _QueueSelectionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final controller = WorkspaceScope.of(context);
+    final controller = WorkspaceScope.read(context);
     final ui = context.ui;
     final pending = eligibility == null || checking;
     final counts = {

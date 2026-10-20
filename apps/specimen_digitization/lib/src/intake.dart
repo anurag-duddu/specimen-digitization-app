@@ -22,6 +22,7 @@ import 'app/shell.dart';
 import 'capture/capture_camera.dart';
 import 'capture/capture_screen.dart';
 import 'capture_quality.dart';
+import 'intake_compute.dart';
 import 'intake_image_dimensions.dart';
 import 'models.dart';
 import 'screens/intake/capture_card.dart';
@@ -40,6 +41,9 @@ export 'screens/intake/manifest_entry.dart' show ManifestEntry;
 /// Builds the production camera. A factory, not a constructor reference,
 /// because the interface hands back a future.
 Future<CaptureCamera> _platformCamera() async => PlatformCaptureCamera();
+
+/// SHA-256 digest for intake bytes. Top-level so [intakeRunOffUi] can ship it.
+String intakeSha256Digest(Uint8List bytes) => sha256.convert(bytes).toString();
 
 /// The largest file this client will read, in bytes.
 const int intakeMaximumBytes = 25000000;
@@ -547,8 +551,12 @@ class _IntakeScreenState extends State<IntakeScreen> {
   }) async {
     int admitted = 0;
     for (final XFile file in files) {
+      // Drop work once Intake is gone. A gated follow-up file must not keep
+      // hashing or decoding after the operator leaves the screen.
+      if (!mounted) return admitted;
       try {
         final int size = await file.length();
+        if (!mounted) return admitted;
         if (size == 0 || size > intakeMaximumBytes) {
           _skip(
             key: 'size:${file.name}:$size',
@@ -560,7 +568,11 @@ class _IntakeScreenState extends State<IntakeScreen> {
           continue;
         }
         final Uint8List bytes = await file.readAsBytes();
-        final String digest = sha256.convert(bytes).toString();
+        if (!mounted) return admitted;
+        final String digest = await intakeRunOffUi(
+          () => intakeSha256Digest(bytes),
+        );
+        if (!mounted) return admitted;
         final String extension = file.name.split('.').last.toLowerCase();
         final String mime = switch (extension) {
           'jpg' || 'jpeg' => 'image/jpeg',
@@ -614,10 +626,14 @@ class _IntakeScreenState extends State<IntakeScreen> {
                   format: ui.ImageByteFormat.rawRgba,
                 );
                 if (pixels != null) {
-                  quality = CaptureQuality.measure(
+                  // Decode stays on the UI isolate; measure RGBA off-thread.
+                  final Uint8List rgba = Uint8List.fromList(
                     pixels.buffer.asUint8List(),
-                    frame.image.width,
-                    frame.image.height,
+                  );
+                  final int width = frame.image.width;
+                  final int height = frame.image.height;
+                  quality = await intakeRunOffUi(
+                    () => measureCaptureQuality(rgba, width, height),
                   );
                 }
               } finally {

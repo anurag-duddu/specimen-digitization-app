@@ -43,6 +43,16 @@ Finder _button(String label) => find.byWidgetPredicate(
       (widget is UiIconButton && widget.semanticsLabel == label),
 );
 
+/// [Image.memory] with cacheWidth/Height wraps bytes in [ResizeImage].
+Uint8List _imageMemoryBytes(ImageProvider<Object> provider) {
+  ImageProvider<Object> current = provider;
+  while (current is ResizeImage) {
+    current = current.imageProvider;
+  }
+  expect(current, isA<MemoryImage>());
+  return (current as MemoryImage).bytes;
+}
+
 Future<void> _snapshot(WidgetTester tester, String name) async {
   if (!const bool.fromEnvironment('CAPTURE_REVIEW_SCREENSHOTS')) return;
   final Finder photograph = find.byType(Image);
@@ -224,8 +234,7 @@ void main() {
           await tester.tap(_button('Cancel crop'));
           await tester.pumpAndSettle();
           expect(
-            (tester.widget<Image>(find.byType(Image)).image as MemoryImage)
-                .bytes,
+            _imageMemoryBytes(tester.widget<Image>(find.byType(Image)).image),
             orderedEquals(camera.captureBytes),
           );
           expect(tester.takeException(), isNull);
@@ -264,7 +273,7 @@ void main() {
         () => _button('Rotate').evaluate().isNotEmpty,
       );
       final Uint8List rotated = Uint8List.fromList(
-        (tester.widget<Image>(find.byType(Image)).image as MemoryImage).bytes,
+        _imageMemoryBytes(tester.widget<Image>(find.byType(Image)).image),
       );
       final image.Image decoded = image.decodePng(rotated)!;
       expect((decoded.width, decoded.height), (600, 800));
@@ -279,7 +288,7 @@ void main() {
       await tester.tap(_button('Cancel crop'));
       await tester.pumpAndSettle();
       expect(
-        (tester.widget<Image>(find.byType(Image)).image as MemoryImage).bytes,
+        _imageMemoryBytes(tester.widget<Image>(find.byType(Image)).image),
         orderedEquals(rotated),
       );
       expect(accepted, isEmpty);
@@ -294,8 +303,9 @@ void main() {
         tester,
         () => _button('Send').evaluate().isNotEmpty,
       );
-      final Uint8List cropped =
-          (tester.widget<Image>(find.byType(Image)).image as MemoryImage).bytes;
+      final Uint8List cropped = _imageMemoryBytes(
+        tester.widget<Image>(find.byType(Image)).image,
+      );
       final image.Image decodedCrop = image.decodePng(cropped)!;
       expect((decodedCrop.width, decodedCrop.height), (528, 704));
       // The accepted output must match the displayed crop, including its pixels.

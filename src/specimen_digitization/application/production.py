@@ -50,8 +50,11 @@ from .reliability import ReadingStopped, run_agent_bounded, stopped_usage
 from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.usage import UsageLimits
 
+from .upload_documents import bind_sqlite_upload_lookups
 from .worker_deadline import deadline_call, guarded
 from ..process_logging import log_code
+
+bind_sqlite_upload_lookups()
 
 actor_uid = contextvars.ContextVar("verified_actor_uid", default=None)
 
@@ -498,13 +501,11 @@ class SqlConnectRepository:
         )
 
     def list(self, scope):
+        # Memberships once per call. ListSpecimenPage is metadata-only (no snapshot
+        # payload), so each row still needs get(); a payload-bearing specimen list
+        # would be a data-release follow-up.
         results, after, cutoff = [], "", now()
-        sensitive = any(
-            m["organization_id"] == scope.organization_id
-            and m["collection_id"] == scope.collection_id
-            and m["can_view_sensitive"]
-            for m in self.memberships(actor_uid.get())
-        )
+        sensitive = self._can_view_sensitive(scope)
         while True:
             rows = self.execute(
                 "ListSpecimenPage",
@@ -843,12 +844,16 @@ class SqlConnectRepository:
             self._sizes[ref] = self.blob_size(ref)
         return self._sizes[ref]
 
-    def document(self, scope, kind, ident):
-        row = self.execute(
-            "GetDocumentV2", dict(self.variables(scope), kind=kind, id=ident)
-        ).get("auxiliaryDocument")
-        if not row:
-            raise Missing(ident)
+    def _can_view_sensitive(self, scope):
+        return any(
+            m["organization_id"] == scope.organization_id
+            and m["collection_id"] == scope.collection_id
+            and m["can_view_sensitive"]
+            for m in self.memberships(actor_uid.get())
+        )
+
+    @staticmethod
+    def _document_payload(row):
         if (
             type(row.get("sensitive")) is not bool
             or type(row["payload"].get("sensitive", True)) is not bool
@@ -857,32 +862,75 @@ class SqlConnectRepository:
             raise Conflict("Document sensitivity metadata mismatch")
         return row["payload"]
 
-    def documents(self, scope, kind):
-        results, after, cutoff = [], "", now()
+    def document(self, scope, kind, ident):
+        row = self.execute(
+            "GetDocumentV2", dict(self.variables(scope), kind=kind, id=ident)
+        ).get("auxiliaryDocument")
+        if not row:
+            raise Missing(ident)
+        return self._document_payload(row)
+
+    def _document_payloads(self, scope, kind, include_sensitive=None):
+        """Page ListDocumentsV2 payloads (limit/offset). Memberships resolved once."""
+        if include_sensitive is None:
+            include_sensitive = self._can_view_sensitive(scope)
+        results, offset = [], 0
         while True:
-            sensitive = any(
-                m["organization_id"] == scope.organization_id
-                and m["collection_id"] == scope.collection_id
-                and m["can_view_sensitive"]
-                for m in self.memberships(actor_uid.get())
-            )
             rows = self.execute(
-                "ListDocumentPageV2",
+                "ListDocumentsV2",
                 dict(
                     self.variables(scope),
                     kind=kind,
-                    cutoff=cutoff,
-                    afterId=after,
                     limit=100,
-                    includeSensitive=sensitive,
+                    offset=offset,
+                    includeSensitive=include_sensitive,
                 ),
             ).get("auxiliaryDocuments", [])
-            results.extend(
-                self.document(scope, kind, str(UUID(row["id"]))) for row in rows
-            )
+            results.extend(self._document_payload(row) for row in rows)
             if len(rows) < 100:
                 return results
-            after = str(UUID(rows[-1]["id"]))
+            offset += len(rows)
+
+    def documents(self, scope, kind):
+        return self._document_payloads(scope, kind)
+
+    def uploads_for_batch(self, scope, batch_id, include_sensitive=False):
+        # ListDocumentsV2 has no batch_id filter yet; a filtered GQL query is a
+        # data-release follow-up. Page payloads and filter in process.
+        return [
+            payload
+            for payload in self._document_payloads(
+                scope, "upload", include_sensitive=include_sensitive
+            )
+            if payload.get("batch_id") == batch_id
+        ]
+
+    def upload_by_idempotency(self, scope, batch_id, idempotency_key):
+        # Early-stop on match. batch_id/idempotency GQL filters are a
+        # data-release follow-up.
+        include_sensitive = self._can_view_sensitive(scope)
+        offset = 0
+        while True:
+            rows = self.execute(
+                "ListDocumentsV2",
+                dict(
+                    self.variables(scope),
+                    kind="upload",
+                    limit=100,
+                    offset=offset,
+                    includeSensitive=include_sensitive,
+                ),
+            ).get("auxiliaryDocuments", [])
+            for row in rows:
+                payload = self._document_payload(row)
+                if (
+                    payload.get("batch_id") == batch_id
+                    and payload.get("idempotency_key") == idempotency_key
+                ):
+                    return payload
+            if len(rows) < 100:
+                return None
+            offset += len(rows)
 
     def put_document(self, scope, kind, ident, payload, expected):
         payload = dict(payload, revision=expected + 1)

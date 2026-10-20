@@ -6,6 +6,7 @@
 /// record, so it is drawn rather than left as a hole in the row.
 library;
 
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
@@ -32,6 +33,10 @@ class SpecimenThumbnail extends StatelessWidget {
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
     final Uint8List? data = bytes;
+    final int cacheSide = math.max(
+      1,
+      (side * MediaQuery.devicePixelRatioOf(context)).ceil(),
+    );
     final Widget placeholder = Center(
       child: UiIcon(
         UiIcons.image,
@@ -61,6 +66,8 @@ class SpecimenThumbnail extends StatelessWidget {
                     width: side,
                     height: side,
                     fit: BoxFit.cover,
+                    cacheWidth: cacheSide,
+                    cacheHeight: cacheSide,
                     gaplessPlayback: true,
                     errorBuilder: (BuildContext _, Object _, StackTrace? _) =>
                         placeholder,
