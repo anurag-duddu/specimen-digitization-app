@@ -23178,3 +23178,34 @@ approvals were requested together; cloud setup remained unapplied when recorded.
 - Validation actually run: uncommitted local runs on 2026-10-20 (no hosted CI yet): `node scripts/data/cost-meter-test.mjs` against `scripts/data/serve-local.sh` (PostgreSQL 18.6, Data Connect emulator 3.2.0), all 6 PASS groups; the opt-in `tests/test_sqlconnect_cost_meter.py` against the same emulator, 1 passed; `schema_gate.py` against origin/main's dataconnect tree, `additive`. Committed tests: test_cost_ledger 46, test_cost_writer 11, test_cost_sweep 15, test_cost_api 26 passed. Whole suite (`python_shards.py local --count 4`, 74fd6e14): 16,387 passed, 48 skipped, 9 failed; five were this branch's (stand-in specimens without `scope` in test_first_pass and test_trace_worker_wiring), fixed in 4b98b025 and rerun with the 27 runtime, telemetry, first-pass and cost files plus the field research e2e (523 passed, 1 skipped, 3 failed: test_sam_total_deadline, which fails the same with origin/main's src at load about 30); the other four were load-flaky deadline tests (two passed on rerun; test_worker_cleanup_cutoff's production-handler case fails on origin/main's src too). scripts/ci and scripts/release tests: 774 passed, 1 Storage-harness failure that passed 2 of 2 alone. Each cited test fails with its one source file at origin/main. pre-commit run --files passed; verify.sh not run as one command; no Dart changed.
 - Reusable learnings: (1) In SQL Connect a list field's `@check` takes `this.size()`; `_execute` answers its affected-row count under its alias, and `ON CONFLICT DO UPDATE` without a `WHERE` counts unchanged rows too, so `@check(expr: "this > 0")` refuses an all-or-nothing upsert that wrote nothing while a CASE on `updated_at` keeps unchanged rows' time. (2) A raw `executeGraphql` list read returns at most 100 rows unless it names a `limit`. (3) Fakes that hand a model child a `SimpleNamespace` specimen have no `scope` (test_first_pass, test_trace_worker_wiring); telemetry reads the tenant ids with `observability.tenant_ids`, which never raises. (4) In a worktree-isolated agent, `until ... || ! pgrep -f ...` loops never end (pgrep matches the loop) and a shard run redirected to a file leaves its task output empty; wait on the shard logs' summary lines instead.
 - Not confirmed: hosted CI (the python-engines run of `sql.cost-meter` on PostgreSQL 16; local runs used PostgreSQL 18.6); the opt-in `tests/test_sqlconnect_cost_meter.py` is not in CI's engine node lists; the data release's migration of the new table; sweep timing on production snapshot sizes; the G51 review.
+
+### 2026-10-20 — Intake repair integration and classifier fixture qualification
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch
+  `codex/fix-intake-auth-permission`, worktree
+  `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`.
+  Locally merged main `cd8be7d2a193f5efdf5b7bab4c403f892499c965` as
+  `74f5576b6153271d8a0b3afcca3c0fcbf247f01a`; both append-only logs survived.
+  Independent review confirmed the six Auth/argv repair files remain identical
+  to reviewed `d629bf73` and incoming cost-meter source remains identical to main.
+- Current-main Runtime `39475816367` reproduced the same intake `--args`
+  parser failure. No hand deployment or processing was substituted. Protected
+  Data bootstrap `39476572585` succeeded, and Gmail's normal live collection
+  access plus the post-bootstrap empty SQL/Queue baseline were recorded above.
+- The interrupted `d629bf73` canonical run was not a pass. Its positive
+  classifier fixture returned `external_outcome_unknown` after 5.866 seconds
+  with a five-second total clock, despite completed child provenance at about
+  4.864 seconds after input creation. The generic result does not establish
+  the exact isolation failure reason. The positive fixture now allows 30
+  seconds for fresh interpreter/imports, work, export and IPC; a delegating
+  observer records the real isolation status/reason/elapsed/cleanup on failure.
+  Production clocks and behavior are unchanged. The negative two-second
+  timeout/no-automatic-retry case is unchanged, and all exact configuration,
+  source, model and provenance assertions remain in place.
+- Validation actually run after integration: 32 focused classifier runtime,
+  tracing and worker-wiring tests passed in 12.99 seconds; `git diff --check`
+  passed. QA changed only `tests/test_classifier_runtime.py` and performed no
+  cloud or repository commits. Full canonical verification on this integrated
+  candidate and final exact-head G51/hosted checks remain pending. Bulk remains
+  disabled; real connector import, Submit, scientific finalization, public
+  provider and native acceptance remain Not confirmed.
