@@ -20,8 +20,8 @@ typedef IntakeComputeRunner =
 ///
 /// Detection uses the binding's runtime type (no `flutter_test` import in
 /// `lib/`). [debugIntakeComputeOverride] remains available for explicit
-/// harness pinning. Web stays on the current isolate — the same fallback
-/// Flutter's `compute` uses there.
+/// harness pinning. Where isolates are unavailable the same function runs
+/// here; that is a capability check, not a layout decision.
 Future<T> intakeRunOffUi<T>(T Function() action) {
   final IntakeComputeRunner? override = kDebugMode
       ? debugIntakeComputeOverride
@@ -29,12 +29,16 @@ Future<T> intakeRunOffUi<T>(T Function() action) {
   if (override != null) {
     return override(action);
   }
-  if (kIsWeb || _intakeSameIsolateCompute) {
+  if (_intakeSameIsolateCompute) {
     // Already-complete future so FakeAsync does not need a real event-loop
     // turn the way an `async` body / Isolate.run completion would.
     return SynchronousFuture<T>(action());
   }
-  return Isolate.run(action);
+  try {
+    return Isolate.run(action);
+  } on UnsupportedError {
+    return SynchronousFuture<T>(action());
+  }
 }
 
 /// When set (debug builds only), [intakeRunOffUi] uses this instead of
