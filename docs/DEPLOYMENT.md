@@ -1051,8 +1051,12 @@ script refuses to run outside GitHub Actions.
    differ, nothing is written: the step prints one warning that names which
    part differs (never a value) and the release continues, so later edits to
    these rows do not block releases. Before the organization rows are
-   written, the artifact is checked against the committed collection tree. The bootstrap inserts these prepared rows and nothing more; it
-   creates no generic runtime signup or collection-creation API.
+   written, the artifact is checked against the committed collection tree.
+   When `INTAKE_E2E_BOOTSTRAP_B64` is set, the same step then creates only the
+   missing `Intake E2E` collection under the existing Insects parent and its
+   tester/original-worker memberships. This optional artifact is checked
+   separately: conflicting existing rows stop the release without overwriting
+   them. It creates no generic signup/collection API, content or pipeline work.
 9. **Done.** The last line is `data release complete for <sha>`.
 
 The workflow then publishes the pinned georeferencing datasets and runs
@@ -1070,8 +1074,13 @@ unverified result. A failure does not trigger a local deployment or broadened
 IAM grants. If the existing Data identity needs configuration permissions,
 the owner's minimal setup command is
 `bash scripts/ops/owner_setup.sh --auth-only` (add `--dry-run` to inspect first).
-It creates/reconciles one six-permission custom role and binds only the existing
+It creates/reconciles one seven-permission custom role and binds only the existing
 Data identity; it does not replay general owner setup or start releases.
+The additional `clientauthconfig.clients.create` permission is required by
+[Firebase SHA registration](https://firebase.google.com/docs/projects/iam/permissions)
+alongside `firebase.projects.update`. The protected release registers only the
+reviewed signing fingerprints on the existing Android app and verifies them;
+it never removes existing fingerprints.
 The owner must authorize an agent's execution first-hand, as for every other
 owner setup run. See [Google sign-in setup](execution/GOOGLE_SIGN_IN_SETUP.md)
 for the exact permissions, API scope and test/activation sequence.
@@ -1135,12 +1144,24 @@ prints the completion line and succeeds.
 
 - `DATA_BOOTSTRAP_ARTIFACT_B64`, a secret of the `data-production`
   environment: the prepared organization and collection rows, base64-encoded.
-  It is the only GitHub secret the data release reads. When the secret is
+  Together with the optional intake artifact below, these are the only GitHub
+  secrets the data release reads. When this secret is
   unset and no organization exists, the step fails and says so. When the
   secret is unset and an organization exists, the step is skipped without
   comparing anything.
+- Optional `INTAKE_E2E_BOOTSTRAP_B64`, also in `data-production`: base64 JSON
+  containing exactly `organization_id`, `parent_collection_id`, `collection_id`
+  and `tester_uid`. `scripts/release/intake_e2e_bootstrap.py` requires the
+  existing organization and Insects parent, inserts the missing `Intake E2E`
+  collection and memberships in one transaction, and verifies their exact
+  readback. The tester is a non-sensitive operator; the original worker actor
+  from its pinned secret is an operator with sensitive access. Existing
+  conflicting rows are refused, never overwritten. An absent artifact changes
+  nothing. This provisions no content and starts no pipeline work. Remove the
+  optional artifact after verified provisioning if later permission changes
+  should no longer be compared with its initial values.
 - The Secret Manager secret `specimen-worker-actor-uid`, version 1: the
-  worker's user ID, read during the bootstrap step when the artifact is set.
+  worker's user ID, read during the bootstrap step when either artifact is set.
 - Everything else the release reads is committed in this repository:
   `dataconnect/`, `storage.rules`, `firebase.auth.json`, the collection tree under
   `infra/reference/` and the release scripts.
@@ -1191,6 +1212,42 @@ The workflow has three jobs.
      received the request and refused it. A 403 means Cloud Run blocked the
      request first, so the public invoker binding is missing. The three checks
      share about three minutes of retries while the new revision starts.
+
+   - `scripts/release/deploy_intake.py` defines the private `specimen-intake`
+     job using the API digest, one task, one CPU, 1 GiB memory, two retries, and
+     a 3,600-second timeout. It verifies the definition and scoped API invoker
+     grant without executing imports. Owner provisioning and the client enablement
+     order are described in `docs/execution/BULK_PHOTO_INTAKE.md`.
+     It creates and reads back every intake definition before checking invoker
+     policies. After a successful API smoke, the scientific-definition step also
+     runs when intake policy verification fails, so all missing jobs can receive
+     one owner setup pass. The intake failure still fails the release; processing
+     requires every preceding step to succeed.
+     Optional numbered pins in `runtime_settings.py` add exact external-email
+     admission, provider configuration and collection routing. When the routes
+     pin is configured, both definition scripts also define private dedicated
+     intake/scientific jobs with fixed collection scope and continuations, while
+     shared workers receive the same routing pin for exclusions. They retain
+     the existing actor and cumulative allowance. Unset optional pins add no
+     secret dependency or dedicated job. The owner's repository-only
+     `owner_setup.sh --intake-only` grants bounded OAuth credential creation,
+     numbered dynamic-version access/addition, parent-scoped metadata listing/inspection
+     and retired/orphan version destruction, separately pinned configuration
+     reads and scoped job invokers; it starts no release or execution.
+     Dynamic credentials are restricted in IAM to Secret Manager secret and
+     version resources in this project's `specimen-intake-` namespace.
+     Application validation additionally requires UUID secret names and positive
+     numbered versions. IAM uses the supported `startsWith` function with service
+     and resource-type guards; IAM Conditions do not support regular-expression
+     `matches`. Fixed provider clients and configuration must never use that
+     dynamic namespace. Validate condition syntax with Google's
+     [`iamPolicies.lintPolicy`](https://docs.cloud.google.com/iam/docs/reference/rest/v1/iamPolicies/lintPolicy)
+     before applying a changed expression.
+     Its optional `--intake-config-dir ABS` validates and preflights the entire
+     private configuration bundle before any IAM or configuration write,
+     creates only approved missing secrets and appends the explicitly requested
+     next numeric versions. Matching targets are skipped; differing targets
+     are refused. It never overwrites/deletes a version or changes runtime pins.
 
    - `scripts/release/deploy_models.py` deploys SAM by digest with the committed
      checkpoint, pinned secrets, 600-second startup probe, maximum one instance,

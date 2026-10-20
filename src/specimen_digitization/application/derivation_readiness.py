@@ -1,7 +1,7 @@
 """Read the deployed worker configuration before offering G38 side work."""
 from types import MappingProxyType
 
-from .lane_dispatch import RUN_API
+from .lane_dispatch import RUN_API, dispatcher_for_scope, scope_key
 
 
 class DeployedDerivationWorker:
@@ -20,13 +20,16 @@ class DeployedDerivationWorker:
         provider execution. Both G38 and field retry read the same deployment.
         """
         from ..research_harness.committed_pins import committed_harness_route
-        if (self.dispatcher is None or self.dispatcher.job != self.config.worker_job
+        dispatcher = dispatcher_for_scope(self.dispatcher, principal.scope)
+        routes = dict(getattr(self.config, 'collection_worker_jobs', ()))
+        expected_job = routes.get(scope_key(principal.scope), {}).get('worker_job', self.config.worker_job) if routes else self.config.worker_job
+        if (dispatcher is None or dispatcher.job != expected_job
                 or specimen.scope != principal.scope or specimen.asset.sensitive is not False
                 or principal.scope.collection_id not in dict(self.config.collection_bindings)
                 or committed_harness_route(specimen.run.profile_snapshot) is None):
             return None
         try:
-            response = self.dispatcher.session().get(RUN_API + self.dispatcher.job, timeout=3)
+            response = dispatcher.session().get(RUN_API + dispatcher.job, timeout=3)
             if response.status_code != 200:
                 return None
             resource = response.json()
@@ -36,7 +39,7 @@ class DeployedDerivationWorker:
                 return None
             environment = containers[0].get('env', [])
             harness = [row for row in environment if row.get('name') == 'SPECIMEN_RESEARCH_HARNESS']
-            ready = (resource.get('name') == self.dispatcher.job
+            ready = (resource.get('name') == dispatcher.job
                 and resource.get('labels', {}).get('source-sha') == self.source_sha
                 and resource.get('reconciling') not in (True,)
                 and resource.get('terminalCondition', {}).get('state') == 'CONDITION_SUCCEEDED'

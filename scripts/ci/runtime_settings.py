@@ -8,6 +8,8 @@ not known yet; a role that needs one is not deployed, and the receipt names it.
 """
 from __future__ import annotations
 
+import re
+
 from specimen_digitization.hub_models import SAM3_MODEL
 
 PENDING = None  # Not known yet; the role that needs it is not deployed.
@@ -19,15 +21,58 @@ PREFIX = f"projects/{PROJECT}/locations/{REGION}"
 BUCKET = f"{PROJECT}.firebasestorage.app"
 SAM_URL = f"https://specimen-sam-{PROJECT_NUMBER}.{REGION}.run.app"
 WORKER_JOB = f"{PREFIX}/jobs/specimen-worker"
+INTAKE_JOB = f"{PREFIX}/jobs/specimen-intake"
 WORKER_EMAIL = f"specimen-worker-runtime@{PROJECT}.iam.gserviceaccount.com"
 
-# Secret Manager versions, pinned by number once the owner creates them (T4); never "latest".
-SECRET_VERSIONS = {
+# Secret Manager versions, pinned by number once provisioned; never "latest".
+CORE_SECRET_VERSIONS = {
     "huggingface-runtime-token": 2,
     "specimen-worker-logfire": 1,
     "specimen-source-registry": 1,
-    "specimen-collection-bindings": 1,
+    "specimen-collection-bindings": 2,
     "specimen-worker-actor-uid": 1,
+}
+
+# Opt in only after the owner provisions the real value and the numbered
+# version is reviewed. None adds no reference to any deployed role.
+OPTIONAL_SECRET_VERSIONS = {
+    "specimen-external-emails": 1,
+    "specimen-cloud-import-config": 1,
+    "specimen-collection-job-routes": 1,
+}
+# Provider client secrets are independent of dynamically created token secrets.
+# Names here must never start with specimen-intake-.
+OAUTH_CLIENT_SECRET_VERSIONS = {
+    "specimen-google-drive-client": 1,
+    "specimen-dropbox-client": 1,
+}
+INTAKE_PROVIDER_APIS = ("drive.googleapis.com", "picker.googleapis.com")
+INTAKE_OPTIONAL_ENV = {
+    "SPECIMEN_EXTERNAL_EMAIL_ALLOWLIST_JSON": "specimen-external-emails",
+    "SPECIMEN_INTAKE_OAUTH_JSON": "specimen-cloud-import-config",
+    "SPECIMEN_COLLECTION_WORKER_JOBS_JSON": "specimen-collection-job-routes",
+}
+
+
+def optional_secret_env(role):
+    """Absent pins preserve existing deployments; malformed pins stop locally."""
+    for name, version in {**OPTIONAL_SECRET_VERSIONS, **OAUTH_CLIENT_SECRET_VERSIONS}.items():
+        if (not re.fullmatch(r"[a-z][a-z0-9-]{0,254}", name)
+            or name.startswith("specimen-intake-")
+            or (name in OAUTH_CLIENT_SECRET_VERSIONS and name in CORE_SECRET_VERSIONS | OPTIONAL_SECRET_VERSIONS)
+            or (version is not None and (type(version) is not int or version < 1))
+            or (name in OAUTH_CLIENT_SECRET_VERSIONS and version is None)):
+            raise ValueError("Intake configuration requires separate, numbered secret references")
+    if role not in {"api", "intake", "worker"}:
+        raise ValueError("Unknown intake runtime role")
+    return {env: name for env, name in INTAKE_OPTIONAL_ENV.items()
+        if OPTIONAL_SECRET_VERSIONS[name] is not None
+        and (role != "worker" or env == "SPECIMEN_COLLECTION_WORKER_JOBS_JSON")}
+
+SECRET_VERSIONS = {
+    **CORE_SECRET_VERSIONS,
+    **OPTIONAL_SECRET_VERSIONS,
+    **OAUTH_CLIENT_SECRET_VERSIONS,
 }
 
 # The API's public 50-byte readiness marker, which the owner uploads; its content is
@@ -62,9 +107,23 @@ API = {
         **SQL, "SPECIMEN_GCS_BUCKET": BUCKET,
         "SPECIMEN_CORS_ORIGINS": "https://specimen-digitization.web.app,https://specimen-digitization.firebaseapp.com",
         "SPECIMEN_READINESS_OBJECT": READINESS_OBJECT, "SPECIMEN_WORKER_JOB": WORKER_JOB,
+        "SPECIMEN_INTAKE_JOB": INTAKE_JOB,
     },
     "secret_env": {"LOGFIRE_TOKEN": "specimen-worker-logfire", "SPECIMEN_SOURCE_REGISTRY_JSON": "specimen-source-registry",
-                   "SPECIMEN_COLLECTION_BINDINGS_JSON": "specimen-collection-bindings"},
+                   "SPECIMEN_COLLECTION_BINDINGS_JSON": "specimen-collection-bindings",
+                   **optional_secret_env("api")},
+}
+
+# Private transfer/validation work uses the API image, without inference keys.
+# Provider applications remain unavailable until their reviewed configuration
+# names real client IDs, callback URLs, and pinned client-secret versions.
+INTAKE = {
+    "service_account": API["service_account"], "cpu": "1", "memory": "1Gi",
+    "timeout_seconds": 3600, "max_retries": 2,
+    "command": ["python"],
+    "args": ["-m", "specimen_digitization.application.intake_worker", "--max-seconds", "3300"],
+    "env": {**API["env"], **tracing_env("intake")},
+    "secret_env": {**API["secret_env"], "SPECIMEN_WORKER_ACTOR_UID": "specimen-worker-actor-uid"},
 }
 
 # A Cloud Run job the release defines but never starts; the API and the drain's deadline hand-over start its
@@ -84,7 +143,8 @@ WORKER = {
             "SPECIMEN_WORKER_JOB": WORKER_JOB},  # The drain hands work left at its deadline to the next execution.
     "secret_env": {"HF_TOKEN": "huggingface-runtime-token", "LOGFIRE_TOKEN": "specimen-worker-logfire",
                    "SPECIMEN_WORKER_ACTOR_UID": "specimen-worker-actor-uid",
-                   "SPECIMEN_COLLECTION_BINDINGS_JSON": "specimen-collection-bindings"},
+                   "SPECIMEN_COLLECTION_BINDINGS_JSON": "specimen-collection-bindings",
+                   **optional_secret_env("worker")},
 }
 
 SAM = {

@@ -473,7 +473,9 @@ Future<void> _closeAdmissionCamera(WidgetTester tester, String action) async {
 }
 
 Future<void> _acceptAdmissionFile(WidgetTester tester, XFile file) async {
-  tester.widget<CaptureScreen>(find.byType(CaptureScreen)).onAccepted!(file);
+  tester.widget<CaptureScreen>(find.byType(CaptureScreen)).onCaptured!(
+    CapturedPhoto(file: file, sensitive: false),
+  );
   await tester.pump();
 }
 
@@ -598,8 +600,11 @@ void main() {
             if (callback) await _acceptAdmissionFile(tester, file);
             await _waitAdmission(
               tester,
-              () => session.entries.any((e) => e.state == UploadState.skipped),
-              'local duplicate is refused',
+              () => find
+                  .text('Already in the list', skipOffstage: false)
+                  .evaluate()
+                  .isNotEmpty,
+              'local duplicate is explained without another row',
             );
             await _waitAdmission(
               tester,
@@ -920,7 +925,7 @@ void main() {
       }
     });
 
-    for (final state in [UploadState.ready, UploadState.interrupted]) {
+    for (final state in [UploadState.interrupted]) {
       testWidgets('same-digest $state re-admission remains a positive action', (
         tester,
       ) async {
@@ -1069,7 +1074,7 @@ void main() {
               automatic: automatic,
               rows: selected ? [] : null,
               result: (_) async =>
-                  const CaptureResult(unavailable: CaptureUnavailable.noCamera),
+                  const CaptureResult(unavailable: CaptureUnavailable.failed),
             );
             await _openAdmissionCamera(tester);
             await _waitAdmission(
@@ -1154,7 +1159,13 @@ void main() {
         );
         expect(repository.requests, isEmpty);
         final failed = session.entries[1];
-        final retry = find.byKey(ValueKey('intake-retry-${failed.digest}'));
+        failed.transferError = const ApiFailure(
+          "Connection lost",
+          code: "network",
+        );
+        session.changed();
+        await tester.pump();
+        final retry = find.byKey(ValueKey('intake-action-${failed.digest}'));
         await tester.ensureVisible(retry);
         await tester.tap(retry);
         await _waitAdmission(
@@ -2042,7 +2053,7 @@ void main() {
         1,
         reason: 'upload completion preserves the existing refresh contract',
       );
-      expect(find.text('Waiting to start'), findsOneWidget);
+      expect(find.text('Saved'), findsOneWidget);
     },
   );
 

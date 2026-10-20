@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 from urllib.parse import urlsplit
+from uuid import UUID
 
 from .lane_dispatch import JOB_NAME
 from .source_registry import RegisteredSource, SourceRegistry
@@ -64,6 +65,10 @@ class RuntimeConfig:
     worker_job: str | None = None
     sources: tuple[RegisteredSource, ...] = ()
     collection_bindings: tuple[tuple[str, str], ...] = ()
+    intake_job: str | None = None
+    intake_oauth: tuple[tuple[str, dict], ...] = ()
+    external_email_allowlist: tuple[str, ...] = ()
+    collection_worker_jobs: tuple[tuple[str, dict], ...] = ()
 
     @classmethod
     def from_env(cls, env=None):
@@ -133,6 +138,18 @@ class RuntimeConfig:
         ):
             raise ValueError("Frozen readiness object and generation required")
         worker_job, sources = lane_settings(env, project, bucket)
+        intake_job = env.get('SPECIMEN_INTAKE_JOB') or None
+        if intake_job and (not JOB_NAME.fullmatch(intake_job) or intake_job.split('/')[1] != project):
+            raise ValueError('SPECIMEN_INTAKE_JOB must name a job in the configured project')
+        try:
+            intake_oauth = json.loads(env.get('SPECIMEN_INTAKE_OAUTH_JSON') or '{}')
+            if not isinstance(intake_oauth, dict) or set(intake_oauth) - {'google_drive', 'dropbox'}:
+                raise ValueError()
+            for provider in intake_oauth.values():
+                if not isinstance(provider, dict) or 'client_secret' in provider:
+                    raise ValueError()
+        except (ValueError, TypeError):
+            raise ValueError('Intake OAuth configuration must contain provider settings and secret references only') from None
         return cls(
             port,
             project,
@@ -146,7 +163,51 @@ class RuntimeConfig:
             worker_job=worker_job,
             sources=sources,
             collection_bindings=collection_bindings(env),
+            intake_job=intake_job,
+            intake_oauth=tuple(intake_oauth.items()),
+            external_email_allowlist=external_email_allowlist(env),
+            collection_worker_jobs=collection_worker_jobs(env, project),
         )
+
+
+def external_email_allowlist(env):
+    """Extra exact identities remain private server configuration, never a domain grant."""
+    from .runtime_auth import validated_external_emails
+    try:
+        value = json.loads(env.get('SPECIMEN_EXTERNAL_EMAIL_ALLOWLIST_JSON') or '[]')
+        if not isinstance(value, list):
+            raise ValueError()
+        return tuple(sorted(validated_external_emails(value)))
+    except (ValueError, TypeError):
+        raise ValueError('External email admission requires a JSON list of exact addresses') from None
+
+
+def collection_worker_jobs(env, project=None):
+    """Private, immutable collection routing; clients cannot choose job identities."""
+    project = project or env.get('SPECIMEN_FIREBASE_PROJECT', 'specimen-digitization')
+    try:
+        value = json.loads(env.get('SPECIMEN_COLLECTION_WORKER_JOBS_JSON') or '{}')
+        if not isinstance(value, dict) or len(value) > 100:
+            raise ValueError()
+        routes, jobs = {}, set()
+        for key, route in value.items():
+            organization, collection = key.split('/')
+            canonical = str(UUID(organization)) + '/' + str(UUID(collection))
+            if canonical in routes or not isinstance(route, dict) or set(route) != {'worker_job', 'intake_job', 'actor_uid'}:
+                raise ValueError()
+            actor = route['actor_uid']
+            if not isinstance(actor, str) or not 1 <= len(actor) <= 128 or not actor.isprintable() or actor != actor.strip():
+                raise ValueError()
+            for lane in ('worker_job', 'intake_job'):
+                job = route[lane]
+                if (not isinstance(job, str) or not JOB_NAME.fullmatch(job)
+                    or job.split('/')[1] != project or job in jobs):
+                    raise ValueError()
+                jobs.add(job)
+            routes[canonical] = dict(route)
+        return tuple(sorted(routes.items()))
+    except (ValueError, TypeError, AttributeError):
+        raise ValueError('Collection worker routing requires exact scopes, actors and distinct project jobs') from None
 
 
 def collection_bindings(env):

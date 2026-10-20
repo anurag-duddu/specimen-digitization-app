@@ -7,6 +7,8 @@ record of work, so a failed start leaves the run queued for the next start.
 from __future__ import annotations
 
 import re
+from types import MappingProxyType
+from collections.abc import Mapping
 from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict
@@ -32,6 +34,39 @@ UNCONFIGURED = DispatchOutcome(status="unconfigured")
 
 class WorkerDispatcher(Protocol):
     def start(self) -> DispatchOutcome: ...
+
+
+def scope_key(scope) -> str:
+    return f"{scope.organization_id}/{scope.collection_id}"
+
+
+class CollectionJobDispatcher:
+    """Select a fixed job from server configuration, never a request override.
+
+    A configured collection with no dispatcher fails closed; it cannot fall
+    through to the shared job. The copied mapping cannot change in flight.
+    """
+
+    def __init__(self, default: WorkerDispatcher | None,
+                 routes: Mapping[str, WorkerDispatcher | None]):
+        self.default = default
+        self.routes = MappingProxyType(dict(routes))
+
+    def for_scope(self, scope) -> WorkerDispatcher | None:
+        return self.routes.get(scope_key(scope), self.default)
+
+    def start_for(self, scope) -> DispatchOutcome:
+        dispatcher = self.for_scope(scope)
+        return dispatcher.start() if dispatcher else UNCONFIGURED
+
+
+def dispatcher_for_scope(dispatcher, scope):
+    return dispatcher.for_scope(scope) if isinstance(dispatcher, CollectionJobDispatcher) else dispatcher
+
+
+def dispatch_for_scope(dispatcher, scope) -> DispatchOutcome:
+    selected = dispatcher_for_scope(dispatcher, scope)
+    return selected.start() if selected else UNCONFIGURED
 
 
 class CloudRunJobDispatcher:

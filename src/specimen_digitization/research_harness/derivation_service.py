@@ -127,7 +127,7 @@ class ResearchDerivationService:
                 prior.source_revision, "derive-rest:" + idempotency_key, body_digest)
             retained = saved_derivation_command(saved)
             await self._schedule(principal, saved, retained)
-            await self._wake()
+            await self._wake(principal)
             return self._accepted(retained)
         if (specimen.version != request.expected_record_revision
                 or request.base_record_version_id != f"{specimen.run.id}:{specimen.version}"):
@@ -173,13 +173,13 @@ class ResearchDerivationService:
         if retained != command or saved.version != command.queued_revision:
             raise StaleWork("derivation_enqueue_receipt_changed")
         await self._schedule(principal, saved, command)
-        await self._wake()
+        await self._wake(principal)
         return self._accepted(command)
 
-    async def _wake(self):
+    async def _wake(self, principal):
         if self.wake_worker is not None:
             try:
-                await _call(self.wake_worker)
+                await _call(self.wake_worker, principal)
             except Exception:
                 # A wake acknowledgement is not the durable admission. The
                 # normal lane drain can still find this exact committed request.

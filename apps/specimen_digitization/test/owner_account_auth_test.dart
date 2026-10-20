@@ -1,4 +1,5 @@
-// Credential-free controls for the exact authorized owner mailbox exception.
+// Credential-free email syntax controls. Server admission and memberships are
+// covered at the API boundary; this client does not own the external allowlist.
 // These fixtures do not establish a native UID, membership, or live sign-in.
 import 'dart:async';
 
@@ -103,30 +104,34 @@ void main() {
     ownerEmail,
     'ANURAG@INFINATIVE.COM',
     'AnUrAg@InFiNaTiVe.CoM',
-  ]) {
-    test('exact owner normalizes and can request a token: $address', () async {
-      final user = OwnerUserFixture(address);
-      final session = FirebaseSession(OwnerAuthFixture(user));
-      final notifier = AppSessionNotifier(session: session);
-      addTearDown(notifier.dispose);
-
-      expect(normalizedStaffEmail(address), ownerEmail);
-      expect(session.staffEmailAllowed, true);
-      expect(session.userId, 'owner-user-fixture');
-      expect(notifier.signedIn, true);
-      expect(notifier.verified, true);
-      expect(await session.token(), 'owner-token-fixture');
-      expect(user.tokenCalls, 1);
-      expect(user.verificationCalls, 0);
-    });
-  }
-
-  for (final address in [
     'other@infinative.com',
     'anurag+review@infinative.com',
     'an.urag@infinative.com',
     'anurag@sub.infinative.com',
     'anurag@infinative.com.evil.example',
+    'tester.external@gmail.com',
+  ]) {
+    test(
+      'verified address can request a token for server admission: $address',
+      () async {
+        final user = OwnerUserFixture(address);
+        final session = FirebaseSession(OwnerAuthFixture(user));
+        final notifier = AppSessionNotifier(session: session);
+        addTearDown(notifier.dispose);
+
+        expect(normalizedStaffEmail(address), address.toLowerCase());
+        expect(session.staffEmailAllowed, true);
+        expect(session.userId, 'owner-user-fixture');
+        expect(notifier.signedIn, true);
+        expect(notifier.verified, true);
+        expect(await session.token(), 'owner-token-fixture');
+        expect(user.tokenCalls, 1);
+        expect(user.verificationCalls, 0);
+      },
+    );
+  }
+
+  for (final address in [
     'anurag@infinative.com@fieldmuseum.org',
     'anurag@@infinative.com',
     '@infinative.com',
@@ -148,7 +153,7 @@ void main() {
     '${'x' * 65}@infinative.com',
     '${'x' * 255}@infinative.com',
   ]) {
-    test('non-owner remains blocked: ${address.codeUnits}', () async {
+    test('malformed address remains blocked: ${address.codeUnits}', () async {
       final user = OwnerUserFixture(address);
       final session = FirebaseSession(OwnerAuthFixture(user));
       final notifier = AppSessionNotifier(session: session);
@@ -172,34 +177,28 @@ void main() {
     });
   }
 
-  test(
-    'owner link adapters normalize but do not admit other mailboxes',
-    () async {
-      final auth = OwnerAuthFixture(OwnerUserFixture(ownerEmail));
-      final session = FirebaseSession(auth);
+  test('link adapters normalize and reject malformed mailboxes', () async {
+    final auth = OwnerAuthFixture(OwnerUserFixture(ownerEmail));
+    final session = FirebaseSession(auth);
 
-      await session.sendSignInLink('ANURAG@INFINATIVE.COM');
-      await session.completeEmailLink(
-        'AnUrAg@InFiNaTiVe.CoM',
-        ownerLinkFixture,
+    await session.sendSignInLink('ANURAG@INFINATIVE.COM');
+    await session.completeEmailLink('AnUrAg@InFiNaTiVe.CoM', ownerLinkFixture);
+    expect(auth.sentEmail, ownerEmail);
+    expect(auth.completedEmail, ownerEmail);
+    expect(auth.completedLink, ownerLinkFixture);
+    for (final email in [
+      'other@@infinative.com',
+      'anurag+review@infinative..com',
+    ]) {
+      await expectLater(session.sendSignInLink(email), throwsFormatException);
+      await expectLater(
+        session.completeEmailLink(email, ownerLinkFixture),
+        throwsFormatException,
       );
-      expect(auth.sentEmail, ownerEmail);
-      expect(auth.completedEmail, ownerEmail);
-      expect(auth.completedLink, ownerLinkFixture);
-      for (final email in [
-        'other@infinative.com',
-        'anurag+review@infinative.com',
-      ]) {
-        await expectLater(session.sendSignInLink(email), throwsFormatException);
-        await expectLater(
-          session.completeEmailLink(email, ownerLinkFixture),
-          throwsFormatException,
-        );
-      }
-      expect(auth.sendCalls, 1);
-      expect(auth.completeCalls, 1);
-    },
-  );
+    }
+    expect(auth.sendCalls, 1);
+    expect(auth.completeCalls, 1);
+  });
 
   test('unverified owner remains gated before token access', () async {
     final user = OwnerUserFixture(ownerEmail, emailVerified: false);
@@ -246,8 +245,8 @@ void main() {
     (ownerEmail, true, AppRoutes.setup),
     ('ANURAG@INFINATIVE.COM', true, AppRoutes.setup),
     (ownerEmail, false, AppRoutes.verify),
-    ('other@infinative.com', true, AppRoutes.verify),
-    ('anurag+review@infinative.com', true, AppRoutes.verify),
+    ('other@infinative.com', true, AppRoutes.setup),
+    ('anurag+review@infinative.com', true, AppRoutes.setup),
   ]) {
     testWidgets('router gates $email verified=$verified', (tester) async {
       final user = OwnerUserFixture(email, emailVerified: verified);

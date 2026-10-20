@@ -229,7 +229,6 @@ def test_drain_cli_restores_caller_after_success_early_setup_and_system_exit(
         def __init__(self, repository, flow, uid, memberships, **options):
             observe("drain")
             assert flow == "offline-workflow" and uid == WORKER
-            assert memberships.__self__ is repository
             assert 600 < options["deadline_seconds"] <= 601
             assert options["continuation"]().status == "unconfigured"
             assert memberships(uid) == []
@@ -245,7 +244,8 @@ def test_drain_cli_restores_caller_after_success_early_setup_and_system_exit(
         flushes.append(actor_uid.get())
         return {"configured": False, "complete": True}
     monkeypatch.setattr(lane_worker, "drain_settings", lambda env: SimpleNamespace(
-        actor_uid=WORKER, bindings={}, worker_job=None))
+        actor_uid=WORKER, bindings={}, worker_job=None,
+        scope_policy=SimpleNamespace(memberships=lambda rows: observe("scope") or rows)))
     monkeypatch.setattr(lane_worker, "DrainWorker", Drain)
     monkeypatch.setattr(worker, "sql_endpoint_from_env", lambda: {})
     monkeypatch.setattr(worker, "SqlConnectRepository", Repository)
@@ -274,6 +274,7 @@ def test_drain_cli_restores_caller_after_success_early_setup_and_system_exit(
     caller_context(earlier_actor, operation)
     assert observed[0] == "repository"
     assert ("run" in observed) is (outcome != "setup_failure")
+    assert ("scope" in observed) is (outcome != "setup_failure")
     assert flushes == [earlier_actor]
 
 

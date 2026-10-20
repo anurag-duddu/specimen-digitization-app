@@ -25,6 +25,7 @@ sys.path.insert(0, str(ROOT / "scripts/ci"))
 # read queries and row comparison, its B is bootstrap_release and B._prepared is scripts/data/bootstrap_admin.py.
 import release_bootstrap as reviewed  # noqa: E402
 import schema_gate  # noqa: E402
+import intake_e2e_bootstrap as intake_e2e  # noqa: E402
 
 PROJECT, REGION = "specimen-digitization", "us-east4"
 INSTANCE, DATABASE = "specimen-digitization-instance", "specimen-digitization-database"
@@ -268,8 +269,9 @@ def read_artifact(encoded):
 class Release:
     """One run: the REST client, the SQL runner, the artifact secret's text and what the diff step found."""
 
-    def __init__(self, api, sql, artifact=""):
+    def __init__(self, api, sql, artifact="", intake_artifact=""):
         self.api, self.sql, self.artifact, self.statements = api, sql, artifact, []
+        self.intake_artifact = intake_artifact
 
 
 def init(run):
@@ -418,10 +420,35 @@ def bootstrap(run):
     alone with one warning, so rows added or changed after the first release never stop a later one."""
     try:
         _bootstrap(run.api, read_artifact(run.artifact))
+        if run.intake_artifact.strip():
+            bootstrap_intake_e2e(run.api, run.intake_artifact)
     except Failure:
         raise
     except Exception as error:  # Nothing of an unexpected error is printed: it may quote a private value.
         raise Failure(f"bootstrap: stopped on an unexpected {type(error).__name__}; nothing more was written") from None
+
+
+def bootstrap_intake_e2e(api, encoded):
+    """Optional dedicated collection, after the institutional hierarchy; never create specimens or start work."""
+    try:
+        payload = intake_e2e.parse(encoded)
+        worker = base64.b64decode(api.call("GET", WORKER_UID_URL, private=True)["payload"]["data"]).decode().strip()
+        variables = intake_e2e.variables(payload, worker)
+
+        def read():
+            return graphql(api, "executeGraphqlRead", {"query": intake_e2e.READ, "variables": variables},
+                           "the intake test collection read")
+
+        request = intake_e2e.missing_request(payload, worker, read())
+        if request is None:
+            return say("bootstrap: intake test collection and memberships match, skipped")
+        # A lost acknowledgement is reconciled by the next run's read, never by blindly repeating this write.
+        graphql(api, "executeGraphql", request, "the intake test collection write")
+        if intake_e2e.missing_request(payload, worker, read()) is not None:
+            raise Failure("bootstrap: intake test collection readback is incomplete; re-run to reconcile")
+        say("bootstrap: created missing intake test collection/memberships; no content or work was submitted")
+    except ValueError as error:
+        raise Failure(f"bootstrap: {error}") from None
 
 
 def _bootstrap(api, payload):
@@ -506,8 +533,9 @@ def main() -> int:
         return 2
     # Read once and removed, so no child process inherits the artifact.
     artifact = os.environ.pop(ARTIFACT, "")
+    intake_artifact = os.environ.pop(intake_e2e.ARTIFACT, "")
     try:
-        run = Release(Api(session()), node_sql, artifact)
+        run = Release(Api(session()), node_sql, artifact, intake_artifact)
         for step in STEPS:
             step(run)
     except (Failure, GoogleAuthError) as failure:

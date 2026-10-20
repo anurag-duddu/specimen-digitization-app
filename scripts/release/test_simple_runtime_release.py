@@ -168,6 +168,7 @@ def test_each_job_runs_exactly_its_reviewed_steps_and_the_yaml_only_calls_script
                               "scripts/release/push_image.sh sam"]
     assert steps("release") == ["actions/checkout", "astral-sh/setup-uv", "uv sync --frozen", "google-github-actions/auth",
                                 'uv run python scripts/release/deploy_api.py "$IMAGE"', "scripts/release/smoke_api.sh",
+                                'uv run python scripts/release/deploy_intake.py "$IMAGE"',
                                 'uv run python scripts/release/deploy_models.py "$SAM_IMAGE" "$WORKER_IMAGE"',
                                 "uv run python scripts/release/process_worker.py process",
                                 "uv run python scripts/release/process_worker.py cool",
@@ -186,6 +187,7 @@ def test_the_image_digest_and_the_github_token_reach_only_the_steps_that_use_the
     assert env["data"] == [{}, {"GH_TOKEN": "${{ github.token }}"}]
     assert env["build"] == [{}] * 8
     assert env["release"] == [{}, {}, {}, {}, {"IMAGE": "${{ needs.build.outputs.image }}"}, {},
+        {"IMAGE": "${{ needs.build.outputs.image }}"},
         {"SAM_IMAGE": "${{ needs.build.outputs.sam }}", "WORKER_IMAGE": "${{ needs.build.outputs.worker }}"}, {}, {}, {}]
     assert [step.get("id") for step in JOBS["build"]["steps"]] == [None, None, None, "push", None, "worker", None, "sam"]
     # No cloud token passes through the YAML: push_image.sh asks gcloud for one from the sign-in step's credential file.
