@@ -250,6 +250,28 @@ def test_model_context_carries_the_tenant_ids_as_explicit_keys(monkeypatch):
                       "organization_id": "org-1", "collection_id": "coll-1"}
 
 
+def test_the_sam3_request_carries_the_tenant_ids_beside_its_trace_parent(monkeypatch, tmp_path):
+    from specimen_digitization.application import bounded_effect, production
+    from specimen_digitization.application.reliability import AdapterFailure
+    from specimen_digitization.application.storage import LocalBlobs as Blobs
+    from test_lane_sam_client import isolated, lane_specimen
+
+    sent = []
+
+    def run_isolated(effect, payload, *args, **kwargs):
+        sent.append(payload["telemetry"])
+        return isolated("deadline_exceeded", "deadline")
+
+    monkeypatch.setattr(bounded_effect, "run_isolated", run_isolated)
+    specimen = lane_specimen()
+    service = production.Sam3Service("https://sam.run.app", Blobs(tmp_path), effect=lambda payload: b"")
+    with pytest.raises(AdapterFailure):
+        service.segment_per_run(specimen)
+    assert sent == [{"specimen_id": specimen.id, "run_id": specimen.run.id,
+                     "organization_id": specimen.scope.organization_id,
+                     "collection_id": specimen.scope.collection_id}]
+
+
 def test_tenant_ids_read_a_specimen_s_scope_and_never_fail_without_one():
     from types import SimpleNamespace
 
