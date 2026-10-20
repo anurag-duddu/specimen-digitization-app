@@ -142,7 +142,10 @@ class ProgramLedger:
                 for key, effect in head.get(family, {}).items()]
             if len(pending) <= HEAD_EFFECTS:
                 return
-            archived = {(family, key): effect for family, key, effect in pending[:ARCHIVE_BATCH]
+            # A malformed effect stays in the head, which refuses it; it must not
+            # take a batch place every pass and hold the rest back.
+            batch = [item for item in pending if _rank(item[0], item[2]) is not None][:ARCHIVE_BATCH]
+            archived = {(family, key): effect for family, key, effect in batch
                 if self._archive_one(family, key, effect)}
             for _ in range(ATTEMPTS):
                 kept = {family: {key: effect for key, effect in head[family].items()

@@ -187,6 +187,19 @@ def test_a_legacy_head_drains_into_archives_keeping_every_effect_and_the_total(t
     assert ledger.read()["reserved_total_micros"] == total + charges - 350
 
 
+def test_malformed_effects_stay_in_the_head_without_holding_the_rest_back(tmp_path):
+    # More than a batch of them, ahead of every well-formed effect.
+    malformed = {key(step(1_000 + i)): "not an envelope" for i in range(ARCHIVE_BATCH + 1)}
+    ledger = ledger_on(Versioned(tmp_path / "state.sqlite3"), 0, **{ORDINARY: malformed})
+    for i in range(HEAD_EFFECTS + 1):
+        reserve(ledger, i)
+    assert ledger.read()[ORDINARY] == malformed
+    assert ledger.effect(ORDINARY, key(step(0))) == HELD
+    assert ledger.reserve(ALLOWANCE, 1_000, **step(1_000)).issue == UNAVAILABLE
+    assert ledger.reserve(ALLOWANCE, 1_000, **step(0)).issue is None
+    assert ledger.read()["reserved_total_micros"] == 1_000 * (HEAD_EFFECTS + 1)
+
+
 def test_a_stale_archive_write_cannot_move_an_effect_back(tmp_path):
     repository = Versioned(tmp_path / "state.sqlite3")
     ledger = ledger_on(repository)
