@@ -471,6 +471,7 @@ class Workflow:
         with logfire.span(
             "Process specimen checkpoint",
             specimen_id=specimen_id,
+            organization_id=principal.scope.organization_id,
             collection_id=principal.scope.collection_id,
         ):
             return self._step(principal, specimen_id)

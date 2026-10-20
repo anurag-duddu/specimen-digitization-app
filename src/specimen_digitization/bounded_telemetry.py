@@ -261,6 +261,9 @@ class Ledger:
 _ID_ATTRIBUTES = frozenset({
     "specimen.id", "specimen.run.id", "specimen.region.id", "specimen.route.id",
     "specimen.observation.id", "specimen_id", "collection_id",
+    # The tenant a call is charged to (observability.isolated_model_span and
+    # the checkpoint span): identifiers only.
+    "specimen.organization.id", "specimen.collection.id", "organization_id",
     "gen_ai.request.model", "gen_ai.provider.name",
     "gen_ai.system", "gen_ai.operation.name",
 })
