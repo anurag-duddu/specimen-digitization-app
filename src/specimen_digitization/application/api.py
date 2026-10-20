@@ -8,7 +8,7 @@ import io
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5
 
-from fastapi import BackgroundTasks, Depends, FastAPI, Header, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, Query, Request
 from fastapi.responses import JSONResponse, Response
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException
@@ -816,6 +816,47 @@ def create_app(
             ],
             "next_cursor": None,
         }
+
+    def cost_administrator(user, organization_id):
+        """An active administrator of any collection of the organization (RECONCILE_ROLE)."""
+        actor_uid.set(user)
+        if not any(
+            m["organization_id"] == organization_id and m["role"] == RECONCILE_ROLE
+            for m in member_rows(user)
+        ):
+            raise PermissionError("Costs need an administrator of a collection in this organization")
+
+    @app.get(prefix + "/costs")
+    def costs(
+        organization_id: str,
+        from_month: str | None = Query(default=None, alias="from"),
+        to_month: str | None = Query(default=None, alias="to"),
+        user=Depends(identity),
+    ):
+        """The organization's cost meter (docs/execution/golive/COST_METER.md)."""
+        from datetime import datetime, timezone
+
+        from .cost_ledger import cost_report, months_between
+
+        cost_administrator(user, organization_id)
+        last = to_month or datetime.now(timezone.utc).strftime("%Y-%m")
+        first = from_month or last
+        months_between(first, last)  # At most 24 whole months, in order (422).
+        totals = getattr(repository, "cost_totals", None)
+        if not callable(totals):
+            raise OperationalBlock("cost_meter_unavailable")
+        read = totals(organization_id, first, last)
+        try:
+            return cost_report(organization_id, first, last, read["collections"], read["groups"])
+        except (ValueError, KeyError, TypeError) as exc:
+            code = "cost_collection_tree_invalid" if str(exc) == "collection_tree_cycle" else "cost_meter_unavailable"
+            raise OperationalBlock(code) from exc
+
+    @app.post(prefix + "/costs/refresh")
+    def refresh_costs(organization_id: str, user=Depends(identity)):
+        """Start the worker job, whose drain sweeps the cost meter (cost_sweep)."""
+        cost_administrator(user, organization_id)
+        return {"started": start_worker().status == "requested"}
 
     @app.post(prefix + "/images/preflight")
     async def image_preflight(
