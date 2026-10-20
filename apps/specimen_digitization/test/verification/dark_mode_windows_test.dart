@@ -102,6 +102,13 @@ final Map<String, Future<void> Function(WidgetTester, Size)> darkScreens =
         brightness: Brightness.dark,
         location: AppRoutes.help,
       ),
+      'costs': (WidgetTester tester, Size size) => pumpMeasuredApp(
+        tester,
+        window: size,
+        brightness: Brightness.dark,
+        location: goldenCostsLocation,
+        repository: GoldenCostRepository(),
+      ),
     };
 
 // The former sky/count-node exceptions describe the previous presentation.

@@ -17,12 +17,15 @@ import 'package:specimen_ui/gallery.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import '../auth.dart';
+import '../costs.dart';
 import '../email_verification.dart';
 import '../intake.dart';
 import '../screens/intake/bulk_intake_repository.dart';
 import '../screens/intake/bulk_intake_screen.dart';
 import '../magic_link.dart';
 import '../models.dart';
+import '../screens/costs/costs_access.dart';
+import '../screens/costs/costs_screen.dart';
 import '../screens/queue/queue_screen.dart';
 import '../screens/queue/workbench_screen.dart';
 import '../screens/sources/source_controller.dart';
@@ -315,6 +318,31 @@ GoRouter buildAppRouter({
           pageBuilder: (BuildContext context, GoRouterState state) =>
               helpPage(context),
         ),
+        GoRoute(
+          path: AppRoutes.costs,
+          pageBuilder: (BuildContext context, GoRouterState state) {
+            final MotionTokens motion = context.ui.motion;
+            return CustomTransitionPage<void>(
+              key: state.pageKey,
+              transitionDuration: motion.quick,
+              reverseTransitionDuration: motion.quick,
+              child: _CostsRoute(environment: environment),
+              transitionsBuilder:
+                  (
+                    BuildContext context,
+                    Animation<double> animation,
+                    Animation<double> secondary,
+                    Widget child,
+                  ) => FadeTransition(
+                    opacity: CurvedAnimation(
+                      parent: animation,
+                      curve: MotionTokens.standardCurve,
+                    ),
+                    child: child,
+                  ),
+            );
+          },
+        ),
         if (!kReleaseMode)
           GoRoute(
             path: AppRoutes.gallery,
@@ -481,6 +509,99 @@ class _WorkspacePageRoute<T> extends PageRoute<T> {
       secondaryAnimation,
       child,
     );
+  }
+}
+
+/// What the organization's work costs, for an administrator.
+///
+/// A page of its own rather than a screen of the collection frame: the costs
+/// belong to the organization, so the route names no collection and the frame's
+/// rail and sidebar have nothing to say about it. The way out is the top bar's
+/// back, which returns to wherever the administrator came from.
+///
+/// Every state asks `costAccessFor` before it draws a figure or makes a
+/// request, so an account that is not an administrator reaches a sentence and
+/// never the server (a refusal there would be the session's, not the page's).
+class _CostsRoute extends StatelessWidget {
+  const _CostsRoute({required this.environment});
+
+  final String environment;
+
+  /// What the back control is called to a screen reader.
+  static const String backLabel = 'Go back';
+
+  @override
+  Widget build(BuildContext context) {
+    final WorkspaceController controller = WorkspaceScope.of(context);
+    final Widget page = UiScaffold(
+      topBar: UiTopBar(
+        leading: UiIconButton(
+          icon: UiIcons.back,
+          semanticsLabel: backLabel,
+          tooltip: backLabel,
+          onPressed: () => _leave(context, controller),
+        ),
+        title: CostsScreenCopy.title,
+      ),
+      body: _body(controller),
+    );
+    return _EnvironmentFrame(
+      environment: environment,
+      // The band above takes the status bar's inset in its own safe area, and
+      // the top bar below it would take it a second time, as a gap the height
+      // of the status bar between the two. Where there is no band the bar is
+      // the first thing under the status bar and keeps its inset.
+      child: EnvironmentBanner.showsBand(environment)
+          ? MediaQuery.removePadding(
+              context: context,
+              removeTop: true,
+              child: page,
+            )
+          : page,
+    );
+  }
+
+  Widget _body(WorkspaceController controller) {
+    if (!controller.scopesLoaded) {
+      return const Center(
+        child: LoadingAnnouncement(thing: 'your access', visible: true),
+      );
+    }
+    final ({CostRepository repository, String organizationId})? access =
+        costAccessFor(controller);
+    if (access != null) {
+      return CostsScreen(
+        key: ValueKey<String>(access.organizationId),
+        repository: access.repository,
+        organizationId: access.organizationId,
+      );
+    }
+    // Two different absences, and neither is a failure: an account that is not
+    // an administrator, and a build that has no costs to show.
+    if (costOrganizationFor(controller) == null) {
+      return const UiEmptyState(
+        icon: UiIcons.locked,
+        title: CostsScreenCopy.forbiddenTitle,
+        body: CostsScreenCopy.forbiddenBody,
+      );
+    }
+    return const UiEmptyState(
+      icon: UiIcons.syncProblem,
+      title: CostsScreenCopy.unavailableTitle,
+      body: CostsScreenCopy.unavailableBuildBody,
+    );
+  }
+
+  /// Back to where the administrator came from, or to the queue when the page
+  /// was the first thing opened (a bookmark, a reload).
+  void _leave(BuildContext context, WorkspaceController controller) {
+    final GoRouter router = GoRouter.of(context);
+    if (router.canPop()) {
+      router.pop();
+      return;
+    }
+    final String? key = controller.defaultRouteKey;
+    router.go(key == null ? AppRoutes.setup : AppRoutes.queueOf(key));
   }
 }
 

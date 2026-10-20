@@ -66,6 +66,7 @@ def test_the_route_table_is_the_one_the_router_mounts():
         "/verify",
         "/setup",
         "/help",
+        "/costs",
         "/gallery",
         "/c/:collection/queue",
         "/c/:collection/queue/:specimen",

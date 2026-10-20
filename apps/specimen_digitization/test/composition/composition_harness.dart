@@ -219,6 +219,11 @@ final List<CompositionScreen> compositionScreens = <CompositionScreen>[
   CompositionScreen(name: 'setup', pump: _routed(AppRoutes.setup)),
   CompositionScreen(name: 'help', pump: _routed(AppRoutes.help)),
   CompositionScreen(
+    name: 'costs',
+    // An administrator's page, which names no collection (13 section 4.7).
+    pump: _routed(goldenCostsLocation, repository: GoldenCostRepository.new),
+  ),
+  CompositionScreen(
     name: 'queue',
     // Four records rather than the one the default fixture answers: 13
     // section 2.5 asks for the first two rows of the queue to be visible, and
