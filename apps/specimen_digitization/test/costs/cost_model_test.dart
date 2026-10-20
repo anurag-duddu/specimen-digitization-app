@@ -261,6 +261,44 @@ void main() {
     });
   });
 
+  group('a collection the server does not name', () {
+    test('has no name, and its id is not one', () {
+      final CostReport report = CostReport.fromWire(
+        unlistedWire(costWire(thisMonth)),
+      );
+      final CostCollection retired = report.collections.firstWhere(
+        (CostCollection c) => c.id == retiredCollection,
+      );
+
+      expect(retired.name, isNull);
+      expect(retired.listed, isFalse);
+      expect(retired.total.costMicros, 1200000);
+      expect(retired.limit, isNull);
+    });
+
+    test('is listed when the server gives a name', () {
+      final CostReport report = CostReport.fromWire(costWire(thisMonth));
+
+      expect(report.collections.every((CostCollection c) => c.listed), isTrue);
+    });
+
+    test('an empty name is no name either', () {
+      final Json wire = costWire(thisMonth);
+      ((wire['collections'] as List<Object?>).first! as Json)['name'] = '';
+
+      expect(CostReport.fromWire(wire).collections.first.name, isNull);
+    });
+
+    test('is still placed in the tree, as a root', () {
+      final List<CostCollectionRow> rows = costCollectionRows(
+        CostReport.fromWire(unlistedWire(costWire(thisMonth))).collections,
+      );
+
+      expect(rows.last.collection.id, retiredCollection);
+      expect(rows.last.depth, 0);
+    });
+  });
+
   group('the limits\' status', () {
     test('reads ok and unavailable from the server\'s words', () {
       expect(CostCapsStatus.fromWire('ok'), CostCapsStatus.ok);

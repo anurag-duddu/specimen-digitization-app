@@ -119,6 +119,10 @@ abstract final class CostsScreenCopy {
   // Collections.
   static const String collectionsHeading = 'Collections';
   static const String noCollections = 'No collections to show.';
+
+  /// What a collection the server no longer lists is called. Its costs still
+  /// count, under no name, and its id is not a name.
+  static const String collectionNotListed = 'Collection no longer listed';
   static const String includingSubCollections = 'including sub-collections';
 
   // Stages and models.
@@ -153,17 +157,29 @@ abstract final class CostsScreenCopy {
   static const String refreshBusy = 'Updating…';
   static const String refreshStarted =
       'Update requested. The figures update within minutes.';
+  // Said when the server answers `started: false`: no worker job is
+  // configured, or the start failed. All that is known is that nothing was
+  // started, so nothing is promised.
   static const String refreshNotStarted =
-      'No new update was started. The figures update within minutes.';
+      'No update was started. Try again later.';
   static const String refreshFailed =
       'The update did not start. Retry in a moment.';
 }
 
+/// Where the person pressed "Update figures": the band above the figures, or
+/// the Figures section at the end of the page. The outcome is shown beside the
+/// control that was used, so a phone does not leave the person looking at a
+/// button that seems to have done nothing.
+enum _UpdateFrom { band, figures }
+
 /// What the update button last said.
 class _Notice {
-  const _Notice(this.message, {this.detail});
+  const _Notice(this.message, {required this.from, this.detail});
 
   final String message;
+
+  /// Which control was pressed.
+  final _UpdateFrom from;
 
   /// The server's reason, when the update did not start.
   final String? detail;
@@ -244,7 +260,7 @@ class _CostsScreenState extends State<CostsScreen> {
     unawaited(_load());
   }
 
-  Future<void> _refresh() async {
+  Future<void> _refresh(_UpdateFrom from) async {
     if (_refreshing) return;
     setState(() {
       _refreshing = true;
@@ -259,9 +275,14 @@ class _CostsScreenState extends State<CostsScreen> {
         started
             ? CostsScreenCopy.refreshStarted
             : CostsScreenCopy.refreshNotStarted,
+        from: from,
       );
     } on ApiFailure catch (failure) {
-      notice = _Notice(CostsScreenCopy.refreshFailed, detail: failure.message);
+      notice = _Notice(
+        CostsScreenCopy.refreshFailed,
+        from: from,
+        detail: failure.message,
+      );
     }
     if (!mounted) return;
     setState(() {
@@ -488,10 +509,49 @@ class _CostsScreenState extends State<CostsScreen> {
         message: words.$1,
         detail: words.$2,
         tone: UiBannerTone.needsReview,
-        actionLabel: CostsScreenCopy.refreshLabel,
-        onAction: () => unawaited(_refresh()),
       ),
+      SizedBox(height: ui.space.s2),
+      // A button under the band rather than the band's own action: a band's
+      // action has no busy state, and the update takes a moment. It is busy
+      // while the request runs, and its outcome is written under it.
+      _updateControl(ui, _UpdateFrom.band),
     ];
+  }
+
+  /// "Update figures", busy while the request is out, and what it answered
+  /// beneath it when it was this control that was pressed.
+  Widget _updateControl(UiThemeData ui, _UpdateFrom from) {
+    final _Notice? notice = _notice?.from == from ? _notice : null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: UiButton(
+            label: CostsScreenCopy.refreshLabel,
+            busyLabel: CostsScreenCopy.refreshBusy,
+            variant: UiButtonVariant.secondary,
+            leading: UiIcons.reload,
+            loading: _refreshing,
+            onPressed: _refreshing ? null : () => unawaited(_refresh(from)),
+          ),
+        ),
+        if (notice != null) ...<Widget>[
+          SizedBox(height: ui.space.s4),
+          if (notice.detail == null)
+            Text(
+              notice.message,
+              style: ui.type.body.copyWith(color: ui.color.inkSecondary),
+            )
+          else
+            UiBanner(
+              message: notice.message,
+              detail: notice.detail,
+              tone: UiBannerTone.blocked,
+            ),
+        ],
+      ],
+    );
   }
 
   /// A numeral tile that reads its line under the numeral too. The tile's own
@@ -633,7 +693,17 @@ class _CostsScreenState extends State<CostsScreen> {
     final String cost = total.hasCosts
         ? formatMicros(total.costMicros)
         : CostsScreenCopy.noCosts;
-    final String limit = limitsUnreadable
+    // A collection the server does not list has no name to show, and no limit
+    // can be set for it: the service refuses an id that is not one of the
+    // organization's collections. Its costs are still its costs, in words.
+    final bool listed = collection.listed;
+    final String name = collection.name ?? CostsScreenCopy.collectionNotListed;
+    final bool editable = listed && !limitsUnreadable;
+    final String? limit = !listed
+        ? (collection.limit == null
+              ? null
+              : CostsScreenCopy.rowLimit(collection.limit))
+        : limitsUnreadable
         ? CostsScreenCopy.rowLimitUnreadable
         : CostsScreenCopy.rowLimit(collection.limit);
     final String action = collection.limit == null
@@ -647,26 +717,26 @@ class _CostsScreenState extends State<CostsScreen> {
       // Sub-collections sit under their parent, one step in for each level.
       padding: EdgeInsetsDirectional.only(start: row.depth * ui.space.s4),
       child: UiListRow(
-        title: collection.name,
-        subtitle: '$cost · $limit',
-        semanticsLabel: limitsUnreadable
-            ? '${collection.name}, $cost$including, $limit'
-            : '${collection.name}, $cost$including, $limit. $action',
+        title: name,
+        subtitle: _detail(<String>[cost, ?limit]),
+        semanticsLabel: editable
+            ? '$name, $cost$including, $limit. $action'
+            : <String>['$name, $cost$including', ?limit].join(', '),
         leading: const UiIcon(UiIcons.collection),
         // A limit that cannot be read cannot be changed from here: the form
         // would start from "no monthly limit" and write over one it never saw.
-        trailing: limitsUnreadable
-            ? null
-            : UiRowTrailing(label: action, icon: UiIcons.edit),
-        onPressed: limitsUnreadable
-            ? null
-            : () => unawaited(
+        trailing: editable
+            ? UiRowTrailing(label: action, icon: UiIcons.edit)
+            : null,
+        onPressed: editable
+            ? () => unawaited(
                 _editLimit(
-                  subject: collection.name,
+                  subject: collection.name!,
                   collectionId: collection.id,
                   current: collection.limit,
                 ),
-              ),
+              )
+            : null,
       ),
     );
   }
@@ -730,7 +800,6 @@ class _CostsScreenState extends State<CostsScreen> {
           counted = CostsScreenCopy.countingStatus(meter.status);
       }
     }
-    final _Notice? notice = _notice;
     final TextStyle line = ui.type.body.copyWith(color: ui.color.ink);
     return <Widget>[
       Text(
@@ -744,31 +813,7 @@ class _CostsScreenState extends State<CostsScreen> {
         Text(counted, style: line),
       ],
       SizedBox(height: ui.space.s4),
-      Align(
-        alignment: AlignmentDirectional.centerStart,
-        child: UiButton(
-          label: CostsScreenCopy.refreshLabel,
-          busyLabel: CostsScreenCopy.refreshBusy,
-          variant: UiButtonVariant.secondary,
-          leading: UiIcons.reload,
-          loading: _refreshing,
-          onPressed: _refreshing ? null : () => unawaited(_refresh()),
-        ),
-      ),
-      if (notice != null) ...<Widget>[
-        SizedBox(height: ui.space.s4),
-        if (notice.detail == null)
-          Text(
-            notice.message,
-            style: ui.type.body.copyWith(color: ui.color.inkSecondary),
-          )
-        else
-          UiBanner(
-            message: notice.message,
-            detail: notice.detail,
-            tone: UiBannerTone.blocked,
-          ),
-      ],
+      _updateControl(ui, _UpdateFrom.figures),
     ];
   }
 }

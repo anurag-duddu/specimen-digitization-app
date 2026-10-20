@@ -781,7 +781,9 @@ void main() {
       );
       await pumpCosts(tester, repository);
 
-      await tester.tap(uiControl('Update figures').first);
+      // One under the band and one in the Figures section.
+      expect(uiButton('Update figures'), findsNWidgets(2));
+      await tester.tap(uiButton('Update figures').first);
       await tester.pumpAndSettle();
 
       expect(repository.refreshes, <String>[costOrganization]);
@@ -1043,6 +1045,231 @@ void main() {
     });
   });
 
+  group('the band\'s update', () {
+    FakeCostRepository behind() => FakeCostRepository(
+      wire: edited((Json wire) {
+        wire['meter'] = <String, dynamic>{
+          'allocated_through': '2026-10-16',
+          'allocation_status': 'behind',
+        };
+      }),
+    );
+
+    Finder bandButton() => uiButton('Update figures').first;
+    Finder figuresButton() => uiButton('Update figures').last;
+
+    testWidgets('is busy while the request runs, and so is the other', (
+      WidgetTester tester,
+    ) async {
+      final FakeCostRepository repository = behind();
+      await pumpCosts(tester, repository, reduceMotion: true);
+      repository.refreshHold = Completer<void>();
+      final Completer<void> release = repository.refreshHold!;
+
+      await tester.tap(bandButton());
+      await tester.pump();
+
+      // Both say Updating while the one request is out, and neither can send a
+      // second.
+      expect(find.text('Updating…'), findsNWidgets(2));
+      for (final Element button in uiButton('Updating…').evaluate()) {
+        expect((button.widget as UiButton).loading, isTrue);
+      }
+      // The last button on the page is the Figures section's, which now reads
+      // Updating, so it is found by its place and not by its label.
+      await tester.tap(find.byType(UiButton).last, warnIfMissed: false);
+      await tester.pump();
+      expect(repository.refreshes, hasLength(1));
+
+      release.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('Updating…'), findsNothing);
+    });
+
+    testWidgets('writes its outcome under the band, where it was pressed', (
+      WidgetTester tester,
+    ) async {
+      final FakeCostRepository repository = behind();
+      await pumpCosts(tester, repository);
+
+      await tester.tap(bandButton());
+      await tester.pumpAndSettle();
+
+      const String said =
+          'Update requested. The figures update within minutes.';
+      expect(find.text(said), findsOneWidget);
+      // Under the band, above the figures it is about.
+      final double outcome = tester.getTopLeft(find.text(said)).dy;
+      expect(
+        outcome,
+        lessThan(tester.getTopLeft(find.text('Organization')).dy),
+      );
+    });
+
+    testWidgets('is announced once, not once for each place it is written', (
+      WidgetTester tester,
+    ) async {
+      final List<String> announced = captureAnnouncements(tester);
+      await pumpCosts(tester, behind());
+
+      await tester.tap(bandButton());
+      await tester.pumpAndSettle();
+
+      expect(announced, <String>[
+        'Update requested. The figures update within minutes.',
+      ]);
+    });
+
+    testWidgets('and the Figures section writes under itself', (
+      WidgetTester tester,
+    ) async {
+      await pumpCosts(tester, behind());
+
+      await tester.tap(figuresButton());
+      await tester.pumpAndSettle();
+
+      final double outcome = tester
+          .getTopLeft(
+            find.text('Update requested. The figures update within minutes.'),
+          )
+          .dy;
+      expect(outcome, greaterThan(tester.getTopLeft(find.text('Figures')).dy));
+    });
+
+    testWidgets('says a refusal under the band, with the reason behind it', (
+      WidgetTester tester,
+    ) async {
+      final FakeCostRepository repository = behind()
+        ..refreshFailure = const ApiFailure(
+          'The worker job is not configured.',
+          code: 'unavailable',
+          status: 503,
+        );
+      await pumpCosts(tester, repository);
+
+      await tester.tap(bandButton());
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('The update did not start. Retry in a moment.'),
+        findsOneWidget,
+      );
+      expect(uiButton('Update figures'), findsNWidgets(2));
+    });
+
+    testWidgets('can be pressed again once it has answered', (
+      WidgetTester tester,
+    ) async {
+      final FakeCostRepository repository = behind();
+      await pumpCosts(tester, repository);
+
+      await tester.tap(bandButton());
+      await tester.pumpAndSettle();
+      await tester.tap(bandButton());
+      await tester.pumpAndSettle();
+
+      expect(repository.refreshes, hasLength(2));
+    });
+  });
+
+  group('a collection the server no longer lists', () {
+    FakeCostRepository retired() => FakeCostRepository(
+      wire: (String month) => unlistedWire(costWire(month)),
+    );
+
+    testWidgets('is said in words, never by its id', (
+      WidgetTester tester,
+    ) async {
+      await pumpCosts(tester, retired());
+
+      expect(find.text('Collection no longer listed'), findsOneWidget);
+      expect(find.textContaining(retiredCollection), findsNothing);
+      expect(find.textContaining('3f9a2c1e'), findsNothing);
+      // Its costs are still its costs.
+      expect(find.text(r'$1.20'), findsOneWidget);
+    });
+
+    testWidgets('does not speak the id either', (WidgetTester tester) async {
+      await pumpCosts(tester, retired());
+
+      final String said = spoken(tester, collectionRow(retiredCollection));
+      expect(said, r'Collection no longer listed, $1.20');
+      expect(said, isNot(contains('3f9a2c1e')));
+    });
+
+    testWidgets('offers no limit, because the service refuses one', (
+      WidgetTester tester,
+    ) async {
+      final FakeCostRepository repository = retired();
+      await pumpCosts(tester, repository);
+
+      // The four listed collections offer one; this row does not.
+      expect(find.text('Set limit'), findsNWidgets(3));
+      // The organization's own button reads Change limit too.
+      expect(find.text('Change limit'), findsNWidgets(2));
+      expect(
+        find.descendant(
+          of: collectionRow(retiredCollection),
+          matching: find.byType(UiRowTrailing),
+        ),
+        findsNothing,
+      );
+      await tester.tap(collectionRow(retiredCollection), warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Monthly limit'), findsNothing);
+      expect(uiButton('Save limit'), findsNothing);
+      expect(repository.limits, isEmpty);
+    });
+
+    testWidgets('says nothing about a limit it cannot have', (
+      WidgetTester tester,
+    ) async {
+      await pumpCosts(tester, retired());
+
+      expect(find.textContaining('No monthly limit'), findsNWidgets(3));
+      final Finder row = find.descendant(
+        of: collectionRow(retiredCollection),
+        matching: find.byType(Text),
+      );
+      for (final Element text in row.evaluate()) {
+        expect(
+          (text.widget as Text).data ?? '',
+          isNot(contains('limit')),
+          reason: 'a retired collection has no limit to name',
+        );
+      }
+    });
+
+    testWidgets('stays a row, indented as a root, among the others', (
+      WidgetTester tester,
+    ) async {
+      await pumpCosts(tester, retired());
+
+      expect(
+        tester.getTopLeft(find.text('Collection no longer listed')).dx,
+        tester.getTopLeft(find.text('Plants')).dx,
+      );
+      expect(
+        tester.getTopLeft(find.text('Collection no longer listed')).dy,
+        greaterThan(tester.getTopLeft(find.text('Microscopic slides')).dy),
+      );
+    });
+
+    testWidgets('is the same when the limits could not be read', (
+      WidgetTester tester,
+    ) async {
+      final FakeCostRepository repository = FakeCostRepository()
+        ..customWire = (String month) =>
+            capsUnavailableWire(unlistedWire(costWire(month)));
+      await pumpCosts(tester, repository);
+
+      expect(find.text('Collection no longer listed'), findsOneWidget);
+      expect(find.text(r'$1.20'), findsOneWidget);
+      expect(find.textContaining('3f9a2c1e'), findsNothing);
+    });
+  });
+
   group('updating the figures', () {
     testWidgets('asks the server, then says they update within minutes', (
       WidgetTester tester,
@@ -1077,12 +1304,12 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.text(
-          'No new update was started. The figures update within minutes.',
-        ),
+        find.text('No update was started. Try again later.'),
         findsOneWidget,
       );
+      // Nothing is promised when nothing was started.
       expect(find.textContaining('Update requested'), findsNothing);
+      expect(find.textContaining('within minutes'), findsNothing);
     });
 
     testWidgets('says what went wrong and why, once', (

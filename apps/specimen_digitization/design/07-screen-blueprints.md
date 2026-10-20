@@ -580,8 +580,10 @@ to `/costs` followed by a reviewer reaches a sentence and no request.
 - **A meter that is behind, or has counted nothing,** is a band above the
   figures with the update it offers: the shared Google costs are behind, which
   the band's detail says is more than two complete billing days (`behind`), or
-  none has been counted (`never_run`). A meter that is `ok` says how far it has
-  counted, in the Figures section, and is otherwise silent.
+  none has been counted (`never_run`). The band carries an "Update figures"
+  button under it, busy while the request is out, with the outcome written
+  under it. A meter that is `ok` says how far it has counted, in the Figures
+  section, and is otherwise silent.
 - **Organization.** Three numeral tiles, at most one hero: the cost the meter
   counts, which is after Google's free allowance; the part held for calls whose
   cost is unknown; and the cost before Google's free allowance.
@@ -596,13 +598,21 @@ to `/costs` followed by a reviewer reaches a sentence and no request.
   nothing offers to set or change a limit that cannot be seen.
 - **Collections.** One row each, a sub-collection under its parent and one step
   in, with the total including its sub-collections and its limit and what is
-  left, or "No monthly limit". The row opens the limit form.
+  left, or "No monthly limit". The row opens the limit form. A collection the
+  server no longer lists comes back with no name; its costs still count, so the
+  row reads "Collection no longer listed" with its costs, never the id, and has
+  no limit control, because the service refuses a limit for an id that is not
+  one of the organization's collections.
 - **Cost by stage** and **cost by model.** Rows, largest first, a stage or a
   provider this client has not met still named in plain words.
 - **Figures.** When they were updated, on the reader's clock, how far the
   shared Google costs are counted (a billing day, in Pacific time), and
   "Update figures", which asks the server and says the figures update within
-  minutes.
+  minutes. When the server answers that none was started (no worker job is
+  configured, or the start failed) the screen says only that no update was
+  started and to try again later. Both controls are busy while a request is
+  out, and the outcome is written beside the one that was pressed and announced
+  once.
 
 **The limit form** is a sheet on a stacked window and a dialog above it, the
 same for the organization and every collection: an amount in US dollars,

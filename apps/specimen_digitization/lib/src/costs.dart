@@ -251,7 +251,7 @@ class CostCollection {
     final CostAmounts own = CostAmounts.fromWire(json['own']);
     return CostCollection(
       id: id,
-      name: _text(json['name']) ?? id,
+      name: _text(json['name']),
       parentId: _text(json['parent_id']),
       own: own,
       total: json['total'] == null ? own : CostAmounts.fromWire(json['total']),
@@ -260,7 +260,16 @@ class CostCollection {
   }
 
   final String id;
-  final String name;
+
+  /// The collection's name, or null when the server no longer lists it: rows
+  /// of a collection that is not one of the organization's collections still
+  /// count, under a null name. The id is not a name and is never shown.
+  final String? name;
+
+  /// True when the server names this collection. A collection it does not
+  /// name cannot be given a limit: the service refuses an id that is not one
+  /// of the organization's collections.
+  bool get listed => name != null;
 
   /// The collection this one sits under, or null for a top level one.
   final String? parentId;

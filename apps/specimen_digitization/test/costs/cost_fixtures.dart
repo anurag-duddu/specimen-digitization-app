@@ -163,6 +163,24 @@ Json capsUnavailableWire(Json wire) {
   return wire;
 }
 
+/// The id of a collection the server no longer lists.
+const String retiredCollection = '3f9a2c1e-5b7d-4e0a-9c1d-0a1b2c3d4e5f';
+
+/// [wire] with the rows of a collection the server no longer lists: they still
+/// count, under a null name (`COST_METER.md`: "Rows of a collection not listed
+/// still count, under a `null` name"), with no parent and no limit.
+Json unlistedWire(Json wire) {
+  (wire['collections'] as List<Object?>).add(<String, dynamic>{
+    'collection_id': retiredCollection,
+    'name': null,
+    'parent_id': null,
+    'own': amounts(1200000, entries: 4),
+    'total': amounts(1200000, entries: 4),
+    'cap': null,
+  });
+  return wire;
+}
+
 /// [wire] with a credit among its stages and its models: Google's free
 /// allowance, recorded below zero, and a total that falls with it.
 Json creditWire(Json wire) {
@@ -242,6 +260,10 @@ class FakeCostRepository implements CostRepository {
   /// Set to fail every update request with this.
   ApiFailure? refreshFailure;
 
+  /// Holds the next update request until completed, so a test can look at the
+  /// button while the request is out.
+  Completer<void>? refreshHold;
+
   /// Set to fail every limit change with this.
   ApiFailure? limitFailure;
 
@@ -309,6 +331,11 @@ class FakeCostRepository implements CostRepository {
   @override
   Future<bool> refreshCosts(String organizationId) async {
     refreshes.add(organizationId);
+    final Completer<void>? waiting = refreshHold;
+    if (waiting != null) {
+      refreshHold = null;
+      await waiting.future;
+    }
     final ApiFailure? failure = refreshFailure;
     if (failure != null) throw failure;
     return refreshStarts;

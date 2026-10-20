@@ -510,7 +510,12 @@ void main() {
           window: goldenWindows['compact-390x844']!,
           brightness: brightness,
           location: goldenCostsLocation,
-          repository: GoldenCostRepository(),
+          // With a collection the server no longer lists, in words.
+          repository: GoldenCostRepository(
+            meter: FakeCostRepository(
+              wire: (String month) => unlistedWire(costWire(month)),
+            ),
+          ),
         );
         // The collections' heading at the top of the window.
         await Scrollable.ensureVisible(
@@ -519,6 +524,7 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(find.text('Beetles'), findsOneWidget);
+        expect(find.text('Collection no longer listed'), findsOneWidget);
         expectKnownOverflow(
           tester,
           'costs_collections__compact-390x844__$theme',

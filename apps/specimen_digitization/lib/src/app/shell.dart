@@ -13,6 +13,7 @@ import 'package:specimen_ui/specimen_ui.dart';
 import '../administrator_contact.dart';
 import '../models.dart';
 import '../screens/costs/costs_access.dart';
+import '../screens/costs/costs_screen.dart' show CostsScreenCopy;
 import '../widgets/widgets.dart';
 import '../workspace.dart';
 import 'routes.dart';
@@ -57,7 +58,7 @@ class AppShell extends StatefulWidget {
   static const String helpLabel = 'Help and shortcuts';
 
   /// What the control that opens the organization's costs is called.
-  static const String costsLabel = 'Costs';
+  static const String costsLabel = CostsScreenCopy.title;
 
   /// What the reload control is called.
   static const String reloadLabel = 'Refresh collection';
