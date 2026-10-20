@@ -35,6 +35,19 @@ def test_intake_definition_never_executes_and_uses_api_digest():
     with pytest.raises(ValueError): release.release_context({'GITHUB_REF': 'refs/heads/main'})
 
 
+def test_intake_args_reach_gcloud_as_one_value():
+    # gcloud's parser reads a separate word starting with "-" as another flag:
+    # the release of 2026-10-20 failed with "--args: expected one argument".
+    command = release.command(IMAGE, SHA, Path('/tmp/env.yaml'))
+    args = ','.join(release.settings.INTAKE['args'])
+    assert args.startswith('-')
+    assert '--args=' + args in command
+    assert '--args' not in command
+    for flag, value in zip(command, command[1:]):
+        if flag.startswith('--') and '=' not in flag and value.startswith('-'):
+            assert flag in {'--quiet'}, f'{flag} would swallow no value'
+
+
 @pytest.mark.parametrize('field,value', [('taskCount', 2), ('parallelism', 2)])
 def test_intake_definition_rejects_unreviewed_parallelism(field, value):
     resource = copy.deepcopy(definition())
