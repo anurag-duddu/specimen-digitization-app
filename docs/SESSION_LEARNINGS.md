@@ -23055,3 +23055,46 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   The permission is project-scoped Firebase app-configuration authority, not a
   SHA-only IAM permission; the existing protected provisioner bounds operations
   to its exact app and reviewed fingerprints. Exact-head approval follows freeze.
+
+### 2026-10-20 — protected runtime exposes intake argument parsing defect
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch
+  `codex/fix-intake-auth-permission`, same 5da8 worktree. Applied the reviewed
+  Auth-only setup repair from e895e930: exactly one role update, zero failures,
+  existing recipient unchanged. Live role readback has the exact eight
+  permissions. Data39468106836 attempt2 then passed, including Google provider
+  and Android fingerprint provisioning. Hosting39468106835 attempt1 passed;
+  its public marker and the public API /version both report merged33506488.
+- Protected Runtime39470159238 on33506488 with process_queued=false passed
+  Data wait, all image checks, API deployment and API smoke. Intake job creation
+  failed before creating either intake job: gcloud treats the separate value
+  starting `-m,` as an option, so `--args` has no argument. SAM and the shared
+  scientific worker subsequently deployed and verified. The dedicated E2E
+  scientific job was created, then correctly failed its missing invoker check.
+  The error's generic `specimen-worker` label refers to the dedicated job in
+  that loop; readback confirms the shared worker already had both invokers.
+- Repaired only intake command serialization to one `--args=...` argv token.
+  Both shared and dedicated names reproduce the old parsing failure in an
+  offline option-parser regression. The fixed focused release/ops suite passed
+  106 tests. The existing scientific worker constructor already uses equals
+  form. Independent source review found no P1/P2; job arguments, images,
+  limits, identity, secret pins, policy checks and no-execution behavior remain
+  unchanged. Full verification and exact-head/hosted qualification are pending.
+- The e895e930 canonical run was deliberately interrupted (exit130) after the
+  newly observed release defect required a source correction. It is not a
+  pass. All its processes exited before editing. Restart the complete canonical
+  verifier on the corrected frozen source; do not reuse its partial shards.
+- Authorized intake-only setup dry-run and application each reported exactly
+  three changes and zero failures: API/worker invokers and API definition read
+  on specimen-worker-e2e. Missing intake jobs were explicitly skipped; they
+  still need protected definition and the existing bounded setup grants.
+  No job or release was started by setup. Fresh shared execution read observed
+  109 retained executions, zero without completionTime, zero running; repeat
+  before granting original worker access to the new test collection.
+- Google sign-in activation is independent of intake jobs. Following the
+  documented post-Data activation path and independent review, set only
+  SPECIMEN_GOOGLE_SIGN_IN_ENABLED=true and reran all jobs of current-main push
+  Hosting39468106835 (attempt2). Bulk intake remains unset/default false.
+  This is a rebuild through protected Hosting, not a manual deploy. Real Gmail
+  sign-in, collection membership, imports, Submit and final Queue remain
+  Not confirmed. No provider or native acceptance is inferred from these runs.
