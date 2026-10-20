@@ -1,0 +1,230 @@
+#!/usr/bin/env python3
+"""Check the cost meter's month against the real Hugging Face and Google Cloud bills.
+
+    uv run --frozen python scripts/ops/reconcile_costs.py --month 2026-10 --print-queries
+    uv run --frozen python scripts/ops/reconcile_costs.py --month 2026-10 \\
+        --meter-rows cost_rows_2026-10_0.json [--meter-rows ...] \\
+        --huggingface hf_usage_2026-10.json \\
+        --google google_export_2026-10.json [--google console_lines_2026-10.json] \\
+        --out-json reconcile_2026-10.json --out-md reconcile_2026-10.md
+
+Offline: this script reads the files you give it and writes the two reports. It calls no API, reads no
+production data and runs no `gcloud`, `bq` or browser command; `--print-queries` only prints the read-only
+commands you run yourself. The inputs and the judging rules are in
+docs/execution/golive/COST_RECONCILIATION.md; the logic is application/cost_reconciliation.py.
+
+Inputs: --meter-rows (repeatable: Data Connect `costEntries` pages or a list of rows; duplicates are dropped),
+--huggingface (the usage page's inferenceUsageMetrics, or {"days": ...}), --google (repeatable: standard export
+rows, or {"lines": ...} read from the console report; give the hourly export and the console lines together to
+run the billing-day check). Without --out-md the Markdown report is printed.
+
+Parameters: --project (the Google project whose export rows count; default the committed one), --billing-zone
+(the zone Google's days are cut in; default America/Los_Angeles), --abs-usd and --relative (a gap is flagged
+above the larger of the two), --free-credit-type (repeatable: credit types counted as the free allowance, in
+addition to FREE_TIER), --bq-table (the export table, printed in the SQL).
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from datetime import date, timedelta
+from decimal import Decimal, InvalidOperation
+from pathlib import Path
+
+import ops_common as ops
+
+sys.path.insert(0, str(ops.ROOT / "src"))
+from specimen_digitization.application import cost_reconciliation as cr  # noqa: E402
+
+PAGE = 1000
+DATA_CONNECT = "specimen-digitization-service"
+FIELDS = ("organizationId collectionId id source specimenId runId step stage attempt kind ordinal provider resource "
+          "reservedMicros costMicros listCostMicros costBasis outcome failureCode priceListVersion priceListAsOf "
+          "occurredAt month allocationMethodId updatedAt")
+OFFSET_MARK = "__OFFSET__"
+# Runs in the browser console of the signed-in usage page. It reads the page's own data-props and copies one
+# object to the clipboard; it never touches cookies, storage, headers or the network.
+HF_CONSOLE_SNIPPET = (
+    "copy(JSON.stringify((function f(o){if(o&&typeof o==='object'){if('inferenceUsageMetrics' in o)return "
+    "o.inferenceUsageMetrics;for(const k in o){const r=f(o[k]);if(r)return r}}})(JSON.parse("
+    "[...document.querySelectorAll('[data-props]')].map(e=>e.getAttribute('data-props'))"
+    ".find(t=>t.includes('inferenceUsageMetrics'))))))")
+HF_PAGE = "https://huggingface.co/settings/inference-providers/overview"
+
+
+def graphql_query(month: str, offset: int | str = 0, limit: int = PAGE) -> str:
+    """The read-only query for one page of a month's CostEntry rows, deployment-wide (all organizations)."""
+    return (f'query {{ costEntries(where: {{month: {{eq: "{month}"}}}}, '
+            "orderBy: [{organizationId: ASC}, {collectionId: ASC}, {id: ASC}], "
+            f"limit: {limit}, offset: {offset}) {{ {FIELDS} }} }}")
+
+
+def read_url(project: str, region: str) -> str:
+    return (f"https://firebasedataconnect.googleapis.com/v1/projects/{project}/locations/{region}"
+            f"/services/{DATA_CONNECT}:executeGraphqlRead")
+
+
+def curl_loop(month: str, project: str, region: str) -> str:
+    """A shell loop that pages through the month with curl. The token is Application Default Credentials'
+    own, fetched by gcloud when the command runs; this script never sees it."""
+    body = json.dumps({"query": graphql_query(month, OFFSET_MARK)}).replace(OFFSET_MARK, "'\"$OFFSET\"'")
+    return "\n".join([
+        f"for OFFSET in {' '.join(str(PAGE * n) for n in range(5))}; do",
+        "  curl -sS -X POST \\",
+        '    -H "Authorization: Bearer $(gcloud auth application-default print-access-token)" \\',
+        f'    -H "x-goog-user-project: {project}" \\',
+        '    -H "Content-Type: application/json" \\',
+        f"    '{read_url(project, region)}' \\",
+        f"    -d '{body}' \\",
+        f'    -o "cost_rows_{month}_${{OFFSET}}.json"',
+        "done"])
+
+
+def bigquery_sql(month: str, table: str, by_usage: bool) -> str:
+    """The standard-export columns the reconciliation reads, for one invoice month or one usage window."""
+    year, number = cr.month_of(month)
+    first = f"{year:04d}-{number:02d}-01"
+    after = f"{year + (number == 12):04d}-{number % 12 + 1:02d}-01"
+    before = (date.fromisoformat(first) - timedelta(days=1)).isoformat()
+    later = (date.fromisoformat(after) + timedelta(days=1)).isoformat()
+    where = (f"usage_start_time >= TIMESTAMP('{before}') AND usage_start_time < TIMESTAMP('{later}')" if by_usage
+             else f"invoice.month = '{year:04d}{number:02d}'")
+    return "\n".join([
+        "SELECT service, sku, STRUCT(project.id AS id) AS project, usage_start_time, usage_end_time,",
+        "       cost, currency, cost_type, credits, usage, invoice",
+        f"FROM `{table}`",
+        f"WHERE {where}",
+        "ORDER BY usage_start_time, service.description, sku.description"])
+
+
+def queries(month: str, project: str, region: str, table: str) -> str:
+    sql_invoice, sql_usage = bigquery_sql(month, table, False), bigquery_sql(month, table, True)
+    out = [
+        f"# Read-only queries for {month}. Run them yourself; nothing here runs them.",
+        "",
+        "## 1. Meter rows (Data Connect executeGraphqlRead, every organization)",
+        "",
+        "Run as a project owner with Application Default Credentials (`gcloud auth application-default login`).",
+        "Each page is up to %d rows; repeat with a larger offset until a page holds fewer than that. Pass every" % PAGE,
+        "file to --meter-rows. The query as plain GraphQL (page 1):",
+        "",
+        graphql_query(month),
+        "",
+        curl_loop(month, project, region),
+        "",
+        "## 2. Google bill (BigQuery standard billing export)",
+        "",
+        "Needs the export enabled once (see COST_RECONCILIATION.md). Set --bq-table to PROJECT.DATASET.TABLE.",
+        "Run with: bq query --nouse_legacy_sql --format=json --max_rows=1000000 '<SQL>' > google_export_%s.json" % month,
+        "",
+        "-- by invoice month, as the statement groups it",
+        sql_invoice + ";",
+        "",
+        "-- by usage time (a day either side of the month), which also catches usage invoiced the next month;",
+        "-- the report assigns each row to a day in the billing zone and drops the days outside the month",
+        sql_usage + ";",
+        "",
+        "## 3. Hugging Face bill (browser console, signed in)",
+        "",
+        f"Open {HF_PAGE}, choose the month on the page, open the browser console, paste the line below, then",
+        "paste the clipboard into hf_usage_%s.json. It reads the page's data-props only:" % month,
+        "",
+        HF_CONSOLE_SNIPPET,
+        ""]
+    return "\n".join(out)
+
+
+def load_json(path: str):
+    text = Path(path).read_text(encoding="utf-8")
+    try:
+        return json.loads(text)
+    except ValueError:
+        pass
+    try:  # JSON Lines, as `bq` and some exports write them
+        return [json.loads(line) for line in text.splitlines() if line.strip()]
+    except ValueError:
+        raise SystemExit(f"error: {path} is not JSON or JSON Lines") from None
+
+
+def merged_rows(paths: list[str]) -> list:
+    rows: list = []
+    for path in paths:
+        rows.extend(cr.unwrap_rows(load_json(path), path, ("costEntries", "rows", "items")))
+    return rows
+
+
+def parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(description="Check the cost meter's month against the Hugging Face and Google bills.")
+    p.add_argument("--month", required=True, help="the month to check, YYYY-MM (UTC for meter rows)")
+    p.add_argument("--meter-rows", action="append", default=[], metavar="FILE", help="CostEntry rows (repeatable)")
+    p.add_argument("--huggingface", metavar="FILE", help="the Hugging Face usage bill")
+    p.add_argument("--google", action="append", default=[], metavar="FILE", help="the Google bill (repeatable)")
+    p.add_argument("--project", default=ops.settings.PROJECT, help="the Google project whose export rows count")
+    p.add_argument("--billing-zone", default=cr.DEFAULT_BILLING_ZONE, help="the zone Google's days are cut in")
+    p.add_argument("--free-credit-type", action="append", default=[], metavar="TYPE",
+                   help="a credit type counted as the free allowance, besides FREE_TIER (repeatable)")
+    p.add_argument("--abs-usd", default="0.05", help="flag a gap above max(this, --relative x billed); default 0.05")
+    p.add_argument("--relative", default="0.05", help="the relative part of the limit; default 0.05 (5%%)")
+    p.add_argument("--out-json", metavar="FILE", help="write the JSON report here")
+    p.add_argument("--out-md", metavar="FILE", help="write the Markdown report here")
+    p.add_argument("--print-queries", action="store_true", help="print the read-only queries and exit")
+    p.add_argument("--bq-table", default="BILLING_PROJECT.BILLING_DATASET.gcp_billing_export_v1_BILLING_ACCOUNT_ID",
+                   help="the billing export table, for the printed SQL")
+    return p
+
+
+def thresholds(args, fail) -> cr.Thresholds:
+    try:
+        absolute = int((Decimal(args.abs_usd) * cr.MICRO).to_integral_value())
+        relative = float(Decimal(args.relative))
+    except (InvalidOperation, ValueError):
+        fail("--abs-usd and --relative must be numbers")
+    if absolute < 0 or relative < 0:
+        fail("--abs-usd and --relative must not be negative")
+    return cr.Thresholds(absolute_micros=absolute, relative=relative)
+
+
+def main(argv=None) -> int:
+    p = parser()
+    args = p.parse_args(argv)
+    try:
+        cr.month_of(args.month)
+    except ValueError:
+        p.error("--month must be YYYY-MM")
+    if args.print_queries:
+        print(queries(args.month, ops.project(), ops.region(), args.bq_table))
+        return 0
+    if not args.meter_rows:
+        p.error("--meter-rows is required (see --print-queries)")
+    if not args.huggingface and not args.google:
+        p.error("give at least one bill: --huggingface and/or --google")
+    limits = thresholds(args, p.error)
+    try:
+        report = cr.reconcile(
+            meter_rows=merged_rows(args.meter_rows), month=args.month, thresholds=limits, project_id=args.project,
+            huggingface=load_json(args.huggingface) if args.huggingface else None,
+            google=tuple(load_json(path) for path in args.google) if args.google else None,
+            billing_zone=args.billing_zone, free_credit_types=cr.FREE_CREDIT_TYPES | set(args.free_credit_type))
+    except cr.ReconciliationInputError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 2
+    markdown = cr.render_markdown(report)
+    wrote = []
+    if args.out_json:
+        Path(args.out_json).write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+        wrote.append(args.out_json)
+    if args.out_md:
+        Path(args.out_md).write_text(markdown, encoding="utf-8")
+        wrote.append(args.out_md)
+    if wrote:
+        totals = report["totals"]
+        print(f"{args.month}: billed {cr.usd(totals['billed_micros'])}, metered {cr.usd(totals['metered_micros'])}, "
+              f"{len(report['flags'])} flagged. Wrote {', '.join(wrote)}.")
+    else:
+        print(markdown, end="")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
