@@ -204,8 +204,9 @@ ROUTES = {"org/insects": {"worker_job": "projects/specimen-digitization/location
 class Cloud:
     """A stand-in gcloud: the repository, what each runtime runs and the tags of each package."""
 
-    def __init__(self, repository=SET_UP, running=None, tags=None, ignore_writes=False, unreadable=(), traffic=None):
-        self.repository = repository
+    def __init__(self, repository=SET_UP, running=None, tags=None, ignore_writes=False, unreadable=(), traffic=None,
+                 fail_at=None):
+        self.repository, self.fail_at = repository, fail_at
         # A service's (latest ready revision, traffic rows) and each revision's image; by default one revision,
         # "<service>-ready", takes all traffic and runs running[<service>].
         self.traffic, self.revisions = traffic or {}, {}
@@ -223,6 +224,8 @@ class Cloud:
             assert argv[-1] == "--quiet" and (flags["repository"], flags["location"], flags["project"]) == (
                 "specimen-runtime", "us-east4", "specimen-digitization")
             self.writes.append(words[3:5] + [flags["package"], flags["version"]])
+            if len(self.writes) == self.fail_at:
+                raise subprocess.CalledProcessError(1, argv, "", "ERROR: UNAVAILABLE")
             held = self.tags[flags["package"]]
             assert (words[4] in held) == (words[3] == "update"), "create only a new tag, update only an existing one"
             if not self.ignore_writes:
@@ -338,6 +341,65 @@ def test_every_image_a_service_sends_traffic_to_or_tags_is_kept_and_a_spent_extr
     assert {tag: held for tag, held in cloud.tags["api"].items() if "specimen-api" in tag} == {
         "deployed-specimen-api": digest("c"), "rollback-specimen-api": digest("a"),
         "deployed-specimen-api.1": digest("c"), "deployed-specimen-api.2": digest("c")}
+
+
+def api_cloud(rows, tags, **options):
+    """Only specimen-api's traffic and tags vary; its revisions api-<mark> run image <mark>."""
+    cloud = Cloud(traffic={"specimen-api": (rows[0]["revisionName"], rows)},
+                  tags={"api": {**tags, "deployed-specimen-intake": digest("1")},
+                        "sam": {"deployed-specimen-sam": digest("2")}, "worker": {"deployed-specimen-worker": digest("3")}},
+                  **options)
+    cloud.revisions.update({f"api-{mark}": image("api", mark) for mark in "abcd9"})
+    return cloud
+
+
+def traffic(shares=None, **percent):
+    return [{"revisionName": f"api-{mark}", "percent": share} for mark, share in {**(shares or {}), **percent}.items()]
+
+
+def api_tags(cloud):
+    return {tag: held for tag, held in cloud.tags["api"].items() if "specimen-api" in tag}
+
+
+def test_a_change_in_the_order_of_traffic_moves_no_tag(release):
+    before = {"deployed-specimen-api": digest("a"), "deployed-specimen-api.1": digest("b"),
+              "deployed-specimen-api.2": digest("c")}
+    cloud = release(api_cloud(traffic(a=90, c=9, b=1), before))
+    keep.main(["keep_images.py"])
+    assert cloud.writes == [] and api_tags(cloud) == before
+
+
+# (tags before, traffic now, tags after): an extra image dropped and a new one added; a rollback to the
+# rollback image (the two tags trade images); a release; a release whose old image still takes some traffic.
+SCENARIOS = [
+    ({"deployed-specimen-api": "a", "rollback-specimen-api": "9", "deployed-specimen-api.1": "b",
+      "deployed-specimen-api.2": "c"}, {"a": 80, "c": 10, "d": 10},
+     {"deployed-specimen-api": "a", "rollback-specimen-api": "9", "deployed-specimen-api.1": "d",
+      "deployed-specimen-api.2": "c"}),
+    ({"deployed-specimen-api": "a", "rollback-specimen-api": "9"}, {"9": 100},
+     {"deployed-specimen-api": "9", "rollback-specimen-api": "a", "deployed-specimen-api.1": "9"}),
+    ({"deployed-specimen-api": "a", "rollback-specimen-api": "9"}, {"c": 100},
+     {"deployed-specimen-api": "c", "rollback-specimen-api": "a"}),
+    ({"deployed-specimen-api": "a"}, {"c": 90, "a": 10},
+     {"deployed-specimen-api": "c", "rollback-specimen-api": "a", "deployed-specimen-api.1": "a"}),
+]
+
+
+@pytest.mark.parametrize("before, now, after", SCENARIOS)
+def test_tags_end_as_planned_and_a_failure_after_any_write_leaves_every_needed_image_tagged(release, before, now,
+                                                                                         after):
+    tags = {tag: digest(mark) for tag, mark in before.items()}
+    cloud = release(api_cloud(traffic(now), tags))
+    keep.main(["keep_images.py"])
+    assert api_tags(cloud) == {tag: digest(mark) for tag, mark in after.items()}
+    writes = len(cloud.writes)
+    # Images that were tagged and are still in service or still kept must stay tagged through every partial run.
+    guarded = {digest(mark) for mark in before.values()} & {digest(mark) for mark in [*now, *after.values()]}
+    for failing in range(1, writes + 1):
+        cloud = release(api_cloud(traffic(now), dict(tags), fail_at=failing))
+        with pytest.raises(ValueError, match="specimen-api: CalledProcessError"):
+            keep.main(["keep_images.py"])
+        assert guarded <= set(api_tags(cloud).values()), (failing, api_tags(cloud))
 
 
 def test_a_service_with_no_traffic_fails_its_runtime_only(release):

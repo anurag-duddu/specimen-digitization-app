@@ -9,6 +9,7 @@ revision tag, gets deployed-<runtime>.<n>. It deletes nothing and moves no other
 """
 from __future__ import annotations
 
+import itertools
 import json
 import os
 from pathlib import Path
@@ -129,29 +130,71 @@ def point(package: str, tag: str, digest: str, held: dict[str, str]) -> None:
                     *AT_REGISTRY, "--quiet"], env=ENV, check=True)
 
 
+def fresh(prefix: str, taken) -> str:
+    """The lowest prefix<n> that no tag uses yet."""
+    return next(f"{prefix}{number}" for number in itertools.count(1) if f"{prefix}{number}" not in taken)
+
+
+def plan(name: str, digest: str, others: list[str], held: dict[str, str]) -> dict[str, str]:
+    """The tags a runtime should end with: deployed-<name> at the main digest, rollback-<name> at the main digest
+    before it, and one deployed-<name>.<n> for each other digest in service. An extra tag keeps the digest it
+    holds while that digest stays in service, so a change in the order of traffic moves none of them; a new one
+    takes a free number, and one no longer needed points at the main digest."""
+    deployed, rollback, prefix = f"deployed-{name}", f"rollback-{name}", f"deployed-{name}."
+    final = {deployed: digest}
+    if held.get(deployed) not in (None, digest):
+        final[rollback] = held[deployed]
+    elif rollback in held:
+        final[rollback] = held[rollback]
+    slots = {tag: image for tag, image in held.items() if tag.startswith(prefix)}
+    extra = {}
+    for tag, image in sorted(slots.items()):
+        if image in others and image not in extra.values():
+            extra[tag] = image
+    spent = [tag for tag in sorted(slots) if tag not in extra]
+    for other in others:
+        if other not in extra.values():
+            extra[spent.pop(0) if spent else fresh(prefix, {*slots, *extra})] = other
+    return {**final, **extra, **{tag: digest for tag in spent}}
+
+
+def apply(package: str, name: str, final: dict[str, str], held: dict[str, str]) -> dict[str, str]:
+    """Moves the runtime's tags to final, in an order that never leaves a digest final keeps without a tag: a tag
+    leaves its image only when that image is no longer needed or another tag already holds it. Two tags trading
+    images (a rollback to the rollback image) are broken with a spare deployed-<name>.<n> that ends at the main
+    digest. Returns final with any spare added."""
+    final, current = dict(final), dict(held)
+    pending = {tag: image for tag, image in final.items() if current.get(tag) != image}
+    while pending:
+        needed = set(final.values())
+        for tag in sorted(pending, key=lambda tag: (tag in current, tag)):
+            old = current.get(tag)
+            if old is None or old not in needed or any(other != tag and image == old
+                                                       for other, image in current.items()):
+                point(package, tag, pending[tag], current)
+                current[tag] = pending.pop(tag)
+                break
+        else:
+            tag = min(pending)
+            spare = fresh(f"deployed-{name}.", {*current, *final})
+            point(package, spare, current[tag], current)
+            current[spare] = current[tag]
+            final[spare] = pending[spare] = final[f"deployed-{name}"]
+    return final
+
+
 def keep(package: str, kind: str, name: str) -> str:
     digest, *others = in_service(package, kind, name)
-    deployed, rollback = f"deployed-{name}", f"rollback-{name}"
-    held = kept_tags(package)
-    previous = held.get(rollback)
-    if held.get(deployed) != digest:
-        if deployed in held:
-            previous = held[deployed]
-            point(package, rollback, previous, held)
-        point(package, deployed, digest, held)
-    # Every other image in service gets deployed-<name>.<n>; a Cloud Run name has no dot, so these never meet
-    # another runtime's tags. One no longer needed is pointed at the main image, as the release cannot delete a tag.
-    extra = {f"{deployed}.{number}": other for number, other in enumerate(others, 1)}
-    extra.update({tag: digest for tag in held if tag.startswith(f"{deployed}.") and tag not in extra})
-    for tag, image in sorted(extra.items()):
-        if held.get(tag) != image:
-            point(package, tag, image, held)
+    held = {tag: image for tag, image in kept_tags(package).items()
+            if tag in (f"deployed-{name}", f"rollback-{name}") or tag.startswith(f"deployed-{name}.")}
+    final = apply(package, name, plan(name, digest, others, held), held)
     after = kept_tags(package)
-    expected = {deployed: digest, rollback: previous, **extra}
-    if {tag: after.get(tag) for tag in expected} != expected:
-        raise ValueError(f"{name}: the tags {deployed} and {rollback} did not read back as set")
+    if {tag: after.get(tag) for tag in final} != final:
+        raise ValueError(f"{name}: the tags deployed-{name} and rollback-{name} did not read back as set")
+    previous = final.get(f"rollback-{name}")
     also = f", also in service {', '.join(others)}" if others else ""
-    return f"kept {package} image of {name}: {deployed} {digest}, {rollback} {previous or 'none yet'}{also}"
+    return (f"kept {package} image of {name}: deployed-{name} {digest}, rollback-{name} {previous or 'none yet'}"
+            f"{also}")
 
 
 def main(argv: list[str]) -> None:

@@ -1272,7 +1272,11 @@ The workflow has three jobs.
      one. It points the tag `deployed-<name>` at the main one (the revision
      with the most traffic) and, when that moved the tag, points
      `rollback-<name>` at the image `deployed-<name>` named before. Any other
-     image in service gets `deployed-<name>.<n>`. It reads the tags back, tags
+     image in service gets `deployed-<name>.<n>`, which stays with its image
+     while that image is in service. A tag leaves an image only when another
+     tag already holds it or it is no longer needed, so a step that fails part
+     way never takes the last tag off an image that still needs one. It reads
+     the tags back, tags
      every runtime it can read before it fails for one it cannot (a failed
      read of the collection routes included), and deletes nothing.
 
