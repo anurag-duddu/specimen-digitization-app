@@ -23098,3 +23098,74 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   This is a rebuild through protected Hosting, not a manual deploy. Real Gmail
   sign-in, collection membership, imports, Submit and final Queue remain
   Not confirmed. No provider or native acceptance is inferred from these runs.
+
+### 2026-10-20 — corrected release candidate qualification and live read preparation
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch
+  `codex/fix-intake-auth-permission`, worktree
+  `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`.
+  Independent G51 code/security review approved exact clean
+  `d629bf739716e9e3365729e85c2ecf523bcc0767`, tree
+  `6f7831a31f93bf8780fbe822db2dedcfe9dad562`, covering both the Auth permission
+  and intake argument repairs. No P1/P2 findings; this source approval does
+  not substitute for canonical/hosted checks or production acceptance.
+- Read back specimen-worker-e2e after the authorized setup: exactly the API
+  and worker identities under roles/run.invoker and the API identity under
+  specimenWorkerRead, with no public binding. Both intake definitions remain
+  absent until the protected argument repair releases.
+- Real Gmail Firebase account lookup still returned zero users. No account
+  was administratively created. A private read-only helper now uses the locked
+  Python environment and trusted CA bundle; the system Python's absent CA
+  chain had refused the first read, and certificate validation stayed enabled.
+- Corrected the private acceptance helper/guide to take actual specimen IDs
+  from submission-item results, not draft/submission/item IDs, and to require
+  finalized non-synthetic processing separately from terminal disposition.
+  Historical executions alone are not attribution to the actual submission.
+  Pilot scope remains exactly the two approved distinct provider originals.
+- First real read-only helper execution succeeded at2026-10-20T18:17:11Z:
+  one exhausted SQL page, zero specimen and Queue records, and no test
+  collection yet. This is pre-provisioning evidence only, not the required
+  after-Saved/pre-Submit proof. Private observation is
+  authoritative-baseline-20261020T181711172719Z.private.json. Runtime checks
+  correctly remain false while intake jobs are absent; no live import,
+  normal-user Queue, scientific completion or native acceptance is implied.
+- Canonical d629bf73 reported a real failure in
+  test_http_configured_classifier_pins_scope_source_route_and_provenance:
+  completed child provenance existed, but the parent retained
+  external_outcome_unknown after a5.866-second call against a5-second total
+  budget. The separate timeout/unknown/no-automatic-retry case passed. The
+  isolated result reason was not retained, so budget exhaustion is a supported
+  hypothesis rather than a recorded reason. Shard1 finished with1failed,
+  5450passed and5skipped. After obtaining its full traceback, interrupted the
+  remaining run (exit130) to address the failure and integrate newer main.
+  This run is not a canonical pass; the entire corrected integration will be
+  requalified. Log /private/tmp/specimen-intake-verify-d629bf73.log and shard
+  artifacts specimen-python-shards-3wmfk9qk retain the actual partial results.
+- Main advanced independently through PR #386 to
+  cd8be7d2a193f5efdf5b7bab4c403f892499c965, adding the cost meter. Narrow independent
+  integration review confirmed the four-field E2E bootstrap, dedicated routing,
+  existing actor and original G30 ProgramLedger admission/cap are unchanged.
+  CostEntry reporting is not a replacement allowance. Do not use costs/refresh
+  as a read-only check: it starts worker drains. Preserve these main changes
+  when integrating the release repairs and rerun required qualification.
+- Hosting39468106835 attempt2 passed; public marker reports33506488, the same
+  run/attempt and Google-enabled build. In normal Chrome, observed the Google
+  button, cancelled the chooser, observed the recovered cancellation message
+  and enabled email/Google choices, retried, selected the exact Gmail account
+  and completed ordinary identity consent. The live app recognized
+  anurag.duddu@gmail.com and displayed no collection assigned. Read-only Auth
+  lookup confirms one verified, active Google-provider identity. This is real
+  Gmail sign-in/cancellation/retry evidence, not an administrative fake user.
+- With fresh109shared executions all complete and zero running, prepared only
+  the approved four bootstrap identifiers from that real UID. Set the private
+  data-production artifact via stdin and dispatched protected Data39476572585
+  on current maincd8be7d2. It passed and reported creation of the missing test
+  collection/memberships with no content or work submitted. The normal Gmail
+  Check access again action then opened Intake E2E. Read-only observation at
+  2026-10-20T18:41:40Z confirmed the correct collection/parent and zero specimen
+  and Queue rows. This does not yet prove the after-Saved/pre-Submit boundary.
+- Safe browser evidence: gmail-live-sign-in-20261020.png and
+  gmail-live-collection-access-20261020.png in this task's visualization
+  implementation directory. API/version now reports current maincd8be7d2.
+  Bulk remains disabled. Provider consent/import, Submit, final scientific
+  Queue, public provider approval and real native camera remain Not confirmed.
