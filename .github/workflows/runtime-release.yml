@@ -124,3 +124,7 @@ jobs:
       - name: Restore and verify SAM minimum zero
         if: always() && github.event_name == 'workflow_dispatch' && inputs.process_queued
         run: uv run python scripts/release/process_worker.py cool
+      # Also after a failed step: whatever the deploys left in service is what the tags must keep.
+      - name: Verify the registry cleanup policy and tag the images in service
+        if: always()
+        run: uv run python scripts/release/keep_images.py

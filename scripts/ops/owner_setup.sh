@@ -107,6 +107,20 @@ readonly SQL_DESCRIPTION='Connect, IAM login and metadata only for the existing 
 readonly STAMP='[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z'
 readonly WINDOW="^request\\.time >= timestamp\\('($STAMP)'\\) && request\\.time < timestamp\\('($STAMP)'\\)\$"
 
+# The image registry's cleanup policy, in the file format of gcloud artifacts repositories set-cleanup-policies.
+# A keep rule wins over the delete rule: an image would go a day after its push unless it is one of the newest
+# five of its kind or carries the tag the runtime release moves onto the running image (deployed) or onto the
+# one before it (rollback); scripts/release/keep_images.py moves them and reads this policy back. It is set in
+# dry-run mode, so the registry deletes nothing; turning dry run off is a later reviewed change of its own.
+readonly CLEANUP_POLICY='[
+  {"name": "keep-newest", "action": {"type": "KEEP"}, "mostRecentVersions": {"keepCount": 5}},
+  {"name": "keep-deployed", "action": {"type": "KEEP"},
+   "condition": {"tagState": "TAGGED", "tagPrefixes": ["deployed", "rollback"]}},
+  {"name": "delete-old", "action": {"type": "DELETE"}, "condition": {"tagState": "ANY", "olderThan": "1d"}}
+]'
+# The same policy as gcloud prints value(cleanupPolicies) once it is live.
+readonly CLEANUP_POLICY_LIVE="delete-old={'action': 'DELETE', 'condition': {'olderThan': '86400s', 'tagState': 'ANY'}, 'id': 'delete-old'};keep-deployed={'action': 'KEEP', 'condition': {'tagPrefixes': ['deployed', 'rollback'], 'tagState': 'TAGGED'}, 'id': 'keep-deployed'};keep-newest={'action': 'KEEP', 'id': 'keep-newest', 'mostRecentVersions': {'keepCount': 5}}"
+
 readonly PUSH_ONLY="assertion.event_name == 'push'"
 readonly PUSH_OR_MANUAL="(assertion.event_name == 'push' || assertion.event_name == 'workflow_dispatch')"
 
@@ -280,10 +294,10 @@ run() {
     fi
   fi
   succeeded
-  # New Google access takes a moment to reach every server; a removal needs no wait.
+  # New Google access takes a moment to reach every server; a removal or a registry setting needs no wait.
   if [ "$1" = gcloud ]; then
     case " $* " in
-      *' remove-iam-policy-binding '*) ;;
+      *' remove-iam-policy-binding '* | *' artifacts repositories update '* | *' set-cleanup-policies '*) ;;
       *) ACCESS_CHANGED=1 ;;
     esac
   fi
@@ -714,6 +728,49 @@ runtime_grants() {
   for name in specimen-data-release specimen-runtime-build specimen-runtime-release; do
     grant service-account "$name@$ACCOUNTS" "$PLANE/$name" roles/iam.workloadIdentityUser
   done
+}
+
+# Without a cleanup policy every pushed image stays forever, about 0.55 GB a release. The release moves two tags
+# onto the images in service, so tags must be able to move; under immutable tags the registry could also never
+# delete a tagged image, and every image is pushed with one. The policy goes in only in dry-run mode: Google
+# evaluates it and deletes nothing.
+registry_cleanup() {
+  local live immutable rest dry policies file
+  heading 'Image registry: a cleanup policy in dry-run mode (it deletes nothing) and the tags that keep the images in service'
+  ensure_role specimenRuntimeImageTags 'Specimen runtime image tags' \
+    'Point the deployed and rollback tags of the runtime images; no delete.' \
+    artifactregistry.tags.create artifactregistry.tags.update
+  grant repository "$REGISTRY" "$RELEASE" "$CUSTOM/specimenRuntimeImageTags"
+  if [ "$HELD" -ne 1 ]; then
+    warn "the cleanup policy of $REGISTRY is not set: the runtime release could not tag the images in service yet; the next run of this script tries again"
+    return 0
+  fi
+  if ! live=$(gcloud artifacts repositories describe "$REGISTRY" "--location=$REGION" "--project=$PROJECT" \
+    '--format=value[separator="|"](dockerConfig.immutableTags,cleanupPolicyDryRun,cleanupPolicies)' \
+    2> "$WORK/stderr" < /dev/null); then
+    cat "$WORK/stderr" >&2
+    die "could not read the image registry $REGISTRY (see the error above)"
+  fi
+  immutable=${live%%|*}
+  rest=${live#*|}
+  dry=${rest%%|*}
+  policies=${rest#*|}
+  if [ "$immutable" = True ]; then
+    change "let tags move in $REGISTRY, so the release can move its deployed and rollback tags"
+    run gcloud artifacts repositories update "$REGISTRY" "--location=$REGION" "--project=$PROJECT" --no-immutable-tags
+    if [ "$LAST_OK" -ne 1 ]; then return 0; fi
+  else
+    in_place "tags can move in $REGISTRY"
+  fi
+  if [ "$policies" = "$CLEANUP_POLICY_LIVE" ] && [ "$dry" = True ]; then
+    in_place "the cleanup policy of $REGISTRY is the committed one, in dry-run mode"
+    return 0
+  fi
+  file="$WORK/cleanup-policy.json"
+  printf '%s\n' "$CLEANUP_POLICY" > "$file"
+  change "set the cleanup policy of $REGISTRY in dry-run mode (nothing is deleted): keep the newest 5 images of each kind and the deployed and rollback images"
+  run gcloud artifacts repositories set-cleanup-policies "$REGISTRY" "--location=$REGION" "--project=$PROJECT" \
+    "--policy=$file" --dry-run
 }
 
 # Widens one provider from push-only to push or a manual run; every other clause stays verbatim.
@@ -1380,6 +1437,7 @@ main() {
   data_release_grants
   cloud_sql_role
   runtime_grants
+  registry_cleanup
   manual_runs
   repository_variables
   bootstrap_secret

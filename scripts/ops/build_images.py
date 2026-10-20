@@ -4,8 +4,10 @@
     uv run --frozen python scripts/ops/build_images.py
 
 Each image is built from `git archive` of one commit (SOURCE_SHA, default HEAD), so no uncommitted or ignored file
-reaches the build, and is tagged <registry>/<role>:<SOURCE_SHA>. The registry has immutable tags: a role whose tag
-already exists is skipped, so a re-run builds only what is missing. Each role's image digest is printed at the end.
+reaches the build, and is tagged <registry>/<role>:<SOURCE_SHA>. A tag names one commit's build: a role whose tag
+already exists is skipped, so a re-run builds only what is missing. Once the registry's cleanup policy leaves
+dry-run mode, it removes such an image a day after its push unless it is among the newest five of its role or tagged
+deployed or rollback (docs/DEPLOYMENT.md, Image registry cleanup). Each role's image digest is printed at the end.
 
 Cloud Build runs as specimen-runtime-build (BUILD_SERVICE_ACCOUNT), which already pushes to the registry. This
 script first makes its prerequisites hold, each step idempotent: the Cloud Build API is enabled; the source staging

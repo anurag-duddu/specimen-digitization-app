@@ -990,8 +990,10 @@ environment and its own workflow file. The Hosting provider accepts `push`
 events only. The other three accept `push` and, once the owner setup below has
 run, `workflow_dispatch`. A provider is bound to the workflow's file name, so
 renaming a workflow file breaks its sign-in. The image build identity can
-write to the image registry and cannot deploy. The deploy identity can deploy
-and can only read the registry.
+write to the image registry and cannot deploy. The deploy identity can deploy;
+in the registry it can read, and create or move tags, which it uses only for
+the `deployed` and `rollback` tags described under
+[Image registry cleanup](#image-registry-cleanup). It cannot delete an image.
 
 ### Data release
 
@@ -1199,6 +1201,14 @@ The workflow has three jobs.
      Both definitions are read back, including source SHA, image, identity,
      runtime settings and private invocation policies. The deployment starts no
      worker execution and submits no segmentation request.
+   - `scripts/release/keep_images.py` runs last, also after a failed step. It
+     reads the registry's cleanup settings back and must find the committed
+     policy (see [Image registry cleanup](#image-registry-cleanup)); before the
+     owner setup has set it, the step says so and passes. Then, for the API,
+     SAM and the worker, it reads the image digest in service (a service's
+     latest ready revision, the job's definition), points the tag `deployed`
+     at it and, when that moved the tag, points `rollback` at the image
+     `deployed` named before. It reads both tags back. It deletes nothing.
 
 A manual run may additionally select `process_queued: true` (default false).
 After deployment verification, `scripts/release/process_worker.py` warms SAM to
@@ -1233,7 +1243,7 @@ admin rights on the repository. It is idempotent: each step reads the live
 state first and changes only what is missing, so running it again is safe. It
 prints every command before running it, asks no questions and needs no
 terminal. The owner runs it; an agent runs it only when the owner has
-authorized that run first-hand. The setup part does seven things.
+authorized that run first-hand. The setup part does eight things.
 
 1. It removes four expired, time-limited role bindings left on the data
    release identity, each matched by its exact condition.
@@ -1259,16 +1269,22 @@ authorized that run first-hand. The setup part does seven things.
      `legacyObjectOwner` bucket-wide).
 3. It gives the data release database user the `cloudsqlsuperuser` database
    role, which the initialize step needs.
-4. It widens the condition of the three release providers to accept
+4. It prepares the image registry's cleanup (see
+   [Image registry cleanup](#image-registry-cleanup)): the custom role
+   `specimenRuntimeImageTags` (create and move tags, no delete) for the deploy
+   identity on the `specimen-runtime` repository, tags that can move, and the
+   committed cleanup policy in dry-run mode. Each part waits for the one
+   before it to hold.
+5. It widens the condition of the three release providers to accept
    `workflow_dispatch` as well as `push`, and changes nothing else in it. The
    Hosting provider is not touched.
-5. It sets the repository variables `SPECIMEN_API_BASE_URL` and
+6. It sets the repository variables `SPECIMEN_API_BASE_URL` and
    `SPECIMEN_RECAPTCHA_SITE_KEY`, described next.
-6. It sets the `DATA_BOOTSTRAP_ARTIFACT_B64` secret in `data-production` from
+7. It sets the `DATA_BOOTSTRAP_ARTIFACT_B64` secret in `data-production` from
    the owner's private artifact file when that file is on the machine. The
    value goes through a pipe and is never printed. GitHub cannot show a
    secret, so this one step repeats on every run.
-7. It prints, and does not remove, what the retired process left behind: the
+8. It prints, and does not remove, what the retired process left behind: the
    `RELEASE_*` variables and the unused secrets of `data-production`, the
    `data-initialization-production` environment with its provider and service
    account, and the roles nothing uses any more.
@@ -1293,6 +1309,52 @@ exact command that shows the log.
 When a release step fails with "the owner runs scripts/ops/owner_setup.sh
 once", a grant or the bootstrap secret from this list is missing or out of
 date.
+
+### Image registry cleanup
+
+Every runtime release pushes an API, a worker and a SAM image to
+`us-east4-docker.pkg.dev/specimen-digitization/specimen-runtime/`, about
+0.55 GB of new layers a release, and nothing removed them. A read-only
+measurement on 2026-10-20 found 289 images in 46.9 GiB, about USD 4.69 a
+month, of which 286 were no longer in service.
+
+The cleanup policy is committed twice, as `CLEANUP_POLICY` in
+`scripts/ops/owner_setup.sh` (which sets it) and as `POLICY` in
+`scripts/release/keep_images.py` (which reads it back); a test holds the two
+equal. A version that matches a keep rule is kept even when the delete rule
+matches it.
+
+| Rule | Action | Matches |
+|---|---|---|
+| `keep-newest` | keep | the newest five versions of each package |
+| `keep-deployed` | keep | a version with a tag that starts with `deployed` or `rollback` |
+| `delete-old` | delete | any version, tagged or not, more than one day after its push |
+
+The image each runtime has in service, and the one it had before, are held by
+the two tags whatever the count, so the count only keeps the last few builds
+at hand. On 2026-10-20 the newest five of each package came to 3.30 GB of
+layers, the newest ten to 6.13 GB. The one-day floor keeps every build through
+the release that pushed it.
+
+Every image is pushed with its own `sha-<commit>-<run>-<attempt>` tag. While
+the repository's tags are immutable, Google deletes no tagged image ("If a
+repository has immutable tags enabled, tagged artifacts can't be deleted") and
+no tag can move, so the owner setup lets tags move. Releases deploy by digest,
+never by tag, so a tag never decides what runs.
+
+The policy is set in dry-run mode: Google evaluates it and deletes nothing.
+Google reports what a dry run would delete only in Data Access audit logs,
+which this project does not record (no audit configuration, read on
+2026-10-20). Turning dry run off is a pull request of
+its own that changes `--dry-run` to `--no-dry-run` in `owner_setup.sh` and
+`DRY_RUN` in `keep_images.py` together; the owner then runs the setup once
+more.
+
+Before the owner setup has set the policy, the release's last step prints
+that the cleanup is not set up and passes; nothing can be deleted then. Once
+set, any other policy, dry-run mode or immutable tags fail that step with
+"the owner runs scripts/ops/owner_setup.sh once", and the setup puts the
+committed settings back.
 
 ### Repository variables for the web build
 
@@ -1336,7 +1398,8 @@ The release of a merged commit is complete when all of these hold:
 2. the public Hosting marker `deployment.json` reports the commit;
 3. the API reports the commit as `source_sha` at `/version`;
 4. the smoke steps passed: the Hosting smoke at the end of "CI/CD", the API
-   smoke and worker/SAM definition verification at the end of "Runtime release";
+   smoke, worker/SAM definition verification and the registry cleanup check at
+   the end of "Runtime release";
 5. when `process_queued` was selected, the worker execution finished and both
    SAM minimums were verified at zero, followed by application acceptance.
 

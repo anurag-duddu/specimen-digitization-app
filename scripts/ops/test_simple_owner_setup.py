@@ -78,9 +78,11 @@ ROLES = {
     "specimenRuntimeConnector": [
         "firebasedataconnect.connectors.impersonateMutation", "firebasedataconnect.connectors.impersonateQuery"],
     "specimenApiUserLookup": ["firebaseauth.users.get"],
+    "specimenRuntimeImageTags": ["artifactregistry.tags.create", "artifactregistry.tags.update"],
 }
 NEW_ROLES = ("specimenDataBootstrapRows", "specimenRuntimeInvokerPolicy", "specimenWorkerExecution",
-             "specimenGeoreferenceDatasets", "specimenWorkerRead", "specimenResearchCaptureRead")
+             "specimenGeoreferenceDatasets", "specimenWorkerRead", "specimenResearchCaptureRead",
+             "specimenRuntimeImageTags")
 MAPS_KEY = "specimen-google-maps-key"  # retired: the owner took Google Maps out of the pipeline
 LIVE_PINS = (  # member, secret, version: the nine pinned reads live on 2026-10-03, the retired Maps key among them
     (API, "specimen-worker-logfire", 1), (API, "specimen-source-registry", 1), (API, "specimen-collection-bindings", 1),
@@ -95,7 +97,7 @@ RETIRE = ("RELEASE_AUTHORIZED_SHA", "RELEASE_BUDGET_LEDGER_SHA256", "RELEASE_INP
 # Any of these words in a gcloud command line, and any of these gh commands, changes something; the fakes' own
 # "write" flag is checked against them.
 MUTATING = {"add-iam-policy-binding", "remove-iam-policy-binding", "set-iam-policy", "create", "update", "undelete",
-            "delete", "assign-roles", "update-oidc", "set", "deploy"}
+            "delete", "assign-roles", "update-oidc", "set", "deploy", "set-cleanup-policies"}
 GH_WRITES = {("variable", "set"), ("secret", "set"), ("workflow", "run"), ("run", "rerun")}
 RUNS = f"https://github.com/{REPOSITORY}/actions/runs/"
 VERSION_URL, DEPLOYMENT_URL = API_URL + "/version", "https://specimen-digitization.web.app/deployment.json"
@@ -133,6 +135,8 @@ KINDS = {("projects",): ("project", {}), ("storage", "buckets"): ("bucket", {}),
          ("run", "services"): ("service", {"region": "us-east4", "project": PROJECT}),
          ("run", "jobs"): ("job", {"region": "us-east4", "project": PROJECT})}
 POLICY_VERBS = ("get-iam-policy", "add-iam-policy-binding", "remove-iam-policy-binding")
+REGISTRY_FORMAT = 'value[separator="|"](dockerConfig.immutableTags,cleanupPolicyDryRun,cleanupPolicies)'
+SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 FIELDS = ("title", "expression", "description")
 # The two jq programs the script hands to gh; the fake renders what they print and accepts no other.
 RUN_JQ = (r'"R\t\(.status)\t\(.conclusion)\t\(.url)\t\(.attempt)", ((.jobs // [])[] | . as $job | '
@@ -212,6 +216,51 @@ def policy(verb, kind, scope, name, flags, state, entry):
     return 0
 
 
+def printed(value):
+    """How gcloud prints a policy map in value(): sorted keys and Python's quoting."""
+    if isinstance(value, dict):
+        return "{" + ", ".join(f"{key!r}: {printed(value[key])}" for key in sorted(value)) + "}"
+    if isinstance(value, list):
+        return "[" + ", ".join(printed(item) for item in value) + "]"
+    return repr(value)
+
+
+def stored(rule):
+    """A rule of a policy file as the registry keeps it: an id, the action's type, durations in seconds."""
+    kept = {"id": rule["name"], "action": rule["action"]["type"]}
+    if "condition" in rule:
+        kept["condition"] = {key: f"{int(value[:-1]) * SECONDS[value[-1]]}s" if key == "olderThan" else value
+                             for key, value in rule["condition"].items()}
+    if "mostRecentVersions" in rule:
+        kept["mostRecentVersions"] = rule["mostRecentVersions"]
+    return kept
+
+
+def registry(verb, flags, state, entry):
+    """specimen-runtime: read its settings, let its tags move, or set its cleanup policy. A false setting is
+    absent from what Google answers, so gcloud prints an empty field for it."""
+    held, scope = state["registry"], {"location": "us-east4", "project": PROJECT}
+    if verb == "describe":
+        expect(flags, {**scope, "format": REGISTRY_FORMAT})
+        print("|".join(["True" if held["immutable"] else "", "True" if held["dry_run"] else "",
+                        ";".join(f"{name}={printed(rule)}" for name, rule in sorted(held["policies"].items()))]))
+        return 0
+    entry["write"] = True
+    if verb == "update":
+        expect(flags, {**scope, "no-immutable-tags": None})
+        held["immutable"] = False
+        return 0
+    if verb == "set-cleanup-policies":
+        with open(flags.pop("policy")) as handle:
+            entry["policy_text"] = handle.read()
+        modes = [mode for mode in ("dry-run", "no-dry-run") if flags.pop(mode, False) is None]
+        expect((flags, len(modes)), (scope, 1))
+        held["policies"] = {rule["name"]: stored(rule) for rule in json.loads(entry["policy_text"])}
+        held["dry_run"] = modes == ["dry-run"]
+        return 0
+    raise Unsupported(f"gcloud artifacts repositories {verb}")
+
+
 def role(verb, name, flags, state, entry):
     live = state["roles"].get(name)
     if verb == "describe":
@@ -269,6 +318,8 @@ def gcloud(argv, state, entry):
             return policy(words[len(group)], kind, scope, words[-1], flags, state, entry)
     if words[:2] == ["iam", "roles"] and len(words) == 4:
         return role(words[2], words[3], flags, state, entry)
+    if words[:2] == ["artifacts", "repositories"] and words[3:] == ["specimen-runtime"]:
+        return registry(words[2], flags, state, entry)
     if words[:3] == ["sql", "users", "describe"] and len(words) == 4 and words[3] not in state["sql_roles"]:
         print("ERROR: (gcloud.sql.users.describe) HTTPError 404: Not Found.", file=sys.stderr)
         return 1
@@ -554,7 +605,9 @@ def fresh_state():
             "variables": {}, "secrets": [], "fail": [],
             "workflows": {"data-release.yml": OLD_WORKFLOW, "runtime-release.yml": OLD_WORKFLOW},
             "runs": [], "dispatches": {}, "reruns": {}, "next_id": 500, "appear_after": 0, "http": {},
-            "services": [], "unreadable_services": False}
+            "services": [], "unreadable_services": False,
+            # The image registry as it was on 2026-10-20: immutable tags, no cleanup policy.
+            "registry": {"immutable": True, "dry_run": False, "policies": {}}}
 
 
 def live_state():
@@ -620,9 +673,9 @@ class Run:
 
 
 def named(argv):
-    """The command with a condition file's temporary directory removed."""
-    return [f"--condition-from-file={Path(arg.split('=', 1)[1]).name}" if arg.startswith("--condition-from-file=")
-            else arg for arg in argv]
+    """The command with a condition or policy file's temporary directory removed."""
+    return [f"{arg.split('=', 1)[0]}={Path(arg.split('=', 1)[1]).name}"
+            if arg.startswith(("--condition-from-file=", "--policy=")) else arg for arg in argv]
 
 
 class Harness:
@@ -718,6 +771,18 @@ NARROW = ["gcloud", "run", "services", "add-iam-policy-binding", SERVICE, "--reg
 UNWIDEN = ["gcloud", "projects", "remove-iam-policy-binding", PROJECT, f"--member={RELEASE}", INVOKER_ROLE,
            "--condition=None"]
 MOVES = "runtime release: the right to set who may call the API now moves from the project to the one service"
+# The image registry: the release identity may move two tags, tags may move, and the cleanup policy goes in
+# dry-run mode.
+REGISTRY_AT = ["specimen-runtime", "--location=us-east4", f"--project={PROJECT}"]
+IMAGE_TAGS = [
+    role_create("specimenRuntimeImageTags", "Specimen runtime image tags",
+                "Point the deployed and rollback tags of the runtime images; no delete."),
+    ["gcloud", "artifacts", "repositories", "add-iam-policy-binding", *REGISTRY_AT, f"--member={RELEASE}",
+     f"--role={CUSTOM}specimenRuntimeImageTags", "--condition=None"]]
+LET_TAGS_MOVE = ["gcloud", "artifacts", "repositories", "update", *REGISTRY_AT, "--no-immutable-tags"]
+SET_CLEANUP = ["gcloud", "artifacts", "repositories", "set-cleanup-policies", *REGISTRY_AT,
+               "--policy=cleanup-policy.json", "--dry-run"]
+REGISTRY_CHANGES = [*IMAGE_TAGS, LET_TAGS_MOVE, SET_CLEANUP]
 # Every change the live state needs, in the script's order, with exact arguments.
 EXPECTED = [
     *(["gcloud", "projects", "remove-iam-policy-binding", PROJECT, f"--member={DATA}", f"--role={CUSTOM}{role}",
@@ -756,6 +821,7 @@ EXPECTED = [
      f"--role={CUSTOM}specimenResearchCaptureRead",
      "--condition-from-file=condition-9-specimen_api_research_capture.yaml"],
     SAM_LISTS_BUCKET,
+    *REGISTRY_CHANGES,
     *(provider_update(name) for name in PROVIDERS),
     ["gh", "variable", "set", "SPECIMEN_API_BASE_URL", "-R", REPOSITORY, "--body", API_URL],
     ["gh", "variable", "set", "SPECIMEN_RECAPTCHA_SITE_KEY", "-R", REPOSITORY, "--body", SITE_KEY],
@@ -830,7 +896,7 @@ def test_dry_run_prints_every_change_and_makes_none(tmp_path, shell):
     assert f"from the artifact file ({len(content)} bytes)" in run.out
     shown = run.out + run.err + json.dumps(run.calls)
     assert "PRIVATE-MARKER" not in shown and base64.b64encode(content).decode()[:40] not in shown
-    assert "Dry run: nothing was changed. 28 step(s) would change:" in run.out
+    assert "Dry run: nothing was changed. 32 step(s) would change:" in run.out
     assert run.printed.count(SAM_LISTS_BUCKET) == 1
     assert "--all" not in run.out
     for name in RETIRE:
@@ -838,10 +904,11 @@ def test_dry_run_prints_every_change_and_makes_none(tmp_path, shell):
     assert "Merge the pull request" in run.out.split("== Summary ==", 1)[1]
     headings = [line for line in run.out.splitlines() if line.startswith("== ")]
     assert [line.split(":")[0] for line in headings] == [
-        "== Clean-up", "== Data release", "== Cloud SQL", "== Runtime release", "== Manual runs", "== GitHub",
+        "== Clean-up", "== Data release", "== Cloud SQL", "== Runtime release", "== Image registry", "== Manual runs",
+        "== GitHub",
         "== GitHub", "== Retire later", "== Releases", "== Summary =="]
     assert run.sleeps == [] and run.summary.splitlines()[-1] == SAFE
-    assert "  Setup: WOULD RUN (28 change(s))" in run.summary
+    assert "  Setup: WOULD RUN (32 change(s))" in run.summary
     assert "Setup is complete" not in run.out and "State:" not in run.summary
     assert "the three database roles once (later releases only use the firebaseowner role)" in headings[2]
 
@@ -854,7 +921,7 @@ def test_apply_makes_each_change_once_and_a_second_run_makes_none(tmp_path, shel
     assert run.ran == EXPECTED and run.printed == EXPECTED
     assert run.conditions() == {name: given(held) for name, held in EXPECTED_CONDITIONS.items()}
     assert provider_update("specimen-data-release")[-1] == f"--attribute-condition={DATA_PROVIDER_AFTER}"
-    assert "27 step(s) changed:" in run.out
+    assert "31 step(s) changed:" in run.out
     assert run.ran.count(SAM_LISTS_BUCKET) == 1
 
     after = harness.state()
@@ -884,7 +951,7 @@ def test_apply_makes_each_change_once_and_a_second_run_makes_none(tmp_path, shel
             "Run this script again after the merge.") in run.out
     assert run.starts == [] and run.sleeps == []
     assert run.summary.split("Stages:\n", 1)[1].splitlines()[:5] == [
-        "  Setup: PASS (27 changed, 39 already in place)",
+        "  Setup: PASS (31 changed, 39 already in place)",
         "  Data release: SKIPPED (the simple workflows are not on main yet)",
         "  Runtime release: SKIPPED (the simple workflows are not on main yet)",
         "  Web app: SKIPPED (the simple workflows are not on main yet)",
@@ -983,7 +1050,7 @@ def test_failed_change_does_not_stop_the_later_steps_and_the_next_run_retries_it
     run = harness.run()
     assert run.code == 1 and run.ran == EXPECTED  # every step was tried, in order
     assert "FAILED: 1 step(s) did not go through:\n  - make specimen-data-release@specimen-digitization.iam" in run.out
-    assert "26 step(s) changed:" in run.out and "Stopped before the end" not in run.err
+    assert "30 step(s) changed:" in run.out and "Stopped before the end" not in run.err
     assert "the service refused this change" in run.err
     harness.save({**harness.state(), "fail": []})
     again = harness.run()
@@ -1133,6 +1200,7 @@ def expected_grant(resource, member, role, held=None):
 EXPECTED_FRESH_GRANTS = {
     expected_grant("repository/specimen-runtime", BUILD, "roles/artifactregistry.writer"),
     expected_grant("repository/specimen-runtime", RELEASE, "roles/artifactregistry.reader"),
+    expected_grant("repository/specimen-runtime", RELEASE, CUSTOM + "specimenRuntimeImageTags"),
     *(expected_grant(f"service-account/{EMAIL(name)}", RELEASE, "roles/iam.serviceAccountUser")
       for name in ("api-runtime", "worker-runtime", "sam-runtime")),
     *(expected_grant(f"service-account/{name}@{PROJECT}.iam.gserviceaccount.com", PLANE + name,
@@ -1249,7 +1317,7 @@ def test_fresh_project_gets_every_role_and_pins_every_secret_read(fresh, setting
         "specimenDataSchemaPublish", "specimenDataStorageRules", "specimenDataInventoryProjectRead",
         "specimenDataInventorySqlConnect", "specimenDataBootstrapRows", "specimenGeoreferenceDatasets", "specimenRuntimeRelease",
         "specimenRuntimeInvokerPolicy", "specimenWorkerExecution", "specimenWorkerRead", "specimenResearchCaptureRead",
-        "specimenRuntimeConnector", "specimenApiUserLookup"]
+        "specimenRuntimeConnector", "specimenApiUserLookup", "specimenRuntimeImageTags"]
     assert run.conditions()["condition-1-specimen_source_inventory_only.yaml"] == SQL  # with its live description
     granted = grants(run)
     # Strict, against the settings: the API runtime reads exactly its secrets at their pinned versions, and the
@@ -1483,7 +1551,7 @@ def test_first_morning_waits_for_new_access_retries_once_and_rebuilds_the_site(t
         f"web app: PASS {RUNS}400", f"web app: the site now serves commit {COMMIT}",
         "web app: the site now points at the API"]
     assert run.ran[-3:] == [NARROW, UNWIDEN, RERUN] and run.ran.index(START_RUNTIME) == len(run.ran) - 4
-    assert stages(run) == ["  Setup: PASS (29 changed, 39 already in place)", f"  Data release: PASS {RUNS}502",
+    assert stages(run) == ["  Setup: PASS (33 changed, 39 already in place)", f"  Data release: PASS {RUNS}502",
                            f"  Runtime release: PASS {RUNS}503",
                            f"  Web app: PASS {RUNS}400 (the site points at the API)"]
     assert "To read the log" not in run.summary and "--redeploy-web" not in run.summary
@@ -1537,7 +1605,7 @@ def test_dry_run_prints_the_starts_and_starts_nothing(tmp_path):
     assert run.writes == [] and run.sleeps == [] and harness.state() == state
     assert run.printed == [*EXPECTED, START_DATA, START_RUNTIME, RERUN]
     assert "  Would wait 120 seconds for the new access to take effect" in run.out.splitlines()
-    assert stages(run) == ["  Setup: WOULD RUN (27 change(s))", "  Data release: WOULD RUN",
+    assert stages(run) == ["  Setup: WOULD RUN (31 change(s))", "  Data release: WOULD RUN",
                            "  Runtime release: WOULD RUN", f"  Web app: WOULD RUN {RUNS}400"]
     # A build would run, so the site is not read now: the check would follow that build.
     assert "web app: after that build the live site would be checked for the API address" in run.out.splitlines()
@@ -1730,7 +1798,7 @@ def test_setup_only_before_the_merge_applies_the_setup_and_touches_no_workflow(t
     assert not [call for call in run.calls if call["tool"] == "gh" and call["argv"][0] in ("workflow", "run")]
     assert run.sleeps == [] and not [call for call in run.calls if call["tool"] == "curl"]
     assert run.summary.split("Stages:\n", 1)[1].splitlines()[:5] == [
-        "  Setup: PASS (27 changed, 39 already in place)", "  Data release: SKIPPED (--setup-only)",
+        "  Setup: PASS (31 changed, 39 already in place)", "  Data release: SKIPPED (--setup-only)",
         "  Runtime release: SKIPPED (--setup-only)", "  Web app: SKIPPED (--setup-only)",
         "State: SETUP DONE, RELEASES NOT STARTED (--setup-only)"]
     assert run.summary.split("Next steps:\n", 1)[1].splitlines() == [
@@ -1758,3 +1826,58 @@ def test_another_shell_is_told_to_use_bash_before_anything_runs(tmp_path, shell)
                         "echo 'run this script with bash: bash scripts/ops/owner_setup.sh' >&2",
                         "return 2 2> /dev/null || exit 2", ";;"]
     assert code[5:7] == ["esac", "set -euo pipefail"]
+
+
+def registry_writes(run):
+    return [argv for argv in run.ran if argv[:3] == ["gcloud", "artifacts", "repositories"]]
+
+
+def test_the_registry_gets_movable_tags_and_the_cleanup_policy_in_dry_run_mode_once(tmp_path):
+    harness = Harness(tmp_path, live_state())
+    run = harness.run("--setup-only")
+    assert run.code == 0, run.err
+    assert registry_writes(run) == [IMAGE_TAGS[1], LET_TAGS_MOVE, SET_CLEANUP]
+    [sent] = [call["policy_text"] for call in run.writes if "policy_text" in call]
+    assert json.loads(sent) == [
+        {"name": "keep-newest", "action": {"type": "KEEP"}, "mostRecentVersions": {"keepCount": 5}},
+        {"name": "keep-deployed", "action": {"type": "KEEP"},
+         "condition": {"tagState": "TAGGED", "tagPrefixes": ["deployed", "rollback"]}},
+        {"name": "delete-old", "action": {"type": "DELETE"}, "condition": {"tagState": "ANY", "olderThan": "1d"}}]
+    held = harness.state()["registry"]
+    assert (held["immutable"], held["dry_run"], sorted(held["policies"])) == (
+        False, True, ["delete-old", "keep-deployed", "keep-newest"])
+    assert "set the cleanup policy of specimen-runtime in dry-run mode (nothing is deleted)" in run.out
+    again = harness.run("--setup-only")
+    assert again.code == 0 and again.writes == []
+    assert "ok: the cleanup policy of specimen-runtime is the committed one, in dry-run mode" in again.out
+
+
+def test_a_live_policy_that_deletes_or_differs_is_set_back_to_the_committed_dry_run(tmp_path):
+    harness = Harness(tmp_path, live_state())
+    assert harness.run("--setup-only").code == 0
+    for change in ({"dry_run": False}, {"policies": {"keep-newest": {"id": "keep-newest", "action": "KEEP",
+                                                                       "mostRecentVersions": {"keepCount": 1}}}}):
+        state = harness.state()
+        state["registry"].update(change)
+        harness.save(state)
+        run = harness.run("--setup-only")
+        assert run.code == 0 and registry_writes(run) == [SET_CLEANUP], run.err
+        assert harness.state()["registry"]["dry_run"] is True
+    assert "--no-dry-run" not in SCRIPT.read_text()
+
+
+@pytest.mark.parametrize("failing, done", [("add-iam-policy-binding", []), ("--no-immutable-tags", [LET_TAGS_MOVE])])
+def test_no_cleanup_policy_before_the_release_can_tag_and_tags_can_move(tmp_path, failing, done):
+    state = live_state()
+    state["roles"]["specimenRuntimeImageTags"] = {"stage": "GA", "deleted": False,
+                                                  "permissions": ROLES["specimenRuntimeImageTags"]}
+    if failing == "--no-immutable-tags":
+        state["policies"]["repository/specimen-runtime"].append(
+            binding(CUSTOM + "specimenRuntimeImageTags", [RELEASE]))
+    harness = Harness(tmp_path, {**state, "fail": [failing]})
+    run = harness.run("--setup-only")
+    assert run.code == 1
+    assert [argv for argv in registry_writes(run) if "add-iam-policy-binding" not in argv] == done
+    assert harness.state()["registry"] == {"immutable": True, "dry_run": False, "policies": {}}
+    if not done:
+        assert "WARNING: the cleanup policy of specimen-runtime is not set" in run.out
