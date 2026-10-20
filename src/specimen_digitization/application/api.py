@@ -853,6 +853,17 @@ def create_app(
         ):
             raise PermissionError("Costs need an administrator of a collection in this organization")
 
+    def cap_administrator_collections(user, organization_id):
+        """The collections of the organization the caller holds an active admin
+        row in, in order. The monthly caps are read (GET .../costs) and set
+        (PUT .../costs/caps) as the first one (TENANT_BUDGETS.md)."""
+        return sorted(
+            m["collection_id"]
+            for m in member_rows(user)
+            if m["organization_id"] == organization_id and m["role"] == RECONCILE_ROLE
+            and m.get("active", True) is not False
+        )
+
     @app.get(prefix + "/costs")
     def costs(
         organization_id: str,
@@ -892,10 +903,9 @@ def create_app(
             reader = getattr(repository, "tenant_caps", None)
             if not callable(reader):
                 raise OperationalBlock("cost_meter_unavailable")
-            administered = sorted(
-                m["collection_id"] for m in member_rows(user)
-                if m["organization_id"] == organization_id and m["role"] == RECONCILE_ROLE
-            )
+            administered = cap_administrator_collections(user, organization_id)
+            if not administered:
+                raise PermissionError("No active administrator membership reads the caps")
             answer = reader(Scope(organization_id=organization_id, collection_id=administered[0]))
             if all(row["monthly_cap_micros"] is None for row in answer["caps"]):
                 return {"caps_status": "ok"}  # No cap set: nothing more is read.
@@ -2932,12 +2942,7 @@ def create_app(
         from .tenant_budget import TenantBudgetUnavailable
 
         actor_uid.set(user)
-        administered = sorted(
-            m["collection_id"]
-            for m in member_rows(user)
-            if m["organization_id"] == organization_id and m["role"] == RECONCILE_ROLE
-            and m.get("active", True) is not False
-        )
+        administered = cap_administrator_collections(user, organization_id)
         if not administered:
             raise PermissionError("An organization administrator sets budget caps")
         if not all(callable(getattr(repository, name, None)) for name in ("tenant_caps", "set_tenant_cap")):
@@ -2948,11 +2953,23 @@ def create_app(
             }})
         scope = Scope(organization_id=organization_id, collection_id=administered[0])
 
+        def refused():
+            # The connector refused a read or the write as this membership. It
+            # is an authorization answer (403) when the caller's memberships,
+            # read again, no longer hold an active admin row of that
+            # collection; otherwise the store's own (503), as caps that cannot
+            # be read are.
+            if scope.collection_id not in cap_administrator_collections(user, organization_id):
+                return PermissionError("The connector refused this administrator's cap")
+            return OperationalBlock("tenant_budget_unavailable")
+
         def caps():
             try:
                 return repository.tenant_caps(scope)
-            except TenantBudgetUnavailable:
+            except (TenantBudgetUnavailable, ValueError, KeyError, TypeError):
                 raise OperationalBlock("tenant_budget_unavailable") from None  # 503
+            except Conflict:
+                raise refused() from None
 
         key = "organization"
         if body.collection_id is not None:
@@ -2965,9 +2982,9 @@ def create_app(
         try:
             repository.set_tenant_cap(scope, key, body.monthly_cap_micros)
         except Conflict:
-            # The body was checked above: what the connector still refuses is the
-            # membership, changed since it was read (an admin row no longer active).
-            raise PermissionError("The connector refused this administrator's cap") from None
+            # The body was checked above: a refusal the membership explains (an
+            # admin row no longer active) is 403, any other 503.
+            raise refused() from None
         rows = caps()["caps"]
         return {
             "organization_id": organization_id,

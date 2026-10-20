@@ -136,16 +136,63 @@ def test_an_inactive_administrator_row_sets_nothing(tmp_path):
 
 
 def test_a_cap_the_connector_refuses_for_this_membership_is_403(tmp_path):
-    # The connector checks the membership again; a refusal there, after the
-    # body passed every check here, is an authorization answer, not a conflict.
+    # The connector checks the membership again. The admin row was deactivated
+    # after the route read it: the memberships, read again, explain the
+    # refusal, so it is an authorization answer, not a conflict.
     test_client, fake, _ = client(tmp_path)
 
     def refused(variables):
+        fake.members[USER][0]["active"] = False
         raise support.ConnectorRefusal("tenant budget cap refused")
     fake.op_SetTenantBudgetCapV1 = refused
     reply = put(test_client, {"collection_id": None, "monthly_cap_micros": 5_000_000})
     assert reply.status_code == 403, reply.text
     assert reply.json()["error"]["code"] == "access_denied"
+
+
+def test_a_cap_the_connector_refuses_while_the_membership_holds_is_503(tmp_path):
+    # A transaction rejection the caller's membership does not explain (the
+    # admin row is still active) is the store's, not an authorization answer.
+    test_client, fake, _ = client(tmp_path)
+
+    def refused(variables):
+        raise support.ConnectorRefusal("transaction rejected")
+    fake.op_SetTenantBudgetCapV1 = refused
+    reply = put(test_client, {"collection_id": None, "monthly_cap_micros": 5_000_000})
+    assert reply.status_code == 503, reply.text
+    assert reply.json()["error"]["message"] == "tenant_budget_unavailable"
+    assert fake.tenant_budget_caps == {}
+
+
+@pytest.mark.parametrize("answer", [
+    {"tenantBudgetCaps": None, "collections": []},
+    {"tenantBudgetCaps": [], "collections": [{"id": "not-a-uuid", "parentId": None}]},
+    {"tenantBudgetCaps": [{"collectionKey": "organization", "monthlyCapMicros": "-1"}], "collections": []},
+], ids=["not_a_list", "malformed_collection", "not_a_cap"])
+def test_a_caps_answer_the_store_cannot_read_is_503_before_anything_is_set(tmp_path, answer):
+    # SqlConnectRepository.tenant_caps raises Conflict("Tenant budget caps
+    # unreadable"), ValueError or TenantBudgetUnavailable for such an answer:
+    # each is 503 tenant_budget_unavailable, never 409, 422 or 403.
+    test_client, fake, _ = client(tmp_path)
+    fake.op_TenantBudgetCapsV1 = lambda variables: {"organizationMember": {"active": True},
+        "collectionMember": {"active": True, "role": "admin"}, **answer}
+    reply = put(test_client, {"collection_id": support.COLLECTION, "monthly_cap_micros": 1})
+    assert reply.status_code == 503, reply.text
+    assert reply.json()["error"]["message"] == "tenant_budget_unavailable"
+    assert fake.tenant_budget_caps == {} and "SetTenantBudgetCapV1" not in fake.calls
+
+
+def test_a_caps_read_the_connector_refuses_for_this_membership_is_403(tmp_path):
+    test_client, fake, _ = client(tmp_path)
+
+    def refused(variables):
+        fake.members[USER][0]["role"] = "viewer"  # No longer an administrator.
+        raise support.ConnectorRefusal("permission denied")
+    fake.op_TenantBudgetCapsV1 = refused
+    reply = put(test_client, {"collection_id": support.COLLECTION, "monthly_cap_micros": 1})
+    assert reply.status_code == 403, reply.text
+    assert reply.json()["error"]["code"] == "access_denied"
+    assert "SetTenantBudgetCapV1" not in fake.calls
 
 
 def test_caps_that_cannot_be_read_are_503_before_anything_is_set(tmp_path):
