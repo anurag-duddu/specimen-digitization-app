@@ -824,6 +824,65 @@ class SqlConnectRepository:
             raise OperationalBlock("cost_meter_unavailable")
         return {"collections": data["collections"], "groups": totals["groups"]}
 
+    def cost_allocation_inputs(self, scope, day_start, day_end, month_start, gap_seconds) -> list:
+        """Every collection's measures for one billing day (CostAllocationInputsV1).
+
+        Ids and numbers only, for the whole deployment: the caller must be an
+        active operator, reviewer, manager or admin of ``scope``.
+        """
+        from datetime import timezone
+
+        def stamp(moment):
+            return moment.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        row = self.execute(
+            "CostAllocationInputsV1",
+            dict(self.variables(scope), dayStart=stamp(day_start), dayEnd=stamp(day_end),
+                 monthStart=stamp(month_start), gapSeconds=gap_seconds),
+        ).get("inputs")
+        if not isinstance(row, dict) or not isinstance(row.get("inputs_json"), str):
+            raise OperationalBlock("cost_allocation_inputs_unavailable")
+        inputs = json.loads(row["inputs_json"])
+        if inputs.get("admitted") is not True:
+            raise PermissionError("Cost allocation inputs need an active operator")
+        if not isinstance(inputs.get("collections"), list):
+            raise OperationalBlock("cost_allocation_inputs_unavailable")
+        return inputs["collections"]
+
+    def send_cost_allocations(self, scope, rows) -> int:
+        """Upsert one collection's allocation rows; raises unless every row is written."""
+        written = 0
+        for start in range(0, len(rows), COST_ROWS_PER_CALL):
+            chunk = rows[start:start + COST_ROWS_PER_CALL]
+            response = self.execute(
+                "UpsertCostAllocationsV1",
+                dict(self.variables(scope),
+                     rowsJson=json.dumps(chunk, separators=(",", ":"), allow_nan=False)),
+                mutation=True,
+            )
+            if response.get("upserted") != len(chunk):
+                raise Conflict("cost_allocations_refused")
+            written += len(chunk)
+        return written
+
+    def cost_allocation_status(self, organization_id) -> dict:
+        """The latest allocation row's time for the organization (CostAllocationStatusV1)."""
+        uid = actor_uid.get()
+        if not uid:
+            raise PermissionError("Verified actor context required")
+        row = self.execute(
+            "CostAllocationStatusV1", {"organizationId": organization_id, "actorUid": uid}
+        ).get("status")
+        if not isinstance(row, dict) or not isinstance(row.get("status_json"), str):
+            raise OperationalBlock("cost_meter_unavailable")
+        status = json.loads(row["status_json"])
+        if status.get("admitted") is not True:
+            raise PermissionError("Cost allocation status needs an administrator")
+        latest = status.get("latest_occurred_at")
+        if latest is not None and not isinstance(latest, str):
+            raise OperationalBlock("cost_meter_unavailable")
+        return {"latest_occurred_at": latest}
+
     def write_projection(self, scope, specimen, reviewer=False) -> ProjectionResult:
         """Write the normalized rows this revision supports (DATA_CONTRACT.md 11).
 
