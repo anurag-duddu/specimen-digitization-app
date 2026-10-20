@@ -316,6 +316,36 @@ def test_unknown_worker_start_stays_held_without_second_start_or_paid_effect(pub
         rig.fake.specimens[rig.specimen_id] = row
         f.store._mutate(f.bound, lambda state, now: (state.clear(), state.update(copy.deepcopy(before))))
 
+def test_public_retry_wakes_only_the_authenticated_collection_route(public_failed):
+    from specimen_digitization.application.lane_dispatch import CollectionJobDispatcher, scope_key
+
+    f, rig = public_failed, public_failed.rig
+    before = copy.deepcopy(f.store._read(f.bound).state)
+    row = copy.deepcopy(rig.fake.specimens[rig.specimen_id])
+    count = len(f.starts)
+    discovery = f.app.state.research_discovery.current
+    original_dispatcher = discovery.worker_dispatcher
+    original_routes = getattr(f.readiness.config, 'collection_worker_jobs', ())
+    scoped = CollectionJobDispatcher(
+        SimpleNamespace(start=lambda: pytest.fail('Shared worker must not be started')),
+        {scope_key(f.reviewer.scope): f.dispatcher})
+    discovery.worker_dispatcher = scoped
+    f.readiness.dispatcher = scoped
+    f.readiness.config.collection_worker_jobs = ((scope_key(f.reviewer.scope), {'worker_job': JOB}),)
+    try:
+        response = retry(f)
+        assert response.status_code == 202, response.text
+        assert len(f.starts) == count + 1
+        assert f.starts[-1][0] == REVIEWER
+    finally:
+        discovery.worker_dispatcher = original_dispatcher
+        f.readiness.dispatcher = original_dispatcher
+        f.readiness.config.collection_worker_jobs = original_routes
+        f.starts[count:] = []
+        rig.fake.specimens[rig.specimen_id] = row
+        f.store._mutate(f.bound, lambda state, now: (state.clear(), state.update(copy.deepcopy(before))))
+
+
 def test_public_same_job_retry_captures_once_publishes_and_retires_due_work(public_failed):
     f, rig = public_failed, public_failed.rig
     before = f.store._read(f.bound).state

@@ -29,6 +29,7 @@ APPROVED_DEPLOY_SCRIPTS = {
     DEPLOY_SCRIPT,
     ROOT / "scripts/release/deploy_api.py",
     ROOT / "scripts/release/deploy_models.py",
+    ROOT / "scripts/release/deploy_intake.py",
     ROOT / "scripts/release/process_worker.py",
     ROOT / "scripts/release/provision_auth.py",
 }
@@ -199,6 +200,7 @@ def test_frontend_only_python_scope_keeps_the_required_gate_and_fails_closed() -
     focused_paths = (
         "scripts/ci/test_public_settings.py",
         "scripts/ci/test_smoke_web_routes.py",
+        "tests/test_native_google_configuration.py",
         "tests/test_deployment_policy.py",
         "tests/test_hosting_attempt_binding.py",
         "tests/test_local_review_runner.py",
@@ -878,13 +880,14 @@ def test_release_jobs_install_pinned_tools_before_any_credential_exists(plane: s
         assert late == [], f"{name} installs packages while a cloud credential exists: {late}"
 
 
-def test_release_workflows_read_one_secret_and_no_variable() -> None:
+def test_release_workflows_read_only_named_bootstrap_secrets_and_no_variable() -> None:
     data, runtime = release_text("data"), release_text("runtime")
-    # The owner's first-rows artifact reaches only the step that runs the data release, as an environment variable.
-    assert re.findall(r"\bsecrets\b[^\s}]*", data) == ["secrets.DATA_BOOTSTRAP_ARTIFACT_B64"]
+    # Both additive provisioning artifacts reach only the data release step.
+    assert re.findall(r"\bsecrets\b[^\s}]*", data) == ["secrets.DATA_BOOTSTRAP_ARTIFACT_B64", "secrets.INTAKE_E2E_BOOTSTRAP_B64"]
     holders = [step for _, step in release_steps("data") if "secrets." in str(step)]
     assert len(holders) == 1 and holders[0].get("run") == "uv run python scripts/release/data_release.py"
     assert holders[0].get("env", {}).get("DATA_BOOTSTRAP_ARTIFACT_B64") == "${{ secrets.DATA_BOOTSTRAP_ARTIFACT_B64 }}"
+    assert holders[0].get("env", {}).get("INTAKE_E2E_BOOTSTRAP_B64") == "${{ secrets.INTAKE_E2E_BOOTSTRAP_B64 }}"
     assert re.findall(r"\bsecrets\b", runtime) == []
     # The read-only run token is used once, by the job that waits for the data release and has no cloud identity.
     token = re.compile(r"github\.token|GITHUB_TOKEN")

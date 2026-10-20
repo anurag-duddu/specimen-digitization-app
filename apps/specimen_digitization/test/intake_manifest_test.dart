@@ -16,7 +16,6 @@ import 'package:specimen_digitization/src/screens/intake/manifest_panel.dart';
 import 'package:specimen_digitization/src/widgets/upload_item.dart';
 import 'package:specimen_digitization/src/widgets/not_calibrated_chip.dart';
 
-import 'ui_finders.dart';
 import 'widgets/harness.dart';
 
 ManifestEntry entryIn(
@@ -79,17 +78,17 @@ Future<void> pumpManifest(
 void main() {
   group('the Intake queue states each name their progress', () {
     const labels = <UploadState, String>{
-      UploadState.ready: 'Waiting to upload',
-      UploadState.checking: 'Checking photo',
-      UploadState.uploading: 'Uploading photo',
-      UploadState.accepted: 'Waiting to start',
-      UploadState.processing: 'Checking processing status',
-      UploadState.inMainQueue: 'In main Queue',
-      UploadState.processingBlocked: 'Needs attention',
-      UploadState.duplicate: 'Already in collection',
-      UploadState.interrupted: 'Needs attention',
-      UploadState.skipped: 'Not uploaded',
-      UploadState.failed: 'Needs attention',
+      UploadState.ready: 'Ready',
+      UploadState.checking: 'Sending',
+      UploadState.uploading: 'Sending',
+      UploadState.accepted: 'Saved',
+      UploadState.processing: 'Saved',
+      UploadState.inMainQueue: 'Sent',
+      UploadState.processingBlocked: 'Saved',
+      UploadState.duplicate: 'Duplicate',
+      UploadState.interrupted: 'Not sent',
+      UploadState.skipped: 'Not added',
+      UploadState.failed: 'Not sent',
     };
     for (final UploadState state in UploadState.values) {
       testWidgets('${state.name} renders as "${state.label}"', (
@@ -107,7 +106,7 @@ void main() {
           ),
           findsOneWidget,
         );
-        expect(find.text('A stated reason.'), findsOneWidget);
+        expect(find.text('A stated reason.'), findsNothing);
       });
     }
   });
@@ -148,17 +147,17 @@ void main() {
       ManifestEntry.skipped(
         digest: 'size:huge.tif:99',
         name: 'huge.tif',
-        why: 'This file is over 25 MB.',
+        why: 'Over 25 MB. Choose a smaller photo.',
       ),
     ]);
     expect(find.text('huge.tif'), findsOneWidget);
-    expect(find.text('Not uploaded'), findsOneWidget);
-    expect(find.text('This file is over 25 MB.'), findsOneWidget);
+    expect(find.text('Not added'), findsOneWidget);
+    expect(find.text('Over 25 MB. Choose a smaller photo.'), findsOneWidget);
     // The reason belongs to the file, not to a screen level banner.
     expect(
       find.descendant(
         of: find.byType(IntakeManifestRow),
-        matching: find.text('This file is over 25 MB.'),
+        matching: find.text('Over 25 MB. Choose a smaller photo.'),
       ),
       findsOneWidget,
     );
@@ -182,13 +181,11 @@ void main() {
       ready,
       accepted,
     ], onRemove: removed.add);
-    final List<UiIconButton> buttons = tester
-        .widgetList<UiIconButton>(uiIconButton(UploadItem.removeLabel))
-        .toList();
-    expect(buttons.length, 2);
-    expect(buttons.first.onPressed, isNotNull);
-    expect(buttons.last.onPressed, isNotNull);
-    await tester.tap(uiIconButton(UploadItem.removeLabel).first);
+    expect(find.byType(UiMenuTrigger), findsOneWidget);
+    expect(find.text('Dismiss'), findsOneWidget);
+    await tester.tap(find.byType(UiMenuTrigger));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Remove'));
     await tester.pumpAndSettle();
     expect(removed, <ManifestEntry>[ready]);
   });
@@ -207,13 +204,9 @@ void main() {
       handedOff,
     ], onRemove: removed.add);
 
-    final UiIconButton button = tester.widget<UiIconButton>(
-      uiIconButton(UploadItem.removeLabel),
-    );
-    expect(button.onPressed, isNotNull);
-    await tester.tap(uiIconButton(UploadItem.removeLabel));
-    await tester.pumpAndSettle();
-    expect(removed, <ManifestEntry>[handedOff]);
+    expect(find.text('Sent'), findsOneWidget);
+    expect(find.byType(UiButton), findsNothing);
+    expect(removed, isEmpty);
   });
 
   testWidgets('post-hand-off processing never offers retry in Intake', (
@@ -270,7 +263,7 @@ void main() {
   ) async {
     var stops = 0;
     await pumpManifest(tester, <ManifestEntry>[entryIn(UploadState.ready)]);
-    expect(find.text('Stop'), findsNothing);
+    expect(find.text('Stop sending'), findsNothing);
 
     await pumpManifest(
       tester,
@@ -278,7 +271,7 @@ void main() {
       busy: true,
       onStop: () => stops++,
     );
-    await tester.tap(find.text('Stop'));
+    await tester.tap(find.text('Stop sending'));
     await tester.pumpAndSettle();
     expect(stops, 1);
 
@@ -289,10 +282,7 @@ void main() {
       stopping: true,
     );
     expect(find.text('Stopping'), findsOneWidget);
-    expect(
-      find.text('Stopping. The file already sending finishes first.'),
-      findsOneWidget,
-    );
+    expect(find.text('Stopping. Current photo finishes.'), findsOneWidget);
   });
 
   testWidgets('an empty manifest says so rather than showing nothing', (
@@ -317,7 +307,7 @@ void main() {
     );
     await pumpManifest(tester, <ManifestEntry>[entry]);
     expect(find.text('Not calibrated'), findsNothing);
-    await tester.tap(find.text('File details'));
+    await tester.tap(find.text('specimen.png'));
     await tester.pumpAndSettle();
     for (final String label in CaptureQualitySummary.labels) {
       expect(find.text(label), findsOneWidget);

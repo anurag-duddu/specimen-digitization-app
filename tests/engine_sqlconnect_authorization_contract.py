@@ -367,7 +367,8 @@ def test_denial_oracle_rejects_unregistered_refusal(operation):
 @pytest.mark.parametrize("fault", (
     None, "foreign_organization", "foreign_collection", "inactive", "duplicate", "missing_row",
     "extra_field", "missing_table", "protected_data", "member_denial", "member_actor",
-    "malformed_active", "malformed_sensitive",
+    "malformed_active", "malformed_sensitive", "collection_name", "missing_collection_name",
+    "extra_collection_field", "malformed_collection",
     "target_grant", "page_data", "page_path", "page_code", "missing_page", "unknown_operation",
 ))
 def test_denial_oracle_adapter_list_replay(member, fault):
@@ -379,7 +380,8 @@ def test_denial_oracle_adapter_list_replay(member, fault):
     expected = {
         "organizationMembers": [{"organizationId": own_org, "active": True}],
         "collectionMembers": [{"organizationId": own_org, "collectionId": own_collection,
-                               "active": True, "role": "reviewer", "canViewSensitive": True}],
+                               "active": True, "role": "reviewer", "canViewSensitive": True,
+                               "collection": {"name": "Synthetic actor collection"}}],
     }
     # Organization revocation leaves the actor's active collection row; collection
     # revocation leaves the active organization row. Neither grants scoped access.
@@ -387,6 +389,7 @@ def test_denial_oracle_adapter_list_replay(member, fault):
         expected["collectionMembers"].append({
             "organizationId": _uuid(scope.organization_id), "collectionId": _uuid(scope.collection_id),
             "active": True, "role": "reviewer", "canViewSensitive": True,
+            "collection": {"name": "Synthetic revoked organization collection"},
         })
     else:
         expected["organizationMembers"].append({"organizationId": _uuid(scope.organization_id), "active": True})
@@ -421,13 +424,22 @@ def test_denial_oracle_adapter_list_replay(member, fault):
     elif fault in {"malformed_active", "malformed_sensitive"}:
         field = "active" if fault == "malformed_active" else "canViewSensitive"
         data["collectionMembers"][0][field] = 1
+    elif fault == "collection_name":
+        data["collectionMembers"][0]["collection"]["name"] = "Another collection"
+    elif fault == "missing_collection_name":
+        del data["collectionMembers"][0]["collection"]["name"]
+    elif fault == "extra_collection_field":
+        data["collectionMembers"][0]["collection"]["id"] = own_collection
+    elif fault == "malformed_collection":
+        data["collectionMembers"][0]["collection"] = None
     elif fault == "target_grant":
         # Even a matching admin expectation must not describe an active grant
         # for the scope being tested as foreign/revoked.
         table = "organizationMembers" if member == "organizationMember" else "collectionMembers"
         row = {"organizationId": _uuid(scope.organization_id), "active": True}
         if table == "collectionMembers":
-            row.update(collectionId=_uuid(scope.collection_id), role="reviewer", canViewSensitive=True)
+            row.update(collectionId=_uuid(scope.collection_id), role="reviewer", canViewSensitive=True,
+                       collection={"name": "Synthetic forbidden collection"})
         expected[table].append(row)
         data[table].append(dict(row))
     elif fault == "page_data":
@@ -769,11 +781,12 @@ def _direct_positive(engine, scope, uid):
 
 def _actor_memberships(engine, uid):
     """Independent admin rows for Memberships' actor and active predicates."""
-    # operations.gql:70-73 selects these fields, only active rows for actorUid,
-    # independently for organizations and collections (no organization join).
+    # Memberships selects these fields, including each related collection's
+    # authoritative name, only on active rows for actorUid. Organizations and
+    # collections are filtered independently (no organization membership join).
     data = engine.raw(f'''query {{
       organizationMembers(where:{{uid:{{eq:{_json(uid)}}}}},limit:1000) {{ uid organizationId active }}
-      collectionMembers(where:{{uid:{{eq:{_json(uid)}}}}},limit:1000) {{ uid organizationId collectionId role canViewSensitive active }}
+      collectionMembers(where:{{uid:{{eq:{_json(uid)}}}}},limit:1000) {{ uid organizationId collectionId role canViewSensitive active collection {{ name }} }}
     }}''')
     expected = {}
     for table, rows in data.items():

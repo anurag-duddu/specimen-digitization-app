@@ -48,6 +48,9 @@ class RegisteredSource(BaseModel):
     bucket: str = Field(min_length=3, max_length=222, pattern=r"^[a-z0-9][a-z0-9._-]+$")
     prefix: str = Field(min_length=1, max_length=1024)
     media_types: tuple[str, ...] = Field(min_length=1)
+    # Existing registered sources were protected by the sensitive inventory
+    # gate. Administrators may explicitly register a non-sensitive source.
+    sensitive: bool = Field(default=True, strict=True)
     registered_by: str = Field(min_length=1, max_length=200)
     registered_at: str
 

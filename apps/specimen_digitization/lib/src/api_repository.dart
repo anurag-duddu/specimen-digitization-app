@@ -7,6 +7,7 @@ import 'costs.dart';
 import 'models.dart';
 import 'sources.dart';
 import 'vocabulary.dart';
+import 'screens/intake/bulk_intake_repository.dart';
 
 /// How long the client waits for one exchange with the runtime API.
 ///
@@ -28,6 +29,7 @@ class ApiSpecimenRepository
         SpecimenHistoryRepository,
         SourceRepository,
         CostRepository,
+        BulkIntakeRepository,
         AccessFailureSource {
   ApiSpecimenRepository({
     required this.baseUrl,
@@ -71,6 +73,63 @@ class ApiSpecimenRepository
   /// it the App Check token is read once per request, and a refusal stands.
   final Future<String?> Function()? freshAppCheckToken;
   final http.Client _client;
+
+  String _intakeRoot(CollectionScope scope) =>
+      '${_root(scope)}/collections/${Uri.encodeComponent(scope.collectionId)}/intake';
+
+  @override
+  Future<Json> intakeRequest(
+    CollectionScope scope,
+    String method,
+    String path, {
+    Json? body,
+    Map<String, String>? query,
+    Uint8List? bytes,
+    int? offset,
+  }) => request(
+    method,
+    '${_intakeRoot(scope)}$path',
+    body: body,
+    query: query,
+    bytes: bytes,
+    headers: offset == null ? null : {'Upload-Offset': '$offset'},
+  );
+
+  @override
+  Future<Uint8List> intakePreview(
+    CollectionScope scope,
+    String itemId, {
+    bool full = false,
+  }) async {
+    final epoch = _accessEpoch;
+    final userId = expectedUserId?.call();
+    final uri = baseUrl.replace(
+      path:
+          '${baseUrl.path.replaceFirst(RegExp(r'/$'), '')}${_intakeRoot(scope)}/items/${Uri.encodeComponent(itemId)}/preview',
+      queryParameters: {'full': '$full'},
+    );
+    http.Request build(Map<String, String> credentials) =>
+        http.Request('GET', uri)
+          ..followRedirects = false
+          ..headers.addAll(credentials);
+    final response = await http.Response.fromStream(
+      await _send(build, await _credentials(epoch, userId), epoch, userId),
+    ).timeout(apiRequestTimeout);
+    _checkAccess(epoch, userId);
+    if (response.statusCode != 200) {
+      throw _deny(
+        ApiFailure(
+          'This preview is not available. Retry after the photo saves.',
+          code: 'preview_unavailable',
+          status: response.statusCode,
+        ),
+        epoch,
+        userId,
+      );
+    }
+    return response.bodyBytes;
+  }
+
   @override
   String mode = 'production';
   @override

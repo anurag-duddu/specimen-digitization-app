@@ -15,3 +15,4 @@ export 'list_row.dart';
 export 'progress.dart';
 export 'skeleton.dart';
 export 'status_strip.dart';
+export 'photo_tile.dart';

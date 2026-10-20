@@ -21,13 +21,79 @@ from specimen_digitization.application.source_reader import (
     GcsSourceReader,
     LocalSourceReader,
     SourceObjectChanged,
+    SourceListingIncomplete,
     SourceUnavailable,
     sniff_media_type,
     valid_generation,
 )
 from specimen_digitization.application.storage import Missing
 
-from source_fixtures import BUCKET, FIRST_GENERATION, jpeg_bytes, png_bytes
+from source_fixtures import (
+    BUCKET,
+    FIRST_GENERATION,
+    jpeg_bytes,
+    paged_gcs_reader,
+    png_bytes,
+)
+
+
+def test_cloud_listing_counts_files_across_pages_of_folder_markers():
+    objects = [{"name": f"prefix/folder-{i}/"} for i in range(6)]
+    objects += [
+        {"name": f"prefix/{i}.jpg", "size": "12", "generation": "1"}
+        for i in range(5)
+    ]
+    reader, calls = paged_gcs_reader(objects, page_size=3)
+
+    rows = reader.list_objects(BUCKET, "prefix/", 2)
+
+    assert [row["object_name"] for row in rows] == [
+        "prefix/0.jpg", "prefix/1.jpg", "prefix/2.jpg"
+    ]
+    assert len(calls) == 3
+
+
+def test_cloud_listing_accepts_complete_partial_final_page():
+    objects = [{"name": f"prefix/folder-{i}/"} for i in range(6)]
+    objects += [
+        {"name": f"prefix/{i}.jpg", "size": "12", "generation": "1"}
+        for i in range(2)
+    ]
+    reader, calls = paged_gcs_reader(objects, page_size=3)
+
+    rows = reader.list_objects(BUCKET, "prefix/", 5)
+
+    assert len(rows) == 2
+    assert len(calls) == 3
+
+
+@pytest.mark.parametrize("extra_file", [False, True])
+def test_cloud_listing_distinguishes_eof_from_scan_bound(monkeypatch, extra_file):
+    from specimen_digitization.application import source_reader
+
+    monkeypatch.setattr(source_reader, "MIN_LISTING_SCAN_LIMIT", 6)
+    objects = [{"name": f"prefix/folder-{i}/"} for i in range(6)]
+    if extra_file:
+        objects.append({"name": "prefix/last.jpg", "size": "12", "generation": "1"})
+    reader, calls = paged_gcs_reader(objects, page_size=3)
+
+    if extra_file:
+        with pytest.raises(SourceListingIncomplete, match="scan limit"):
+            reader.list_objects(BUCKET, "prefix/", 2)
+        assert calls[-1] == {"start": 6, "size": 1}
+    else:
+        assert reader.list_objects(BUCKET, "prefix/", 2) == []
+        assert len(calls) == 2
+
+
+def test_cloud_listing_refuses_a_file_with_missing_metadata():
+    reader, _ = paged_gcs_reader([
+        {"name": "prefix/complete.jpg", "size": "12", "generation": "1"},
+        {"name": "prefix/unknown.jpg", "generation": "1"},
+    ])
+
+    with pytest.raises(SourceListingIncomplete, match="missing file metadata"):
+        reader.list_objects(BUCKET, "prefix/", 5)
 
 
 def gcs_reader(state):
