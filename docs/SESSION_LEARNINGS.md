@@ -22737,3 +22737,50 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   continuation. Runtime pins and client flags stay inactive. Deployment,
   Gmail/provider E2E, native capture and final scientific Queue acceptance:
   Not confirmed. No branch/worktree pruning occurred.
+
+### 2026-10-18: published intake candidate green; owner reauthentication blocks release
+
+- Same task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch/worktree
+  `codex/compare-photo-intake-ux` / `5da8`, PR #368. Published head
+  `96214d62645e0844476010dfdcd9e905196c5080`, tree
+  `a39409c17e8fe5bfa1b3dab992c377f9789c77e9`. Independent G51 reviewer approved
+  the exact journal-only successor of verified code head `6fc70000`; no
+  source/configuration/test changes followed the canonical pass.
+- CI/CD run `39179040282` and runtime candidate run `39179040248` completed
+  successfully on that exact head. All 23 executed checks passed, including
+  the three required contexts (Python tests aggregate, Flutter/web and
+  repository checks), all 12 Python shards, both mobile builds, all runtime
+  image builds and SQL/Storage engine contracts. PR Hosting deploy correctly
+  skipped. Current PR is open/draft, merge state CLEAN. These are CI results;
+  mobile builds use synthetic native configuration and are not device capture
+  or real authentication acceptance.
+- Completed engine job: `117827681092`, private log
+  `/private/tmp/specimen-intake-ci-engine-96214d62.log`; check watch exited 0,
+  `/private/tmp/specimen-intake-pr368-checks-96214d62.log`. Canonical evidence
+  remains the durable visualization log named above. No checks were bypassed.
+- Remaining blocker is Google's passkey verification of the existing
+  `anurag@infinative.com` admin CLI session, then bounded owner setup and
+  verified configuration pin activation. A screenshot attempt confirmed the
+  Mac is locked; do not retry UI until the owner unlocks it. Owner Chrome's
+  Google page was left at Continue. No production setup, merge, deployment,
+  client activation, real Gmail/import/Submit test, or pruning occurred in this
+  continuation. All remain Not confirmed. Keep private prepared configuration
+  and the original actor/budget ledger; no resets or unscoped worker drain.
+- This final closeout entry is intentionally local for the next authorized
+  setup/activation commit; do not manufacture another release-triggering
+  documentation-only commit or discard it during cleanup.
+
+### 2026-10-20: intake release resumes with restored owner authentication
+
+- Same task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch/worktree
+  `codex/compare-photo-intake-ux` / `5da8`, PR #368. Owner renewed the request
+  to make the release live. A fresh ordinary Google CLI sign-in restored the
+  existing `anurag@infinative.com` session; project readback confirmed
+  `specimen-digitization` / `716045864126`. The one-time code was handed to
+  the waiting local CLI privately and its temporary file removed. No code or
+  token was printed, and no production configuration has yet been changed.
+- Main advanced to `ba007d4c7b47fc52f8c663d8ed7396a9c6cdfcd3` (PR #383).
+  Integration QA identified one source conflict in `published_registry`:
+  preserve both the incoming NVIDIA profile variant and the intake E2E node.
+  Reconcile before fresh verification; the earlier green head is not claimed
+  to qualify the upcoming integrated/activated candidate.
