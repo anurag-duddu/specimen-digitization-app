@@ -20,6 +20,17 @@ abstract final class AppRoutes {
   /// Shortcuts, glossary and administrator contact, over any route.
   static const String help = '/help';
 
+  /// What the organization's work costs (screen blueprints, section 15).
+  ///
+  /// The costs belong to the organization, not to one collection, so this
+  /// route names none: it opens over whatever the administrator was doing, as
+  /// help does, and that is also why none of the collection frame's rules
+  /// apply to it. The frame reads the destination off a collection path and
+  /// reads any path that is not intake as the queue; `restoreWebHistory` below
+  /// only recognises collection paths. A path under `/c` would have to
+  /// answer to both, and a costs page is neither the queue nor intake.
+  static const String costs = '/costs';
+
   /// The design system gallery (10 section 6).
   ///
   /// Mounted only outside release builds, and reachable with no session: it
@@ -110,5 +121,5 @@ abstract final class AppRoutes {
   /// and must not send them home: doing that is what made "Help and
   /// shortcuts" a control that closed itself for every signed-in reviewer.
   static bool isGlobalLocation(String location) =>
-      location == help || location == gallery;
+      location == help || location == gallery || location == costs;
 }

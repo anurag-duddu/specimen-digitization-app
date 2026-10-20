@@ -12,6 +12,7 @@ import 'package:specimen_ui/specimen_ui.dart';
 
 import '../administrator_contact.dart';
 import '../models.dart';
+import '../screens/costs/costs_access.dart';
 import '../widgets/widgets.dart';
 import '../workspace.dart';
 import 'routes.dart';
@@ -54,6 +55,9 @@ class AppShell extends StatefulWidget {
 
   /// What the help control is called, wherever it is drawn.
   static const String helpLabel = 'Help and shortcuts';
+
+  /// What the control that opens the organization's costs is called.
+  static const String costsLabel = 'Costs';
 
   /// What the reload control is called.
   static const String reloadLabel = 'Refresh collection';
@@ -795,6 +799,16 @@ class ShellAccountMenu extends StatelessWidget {
                   }
                 },
         ),
+        // Offered to an administrator of the open collection's organization
+        // and to nobody else, and hidden rather than disabled where the build
+        // has no costs to show (13 section 4.7). Nobody else is ever asked to
+        // open it, so nobody else's session is ever the one a refusal ends.
+        if (costAccessFor(controller) != null)
+          UiMenuItem(
+            label: AppShell.costsLabel,
+            icon: UiIcons.record,
+            onSelected: () => context.push(AppRoutes.costs),
+          ),
         UiMenuItem(
           label: AppShell.helpLabel,
           icon: UiIcons.help,
