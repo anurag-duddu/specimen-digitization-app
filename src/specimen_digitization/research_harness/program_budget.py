@@ -25,6 +25,11 @@ class ProgramEffectBroker(DurableEffectBroker):
         super().__init__(store, blobs)
         self.binding_guard = binding_guard
         self.authorization = copy.deepcopy(send_authorization)
+        # Monthly caps of the organization and the collection (TENANT_BUDGETS.md)
+        # are enforced by the ordinary step chain only; this broker sends
+        # nothing while one applies (before_send).
+        self.repository = repository
+        self.tenant_scope = Scope(organization_id=scope.organization_id, collection_id=scope.collection_id)
         policy = run.profile.execution
         self.allowance = policy.program_allowance_micros
         self.ledger = None if self.allowance is None else ProgramLedger(repository, Scope(
@@ -67,7 +72,23 @@ class ProgramEffectBroker(DurableEffectBroker):
     def send_authorization(self, execution_class):
         return copy.deepcopy(self.authorization) if execution_class == "live" else None
 
+    def refuse_capped(self):
+        """No send while a monthly cap applies, or the caps cannot be read: this
+        broker's research effects reserve on no monthly ledger, so it fails
+        closed instead of spending past one."""
+        from specimen_digitization.application.tenant_budget import (
+            UNAVAILABLE, TenantBudgetUnavailable, applies,
+        )
+
+        try:
+            capped = applies(self.repository, self.tenant_scope)
+        except TenantBudgetUnavailable:
+            capped = True
+        if capped:
+            raise HeldUnknown(UNAVAILABLE)
+
     async def before_send(self, scope, intent):
+        await asyncio.to_thread(self.refuse_capped)
         if self.binding_guard is not None:
             await self.binding_guard()
         await asyncio.to_thread(self.charge,

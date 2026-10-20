@@ -220,16 +220,19 @@ def test_field_research_reaches_the_final_queue_in_one_step(rig, caplog):
     assert run.completed_steps[-1] == FIELD_RESEARCH and "plan" not in run.completed_steps
     assert done.version == parsed.version + 2  # The workflow's intent save, then the one result save.
     # Every connector call of the step, as observed: the read of the run, the
+    # monthly budget caps read twice (TENANT_BUDGETS.md: once for the step's
+    # headroom, FieldResearchStep.reservation, once at its reservation,
+    # tenant_budget.reserve_step; none is set, so no ledger is read), the
     # intent save (nothing new to project), the result save, then the result's
     # projection rows. No research-state, circuit or ledger document call.
-    assert sequence[:8] == ["GetSpecimen", "GetSnapshot", "GetReceipt", "GetSnapshot", "SaveSpecimenV3",
-        "GetReceipt", "GetSnapshot", "SaveSpecimenV3"]
-    assert all(name.startswith("Append") for name in sequence[8:])
-    assert dict(calls) == {"GetSpecimen": 1, "GetSnapshot": 3, "GetReceipt": 2, "SaveSpecimenV3": 2,
-        "AppendSourceAssetV2": 10, "AppendEvidenceItemV2": 11, "AppendToolCallV1": 5,
+    assert sequence[:10] == ["GetSpecimen", "GetSnapshot", "TenantBudgetCapsV1", "TenantBudgetCapsV1",
+        "GetReceipt", "GetSnapshot", "SaveSpecimenV3", "GetReceipt", "GetSnapshot", "SaveSpecimenV3"]
+    assert all(name.startswith("Append") for name in sequence[10:])
+    assert dict(calls) == {"GetSpecimen": 1, "GetSnapshot": 3, "TenantBudgetCapsV1": 2, "GetReceipt": 2,
+        "SaveSpecimenV3": 2, "AppendSourceAssetV2": 10, "AppendEvidenceItemV2": 11, "AppendToolCallV1": 5,
         "AppendFieldCandidateV2": 16, "AppendCandidateEvidenceV2": 24, "AppendRecordVersionV2": 1,
         "AppendResolvedFieldV2": 20}
-    assert len(sequence) == 6 + 2 + 87
+    assert len(sequence) == 6 + 2 + 2 + 87
     assert not NATIVE_OPERATIONS & set(calls)
     assert not [r for r in caplog.records if "Projection" in r.getMessage()]
 

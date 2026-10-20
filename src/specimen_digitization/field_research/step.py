@@ -3852,26 +3852,43 @@ class FieldResearchStep:
         here, never written; lane_allowance.reserve_step reserves). A program
         allowance with less left than one expert request keeps the headroom, so
         reserve_step blocks the record as it always has; otherwise the meter's
-        cap is what is left, and a field that does not fit goes to review."""
+        cap is what is left, and a field that does not fit goes to review.
+        A monthly cap of the organization or the collection that applies
+        (TENANT_BUDGETS.md) limits it the same way, by the least any of their
+        ledgers has left this month (tenant_budget.remaining, read only)."""
         from specimen_digitization.application.domain import Scope
         from specimen_digitization.application.lane_allowance import (
             LegacyLedgerUnavailable,
             ProgramLedger,
         )
+        from specimen_digitization.application.tenant_budget import (
+            TenantBudgetUnavailable,
+            remaining,
+        )
 
         policy = specimen.run.profile.execution
-        if headroom <= 0 or policy.program_allowance_micros is None:
+        if headroom <= 0:
+            return headroom
+        try:
+            tenant_left = remaining(workflow.repository, principal, specimen, workflow.clock)
+        except (OperationalBlock, TenantBudgetUnavailable):
+            # tenant_budget.reserve_step reports it with its own code.
+            return headroom
+        if policy.program_allowance_micros is None and tenant_left is None:
             return headroom
         try:
             profile = profile_of(specimen.run)
             price = _route_price(profile, profile.harness_route)
-            ledger = ProgramLedger(workflow.repository, Scope(organization_id=principal.scope.organization_id,
-                collection_id=policy.program_ledger_collection), clock=workflow.clock)
-            reserved = ledger.read()["reserved_total_micros"]
+            left = [] if tenant_left is None else [tenant_left]
+            if policy.program_allowance_micros is not None:
+                ledger = ProgramLedger(workflow.repository, Scope(organization_id=principal.scope.organization_id,
+                    collection_id=policy.program_ledger_collection), clock=workflow.clock)
+                reserved = ledger.read()["reserved_total_micros"]
+                left.append(max(0, policy.program_allowance_micros - reserved))
         except (OperationalBlock, LegacyLedgerUnavailable, ValueError, TypeError, KeyError):
             # The step and reserve_step report these with their own codes.
             return headroom
-        left = max(0, policy.program_allowance_micros - reserved)
+        left = min(left)
         return headroom if left < one_request_micros(price) else min(headroom, left)
 
     def recheck(self, workflow, principal, specimen) -> None:
