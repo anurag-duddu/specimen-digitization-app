@@ -53,7 +53,10 @@ Each applicable cap is enforced through its own ledger for the month, a
 beside the program's ledger (scope: the organization and the run's
 `program_ledger_collection`, or the run's own collection when it has none). The
 first reservation of a month creates it at zero; two workers creating it at
-once conflict and one retries on a fresh read.
+once conflict and one retries on a fresh read. Past 16 entries, its entries move
+to one archive document each, as the program ledger's do
+(docs/execution/PROGRAM_LEDGER_ARCHIVE.md), so a month's version rows grow with
+its paid steps, not with their square.
 
 A ledger has the program ledger's semantics (`lane_allowance.ProgramLedger`,
 LANE.md T2b and T2c):

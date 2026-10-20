@@ -294,13 +294,33 @@ class Racing(Versioned):
 def test_a_reservation_racing_an_archive_pass_is_charged_once(tmp_path, moment):
     path = tmp_path / "state.sqlite3"
     ledger = ledger_on(Versioned(path))
+    for i in range(100, 100 + HEAD_EFFECTS + 1):
+        reserve(ledger, i)  # One pass has archived, so the head is marked.
+    assert ledger.read()["archives"] is True and ledger.read()[ORDINARY] == {}
     for i in range(1, HEAD_EFFECTS + 1):
         reserve(ledger, i)  # The rival's reservation is the one past HEAD_EFFECTS.
     racing = Racing(path, moment, step(0))
     assert ProgramLedger(racing, SCOPE).reserve(ALLOWANCE, 1_000, **step(0)).issue is None
     assert racing.raced
-    assert ledger.read()["reserved_total_micros"] == 1_000 * (HEAD_EFFECTS + 1)
+    assert ledger.read()["reserved_total_micros"] == 1_000 * (2 * HEAD_EFFECTS + 2)
     assert ledger.effect(ORDINARY, key(step(0))) == HELD
+
+
+def test_a_head_that_never_archived_reads_no_archive(tmp_path):
+    repository = Versioned(tmp_path / "state.sqlite3")
+    ledger = ledger_on(repository)
+    reads = []
+    document = repository.document
+    repository.document = lambda scope, kind, ident: reads.append(ident) or document(scope, kind, ident)
+    for i in range(HEAD_EFFECTS):
+        reserve(ledger, i)
+    assert "archives" not in ledger.read()
+    assert set(reads) == {ledger.ident}  # Only the head, never an archive.
+    reserve(ledger, HEAD_EFFECTS)  # Past the threshold: archived, and the head marked.
+    assert ledger.read()["archives"] is True
+    reads.clear()
+    assert ledger.effect(ORDINARY, key(step(0))) == HELD
+    assert reads == [ledger.ident, ledger.archive_id(ORDINARY, key(step(0)))]
 
 
 def test_a_lost_attempt_settled_before_archiving_is_read_from_its_archive(tmp_path):
@@ -320,3 +340,41 @@ def test_a_lost_attempt_settled_before_archiving_is_read_from_its_archive(tmp_pa
     workflow = SimpleNamespace(repository=repository, clock=None)
     assert Workflow._ledger_settlement(workflow, principal, specimen, target["step"], 1_000) == 400
     assert Workflow._ledger_settlement(workflow, principal, specimen, target["step"], 2_000) is None
+
+
+def test_a_monthly_cap_ledger_archives_as_the_program_ledger_does(tmp_path):
+    from specimen_digitization.application.tenant_budget import TenantLedger
+
+    repository = Versioned(tmp_path / "state.sqlite3")
+    ledger = TenantLedger(repository, SCOPE, "organization", "2026-10")
+    for i in range(400):
+        assert ledger.reserve(ALLOWANCE, 1_000, **step(i)).issue is None
+        assert ledger.settle(1_000, 900, **step(i)) is not None
+    head = ledger.read()
+    assert head["reserved_total_micros"] == 900 * 400
+    # One cap ledger keeping every effect would end with a save of over 30,000 bytes.
+    assert len(head[ORDINARY]) <= HEAD_EFFECTS + 1 and max(repository.versions) < 8_000
+    assert ledger.settled(key(step(0)), 1_000) == 900
+    assert ledger.reserve(ALLOWANCE, 1_000, **step(0)).held
+    assert ledger.settle(1_000, 500, **step(0)) is None
+    assert ledger.read()["reserved_total_micros"] == 900 * 400
+
+
+def test_a_replay_of_an_archived_attempt_is_admitted_at_the_allowance(tmp_path):
+    from specimen_digitization.application.tenant_budget import _program_admits
+
+    allowance = 1_000 * (HEAD_EFFECTS + 1)
+    ledger = ledger_on(Versioned(tmp_path / "state.sqlite3"))
+    for i in range(HEAD_EFFECTS + 1):
+        assert ledger.reserve(allowance, 1_000, **step(i)).issue is None
+    assert ledger.read()[ORDINARY] == {} and ledger.read()["reserved_total_micros"] == allowance
+    target = step(0)
+    execution = SimpleNamespace(program_allowance_micros=allowance, program_ledger_collection=SCOPE.collection_id)
+    specimen = SimpleNamespace(id=target["specimen_id"], run=SimpleNamespace(id=target["run_id"],
+        profile=SimpleNamespace(execution=execution)))
+    principal = SimpleNamespace(scope=SCOPE)
+    # The program ledger replays the attempt, so the cap's pre-check must too.
+    assert ledger.reserve(allowance, 1_000, **target).issue is None
+    assert _program_admits(ledger.repository, principal, specimen, target["step"], 1_000, 1, None) is None
+    assert _program_admits(ledger.repository, principal, specimen, "new-step", 1_000, 1, None) == (
+        "program_allowance_exhausted")

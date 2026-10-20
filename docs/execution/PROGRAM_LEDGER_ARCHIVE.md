@@ -38,7 +38,16 @@ research alike, to one archive document each (kind `worker_cursor`, id derived
 from the ledger id, the effect family and its key, `sensitive: false`), then
 saves the head without the effects whose archive holds the same state. A
 research charge does not archive: it runs inside its send's lease, which should
-not wait on up to 64 writes.
+not wait on up to 64 writes. That removal save also marks the head
+`archives: true`, for good; a head without the mark has never let go of an
+effect, so a lookup reads no archive.
+
+The monthly cap ledgers (`tenant_budget.TenantLedger`, one per cap and UTC
+month, docs/execution/golive/TENANT_BUDGETS.md) are built the same way, one
+document holding every effect, so they archive the same way through the shared
+`lane_allowance.ArchivedEffects`. The cap check that runs before the program's
+allowance (`tenant_budget._program_admits`) recognises a replayed attempt
+whether its effect is in the program ledger's head or archived.
 
 Why the invariants hold:
 

@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from .domain import Scope
-from .lane_allowance import ATTEMPTS, LEDGER_KIND, LegacyLedgerUnavailable, ProgramLedger
+from .lane_allowance import ATTEMPTS, LEDGER_KIND, ORDINARY, ArchivedEffects, LegacyLedgerUnavailable, ProgramLedger
 from .lane_worker import stored_integer
 from .storage import Conflict, Missing
 
@@ -162,12 +162,14 @@ def applicable(answer, collection_id: str) -> list[tuple[str, int]]:
     return [(key, caps[key]) for key in keys if key in caps]
 
 
-class TenantLedger:
+class TenantLedger(ArchivedEffects):
     """One cap's ledger for one UTC month, with ProgramLedger's compare-and-set,
     idempotent envelopes and settlement. It is created at zero by the first
     reservation; two workers creating it at once conflict and one retries on a
     fresh read. The cap is passed in and is not part of an entry's envelope, so
-    a cap changed while an attempt is held never makes that hold unreadable."""
+    a cap changed while an attempt is held never makes that hold unreadable.
+    Its head archives effects as the program's does (lane_allowance), so a
+    month's version rows grow with its paid steps, not with their square."""
 
     def __init__(self, repository, scope: Scope, key: str, month: str, *, clock=None):
         self.repository, self.scope, self.key, self.month = repository, scope, key, month
@@ -205,8 +207,8 @@ class TenantLedger:
         """What ``reserve`` would answer for ``key``, read only."""
         try:
             current = self.read()
-            previous = current.get("ordinary_effects", {}).get(key)
-        except (Conflict, TypeError, ValueError, KeyError):
+            previous = self.effect(ORDINARY, key, current)
+        except (Conflict, LegacyLedgerUnavailable, TypeError, ValueError, KeyError):
             return UNAVAILABLE
         if previous is not None:
             if not isinstance(previous, dict) or previous.get("reserved_micros") != micros:
@@ -228,9 +230,9 @@ class TenantLedger:
             try:
                 current = self.read()
                 entries = dict(current.get("ordinary_effects", {}))
-            except (Conflict, TypeError, ValueError, KeyError):
+                previous = self.effect(ORDINARY, key, current)
+            except (Conflict, LegacyLedgerUnavailable, TypeError, ValueError, KeyError):
                 return Reservation(UNAVAILABLE, None, False)
-            previous = entries.get(key)
             if previous is not None:
                 if not isinstance(previous, dict) or previous.get("reserved_micros") != micros:
                     return Reservation(UNAVAILABLE, None, False)
@@ -246,6 +248,7 @@ class TenantLedger:
                 stored = self._write(current, total, last, entries)
             except Conflict:
                 continue
+            self._archive(stored)
             return Reservation(None, self._position({**current, "reserved_total_micros": total,
                 "revision": stored["revision"]}, cap), True)
         return Reservation(UNAVAILABLE, None, False)
@@ -264,9 +267,9 @@ class TenantLedger:
             try:
                 current = self.read()
                 entries = dict(current.get("ordinary_effects", {}))
-            except (Conflict, TypeError, ValueError, KeyError):
+                previous = self.effect(ORDINARY, key, current)
+            except (Conflict, LegacyLedgerUnavailable, TypeError, ValueError, KeyError):
                 return None
-            previous = entries.get(key)
             if not isinstance(previous, dict) or previous.get("reserved_micros") != reserved:
                 return None
             if previous.get("settled_micros") is not None:
@@ -278,15 +281,17 @@ class TenantLedger:
                 "reserved_micros": reserved, "settled_micros": spent, "at": self.clock().isoformat()}
             entries[key] = {**previous, "settled_micros": spent}
             try:
-                return self._write(current, total, last, entries)
+                stored = self._write(current, total, last, entries)
             except Conflict:
                 continue
+            self._archive(stored)
+            return stored
         return None
 
     def settled(self, key, reserved) -> int | None:
         """What this ledger settled ``key`` at, when it holds exactly ``reserved`` for it."""
         try:
-            entry = self.read().get("ordinary_effects", {}).get(key)
+            entry = self.effect(ORDINARY, key)  # The head's, else its archive's.
             if (not isinstance(entry, dict) or entry.get("settled_micros") is None
                     or stored_integer(entry.get("reserved_micros")) != reserved):
                 return None
@@ -340,8 +345,8 @@ def _program_admits(repository, principal, specimen, step, cost, attempt, clock)
     try:
         current = ledger.read()
         key = ProgramLedger._ordinary_key(specimen.id, specimen.run.id, step, attempt)
-        if key in current.get("ordinary_effects", {}):
-            return None  # A replay: reserve_step decides on its own envelope.
+        if ledger.effect(ORDINARY, key, current) is not None:
+            return None  # A replay, in the head or archived: reserve_step decides on its own envelope.
         total = current["reserved_total_micros"]
     except (Conflict, LegacyLedgerUnavailable, TypeError, ValueError, KeyError):
         return PROGRAM_UNAVAILABLE
@@ -487,11 +492,11 @@ def room(repository, principal, specimen, step, clock=None) -> tuple[int | None,
     for ledger, cap in _ledgers(repository, principal, specimen, caps, month_of(clock()), clock):
         try:
             current = ledger.read()
-            entry = current.get("ordinary_effects", {}).get(key)
+            entry = ledger.effect(ORDINARY, key, current)
             if entry is not None:
                 held.add(stored_integer(entry["reserved_micros"]))
             left.append(max(0, cap - current["reserved_total_micros"]))
-        except (Conflict, TypeError, ValueError, KeyError, AttributeError):
+        except (Conflict, LegacyLedgerUnavailable, TypeError, ValueError, KeyError, AttributeError):
             raise TenantBudgetUnavailable() from None
     if len(held) > 1:
         raise TenantBudgetUnavailable()

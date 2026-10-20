@@ -13,7 +13,8 @@ HEAD_EFFECTS, effects move to one archive document each and leave the head
 (docs/execution/PROGRAM_LEDGER_ARCHIVE.md). An archive holds an
 effect before the head lets go of it and only ever moves forward (held, then
 settled), so an effect is the head's while the head holds it and its archive's
-after: read after the head, an archive is never older than that head.
+after: read after the head, an archive is never older than that head. The
+monthly cap ledgers (tenant_budget.TenantLedger) archive the same way.
 """
 
 from __future__ import annotations
@@ -57,27 +58,10 @@ def _rank(family, effect):
     return {"held": 0, "settled": 1}.get(effect.get("status"))
 
 
-class ProgramLedger:
-    def __init__(self, repository, scope, *, clock=None):
-        self.repository, self.scope = repository, scope
-        self.clock = clock or (lambda: datetime.now(timezone.utc))
-        self.ident = str(
-            uuid5(
-                NAMESPACE_URL,
-                f"processing-lane-allowance:{scope.organization_id}/{scope.collection_id}",
-            )
-        )
-
-    def read(self) -> dict:
-        try:
-            current = self.repository.document(self.scope, LEDGER_KIND, self.ident)
-        except Missing:
-            raise LegacyLedgerUnavailable(UNAVAILABLE) from None
-        return dict(
-            current,
-            revision=stored_integer(current["revision"]),
-            reserved_total_micros=stored_integer(current["reserved_total_micros"]),
-        )
+class ArchivedEffects:
+    """A head ledger whose effects past HEAD_EFFECTS move to archives (module
+    docstring). The ledger has ``repository``, ``scope``, ``ident`` and ``read()``;
+    the program's ledger and each monthly cap ledger (tenant_budget) are such."""
 
     def archive_id(self, family, key):
         """The one archive document of an effect, derived like the head's own id."""
@@ -87,7 +71,8 @@ class ProgramLedger:
         """One effect: the head's while it holds it, else its archive's, else None.
 
         The head is read first: an effect leaves it only once its archive holds
-        the same state, and an archive never moves back.
+        the same state, and an archive never moves back. A head that has never
+        let go of an effect carries no ``archives`` mark, so nothing is read.
         """
         current = self.read() if current is None else current
         effects = current.get(family, {})
@@ -95,6 +80,8 @@ class ProgramLedger:
             raise LegacyLedgerUnavailable(UNAVAILABLE)
         if key in effects:
             return effects[key]
+        if current.get("archives") is not True:
+            return None
         try:
             stored = self.repository.document(self.scope, LEDGER_KIND, self.archive_id(family, key))
         except Missing:
@@ -154,13 +141,37 @@ class ProgramLedger:
                 if all(len(kept[family]) == len(head[family]) for family in kept):
                     return
                 try:
+                    # The only save that drops effects marks the head, for good.
                     self.repository.put_document(self.scope, LEDGER_KIND, self.ident,
-                        {**head, **kept}, head["revision"])
+                        {**head, **kept, "archives": True}, head["revision"])
                     return
                 except Conflict:
                     head = self.read()
         except Exception as exc:  # noqa: BLE001 - archiving is housekeeping; the charge stands
             LOGGER.warning("program ledger archiving deferred: %s", type(exc).__name__)
+
+
+class ProgramLedger(ArchivedEffects):
+    def __init__(self, repository, scope, *, clock=None):
+        self.repository, self.scope = repository, scope
+        self.clock = clock or (lambda: datetime.now(timezone.utc))
+        self.ident = str(
+            uuid5(
+                NAMESPACE_URL,
+                f"processing-lane-allowance:{scope.organization_id}/{scope.collection_id}",
+            )
+        )
+
+    def read(self) -> dict:
+        try:
+            current = self.repository.document(self.scope, LEDGER_KIND, self.ident)
+        except Missing:
+            raise LegacyLedgerUnavailable(UNAVAILABLE) from None
+        return dict(
+            current,
+            revision=stored_integer(current["revision"]),
+            reserved_total_micros=stored_integer(current["reserved_total_micros"]),
+        )
 
     @staticmethod
     def _ordinary_key(specimen_id, run_id, step, attempt):
