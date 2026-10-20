@@ -189,3 +189,49 @@ String environmentLabel(String environment) => switch (environment) {
   '' => 'Unnamed',
   _ => environment[0].toUpperCase() + environment.substring(1),
 };
+
+// ---------------------------------------------------------------------------
+// Costs. A block of its own, apart from the table above.
+// ---------------------------------------------------------------------------
+
+/// The stages the cost meter reports, in the words the rest of the product
+/// uses for the same work (the intake steps say "Finding labels", "Organising
+/// fields" and "Checking fields").
+///
+/// The key is the stage the API sends.
+const Map<String, String> costStageTerms = <String, String>{
+  'label_finding': 'Finding labels',
+  'reading': 'Reading labels',
+  'first_pass': 'First pass',
+  'structuring': 'Organising fields',
+  'classification': 'Classification',
+  'field_research': 'Field research',
+  'worker': 'Processing worker',
+  'api': 'Collection service',
+  'storage': 'Storage',
+  'database': 'Database',
+};
+
+/// The model providers the cost meter names, as their own brands spell them.
+const Map<String, String> costProviderTerms = <String, String>{
+  'huggingface': 'Hugging Face',
+  'novita': 'Novita',
+  'nvidia': 'NVIDIA',
+  'google': 'Google',
+};
+
+/// A cost stage as a reviewer reads it.
+///
+/// A stage this client has not met is still named, by the same plain-English
+/// reading [vocabularyLabel] gives any `snake_case` value, with its first
+/// letter capitalised. It is never shown as its key.
+String costStageLabel(String stage) =>
+    costStageTerms[stage] ?? _capitalised(vocabularyLabel(stage));
+
+/// A cost provider as a reviewer reads it, by the same rule as
+/// [costStageLabel].
+String costProviderLabel(String provider) =>
+    costProviderTerms[provider] ?? _capitalised(vocabularyLabel(provider));
+
+String _capitalised(String value) =>
+    value.isEmpty ? value : '${value[0].toUpperCase()}${value.substring(1)}';

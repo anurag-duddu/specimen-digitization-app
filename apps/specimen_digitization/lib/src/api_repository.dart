@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:http/http.dart' as http;
+import 'costs.dart';
 import 'models.dart';
 import 'sources.dart';
 import 'vocabulary.dart';
@@ -26,6 +27,7 @@ class ApiSpecimenRepository
         CandidateReviewBatchRepository,
         SpecimenHistoryRepository,
         SourceRepository,
+        CostRepository,
         AccessFailureSource {
   ApiSpecimenRepository({
     required this.baseUrl,
@@ -1835,6 +1837,50 @@ class ApiSpecimenRepository
     );
     _checkAccess(epoch, userId);
     return this.specimen(scope, specimen.id);
+  }
+
+  String _costRoot(String organizationId) =>
+      '/v1/organizations/${Uri.encodeComponent(organizationId)}/costs';
+
+  @override
+  Future<CostReport> costs(
+    String organizationId, {
+    required String from,
+    required String to,
+  }) async {
+    final Json body = await request(
+      'GET',
+      _costRoot(organizationId),
+      query: <String, String>{'from': from, 'to': to},
+    );
+    // Reads every field defensively and refuses what is not a report with an
+    // `ApiFailure`, so a body of the wrong shape ends as a message on screen.
+    return CostReport.fromWire(body);
+  }
+
+  @override
+  Future<bool> refreshCosts(String organizationId) async {
+    final Json result = await request(
+      'POST',
+      '${_costRoot(organizationId)}/refresh',
+    );
+    return result['started'] == true;
+  }
+
+  @override
+  Future<void> setCostLimit(
+    String organizationId, {
+    String? collectionId,
+    int? micros,
+  }) async {
+    await request(
+      'PUT',
+      '${_costRoot(organizationId)}/caps',
+      body: <String, dynamic>{
+        'collection_id': collectionId,
+        'monthly_cap_micros': micros,
+      },
+    );
   }
 
   @override
