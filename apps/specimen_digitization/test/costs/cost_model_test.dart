@@ -226,11 +226,14 @@ void main() {
   group('the meter states', () {
     test('are read from the server\'s snake_case words', () {
       expect(CostAllocation.fromWire('ok'), CostAllocation.ok);
-      expect(
-        CostAllocation.fromWire('monitoring_unavailable'),
-        CostAllocation.monitoringUnavailable,
-      );
+      expect(CostAllocation.fromWire('behind'), CostAllocation.behind);
       expect(CostAllocation.fromWire('never_run'), CostAllocation.neverRun);
+    });
+
+    test('no longer know the state the first contract named', () {
+      // The final contract has `never_run`, `behind` and `ok`; the earlier
+      // `monitoring_unavailable` is a word this client has not met.
+      expect(CostAllocation.fromWire('monitoring_unavailable'), isNull);
     });
 
     test('leave a state this client has not met unnamed', () {
@@ -239,6 +242,7 @@ void main() {
         '',
         'OK',
         'monitoringUnavailable',
+        'Behind',
         'never__run',
         'never_',
       ]) {
@@ -254,6 +258,135 @@ void main() {
 
       expect(meter.status, 'catching_up');
       expect(meter.allocation, isNull);
+    });
+  });
+
+  group('the limits\' status', () {
+    test('reads ok and unavailable from the server\'s words', () {
+      expect(CostCapsStatus.fromWire('ok'), CostCapsStatus.ok);
+      expect(
+        CostCapsStatus.fromWire('unavailable'),
+        CostCapsStatus.unavailable,
+      );
+      expect(CostCapsStatus.fromWire('degraded'), isNull);
+      expect(CostCapsStatus.fromWire(null), isNull);
+    });
+
+    test('a report that read its limits says so', () {
+      expect(CostReport.fromWire(costWire(thisMonth)).capsUnavailable, isFalse);
+    });
+
+    test(
+      'a report that could not read them says so, with every limit null',
+      () {
+        final CostReport report = CostReport.fromWire(
+          capsUnavailableWire(costWire(thisMonth)),
+        );
+
+        expect(report.capsUnavailable, isTrue);
+        expect(report.organizationLimit, isNull);
+        expect(
+          report.collections.every((CostCollection c) => c.limit == null),
+          isTrue,
+        );
+        // The costs themselves come back whole.
+        expect(report.totals.costMicros, 12345678);
+      },
+    );
+
+    test(
+      'a report that does not carry the word is read as having its limits',
+      () {
+        final Json wire = costWire(thisMonth)..remove('caps_status');
+
+        expect(CostReport.fromWire(wire).capsUnavailable, isFalse);
+      },
+    );
+
+    test('a word this client has not met is not taken for unavailable', () {
+      final Json wire = costWire(thisMonth)..['caps_status'] = 'degraded';
+
+      expect(CostReport.fromWire(wire).capsUnavailable, isFalse);
+    });
+  });
+
+  group('credits', () {
+    CostAmounts credit(int cost, {int entries = 1}) => CostAmounts(
+      costMicros: cost,
+      heldMicros: 0,
+      listCostMicros: 0,
+      entries: entries,
+    );
+
+    test('are read as the negative sums they are', () {
+      final CostReport report = CostReport.fromWire(
+        creditWire(costWire(thisMonth)),
+      );
+      final CostStage worker = report
+          .monthOf(thisMonth)!
+          .stages
+          .firstWhere((CostStage s) => s.stage == 'worker');
+
+      expect(worker.amounts.costMicros, -300000);
+      expect(worker.amounts.listCostMicros, 0);
+      expect(worker.amounts.entries, 3);
+      expect(report.models.last.amounts.costMicros, -300000);
+    });
+
+    test('count as recorded, even with nothing else in them', () {
+      expect(credit(-300000, entries: 0).hasCosts, isTrue);
+      expect(credit(0, entries: 0).hasCosts, isFalse);
+      expect(
+        const CostAmounts(
+          costMicros: 0,
+          heldMicros: -5,
+          listCostMicros: 0,
+          entries: 0,
+        ).hasCosts,
+        isTrue,
+      );
+      expect(
+        const CostAmounts(
+          costMicros: 0,
+          heldMicros: 0,
+          listCostMicros: -5,
+          entries: 0,
+        ).hasCosts,
+        isTrue,
+      );
+    });
+
+    test('sort after every cost, a larger credit after a smaller one', () {
+      CostStage stage(String name, int cost) =>
+          CostStage(stage: name, amounts: credit(cost));
+      final CostMonth month = CostMonth(
+        month: thisMonth,
+        totals: CostAmounts.none,
+        stages: <CostStage>[
+          stage('a_credit_small', -100),
+          stage('b_cost', 5),
+          stage('c_credit_big', -900),
+          stage('d_cost_big', 500),
+        ],
+      );
+
+      expect(
+        month.stagesByCost.map((CostStage s) => s.stage).toList(),
+        <String>['d_cost_big', 'b_cost', 'a_credit_small', 'c_credit_big'],
+      );
+    });
+
+    test('keep a credit among a month\'s models, last', () {
+      final CostReport report = CostReport.fromWire(
+        creditWire(costWire(thisMonth)),
+      );
+      final List<String> order = report
+          .modelsOf(thisMonth)
+          .map((CostModelRow row) => row.resource)
+          .toList();
+
+      expect(order.last, 'specimen-sam');
+      expect(order.first, 'handwriting-qwen');
     });
   });
 

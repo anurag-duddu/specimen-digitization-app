@@ -90,6 +90,40 @@ void main() {
     });
 
     test(
+      'reads the final contract: signed sums, a meter and caps_status',
+      () async {
+        final Json wire = creditWire(costWire(thisMonth));
+        wire['meter'] = <String, dynamic>{
+          'allocated_through': '2026-10-16',
+          'allocation_status': 'behind',
+        };
+        wire['caps_status'] = 'unavailable';
+        capsUnavailableWire(wire);
+        final ApiSpecimenRepository repo = repository(
+          (http.Request _) async => json(wire),
+        );
+
+        final CostReport report = await repo.costs(
+          costOrganization,
+          from: thisMonth,
+          to: thisMonth,
+        );
+
+        expect(report.capsUnavailable, isTrue);
+        expect(report.organizationLimit, isNull);
+        expect(report.meter!.allocation, CostAllocation.behind);
+        expect(report.meter!.allocatedThrough, '2026-10-16');
+        expect(
+          report
+              .monthOf(thisMonth)!
+              .stages
+              .map((CostStage s) => s.amounts.costMicros),
+          contains(-300000),
+        );
+      },
+    );
+
+    test(
       'names a deployment with no meter by the server\'s own code',
       () async {
         final ApiSpecimenRepository repo = repository(
@@ -344,6 +378,21 @@ void main() {
       expect(body, <String, dynamic>{
         'collection_id': 'col-insects',
         'monthly_cap_micros': 10000000,
+      });
+    });
+
+    test('sets a limit of zero as zero, which is not a removal', () async {
+      final Map<String, dynamic> body = await sent(
+        (ApiSpecimenRepository repo) => repo.setCostLimit(
+          costOrganization,
+          collectionId: 'col-insects',
+          micros: 0,
+        ),
+      );
+
+      expect(body, <String, dynamic>{
+        'collection_id': 'col-insects',
+        'monthly_cap_micros': 0,
       });
     });
 

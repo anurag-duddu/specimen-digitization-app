@@ -70,9 +70,8 @@ abstract final class CostLimitCopy {
     LimitInputProblem.notAnAmount => 'Enter dollars and cents, like 25.00.',
     LimitInputProblem.tooPrecise =>
       'Use at most two decimal places, like 25.00.',
-    LimitInputProblem.notAboveZero => 'Enter an amount above \$0.00.',
     LimitInputProblem.tooLarge =>
-      'Enter an amount up to ${formatMicros(maxLimitDollars * microsPerDollar)}.',
+      'Enter an amount up to ${formatMicros(maxLimitCents * microsPerCent)}.',
   };
 
   /// The announcement after a change.

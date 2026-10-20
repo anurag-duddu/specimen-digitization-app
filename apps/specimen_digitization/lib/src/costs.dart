@@ -163,20 +163,26 @@ class CostAmounts {
 
   /// What the meter counts, after Google's free allowance. Includes
   /// [heldMicros].
+  ///
+  /// Every sum is signed. Google's free allowance is recorded as a negative
+  /// row, and a residual can come out below the charges it is measured
+  /// against, so a sum can be below zero: a credit.
   final int costMicros;
 
-  /// The part counted in full because a call's outcome is unknown.
+  /// The part held for calls whose cost is unknown.
   final int heldMicros;
 
   /// The cost before Google's free allowance.
   final int listCostMicros;
 
-  /// How many metered calls the figures add up.
+  /// How many metered rows the figures add up. Never below zero.
   final int entries;
 
-  /// True when the meter recorded anything here at all. Nothing recorded is
-  /// not the same as a recorded nothing, and the screen says which.
-  bool get hasCosts => entries > 0 || costMicros > 0 || listCostMicros > 0;
+  /// True when the meter recorded anything here at all, a credit included.
+  /// Nothing recorded is not the same as a recorded nothing, and the screen
+  /// says which.
+  bool get hasCosts =>
+      entries > 0 || costMicros != 0 || heldMicros != 0 || listCostMicros != 0;
 }
 
 /// A monthly limit and how much of it the current month has used.
@@ -372,8 +378,9 @@ class CostMonth {
   final CostAmounts totals;
   final List<CostStage> stages;
 
-  /// The stages that recorded anything, largest cost first. Ties read in
-  /// stage order so the list is the same every time it is drawn.
+  /// The stages that recorded anything, largest cost first. A credit is the
+  /// smallest cost there is, so it comes last. Ties read in stage order so the
+  /// list is the same every time it is drawn.
   List<CostStage> get stagesByCost {
     final List<CostStage> shown = stages
         .where((CostStage stage) => stage.amounts.hasCosts)
@@ -419,29 +426,50 @@ class CostModelRow {
   final CostAmounts amounts;
 }
 
-/// The states of the meter's allocation, which the server sends in
-/// `snake_case`: [ok], `monitoring_unavailable` and `never_run`.
+/// The server's `snake_case` word for an enum value declared in `camelCase`.
 ///
-/// Read by the name each is declared with, so the wire word and the Dart name
-/// are one spelling and no wire word is written twice.
+/// The server's words are read by the name each is declared with, so the wire
+/// word and the Dart name are one spelling and no wire word is written twice.
+String _wireWord(Enum value) => value.name.replaceAllMapped(
+  RegExp('[A-Z]'),
+  (Match match) => '_${match.group(0)!.toLowerCase()}',
+);
+
+/// The states of the meter's allocation of shared Google costs, as the server
+/// sends them: [ok], `behind` and `never_run`.
 enum CostAllocation {
-  /// The costs are counted through the day the meter names.
+  /// The shared costs are counted through the billing day the meter names.
   ok,
 
-  /// Google's usage figures could not be read, so costs may be missing.
-  monitoringUnavailable,
+  /// The shared costs are more than two complete billing days behind.
+  behind,
 
-  /// No count has been made yet.
+  /// No shared cost has been counted: the organization has no allocation row.
   neverRun;
 
   /// The state a server word names, or null for one this client has not met.
   static CostAllocation? fromWire(String wire) {
     for (final CostAllocation state in values) {
-      final String snake = state.name.replaceAllMapped(
-        RegExp('[A-Z]'),
-        (Match match) => '_${match.group(0)!.toLowerCase()}',
-      );
-      if (snake == wire) return state;
+      if (_wireWord(state) == wire) return state;
+    }
+    return null;
+  }
+}
+
+/// Whether the report could read the monthly limits: `ok`, or `unavailable`
+/// when it could not. Then every limit in the report is null, and null does
+/// not mean no limit is set.
+enum CostCapsStatus {
+  /// The limits were read. A null limit is no limit.
+  ok,
+
+  /// The limits could not be read.
+  unavailable;
+
+  /// The state a server word names, or null for none this client knows.
+  static CostCapsStatus? fromWire(String? wire) {
+    for (final CostCapsStatus state in values) {
+      if (_wireWord(state) == wire) return state;
     }
     return null;
   }
@@ -489,6 +517,7 @@ class CostReport {
     required this.months,
     required this.models,
     required this.meter,
+    required this.capsUnavailable,
   });
 
   /// Reads the `GET .../costs` body.
@@ -532,6 +561,9 @@ class CostReport {
           ?CostModelRow.fromWire(model),
       ],
       meter: CostMeter.fromWire(wire['meter']),
+      capsUnavailable:
+          CostCapsStatus.fromWire(_text(wire['caps_status'])) ==
+          CostCapsStatus.unavailable,
     );
   }
 
@@ -555,6 +587,13 @@ class CostReport {
   /// How far shared costs are counted, or null when the server did not say.
   final CostMeter? meter;
 
+  /// True when the server says it could not read the limits
+  /// (`caps_status` is `unavailable`). Every limit in the report is then null,
+  /// and the screen must not say none is set. A report that does not carry the
+  /// word, or carries one this client has not met, is read as having its
+  /// limits.
+  final bool capsUnavailable;
+
   /// [month] of the report, or null when the server sent no such month.
   CostMonth? monthOf(String month) {
     for (final CostMonth candidate in months) {
@@ -563,7 +602,7 @@ class CostReport {
     return null;
   }
 
-  /// The model rows for [month], largest cost first.
+  /// The model rows for [month], largest cost first (a credit last).
   List<CostModelRow> modelsOf(String month) {
     final List<CostModelRow> shown = models
         .where((CostModelRow row) => row.month == month && row.amounts.hasCosts)

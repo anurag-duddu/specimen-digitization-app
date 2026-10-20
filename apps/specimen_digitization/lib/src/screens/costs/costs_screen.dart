@@ -62,13 +62,14 @@ abstract final class CostsScreenCopy {
   static const String organizationHeading = 'Organization';
   static String costLabel(String month) => 'Cost in $month';
   static const String costFooter = "After Google's free allowance.";
-  static const String heldLabel = 'Held in full';
+  static const String heldLabel = 'Held, cost unknown';
   static const String heldFooter =
-      "Counted in full until a call's outcome is known.";
-  static const String heldNoneFooter = 'No call has an unknown outcome.';
+      'The part held for calls whose cost is unknown.';
+  static const String heldNoneFooter =
+      'Nothing is held for calls whose cost is unknown.';
   static const String listCostLabel = 'Before free allowance';
   static const String listCostFooter =
-      "Google's free allowance is taken off to reach the cost.";
+      "The same costs before Google's free allowance.";
 
   /// What a slice with nothing recorded says in place of an amount.
   static const String noCosts = 'No costs recorded';
@@ -84,6 +85,13 @@ abstract final class CostsScreenCopy {
   static const String changeLimit = 'Change limit';
   static const String noLimit = 'No monthly limit';
   static const String limitReachedValue = 'None left';
+
+  /// What the report says when it could not read the limits. Its limits are
+  /// all null then, and null is not "no limit", so nothing here says none is
+  /// set and nothing offers to set one over a limit that cannot be seen.
+  static const String limitsUnreadable =
+      'The monthly limits could not be read.';
+  static const String rowLimitUnreadable = 'Limit could not be read';
 
   /// The label over what a limit has left, for the month the limit counts.
   static String leftLabel(String month) =>
@@ -128,14 +136,19 @@ abstract final class CostsScreenCopy {
   static const String figuresHeading = 'Figures';
   static String updated(String when) => 'Updated $when.';
   static const String updatedUnknown = 'Update time not recorded.';
-  static String countedThrough(String day) => 'Costs are counted through $day.';
+  static String countedThrough(String day) =>
+      'Shared Google costs are counted through $day, a billing day in '
+      'Pacific time.';
   static String countingStatus(String status) =>
-      'Cost counting: ${vocabularyLabel(status)}.';
-  static const String monitoringTitle = 'Some costs may be missing.';
-  static const String monitoringDetail =
-      "Google's usage figures could not be read in the last update.";
-  static const String neverRunTitle = 'Some costs are not counted yet.';
-  static const String neverRunDetail = 'The first update has not run.';
+      'Shared Google costs: ${vocabularyLabel(status)}.';
+  static const String behindTitle = 'Shared Google costs are behind.';
+
+  /// What "behind" means, and how far the meter has got when it says.
+  static String behindDetail(String? day) =>
+      'More than two complete billing days behind.'
+      '${day == null ? '' : ' Counted through $day, a billing day in Pacific time.'}';
+  static const String neverRunTitle =
+      'No shared Google costs have been counted.';
   static const String refreshLabel = 'Update figures';
   static const String refreshBusy = 'Updating…';
   static const String refreshStarted =
@@ -414,7 +427,7 @@ class _CostsScreenState extends State<CostsScreen> {
       SizedBox(height: ui.space.s6),
       _heading(ui, CostsScreenCopy.organizationLimitHeading),
       SizedBox(height: ui.space.s2),
-      ..._organizationLimit(ui, report.organizationLimit),
+      ..._organizationLimit(ui, report),
       SizedBox(height: ui.space.s6),
       _heading(ui, CostsScreenCopy.collectionsHeading),
       SizedBox(height: ui.space.s2),
@@ -457,15 +470,15 @@ class _CostsScreenState extends State<CostsScreen> {
 
   /// Shown above the figures when the meter says they may be incomplete.
   List<Widget> _meterBanner(UiThemeData ui, CostMeter? meter) {
-    final (String, String)? words = switch (meter?.allocation) {
-      CostAllocation.monitoringUnavailable => (
-        CostsScreenCopy.monitoringTitle,
-        CostsScreenCopy.monitoringDetail,
+    final String? through = meter?.allocatedThrough;
+    final (String, String?)? words = switch (meter?.allocation) {
+      CostAllocation.behind => (
+        CostsScreenCopy.behindTitle,
+        CostsScreenCopy.behindDetail(
+          through == null ? null : costDayLabel(through),
+        ),
       ),
-      CostAllocation.neverRun => (
-        CostsScreenCopy.neverRunTitle,
-        CostsScreenCopy.neverRunDetail,
-      ),
+      CostAllocation.neverRun => (CostsScreenCopy.neverRunTitle, null),
       _ => null,
     };
     if (words == null) return const <Widget>[];
@@ -529,7 +542,7 @@ class _CostsScreenState extends State<CostsScreen> {
         _tile(
           label: CostsScreenCopy.heldLabel,
           value: formatMicros(totals.heldMicros),
-          footer: totals.heldMicros > 0
+          footer: totals.heldMicros != 0
               ? CostsScreenCopy.heldFooter
               : CostsScreenCopy.heldNoneFooter,
         ),
@@ -542,7 +555,26 @@ class _CostsScreenState extends State<CostsScreen> {
     );
   }
 
-  List<Widget> _organizationLimit(UiThemeData ui, CostLimit? limit) {
+  List<Widget> _organizationLimit(UiThemeData ui, CostReport report) {
+    final CostLimit? limit = report.organizationLimit;
+    if (report.capsUnavailable) {
+      // The limits are all null because they could not be read, not because
+      // none is set: say so, and offer neither "Set limit" nor "Change limit"
+      // over a limit that cannot be seen.
+      return <Widget>[
+        _absence(ui, CostsScreenCopy.limitsUnreadable),
+        SizedBox(height: ui.space.s2),
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: UiButton(
+            label: CostsScreenCopy.retry,
+            variant: UiButtonVariant.secondary,
+            leading: UiIcons.reload,
+            onPressed: () => unawaited(_load(quiet: true)),
+          ),
+        ),
+      ];
+    }
     final Widget action = Align(
       alignment: AlignmentDirectional.centerStart,
       child: UiButton(
@@ -586,17 +618,24 @@ class _CostsScreenState extends State<CostsScreen> {
       return <Widget>[_absence(ui, CostsScreenCopy.noCollections)];
     }
     return <Widget>[
-      for (final CostCollectionRow row in rows) _collectionRow(ui, row),
+      for (final CostCollectionRow row in rows)
+        _collectionRow(ui, row, report.capsUnavailable),
     ];
   }
 
-  Widget _collectionRow(UiThemeData ui, CostCollectionRow row) {
+  Widget _collectionRow(
+    UiThemeData ui,
+    CostCollectionRow row,
+    bool limitsUnreadable,
+  ) {
     final CostCollection collection = row.collection;
     final CostAmounts total = collection.total;
     final String cost = total.hasCosts
         ? formatMicros(total.costMicros)
         : CostsScreenCopy.noCosts;
-    final String limit = CostsScreenCopy.rowLimit(collection.limit);
+    final String limit = limitsUnreadable
+        ? CostsScreenCopy.rowLimitUnreadable
+        : CostsScreenCopy.rowLimit(collection.limit);
     final String action = collection.limit == null
         ? CostsScreenCopy.setLimit
         : CostsScreenCopy.changeLimit;
@@ -610,16 +649,24 @@ class _CostsScreenState extends State<CostsScreen> {
       child: UiListRow(
         title: collection.name,
         subtitle: '$cost · $limit',
-        semanticsLabel: '${collection.name}, $cost$including, $limit. $action',
+        semanticsLabel: limitsUnreadable
+            ? '${collection.name}, $cost$including, $limit'
+            : '${collection.name}, $cost$including, $limit. $action',
         leading: const UiIcon(UiIcons.collection),
-        trailing: UiRowTrailing(label: action, icon: UiIcons.edit),
-        onPressed: () => unawaited(
-          _editLimit(
-            subject: collection.name,
-            collectionId: collection.id,
-            current: collection.limit,
-          ),
-        ),
+        // A limit that cannot be read cannot be changed from here: the form
+        // would start from "no monthly limit" and write over one it never saw.
+        trailing: limitsUnreadable
+            ? null
+            : UiRowTrailing(label: action, icon: UiIcons.edit),
+        onPressed: limitsUnreadable
+            ? null
+            : () => unawaited(
+                _editLimit(
+                  subject: collection.name,
+                  collectionId: collection.id,
+                  current: collection.limit,
+                ),
+              ),
       ),
     );
   }
@@ -630,7 +677,7 @@ class _CostsScreenState extends State<CostsScreen> {
     final String cost = formatMicros(amounts.costMicros);
     final String detail = _detail(<String>[
       CostsScreenCopy.entries(amounts.entries),
-      if (amounts.heldMicros > 0) CostsScreenCopy.held(amounts.heldMicros),
+      if (amounts.heldMicros != 0) CostsScreenCopy.held(amounts.heldMicros),
     ]);
     return UiListRow(
       key: ValueKey<String>('cost-stage-${stage.stage}'),
@@ -677,7 +724,7 @@ class _CostsScreenState extends State<CostsScreen> {
           if (day != null) {
             counted = CostsScreenCopy.countedThrough(costDayLabel(day));
           }
-        case CostAllocation.monitoringUnavailable || CostAllocation.neverRun:
+        case CostAllocation.behind || CostAllocation.neverRun:
           break;
         case null:
           counted = CostsScreenCopy.countingStatus(meter.status);

@@ -21,12 +21,20 @@ const int _centsPerDollar = 100;
 /// `$0.01` would claim more than was spent, so it is said in words.
 const String underOneCent = 'Under one cent';
 
-/// The most a monthly limit may be, in dollars.
-///
-/// A guard on what a person types, not a rule of the service: the web build
-/// keeps integers exact only below 2^53, and a limit above a million dollars
-/// is a mistyped one for a collection of this size.
-const int maxLimitDollars = 1000000;
+/// What an amount below zero and over minus one cent reads as: the same
+/// reasoning, in the credit's words.
+const String creditUnderOneCent = 'Credit under one cent';
+
+/// The word that says an amount is taken off, written after the dollars:
+/// `$0.30 credit`.
+const String creditWord = 'credit';
+
+/// The most a monthly limit may be, in micro-dollars: the service's own bound,
+/// 2^53 - 1, which is also the largest integer the web build keeps exact.
+const int maxLimitMicros = 9007199254740991;
+
+/// The most a monthly limit may be, in cents.
+const int maxLimitCents = maxLimitMicros ~/ microsPerCent;
 
 /// [micros] as US dollars with thousands separators and cents, such as
 /// `$1,234.56`.
@@ -34,8 +42,20 @@ const int maxLimitDollars = 1000000;
 /// Rounds half up to the cent. An amount above zero and under one cent reads
 /// [underOneCent]; zero reads `$0.00`, which is a measured nothing and not an
 /// absent figure (the caller says "No costs recorded" for the latter).
+///
+/// An amount below zero is a credit, because every sum the meter reports is
+/// signed: Google's free allowance is recorded as a negative row, and a
+/// residual can come out below the charges it is measured against. It is
+/// written in words after its dollars, `$0.30 credit`, and never with a minus
+/// sign or a dash, which a reader takes for a hyphen in a sentence or for a
+/// missing figure (02 section 6, rule 1).
 String formatMicros(int micros) {
-  if (micros < 0) return '-${formatMicros(-micros)}';
+  if (micros < 0) {
+    final int credit = -micros;
+    return credit < microsPerCent
+        ? creditUnderOneCent
+        : '${formatMicros(credit)} $creditWord';
+  }
   if (micros > 0 && micros < microsPerCent) return underOneCent;
   final int cents = (micros + microsPerCent ~/ 2) ~/ microsPerCent;
   final int dollars = cents ~/ _centsPerDollar;
@@ -70,10 +90,7 @@ enum LimitInputProblem {
   /// More than two decimal places.
   tooPrecise,
 
-  /// The amount is zero, which is not a limit.
-  notAboveZero,
-
-  /// The amount is above [maxLimitDollars].
+  /// The amount is above [maxLimitCents].
   tooLarge,
 }
 
@@ -87,7 +104,8 @@ typedef LimitInput = ({int? micros, LimitInputProblem? problem});
 /// Spaces, a leading dollar sign and thousands commas are ignored. Cents are
 /// the finest unit a person can set, so a third decimal place is refused
 /// rather than rounded: a limit that quietly changed by a digit would not be
-/// the one that was typed.
+/// the one that was typed. Zero is an amount: the service takes a limit from
+/// 0 up to [maxLimitMicros], and removing a limit is its own action.
 LimitInput parseLimitInput(String text) {
   final String cleaned = text
       .replaceAll(RegExp(r'\s'), '')
@@ -103,17 +121,16 @@ LimitInput parseLimitInput(String text) {
   }
   if (fraction.length > 2) return _refused(LimitInputProblem.tooPrecise);
   final String trimmed = whole.replaceFirst(RegExp(r'^0+'), '');
-  if (trimmed.length > maxLimitDollars.toString().length) {
+  // Checked before it is read, so a long run of digits is never parsed into a
+  // number the web build cannot hold exactly.
+  if (trimmed.length > (maxLimitCents ~/ _centsPerDollar).toString().length) {
     return _refused(LimitInputProblem.tooLarge);
   }
   final int dollars = trimmed.isEmpty ? 0 : int.parse(trimmed);
   final int cents =
       dollars * _centsPerDollar +
       (fraction.isEmpty ? 0 : int.parse(fraction.padRight(2, '0')));
-  if (cents == 0) return _refused(LimitInputProblem.notAboveZero);
-  if (cents > maxLimitDollars * _centsPerDollar) {
-    return _refused(LimitInputProblem.tooLarge);
-  }
+  if (cents > maxLimitCents) return _refused(LimitInputProblem.tooLarge);
   return (micros: cents * microsPerCent, problem: null);
 }
 

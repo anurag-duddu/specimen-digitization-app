@@ -578,9 +578,9 @@ scroll.
 | Environment band | yes | The one line strip at compact, the full band above |
 | Top bar | yes | Back, "Costs" |
 | Month | scrolls | The select and its line under it |
-| Meter band | scrolls | Only when the meter says the figures may be incomplete |
+| Meter band | scrolls | Only when the meter is behind or has counted nothing |
 | Organization | scrolls | Three numeral tiles, one hero |
-| Organization limit | scrolls | What is left, and one button |
+| Organization limit | scrolls | What is left, and one button; or that the limits could not be read, and a retry |
 | Collections | scrolls | The rows, sub-collections one step in |
 | Stages, models | scrolls | Rows, largest first |
 | Figures | scrolls | When updated, and the update button |

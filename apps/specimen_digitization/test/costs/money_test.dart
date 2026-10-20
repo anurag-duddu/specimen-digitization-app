@@ -40,12 +40,69 @@ void main() {
       expect(formatMicros(0), r'$0.00');
     });
 
-    test('keeps a sign on an amount below zero', () {
-      expect(formatMicros(-1200000), r'-$1.20');
+    test('writes an amount below zero as a credit, in words', () {
+      // Every sum the meter reports is signed: Google's free allowance is a
+      // negative row, and a residual can fall below the charges it is
+      // measured against. A credit is dollars and the word, never a minus.
+      expect(formatMicros(-300000), r'$0.30 credit');
+      expect(formatMicros(-1200000), r'$1.20 credit');
+      expect(formatMicros(-1234567890), r'$1,234.57 credit');
+      expect(formatMicros(-10000), r'$0.01 credit');
+    });
+
+    test('says a credit under one cent in words, as it does a cost', () {
+      expect(formatMicros(-1), creditUnderOneCent);
+      expect(formatMicros(-9999), creditUnderOneCent);
+      expect(creditUnderOneCent, 'Credit under one cent');
+      expect(formatMicros(-10000), isNot(creditUnderOneCent));
+    });
+
+    test('rounds a credit half up to the cent, as it does a cost', () {
+      expect(formatMicros(-14999), r'$0.01 credit');
+      expect(formatMicros(-15000), r'$0.02 credit');
+    });
+
+    test('never writes a minus sign or a dash', () {
+      for (final int micros in <int>[
+        -1,
+        -9999,
+        -10000,
+        -300000,
+        -1200000,
+        -1234567890,
+        -9007199254740991,
+      ]) {
+        final String text = formatMicros(micros);
+        expect(text, isNot(contains('-')), reason: '$micros');
+        for (final int mark in <int>[0x2013, 0x2014, 0x2212]) {
+          expect(
+            text,
+            isNot(contains(String.fromCharCode(mark))),
+            reason: '$micros',
+          );
+        }
+      }
+    });
+
+    test('reads the same amount the same way whichever side of zero', () {
+      for (final int micros in <int>[10000, 300000, 1234567890]) {
+        expect(
+          formatMicros(-micros),
+          '${formatMicros(micros)} $creditWord',
+          reason: '$micros',
+        );
+      }
     });
 
     test('never writes the unit the meter counts in', () {
-      for (final int micros in <int>[0, 1, 12345678, 1234567890]) {
+      for (final int micros in <int>[
+        0,
+        1,
+        12345678,
+        1234567890,
+        -1,
+        -12345678,
+      ]) {
         expect(formatMicros(micros).toLowerCase(), isNot(contains('micro')));
       }
     });
@@ -111,15 +168,31 @@ void main() {
       expect(problem('0.001'), LimitInputProblem.tooPrecise);
     });
 
-    test('refuses zero, which is not a limit', () {
-      expect(problem('0'), LimitInputProblem.notAboveZero);
-      expect(problem('0.00'), LimitInputProblem.notAboveZero);
+    test('takes zero, which the service accepts as a limit', () {
+      // The service takes a limit from 0 micros up; removing one is its own
+      // action, so zero is an amount and not an absence.
+      expect(micros('0'), 0);
+      expect(micros('0.00'), 0);
+      expect(problem('0'), isNull);
     });
 
-    test('refuses more than a million dollars', () {
+    test('takes up to the service\'s bound and refuses beyond it', () {
+      // 2^53 - 1 micros: $9,007,199,254.740991, which a person can write to
+      // the cent as 9,007,199,254.74.
+      expect(maxLimitMicros, 9007199254740991);
+      expect(maxLimitCents, 900719925474);
+      expect(micros('9007199254.74'), 900719925474 * microsPerCent);
       expect(micros('1000000'), 1000000000000);
-      expect(problem('1000000.01'), LimitInputProblem.tooLarge);
+      expect(problem('9007199254.75'), LimitInputProblem.tooLarge);
+      expect(problem('9007199255'), LimitInputProblem.tooLarge);
       expect(problem('99999999999'), LimitInputProblem.tooLarge);
+      expect(problem('100000000000000000000'), LimitInputProblem.tooLarge);
+    });
+
+    test('keeps the largest amount exact in micro-dollars', () {
+      final int top = micros('9007199254.74')!;
+      expect(top, lessThanOrEqualTo(maxLimitMicros));
+      expect(limitFieldText(top), '9007199254.74');
     });
 
     test('sets exactly one of the amount and the reason', () {

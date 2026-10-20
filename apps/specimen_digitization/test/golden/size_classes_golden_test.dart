@@ -373,10 +373,10 @@ void main() {
       });
     });
 
-    // A meter that says the figures may be incomplete: the band above them,
-    // with the update it offers.
+    // A meter that says the shared costs are behind: the band above the
+    // figures, with the update it offers.
     goldenThemes.forEach((String theme, Brightness brightness) {
-      testWidgets('costs with an incomplete meter at compact in $theme', (
+      testWidgets('costs with a meter that is behind at compact in $theme', (
         WidgetTester tester,
       ) async {
         captureLayoutErrors();
@@ -390,17 +390,110 @@ void main() {
               wire: (String month) => <String, dynamic>{
                 ...costWire(month),
                 'meter': <String, dynamic>{
-                  'allocated_through': '2026-10-18',
-                  'allocation_status': 'monitoring_unavailable',
+                  'allocated_through': '2026-10-16',
+                  'allocation_status': 'behind',
                 },
               },
             ),
           ),
         );
-        expect(find.text('Some costs may be missing.'), findsOneWidget);
-        expectKnownOverflow(tester, 'costs_meter__compact-390x844__$theme');
+        expect(find.text('Shared Google costs are behind.'), findsOneWidget);
+        expectKnownOverflow(tester, 'costs_behind__compact-390x844__$theme');
         expectGlassBudget(tester, window: 'compact-390x844');
-        await expectGolden(tester, 'costs_meter__compact-390x844__$theme');
+        await expectGolden(tester, 'costs_behind__compact-390x844__$theme');
+      });
+    });
+
+    // A meter that has counted nothing: the other band.
+    goldenThemes.forEach((String theme, Brightness brightness) {
+      testWidgets('costs with a meter that has not run at compact in $theme', (
+        WidgetTester tester,
+      ) async {
+        captureLayoutErrors();
+        await pumpGoldenApp(
+          tester,
+          window: goldenWindows['compact-390x844']!,
+          brightness: brightness,
+          location: goldenCostsLocation,
+          repository: GoldenCostRepository(
+            meter: FakeCostRepository(
+              wire: (String month) => <String, dynamic>{
+                ...costWire(month),
+                'meter': <String, dynamic>{
+                  'allocated_through': null,
+                  'allocation_status': 'never_run',
+                },
+              },
+            ),
+          ),
+        );
+        expect(
+          find.text('No shared Google costs have been counted.'),
+          findsOneWidget,
+        );
+        expectKnownOverflow(tester, 'costs_never_run__compact-390x844__$theme');
+        expectGlassBudget(tester, window: 'compact-390x844');
+        await expectGolden(tester, 'costs_never_run__compact-390x844__$theme');
+      });
+    });
+
+    // Every sum is signed: Google's free allowance is a negative row. A credit
+    // among the stages and the models, written as a credit and not with a
+    // minus sign.
+    goldenThemes.forEach((String theme, Brightness brightness) {
+      testWidgets('costs with a credit at compact in $theme', (
+        WidgetTester tester,
+      ) async {
+        captureLayoutErrors();
+        await pumpGoldenApp(
+          tester,
+          window: goldenWindows['compact-390x844']!,
+          brightness: brightness,
+          location: goldenCostsLocation,
+          repository: GoldenCostRepository(
+            meter: FakeCostRepository(
+              wire: (String month) => creditWire(costWire(month)),
+            ),
+          ),
+        );
+        await scrollToEnd(tester);
+        expect(find.text(r'$0.30 credit'), findsWidgets);
+        expectKnownOverflow(tester, 'costs_credit__compact-390x844__$theme');
+        expectGlassBudget(tester, window: 'compact-390x844');
+        await expectGolden(tester, 'costs_credit__compact-390x844__$theme');
+      });
+    });
+
+    // The report could not read the limits: every limit is null, and the page
+    // says so instead of saying none is set.
+    goldenThemes.forEach((String theme, Brightness brightness) {
+      testWidgets('costs with limits that could not be read in $theme', (
+        WidgetTester tester,
+      ) async {
+        captureLayoutErrors();
+        await pumpGoldenApp(
+          tester,
+          window: goldenWindows['compact-390x844']!,
+          brightness: brightness,
+          location: goldenCostsLocation,
+          repository: GoldenCostRepository(
+            meter: FakeCostRepository(
+              wire: (String month) => capsUnavailableWire(costWire(month)),
+            ),
+          ),
+        );
+        await Scrollable.ensureVisible(
+          tester.element(find.text('Organization limit')),
+          alignment: 0,
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.text('The monthly limits could not be read.'),
+          findsOneWidget,
+        );
+        expectKnownOverflow(tester, 'costs_limits__compact-390x844__$theme');
+        expectGlassBudget(tester, window: 'compact-390x844');
+        await expectGolden(tester, 'costs_limits__compact-390x844__$theme');
       });
     });
 

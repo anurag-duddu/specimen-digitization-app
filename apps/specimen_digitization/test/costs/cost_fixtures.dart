@@ -149,7 +149,43 @@ Json costWire(String month) => <String, dynamic>{
     'allocated_through': '2026-10-19',
     'allocation_status': 'ok',
   },
+  'caps_status': 'ok',
 };
+
+/// [wire] as the server answers when it could not read the limits: every limit
+/// is null and `caps_status` says why.
+Json capsUnavailableWire(Json wire) {
+  wire['caps_status'] = 'unavailable';
+  wire['organization_cap'] = null;
+  for (final Object? row in wire['collections'] as List<Object?>) {
+    (row! as Json)['cap'] = null;
+  }
+  return wire;
+}
+
+/// [wire] with a credit among its stages and its models: Google's free
+/// allowance, recorded below zero, and a total that falls with it.
+Json creditWire(Json wire) {
+  final Json month = (wire['months'] as List<Object?>).first! as Json;
+  (month['stages'] as List<Object?>).add(<String, dynamic>{
+    'stage': 'worker',
+    'cost_micros': -300000,
+    'held_micros': 0,
+    'list_cost_micros': 0,
+    'entries': 3,
+  });
+  (wire['models'] as List<Object?>).add(<String, dynamic>{
+    'month': month['month'],
+    'stage': 'worker',
+    'provider': 'google_cloud',
+    'resource': 'specimen-sam',
+    'cost_micros': -300000,
+    'held_micros': 0,
+    'list_cost_micros': 0,
+    'entries': 3,
+  });
+  return wire;
+}
 
 /// The body for a month in which nothing was recorded.
 Json emptyCostWire(String month) => <String, dynamic>{
@@ -173,6 +209,7 @@ Json emptyCostWire(String month) => <String, dynamic>{
   'months': <Json>[],
   'models': <Json>[],
   'meter': null,
+  'caps_status': 'ok',
 };
 
 /// A repository that answers in the wire shape and remembers what it was

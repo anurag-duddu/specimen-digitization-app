@@ -220,6 +220,7 @@ const Map<String, String> costProviderTerms = <String, String>{
   'novita': 'Novita',
   'nvidia': 'NVIDIA',
   'google': 'Google',
+  'google_cloud': 'Google Cloud',
 };
 
 /// A cost stage as a reviewer reads it.

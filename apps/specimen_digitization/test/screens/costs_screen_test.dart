@@ -274,6 +274,10 @@ void main() {
     });
   });
 
+  const String counted =
+      'Shared Google costs are counted through 19 Oct 2026, a billing day in '
+      'Pacific time.';
+
   group('the figures', () {
     testWidgets('give the organization\'s three amounts in dollars', (
       WidgetTester tester,
@@ -282,7 +286,7 @@ void main() {
 
       expect(find.text('Cost in October 2026'), findsOneWidget);
       expect(find.text(r'$12.35'), findsWidgets);
-      expect(find.text('Held in full'), findsOneWidget);
+      expect(find.text('Held, cost unknown'), findsOneWidget);
       expect(find.text(r'$0.50'), findsWidgets);
       expect(find.text('Before free allowance'), findsOneWidget);
       expect(find.text(r'$15.00'), findsOneWidget);
@@ -316,8 +320,14 @@ void main() {
         r"Cost in October 2026, $12.35. After Google's free allowance.",
       );
       expect(
-        said('Held in full'),
-        r"Held in full, $0.50. Counted in full until a call's outcome is known.",
+        said('Held, cost unknown'),
+        r'Held, cost unknown, $0.50. The part held for calls whose cost is '
+        'unknown.',
+      );
+      expect(
+        said('Before free allowance'),
+        r"Before free allowance, $15.00. The same costs before Google's free "
+        'allowance.',
       );
       expect(
         said('Left in October 2026'),
@@ -336,9 +346,12 @@ void main() {
       );
       await pumpCosts(tester, repository);
 
-      expect(find.text('No call has an unknown outcome.'), findsOneWidget);
       expect(
-        find.text("Counted in full until a call's outcome is known."),
+        find.text('Nothing is held for calls whose cost is unknown.'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('The part held for calls whose cost is unknown.'),
         findsNothing,
       );
     });
@@ -430,10 +443,7 @@ void main() {
       await pumpCosts(tester, FakeCostRepository());
 
       expect(find.text('Updated 20 Oct 2026, 10:04 CDT.'), findsOneWidget);
-      expect(
-        find.text('Costs are counted through 19 Oct 2026.'),
-        findsOneWidget,
-      );
+      expect(find.text(counted), findsOneWidget);
     });
 
     testWidgets('say when the update time is not recorded', (
@@ -670,13 +680,54 @@ void main() {
       await pumpCosts(tester, FakeCostRepository());
 
       expect(find.byType(UiBanner), findsNothing);
+      expect(find.text(counted), findsOneWidget);
+    });
+
+    testWidgets('a meter that is behind says by how much, and through when', (
+      WidgetTester tester,
+    ) async {
+      final FakeCostRepository repository = FakeCostRepository(
+        wire: edited((Json wire) {
+          wire['meter'] = <String, dynamic>{
+            'allocated_through': '2026-10-16',
+            'allocation_status': 'behind',
+          };
+        }),
+      );
+      await pumpCosts(tester, repository);
+
+      expect(find.text('Shared Google costs are behind.'), findsOneWidget);
+      // The line under the update time stays out of it: the banner is what
+      // says how far the count has got.
+      expect(find.textContaining('are counted through'), findsNothing);
+    });
+
+    testWidgets('a meter that is behind names the day it counted through', (
+      WidgetTester tester,
+    ) async {
+      final FakeCostRepository repository = FakeCostRepository(
+        wire: edited((Json wire) {
+          wire['meter'] = <String, dynamic>{
+            'allocated_through': '2026-10-16',
+            'allocation_status': 'behind',
+          };
+        }),
+      );
+      await pumpCosts(tester, repository);
+
+      // The detail is behind the banner's disclosure.
+      await tester.tap(uiControl(UiBanner.defaultDetailLabel));
+      await tester.pumpAndSettle();
       expect(
-        find.text('Costs are counted through 19 Oct 2026.'),
+        find.text(
+          'More than two complete billing days behind. Counted through 16 Oct '
+          '2026, a billing day in Pacific time.',
+        ),
         findsOneWidget,
       );
     });
 
-    testWidgets('unreadable usage says costs may be missing', (
+    testWidgets('the earlier status for unreadable usage is not a state', (
       WidgetTester tester,
     ) async {
       final FakeCostRepository repository = FakeCostRepository(
@@ -689,11 +740,15 @@ void main() {
       );
       await pumpCosts(tester, repository);
 
-      expect(find.text('Some costs may be missing.'), findsOneWidget);
-      expect(find.textContaining('18 Oct 2026'), findsNothing);
+      // A word this client has not met is named plainly, with no banner.
+      expect(find.byType(UiBanner), findsNothing);
+      expect(
+        find.text('Shared Google costs: monitoring unavailable.'),
+        findsOneWidget,
+      );
     });
 
-    testWidgets('a meter that has not run says costs are not counted yet', (
+    testWidgets('a meter that has not run says no shared cost is counted', (
       WidgetTester tester,
     ) async {
       final FakeCostRepository repository = FakeCostRepository(
@@ -706,8 +761,11 @@ void main() {
       );
       await pumpCosts(tester, repository);
 
-      expect(find.text('Some costs are not counted yet.'), findsOneWidget);
-      expect(find.textContaining('counted through'), findsNothing);
+      expect(
+        find.text('No shared Google costs have been counted.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('are counted through'), findsNothing);
     });
 
     testWidgets('the warning offers the update that can clear it', (
@@ -742,7 +800,7 @@ void main() {
       );
       await pumpCosts(tester, repository);
 
-      expect(find.text('Cost counting: catching up.'), findsOneWidget);
+      expect(find.text('Shared Google costs: catching up.'), findsOneWidget);
     });
 
     testWidgets('no meter at all says nothing about counting', (
@@ -755,7 +813,233 @@ void main() {
 
       expect(find.byType(UiBanner), findsNothing);
       expect(find.textContaining('counted through'), findsNothing);
-      expect(find.textContaining('Cost counting'), findsNothing);
+      expect(find.textContaining('Shared Google costs'), findsNothing);
+    });
+  });
+
+  group('a credit', () {
+    FakeCostRepository withCredit() =>
+        FakeCostRepository(wire: (String month) => creditWire(costWire(month)));
+
+    testWidgets('is written as a credit, never with a minus', (
+      WidgetTester tester,
+    ) async {
+      await pumpCosts(tester, withCredit());
+
+      expect(find.text(r'$0.30 credit'), findsWidgets);
+      expect(find.text('Processing worker'), findsOneWidget);
+      for (final int mark in <int>[0x2013, 0x2014, 0x2212]) {
+        expect(find.textContaining(String.fromCharCode(mark)), findsNothing);
+      }
+      expect(find.textContaining(r'-$'), findsNothing);
+    });
+
+    testWidgets('sits after every cost among the stages', (
+      WidgetTester tester,
+    ) async {
+      await pumpCosts(tester, withCredit());
+
+      final double database = tester.getTopLeft(stageRow('database')).dy;
+      final double worker = tester.getTopLeft(stageRow('worker')).dy;
+      expect(worker, greaterThan(database));
+      expect(
+        spoken(tester, stageRow('worker')),
+        r'Processing worker, $0.30 credit, 3 entries',
+      );
+    });
+
+    testWidgets('sits after every cost among the models, with its provider', (
+      WidgetTester tester,
+    ) async {
+      await pumpCosts(tester, withCredit());
+
+      expect(find.text('specimen-sam'), findsOneWidget);
+      expect(
+        find.text('Processing worker · Google Cloud · 3 entries'),
+        findsOneWidget,
+      );
+      final double credit = tester.getTopLeft(find.text('specimen-sam')).dy;
+      final double paid = tester.getTopLeft(find.text('first-pass-glm')).dy;
+      expect(credit, greaterThan(paid));
+    });
+
+    testWidgets('can be the whole of the organization\'s figures', (
+      WidgetTester tester,
+    ) async {
+      final FakeCostRepository repository = FakeCostRepository(
+        wire: edited((Json wire) {
+          wire['totals'] = <String, dynamic>{
+            'cost_micros': -300000,
+            'held_micros': 0,
+            'list_cost_micros': 0,
+            'entries': 0,
+          };
+        }),
+      );
+      await pumpCosts(tester, repository);
+
+      // Recorded, though nothing was spent: not "No costs recorded".
+      expect(find.text('Cost in October 2026'), findsOneWidget);
+      expect(find.text(r'$0.30 credit'), findsWidgets);
+      expect(
+        find.text(
+          'No costs were counted for the organization in October 2026.',
+        ),
+        findsNothing,
+      );
+    });
+
+    testWidgets('says what a collection holds that fell below zero', (
+      WidgetTester tester,
+    ) async {
+      final FakeCostRepository repository = FakeCostRepository(
+        wire: edited((Json wire) {
+          final Json plants =
+              (wire['collections'] as List<Object?>)[2]! as Json;
+          plants['total'] = amounts(-450000, entries: 2);
+        }),
+      );
+      await pumpCosts(tester, repository);
+
+      expect(find.text(r'$0.45 credit · No monthly limit'), findsOneWidget);
+      expect(
+        spoken(tester, collectionRow('col-plants')),
+        r'Plants, $0.45 credit, No monthly limit. Set limit',
+      );
+    });
+
+    testWidgets('a held amount below zero is still said, not hidden', (
+      WidgetTester tester,
+    ) async {
+      final FakeCostRepository repository = FakeCostRepository(
+        wire: edited((Json wire) {
+          (wire['totals'] as Json)['held_micros'] = -20000;
+        }),
+      );
+      await pumpCosts(tester, repository);
+
+      expect(find.text(r'$0.02 credit'), findsOneWidget);
+      expect(
+        find.text('The part held for calls whose cost is unknown.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('keeps the figures readable at twice the text size', (
+      WidgetTester tester,
+    ) async {
+      // A credit is a longer word than a number; an overflow fails the test.
+      await pumpCosts(
+        tester,
+        withCredit(),
+        size: const Size(390, 1600),
+        textScale: 2.0,
+      );
+
+      expect(find.text(r'$0.30 credit'), findsWidgets);
+    });
+  });
+
+  group('limits that could not be read', () {
+    FakeCostRepository unreadable() =>
+        FakeCostRepository()
+          ..customWire = (String month) => capsUnavailableWire(costWire(month));
+
+    testWidgets('are not called "no limit"', (WidgetTester tester) async {
+      await pumpCosts(tester, unreadable());
+
+      expect(
+        find.text('The monthly limits could not be read.'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('No monthly limit is set for the organization.'),
+        findsNothing,
+      );
+      expect(find.textContaining('No monthly limit'), findsNothing);
+      expect(find.text('Left in October 2026'), findsNothing);
+    });
+
+    testWidgets('offer no way to set one over a limit that cannot be seen', (
+      WidgetTester tester,
+    ) async {
+      await pumpCosts(tester, unreadable());
+
+      expect(uiButton('Set limit'), findsNothing);
+      expect(uiButton('Change limit'), findsNothing);
+      expect(find.text('Set limit'), findsNothing);
+      expect(find.text('Change limit'), findsNothing);
+    });
+
+    testWidgets('leave each collection showing its costs, and say its limit', (
+      WidgetTester tester,
+    ) async {
+      await pumpCosts(tester, unreadable());
+
+      expect(find.text(r'$7.10 · Limit could not be read'), findsOneWidget);
+      expect(find.text(r'$2.90 · Limit could not be read'), findsOneWidget);
+      expect(
+        find.text('No costs recorded · Limit could not be read'),
+        findsOneWidget,
+      );
+      expect(
+        spoken(tester, collectionRow('col-insects')),
+        r'Insects, $7.10 including sub-collections, Limit could not be read',
+      );
+    });
+
+    testWidgets('open no form from a collection row', (
+      WidgetTester tester,
+    ) async {
+      final FakeCostRepository repository = unreadable();
+      await pumpCosts(tester, repository);
+
+      await tester.tap(collectionRow('col-insects'), warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Monthly limit'), findsNothing);
+      expect(uiButton('Save limit'), findsNothing);
+      expect(repository.limits, isEmpty);
+    });
+
+    testWidgets('can be read again from the page', (WidgetTester tester) async {
+      final FakeCostRepository repository = unreadable();
+      await pumpCosts(tester, repository);
+
+      repository.customWire = null;
+      await tester.tap(uiButton('Retry'));
+      await tester.pumpAndSettle();
+
+      expect(repository.reads, hasLength(2));
+      expect(find.text('The monthly limits could not be read.'), findsNothing);
+      expect(find.text(r'$7.10 · $2.90 left of $10.00'), findsOneWidget);
+      expect(find.text('Left in October 2026'), findsOneWidget);
+    });
+
+    testWidgets('keep the figures on screen while they are read again', (
+      WidgetTester tester,
+    ) async {
+      final FakeCostRepository repository = unreadable();
+      await pumpCosts(tester, repository, reduceMotion: true);
+
+      repository.hold = Completer<void>();
+      final Completer<void> release = repository.hold!;
+      await tester.tap(uiButton('Retry'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(UiSkeleton), findsNothing);
+      expect(find.text('Cost in October 2026'), findsOneWidget);
+      release.complete();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('still show the costs whole', (WidgetTester tester) async {
+      await pumpCosts(tester, unreadable());
+
+      expect(find.text('Cost in October 2026'), findsOneWidget);
+      expect(find.text(r'$12.35'), findsWidgets);
+      expect(find.text('Reading labels'), findsOneWidget);
+      expect(find.text('handwriting-qwen'), findsOneWidget);
     });
   });
 
@@ -886,6 +1170,23 @@ void main() {
       expect(find.text(r'$5.25 · $1,245.25 left of $1,250.50'), findsOneWidget);
     });
 
+    testWidgets('of nothing at all, which the service takes as a limit', (
+      WidgetTester tester,
+    ) async {
+      final FakeCostRepository repository = FakeCostRepository();
+      await pumpCosts(tester, repository);
+
+      await openLimit(tester, collectionRow('col-plants'));
+      await tester.enterText(uiField('Limit in US dollars'), '0');
+      await tester.tap(uiButton('Save limit'));
+      await tester.pumpAndSettle();
+
+      // Zero is sent as zero, never as the removal that null is.
+      expect(repository.limits.single.collection, 'col-plants');
+      expect(repository.limits.single.micros, 0);
+      expect(find.text(r'$5.25 · Limit of $0.00 reached'), findsOneWidget);
+    });
+
     testWidgets('keeps the figures on screen while it reads them again', (
       WidgetTester tester,
     ) async {
@@ -999,8 +1300,7 @@ void main() {
       // Letters never get into the field, so "not an amount" is a stray dot.
       ('1.2.3', 'Enter dollars and cents, like 25.00.'),
       ('25.123', 'Use at most two decimal places, like 25.00.'),
-      ('0', r'Enter an amount above $0.00.'),
-      ('2000000', r'Enter an amount up to $1,000,000.00.'),
+      ('9007199255', r'Enter an amount up to $9,007,199,254.74.'),
     ]) {
       testWidgets('refuses "$typed" with the rule, once, and sends nothing', (
         WidgetTester tester,
