@@ -8,7 +8,9 @@ and each of its ancestors. Each applies through its own monthly ledger, a
 compare-and-set document with the program ledger's semantics
 (lane_allowance.ProgramLedger): a paid step reserves its worst case before the
 call, settles to what its calls cost, overspend counts, nothing is released
-except by a settlement to less, and an unknown outcome stays held in full.
+except by a settlement to less, and an unknown outcome stays held in full. An
+attempt the run proves was never sent, given up unsent after its holds, settles
+them at zero (release_unsent).
 
 No cap set, no ledger: with no applicable cap nothing here reads or writes a
 ledger document, and the step goes on to the program's allowance exactly as
@@ -20,6 +22,7 @@ a reservation the month's cap cannot cover blocks it as ``tenant_budget_exhauste
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import NAMESPACE_URL, UUID, uuid5
@@ -27,7 +30,7 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 from .domain import Scope
 from .lane_allowance import ATTEMPTS, LEDGER_KIND, ORDINARY, ArchivedEffects, LegacyLedgerUnavailable, ProgramLedger
 from .lane_worker import stored_integer
-from .storage import Conflict, Missing
+from .storage import Conflict, Missing, canonical_json
 
 EXHAUSTED = "tenant_budget_exhausted"
 UNAVAILABLE = "tenant_budget_unavailable"
@@ -38,6 +41,8 @@ ORGANIZATION = "organization"
 # and the amount: run.dependencies[RECORD]["<step>:<attempt>"] = {"month",
 # "keys", "ledger_collection", "micros"}. Settlement reads it, never the caps,
 # and an attempt that comes round again reserves "micros" again (recorded_micros).
+# An attempt given up unsent marks its hold "released": True (release_unsent);
+# its next hold is the ledger entry of the next "generation" (absent: 0).
 RECORD = "tenant_budget"
 # The largest cap or total a ledger keeps exact (lane_worker.stored_integer).
 MAX_CAP_MICROS = 2**53 - 1
@@ -99,6 +104,17 @@ def cap_micros(value) -> int | None:
 
 def ledger_ident(organization_id: str, key: str, month: str) -> str:
     return str(uuid5(NAMESPACE_URL, f"tenant-budget:{organization_id}/{key}/{month}"))
+
+
+def entry_key(specimen_id, run_id, step, attempt, generation=0) -> str:
+    """The ledger entry of one attempt's hold: the program ledger's key
+    ``[specimen, run, step, attempt]``, or, after ``generation`` holds of the
+    attempt were released (release_unsent), ``[..., attempt, generation]``.
+    Raises LegacyLedgerUnavailable."""
+    key = ProgramLedger._ordinary_key(specimen_id, run_id, step, attempt)
+    if type(generation) is not int or generation < 0:
+        raise LegacyLedgerUnavailable(UNAVAILABLE)
+    return key if generation == 0 else canonical_json([specimen_id, run_id, step, attempt, generation])
 
 
 def read_caps(repository, scope):
@@ -203,23 +219,33 @@ class TenantLedger(ArchivedEffects):
                 "collection_key": self.key, "month": self.month, "reserved_total_micros": total,
                 "last": last, "ordinary_effects": entries}, current["revision"])
 
+    @staticmethod
+    def _replayable(previous, micros) -> bool:
+        """Whether an entry the attempt already has is its hold of ``micros``.
+        A settled entry is never reserved again: its attempt was made, or given
+        up unsent and settled at zero (release_unsent), and replaying it would
+        hold nothing for a new call."""
+        return (isinstance(previous, dict) and previous.get("reserved_micros") == micros
+            and previous.get("settled_micros") is None)
+
     def admits(self, cap, micros, key) -> str | None:
-        """What ``reserve`` would answer for ``key``, read only."""
+        """What ``reserve`` would answer for ``key``, read only: an attempt that
+        already holds here is not counted twice."""
         try:
             current = self.read()
             previous = self.effect(ORDINARY, key, current)
         except (Conflict, LegacyLedgerUnavailable, TypeError, ValueError, KeyError):
             return UNAVAILABLE
         if previous is not None:
-            if not isinstance(previous, dict) or previous.get("reserved_micros") != micros:
+            if not self._replayable(previous, micros):
                 return UNAVAILABLE
             return EXHAUSTED if current["reserved_total_micros"] > cap else None
         return EXHAUSTED if current["reserved_total_micros"] + micros > cap else None
 
-    def reserve(self, cap, micros, *, specimen_id, run_id, step, attempt) -> Reservation:
+    def reserve(self, cap, micros, *, specimen_id, run_id, step, attempt, generation=0) -> Reservation:
         """One step/attempt is reserved at most once, by envelope."""
         try:
-            key = ProgramLedger._ordinary_key(specimen_id, run_id, step, attempt)
+            key = entry_key(specimen_id, run_id, step, attempt, generation)
             if (type(micros) is not int or micros <= 0 or type(cap) is not int
                     or not 0 <= cap <= MAX_CAP_MICROS):
                 raise LegacyLedgerUnavailable(UNAVAILABLE)
@@ -234,7 +260,7 @@ class TenantLedger(ArchivedEffects):
             except (Conflict, LegacyLedgerUnavailable, TypeError, ValueError, KeyError):
                 return Reservation(UNAVAILABLE, None, False)
             if previous is not None:
-                if not isinstance(previous, dict) or previous.get("reserved_micros") != micros:
+                if not self._replayable(previous, micros):
                     return Reservation(UNAVAILABLE, None, False)
                 issue = EXHAUSTED if current["reserved_total_micros"] > cap else None
                 return Reservation(issue, self._position(current, cap), True)
@@ -242,6 +268,7 @@ class TenantLedger(ArchivedEffects):
             if total > cap:
                 return Reservation(EXHAUSTED, {**self._position(current, cap), "requested_micros": micros}, False)
             last = {"specimen_id": specimen_id, "run_id": run_id, "step": step, "attempt": attempt,
+                **({"generation": generation} if generation else {}),
                 "micros": micros, "monthly_cap_micros": cap, "at": self.clock().isoformat()}
             entries[key] = {**envelope, "settled_micros": None}
             try:
@@ -253,12 +280,12 @@ class TenantLedger(ArchivedEffects):
                 "revision": stored["revision"]}, cap), True)
         return Reservation(UNAVAILABLE, None, False)
 
-    def settle(self, reserved, spent, *, specimen_id, run_id, step, attempt) -> dict | None:
+    def settle(self, reserved, spent, *, specimen_id, run_id, step, attempt, generation=0) -> dict | None:
         """Settle only this attempt's own reservation, exactly once. A missing
         or different envelope, or a ledger that cannot be read, keeps the hold
         and returns None."""
         try:
-            key = ProgramLedger._ordinary_key(specimen_id, run_id, step, attempt)
+            key = entry_key(specimen_id, run_id, step, attempt, generation)
             if any(type(value) is not int or value < 0 for value in (reserved, spent)):
                 raise LegacyLedgerUnavailable(UNAVAILABLE)
         except LegacyLedgerUnavailable:
@@ -278,6 +305,7 @@ class TenantLedger(ArchivedEffects):
             if total < 0:
                 return None
             last = {"specimen_id": specimen_id, "run_id": run_id, "step": step, "attempt": attempt,
+                **({"generation": generation} if generation else {}),
                 "reserved_micros": reserved, "settled_micros": spent, "at": self.clock().isoformat()}
             entries[key] = {**previous, "settled_micros": spent}
             try:
@@ -315,21 +343,81 @@ def _records(run) -> dict:
     return records
 
 
+def _whole(value):
+    """A record's whole number as an int: SQL Connect's Struct transport gives
+    back a run stored inline (under active_graph.GRAPH_THRESHOLD) with its
+    numbers as doubles, as lane_worker.stored_integer says of documents."""
+    if type(value) is float and math.isfinite(value) and value.is_integer() and abs(value) < 2**53:
+        return int(value)
+    return value
+
+
 def _record(run, step, attempt) -> dict | None:
     record = _records(run).get(f"{step}:{attempt}")
     if record is None:
         return None
+    if isinstance(record, dict):
+        record = {**record, **{name: _whole(record[name]) for name in ("micros", "generation") if name in record}}
     if (not isinstance(record, dict) or type(record.get("month")) is not str
             or not isinstance(record.get("keys"), list)
-            or type(record.get("ledger_collection")) is not str):
+            or type(record.get("ledger_collection")) is not str
+            or type(record.get("generation", 0)) is not int or record.get("generation", 0) < 0
+            or record.get("released", True) is not True):
         raise TenantBudgetUnavailable()
     return record
+
+
+def _hold(run, step, attempt) -> tuple[dict | None, int]:
+    """(the record of the hold the attempt has, or None; the generation of the
+    ledger entry it holds under, or reserves under next). A hold released
+    (release_unsent) is no hold: the attempt's next one is the next generation's
+    entry, so a released entry is never replayed. Raises TenantBudgetUnavailable."""
+    record = _record(run, step, attempt)
+    if record is None:
+        return None, 0
+    generation = record.get("generation", 0)
+    if record.get("released"):
+        return None, generation + 1
+    return record, generation
 
 
 def _ledgers(repository, principal, specimen, caps, month, clock, record=None):
     scope = (ledger_scope(principal, specimen) if record is None else
         Scope(organization_id=principal.scope.organization_id, collection_id=record["ledger_collection"]))
     return [(TenantLedger(repository, scope, key, month, clock=clock), cap) for key, cap in caps]
+
+
+@dataclass(frozen=True)
+class _Attempt:
+    """Where the step's next attempt reserves, or replays the hold it has."""
+
+    number: int
+    record: dict | None  # The hold the attempt has, from the run's record.
+    generation: int
+    entry: str  # Its entry on every ledger.
+    month: str
+    ledgers: list  # [(TenantLedger, cap)] of every cap that applies.
+
+
+def _next_attempt(repository, principal, specimen, step, clock) -> _Attempt | None:
+    """The step's next attempt, or None when no cap applies (nothing more is
+    read). An attempt that has a hold replays it in the month and the ledger
+    collection it reserved in; any other reserves this month, beside the
+    program's ledger. The one rule of reserve_step and admits. Raises
+    TenantBudgetUnavailable."""
+    run = specimen.run
+    caps = applicable(read_caps(repository, principal.scope), principal.scope.collection_id)
+    if not caps:
+        return None
+    number = run.attempts.get(step, 0) + 1
+    record, generation = _hold(run, step, number)
+    try:
+        entry = entry_key(specimen.id, run.id, step, number, generation)
+    except LegacyLedgerUnavailable:
+        raise TenantBudgetUnavailable() from None
+    month = record["month"] if record else month_of(clock())
+    return _Attempt(number, record, generation, entry, month,
+        _ledgers(repository, principal, specimen, caps, month, clock, record))
 
 
 def _program_admits(repository, principal, specimen, step, cost, attempt, clock) -> str | None:
@@ -368,33 +456,28 @@ def reserve_step(repository, principal, specimen, step, cost, clock=None) -> str
     if not cost:
         return None
     clock = clock or utc_now
-    attempt = run.attempts.get(step, 0) + 1
     try:
-        caps = applicable(read_caps(repository, principal.scope), principal.scope.collection_id)
-        if not caps:
-            return None
-        record = _record(run, step, attempt)
+        attempt = _next_attempt(repository, principal, specimen, step, clock)
     except TenantBudgetUnavailable:
         return UNAVAILABLE
-    month = record["month"] if record else month_of(clock())
-    entry = ProgramLedger._ordinary_key(specimen.id, run.id, step, attempt)
-    ledgers = _ledgers(repository, principal, specimen, caps, month, clock, record)
-    for ledger, cap in ledgers:
-        issue = ledger.admits(cap, cost, entry)
+    if attempt is None:
+        return None
+    for ledger, cap in attempt.ledgers:
+        issue = ledger.admits(cap, cost, attempt.entry)
         if issue:
             return issue
-    issue = _program_admits(repository, principal, specimen, step, cost, attempt, clock)
+    issue = _program_admits(repository, principal, specimen, step, cost, attempt.number, clock)
     if issue:
         return issue
-    keys = list(record["keys"]) if record else []
-    for ledger, cap in ledgers:
+    keys = list(attempt.record["keys"]) if attempt.record else []
+    for ledger, cap in attempt.ledgers:
         reservation = ledger.reserve(cap, cost, specimen_id=specimen.id, run_id=run.id,
-            step=step, attempt=attempt)
+            step=step, attempt=attempt.number, generation=attempt.generation)
         if reservation.held and ledger.key not in keys:
             keys.append(ledger.key)
-            run.dependencies[RECORD] = {**_records(run), f"{step}:{attempt}": {
-                "month": month, "keys": keys, "ledger_collection": ledger.scope.collection_id,
-                "micros": cost}}
+            run.dependencies[RECORD] = {**_records(run), f"{step}:{attempt.number}": {
+                "month": attempt.month, "keys": keys, "ledger_collection": ledger.scope.collection_id,
+                "micros": cost, **({"generation": attempt.generation} if attempt.generation else {})}}
         if reservation.issue:
             return reservation.issue
     return None
@@ -405,7 +488,7 @@ def settle_step(repository, principal, specimen, step, attempt, reserved, spent,
     reserved in (lane_costs.settle_step). Nothing when it reserved in none; a
     ledger that cannot be read or settled keeps its hold."""
     try:
-        record = _record(specimen.run, step, attempt)
+        record, generation = _hold(specimen.run, step, attempt)
     except TenantBudgetUnavailable:
         return
     if record is None:
@@ -415,47 +498,47 @@ def settle_step(repository, principal, specimen, step, attempt, reserved, spent,
     for key in record["keys"]:
         TenantLedger(repository, scope, key, record["month"], clock=clock).settle(
             reserved, spent, specimen_id=specimen.id, run_id=specimen.run.id, step=step,
-            attempt=attempt)
+            attempt=attempt, generation=generation)
 
 
 def settled_micros(repository, principal, specimen, step, attempt, reserved) -> int | None:
     """What every tenant ledger the attempt reserved in settled it at, when they
     agree; None otherwise (Workflow._ledger_settlement)."""
     try:
-        record = _record(specimen.run, step, attempt)
-    except TenantBudgetUnavailable:
+        record, generation = _hold(specimen.run, step, attempt)
+        key = entry_key(specimen.id, specimen.run.id, step, attempt, generation)
+    except (TenantBudgetUnavailable, LegacyLedgerUnavailable):
         return None
     if not record or not record["keys"]:
         return None
     scope = Scope(organization_id=principal.scope.organization_id,
         collection_id=record["ledger_collection"])
-    key = ProgramLedger._ordinary_key(specimen.id, specimen.run.id, step, attempt)
     amounts = {TenantLedger(repository, scope, name, record["month"]).settled(key, reserved)
         for name in record["keys"]}
     return amounts.pop() if len(amounts) == 1 and None not in amounts else None
 
 
-def admits(repository, principal, specimen, cost, clock=None) -> str | None:
-    """What ``reserve_step`` would block a step of ``cost`` with on a tenant
-    ledger, read only (lane_allowance.admits, for workflow.RESEARCH_LIMITS)."""
+def admits(repository, principal, specimen, step, cost, clock=None) -> str | None:
+    """What ``reserve_step`` would block the step's next attempt of ``cost``
+    with on a tenant ledger, read only (lane_allowance.admits, for
+    workflow.RESEARCH_LIMITS). By reserve_step's own rule: an attempt that
+    already holds is checked in the month and the ledgers it holds in, and its
+    hold is not counted twice."""
     if not cost:
         return None
     clock = clock or utc_now
     try:
-        caps = applicable(read_caps(repository, principal.scope), principal.scope.collection_id)
+        attempt = _next_attempt(repository, principal, specimen, step, clock)
     except TenantBudgetUnavailable:
         return UNAVAILABLE
-    if not caps:
+    if attempt is None:
         return None
     if type(cost) is not int or cost <= 0:
         return UNAVAILABLE
-    for ledger, cap in _ledgers(repository, principal, specimen, caps, month_of(clock()), clock):
-        try:
-            total = ledger.read()["reserved_total_micros"]
-        except (Conflict, TypeError, ValueError, KeyError):
-            return UNAVAILABLE
-        if total + cost > cap:
-            return EXHAUSTED
+    for ledger, cap in attempt.ledgers:
+        issue = ledger.admits(cap, cost, attempt.entry)
+        if issue:
+            return issue
     return None
 
 
@@ -466,13 +549,62 @@ def recorded_micros(run, step) -> int | None:
     come from a block saved after its reservation (a refusal later in the chain,
     the program's allowance among them). It reserves the same amount again, so
     every hold it made replays instead of differing from its envelope
-    (Workflow._step, FieldResearchStep.reservation). Reads nothing but the run."""
+    (Workflow._step, FieldResearchStep.reservation). A hold released since
+    (release_unsent) is not reserved again. Reads nothing but the run."""
     try:
-        record = _record(run, step, run.attempts.get(step, 0) + 1)
+        record, _ = _hold(run, step, run.attempts.get(step, 0) + 1)
     except TenantBudgetUnavailable:
         return None  # reserve_step refuses a malformed record itself.
     micros = None if record is None else record.get("micros")
     return micros if type(micros) is int and micros > 0 else None
+
+
+def release_unsent(run, step) -> dict | None:
+    """Mark the holds of the step's next attempt released on the run, before
+    it is saved giving that attempt up unsent (Workflow._give_up_field_research).
+    Returns what settle_released settles once that save is made; None when the
+    attempt holds nothing by the run's record, or the record cannot be read
+    (the holds then stay). Reads and writes nothing but the run.
+
+    Such an attempt was never sent (recorded_micros): the stored run records it
+    and its attempt number was never saved. Marked released, the attempt's
+    next reservation, if it is queued again, holds under the next generation's
+    entry, so the released entry is never replayed for a call."""
+    attempt = run.attempts.get(step, 0) + 1
+    try:
+        record, _ = _hold(run, step, attempt)
+    except TenantBudgetUnavailable:
+        return None
+    micros = None if record is None else record.get("micros")
+    if record is None or not record["keys"] or type(micros) is not int or micros <= 0:
+        return None
+    released = {**record, "released": True}
+    run.dependencies[RECORD] = {**_records(run), f"{step}:{attempt}": released}
+    return {"step": step, "attempt": attempt, "record": released}
+
+
+def settle_released(repository, principal, saved, release, clock=None) -> None:
+    """Settle at zero, on each ledger, the holds ``release_unsent`` marked
+    released, once the run that marks them is saved (``saved``, as the save
+    returned it): a known zero, as for a call refused before any work. A save
+    that kept another state (the active graph's limit, save_recoverably)
+    settles nothing. Idempotent: settling again finds each entry settled at
+    zero. A ledger that cannot be read or settled keeps its hold."""
+    if release is None:
+        return
+    step, attempt, record = release["step"], release["attempt"], release["record"]
+    try:
+        if (saved.run.attempts.get(step, 0) + 1 != attempt
+                or _records(saved.run).get(f"{step}:{attempt}") != record):
+            return
+    except TenantBudgetUnavailable:
+        return
+    scope = Scope(organization_id=principal.scope.organization_id,
+        collection_id=record["ledger_collection"])
+    for key in record["keys"]:
+        TenantLedger(repository, scope, key, record["month"], clock=clock).settle(
+            record["micros"], 0, specimen_id=saved.id, run_id=saved.run.id, step=step,
+            attempt=attempt, generation=record.get("generation", 0))
 
 
 def room(repository, principal, specimen, step, clock=None) -> tuple[int | None, int | None]:
@@ -487,7 +619,12 @@ def room(repository, principal, specimen, step, clock=None) -> tuple[int | None,
     if not caps:
         return None, None
     run = specimen.run
-    key = ProgramLedger._ordinary_key(specimen.id, run.id, step, run.attempts.get(step, 0) + 1)
+    attempt = run.attempts.get(step, 0) + 1
+    _, generation = _hold(run, step, attempt)
+    try:
+        key = entry_key(specimen.id, run.id, step, attempt, generation)
+    except LegacyLedgerUnavailable:
+        raise TenantBudgetUnavailable() from None
     left, held = [], set()
     for ledger, cap in _ledgers(repository, principal, specimen, caps, month_of(clock()), clock):
         try:
