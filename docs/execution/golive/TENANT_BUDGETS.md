@@ -62,14 +62,18 @@ LANE.md T2b and T2c):
   retried on a fresh read up to `lane_allowance.ATTEMPTS` (five) times.
 - One entry per step attempt, keyed `[specimen, run, step, attempt]`: replaying
   a reservation or a settlement changes nothing, and a different amount for the
-  same attempt is refused.
+  same attempt is refused. So is a reservation of an entry already settled
+  (`tenant_budget_unavailable`): replayed, it would hold nothing for a new
+  call. An attempt whose hold was released (below) holds next under
+  `[specimen, run, step, attempt, generation]`, the generation counting its
+  released holds.
 - A reservation the month's cap cannot cover is refused; one that fills the cap
   exactly is admitted.
 - A step settles to what its calls cost once every call reported its usage, a
   billed amount, or was refused before any work (an HTTP 429 to its first
   request settles to zero). Unknown spend stays held in full. Spend above the
   reservation counts in full. Nothing is released except by a settlement to
-  less.
+  less; an attempt given up unsent settles its holds at zero (below).
 - The cap is passed in at each reservation and is not part of an entry: a cap
   changed while an attempt is held never makes that hold unreadable.
 
@@ -78,12 +82,16 @@ LANE.md T2b and T2c):
 The UTC calendar month of the attempt's first reservation. The run records it,
 with the ledgers it reserved in and the amount, in
 `run.dependencies["tenant_budget"]`
-(`"<step>:<attempt>": {"month", "keys", "ledger_collection", "micros"}`).
-Settlement reads that record, never the clock or the caps: a step reserved in
-October and settled in November settles October's ledger, and a cap removed or
-unreadable since does not keep its hold. Like `ordinary_cost_settlements`, the record
-changes `run.dependencies` after the append-once pipeline-run row may have been
-written (HARNESS.md, #146); with no cap set nothing is recorded.
+(`"<step>:<attempt>": {"month", "keys", "ledger_collection", "micros"}`, with
+`"generation"` when it is not 0 and `"released": true` once the hold is
+released). A run stored inline (under `active_graph.GRAPH_THRESHOLD`) comes
+back from SQL Connect's Struct transport with `micros` and `generation` as
+doubles; a whole double is read as that integer. Settlement reads that record,
+never the clock or the caps: a step reserved in October and settled in
+November settles October's ledger, and a cap removed or unreadable since does
+not keep its hold. Like `ordinary_cost_settlements`, the record changes
+`run.dependencies` after the append-once pipeline-run row may have been written
+(HARNESS.md, #146); with no cap set nothing is recorded.
 
 ## The order at a paid step
 
@@ -117,6 +125,35 @@ a later UTC month the retry reserves on the new month's ledger, and the old
 month keeps that hold, counted and never settled: an over-count, never an
 under-count.
 
+## An attempt given up unsent after its holds
+
+A held attempt refused later in the chain may, on its retry, be given up
+unsent: field research whose run limits other than money leave it no room
+(below). The run proves that attempt was never sent: it records the attempt's
+holds, and the attempt's number was never saved, while an attempt's number is
+saved with its intent before any call (`tenant_budget.recorded_micros`). The
+give-up marks the record `"released": true` (`tenant_budget.release_unsent`).
+Once the run is saved with that mark, each ledger the record names settles the
+attempt at zero, a known zero as for a call refused before any work
+(`tenant_budget.settle_released`); settling again changes nothing. A save that
+keeps another state (the active graph's limit, `save_recoverably`) settles
+nothing, and a ledger that cannot be read or settled keeps the hold, an
+over-count; so does a worker that stops between that save and the settlement,
+since nothing settles a released record later.
+
+These stay held as before: an attempt whose number was saved, a hold the run
+has no record of (a worker that stopped before saving), a record that cannot
+be read, a field research give-up that the step's rules turn into a block
+(`FieldResearchStep.give_up` raising), and the first pass's and the
+extraction's unsent give-ups, which release nothing.
+
+A give-up does not advance the attempt's number, and field research can be
+queued again on the same run (`requeue_completed_field_research`, for one).
+That attempt's next reservation is a fresh hold under the next generation's
+entry, so the released entry is never replayed for a call. Tested for field
+research held, refused by the program's allowance, given up on retry, and
+queued again.
+
 ## Failing closed
 
 - Caps the connector refuses, or answers it cannot trust (above), block the run
@@ -146,7 +183,11 @@ remainder. When that is less than one expert request it keeps the headroom, so
 the reservation blocks the record. An attempt that already holds (above)
 reserves that amount instead. A retry whose run limits other than money
 leave no room is given up on unsent unless a cap would refuse it, or cannot be
-read: then the money block is kept, as for the allowance.
+read: then the money block is kept, as for the allowance. The caps' answer
+comes from `tenant_budget.admits`, by `reserve_step`'s own rule: an attempt that
+already holds is checked in the month and the ledgers it holds in, and its
+hold counts once, so it is given up (releasing that hold, above) rather than
+blocked as `tenant_budget_exhausted` by its own hold.
 
 The research broker of `SPECIMEN_RESEARCH_HARNESS=on`
 (`research_harness/program_budget.py`, not used in production, which runs
@@ -180,11 +221,17 @@ every cap that is set:
 {"organization_id": "...", "caps": [{"collection_id": null, "monthly_cap_micros": 5000000}]}
 ```
 
-Any other member, an admin row that is not active, or a cap the connector
-refuses for the caller's membership gets 403 `access_denied`; a body outside
-the contract, or a collection that is not the organization's, gets 422
-`invalid_input`; a deployment whose store keeps no caps gets 503
-`cost_meter_unavailable`, and caps that cannot be read 503 with the message
+The route acts as the caller's first active admin membership in the
+organization, by collection id. Any other member, or an admin row that is not
+active, gets 403 `access_denied`; a body outside the contract, or a collection
+that is not the organization's, gets 422 `invalid_input`; a deployment whose
+store keeps no caps gets 503 `cost_meter_unavailable`. Caps whose answer
+cannot be trusted (a malformed collection id, a value that is not a cap) get
+503 with the message `tenant_budget_unavailable`. A read or a write the store
+refuses (a `Conflict`, which is also how `SqlConnectRepository.tenant_caps`
+reports an answer that is not a list or is too long) is checked against the
+caller's memberships, read again: 403 `access_denied` when they no longer hold
+an active admin row in that collection, otherwise 503 with the message
 `tenant_budget_unavailable`. A cap applies from the next reservation.
 
 ## In the cost report
@@ -197,12 +244,12 @@ Spent is that month's paid-call cost entries, settled and held, and a
 collection's counts every descendant's; the shared-cost allocation rows
 (COST_METER.md, "Shared Google costs"), credits among them, are no run's
 reservation and are left out. It can trail the worker's ledger by reservations in
-flight, which the ledger holds before a cost entry exists. The caps are read as
-one of the caller's administrator memberships in the organization; when the
-range does not include the current month, that month's totals are read once
-more, only if a cap is set. `caps_status` is `"ok"`, or `"unavailable"` when
-the caps (or that month's totals) cannot be read: the report is then returned
-whole with every cap null.
+flight, which the ledger holds before a cost entry exists. The caps are read
+as the membership the PUT route acts as, the caller's first active admin
+membership in the organization; when the range does not include the current
+month, that month's totals are read once more, only if a cap is set.
+`caps_status` is `"ok"`, or `"unavailable"` when the caps (or that month's
+totals) cannot be read: the report is then returned whole with every cap null.
 
 ## Not in this change
 

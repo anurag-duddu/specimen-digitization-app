@@ -61,6 +61,20 @@ def test_each_cap_is_reported_with_the_current_month_s_spend_rolled_up_the_tree(
     repository.tenant_caps.assert_called_once_with(Scope(organization_id=ORG, collection_id=BEETLES))
 
 
+def test_the_caps_are_read_as_an_active_administrator_membership():
+    # An admin row that is not active sorts first (Insects before Beetles): the
+    # caps are read as the active one, as PUT .../costs/caps sets them.
+    repository = capped([(BEETLES, 1_000)])
+    http, _ = client([dict(membership("admin"), active=False), membership("admin", collection=BEETLES)],
+        repository=repository)
+    with http:
+        response = http.get(URL, params={"from": "2026-10", "to": "2026-10"}, headers=HEADERS)
+    assert response.status_code == 200, response.text
+    assert response.json()["caps_status"] == "ok"
+    assert caps_of(response.json())[1][BEETLES] == position(1_000, 550)
+    repository.tenant_caps.assert_called_once_with(Scope(organization_id=ORG, collection_id=BEETLES))
+
+
 def test_a_range_without_the_current_month_reads_that_month_once_more():
     repository = capped([(BEETLES, 1_000)])
     september = [dict(group, month="2026-09") for group in GROUPS]

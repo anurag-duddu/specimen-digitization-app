@@ -697,7 +697,7 @@ class Workflow:
             from .tenant_budget import admits as tenant_budget_admits
 
             money_issue = money_issue or (
-                tenant_budget_admits(self.repository, principal, specimen, cost, self.clock)
+                tenant_budget_admits(self.repository, principal, specimen, step, cost, self.clock)
                 or admits(self.repository, principal, specimen, cost, self.clock)
                 if billable and not run.profile.synthetic
                 else None
@@ -1708,10 +1708,18 @@ class Workflow:
         attempt. Nothing is reserved, attempted or paid; earlier attempts keep
         what they hold and the fields they settled. The step's rules finalize
         the record, the fields it could not check unresolved for a person
-        (``FieldResearchStep.give_up``), and it goes on to review."""
+        (``FieldResearchStep.give_up``), and it goes on to review.
+
+        This attempt itself may hold on a monthly cap's ledger: a refusal
+        later in the chain blocked it after its holds, and the run records
+        them (tenant_budget.recorded_micros). It was never sent, so once the
+        give-up is saved they settle at zero (tenant_budget.release_unsent,
+        TENANT_BUDGETS.md)."""
         from .active_graph import save_recoverably
+        from .tenant_budget import release_unsent, settle_released
 
         run = specimen.run
+        release = None
         try:
             self.field_research.give_up(self, principal, specimen, code)
         except OperationalBlock as error:
@@ -1723,6 +1731,7 @@ class Workflow:
             run.dead_letter = False
             run.lease_until = None
             end_step(run, FIELD_RESEARCH)
+            release = release_unsent(run, FIELD_RESEARCH)
         _log_step_failure(
             run, FIELD_RESEARCH, "field_research_unaffordable", code=code, stage=run.stage
         )
@@ -1734,7 +1743,7 @@ class Workflow:
                 after={"stage": run.stage, "blocker": run.blocker},
             )
         )
-        return save_recoverably(
+        saved = save_recoverably(
             self.repository,
             principal,
             specimen,
@@ -1742,6 +1751,8 @@ class Workflow:
             f"field-research-unaffordable:{revision}",
             digest({"field_research_unaffordable": code, "run": run.id}),
         )
+        settle_released(self.repository, principal, saved, release, self.clock)
+        return saved
 
     def recover_blocked(self, principal: Principal, specimen_id: str) -> bool:
         """Make a blocked ordinary first pass or extraction due again; whether it did.

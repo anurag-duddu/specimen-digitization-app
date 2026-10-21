@@ -15,7 +15,7 @@ from specimen_digitization.application import lane_allowance, tenant_budget
 from specimen_digitization.application.tenant_budget import (
     EXHAUSTED, ORGANIZATION, RECORD, Reservation, TenantLedger, month_of,
 )
-from specimen_digitization.application.workflow import FIELD_RESEARCH
+from specimen_digitization.application.workflow import FIELD_RESEARCH, requeue_completed_field_research
 
 from test_step import COLLECTION, ONE_REQUEST, ORG, Scripted, build_rig, mounted, seed_program
 
@@ -87,10 +87,14 @@ def test_unreadable_caps_keep_the_headroom_and_block_at_the_reservation(rig):
 
 # ---- an attempt refused after its hold is retried with that hold -----------------
 
-def retry(rig):
-    """What a person's retry does to a blocked run (api.py, action "retry")."""
+def retry(rig, steps=None):
+    """What a person's retry does to a blocked run (api.py, action "retry").
+    ``steps`` sets the run's steps used, so the run's own step limit (a limit
+    other than money, workflow.RESEARCH_LIMITS) can leave the retry no room."""
     specimen = rig.repository.get(rig.principal.scope, rig.specimen.id)
     specimen.run.blocker, specimen.run.disposition, specimen.run.stage = None, None, "plan"
+    if steps is not None:
+        specimen.run.usage.steps = steps
     rig.repository.save(rig.principal, specimen, specimen.version, "retry", "retry")
 
 
@@ -158,6 +162,50 @@ def test_an_attempt_a_second_cap_refuses_after_its_first_hold_runs_on_retry(rig,
     assert meter.cap_micros == 40_000
     for key in (ORGANIZATION, COLLECTION):
         assert month_ledger(rig, key).read()["reserved_total_micros"] == meter.spent_micros
+
+
+def test_a_held_attempt_given_up_unsent_on_retry_settles_its_hold_at_zero(rig, monkeypatch):
+    # The attempt held 40,000 of a 60,000 cap and the program's allowance
+    # refused it once (the race). By the person's retry the run's own step
+    # limit leaves it no room. Its own hold is not counted twice, so the retry
+    # is given up unsent rather than blocked over the cap; never sent, the
+    # hold settles at zero.
+    program = seed_program(rig, 5_000_000 - 40_000)
+    cap(rig, 60_000)
+    refused_once(monkeypatch, lane_allowance, "reserve_step", lambda *args: lane_allowance.EXHAUSTED)
+    resolver = Scripted()
+    state = mounted(rig, resolver)
+    blocked = rig.workflow.step(rig.principal, rig.specimen.id).run
+    assert (blocked.stage, blocked.blocker) == ("processing_blocked", "program_allowance_exhausted")
+    assert month_ledger(rig).read()["reserved_total_micros"] == 40_000
+    used = blocked.usage.steps
+    retry(rig, steps=blocked.profile.execution.max_steps)
+    done = rig.workflow.step(rig.principal, rig.specimen.id).run
+    assert (done.stage, done.blocker, done.disposition) == ("finalized", None, Disposition.REVIEW)
+    assert resolver.calls == [] and state.meters == [] and done.attempts.get(FIELD_RESEARCH, 0) == 0
+    assert done.dependencies[RECORD][f"{FIELD_RESEARCH}:1"]["released"] is True
+    current = month_ledger(rig).read()
+    assert current["reserved_total_micros"] == 0
+    assert [entry["settled_micros"] for entry in current["ordinary_effects"].values()] == [0]
+    assert program.read()["reserved_total_micros"] == 5_000_000 - 40_000  # It never held there.
+
+    # Queued again on the same run (a person's retry of the reviewed run, as
+    # api.py's "retry" action does it), with room under its limits: the same
+    # attempt number holds afresh, under the next generation's entry, and its
+    # spend counts.
+    specimen = rig.repository.get(rig.principal.scope, rig.specimen.id)
+    assert requeue_completed_field_research(specimen.run)
+    specimen.run.blocker, specimen.run.disposition, specimen.run.stage = None, None, "plan"
+    specimen.run.usage.steps = used
+    rig.repository.save(rig.principal, specimen, specimen.version, "queued-again", "queued-again")
+    again = rig.workflow.step(rig.principal, rig.specimen.id).run
+    assert again.blocker is None and again.attempts[FIELD_RESEARCH] == 1 and resolver.calls
+    [meter] = state.meters
+    assert again.dependencies[RECORD][f"{FIELD_RESEARCH}:1"]["generation"] == 1
+    current = month_ledger(rig).read()
+    assert current["reserved_total_micros"] == meter.spent_micros > 0
+    assert sorted(entry["settled_micros"] for entry in current["ordinary_effects"].values()) == [
+        0, meter.spent_micros]
 
 
 def test_a_hold_whose_run_was_never_saved_is_found_on_the_ledger_and_replays(rig):
