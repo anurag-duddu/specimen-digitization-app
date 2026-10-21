@@ -25,6 +25,9 @@ def cost_map():
 
 def mapped_pilot(tmp_path, monkeypatch, *, limit=1000):
     repo, principal, specimen, launch, workflow, calls = pilot(tmp_path, monkeypatch)
+    # These direct local effects test durable monetary accounting, not host
+    # scheduling. Deadline behavior is exercised below with an advancing clock.
+    workflow.monotonic = lambda: 0.0
     launch = PilotLaunch.model_validate(
         dict(launch.model_dump(), stage_cost_reservations=cost_map())
     )
@@ -137,6 +140,41 @@ def test_unknown_outcome_keeps_reservation_and_never_replays_after_restart(
     result = run_to_block(workflow, principal, specimen.id)
     assert seen == [True]
     assert result.run.usage.reserved_cost_micros == 76
+
+
+def test_late_fixture_reader_keeps_reservation_and_never_replays_after_restart(
+    tmp_path, monkeypatch
+):
+    repo, principal, specimen, launch, workflow, _ = mapped_pilot(tmp_path, monkeypatch)
+    clock = [0.0]
+    workflow.monotonic = lambda: clock[0]
+    prepare_other_specimens(principal, specimen.id, workflow)
+    seen = []
+    original_read = workflow.adapters.transcribe
+
+    def late_read(item, region, route):
+        seen.append(route)
+        result = original_read(item, region, route)
+        clock[0] += item.run.profile.execution.external_timeout_seconds + 1
+        return result
+
+    workflow.adapters.transcribe = late_read
+    result = run_to_block(workflow, principal, specimen.id)
+    assert result.run.profile.execution.external_timeout_seconds == 1
+    assert result.run.blocker == "external_outcome_unknown"
+    assert result.run.reasons == ["external_stage_deadline_exceeded"]
+    assert result.run.usage.reserved_cost_micros == 76
+    assert not result.run.observations
+    assert result.run.disposition is None
+
+    workflow.repository = SQLiteRepository(repo.path)
+    workflow.admission = PilotAdmission(workflow.repository, launch)
+    result = run_to_block(workflow, principal, specimen.id)
+    assert seen == ["handwriting-qwen"]
+    assert result.run.blocker == "external_outcome_unknown"
+    assert result.run.reasons == ["external_stage_deadline_exceeded"]
+    assert result.run.usage.reserved_cost_micros == 76
+    assert not result.run.observations
 
 
 @pytest.mark.parametrize("change", ["missing", "lower", "extra"])
