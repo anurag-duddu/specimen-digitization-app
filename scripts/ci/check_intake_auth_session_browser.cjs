@@ -148,6 +148,23 @@ async function serve(script) {
     await until(() => client.evaluate(app,
       'typeof window.intakeAuthBrowserState === "function"'), 'compiled Dart entry point');
     const state = () => client.evaluate(app, 'JSON.parse(window.intakeAuthBrowserState())');
+    // Observe only listeners installed after the fixture's barrier listener.
+    // The real adapter must remove its message listener after every outcome.
+    await client.evaluate(app, `(() => {
+      const active = new Set();
+      const add = window.addEventListener.bind(window);
+      const remove = window.removeEventListener.bind(window);
+      window.addEventListener = (type, listener, options) => {
+        if (type === 'message') active.add(listener);
+        return add(type, listener, options);
+      };
+      window.removeEventListener = (type, listener, options) => {
+        if (type === 'message') active.delete(listener);
+        return remove(type, listener, options);
+      };
+      window.intakeAuthBrowserListenerCount = () => active.size;
+    })()`);
+    const listenerCount = () => client.evaluate(app, 'window.intakeAuthBrowserListenerCount()');
     const url = new URL('/authorize', callback.origin);
     url.searchParams.set('state', 'synthetic-state');
     url.searchParams.set('redirect_uri', `${callback.origin}/callback`);
@@ -162,11 +179,14 @@ async function serve(script) {
     true, 'The popup must have an actual cross-origin WindowProxy');
 
     let barrier = 0;
-    async function rejectedMessage(sessionId, message, label) {
+    async function rejectedMessage(sessionId, message, label, advanceClock = false) {
       const sequence = ++barrier;
       await client.evaluate(sessionId,
         `opener.postMessage(${JSON.stringify(message)}, ${JSON.stringify(main.origin)});` +
         `opener.postMessage({fixtureBarrier:${sequence}}, ${JSON.stringify(main.origin)});`);
+      if (advanceClock) {
+        await client.send('Emulation.setVirtualTimePolicy', {policy: 'advance', budget: 100}, app);
+      }
       await until(async () => (await state()).barrier === sequence, `${label} event barrier`);
       assert.equal((await state()).status, 'pending', `${label} must be ignored`);
       assert.deepEqual(client.exceptions, [], 'Compiled callback guard must not throw');
@@ -219,11 +239,63 @@ async function serve(script) {
     assert.deepEqual((await state()).response, accepted);
     await until(async () => !(await client.targets()).some(target => target.targetId === defaultPopup.targetId),
       'default popup cleanup');
+    assert.equal(await listenerCount(), 0, 'Successful callbacks must remove their listeners');
+
+    // Advance Chrome's test clock through the real ten-minute production limit;
+    // no shorter timeout or clock seam is added to the production adapter.
+    await client.send('Emulation.setVirtualTimePolicy', {policy: 'pause'}, app);
+    const expiringUrl = new URL(url);
+    expiringUrl.searchParams.set('state', 'synthetic-expired-state');
+    const beforeExpiry = new Set((await client.targets()).map(target => target.targetId));
+    const startedAt = await client.evaluate(app, 'Date.now()');
+    await client.evaluate(app,
+      `window.intakeAuthBrowserStart(${JSON.stringify(expiringUrl.href)}, true)`, true);
+    const expiredPopup = await until(async () => (await client.targets()).find(target =>
+      !beforeExpiry.has(target.targetId) && target.url === expiringUrl.href), 'expiring OAuth popup');
+    assert.equal(await listenerCount(), 1);
+    await client.send('Emulation.setVirtualTimePolicy', {policy: 'advance', budget: 599000}, app);
+    await until(async () => await client.evaluate(app, 'Date.now()') >= startedAt + 599000,
+      'just before the authorization deadline');
+    assert.equal((await state()).status, 'pending', 'Consent must remain available before ten minutes');
+    await client.send('Emulation.setVirtualTimePolicy', {policy: 'advance', budget: 1001}, app);
+    await until(async () => (await state()).status === 'failed', 'authorization deadline');
+    assert.equal((await state()).errorCode, 'connection_expired');
+    assert.equal((await state()).errorMessage,
+      'Connection expired. Connect again to finish authorizing this account.');
+    assert.equal((await state()).recoveryAction, 'connect');
+    assert.equal(await listenerCount(), 0, 'An expired wait must remove its message listener');
+    await until(async () => !(await client.targets()).some(target => target.targetId === expiredPopup.targetId),
+      'expired keepOpen popup cleanup');
+
+    // A user retry creates a new session/window/state. The old callback state
+    // remains invalid even when it is sent by the new, correctly scoped popup.
+    const retryUrl = new URL(url);
+    retryUrl.searchParams.set('state', 'synthetic-retry-state');
+    const beforeRetry = new Set((await client.targets()).map(target => target.targetId));
+    await client.evaluate(app,
+      `window.intakeAuthBrowserStart(${JSON.stringify(retryUrl.href)}, false)`, true);
+    const retryPopup = await until(async () => (await client.targets()).find(target =>
+      !beforeRetry.has(target.targetId) && target.url === retryUrl.href), 'fresh retry popup');
+    assert.notEqual(retryPopup.targetId, expiredPopup.targetId);
+    const retrySession = await client.attach(retryPopup.targetId);
+    await rejectedMessage(retrySession,
+      {state: 'synthetic-expired-state', code: 'stale-code'}, 'expired state after retry', true);
+    const retried = {state: 'synthetic-retry-state', code: 'synthetic-retry-code'};
+    await client.evaluate(retrySession,
+      `opener.postMessage(${JSON.stringify(retried)}, ${JSON.stringify(main.origin)})`);
+    await client.send('Emulation.setVirtualTimePolicy', {policy: 'advance', budget: 100}, app);
+    await until(async () => (await state()).status === 'completed', 'fresh retry callback');
+    assert.deepEqual((await state()).response, retried);
+    assert.equal(await listenerCount(), 0);
+    await until(async () => !(await client.targets()).some(target => target.targetId === retryPopup.targetId),
+      'retry popup cleanup');
     assert.deepEqual(client.exceptions, []);
     console.log(JSON.stringify({status: 'passed', evidence: 'actual dart2js -O4 adapter and fresh Chrome on loopback',
       checks: {crossOriginWindowProxy: true, wrongOriginRejected: true, wrongSourceRejected: true,
         wrongStateRejected: true, nullSourceRejected: true, validCallbackCompleted: true,
-        pickerKeptOpen: true, defaultPopupClosed: true}}));
+        pickerKeptOpen: true, defaultPopupClosed: true, tenMinuteConsentWindowPreserved: true,
+        expiryHasConnectRecovery: true, expiredPopupClosed: true, listenersRemoved: true,
+        expiredStateRejectedAfterRetry: true, freshRetryCompleted: true}}));
   } catch (error) {
     console.error(error);
     if (client?.exceptions.length) console.error(JSON.stringify({browserExceptions: client.exceptions}));
