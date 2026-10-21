@@ -48,7 +48,14 @@ class IntakeAuthSession {
           code: 'browser_unavailable',
         );
       }
-      final uri = await _result.future.timeout(intakeAuthorizationTimeout);
+      final uri = await _result.future.timeout(
+        intakeAuthorizationTimeout,
+        onTimeout: () => throw const ApiFailure(
+          'Connection expired. Connect again to finish authorizing this account.',
+          code: 'connection_expired',
+          details: {'action': 'connect'},
+        ),
+      );
       return Map<String, dynamic>.from(Uri.splitQueryString(uri.fragment));
     } finally {
       await _links?.cancel();

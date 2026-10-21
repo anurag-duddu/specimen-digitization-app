@@ -23556,3 +23556,208 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   found no unresolved P1/P2 or security issue in the seven-file candidate.
   Hosted checks, merge, deployed markers and real reconnection are subsequent
   outcomes; none is implied by this local verification.
+- Before merge: PR #395 at `c8993a94ee84b0f4a85acc3e7e7bab476cfc24ac`,
+  tree `970a3617fb8e5e1029dcd91424d01f0307c36fa2`, received independent G51
+  exact-head approval with no unresolved P1/P2/security findings. All 23
+  hosted checks passed, including the Chrome contract, SQL/Storage engines,
+  full Python accounting and both native builds; Hosting deploy was correctly
+  skipped for the pull request. GitHub reports the exact head clean and
+  mergeable. CI run `39540769774`; candidate run `39540769796`. Release and
+  real reconnection remain Not confirmed at this pre-merge checkpoint.
+- PR #395 merged as `2130ccd0a8aea6aa1906760919238c6c9dd96424`; its tree
+  matches the independently reviewed candidate. Protected push workflows
+  started: Hosting `39541934354`, Data `39541934399`, Runtime `39541934381`,
+  candidate `39541934379`. No workstation deployment or provider operation was
+  used to bypass the release. Local checkout fast-forwarded without losing
+  the append-only journal. Production-marker verification is still pending.
+- Release correction, 2026-10-21 UTC: Hosting `39541934354` attempt 1 is now
+  successful; `scripts/ci/smoke_hosting.sh` independently passed against the
+  public production origin and exact merge SHA `2130ccd0a8aea6aa1906760919238c6c9dd96424`.
+  Data `39541934399` and Runtime `39541934381` succeeded. The final Python
+  aggregate waited for a GitHub runner, then completed without bypassing gates.
+  A fresh real Google connection remains Not confirmed: native Chrome window
+  control timed out twice after deployment. The owner was asked to foreground
+  the signed-in app and leave the Mac unlocked. No photos were submitted.
+- Scoped prune preflight for task `01a149fc-3649-75c1-a121-11c19de12cb8`:
+  `codex/fix-intake-auth-permission` at `6c0d7c46` is an ancestor of the merged
+  release and is not checked out in any registered worktree. Preserved stash
+  `85a42fb6ac6aaa20e9bd83a6d43dcb09305d31f9` changes only this journal; all 154
+  nonblank added lines are present in the merged log. These two redundant
+  references can be removed without losing work. The active 5da8 worktree,
+  its current branch and post-merge journal remain; unrelated branches,
+  worktrees and stashes are outside this cleanup.
+- Scoped prune completed: removed the merged inactive local
+  `codex/fix-intake-auth-permission` branch and exactly stash
+  `85a42fb6ac6aaa20e9bd83a6d43dcb09305d31f9`. Initial safe `git branch -d`
+  refused because its stale remote-tracking upstream preceded the merge;
+  GitHub PR #391 was freshly confirmed merged and `git ls-remote` confirmed
+  that remote branch absent. Unsetting only that obsolete upstream allowed
+  normal `-d` deletion; no force-delete or broad prune was used.
+- Independent release review at `2026-10-21T04:26:37Z` confirmed protected main,
+  all three successful release workflows, public Hosting marker and API
+  `/version` at `2130ccd0a8aea6aa1906760919238c6c9dd96424`, with no source
+  drift from the reviewed tree. Anonymous readback of production JavaScript
+  confirmed the strict popup identity comparison is deployed. Runtime smoke,
+  intake/science job definitions and registry checks passed; queued-work
+  execution was skipped. Release is confirmed. Real Gmail reconnection,
+  imported bytes, Submit and final Queue acceptance remain Not confirmed.
+
+## 2026-10-21 — Real Gmail Drive acceptance; Dropbox PKCE configuration follow-up
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch
+  `codex/fix-intake-oauth-handoff`, worktree `5da8`, deployed PR #395 merge
+  `2130ccd0a8aea6aa1906760919238c6c9dd96424`. Owner reopened Chrome. The old
+  app tab still showed the previous dispatch-record error. After a hard reload,
+  a fresh same-scope Google connection successfully advanced from the callback
+  into the real Google Picker. App UI confirmed Connected with the approved
+  personal Gmail account. This supersedes the earlier reconnect-Not-confirmed
+  checkpoint; it does not establish institutional or native acceptance.
+- Selected exactly the approved Drive original `subject_105526321.jpeg`,
+  returned it to the app, selected its row and added one photo. Real staging
+  completed, thumbnail displayed and draft said Saved. Reloading restored
+  the same photo and Saved state. No Submit was clicked. Private screenshots:
+  `/private/tmp/specimen-intake-acceptance-01a149fc/google-connected-live-20261021.png`
+  and `drive-draft-restored-live-20261021.png` in the same directory.
+- Independent owner-scoped metadata at `2026-10-21T04:45:43Z` confirmed one
+  draft and one ready Google Drive item, exact approved original checksum and
+  size, staged asset and thumbnail, non-sensitive included manifest item,
+  zero submissions/results and zero owner specimens. Inventory was stable
+  across a repeat read. Whole-collection authoritative observation at
+  `04:41:55Z` confirmed zero specimens and zero SQL Queue rows, with all pages
+  exhausted and runtime definitions matching the deployed SHA.
+- Observer-only gotcha: SQL Connect UUID columns arrived in noncanonical
+  textual form. The private helper initially failed closed on literal scope
+  comparison. Independent review established UUID semantic equality and exact
+  Gmail owner identity. Only typed SQL UUID columns were canonicalized with
+  UUID; fixed scope, literal user identity and JSON payload IDs remained strict.
+  Twenty local equivalence/malformed/wrong-scope/owner/payload cases passed.
+  No repository source, production permission or data was changed to resolve it.
+- Actual Dropbox connection failed before consent with `pkce_disallowed`:
+  its app registration disallows PKCE while our authorization request uses
+  S256. Closing that provider window produced the actionable app message
+  "Connection window closed. Connect again when ready." The Drive draft
+  remained intact. Screenshot `dropbox-pkce-rejected-20261021.png` is private.
+- Two independent security reviews rejected simply removing Dropbox PKCE:
+  client-secret authentication and our pending state/session proof do not bind
+  a stolen provider code to its originating transaction (RFC 9700 section 4.5).
+  Preserve S256, server-side exchange and existing read-only scopes. Dropbox's
+  named public-client control also enables legacy implicit capability; it is
+  not a PKCE-only switch. Confirmation for that concrete registration change
+  is pending under the browser tool's action-time access-setting requirement.
+  No provider setting was changed, no Dropbox grant completed, and no source
+  changes were made. Full mixed-source Submit and final Queue remain Not confirmed.
+- Fresh independent whole-collection observation at `04:46:44Z` again found
+  zero specimens/Queue records, matching runtime definitions, one completed
+  dedicated transfer execution and zero dedicated scientific executions.
+  Existing focused credential/source tests at exact deployed `2130ccd0`
+  passed: `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider
+  tests/test_intake_credentials.py tests/test_intake_sources.py` — 84 passed,
+  one warning, 9.76 seconds. These cover proof/owner/replay/account binding;
+  provider code-substitution rejection is not proven by their permissive token
+  fixture. No fresh source changes or release were needed for Google acceptance.
+- Dropbox follow-up: automatic approval review rejected an initial attempt to
+  enable the coupled setting because the earlier general instruction was not
+  explicit approval of its expanded grant capabilities. No workaround was used.
+  The owner then explicitly answered "Approve this exact Dropbox setting"
+  to the named `Allow public clients (Implicit Grant & PKCE)` question.
+  Applied Allow in the existing Specimen Photo Intake app console and reloaded
+  the page to verify persistence. Scopes, redirects and application source
+  were unchanged; no secret was displayed or rotated.
+- A fresh real Dropbox attempt now passes the former `pkce_disallowed` error
+  and reaches normal consent. The provider shows view-only file/folder content,
+  sharing/collaborator metadata and basic account information. Explicit consent
+  for that account grant is pending under the browser's private-data-access
+  rule. Private proof is `dropbox-pkce-enabled-20261021.private.png`; the
+  OAuth-address-redacted consent view is `dropbox-consent-20261021.png` in the
+  existing private acceptance directory. No Dropbox photo or Submit yet.
+
+## 2026-10-21 — Live intake continuation and expired-connection recovery
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, worktree `5da8`; continued
+  from deployed PR #395, `2130ccd0a8aea6aa1906760919238c6c9dd96424`.
+  Fresh origin/main remains that commit. Created
+  `codex/fix-intake-connection-timeout` without discarding the append-only log.
+- Restored the existing owner CLI session for the same project-admin account
+  through Google's normal login flow. No identity, IAM, permission scope or
+  application credential changed. The one-time login code was kept out of
+  tool output and repository files; its temporary handoff file was deleted.
+- Independent scoped observations at 16:27–16:28 UTC confirmed the same one
+  ready Google Drive draft item, exact approved checksum/size, private staged
+  asset and thumbnail, included and non-sensitive. Zero Dropbox items,
+  submissions, results, specimens and authoritative Queue rows; all pages
+  exhausted. Web/API and four runtime definitions match `2130ccd0`.
+  No scientific execution is active; the single transfer execution completed.
+  Evidence remains private under `/private/tmp/specimen-intake-acceptance-01a149fc/`.
+- An abandoned Dropbox consent wait exceeded the ten-minute authorization
+  timeout. The raw TimeoutException reached the generic draft-save error,
+  misleadingly saying that the change could not be saved. Connections review
+  traced this to the auth adapter and controller fallback; bounded redacted
+  request telemetry does not establish completed consent or token exchange.
+  A fresh attempt again reaches the provider's read-only consent screen.
+  The account-access grant is still pending; the earlier approval applied
+  specifically to the PKCE registration setting. No Submit occurred.
+- Narrow recovery repair is assigned to the connections agent; independent
+  QA and read-only budget preflight run separately. Expired connection wording,
+  real Dropbox import, submission and final specimen Queue acceptance remain
+  Not confirmed at this checkpoint. Administrative SQL observations alone do
+  not establish normal-user Queue visibility.
+- Recovery repair now maps only the expired callback wait to
+  `ApiFailure(connection_expired)` with a Connect recovery action in both
+  adapters. Ten-minute timeout, PKCE, callback origin/window/state checks and
+  cancellation cleanup are unchanged. Focused native/connector tests: 27
+  passed. Actual release `dart2js -O4` and isolated two-origin Chrome contract:
+  14 checks passed, including the real deadline under virtual time, unsuccessful
+  keepOpen cleanup, listener removal, stale-state rejection and fresh retry.
+  Both expiry regressions failed on the old adapters before the repair.
+  Focused analysis, formatting, Node syntax and diff checks passed. Independent
+  source review found no P1/P2; canonical verification and exact-head review
+  are subsequent gates, not implied by these focused results.
+- Private budget observer corrections preserve actual production permissions:
+  canonicalize typed SQL UUID fields, and permit the original worker's existing
+  `canViewSensitive=false` for its explicitly non-sensitive owned ledger.
+  Fixed actor/scope, literal JSON identities, row/payload sensitivity and target
+  bootstrap permissions remain checked. No IAM or ledger was changed. At
+  16:40:36 UTC, original G30 revision 2029 retained 25,616,598 of 28,000,000
+  micros, with 2,383,402 remaining; two conservative one-dollar run envelopes
+  fit that snapshot. Existing unsettled and held entries remain counted.
+  There were no applicable tenant monthly caps and no target specimens/Queue
+  rows. This is a read-only snapshot, not a reservation or infrastructure bill.
+- Recreated-controller Submit recovery has a source-supported server identity
+  (`ident(draft_id, 'submission')`), not a separately persisted client Submit
+  key. Current tests exercise same-controller lost acknowledgements and local
+  outbox recovery; a real recreated-browser/SQL/worker composite fault remains
+  Not confirmed. Do not relabel those tests as live acceptance. The completed
+  owner CLI sign-in transcript was removed after successful session restoration.
+- Subsequent authoritative reads at 16:41 and 16:53 UTC confirmed both approved
+  originals saved in the same private draft: one Google Drive item and one
+  Dropbox item, both ready with exact checksums/sizes, staged originals and
+  thumbnails, non-sensitive and included. The Dropbox transfer completed
+  during a browser-control gap; this supersedes the earlier import-pending
+  observation without attributing the consent or selection action to this
+  agent. Zero submissions/results/specimens/Queue rows remained, all pages
+  exhausted. No scientific executions occurred; two transfer executions
+  completed. Fresh 16:43:20 budget read retained the same revision 2029 and
+  2,383,402 micros remaining. Refresh volatile observations before Submit.
+- Automatic approval review rejected binding the entire Chrome app because
+  unrelated signed-in tabs/private content could be exposed. A safer lookup
+  restricted to the exact production intake URL found no tab in the connected
+  extension profile. Asked the owner to foreground the existing Work-profile
+  intake window and confirm continuing that specific window. No alternative
+  credential/token extraction or API Submit was used to bypass the UI test.
+  Both imports are confirmed by server evidence; normal-user batch review,
+  Submit, final scientific disposition and Queue visibility remain Not confirmed.
+- Canonical `scripts/ci/verify.sh` exited 0 for this frozen repair: Python
+  19,198 passed / 50 skipped, all 19,248 accounted for exactly once; design
+  system 1,309 passed; application 3,476 passed / 7 skipped; both fatal-info
+  analyses; 14 actual release-compiled Chrome checks; formatting; release web
+  build and loopback route/security-header smoke. Log:
+  `/private/tmp/specimen-intake-timeout-verify-20261021.log`.
+  No production deployment or real submission is implied by those checks.
+- Provider readiness review remains separate from owner-account imports:
+  Google selected-photo access uses non-sensitive `drive.file`; public folder
+  access uses restricted `drive.readonly` and needs the applicable verification
+  and server-data security assessment. Dropbox development-user access is not
+  production approval. Public operator/contact facts, accurate retention and
+  processing disclosures, verified public pages and provider review ownership
+  remain unresolved in the private preparation documents. Institutional,
+  physical camera/memory and manual accessibility acceptance remain Not confirmed.
