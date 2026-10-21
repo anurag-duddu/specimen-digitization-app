@@ -654,15 +654,15 @@ def test_admits_and_room_read_the_least_any_cap_has_left(tmp_path):
     specimen = specimen_with(priced_run())
     clock = lambda: MOMENT
     assert tenant_budget.room(repository, PRINCIPAL, specimen, QWEN, clock) == (200_000, None)
-    assert tenant_budget.admits(repository, PRINCIPAL, specimen, 200_000, clock) is None
-    assert tenant_budget.admits(repository, PRINCIPAL, specimen, 200_001, clock) == EXHAUSTED
+    assert tenant_budget.admits(repository, PRINCIPAL, specimen, QWEN, 200_000, clock) is None
+    assert tenant_budget.admits(repository, PRINCIPAL, specimen, QWEN, 200_001, clock) == EXHAUSTED
     repository.broken = Conflict("refused")
-    assert tenant_budget.admits(repository, PRINCIPAL, specimen, 1, clock) == UNAVAILABLE
+    assert tenant_budget.admits(repository, PRINCIPAL, specimen, QWEN, 1, clock) == UNAVAILABLE
     with pytest.raises(tenant_budget.TenantBudgetUnavailable):
         tenant_budget.room(repository, PRINCIPAL, specimen, QWEN, clock)
     repository.broken, repository.caps = None, []
     assert tenant_budget.room(repository, PRINCIPAL, specimen, QWEN, clock) == (None, None)
-    assert tenant_budget.admits(repository, PRINCIPAL, specimen, 10**12, clock) is None
+    assert tenant_budget.admits(repository, PRINCIPAL, specimen, QWEN, 10**12, clock) is None
 
 
 def test_room_reports_the_next_attempts_own_hold(tmp_path):
@@ -676,6 +676,177 @@ def test_room_reports_the_next_attempts_own_hold(tmp_path):
     assert tenant_budget.recorded_micros(specimen.run, QWEN) is None
     assert tenant_budget.room(repository, PRINCIPAL, specimen, QWEN, lambda: MOMENT) == (980_000, 20_000)
     assert tenant_budget.recorded_micros(stopped.run, QWEN) == 20_000
+
+
+def held_then_refused(repository, micros=40_000, clock=lambda: MOMENT):
+    """A reading held on every cap's ledger and then refused later in the chain
+    (the program's allowance, say): the run records the holds and its attempt
+    number was never saved, so the attempt was never sent."""
+    specimen = specimen_with(priced_run())
+    assert tenant_budget.reserve_step(repository, PRINCIPAL, specimen, QWEN, micros, clock) is None
+    assert specimen.run.attempts.get(QWEN, 0) == 0
+    return specimen
+
+
+def test_admits_does_not_count_the_attempts_own_hold_twice(tmp_path):
+    repository = capped(tmp_path, [(ORGANIZATION, 60_000)])
+    specimen = held_then_refused(repository)
+    clock = lambda: MOMENT
+    # 40,000 held and 40,000 more would cross the 60,000 cap; the attempt's own
+    # hold is the one it replays, as reserve_step replays it.
+    assert tenant_budget.admits(repository, PRINCIPAL, specimen, QWEN, 40_000, clock) is None
+    assert tenant_budget.reserve_step(repository, PRINCIPAL, specimen, QWEN, 40_000, clock) is None
+    assert ledger(repository, ORGANIZATION).read()["reserved_total_micros"] == 40_000
+    # Another run's attempt of that cost does not fit, and another amount never replays.
+    assert tenant_budget.admits(repository, PRINCIPAL, specimen_with(priced_run()), QWEN, 40_000, clock) == EXHAUSTED
+    assert tenant_budget.admits(repository, PRINCIPAL, specimen, QWEN, 30_000, clock) == UNAVAILABLE
+
+
+def test_admits_reads_a_recorded_hold_in_the_month_it_was_reserved_in(tmp_path):
+    repository = capped(tmp_path, [(ORGANIZATION, 60_000)])
+    specimen = held_then_refused(repository, clock=lambda: datetime(2026, 10, 31, 23, 59, tzinfo=timezone.utc))
+    november = lambda: datetime(2026, 11, 1, 0, 5, tzinfo=timezone.utc)
+    seed(repository, ORGANIZATION, 50_000, month="2026-11")  # November has 10,000 left.
+    # The attempt replays on October's ledger (reserve_step); admits reads that one too.
+    assert tenant_budget.admits(repository, PRINCIPAL, specimen, QWEN, 40_000, november) is None
+    assert tenant_budget.reserve_step(repository, PRINCIPAL, specimen, QWEN, 40_000, november) is None
+    assert ledger(repository, ORGANIZATION, "2026-11").read()["reserved_total_micros"] == 50_000
+
+
+def test_an_attempt_given_up_unsent_settles_its_holds_at_zero_once(tmp_path):
+    repository = capped(tmp_path, [(ORGANIZATION, 60_000), (SYNTHETIC_COLLECTION, 50_000)])
+    specimen = held_then_refused(repository)
+    run = specimen.run
+    release = tenant_budget.release_unsent(run, QWEN)
+    assert run.dependencies[RECORD][f"{QWEN}:1"] == {"month": MONTH, "keys": [ORGANIZATION, SYNTHETIC_COLLECTION],
+        "ledger_collection": SYNTHETIC_COLLECTION, "micros": 40_000, "released": True}
+    # Only the run is changed until the run that marks the release is saved.
+    assert ledger(repository, ORGANIZATION).read()["reserved_total_micros"] == 40_000
+    tenant_budget.settle_released(repository, PRINCIPAL, specimen, release, lambda: MOMENT)
+    for key in (ORGANIZATION, SYNTHETIC_COLLECTION):
+        current = ledger(repository, key).read()
+        assert current["reserved_total_micros"] == 0
+        assert [entry["settled_micros"] for entry in current["ordinary_effects"].values()] == [0]
+    # Idempotent: settling again finds them settled at zero and writes nothing.
+    repository.touched.clear()
+    tenant_budget.settle_released(repository, PRINCIPAL, specimen, release, lambda: MOMENT)
+    assert [kind for kind, _, _ in repository.touched] == ["read", "read"]
+    assert tenant_budget.release_unsent(run, QWEN) is None  # Already released.
+    assert tenant_budget.recorded_micros(run, QWEN) is None  # Not reserved again as it was.
+
+
+def test_a_save_that_kept_another_state_releases_nothing(tmp_path):
+    # save_recoverably saves the record without the give-up when the active
+    # graph's limit refuses it: that run does not mark the release.
+    repository = capped(tmp_path, [(ORGANIZATION, 60_000)])
+    specimen = held_then_refused(repository)
+    kept = specimen.model_copy(deep=True)
+    release = tenant_budget.release_unsent(specimen.run, QWEN)
+    tenant_budget.settle_released(repository, PRINCIPAL, kept, release, lambda: MOMENT)
+    assert ledger(repository, ORGANIZATION).read()["reserved_total_micros"] == 40_000
+
+
+def test_a_ledger_that_cannot_settle_the_release_keeps_the_hold(tmp_path, monkeypatch):
+    repository = capped(tmp_path, [(ORGANIZATION, 60_000)])
+    specimen = held_then_refused(repository)
+    release = tenant_budget.release_unsent(specimen.run, QWEN)
+
+    def losing(*args, **kwargs):
+        raise Conflict("revision changed")  # Its compare-and-set keeps losing.
+    monkeypatch.setattr(repository, "put_document", losing)
+    tenant_budget.settle_released(repository, PRINCIPAL, specimen, release, lambda: MOMENT)
+    assert ledger(repository, ORGANIZATION).read()["reserved_total_micros"] == 40_000
+
+
+def test_a_sent_attempt_an_unrecorded_hold_or_an_unreadable_record_is_never_released(tmp_path):
+    repository = capped(tmp_path, [])
+    sent = capped_specimen(repository)  # Its attempt number was saved: it may have been sent.
+    assert tenant_budget.release_unsent(sent.run, QWEN) is None
+    # A worker that held and stopped before saving the run: a hold, no record.
+    unrecorded = specimen_with(priced_run())
+    assert tenant_budget.reserve_step(repository, PRINCIPAL, unrecorded.model_copy(deep=True), QWEN, 20_000,
+        lambda: MOMENT) is None
+    assert tenant_budget.release_unsent(unrecorded.run, QWEN) is None
+    unreadable = priced_run()
+    unreadable.dependencies[RECORD] = {f"{QWEN}:1": {"month": MONTH, "keys": "organization"}}
+    assert tenant_budget.release_unsent(unreadable, QWEN) is None
+    assert ledger(repository, ORGANIZATION).read()["reserved_total_micros"] == 40_000
+
+
+def test_an_attempt_queued_again_after_its_release_holds_afresh(tmp_path):
+    # The attempt number does not advance on a give-up, and field research can
+    # be queued again on the same run. The released entry is never replayed:
+    # the next hold is the next generation's entry, and it counts.
+    repository = capped(tmp_path, [(ORGANIZATION, 60_000)])
+    specimen = held_then_refused(repository)
+    run, clock = specimen.run, lambda: MOMENT
+    tenant_budget.settle_released(repository, PRINCIPAL, specimen, tenant_budget.release_unsent(run, QWEN), clock)
+    assert tenant_budget.admits(repository, PRINCIPAL, specimen, QWEN, 30_000, clock) is None
+    assert tenant_budget.reserve_step(repository, PRINCIPAL, specimen, QWEN, 30_000, clock) is None
+    assert run.dependencies[RECORD][f"{QWEN}:1"] == {"month": MONTH, "keys": [ORGANIZATION],
+        "ledger_collection": SYNTHETIC_COLLECTION, "micros": 30_000, "generation": 1}
+    assert ledger(repository, ORGANIZATION).read()["reserved_total_micros"] == 30_000
+    run.attempts[QWEN] = 1
+    record_model_usage(run, QWEN, "handwriting-qwen", input_tokens=1_000, output_tokens=500)
+    settle_step(repository, PRINCIPAL, specimen, QWEN, 30_000)
+    current = ledger(repository, ORGANIZATION).read()
+    assert current["reserved_total_micros"] == 550
+    assert sorted(entry["settled_micros"] for entry in current["ordinary_effects"].values()) == [0, 550]
+    assert tenant_budget.settled_micros(repository, PRINCIPAL, specimen, QWEN, 1, 30_000) == 550
+
+
+def transported(specimen):
+    """The specimen as SqlConnectRepository reads back a run stored inline (under
+    active_graph.GRAPH_THRESHOLD): through protobuf Struct, which gives its
+    numbers back as doubles."""
+    from google.protobuf import json_format
+    from google.protobuf.struct_pb2 import Struct
+
+    from specimen_digitization.application.production import SqlConnectRepository
+    from specimen_digitization.application.storage import digest
+
+    payload = specimen.model_dump(mode="json")
+    sql = SqlConnectRepository.__new__(SqlConnectRepository)
+    sql.graph_blobs = None
+    return sql._snapshot({"snapshot": json_format.MessageToDict(json_format.ParseDict(payload, Struct())),
+        "sha256": digest(payload)})
+
+
+def test_a_record_read_back_through_the_struct_transport_keeps_its_amounts(tmp_path):
+    repository = capped(tmp_path, [(ORGANIZATION, 60_000)])
+    clock = lambda: MOMENT
+    specimen = transported(held_then_refused(repository))
+    assert type(specimen.run.dependencies[RECORD][f"{QWEN}:1"]["micros"]) is float  # As the transport gives it.
+    assert tenant_budget.recorded_micros(specimen.run, QWEN) == 40_000
+    assert tenant_budget.admits(repository, PRINCIPAL, specimen, QWEN, 40_000, clock) is None
+    release = tenant_budget.release_unsent(specimen.run, QWEN)
+    tenant_budget.settle_released(repository, PRINCIPAL, transported(specimen), release, clock)
+    assert ledger(repository, ORGANIZATION).read()["reserved_total_micros"] == 0
+    # The next hold's generation comes back as a double too, and still names its entry.
+    again = transported(specimen)
+    assert tenant_budget.reserve_step(repository, PRINCIPAL, again, QWEN, 30_000, clock) is None
+    again = transported(again)
+    assert type(again.run.dependencies[RECORD][f"{QWEN}:1"]["generation"]) is float
+    assert tenant_budget.recorded_micros(again.run, QWEN) == 30_000
+    assert tenant_budget.reserve_step(repository, PRINCIPAL, again, QWEN, 30_000, clock) is None  # A replay.
+    assert ledger(repository, ORGANIZATION).read()["reserved_total_micros"] == 30_000
+
+
+def test_a_settled_attempt_is_never_reserved_again(tmp_path):
+    # A run that lost the record of a released hold would reserve that entry
+    # again: replayed, it would hold nothing for a new call, so it is refused.
+    repository = capped(tmp_path, [])
+    specimen = capped_specimen(repository)
+    run = specimen.run
+    record_refused(run, QWEN, "model", route_id="handwriting-qwen", failure_code="rate_limited")
+    settle_step(repository, PRINCIPAL, specimen, QWEN, 20_000)
+    one = ledger(repository, ORGANIZATION)
+    assert one.read()["reserved_total_micros"] == 0
+    replay = one.reserve(1_000_000, 20_000, specimen_id=specimen.id, run_id=run.id, step=QWEN, attempt=1)
+    assert (replay.issue, replay.held) == (UNAVAILABLE, False)
+    key = ProgramLedger._ordinary_key(specimen.id, run.id, QWEN, 1)
+    assert one.admits(1_000_000, 20_000, key) == UNAVAILABLE
+    assert one.read()["reserved_total_micros"] == 0
 
 
 # ---- the research broker ("on" mode) -------------------------------------------------
