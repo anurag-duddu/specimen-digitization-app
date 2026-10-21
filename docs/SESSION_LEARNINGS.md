@@ -23966,3 +23966,68 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   decoding and hash uniqueness were checked; provider screenshots and the
   exact folder URLs are in `/private/tmp/specimen-demo-20261021/` alongside
   `manifest.json` and `provider-upload-completion.json`.
+
+
+### 2026-10-21 — Integration QA owns the protected reliability-fix release
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8` / `/root/integration_qa`;
+  branch `codex/fix-processing-status`, worktree `5da8/specimen-digitization-app`.
+  Root handed off the clean candidate `402a558fea6e6480fed9ef227ba590c5cfebb14a`
+  (tree `d499bcf8d901848cc3b80e9815557cd11035b47a`) after successful canonical
+  verification; no additional technical changes or broad test rerun were made.
+- Refreshed remote main remains `7aa78001bd5ce6f1a12a858cd5cbafcf91276ee9`.
+  Main protection is active with strict required checks and administrator
+  enforcement; all four active production environments accept only `main`.
+  Required pre-push hooks passed. Opened
+  [PR #397](https://github.com/anurag-duddu/specimen-digitization-app/pull/397)
+  and attached it to the task. Independent reviewer `/root/release_review`
+  approved that exact head/tree under G51 with no unresolved P1/P2 or security
+  findings. Container candidate run `39654705298` passed; main CI run
+  `39654705366` is still running, so merge and production release are pending.
+- Preserve the owner demo folders and originals. This release handoff performs
+  no browser action, app import, Submit, worker execution or paid model call.
+  Runtime push releases define jobs only; processing requires the separate
+  manual `process_queued` input, which is not selected here.
+
+- PR #397 hosted run `39654705366` blocked release before merge: shard 8 failed
+  `test_storage_wrapper_requires_all_denial_ids_and_cleanup[storage.anonymous.overwrite]`
+  because Storage startup stopped at `auxiliary port alias`, before the intended
+  denial-inventory check. The dependent Python aggregate failed; every other
+  hosted job, including the real SQL/Storage engine tier and both native builds,
+  passed. No rerun, merge or production change was substituted for diagnosis.
+  Sanitized traceback: `/private/tmp/specimen-processing-status-pr397-python-shard8.clean.log`.
+- The real reporter released each ephemeral auxiliary listener before choosing
+  the next, so the OS could return an excluded primary or a previous auxiliary.
+  The original trace contains no chosen port numbers, so which collision occurred
+  there is Not confirmed. Deterministic real-wrapper regressions reproduce both
+  branches with real loopback TCP listeners; both fail the original reporter at
+  the same alias guard. Evidence:
+  `/private/tmp/specimen-storage-auxiliary-before-20261021.log`.
+- Repaired `scripts/data/engine-contract-reporter.mjs` to hold all candidates
+  concurrently, including excluded primary candidates, until two distinct
+  auxiliary ports are selected. At most five candidates are needed; every
+  listener is closed in finally, including partial allocation failure. Alias,
+  readiness, exact denial-inventory and owned-process/port cleanup guards are
+  retained. Added primary-first, auxiliary-first and injected-listen-failure
+  controls to `scripts/ci/test_engine_harness.py`; the complete controlled
+  fixture module passes 239 tests. Node syntax and diff whitespace also pass.
+  Evidence: `/private/tmp/specimen-storage-auxiliary-focused-20261021.log`.
+  These fixtures use controlled stand-ins, not real SQL/Storage engines.
+- Independent `/root/release_review` source review found no P1/P2 or security
+  issue in the repair. Corrected-tree full local verification, a new exact-head
+  G51 review, documented hosted normal/cold engine qualification and ordinary
+  exact-head PR checks are required next. No selector, tool pin, assertion,
+  timeout or protected workflow policy was weakened. Production remains at the
+  previous release, and the owner demo originals/folders remain untouched.
+
+- Corrected-tree `scripts/ci/verify.sh` exited 0. All six Python shards passed
+  with 19,217 passed and 49 skipped across the complete verified inventory.
+  Design system: 1,309 passed; app: 3,507 passed and seven skipped; both analyses
+  passed, all 14 actual compiled OAuth browser checks passed, 620 Dart files
+  needed no changes, and the release web build and route/header smoke passed.
+  Evidence: `/private/tmp/specimen-processing-status-allocator-verify-20261021.log`.
+  The worktree stayed frozen throughout; a sandbox-denied staging attempt before
+  the run changed no index entry, and no staging occurred while it ran. Only this
+  append-only result was added afterwards. This is local qualification, not a
+  deployed or real-engine acceptance claim; hosted normal/cold qualification and
+  exact-head PR checks remain pending before any merge.
