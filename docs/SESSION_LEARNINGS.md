@@ -23362,3 +23362,220 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   - (e) A textually clean merge of main can still conflict with a change of shape: after each merge, grep every reader of the changed structure (here `ordinary_effects` in the new caps code).
   - Validation, round 2: `tests/test_lane_allowance_archive.py` 16 passed; red on `51f53b06`, 5 failed on their own assertions (the cap ledger kept 400 entries in its head; the archived replay was refused as exhausted; a never-archived head read 16 archive ids, one per reservation; both marked race cases need the mark). Full Python suite on `9df3a282`: 16,747 passed, 48 skipped, 2 failed: `test_sam3_runtime.py::test_sam_total_deadline_durable_unknown_and_no_retry[success]` (load, as in round 1) and `test_cohort_reading_barrier.py::test_complete_cohort_reservation_precedes_reader_and_survives_restart`, which passed alone at load 6 and touches neither ledger. After the last commit, the 14 ledger, tenant budget and cost-cap files: 191 passed.
   - G51, round 2: APPROVE of `7a7f4306` and `10709c9f` (docs deltas) and of `9df3a282` (code, https://github.com/anurag-duddu/specimen-digitization-app/pull/388#issuecomment-6304268993), no blocking findings. Its four non-blocking findings: the mark's deployment precondition (now in the doc), an unmarked-head race test (added), the read cost on marked heads (in the PR body), the warning text (now "ledger archiving deferred").
+### 2026-10-20 — PR #391 pre-merge review and protected checks
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch
+  `codex/fix-intake-auth-permission`, worktree `5da8/specimen-digitization-app`.
+  PR https://github.com/anurag-duddu/specimen-digitization-app/pull/391 fixes
+  the missing Auth SHA-registration permission, intake worker argument parsing,
+  and the positive classifier fixture's cold-process budget/diagnostics.
+- Independent G51 review approved exact head
+  `ed35c5dfbbbf3e4b25a0fc47386b93f9b809e5ab`, tree
+  `92ffbd07ea12e6f4a9c079616bc7f26c453592e2`, with no unresolved P1/P2.
+  Its only difference from canonically qualified `7a8e4e97` is the preceding
+  34-line journal append. The reviewer independently checked the full local
+  results and both classifier controls in the actual shard report.
+- All 23 applicable hosted checks passed on that exact head: CI/CD
+  `39481416819` and Runtime candidate CI `39481416507`. Hosting deployment is
+  correctly skipped for a PR; it is not a failed or skipped required gate.
+  Immediately before merge, GitHub reported `CLEAN`/`MERGEABLE`, the same head
+  and base `cd8be7d2a193f5efdf5b7bab4c403f892499c965`, and protected main.
+- This entry is appended locally before merge as required. It is not an
+  untested code change or part of the immutable PR head. Preserve this journal
+  when reconciling/pruning; no branch/worktree removal is authorized to lose it.
+  Protected main release, new private intake definitions/IAM, Bulk enablement
+  and real provider/Submit/final Queue acceptance remain pending.
+
+### 2026-10-20 — PR #391 production repair and intake activation
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch
+  `codex/fix-intake-auth-permission`, worktree `5da8/specimen-digitization-app`.
+  PR #391 merged normally through GitHub at 19:41:01Z as
+  `6c0d7c46a01c1d3976df3edc83db6acc10f68d42`, after the exact-head review and
+  required checks recorded above. No protection or gate was bypassed.
+- Protected Data run `39485539045` succeeded. The older global bootstrap
+  artifact differed from existing rows; the release warned and preserved them.
+  The dedicated Gmail bootstrap remained valid. Hosting run `39485539010`
+  attempt 1 succeeded, and its exact public SHA/run/attempt smoke passed.
+- The first Runtime run `39485538987` created and read back both intake jobs
+  before failing their missing API invoker policy. API smoke and scientific
+  definitions passed; no processing step ran. The first-hand-authorized
+  `owner_setup.sh --intake-only` dry run and apply then made exactly two changes:
+  scoped invoker grants for the existing API identity on `specimen-intake`
+  and `specimen-intake-e2e`. Zero failures; no broader grants or job executions.
+  Logs are `/private/tmp/specimen-intake-jobs-grants-{dry-run,apply}-6c0d7c46.log`.
+- Runtime retry `39486722035`, manually dispatched on the same main SHA with
+  `process_queued=false`, succeeded. API smoke, both private intake definitions
+  and policies, and SAM/scientific worker definitions all passed; optional
+  processing was skipped. The public `/version` reported the same production
+  SHA. This completes the compatible backend release, not provider acceptance.
+- The read-only authoritative baseline at `2026-10-20T20:02:26.855811Z`
+  found zero specimens and zero Queue records in Intake E2E, exhausted every
+  page, and matched all runtime definitions to the reviewed scope/source.
+  Private evidence: `authoritative-baseline-20261020T200226855811Z.private.json`
+  under `/private/tmp/specimen-intake-acceptance-01a149fc`.
+- After reconfirming current main and all three successful release planes,
+  enabled the existing `BULK_INTAKE_ENABLED=true` repository variable and
+  reran all jobs of the same main push Hosting run `39485539010`. Attempt 2
+  activation is in progress; manual Hosting dispatch was not used.
+  Google sign-in remains enabled. Actual connector consent/import, saved draft,
+  explicit Submit, final scientific Queue, native and institutional acceptance
+  remain Not confirmed at this entry.
+
+### 2026-10-20 — Independent runtime readback and merged-branch cleanup
+
+- Same task `01a149fc-3649-75c1-a121-11c19de12cb8` and active
+  `codex/fix-intake-auth-permission` worktree. Independent review confirmed
+  merged `6c0d7c46` has the exact reviewed PR #391 tree; Data and Runtime
+  succeeded and optional processing was skipped. Both dedicated job scopes,
+  actor/routes pins and continuations match. The shared jobs derive exclusions
+  from the same pinned route map. A fresh read at 20:08:05Z found 109 retained
+  shared executions, zero unfinished and zero running.
+- Before cleanup, GitHub confirmed PR #368 and #391 merged at `33506488`
+  and `6c0d7c46`. Both remote source refs were already absent. Local
+  `codex/compare-photo-intake-ux` points to PR #368's exact head
+  `7d935a72a2930bfa90035854d0db0c78e0ddfba9`, is not checked out in any
+  worktree, and is an ancestor of current HEAD with no unique commits.
+  Only that fully merged local ref is eligible for deletion now. Keep the
+  active repair worktree and its append-only journal; unrelated worktrees and
+  branches are outside this cleanup.
+- Hosting attempt 2 remains in progress. No provider import or submission has
+  been performed, and scientific final Queue acceptance remains Not confirmed.
+- Cleanup result: `git branch -d codex/compare-photo-intake-ux` succeeded,
+  deleting only the verified merged local ref. `git diff --check` passed.
+  The active repair branch/worktree and all journal appends remain intact.
+
+### 2026-10-20 — Bulk client deployed; Gmail connector test awaits Mac unlock
+
+- Same task `01a149fc-3649-75c1-a121-11c19de12cb8`, active branch/worktree
+  `codex/fix-intake-auth-permission` / `5da8/specimen-digitization-app`.
+  Hosting `39485539010` attempt 2 succeeded: every required test/build,
+  complete Python accounting, tested-artifact deployment and public smoke.
+  An independent exact SHA/run/attempt smoke also passed for `6c0d7c46`.
+  Repository flags are `BULK_INTAKE_ENABLED=true` and
+  `SPECIMEN_GOOGLE_SIGN_IN_ENABLED=true`.
+- During that build, unrelated operations PR #389 merged as
+  `b1c6133fa8da0c18e7cc6ac6e25a26069a7ab3e8`, descending from `6c0d7c46`.
+  Its delta concerns registry cleanup dry run and image retention tags, not
+  application intake source. At this observation the API already reported
+  production `b1c6133f`, Data `39490200535` succeeded, Runtime `39490200505`
+  was in progress, and Hosting `39490200390` was queued/running. Do not confuse
+  the successful intake activation with completion of this newer three-plane
+  release. Its updated deployment-contract clauses were read; no older runtime
+  was dispatched or rollback performed.
+- Before activation, Chrome visibly showed the real Gmail identity with
+  authorized Intake E2E access. Safe local screenshot:
+  `bulk-intake-research/implementation/gmail-live-collection-access-20261020.png`
+  in this task's visualization directory. The fresh original allowance read
+  at 20:07:55Z retained revision 2003, USD 2.558528 remaining, the original
+  actor and zero test-collection duplicates. No allowance or ledger changed.
+- On returning to Chrome after deployment, computer control reported the Mac
+  locked and automatic unlock unsuccessful. Requested manual unlock through
+  the user-input tool. Did not bypass the lock or attempt another access path.
+  Actual released-screen refresh, provider consent/import, saved two-photo
+  review, pre-Submit staging proof, explicit Submit and scientific final Queue
+  remain Not confirmed. No provider consent or content submission occurred in
+  this segment. Resume normal Chrome only after unlock; any provider access
+  grant must follow the browser tool's applicable confirmation policy.
+- Follow-up independent read: current-main `b1c6133f` Runtime `39490200505`
+  succeeded, including API, intake/scientific definitions and registry cleanup
+  checks; processing was skipped. The reviewer confirmed application source,
+  schemas, intake constructors, actor/routes pins, G30, and Hosting/Data
+  workflows are unchanged from `6c0d7c46`, with no compatibility blocker.
+  The newer Hosting run still awaited completion. The Mac-unlock request
+  remains pending; no normal-user connector acceptance is implied.
+
+### 2026-10-20 — Gmail live connector reached consent; current release reconciled
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, active local branch/worktree
+  `codex/fix-intake-auth-permission` / `5da8/specimen-digitization-app`.
+  User confirmed the Mac was open. Chrome retained the real Gmail session;
+  refreshed the deployed app, opened Intake E2E's bulk workspace, selected
+  Google Drive, clicked Connect and chose the approved personal Gmail account.
+  The actual Google consent screen requests only `drive.file`: access to the
+  selected files, including Google's edit/create/delete permission. Application
+  behavior remains import-only. No consent button has been clicked by the agent.
+- Asked one batched action-time confirmation for the Google selected-file grant
+  and the configured Dropbox read-only account/metadata/content/sharing grant,
+  as required by the browser tool. Displayed a consent screenshot with its
+  address bar removed. Awaiting that response. Real provider transfer, Saved
+  review, Submit and scientific final Queue acceptance remain Not confirmed.
+- Current main, public web marker and API all match
+  `b895f96591f9858b7955ffa6c29cedd0d1559a7d`. Hosting `39510860277` attempt 1,
+  Data `39510860270` and Runtime `39510860219` all succeeded. Exact public
+  Hosting smoke passed. Independent review confirmed intake/provider/source,
+  scope/dispatch/profile/actor contracts and the private metadata observers
+  remain compatible. No deployment-contract delta since the already-read
+  `b1c6133f` version. No cloud change or processing was started here.
+- Fresh authoritative baseline at 23:21:29Z: zero specimens/Queue, exhausted
+  pagination, all runtime definitions match the current deployed source.
+  Private artifact: `authoritative-baseline-20261020T232129705194Z.private.json`.
+  Independent shared-execution read at 23:21:25Z: 110 retained, none active.
+- Correction to earlier reporting-only cost-stack assumptions: current main
+  adds tenant budget admission before unchanged G30 reservation. Independent
+  read of the actual deployed `TenantBudgetCapsV1` connector as the original
+  pinned worker at 23:25:23Z returned zero organization/applicable caps;
+  therefore no monthly tenant ledger applies to Intake E2E. Exact original G30
+  remains revision 2003 with USD 2.558528 available. Two USD 1 worst-case run
+  envelopes fit with USD 0.558528 spare at that read; nothing was reserved or
+  changed. Repeat both tenant-cap and G30 reads immediately before Submit.
+  This is not a complete G9 infrastructure bill. Never invoke reserve, cap
+  writes, allowance resets or costs refresh for a read-only preflight.
+- Public-launch finding from the genuine consent screen: Google displays the
+  backend hostname and no app privacy/terms links. Branding/legal publication
+  remains a separate unresolved readiness item; the owner-account consent
+  test must not be represented as general public or institutional approval.
+
+### 2026-10-20 — Live Google callback exposes cross-origin Dart equality failure
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, repair branch
+  `codex/fix-intake-oauth-handoff`, worktree `5da8/specimen-digitization-app`,
+  based on main `5f3378d9`. Preserved the root's uncommitted append-only log
+  through a named stash and applied it onto current main; the stash is retained
+  until reconciliation. No other work was reset.
+- The owner reported the Google popup saying to return to the app. Native
+  Chrome observation confirmed that page and the original intake dialog still
+  showing “Connecting to Google Drive… Loading source”. The original app's
+  console reports a SecurityError reading Dart's dispatch-record property from
+  a cross-origin Window at the compiled message-listener callback. Source has
+  one matching Dart equality check: `event.source != popup`. The exception
+  happens before the returned authorization response can complete the future.
+  COOP warnings about `window.closed` are also present but are not sufficient
+  evidence of the callback failure's cause.
+- This supersedes the prior Google-consent waiting state: the owner advanced
+  the Google flow to our callback. Provider token exchange, Picker selection,
+  imported bytes, Submit, and final Queue remain Not confirmed. Do not reuse
+  an old callback code or manufacture a completion request to bypass this bug.
+- Redacted console evidence is stored privately as
+  `google-oauth-handoff-console-20261020.private.txt`. No authorization codes,
+  state values, session proofs or credentials are in the repository log.
+  Repair retains exact callback origin, initiating window identity and state
+  checks; a real browser regression must exercise the compiled Dart listener.
+- Independent review matched the live compiled callback's generic Dart
+  equality call to this source guard. Public web/API and all three protected
+  workflows were reconciled to `5f3378d9` (Hosting `39520741945` attempt 1,
+  Data `39520742079`, Runtime `39520742125`). These are the pre-repair releases.
+- Focused repair replaces only popup comparison with JavaScript strict
+  identity. The new browser contract imports the production adapter, compiles
+  it at release `-O4`, and runs fresh headless Chrome with two loopback origins.
+  Fixed source passes all eight checks: cross-origin WindowProxy, wrong
+  origin/source/state/null-source rejection, valid completion, Picker popup
+  preservation and default popup closure. An exact old-source private overlay
+  fails with the same dispatch-record SecurityError observed live. Logs:
+  `/private/tmp/specimen-intake-oauth-browser-fixed-o4.log` and
+  `/private/tmp/specimen-intake-oauth-browser-old-o4.log`.
+- Failed approach: `-O2` compiled the old guard into direct JavaScript identity
+  and passed, so it did not reproduce the production defect. Pinned Flutter's
+  web compiler uses `-O4` for release; the committed gate uses that setting.
+  No artificial equality probe is retained. The browser contract is wired
+  into canonical local verification and the existing protected Flutter job.
+  It is synthetic regression evidence, not live provider acceptance.
+- Canonical `scripts/ci/verify.sh` exited 0 on the complete repair: repository
+  safety checks, Python 19,198 passed / 50 skipped (19,248 accounted for exactly
+  once), design system 1,309 passed, application 3,475 passed / 7 skipped,
+  both Flutter analyses, release `-O4` Chrome contract, Dart formatting, release
+  web build and loopback route/security-header smoke passed. Log:
+  `/private/tmp/specimen-intake-oauth-verify-20261020.log`. Independent review
+  found no unresolved P1/P2 or security issue in the seven-file candidate.
+  Hosted checks, merge, deployed markers and real reconnection are subsequent
+  outcomes; none is implied by this local verification.
