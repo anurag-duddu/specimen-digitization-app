@@ -24054,3 +24054,78 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   - (e) A textually clean merge of main can still conflict with a change of shape: after each merge, grep every reader of the changed structure (here `ordinary_effects` in the new caps code).
   - Validation, round 2: `tests/test_lane_allowance_archive.py` 16 passed; red on `51f53b06`, 5 failed on their own assertions (the cap ledger kept 400 entries in its head; the archived replay was refused as exhausted; a never-archived head read 16 archive ids, one per reservation; both marked race cases need the mark). Full Python suite on `9df3a282`: 16,747 passed, 48 skipped, 2 failed: `test_sam3_runtime.py::test_sam_total_deadline_durable_unknown_and_no_retry[success]` (load, as in round 1) and `test_cohort_reading_barrier.py::test_complete_cohort_reservation_precedes_reader_and_survives_restart`, which passed alone at load 6 and touches neither ledger. After the last commit, the 14 ledger, tenant budget and cost-cap files: 191 passed.
   - G51, round 2: APPROVE of `7a7f4306` and `10709c9f` (docs deltas) and of `9df3a282` (code, https://github.com/anurag-duddu/specimen-digitization-app/pull/388#issuecomment-6304268993), no blocking findings. Its four non-blocking findings: the mark's deployment precondition (now in the doc), an unmarked-head race test (added), the read cost on marked heads (in the PR body), the warning text (now "ledger archiving deferred").
+- New candidate `c88a0945fab5f4f70d090039ac436eb14df0254b`, tree
+  `f567356157f9c901108654b441ceda1dc9c71a97`, passed commit and pre-push
+  hooks. Independent `/root/release_review` approved this exact nine-path head
+  under G51 with no unresolved P1/P2 or security findings; original source/test
+  blobs are unchanged and the allocator repair matches the reviewed hashes.
+- Exact-head PR CI `39660725819` and runtime candidate CI `39660726005`
+  passed, including both native compile checks. Required hosted engine
+  requalification also passed: normal-cache CI-only run `39660797437`, attempt 1,
+  and cold-cache run `39660832696`, attempt 1. Both complete engine artifacts
+  match this SHA/run/attempt, have unchanged contexts, nine Python calls,
+  32 connector/Storage events, every stage passed, zero survivors and all ports
+  free. Normal restored its verified three-file cache; cold started from a fresh
+  empty private directory and bypassed restoration. Recorded engine time was
+  142.29 s and 147.27 s respectively; both engine jobs ended well before their
+  slowest Python shard. Private readback summaries:
+  `/private/tmp/specimen-pr397-normal-engine-summary.json` and
+  `/private/tmp/specimen-pr397-cold-engine-summary.json`.
+- Before merge, refreshed main remains `7aa78001bd5ce6f1a12a858cd5cbafcf91276ee9`;
+  strict required checks, administrator enforcement, conversation resolution,
+  disabled force pushes and all four main-only environments remain intact.
+  PR #397 reports the approved exact head, is mergeable, and has zero unresolved
+  threads. Merge will use the ordinary protected path without an admin override.
+  This append is deliberately uncommitted so the tested head remains unchanged;
+  preserve it with the post-release outcome rather than pruning this worktree.
+
+- PR #397 merged normally at `6873e6d70f05edfc7d692917507a728db1665cb5`
+  after all exact-head required/native checks and the documented normal/cold
+  engine qualifications passed. Data release `39665920532` and runtime release
+  `39665920527` succeeded for the merge; runtime API smoke and private job
+  definitions passed, while processing was not selected. Hosting run
+  `39665920552` failed one Python test and skipped deployment, so the integrated
+  release is NOT complete. No manual deployment or blind rerun was used.
+- Hosted failure:
+  `tests/test_stage_cost_reservations.py::test_exact_map_reserves_each_stage_before_effect_and_survives_restart`.
+  The direct local fixture Qwen reader ran, then Workflow's post-effect elapsed
+  guard correctly rejected its result at 1.1 seconds against the fixture's
+  one-second policy, retaining the reservation and preventing Muse. This is not
+  evidence of a subprocess deadline or a live provider failure. Safe traceback:
+  `/private/tmp/specimen-processing-status-main-shard1.clean.log`.
+  Monetary/restart fixtures should control their elapsed clock; independent
+  deadline tests must continue to prove the held outcome and no replay. The
+  fix-forward branch preserves this uncommitted append and all owner demo data.
+
+
+### 2026-10-21 — Stage-cost fixture clock fix-forward
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, agent
+  `/root/integration_qa`, branch `codex/fix-stage-cost-fixture-clock`, shared
+  worktree `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`,
+  starts from merged main `6873e6d70f05edfc7d692917507a728db1665cb5`.
+  Root delegated completion of the protected reliability release; no app,
+  browser, provider-folder or paid-processing action is part of this repair.
+- Only the cost-map fixture's existing `Workflow.monotonic` seam is controlled;
+  its persisted one-second policy and exact reservation/restart assertions
+  remain unchanged. A new same-fixture control advances the clock inside the
+  actual local reader and requires the deadline reason, retained 76-unit
+  reservation, discarded observation/no disposition and no second call across
+  SQLite reopen. Production source, timers, budget and actor are unchanged.
+- Focused six-module accounting/evidence/recovery/logging/SAM/effect suite:
+  84 passed, one skipped. Initial sandbox run had 81 passes and three local
+  HTTP bind PermissionErrors; the authorized loopback run passed those tests.
+  Evidence: `/private/tmp/specimen-stage-cost-clock-focused-loopback-20261021.log`.
+  Independent `/root/release_review` reviewed the stable test delta with no
+  P1/P2 or security findings. Full canonical and exact-head review remain
+  required before pushing; Hosting remains at the prior web release.
+
+- Frozen fix-forward tree passed `scripts/ci/verify.sh` (exit 0): 19,218 Python
+  passes and 49 skips across the complete verified inventory; design system
+  1,309 passes; app 3,507 passes/seven skips; both analyses; 14 actual compiled
+  OAuth browser checks; 620 Dart files/zero formatting changes; release web
+  build and route/security smoke. Authentic log:
+  `/private/tmp/specimen-stage-cost-clock-verify-20261021.log`.
+  No source, fixture, staging or journal edit occurred during the run. Only this
+  actual-result append follows qualification. Exact-head G51, required hosted
+  checks and all three protected main releases remain pending.
