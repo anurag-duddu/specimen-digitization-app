@@ -361,9 +361,14 @@ def test_a_monthly_cap_ledger_archives_as_the_program_ledger_does(tmp_path):
     # One cap ledger keeping every effect would end with a save of over 30,000 bytes.
     assert len(head[ORDINARY]) <= HEAD_EFFECTS + 1 and max(repository.versions) < 8_000
     assert ledger.settled(key(step(0)), 1_000) == 900
-    assert ledger.reserve(ALLOWANCE, 1_000, **step(0)).held
+    # A settled entry is never reserved again, archived or not (_replayable, #394).
+    assert ledger.reserve(ALLOWANCE, 1_000, **step(0)).issue == "tenant_budget_unavailable"
     assert ledger.settle(1_000, 500, **step(0)) is None
-    assert ledger.read()["reserved_total_micros"] == 900 * 400
+    for i in range(400, 400 + HEAD_EFFECTS + 1):
+        assert ledger.reserve(ALLOWANCE, 1_000, **step(i)).issue is None
+    assert key(step(400)) not in ledger.read()[ORDINARY]
+    assert ledger.reserve(ALLOWANCE, 1_000, **step(400)).held  # An archived hold replays.
+    assert ledger.read()["reserved_total_micros"] == 900 * 400 + 1_000 * (HEAD_EFFECTS + 1)
 
 
 def test_a_replay_of_an_archived_attempt_is_admitted_at_the_allowance(tmp_path):
