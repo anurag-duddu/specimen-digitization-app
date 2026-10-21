@@ -23761,3 +23761,273 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   processing disclosures, verified public pages and provider review ownership
   remain unresolved in the private preparation documents. Institutional,
   physical camera/memory and manual accessibility acceptance remain Not confirmed.
+
+### 2026-10-21 — intake expiry recovery PR #396 review and release continuation
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, worktree
+  `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`, branch
+  `codex/fix-intake-connection-timeout`. PR #396 head
+  `bbd2bc5f1582a280391ceaaaa26e49bbaf13548b`, tree
+  `cbcd3bb1e6b1253cb179e5b972fca38171b0d42c` received independent G51 approval
+  from integration QA after review of the complete six-file delta and canonical
+  verification log; no P1/P2 or security findings. Approval covers source and
+  local verification, not hosted checks, deployment or live acceptance.
+- Main remained `2130ccd0a8aea6aa1906760919238c6c9dd96424`; fresh GitHub reads
+  confirmed branch protection, strict required checks and administrator
+  enforcement, no force-push/deletion, and no unresolved PR review threads.
+  The reviewed source remains frozen while hosted checks finish. This append-only
+  continuation is intentionally uncommitted and does not change the PR head.
+- Scoped device inventory initially timed out inside the sandbox; the read-only
+  CoreDevice query succeeded with normal host access and found a paired physical
+  iPhone available. No device app was installed/launched and no real capture,
+  memory or accessibility acceptance was established by this inventory.
+- The connected Chrome extension still has no tab for the production app.
+  Whole-Chrome binding remains blocked by the earlier automatic approval review;
+  the specific Work-profile intake-window handoff is pending. No UI/API Submit
+  or alternate profile/token path was used to bypass it.
+- PR #396 hosted run 39640719403 completed all three protected checks on
+  `bbd2bc5f1582a280391ceaaaa26e49bbaf13548b`: Repository checks, Python tests
+  (including the engine tier and full twelve-shard accounting), and Flutter
+  checks/web build. Native Android/iOS builds and runtime candidate run
+  39640718818 also passed. Fresh PR read reports `CLEAN`, with the exact
+  independently reviewed head unchanged. Root proceeds through the normal
+  protected merge; no bypass or workstation deployment is involved.
+- PR #396 merged at 2026-10-21 17:19:59 UTC as
+  `7aa78001bd5ce6f1a12a858cd5cbafcf91276ee9`. Protected production workflows
+  are being observed separately; merge alone is not deployment acceptance.
+- Scoped cleanup reconciliation: local `codex/fix-intake-oauth-handoff` points
+  to PR #395's merged `2130ccd0a8aea6aa1906760919238c6c9dd96424`, has no
+  associated worktree or commits/diff outside current `origin/main`, and its
+  remote branch is already absent. Fresh GitHub read confirms PR #395 merged.
+  Removing only this redundant local branch with `git branch -d`; current
+  worktree, current journal and all unrelated branches/worktrees/stashes remain.
+- First safe branch deletion refused because its stale tracking ref still
+  points to the pre-merge PR head. The local branch points to the verified
+  merge commit and is an ancestor of current HEAD/main; no work is unmerged.
+  Remove only this branch's obsolete upstream association, then use the same
+  non-forced `git branch -d` check. No force deletion is used.
+- Protected release completed for `7aa78001bd5ce6f1a12a858cd5cbafcf91276ee9`:
+  Hosting/CI https://github.com/anurag-duddu/specimen-digitization-app/actions/runs/39642853398,
+  Data https://github.com/anurag-duddu/specimen-digitization-app/actions/runs/39642853525,
+  Runtime https://github.com/anurag-duddu/specimen-digitization-app/actions/runs/39642853569.
+  All three succeeded on attempt 1, as did runtime candidate 39642853411.
+  Independent release reviewer verified the public Hosting marker against
+  SHA/run/attempt, reran the Hosting smoke successfully, and read API `/version`
+  with that same SHA and production mode. Main remains protected. Runtime API
+  smoke, intake/scientific definitions and registry verification passed;
+  queued processing was skipped. No workstation deployment occurred.
+- At 17:41:46 UTC the reviewed runtime-only observer confirmed all four job
+  definitions on the new source with original actor/routes/scope/continuation
+  checks intact. Shared scientific job: 111 retained executions, zero unfinished
+  or running; dedicated scientific job: zero executions; dedicated transfer
+  job: two completed, zero running. These read-only observations start no work.
+- Fresh bound-owner intake observation at 17:39:03 UTC found one draft, two
+  ready items (one real Drive and one real Dropbox), zero submissions/results
+  and zero owner specimens, with all pages exhausted and repeated inventory
+  unchanged. Root compared both saved item hashes/sizes against exactly the two
+  approved originals and confirmed non-sensitive status, staged bytes,
+  thumbnails and no item errors. Private evidence:
+  `/private/tmp/specimen-intake-acceptance-01a149fc/intake-metadata-progress-20261021T173903208047Z.private.json`.
+- Outcome is deployed connector-recovery repair plus genuine two-source staging,
+  not full live E2E acceptance. The specific Chrome Work-profile task-window
+  handoff remains pending after the automatic approval rejection described
+  above. Submit, intake progress during submission, final scientific disposition
+  and normal Gmail Queue visibility are Not confirmed. Refresh the approved
+  manifest, runtime baseline and existing G30 budget immediately before a single
+  normal-user Submit of the two photos; do not substitute a token/API submission.
+  Real native camera/memory/accessibility, managed-account policy and public
+  provider readiness remain separately Not confirmed. No paid retry was added.
+- Current local branch fast-forwarded to the verified merge while preserving
+  this append-only post-commit journal. Keep this worktree and current branch
+  for the unfinished acceptance; only the reconciled old local OAuth-handoff
+  branch was pruned. No unrelated worktree, branch or stash was deleted.
+
+### 2026-10-21 — real Gmail two-provider submission and processing observation
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, same `5da8` worktree and
+  `codex/fix-intake-connection-timeout`, deployed PR #396 merge
+  `7aa78001bd5ce6f1a12a858cd5cbafcf91276ee9`. The owner's repeated foreground
+  confirmation allowed the targeted native Chrome access this turn. The
+  foreground window was an old OAuth callback popup; closing that stale popup
+  exposed the existing Work-profile app tab. No token extraction or API Submit
+  substituted for the normal-user interaction.
+- Reloading the released app as the Gmail user restored the two-photo Saved
+  draft in Intake E2E. Fresh checks immediately before Submit confirmed exactly
+  the approved Drive/Dropbox originals, staged bytes and thumbnails, included
+  and non-sensitive, no submissions/results/specimens. The existing G30 ledger
+  at revision 2029 retained 2,383,402 micro-USD; all actor, scope and job routing
+  pins matched, with no active scientific executions. No cap, hold, identity or
+  allowance was changed. Evidence files are in the task-private
+  `/private/tmp/specimen-intake-acceptance-01a149fc/` directory.
+- Clicked normal UI `Submit 2 photos` exactly once. The released progress view
+  showed `2 of 2 finished · 2 sent to pipeline`; persisted metadata at 17:51:58
+  UTC independently confirmed one submission, two sent results and two distinct
+  specimens. `View specimens` opened both records under the Gmail user. Saved
+  screenshots `gmail-restored-two-photo-review.png` and
+  `gmail-intake-two-sent-to-pipeline.png` in that private directory; the latter
+  was shown to the owner. These prove real intake and handoff, not final
+  scientific processing.
+- The dedicated transfer execution completed successfully. The dedicated
+  scientific execution ran on the same reviewed source and scoped route;
+  shared scientific history stayed at 111, with no active shared execution,
+  and shared intake history stayed empty. Read-only runtime evidence includes
+  `runtime-submit-observation-20261021T175608419536Z.private.json`.
+- An early observer refused the revision-one records because canonical
+  `activeRunId` is initially null while the Queue view derives it from the
+  snapshot. Independent source review confirmed this creation-time semantic
+  difference (`CreateSpecimenV3` vs first `SaveSpecimenV3`), not a proven changing
+  record. The helper and final acceptance gates were left unchanged. A later
+  observation at 17:58:29 passed exact record/Queue/revision/run/checksum/scope
+  checks for both actual submission-result specimen IDs. Both still lacked a
+  final disposition; final scientific and Queue acceptance remain Not confirmed.
+- Correction to the first verbal diagnosis: `external_outcome_unknown` with
+  an active lease is also the durable intent saved before an ordinary external
+  call. Its presence alone does not prove failure. Source review found the UI
+  labels any blocker as blocked, including that normal in-flight intent. Real
+  telemetry separately found one Muse reading for each specimen ended with
+  child outcome `failed`; the workflow persisted `reader_worker_failed` and
+  scheduled its existing bounded retry. No manual retry/resume/reprocess,
+  additional photo, budget change or paid experiment was started. Continue
+  tracing these failures and fixing misleading UI states before final acceptance.
+- At 18:08:56 UTC the unchanged final observer passed every exact-record,
+  current-snapshot Queue, original-checksum, accepted-ID, revision/run-link,
+  non-sensitive/non-synthetic, collection and runtime-definition check. Both
+  specimens finalized: one `cleared`, one `needs_human_review`. Evidence:
+  `authoritative-final-20261021T180856148234Z.private.json`. Independent runtime
+  observation at 18:09:22 confirmed successful completion of the one post-Submit
+  dedicated scientific execution and the one dedicated transfer execution,
+  both on 7aa78001 with original actor/scope/routing intact; no unfinished jobs
+  and no new shared executions. Existing bounded recovery handled the failed
+  readings without an operator replay.
+- Fresh normal-user browser reload retained the Gmail login and displayed
+  `subject_105526324` alone in Needs a human; selecting Cleared displayed
+  `subject_105526321` alone and opened its finalized record. Both private
+  screenshot proofs are `gmail-final-needs-human-queue.png` and
+  `gmail-final-cleared-queue.png`. This establishes real Drive and Dropbox
+  import, saved review, single Submit, intake progress, scientific completion,
+  and final Queue access for these two original photos in the dedicated
+  collection. It does not establish institutional/public-provider approval,
+  native camera, large-batch memory, or manual accessibility acceptance.
+- Follow-up source branch `codex/fix-processing-status` starts at 7aa78001.
+  The UI repair classifies coherent active external intents and scheduled
+  retries as waiting while preserving real blocks, expired/missing leases,
+  contradictory states, clearance gates and server-owned actions. It covers
+  the owning `plan`/field-research alias and the due-retry intent alias.
+  Four Dart files; 157 focused widget/unit tests passed, focused analysis and
+  formatting clean. Evidence: `/private/tmp/specimen-processing-wait-focused-20261021.log`.
+- A separate deterministic offline reproduction through the installed
+  HF/Pydantic AI/HTTPX stack proved HTTPX timeout classes escape the builtin
+  TimeoutError handler. Adding `httpx.TimeoutException` to the existing catch
+  retains the same unknown-spend code, reservation behavior, budgets, limits
+  and retry policy. Fifteen regressions cover all transport timeout types,
+  timeouts after an answered request, safe child metadata and unrelated-error
+  controls; the original source failed nine with six controls passing.
+  The focused recovery/usage/refusal/cap suite passed 101 tests. This improves
+  classification; the exact live child exception remains Not confirmed, and
+  no provider outage or changed timeout requirement is inferred from timing.
+  Logs: `/private/tmp/specimen-model-timeout-before.log` and
+  `/private/tmp/specimen-model-timeout-focused.log`. Canonical verification and
+  independent exact-head review follow before the protected release.
+- Independent review found the scheduled-retry presentation omitted the exact
+  existing `provider_deadline_outcome_unknown` code. Added that known cause and
+  both future/due regressions with unchanged action and clearance assertions;
+  the focused UI suite now passes 161 tests, analysis/format/whitespace clean.
+  Evidence: `/private/tmp/specimen-processing-wait-provider-deadline-focused-20261021.log`.
+  No backend retry policy changed. The first canonical attempt ended in
+  pre-commit's shellcheck wrapper reporting files modified after root staged
+  during the hook; there were no shell-file or unstaged changes. Do not stage
+  concurrently with pre-commit. Re-run the complete verification on the corrected,
+  fully staged frozen tree; the first attempt is not a pass.
+- Exact runtime attribution reconciled the first and final execution IDs and
+  matched both accepted activeRunIds to the sanitized warnings from that same
+  scientific execution. Transfer ran 17:51:00–17:52:32 UTC; science ran
+  17:51:38–18:08:25 UTC. Evidence:
+  `runtime-final-attribution-20261021T181036545804Z.private.json`.
+- Canonical verification completed successfully on the frozen staged candidate:
+  `scripts/ci/verify.sh` exited 0. All six Python shards exited 0 with 19,213
+  passed and 50 skipped, reconciled across the complete collection. Design
+  system tests: 1,309 passed; application tests: 3,507 passed and seven skipped.
+  Both Flutter analyses passed, 620 Dart files required no formatting changes,
+  the compiled OAuth browser contract passed, and the release web build and
+  local route/header smoke passed. Evidence:
+  `/private/tmp/specimen-processing-status-verify-final-20261021.log`.
+  This is local candidate verification, not a new production deployment.
+- The owner requested ten specimen photos in personal Google Drive and ten in
+  personal Dropbox for an imminent demo, explicitly leaving app import and
+  Submit to the owner. Created private `Specimen Demo - 10 photos - 2026-10-21`
+  folders under the Gmail-linked accounts and uploaded ten genuine unchanged
+  originals to each. Native browser UI verified `10 uploads complete` in Drive
+  and `Upload successful! 10 of 10 uploads complete` in Dropbox, with all ten
+  filenames present. No app import, Submit, or processing was performed for
+  this request. Targeted local searches found only ten unique originals;
+  disclosed that the same ten are in both providers and that subjects
+  105526321 and 105526324 were already used in the live E2E. Do not claim twenty
+  unique photos or fresh duplicate-free processing. Original bytes, full JPEG
+  decoding and hash uniqueness were checked; provider screenshots and the
+  exact folder URLs are in `/private/tmp/specimen-demo-20261021/` alongside
+  `manifest.json` and `provider-upload-completion.json`.
+
+
+### 2026-10-21 — Integration QA owns the protected reliability-fix release
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8` / `/root/integration_qa`;
+  branch `codex/fix-processing-status`, worktree `5da8/specimen-digitization-app`.
+  Root handed off the clean candidate `402a558fea6e6480fed9ef227ba590c5cfebb14a`
+  (tree `d499bcf8d901848cc3b80e9815557cd11035b47a`) after successful canonical
+  verification; no additional technical changes or broad test rerun were made.
+- Refreshed remote main remains `7aa78001bd5ce6f1a12a858cd5cbafcf91276ee9`.
+  Main protection is active with strict required checks and administrator
+  enforcement; all four active production environments accept only `main`.
+  Required pre-push hooks passed. Opened
+  [PR #397](https://github.com/anurag-duddu/specimen-digitization-app/pull/397)
+  and attached it to the task. Independent reviewer `/root/release_review`
+  approved that exact head/tree under G51 with no unresolved P1/P2 or security
+  findings. Container candidate run `39654705298` passed; main CI run
+  `39654705366` is still running, so merge and production release are pending.
+- Preserve the owner demo folders and originals. This release handoff performs
+  no browser action, app import, Submit, worker execution or paid model call.
+  Runtime push releases define jobs only; processing requires the separate
+  manual `process_queued` input, which is not selected here.
+
+- PR #397 hosted run `39654705366` blocked release before merge: shard 8 failed
+  `test_storage_wrapper_requires_all_denial_ids_and_cleanup[storage.anonymous.overwrite]`
+  because Storage startup stopped at `auxiliary port alias`, before the intended
+  denial-inventory check. The dependent Python aggregate failed; every other
+  hosted job, including the real SQL/Storage engine tier and both native builds,
+  passed. No rerun, merge or production change was substituted for diagnosis.
+  Sanitized traceback: `/private/tmp/specimen-processing-status-pr397-python-shard8.clean.log`.
+- The real reporter released each ephemeral auxiliary listener before choosing
+  the next, so the OS could return an excluded primary or a previous auxiliary.
+  The original trace contains no chosen port numbers, so which collision occurred
+  there is Not confirmed. Deterministic real-wrapper regressions reproduce both
+  branches with real loopback TCP listeners; both fail the original reporter at
+  the same alias guard. Evidence:
+  `/private/tmp/specimen-storage-auxiliary-before-20261021.log`.
+- Repaired `scripts/data/engine-contract-reporter.mjs` to hold all candidates
+  concurrently, including excluded primary candidates, until two distinct
+  auxiliary ports are selected. At most five candidates are needed; every
+  listener is closed in finally, including partial allocation failure. Alias,
+  readiness, exact denial-inventory and owned-process/port cleanup guards are
+  retained. Added primary-first, auxiliary-first and injected-listen-failure
+  controls to `scripts/ci/test_engine_harness.py`; the complete controlled
+  fixture module passes 239 tests. Node syntax and diff whitespace also pass.
+  Evidence: `/private/tmp/specimen-storage-auxiliary-focused-20261021.log`.
+  These fixtures use controlled stand-ins, not real SQL/Storage engines.
+- Independent `/root/release_review` source review found no P1/P2 or security
+  issue in the repair. Corrected-tree full local verification, a new exact-head
+  G51 review, documented hosted normal/cold engine qualification and ordinary
+  exact-head PR checks are required next. No selector, tool pin, assertion,
+  timeout or protected workflow policy was weakened. Production remains at the
+  previous release, and the owner demo originals/folders remain untouched.
+
+- Corrected-tree `scripts/ci/verify.sh` exited 0. All six Python shards passed
+  with 19,217 passed and 49 skipped across the complete verified inventory.
+  Design system: 1,309 passed; app: 3,507 passed and seven skipped; both analyses
+  passed, all 14 actual compiled OAuth browser checks passed, 620 Dart files
+  needed no changes, and the release web build and route/header smoke passed.
+  Evidence: `/private/tmp/specimen-processing-status-allocator-verify-20261021.log`.
+  The worktree stayed frozen throughout; a sandbox-denied staging attempt before
+  the run changed no index entry, and no staging occurred while it ran. Only this
+  append-only result was added afterwards. This is local qualification, not a
+  deployed or real-engine acceptance claim; hosted normal/cold qualification and
+  exact-head PR checks remain pending before any merge.

@@ -460,12 +460,24 @@ async function harness(kind, argv) {
         const localRules=path.join(scratch,'storage.rules'); copyFileSync(rules || path.join(root,'storage.rules'),localRules);
         // The CLI also owns hub/logging listeners. Give them private known ports
         // and prove their release, rather than touching shared 4400/4500.
-        for(let n=0;n<2;n++) {
-          const server=net.createServer();
-          await new Promise((resolve,reject)=> {server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
-          const port=server.address().port;
-          await new Promise(resolve=>server.close(resolve));
-          assert.ok(!ports.includes(port)&&!auxiliaryPorts.includes(port),'auxiliary port alias');auxiliaryPorts.push(port);
+        // Keep every candidate bound until selection finishes. Otherwise the
+        // OS can immediately return a primary or the first auxiliary port.
+        // Holding excluded primary candidates also bounds selection to five
+        // listeners (three excluded ports plus the two wanted here).
+        const reservations=[];
+        try {
+          for(let n=0;auxiliaryPorts.length<2&&n<ports.length+2;n++) {
+            const server=net.createServer();reservations.push(server);
+            await new Promise((resolve,reject)=> {server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
+            const port=server.address().port;
+            if(ports.includes(port)) continue;
+            assert.ok(!ports.includes(port)&&!auxiliaryPorts.includes(port),'auxiliary port alias');auxiliaryPorts.push(port);
+          }
+          assert.equal(auxiliaryPorts.length,2,'missing private auxiliary ports');
+        } finally {
+          const closed=await Promise.allSettled(reservations.filter(server=>server.listening).map(server=>new Promise((resolve,reject)=>server.close(error=>error?reject(error):resolve()))));
+          const failed=closed.find(result=>result.status==='rejected');
+          if(failed) throw failed.reason;
         }
         await portsFree(auxiliaryPorts);
         lifecycle.preflight.auxiliary_ports=[...auxiliaryPorts];
