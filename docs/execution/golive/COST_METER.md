@@ -485,5 +485,7 @@ allows those identifiers. All of them are ids.
   rows, with the free allowance as credits; `meter` reports how far allocation
   has run.
 - PR 4: a monthly check of the meter's totals against the real Hugging Face
-  and Google bills.
+  and Google bills, described in [COST_RECONCILIATION.md](COST_RECONCILIATION.md):
+  an offline command (`scripts/ops/reconcile_costs.py`) over files the operator
+  fetches with read-only queries.
 - PR 5: the screen that shows it.
