@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 
+import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/screens/intake/intake_auth_session_web.dart';
 import 'package:web/web.dart' as web;
 
@@ -37,6 +38,11 @@ void main() {
             onError: (Object error) {
               state['status'] = 'failed';
               state['errorType'] = error.runtimeType.toString();
+              if (error is ApiFailure) {
+                state['errorCode'] = error.code;
+                state['errorMessage'] = error.message;
+                state['recoveryAction'] = error.details['action'];
+              }
             },
           );
     }).toJS,

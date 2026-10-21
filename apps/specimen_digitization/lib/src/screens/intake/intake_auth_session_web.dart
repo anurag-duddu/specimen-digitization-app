@@ -73,7 +73,14 @@ class IntakeAuthSession {
     });
     var completed = false;
     try {
-      final response = await result.future.timeout(intakeAuthorizationTimeout);
+      final response = await result.future.timeout(
+        intakeAuthorizationTimeout,
+        onTimeout: () => throw const ApiFailure(
+          'Connection expired. Connect again to finish authorizing this account.',
+          code: 'connection_expired',
+          details: {'action': 'connect'},
+        ),
+      );
       completed = true;
       return response;
     } finally {
