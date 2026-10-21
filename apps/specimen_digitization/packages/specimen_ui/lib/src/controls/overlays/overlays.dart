@@ -10,6 +10,7 @@ library;
 
 export 'banner.dart';
 export 'dialog.dart';
+export 'import_workspace.dart';
 export 'disclosure.dart';
 export 'popover_menu.dart';
 export 'sheet.dart';

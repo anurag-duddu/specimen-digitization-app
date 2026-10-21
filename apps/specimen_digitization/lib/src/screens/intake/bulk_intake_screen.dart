@@ -11,12 +11,12 @@ import 'package:specimen_ui/specimen_ui.dart';
 import '../../capture/capture_camera.dart';
 import '../../capture/capture_screen.dart';
 import '../../models.dart';
+import '../../workspace.dart' show WorkspaceBranchScope;
 import '../../region_editor.dart' show uiFullScreenRoute;
 import '../../widgets/product_modal.dart';
 import 'bulk_intake_controller.dart';
 import 'bulk_intake_repository.dart';
-import 'intake_source_picker.dart';
-import 'intake_timing.dart';
+import 'intake_import_workspace.dart';
 
 const _photoTypes = XTypeGroup(
   label: 'Photos',
@@ -61,10 +61,12 @@ class BulkIntakeScreen extends StatefulWidget {
   State<BulkIntakeScreen> createState() => _BulkIntakeScreenState();
 }
 
-class _BulkIntakeScreenState extends State<BulkIntakeScreen> {
+class _BulkIntakeScreenState extends State<BulkIntakeScreen>
+    with WidgetsBindingObserver {
   late final BulkIntakeController c;
   String? inspecting, submission;
   bool dragging = false;
+  bool _routeActive = true, _branchActive = true, _background = false;
   @override
   void initState() {
     super.initState();
@@ -75,6 +77,8 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen> {
           scope: widget.scope,
           userId: widget.userId,
         );
+    WidgetsBinding.instance.addObserver(this);
+    _background = _isBackground(WidgetsBinding.instance.lifecycleState);
     unawaited(() async {
       if (widget.controller == null) await c.initialize();
       if (mounted && widget.initialProvider != null) {
@@ -84,7 +88,34 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final branch = WorkspaceBranchScope.maybeOf(context);
+    _branchActive =
+        branch == null ||
+        (branch.active && branch.collectionKey == widget.scope.key);
+    _routeActive = ModalRoute.isCurrentOf(context) ?? true;
+    _updateActivity();
+  }
+
+  static bool _isBackground(AppLifecycleState? state) =>
+      state == AppLifecycleState.hidden ||
+      state == AppLifecycleState.paused ||
+      state == AppLifecycleState.detached;
+
+  void _updateActivity() =>
+      c.setViewActive(_branchActive && _routeActive && !_background);
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _background = _isBackground(state);
+    _updateActivity();
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    c.setViewActive(false);
     if (widget.controller == null) c.dispose();
     super.dispose();
   }
@@ -175,20 +206,11 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen> {
     ),
   );
 
-  Future<void> _source(String provider) => showProductModal<void>(
+  Future<void> _source(String provider) => IntakeImportWorkspace.show(
     context: context,
-    title: provider == 'url'
-        ? 'Import links'
-        : provider == 'storage'
-        ? 'Registered storage'
-        : provider == 'google_drive'
-        ? 'Google Drive'
-        : 'Dropbox',
-    body: (_) => IntakeSourcePicker(
-      controller: c,
-      provider: provider,
-      initialSourceId: widget.initialSourceId,
-    ),
+    controller: c,
+    provider: provider,
+    initialSourceId: widget.initialSourceId,
   );
 
   Future<void> _open(IntakeDraftItem item, bool wide) async {
@@ -355,6 +377,16 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen> {
                                   style: ui.type.bodySmall,
                                 ),
                               ),
+                              if (c.preparingFiles || c.addingSources)
+                                Semantics(
+                                  liveRegion: true,
+                                  child: Text(
+                                    c.preparingFiles
+                                        ? c.preparationLabel
+                                        : c.sourceAddLabel,
+                                    style: ui.type.bodySmall,
+                                  ),
+                                ),
                             ],
                           ),
                           Wrap(
@@ -504,8 +536,16 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen> {
                               label: 'Submit ${c.readyCount} photos',
                               leading: UiIcons.cloudUpload,
                               loading: c.submitting,
-                              onPressed: c.readyCount == 0 ? null : _submit,
-                              disabledReason: c.readyCount == 0
+                              onPressed:
+                                  c.readyCount == 0 ||
+                                      c.preparingFiles ||
+                                      c.addingSources
+                                  ? null
+                                  : _submit,
+                              disabledReason:
+                                  c.preparingFiles || c.addingSources
+                                  ? 'Wait for the selected photos to be added.'
+                                  : c.readyCount == 0
                                   ? 'Add readable photos to submit.'
                                   : null,
                             ),
@@ -637,7 +677,7 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen> {
   );
 }
 
-class BulkPhotoPreview extends StatelessWidget {
+class BulkPhotoPreview extends StatefulWidget {
   const BulkPhotoPreview({
     super.key,
     required this.controller,
@@ -648,16 +688,68 @@ class BulkPhotoPreview extends StatelessWidget {
   final IntakeDraftItem item;
   final bool full;
   @override
+  State<BulkPhotoPreview> createState() => _BulkPhotoPreviewState();
+}
+
+class _BulkPhotoPreviewState extends State<BulkPhotoPreview> {
+  late Future<Uint8List> _preview;
+  String get _identity =>
+      '${widget.item.id}:${widget.item.state}:${widget.item.data['revision']}:${widget.full}';
+  late String _loadedIdentity;
+  void _load() {
+    _loadedIdentity = _identity;
+    _preview = widget.controller.preview(widget.item, full: widget.full);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(BulkPhotoPreview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_loadedIdentity != _identity ||
+        oldWidget.controller != widget.controller) {
+      _load();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) => FutureBuilder<Uint8List>(
-    future: controller.preview(item, full: full),
-    builder: (context, snapshot) => snapshot.hasData
-        ? Image.memory(
-            snapshot.data!,
-            fit: BoxFit.contain,
-            gaplessPlayback: true,
-            excludeFromSemantics: true,
-          )
-        : const Center(child: UiIcon(UiIcons.image)),
+    future: _preview,
+    builder: (context, snapshot) {
+      if (snapshot.hasData) {
+        return Image.memory(
+          snapshot.data!,
+          fit: BoxFit.contain,
+          gaplessPlayback: true,
+          excludeFromSemantics: true,
+        );
+      }
+      if (snapshot.hasError && snapshot.error is! IntakePreviewPending) {
+        void retry() {
+          widget.controller.invalidatePreview(widget.item, full: widget.full);
+          setState(_load);
+        }
+
+        return Center(
+          child: widget.full
+              ? UiButton(
+                  label: 'Retry preview',
+                  variant: UiButtonVariant.ghost,
+                  onPressed: retry,
+                )
+              : UiIconButton(
+                  icon: UiIcons.retry,
+                  semanticsLabel: 'Retry preview for ${widget.item.name}',
+                  onPressed: retry,
+                ),
+        );
+      }
+      return const Center(child: UiIcon(UiIcons.image));
+    },
   );
 }
 
@@ -892,56 +984,37 @@ class BulkIntakeProgress extends StatefulWidget {
 }
 
 class _BulkIntakeProgressState extends State<BulkIntakeProgress> {
-  IntakeSubmission? batch;
-  List<IntakeSubmissionItem> items = [];
+  IntakeSubmissionProgress? get snapshot =>
+      widget.controller.progressFor(widget.submissionId);
+  IntakeSubmission? get batch => snapshot?.batch;
+  List<IntakeSubmissionItem> get items => snapshot?.items ?? const [];
   String? error;
-  Timer? timer;
-  bool reading = false, reselecting = false;
+  bool reselecting = false, retrying = false;
   @override
   void initState() {
     super.initState();
     unawaited(refresh());
-    timer = Timer.periodic(intakePollInterval, (_) => refresh());
+  }
+
+  @override
+  void didUpdateWidget(BulkIntakeProgress oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller ||
+        oldWidget.submissionId != widget.submissionId) {
+      oldWidget.controller.stopObservingSubmission(oldWidget.submissionId);
+      unawaited(refresh());
+    }
   }
 
   @override
   void dispose() {
-    timer?.cancel();
+    widget.controller.stopObservingSubmission(widget.submissionId);
     super.dispose();
   }
 
   Future<void> refresh() async {
-    if (reading) return;
-    reading = true;
-    try {
-      final c = widget.controller;
-      final current = IntakeSubmission(
-        await c.call('GET', '/submissions/${widget.submissionId}'),
-      );
-      final rows = <IntakeSubmissionItem>[];
-      String? after;
-      do {
-        final page = await c.call(
-          'GET',
-          '/submissions/${widget.submissionId}/items',
-          query: {'limit': '100', 'after': ?after},
-        );
-        rows.addAll(objects(page['items']).map(IntakeSubmissionItem.new));
-        after = page['next_cursor']?.toString();
-      } while (after != null && mounted);
-      await c.reconcileFinishedTransfers(rows);
-      if (mounted) {
-        setState(() {
-          batch = current;
-          items = rows;
-          error = null;
-        });
-      }
-    } catch (e) {
-      if (mounted) setState(() => error = widget.controller.message(e));
-    } finally {
-      reading = false;
-    }
+    await widget.controller.observeSubmission(widget.submissionId);
+    if (mounted) setState(() => error = null);
   }
 
   Future<void> action(String path, {Json? body}) async {
@@ -954,6 +1027,32 @@ class _BulkIntakeProgressState extends State<BulkIntakeProgress> {
       await refresh();
     } catch (e) {
       if (mounted) setState(() => error = widget.controller.message(e));
+    }
+  }
+
+  Future<void> retry({String? state, bool finalization = false}) async {
+    final controller = widget.controller, id = widget.submissionId;
+    setState(() => retrying = true);
+    try {
+      final candidates = await controller.progressItemsForAction(id);
+      if (!mounted ||
+          widget.controller != controller ||
+          widget.submissionId != id) {
+        return;
+      }
+      final ids = candidates
+          .where(
+            (item) =>
+                (state == null || item.state == state) &&
+                (!finalization || item.data['needs_finalization'] == true),
+          )
+          .map((item) => item.itemId)
+          .toList();
+      if (ids.isNotEmpty) await action('retry', body: {'item_ids': ids});
+    } catch (failure) {
+      if (mounted) setState(() => error = widget.controller.message(failure));
+    } finally {
+      if (mounted) setState(() => retrying = false);
     }
   }
 
@@ -989,7 +1088,12 @@ class _BulkIntakeProgressState extends State<BulkIntakeProgress> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: widget.controller,
+    builder: (context, _) => _content(context),
+  );
+
+  Widget _content(BuildContext context) {
     final ui = context.ui;
     final counts = batch?.counts ?? {};
     int count(String state) => ((counts[state] as num?) ?? 0).toInt();
@@ -1037,7 +1141,12 @@ class _BulkIntakeProgressState extends State<BulkIntakeProgress> {
                       'The specimen pipeline takes over after each successful handoff.',
                       style: ui.type.bodySmall,
                     ),
-                    if (error != null) Text(error!, style: ui.type.bodySmall),
+                    if (error ??
+                            widget.controller.progressErrorFor(
+                              widget.submissionId,
+                            )
+                        case final String problem)
+                      Text(problem, style: ui.type.bodySmall),
                     if (items.any(
                       (item) => item.data['needs_original'] == true,
                     )) ...[
@@ -1067,48 +1176,23 @@ class _BulkIntakeProgressState extends State<BulkIntakeProgress> {
                           UiButton(
                             label: 'Finish saved transfers',
                             variant: UiButtonVariant.secondary,
-                            onPressed: () => action(
-                              'retry',
-                              body: {
-                                'item_ids': items
-                                    .where(
-                                      (item) =>
-                                          item.data['needs_finalization'] ==
-                                          true,
-                                    )
-                                    .map((item) => item.itemId)
-                                    .toList(),
-                              },
-                            ),
+                            onPressed: retrying
+                                ? null
+                                : () => retry(finalization: true),
                           ),
                         if (batch?.data['worker_error'] != null)
                           UiButton(
                             label: 'Retry batch',
                             variant: UiButtonVariant.secondary,
-                            onPressed: items.isEmpty
-                                ? null
-                                : () => action(
-                                    'retry',
-                                    body: {
-                                      'item_ids': items
-                                          .map((i) => i.itemId)
-                                          .toList(),
-                                    },
-                                  ),
+                            onPressed: retrying || items.isEmpty ? null : retry,
                           ),
                         if (count('needs_attention') > 0)
                           UiButton(
                             label: 'Retry failed photos',
                             variant: UiButtonVariant.secondary,
-                            onPressed: () => action(
-                              'retry',
-                              body: {
-                                'item_ids': items
-                                    .where((i) => i.state == 'needs_attention')
-                                    .map((i) => i.itemId)
-                                    .toList(),
-                              },
-                            ),
+                            onPressed: retrying
+                                ? null
+                                : () => retry(state: 'needs_attention'),
                           ),
                         if (batch?.active == true)
                           UiButton(
@@ -1162,6 +1246,15 @@ class _BulkIntakeProgressState extends State<BulkIntakeProgress> {
                   );
                 },
               ),
+              if (snapshot?.hasMore == true)
+                SliverToBoxAdapter(
+                  child: UiButton(
+                    label: 'Load more photos',
+                    variant: UiButtonVariant.secondary,
+                    onPressed: () =>
+                        widget.controller.loadMoreProgress(widget.submissionId),
+                  ),
+                ),
             ],
           ),
         ),
