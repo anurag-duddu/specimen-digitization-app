@@ -45,7 +45,12 @@ class IntakeAuthSession {
     ).origin;
     final result = Completer<Json>();
     final listener = ((web.MessageEvent event) {
-      if (event.origin != callbackOrigin || event.source != popup) return;
+      // Dart equality can probe runtime properties on a cross-origin Window.
+      // JavaScript identity checks the WindowProxy without crossing that boundary.
+      if (event.origin != callbackOrigin ||
+          event.source.strictNotEquals(popup).toDart) {
+        return;
+      }
       final data = event.data.dartify();
       if (data is Map &&
           data['state'] == expectedState &&

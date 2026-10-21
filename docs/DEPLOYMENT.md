@@ -116,7 +116,7 @@ which only their own workflows call; see
 |---|---|
 | `Repository checks` | Sensitive-file policy, secret scans, formatting, YAML/JSON/TOML validity, shell checks, and GitHub Actions syntax |
 | `Python tests` | Locked Python environment. Backend, contract, workflow, dependency, release and unrecognized changes run the complete default pytest collection; all configured module shards must succeed and cover every collected test exactly once. Every pull request currently runs the complete collection, including Flutter-only changes. Pushes to `main` always run the complete collection. The separate mandatory SQL/Storage engine tier must also succeed and supply verified current-attempt evidence in either scope. |
-| `Flutter checks and web build` | Locked Flutter dependencies, Dart formatting, the `specimen_ui` design system's own analysis and tests, client static analysis, client widget tests, release build, immutable deployment metadata, and a loopback route smoke over the built artifact |
+| `Flutter checks and web build` | Locked Flutter dependencies, Dart formatting, the `specimen_ui` design system's own analysis and tests, client static analysis, client widget tests, a compiled cross-origin OAuth browser contract, release build, immutable deployment metadata, and a loopback route smoke over the built artifact |
 
 Pull requests use `apps/specimen_digitization/lib/firebase_options.ci.dart`.
 They receive neither the real FlutterFire configuration nor a Google OIDC
@@ -449,10 +449,19 @@ scripts/ci/verify.sh
 This is the canonical local gate. It runs repository hooks, secret scanning,
 actionlint, shellcheck, locked Python installation, Python tests, the UI
 string check, the `specimen_ui` design system's own analysis and tests, client
-dependency resolution, client analysis, client tests, Dart formatting, the
-release web build, and the route smoke over that build. If the local ignored
+dependency resolution, client analysis, client tests, the OAuth browser
+contract, Dart formatting, the release web build, and the route smoke over that
+build. If the local ignored
 production FlutterFire file is absent, it uses and then removes the
 credential-free CI placeholder. It never deploys.
+
+The OAuth browser contract (`scripts/ci/check_intake_auth_session_browser.cjs`)
+requires Node.js 22 or newer and Chrome. It compiles the production Dart intake
+authorization listener with the release build's `-O4` optimization and tests
+popup messages between two loopback origins
+in an isolated browser profile. It uses invented authorization values and no
+provider account. This catches cross-origin Window interop failures that VM
+widget tests cannot exercise; it is not live provider acceptance.
 
 It runs the same Dart formatting and route checks the `Flutter checks and web
 build` job runs, so a branch that passes here passes those two in CI. On a

@@ -398,6 +398,14 @@ jobs:
           GATE_BASE: HEAD^1
         run: flutter test
 
+      - name: Install Node.js for browser contracts
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+
+      - name: Check cross-origin intake authorization in Chrome
+        run: node ../../scripts/ci/check_intake_auth_session_browser.cjs
+
       - name: Build Flutter web release
         env:
           SPECIMEN_API_BASE_URL: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.SPECIMEN_API_BASE_URL || '' }}
