@@ -290,6 +290,7 @@ def has_active_lease(run, current: datetime | None = None) -> bool:
 
 def run_agent_bounded(agent, prompt, *, timeout_seconds: float, usage_limits):
     import asyncio
+    from httpx import TimeoutException
     from pydantic_ai.exceptions import (
         ModelHTTPError,
         UnexpectedModelBehavior,
@@ -341,7 +342,9 @@ def run_agent_bounded(agent, prompt, *, timeout_seconds: float, usage_limits):
     try:
         with capture_run_messages() as messages:
             return asyncio.run(call())
-    except TimeoutError as exc:
+    except (TimeoutError, TimeoutException) as exc:
+        # HF's HTTPX transport timeouts do not inherit builtin TimeoutError.
+        # A missing response leaves spend unknown even after an earlier answer.
         raise AdapterFailure(
             "provider_deadline_outcome_unknown", outcome_unknown=True
         ) from exc

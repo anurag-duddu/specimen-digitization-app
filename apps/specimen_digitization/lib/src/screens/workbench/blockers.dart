@@ -11,6 +11,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../blocker_words.dart';
 import '../../models.dart';
+import '../../processing_wait.dart';
 import '../../review_context.dart';
 import 'workbench_layout.dart';
 
@@ -295,7 +296,16 @@ ClearanceBlocker _issueFor(
   // processing, and it says what stopped the run in the words the processing
   // panel uses, never the code.
   final BlockerWords? words = blockerWords(code);
-  if (words != null) {
+  final ProcessingWait? waiting = processingWaitFor(specimen);
+  if (waiting != null && code == objectOf(specimen.data['run'])['blocker']) {
+    // Processing is still outstanding, so keep the clearance gate without
+    // telling a reviewer to reconcile an active intent or a scheduled retry.
+    kind = ClearanceBlockerKind.processing;
+    message = waiting.summary;
+    detail = waiting.detail;
+    field = null;
+    region = null;
+  } else if (words != null) {
     kind = ClearanceBlockerKind.processing;
     message = words.what;
     detail = words.next;
