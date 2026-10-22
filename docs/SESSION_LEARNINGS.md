@@ -24257,3 +24257,45 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   the Mac is locked. An unlock request is pending with the user. This does not
   block the authorized PR/protected-release work and does not establish personal
   or institutional provider acceptance for this new build.
+- PR/review follow-up (2026-10-21, same task): committed implementation as
+  `9c3a5548b6110ed617802633ea0a3c4d3c42c04f`, PR #399
+  <https://github.com/anurag-duddu/specimen-digitization-app/pull/399>.
+  Independent reviewer `/root/polish_independent_review` issued **G51 APPROVED**
+  for that exact head against `c9040b83b4ccd5f4507bd53f44ab4694e81cd021`,
+  confirming the clean committed diff, resolved findings and canonical evidence.
+  Reviewer did not rerun tests. Hosted CI/CD run `39693627001` and runtime
+  candidate run `39693626999` are in progress; merge/release not yet confirmed.
+  This append is local closeout evidence after the reviewed implementation commit.
+- Hosted attempt 1 follow-up: PR #399 CI/CD run `39693627001` failed the
+  unchanged `test_complete_cohort_reservation_precedes_reader_and_survives_restart`
+  in Python shard 6. Its local fixture freezes wall time but leaves effect
+  monotonic time real; synchronous fixture work exceeded its persisted one-second
+  budget on the runner. The production deadline and unresolved-liability guard
+  correctly blocked it. Relevant cohort/workflow/launch files are byte-identical
+  to the base. Original focused test passed locally, while a controlled 1.01-second
+  fixture clock advance reproduced the exact deadline/held-liability behavior.
+  Evidence: `/private/tmp/intake-polish-pr399-shard6-clean.log` and
+  `/private/tmp/intake-polish-cohort-deadline-diagnosis.log`. Fixing the fixture's
+  clock consistency and adding explicit late-result/restart coverage; production
+  barriers, one-second policy and required checks remain unchanged. Earlier G51
+  approval applies only to `9c3a5548`; the amended head needs fresh review/CI.
+- Fixture correction completed only in `tests/test_cohort_reading_barrier.py`:
+  all constructed/restarted fixture workflows now receive the existing simulated
+  clock for elapsed effects. No production file or timeout changed. New negative
+  coverage advances 1.01 seconds, verifies the deadline block, retained 165-cost
+  liability/two claims, no accepted late observation and no replay/next-member
+  dispatch after SQLite restart. The original one-off single-worker override is
+  now centralized. Independent reviewer found no issue in this correction.
+  Cohort barrier, stage-cost reservations and evidence-pilot suites: 77 passed,
+  three existing warnings (33.52s), evidence
+  `/private/tmp/intake-polish-cohort-clock-focused.log`. Full canonical rerun
+  begins next on the frozen amended tree; earlier full run remains accurately
+  recorded for the preceding implementation head.
+- Full amended-tree canonical run completed with exit 0:
+  `/private/tmp/specimen-intake-polish-verify-cohort-fix.log`. Python: 19,245
+  passed, 50 skipped, all 19,295 collected tests reconciled exactly once across
+  six shards. Design system: 1,312 passed. App: 3,572 passed, seven skipped.
+  Both analyzers, policy/secret/format/UI-writing gates, compiled OAuth browser
+  contract, release web build and route/security-header smoke passed again.
+  Ready to commit the fixture-only correction, renew exact-head review and run
+  hosted CI again; production release remains not confirmed.
