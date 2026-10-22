@@ -419,15 +419,16 @@ def install_source_routes(app, prefix, service, manager, *, identity, principal,
         nonce = uuid4().hex
         values = json.dumps(dict(origin=embed_origin, id=picker_id)).replace('<', '\\u003c')
         page = '''<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Choose Drive photos</title>
-<style>html,body{margin:0;width:100%;height:100%;font:16px system-ui,sans-serif;color:#25332c;background:#fff}#status{padding:16px;margin:0}#picker{height:100%;width:100%}iframe{border:0;width:100%;height:100%;display:block}</style></head><body>
-<p id="status" role="status">Opening Google Drive…</p><div id="picker"></div><script nonce="NONCE">
+<style>html,body{margin:0;width:100%;height:100%;font:16px system-ui,sans-serif;color:#25332c;background:#fff}#status{padding:16px;margin:0}</style></head><body>
+<p id="status" role="status">Opening Google Drive…</p><script nonce="NONCE">
 const embedded=EMBEDDED;
 let state=new URLSearchParams(location.hash.slice(1)).get('state');
 history.replaceState(null,'','/v1/intake/picker');
-let done=false,busy=false,picker=null,frame=null,expiry=null,readySent=false;
+let done=false,busy=false,picker=null,expiry=null,readySent=false;
 const status=document.getElementById('status');
 function notify(action){if(embedded.origin&&window.parent!==window){window.parent.postMessage({type:'specimen-intake-picker',picker_id:embedded.id,action},embedded.origin);}}
-function clearPicker(){if(frame){frame.remove();frame=null;}if(picker){picker.setVisible(false);picker=null;}}
+// Teardown errors must not suppress the terminal message that removes this page.
+function clearPicker(){if(picker){const current=picker;picker=null;try{current.setVisible(false);}catch{}try{current.dispose();}catch{}}}
 function finish(action,message){if(done)return;done=true;clearTimeout(loadTimer);clearTimeout(expiry);clearPicker();status.hidden=false;status.textContent=message;notify(action);}
 function failed(){finish('error','Could not finish Drive selection. Check your selection in the app before trying again.');}
 function ready(){if(done||readySent)return;readySent=true;clearTimeout(loadTimer);status.hidden=true;notify('ready');}
@@ -454,6 +455,7 @@ async function loaded(){
      .setAppId(config.app).setOrigin(config.return_origin||location.origin).enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
      .setCallback(async data=>{
       if(done||busy)return;
+      if(google.picker.Action.LOADED&&data.action===google.picker.Action.LOADED){ready();return;}
       let action;
       if(data.action===google.picker.Action.PICKED)action='selected';
       else if(data.action===google.picker.Action.CANCEL)action='cancelled';
@@ -467,11 +469,10 @@ async function loaded(){
        else failed();
       }catch{failed();}
      });
-    if(embedded.origin){
-     frame=document.createElement('iframe');frame.title='Google Drive photo selection';
-     frame.onload=ready;frame.onerror=failed;
-     frame.src=builder.toUri().toString();document.getElementById('picker').appendChild(frame);
-    }else{picker=builder.build();picker.setVisible(true);ready();}
+    // build initializes the application identity and authenticated callback RPC.
+    // A raw toUri iframe omits that setup. The SDK dialog stays inside this page.
+    if(embedded.origin)builder.setSize(window.innerWidth,window.innerHeight);
+    picker=builder.build();picker.setVisible(true);
     config.token=null;
    }catch{failed();}
   },onerror:failed,timeout:30000,ontimeout:failed});
