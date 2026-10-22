@@ -11,6 +11,7 @@ import '../../models.dart';
 import '../../widgets/product_modal.dart';
 import 'bulk_intake_controller.dart';
 import 'intake_auth_session.dart';
+import 'intake_picker_host.dart';
 
 class IntakeSourcePicker extends StatefulWidget {
   const IntakeSourcePicker({
@@ -19,6 +20,7 @@ class IntakeSourcePicker extends StatefulWidget {
     required this.provider,
     this.initialSourceId,
     this.authSessionFactory,
+    this.pickerHost = const IntakePickerHost(),
     this.active = true,
     this.onBusyChanged,
     this.showHeading = true,
@@ -30,6 +32,7 @@ class IntakeSourcePicker extends StatefulWidget {
   final bool showHeading;
   final ValueChanged<bool>? onBusyChanged;
   final IntakeAuthSession Function()? authSessionFactory;
+  final IntakePickerHost pickerHost;
   @override
   State<IntakeSourcePicker> createState() => _IntakeSourcePickerState();
 }
@@ -42,6 +45,7 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker>
     with WidgetsBindingObserver {
   final links = TextEditingController();
   final filter = TextEditingController();
+  final pickerFocus = FocusNode(debugLabel: 'Choose Drive photos');
   String phase = 'Loading account…';
   int generation = 0;
   bool foreground = true;
@@ -52,11 +56,14 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker>
   final Map<String, String> linkAccounts = {};
   final List<(String, String)> parents = [];
   String? connectionId, sourceId, folder, cursor, pickerId, message;
+  String? inlinePickerUrl;
+  int frameGeneration = 0;
+  int? focusReturnGeneration;
   ({String connectionId, String pickerId, String accountId})? selectionToResume;
   bool busy = false, includeSubfolders = false, polling = false;
   bool administratorDetailsCopied = false;
   Timer? timer;
-  IntakeAuthSession? authSession, pickerSession;
+  IntakeAuthSession? authSession;
   String? recoveryAction;
   Future<void> Function()? retryAction, reconnectAction;
   String? connectingProvider, failedProvider;
@@ -83,10 +90,11 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     c.removeListener(controllerChanged);
+    detachInlinePicker();
     retainSource();
     timer?.cancel();
     authSession?.close();
-    pickerSession?.close();
+    pickerFocus.dispose();
     links.dispose();
     filter.dispose();
     super.dispose();
@@ -97,6 +105,7 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker>
     super.didUpdateWidget(oldWidget);
     if (widget.active != oldWidget.active) {
       generation++;
+      if (!widget.active) detachInlinePicker();
       if (widget.active) unawaited(poll());
     }
   }
@@ -219,6 +228,7 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker>
       if (mounted) {
         setState(() => busy = false);
         widget.onBusyChanged?.call(false);
+        restorePickerFocus();
       }
     }
   }
@@ -398,8 +408,9 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker>
       if (nativePicker) pickerId = result['picker_id'] as String?;
       final response = await session.authenticate(
         result['authorization_url'] as String,
-        keepOpen: continueToPicker && !nativePicker,
       );
+      // Consent owns its popup; file selection has a separate inline lifetime.
+      session.close();
       if (!mounted) return;
       final completed = await c.call(
         'POST',
@@ -429,16 +440,9 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker>
             );
           }
         } else if (continueToPicker) {
-          pickerSession?.close();
-          pickerSession = session;
           // If Picker setup fails, retry selection using the connected account.
           retryAction = pick;
-          try {
-            await openPicker(session);
-          } catch (_) {
-            pickerSession = null;
-            rethrow;
-          }
+          await openPicker();
         } else {
           folder = '';
           retryAction = browse;
@@ -446,13 +450,14 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker>
         }
       }
     } finally {
-      if (!identical(pickerSession, session)) session.close();
+      session.close();
       authSession = null;
       connectingProvider = null;
     }
   }
 
   void applySelection(Json picker) {
+    clearInlinePicker();
     closePicker();
     if (!mounted) return;
     setState(() {
@@ -481,11 +486,18 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker>
 
   Future<void> updateSelection(Json picker) async {
     if (!mounted) return;
+    if (const ['cancelled', 'expired'].contains(picker['state'])) {
+      clearInlinePicker();
+      closePicker();
+      setState(() {});
+      return;
+    }
     final retained = selectionToResume;
     final error = picker['error'];
     if (picker['state'] == 'failed') {
       // Stop polling the failed authorization while retaining the original
       // selection for another attempt with the same provider account.
+      clearInlinePicker();
       closePicker(keepSelection: retained != null);
       setState(() {
         message = error is Map
@@ -514,6 +526,7 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker>
       return;
     }
     if (picker['progress'] is! Map) return;
+    if (inlinePickerUrl != null) setState(clearInlinePicker);
     final progress = picker['progress'] as Map;
     final account = activeConnection?['account_id'];
     if (connectionId != null && pickerId != null && account is String) {
@@ -672,18 +685,120 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker>
   }
 
   void closePicker({bool keepSelection = false}) {
+    detachInlinePicker();
     pickerId = null;
-    pickerSession?.close();
-    pickerSession = null;
     if (!keepSelection) selectionToResume = null;
+  }
+
+  void clearInlinePicker() {
+    final hadFrame = inlinePickerUrl != null;
+    inlinePickerUrl = null;
+    if (!hadFrame) return;
+    frameGeneration++;
+    focusReturnGeneration = frameGeneration;
+    restorePickerFocus();
+  }
+
+  void restorePickerFocus() {
+    final epoch = focusReturnGeneration;
+    if (epoch == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted &&
+          widget.active &&
+          !busy &&
+          frameGeneration == epoch &&
+          focusReturnGeneration == epoch &&
+          pickerFocus.canRequestFocus) {
+        focusReturnGeneration = null;
+        pickerFocus.requestFocus();
+      }
+    });
+  }
+
+  void detachInlinePicker() {
+    if (inlinePickerUrl == null) return;
+    final connection = connectionId, id = pickerId;
+    clearInlinePicker();
+    focusReturnGeneration = null;
+    // A close/source switch revokes only an uncommitted chooser. Keep its
+    // handle until the next authenticated read settles any lost selection ACK.
+    if (connection != null && id != null) {
+      unawaited(
+        c
+            .call('POST', '/connections/$connection/picker/$id/cancel')
+            .then<void>((_) {}, onError: (Object _) {}),
+      );
+    }
+  }
+
+  Future<bool> settleInlinePicker(
+    String action, {
+    String? failureMessage,
+  }) async {
+    final connection = connectionId, id = pickerId, epoch = generation;
+    if (connection == null || id == null) return true;
+    if (mounted) setState(clearInlinePicker);
+    Json reply;
+    try {
+      reply = await c.call(
+        action == 'selected' ? 'GET' : 'POST',
+        '/connections/$connection/picker/$id${action == 'selected' ? '' : '/cancel'}',
+      );
+    } catch (_) {
+      // A selection/cancel may have committed before its reply disappeared.
+      reply = await c.call('GET', '/connections/$connection/picker/$id');
+    }
+    if (!mounted ||
+        connectionId != connection ||
+        pickerId != id ||
+        generation != epoch) {
+      return false;
+    }
+    if (const ['selecting', 'selected', 'failed'].contains(reply['state'])) {
+      await updateSelection(reply);
+      return false;
+    }
+    if (!const ['cancelled', 'expired'].contains(reply['state'])) {
+      throw const ApiFailure(
+        'Could not confirm the Drive selection. Retry to check the saved selection.',
+        details: {'action': 'retry'},
+      );
+    }
+    closePicker();
+    setState(() {
+      message = failureMessage;
+      recoveryAction = failureMessage == null ? null : 'retry';
+      retryAction = pick;
+    });
+    return true;
+  }
+
+  void inlineEvent(String action, int epoch, String id) {
+    if (!mounted ||
+        !widget.active ||
+        frameGeneration != epoch ||
+        pickerId != id ||
+        action == 'ready') {
+      return;
+    }
+    unawaited(
+      run(() async {
+        await settleInlinePicker(
+          action,
+          failureMessage: action == 'error'
+              ? 'Google Drive could not finish this selection. Retry to choose photos.'
+              : null,
+        );
+      }, label: 'Checking Drive selection…'),
+    );
   }
 
   Future<void> picker() => run(pick);
 
   Future<void> pick() async {
-    closePicker();
-    final session = newAuthSession();
-    if (session.returnOrigin == null) {
+    if (widget.pickerHost.returnOrigin == null) {
+      closePicker();
+      final session = newAuthSession();
       // Native Picker is part of the provider's system-browser consent flow.
       // Reconnect preserves the account that owns any already selected photos.
       return connectAccount(
@@ -695,25 +810,18 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker>
         initiatingSession: session,
       );
     }
-    pickerSession = session;
-    try {
-      await openPicker(pickerSession!);
-      if (mounted) {
-        setState(() {
-          folder = null;
-          cursor = null;
-          parents.clear();
-          entries = [];
-        });
-      }
-    } catch (_) {
-      pickerSession?.close();
-      pickerSession = null;
-      rethrow;
+    if (pickerId != null && !await settleInlinePicker('cancelled')) return;
+    await openPicker();
+    if (mounted) {
+      setState(() {
+        folder = null;
+        cursor = null;
+        parents.clear();
+      });
     }
   }
 
-  Future<void> openPicker(IntakeAuthSession session) async {
+  Future<void> openPicker() async {
     final existing = connections
         .where(
           (row) => row['id'] == connectionId && row['state'] == 'connected',
@@ -722,11 +830,46 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker>
     if (existing == null) {
       throw const ApiFailure('Connect Google Drive first.', code: 'connect');
     }
-    connectionId = existing['id'] as String;
-    final result = await c.call('POST', '/connections/$connectionId/picker');
-    if (!mounted || !identical(pickerSession, session)) return;
-    pickerId = result['id'] as String;
-    await session.openPicker(result['url'] as String);
+    final connection = existing['id'] as String, epoch = generation;
+    final origin = widget.pickerHost.returnOrigin;
+    final result = await c.call(
+      'POST',
+      '/connections/$connection/picker',
+      body: {'return_origin': origin},
+    );
+    if (!mounted ||
+        !widget.active ||
+        connectionId != connection ||
+        generation != epoch) {
+      return;
+    }
+    final id = result['id'] as String, url = result['url'] as String;
+    final uri = Uri.tryParse(url);
+    final secure =
+        uri != null &&
+        (uri.scheme == 'https' ||
+            (uri.scheme == 'http' &&
+                const ['127.0.0.1', 'localhost', '::1'].contains(uri.host)));
+    if (origin == null ||
+        uri == null ||
+        !secure ||
+        uri.host.isEmpty ||
+        uri.userInfo.isNotEmpty ||
+        uri.path != '/v1/intake/picker' ||
+        uri.queryParametersAll['embed_origin']?.singleOrNull != origin ||
+        uri.queryParametersAll['picker_id']?.singleOrNull != id) {
+      throw const ApiFailure(
+        'Drive selection is being updated. Try again shortly.',
+        details: {'action': 'retry'},
+      );
+    }
+    setState(() {
+      pickerId = id;
+      inlinePickerUrl = url;
+      frameGeneration++;
+      focusReturnGeneration = null;
+      retryAction = pick;
+    });
   }
 
   Future<void> folderAccess() async {
@@ -1375,6 +1518,7 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker>
           if (connected && widget.provider == 'google_drive' && folder == null)
             UiButton(
               label: 'Choose photos',
+              focusNode: pickerFocus,
               variant: entries.isEmpty && selected.isEmpty
                   ? UiButtonVariant.primary
                   : UiButtonVariant.secondary,
@@ -1544,6 +1688,71 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker>
         final scrollingFooter =
             constraints.hasBoundedHeight &&
             constraints.maxHeight < ui.space.paneDetailMin;
+        if (inlinePickerUrl case final url? when widget.active) {
+          final epoch = frameGeneration, id = pickerId!;
+          return SizedBox(
+            height: workspaceHeight,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: EdgeInsets.all(ui.space.s3),
+                  child: Wrap(
+                    spacing: ui.space.s3,
+                    runSpacing: ui.space.s2,
+                    alignment: WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            accountLabel(activeConnection!),
+                            style: ui.type.bodySmall,
+                          ),
+                          Text('Connected', style: ui.type.bodySmall),
+                        ],
+                      ),
+                      UiButton(
+                        label: selected.isEmpty
+                            ? 'Cancel choosing photos'
+                            : 'Back to selected photos',
+                        leading: UiIcons.back,
+                        variant: UiButtonVariant.secondary,
+                        onPressed: () => run(() async {
+                          await settleInlinePicker('cancelled');
+                        }, label: 'Checking Drive selection…'),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: widget.pickerHost.buildFrame(
+                    url: url,
+                    pickerId: id,
+                    onEvent: (action) => inlineEvent(action, epoch, id),
+                    onFailure: (problem) {
+                      if (!mounted ||
+                          !widget.active ||
+                          frameGeneration != epoch ||
+                          pickerId != id) {
+                        return;
+                      }
+                      unawaited(
+                        run(() async {
+                          await settleInlinePicker(
+                            'error',
+                            failureMessage: problem,
+                          );
+                        }, label: 'Checking Drive selection…'),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
         final hasSelection = entries.isNotEmpty || selected.isNotEmpty;
         return SizedBox(
           height: workspaceHeight,

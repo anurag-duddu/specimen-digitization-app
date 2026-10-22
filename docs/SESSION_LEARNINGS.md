@@ -24299,3 +24299,192 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   contract, release web build and route/security-header smoke passed again.
   Ready to commit the fixture-only correction, renew exact-head review and run
   hosted CI again; production release remains not confirmed.
+- Renewed review (2026-10-21, same task/PR): amended head
+  `e759ecbf8a627f203eda636ed3c181ed9bf705ad` received **G51 APPROVED** from
+  `/root/polish_independent_review`. Reviewer independently verified the clean
+  exact head, fixture-only delta, unchanged production safeguards and complete
+  amended canonical evidence; no unresolved findings. PR #399 now runs fresh
+  CI/CD `39697317164` and runtime candidate CI `39697317119` on this head.
+  Prior attempt's failure is not counted as a pass. Merge/release still pending.
+- Pre-merge outcome: CI/CD `39697317164` and runtime candidate CI `39697317119`
+  passed on independently approved head `e759ecbf8a627f203eda636ed3c181ed9bf705ad`.
+  All three protected checks, all twelve Python shards and aggregate, SQL/Storage
+  contracts, Android/iOS builds, and runtime image checks are green. PR Hosting
+  deploy is correctly skipped. No check or protection was weakened. PR #399 is
+  ready for the authorized merge; production markers and real-provider smoke
+  remain separate checks after the protected main workflows.
+- Authorized merge completed: PR #399 squash-merged as
+  `473b48ea93258b9ea9c26b71f152c732087441e4` at 2026-10-22 00:16:29 UTC
+  (2026-10-21 local). Protected main releases are now being followed. A merge is
+  not recorded as a release; web/API markers and all main workflow results are
+  still pending.
+- Production rollout progress: merged SHA `473b48ea93258b9ea9c26b71f152c732087441e4`.
+  Data release `39698707778`, runtime candidate `39698707637`, and runtime release
+  `39698707443` succeeded. Runtime completed API deployment, public API smoke,
+  private intake job definition, SAM/worker definition and image cleanup policy
+  verification. The optional queued-work drain was correctly skipped.
+  Independent API smoke passed `/version` exact SHA/production, readiness 200,
+  and unauthenticated session 401; evidence
+  `/private/tmp/intake-polish-production-api-smoke.log`. Hosting CI/CD
+  `39698707639` remains in progress. Signed-in Chrome checks remain blocked by
+  the locked Mac; no provider/device acceptance is inferred from these results.
+- Release complete for PR #399 / merge SHA
+  `473b48ea93258b9ea9c26b71f152c732087441e4`: Hosting CI/CD `39698707639`
+  attempt 1, data `39698707778`, runtime `39698707443`, and runtime candidate
+  `39698707637` all succeeded. Independent public Hosting smoke verified the
+  application HTML and exact SHA/run/attempt marker; independent API smoke
+  verified matching production SHA, ready 200 and unauthenticated session 401.
+  Evidence: `/private/tmp/intake-polish-production-hosting-smoke.log` and
+  `/private/tmp/intake-polish-production-api-smoke.log`. No workstation deploy,
+  gate bypass, new permission or scientific-processing submission was used.
+- Live acceptance limit at closeout: Chrome again reports the Mac locked, so a
+  fresh signed-in Drive/Dropbox browse/preview/import check on this release is
+  **Not confirmed**. Earlier personal-provider acceptance does not substitute
+  for this build; managed-account policy, real camera, screen readers and
+  500-original device memory acceptance also remain separate. User's pending
+  unlock request is the remaining browser prerequisite. Demo folders and
+  specimen Queue content were left untouched.
+- Cleanup reconciliation: origin/main is the released merge SHA; committed
+  implementation tree matches it (excluding append-only session evidence).
+  The only local uncommitted file is this closeout log. Preserve this worktree
+  and local branch for that evidence; only the merged remote task branch may
+  be pruned after checking its exact head. No unrelated branch/worktree cleanup.
+- Remote cleanup result: exact `git ls-remote --heads` lookup returned no
+  `codex/intake-connector-polish` branch; GitHub already removed the merged
+  remote head. No additional branch deletion was performed. Local worktree,
+  branch and uncommitted closeout evidence are retained for the pending browser
+  acceptance and next session.
+
+- Signed-in acceptance follow-up after the user unlocked the Mac (2026-10-22
+  UTC / 2026-10-21 local), same task
+  `01a149fc-3649-75c1-a121-11c19de12cb8`, branch
+  `codex/intake-connector-polish`, worktree `5da8`, PR #399, released merge
+  `473b48ea93258b9ea9c26b71f152c732087441e4`. This supplements the locked-Mac
+  limitation above; it does not rewrite earlier evidence. Chrome Work profile
+  was explicitly refreshed into the released app, signed in as the authorized
+  Gmail account in the dedicated Intake E2E collection.
+- Actual provider evidence: the existing Google Drive connection restored;
+  Google Picker listed real source files, search selected `subject_105526330.jpeg`,
+  callback persisted the selection, and the background selection check reached
+  one available/selected photo. The popup displayed “Selection saved. Return to
+  the app to check your photos”; closing it returned to running validation,
+  which completed without retry. The real Drive preview rendered successfully.
+  Dropbox restored the same authorized Gmail account, browsed the demo folder,
+  reported ten available/zero unavailable photos, and rendered a genuine image
+  preview. Folder, filter and selected-photo context survived source switching
+  and closing/reopening the source workspace. No new authorization scope,
+  disconnect, credential change or provider-original mutation was performed.
+- Real private-stage/restore check: added Dropbox `subject_105526328.jpeg` and
+  Drive `subject_105526330.jpeg` to the same private batch. The UI transitioned
+  from Saving to Saved, with both actual thumbnails. A real page reload restored
+  both photos as Saved and retained the explicit “Submit starts processing” /
+  “Submit 2 photos” boundary. These two photos remain in the user's private
+  Intake E2E draft for inspection. Submit was not clicked, no scientific
+  processing was started, and the existing Needs-a-human list remained
+  #105526324, #105526329 and #105526323. Provider demo originals were preserved.
+- Additional actual UI evidence: registered storage reports no locations for
+  this collection with an administrator/alternate-source action. Invalid link
+  input returned “Use a direct HTTPS image link”, zero available and disabled
+  Add; test input was cleared. No successful registered-storage/direct-image
+  transfer is claimed. Successful source browse/preview/staging/reload is
+  personal-account acceptance for this build, not institutional/SSO approval,
+  a new full Submit-to-scientific-Queue run, native-camera/screen-reader
+  acceptance, or a measured 500-original production performance benchmark.
+  Existing automated/release evidence above remains the validation for those
+  covered contracts; no new source-code changes were required in this follow-up.
+- Screenshot evidence (actual production Chrome):
+  `/private/tmp/intake-dropbox-preview-live-20261022.png`,
+  `/private/tmp/intake-drive-preview-live-20261022.png`,
+  `/private/tmp/intake-dropbox-selected-live-20261022.png`, and
+  `/private/tmp/intake-mixed-draft-restored-live-20261022.png`.
+  Local worktree/branch and this append-only uncommitted acceptance log remain
+  preserved. No extra branch deletion or hand deployment was performed.
+
+## 2026-10-22 — Drive selection inside the intake workspace
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, worktree `5da8`, branch
+  `codex/intake-drive-inline`, based on released main
+  `473b48ea93258b9ea9c26b71f152c732087441e4` / PR #399. The user's screenshot
+  identified a missed reference requirement: file selection still opened a
+  separate browser window. The preceding real-account acceptance established
+  transfer/staging/restore, not complete Air interaction fidelity. This entry
+  corrects that scope without changing the earlier evidence.
+- Rechecked the saved Mobbin Air import screenshot (screen
+  `93402b73-7eaf-446a-86e2-2c8c0f55ad5d`): connected account, source navigation,
+  folder/file list and Import action occupy one in-app dialog. Google's current
+  Picker guide documents iframe embedding with `PickerBuilder.toUri()` and
+  recommends LIST mode under `drive.file`, which does not provide general
+  thumbnail access. The detached chooser was an implementation decision, not a
+  provider requirement. A fresh Mobbin search returned unrelated Drive flows;
+  those results were not used as Air evidence.
+- Written plan precedes implementation:
+  `docs/execution/INTAKE_DRIVE_INLINE_20261022.md`. Account authorization keeps
+  its separate lifetime; connected web file selection uses an API-origin iframe
+  inside the existing import workspace. Exact origin/session binding and
+  authenticated selection reconciliation preserve credential isolation and
+  cancellation races. Native/legacy behavior stays compatible; no broader OAuth
+  permission, key restriction or deployment policy change is planned.
+- Initial compiled-browser evidence: actual production Dart adapters compiled
+  with dart2js `-O4` in a fresh isolated loopback Chrome profile passed all 20
+  checks, including the six new inline-frame/message/disposal/retry assertions.
+  This is a browser contract, not real Google acceptance. Focused suites, full
+  canonical verification, exact-head independent review, protected release and
+  actual inline Google selection are still pending at this point.
+- Existing two-photo Intake E2E draft and provider demo originals are retained.
+  No Submit or scientific worker drain is part of this presentation correction.
+- Focused implementation validation: 145 backend tests passed across embed,
+  selection, source, credential and bulk-source modules (one existing Starlette
+  warning), including 24 new embed tests with executable page-JavaScript
+  scenarios. Log: `/private/tmp/specimen-inline-picker-backend-focused.log`.
+  Seventy-seven Flutter inline/connector/recovery/workspace tests passed;
+  normal fatal-info analysis reported no issues. Logs:
+  `/private/tmp/specimen-intake-drive-inline-final-focused.log` and
+  `/private/tmp/specimen-intake-drive-inline-analyze-final.log`.
+- Review found a focus-return race when cancellation awaited a slow server:
+  the button was disabled when focus was requested. A retained focus intent now
+  executes after reconciliation, including status polling that beats the iframe
+  notification. Delayed-response/200%-text and poll-first tests cover both paths.
+  Initial test-file compilation needed a missing typed-data import, and analysis
+  required eight braces; both were corrected without test or lint suppression.
+  Source is frozen for the canonical gate; exact-head approval/release/live
+  provider acceptance still remain pending.
+- Canonical attempt `/private/tmp/specimen-drive-inline-verify.log` was
+  deliberately stopped (exit 143) during Python shards, after repository hooks
+  passed, to resolve review's remaining terminal-state focus paths. It is not
+  counted as a complete passing run. Cancelled/expired/failed status polling now
+  preserves focus-return intent as successful polling does; source switch and
+  disposal continue to leave outside focus alone. Final focused matrix: 83
+  tests passed, normal analysis clean, formatting/diff checks clean. Logs:
+  `/private/tmp/specimen-intake-drive-inline-terminal-matrix.log` and
+  `/private/tmp/specimen-intake-drive-inline-terminal-analyze.log`.
+- Canonical second attempt `/private/tmp/specimen-drive-inline-verify-final.log`
+  passed repository hooks and all six Python shards: 19,269 passed, 50 skipped,
+  19,319 collected nodes reconciled exactly once. It then exited 1 at the UI
+  wording gate for the new word “Invalid”; changed the message to “Drive
+  selection page is unavailable.” The wording ratchet now reports zero
+  violations. This partial attempt is not a complete canonical pass.
+- Remaining-client preflight found two architecture gates, despite passing the
+  functional intake tests: a new duration literal and an additional conditional
+  platform export. Reused the existing `apiRequestTimeout` and consolidated
+  OAuth/Picker transport behind the existing conditional adapter using explicit
+  provider transport export libraries. Independent review confirmed that this
+  preserves the real platform capability boundary; no guard/allowance or
+  owner-signoff change was made. Focused architecture/native/connection/widget
+  suites passed 239 tests, analysis was clean, and the optimized browser
+  contract passed all 20 checks.
+- Final remaining-client preflight exited 0:
+  `/private/tmp/specimen-inline-client-preflight-final.log`. Both analyzers
+  passed; design system 1,312 passed; app 3,594 passed and seven skipped;
+  compiled browser contract 20 checks passed; 633 Dart files needed no format
+  change; release web build and declared-route/security-header smoke passed.
+  This is local/synthetic evidence, not live Google acceptance. Full canonical
+  rerun on the frozen tree follows before push.
+- Final frozen-tree canonical verification `scripts/ci/verify.sh` exited 0;
+  log `/private/tmp/specimen-drive-inline-verify-clean.log`. Repository hooks,
+  six complete Python shards (19,269 passed / 50 skipped / 19,319 exactly-once
+  collected nodes), UI wording ratchet, both Flutter analyzers, design-system
+  and app tests, optimized browser contract, Dart formatting, release web build
+  and route/security smoke all passed. Independent source review reported no
+  remaining actionable findings, including origin middleware/frame policy and
+  token containment. Commit/exact-head G51 approval and protected GitHub checks
+  follow; live nested Google acceptance is still Not confirmed at this point.
