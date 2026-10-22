@@ -47,9 +47,12 @@ def request(rig, number=1, reservation=150_000, actual=10_000, calls=None, fail=
 
 
 @pytest.mark.parametrize("allowance, refused", [
-    (15_000_000, False),  # The pilot profile's allowance (G30).
-    (25_000_000, False),  # G9's USD 25 ceiling is the largest the code admits.
-    (25_000_001, True)])
+    (15_000_000, False),  # The historical G30 pilot allowance remains valid.
+    (16_000_000, False),  # The earlier owner-approved cumulative pilot allowance.
+    (25_000_000, False),  # G9's earlier USD 25 ceiling.
+    (28_000_000, False),  # The owner-approved cumulative pilot allowance (G30, 2026-10-17).
+    (30_000_000, False),  # G9's USD 30 ceiling is the largest the code admits.
+    (30_000_001, True)])
 def test_the_code_refuses_an_allowance_above_the_g9_ceiling(rig, tmp_path, allowance, refused):
     run = SimpleNamespace(profile=SimpleNamespace(execution=SimpleNamespace(
         program_allowance_micros=allowance, program_ledger_collection="collection")))

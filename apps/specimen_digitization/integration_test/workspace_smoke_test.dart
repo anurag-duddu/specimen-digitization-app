@@ -206,21 +206,12 @@ void _expectNavigation(WidgetTester tester, int selected) {
     mobile ? findsNothing : findsOneWidget,
   );
   if (mobile) {
-    if (defaultTargetPlatform == TargetPlatform.iOS) {
-      expect(find.byType(cupertino.CupertinoTabBar), findsOneWidget);
-      expect(find.byType(material.NavigationBar), findsNothing);
-      expect(
-        tester.widget<cupertino.CupertinoTabBar>(_nativeNav).currentIndex,
-        selected,
-      );
-    } else {
-      expect(find.byType(material.NavigationBar), findsOneWidget);
-      expect(find.byType(cupertino.CupertinoTabBar), findsNothing);
-      expect(
-        tester.widget<material.NavigationBar>(_nativeNav).selectedIndex,
-        selected,
-      );
-    }
+    // One brand component on every platform (10 section 4.4, `UiTabBar`):
+    // neither platform's stock bar is drawn, whichever device this runs on.
+    expect(find.byType(UiTabBar), findsOneWidget);
+    expect(find.byType(material.NavigationBar), findsNothing);
+    expect(find.byType(cupertino.CupertinoTabBar), findsNothing);
+    expect(tester.widget<UiTabBar>(_nativeNav).currentIndex, selected);
     expect(find.byKey(const ValueKey('global-rail')), findsNothing);
     expect(find.byKey(const ValueKey('global-sidebar')), findsNothing);
   } else {

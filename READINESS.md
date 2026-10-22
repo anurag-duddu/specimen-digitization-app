@@ -1,5 +1,11 @@
 # Protected release source successor, 2026-10-01
 
+> Historical snapshot. The protected-release packet, initializer and
+> `owner_grants.py` paths described below were retired and deleted on
+> 2026-10-12. Current releases and owner setup are defined by
+> `docs/DEPLOYMENT.md`, the three release workflows and
+> `scripts/ops/owner_setup.sh`; do not follow this snapshot as a runbook.
+
 This is an authored source closure for integration and independent review. No
 tests, compiler, native connector, cloud mutation, deployment or paid call ran
 in this author session. The root integrator remains the only candidate writer
@@ -37,9 +43,9 @@ SESSION log or old policy document is restored wholesale. The three inherited
 test-file changes retire assertions for obsolete envelope workflow steps;
 their native claim, encryption and disposal controls remain, and the new data
 workflow controls cover the current signed intent/encrypted artifact paths.
-Four legacy data template fixtures retain their placeholders but refresh
-source hashes. Active G11 workflows consume none of these fixtures. Refresh
-their hashes again if any integrated data source changes after this snapshot.
+The legacy data template fixtures mentioned by this snapshot were never
+consumed by the G11 workflows and have since been deleted with the retired
+initializer and packet tooling.
 
 Only the API readiness generation is pinned, from root's authenticated receipt
 `integration/live-readiness-object-20261001.json` (SHA-256
@@ -49,12 +55,11 @@ object digest. Worker drain arguments and SAM server settings remain pending:
 the current main worker has no `--drain`, and its legacy launch policy and SAM
 pilot expiry cannot be replaced by invented flags.
 
-Before effects, root must qualify this exact composed source and fresh required
-CI, and reconcile standing IAM/read permissions plus the protected environment
-conditions. The read-only `owner_grants.py plan` provides concrete commands for
-the owner; it performs no write. Its source is #119, preserving the backup-run
-read permission accidentally missing from the older #123 sibling. The setup
-window renews only the six temporary roles and preserves standing grants.
+At the time of this snapshot, root still had to qualify the composed source and
+fresh required CI and reconcile standing IAM/read permissions. The former
+`owner_grants.py plan` and temporary setup window no longer exist; the active
+least-privilege setup is the idempotent `scripts/ops/owner_setup.sh` described
+by `docs/DEPLOYMENT.md`.
 Initialization/bootstrap/first restore require their actual bounded owner
 window and retained approved artifact. Bootstrap needs only the three named
 `data-production` secrets documented in RELEASE 4.5, scoped to the deployment
@@ -65,18 +70,19 @@ actual worker/SAM CLI closure and currently missing live import/accounting
 authority remain explicit gates. Root's App Check enable/read receipt is a
 separate current fact; this successor neither re-enables nor registers it.
 
-Suggested bounded qualification begins with release gate/schema/unique-hook,
-data workflow/initialization/apply/bootstrap, owner grants/setup-window and
-template tests. The current main runtime rollback, publication-deadline,
-source-asset uniqueness and native ACL/catalog controls must remain included.
+The historical suggested qualification used release packet, initializer,
+owner-grant and template tests that have since been retired. Current
+qualification is `scripts/ci/verify.sh` plus the protected workflow checks
+documented in `docs/DEPLOYMENT.md`.
 Root owns the sole SDK/native/full-test slot and any later protected release.
 Static release or compiled SQL still cannot qualify the real ten specimens,
-native authority or cumulative USD 25 headroom.
+native authority or cumulative USD 30 headroom (G9, raised from USD 25 on 2026-10-17).
 
-The read-only owner plan uses the G9 USD 25 cumulative project billing alert,
-covering infrastructure and models under the 2026-09-23 go-live amendment.
-G30 retains a production model allowance (USD 15 since 2026-10-09, raised from
-USD 5) and a separate USD 5 acceptance lab allowance. Historical lab calls do not debit a fabricated production
+The retired read-only owner plan used the G9 USD 25 cumulative project billing
+alert, covering infrastructure and models under the 2026-09-23 go-live amendment.
+G30 retains a production model allowance (USD 28 since 2026-10-17, raised from
+USD 5, then USD 15 on 2026-10-09 and USD 16 on 2026-10-16) and a separate USD 5
+acceptance lab allowance. Historical lab calls do not debit a fabricated production
 predecessor. G11 retires release cost ledgers and release reservations; G30's
 atomic per-call reservations remain. The alert creates no spending authority,
 headroom, import proof or increase to either model allowance.

@@ -1,8 +1,9 @@
-// The empty state: title, one sentence, at most one action.
+// The empty state on the product theme: title, one sentence, at most one
+// action. The screens draw `UiEmptyState` from specimen_ui directly; this
+// holds it to the product's two themes and its tap target guidelines.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:specimen_digitization/src/widgets/empty_state.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import 'harness.dart';
@@ -11,12 +12,11 @@ void main() {
   testWidgets('renders the three parts in order', (WidgetTester tester) async {
     await pumpComponent(
       tester,
-      EmptyState(
-        icon: UiIcons.queue.defaultGlyph,
+      UiEmptyState(
+        icon: UiIcons.queue,
         title: 'No specimens yet',
         body: 'Upload a photograph to create the first record.',
-        actionLabel: 'Add photographs',
-        onAction: () {},
+        action: UiButton(label: 'Add photographs', onPressed: () {}),
       ),
     );
     expect(find.text('No specimens yet'), findsOneWidget);
@@ -34,8 +34,8 @@ void main() {
   testWidgets('the action is optional', (WidgetTester tester) async {
     await pumpComponent(
       tester,
-      EmptyState(
-        icon: UiIcons.queue.defaultGlyph,
+      const UiEmptyState(
+        icon: UiIcons.queue,
         title: 'Queue clear',
         body: 'Nothing needs review in this collection.',
       ),
@@ -48,12 +48,11 @@ void main() {
     int taps = 0;
     await pumpComponent(
       tester,
-      EmptyState(
-        icon: UiIcons.noResults.defaultGlyph,
+      UiEmptyState(
+        icon: UiIcons.noResults,
         title: 'No matches',
         body: 'No records match the current search and filters.',
-        actionLabel: 'Clear filters',
-        onAction: () => taps++,
+        action: UiButton(label: 'Clear filters', onPressed: () => taps++),
       ),
     );
     await tester.tap(find.text('Clear filters'));
@@ -61,16 +60,21 @@ void main() {
     expect(taps, 1);
   });
 
-  test('a label without a callback is refused', () {
-    expect(
-      () => EmptyState(
-        icon: UiIcons.queue.defaultGlyph,
-        title: 'No specimens yet',
-        body: 'Upload a photograph to create the first record.',
-        actionLabel: 'Add photographs',
+  testWidgets('a label without a callback is refused', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: productThemes['light'],
+        home: const UiEmptyState(
+          icon: UiIcons.queue,
+          title: 'No specimens yet',
+          body: 'Upload a photograph to create the first record.',
+          action: UiButton(label: 'Add photographs'),
+        ),
       ),
-      throwsAssertionError,
     );
+    expect(tester.takeException(), isAssertionError);
   });
 
   testWidgets('renders in both themes and meets the guidelines', (
@@ -79,12 +83,11 @@ void main() {
     for (final ThemeData theme in productThemes.values) {
       await pumpComponent(
         tester,
-        EmptyState(
-          icon: UiIcons.queue.defaultGlyph,
+        UiEmptyState(
+          icon: UiIcons.queue,
           title: 'No specimens yet',
           body: 'Upload a photograph to create the first record.',
-          actionLabel: 'Add photographs',
-          onAction: () {},
+          action: UiButton(label: 'Add photographs', onPressed: () {}),
         ),
         theme: theme,
       );

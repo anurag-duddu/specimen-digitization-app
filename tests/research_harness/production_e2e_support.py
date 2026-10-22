@@ -184,6 +184,9 @@ class FakeDataConnect:
         self.preparations = {}
         self.attempts = {}
         self.receipts = {}
+        # cost_entry rows by id (dataconnect/connector/cost_meter.gql).
+        self.cost_entries = {}
+        self.tenant_budget_caps = {}
         # Test hooks: an operation name -> callable(variables) raised before it runs.
         self.fail_before = {}
 
@@ -287,7 +290,8 @@ class FakeDataConnect:
             variables["contractVersion"])
         self.specimens[specimen_id] = {"revision": 1, "state": variables["state"],
             "sensitive": variables["sensitive"], "disposition": None, "active_run_id": None,
-            "source_checksum": variables["sourceChecksum"], "work_available_at": variables.get("workAvailableAt")}
+            "source_checksum": variables["sourceChecksum"], "work_available_at": variables.get("workAvailableAt"),
+            "updated_at": iso_now()}
         return {"specimen_insert": {"id": specimen_id}}
 
     def op_SaveSpecimenV3(self, variables):
@@ -303,7 +307,7 @@ class FakeDataConnect:
             variables["contractVersion"])
         current.update(revision=revision, state=variables["state"], sensitive=variables["sensitive"],
             disposition=variables.get("disposition"), active_run_id=variables.get("activeRunId"),
-            work_available_at=variables.get("workAvailableAt"))
+            work_available_at=variables.get("workAvailableAt"), updated_at=iso_now())
         return {"specimen_updateMany": 1}
 
     def op_GetSpecimen(self, variables):
@@ -342,6 +346,34 @@ class FakeDataConnect:
         if run is not None and run.get("traceId") is None:
             run["traceId"] = variables["traceId"]
         return {"updated": 1}
+
+    # ---- monthly budget caps (dataconnect/connector/tenant_budget.gql) ----
+    # The one organization's caps, {collectionKey: (monthlyCapMicros, updatedBy,
+    # updatedAt)}; none unless a test sets one. Int64 crosses the wire here as a
+    # decimal string, one of the two forms tenant_budget.cap_micros reads.
+    def _cap_member(self, variables, roles):
+        member = self.membership(variables["actorUid"])
+        if (variables["organizationId"] != ORG or variables["collectionId"] != COLLECTION
+                or member is None or member["role"] not in roles):
+            raise ConnectorRefusal("permission denied")
+        return member
+
+    def op_TenantBudgetCapsV1(self, variables):
+        member = self._cap_member(variables, OPERATOR_ROLES + ("viewer",))
+        caps = self.tenant_budget_caps
+        return {"organizationMember": {"active": True},
+            "collectionMember": {"active": True, "role": member["role"]},
+            "tenantBudgetCaps": [{"collectionKey": key, "monthlyCapMicros": None if micros is None else str(micros),
+                "updatedAt": at} for key, (micros, _, at) in sorted(caps.items())],
+            "collections": [{"id": COLLECTION, "parentId": None}]}
+
+    def op_SetTenantBudgetCapV1(self, variables):
+        self._cap_member(variables, ("admin",))
+        key, micros = variables["collectionKey"], variables["monthlyCapMicros"]
+        if key not in {"organization", COLLECTION} or (micros is not None and (type(micros) is not int or micros < 0)):
+            raise ConnectorRefusal("tenant budget cap refused")
+        self.tenant_budget_caps[key] = (micros, variables["actorUid"], iso_now())
+        return {"stored": 1}
 
     def rows(self, table, predicate=lambda row: True):
         result = []
@@ -947,6 +979,84 @@ class FakeDataConnect:
         return {"operation": "research-publication/v2", "actorUid": variables["actorUid"],
             "idempotencyKey": variables["idempotencyKey"], "requestSha256": q["request_sha256"],
             "specimenId": q["specimen_id"], "revision": q["revision"]}
+
+    # ---- the cost meter (cost_meter.gql) ---------------------------------
+    def _cost_row_ok(self, variables, row):
+        """The connector SQL's checks on one row, its derived id included."""
+        from specimen_digitization.application.projection import derived_id
+        whole = lambda value: type(value) is int and 0 <= value < 10**15
+        return (isinstance(row, dict) and row.get("organization_id") == ORG and row.get("collection_id") == COLLECTION
+            and row.get("specimen_id") == variables["specimenId"] and row.get("source") == "paid_call"
+            and row.get("kind") in ("model", "service", "tool")
+            and row.get("cost_basis") in ("computed", "billed", "reserved", "refused")
+            and whole(row.get("cost_micros")) and whole(row.get("list_cost_micros"))
+            and (row.get("reserved_micros") is None or whole(row["reserved_micros"]))
+            and type(row.get("attempt")) is int and row["attempt"] >= 1
+            and type(row.get("ordinal")) is int and row["ordinal"] >= 0
+            and row.get("month") == row.get("occurred_at", "")[:7]
+            and row.get("id") == derived_id("cost", row["specimen_id"], row.get("run_id"), row.get("step"),
+                row["attempt"], row["kind"], row["ordinal"]))
+
+    def op_UpsertCostEntriesV1(self, variables):
+        member = self.require_member(variables)
+        specimen = self.specimens.get(variables["specimenId"])
+        rows = json.loads(variables["rowsJson"])
+        if (specimen is None or (specimen["sensitive"] and not member["can_view_sensitive"])
+                or not isinstance(rows, list) or not 1 <= len(rows) <= 500
+                or len({row.get("id") for row in rows if isinstance(row, dict)}) != len(rows)
+                or not all(self._cost_row_ok(variables, row) for row in rows)):
+            raise ConnectorRefusal("cost entries refused")
+        for row in rows:
+            existing = self.cost_entries.get(row["id"])
+            stamp = iso_now() if existing is None or existing["row"] != row else existing["updated_at"]
+            self.cost_entries[row["id"]] = {"row": row, "updated_at": stamp}
+        return {"upserted": len(rows)}
+
+    def op_ListRunPaidCallsV1(self, variables):
+        member = self.require_member(variables, OPERATOR_ROLES + ("viewer",))
+        if not 1 <= variables["limit"] <= 25:
+            raise ConnectorRefusal("invalid page")
+        since = datetime.fromisoformat(variables["since"].replace("Z", "+00:00"))
+        page = [ident for ident, row in sorted(self.specimens.items()) if ident > variables["afterId"]
+            and datetime.fromisoformat(row["updated_at"]) >= since
+            and (not row["sensitive"] or member["can_view_sensitive"])][:variables["limit"]]
+        items = []
+        for ident in page:
+            latest = {}
+            for (specimen_id, revision), snap in sorted(self.snapshots.items()):
+                run = snap["snapshot"].get("run", {})
+                if specimen_id == ident and run.get("id"):
+                    latest[run["id"]] = (revision, run.get("paid_calls"))
+            items += [{"specimen_id": ident, "run_id": run_id, "revision": revision, "paid_calls": calls}
+                for run_id, (revision, calls) in sorted(latest.items()) if calls]
+        return {"page": {"page_json": json.dumps({"items": items, "specimens": len(page),
+            "last_id": page[-1] if page else None})}}
+
+    def op_CostTotalsV1(self, variables):
+        rows = [row for row in self.members.get(variables["actorUid"], ())
+            if row["organization_id"] == variables["organizationId"] and row["role"] == "admin"]
+        if not rows or not variables["fromMonth"] <= variables["toMonth"]:
+            raise ConnectorRefusal("cost totals refused")
+        groups = {}
+        for entry in self.cost_entries.values():
+            row = entry["row"]
+            if row["organization_id"] != variables["organizationId"] or not (
+                    variables["fromMonth"] <= row["month"] <= variables["toMonth"]):
+                continue
+            key = tuple(row[name] for name in ("collection_id", "month", "stage", "source", "kind", "provider",
+                "resource", "cost_basis"))
+            group = groups.setdefault(key, {"cost": 0, "list": 0, "entries": 0, "updated": ""})
+            group["cost"] += row["cost_micros"]
+            group["list"] += row["list_cost_micros"]
+            group["entries"] += 1
+            group["updated"] = max(group["updated"], entry["updated_at"])
+        names = ("collection_id", "month", "stage", "source", "kind", "provider", "resource", "cost_basis")
+        result = [{**dict(zip(names, key)), "cost_micros": str(group["cost"]), "list_cost_micros": str(group["list"]),
+            "entries": str(group["entries"]),
+            "updated_at": datetime.fromisoformat(group["updated"]).strftime("%Y-%m-%dT%H:%M:%SZ")}
+            for key, group in sorted(groups.items())]
+        return {"collections": [{"id": COLLECTION.replace("-", ""), "name": "Insects", "parentId": None}],
+            "totals": {"totals_json": json.dumps({"admitted": True, "groups": result})}}
 
 
 class _AlreadyExists(Exception):

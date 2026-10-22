@@ -8,19 +8,93 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'email_link_source.dart';
 
-const staffEmailMessage = 'Use your fieldmuseum.org email address.';
+const staffEmailMessage = 'Enter a valid email address.';
 const emailLinkReturnUrl = 'https://specimen-digitization.web.app/';
 const emailLinkCooldown = Duration(seconds: 60);
+const emailLinkSentMessage =
+    'Check your inbox and spam folder. Open the link to sign in.';
+const _emailLinkWebHost = 'specimen-digitization.web.app';
+const _emailLinkNativeHost = 'specimen-digitization.firebaseapp.com';
+const _emailLinkNativePath = '/__/auth/links';
+const _emailLinkNativeActionPath = '/__/auth/action';
 
-/// ASCII mailbox syntax, the museum domain or exact authorized owner mailbox,
-/// and no whitespace/control characters.
-/// We accept case differences, not Unicode/lookalike or subdomain addresses.
+bool _hasExactAuthority(Uri uri, String host) {
+  final value = uri.toString();
+  const prefix = 'https://';
+  if (!value.startsWith(prefix)) return false;
+  final separator = value.indexOf(RegExp(r'[/?#]'), prefix.length);
+  final end = separator < 0 ? value.length : separator;
+  return value.substring(prefix.length, end) == host;
+}
+
+String? _trustedEmailLink(Uri uri, Map<String, List<String>> parameters) {
+  if (uri.scheme != 'https' ||
+      uri.hasPort ||
+      uri.userInfo.isNotEmpty ||
+      uri.fragment.isNotEmpty ||
+      uri.toString().length > 8192 ||
+      parameters.values.any((values) => values.length != 1)) {
+    return null;
+  }
+
+  if (uri.host == _emailLinkWebHost &&
+      _hasExactAuthority(uri, _emailLinkWebHost) &&
+      (uri.path == '/' || uri.path.isEmpty)) {
+    return parameters['mode']?.singleOrNull == 'signIn' &&
+            (parameters['oobCode']?.singleOrNull?.isNotEmpty ?? false)
+        ? uri.toString()
+        : null;
+  }
+
+  if (uri.host != _emailLinkNativeHost ||
+      !_hasExactAuthority(uri, _emailLinkNativeHost) ||
+      uri.path != _emailLinkNativePath ||
+      parameters.length != 1) {
+    return null;
+  }
+
+  // Firebase Hosting wraps the action URL in one `link` parameter for native
+  // delivery. Constrain both URLs so the trusted Hosting origin cannot become
+  // an open redirect, then give Firebase Auth only the validated action URL to
+  // parse and verify.
+  final String? actionValue = parameters['link']?.singleOrNull;
+  if (actionValue == null || actionValue.isEmpty) return null;
+  final Uri? action = Uri.tryParse(actionValue);
+  if (action == null ||
+      action.scheme != 'https' ||
+      action.host != _emailLinkNativeHost ||
+      action.hasPort ||
+      action.userInfo.isNotEmpty ||
+      !_hasExactAuthority(action, _emailLinkNativeHost) ||
+      action.path != _emailLinkNativeActionPath ||
+      action.fragment.isNotEmpty) {
+    return null;
+  }
+  final actionParameters = action.queryParametersAll;
+  if (actionParameters.values.any((values) => values.length != 1) ||
+      actionParameters['mode']?.singleOrNull != 'signIn' ||
+      !(actionParameters['oobCode']?.singleOrNull?.isNotEmpty ?? false) ||
+      actionParameters['continueUrl']?.singleOrNull != emailLinkReturnUrl) {
+    return null;
+  }
+  return action.toString();
+}
+
+/// Validates email syntax only. The server owns exact external-account admission
+/// and current collection membership; neither is inferred by this form.
 String? normalizedStaffEmail(String raw) {
   if (raw.length > 254 || raw.contains(RegExp(r'[^\x21-\x7e]'))) return null;
   final parts = raw.split('@');
-  if (parts.length != 2 ||
-      (parts[1].toLowerCase() != 'fieldmuseum.org' &&
-          raw.toLowerCase() != 'anurag@infinative.com')) {
+  if (parts.length != 2) {
+    return null;
+  }
+  final labels = parts[1].split('.');
+  if (labels.length < 2 ||
+      labels.any(
+        (label) => !RegExp(
+          r'^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$',
+        ).hasMatch(label),
+      )) {
     return null;
   }
   final local = parts[0];
@@ -140,8 +214,35 @@ class MagicLinkController extends ChangeNotifier {
   bool initialized = false, busy = false, sent = false;
   bool _disposed = false;
   bool _initializing = false;
+  int _sendEpoch = 0;
+  Future<void> _storageWrites = Future<void>.value();
   String email = '';
+  String? _emailSentInThisPage;
+  int _handoffGeneration = 0;
+
+  /// Changes when a new request, local link or alternate sign-in supersedes
+  /// the request that could have completed in another tab.
+  int get handoffGeneration => _handoffGeneration;
+
+  /// Called synchronously before dispatching another provider's sign-in.
+  void beginAlternateSignIn() => invalidateSessionHandoff();
+
+  /// An established session left or changed identity. Its earlier email
+  /// request cannot later become a fresh cross-tab recovery opportunity.
+  /// The sent UI and cooldown remain available for ordinary link completion.
+  void invalidateSessionHandoff() {
+    _emailSentInThisPage = null;
+    _handoffGeneration++;
+    _changed();
+  }
+
+  /// A successful request made by this controller, never restored preferences.
+  /// This is a recovery hint, not proof of authentication or collection access.
+  String? get emailSentInThisPage => _emailSentInThisPage;
   String? message;
+
+  /// A failed request can coexist with a previously sent link.
+  bool get hasError => message != null && message != emailLinkSentMessage;
   _IncomingEmailLink? _link;
   _IncomingEmailLink? _inFlight;
   StreamSubscription<EmailLinkDelivery>? _linkSubscription;
@@ -162,18 +263,83 @@ class MagicLinkController extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
-  Future<void> _remember({bool clearEmail = false}) async {
-    try {
-      await storage.write(
-        RememberedEmailLink(
-          email: clearEmail || email.isEmpty ? null : email,
-          retryAt: _retryAt,
-        ),
-      );
-    } catch (_) {
-      // Storage may be disabled in private browsing. Cross-browser confirmation
-      // remains available; no raw exception or account data is logged.
+  /// Accepts a link the person explicitly pasted, through the same strict
+  /// origin, shape and Firebase checks as a browser or native delivery.
+  /// The action code remains in memory only and the clipboard is unchanged.
+  bool acceptPastedLink(String rawLink) {
+    if (_disposed || !initialized || busy) return false;
+    final String value = rawLink.trim();
+    final Uri? uri = value.isEmpty ? null : Uri.tryParse(value);
+    if (uri == null) {
+      message =
+          'No usable sign-in link was found. Copy the full link from the email and try again.';
+      _changed();
+      return false;
     }
+    final String? previousMessage = message;
+    // A copied email button can contain the direct action URL rather than the
+    // native Hosting envelope. Reuse the envelope validator for its exact
+    // origin, path, unique parameters and continuation; Firebase still verifies
+    // the action code. This normalization applies only to an explicit paste.
+    final Uri candidate =
+        uri.host == _emailLinkNativeHost &&
+            uri.path == _emailLinkNativeActionPath &&
+            value.startsWith(
+              'https://$_emailLinkNativeHost$_emailLinkNativeActionPath?',
+            )
+        ? Uri.https(_emailLinkNativeHost, _emailLinkNativePath, {'link': value})
+        : uri;
+    final bool accepted = _ingestLink(candidate, () {});
+    if (!accepted && _link == null && message == previousMessage) {
+      message =
+          'This sign-in link cannot be used. Copy the full link from the email or request a new one.';
+    }
+    _changed();
+    if (accepted && email.isNotEmpty) unawaited(complete(email));
+    return accepted;
+  }
+
+  Future<void> _remember({bool clearEmail = false}) {
+    final value = RememberedEmailLink(
+      email: clearEmail || email.isEmpty ? null : email,
+      retryAt: _retryAt,
+    );
+    // A session can complete in another browser tab while a previous local
+    // write is pending. Preserve write order so cleanup is the final value.
+    _storageWrites = _storageWrites.then((_) async {
+      try {
+        await storage.write(value);
+      } catch (_) {
+        // Storage may be disabled in private browsing. Cross-browser
+        // confirmation remains available; no account data is logged.
+      }
+    });
+    return _storageWrites;
+  }
+
+  /// Clears a sent request completed by a matching, verified session event.
+  ///
+  /// The application must establish signed-in and verified state before
+  /// calling this method. An incoming link still owns its explicit confirmation
+  /// and cleanup, even if Firebase publishes a session before it completes.
+  Future<void> reconcileVerifiedSession(String verifiedEmail) async {
+    final normalized = normalizedStaffEmail(verifiedEmail);
+    if (_disposed ||
+        !initialized ||
+        normalized == null ||
+        normalized != email ||
+        _link != null ||
+        _inFlight != null) {
+      return;
+    }
+    _sendEpoch++;
+    _emailSentInThisPage = null;
+    email = '';
+    sent = false;
+    busy = false;
+    message = null;
+    _changed();
+    await _remember(clearEmail: true);
   }
 
   Future<void> initialize() async {
@@ -248,19 +414,8 @@ class MagicLinkController extends ChangeNotifier {
           uri.fragment.contains('oobCode') ||
           parameters.containsKey('link');
       if (candidate) {
-        final validShape =
-            uri.scheme == 'https' &&
-            uri.host == 'specimen-digitization.web.app' &&
-            !uri.hasPort &&
-            uri.userInfo.isEmpty &&
-            (uri.path == '/' || uri.path.isEmpty) &&
-            uri.fragment.isEmpty &&
-            parameters['mode']?.singleOrNull == 'signIn' &&
-            (parameters['oobCode']?.singleOrNull?.isNotEmpty ?? false) &&
-            uri.toString().length <= 8192 &&
-            parameters.values.every((values) => values.length == 1);
-        if (validShape && access.isSignInWithEmailLink(uri.toString())) {
-          final value = uri.toString();
+        final value = _trustedEmailLink(uri, parameters);
+        if (value != null && access.isSignInWithEmailLink(value)) {
           final digest = crypto.sha256.convert(utf8.encode(value)).toString();
           if (_consumedLinks.contains(digest)) {
             _acknowledge(acknowledge);
@@ -279,6 +434,8 @@ class MagicLinkController extends ChangeNotifier {
           if (superseded != null && !identical(superseded, _inFlight)) {
             _acknowledgeLink(superseded);
           }
+          _handoffGeneration++;
+          _emailSentInThisPage = null;
           _link = _IncomingEmailLink(
             value,
             digest,
@@ -340,6 +497,9 @@ class MagicLinkController extends ChangeNotifier {
       return;
     }
     email = normalized;
+    final int epoch = ++_sendEpoch;
+    _handoffGeneration++;
+    _emailSentInThisPage = null;
     final previousLink = _link;
     busy = true;
     message = null;
@@ -348,19 +508,24 @@ class MagicLinkController extends ChangeNotifier {
     // Persist before dispatch so a refresh or uncertain response retains the
     // same address/cooldown. No automatic SDK retry is scheduled by this UI.
     await _remember();
-    if (_disposed) return;
+    if (_disposed || epoch != _sendEpoch) return;
     try {
       await access.sendSignInLink(email);
-      if (_disposed) return;
+      if (_disposed || epoch != _sendEpoch) return;
       sent = true;
-      message = 'Check your inbox and spam folder. Open the link to sign in.';
+      _emailSentInThisPage = normalized;
+      message = emailLinkSentMessage;
     } catch (error) {
-      if (!_disposed) message = emailLinkError(error);
+      if (!_disposed && epoch == _sendEpoch) {
+        message = emailLinkError(error);
+      }
     } finally {
-      busy = false;
-      _changed();
-      if (!_disposed && _link != null && !identical(_link, previousLink)) {
-        unawaited(complete(email));
+      if (epoch == _sendEpoch) {
+        busy = false;
+        _changed();
+        if (!_disposed && _link != null && !identical(_link, previousLink)) {
+          unawaited(complete(email));
+        }
       }
     }
   }
@@ -375,6 +540,8 @@ class MagicLinkController extends ChangeNotifier {
     }
     email = normalized;
     final target = _link!;
+    _handoffGeneration++;
+    _emailSentInThisPage = null;
     target.retryable = false;
     _inFlight = target;
     busy = true;
@@ -433,6 +600,8 @@ class MagicLinkController extends ChangeNotifier {
     if (busy || !initialized || _disposed) return;
     busy = true;
     if (_link != null) _clearLink();
+    _handoffGeneration++;
+    _emailSentInThisPage = null;
     email = '';
     sent = false;
     message = null;

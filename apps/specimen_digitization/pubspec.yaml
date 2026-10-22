@@ -43,10 +43,14 @@ dependencies:
   # against them either.
   firebase_core: ^4.14.0
   firebase_auth: ^6.6.1
+  google_sign_in: ^7.2.0
   http: ^1.6.0
   crypto: ^3.0.7
   desktop_drop: ^0.8.4
   file_selector: ^1.1.0
+  # Camera review edits are applied locally before an operator submits the
+  # photograph. The server still receives one ordinary intake image.
+  image: ^4.10.1
   image_picker: ^1.2.3
   shared_preferences: ^2.5.5
   # Local 7.0.0 removes raw Android intent/URL logging; see its PROVENANCE.md.
@@ -62,6 +66,9 @@ dependencies:
   # Pinned: 17.5.0 is the last go_router that resolves on Flutter 3.38.5
   # and Dart 3.10.4. Newer majors raise the Flutter floor.
   go_router: 17.5.0
+  path_provider: ^2.1.5
+  url_launcher: ^6.3.2
+  web: ^1.1.1
 
 # firebase_core_web 3.11.0 requires a JS interop API not available in the
 # repository's Flutter 3.38 / Dart 3.10 toolchain. Remove this override after
@@ -91,6 +98,13 @@ dev_dependencies:
   # 3.38.5 and 2.4.7 is the last one that does. Same reason as go_router
   # above. Revisit with the SDK, not on its own.
   flutter_native_splash: 2.4.7
+  # Test only. The source gates under test/theme/ read lib/ as a Dart syntax
+  # tree rather than as text, so a comment between tokens, a hex literal, an
+  # interpolation or a second declarator reads the way the compiler reads it.
+  # 10.0.1 is the newest that resolves on Flutter 3.38.5; it adds seven
+  # packages to the lockfile and changes none. Revisit with the SDK, not on
+  # its own.
+  analyzer: 10.0.1
   integration_test:
     sdk: flutter
 

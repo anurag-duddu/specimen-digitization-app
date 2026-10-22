@@ -3,9 +3,11 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:http/http.dart' as http;
+import 'costs.dart';
 import 'models.dart';
 import 'sources.dart';
 import 'vocabulary.dart';
+import 'screens/intake/bulk_intake_repository.dart';
 
 /// How long the client waits for one exchange with the runtime API.
 ///
@@ -22,9 +24,12 @@ const Duration apiRequestTimeout = Duration(seconds: 30);
 class ApiSpecimenRepository
     implements
         SpecimenRepository,
+        IntakeProcessingRepository,
         CandidateReviewBatchRepository,
         SpecimenHistoryRepository,
         SourceRepository,
+        CostRepository,
+        BulkIntakeRepository,
         AccessFailureSource {
   ApiSpecimenRepository({
     required this.baseUrl,
@@ -68,6 +73,64 @@ class ApiSpecimenRepository
   /// it the App Check token is read once per request, and a refusal stands.
   final Future<String?> Function()? freshAppCheckToken;
   final http.Client _client;
+
+  String _intakeRoot(CollectionScope scope) =>
+      '${_root(scope)}/collections/${Uri.encodeComponent(scope.collectionId)}/intake';
+
+  @override
+  Future<Json> intakeRequest(
+    CollectionScope scope,
+    String method,
+    String path, {
+    Json? body,
+    Map<String, String>? query,
+    Uint8List? bytes,
+    int? offset,
+  }) => request(
+    method,
+    '${_intakeRoot(scope)}$path',
+    body: body,
+    query: query,
+    bytes: bytes,
+    headers: offset == null ? null : {'Upload-Offset': '$offset'},
+  );
+
+  @override
+  Future<Uint8List> intakePreview(
+    CollectionScope scope,
+    String itemId, {
+    bool full = false,
+  }) async {
+    final epoch = _accessEpoch;
+    final userId = expectedUserId?.call();
+    final uri = baseUrl.replace(
+      path:
+          '${baseUrl.path.replaceFirst(RegExp(r'/$'), '')}${_intakeRoot(scope)}/items/${Uri.encodeComponent(itemId)}/preview',
+      queryParameters: {'full': '$full'},
+    );
+    http.Request build(Map<String, String> credentials) =>
+        http.Request('GET', uri)
+          ..followRedirects = false
+          ..headers.addAll(credentials);
+    final response = await http.Response.fromStream(
+      await _send(build, await _credentials(epoch, userId), epoch, userId),
+    ).timeout(apiRequestTimeout);
+    _checkAccess(epoch, userId);
+    if (response.statusCode != 200) {
+      throw _deny(
+        ApiFailure(
+          'This preview is not available. Retry after the photo saves.',
+          code: 'preview_unavailable',
+          status: response.statusCode,
+          fromServer: true,
+        ),
+        epoch,
+        userId,
+      );
+    }
+    return response.bodyBytes;
+  }
+
   @override
   String mode = 'production';
   @override
@@ -855,6 +918,75 @@ class ApiSpecimenRepository
     }
   }
 
+  Specimen _intakeProcessingSummary(
+    CollectionScope scope,
+    String id,
+    Json data,
+  ) {
+    if (data['specimen_id'] != id ||
+        data['organization_id'] != scope.organizationId ||
+        data['collection_id'] != scope.collectionId ||
+        data['revision'] is! num ||
+        data['status'] is! String ||
+        data['available_actions'] is! List ||
+        (data['available_actions'] as List).any(
+          (Object? item) => item is! String,
+        )) {
+      throw const ApiFailure(
+        'This photograph’s processing status could not be verified.',
+        code: 'invalid_response',
+      );
+    }
+    return Specimen(data);
+  }
+
+  @override
+  Future<Specimen> intakeProcessingStatus(
+    CollectionScope scope,
+    String id,
+  ) async {
+    final Json data = await request(
+      'GET',
+      '${_root(scope)}/specimens/${Uri.encodeComponent(id)}',
+    );
+    return _intakeProcessingSummary(scope, id, data);
+  }
+
+  @override
+  Future<Json> startIntakeProcessing(
+    CollectionScope scope,
+    Specimen specimen,
+    String idempotencyKey,
+  ) async {
+    final Json data = await request(
+      'POST',
+      '${_root(scope)}/specimens/${Uri.encodeComponent(specimen.id)}/process',
+      key: idempotencyKey,
+    );
+    _intakeProcessingSummary(scope, specimen.id, data);
+    return data;
+  }
+
+  @override
+  Future<Specimen> retryIntakeProcessing(
+    CollectionScope scope,
+    Specimen specimen,
+    String reason,
+    String idempotencyKey,
+  ) async {
+    final Json data = await request(
+      'POST',
+      '${_root(scope)}/runs/${Uri.encodeComponent(specimen.data['active_run_id'])}/actions',
+      key: idempotencyKey,
+      body: <String, dynamic>{
+        'expected_revision': specimen.revision,
+        'action': 'retry',
+        'reason': reason,
+      },
+    );
+    return _intakeProcessingSummary(scope, specimen.id, data);
+  }
+
   @override
   Future<HistoryPage> historyPage(
     CollectionScope scope,
@@ -1106,6 +1238,10 @@ class ApiSpecimenRepository
       'latest_record_version_id': result['record_version_id'],
       'fields': fieldMap.entries.map((e) {
         final f = Map<String, dynamic>.from(e.value);
+        final state = f['value_state'] ?? f['state'];
+        final resolvedValue = state == 'supported'
+            ? f['normalized'] ?? f['parsed'] ?? f['literal']
+            : null;
         return <String, dynamic>{
           ...f,
           'field_key': e.key,
@@ -1117,10 +1253,10 @@ class ApiSpecimenRepository
                   e.key,
                 )
               : true,
-          'state': f['value_state'] ?? f['state'],
+          'state': state,
           'literal_value': f['literal'],
           'parsed_value': f['parsed'],
-          'resolved_value': f['normalized'] ?? f['parsed'] ?? f['literal'],
+          'resolved_value': resolvedValue,
         };
       }).toList(),
       'validation_findings': objects(result['validations']),
@@ -1341,6 +1477,7 @@ class ApiSpecimenRepository
         'cancel',
         'reprocess',
         'reconcile',
+        'reassess_locations',
       ].contains(action)) {
         throw const ApiFailure(
           'This run action is not supported.',
@@ -1763,6 +1900,50 @@ class ApiSpecimenRepository
     );
     _checkAccess(epoch, userId);
     return this.specimen(scope, specimen.id);
+  }
+
+  String _costRoot(String organizationId) =>
+      '/v1/organizations/${Uri.encodeComponent(organizationId)}/costs';
+
+  @override
+  Future<CostReport> costs(
+    String organizationId, {
+    required String from,
+    required String to,
+  }) async {
+    final Json body = await request(
+      'GET',
+      _costRoot(organizationId),
+      query: <String, String>{'from': from, 'to': to},
+    );
+    // Reads every field defensively and refuses what is not a report with an
+    // `ApiFailure`, so a body of the wrong shape ends as a message on screen.
+    return CostReport.fromWire(body);
+  }
+
+  @override
+  Future<bool> refreshCosts(String organizationId) async {
+    final Json result = await request(
+      'POST',
+      '${_costRoot(organizationId)}/refresh',
+    );
+    return result['started'] == true;
+  }
+
+  @override
+  Future<void> setCostLimit(
+    String organizationId, {
+    String? collectionId,
+    int? micros,
+  }) async {
+    await request(
+      'PUT',
+      '${_costRoot(organizationId)}/caps',
+      body: <String, dynamic>{
+        'collection_id': collectionId,
+        'monthly_cap_micros': micros,
+      },
+    );
   }
 
   @override

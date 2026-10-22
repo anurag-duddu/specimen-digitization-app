@@ -1,5 +1,7 @@
 """A step that fails after its external effect settled is a known block (issue #80)."""
 
+import pytest
+
 from test_application import HEADERS, PREFIX, client, intake
 
 from specimen_digitization.application import workflow as workflow_module
@@ -32,7 +34,7 @@ class ExtractingAdapters(SyntheticAdapters):
             raise RuntimeError("connection dropped before the provider answered")
 
 
-def drain_to_parse_failure(tmp_path, monkeypatch, phase_error, **adapter_options):
+def drain_to_parse_failure(tmp_path, monkeypatch, phase_error, *, carry=False, **adapter_options):
     c = client(tmp_path)
     row = intake(c)
     repo = SQLiteRepository(tmp_path / "state.sqlite3")
@@ -41,6 +43,12 @@ def drain_to_parse_failure(tmp_path, monkeypatch, phase_error, **adapter_options
     principal = Principal(user_id="synthetic-reviewer", scope=scope, role="reviewer")
     specimen = repo.get(scope, row["specimen_id"])
     specimen.run = Run(profile=specimen.run.profile)
+    if carry:
+        # A person's preserved field (human_field_carry), checked by the tests'
+        # stand-ins for its proof.
+        from specimen_digitization.application.human_field_carry import KEY
+
+        specimen.run.dependencies[KEY] = {"carried": True}
     repo.save(principal, specimen, specimen.version, "new-run", digest({"new": True}))
     real_execute_phase = workflow_module.execute_phase
 
@@ -55,17 +63,48 @@ def drain_to_parse_failure(tmp_path, monkeypatch, phase_error, **adapter_options
     return c, adapters, result
 
 
+TOKENS = 7  # What each extraction call reports, in the tests below.
+
+
+def counting_extract(self, specimen):
+    self.extractions += 1
+    specimen.run.usage.tokens += TOKENS
+
+
+@pytest.mark.parametrize("carry", [False, True])
 def test_integrity_failure_after_extraction_is_a_known_retryable_block(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, carry
 ):
+    # 2026-10-12 review: the parse step must not keep a blocked attempt's
+    # fields, evidence or tokens; its retry would add them again. With a
+    # person's preserved fields (carry), the same through that path's merge.
+    if carry:
+        from specimen_digitization.application import human_field_carry
+        from types import SimpleNamespace
+
+        monkeypatch.setattr(human_field_carry, "verify", lambda *a, **k: SimpleNamespace(outcomes={}))
+        monkeypatch.setattr(human_field_carry, "manifests", lambda specimen: {})
+    monkeypatch.setattr(ExtractingAdapters, "extract", counting_extract)
+    real_execute_phase = workflow_module.execute_phase
     c, adapters, result = drain_to_parse_failure(
-        tmp_path, monkeypatch, EvidenceIntegrityError("evidence_integrity_failure")
+        tmp_path, monkeypatch, EvidenceIntegrityError("evidence_integrity_failure"),
+        carry=carry,
     )
 
     assert adapters.extractions == 1
     assert result.run.stage == "processing_blocked"
     assert result.run.blocker == "evidence_integrity_failure"
     assert result.run.lease_until is None
+    assert "parse" not in result.run.completed_steps
+    assert not [e for e in result.run.evidence if e.source == "label"]
+    before = result.run.usage.tokens
+    # The blocked attempt's extraction tokens were not kept: the run counts
+    # only its readings' and its first pass's.
+    assert before == sum(o.input_tokens + o.output_tokens for o in result.run.observations) + sum(
+        d.call.input_tokens + d.call.output_tokens for d in result.run.first_pass_decisions
+    )
+    # The integrity cause is fixed; the retry completes the run.
+    monkeypatch.setattr(workflow_module, "execute_phase", real_execute_phase)
     retry = c.post(
         PREFIX + f"/runs/{result.run.id}/actions",
         headers=HEADERS,
@@ -76,6 +115,14 @@ def test_integrity_failure_after_extraction_is_a_known_retryable_block(
         },
     )
     assert retry.status_code == 200, retry.text
+
+    # The application's worker ran the retried parse with its own adapters
+    # (no extraction call): the run completes on that attempt alone.
+    done = SQLiteRepository(tmp_path / "state.sqlite3").get(result.scope, result.id)
+    assert done.run.stage == "finalized" and "parse" in done.run.completed_steps
+    lines = [e.excerpt for e in done.run.evidence if e.kind == "literal" and e.source == "label"]
+    assert lines and len(lines) == len(set(lines))
+    assert done.run.usage.tokens == before
 
 
 def test_unexpected_failure_after_extraction_is_a_known_block(tmp_path, monkeypatch):
@@ -95,3 +142,58 @@ def test_failure_inside_the_extraction_call_stays_unknown(tmp_path, monkeypatch)
     assert adapters.extractions == 1
     assert result.run.stage == "processing_blocked"
     assert result.run.blocker == "external_outcome_unknown"
+
+
+class FlakyExtraction(ExtractingAdapters):
+    """The extraction call fails with an HTTP 5xx `failures` times, then answers."""
+
+    def __init__(self, blobs, failures):
+        super().__init__(blobs)
+        self.failures = failures
+
+    def extract(self, specimen):
+        from specimen_digitization.application.domain import LookupStatus
+        from specimen_digitization.application.reliability import AdapterFailure
+
+        self.extractions += 1
+        if self.extractions <= self.failures:
+            raise AdapterFailure("model_provider_error", LookupStatus.PROVIDER, outcome_unknown=True)
+
+
+
+
+@pytest.mark.parametrize(("failures", "given_up"), [(1, False), (3, True)])
+def test_a_retried_parse_keeps_one_evidence_row_per_parsed_line(tmp_path, failures, given_up):
+    # 2026-10-12 review: parse ran into the persisted run before the extraction,
+    # so a retried extraction left the parsed lines' evidence behind and the next
+    # attempt added it again.
+    from datetime import datetime, timedelta, timezone
+
+    c = client(tmp_path)
+    row = intake(c)
+    repo = SQLiteRepository(tmp_path / "state.sqlite3")
+    blobs = LocalBlobs(tmp_path / "blobs")
+    scope = Scope(organization_id=SYNTHETIC_ORG, collection_id=SYNTHETIC_COLLECTION)
+    principal = Principal(user_id="synthetic-reviewer", scope=scope, role="reviewer")
+    specimen = repo.get(scope, row["specimen_id"])
+    specimen.run = Run(profile=specimen.run.profile)
+    repo.save(principal, specimen, specimen.version, "new-run", digest({"new": True}))
+    adapters = FlakyExtraction(blobs, failures)
+    now = [datetime.now(timezone.utc)]
+    workflow = Workflow(repo, blobs, adapters, clock=lambda: now[0])
+
+    for _ in range(failures + 1):
+        result = workflow.drain(principal, specimen.id)
+        if result.run.stage != "retry_scheduled":
+            break
+        now[0] += timedelta(hours=1)
+
+    run = result.run
+    assert run.stage == "finalized" and "parse" in run.completed_steps
+    assert adapters.extractions == min(failures + 1, 3)
+    assert any(f.rule_id == "extraction_given_up" for f in run.findings) is given_up
+    lines = [e.excerpt for e in run.evidence if e.kind == "literal" and e.source == "label"]
+    assert lines and len(lines) == len(set(lines))
+    # Each parsed field cites the one row its line has.
+    cited = [i for field in run.fields.values() for i in field.evidence_ids]
+    assert set(cited) <= {e.id for e in run.evidence}

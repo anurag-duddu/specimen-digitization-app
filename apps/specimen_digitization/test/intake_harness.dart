@@ -7,6 +7,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_ui/specimen_ui.dart';
+import 'package:specimen_digitization/src/screens/intake/capture_card.dart';
 
 /// The file picker button.
 final Finder chooseFilesButton = find.byKey(
@@ -29,7 +30,7 @@ final Finder confirmCheckbox = find.byKey(
 /// The manifest header's Stop action. Present only while a batch is running.
 final Finder stopButton = find.byKey(const ValueKey<String>('intake-stop'));
 
-/// The sensitivity checkbox for new photographs.
+/// The sensitivity switch for new photos.
 final Finder sensitivityControl = find.byKey(
   const ValueKey<String>('intake-sensitivity'),
 );
@@ -42,7 +43,7 @@ bool buttonEnabled(WidgetTester tester, Finder finder) =>
 bool batchConfirmed(WidgetTester tester) =>
     tester.widget<UiCheckbox>(confirmCheckbox).value ?? false;
 
-/// Selects the classification for new files using the actual checkbox.
+/// Selects the classification for new files using the actual switch.
 /// Existing and retried uploads keep their original classification.
 Future<void> selectSensitivity(WidgetTester tester, String label) async {
   final bool wanted = switch (label) {
@@ -53,20 +54,26 @@ Future<void> selectSensitivity(WidgetTester tester, String label) async {
   expect(sensitivityControl, findsOneWidget);
   await tester.ensureVisible(sensitivityControl);
   await tester.pumpAndSettle();
-  final UiCheckbox checkbox = tester.widget<UiCheckbox>(sensitivityControl);
-  expect(checkbox.onChanged, isNotNull);
-  expect(checkbox.value, isNotNull);
-  if (checkbox.value != wanted) {
+  final UiSwitch control = tester.widget<UiSwitch>(sensitivityControl);
+  expect(control.onChanged, isNotNull);
+  expect(control.value, isNotNull);
+  if (control.value != wanted) {
     expect(sensitivityControl.hitTestable(), findsOneWidget);
     await tester.tap(sensitivityControl);
     await tester.pumpAndSettle();
   }
-  expect(tester.widget<UiCheckbox>(sensitivityControl).value, wanted);
+  expect(tester.widget<UiSwitch>(sensitivityControl).value, wanted);
 }
 
 /// Presses the file picker and waits for every chosen file to be read,
 /// hashed and measured.
 Future<void> chooseFiles(WidgetTester tester) async {
+  if (chooseFilesButton.evaluate().isEmpty) {
+    final addPhotos = find.byKey(const ValueKey<String>('intake-add-photos'));
+    await tester.ensureVisible(addPhotos);
+    await tester.tap(addPhotos);
+    await tester.pumpAndSettle();
+  }
   await tester.ensureVisible(chooseFilesButton);
   await tester.pumpAndSettle();
   await tester.runAsync(() async {
@@ -75,7 +82,10 @@ Future<void> chooseFiles(WidgetTester tester) async {
     for (var attempt = 0; attempt < 200; attempt++) {
       await Future<void>.delayed(const Duration(milliseconds: 25));
       await tester.pump();
-      if (buttonEnabled(tester, chooseFilesButton)) {
+      if (tester
+              .widget<IntakeCaptureCard>(find.byType(IntakeCaptureCard))
+              .onChooseFiles !=
+          null) {
         finished = true;
         break;
       }

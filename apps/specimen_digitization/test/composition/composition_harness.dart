@@ -17,8 +17,6 @@
 import 'dart:async';
 import '../ui_finders.dart';
 
-import 'package:flutter/cupertino.dart' show CupertinoTabBar;
-import 'package:flutter/material.dart' show NavigationBar;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/app/routes.dart';
@@ -221,6 +219,11 @@ final List<CompositionScreen> compositionScreens = <CompositionScreen>[
   CompositionScreen(name: 'setup', pump: _routed(AppRoutes.setup)),
   CompositionScreen(name: 'help', pump: _routed(AppRoutes.help)),
   CompositionScreen(
+    name: 'costs',
+    // An administrator's page, which names no collection (13 section 4.7).
+    pump: _routed(goldenCostsLocation, repository: GoldenCostRepository.new),
+  ),
+  CompositionScreen(
     name: 'queue',
     // Four records rather than the one the default fixture answers: 13
     // section 2.5 asks for the first two rows of the queue to be visible, and
@@ -315,8 +318,7 @@ bool isPinnedChromeWidget(Widget widget) =>
     widget is UiPillNav ||
     widget is EnvironmentBanner ||
     widget is WorkbenchDecisionBar ||
-    widget is CupertinoTabBar ||
-    widget is NavigationBar;
+    widget is UiTabBar;
 
 /// True where [element] is a pinned region: the marker, or a widget the list
 /// above names.
@@ -332,12 +334,12 @@ bool isPinnedRegion(Element element) {
       );
 }
 
-/// The native bar that is actually laid out, excluding retained offstage routes.
-Finder nativeNavigation() => find.byWidgetPredicate(
-  (widget) => widget is CupertinoTabBar || widget is NavigationBar,
-);
+/// The bottom tab bar that is actually laid out, excluding retained offstage
+/// routes. One brand component on every platform (10 section 4.4,
+/// `UiTabBar`), so there is nothing platform specific to look for.
+Finder nativeNavigation() => find.byType(UiTabBar);
 
-/// The safe window above actual native navigation or the on-screen keyboard.
+/// The safe window above the actual bottom tab bar or the on-screen keyboard.
 /// Record tests additionally measure their own evidence/decision-bar boundary.
 Rect contentAboveNativeNavigation(WidgetTester tester) {
   final ratio = tester.view.devicePixelRatio;

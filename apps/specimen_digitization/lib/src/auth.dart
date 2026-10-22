@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show TextInputAction, TextInputType;
 import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
@@ -8,9 +9,38 @@ import 'api_repository.dart';
 import 'models.dart';
 import 'magic_link.dart';
 import 'magic_link_screen.dart';
+import 'firebase_google_sign_in.dart';
+import 'google_sign_in.dart';
 import 'administrator_contact.dart';
 import 'app/auth_layout.dart';
 import 'widgets/caveat_text.dart';
+
+const emailLinkAndroidPackageName = 'org.fieldmuseum.specimen_digitization';
+const emailLinkIosBundleId = 'org.fieldmuseum.specimenDigitization';
+
+/// Builds the hosted email-link request for the platform making the request.
+///
+/// Firebase chooses its default Hosting link domain because [linkDomain] stays
+/// unset. [emailLinkReturnUrl] remains the continue/fallback destination. Web
+/// keeps the existing hosted flow, while each mobile platform names the app
+/// registered for that platform so the link can return to the installed app.
+ActionCodeSettings emailLinkActionCodeSettings({
+  bool? web,
+  TargetPlatform? platform,
+}) {
+  final bool isWeb = web ?? kIsWeb;
+  final TargetPlatform target = platform ?? defaultTargetPlatform;
+  return ActionCodeSettings(
+    url: emailLinkReturnUrl,
+    handleCodeInApp: true,
+    androidPackageName: !isWeb && target == TargetPlatform.android
+        ? emailLinkAndroidPackageName
+        : null,
+    iOSBundleId: !isWeb && target == TargetPlatform.iOS
+        ? emailLinkIosBundleId
+        : null,
+  );
+}
 
 abstract class SessionAccess {
   Stream<bool> get changes;
@@ -30,17 +60,140 @@ abstract class VerifiedEmailAccess {
 }
 
 class FirebaseSession
-    implements SessionAccess, VerifiedEmailAccess, EmailLinkAccess {
-  FirebaseSession(this.auth);
+    implements
+        SessionAccess,
+        VerifiedEmailAccess,
+        EmailLinkAccess,
+        GoogleSignInAccess {
+  FirebaseSession(this.auth, {GoogleFirebaseSignInAdapter? google})
+    : _google =
+          google ??
+          GoogleFirebaseSignInAdapter(
+            auth: auth,
+            enabled: const bool.fromEnvironment(
+              'SPECIMEN_GOOGLE_SIGN_IN_ENABLED',
+            ),
+            nativeConfigured: const bool.fromEnvironment(
+              'SPECIMEN_GOOGLE_NATIVE_ENABLED',
+            ),
+          );
   final FirebaseAuth auth;
+  final GoogleFirebaseSignInAdapter _google;
+  final _googleChanges = StreamController<bool>.broadcast();
+  bool _googlePending = false;
+  bool _googleQuarantined = false;
+  int _googleEpoch = 0;
+  bool get _sessionBlocked => _googlePending || _googleQuarantined;
+
+  // Firebase publishes userChanges before a provider Future completes. Keep
+  // those events private until the selected account has been checked.
   @override
-  Stream<bool> get changes => auth.userChanges().map((u) => u != null);
+  Stream<bool> get changes => Stream<bool>.multi((controller) {
+    final raw = auth.userChanges().listen((_) {
+      if (!_sessionBlocked) controller.add(signedIn);
+    }, onError: controller.addError);
+    final checked = _googleChanges.stream.listen((_) {
+      controller.add(signedIn);
+    });
+    controller.onCancel = () async {
+      await raw.cancel();
+      await checked.cancel();
+    };
+  }, isBroadcast: true);
   @override
-  bool get signedIn => auth.currentUser != null;
+  bool get signedIn => !_sessionBlocked && auth.currentUser != null;
   @override
-  String get userId => auth.currentUser?.uid ?? '';
+  String get userId => _sessionBlocked ? '' : auth.currentUser?.uid ?? '';
   @override
-  String get displayName => auth.currentUser?.email ?? 'Signed in';
+  String get displayName =>
+      _sessionBlocked ? '' : auth.currentUser?.email ?? 'Signed in';
+
+  @override
+  bool get googleSignInAvailable => _google.available;
+
+  @override
+  Future<GoogleSignInOutcome> signInWithGoogle({String? emailHint}) async {
+    if (!googleSignInAvailable) {
+      throw const GoogleSignInFailure(GoogleSignInFailureKind.unavailable);
+    }
+    if (_googlePending) {
+      throw const GoogleSignInFailure(GoogleSignInFailureKind.accountConflict);
+    }
+    if (_googleQuarantined) {
+      // Retry cleanup on a later gesture. Start the provider only on the next
+      // gesture, because awaiting sign-out here would lose popup activation.
+      try {
+        await _signOutProviders();
+        _googleQuarantined = auth.currentUser != null;
+      } catch (_) {
+        _googleQuarantined = true;
+      }
+      _googleChanges.add(signedIn);
+      throw const GoogleSignInFailure(GoogleSignInFailureKind.unknown);
+    }
+    if (auth.currentUser != null) {
+      throw const GoogleSignInFailure(GoogleSignInFailureKind.accountConflict);
+    }
+    final epoch = ++_googleEpoch;
+    _googlePending = true;
+    _googleQuarantined = true;
+    var accepted = false;
+    try {
+      // Invoke the popup synchronously in the original submit gesture.
+      final result = await _google.authenticate(emailHint);
+      if (epoch != _googleEpoch) {
+        throw const GoogleSignInFailure(GoogleSignInFailureKind.unknown);
+      }
+      if (result == null) return GoogleSignInOutcome.cancelled;
+      final returned = result.user;
+      final current = auth.currentUser;
+      if (returned == null ||
+          current == null ||
+          returned.uid.isEmpty ||
+          returned.uid != current.uid ||
+          normalizedStaffEmail(returned.email ?? '') == null ||
+          normalizedStaffEmail(returned.email ?? '') !=
+              normalizedStaffEmail(current.email ?? '')) {
+        throw const GoogleSignInFailure(
+          GoogleSignInFailureKind.accountNotAllowed,
+        );
+      }
+      if (!returned.emailVerified || !current.emailVerified) {
+        throw const GoogleSignInFailure(
+          GoogleSignInFailureKind.unverifiedEmail,
+        );
+      }
+      accepted = true;
+      _googleQuarantined = false;
+      return GoogleSignInOutcome.signedIn;
+    } finally {
+      if (!accepted) {
+        try {
+          await _signOutProviders();
+          _googleQuarantined = auth.currentUser != null;
+        } catch (_) {
+          // A failed cleanup must never expose the rejected identity.
+          _googleQuarantined = true;
+        }
+      }
+      _googlePending = false;
+      _googleChanges.add(signedIn);
+    }
+  }
+
+  Future<void> _signOutProviders() async {
+    try {
+      await auth.signOut();
+    } finally {
+      try {
+        await _google.signOut();
+      } catch (_) {
+        // Firebase owns app access. The native bridge also clears its cached
+        // account before the next attempt if SDK cleanup failed here.
+      }
+    }
+  }
+
   @override
   Future<String?> token() async {
     _requireStaffAccess();
@@ -72,8 +225,12 @@ class FirebaseSession
   }
 
   @override
-  bool get emailVerified => auth.currentUser?.emailVerified == true;
+  bool get emailVerified =>
+      !_sessionBlocked && auth.currentUser?.emailVerified == true;
+  // This local check only validates a usable email. Server admission and SQL
+  // collection membership are checked by the ordinary authenticated API flow.
   bool get staffEmailAllowed =>
+      !_sessionBlocked &&
       normalizedStaffEmail(auth.currentUser?.email ?? '') != null;
   @override
   Future<void> refreshVerification() async {
@@ -97,15 +254,15 @@ class FirebaseSession
     if (normalized == null) throw const FormatException(staffEmailMessage);
     await auth.sendSignInLinkToEmail(
       email: normalized,
-      actionCodeSettings: ActionCodeSettings(
-        url: emailLinkReturnUrl,
-        handleCodeInApp: true,
-      ),
+      actionCodeSettings: emailLinkActionCodeSettings(),
     );
   }
 
   @override
   Future<void> completeEmailLink(String email, String link) async {
+    if (_sessionBlocked) {
+      throw const GoogleSignInFailure(GoogleSignInFailureKind.accountConflict);
+    }
     final normalized = normalizedStaffEmail(email);
     if (normalized == null) throw const FormatException(staffEmailMessage);
     if (!auth.isSignInWithEmailLink(link)) {
@@ -121,24 +278,37 @@ class FirebaseSession
   Future<void> resetPassword(String email) async =>
       throw UnsupportedError('Use an email sign-in link.');
   @override
-  Future<void> signOut() => auth.signOut();
+  Future<void> signOut() async {
+    _googleEpoch++;
+    await _signOutProviders();
+    _googleQuarantined = auth.currentUser != null;
+    _googleChanges.add(signedIn);
+  }
 }
 
 class SignInScreen extends StatelessWidget {
   const SignInScreen({super.key, required this.session, this.magicLink});
   final SessionAccess session;
   final MagicLinkController? magicLink;
+
   @override
-  Widget build(BuildContext context) => session is EmailLinkAccess
-      ? MagicLinkSignInScreen(
-          access: session as EmailLinkAccess,
-          controller: magicLink,
-        )
-      : _FixtureSignInScreen(session: session);
+  Widget build(BuildContext context) {
+    if (session is EmailLinkAccess) {
+      final google = session is GoogleSignInAccess
+          ? session as GoogleSignInAccess
+          : null;
+      return MagicLinkSignInScreen(
+        access: session as EmailLinkAccess,
+        controller: magicLink,
+        google: google?.googleSignInAvailable == true ? google : null,
+      );
+    }
+    return _FixtureSignInScreen(session: session);
+  }
 }
 
 // Legacy SessionAccess adapters remain for isolated local fixtures/tests only.
-// FirebaseSession always takes the email-link route above.
+// FirebaseSession uses email links and an optional configured Google provider.
 class _FixtureSignInScreen extends StatefulWidget {
   const _FixtureSignInScreen({required this.session});
   final SessionAccess session;

@@ -1,5 +1,6 @@
 """Opt-in real TCP API + SQL Connect journey across independent API processes."""
 
+from contextlib import contextmanager
 import io
 import json
 import os
@@ -14,6 +15,8 @@ import httpx
 import pytest
 from PIL import Image, PngImagePlugin
 from specimen_digitization.application.demo import fixture, journey
+
+from process_fixture_support import owned_process
 
 
 @pytest.mark.skipif(
@@ -45,27 +48,27 @@ def test_sql_http_restart(tmp_path):
         str(port),
     ]
 
+    @contextmanager
     def start():
-        process = subprocess.Popen(
+        with owned_process(
             command, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
-        for _ in range(100):
-            try:
-                response = httpx.get(
-                    base_url + "/v1/session",
-                    headers={"Authorization": "Bearer " + token},
-                )
-                if response.status_code == 200:
-                    return process
-            except httpx.HTTPError:
-                pass
-            time.sleep(0.1)
-        process.terminate()
-        process.wait()
-        raise AssertionError("Local API failed to start")
+        ) as process:
+            for _ in range(100):
+                try:
+                    response = httpx.get(
+                        base_url + "/v1/session",
+                        headers={"Authorization": "Bearer " + token},
+                    )
+                    if response.status_code == 200:
+                        break
+                except httpx.HTTPError:
+                    pass
+                time.sleep(0.1)
+            else:
+                raise AssertionError("Local API failed to start")
+            yield process
 
-    process = start()
-    try:
+    with start():
         # Unique synthetic source bytes preserve text while avoiding previous test duplicates.
         image = Image.open(io.BytesIO(fixture()))
         metadata = PngImagePlugin.PngInfo()
@@ -81,9 +84,7 @@ def test_sql_http_restart(tmp_path):
             timeout=60,
         ) as client:
             before = journey(client, output.getvalue())["decision_response"]
-        process.terminate()
-        process.wait(timeout=10)
-        process = start()
+    with start():
         with httpx.Client(
             base_url=base_url,
             headers={"Authorization": "Bearer " + token},
@@ -115,6 +116,3 @@ def test_sql_http_restart(tmp_path):
             Path(os.environ["SPECIMEN_TEST_EVIDENCE_PATH"]).write_text(
                 json.dumps(evidence, indent=2) + "\n"
             )
-    finally:
-        process.terminate()
-        process.wait(timeout=10)

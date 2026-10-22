@@ -17,7 +17,7 @@ import re
 import string
 import time
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from pydantic_ai import Agent, BinaryContent, ModelRetry
 from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.messages import ModelMessagesTypeAdapter
@@ -38,6 +38,8 @@ from .domain import (
 
 _TOKEN = re.compile(r"\w+|[^\w\s]")
 UNRESOLVED_VERDICTS = frozenset({"neither", "uncertain"})
+# The texts a first pass has written for "no reader" in place of JSON null.
+NULL_TEXTS = frozenset({"null", "none", ""})
 SYNTHETIC_RATIONALE = "Synthetic fixture: no visual evidence."
 _PREAMBLE = (
     "Independent readers transcribed the attached label image. Their raw "
@@ -184,6 +186,20 @@ class FirstPassOutput(BaseModel):
     reader_notes: dict[str, str] = Field(
         description="One short note per reader letter."
     )
+
+    @field_validator("selected_reader", mode="before")
+    @classmethod
+    def _null_written_as_text(cls, value):
+        """A pick written as the text "null", "None" or "" is no pick (null).
+
+        GLM-5.3-Flash on Novita writes the JSON null this field asks for as a
+        string, and writes it again on the output retry, so the whole answer was
+        refused as malformed (HARNESS.md section 3, "A first pass's null written
+        as text"). Such a value names no reader, so it never selects a reading.
+        """
+        if isinstance(value, str) and value.strip().lower() in NULL_TEXTS:
+            return None
+        return value
 
 
 def output_problems(output: FirstPassOutput, letters, count: int) -> list[str]:
@@ -373,7 +389,10 @@ def first_pass_direct(adapter, specimen, region, readings) -> FirstPassDecision:
             completion_state="validated_output"
             if result is not None
             else "usage_limit",
-            parameters=agent.model_settings,
+            # The settings every request carried: the route's own (its request
+            # options, model_gateway) under the agent's.
+            parameters={**(model.settings or {}), **(agent.model_settings or {})}
+            or None,
             provider_model_id=getattr(last, "model_name", None),
             input_asset_id=specimen.asset.id,
             input_crop_ref=adapter.blobs.put(image),
@@ -427,6 +446,63 @@ def synthetic_decision(blobs, region, readings) -> FirstPassDecision:
             raw_sha256=hashlib.sha256(raw).hexdigest(),
         ),
     )
+
+
+# A run's pinned first-pass route moved to another provider of the same model
+# (HARNESS.md section 3, Failures): `run.dependencies[ROUTE_REPINS]` keeps each move.
+ROUTE_REPINS = "route_repins"
+ROUTE_REPIN_RULES = "first-pass-same-model-provider-repin-v1"
+
+
+def repinnable_first_pass_route(run):
+    """The current registered first-pass route when the run's pin names the same
+    model at another provider; else None.
+
+    Only the provider may differ: a pin of another model, a malformed pin, a
+    route that is no longer registered or no longer serves the first pass with
+    images is never moved, so its step still blocks as
+    ``pinned_model_route_unavailable``. The price list is keyed by route, so the
+    step's reservation and the run's cap are unchanged.
+    """
+    from ..model_gateway import HUGGINGFACE_ROUTES
+
+    route_id = run.profile.first_pass_route
+    pins = run.dependencies.get("routes")
+    if route_id is None or not isinstance(pins, dict):
+        return None
+    pinned, current = pins.get(route_id), HUGGINGFACE_ROUTES.get(route_id)
+    if (
+        current is None
+        or not current.serves_with_images("transcription_first_pass")
+        or not isinstance(pinned, dict)
+        or set(pinned) != {"model_id", "provider"}
+        or pinned["model_id"] != current.model_id
+        or pinned["provider"] == current.provider
+    ):
+        return None
+    return current
+
+
+def repin_first_pass_route(run, at) -> bool:
+    """Move the run's first-pass pin to the registered provider of the same model,
+    recording the move (old and new provider, when) in ``ROUTE_REPINS``."""
+    current = repinnable_first_pass_route(run)
+    if current is None:
+        return False
+    pins = run.dependencies["routes"]
+    previous = pins[current.route_id]["provider"]
+    pins[current.route_id] = {"model_id": current.model_id, "provider": current.provider}
+    run.dependencies.setdefault(ROUTE_REPINS, []).append(
+        {
+            "route_id": current.route_id,
+            "model_id": current.model_id,
+            "from_provider": previous,
+            "to_provider": current.provider,
+            "at": at.isoformat(),
+            "rule": ROUTE_REPIN_RULES,
+        }
+    )
+    return True
 
 
 def give_up(run, region_id: str, code: str) -> None:

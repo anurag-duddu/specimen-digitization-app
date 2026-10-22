@@ -57,14 +57,14 @@ Finder uiTooltipped(String message) => find.byWidgetPredicate(
 /// The navigation destination named [label], in whichever navigation the
 /// window class chose.
 ///
-/// The pill and the collapsed rail draw a glyph and publish the name as a
-/// tooltip; the extended rail draws the word under the glyph; the sidebar
+/// Every destination is one `Pressable` carrying the name as its label: a
+/// disc of the pill or the rail, and a cell of the compact tab bar. The disc
+/// also shows the name as a `UiTooltip`, and that is deliberately not matched,
+/// or the docked rail would answer twice for one destination. The sidebar
 /// draws a row titled with it.
 Finder uiDestination(String label) => find.byWidgetPredicate(
   (Widget widget) =>
-      (widget is UiTooltip && widget.message == label) ||
       (widget is UiListRow && widget.title == label) ||
-      widget.key == ValueKey<String>('mobile-nav-${label.toLowerCase()}') ||
       (widget is Pressable && widget.semanticsLabel == label),
   description: 'navigation destination "$label"',
 );

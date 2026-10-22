@@ -95,6 +95,58 @@ void main() {
     );
   });
 
+  testWidgets('expanded action paints its full bounded width in both states', (
+    tester,
+  ) async {
+    var taps = 0;
+    for (final loading in [false, true]) {
+      await tester.pumpWidget(
+        uiHarness(
+          child: SizedBox(
+            width: 360,
+            child: UiButton(
+              label: 'Send link',
+              expand: true,
+              loading: loading,
+              size: UiSize.lg,
+              onPressed: () => taps++,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(_visual(tester).width, 360);
+      await tester.tapAt(
+        tester.getTopLeft(find.byType(UiButton)) + const Offset(8, 24),
+      );
+      await tester.pump();
+      expect(taps, 1, reason: 'The filled edge activates only when not busy');
+      expect(tester.takeException(), isNull);
+    }
+  });
+
+  testWidgets('expanded action keeps intrinsic width in an unbounded row', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      uiHarness(
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            UiButton(label: 'Send link', expand: true, onPressed: _noop),
+          ],
+        ),
+      ),
+    );
+    await tester.pump();
+    final button = tester.widget<UiButton>(find.byType(UiButton));
+    expect(
+      _visual(tester).width,
+      button.intrinsicWidth(tester.element(find.byType(UiButton))),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('given less than it needs, the label ellipsises and the whole '
       'of it is on a tooltip', (WidgetTester tester) async {
     await tester.pumpWidget(

@@ -13,6 +13,12 @@ class AdapterFailure(RuntimeError):
     work: an HTTP 429 answering the call's first request (``run_agent_bounded``).
     Nothing was generated, so nothing is billed, and the call is recorded at no
     cost (``lane_costs.record_refused``).
+
+    ``usage`` is set only when the provider reported the tokens of every
+    request the call sent (``reported_usage``): an answer that stayed malformed
+    after its retry. The failed call is then recorded at what those tokens cost
+    (``lane_costs.record_step``). Every other failure has no usage and stays
+    reserved in full.
     """
 
     def __init__(
@@ -23,6 +29,7 @@ class AdapterFailure(RuntimeError):
         retry_after_seconds: int | None = None,
         outcome_unknown=False,
         refused=False,
+        usage: dict | None = None,
     ):
         super().__init__(code)
         self.code = code
@@ -30,18 +37,100 @@ class AdapterFailure(RuntimeError):
         self.retry_after_seconds = retry_after_seconds
         self.outcome_unknown = outcome_unknown
         self.refused = refused
+        self.usage = usage
 
 
 class ReadingStopped(RuntimeError):
     """A reading stopped by its token limits (#153).
 
     It is a failed reading with a known outcome: its step completes with no
-    observation, and the run goes on.
+    observation, and the run goes on. ``usage`` is what the provider reported
+    the stopped call used, as ``AdapterFailure.usage`` is, or None.
     """
 
-    def __init__(self, code: str):
+    def __init__(self, code: str, usage: dict | None = None):
         super().__init__(code)
         self.code = code
+        self.usage = usage
+
+
+def reported_usage(
+    messages, usage, usage_limits=None, *, stopped=False, completed=False
+) -> dict | None:
+    """The tokens a model call's provider reported, when it reported every request's.
+
+    ``usage`` is the call's ``RunUsage``. Pydantic AI adds an answer's tokens
+    to it as the answer arrives, then checks the token limits, and only then
+    counts the answer in ``usage.requests`` and keeps it in ``messages``.
+    ``messages`` holds every request from just before it would be sent. So
+    when ``usage.requests`` equals the requests in ``messages``, every request
+    was answered and its tokens counted.
+
+    The agent may hold one request more:
+    - In a call ``stopped`` by its limits (``UsageLimitExceeded``), either the
+      limits stopped it before it was sent, or it was answered and its tokens
+      counted before the limit refused the answer. Its tokens are counted
+      either way.
+    - In a call whose answers used up its ``request_limit``, it cannot have
+      been sent (Pydantic AI refuses it first): a malformed answer's retry
+      prompt, queued after the last answer. The production model reads all set
+      ``request_limit=2``; with a limit the answers did not use up there is no
+      such proof, and the call is held.
+    - In a ``completed`` call (one that returned its output), the output
+      tool's return: Pydantic AI queues it as the last message, a request of
+      tool returns alone, after the answer that ended the call, and nothing
+      sends it. Every request before that answer was answered, or the call
+      could not have gone on. A last request holding anything else (a retry
+      prompt) proves nothing, and the call is held.
+
+    None in every other case: a sent request with no counted answer (a reply
+    the model client could not read, which the provider may still have
+    billed), or an answer that reported no input tokens. That spend is unknown
+    and stays reserved in full.
+    """
+    if usage is None or messages is None:
+        return None
+    sent = sum(m.kind == "request" for m in messages)
+    answered = usage.requests
+    limit = getattr(usage_limits, "request_limit", None)
+    one_more = sent == answered + 1 and (
+        stopped
+        or (
+            completed
+            and messages[-1].kind == "request"
+            and all(p.part_kind == "tool-return" for p in messages[-1].parts)
+        )
+        or (limit is not None and answered >= limit)
+    )
+    answers = [m for m in messages if m.kind == "response"]
+    if (
+        not (sent == answered or one_more)
+        or not usage.input_tokens
+        or any(not m.usage.input_tokens for m in answers)
+    ):
+        return None
+    return {"input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens}
+
+
+def checked_usage(value) -> dict | None:
+    """Reported usage as the cost record prices it: two token counts, input above
+    zero. Anything else (None, another shape, a value from across the model
+    child's process boundary that is not this) is unknown usage, which keeps the
+    call reserved in full.
+    """
+    if (
+        isinstance(value, dict)
+        and value.keys() == {"input_tokens", "output_tokens"}
+        and all(type(n) is int and n >= 0 for n in value.values())
+        and value["input_tokens"] > 0
+    ):
+        return dict(value)
+    return None
+
+
+def stopped_usage(stop) -> dict | None:
+    """What a call stopped by its limits used (``run_agent_bounded``), or None."""
+    return getattr(stop, "reported_usage", None)
 
 
 def reader_failure_is_recoverable(run, step: str) -> bool:
@@ -58,16 +147,68 @@ def reader_failure_is_recoverable(run, step: str) -> bool:
     (G6). It never blocks the run as ``external_outcome_unknown``.
 
     ``step`` is a workflow step (``transcribe:<region>:<route>``) or a model
-    operation (``transcribe``). Every other step keeps its unknown outcome as a
-    block: a first pass, the organiser, field research and every effectful step
-    may have changed something that a repeat would change again. So does a
-    reader of the evidence pilot, whose exact cohort reservations and zero
+    operation (``transcribe``). The first pass has its own narrower policy below;
+    the organiser, field research and every effectful step keep their unknown
+    outcome as a block. So does a reader of the evidence pilot, whose exact
+    cohort reservations and zero
     retries never replay a paid call. This is the one place that rule lives;
     widening or narrowing it is this line.
     """
     return (
         step.split(":", 1)[0] == "transcribe"
         and "evidence_pilot" not in run.dependencies
+    )
+
+
+def first_pass_failure_is_recoverable(run, step: str) -> bool:
+    """Whether a first-pass comparison may recover a transient failed call.
+
+    This tool-free model call compares retained readings and a retained crop.
+    Its child only writes content-addressed provenance; the parent records one
+    decision per region after the call returns. Repeating a failed comparison
+    cannot duplicate a specimen or publish a result. It can bill again: every
+    uncertain attempt keeps its full reservation and each retry reserves anew.
+
+    This does not make malformed answers or contract failures retryable, does
+    not clear an already persisted unknown outcome, and does not cover the
+    evidence pilot or any organiser, research, or publication operation.
+    """
+    return (
+        step.split(":", 1)[0] == "first_pass"
+        and "evidence_pilot" not in run.dependencies
+    )
+
+
+def extraction_failure_is_recoverable(run, step: str) -> bool:
+    """Whether the organiser's extraction call (``parse``'s one model call,
+    ``harness.extract_with_agent``) may recover a failed call.
+
+    Like the first pass, it is a tool-free model read: it reads the run's
+    retained readings, its child writes only content-addressed provenance, and
+    the parent applies the candidates after the call returns. Repeating it
+    cannot duplicate a specimen or publish a result. It can bill again: every
+    uncertain attempt keeps its full reservation and each retry reserves anew.
+    When its attempts are used up, or its answer stays malformed, the
+    extraction is given up on and the run goes on without its candidates
+    (``Workflow.extraction_has_no_attempt_left``).
+
+    ``step`` is the workflow step (``parse``) or the model operation
+    (``extract``). The evidence pilot is excluded, as it is from reader and
+    first-pass recovery.
+    """
+    return (
+        step.split(":", 1)[0] in {"parse", "extract"}
+        and "evidence_pilot" not in run.dependencies
+    )
+
+
+def model_read_is_recoverable(run, step: str) -> bool:
+    """A reader, an ordinary first pass or the organiser's extraction: the model
+    reads whose failed calls the workflow repeats and, at the end, gives up on."""
+    return (
+        reader_failure_is_recoverable(run, step)
+        or first_pass_failure_is_recoverable(run, step)
+        or extraction_failure_is_recoverable(run, step)
     )
 
 
@@ -149,6 +290,7 @@ def has_active_lease(run, current: datetime | None = None) -> bool:
 
 def run_agent_bounded(agent, prompt, *, timeout_seconds: float, usage_limits):
     import asyncio
+    from httpx import TimeoutException
     from pydantic_ai.exceptions import (
         ModelHTTPError,
         UnexpectedModelBehavior,
@@ -200,7 +342,9 @@ def run_agent_bounded(agent, prompt, *, timeout_seconds: float, usage_limits):
     try:
         with capture_run_messages() as messages:
             return asyncio.run(call())
-    except TimeoutError as exc:
+    except (TimeoutError, TimeoutException) as exc:
+        # HF's HTTPX transport timeouts do not inherit builtin TimeoutError.
+        # A missing response leaves spend unknown even after an earlier answer.
         raise AdapterFailure(
             "provider_deadline_outcome_unknown", outcome_unknown=True
         ) from exc
@@ -216,7 +360,8 @@ def run_agent_bounded(agent, prompt, *, timeout_seconds: float, usage_limits):
             429: LookupStatus.RATE_LIMITED,
         }.get(exc.status_code, LookupStatus.PROVIDER)
         # A gateway/server failure may follow an accepted billable effect.
-        # A workflow retry must never turn an ambiguous 5xx into duplicate spend.
+        # Preserve that uncertainty. Only the workflow's explicitly repeatable
+        # model reads may retry, reserving again without releasing this cost.
         # A 429 that answers the call's first request is a refusal before any
         # work: no answer came back, so nothing was generated or billed. One
         # after an answer (the agent's output retry) is not: that answer was.
@@ -235,6 +380,7 @@ def run_agent_bounded(agent, prompt, *, timeout_seconds: float, usage_limits):
         ) from exc
     except UsageLimitExceeded as exc:
         exc.run_messages, exc.run_usage = messages, usage
+        exc.reported_usage = reported_usage(messages, usage, usage_limits, stopped=True)
         raise
     except UnexpectedModelBehavior as exc:
         last = next((m for m in reversed(messages) if m.kind == "response"), None)
@@ -246,8 +392,13 @@ def run_agent_bounded(agent, prompt, *, timeout_seconds: float, usage_limits):
             # section 3, agreed with S3).
             stopped = UsageLimitExceeded("The answer was cut off at its output cap")
             stopped.run_messages, stopped.run_usage = messages, usage
+            stopped.reported_usage = reported_usage(messages, usage, usage_limits)
             raise stopped from exc
         # The provider answered, but its output stayed invalid after the retry.
+        # The tokens it reported are what the call cost (PLAN 4.3).
         raise AdapterFailure(
-            "model_malformed_response", LookupStatus.MALFORMED, outcome_unknown=False
+            "model_malformed_response",
+            LookupStatus.MALFORMED,
+            outcome_unknown=False,
+            usage=reported_usage(messages, usage, usage_limits),
         ) from exc

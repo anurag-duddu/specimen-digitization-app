@@ -71,6 +71,10 @@ flutter pub get --enforce-lockfile
 flutter analyze --fatal-infos
 flutter test
 
+# Compile the real OAuth listener and exercise cross-origin popup messages in
+# an isolated Chrome profile. VM widget tests cannot cover WindowProxy interop.
+node "$repo_root/scripts/ci/check_intake_auth_session_browser.cjs"
+
 # Formatting is a gate rather than a habit. The wave G integration formatted
 # the whole tree once; from there on a file that drifts fails here instead of
 # turning a later review into a diff of whitespace. It covers the client and

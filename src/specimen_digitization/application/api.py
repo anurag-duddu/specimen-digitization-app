@@ -8,7 +8,7 @@ import io
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5
 
-from fastapi import BackgroundTasks, Depends, FastAPI, Header, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, Query, Request
 from fastapi.responses import JSONResponse, Response
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException
@@ -54,7 +54,6 @@ from .lane import (
     refuse_sensitive,
     run_status,
 )
-from .lane_dispatch import UNCONFIGURED
 from .policy import finalize
 from .reliability import has_active_lease
 from .production import actor_uid, verified_actor_context
@@ -73,6 +72,10 @@ from .workflow import (
     SyntheticAdapters,
     Workflow,
     reconcilable_step,
+    requeue_completed_field_research,
+    can_reassess_locations,
+    requeue_location_reassessment,
+    current_human_location_fields,
 )
 
 SYNTHETIC_ORG = "00000000-0000-4000-8000-000000000001"
@@ -187,6 +190,14 @@ class ActionInput(RevisionInput):
     action: str
 
 
+# One monthly budget cap (cost meter, docs/execution/golive/TENANT_BUDGETS.md):
+# the organization's (collection_id null) or one collection's, in micros; a null
+# cap clears it. Both keys are required.
+class TenantCapInput(Record):
+    collection_id: str | None
+    monthly_cap_micros: int | None = Field(..., strict=True, ge=0, le=2**53 - 1)
+
+
 # The one role that may reconcile an unknown external outcome. It is the role the
 # pilot administrator holds; no other membership role is stricter.
 RECONCILE_ROLE = "admin"
@@ -258,6 +269,10 @@ def classify_error(exc) -> tuple[int, str, str, str]:
     "one record refused" would be told a different thing depending on how the
     decision was sent.
     """
+    from .intake_sources import ImportProblem
+    if isinstance(exc, ImportProblem):
+        detail = exc.intake_problem
+        return (503 if detail['retryable'] else 422, detail['code'], 'import', detail['message'])
     status, code, category, message = (
         503,
         "runtime_unavailable",
@@ -321,6 +336,8 @@ def classify_error(exc) -> tuple[int, str, str, str]:
 
 
 def summary(specimen: Specimen, role: str = "viewer") -> dict:
+    from .intake_progress import intake_progress
+
     run = specimen.run
     status = run_status(run)
     result = {
@@ -337,6 +354,7 @@ def summary(specimen: Specimen, role: str = "viewer") -> dict:
         "record_version_id": f"{run.id}:{specimen.version}",
         "status": status,
         "stage": run.stage,
+        "intake_progress": intake_progress(run),
         "disposition": run.disposition,
         "reason_codes": run.reasons,
         "blocker": run.blocker,
@@ -367,6 +385,8 @@ def summary(specimen: Specimen, role: str = "viewer") -> dict:
         ),
     }
 
+    if role in {"operator", "reviewer", "manager", "admin"} and can_reassess_locations(run, specimen=specimen):
+        result["available_actions"].append("reassess_locations")
     if run.blocker == "external_outcome_unknown":
         result["available_actions"] = [
             action for action in result["available_actions"]
@@ -381,7 +401,10 @@ def summary(specimen: Specimen, role: str = "viewer") -> dict:
     if run.dependencies.get("human_review_field_locks") or reprocess_hold(specimen):
         result["available_actions"] = [action for action in result["available_actions"] if action != "reprocess"]
     if has_active_lease(run):
-        result["available_actions"] = [action for action in result["available_actions"] if action != "restore_version"]
+        result["available_actions"] = [
+            action for action in result["available_actions"]
+            if action not in {"retry", "resume", "reprocess", "restore_version"}
+        ]
     if "evidence_pilot" in run.dependencies:
         result["available_actions"] = (
             ["field", "transcription", "reading_metadata", "coverage"]
@@ -390,6 +413,18 @@ def summary(specimen: Specimen, role: str = "viewer") -> dict:
             and not specimen.asset.processing_derivative
             else []
         )
+    if (
+        role in {"operator", "reviewer", "manager", "admin"}
+        and run.stage == "pending"
+        and not specimen.asset.sensitive
+        and "evidence_pilot" not in run.dependencies
+        and run.blocker is None
+        and run.disposition is None
+        and not has_active_lease(run)
+    ):
+        # A user may retry a worker start without resetting the existing run.
+        # This names POST /specimens/{id}/process, not the run's retry action.
+        result["available_actions"].append("start_processing")
     return result
 
 
@@ -471,6 +506,10 @@ def create_app(
     research_derivation_ready=None,
     schedule_derivation=None,
     research_capture_blobs=None,
+    intake_dispatcher=None,
+    intake_sources=None,
+    intake_oauth_config=None,
+    intake_secret_store=None,
 ) -> FastAPI:
     if mode not in {"synthetic", "emulator", "production"}:
         raise ValueError("Explicit application mode required")
@@ -505,7 +544,12 @@ def create_app(
         @app.middleware("http")
         async def require_allowed_origin(request, call_next):
             origin = request.headers.get("origin")
-            if origin is not None and origin not in origins:
+            from urllib.parse import urlsplit
+            picker_origins = {f'{u.scheme}://{u.netloc}' for value in (intake_oauth_config or {}).values()
+                if (u := urlsplit(value['redirect_uri'])).scheme == 'https'}
+            picker_callback = (request.url.path in {'/v1/intake/picker/selection', '/v1/intake/picker/bootstrap'}
+                and request.method == 'POST' and origin in picker_origins)
+            if origin is not None and origin not in origins and not picker_callback:
                 return JSONResponse(
                     status_code=403,
                     headers={"Cache-Control": "no-store"},
@@ -563,11 +607,13 @@ def create_app(
         }:
             background_tasks.add_task(process_background, p, s.id)
         elif mode != "synthetic" and work_available_at(s) is not None:
-            start_worker()
+            start_worker(p.scope)
 
     # Outside synthetic mode the worker job does the processing (LANE.md T1).
-    def start_worker():
-        return worker_dispatcher.start() if worker_dispatcher else UNCONFIGURED
+    def start_worker(scope):
+        from .lane_dispatch import dispatch_for_scope
+
+        return dispatch_for_scope(worker_dispatcher, scope)
 
     def request_processing(s, actor):
         """Leave a new or resumed run pending; synthetic runs drain in-process."""
@@ -588,7 +634,7 @@ def create_app(
                     "request_id": uid(),
                     "details": exc.details
                     if isinstance(exc, WorkspaceTooLarge)
-                    else {},
+                    else getattr(exc, 'intake_problem', {}),
                 }
             },
         )
@@ -627,7 +673,12 @@ def create_app(
             },
         )
 
+    # Known import failures must be handled inside CORS middleware so browser
+    # clients can read their actionable recovery details.
+    from .intake_sources import ImportProblem
+
     for handled in (
+        ImportProblem,
         Conflict,
         Missing,
         PermissionError,
@@ -779,7 +830,7 @@ def create_app(
             "items": [
                 {
                     "collection_id": m["collection_id"],
-                    "display_name": "Insects",
+                    "display_name": m.get("collection_name") or m["collection_id"],
                     "role": m["role"],
                     "profiles": [p.model_dump(mode="json") for p in registry.profiles],
                     "profile_registry_version": registry.version,
@@ -792,6 +843,109 @@ def create_app(
             ],
             "next_cursor": None,
         }
+
+    def cost_administrator(user, organization_id):
+        """An active administrator of any collection of the organization (RECONCILE_ROLE)."""
+        actor_uid.set(user)
+        if not any(
+            m["organization_id"] == organization_id and m["role"] == RECONCILE_ROLE
+            for m in member_rows(user)
+        ):
+            raise PermissionError("Costs need an administrator of a collection in this organization")
+
+    def cap_administrator_collections(user, organization_id):
+        """The collections of the organization the caller holds an active admin
+        row in, in order. The monthly caps are read (GET .../costs) and set
+        (PUT .../costs/caps) as the first one (TENANT_BUDGETS.md)."""
+        return sorted(
+            m["collection_id"]
+            for m in member_rows(user)
+            if m["organization_id"] == organization_id and m["role"] == RECONCILE_ROLE
+            and m.get("active", True) is not False
+        )
+
+    @app.get(prefix + "/costs")
+    def costs(
+        organization_id: str,
+        from_month: str | None = Query(default=None, alias="from"),
+        to_month: str | None = Query(default=None, alias="to"),
+        user=Depends(identity),
+    ):
+        """The organization's cost meter (docs/execution/golive/COST_METER.md)."""
+        from datetime import datetime, timezone
+
+        from .cost_ledger import cost_report, months_between
+
+        cost_administrator(user, organization_id)
+        last = to_month or datetime.now(timezone.utc).strftime("%Y-%m")
+        first = from_month or last
+        months_between(first, last)  # At most 24 whole months, in order (422).
+        totals = getattr(repository, "cost_totals", None)
+        if not callable(totals):
+            raise OperationalBlock("cost_meter_unavailable")
+        read = totals(organization_id, first, last)
+        try:
+            report = cost_report(organization_id, first, last, read["collections"], read["groups"])
+        except (ValueError, KeyError, TypeError) as exc:
+            code = "cost_collection_tree_invalid" if str(exc) == "collection_tree_cycle" else "cost_meter_unavailable"
+            raise OperationalBlock(code) from exc
+        return dict(report, **cost_caps(user, organization_id, first, last, read, report))
+
+    def cost_caps(user, organization_id, first, last, read, report):
+        """The monthly caps' positions for the current UTC month, whatever the
+        range (TENANT_BUDGETS.md, COST_METER.md): spent is that month's cost
+        entries, settled and held, rolled up the collection tree. Caps that
+        cannot be read leave the report whole, with every cap null and
+        caps_status "unavailable"."""
+        from .tenant_budget import month_of, report_caps, utc_now
+
+        try:
+            reader = getattr(repository, "tenant_caps", None)
+            if not callable(reader):
+                raise OperationalBlock("cost_meter_unavailable")
+            administered = cap_administrator_collections(user, organization_id)
+            if not administered:
+                raise PermissionError("No active administrator membership reads the caps")
+            answer = reader(Scope(organization_id=organization_id, collection_id=administered[0]))
+            if all(row["monthly_cap_micros"] is None for row in answer["caps"]):
+                return {"caps_status": "ok"}  # No cap set: nothing more is read.
+            month = month_of(utc_now())
+            groups = read["groups"]
+            if not first <= month <= last:
+                groups = repository.cost_totals(organization_id, month, month)["groups"]
+            positions = report_caps(answer, report["collections"], month, groups)
+        except Exception as exc:  # noqa: BLE001 - the costs stand without their caps
+            import logging
+
+            logging.getLogger(__name__).warning("Cost caps not read: %s", type(exc).__name__)
+            return {"caps_status": "unavailable"}
+        if positions is None:
+            return {"caps_status": "ok"}
+        return {
+            "organization_cap": positions["organization"],
+            "collections": [dict(item, cap=positions["collections"].get(item["collection_id"]))
+                for item in report["collections"]],
+            "caps_status": "ok",
+        }
+
+    @app.post(prefix + "/costs/refresh")
+    def refresh_costs(organization_id: str, user=Depends(identity)):
+        """Start the worker job of each of the caller's collections in the organization,
+        once per job; each drain sweeps the cost meter (cost_sweep)."""
+        from .lane_dispatch import dispatcher_for_scope
+
+        cost_administrator(user, organization_id)
+        started, seen = False, set()
+        for m in member_rows(user):
+            if m["organization_id"] != organization_id:
+                continue
+            scope = Scope(organization_id=organization_id, collection_id=m["collection_id"])
+            selected = dispatcher_for_scope(worker_dispatcher, scope)
+            if selected is None or id(selected) in seen:
+                continue
+            seen.add(id(selected))
+            started = selected.start().status == "requested" or started
+        return {"started": started}
 
     @app.post(prefix + "/images/preflight")
     async def image_preflight(
@@ -1149,7 +1303,7 @@ def create_app(
             )
         finally:
             if pending_intake:
-                start_worker()
+                start_worker(p.scope)
 
     @app.get(prefix + "/uploads/{upload_id}")
     def upload(organization_id: str, upload_id: str, user=Depends(identity)):
@@ -1234,7 +1388,7 @@ def create_app(
                 raise Conflict(
                     "Upload completion request differs from accepted request"
                 )
-            return doc["completion_response"]
+            return completed_upload(p, doc["completion_response"])
         if doc["revision"] != body.expected_revision:
             raise Conflict("Stale upload revision")
         if doc["offset"] != doc["size_bytes"]:
@@ -1242,85 +1396,14 @@ def create_app(
         content = b"".join(blobs.get(c["ref"]) for c in doc["chunks"])
         if hashlib.sha256(content).hexdigest() != doc["sha256"]:
             raise ValueError("Original checksum mismatch")
-        processing = None
-        pixel_basis = "original_pixel_edges"
-        special = doc["media_type"] in {
-            "image/heic",
-            "image/heif",
-            "image/dng",
-            "image/x-adobe-dng",
-        }
-        if special:
-            from .image_codecs import CodecPolicy, decode_image
-
-            policy = codec_policy or CodecPolicy()
-            family = (
-                "HEIC" if doc["media_type"] in {"image/heic", "image/heif"} else "DNG"
-            )
-            result, derivative = decode_image(content, family, policy)
-            if result.status == "blocked":
-                raise OperationalBlock("image_codec_" + result.reason)
-            if result.status != "decoded" or derivative is None:
-                raise ValueError("Invalid image: " + result.reason)
-            provenance = result.provenance
-            if provenance.actual_format != family:
-                raise ValueError("Decoded image family mismatch")
-            # HEIF's primary raster is already container-oriented. DNG's retained
-            # view must be inverted to its explicitly recorded active-area basis.
-            with Image.open(io.BytesIO(derivative)) as displayed:
-                canonical = displayed.convert("RGB")
-                orientation = provenance.transform.orientation
-                inverse = {
-                    2: Image.Transpose.FLIP_LEFT_RIGHT,
-                    3: Image.Transpose.ROTATE_180,
-                    4: Image.Transpose.FLIP_TOP_BOTTOM,
-                    5: Image.Transpose.TRANSPOSE,
-                    6: Image.Transpose.ROTATE_90,
-                    7: Image.Transpose.TRANSVERSE,
-                    8: Image.Transpose.ROTATE_270,
-                }.get(orientation)
-                if inverse is not None:
-                    canonical = canonical.transpose(inverse)
-                dimensions = canonical.size
-                pixels = io.BytesIO()
-                canonical.save(pixels, format="PNG")
-                canonical_bytes = pixels.getvalue()
-            processing = dict(
-                provenance.model_dump(mode="json"),
-                blob_ref=blobs.put(canonical_bytes),
-                derivative_sha256=hashlib.sha256(canonical_bytes).hexdigest(),
-                canonicalization="inverse_view_affine_to_declared_pixel_basis",
-            )
-            pixel_basis = provenance.coordinate_space
-            actual_type = "image/heic" if family == "HEIC" else "image/dng"
-        else:
-            try:
-                with Image.open(io.BytesIO(content)) as image:
-                    image.verify()
-                with Image.open(io.BytesIO(content)) as image:
-                    actual_type = Image.MIME.get(image.format)
-                    if actual_type not in {"image/png", "image/jpeg", "image/tiff"}:
-                        raise ValueError("Image decoder format not supported")
-                    if actual_type != doc["media_type"]:
-                        raise ValueError("Declared image media type mismatch")
-                    if image.width * image.height > 40000000 or max(image.size) > 20000:
-                        raise ValueError("Decoded image resolution limit exceeded")
-                    image.load()
-                    dimensions = image.size
-            except (
-                OSError,
-                SyntaxError,
-                EOFError,
-                Image.DecompressionBombError,
-            ) as exc:
-                raise ValueError("Invalid or truncated image content") from exc
-            derivative, provenance = orientation_view(
-                content, ImageLimits(allowed_formats=("JPEG", "PNG", "TIFF"))
-            )
-        if doc["width"] is not None and dimensions != (doc["width"], doc["height"]):
-            raise ValueError("Declared image dimensions mismatch")
+        from .intake_image import verify_photo
+        verified = verify_photo(content, doc, blobs, codec_policy)
+        dimensions = (verified["width"], verified["height"])
         doc.update(width=dimensions[0], height=dimensions[1])
-        view = dict(provenance.model_dump(mode="json"), blob_ref=blobs.put(derivative))
+        actual_type = verified["media_type"]
+        view = verified["view_derivative"]
+        processing = verified["processing_derivative"]
+        pixel_basis = verified["pixel_basis"]
         profile = Profile(
             synthetic=mode == "synthetic",
             institutional_policy_approved=mode == "synthetic",
@@ -1376,8 +1459,8 @@ def create_app(
         if mode == "synthetic" and not duplicate:
             background_tasks.add_task(process_background, p, specimen.id)
         elif not duplicate and specimen.run.stage == "pending":
-            start_worker()
-        return response
+            start_worker(p.scope)
+        return completed_upload(p, response)
 
     def history_access(user, organization_id, specimen_id):
         p, current = find(user, organization_id, specimen_id)
@@ -1690,6 +1773,66 @@ def create_app(
             p.scope, filters, cutoff or now(), after_created, after_id, limit, sensitive
         )
 
+    def in_line(p, specimen, result):
+        """Mark a pending run waiting behind its collection's live drain (G13).
+
+        One execution steps a collection's runs one at a time behind the
+        collection fence; a pending run then waits for its turn, and another
+        worker start cannot move it forward (that execution skips the held
+        fence). Such a run is reported as waiting in line and is not offered
+        `start_processing`. When no other run is being processed, or the
+        listing cannot be read, the summary stays as it was.
+        """
+        from datetime import datetime, timezone
+
+        from .domain import now
+        from .intake_progress import lane_busy
+        from .search import SearchFilters
+
+        run = specimen.run
+        if (
+            mode == "synthetic"
+            or run.stage != "pending"
+            or specimen.asset.sensitive
+            or run.blocker is not None
+            or run.disposition is not None
+            or "evidence_pilot" in run.dependencies
+        ):
+            return result
+        try:
+            # The drain never takes a sensitive record, so the non-sensitive
+            # listing holds every run it can be stepping.
+            rows = repository.search(
+                p.scope, SearchFilters(state="running"), now(), None, "", 100, False
+            )
+            busy = lane_busy(rows, specimen.id, datetime.now(timezone.utc))
+        except Exception:  # noqa: BLE001 - a projection never fails the read
+            return result
+        result.setdefault("intake_progress", {})["waiting_in_line"] = busy
+        if busy:
+            result["available_actions"] = [
+                action for action in result["available_actions"]
+                if action != "start_processing"
+            ]
+        return result
+
+    def completed_upload(p, response):
+        """An upload completion's reply, its in-line state derived now.
+
+        The accepted upload stores the summary as it was saved. Waiting in
+        line is transient, so it is never stored: each reply, a replay too,
+        reads it again from the record's current run. The upload is already
+        accepted, stored and dispatched here, so this optional re-read fails
+        open as `in_line` does: any error returns the stored summary.
+        """
+        import copy
+
+        try:
+            specimen = repository.get(p.scope, response["specimen_id"])
+            return in_line(p, specimen, copy.deepcopy(response))
+        except Exception:  # noqa: BLE001 - a projection never fails the reply
+            return copy.deepcopy(response)
+
     def render_workspace(specimen, p, mutation_committed=False):
         from .search import SearchFilters
 
@@ -1782,7 +1925,7 @@ def create_app(
         p, s = find(user, organization_id, specimen_id)
         from .search import SearchFilters
 
-        result = summary(s, p.role)
+        result = in_line(p, s, summary(s, p.role))
         metadata = search_metadata(p, user, SearchFilters(specimen_id=s.id), limit=1)
         if not metadata:
             raise Missing(specimen_id)
@@ -2203,6 +2346,11 @@ def create_app(
                 finalize(s.run)
             if phase_result is not None:
                 apply_phase_gate(s.run, phase_result)
+        reassessment = s.run.dependencies.get("location_reassessment")
+        if (body.kind in {"field", "authority_resolution"} and isinstance(reassessment, dict)
+                and body.target_id in reassessment.get("fields", [])):
+            reassessment["fields"] = [name for name in reassessment["fields"] if name != body.target_id]
+            reassessment["protected"] = sorted(set(reassessment.get("protected", [])) | {body.target_id})
         s.audit.append(
             AuditEvent(
                 actor=user,
@@ -2595,20 +2743,39 @@ def create_app(
                     raise PermissionError("Reconciling an unknown outcome needs an administrator")
                 if "evidence_pilot" in s.run.dependencies:
                     raise Conflict("Evidence pilot permits retained-evidence corrections only")
-                if s.run.blocker == "external_outcome_unknown" and body.action in {"retry", "resume", "reprocess"}:
+                if s.run.blocker == "external_outcome_unknown" and body.action in {"retry", "resume", "reprocess", "reassess_locations"}:
                     raise Conflict("Unknown external outcome requires operator reconciliation")
                 if not body.reason.strip():
                     raise ValueError("Action reason required")
-                if body.action in {"retry", "resume", "reprocess", "reconcile"} and has_active_lease(
+                if body.action in {"retry", "resume", "reprocess", "reconcile", "reassess_locations"} and has_active_lease(
                     s.run
                 ):
                     raise Conflict(
                         "An external effect is still leased; concurrent retry is prohibited"
                     )
-                if body.action in {"retry", "resume"}:
+                if body.action == "reassess_locations":
+                    protected = current_human_location_fields(repository, s)
+                    fields = requeue_location_reassessment(s.run, protected, specimen=s)
+                    if not fields:
+                        raise Conflict("Location reassessment requires completed research, unsettled automatic locations and a remaining attempt")
+                    action_event = AuditEvent(actor=user, action=body.action, reason=body.reason,
+                        before={"run_id": s.run.id, "attempt": s.run.attempts.get("field_research", 0),
+                            "fields": {field: s.run.fields[field].model_dump(mode="json") for field in fields if field in s.run.fields}},
+                        after={"run_id": s.run.id, "attempt": s.run.dependencies["location_reassessment"]["attempt"],
+                            "fields": fields})
+                    if authorization := s.run.dependencies["location_reassessment"].get("authorization_id"):
+                        action_event.after["authorization_id"] = authorization
+                    s.run.disposition = None
+                    s.run.stage = "plan"
+                elif body.action in {"retry", "resume"}:
+                    rerun_field_research = (
+                        body.action == "retry" and requeue_completed_field_research(s.run)
+                    )
                     s.run.blocker = None
                     s.run.disposition = None
-                    s.run.stage = Workflow.next_step(s.run).split(":")[0]
+                    s.run.stage = (
+                        "plan" if rerun_field_research else Workflow.next_step(s.run).split(":")[0]
+                    )
                     if s.run.lookups and s.run.lookups[-1].status.value not in {
                         "success",
                         "no_match",
@@ -2650,6 +2817,11 @@ def create_app(
                     # A paused run stays paused: the blocker and the lease are
                     # cleared and nothing is queued, so a person resumes it later.
                     keep_paused = s.run.stage == "paused"
+                    from .workflow import resolve_step_unknown_outcomes
+
+                    # The person settled the unknown outcome: its kind is no
+                    # longer recorded, so the run keeps its pins (#146).
+                    resolve_step_unknown_outcomes(s.run, step)
                     s.run.blocker = None
                     s.run.lease_until = None
                     s.run.disposition = None
@@ -2668,11 +2840,17 @@ def create_app(
                     install(s, carries, blobs)
                 else:
                     raise ValueError("Unsupported action")
-                if body.action in {"retry", "resume", "reprocess"} or (
+                if body.action == "reassess_locations":
+                    # Queue through the existing lane without renewing the run's
+                    # pinned limits, prices or shared ledger identity.
+                    policy = s.run.profile.execution.model_copy(deep=True)
+                    request_processing(s, user)
+                    s.run.profile.execution = policy
+                elif body.action in {"retry", "resume", "reprocess"} or (
                     body.action == "reconcile" and s.run.stage != "paused"
                 ):
                     request_processing(s, user)
-                s.audit.append(action_event if body.action in {"reprocess", "reconcile"} else
+                s.audit.append(action_event if body.action in {"reprocess", "reconcile", "reassess_locations"} else
                     AuditEvent(actor=user, action=body.action, reason=body.reason))
                 saved = repository.save(
                     p,
@@ -2750,7 +2928,75 @@ def create_app(
                 f"The run is {run_status(s.run)}; a run action continues it",
             )
         response.status_code = 202
-        return dict(summary(s, p.role), dispatch=start_worker().model_dump())
+        dispatch = start_worker(p.scope).model_dump()
+        return dict(in_line(p, s, summary(s, p.role)), dispatch=dispatch)
+
+    # Optional monthly budget caps (cost meter, docs/execution/golive/
+    # TENANT_BUDGETS.md). An active admin of any collection of the organization
+    # sets or clears the organization's cap or one collection's. The worker
+    # enforces them before each paid step; none is set by default.
+    @app.put(prefix + "/costs/caps")
+    def set_cost_cap(organization_id: str, body: TenantCapInput, user=Depends(identity)):
+        from uuid import UUID
+
+        from .tenant_budget import TenantBudgetUnavailable
+
+        actor_uid.set(user)
+        administered = cap_administrator_collections(user, organization_id)
+        if not administered:
+            raise PermissionError("An organization administrator sets budget caps")
+        if not all(callable(getattr(repository, name, None)) for name in ("tenant_caps", "set_tenant_cap")):
+            return JSONResponse(status_code=503, content={"error": {
+                "code": "cost_meter_unavailable", "category": "operational",
+                "message": "This deployment keeps no budget caps", "retryable": False,
+                "request_id": uid(), "details": {},
+            }})
+        scope = Scope(organization_id=organization_id, collection_id=administered[0])
+
+        def refused():
+            # The connector refused a read or the write as this membership. It
+            # is an authorization answer (403) when the caller's memberships,
+            # read again, no longer hold an active admin row of that
+            # collection; otherwise the store's own (503), as caps that cannot
+            # be read are.
+            if scope.collection_id not in cap_administrator_collections(user, organization_id):
+                return PermissionError("The connector refused this administrator's cap")
+            return OperationalBlock("tenant_budget_unavailable")
+
+        def caps():
+            try:
+                return repository.tenant_caps(scope)
+            except (TenantBudgetUnavailable, ValueError, KeyError, TypeError):
+                raise OperationalBlock("tenant_budget_unavailable") from None  # 503
+            except Conflict:
+                raise refused() from None
+
+        key = "organization"
+        if body.collection_id is not None:
+            try:
+                key = str(UUID(body.collection_id))
+            except ValueError:
+                raise ValueError("collection_id must be a collection id") from None
+            if key not in {row["id"] for row in caps()["collections"]}:
+                raise ValueError("collection_id names no collection of this organization")
+        try:
+            repository.set_tenant_cap(scope, key, body.monthly_cap_micros)
+        except Conflict:
+            # The body was checked above: a refusal the membership explains (an
+            # admin row no longer active) is 403, any other 503.
+            raise refused() from None
+        rows = caps()["caps"]
+        return {
+            "organization_id": organization_id,
+            "caps": [
+                {
+                    "collection_id": None if row["collection_key"] == "organization" else row["collection_key"],
+                    "monthly_cap_micros": row["monthly_cap_micros"],
+                }
+                for row in sorted(rows, key=lambda row: (row["collection_key"] != "organization", row["collection_key"]))
+                if row["monthly_cap_micros"] is not None
+            ],
+        }
 
     # Research uses the same verifier and current membership source as the
     # host, with an async lifetime so ContextVar state reaches every await and
@@ -2847,12 +3093,39 @@ def create_app(
         discovery=discovery, load_specimen=load_research_specimen,
         ready=research_derivation_ready, schedule_derivation=schedule_derivation,
         capture_blobs=research_capture_blobs,
-        wake_worker=worker_dispatcher.start if worker_dispatcher is not None else None)
+        wake_worker=(lambda p: start_worker(p.scope)) if worker_dispatcher is not None else None)
     app.include_router(create_derivation_router(derivation,
         verified_principal_dependency=research_principal))
     app.state.research_derivation = derivation
     app.state.research_discovery = discovery
     app.state.workflow = workflow
+    from .bulk_intake import IntakeService
+    from .intake_routes import install_intake_routes
+    from .intake_worker import IntakeWorker
+    from .intake_sources import IntakeSources
+    from .intake_source_routes import install_source_routes
+    from .lane_dispatch import dispatch_for_scope
+    intake = IntakeService(repository, blobs,
+        authorize=lambda p: principal(p.user_id, p.scope.organization_id, p.scope.collection_id, write=True),
+        classify=lambda p, sensitive: sensitivity_access(p.user_id, p, sensitive),
+        queue_specimen=lambda s, user: queue_on_intake(s, registry, user) if mode != 'synthetic' else None,
+        dispatch_pipeline=lambda p, s: process_background(p, s.id) if mode == 'synthetic' else start_worker(p.scope),
+        dispatch_intake=(lambda p: dispatch_for_scope(intake_dispatcher, p.scope)) if intake_dispatcher else None,
+        sources=intake_sources or IntakeSources(source_registry=source_registry, source_reader=source_reader),
+        codec_policy=codec_policy, synthetic=mode == 'synthetic')
+    app.state.intake = intake
+    connections = None
+    if intake_oauth_config:
+        from .intake_connections import ConnectionManager
+        from .intake_cloud_sources import CloudSource
+        if intake_secret_store is None:
+            raise ValueError('OAuth configuration requires protected credential storage')
+        connections = ConnectionManager(intake, intake_oauth_config, intake_secret_store)
+        intake.sources.providers.update({name: CloudSource(connections, name) for name in intake_oauth_config})
+    app.state.intake_connections = connections
+    install_source_routes(app, prefix, intake, connections, identity=identity, principal=principal, origins=origins)
+    install_intake_routes(app, prefix, intake, identity=identity, principal=principal,
+        local_drain=IntakeWorker(intake).drain if mode == 'synthetic' else None)
     return app
 
 

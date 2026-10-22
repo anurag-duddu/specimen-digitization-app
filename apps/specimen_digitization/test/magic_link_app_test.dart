@@ -62,6 +62,50 @@ class LinkSession extends FakeLinkAccess
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  test('personal iPhone paste fallback requires every debug gate', () {
+    expect(
+      applePersonalDemoPasteEnabled(
+        configured: true,
+        web: false,
+        platform: TargetPlatform.iOS,
+      ),
+      isTrue,
+    );
+    expect(
+      applePersonalDemoPasteEnabled(
+        debug: false,
+        configured: true,
+        web: false,
+        platform: TargetPlatform.iOS,
+      ),
+      isFalse,
+    );
+    expect(
+      applePersonalDemoPasteEnabled(
+        configured: false,
+        web: false,
+        platform: TargetPlatform.iOS,
+      ),
+      isFalse,
+    );
+    expect(
+      applePersonalDemoPasteEnabled(
+        configured: true,
+        web: true,
+        platform: TargetPlatform.iOS,
+      ),
+      isFalse,
+    );
+    expect(
+      applePersonalDemoPasteEnabled(
+        configured: true,
+        web: false,
+        platform: TargetPlatform.android,
+      ),
+      isFalse,
+    );
+  });
   testWidgets(
     'cross-browser magic link verifies account before pending API, then sign out',
     (tester) async {
@@ -81,7 +125,7 @@ void main() {
         isEmpty,
       );
       await tester.enterText(find.byType(UiField), 'STAFF@FIELDMUSEUM.ORG');
-      await tester.tap(find.text('Confirm and sign in'));
+      await tester.tap(find.text('Sign in'));
       await tester.pump();
       expect(find.text('Signing in…'), findsOneWidget);
       expect(find.byType(CollectionWorkspace), findsNothing);
@@ -95,7 +139,7 @@ void main() {
       expect(browser.clearCount, 1);
       await tester.tap(find.text('Sign out'));
       await tester.pumpAndSettle();
-      expect(find.text('Send sign-in link'), findsOneWidget);
+      expect(find.text('Send link'), findsOneWidget);
       expect(find.text('Reset password'), findsNothing);
     },
   );
@@ -147,28 +191,34 @@ void main() {
         ),
       );
       await tester.enterText(find.byType(UiField), 'staff@fieldmuseum.org');
-      await tester.tap(find.text('Send sign-in link'));
+      await tester.tap(find.text('Send link'));
       await tester.pump();
       expect(find.text('Sending link…'), findsOneWidget);
       expect(
-        tester.widget<UiButton>(find.byType(UiButton).first).onPressed,
+        tester
+            .widget<UiButton>(find.widgetWithText(UiButton, 'Sending link…'))
+            .onPressed,
         isNull,
       );
       access.sendWait!.complete();
       await tester.pumpAndSettle();
-      expect(find.text('Resend sign-in link'), findsOneWidget);
+      expect(find.text('Resend link'), findsOneWidget);
       expect(
-        tester.widget<UiButton>(find.byType(UiButton).first).onPressed,
+        tester
+            .widget<UiButton>(find.widgetWithText(UiButton, 'Resend link'))
+            .onPressed,
         isNull,
       );
       expect(find.text('You can request another link in 60s.'), findsOneWidget);
       now = now.add(const Duration(seconds: 61));
       await tester.pump(const Duration(seconds: 1));
       expect(
-        tester.widget<UiButton>(find.byType(UiButton).first).onPressed,
+        tester
+            .widget<UiButton>(find.widgetWithText(UiButton, 'Resend link'))
+            .onPressed,
         isNotNull,
       );
-      await tester.tap(find.text('Use a different email'));
+      await tester.tap(find.text('Change email'));
       await tester.pumpAndSettle();
       expect(
         tester.widget<UiField>(find.byType(UiField)).controller!.text,
@@ -177,4 +227,131 @@ void main() {
       expect(storage.value.email, isNull);
     },
   );
+
+  testWidgets(
+    'opted-in iPhone demo reads the clipboard only after the paste action',
+    (tester) async {
+      final access = FakeLinkAccess()..completeWait = Completer<void>();
+      final storage = MemoryLinkStorage();
+      final controller = MagicLinkController(
+        access: access,
+        storage: storage,
+        browser: MemoryEmailLinkBrowser(),
+      );
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.send('staff@fieldmuseum.org');
+      var clipboardReads = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: MagicLinkSignInScreen(
+            access: access,
+            controller: controller,
+            applePersonalDemoConfigured: true,
+            platform: TargetPlatform.iOS,
+            clipboardReader: () async {
+              clipboardReads++;
+              return testLink;
+            },
+          ),
+        ),
+      );
+
+      expect(find.text('Paste link from email'), findsOneWidget);
+      expect(clipboardReads, 0);
+      expect(access.checked, isEmpty);
+
+      await tester.tap(find.text('Paste link from email'));
+      await tester.pump();
+
+      expect(clipboardReads, 1);
+      expect(access.checked, [testLink]);
+      expect(access.completed, [('staff@fieldmuseum.org', testLink)]);
+      expect(find.text('Signing in…'), findsOneWidget);
+      access.completeWait!.complete();
+      await tester.pumpAndSettle();
+      expect(storage.value.email, isNull);
+    },
+  );
+
+  testWidgets('late clipboard result after unmount does not submit a link', (
+    tester,
+  ) async {
+    final access = FakeLinkAccess();
+    final controller = MagicLinkController(
+      access: access,
+      storage: MemoryLinkStorage(),
+      browser: MemoryEmailLinkBrowser(),
+    );
+    addTearDown(controller.dispose);
+    await controller.initialize();
+    await controller.send('staff@fieldmuseum.org');
+    final clipboard = Completer<String?>();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: MagicLinkSignInScreen(
+          access: access,
+          controller: controller,
+          applePersonalDemoConfigured: true,
+          platform: TargetPlatform.iOS,
+          clipboardReader: () => clipboard.future,
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Paste link from email'));
+    await tester.pump();
+    await tester.pumpWidget(const SizedBox.shrink());
+    clipboard.complete(testLink);
+    await tester.pump();
+
+    expect(access.checked, isEmpty);
+    expect(access.completed, isEmpty);
+    expect(controller.handlingLink, isFalse);
+  });
+
+  testWidgets('changing email invalidates a pending clipboard result', (
+    tester,
+  ) async {
+    final access = FakeLinkAccess();
+    final controller = MagicLinkController(
+      access: access,
+      storage: MemoryLinkStorage(),
+      browser: MemoryEmailLinkBrowser(),
+    );
+    addTearDown(controller.dispose);
+    await controller.initialize();
+    await controller.send('staff@fieldmuseum.org');
+    final clipboard = Completer<String?>();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: MagicLinkSignInScreen(
+          access: access,
+          controller: controller,
+          applePersonalDemoConfigured: true,
+          platform: TargetPlatform.iOS,
+          clipboardReader: () => clipboard.future,
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Paste link from email'));
+    await tester.pump();
+    expect(
+      tester
+          .widget<UiButton>(find.widgetWithText(UiButton, 'Change email'))
+          .onPressed,
+      isNull,
+    );
+    await controller.changeEmail();
+    clipboard.complete(testLink);
+    await tester.pump();
+
+    expect(access.checked, isEmpty);
+    expect(access.completed, isEmpty);
+    expect(controller.handlingLink, isFalse);
+  });
 }

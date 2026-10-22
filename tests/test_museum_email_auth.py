@@ -10,7 +10,7 @@ from specimen_digitization.application import runtime_auth
 from specimen_digitization.application.api import create_app
 
 
-def verifier(monkeypatch, email, *, verified=True):
+def verifier(monkeypatch, email, *, verified=True, external_email_allowlist=()):
     monkeypatch.setattr(
         runtime_auth.app_check,
         "verify_token",
@@ -29,7 +29,8 @@ def verifier(monkeypatch, email, *, verified=True):
         },
     )
     app = SimpleNamespace(project_id="123")
-    return runtime_auth.firebase_verifier(app, ("allowed-app",), app)
+    return runtime_auth.firebase_verifier(app, ("allowed-app",), app,
+        external_email_allowlist=external_email_allowlist)
 
 
 @pytest.mark.parametrize(
@@ -92,7 +93,7 @@ OWNER_BATCH_PATH = "/v1/organizations/fixture-org/batches"
 OWNER_BATCH = {"collection_id": "fixture-collection", "display_name": "Auth control"}
 
 
-def owner_sdk(monkeypatch, *, email=OWNER_EMAIL, verified=True, uid="owner-uid-fixture"):
+def owner_sdk(monkeypatch, *, email=OWNER_EMAIL, verified=True, uid="owner-uid-fixture", external_email_allowlist=()):
     # Credential-free SDK responses: no native UID, role, or signed credential.
     identity = Mock(
         return_value={"uid": uid, "email": email, "email_verified": verified}
@@ -106,7 +107,8 @@ def owner_sdk(monkeypatch, *, email=OWNER_EMAIL, verified=True, uid="owner-uid-f
     monkeypatch.setattr(runtime_auth.auth, "verify_id_token", identity)
     monkeypatch.setattr(runtime_auth.app_check, "verify_token", appcheck)
     app = SimpleNamespace(project_id="123")
-    verify = runtime_auth.firebase_verifier(app, ("allowed-app",), app)
+    verify = runtime_auth.firebase_verifier(app, ("allowed-app",), app,
+        external_email_allowlist=external_email_allowlist)
     return verify, identity, appcheck, app
 
 
@@ -298,3 +300,109 @@ def test_owner_write_rechecks_removed_or_downgraded_membership_after_session(
     assert identity.call_count == 2
     repository.document.assert_not_called()
     repository.put_document.assert_not_called()
+
+
+@pytest.mark.parametrize("token_kind", ["identity", "app_check"])
+@pytest.mark.parametrize("length,accepted", [(16384, True), (16385, False)])
+def test_literal_token_length_boundary_precedes_sdks_and_membership(
+    monkeypatch, token_kind, length, accepted
+):
+    verify, identity, appcheck, app = owner_sdk(monkeypatch)
+    memberships = Mock(return_value=[])
+    client, repository = owner_api(verify, memberships)
+    headers = dict(OWNER_HEADERS)
+    token = "t" * length
+    if token_kind == "identity":
+        headers["Authorization"] = "Bearer " + token
+    else:
+        headers["X-Firebase-AppCheck"] = token
+
+    response = client.get("/v1/session", headers=headers)
+
+    assert response.status_code == (200 if accepted else 403), (
+        f"{token_kind}: length {length} must {'proceed' if accepted else 'be refused'}"
+    )
+    if accepted:
+        identity.assert_called_once_with(
+            token if token_kind == "identity" else "owner-id-fixture", app=app, check_revoked=True
+        )
+        appcheck.assert_called_once_with(
+            token if token_kind == "app_check" else "owner-app-fixture", app=app
+        )
+        memberships.assert_called_once_with("owner-uid-fixture")
+        assert response.json()["user_id"] == "owner-uid-fixture"
+    else:
+        identity.assert_not_called()
+        appcheck.assert_not_called()
+        memberships.assert_not_called()
+        assert token not in response.text, "input tokens must not appear in denial responses"
+    assert repository.mock_calls == [], "session identity checks must not read or write repository data"
+
+
+@pytest.mark.parametrize(
+    "uid,accepted",
+    [("u" * 128, True), ("u" * 129, False), (None, False), (True, False),
+     (128, False), ([], False), ({}, False), ("", False)],
+    ids=["max-128", "over-129", "none", "bool", "int", "list", "dict", "empty"],
+)
+def test_literal_uid_boundary_uses_valid_claims_before_membership(monkeypatch, uid, accepted):
+    verify, identity, appcheck, app = owner_sdk(monkeypatch, uid=uid)
+    memberships = Mock(return_value=[])
+    client, repository = owner_api(verify, memberships)
+
+    response = client.get("/v1/session", headers=OWNER_HEADERS)
+
+    assert response.status_code == (200 if accepted else 403), "UID must be text of length 1 through 128"
+    identity.assert_called_once_with("owner-id-fixture", app=app, check_revoked=True)
+    appcheck.assert_called_once_with("owner-app-fixture", app=app)
+    if accepted:
+        assert response.json()["user_id"] == uid
+        memberships.assert_called_once_with(uid)
+    else:
+        memberships.assert_not_called()
+        assert "Invalid identity" not in response.text
+        if isinstance(uid, str) and uid:
+            assert uid not in response.text
+    assert repository.mock_calls == [], "invalid identity must not reach repository operations"
+
+
+@pytest.mark.parametrize('email', ['tester.external@gmail.com', 'TESTER.EXTERNAL@GMAIL.COM'])
+def test_server_external_email_admission_remains_separate_from_collection_membership(monkeypatch, email):
+    verify, identity, appcheck, app = owner_sdk(monkeypatch, email=email,
+        external_email_allowlist=['tester.external@gmail.com'])
+    memberships = Mock(return_value=[])
+    client, repository = owner_api(verify, memberships)
+    session = client.get('/v1/session', headers=OWNER_HEADERS)
+    assert session.status_code == 200
+    assert session.json()['memberships'] == []
+    assert client.post(OWNER_BATCH_PATH, headers=OWNER_HEADERS, json=OWNER_BATCH).status_code == 403
+    assert identity.call_args.kwargs['check_revoked'] is True
+    assert appcheck.call_count == 2
+    repository.put_document.assert_not_called()
+
+
+@pytest.mark.parametrize('email', [
+    'another@gmail.com', 'testerexternal@gmail.com', 'tester.external+photo@gmail.com',
+    'tester.external@googlemail.com', 'tester.external@gmail.com.example.org',
+    'tester.external@sub.gmail.com', ' tester.external@gmail.com',
+])
+def test_exact_external_allowlist_does_not_open_domain_or_provider_aliases(monkeypatch, email):
+    verify = verifier(monkeypatch, email, external_email_allowlist=['tester.external@gmail.com'])
+    with pytest.raises(PermissionError):
+        verify('id', 'check')
+
+
+def test_external_email_requires_explicit_server_admission_and_verified_ownership(monkeypatch):
+    with pytest.raises(PermissionError):
+        verifier(monkeypatch, 'tester.external@gmail.com')('id', 'check')
+    with pytest.raises(runtime_auth.EmailVerificationRequired):
+        verifier(monkeypatch, 'tester.external@gmail.com', verified=False,
+            external_email_allowlist=['tester.external@gmail.com'])('id', 'check')
+
+
+@pytest.mark.parametrize('values', [None, 'tester@gmail.com', {'email': 'tester@gmail.com'},
+    ['@gmail.com'], ['*.gmail.com'], ['tester@gmail.com\n'], ['tester@-gmail.com'],
+    ['tester@gmail..com'], ['tester@localhost'], [True]])
+def test_external_admission_configuration_rejects_non_exact_or_malformed_addresses(values):
+    with pytest.raises(ValueError):
+        runtime_auth.validated_external_emails(values)

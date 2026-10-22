@@ -9,6 +9,7 @@
 // items 6, 9 and 10, and section 7's banner budget).
 
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -18,6 +19,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_digitization/main.dart';
 import 'package:specimen_digitization/src/api_repository.dart';
 import 'package:specimen_digitization/src/app/setup_screen.dart';
+import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/workspace.dart';
 
 import 'widget_test.dart' show TestSession;
@@ -158,4 +160,76 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
   }
+
+  testWidgets('a refused photo preview leaves the server refusal sentence', (
+    WidgetTester tester,
+  ) async {
+    // A preview read answers any refusal with its own sentence, written for a
+    // photo that is still saving. A 403 is a refusal, not a save in progress.
+    final Json wire =
+        jsonDecode(
+              File(
+                'test/fixtures/backend-wire-examples.json',
+              ).readAsStringSync(),
+            )
+            as Json;
+    final Json session = wire['session'] as Json;
+    final Json membership = (session['memberships'] as List).first as Json;
+    final TestSession testSession = TestSession();
+    addTearDown(testSession.controller.close);
+    final ApiSpecimenRepository repository = ApiSpecimenRepository(
+      baseUrl: Uri.parse('https://api.example.org'),
+      token: _signedIn,
+      client: MockClient((http.Request request) async {
+        final String path = request.url.path;
+        if (path == '/v1/session') {
+          return http.Response(jsonEncode(session), 200);
+        }
+        if (path.endsWith('/collections')) {
+          return http.Response(
+            jsonEncode(<String, dynamic>{
+              'items': <Json>[
+                <String, dynamic>{
+                  'collection_id': membership['collection_id'],
+                  'display_name': 'Entomology',
+                },
+              ],
+            }),
+            200,
+          );
+        }
+        if (path.endsWith('/preview')) {
+          return http.Response(_error('access_denied', 'Access denied'), 403);
+        }
+        return http.Response(
+          jsonEncode(<String, dynamic>{'items': <Json>[]}),
+          200,
+        );
+      }),
+    );
+    addTearDown(repository.close);
+    await tester.pumpWidget(
+      SpecimenDigitizationApp(session: testSession, repository: repository),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(SetupScreen), findsNothing);
+
+    await expectLater(
+      repository.intakePreview(
+        CollectionScope(
+          organizationId: membership['organization_id'] as String,
+          collectionId: membership['collection_id'] as String,
+          name: 'Entomology',
+        ),
+        'intake-item',
+      ),
+      throwsA(isA<ApiFailure>()),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SetupScreen), findsOneWidget);
+    expect(find.text(serverRefusalMessage), findsOneWidget);
+    expect(find.textContaining('Retry after the photo saves'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
 }

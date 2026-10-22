@@ -73,7 +73,7 @@ as the reader. The recorded answers are in
 
 | Route | Model | Provider | Intended use |
 |---|---|---|---|
-| `first-pass-glm` | `zai-org/GLM-5.3-Flash` | `deepinfra` | The LLM first pass: which reader's raw transcript the harness runs on (text and image) |
+| `first-pass-glm` | `zai-org/GLM-5.3-Flash` | `novita` | The LLM first pass: which reader's raw transcript the harness runs on (text and image) |
 | `harness-deepseek` | `deepseek-ai/DeepSeek-V4.1-Flash` | `deepinfra` | The agentic harness's tool calling (text); provisional until the acceptance lab re-measures it with the real harness and G29's prompt |
 
 Chosen on 2026-09-23 from measurements on the ten pilot slides, recorded in
@@ -83,6 +83,26 @@ harness run on a Hugging Face model through the existing gateway and token. They
 share the `handwriting-muse` reader's provider and no reader's model family.
 Each is pinned by model id and provider, as the readers are, and a reader or
 first-pass call refuses a route outside its role (HARNESS.md section 5).
+
+A route may also carry request options: provider-specific fields sent in the
+body of every request on it (`HuggingFaceInferenceRoute.request_options`, sent
+as Pydantic AI's `extra_body`). They are not part of the pin. Since 2026-10-18
+`first-pass-glm` sends `reasoning_effort: medium`, which Novita honours for
+GLM-5.3-Flash; in the 2026-10-18 probes no call with it stopped at the output
+cap, and scored against reference readings it was the setting to keep
+(HARNESS.md section 5, "The first pass's reasoning bound"). Each first-pass
+call records it with its parameters. An option is measured on the route's
+provider and travels with the route, so moving the route to another provider
+means measuring the option there again or clearing it: a provider that refuses
+a field rejects every request (`model_request_rejected`).
+
+The owner approved Together and Fireworks as providers on 2026-10-18 ("More
+reliable inference provider like fireworks together also work"; "Hold. The
+let's just move to a reliable provider if novita is a problem for now."). The
+production token cannot use either yet: the router answers HTTP 402 "Pay-as-you
+go is not enabled for provider together yet." (and the same for
+`fireworks-ai`). HARNESS.md section 5 records the probe and what would enable
+them.
 
 Automatic provider policies such as `auto`, `fastest`, `cheapest`, and
 `preferred` are rejected by the gateway. A provider outage must produce a typed

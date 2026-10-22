@@ -527,6 +527,14 @@ must not feel a buzz while the device is held over a copy stand steadying a shot
 | 11 | Global load or mutate indicator (`workspace.dart:676-679`) | opacity only | `quick` 100, `standard` | instant | none | Always occupy the 4 px row. Render `LinearProgressIndicator` inside an `Opacity`/`AnimatedOpacity` that goes to 0 rather than removing the widget, so the page never jumps. |
 | 12 | Sign-out failure, nav destination change | See row 10 for the error; nav destination change is Material's own `NavigationBar` / `NavigationRail` indicator | Material default | Material default | `selectionClick()` on mobile | Leave `NavigationBar` alone. The destination indicator is already correct M3 motion. |
 
+**Amendment, 2026-10-17, row 12.** The compact navigation is no longer Material's
+`NavigationBar`: it is `UiTabBar` (10 section 4.4), so its destination change is
+ours. The two glyph weights and the label colour cross-fade over
+`navigationGlide` (`medium`, 250 ms), and that token is zero under reduced
+motion, so the change lands in one frame on both signals of section 2.5. The
+SDK indicator fade that `NavigationBar` kept under Android's flag is gone with
+it, and so is the instruction above to leave that bar alone.
+
 ### 4.2 Queue
 
 | # | Interaction, trigger | What moves | Duration, curve | RM | Haptic | Flutter approach |
@@ -548,6 +556,14 @@ must not feel a buzz while the device is held over a copy stand steadying a shot
 | 27 | Load more records (`workspace.dart:441-445`) | Button label swaps to an inline 16 px indeterminate indicator. Appended rows appear with no entrance animation | `quick` 100, `standard` for the label | instant | none | The new rows are below the fold; animating them animates something nobody can see. Keep the existing disabled state at `:443`. |
 | 28 | Empty state (`workspace.dart:386-412`) | opacity, arriving with the rest of the list | `standard` 200, `standard` | instant | none | Static icon, static text. This is the place an animated illustration would go, and we are declining it (section 3.4). |
 | 29 | Collection dropdown changed (`workspace.dart:643-654`) | The queue clears and reloads: skeleton, then rows | `standard` 200, `standard` | instant | none | Treat as a fresh load, row 13. The dropdown menu itself uses Material's default. |
+
+**Amendment, 2026-10-17, row 21.** Confirmed by the owner, in the
+coordinating Claude Code session: "Mobile and tablet stay on pull to refresh
+web nd desktop might need exception the refresh icon we already have is
+relevant there". So the gate above stands: pull to refresh in the iOS and
+Android apps, phones and tablets, and on the web and the desktop the account
+menu's "Refresh collection" control, which every window has.
+`test/screens/queue_test.dart` holds both halves on every target platform.
 
 ### 4.3 Workbench: source image
 
@@ -602,6 +618,7 @@ oriented in the photograph.
 | 63 | Interrupted capture recovered (`intake.dart:312-349`) | The recovery message appears: height plus opacity | `standard` 200, `enter` | instant | none | The existing `liveRegion` at `:528-534` is the real channel. |
 | 64 | Manifest row state text changes: Ready, Checking manifest, Uploading, Accepted, Duplicate, Failed (`intake.dart:364-424`, rendered at `:563`) | The state text and a leading status glyph cross-fade. Row height does not change | `quick` 100, `standard` | instant | none | `AnimatedSwitcher` keyed by state string, with `layoutBuilder` pinning the child so the row does not resize. Keep the `Semantics(liveRegion: true)` wrapper. |
 | 65 | Upload progress (`intake.dart:391-393`, rendered at `:623-627`) | The bar value | `standard` 200, `progress` (linear) | **Keeps animating.** This is data | none | Three fixes. (a) Render the bar for every state from Checking onward, not only while the state string equals `Uploading`; today it disappears at the moment it hits 1.0. (b) Use `value: null` for Checking manifest and a real value for Uploading. (c) Wrap the value in `TweenAnimationBuilder<double>` at `standard` 200 linear, and clamp to a monotonic maximum so a resumed upload that reports a lower server offset never runs the bar backwards. |
+| 65a | Intake stage track (2026-10-12) | Only the active stage rolls, to distinguish working from waiting without estimating time | `UiProgress` cycle (`slowRaw * 2`), linear | Static segment, no repeating ticker | none | Eight fixed milestones: upload, find labels, read, compare, organise, check fields, finish, main Queue. Only upload uses measured byte progress. Done segments are solid; waiting segments are outlined; retry has an amber pause mark; attention has a heavier outline and words. Missing completion is labelled "Not recorded", never filled from a disposition alone. The manifest owns one shared cycle for every rolling row, so a 200-photo batch runs one ticker, stopped under reduced motion. The one live status label per row changes on stage transitions, never on byte updates or animation ticks; the batch summary reads in place and is not a live region, so one transition is announced once. Preparation steps (pin, classify, quality check) share the find-labels segment and name themselves as "Preparing photo" when waiting, retrying or stopped. This per-photo progress exception to the two-animation budget is owner-requested; waiting, retry and blocked rows do not animate. |
 | 66 | Upload accepted, one item (`intake.dart:405-410`) | The bar holds at 1.0 for 400 ms, then the glyph cross-fades to a check | `quick` 100, `standard` for the glyph | instant | **none** | No per-item haptic. A 200-image batch would produce 200 buzzes. |
 | 67 | **Upload batch complete, all selected items accepted** | One summary line appears at the top of the manifest: height plus opacity | `standard` 200, `enter` | instant | `lightImpact()`, iOS and Android mobile only, **once per batch** | **Delight moment 2**, justified in section 4.7. Fire it in the `finally` at `intake.dart:426` only when every entry in the batch reached Accepted or Duplicate. |
 | 68 | Duplicate detected (`intake.dart:376-383`) | Glyph and text cross-fade | `quick` 100, `standard` | instant | none | A duplicate is a correct outcome, not an error. It gets the same motion as Accepted and a different glyph. No colour flash. |

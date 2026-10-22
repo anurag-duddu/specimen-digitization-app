@@ -14,6 +14,7 @@ from specimen_digitization.application.workflow import SyntheticAdapters
         ("😀a\r\nb", "😀a\r\nc", "disagreement"),
         ("a" * 9000, "b" * 9000, "policy_blocked"),
     ],
+    ids=["utf16-crlf-disagreement", "long-disagreement-policy-blocked"],
 )
 def test_reading_artifacts_preserve_utf16_and_long_uncertainty(
     tmp_path, left, right, status
@@ -61,7 +62,8 @@ def test_reading_artifacts_preserve_utf16_and_long_uncertainty(
 
 
 @pytest.mark.parametrize(
-    "left,right", [("a" * 9000, "b" * 9000), ("same" * 26000, "same" * 26000)]
+    "left,right", [("a" * 9000, "b" * 9000), ("same" * 26000, "same" * 26000)],
+    ids=["long-disagreement", "long-identical"],
 )
 def test_legacy_adjudication_is_bounded_and_unknown_is_not_agreement(
     tmp_path, left, right

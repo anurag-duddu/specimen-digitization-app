@@ -14,6 +14,7 @@ import 'src/app/app_router.dart';
 import 'src/app/routes.dart';
 import 'src/app/session_notifier.dart';
 import 'src/app_check.dart';
+import 'src/app_reload.dart';
 import 'src/auth.dart';
 import 'src/connection_config.dart';
 import 'src/email_link_browser.dart';
@@ -35,6 +36,12 @@ Future<void> main() async {
   String? setupMessage;
   const apiUrl = String.fromEnvironment('SPECIMEN_API_BASE_URL');
   const localSynthetic = bool.fromEnvironment('SPECIMEN_LOCAL_SYNTHETIC');
+  const androidAppCheckDebug = bool.fromEnvironment(
+    'SPECIMEN_ANDROID_APP_CHECK_DEBUG',
+  );
+  const appleAppCheckDebug = bool.fromEnvironment(
+    'SPECIMEN_APPLE_APP_CHECK_DEBUG',
+  );
   const config = ConnectionConfig(
     apiUrl: apiUrl,
     siteKey: String.fromEnvironment('SPECIMEN_RECAPTCHA_SITE_KEY'),
@@ -63,7 +70,13 @@ Future<void> main() async {
           await Firebase.initializeApp(options: options);
           return FirebaseSession(FirebaseAuth.instance);
         },
-        activateAppCheck: () => activateProductionAppCheck(config, web: kIsWeb),
+        activateAppCheck: () => activateProductionAppCheck(
+          config,
+          web: kIsWeb,
+          debugBuild: kDebugMode,
+          androidDebugRequested: androidAppCheckDebug,
+          appleDebugRequested: appleAppCheckDebug,
+        ),
         createRepository: (uri, session) => ApiSpecimenRepository(
           baseUrl: uri,
           expectedMode: 'production',
@@ -106,6 +119,8 @@ class SpecimenDigitizationApp extends StatefulWidget {
     this.setupMessage,
     this.synthetic = false,
     this.emailLinkBrowser,
+    this.emailLinkStorage,
+    this.appReload,
     this.emailLinkSource,
     this.initialLocation = AppRoutes.setup,
     this.motionPreferences,
@@ -114,6 +129,12 @@ class SpecimenDigitizationApp extends StatefulWidget {
 
   /// A browser for the incoming email sign-in link, on web.
   final EmailLinkBrowser? emailLinkBrowser;
+
+  /// Optional test store; production keeps its existing preferences store.
+  final EmailLinkStorage? emailLinkStorage;
+
+  /// Web host reload, replaceable by a recording implementation in tests.
+  final AppReload? appReload;
 
   /// A source created before asynchronous startup can buffer incoming links.
   /// The application owns its lifetime. No native transport is selected here.
@@ -156,11 +177,24 @@ class _SpecimenDigitizationAppState extends State<SpecimenDigitizationApp> {
   late final EmailLinkSource? _emailLinkSource;
   late final GoRouter _router;
   late final MotionPreferenceController _motion;
+  late final AppReload? _appReload;
+  late bool _wasSignedIn;
+  late String? _lastSessionUserId;
+  String? _handoffUserId;
+  String? _handoffLocation;
+  int? _handoffGeneration;
+  bool _automaticReloadUsed = false;
+  bool _reloading = false;
+  int _recoveryEpoch = 0;
+  Future<void> _emailSessionCleanup = Future<void>.value();
 
   @override
   void initState() {
     super.initState();
     _emailLinkSource = widget.emailLinkSource;
+    _appReload = widget.appReload ?? createAppReload();
+    _wasSignedIn = widget.session?.signedIn ?? false;
+    _lastSessionUserId = widget.session?.userId;
     _motion = MotionPreferenceController(
       store: widget.motionPreferences ?? const SharedMotionPreferenceStore(),
     );
@@ -173,7 +207,8 @@ class _SpecimenDigitizationAppState extends State<SpecimenDigitizationApp> {
         access: session as EmailLinkAccess,
         browser: widget.emailLinkBrowser ?? createEmailLinkBrowser(),
         linkSource: _emailLinkSource,
-      );
+        storage: widget.emailLinkStorage,
+      )..addListener(_reconcileEmailSession);
       unawaited(_magicLink!.initialize());
     }
     final SpecimenRepository? repository = widget.repository;
@@ -181,12 +216,23 @@ class _SpecimenDigitizationAppState extends State<SpecimenDigitizationApp> {
       _workspace = WorkspaceController(
         repository: repository,
         session: session,
-      );
+        reloadApp: _appReload == null
+            ? null
+            : () async {
+                try {
+                  await _reloadForAppCheck();
+                } catch (_) {
+                  // The denial banner remains and already directs the user to
+                  // reload. Setup also offers an explicit browser fallback message.
+                }
+              },
+      )..addListener(_workspaceChanged);
     }
     _router = buildAppRouter(
       sessionNotifier: _sessionNotifier,
       controller: _workspace,
       magicLink: _magicLink,
+      reloadApp: _appReload == null ? null : _reloadForAppCheck,
       setupMessage: widget.setupMessage,
       synthetic: widget.synthetic,
       initialLocation: widget.initialLocation,
@@ -198,10 +244,136 @@ class _SpecimenDigitizationAppState extends State<SpecimenDigitizationApp> {
   /// Starts collection loading the moment the session is signed in and
   /// verified, and never before, so an unverified account sends no token.
   void _sessionChanged() {
-    if (_sessionNotifier.signedIn && _sessionNotifier.verified) {
+    final session = _sessionNotifier.session;
+    final signedIn = _sessionNotifier.signedIn;
+    final verified = _sessionNotifier.verified;
+    final link = _magicLink;
+    if (_wasSignedIn && (!signedIn || _lastSessionUserId != session?.userId)) {
+      // An actual established-session transition ends the old request's
+      // recovery eligibility. Initial/duplicate signed-out events do not.
+      link?.invalidateSessionHandoff();
+    }
+    if (!signedIn || !verified || _lastSessionUserId != session?.userId) {
+      _disarmHandoff();
+      _recoveryEpoch++;
+    }
+    // Only this page's successful request can arm recovery. A restored email,
+    // a local incoming link and a Google-only sign-in cannot arm it.
+    if (_appReload != null &&
+        !_automaticReloadUsed &&
+        !_wasSignedIn &&
+        signedIn &&
+        verified &&
+        session != null &&
+        link?.emailSentInThisPage != null &&
+        link!.sent &&
+        !link.handlingLink &&
+        link.emailSentInThisPage == normalizedStaffEmail(session.displayName)) {
+      _handoffUserId = session.userId;
+      _handoffLocation = _reloadLocation;
+      _handoffGeneration = link.handoffGeneration;
+    }
+    _wasSignedIn = signedIn;
+    _lastSessionUserId = session?.userId;
+    _reconcileEmailSession();
+    if (signedIn && verified) {
       _workspace?.start();
     } else {
       _workspace?.resetSession();
+    }
+  }
+
+  String get _reloadLocation => appReloadLocation(
+    _sessionNotifier.pendingLocation ??
+        _router.routeInformationProvider.value.uri.toString(),
+  );
+
+  void _disarmHandoff() {
+    _handoffUserId = null;
+    _handoffLocation = null;
+    _handoffGeneration = null;
+  }
+
+  void _workspaceChanged() {
+    final workspace = _workspace;
+    if (_handoffUserId == null ||
+        workspace == null ||
+        !workspace.scopesLoaded ||
+        workspace.loading) {
+      return;
+    }
+    final shouldReload =
+        !workspace.scopesVerified &&
+        _handoffGeneration == _magicLink?.handoffGeneration &&
+        _handoffUserId == _sessionNotifier.session?.userId &&
+        workspace.error?.appVerificationUnavailable == true;
+    final location = _handoffLocation;
+    _disarmHandoff();
+    if (!shouldReload) return;
+    // Consume synchronously before any await or repeated failure notification.
+    // A reload starts authenticated and has no send made by its new controller.
+    _automaticReloadUsed = true;
+    unawaited(
+      _reloadForAppCheck(location: location).catchError((Object _) {
+        // Keep the ordinary Reload app action if browser reload is unavailable.
+      }),
+    );
+  }
+
+  Future<void> _reloadForAppCheck({String? location}) async {
+    if (_reloading || _appReload == null) return;
+    final session = _sessionNotifier.session;
+    if (session == null ||
+        !_sessionNotifier.signedIn ||
+        !_sessionNotifier.verified) {
+      return;
+    }
+    final userId = session.userId;
+    final epoch = _recoveryEpoch;
+    final handoffGeneration = _magicLink?.handoffGeneration;
+    final destination = location ?? _reloadLocation;
+    _reloading = true;
+    try {
+      // Reconciliation serializes its clear behind any previous local write.
+      await _emailSessionCleanup;
+      if (!mounted ||
+          epoch != _recoveryEpoch ||
+          handoffGeneration != _magicLink?.handoffGeneration ||
+          !_sessionNotifier.signedIn ||
+          !_sessionNotifier.verified ||
+          session.userId != userId ||
+          _magicLink?.handlingLink == true ||
+          _workspace?.scopesVerified == true ||
+          _workspace?.loading == true ||
+          _workspace?.error?.appVerificationUnavailable != true) {
+        return;
+      }
+      await _appReload.reload(appReloadLocation(destination));
+    } finally {
+      _reloading = false;
+    }
+  }
+
+  void _reconcileEmailSession() {
+    final session = _sessionNotifier.session;
+    if (session == null ||
+        session is! VerifiedEmailAccess ||
+        !_sessionNotifier.signedIn ||
+        !_sessionNotifier.verified) {
+      return;
+    }
+    final controller = _magicLink;
+    if (controller != null &&
+        controller.initialized &&
+        normalizedStaffEmail(session.displayName) == controller.email &&
+        !controller.handlingLink) {
+      _emailSessionCleanup = controller.reconcileVerifiedSession(
+        session.displayName,
+      );
+    }
+    if (controller?.handlingLink == true) {
+      _disarmHandoff();
+      _recoveryEpoch++;
     }
   }
 
@@ -212,9 +384,14 @@ class _SpecimenDigitizationAppState extends State<SpecimenDigitizationApp> {
       ..dispose();
     _router.dispose();
     _motion.dispose();
-    _magicLink?.dispose();
+    _magicLink
+      ?..removeListener(_reconcileEmailSession)
+      ..dispose();
     unawaited(_emailLinkSource?.close());
-    _workspace?.dispose();
+    _recoveryEpoch++;
+    _workspace
+      ?..removeListener(_workspaceChanged)
+      ..dispose();
     super.dispose();
   }
 

@@ -69,5 +69,5 @@ query GetSnapshot($organizationId: UUID!, $collectionId: UUID!, $actorUid: Strin
 }
 query Memberships($actorUid: String!) @auth(level: NO_ACCESS) {
   organizationMembers(where: {uid: {eq: $actorUid}, active: {eq: true}}, limit: 1000) { organizationId active }
-  collectionMembers(where: {uid: {eq: $actorUid}, active: {eq: true}}, limit: 1000) { organizationId collectionId role canViewSensitive active }
+  collectionMembers(where: {uid: {eq: $actorUid}, active: {eq: true}}, limit: 1000) { organizationId collectionId role canViewSensitive active collection { name } }
 }

@@ -1,12 +1,10 @@
-/// Adaptive collection navigation: native phone tabs and a spacious sidebar.
+/// Adaptive collection navigation: the brand phone tab bar, and on a docked
+/// window the design system's rail beside a list pane.
 library;
 
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/cupertino.dart' as cupertino;
-import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart' as material;
 import 'package:flutter/widgets.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -14,6 +12,8 @@ import 'package:specimen_ui/specimen_ui.dart';
 
 import '../administrator_contact.dart';
 import '../models.dart';
+import '../screens/costs/costs_access.dart';
+import '../screens/costs/costs_screen.dart' show CostsScreenCopy;
 import '../widgets/widgets.dart';
 import '../workspace.dart';
 import 'routes.dart';
@@ -57,6 +57,9 @@ class AppShell extends StatefulWidget {
   /// What the help control is called, wherever it is drawn.
   static const String helpLabel = 'Help and shortcuts';
 
+  /// What the control that opens the organization's costs is called.
+  static const String costsLabel = CostsScreenCopy.title;
+
   /// What the reload control is called.
   static const String reloadLabel = 'Refresh collection';
 
@@ -75,6 +78,9 @@ class AppShell extends StatefulWidget {
 
   /// What the mark says where it leads the navigation.
   static const String markLabel = 'Specimen Digitization';
+
+  /// What the docked rail's tab list is called to a screen reader.
+  static const String navigationLabel = 'Workspace navigation';
 
   /// The record [location] is inside, or null where it is a list screen.
   ///
@@ -120,7 +126,6 @@ class AppSidebarScope extends InheritedWidget {
     required this.expanded,
     required this.overlay,
     required this.docked,
-    this.mobileNavigation = false,
     this.mobileSpecimens,
     required this.toggle,
     required this.close,
@@ -129,10 +134,11 @@ class AppSidebarScope extends InheritedWidget {
   final bool expanded;
   final bool overlay;
   final bool docked;
-  final bool mobileNavigation;
 
-  /// The same list panel the desktop sidebar carries. On a phone it belongs
-  /// to the Queue route below a record, so native Back reveals real content.
+  /// The same list panel the desktop sidebar carries. On a stacked window it
+  /// belongs to the Queue route below a record, so native Back reveals real
+  /// content. Whether the window is stacked is
+  /// `WindowArrangement.of(context)`, which every screen reads for itself.
   final Widget? mobileSpecimens;
   final VoidCallback toggle;
   final VoidCallback close;
@@ -143,14 +149,12 @@ class AppSidebarScope extends InheritedWidget {
       expanded != oldWidget.expanded ||
       overlay != oldWidget.overlay ||
       docked != oldWidget.docked ||
-      mobileNavigation != oldWidget.mobileNavigation ||
       mobileSpecimens != oldWidget.mobileSpecimens;
 }
 
 class _AppShellState extends State<AppShell> {
   bool? _desktopExpanded;
-  bool _mobileNavigation = false;
-  bool _docked = false;
+  bool _stacked = false;
   bool _expanded = false;
   Size? _visibleSpecimensSize;
   final FocusNode _toggleFocus = FocusNode(
@@ -245,51 +249,53 @@ class _AppShellState extends State<AppShell> {
         controller.recordLoading ||
         controller.mutating ||
         controller.loadingMore;
+    final ui = context.ui;
+    // One answer for the whole window, from the design system (05 section 2,
+    // amended 2026-10-17). The intake page, the record's loading bar, the
+    // routes, the sheets and the band ask the same question of the same
+    // function, so a phone on its side that draws the tab bar also gets the
+    // sheet and the strip.
+    final arrangement = WindowArrangement.of(context);
+    _stacked = arrangement.isStacked;
+    final navVisible =
+        _stacked && !record && MediaQuery.viewInsetsOf(context).bottom == 0;
+    _expanded =
+        listRoute ||
+        (!_stacked &&
+            (_desktopExpanded ?? arrangement == WindowArrangement.listDetail));
     return LayoutBuilder(
       builder: (context, constraints) {
-        final ui = context.ui;
-        final scale = (MediaQuery.textScalerOf(context).scale(16) / 16).clamp(
-          1.0,
-          2.0,
-        );
-        _mobileNavigation =
-            constraints.maxWidth < 768 * scale || constraints.maxHeight < 600;
-        final navVisible =
-            _mobileNavigation && MediaQuery.viewInsetsOf(context).bottom == 0;
-        _docked = !_mobileNavigation;
-        _expanded =
-            listRoute ||
-            (_docked &&
-                (_desktopExpanded ?? constraints.maxWidth >= 1100 * scale));
-        final railWidth = ui.space.s16 + MediaQuery.paddingOf(context).left;
+        final textScaler = MediaQuery.textScalerOf(context);
         final sidebarWidth = math.min(
-          (320 * scale / 8).ceil() * 8.0,
-          math.max(0.0, constraints.maxWidth - railWidth - ui.space.s4),
+          WindowArrangement.listPaneWidthOf(textScaler),
+          math.max(
+            0.0,
+            constraints.maxWidth -
+                MediaQuery.paddingOf(context).horizontal -
+                UiRailStyle.minWidthOf(ui) -
+                ui.space.s4,
+          ),
         );
-        final contentInset = _docked
-            ? railWidth + (_expanded ? sidebarWidth : 0)
-            : 0.0;
         final sidebar = _sidebar(
           context,
           controller,
-          canClose: !listRoute && !_mobileNavigation,
+          canClose: !listRoute && !_stacked,
           busy: busy,
         );
         return AppSidebarScope(
           expanded: _expanded,
           overlay: false,
-          docked: _docked,
-          mobileNavigation: _mobileNavigation,
-          mobileSpecimens: _mobileNavigation ? sidebar : null,
+          docked: !_stacked,
+          mobileSpecimens: _stacked ? sidebar : null,
           toggle: _toggle,
           close: _close,
           child: QueueWorkspaceScope(
             expanded: _expanded,
-            showQueue: record && !_mobileNavigation ? _toggle : null,
+            showQueue: record && !_stacked ? _toggle : null,
             hideQueue: () {},
             child: CallbackShortcuts(
               bindings: <ShortcutActivator, VoidCallback>{
-                if (_expanded && !listRoute && !_mobileNavigation)
+                if (_expanded && !listRoute && !_stacked)
                   const SingleActivator(LogicalKeyboardKey.escape): _close,
               },
               child: ColoredBox(
@@ -300,69 +306,45 @@ class _AppShellState extends State<AppShell> {
                       child: MediaQuery.removePadding(
                         context: context,
                         removeBottom: navVisible,
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: <Widget>[
-                            PositionedDirectional(
-                              start: contentInset,
-                              end: 0,
-                              top: 0,
-                              bottom: 0,
-                              child: MediaQuery.removePadding(
-                                context: context,
-                                removeLeft: _docked,
-                                child: UiScaffold(
-                                  sky: AppShell.skyOf(location),
-                                  header:
-                                      _mobileNavigation &&
-                                          widget.destination ==
-                                              WorkspaceDestination.intake
-                                      ? _mobileHeader(context, controller)
-                                      : null,
-                                  banner: _mobileNavigation && listRoute
-                                      ? null
-                                      : _Chrome(
-                                          controller: controller,
-                                          busy: busy,
-                                          window: WindowClass.of(context),
-                                        ),
-                                  body: Semantics(
-                                    container: true,
-                                    explicitChildNodes: true,
-                                    child: widget.child,
+                        child: SafeArea(
+                          top: false,
+                          left: false,
+                          right: false,
+                          bottom: _stacked && record,
+                          // The frame stays at this one place in the tree at
+                          // every arrangement, so resizing across one keeps
+                          // the open record, its drafts and its scroll: only
+                          // the `nav` slot comes and goes beside the body.
+                          child: UiScaffold(
+                            sky: AppShell.skyOf(location),
+                            header: _stacked && !record
+                                ? _compactTopBar(
+                                    controller,
+                                    listRoute: listRoute,
+                                  )
+                                : null,
+                            banner: _stacked && listRoute
+                                ? null
+                                : _Chrome(
+                                    controller: controller,
+                                    busy: busy,
+                                    window: WindowClass.of(context),
                                   ),
-                                ),
-                              ),
+                            nav: _stacked
+                                ? null
+                                : _dockedNavigation(
+                                    context,
+                                    controller,
+                                    sidebar: sidebar,
+                                    sidebarWidth: sidebarWidth,
+                                  ),
+                            navPlacement: UiNavPlacement.edge,
+                            body: Semantics(
+                              container: true,
+                              explicitChildNodes: true,
+                              child: widget.child,
                             ),
-                            if (_docked)
-                              PositionedDirectional(
-                                start: railWidth,
-                                top: 0,
-                                bottom: 0,
-                                width: sidebarWidth,
-                                child: Offstage(
-                                  offstage: !_expanded,
-                                  child: ExcludeFocus(
-                                    excluding: !_expanded,
-                                    child: ExcludeSemantics(
-                                      excluding: !_expanded,
-                                      child: FocusScope(
-                                        node: _sidebarFocus,
-                                        child: sidebar,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            if (_docked)
-                              PositionedDirectional(
-                                start: 0,
-                                top: 0,
-                                bottom: 0,
-                                width: railWidth,
-                                child: _rail(context, controller),
-                              ),
-                          ],
+                          ),
                         ),
                       ),
                     ),
@@ -377,85 +359,47 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
-  Widget _mobileHeader(BuildContext context, WorkspaceController controller) =>
-      SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: EdgeInsets.all(context.ui.space.s2),
-          child: Row(
-            children: <Widget>[
-              Expanded(
-                child: Align(
-                  alignment: AlignmentDirectional.centerStart,
-                  child: _CollectionSwitcher(
-                    controller: controller,
-                    sheet: true,
-                  ),
-                ),
-              ),
-              if (EnvironmentBanner.showsBand(controller.environment))
-                _EnvironmentContext(controller: controller, compact: true),
-              ShellAccountMenu(controller: controller),
-            ],
-          ),
-        ),
-      );
+  /// The one compact top bar: the collection switcher and the account, on
+  /// every compact destination that is not a record.
+  ///
+  /// This used to be built twice, once inside the Specimens list (on `paper`)
+  /// and once above Intake (on `ground`), which left a seam under the status
+  /// strip on one tab and not the other. It is `UiTopBar` in its workspace
+  /// form now (10 section 4.4): an opaque `paper` ground that also fills the
+  /// top safe inset, drawn by the design system rather than padded here, so
+  /// the strip and the bar are one surface on every tab and every platform.
+  /// A record draws its own bar and the shell draws none above it.
+  Widget _compactTopBar(
+    WorkspaceController controller, {
+    required bool listRoute,
+  }) => UiTopBar(
+    key: const ValueKey<String>('shell-top-bar'),
+    form: UiTopBarForm.workspace,
+    leading: _CollectionSwitcher(controller: controller, sheet: true),
+    actions: <Widget>[
+      // Only the Specimens list has a selection to finish.
+      if (listRoute) ?widget.specimensActions,
+      if (EnvironmentBanner.showsBand(controller.environment))
+        _EnvironmentContext(controller: controller, compact: true),
+      ShellAccountMenu(controller: controller),
+    ],
+  );
 
-  Widget _mobileNav(BuildContext context) {
-    final ui = context.ui;
-    final selected = widget.destination.index;
-    Widget icon(int index) => UiIcon(
-      AppShell.destinations[index].icon,
-      key: ValueKey<String>(
-        'mobile-nav-${AppShell.destinations[index].label.toLowerCase()}',
-      ),
-      current: index == selected,
-      color: index == selected ? ui.color.ink : ui.color.inkSecondary,
-    );
-    void select(int index) => _select(WorkspaceDestination.values[index]);
-    if (defaultTargetPlatform == TargetPlatform.iOS) {
-      return cupertino.CupertinoTabBar(
-        key: const ValueKey<String>('mobile-navigation'),
-        currentIndex: selected,
-        onTap: select,
-        backgroundColor: ui.color.paper,
-        activeColor: ui.color.ink,
-        inactiveColor: ui.color.inkSecondary,
-        height: math.max(56, 32 + MediaQuery.textScalerOf(context).scale(16)),
-        items: <cupertino.BottomNavigationBarItem>[
-          for (var i = 0; i < AppShell.destinations.length; i++)
-            cupertino.BottomNavigationBarItem(
-              icon: icon(i),
-              label: AppShell.destinations[i].label,
-            ),
-        ],
-      );
-    }
-    return material.NavigationBarTheme(
-      data: material.NavigationBarThemeData(
-        labelTextStyle: WidgetStatePropertyAll(
-          ui.type.label.copyWith(color: ui.color.ink),
-        ),
-      ),
-      child: material.NavigationBar(
-        key: const ValueKey<String>('mobile-navigation'),
-        animationDuration: ui.motion.navigationGlide,
-        selectedIndex: selected,
-        onDestinationSelected: select,
-        backgroundColor: ui.color.paper,
-        indicatorColor: ui.color.ink.withValues(alpha: .08),
-        surfaceTintColor: GroundPalette.transparent,
-        elevation: 0,
-        destinations: <Widget>[
-          for (var i = 0; i < AppShell.destinations.length; i++)
-            material.NavigationDestination(
-              icon: icon(i),
-              label: AppShell.destinations[i].label,
-            ),
-        ],
-      ),
-    );
-  }
+  /// The compact bottom tab bar.
+  ///
+  /// One brand component on every platform (10 section 4.4, `UiTabBar`): the
+  /// window class chose it, and the platform only supplies the safe inset
+  /// under it. A `CupertinoTabBar` here and a `NavigationBar` there were two
+  /// products' identities in one app (09 section 2 principle 5).
+  Widget _mobileNav(BuildContext context) => UiTabBar(
+    key: const ValueKey<String>('mobile-navigation'),
+    destinations: AppShell.destinations,
+    currentIndex: widget.destination.index,
+    iconKeyOf: (index) => ValueKey<String>(
+      'mobile-nav-${AppShell.destinations[index].label.toLowerCase()}',
+    ),
+    onSelect: (index) => _select(WorkspaceDestination.values[index]),
+  );
 
   Widget _toggleButton() => UiIconButton(
     icon: UiIcons.sidebar,
@@ -476,62 +420,55 @@ class _AppShellState extends State<AppShell> {
   }) {
     final ui = context.ui;
     return DecoratedBox(
-      key: ValueKey<String>(
-        _mobileNavigation ? 'mobile-specimens' : 'global-sidebar',
-      ),
+      key: ValueKey<String>(_stacked ? 'mobile-specimens' : 'global-sidebar'),
       decoration: BoxDecoration(
         color: ui.color.paper,
-        border: _mobileNavigation
+        border: _stacked
             ? null
             : BorderDirectional(end: BorderSide(color: ui.color.boundary)),
       ),
       child: SafeArea(
-        left: _mobileNavigation,
-        right: _mobileNavigation,
+        left: _stacked,
+        right: _stacked,
         child: Padding(
           padding: EdgeInsets.only(
-            bottom: _mobileNavigation
-                ? MediaQuery.viewInsetsOf(context).bottom
-                : 0,
+            bottom: _stacked ? MediaQuery.viewInsetsOf(context).bottom : 0,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              Padding(
-                padding: EdgeInsets.all(ui.space.s2),
-                child: Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: Align(
-                        key: const ValueKey<String>(
-                          'global-sidebar-collection',
+              // The docked sidebar's own header. On a phone the list has no
+              // header of its own: the shell's compact top bar sits above it
+              // (`_compactTopBar`), so the switcher and the account are not
+              // declared a second time here.
+              if (!_stacked)
+                Padding(
+                  padding: EdgeInsets.all(ui.space.s2),
+                  child: Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: Align(
+                          key: const ValueKey<String>(
+                            'global-sidebar-collection',
+                          ),
+                          alignment: AlignmentDirectional.centerStart,
+                          child: _CollectionSwitcher(
+                            controller: controller,
+                            sheet: false,
+                          ),
                         ),
-                        alignment: AlignmentDirectional.centerStart,
-                        child: _CollectionSwitcher(
-                          controller: controller,
-                          sheet: !_docked,
+                      ),
+                      ?widget.specimensActions,
+                      if (canClose)
+                        UiIconButton(
+                          icon: UiIcons.sidebar,
+                          semanticsLabel: 'Close sidebar',
+                          onPressed: _close,
                         ),
-                      ),
-                    ),
-                    ?widget.specimensActions,
-                    if (_mobileNavigation &&
-                        EnvironmentBanner.showsBand(controller.environment))
-                      _EnvironmentContext(
-                        controller: controller,
-                        compact: true,
-                      ),
-                    if (_mobileNavigation)
-                      ShellAccountMenu(controller: controller),
-                    if (canClose)
-                      UiIconButton(
-                        icon: UiIcons.sidebar,
-                        semanticsLabel: 'Close sidebar',
-                        onPressed: _close,
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              if (_mobileNavigation)
+              if (_stacked)
                 _Chrome(
                   controller: controller,
                   busy: busy,
@@ -566,146 +503,85 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
-  Widget _rail(BuildContext context, WorkspaceController controller) =>
-      DecoratedBox(
+  /// What a docked window draws at the frame's start edge, in `UiScaffold.nav`
+  /// with `UiNavPlacement.edge`: the rail, and the list pane beside it while
+  /// it is open. Edge rather than beside, so the band (an error, a blocker,
+  /// the 4 dp progress strip of every load) spans the page only and never
+  /// moves the navigation, as it did not before the rail was `UiRail`.
+  ///
+  /// The pane is offstage rather than removed while it is closed, so the list
+  /// keeps its search, selection and scroll, and it takes no width.
+  Widget _dockedNavigation(
+    BuildContext context,
+    WorkspaceController controller, {
+    required Widget sidebar,
+    required double sidebarWidth,
+  }) => Row(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: <Widget>[
+      _rail(context, controller),
+      Offstage(
+        offstage: !_expanded,
+        child: ExcludeFocus(
+          excluding: !_expanded,
+          child: ExcludeSemantics(
+            excluding: !_expanded,
+            child: SizedBox(
+              width: sidebarWidth,
+              child: FocusScope(node: _sidebarFocus, child: sidebar),
+            ),
+          ),
+        ),
+      ),
+    ],
+  );
+
+  /// The docked rail: the design system's `UiRail` for the two destinations
+  /// (10 section 4.4), then the list pane's toggle, and the environment and
+  /// the account at its foot.
+  ///
+  /// It is `UiRail`'s own column width, 72 dp, so the controls under the
+  /// destinations sit on the same centre line as the discs. The frame hands
+  /// an edge column the top, start and bottom insets, and the `SafeArea`
+  /// spends them around the column, so a side notch widens the rail rather
+  /// than squeezing it.
+  Widget _rail(BuildContext context, WorkspaceController controller) {
+    final ui = context.ui;
+    return SafeArea(
+      child: SizedBox(
         key: const ValueKey<String>('global-rail'),
-        decoration: BoxDecoration(color: context.ui.color.ground),
-        child: SafeArea(
-          right: false,
-          child: LayoutBuilder(
-            builder: (context, constraints) => SingleChildScrollView(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                child: IntrinsicHeight(
-                  child: Padding(
-                    padding: EdgeInsets.all(context.ui.space.s2),
-                    child: Column(
-                      children: <Widget>[
-                        ShellSidebarNavigation(
-                          destination: widget.destination,
-                          onSelect: _select,
+        width: UiRailStyle.minWidthOf(ui),
+        child: LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: IntrinsicHeight(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: ui.space.s2),
+                  child: Column(
+                    children: <Widget>[
+                      UiRail(
+                        destinations: AppShell.destinations,
+                        currentIndex: widget.destination.index,
+                        semanticsLabel: AppShell.navigationLabel,
+                        onSelect: (index) =>
+                            _select(WorkspaceDestination.values[index]),
+                      ),
+                      if (!_expanded) _toggleButton(),
+                      const Spacer(),
+                      if (EnvironmentBanner.showsBand(controller.environment))
+                        _EnvironmentContext(
+                          controller: controller,
                           compact: true,
                         ),
-                        if (!_expanded) _toggleButton(),
-                        const Spacer(),
-                        if (EnvironmentBanner.showsBand(controller.environment))
-                          _EnvironmentContext(
-                            controller: controller,
-                            compact: true,
-                          ),
-                        ShellAccountMenu(controller: controller),
-                      ],
-                    ),
+                      ShellAccountMenu(controller: controller),
+                    ],
                   ),
                 ),
               ),
             ),
           ),
-        ),
-      );
-}
-
-/// Global destinations use one icon-and-label row, with a compact icon form.
-class ShellSidebarNavigation extends StatefulWidget {
-  const ShellSidebarNavigation({
-    super.key,
-    required this.destination,
-    required this.onSelect,
-    this.compact = false,
-  });
-  final WorkspaceDestination destination;
-  final ValueChanged<WorkspaceDestination> onSelect;
-  final bool compact;
-  @override
-  State<ShellSidebarNavigation> createState() => _ShellSidebarNavigationState();
-}
-
-/// Compatibility name for integration harnesses that locate the global navigation.
-typedef ShellTopNavigation = ShellSidebarNavigation;
-
-class _ShellSidebarNavigationState extends State<ShellSidebarNavigation> {
-  final _nodes = <FocusNode>[
-    FocusNode(debugLabel: 'Specimens navigation'),
-    FocusNode(debugLabel: 'Intake navigation'),
-  ];
-  @override
-  void dispose() {
-    for (final node in _nodes) {
-      node.dispose();
-    }
-    super.dispose();
-  }
-
-  void _move(int delta) {
-    final index = _nodes.indexWhere((node) => node.hasFocus);
-    _nodes[(index + delta) % _nodes.length].requestFocus();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final ui = context.ui;
-    return CallbackShortcuts(
-      bindings: <ShortcutActivator, VoidCallback>{
-        const SingleActivator(LogicalKeyboardKey.arrowDown): () => _move(1),
-        const SingleActivator(LogicalKeyboardKey.arrowUp): () => _move(-1),
-      },
-      child: Semantics(
-        container: true,
-        explicitChildNodes: true,
-        label: 'Workspace navigation',
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            for (int i = 0; i < AppShell.destinations.length; i++)
-              Padding(
-                padding: EdgeInsets.only(bottom: ui.space.s2),
-                child: UiTooltip(
-                  message:
-                      'Open ${AppShell.destinations[i].label.toLowerCase()}',
-                  child: Pressable(
-                    semanticsLabel: AppShell.destinations[i].label,
-                    role: PressableRole.tab,
-                    selected: i == widget.destination.index,
-                    focusNode: _nodes[i],
-                    radius: ui.shape.tile,
-                    onPressed: () =>
-                        widget.onSelect(WorkspaceDestination.values[i]),
-                    builder: (context, states) => DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: i == widget.destination.index
-                            ? ui.color.ink.withValues(alpha: .06)
-                            : GroundPalette.transparent,
-                        borderRadius: BorderRadius.circular(ui.shape.tile),
-                      ),
-                      child: Padding(
-                        padding: EdgeInsets.all(ui.space.s2),
-                        child: Row(
-                          mainAxisAlignment: widget.compact
-                              ? MainAxisAlignment.center
-                              : MainAxisAlignment.start,
-                          children: <Widget>[
-                            UiIcon(
-                              AppShell.destinations[i].icon,
-                              current: i == widget.destination.index,
-                            ),
-                            if (!widget.compact) ...<Widget>[
-                              SizedBox(width: ui.space.s4),
-                              Expanded(
-                                child: Text(
-                                  AppShell.destinations[i].label,
-                                  style: ui.type.label,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-          ],
         ),
       ),
     );
@@ -924,6 +800,16 @@ class ShellAccountMenu extends StatelessWidget {
                   }
                 },
         ),
+        // Offered to an administrator of the open collection's organization
+        // and to nobody else, and hidden rather than disabled where the build
+        // has no costs to show (13 section 4.7). Nobody else is ever asked to
+        // open it, so nobody else's session is ever the one a refusal ends.
+        if (costAccessFor(controller) != null)
+          UiMenuItem(
+            label: AppShell.costsLabel,
+            icon: UiIcons.record,
+            onSelected: () => context.push(AppRoutes.costs),
+          ),
         UiMenuItem(
           label: AppShell.helpLabel,
           icon: UiIcons.help,

@@ -115,16 +115,29 @@ class _ModalPresence {
   }
 }
 
-/// The width below which a window gets a sheet rather than a dialog.
+/// The width below which a window is the compact class.
 ///
 /// [WindowClass.mediumMin] itself, not a second copy of it. It was restated
 /// here while the classes lived in the application, because the path
 /// dependency points one way; they are in the foundation now (11 section
 /// 3.1), so the breakpoint is written down once.
+///
+/// It is no longer where a sheet becomes a dialog: that is the window's
+/// arrangement, [WindowArrangement.isStacked], since 2026-10-17, so a window
+/// that draws the tab bar also gets the sheet (05 section 2).
 const double compactWindowMax = WindowClass.mediumMin;
 
 /// True when [context] is painted into a compact window.
+///
+/// The width class only. A modal reads [presentsAsSheet] instead.
 bool isCompactWindow(BuildContext context) => WindowClass.of(context).isCompact;
+
+/// True when a modal shown from [context] is a sheet rather than a dialog.
+///
+/// A sheet belongs to the stacked arrangement, the one with the tab bar
+/// along the bottom edge (05 section 3.7, amended 2026-10-17).
+bool presentsAsSheet(BuildContext context) =>
+    WindowArrangement.of(context).isStacked;
 
 /// Shows [builder] as a bottom sheet.
 ///
@@ -161,7 +174,8 @@ Future<T?> showUiDialog<T>({
   sheet: false,
 );
 
-/// Shows [builder] as a sheet on a compact window and a dialog above it.
+/// Shows [builder] as a sheet where the window is stacked and a dialog where
+/// it is docked ([presentsAsSheet]).
 ///
 /// One call, so a caller never writes the breakpoint itself (05 section 3.7).
 Future<T?> showUiModal<T>({
@@ -176,7 +190,23 @@ Future<T?> showUiModal<T>({
   semanticsLabel: semanticsLabel,
   dismissLabel: dismissLabel,
   dismissible: dismissible,
-  sheet: isCompactWindow(context),
+  sheet: presentsAsSheet(context),
+);
+
+/// Opens a bounded file workspace using the standard modal focus and scrim.
+/// Compact windows use the full available width, with safe-area/IME avoidance.
+Future<T?> showUiImportWorkspace<T>({
+  required BuildContext context,
+  required WidgetBuilder builder,
+  String semanticsLabel = 'Add photos',
+}) => _show<T>(
+  context: context,
+  builder: builder,
+  semanticsLabel: semanticsLabel,
+  dismissLabel: 'Close photo sources',
+  dismissible: true,
+  sheet: presentsAsSheet(context),
+  workspace: true,
 );
 
 Future<T?> _show<T>({
@@ -186,6 +216,7 @@ Future<T?> _show<T>({
   required String? dismissLabel,
   required bool dismissible,
   required bool sheet,
+  bool workspace = false,
 }) {
   final UiThemeData ui = context.ui;
   final NavigatorState navigator = Navigator.of(context, rootNavigator: true);
@@ -211,6 +242,7 @@ Future<T?> _show<T>({
           Animation<double> secondary,
         ) => _ModalFrame(
           sheet: sheet,
+          workspace: workspace,
           semanticsLabel: semanticsLabel,
           dismissLabel: dismissLabel,
           dismissible: dismissible,
@@ -261,6 +293,7 @@ Future<T?> _show<T>({
 class _ModalFrame extends StatelessWidget {
   const _ModalFrame({
     required this.sheet,
+    this.workspace = false,
     required this.semanticsLabel,
     required this.dismissLabel,
     required this.dismissible,
@@ -268,6 +301,7 @@ class _ModalFrame extends StatelessWidget {
   });
 
   final bool sheet;
+  final bool workspace;
   final String semanticsLabel;
   final String? dismissLabel;
   final bool dismissible;
@@ -362,7 +396,11 @@ class _ModalFrame extends StatelessWidget {
                       // enforces against the incoming constraints.
                       constraints: BoxConstraints(
                         minWidth: sheet ? double.infinity : 0,
-                        maxWidth: sheet ? double.infinity : ui.space.dialogMax,
+                        maxWidth: sheet
+                            ? double.infinity
+                            : workspace
+                            ? ui.space.importWorkspaceMax
+                            : ui.space.dialogMax,
                       ),
                       child: FocusScope(
                         autofocus: true,

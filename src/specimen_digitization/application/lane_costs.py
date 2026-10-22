@@ -14,8 +14,20 @@ from __future__ import annotations
 from decimal import ROUND_CEILING, Decimal
 
 from .domain import Scope, now
+from .lane_reservations import SAM_BOOST_SECONDS, SAM_SHUTDOWN_SECONDS, SAM_STARTUP_SECONDS
+from .reliability import checked_usage
+from .sam3_effect import instance_accounting
 
 MILLION = 1_000_000
+# Cloud Run keeps an idle specimen-sam instance at most 15 minutes after its
+# last request, then stops it (about-instance-autoscaling). On 2026-10-17 its
+# stop signal came 902.6 s and 906.2 s after the two instances' last requests.
+SAM_IDLE_SECONDS = 900
+SAM_IDLE_LAG_SECONDS = 20
+# An instance's start before the SAM 3 server's own clock begins
+# (sam3_server.PROCESS_STARTED): the container, the interpreter and the
+# imports. Both instances of 2026-10-17 started in 80.4 s in all.
+SAM_STARTUP_SLACK_SECONDS = 30
 
 
 def _ceil(value: Decimal) -> int:
@@ -45,6 +57,50 @@ def segmentation_cost(prices, seconds):
     )
     request = service.get("request_micros_per_million", 0)
     return _ceil((Decimal(str(seconds)) * per_second + request) / MILLION)
+
+
+def segmentation_instance_cost(prices, instance):
+    """What a SAM 3 request cost Cloud Run, from the instance time it reported.
+
+    specimen-sam is billed by instance (CPU always allocated): its whole life,
+    idle time included, at the price list's instance-based rates (its
+    request-based ones where it names none). A request pays its own seconds and
+    the instance's idle seconds before it, at most the idle wait Cloud Run
+    allows: longer, a minimum instance was kept warm, which the infrastructure
+    budget carries (lane_reservations). The instance's first request also pays
+    what only it causes and nothing later can be charged for: the start (its
+    measured seconds, at most the startup probe's 600, plus
+    SAM_STARTUP_SLACK_SECONDS) with the startup CPU boost over it and 10 s
+    after, and the instance's last idle wait and shutdown, which follow
+    whichever request ends up last. So each run pays the instance time it
+    caused, and together they pay the whole life of an instance a request
+    started. A run whose price list predates the instance-based rates settles
+    at its request-based ones, which are higher.
+    """
+    service = prices.get("segmentation")
+    if service is None:
+        return None
+    vcpu = service.get("instance_vcpu_micros_per_million_seconds")
+    gib = service.get("instance_gib_micros_per_million_seconds")
+    fee = 0
+    if vcpu is None or gib is None:
+        vcpu = service["vcpu_micros_per_million_seconds"]
+        gib = service["gib_micros_per_million_seconds"]
+        fee = service.get("request_micros_per_million", 0)
+    vcpus = Decimal(str(service["vcpus"]))
+    per_second = vcpus * vcpu + Decimal(str(service["memory_gib"])) * gib
+    request = Decimal(str(instance["request_seconds"]))
+    idle = Decimal(str(instance["idle_seconds"]))
+    boost = 0
+    if instance["first"]:
+        startup = min(idle, SAM_STARTUP_SECONDS) + SAM_STARTUP_SLACK_SECONDS
+        seconds = (
+            startup + request + SAM_IDLE_SECONDS + SAM_IDLE_LAG_SECONDS + SAM_SHUTDOWN_SECONDS
+        )
+        boost = (startup + SAM_BOOST_SECONDS) * vcpus * vcpu
+    else:
+        seconds = min(idle, SAM_IDLE_SECONDS + SAM_IDLE_LAG_SECONDS) + request
+    return _ceil((seconds * per_second + boost + fee) / MILLION)
 
 
 def tool_cost(prices, tool_id, requests):
@@ -93,11 +149,14 @@ def _record(run, step, kind, usage, cost, outcome, billed_micros, basis=None, **
 
 def record_model_usage(
     run, step, route_id, *, input_tokens, output_tokens, outcome="completed",
-    billed_micros=None,
+    billed_micros=None, failure_code=None,
 ):
     prices = run.profile.execution.price_list
     if prices is None:
         return
+    name = {"route_id": route_id}
+    if failure_code:
+        name["failure_code"] = failure_code
     _record(
         run,
         step,
@@ -106,24 +165,61 @@ def record_model_usage(
         model_cost(prices, route_id, input_tokens, output_tokens),
         outcome,
         billed_micros,
-        route_id=route_id,
+        **name,
     )
 
 
-def record_segmentation(run, step, *, seconds, outcome="completed", billed_micros=None):
+def record_reported_usage(run, step, route_id, usage, *, outcome, failure_code=None):
+    """A model call whose provider reported every request's tokens, at their cost.
+
+    A failed call (an answer that stayed malformed after its retry, a call
+    stopped by its limits; reliability.reported_usage) is recorded ``failed``
+    at what those tokens cost (``computed``), so its step settles and the rest
+    of its reservation is released (PLAN 4.3). A completed parse records its
+    extraction's tokens the same way, with its own outcome.
+    """
+    record_model_usage(
+        run,
+        step,
+        route_id,
+        input_tokens=usage["input_tokens"],
+        output_tokens=usage["output_tokens"],
+        outcome=outcome,
+        failure_code=failure_code,
+    )
+
+
+def record_segmentation(
+    run, step, *, seconds, outcome="completed", billed_micros=None, instance=None
+):
+    """A SAM 3 call: at the instance time SAM 3 reported it used, which settles.
+
+    `seconds` is the worker's wall time for the call, kept as a diagnostic: it
+    omits the instance's idle time, which Cloud Run bills. Without the
+    instance's report (`instance`, sam3_server.InstanceMeter: a service that
+    sends none) the call's cost is unknown and its full reservation is held.
+    """
     prices = run.profile.execution.price_list
     if prices is None:
         return
     service = prices.get("segmentation") or {}
+    instance = instance_accounting(instance)
+    usage = {
+        "seconds": seconds,
+        "vcpus": service.get("vcpus"),
+        "memory_gib": service.get("memory_gib"),
+    }
+    if billed_micros is None and instance is not None:
+        _record(
+            run, step, "service", dict(usage, instance=instance),
+            segmentation_instance_cost(prices, instance), outcome, None, service="sam3",
+        )
+        return
     _record(
         run,
         step,
         "service",
-        {
-            "seconds": seconds,
-            "vcpus": service.get("vcpus"),
-            "memory_gib": service.get("memory_gib"),
-        },
+        usage,
         _reservation(run, step) if billed_micros is None else billed_micros,
         outcome,
         billed_micros,
@@ -200,7 +296,8 @@ def step_outcome(run, step):
 
 
 def settle_step(repository, principal, specimen, step, reserved, clock=None):
-    """Settle the run's budget and the program ledger to what the step's calls cost.
+    """Settle the run's budget, the program ledger and any monthly cap ledger the
+    attempt reserved in to what the step's calls cost.
 
     Only when every call recorded for the attempt reported usage or a billed
     amount, or was refused before any work (a known zero). A reserved call, or a
@@ -228,43 +325,54 @@ def settle_step(repository, principal, specimen, step, reserved, clock=None):
     else:
         run.usage.reserved_cost_micros += cost - reserved
         settlements[key] = envelope
-    if policy.program_allowance_micros is None:
-        return
-    ledger = ProgramLedger(
-        repository,
-        Scope(
-            organization_id=principal.scope.organization_id,
-            collection_id=policy.program_ledger_collection,
-        ),
-        clock=clock,
-    )
-    position = ledger.settle(
-        policy.program_allowance_micros,
-        reserved,
-        cost,
-        specimen_id=specimen.id,
-        run_id=run.id,
-        step=step,
-        attempt=attempt,
-    )
-    if position is not None:
-        run.program_allowance = position
+    if policy.program_allowance_micros is not None:
+        ledger = ProgramLedger(
+            repository,
+            Scope(
+                organization_id=principal.scope.organization_id,
+                collection_id=policy.program_ledger_collection,
+            ),
+            clock=clock,
+        )
+        position = ledger.settle(
+            policy.program_allowance_micros,
+            reserved,
+            cost,
+            specimen_id=specimen.id,
+            run_id=run.id,
+            step=step,
+            attempt=attempt,
+        )
+        if position is not None:
+            run.program_allowance = position
+    from .tenant_budget import settle_step as settle_tenant_budget
+
+    # The monthly cap ledgers the attempt reserved in, in the month it reserved
+    # in (TENANT_BUDGETS.md); nothing when it reserved in none.
+    settle_tenant_budget(repository, principal, specimen, step, attempt, reserved, cost, clock)
 
 
 def record_step(
     repository, principal, specimen, step, observations, seconds, reserved,
-    clock=None, failure=None, refusal=None,
+    clock=None, failure=None, refusal=None, usage=None,
 ):
     """The workflow's hook after a paid step: record its calls, then settle.
 
     A reading reports its tokens on its observation. A reading that gave none
     failed, even when its step then completed (a reader that is given up on, or
     stopped by its limits, completes with no observation): it is recorded as
-    `failed` with the code it failed with, and its reservation stays held in
-    full. So is a first pass that is given up on (its step completes with no
-    decision). SAM request seconds are diagnostics only: they omit workflow warm-up,
-    startup CPU boost and idle lifecycle billing, so the full service liability
-    remains reserved unless an authoritative billed amount is supplied.
+    `failed` with the code it failed with. So is a first pass that is given up
+    on (its step completes with no decision). Such a failed call settles at
+    what it cost when its provider reported every request's tokens (`usage`,
+    reliability.reported_usage: an answer that stayed malformed, a call stopped
+    by its limits); otherwise its spend is unknown (a timeout, a 5xx, a child
+    that ended without an answer) and its reservation stays held in full.
+    Parse records its extraction's reported tokens (`usage`) in the same way.
+
+    A completed SAM 3 call settles at the instance time it reported
+    (record_segmentation): the worker's request seconds alone omit startup,
+    its CPU boost and the idle time Cloud Run bills. One with no report stays
+    reserved in full unless a billed amount is supplied.
 
     `refusal` is the code of a model call the provider refused before any work
     (reliability.AdapterFailure.refused); that call is recorded at no cost
@@ -274,6 +382,7 @@ def record_step(
     if run.profile.execution.price_list is None:
         return
     outcome = step_outcome(run, step)
+    usage = checked_usage(usage)
     if step.startswith("transcribe:"):
         readings = [o for o in observations if o.route_id]
         for observation in readings:
@@ -288,6 +397,12 @@ def record_step(
         if not readings and refusal:
             record_refused(
                 run, step, "model", route_id=step.split(":")[-1], failure_code=refusal
+            )
+        elif not readings and usage:
+            record_reported_usage(
+                run, step, step.split(":")[-1], usage,
+                outcome="failed" if outcome == "completed" else outcome,
+                failure_code=failure,
             )
         elif not readings:
             name = {"route_id": step.split(":")[-1]}
@@ -306,6 +421,10 @@ def record_step(
         elif refusal:
             record_refused(run, step, "model",
                 route_id=run.profile.first_pass_route, failure_code=refusal)
+        elif usage:
+            record_reported_usage(run, step, run.profile.first_pass_route, usage,
+                outcome="failed" if outcome == "completed" else outcome,
+                failure_code=failure)
         else:
             name = {"route_id": run.profile.first_pass_route}
             if failure:
@@ -315,14 +434,29 @@ def record_step(
                 outcome = "failed" if outcome == "completed" else outcome
             record_reserved(run, step, "model", outcome=outcome, **name)
     elif step in {"parse", "classify"}:
-        # This ordinary ABI does not prove all billable request usage. Keep its
-        # whole liability held; tokens alone are not an authoritative bill. A
-        # refusal of parse's one model call (extract_with_agent) is proof that
-        # nothing was billed.
+        # Parse's one model call (extract_with_agent) settles at its reported
+        # tokens (`usage`) at the price of the route it calls, the profile's
+        # first route (lane_reservations.step_reservation sizes it the same
+        # way). Without them its whole liability stays held. A refusal of that
+        # call is proof that nothing was billed.
         attempt = run.attempts.get(step, 1)
         if not any(c["step"] == step and c["attempt"] == attempt for c in run.paid_calls):
+            route = run.profile.routes[0] if run.profile.routes else None
             if refusal:
                 record_refused(run, step, "model", route_id=step, failure_code=refusal)
+            elif usage and step == "parse" and route:
+                if failure:
+                    outcome = "failed" if outcome == "completed" else outcome
+                record_reported_usage(
+                    run, step, route, usage, outcome=outcome, failure_code=failure
+                )
+            elif failure:
+                # An extraction that failed, or was given up on (its step then
+                # completes): recorded failed with its code, held in full.
+                outcome = "failed" if outcome == "completed" else outcome
+                record_reserved(
+                    run, step, "model", outcome=outcome, route_id=step, failure_code=failure
+                )
             else:
                 record_reserved(run, step, "model", outcome=outcome, route_id=step)
     elif step == "segment":
@@ -333,6 +467,7 @@ def record_step(
                 step,
                 seconds=round(seconds, 3) if measured is None else measured,
                 outcome=outcome,
+                instance=(run.segmentation or {}).get("instance"),
             )
         else:
             record_reserved(run, step, "service", outcome=outcome, service="sam3")

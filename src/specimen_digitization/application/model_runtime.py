@@ -5,7 +5,7 @@ from dataclasses import asdict
 from pathlib import Path
 from types import SimpleNamespace
 
-from ..observability import isolated_model_span, model_trace_context
+from ..observability import isolated_model_span, model_trace_context, tenant_ids
 from .bounded_effect import run_isolated
 from .domain import (
     Asset,
@@ -20,7 +20,14 @@ from .domain import (
 )
 from .field_resolution import Reading
 from .organiser import extraction_readings
-from .reliability import AdapterFailure, ReadingStopped, reader_failure_is_recoverable
+from .reliability import (
+    AdapterFailure,
+    ReadingStopped,
+    checked_usage,
+    extraction_failure_is_recoverable,
+    first_pass_failure_is_recoverable,
+    reader_failure_is_recoverable,
+)
 from .storage import LocalBlobs
 
 
@@ -100,18 +107,22 @@ def _model_child(payload):
             }
             run.evidence = []
             run.usage = BudgetUsage()
-            adapter._extract_direct(specimen)
+            usage = adapter._extract_direct(specimen)
             value = {
                 "fields": {k: v.model_dump(mode="json") for k, v in run.fields.items()},
                 "evidence": [e.model_dump(mode="json") for e in run.evidence],
                 "tokens": run.usage.tokens,
+                # Its input and output tokens apart, so parse can be priced.
+                "usage": usage,
             }
         else:
             raise ValueError("Unknown trusted model operation")
         return json.dumps({"status": "completed", "value": value}).encode()
     except ReadingStopped as exc:
         # A reading stopped by its token limits crosses as a known status (#153).
-        return json.dumps({"status": "stopped", "code": exc.code}).encode()
+        return json.dumps(
+            {"status": "stopped", "code": exc.code, "usage": exc.usage}
+        ).encode()
     except AdapterFailure as exc:
         return json.dumps(
             {
@@ -122,6 +133,8 @@ def _model_child(payload):
                 "outcome_unknown": exc.outcome_unknown,
                 # A refusal before any work (reliability.AdapterFailure) costs nothing.
                 "refused": exc.refused,
+                # A malformed answer's reported tokens (reliability.reported_usage).
+                "usage": exc.usage,
             }
         ).encode()
     except OperationalBlock as exc:
@@ -135,19 +148,27 @@ def child_without_answer(run, operation, reason):
 
     Whatever ended it (a deadline, a kill, a transport error or any exception
     the child does not map, whose text never crosses the process boundary), the
-    parent cannot tell whether the provider answered. For a reader that is a
-    known, retryable failure (``reader_failure_is_recoverable``): the workflow
-    asks again, then ends the reading. For any other operation it stays an
-    unknown outcome that blocks the run.
+    parent cannot tell whether the provider answered. A reader or ordinary
+    first-pass comparison is safe to repeat within its existing attempt and
+    financial limits; its uncertain cost stays reserved. Other operations
+    retain an unknown outcome that blocks the run.
     """
     from .domain import LookupStatus
     from .workflow import OperationalBlock
 
-    if not reader_failure_is_recoverable(run, operation):
+    comparison = first_pass_failure_is_recoverable(run, operation) or (
+        extraction_failure_is_recoverable(run, operation)
+    )
+    if not (
+        reader_failure_is_recoverable(run, operation)
+        or (comparison and reason in {"deadline_exceeded", "worker_process_exit"})
+    ):
         return OperationalBlock("external_outcome_unknown")
+    prefix = {"first_pass": "first_pass_", "extract": "extract_"}.get(operation, "reader_")
     return AdapterFailure(
-        "reader_" + reason,
+        prefix + reason,
         LookupStatus.TIMEOUT if reason == "deadline_exceeded" else LookupStatus.PROVIDER,
+        outcome_unknown=comparison,
     )
 
 
@@ -160,7 +181,7 @@ def invoke_model(
     run = specimen.run
     payload = {
         "operation": operation,
-        "telemetry": model_trace_context(specimen.id, run.id),
+        "telemetry": model_trace_context(specimen.id, run.id, **tenant_ids(specimen)),
         "storage": storage_descriptor(adapter.blobs),
         "asset": specimen.asset.model_dump(mode="json"),
         "profile": run.profile.model_dump(mode="json"),
@@ -207,11 +228,24 @@ def invoke_model(
         max_input_bytes=4 * 1024 * 1024,
         trace_required=True,
     )
+    comparison = first_pass_failure_is_recoverable(run, operation) or (
+        extraction_failure_is_recoverable(run, operation)
+    )
+    if not result.cleanup_complete and comparison:
+        # No automatic comparison or extraction retry while its old child might
+        # still run.
+        raise OperationalBlock("external_outcome_unknown")
     if result.status != "completed" or not result.cleanup_complete:
+        reason = result.status if result.status != "completed" else "cleanup_incomplete"
+        if operation in {"first_pass", "extract"} and result.status == "worker_failed":
+            # The broad status also includes malformed input and invalid IPC.
+            # Only a child that exited after starting gets first-pass recovery;
+            # do not turn an opaque call/contract failure into a provider retry.
+            reason = result.reason
         raise child_without_answer(
             run,
             operation,
-            result.status if result.status != "completed" else "cleanup_incomplete",
+            reason,
         )
     body = json.loads(result.value)
     if body["status"] == "adapter_failure":
@@ -221,11 +255,12 @@ def invoke_model(
             retry_after_seconds=body["retry_after_seconds"],
             outcome_unknown=body["outcome_unknown"],
             refused=body.get("refused") is True,
+            usage=checked_usage(body.get("usage")),
         )
     if body["status"] == "blocked":
         raise OperationalBlock(body["code"])
     if body["status"] == "stopped":
-        raise ReadingStopped(body["code"])
+        raise ReadingStopped(body["code"], checked_usage(body.get("usage")))
     if body["status"] != "completed":
         raise child_without_answer(run, operation, "unrecognized_answer")
     value = body["value"]
@@ -255,3 +290,6 @@ def invoke_model(
     run.fields = fields
     run.evidence.extend(evidence)
     run.usage.tokens += tokens
+    usage = checked_usage(value.get("usage"))
+    # The extraction's tokens, priced only when they are the tokens it counted.
+    return usage if usage and sum(usage.values()) == tokens else None

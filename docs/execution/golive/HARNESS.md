@@ -138,16 +138,20 @@ keeps a transcript with no text and no readings. Every reading that gave no
 observation is recorded in `paid_calls` as `failed` with its `failure_code`, and
 its reservation stays held in full (`cost_basis: reserved`), except an attempt
 the provider refused with HTTP 429 before any answer, which costs nothing and
-releases its reservation (`cost_basis: refused`, DATA_CONTRACT.md). An authentication or
+releases its reservation (`cost_basis: refused`, DATA_CONTRACT.md), and, since
+2026-10-17, an attempt whose provider reported every request's tokens (an answer
+that stayed malformed, a reading stopped by its limits), which costs what those
+tokens cost and releases the rest (`cost_basis: computed`). An authentication or
 authorization error, and a request the provider refuses as invalid (HTTP 400,
 404, 413, 422: `model_request_rejected`), still block at once and name their
 cause, since asking again repeats them. A reviewer cannot record supported text
 for a region no reader read (the decision is refused, 422, and the record is
 unchanged: verification would refuse text with no reading to trace to); an
 abstention still can be recorded.
-The rule is `reliability.reader_failure_is_recoverable`; the first pass, the
-organiser, field research and every effectful step keep their unknown outcome as
-a block, and so does a reader of the evidence pilot, whose exact cohort
+The rule is `reliability.reader_failure_is_recoverable`; ordinary first-pass
+comparisons have the narrower recovery rule below. The organiser, field research
+and every effectful step keep their unknown outcome as a block, and so does a
+reader of the evidence pilot, whose exact cohort
 reservations and zero retries never replay a paid call (a pilot reader that is
 stopped by its limits ends as `external_outcome_unknown` too). A run that was
 already blocked as `external_outcome_unknown` stays so.
@@ -183,8 +187,8 @@ timing out ends and the run goes on.
 pass was answered HTTP 429 on all three attempts and dead-lettered the run as
 `retry_budget_exhausted:model_rate_limited`). When the last attempt
 (`max_attempts`) of a first pass fails with a failure the workflow retries
-(`reliability.failure_is_retryable`: a rate limit or a provider error, HTTP 402
-included) and whose outcome is known, the first pass is given up on as a reader
+(`reliability.failure_is_retryable`: a rate limit, timeout or provider error,
+HTTP 402 included), the ordinary first pass is given up on as a reader
 is: its step completes with no decision and the run goes on through
 `adjudicate`, `parse` and field research. The label's transcript has no text and
 no `decision_kind`, and keeps both readings as its alternatives. A warning
@@ -195,10 +199,218 @@ however its fields settle: no first pass compared its readings. A 429 refused
 before any answer still costs nothing (`cost_basis: refused`); any other
 given-up attempt stays reserved in full and is recorded `failed` with its
 `failure_code`. An authentication or authorization error,
-`model_request_rejected`, `model_malformed_response`, an unknown outcome (a
-server error, or an attempt past its effect timeout) and a first pass of the
-evidence pilot still block and name their cause. The rule is
+`model_request_rejected`, `model_malformed_response`, an invalid child result,
+incomplete child cleanup and a first pass of the evidence pilot still block
+and name their cause. The rule is
 `Workflow.first_pass_has_no_attempt_left`.
+
+**Ordinary first-pass transient recovery** (camera intake, 2026-10-11).
+`reliability.first_pass_failure_is_recoverable` permits the existing bounded
+retry policy after a provider 5xx or a terminated child's deadline. This
+comparison is tool-free: it reads retained observations and a crop; the parent
+saves one decision per region. It does not publish or create a specimen.
+Uncertain billing still holds the entire original reservation, and each new
+attempt reserves again against all existing limits. A known first-request 429
+refusal remains zero-cost even if the elapsed deadline was exceeded. The
+published run cap can stop processing before all attempts are used; that is an
+operational budget block, not a final review disposition. Historical persisted
+unknown outcomes are not automatically unblocked, and this exception does not
+apply to the organiser, research, publication, the evidence pilot or a child
+whose termination cannot be confirmed. Offline regressions exercise the real
+isolated child and dispatched worker; they are not live-device acceptance.
+
+**Stuck first passes go on by themselves** (2026-10-12; replaces the run-cap
+and historical-unknown sentences above for an ordinary first pass). The owner:
+"the ones stuck in intake should all successfuly end up in the main specimen
+queue based on how the pipeline+harness resolve them". Tests:
+`tests/test_first_pass_stuck_recovery.py`.
+- A pin that names the registered first-pass model at another provider is moved
+  to the registered provider before the step's call, and the move (route,
+  model, old and new provider, time) is kept in `run.dependencies["route_repins"]`
+  (`first_pass.repin_first_pass_route`). A pin of another model is never moved
+  and still blocks as `pinned_model_route_unavailable`. The price list is keyed
+  by route, so the reservation and the USD 1 cap do not change.
+- A first pass the run cannot afford under its own limits (`cost_budget_exhausted`
+  and the token, call and active-time budgets) is given up on unsent, with that
+  code in its `first_pass_given_up` finding; earlier attempts stay held.
+- A first pass whose worker stopped after its intent is settled as
+  `first_pass_result_lost`, as a reading is (above); after its last attempt it is
+  given up on. An attempt already recorded is not recorded or counted again.
+- Each drain execution, when it takes a collection, lists its blocked records
+  and makes due a blocked ordinary first pass whose blocker is
+  `external_outcome_unknown` (lease ended), `pinned_model_route_unavailable`
+  (when the pin can be moved), a budget above, `provider_circuit:*`,
+  `lane_run_not_progressing` or `lane_handover_without_progress`; one blocked as
+  `retry_budget_exhausted:<code>` is given up on with `<code>`
+  (`Workflow.recover_blocked`). At most three recoveries per step, each kept in
+  `run.dependencies["automatic_recoveries"]`. It makes no call. Evidence-pilot
+  runs, sensitive records and runs with a disposition are left alone. The
+  listing is read page by page and the scan ends at a stop signal or at the
+  window's close, so the drain keeps its time to release the fence and hand
+  the rest on; the next execution scans again.
+- What wakes them is the next worker execution: any upload, process request or
+  run action starts one (LANE.md T1), and an execution hands left work to the
+  next. Nothing new is scheduled, and a deploy alone starts no execution.
+
+**The organiser's extraction, and a malformed first pass** (2026-10-12;
+replaces, for these two calls, the sentences above that keep the organiser's
+unknown outcome and a first pass's `model_malformed_response` as blocks).
+Production, 13:00Z-13:34Z, collection 200d7057: `parse`'s one model call (the
+organiser's extraction, agent `insects_bounded_extractor`, on the profile's
+first reader route, `handwriting-qwen`) was answered HTTP 504
+`provider_request_failed` after 120 s for five of six camera-intake runs, and
+each blocked as `external_outcome_unknown` with nothing to carry it on.
+Specimen 19f0f1f6's first pass answered malformed after its output retry and
+blocked as `model_malformed_response`, also for good. Tests:
+`tests/test_extraction_recovery.py`, and in `tests/test_rate_limit_refusal.py`
+`test_a_malformed_first_pass_is_given_up_at_once_and_the_record_goes_to_review`
+and `test_the_organisers_refused_call_costs_nothing`.
+- The extraction is a tool-free model read, as the first pass is
+  (`reliability.extraction_failure_is_recoverable`): it reads the run's
+  readings, its child writes only content-addressed provenance, and the parent
+  applies its candidates after the call returns. A rate limit, a timeout, a
+  provider error (an HTTP 5xx's unknown outcome included) or a killed child's
+  deadline is retried within `max_attempts`; every uncertain attempt is
+  recorded `failed` with its `failure_code` and keeps its whole reservation.
+- After its last attempt, on an answer still malformed after the output retry,
+  or when stopped by its token limits (`extraction_usage_limit`), the
+  extraction is given up on: a warning finding `extraction_given_up:<code>`,
+  `parse` completes with the deterministic parse alone, and the run goes on to
+  field research and its disposition. An extraction the run cannot afford is
+  given up on unsent with the budget's code; a worker that stopped after the
+  call's intent settles it as `extraction_result_lost`, retried, then given up.
+- A first pass whose answer stays malformed is given up on at once with
+  `model_malformed_response` (not asked again).
+- `Workflow.recover_blocked` makes due a run left blocked at its extraction as
+  `external_outcome_unknown` (the five runs above), which then settles that
+  attempt as lost and retries or gives up, and gives up an extraction or a
+  first pass left blocked as `retry_budget_exhausted:<code>` or
+  `model_malformed_response` (19f0f1f6). It reads the first pass's blocker
+  list for the extraction too, a moved pin aside.
+- Every `external_outcome_unknown` this code saves at an ordinary first pass
+  or extraction says what it is, in
+  `run.dependencies["unknown_outcome_kinds"]["<step>:<attempt>"]`
+  (`workflow.UNKNOWN_OUTCOME_KINDS`). The call's intent is saved as
+  `unanswered`: a worker that stops before the result leaves it so, and the
+  lease's end or the drain carries it on. A result the parent could not accept
+  (an invalid child result such as `invalid_json_input`, extraction fields
+  that do not match the run's, a child whose cleanup is not confirmed, an
+  unexpected exception in the parent) is saved as `held` and never recovered
+  automatically; it stays blocked for a person. Provider and deadline failures
+  of these reads are known failures now, never unknown outcomes.
+  A kind is kept only while its attempt is unresolved. When an attempt's
+  outcome is known (completed, a known failure that is retried, given up,
+  settled as lost) the kinds of that attempt and of every earlier attempt of
+  the step go, and a new attempt's intent drops the earlier ones too: an
+  attempt starts only after the one before it ended, so a path that replaced
+  an unknown blocker without settling its attempt (the active graph's
+  size-limit block, then a person's retry) leaves nothing behind. Every
+  step that ends passes through `workflow.end_step`, which drops every kind
+  of that step (a step that has ended has no unresolved unknown outcome), and
+  giving the extraction up drops the kinds of `parse`. An administrator's
+  reconcile drops every kind of the reconciled step. The recovery tests check
+  every save for a kind left on an ended step (`tests/conftest.py`). So the
+  kinds add no drift of their own to the pins of the append-once pipeline-run
+  row (#146; `tests/test_projection_writer.py`). Other records already
+  change `run.dependencies` after it is written: `ordinary_cost_settlements`
+  for priced calls, and `automatic_recoveries` and `route_repins` (#315) for
+  recovered or re-pinned runs; not changed here.
+- Legacy rows (the coordinator's decision of 2026-10-12, the owner having
+  delegated technical decisions; replaces the second review round's stricter
+  rule). An unknown attempt with no kind was saved by code before this record
+  existed, which saved a provider's HTTP 5xx and an invalid child result
+  alike, so its cause cannot be read from the run. Logfire (2026-10-12
+  13:00Z-13:34Z) shows the known stuck rows, the five runs above, were HTTP
+  504s, and the recovery is bounded: the existing path (`max_attempts`, three
+  automatic recoveries per step, every attempt reserved in full under the run's
+  USD 1 limit), ending at worst with the call given up and the record in
+  review. It never publishes. So a legacy row is recovered, and its automatic
+  recovery is recorded with `"rule": "legacy_unknown_recovered"`; a rare
+  legacy contract failure ends visibly in review instead of stranded. The
+  same holds for a first pass saved as unknown after a 5xx before e52503c5.
+- Tests (`tests/test_extraction_recovery.py`):
+  `test_a_504_left_unknown_at_the_extraction_by_the_old_code_is_recovered_as_legacy`
+  (built from a6b72f6f's own save by switching the extraction's
+  recoverability off for the first drain),
+  `test_an_extraction_result_the_parent_cannot_accept_stays_blocked_after_its_lease`,
+  `test_a_call_left_unanswered_by_a_stopped_worker_is_marked_and_carried_on`,
+  and `test_every_unknown_outcome_this_code_saves_at_the_extraction_has_a_kind` and
+  `..._at_a_first_pass_has_a_kind`, which check every save; in
+  `tests/test_first_pass_stuck_recovery.py`,
+  `test_a_blocked_unknown_comparison_is_retried_by_the_drain`.
+- `parse` parses and extracts into a working copy of the record. When the
+  step does not end (a retried extraction, an evidence integrity failure
+  after it, a refused human-field check), the run's fields, evidence and
+  token usage are put back as they were before the attempt (its reservations
+  stay), so a retried or given-up `parse` keeps one evidence row per parsed
+  line
+  (`tests/test_step_outcome.py::test_a_retried_parse_keeps_one_evidence_row_per_parsed_line`,
+  `::test_integrity_failure_after_extraction_is_a_known_retryable_block`, with
+  and without a person's preserved fields).
+  A first-pass retry adds nothing either: its decision replaces the region's,
+  and its tokens are counted only when it answers.
+- A first pass or extraction whose attempts are used up (`run.attempts`, which
+  the call's intent saves, at `max_attempts`) is given up on unsent when its
+  step comes round again, with `max_attempts_used`; it is never sent a fourth
+  time. That happens when the last attempt's result is lost to the active
+  graph's size limit (which reloads that attempt's intent without the give-up
+  it had recorded) and a person retries, or when a person retries a block on
+  the last attempt. The lost attempt keeps its whole reservation; nothing is
+  released or reserved again
+  (`tests/test_extraction_recovery.py::test_a_last_extraction_whose_result_was_lost_is_not_sent_again`,
+  `::test_a_last_first_pass_whose_result_was_lost_is_not_sent_again`).
+- An authentication or authorization error and a request the provider rejects
+  still block with their cause, and the evidence pilot is excluded, as for the
+  first pass.
+- The route stays on Novita. Two probe rounds on 2026-10-12, sequential, the organiser's real agent and output type on two synthetic
+  label readings with production's limits, and a forced-tool image read of one
+  label: Novita extraction 0 of 3 (HTTP 504 at 120 s each); DeepInfra, which
+  lists the same model cheaper (USD 0.15/0.60 per million tokens against
+  0.20/0.70), extraction 3 of 3 (32-101 s, 368-523 output tokens) and then 0 of
+  5 (HTTP 504 at 120 s each). Image reads: Novita 3 of 3 at 55-73 s, then 5 of 5
+  at 4-5 s; DeepInfra 3 of 3 at 2-4 s, then 5 of 5 at 3-81 s. Neither provider
+  was reliably better; the 504 at 120 s is the Hugging Face router's own limit
+  on one request, which a slow extraction reaches on either provider.
+
+**Field research at a run limit** (2026-10-12; replaces, for field research,
+the block on the run's own limits other than money). Production, about
+22:24Z: a camera photo (asset c7e52321bd4b...) failed its first field
+research attempt (experts answered `UnexpectedModelBehavior`; the taxon's
+expert stopped at its own usage limit) and was scheduled for a retry. The
+retry's budget check (`Workflow._step`) found no room for another 16,000
+reserved model units under the run's `max_tokens` and saved it
+`processing_blocked` as `token_budget_exhausted`, which the app reads "The
+run reached its limit on model units. An administrator must review the
+approved limit." Nothing carried it on. Tests:
+`tests/field_research/test_research_limit_recovery.py`.
+- Field research the run has no room for under one of its own limits other
+  than money (`workflow.RESEARCH_LIMITS`: the step, external request, model
+  unit and active time limits) is given up on unsent
+  (`Workflow._give_up_field_research`, `FieldResearchStep.give_up`). No
+  expert, source or meter starts, nothing is reserved, attempted or paid,
+  and the fields an earlier attempt settled are kept. Every field still to
+  research is unresolved with the reason "The run reached one of its
+  processing limits before this field could be checked." (failure
+  `run_limit`), the step's own rules finalize the record, and it goes to
+  review with a warning finding `field_research_given_up:<code>`
+  (`test_a_retry_the_model_unit_limit_leaves_no_room_for_goes_to_review_unsent`).
+- The run's cost ceiling and the program's allowance are limits on money
+  and still block (FIELD_RESEARCH.md, step 8), and they come first: a run
+  whose model units (or another limit above) are spent too keeps the money
+  block. Before giving up, the step checks the cost settings, the saved cost
+  totals and the ceiling, then reads the program's ledger
+  (`lane_allowance.admits`, read only, nothing reserved); an allowance that
+  cannot pay for one expert request, or a ledger that cannot be read, blocks
+  with its own code
+  (`test_a_retry_over_the_money_ceiling_still_blocks[money_and_model_units]`,
+  `test_the_program_allowance_comes_before_the_model_unit_limit`).
+- `Workflow.recover_blocked` makes due a run left blocked at field research
+  by one of those limits, within the same three recoveries per step; the step
+  then gives it up as above
+  (`test_a_run_left_blocked_at_the_model_unit_limit_is_recovered_by_the_drain`).
+  Sensitive records, runs with a disposition or a live lease, and the money
+  blocks are left alone
+  (`test_sensitive_finished_leased_and_money_blocks_are_never_recovered`).
 
 **Waiting after a rate limit** (2026-10-11). A step that fails with an
 `AdapterFailure` whose status is `rate_limited` (a model call's HTTP 429 is
@@ -221,6 +433,22 @@ run 0c7f52e1, so every handwriting-qwen reading of that run failed as
 from the lines in any other way is still malformed.
 `docs/product-requirements/HUGGINGFACE_MODEL_ROUTING.md` ("How a reader's
 answer is read") has the rule and the recorded answers.
+
+**A first pass's null written as text** (2026-10-18). An answer whose
+`selected_reader` is the text "null", "None" or "" (in any case, with spaces
+around it ignored) picks no reader, as JSON null does; it is not malformed.
+GLM-5.3-Flash on Novita writes the null the schema asks for that way. In
+Logfire, from 2026-10-12 03:00 to 2026-10-18 14:45 UTC, 16 traces hold a
+first-pass run that ended "Exceeded maximum output retries", and each of the 16
+holds an answer whose `selected_reader` is the string "null"; three more traces
+hold one in a run that did not end so. The retries mostly wrote "null" again
+(once "None", once ""), so each of those runs failed as
+`model_malformed_response`, with no verdicts recorded for its label. Such an
+answer is now used: its verdicts, rationale and notes are recorded, and it
+selects no reading (G19), from its first request. Any other text that is not a
+reader's letter ("a", "C", "neither") is still refused and gets the output
+retry. The raw response keeps the text as it was sent. Tests:
+`tests/test_first_pass_null_text.py`.
 
 **Tracing.** The agent carries no instrumentation override; it inherits the
 lane's global setting (content on, binary off in approved-content mode, S3 T5).
@@ -347,12 +575,17 @@ report. Neither pick changes.
 
 | Route | Model | Provider | Input | Use |
 |---|---|---|---|---|
-| `first-pass-glm` | `zai-org/GLM-5.3-Flash` | `deepinfra` | text, image | the first pass (sections 3 and 4) |
+| `first-pass-glm` | `zai-org/GLM-5.3-Flash` | `novita`, sent `reasoning_effort: medium` | text, image | the first pass (sections 3 and 4) |
 | `harness-deepseek` | `deepseek-ai/DeepSeek-V4.1-Flash` | `deepinfra` | text | the harness; provisional until the acceptance lab re-measures it with the real harness and G29's prompt |
 
-Both use DeepInfra, which the `handwriting-muse` reader already uses, so no
-new provider enters the data-policy review; neither shares a model family
-with a reader.
+The harness uses DeepInfra, which the `handwriting-muse` reader already uses,
+and the first pass uses Novita, which the `handwriting-qwen` reader already
+uses, so no new provider enters the data-policy review; neither shares a
+model family with a reader. The first pass moved from DeepInfra to Novita on
+2026-10-12: DeepInfra refused 22 of 29 live first-pass calls on 2026-10-11 and
+2026-10-12 (16 HTTP 429, 6 HTTP 503, each within a second), and a probe of 8
+image calls with a forced tool answer got 8 of 8 from Novita, 4 of 8 from
+DeepInfra, at the same listed price.
 They are a separate stage route set: the reader routes stay the gateway's
 initial set, which the pilot launch, its stage list and the release check
 compare a profile's readers against; the gateway resolves either set.
@@ -392,6 +625,156 @@ requests (the answer and one output retry), and a stop once the run passes
 16,000 tokens in all (Pydantic AI checks the total after each response). A route
 that takes images needs the `--image` fixture and is sent it; a text-only route
 is sent a synthetic sentence, never an image, and refuses `--image`.
+
+**Together and Fireworks** (2026-10-18). The owner approved both providers,
+in his words typed in the go-live coordinator session on 2026-10-18 and quoted
+in the coordinator's brief for this change: "More reliable inference provider
+like fireworks together also work" and "Hold. The let's just move to a reliable
+provider if novita is a problem for now." Neither can serve these routes yet.
+With the production token (Secret Manager `huggingface-runtime-token`, version
+2, the one the runtime reads), every request to either was answered HTTP 402
+with the router's body `{"error":"Pay-as-you go is not enabled for provider
+together yet."}` (`fireworks-ai` the same): through `first_pass_direct` for
+`zai-org/GLM-5.3-Flash`, through the reader's `_transcribe_direct` for
+`meta-models/Muse-Glimmer-30B` (Together), and in one-token text calls. In the
+same text calls Novita, DeepInfra, Baseten, `zai-org` and Featherless answered.
+Hugging Face bills a routed request only for a provider integrated with its
+pay-as-you-go billing; any other provider needs a custom provider key, set in
+the account's Inference Providers settings, and is then billed by that
+provider directly (https://huggingface.co/docs/inference-providers/pricing).
+That needs a Together or Fireworks account, which only the owner can open.
+With the key set, a route moves by changing its `provider` and by measuring its
+request options on the new provider again, or clearing them: the options travel
+with the route, `reasoning_effort` was measured on Novita only, and a provider
+that refuses a field rejects every request (`model_request_rejected`). The repin
+rule for runs in flight is below. Why the probe of 2026-10-12 got 8 of 8 from
+Together is not confirmed (which token it used is not recorded). So:
+
+- `first-pass-glm` stays on Novita, which has been reliable as a service since
+  2026-10-12 (the only errors in its 141 chat spans to 2026-10-18 14:45 UTC
+  are three HTTP 504 at the router's 120 s), and sends `reasoning_effort:
+  medium` (below). Its two causes of failure in that time were reasoning that reached
+  the output cap and a null pick written as text (section 3).
+- `handwriting-muse` stays on DeepInfra. Together refuses it the same way;
+  DeepInfra answered 4 of 4 real crops through `_transcribe_direct` in 3 to
+  15 s. Of its 34 errors in Logfire from 2026-10-11 to 2026-10-18 (all at the
+  reader's 60 s request timeout), 29 fell on 2026-10-12 and 5 on 2026-10-17;
+  none of its 110 calls on 2026-10-18 failed. Moving a reader also strands
+  runs in flight (below).
+
+**The first pass's reasoning bound** (2026-10-18). Novita runs GLM-5.3-Flash
+with its reasoning on and counts the reasoning as output tokens: from
+2026-10-12 03:00 to 2026-10-18 14:45 UTC, 29 of the route's 141 chat spans
+stopped at the 4,096-token cap with finish reason "length", and 26 of its 119
+first-pass runs ended with no answer. DeepInfra, on which the route was chosen
+(below), runs it with little reasoning: its 13 first-pass chat spans from
+2026-10-05 to 2026-10-11 used at most 440 output tokens, and its first passes in
+the probe below a median of 254. In one-call text tests on Novita,
+`thinking: {"type": "disabled"}`, `enable_thinking: false`,
+`chat_template_kwargs.enable_thinking: false` and `reasoning_effort: "none"`
+left 68 to 145 reasoning tokens, where the default used 52 to 106;
+`reasoning_effort: "low"` used 0 to 19, and "minimal" 6. The
+probe then ran the first pass itself, `first_pass_direct` with only the route's
+provider and request option overridden, on 12 real labels of 9 recorded runs
+(the label crops and readings of saved run graphs, read only; d10333ff's label
+3 among them, whose first pass Novita cut off at the cap on 2026-10-17). The
+"null rule" column re-reads each recorded malformed answer as section 3 now
+reads it; for the first 12 calls of the default and "low" arms the answers
+were not recorded, so those are unknown.
+
+| Provider and option | Calls | Answers | At the cap | Malformed | Answers with the null rule | Median s | 90th percentile s | Median output tokens | USD per call |
+|---|---|---|---|---|---|---|---|---|---|
+| Together, Fireworks | 1 each | 0 (HTTP 402) | | | | 0.3 | | | 0 |
+| Novita, default | 22 | 10 | 6 | 6 | 12, 3 unknown | 52.1 | 106.9 | 1,981 | 0.00146 |
+| Novita, `reasoning_effort: medium` | 24 | 16 | 0 | 8 | 22 | 19.9 | 42.1 | 567 | 0.00059 |
+| Novita, `reasoning_effort: low` | 37 | 24 | 0 | 13 | 32, 5 unknown | 13.3 | 24.9 | 318 | 0.00040 |
+| DeepInfra, default | 12 | 12 | 0 | 0 | 12 | 4.2 | 5.1 | 254 | 0.00029 |
+| Novita, "low", with the null rule (commit `d729ff10`) | 12 | 12 | 0 | 0 | 12 | 13.2 | 17.4 | 294 | 0.00031 |
+
+Both "low" and "medium" ended the cap stops; with the null rule every recorded
+"low" answer and 22 of 24 "medium" answers were usable. That probe did not score
+the picks. The review of PR #382 asked for that before relying on "low": on
+19f0f1f6, "low" twice picked "Chelotonic" over the reading with "[unreadable]",
+and a pick whose verdicts err the same way passes G19 and becomes the decided
+transcript.
+
+**The picks, scored** (2026-10-18). A second probe ran `first_pass_direct` on
+the branch's code (the null rule in place), on Novita, with the request option
+the only difference between arms. Its labels: the eight pilot left labels whose
+differences S4's scoring of the T1 measurement covers (below), with those crops
+and readings, scored against S4's reading of the full-resolution crops, the
+reference that measurement used; and the four pilot labels among the 12
+above (9cc24b07 is subject 105526330's barcode label, 01b79931 subject
+105526321's, e98a924c subject 105526322's, cb903c0e subject 105526325's right
+label), scored against S8's reading of the slides
+(`~/specimen-golive/research/S8-pilot-localities.md`) and S4's where they cover
+the difference, each checked against the crop. On cb903c0e the crop reads
+"Mckimley", which S8's table gives as "McKinley", so the reader who wrote "m"
+is right there. No human-checked transcript of these labels exists; both
+references are earlier sessions' readings of the images. A pick is right when
+the reference supports that reader at every difference that is more than
+capitalization, as G19 asks; where neither reader is right, no pick is right,
+and a call "ends right" when it picks a right reader or, where none is right,
+picks none. S4's own pick rule for T1 was looser (it accepted Muse on 105526323
+and 105526330 and any pick on 105526321); under it one more "medium" pick is
+right (35 of 45), "low"'s are unchanged, and the choice below stands. "Low" and "medium" ran six times on each of the 12 labels
+("medium" once more, a smoke call, on 105526329), the default three times. Six
+labels where one reader wrote "[unreadable]" (19f0f1f6, d10333ff's label 3,
+two of 2c6ef7b0, ebfc6171, f9d55015) have no reference; each arm ran three
+times on each, to count how often it picked the reader whose text stands where
+the other wrote "[unreadable]".
+
+| Novita, option | Calls on scored labels | Right picks | Wrong picks | Missed picks | Right with no pick | No answer (cap) | Pick precision | Calls ending right | Fluent-trap verdicts right | Text picked over "[unreadable]" | Median s | 90th percentile s | Median output tokens | USD per call |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| default | 36 | 10 | 3 | 7 | 9 | 7 | 10 of 13 | 19 of 36 | 5 of 6 | 2 of 7 | 48.8 | 100.7 | 3,033 | 0.00162 |
+| `medium` | 73 | 34 | 11 | 6 | 22 | 0 | 34 of 45 | 56 of 73 | 16 of 19 | 2 of 18 | 15.8 | 33.6 | 555 | 0.00055 |
+| `low` | 72 | 29 | 10 | 11 | 22 | 0 | 29 of 39 | 51 of 72 | 16 of 18 | 4 of 18 | 11.3 | 19.2 | 302 | 0.00038 |
+
+The fluent traps are the two "Chimaltenago" labels (one reader wrote the
+correct spelling the label lacks) and cb903c0e's "Mckimley". Seconds, tokens
+and cost are over every call of the arm, the "[unreadable]" labels included;
+the default stopped at the cap in 18 of its 54 calls, "medium" and "low" in
+none of 91 and 90, and no answer of any arm was malformed. "Medium" is the
+setting kept: its picks were right as often as "low"'s (76% against 74%), it
+left fewer labels undecided that a reader had right (6 against 11), so more
+calls ended right (77% against 71%), and it picked text over "[unreadable]"
+half as often. Its wrong picks match "low"'s (11 of 73 against 10 of 72); the
+difference on every measure is within a few picks. The default's picks were as
+precise (10 of 13), but a fifth of its calls on these labels had no answer and
+it left more labels undecided that a reader had right. Cost and latency
+decided nothing. Every setting still makes wrong picks, about one call in seven
+on these labels with "medium" or "low". Most are on three labels: e98a924c (the
+reading without the foot mark and the side code), 01b79931 (a slide code) and
+105526323 ("+" or the female sign where the label has "&"). "Medium" also picked
+the fluent reading of a trap three times (cb903c0e's "Mckinley" once, and
+"Chimaltenango" on 105526329 and on 105526330), "low" twice (cb903c0e once,
+105526329 once). No answered call of the second probe picked 19f0f1f6's
+"Chelotonic"; all seven picked no reader there. On d10333ff's label 3,
+"medium" twice and "low" once picked the reading ending "det 2051", where the
+print reads 2021. DeepInfra answered fastest and cleanly on the day, but it
+refused 22 of 29 live calls a week earlier, and the route stays on the
+provider that has been up. The option is a route field
+(`HuggingFaceInferenceRoute.request_options`), sent in every request through
+Pydantic AI's `extra_body` and recorded in each first-pass call's `parameters`.
+Tests: `tests/test_first_pass_reasoning_bound.py`. The harness's gateway counts
+a route's options as part of the settings each request must carry
+(`research_harness/gateway.py`, `tests/test_harness_route_options.py`), so an
+option on `harness-deepseek` would not block its requests; it has none.
+
+**Runs started before a route changes.** A request option is not part of a
+run's pin (`dependencies.routes` keeps model id and provider), so a run started
+before this change sends `reasoning_effort: medium` at its next first pass, and
+that call records it; nothing blocks. A move of `first-pass-glm` to another
+provider of the same model (Together, once its key is set) is carried by the
+existing repin rule (`first-pass-same-model-provider-repin-v1`): an ordinary
+first pass pinned to the old provider is repinned before it is sent, and one
+already blocked as `pinned_model_route_unavailable` is repinned by the drain's
+recovery (`tests/test_first_pass_stuck_recovery.py`); the evidence pilot's
+runs are excluded. A reader has no such rule: a run whose `handwriting-muse`
+pin names the old provider blocks its reading as
+`pinned_model_route_unavailable`, and its `parse` refuses with
+`pinned_model_route_changed_requires_new_run`, so moving a reader's provider
+needs every run not yet past `parse` reprocessed.
 
 **How they were chosen.** The ten pilot slides, cropped by hand to their left
 label, were read by both readers (19 of 20 readings; 9 labels disagree). Each

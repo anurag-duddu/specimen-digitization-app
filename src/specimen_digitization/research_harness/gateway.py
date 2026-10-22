@@ -147,9 +147,13 @@ class EffectModel(WrapperModel):
                  actual_cost: Callable[[ModelResponse], int | None] | None = None,
                  request_guard: Callable[[list, dict, dict], dict] | None = None):
         offline = isinstance(wrapped, (FunctionModel, TestModel))
+        # ModelBinding admits only a registered route of the binding's model and
+        # provider; the wrapped model must call it as the gateway builds it, on
+        # the provider's own client or, for a router route, on HF's router
+        # with "model_id:provider" (model_gateway.HuggingFaceInferenceRoute).
+        route = HUGGINGFACE_ROUTES.get(binding.route_id)
         if not offline and (not isinstance(wrapped, ArgumentPreservingHuggingFaceModel)
-                            or wrapped.model_name != binding.model_id
-                            or wrapped.provider.client.provider != binding.provider):
+                            or route is None or not route.matches_model(wrapped)):
             raise ModelGatewayBlocked("wrapped_model_does_not_match_qualified_gateway")
         if not offline and not callable(request_guard):
             raise ModelGatewayBlocked("live_request_liability_guard_missing")
@@ -158,7 +162,10 @@ class EffectModel(WrapperModel):
         self.role, self.binding = role, binding
         # JSON snapshot prevents a mutable caller mapping changing resumed pins.
         self.pins = json.loads(json.dumps(dict(pins), sort_keys=True))
-        settings = dict(model_settings or {})
+        # The wrapped model's own settings (a route's request options,
+        # model_gateway.HuggingFaceInferenceRoute) reach every request under the
+        # caller's, so each request must carry them too.
+        settings = {**dict(getattr(wrapped, "settings", None) or {}), **dict(model_settings or {})}
         if settings.get("max_tokens", binding.max_tokens) != binding.max_tokens:
             raise ModelGatewayBlocked("model_settings_differ_from_pin")
         settings["max_tokens"] = binding.max_tokens

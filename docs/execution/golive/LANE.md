@@ -152,9 +152,10 @@ What `POST /specimens/{id}/process` does depends on the current run:
 - `run_cost_limit_micros`, the budget of one run.
 - `stage_cost_micros`, the existing `StageCostReservations`: per-stage
   reservations set in the profile under PLAN 4.3's coordinator rulings, not
-  provider prices. The owner's decisions here are the USD 25 ceiling (G9) and
-  the production model allowance within it (G30: USD 5 when chosen, USD 15
-  since 2026-10-09; PLAN 2.1).
+  provider prices. The owner's decisions here are the cumulative ceiling (G9:
+  USD 25 when chosen, USD 30 since 2026-10-17) and the production model
+  allowance within it (G30: USD 5 when chosen, USD 28 since 2026-10-17; PLAN
+  2.1).
 
 A request copies both into the run's `profile.execution` as
 `approved_cost_limit_micros` and `stage_cost_reservations`. The existing workflow

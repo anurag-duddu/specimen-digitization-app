@@ -49,13 +49,52 @@ all four windows in `test/verification/fit_matrix_test.dart`:
 
 | Class | Navigation the shell draws | Where |
 |---|---|---|
-| Compact | `UiPillNav`, a floating glass capsule of discs at the foot of the window | `lib/src/app/shell.dart` |
+| Compact | `UiTabBar`, a docked bottom tab bar, the same on every platform (amended 2026-10-17, below) | `lib/src/app/shell.dart` |
 | Medium | `UiRail`, collapsed: a glyph per destination with its name on a tooltip | the same |
 | Expanded | `UiRail`, extended: the name drawn under the glyph | the same |
 | Large and extra-large | `UiSidebar`, a permanent column with the mark in its header and the account and help controls in its footer | the same |
 
 Extra-large is not a fifth arrangement: it resolves to `large` through
 `Adaptive`, which is 11 section 3.1's "nearest smaller class that is set".
+
+**Amendment, 2026-10-17 (one arrangement per window).** The table above names
+the right controls and the wrong boundaries, and its last row has not described
+the shipped client since 2026-10-01. The shell does not switch at 600, 840 and
+1200. It asks a second question of the design system,
+`WindowArrangement.of(context)` in `foundation/window.dart`, beside
+`WindowClass`:
+
+| Arrangement | When (widths are multiplied by the text scale, held to 1 through 2) | Navigation | Modal | Band |
+|---|---|---|---|---|
+| `stacked` | narrower than 768, or under 600 tall at any width | `UiTabBar` along the bottom edge; the list is its own route under a record | sheet | strip |
+| `docked` | from 768 | `UiRail`, collapsed, in `UiScaffold.nav` at the frame's start edge (`UiNavPlacement.edge`, full height; the band spans the page only), with a 312 dp list pane (scaled with the text) beside it on request | dialog | full |
+| `listDetail` | from 1100 | the same, with the list pane open beside a record from the start | dialog | full |
+
+`UiSidebar` is not drawn at any width: every docked window is the rail and the
+list pane. The list pane holds the specimen list, not destinations, so it is
+not a `UiSidebar`, which publishes a tab list.
+
+The rule is chrome's. Navigation, the compact top bar, the band's form,
+`UiDialog.showAdaptive`, `showUiModal`, the help sheet, the evidence drawer
+and the toast's corner read the arrangement. Content still reads
+`WindowClass`: a record's panes and its decision bar's previous and next, a
+list's columns, a row of buttons. Before the change the shell held the rule
+as literals of its own and every sheet, dialog and band read the width class,
+so a phone on its side (844 by 390, the expanded class), a 700 dp window and
+a tablet at 200 percent text drew the phone's tab bar beside a desktop's
+centred dialog. The boundaries are the shell's unchanged, so the captures and
+the device check of #347 and #350 still describe what ships. The list pane is
+312 dp rather than the shell's 320: `UiRail` is 72 dp where the hand-built
+column was 64, and the 8 dp come out of the pane, so while the list pane is
+open the content keeps its width (at 1180 by 820 a record 8 dp narrower moved
+its decision bar's previous and next into the overflow menu). Where the pane
+is closed, a docked window under 1100 or a pane the reviewer closed, the
+content starts at the rail's 72 dp edge rather than 64 and is 8 dp narrower. What the values buy is
+written beside them in `window.dart`, and
+`packages/specimen_ui/test/foundation/window_test.dart` pins every boundary
+from both sides. Why one rule: the owner's words of 2026-10-17 quoted in 10
+section 4.4 (the workspace form of `UiTopBar`), "i hope we arent duplicating
+and hand-codring hardcoding".
 
 Add a single source of truth and use it everywhere the three ad hoc checks
 above currently live:
@@ -186,9 +225,35 @@ What ships, and what a device capture shows:
 
 | Class | Navigation | Collection switcher | Account and help |
 |---|---|---|---|
-| Compact | `UiPillNav`, two discs, floating over the body | `UiMenuTrigger` in the top bar, capped at `AppShell.switcherMaxWidth`, 280 dp including padding | Two `UiIconButton`s in the top bar |
+| Compact | `UiTabBar`, two cells, docked to the bottom edge (amended 2026-10-17, below) | `UiMenuTrigger` in the top bar, capped at `AppShell.switcherMaxWidth`, 280 dp including padding | Two `UiIconButton`s in the top bar |
 | Medium and expanded | `UiRail`, collapsed then extended | the same | the same |
 | Large and extra-large | `UiSidebar`, permanent | in the sidebar header | in the sidebar footer |
+
+**Amendment, 2026-10-17 (compact navigation is one brand bar).** The compact
+rows above, here and in section 1, name `NavigationBar` and then `UiPillNav`;
+what ships is `UiTabBar` (10 section 4.4), the same component on iOS and on
+Android. It is docked, full width and flush to the bottom edge, with a content
+height of `max(56, 32 + scaled 16 + 4)` plus the system inset (56 dp at normal
+text, 68 dp at 200 percent), a one physical pixel
+`boundary` line along its top and a `paper` ground that runs under the inset.
+The shell used to draw `CupertinoTabBar` on iOS and Material's
+`NavigationBar` on Android; that platform fork is gone, because layout decisions
+use the window class and never the platform (section 1, "Rule: window size,
+never device type") and because 09 section 2 principle 5 keeps component
+anatomy ours on every platform. The system inset under the bar is the only
+platform dependent part, which is what "behaviour adapts" means here (section
+5, "Status bar / safe areas"). The owner's words, in a Claude Code session on
+2026-10-17: "btw ios nav behaves perfectly but android has too much
+padding/space".
+
+**Amendment, 2026-10-17 (the compact top bar is one bar).** The compact row's
+"collection switcher in the top bar" and "two `UiIconButton`s in the top bar" are
+one component now: `UiTopBar` in its workspace form (10 section 4.4), built once
+in `AppShell._compactTopBar` for the Specimens list, Intake and the screens under
+Intake. It is an opaque `paper` bar whose ground also fills the top safe inset,
+so the status strip and the bar are one surface on every tab and every platform,
+the top edge mirror of `UiTabBar` under the bottom inset; the platform decides
+how tall the inset is and nothing else. A record keeps its own page bar.
 
 Three things the old table got wrong about the shipped client and one it got
 right. Wrong: the switcher is a menu button rather than a form field, which is
@@ -520,6 +585,12 @@ Covered by the shared rule in 3.0: below 600, every edit dialog in the app
 selection, classification, coverage/approval reason, retry reason, search
 filters) becomes a bottom sheet; at 600 and above, each becomes a
 `DialogWidths`-constrained `Dialog`. No dialog keeps a bespoke pixel width.
+
+Amended 2026-10-17: the boundary is the window's arrangement, not 600. A
+sheet where the window is stacked and a dialog where it is docked
+(section 1, "one arrangement per window"; `presentsAsSheet` in
+`primitives/modal_routes.dart`), so a window that draws the tab bar never
+opens a centred dialog over it.
 
 ### 3.8 Audit history
 

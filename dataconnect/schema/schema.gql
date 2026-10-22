@@ -521,3 +521,16 @@ type DocumentListing @view(sql: """
   createdAt: Timestamp
   updatedAt: Timestamp
 }
+
+# The intake worker reads only active work, in pages, without fetching each
+# historical job individually. Job payloads contain references, not images.
+type ActiveIntakeJob @view(sql: """
+  SELECT organization_id, collection_id, id::text COLLATE "C" AS id, payload
+  FROM public.auxiliary_document
+  WHERE kind = 'intake_job' AND sensitive = false AND payload->>'state' = 'waiting'
+""") {
+  organizationId: UUID
+  collectionId: UUID
+  id: String
+  payload: Any
+}

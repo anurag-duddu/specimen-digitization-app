@@ -4,12 +4,14 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 import 'package:specimen_digitization/main.dart';
+import 'package:specimen_digitization/src/app/shell.dart' show AppShell;
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/screens/queue/queue_screen.dart';
 import 'package:specimen_digitization/src/screens/queue/workbench_screen.dart';
@@ -117,7 +119,7 @@ void main() {
     });
   });
 
-  testWidgets('empty review views show only a concise absence message', (
+  testWidgets('empty review views name the absence with no action', (
     tester,
   ) async {
     await pumpQueue(tester, ScriptedRepository());
@@ -129,9 +131,17 @@ void main() {
     }.entries) {
       await pickSpecimenQueue(tester, view.key);
       expect(find.text(view.value), findsOneWidget);
+      // The one empty state component, as every other absence in the app
+      // (10 section 4.5), rather than a bare line of text.
       expect(
-        find.descendant(of: pane, matching: find.byType(UiEmptyState)),
-        findsNothing,
+        find.descendant(
+          of: pane,
+          matching: find.ancestor(
+            of: find.text(view.value),
+            matching: find.byType(UiEmptyState),
+          ),
+        ),
+        findsOneWidget,
       );
       expect(
         find.descendant(of: pane, matching: find.byType(UiButton)),
@@ -349,7 +359,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('a queue row fits the 320 dp list pane', (tester) async {
+  testWidgets('a queue row fits the docked list pane', (tester) async {
     final ScriptedRepository repository = ScriptedRepository()
       ..results = <Specimen>[
         const Specimen({
@@ -379,7 +389,13 @@ void main() {
     final Rect idBounds = tester.getRect(
       find.text(repository.results.first.displayReference),
     );
-    expect(paneBounds.width, closeTo(320, 0.01));
+    // 312 dp since 2026-10-17: the rail is UiRail's 72 and the pane gives up
+    // the 8 dp so the content beside them keeps its width (05 section 1).
+    expect(
+      paneBounds.width,
+      closeTo(WindowArrangement.listPaneWidthOf(TextScaler.noScaling), 0.01),
+    );
+    expect(paneBounds.width, closeTo(312, 0.01));
     expect(rowBounds.width, closeTo(paneBounds.width - 32, 0.01));
     expect(rowBounds.left, closeTo(searchBounds.left, 0.01));
     expect(rowBounds.right, closeTo(searchBounds.right, 0.01));
@@ -564,4 +580,44 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
   });
+
+  // Motion catalog row 21 as the owner confirmed it on 2026-10-17: pull to
+  // refresh in the iOS and Android apps, and the account menu's reload
+  // control everywhere, so a desktop window is never left without a refresh.
+  // The web runs the desktop path; `kIsWeb` is a compile-time constant, so a
+  // widget test cannot be the web.
+  testWidgets(
+    'phones and tablets pull to refresh; every window reloads from the menu',
+    (tester) async {
+      final ScriptedRepository repository = ScriptedRepository()
+        ..results = <Specimen>[
+          const Specimen({
+            'specimen_id': 'SD-1',
+            'filename': 'First record',
+            'disposition': 'cleared',
+          }),
+        ];
+      await pumpQueue(tester, repository);
+      final bool app =
+          defaultTargetPlatform == TargetPlatform.iOS ||
+          defaultTargetPlatform == TargetPlatform.android;
+      expect(
+        find.byKey(QueueScreen.pullToRefreshKey),
+        app ? findsOneWidget : findsNothing,
+      );
+
+      final int loads = repository.requests.length;
+      await tester.tap(uiMenuTrigger(RegExp('^${AppShell.accountLabel}')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(AppShell.reloadLabel));
+      await tester.pumpAndSettle();
+      expect(
+        repository.requests.length,
+        greaterThan(loads),
+        reason: 'the reload control asks the collection again',
+      );
+      await tester.pumpWidget(const SizedBox());
+    },
+    variant: TargetPlatformVariant.all(),
+  );
 }

@@ -44,12 +44,31 @@ Whenever you edit a `.dart` file under `apps/specimen_digitization/lib/`:
 
 ### Code conventions
 
-- Material 3 with the app theme. Widgets read `Theme.of(context)` and the product
-  `ThemeExtension`; no hard-coded `Color(0x...)`, font sizes or magic paddings.
+- Widgets build on `widgets.dart` and the `specimen_ui` package and read every
+  token through `context.ui` (`UiThemeData`, design 10 section 1.4). Product
+  code never reads `Theme.of(context)`, which only feeds the remaining Material
+  infrastructure through `toThemeData()`. No hard-coded `Color(0x...)`,
+  opacities, font sizes, magic paddings or named pixel constants.
 - Layout decisions use window size (`LayoutBuilder` or `MediaQuery.sizeOf`), never
-  platform or device type.
+  platform or device type. A platform check belongs only in a capability file
+  that `test/theme/no_platform_branching_test.dart` names.
 - Every interactive control has a semantic label, a 48 dp minimum target, and a
   visible focus state. Errors and status changes are announced once.
 - All animation honors `MediaQuery.disableAnimationsOf(context)`.
 - Prefer widget tests with `WidgetTester` for every new component and a golden or
   size-class test for every new screen layout.
+
+### Gate exemptions
+
+The guard tests under `apps/specimen_digitization/test/theme/` and
+`apps/specimen_digitization/packages/specimen_ui/test/gates/` hold allow-lists,
+exemptions, shrink-only backlogs and ban lists. Never add an entry, raise a
+count, widen a capability, path or pattern, or drop a banned name to make a
+change pass: fix the code, or put the value in a `specimen_ui` token. A
+loosening needs the owner's sign-off, written on the entry as
+`// owner-approved: YYYY-MM-DD "the owner's exact words"`;
+`exemptions_owner_approved_test.dart` compares every allowance, every ban list
+and its own registry with the pull request's base and fails on a loosening
+without a sign-off new to the change. It cannot tell whether the words are
+the owner's, so never write one the owner did not give. A coordinator's,
+reviewer's or another agent's OK is not the owner's.

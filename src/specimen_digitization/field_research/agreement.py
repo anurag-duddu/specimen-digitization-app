@@ -42,14 +42,20 @@ fields' outcomes:
    "Epipsocus" quoting "cfr. Epipsocus" or "Epipsocus?"; 1c of #289's fifth
    review); a qualifier on the line above counts only standing alone on
    that line ("cf." above "Epipsocus sp. 1", never "Danum Valley NR"). The
-   step's unmatched taxon (owner decision B) meets these rules too.
+   step's unmatched taxon (owner decision B) meets these rules too. For a
+   place value field (point 4), a candidate or a reader's verbatim that
+   names no place (names_no_place: only unit words, f35af3a5's "Prov.") is
+   no candidate at all, here and in point 3.
 3. Readers and labels that disagree (B1; G19, G20, G27, G32). From the
    field's candidates and the organiser's per-reader verbatims, whatever
    state the organiser gave the field, each label that writes the field
    settles on its own (`labels`):
    - a label with a decided transcript, on its decided reading's one
-     candidate literal; its other readers are evidence only, and a label
-     whose decided reading writes nothing for the field takes no part;
+     candidate literal, or, when that reading has several texts for the
+     field, only through the field's approved sources as for the next kind
+     of label below, on one of that reading's candidate literals; its other
+     readers are evidence only, and a label whose decided reading writes
+     nothing for the field takes no part;
    - a label with none whose readers each write the same text, letter case
      and spacing aside (agreement_key: "shrubs" and "Shrubs", "sp. 30" and
      "Sp.30", "Mt." and "MT."), on its first reader's spelling, which the
@@ -59,7 +65,19 @@ fields' outcomes:
      through the field's approved sources: exactly one of its literals is
      confirmed by an answer about it (below), and every other has a captured
      no_match answer about it and no success or ambiguous one. An error, a
-     timeout or a literal never asked about is neither. A field with no
+     timeout or a literal never asked about is neither. For a place value
+     field (point 4), a literal its gazetteers found only as another kind of
+     place than the field's is ruled out too (found_only_elsewhere:
+     48a71d53's "Mindanao," beside "Davao Prov." on a province, which
+     Wikidata and NGA hold only as an island, an island group, a river,
+     streets, towns and a third-level unit): every Getty TGN, Wikidata or NGA
+     success or ambiguous answer about it lists candidates, those of two or
+     more of them hold one of its name, each of those has a kind, and none of
+     that name or one letter from it is at the field's level (one capped list
+     of candidates, Wikidata's at most seven, is not enough); GEOLocate's answers count
+     only for a city, where any candidate keeps the literal. An abbreviated
+     literal (abbreviations.abbreviated) never is, as it may stand for a name
+     no source was asked. A field with no
      approved source never settles such a label. For a place value field
      (point 4) such a label also settles when every one of its literals is
      confirmed and one authority_id confirms them all: its readers name the
@@ -122,6 +140,12 @@ fields' outcomes:
    (point 5) and then records a near_spelling warning finding, which never
    routes the record (place_settling). A lookup of any other name settles
    nothing ("Escuintla" for "Chimaltenago", "Philippines" for "P.I.").
+   A county is the country's second-level unit, whatever the country calls
+   it (a municipio of Guatemala is one: the owner's ruling of 2026-10-11),
+   and settles on no literal for which an answer about it, of one of its
+   place sources, has a candidate of the literal's name at a province's
+   level, unless the literal writes a county or municipality unit word
+   (first_level_namesake): the label may name that first-level unit.
 5. The place fits the label's other place fields (B3 and N1 of the third
    review; parents_refusal). The step checks it once every field's outcome
    is in, the country first and then the province, county and city
@@ -146,6 +170,9 @@ fields' outcomes:
      province settled for it too, when one is. No country settled for the
      reading, no parents, or none that is that country or province: the
      field goes to review with the reason. A country needs no parent;
+   - a county also needs the province its reading writes to be settled,
+     and is never that province itself: its record, or one of its texts
+     with letter case, accents and punctuation aside and unit words kept;
    - a near spelling, of any place field, settles only when every place
      field the reading writes above it (PLACE_ORDER: a province's country; a
      county's province and country; a city's county, province and country),
@@ -174,11 +201,12 @@ from typing import NamedTuple
 from specimen_digitization.application.derivations import UNITS
 from specimen_digitization.application.domain import LookupStatus
 from specimen_digitization.application.georef_locality import comparison_key, fold, one_letter_apart
+from specimen_digitization.application.georef_wikidata import FIRST_LEVEL, LEVEL_NAMES
 
 from . import written
-from .abbreviations import fit, fits, initialism
+from .abbreviations import abbreviated, fit, fits, initialism
 from .checks import collapse, genus_in_doubt, longer_name, taxon_query_grounded
-from .contracts import PLACE_SOURCES, FieldTask, Reading, SourceAnswer, SourceCandidate
+from .contracts import GAZETTEERS, PLACE_SOURCES, FieldTask, Reading, SourceAnswer, SourceCandidate
 from .written import separates as _separates
 from .written import words as _words
 
@@ -193,6 +221,13 @@ SOURCE_IDS = frozenset({"gbif", *PLACE_SOURCES})
 # ("A.ADM1"). A TGN type matches whole; a Wikidata label matches whole or
 # followed by " of " ("province of the Philippines"); an NGA code matches by
 # its start. GEOLocate's candidates are at a city's level only (at_level).
+# A county is the country's second-level unit, whatever the country calls it
+# (the owner, 2026-10-11, on a Guatemalan municipio: "however the local
+# government does it so if that is the equivalent then yes"): TGN's second
+# level subdivisions, NGA's A.ADM2, and for Wikidata a place whose classes
+# reach its second-level administrative division (sources._levels names
+# that class among a county lookup's kinds; "second-level administrative
+# country subdivision" is the class's former label).
 PLACE_LEVELS = {
     "tgn": {
         "country": ("nations",),
@@ -203,8 +238,9 @@ PLACE_LEVELS = {
     "wikidata": {
         "country": ("country", "sovereign state"),
         "province_state": ("province", "former province", "department", "state",
-            "first-level administrative country subdivision"),
-        "county": ("county", "second-level administrative country subdivision"),
+            "U.S. state", "first-level administrative division", "first-level administrative country subdivision"),
+        "county": ("county", "second-level administrative division",
+            "second-level administrative country subdivision"),
         "city": ("city", "town", "village", "human settlement", "municipality"),
     },
     "nga": {
@@ -226,6 +262,8 @@ PART_OF_NAME = "The label writes a longer scientific name than this value."
 DOUBTFUL_GENUS = "The label marks this name's genus as doubtful."
 NO_PLACE = "No approved place source confirms this value."
 EXPANSIONS_DIFFER = "The sources found different places for the label's abbreviation."
+FIRST_LEVEL_TOO = ("The sources also find this name as a province or state, so they cannot tell which the "
+    "label means.")
 NOT_EVERY_READER = "Not every reader of the label writes this text."
 PART_OF_RANGE = "The label writes this value as one end of a range."
 UNIT_DIFFERS = "The label writes this elevation in the other unit."
@@ -257,10 +295,25 @@ class Refusal:
     differ: bool = False
 
 
-def reader_literals(task: FieldTask, readings: Sequence[Reading]) -> dict[str, set[str]]:
+def names_no_place(task: FieldTask, text: str) -> bool:
+    """For a place value field, whether a text the organiser left names no
+    place at all: by the place comparison key (place_name) it is nothing but
+    unit words and punctuation, as f35af3a5's candidate "Prov." for the
+    province, cut from "Davao, Prov." (the batch rerun of 2026-10-18). Such
+    a text is no literal of the field: it neither constrains an answer's
+    literal (_cut_candidate) nor counts as a reader's text (labels). It
+    still shows that its reading writes the field, for the parents check
+    (step._place_texts, parents_refusal's NO_PROVINCE)."""
+    return task.key in PLACE_VALUE_FIELDS and not place_name(text)
+
+
+def reader_literals(task: FieldTask, readings: Sequence[Reading], *,
+        unit_words: bool = False) -> dict[str, set[str]]:
     """Each reading's literals for the field, collapsed: the organiser's
     candidates, and the per-reader verbatims it left (a reading named by its
-    observation, a raw reading first)."""
+    observation, a raw reading first), less a place's texts that name no
+    place (names_no_place) unless `unit_words` keeps them, as for the
+    parents check, which asks only whether a reading writes the field."""
     by_name = {r.name: r for r in readings}
     by_observation: dict[str, str] = {}
     for reading in readings:
@@ -268,22 +321,24 @@ def reader_literals(task: FieldTask, readings: Sequence[Reading]) -> dict[str, s
             by_observation[reading.observation_id] = reading.name
     found: dict[str, set[str]] = {}
     for candidate in task.candidates:
-        if candidate.reading in by_name and candidate.literal.strip():
+        if candidate.reading in by_name and candidate.literal.strip() and (
+                unit_words or not names_no_place(task, candidate.literal)):
             found.setdefault(candidate.reading, set()).add(collapse(candidate.literal))
     for observation, text in task.current.verbatim_by_observation.items():
         name = by_observation.get(observation)
-        if name is not None and text and text.strip():
+        if name is not None and text and text.strip() and (unit_words or not names_no_place(task, text)):
             found.setdefault(name, set()).add(collapse(text))
     return found
 
 
 def candidates_by_reading(task: FieldTask, readings: Sequence[Reading]) -> dict[str, dict[str, str]]:
     """Each reading's candidate literals for the field: collapsed, to the
-    literal exactly as its candidate gives it."""
+    literal exactly as its candidate gives it; for a place value field, none
+    that names no place (names_no_place)."""
     names = {r.name for r in readings}
     found: dict[str, dict[str, str]] = {}
     for candidate in task.candidates:
-        if candidate.reading in names and candidate.literal.strip():
+        if candidate.reading in names and candidate.literal.strip() and not names_no_place(task, candidate.literal):
             found.setdefault(candidate.reading, {}).setdefault(collapse(candidate.literal), candidate.literal)
     return found
 
@@ -402,6 +457,82 @@ def verbatim_runs(text: str, literal: str) -> list[tuple[int, int]]:
     return found
 
 
+# The fields whose literal may run over consecutive lines of one reading:
+# precise location, the label's verbatim locality, which labels often write
+# over two lines (e98a924c's "E Slope Mt." / "McKinley, Davao Prov.", the
+# organiser's two candidates "Seliban Riv." and "Mt. Apo" on 2b02009d's two
+# lines; the third rerun of 2026-10-18). Every other field, places among
+# them, keeps its literal on one line.
+ACROSS_LINES = frozenset({"precise_location"})
+
+
+def _flat(text: str) -> str:
+    """The text with each line break read as a space: the same length, so an
+    offset in it is the same offset in the text."""
+    return text.replace("\n", " ")
+
+
+def runs_across_lines(text: str, literal: str) -> list[tuple[int, int]]:
+    """Where the text writes the literal, which holds a line break, exactly as
+    a run of whole words over consecutive lines, as (start, end): it starts
+    at a word's edge on its first line and ends at one on its last line
+    (_edges), every line between lies wholly inside it, and no line of it is
+    blank. Empty when the literal holds no line break or is not so written."""
+    found: list[tuple[int, int]] = []
+    if ("\n" not in literal or literal != literal.strip()
+            or any(not line.strip() for line in literal.split("\n"))):
+        return found
+    at = text.find(literal)
+    while at >= 0:
+        end = at + len(literal)
+        first_start, first = _line_of(text, at, at)
+        last_start, last = _line_of(text, end, end)
+        starts, _ = _edges(first)
+        _, ends = _edges(last)
+        if at - first_start in starts and end - last_start in ends:
+            found.append((at, end))
+        at = text.find(literal, at + 1)
+    return found
+
+
+def written_runs(key: str, text: str, literal: str) -> list[tuple[int, int]]:
+    """Where the text writes the field `key`'s literal as a run of whole
+    words: within one line (verbatim_runs), or, for a field in ACROSS_LINES
+    whose literal holds a line break, over consecutive lines
+    (runs_across_lines)."""
+    if key in ACROSS_LINES and "\n" in literal:
+        return runs_across_lines(text, literal)
+    return verbatim_runs(text, literal)
+
+
+def across_lines(key: str, readings: Sequence[Reading], literal: str) -> str | None:
+    """For a field in ACROSS_LINES, the text each of these readings writes for
+    the literal over consecutive lines, its line breaks as the readings write
+    them, when the literal reads each line break as a space or a line break
+    (_flat) and every reading writes that one text so (runs_across_lines):
+    e98a924c's expert gave "E Slope Mt. McKinley, Davao Prov.", which both
+    readers of its label write as "E Slope Mt.\\nMcKinley, Davao Prov.".
+    None for any other field, when no reading is given, or when a reading
+    writes no such text or several."""
+    if key not in ACROSS_LINES or not readings or not literal or literal != literal.strip():
+        return None
+    want = _flat(literal)
+    found: set[str] = set()
+    for reading in readings:
+        flat = _flat(reading.text)
+        texts = set()
+        at = flat.find(want)
+        while at >= 0:
+            written = reading.text[at:at + len(want)]
+            if "\n" in written and runs_across_lines(reading.text, written):
+                texts.add(written)
+            at = flat.find(want, at + 1)
+        if len(texts) != 1:
+            return None
+        found |= texts
+    return found.pop() if len(found) == 1 else None
+
+
 def _agreeing_spans(text: str, literal: str) -> list[tuple[str, int, int]]:
     """Each run of whole words within one line of the text (as verbatim_runs
     reads them) that is the literal, letter case and spacing aside
@@ -428,6 +559,51 @@ def agreeing_runs(text: str, literal: str) -> list[str]:
     return list(dict.fromkeys(line[start:end] for line, start, end in _agreeing_spans(text, literal)))
 
 
+def _agreeing_spans_across(text: str, literal: str) -> list[tuple[int, int]]:
+    """Each run of whole words over one or more consecutive lines of the text
+    that is the literal, letter case, spacing and line breaks aside
+    (agreement_key), as (start, end) in the text: it starts at a word's edge
+    of its line and ends at one of its line (_edges)."""
+    want = agreement_key(literal)
+    if not want or not any(char.isalnum() for char in want) or want not in agreement_key(text):
+        return []
+    starts: list[int] = []
+    ends: set[int] = set()
+    for offset, line in _lines(text):
+        line_starts, line_ends = _edges(line)
+        starts.extend(offset + index for index in sorted(line_starts))
+        ends.update(offset + index for index in line_ends)
+    found = []
+    for start in dict.fromkeys(starts):
+        for end in sorted(ends):
+            if end > start and agreement_key(text[start:end]) == want:
+                found.append((start, end))
+    return list(dict.fromkeys(found))
+
+
+def _holding_across(text: str, start: int, end: int) -> str:
+    """The text holding the span [start, end) over consecutive lines: from
+    just after the last comma or semicolon before it on its first line to
+    just before the first one at or after its end on its last line (_clause),
+    each line's edge where it has none."""
+    first_start, first = _line_of(text, start, start)
+    last_start, last = _line_of(text, end, end)
+    return text[first_start + _clause(first, start - first_start, start - first_start)[0]:
+        last_start + _clause(last, end - last_start, end - last_start)[1]]
+
+
+def _within_runs(text: str, piece: str, spans: Sequence[tuple[int, int]]) -> bool:
+    """Whether the text writes `piece` (line breaks read as spaces) and every
+    place it does lies wholly inside one of the spans."""
+    flat, want = _flat(text), _flat(piece)
+    places = []
+    at = flat.find(want) if want else -1
+    while at >= 0:
+        places.append((at, at + len(want)))
+        at = flat.find(want, at + 1)
+    return bool(places) and all(any(start <= at and stop <= end for start, end in spans) for at, stop in places)
+
+
 def holding_clauses(text: str, literal: str) -> list[str]:
     """The clauses of the text that hold the literal: for each run that is
     the literal, letter case and spacing aside (_agreeing_spans), the comma-
@@ -446,13 +622,54 @@ def _cut_candidate(task: FieldTask, readings: Sequence[Reading], literal: str,
     """A candidate of a reading the answer names (its label's decided reading,
     on a label with one) that the literal cuts or extends, as (reading,
     candidate literal): one holds the other and they differ ("Sept. '46" and
-    "3 Sept. '46", "Danaus" and "Danaus plexippus", B2). None otherwise."""
+    "3 Sept. '46", "Danaus" and "Danaus plexippus", B2). A literal over
+    consecutive lines (ACROSS_LINES: it holds a line break) may hold whole
+    candidates, the organiser's lines of one locality joined in their order
+    on the label (2b02009d's "Seliban Riv." and "Mt. Apo"): it cuts a
+    candidate when it is a piece of one, or when one of the candidate's
+    places in the reading lies partly inside one of its runs and partly
+    outside (runs_across_lines). It extends one when a line of a run holds a
+    candidate and other words besides ("near Mt. Apo" of "Seliban Riv." /
+    "near Mt. Apo", as "near Mt. Apo" on one line extends "Mt. Apo"; round 1
+    of #379's review, finding 3): a line holding a candidate holds no letter
+    or digit but its candidates', only punctuation and spaces between them. A
+    line holding none may join them (e98a924c's lines, no candidate filed).
+    None otherwise."""
     want = collapse(literal)
     allowed = candidates_by_reading(task, readings)
+    across = task.key in ACROSS_LINES and "\n" in literal
     for reading in dict.fromkeys(_deciding(r, readings) for r in named):
+        spans = runs_across_lines(reading.text, literal) if across else []
+        places: list[tuple[int, int, str]] = []
         for text, given in allowed.get(reading.name, {}).items():
-            if text != want and (want in text or text in want):
+            if text == want:
+                continue
+            if want in text:
                 return reading.name, given
+            if not across:
+                if text in want:
+                    return reading.name, given
+                continue
+            flat = _flat(reading.text)
+            at = flat.find(_flat(given))
+            while at >= 0:
+                stop = at + len(given)
+                if any(start < stop and at < end and not (start <= at and stop <= end) for start, end in spans):
+                    return reading.name, given
+                if any(start <= at and stop <= end for start, end in spans):
+                    places.append((at, stop, given))
+                at = flat.find(_flat(given), at + 1)
+        for start, end in spans:
+            for offset, line in _lines(reading.text):
+                first, last = max(start, offset), min(end, offset + len(line))
+                held = [(at, stop, given) for at, stop, given in places if first <= at and stop <= last]
+                if first >= last or not held:
+                    continue
+                left = list(reading.text[first:last])
+                for at, stop, _ in held:
+                    left[at - first:stop - first] = " " * (stop - at)
+                if any(char.isalnum() for char in left):
+                    return reading.name, held[0][2]
     return None
 
 
@@ -462,15 +679,16 @@ def literal_basis(task: FieldTask, readings: Sequence[Reading], literal: str,
     candidate literal of every reading it names (candidate_literal).
     TRANSCRIPT: it is not, but each of those readings (its label's decided
     reading, on a label with one) writes it as a run of whole words within
-    one line (verbatim_runs), and it cuts or extends no candidate of that
-    reading (_cut_candidate): the expert read it in the transcript itself
-    (the owner's design: experts with every raw transcription). None
-    otherwise."""
+    one line (verbatim_runs; for precise location, over consecutive lines
+    when it holds a line break: written_runs), and it cuts or extends no
+    candidate of that reading (_cut_candidate): the expert read it in the
+    transcript itself (the owner's design: experts with every raw
+    transcription). None otherwise."""
     if not named:
         return None
     if candidate_literal(task, readings, literal, named) is not None:
         return CANDIDATE
-    if (all(verbatim_runs(_deciding(reading, readings).text, literal) for reading in named)
+    if (all(written_runs(task.key, _deciding(reading, readings).text, literal) for reading in named)
             and _cut_candidate(task, readings, literal, named) is None):
         return TRANSCRIPT
     return None
@@ -518,9 +736,14 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
         "A resolved literal is one of the organiser's candidate literals for every reading you "
         "name (on a label with a decided transcript, that reading's), whole and exactly as the "
         f"candidate gives it. Candidates for the readings you named: {shown}. Never shorten or "
-        "extend a candidate. When no candidate is the right text, the literal may be text that "
-        "each reading you name writes itself: whole words within one line, cutting no word and "
-        "no candidate. Copy it and name only readings that have it, or answer "
+        "extend a candidate. When no candidate is the right text (the organiser may have given "
+        "this field another field's text, or a place of another kind), the literal may be text "
+        "that each reading you name writes itself for this field: whole words within one line, "
+        "cutting no word and no candidate. "
+        + ("A locality written over consecutive lines may run over them: copy those lines as the "
+           "reading writes them, holding whole candidates in their order on the label and cutting none. "
+           if task.key in ACROSS_LINES else "")
+        + "Copy it and name only readings that have it, or answer "
         "several_possibilities or sources_cannot_resolve."))
 
 
@@ -742,9 +965,17 @@ def at_level(key: str, answer: SourceAnswer) -> list[SourceCandidate]:
     if answer.source_id == "geolocate":
         return list(answer.candidates) if key == "city" else []
     levels = PLACE_LEVELS.get(answer.source_id, {}).get(key, ())
-    return [candidate for candidate in answer.candidates
+    found = [candidate for candidate in answer.candidates
         if any(_kind_matches(answer.source_id, kind, level)
             for kind in (candidate.kind or "").split(",") for level in levels)]
+    if key == "county" and answer.source_id == "wikidata":
+        # A Wikidata place whose classes reach the first-level division is
+        # never a county, whatever its other kinds say (sources._place names
+        # that class among its kinds; Codex's review of #325 at 9f5319ca).
+        first = LEVEL_NAMES[FIRST_LEVEL]
+        found = [candidate for candidate in found
+            if first not in (kind.strip().casefold() for kind in (candidate.kind or "").split(","))]
+    return found
 
 
 def placed(key: str, answer: SourceAnswer) -> SourceCandidate | None:
@@ -761,12 +992,24 @@ def identities(answers: Iterable[SourceAnswer], literal: str, key: str) -> set[s
     """What captured answers about this literal confirm it as, for the field
     `key`: the authority_id of GBIF's decided candidate (the one its
     evidence's locator names) in a success answer; for a place value field,
-    of the one candidate at its level (placed) when it has the literal's name;
-    for another field a place source answers, of a success answer's candidate
-    of that name. Names compare as place names. Empty when nothing confirms it."""
+    of the one candidate at its level (placed) when it has the literal's name,
+    or, for a literal written as an abbreviation, of the one candidate at its
+    level of a place source's answer asked an expansion its letters fit
+    (abbreviations.fit, the rule place_settling settles such a value by:
+    "United States of America" for 3781e440's "USA", "Illinois" for its
+    "Ill."; a place settled so on initials still needs another place inside
+    it, step._corroborate); for another field a place source answers, of a
+    success answer's candidate of that name. Names compare as place names.
+    Empty when nothing confirms it."""
     found: set[str] = set()
     for answer in answers:
-        if answer.evidence is None or not about(answer, literal):
+        if answer.evidence is None:
+            continue
+        if not about(answer, literal):
+            if (key in PLACE_VALUE_FIELDS and answer.source_id in PLACE_SOURCES
+                    and fits(literal, asked_name(answer))
+                    and (one := placed(key, answer)) is not None and one.authority_id):
+                found.add(one.authority_id)
             continue
         if answer.source_id == "gbif" or key not in PLACE_VALUE_FIELDS:
             if answer.status != LookupStatus.SUCCESS:
@@ -787,6 +1030,127 @@ def ruled_out(answers: Iterable[SourceAnswer], literal: str) -> bool:
     asked = [a for a in answers if a.evidence is not None and about(a, literal)]
     return (any(a.status == LookupStatus.NO_MATCH for a in asked)
         and not any(a.status in (LookupStatus.SUCCESS, LookupStatus.AMBIGUOUS) for a in asked))
+
+
+def found_only_elsewhere(answers: Iterable[SourceAnswer], literal: str, key: str) -> bool:
+    """Whether the place value field `key`'s sources found this literal, but
+    only as another kind of place than the field's, so that it is ruled out
+    for the field as a literal no source found is (ruled_out): 48a71d53's
+    "Mindanao," on a province, which Wikidata finds as an island and an
+    island group and NGA as an island, a stream, streets, towns and a
+    third-level unit, beside "Davao Prov.", a province. Every Getty TGN,
+    Wikidata or NGA answer about it (about) with a success or ambiguous
+    status and its evidence stored lists candidates; those of two or more of
+    these gazetteers hold one of the literal's name (place_name), as one
+    answer's list may be cut short (Wikidata's holds at most seven); each
+    candidate of that name has a kind; and no candidate at the field's level
+    (at_level) has its name or one letter from it (one_letter_apart).
+    GEOLocate's candidates repeat a part of the
+    query except for a city (at_level), so its answers count only for a
+    city, where any candidate keeps the literal. Never for an abbreviated
+    literal (abbreviations.abbreviated: "Ill.", "Mt. Apo"), which may stand
+    for a name no source was asked, nor for a literal asked of no gazetteer."""
+    want = place_name(literal)
+    if key not in PLACE_VALUE_FIELDS or not want or abbreviated(literal):
+        return False
+    named: set[str] = set()
+    for answer in answers:
+        if (answer.source_id not in PLACE_SOURCES or answer.evidence is None
+                or answer.status not in PLACE_ANSWERED or not about(answer, literal)):
+            continue
+        if answer.source_id == "geolocate":
+            if key == "city" and answer.candidates:
+                return False
+            continue
+        if not answer.candidates:
+            return False
+        for candidate in answer.candidates:
+            if place_name(candidate.name) == want:
+                if not (candidate.kind or "").strip():
+                    return False
+                named.add(answer.source_id)
+        if any(place_name(candidate.name) == want or one_letter_apart(literal, candidate.name)
+                for candidate in at_level(key, answer)):
+            return False
+    return len(named) >= 2
+
+
+def evidence_only(text: str, reading: Reading, readings: Sequence[Reading]) -> bool:
+    """Whether the reading writes the text only as evidence: it is another
+    reader of a label with a decided transcript, whose text decides the label
+    (G19), and the decided reading does not write the text (literal_refusal's
+    NOT_DECIDED test). d10333ff's "BONITELL": reader 1B's line where the
+    decided 1A writes "ILLINOIS"."""
+    chosen = _deciding(reading, readings)
+    return chosen is not reading and chosen.input_source == DECIDED and text not in chosen.text
+
+
+def disputed(text: str, reading: Reading, readings: Sequence[Reading],
+        claimed: Mapping[str, Iterable[str]]) -> bool:
+    """Whether the readers of the reading's label dispute the text where the
+    reading writes it: the other reader reads that very ink as the text of a
+    field of another kind. The label has no decided transcript and exactly one other
+    reader, which writes the text nowhere; each run of the text in the
+    reading (verbatim_runs) lies wholly inside the token differences between
+    the two readings (application.first_pass.reading_differences: the
+    differences the label's first pass is asked to judge), each with text on
+    the other reader's side; that side, joined, is neither the text's place
+    name (place_name) nor a spelling one letter from it (one_letter_apart);
+    and it is written, as whole words, in one of the other reader's texts for
+    a field of another kind (`claimed`, by reading name: the organiser's
+    candidates and those fields' literals; step._claimed_texts leaves out
+    every place field). d10333ff's determination label: reader 3A writes
+    "Panama" where 3B writes "Panorpa", 3B's taxon; a collector's "Chas." or
+    a date's "1945" there is another kind too. A reader that leaves the text
+    out (no text on its side) disputes nothing, nor does one that writes it
+    with other accents or one letter off ("Panamá"), nor one whose other
+    words no such field holds: two spellings of one country, or another
+    place field's text ("Texas" where the other writes "Mexico"), a rival
+    reading of the same place."""
+    from specimen_digitization.application.first_pass import reading_differences
+
+    group = [r for r in readings if r.region_id == reading.region_id]
+    if len(group) != 2 or any(r.input_source == DECIDED for r in group):
+        return False
+    other = group[1] if group[0] is reading else group[0]
+    runs = verbatim_runs(reading.text, text)
+    if not runs or verbatim_runs(other.text, text):
+        return False
+    theirs_elsewhere = [held for held in claimed.get(other.name, ()) if held and held.strip()]
+    pairs = [(mine, theirs) for mine, theirs in reading_differences(reading.text, other.text) if mine.end > mine.start]
+    for start, end in runs:
+        covering: list[int] = []
+        for index in range(start, end):
+            if reading.text[index].isspace():
+                continue
+            at = next((n for n, (mine, _) in enumerate(pairs) if mine.start <= index < mine.end), None)
+            if at is None:
+                return False
+            if at not in covering:
+                covering.append(at)
+        theirs = [pairs[n][1].text for n in covering]
+        if not all(part.strip() for part in theirs):
+            return False
+        counterpart = " ".join(theirs)
+        if place_name(counterpart) == place_name(text) or one_letter_apart(text, counterpart):
+            return False
+        if not any(verbatim_runs(held, counterpart) for held in theirs_elsewhere):
+            return False
+    return True
+
+
+def set_aside(text: str, readings: Sequence[Reading], claimed: Mapping[str, Iterable[str]]) -> bool:
+    """Whether a place text stands on no reading that may settle a field: some
+    reading writes it as whole words (verbatim_runs), and every reading that
+    does writes it only as evidence (evidence_only) or as text its label's
+    readers dispute (disputed, with `claimed`, each reading's texts for the
+    other fields). Such a text never holds back a country that the record's
+    settled places derive (step._country_alternatives_are_lower_places).
+    Only that check reads it: everywhere else it is still its label's text
+    (labels)."""
+    writers = [reading for reading in readings if verbatim_runs(reading.text, text)]
+    return bool(writers) and all(evidence_only(text, reading, readings)
+        or disputed(text, reading, readings, claimed) for reading in writers)
 
 
 def agreement_key(text: str) -> str:
@@ -832,15 +1196,19 @@ def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[Sourc
     """Each label that writes the field, by region, settled on its own
     (G19, G20, G27, G32):
     - a label with a decided transcript, on the one candidate literal its
-      decided reading has; its other readers are evidence only, and a label
-      whose decided reading writes nothing for the field takes no part;
+      decided reading has, or, when that reading has several texts for the
+      field, through the field's approved sources as below, on one of its
+      candidate literals (48a71d53's "Davao Prov." beside "Mindanao,"); its
+      other readers are evidence only, and a label whose decided reading
+      writes nothing for the field takes no part;
     - a label whose readers each write the same text, letter case and
       spacing aside (agreement_key: "shrubs" and "Shrubs", "sp. 30" and
       "Sp.30"), on the first reader's spelling (_spelling);
     - a label whose readers differ (or where one writes nothing), only through
       the field's approved sources (`answers`): exactly one of its literals
-      is confirmed (identities), and every other is ruled out (ruled_out);
-      or, for a place value field, every one of its literals is confirmed and
+      is confirmed (identities), and every other is ruled out (ruled_out,
+      or, for a place value field, found_only_elsewhere); or, for a place
+      value field, every one of its literals is confirmed and
       one authority_id confirms them all, so its readers name the same place
       ("Yepocapa," and "Yepocapa"; N4 of #284's third review). That settles
       on the source's evidence, each literal matching the candidate's name
@@ -865,15 +1233,32 @@ def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[Sourc
     allowed = candidates_by_reading(task, readings)
     sourced = bool(frozenset(task.tools) & SOURCE_IDS)
     read_on = frozenset(reading.region_id for reading in named) if transcript is not None else frozenset()
+    # A literal over consecutive lines (ACROSS_LINES): each reader's runs of it.
+    across = transcript is not None and task.key in ACROSS_LINES and "\n" in transcript
+    spans_of: dict[str, list[tuple[int, int]]] = {}
     regions: dict[str, list[Reading]] = {}
     for reading in readings:
         regions.setdefault(reading.region_id, []).append(reading)
         if reading.region_id in read_on:
-            runs = agreeing_runs(reading.text, transcript)
+            if across:
+                spans_of[reading.name] = _agreeing_spans_across(reading.text, transcript)
+                runs = [reading.text[start:end] for start, end in spans_of[reading.name]]
+            else:
+                runs = agreeing_runs(reading.text, transcript)
             if runs:
                 literals.setdefault(reading.name, set()).update(collapse(run) for run in runs)
-            if verbatim_runs(reading.text, transcript):
+            if written_runs(task.key, reading.text, transcript):
                 allowed.setdefault(reading.name, {}).setdefault(collapse(transcript), transcript)
+    if across:
+        # The texts a reader's run of the literal holds wholly are parts of it
+        # (the organiser's "Seliban Riv." and "Mt. Apo" of 2b02009d's two
+        # lines), not rival texts of the field.
+        by_name = {reading.name: reading for reading in readings}
+        whole = collapse(transcript)
+        for name, spans in spans_of.items():
+            if spans and name in literals:
+                literals[name] = {text for text in literals[name]
+                    if text == whole or not _within_runs(by_name[name].text, text, spans)}
     found: dict[str, Label] = {}
     for region, group in regions.items():
         decided = next((r for r in group if r.input_source == DECIDED), None)
@@ -881,7 +1266,8 @@ def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[Sourc
             texts = frozenset(literals.get(decided.name, ()))
             if texts:
                 one = len(texts) == 1 and texts <= set(allowed.get(decided.name, {}))
-                found[region] = Label(texts, texts if one else frozenset())
+                found[region] = (_by_source(task, texts & set(allowed.get(decided.name, {})), texts, answers)
+                    if len(texts) > 1 and sourced else None) or Label(texts, texts if one else frozenset())
             continue
         each = [frozenset(literals.get(r.name, ())) for r in group]
         texts = frozenset().union(*each)
@@ -895,7 +1281,9 @@ def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[Sourc
             # Each reader's clauses holding the text agree, letter case and
             # spacing aside, or the readers write different text around it
             # ("trap" and "light trap", "Yepocapa" and "near Yepocapa").
-            held = {r.name: holding_clauses(r.text, transcript) for r in group}
+            held = {r.name: (list(dict.fromkeys(_holding_across(r.text, start, end)
+                for start, end in spans_of.get(r.name, ()))) if across else holding_clauses(r.text, transcript))
+                for r in group}
             keys = {frozenset(agreement_key(clause) for clause in clauses) for clauses in held.values() if clauses}
             if len(keys) > 1:
                 found[region] = Label(texts | frozenset(collapse(clause) for clauses in held.values()
@@ -909,14 +1297,27 @@ def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[Sourc
             continue
         confirmed = {text: identities(answers, text, task.key) for text in texts} if sourced else {}
         ones = frozenset(text for text, ids in confirmed.items() if ids)
-        if len(ones) == 1 and all(ruled_out(answers, text) for text in texts - ones):
-            found[region] = Label(texts, ones, by_source=True)
+        if sourced and (label := _by_source(task, texts, texts, answers)) is not None:
+            found[region] = label
         elif (task.key in PLACE_VALUE_FIELDS and ones == texts
                 and frozenset.intersection(*(frozenset(confirmed[text]) for text in texts))):
             found[region] = Label(texts, texts, by_source=True)
         else:
             found[region] = Label(texts)
     return found
+
+
+def _by_source(task: FieldTask, choices: frozenset[str], texts: frozenset[str],
+        answers: Sequence[SourceAnswer]) -> Label | None:
+    """A label settled through the field's approved sources on the one of its
+    `texts` they confirm (identities), when that one is among `choices` and
+    every other is ruled out (ruled_out, or, for a place value field,
+    found_only_elsewhere); None otherwise."""
+    ones = frozenset(text for text in texts if identities(answers, text, task.key))
+    if len(ones) == 1 and ones <= choices and all(ruled_out(answers, text)
+            or found_only_elsewhere(answers, text, task.key) for text in texts - ones):
+        return Label(texts, ones, by_source=True)
+    return None
 
 
 def _disagreement(task: FieldTask, readings: Sequence[Reading], *, literal: str,
@@ -967,10 +1368,13 @@ def _disagreement(task: FieldTask, readings: Sequence[Reading], *, literal: str,
         return Refusal(DIFFER, (
             f"The readers disagree on this field ({shown}). A label with no decided transcript "
             "whose readers differ settles only when your approved sources were asked about each "
-            "reader's text: exactly one confirmed by a success answer, every other found by none "
+            "reader's text: exactly one confirmed by a success answer (for a place written as an "
+            "abbreviation, an answer asked its expansion may confirm it), every other found by none "
             "(a no_match answer, and no success or ambiguous one)"
-            + ("; or, for a place, each reader's text confirmed as the same place (one candidate "
-               "at this field's level, with one authority_id)." if task.key in PLACE_VALUE_FIELDS
+            + (", or found only as another kind of place than this field's (no candidate of its name, "
+               "or one letter from it, at this field's level); or, for a place, each reader's text "
+               "confirmed as the same place (one candidate at this field's level, with one "
+               "authority_id)." if task.key in PLACE_VALUE_FIELDS
                else "." if sources else "; this field has no such source.")
             + " Ask about each reader's text, or answer several_possibilities with each reader's "
             "text, or sources_cannot_resolve."), differ=True)
@@ -984,7 +1388,10 @@ def _disagreement(task: FieldTask, readings: Sequence[Reading], *, literal: str,
                 "that writes it, or answer several_possibilities."), differ=True)
         if not identities(cited, one, task.key):
             return Refusal(DIFFER, (
-                f"Cite the evidence_id of the source answer that confirms {one!r}."), differ=True)
+                f"Cite the evidence_id of the source answer that confirms {one!r}"
+                + (" (for an abbreviation, the answer asked its expansion, whose one candidate at this "
+                   "field's level is your value)" if task.key in PLACE_VALUE_FIELDS and abbreviated(one)
+                   else "") + "."), differ=True)
         return None
     # G32 and N4: labels, or readers of one label, that settle on different
     # text agree only through a source that confirms each text as the same
@@ -1171,6 +1578,8 @@ NOT_IN_COUNTRY = "The place found is not in the country the label gives."
 NOT_IN_PROVINCE = "The place found is not in the province the label gives."
 NEAR_UNFIT = ("The place found is one letter from the label's spelling, and the larger places the label "
     "gives do not confirm it.")
+NO_PROVINCE = "The province the label gives is not settled, so this county cannot be confirmed inside it."
+IS_THE_PROVINCE = "The label gives this place as the province, and a province is never also the county."
 PLACE_ORDER = ("country", "province_state", "county", "city")
 
 
@@ -1223,18 +1632,128 @@ def lies_in(candidate: SourceCandidate, key: str, field: PlaceField) -> bool:
         or (code is not None and country_code(parent.iso_code) == code) for parent in candidate.parents)
 
 
+def confirmed_place(answers: Iterable[SourceAnswer], texts: Iterable[str], key: str) -> PlaceField | None:
+    """The one place the gazetteers confirm every one of a place field's texts
+    as, or None. For each text, the Getty TGN, Wikidata or NGA answers about
+    it (about) or asked an expansion its letters fit (abbreviations.fit),
+    success or ambiguous and with their evidence stored, confirm it as the one
+    candidate at the field's level (identities: of the text's own name, or of
+    an expansion's answer); at least one does, and every candidate at the
+    field's level that one of those answers settles on (placed), of whatever
+    name, is that same place (another_place: another record and another
+    name). 3781e440's "USA" is the United States: Wikidata's answer for
+    "United States of America" confirms it, and its answer for "USA" itself
+    has that nation as its one nation. One text placed as two places, or two
+    texts as different places, give None. The result names the place by
+    those candidates' names, with their record and ISO code when they share
+    one."""
+    texts = [text for text in dict.fromkeys(texts) if text and text.strip()]
+    if key not in PLACE_VALUE_FIELDS or not texts:
+        return None
+    usable = [answer for answer in answers if answer.source_id in GAZETTEERS and answer.evidence is not None
+        and answer.status in PLACE_ANSWERED]
+    found: list[SourceCandidate] = []
+    for text in texts:
+        if not identities(usable, text, key):
+            return None
+        asked = [answer for answer in usable if about(answer, text) or fits(text, asked_name(answer))]
+        found.extend(one for answer in asked if (one := placed(key, answer)) is not None)
+    if not found or any(another_place(one, other) for one in found for other in found):
+        return None
+    ids = {one.authority_id for one in found if one.authority_id}
+    codes = {one.iso_code for one in found if one.iso_code}
+    return PlaceField(tuple(dict.fromkeys(one.name for one in found)), ids.pop() if len(ids) == 1 else None,
+        codes.pop() if len(codes) == 1 else None)
+
+
+def _written_ancestor_fits(field: PlaceField, literal: str | None) -> bool:
+    """Whether an unsettled larger field is the same misplaced literal.
+
+    An unsettled larger field may be the same misplaced text that is being
+    moved to its real level ("Illinois" written under country, then settled
+    as province/state). If it is merely a candidate parent ("United States"
+    above "Illinois"), the larger field's own failure must not be hidden by a
+    lower field.
+    """
+    names = place_keys(field.texts)
+    return literal is not None and place_name(literal) in names
+
+
+def _written_ancestor_is_settled_lower(key: str, ancestor: str, candidate: SourceCandidate,
+        field: PlaceField, settled: Mapping[str, PlaceField]) -> bool:
+    """Whether an unsettled ancestor's text has already settled lower down.
+
+    Example: Country writes "Illinois", Province/State has been reconciled to
+    Illinois, and a city candidate lies in Illinois. The written country is not
+    a country failure to hide; it is the same misfiled state text.
+    """
+    names = place_keys(field.texts)
+    for lower in PLACE_ORDER[PLACE_ORDER.index(ancestor) + 1:PLACE_ORDER.index(key)]:
+        lower_field = settled.get(lower)
+        if lower_field is not None and names & place_keys(lower_field.texts) and lies_in(
+                candidate, lower, lower_field):
+            return True
+    return False
+
+
+def _can_derive_ancestor(key: str, ancestor: str, candidate: SourceCandidate, basis: str,
+        written: Mapping[str, PlaceField], settled: Mapping[str, PlaceField],
+        literal: str | None, confirmed: Mapping[str, PlaceField] | None = None) -> bool:
+    """Whether an exact place match can stand while an ancestor is filled later.
+
+    Near spellings still need already-settled ancestors; otherwise a typo could
+    silently move a label into the wrong hierarchy. A written ancestor that is
+    not settled holds the place back unless it is the same misfiled text, has
+    settled lower down, or the gazetteers confirm every text the record writes
+    for it as one place that is the candidate's parent (`confirmed`,
+    confirmed_place): 3781e440's country "USA", one reader's text, which no
+    answer settled, while its county Coles County lies in the United States
+    that "USA" is confirmed as. An ancestor left with no value and no text
+    is then derived from the place (derive.fill); its text never supplies
+    the value.
+    """
+    if basis == NEAR_SPELLING:
+        return False
+    if ancestor == "country" and not candidate.parents:
+        return False
+    if ancestor == "province_state" and key in ("county", "city") and len(candidate.parents) < 2:
+        return False
+    field = written.get(ancestor)
+    found = (confirmed or {}).get(ancestor)
+    return (field is None or _written_ancestor_fits(field, literal)
+        or _written_ancestor_is_settled_lower(key, ancestor, candidate, field, settled)
+        or (found is not None and lies_in(candidate, ancestor, found)))
+
+
 def parents_refusal(key: str, candidate: SourceCandidate, basis: str, *,
-        written: Mapping[str, PlaceField], settled: Mapping[str, PlaceField]) -> Refusal | None:
+        written: Mapping[str, PlaceField], settled: Mapping[str, PlaceField],
+        literal: str | None = None, unsettled: frozenset[str] = frozenset(),
+        confirmed: Mapping[str, PlaceField] | None = None) -> Refusal | None:
     """Why the candidate a place value settles on does not fit the label's
     other place fields of one reading (B3 and N1 of #284's third review), or
     None. `written` is every other place field that reading writes; `settled`
-    those of them settled from that reading's text.
+    those of them settled from that reading's text; `unsettled` those of them
+    whose field has no settled value at all; `literal` the value's literal;
+    `confirmed` the place the gazetteers confirm every text the record writes
+    for an unsettled field as (confirmed_place), by field.
     - Below the country, the candidate has parents (SourceCandidate.parents),
       the country settled for the reading is one of them, and for a county or
       a city, the province settled for the reading too when one is. A
       candidate with no parents, or none of whose parents is that country,
       does not settle; nor does any place when no country is settled for the
-      reading. A country needs no parent.
+      reading, unless the reading writes no country, writes the place's own
+      misfiled text there, or writes a country whose every text on the
+      record the gazetteers confirm as a parent of the candidate (`confirmed`,
+      _can_derive_ancestor). A country needs no parent.
+    - A county also needs the province its reading writes to be settled
+      (NO_PROVINCE, when that field has no settled value: `unsettled`): a
+      second-level unit's parent chain is confirmed only inside a settled
+      province. And it is never the settled province
+      itself (IS_THE_PROVINCE): neither that province's record nor, letter
+      case, accents and punctuation aside (georef_locality.fold, unit words
+      kept), one of its texts, values or expansions, so "<Province>" or
+      "<Province> Prov." written once as the province is no county, while
+      "<Name> Co." in the state "<Name>" may be.
     - A near spelling (NEAR_SPELLING) settles only on G34's whole condition,
       on the larger places: every place field the reading writes above the
       field's own (PLACE_ORDER), all of them and at least one, names a
@@ -1245,11 +1764,24 @@ def parents_refusal(key: str, candidate: SourceCandidate, basis: str, *,
         if not candidate.parents:
             return Refusal(NO_PARENTS, NO_PARENTS)
         country = settled.get("country")
-        if country is None:
+        if country is None and not _can_derive_ancestor(
+                key, "country", candidate, basis, written, settled, literal, confirmed):
             return Refusal(NO_COUNTRY, NO_COUNTRY)
-        if not lies_in(candidate, "country", country):
+        if country is not None and not lies_in(candidate, "country", country):
             return Refusal(NOT_IN_COUNTRY, NOT_IN_COUNTRY)
         province = settled.get("province_state")
+        if (key == "county" and "province_state" in unsettled
+                and not _can_derive_ancestor(
+                    key, "province_state", candidate, basis, written, settled, literal)):
+            return Refusal(NO_PROVINCE, NO_PROVINCE)
+        if (key == "city" and "province_state" in unsettled
+                and not _can_derive_ancestor(
+                    key, "province_state", candidate, basis, written, settled, literal)):
+            return Refusal(NO_PROVINCE, NO_PROVINCE)
+        if key == "county" and province is not None and (
+                (province.authority_id is not None and candidate.authority_id == province.authority_id)
+                or (literal is not None and fold(literal) in {fold(text) for text in province.texts})):
+            return Refusal(IS_THE_PROVINCE, IS_THE_PROVINCE)
         if key in ("county", "city") and province is not None and not lies_in(
                 candidate, "province_state", province):
             return Refusal(NOT_IN_PROVINCE, NOT_IN_PROVINCE)
@@ -1307,4 +1839,49 @@ def refusal(task: FieldTask, readings: Sequence[Reading], *, literal: str,
             return Refusal(EXPANSIONS_DIFFER, (
                 f"{told[0].upper()}{told[1:]}. The letters do not decide between them: answer "
                 "several_possibilities, or sources_cannot_resolve."), differ=True)
+        if task.key == "county" and (first := first_level_namesake(task, literal, received)) is not None:
+            return Refusal(FIRST_LEVEL_TOO, (
+                f"Your sources also found {first!r}, a first-level unit (a province, state or department), "
+                f"for the label's text {literal!r}, which writes no county or municipality unit word: the "
+                "label may name that unit, and the sources cannot tell which it means. A first-level "
+                "unit is never the county: answer several_possibilities, or sources_cannot_resolve."),
+                differ=True)
+    return None
+
+
+def writes_county_unit(literal: str) -> bool:
+    """Whether the literal writes a unit word that marks a county or a
+    municipality (admin_markers.ADMIN_MARKERS: "Co.", "County", "Kreis",
+    "Mun.", "Municipio" and the others), as a word of its own; one of
+    admin_markers.AFTER_A_NAME ("Co.") only after a name ("<County> Co.",
+    never "Co. <Name>", a hill)."""
+    from .admin_markers import ADMIN_MARKERS, AFTER_A_NAME
+
+    words = fold(literal).split()
+    return any("county" in ADMIN_MARKERS.get(word, ()) and (word not in AFTER_A_NAME or index > 0)
+        for index, word in enumerate(words))
+
+
+def first_level_namesake(task: FieldTask, literal: str, received: Iterable[SourceAnswer]) -> str | None:
+    """For a county, a first-level unit its place sources found for the label's
+    own text, or None: a candidate at a province's or state's level (at_level)
+    with the literal's name (place_name), in a success or ambiguous answer of
+    one of the field's place sources asked about the literal (about), with
+    its evidence stored. Such a text may name the first-level unit rather
+    than a county ("<Province>", or a Philippine "<Province> Prov.", which
+    Getty TGN, NGA and Wikidata hold at the first level), and the sources
+    cannot tell which the label means. None too when the literal writes a
+    county or municipality unit word (writes_county_unit: "<Name> Co.",
+    "Mun. <Name>"), which says which it means."""
+    if writes_county_unit(literal):
+        return None
+    sources = frozenset(task.tools) & frozenset(PLACE_SOURCES)
+    want = place_name(literal)
+    for answer in received:
+        if (answer.source_id not in sources or answer.status not in PLACE_ANSWERED or answer.evidence is None
+                or not about(answer, collapse(literal))):
+            continue
+        for candidate in at_level("province_state", answer):
+            if place_name(candidate.name) == want:
+                return candidate.name
     return None

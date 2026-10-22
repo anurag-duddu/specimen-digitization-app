@@ -75,6 +75,9 @@ def cohort(tmp_path, monkeypatch, *, regions=1, limit=1000, timeout=120):
             original.pilot_profile,
             production=provider,
             clock=lambda: clock[0],
+            # Local effects use the fixture's elapsed time, including after
+            # restart. Explicit clock advances still exercise real deadlines.
+            monotonic=lambda: clock[0].timestamp(),
         )
 
         def segment(specimen):
@@ -217,6 +220,49 @@ def test_insufficient_full_cost_retains_all_regions_and_stops_before_readers(
     assert ledger["reading_cohort"]["state"] == "blocked"
     assert sum(row["cost_micros"] for row in ledger["runs"].values()) == 4000
     assert c.worker.result_summary()["status"] == "incomplete"
+
+
+def test_late_reader_retains_cohort_liability_and_blocks_restart(tmp_path, monkeypatch):
+    c = cohort(tmp_path, monkeypatch, regions=2, timeout=1)
+    segment_all(c)
+    first = c.launch.specimens[0].specimen_id
+    c.flow.step(c.principal, first)  # Retain the first Qwen observation.
+    held = c.repo.document(c.launch.scope, "pilot_launch", c.flow.admission.ledger_id)
+    read = c.flow.adapters.production.transcribe
+
+    def late_muse(item, region, route):
+        assert route == "handwriting-muse"
+        result = read(item, region, route)
+        c.clock[0] += timedelta(seconds=1.01)
+        return result
+
+    c.flow.adapters.production.transcribe = late_muse
+    result = c.flow.step(c.principal, first)
+    assert result.run.profile.execution.external_timeout_seconds == 1
+    assert result.run.blocker == "external_outcome_unknown"
+    assert result.run.reasons == ["external_stage_deadline_exceeded"]
+    assert result.run.usage.reserved_cost_micros == 17 + 59 + 89
+    assert [o.route_id for o in result.run.observations] == ["handwriting-qwen"]
+    assert result.run.disposition is None
+    retained = c.repo.document(c.launch.scope, "pilot_launch", c.flow.admission.ledger_id)
+    assert retained["reading_cohort"] == held["reading_cohort"]
+    assert retained["runs"] == held["runs"]
+    assert sorted(retained["reader_claims"][first].values()) == [1, 1]
+    events = list(c.events)
+
+    repo = SQLiteRepository(c.repo.path)
+    _, restarted = c.assemble(repo)
+    stopped = restarted.step(c.principal, first)
+    assert stopped.run.blocker == "external_outcome_unknown"
+    assert stopped.run.usage.reserved_cost_micros == 17 + 59 + 89
+    assert [o.route_id for o in stopped.run.observations] == ["handwriting-qwen"]
+    with pytest.raises(OperationalBlock, match="pilot_cohort_unresolved_liability"):
+        restarted.step(c.principal, c.launch.specimens[1].specimen_id)
+    after = repo.document(c.launch.scope, "pilot_launch", restarted.admission.ledger_id)
+    assert c.events == events
+    assert after["reader_claims"] == retained["reader_claims"]
+    assert after["reading_cohort"] == retained["reading_cohort"]
+    assert after["runs"] == retained["runs"]
 
 
 @pytest.mark.parametrize("drift", ["region", "provenance", "generation", "route"])
@@ -547,9 +593,6 @@ def test_single_worker_segments_all_ten_then_reads_every_region_and_stops_for_re
     tmp_path, monkeypatch
 ):
     c = cohort(tmp_path, monkeypatch, regions=2, timeout=1)
-    # Generated local reads have no simulated latency. Measure their step time
-    # with the same frozen clock as the fixture, not CI scheduler pauses.
-    c.flow.monotonic = lambda: c.clock[0].timestamp()
     c.repo.due_page = lambda *args: pytest.fail("Frozen cohort never uses discovery")
     original = c.flow.adapters.production.transcribe
 

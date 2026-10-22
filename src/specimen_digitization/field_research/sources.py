@@ -12,15 +12,21 @@ The rules that decide an answer stay where they are: GBIF's in
 application.taxonomy_tool.verify_taxon, GEOLocate's in research_harness.sources
 and the historical gazetteers' in research_harness.historical_gazetteers. A
 source problem is an answer with a plain note, never an exception; only a blob
-store failure raises. When Getty TGN's reconciliation service refuses a request
-or cannot be reached, TGN is searched through Getty's SPARQL endpoint instead
-(historical_gazetteers), and the note says so and that this search does not
-match accents or word stems; its answer is then never a success, and a search
-that found nothing is ambiguous, never no match. Each request a source leaves
-unanswered is logged in one WARNING line with its source, host and HTTP status
-or error, and who sent the response (its Server and Via headers with the
-query's words cut out, whether it is an HTML page, the start of its body
-unless a word of the query is in it), never its query.
+store failure raises. A county's or a province's Wikidata lookup
+(LEVEL_FIELDS) also reads, in at most CLASS_READS more requests, the
+subclass chains of its places' classes, and a place whose chains reach
+Wikidata's second-level administrative division (and not its first-level
+one) has that class among its kinds, one whose chains reach the first-level
+one that class (ApprovedSources._levels); that answer is cached apart from
+other fields' answers to the same query. When Getty TGN's reconciliation service refuses a
+request or cannot be reached, TGN is searched through Getty's SPARQL endpoint
+instead (historical_gazetteers), and the note says so and that this search
+does not match accents or word stems; its answer is then never a success, and
+a search that found nothing is ambiguous, never no match. Each request a
+source leaves unanswered is logged in one WARNING line with its source, host
+and HTTP status or error, and who sent the response (its Server and Via
+headers with the query's words cut out, whether it is an HTML page, the start
+of its body unless a word of the query is in it), never its query.
 """
 
 from __future__ import annotations
@@ -47,6 +53,7 @@ from urllib.parse import parse_qsl, unquote, unquote_plus, urlencode, urlsplit
 import httpx
 
 from specimen_digitization.application import georef_tgn
+from specimen_digitization.application import georef_wikidata as wikidata
 from specimen_digitization.application.domain import Evidence, Lookup, LookupStatus
 from specimen_digitization.application.georef_places import Place, Ref
 from specimen_digitization.application.harness_tools import SourceCall
@@ -97,6 +104,21 @@ EXCERPT_LIMIT = 2_000
 NOTE_LIMIT = 300  # of the note that heads an excerpt
 MAX_TAXA = 10
 MAX_KINDS = 3
+# The fields whose Wikidata lookups read their places' class chains
+# (ApprovedSources._levels): a county's, since 2026-10-12, and a province's or
+# state's, since 19f0f1f6's "Bahia" (2026-10-18), whose Wikidata kind "federative
+# unit of Brazil" names no first-level kind agreement.PLACE_LEVELS knows,
+# while its class chain reaches the first-level administrative division.
+LEVEL_FIELDS = frozenset({FieldKey.COUNTY, FieldKey.PROVINCE_STATE})
+# How many requests a county's or a province's Wikidata lookup may spend reading its
+# places' classes (ApprovedSources._levels): a Guatemalan municipio's class reaches the
+# second-level administrative division in one, a US county's in two (probed
+# 2026-10-12), and Brazil's "federative unit" the first-level one in two (2026-10-18).
+CLASS_READS = 2
+# Each read of classes is sent once, never retried (_get's ATTEMPTS), so a
+# county's lookup sends at most CLASS_READS more requests (Codex's review of
+# #325 at 9f5319ca: a refused read was sent three times).
+CLASS_READ_ATTEMPTS = 1
 # A response that was no answer, as its log line shows it (_Sender): the first
 # BODY_READ bytes of the body are read, BODY_EXCERPT characters of them logged,
 # or BODY_WITHHELD when they may hold a word of the query (_body_excerpt), and
@@ -183,7 +205,9 @@ def cache_key(source_id: str, query: str, field_key: str) -> str:
     except for GBIF, where case is part of a scientific name ("apis" names no
     genus, and verify_taxon reads them apart). A GEOLocate query is its JSON
     object with sorted keys, and its field too, because geolocate_verdict
-    checks the claimed value against the field."""
+    checks the claimed value against the field. A county's or a province's
+    Wikidata query (LEVEL_FIELDS) carries its field too: only its answer
+    reads the classes' levels (ApprovedSources._levels)."""
     text = query
     if source_id == "geolocate":
         try:
@@ -192,6 +216,8 @@ def cache_key(source_id: str, query: str, field_key: str) -> str:
             parsed = None
         if isinstance(parsed, dict):
             text = json.dumps(parsed, sort_keys=True, ensure_ascii=False)
+        text = f"{field_key}\n{text}"
+    elif source_id == "wikidata" and field_key in LEVEL_FIELDS:
         text = f"{field_key}\n{text}"
     text = " ".join(unicodedata.normalize("NFC", text).split())
     return text if source_id == "gbif" else text.casefold()
@@ -706,7 +732,10 @@ class ApprovedSources:
     A "gbif" query is a taxon name; a "geolocate" query is place words from the
     field's place out to its country, or the JSON interpretation itself
     (`interpretation`); a "tgn", "wikidata" or "nga" query is a place name,
-    searched up to its first comma (`place_name`).
+    searched up to its first comma (`place_name`). A county's or a
+    province's Wikidata answer (LEVEL_FIELDS) also gives each place whose
+    classes reach the second or the first level that level's kind
+    (`_levels`).
 
     `blobs` is the application's blob store (application.storage.BlobStore),
     `client` the AsyncClient every request goes through. `place_text` is the
@@ -815,7 +844,7 @@ class ApprovedSources:
             return await self._taxon(query)
         if source_id == "geolocate":
             return await self._geolocate(policy, query, field_key)
-        return await self._gazetteer(policy, query)
+        return await self._gazetteer(policy, query, field_key)
 
     # --- GBIF, with Catalogue of Life and Global Names Verifier alongside ---
 
@@ -1019,7 +1048,7 @@ class ApprovedSources:
 
     # --- Getty TGN, Wikidata and NGA ---
 
-    async def _gazetteer(self, policy: SourcePolicy, query: str) -> SourceAnswer:
+    async def _gazetteer(self, policy: SourcePolicy, query: str, field_key: str) -> SourceAnswer:
         source_id, name = policy.id, NAMES[policy.id]
         searched = place_name(query)
         fetched: list[_Fetched] = []
@@ -1061,14 +1090,20 @@ class ApprovedSources:
                 if len(places) == 1 and outcome.fallback is None
                 else LookupStatus.AMBIGUOUS
             )
-        candidates = tuple(_place(source_id, place) for place in places)
         note = _searched_instead(
             name, outcome.fallback, _gazetteer_note(name, searched, status, outcome, fetched)
         )
         if status not in ANSWERED or not fetched:
             return _answer(source_id, query, status, note)
-        # Up to three responses answer one query: one record names each stored
-        # response and its digest, and that record is the evidence.
+        levels: Mapping[str, frozenset[str]] = {}
+        if source_id == "wikidata" and field_key in LEVEL_FIELDS and places:
+            levels = await self._levels(policy, places, fetched)
+        candidates = tuple(
+            _place(source_id, place, levels.get(place.record_id, frozenset())) for place in places
+        )
+        # Up to three responses answer one query, and for a county's or a
+        # province's Wikidata lookup up to CLASS_READS more (`_levels`): one record names each
+        # stored response and its digest, and that record is the evidence.
         record = json.dumps(
             {
                 "source": source_id,
@@ -1094,11 +1129,50 @@ class ApprovedSources:
         )
         return _answer(source_id, query, status, note, candidates, evidence)
 
+    async def _levels(
+        self, policy: SourcePolicy, places: Sequence[Place], fetched: list[_Fetched]
+    ) -> dict[str, frozenset[str]]:
+        """The level classes (georef_wikidata.levels_reached: the first-level
+        and the second-level administrative division) each Wikidata place's
+        instance-of classes reach through their subclass-of chains, read in
+        at most CLASS_READS requests of up to 50 classes each, the classes
+        nearest the places first (georef_wikidata.unread_classes). A chain
+        longer than that is not followed. Each response read is appended to
+        `fetched`, so the answer's evidence names it. A request that gets no
+        usable answer ends the reading, and the places keep only what was
+        read before it: a level is never inferred, and the lookup itself
+        stands."""
+        kinds = {place.record_id: [kind.id for kind in place.kinds] for place in places}
+        superclasses: dict[str, tuple[str, ...]] = {}
+        for _ in range(CLASS_READS):
+            wanted = wikidata.unread_classes(
+                [kind for found in kinds.values() for kind in found], superclasses
+            )[: wikidata.MAX_IDS]
+            if not wanted:
+                break
+            url = wikidata.API + "?" + urlencode(wikidata.classes_params(wanted))
+            try:
+                response = await self._response(policy, url, attempts=CLASS_READ_ATTEMPTS)
+            except _Unanswered:
+                break
+            if response.status_code != 200:
+                break
+            outcome, read = wikidata.parse_superclasses(response.status_code, response.body)
+            if outcome not in (LookupStatus.SUCCESS, LookupStatus.NO_MATCH):
+                break
+            fetched.append(response)
+            # A class asked and not returned (missing) has no superclass to read.
+            superclasses |= dict.fromkeys(wanted, ()) | read
+        return {
+            record: wikidata.levels_reached(found, superclasses) for record, found in kinds.items()
+        }
+
     # --- HTTP ---
 
-    async def _response(self, policy: SourcePolicy, url: str) -> _Fetched:
+    async def _response(self, policy: SourcePolicy, url: str, attempts: int = ATTEMPTS) -> _Fetched:
         """The final response to a GET of `url`, shared by every query of this
-        record that needs it. Raises _Unanswered when none came back."""
+        record that needs it, sent at most `attempts` times (_get). Raises
+        _Unanswered when none came back."""
         try:
             validate_destination(policy, url)
         except ValueError:
@@ -1108,15 +1182,15 @@ class ApprovedSources:
             ) from None
         task = self._responses.get(url)
         if task is None:
-            task = asyncio.ensure_future(self._fetch(policy, url))
+            task = asyncio.ensure_future(self._fetch(policy, url, attempts))
             self._responses[url] = task
             task.add_done_callback(
                 lambda done: _forget_failure(self._responses, url, done, keep=(_Unanswered,))
             )
         return await asyncio.shield(task)
 
-    async def _fetch(self, policy: SourcePolicy, url: str) -> _Fetched:
-        response = await self._get(policy, url)
+    async def _fetch(self, policy: SourcePolicy, url: str, attempts: int = ATTEMPTS) -> _Fetched:
+        response = await self._get(policy, url, attempts)
         if response.status_code != 200:
             return response
         raw_ref = await asyncio.to_thread(self.blobs.put, response.body)
@@ -1124,16 +1198,18 @@ class ApprovedSources:
             response, raw_ref=raw_ref, digest=hashlib.sha256(response.body).hexdigest()
         )
 
-    async def _get(self, policy: SourcePolicy, url: str) -> _Fetched:
+    async def _get(self, policy: SourcePolicy, url: str, attempts: int = ATTEMPTS) -> _Fetched:
         """One GET with retries: a rate limit, a server error, a timeout or a
-        transport error is tried again, ATTEMPTS times in all, with backoff and
+        transport error is tried again, `attempts` times in all (ATTEMPTS
+        unless the caller sends fewer), with backoff and
         jitter and never sooner than the provider's Retry-After. A Retry-After
         over RETRY_AFTER_LIMIT_SECONDS ends the retries; any other answer is final.
         A final answer other than 200 (a refusal, a redirect, which is never
         followed) and a request that got none are logged (_log_unanswered),
         with who sent the last response that was no answer (_sender)."""
         name = NAMES[policy.id]
-        for attempt in range(1, ATTEMPTS + 1):
+        tries = f"{attempts} attempt{'s' if attempts != 1 else ''}"
+        for attempt in range(1, attempts + 1):
             wait, retry, code, error, sender = None, "", None, None, None
             try:
                 # GEOLocate's turn (SOURCE_PACER) further off than a slot's
@@ -1155,12 +1231,12 @@ class ApprovedSources:
                 raise _Unanswered(LookupStatus.TIMEOUT, f"{name} was busy; this lookup was not sent{sent}",
                     busy=True) from None
             except (httpx.TimeoutException, TimeoutError) as failure:
-                status, note = LookupStatus.TIMEOUT, f"{name} did not answer after {ATTEMPTS} attempts"
+                status, note = LookupStatus.TIMEOUT, f"{name} did not answer after {tries}"
                 error = type(failure).__name__
             except httpx.HTTPError as failure:
                 status, note = (
                     LookupStatus.PROVIDER,
-                    f"{name} could not be reached after {ATTEMPTS} attempts",
+                    f"{name} could not be reached after {tries}",
                 )
                 error = type(failure).__name__
             else:
@@ -1175,9 +1251,9 @@ class ApprovedSources:
                     return _Fetched(url, code, body)
                 status = LookupStatus.RATE_LIMITED if code == 429 else LookupStatus.PROVIDER
                 note = (
-                    f"{name} was still rate limiting after {ATTEMPTS} attempts"
+                    f"{name} was still rate limiting after {tries}"
                     if code == 429
-                    else f"{name} failed with HTTP {code} after {ATTEMPTS} attempts"
+                    else f"{name} failed with HTTP {code} after {tries}"
                 )
                 wait = retry_after(retry)
                 if wait is not None and wait > RETRY_AFTER_LIMIT_SECONDS:
@@ -1190,10 +1266,10 @@ class ApprovedSources:
                         f"{name} asked to wait {wait} s before another request, "
                         f"longer than a lookup waits",
                     )
-            if attempt < ATTEMPTS:
+            if attempt < attempts:
                 await self._sleep(retry_delay(attempt, wait))
         _log_unanswered(
-            policy.id, url, attempt=ATTEMPTS, http_status=code, error=error,
+            policy.id, url, attempt=attempts, http_status=code, error=error,
             retry_after=bool(retry), sender=sender,
         )
         raise _Unanswered(status, note)
@@ -1354,8 +1430,21 @@ def _parent(source_id: str, ref: Ref, *, country: bool = False) -> PlaceRef:
     return PlaceRef(ref.name or ref.id, record, code)
 
 
-def _place(source_id: str, place: Place) -> SourceCandidate:
-    kinds = [kind.name or kind.id for kind in place.kinds if kind.name or kind.id]
+def _place(source_id: str, place: Place, levels: frozenset[str] = frozenset()) -> SourceCandidate:
+    """A gazetteer place as a candidate: its name, record, kinds (at most
+    MAX_KINDS), parents and the ISO code of its own record. A Wikidata place
+    whose classes reach the second-level administrative division and not the
+    first-level one (`levels`, ApprovedSources._levels) also has that class's
+    name among its kinds, which agreement.PLACE_LEVELS reads as a county's
+    level. One whose classes reach the first-level one, alone or with the
+    second, has the first-level class's name among its kinds instead, and
+    agreement.at_level takes it at no county's level, whatever its other
+    kinds say ("county": Codex's review of #325 at 9f5319ca)."""
+    kinds = [kind.name or kind.id for kind in place.kinds if kind.name or kind.id][:MAX_KINDS]
+    if levels == {wikidata.SECOND_LEVEL}:
+        kinds = list(dict.fromkeys([*kinds, wikidata.LEVEL_NAMES[wikidata.SECOND_LEVEL]]))
+    elif wikidata.FIRST_LEVEL in levels:
+        kinds = list(dict.fromkeys([*kinds, wikidata.LEVEL_NAMES[wikidata.FIRST_LEVEL]]))
     parents = [_parent(source_id, parent) for parent in place.parents]
     if place.country and (place.country.name or place.country.id) not in [p.name for p in parents]:
         parents.append(_parent(source_id, place.country, country=True))
@@ -1373,7 +1462,7 @@ def _place(source_id: str, place: Place) -> SourceCandidate:
     return SourceCandidate(
         name=place.name,
         authority_id=f"{source_id}:{place.record_id}",
-        kind=", ".join(kinds[:MAX_KINDS]) or None,
+        kind=", ".join(kinds) or None,
         detail=detail or None,
         parents=tuple(parents),
         # A record that names an end date (a dissolved state, a former colony)

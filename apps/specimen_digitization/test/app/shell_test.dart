@@ -1,5 +1,7 @@
-// The approved shell uses native phone tabs and a global desktop icon rail.
-// Collection selection and specimen rows share one sidebar on larger windows.
+// The approved shell uses the brand phone tab bar and, on a docked window, the
+// design system's rail in the scaffold's navigation slot. Collection selection
+// and specimen rows share one list pane on larger windows.
+import 'package:flutter/cupertino.dart' show CupertinoTabBar;
 import 'package:flutter/material.dart' show NavigationBar;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -41,21 +43,34 @@ void main() {
       tester,
     ) async {
       await pumpAt(tester, width);
-      final mobile = width < 768;
+      final mobile = width < WindowArrangement.dockedMinWidth;
       expect(
         find.byKey(const ValueKey('mobile-navigation')),
         mobile ? findsOneWidget : findsNothing,
       );
-      expect(
-        find.byType(NavigationBar),
-        mobile ? findsOneWidget : findsNothing,
-      );
+      expect(find.byType(UiTabBar), mobile ? findsOneWidget : findsNothing);
+      expect(find.byType(NavigationBar), findsNothing);
+      expect(find.byType(CupertinoTabBar), findsNothing);
       expect(
         find.byKey(const ValueKey('global-rail')),
         mobile ? findsNothing : findsOneWidget,
       );
       expect(find.byType(UiPillNav), findsNothing);
-      expect(find.byType(UiRail), findsNothing);
+      // The docked destinations are the design system's rail, inside the
+      // rail column and in the frame's navigation slot, not a copy of it.
+      expect(find.byType(UiRail), mobile ? findsNothing : findsOneWidget);
+      if (!mobile) {
+        expect(
+          find.descendant(
+            of: find.byKey(const ValueKey('global-rail')),
+            matching: find.byType(UiRail),
+          ),
+          findsOneWidget,
+        );
+        final scaffold = tester.widget<UiScaffold>(find.byType(UiScaffold));
+        expect(scaffold.nav, isNotNull);
+        expect(scaffold.navPlacement, UiNavPlacement.edge);
+      }
       expect(find.byType(UiSidebar), findsNothing);
       expect(uiDestination('Specimens'), findsOneWidget);
       expect(uiDestination('Intake'), findsOneWidget);
@@ -114,7 +129,7 @@ void main() {
     },
   );
 
-  testWidgets('a phone record retains native navigation and a way back', (
+  testWidgets('a phone record hides global tabs and retains a way back', (
     tester,
   ) async {
     await pumpGoldenApp(
@@ -123,7 +138,7 @@ void main() {
       brightness: Brightness.light,
       location: goldenSpecimenLocation,
     );
-    expect(find.byKey(const ValueKey('mobile-navigation')), findsOneWidget);
+    expect(find.byKey(const ValueKey('mobile-navigation')), findsNothing);
     expect(find.byKey(const ValueKey('global-sidebar')), findsNothing);
     expect(uiIconButton(AppShell.backLabel), findsOneWidget);
     expect(find.text(goldenVerifiedSpecimen().displayReference), findsWidgets);

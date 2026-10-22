@@ -13,7 +13,7 @@ role="${1:-}"
 
 registry="us-east4-docker.pkg.dev"
 image="$registry/specimen-digitization/specimen-runtime/$role"
-# The repository has immutable tags, so a re-run needs its own tag: the run id and attempt make it unique.
+# The run id and attempt give a re-run its own tag, so it never moves the tag of an earlier push.
 tag="$image:sha-$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
 
 # gcloud turns the sign-in step's credential file into a registry token. The token only ever travels

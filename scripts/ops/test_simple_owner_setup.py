@@ -38,6 +38,12 @@ PLANE = ("principalSet://iam.googleapis.com/projects/716045864126/locations/glob
          "github-actions/attribute.release_plane/")
 PLANES = ("specimen-data-release", "specimen-runtime-build", "specimen-runtime-release")
 ACCESSOR = "roles/secretmanager.secretAccessor"
+INTAKE_TOKEN_CONDITION = (
+    'resource.service == "secretmanager.googleapis.com" && '
+    '(resource.type == "secretmanager.googleapis.com/Secret" || '
+    'resource.type == "secretmanager.googleapis.com/SecretVersion") && '
+    'resource.name.startsWith("projects/716045864126/secrets/specimen-intake-")'
+)
 API_URL = "https://specimen-api-716045864126.us-east4.run.app"
 SITE_KEY = "6LfP0bEtAAAAAGtD_o-SD8EnjvgGGzVugURtWUAw"  # pragma: allowlist secret (public site key)
 ARTIFACT = "DATA_BOOTSTRAP_ARTIFACT_B64"
@@ -78,9 +84,11 @@ ROLES = {
     "specimenRuntimeConnector": [
         "firebasedataconnect.connectors.impersonateMutation", "firebasedataconnect.connectors.impersonateQuery"],
     "specimenApiUserLookup": ["firebaseauth.users.get"],
+    "specimenRuntimeImageTags": ["artifactregistry.tags.create", "artifactregistry.tags.update"],
 }
 NEW_ROLES = ("specimenDataBootstrapRows", "specimenRuntimeInvokerPolicy", "specimenWorkerExecution",
-             "specimenGeoreferenceDatasets", "specimenWorkerRead", "specimenResearchCaptureRead")
+             "specimenGeoreferenceDatasets", "specimenWorkerRead", "specimenResearchCaptureRead",
+             "specimenRuntimeImageTags")
 MAPS_KEY = "specimen-google-maps-key"  # retired: the owner took Google Maps out of the pipeline
 LIVE_PINS = (  # member, secret, version: the nine pinned reads live on 2026-10-03, the retired Maps key among them
     (API, "specimen-worker-logfire", 1), (API, "specimen-source-registry", 1), (API, "specimen-collection-bindings", 1),
@@ -94,8 +102,9 @@ RETIRE = ("RELEASE_AUTHORIZED_SHA", "RELEASE_BUDGET_LEDGER_SHA256", "RELEASE_INP
           f"secret {MAPS_KEY} and the read of its version 1 by specimen-worker-runtime")
 # Any of these words in a gcloud command line, and any of these gh commands, changes something; the fakes' own
 # "write" flag is checked against them.
-MUTATING = {"add-iam-policy-binding", "remove-iam-policy-binding", "set-iam-policy", "create", "update", "undelete",
-            "delete", "assign-roles", "update-oidc", "set", "deploy"}
+MUTATING = {"add-iam-policy-binding", "remove-iam-policy-binding", "set-iam-policy", "create", "update", "undelete", "enable",
+            "delete", "assign-roles", "update-oidc", "set", "deploy",
+            "set-cleanup-policies"}
 GH_WRITES = {("variable", "set"), ("secret", "set"), ("workflow", "run"), ("run", "rerun")}
 RUNS = f"https://github.com/{REPOSITORY}/actions/runs/"
 VERSION_URL, DEPLOYMENT_URL = API_URL + "/version", "https://specimen-digitization.web.app/deployment.json"
@@ -133,6 +142,8 @@ KINDS = {("projects",): ("project", {}), ("storage", "buckets"): ("bucket", {}),
          ("run", "services"): ("service", {"region": "us-east4", "project": PROJECT}),
          ("run", "jobs"): ("job", {"region": "us-east4", "project": PROJECT})}
 POLICY_VERBS = ("get-iam-policy", "add-iam-policy-binding", "remove-iam-policy-binding")
+REGISTRY_FORMAT = 'value[separator="|"](dockerConfig.immutableTags,cleanupPolicyDryRun,cleanupPolicies)'
+SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 FIELDS = ("title", "expression", "description")
 # The two jq programs the script hands to gh; the fake renders what they print and accepts no other.
 RUN_JQ = (r'"R\t\(.status)\t\(.conclusion)\t\(.url)\t\(.attempt)", ((.jobs // [])[] | . as $job | '
@@ -212,6 +223,51 @@ def policy(verb, kind, scope, name, flags, state, entry):
     return 0
 
 
+def printed(value):
+    """How gcloud prints a policy map in value(): sorted keys and Python's quoting."""
+    if isinstance(value, dict):
+        return "{" + ", ".join(f"{key!r}: {printed(value[key])}" for key in sorted(value)) + "}"
+    if isinstance(value, list):
+        return "[" + ", ".join(printed(item) for item in value) + "]"
+    return repr(value)
+
+
+def stored(rule):
+    """A rule of a policy file as the registry keeps it: an id, the action's type, durations in seconds."""
+    kept = {"id": rule["name"], "action": rule["action"]["type"]}
+    if "condition" in rule:
+        kept["condition"] = {key: f"{int(value[:-1]) * SECONDS[value[-1]]}s" if key == "olderThan" else value
+                             for key, value in rule["condition"].items()}
+    if "mostRecentVersions" in rule:
+        kept["mostRecentVersions"] = rule["mostRecentVersions"]
+    return kept
+
+
+def registry(verb, flags, state, entry):
+    """specimen-runtime: read its settings, let its tags move, or set its cleanup policy. A false setting is
+    absent from what Google answers, so gcloud prints an empty field for it."""
+    held, scope = state["registry"], {"location": "us-east4", "project": PROJECT}
+    if verb == "describe":
+        expect(flags, {**scope, "format": REGISTRY_FORMAT})
+        print("|".join(["True" if held["immutable"] else "", "True" if held["dry_run"] else "",
+                        ";".join(f"{name}={printed(rule)}" for name, rule in sorted(held["policies"].items()))]))
+        return 0
+    entry["write"] = True
+    if verb == "update":
+        expect(flags, {**scope, "no-immutable-tags": None})
+        held["immutable"] = False
+        return 0
+    if verb == "set-cleanup-policies":
+        with open(flags.pop("policy")) as handle:
+            entry["policy_text"] = handle.read()
+        modes = [mode for mode in ("dry-run", "no-dry-run") if flags.pop(mode, False) is None]
+        expect((flags, len(modes)), (scope, 1))
+        held["policies"] = {rule["name"]: stored(rule) for rule in json.loads(entry["policy_text"])}
+        held["dry_run"] = modes == ["dry-run"]
+        return 0
+    raise Unsupported(f"gcloud artifacts repositories {verb}")
+
+
 def role(verb, name, flags, state, entry):
     live = state["roles"].get(name)
     if verb == "describe":
@@ -260,15 +316,40 @@ def gcloud(argv, state, entry):
             return 1
         print(words[3])
         return 0
+    if words[:3] == ["run", "jobs", "describe"] and len(words) == 4:
+        expect(flags, {"region": "us-east4", "project": PROJECT, "format": "value(metadata.name)"})
+        if words[3] not in state.get("jobs", ["specimen-intake", "specimen-intake-e2e", "specimen-worker-e2e"]):
+            print("NOT_FOUND", file=sys.stderr)
+            return 1
+        print(words[3])
+        return 0
     if words == ["projects", "describe", PROJECT]:
         expect(flags, {"format": "value(projectNumber)"})
         print(state["project_number"])
+        return 0
+    if words == ["services", "list"]:
+        name = flags.get("filter", "").removeprefix("config.name=")
+        expect(flags, {"enabled": None, "project": PROJECT, "filter": f"config.name={name}", "format": "value(config.name)"})
+        if name not in {"drive.googleapis.com", "picker.googleapis.com"}:
+            raise Unsupported("unreviewed provider API")
+        if name in state.get("enabled_provider_apis", []):
+            print(name)
+        return 0
+    if words[:2] == ["services", "enable"] and len(words) == 3:
+        name = words[2]
+        expect(flags, {"project": PROJECT})
+        if name not in {"drive.googleapis.com", "picker.googleapis.com"}:
+            raise Unsupported("unreviewed provider API")
+        entry["write"] = True
+        state.setdefault("enabled_provider_apis", []).append(name)
         return 0
     for group, (kind, scope) in KINDS.items():
         if tuple(words[:len(group)]) == group and len(words) == len(group) + 2 and words[len(group)] in POLICY_VERBS:
             return policy(words[len(group)], kind, scope, words[-1], flags, state, entry)
     if words[:2] == ["iam", "roles"] and len(words) == 4:
         return role(words[2], words[3], flags, state, entry)
+    if words[:2] == ["artifacts", "repositories"] and words[3:] == ["specimen-runtime"]:
+        return registry(words[2], flags, state, entry)
     if words[:3] == ["sql", "users", "describe"] and len(words) == 4 and words[3] not in state["sql_roles"]:
         print("ERROR: (gcloud.sql.users.describe) HTTPError 404: Not Found.", file=sys.stderr)
         return 1
@@ -554,7 +635,9 @@ def fresh_state():
             "variables": {}, "secrets": [], "fail": [],
             "workflows": {"data-release.yml": OLD_WORKFLOW, "runtime-release.yml": OLD_WORKFLOW},
             "runs": [], "dispatches": {}, "reruns": {}, "next_id": 500, "appear_after": 0, "http": {},
-            "services": [], "unreadable_services": False}
+            "services": [], "unreadable_services": False,
+            # The image registry as it was on 2026-10-20: immutable tags, no cleanup policy.
+            "registry": {"immutable": True, "dry_run": False, "policies": {}}}
 
 
 def live_state():
@@ -620,9 +703,9 @@ class Run:
 
 
 def named(argv):
-    """The command with a condition file's temporary directory removed."""
-    return [f"--condition-from-file={Path(arg.split('=', 1)[1]).name}" if arg.startswith("--condition-from-file=")
-            else arg for arg in argv]
+    """The command with a condition or policy file's temporary directory removed."""
+    return [f"{arg.split('=', 1)[0]}={Path(arg.split('=', 1)[1]).name}"
+            if arg.startswith(("--condition-from-file=", "--policy=")) else arg for arg in argv]
 
 
 class Harness:
@@ -718,6 +801,18 @@ NARROW = ["gcloud", "run", "services", "add-iam-policy-binding", SERVICE, "--reg
 UNWIDEN = ["gcloud", "projects", "remove-iam-policy-binding", PROJECT, f"--member={RELEASE}", INVOKER_ROLE,
            "--condition=None"]
 MOVES = "runtime release: the right to set who may call the API now moves from the project to the one service"
+# The image registry: the release identity may create and move tags, the cleanup policy goes in dry-run mode, and
+# only then may tags move.
+REGISTRY_AT = ["specimen-runtime", "--location=us-east4", f"--project={PROJECT}"]
+IMAGE_TAGS = [
+    role_create("specimenRuntimeImageTags", "Specimen runtime image tags",
+                "Point the deployed and rollback tags of the runtime images; no delete."),
+    ["gcloud", "artifacts", "repositories", "add-iam-policy-binding", *REGISTRY_AT, f"--member={RELEASE}",
+     f"--role={CUSTOM}specimenRuntimeImageTags", "--condition=None"]]
+LET_TAGS_MOVE = ["gcloud", "artifacts", "repositories", "update", *REGISTRY_AT, "--no-immutable-tags"]
+SET_CLEANUP = ["gcloud", "artifacts", "repositories", "set-cleanup-policies", *REGISTRY_AT,
+               "--policy=cleanup-policy.json", "--dry-run"]
+REGISTRY_CHANGES = [*IMAGE_TAGS, SET_CLEANUP, LET_TAGS_MOVE]
 # Every change the live state needs, in the script's order, with exact arguments.
 EXPECTED = [
     *(["gcloud", "projects", "remove-iam-policy-binding", PROJECT, f"--member={DATA}", f"--role={CUSTOM}{role}",
@@ -751,11 +846,16 @@ EXPECTED = [
      f"--project={PROJECT}", f"--member={RELEASE}", f"--role={CUSTOM}specimenWorkerExecution", "--quiet"],
     ["gcloud", "run", "jobs", "add-iam-policy-binding", "specimen-worker", "--region=us-east4",
      f"--project={PROJECT}", f"--member={API}", f"--role={CUSTOM}specimenWorkerRead", "--quiet"],
+    ["gcloud", "run", "jobs", "add-iam-policy-binding", "specimen-intake", "--region=us-east4",
+     f"--project={PROJECT}", f"--member={API}", "--role=roles/run.invoker", "--quiet"],
     *RESEARCH_GRANTS,
     ["gcloud", "storage", "buckets", "add-iam-policy-binding", f"gs://{BUCKET}", f"--member={API}",
      f"--role={CUSTOM}specimenResearchCaptureRead",
      "--condition-from-file=condition-9-specimen_api_research_capture.yaml"],
+    ["gcloud", "secrets", "add-iam-policy-binding", "specimen-worker-actor-uid", f"--project={PROJECT}",
+     f"--member={API}", f"--role={ACCESSOR}", "--condition-from-file=condition-10-specimen_worker_actor_uid_v1.yaml"],
     SAM_LISTS_BUCKET,
+    *REGISTRY_CHANGES,
     *(provider_update(name) for name in PROVIDERS),
     ["gh", "variable", "set", "SPECIMEN_API_BASE_URL", "-R", REPOSITORY, "--body", API_URL],
     ["gh", "variable", "set", "SPECIMEN_RECAPTCHA_SITE_KEY", "-R", REPOSITORY, "--body", SITE_KEY],
@@ -765,7 +865,8 @@ EXPECTED_CONDITIONS = {
     "condition-5-specimen_worker_actor_uid_v1.yaml": pin("specimen-worker-actor-uid", 1),
     "condition-6-specimen_georeference_datasets.yaml": GEO,
     "condition-7-specimen_research_objects.yaml": RESEARCH, "condition-8-specimen_research_objects.yaml": RESEARCH,
-    "condition-9-specimen_api_research_capture.yaml": CAPTURE_READ}
+    "condition-9-specimen_api_research_capture.yaml": CAPTURE_READ,
+    "condition-10-specimen_worker_actor_uid_v1.yaml": pin("specimen-worker-actor-uid", 1)}
 
 
 def given(held):
@@ -830,7 +931,7 @@ def test_dry_run_prints_every_change_and_makes_none(tmp_path, shell):
     assert f"from the artifact file ({len(content)} bytes)" in run.out
     shown = run.out + run.err + json.dumps(run.calls)
     assert "PRIVATE-MARKER" not in shown and base64.b64encode(content).decode()[:40] not in shown
-    assert "Dry run: nothing was changed. 28 step(s) would change:" in run.out
+    assert "Dry run: nothing was changed. 34 step(s) would change:" in run.out
     assert run.printed.count(SAM_LISTS_BUCKET) == 1
     assert "--all" not in run.out
     for name in RETIRE:
@@ -838,10 +939,11 @@ def test_dry_run_prints_every_change_and_makes_none(tmp_path, shell):
     assert "Merge the pull request" in run.out.split("== Summary ==", 1)[1]
     headings = [line for line in run.out.splitlines() if line.startswith("== ")]
     assert [line.split(":")[0] for line in headings] == [
-        "== Clean-up", "== Data release", "== Cloud SQL", "== Runtime release", "== Manual runs", "== GitHub",
+        "== Clean-up", "== Data release", "== Cloud SQL", "== Runtime release", "== Image registry", "== Manual runs",
+        "== GitHub",
         "== GitHub", "== Retire later", "== Releases", "== Summary =="]
     assert run.sleeps == [] and run.summary.splitlines()[-1] == SAFE
-    assert "  Setup: WOULD RUN (28 change(s))" in run.summary
+    assert "  Setup: WOULD RUN (34 change(s))" in run.summary
     assert "Setup is complete" not in run.out and "State:" not in run.summary
     assert "the three database roles once (later releases only use the firebaseowner role)" in headings[2]
 
@@ -854,7 +956,7 @@ def test_apply_makes_each_change_once_and_a_second_run_makes_none(tmp_path, shel
     assert run.ran == EXPECTED and run.printed == EXPECTED
     assert run.conditions() == {name: given(held) for name, held in EXPECTED_CONDITIONS.items()}
     assert provider_update("specimen-data-release")[-1] == f"--attribute-condition={DATA_PROVIDER_AFTER}"
-    assert "27 step(s) changed:" in run.out
+    assert "33 step(s) changed:" in run.out
     assert run.ran.count(SAM_LISTS_BUCKET) == 1
 
     after = harness.state()
@@ -865,7 +967,7 @@ def test_apply_makes_each_change_once_and_a_second_run_makes_none(tmp_path, shel
     assert binding(CUSTOM + "specimenDataInventorySqlConnect", [DATA], SQL) in project
     assert after["roles"]["specimenDataStorageRules"]["permissions"] == ROLES["specimenDataStorageRules"]
     assert after["policies"]["secret/specimen-worker-actor-uid"] == [
-        binding(ACCESSOR, [WORKER, DATA], pin("specimen-worker-actor-uid", 1))]
+        binding(ACCESSOR, [WORKER, DATA, API], pin("specimen-worker-actor-uid", 1))]
     assert after["sql_roles"][SQL_USER] == ["cloudsqlsuperuser"]
     # The worker's read of the retired Maps key is neither granted nor removed; its secret is not even looked at.
     assert after["policies"][f"secret/{MAPS_KEY}"] == [binding(ACCESSOR, [WORKER], pin(MAPS_KEY, 1))]
@@ -884,7 +986,7 @@ def test_apply_makes_each_change_once_and_a_second_run_makes_none(tmp_path, shel
             "Run this script again after the merge.") in run.out
     assert run.starts == [] and run.sleeps == []
     assert run.summary.split("Stages:\n", 1)[1].splitlines()[:5] == [
-        "  Setup: PASS (27 changed, 39 already in place)",
+        "  Setup: PASS (33 changed, 39 already in place)",
         "  Data release: SKIPPED (the simple workflows are not on main yet)",
         "  Runtime release: SKIPPED (the simple workflows are not on main yet)",
         "  Web app: SKIPPED (the simple workflows are not on main yet)",
@@ -983,7 +1085,7 @@ def test_failed_change_does_not_stop_the_later_steps_and_the_next_run_retries_it
     run = harness.run()
     assert run.code == 1 and run.ran == EXPECTED  # every step was tried, in order
     assert "FAILED: 1 step(s) did not go through:\n  - make specimen-data-release@specimen-digitization.iam" in run.out
-    assert "26 step(s) changed:" in run.out and "Stopped before the end" not in run.err
+    assert "32 step(s) changed:" in run.out and "Stopped before the end" not in run.err
     assert "the service refused this change" in run.err
     harness.save({**harness.state(), "fail": []})
     again = harness.run()
@@ -998,6 +1100,329 @@ def test_preflight_stops_before_any_change(tmp_path, change, message):
     run = Harness(tmp_path, {**live_state(), **change}).run()
     assert run.code == 1 and run.writes == [] and message in run.err
     assert "== " not in run.out
+
+
+AUTH_ROLE = "specimenAuthConfiguration"
+AUTH_PERMISSIONS = ["clientauthconfig.clients.create", "firebase.clients.get", "firebase.clients.list",
+                    "firebase.clients.update", "firebase.projects.get", "firebase.projects.update",
+                    "firebaseauth.configs.get", "firebaseauth.configs.update"]
+AUTH_CREATE = ["gcloud", "iam", "roles", "create", AUTH_ROLE, f"--project={PROJECT}",
+               "--title=Specimen Auth configuration",
+               "--description=Provision Google for the existing Firebase app and verify Auth configuration; "
+               "no user or hash permissions.",
+               f"--permissions={','.join(AUTH_PERMISSIONS)}", "--stage=GA"]
+AUTH_GRANT = project_grant(DATA, AUTH_ROLE)
+
+
+@pytest.mark.parametrize("shell", SHELLS)
+def test_auth_only_dry_run_has_just_one_role_and_one_data_binding(tmp_path, shell):
+    initial = {**live_state(), "gh_signed_in": False}
+    harness = Harness(tmp_path, initial, shell)
+    # This narrow mode needs no GitHub CLI or private bootstrap file.
+    (tmp_path / "bin/gh").unlink()
+    run = harness.run("--auth-only", "--dry-run")
+    assert run.code == 0, run.err
+    assert run.printed == [AUTH_CREATE, AUTH_GRANT] and run.writes == []
+    assert harness.state() == initial
+    assert all(call["tool"] == "gcloud" for call in run.calls)
+    assert not run.starts and not run.sleeps
+    assert "Auth setup only: 2 change(s), 0 failure(s)" in run.out
+
+
+@pytest.mark.parametrize("shell", SHELLS)
+def test_auth_only_apply_is_minimal_and_idempotent(tmp_path, shell):
+    initial = live_state()
+    harness = Harness(tmp_path, initial, shell)
+    run = harness.run("--auth-only")
+    assert run.code == 0 and run.ran == [AUTH_CREATE, AUTH_GRANT], run.err
+    expected = copy.deepcopy(initial)
+    expected["roles"][AUTH_ROLE] = {"stage": "GA", "deleted": False, "permissions": AUTH_PERMISSIONS}
+    expected["policies"][f"project/{PROJECT}"].append(binding(CUSTOM + AUTH_ROLE, [DATA]))
+    assert harness.state() == expected
+    again = harness.run("--auth-only")
+    assert again.code == 0 and again.writes == [] and again.printed == []
+    assert harness.state() == expected and not again.starts and not again.sleeps
+
+
+@pytest.mark.parametrize("shell", SHELLS)
+def test_auth_only_adds_missing_sha_permission_to_existing_role(tmp_path, shell):
+    initial = live_state()
+    initial["roles"][AUTH_ROLE] = {"stage": "GA", "deleted": False,
+                                    "permissions": [p for p in AUTH_PERMISSIONS if p != "firebase.clients.update"]}
+    initial["policies"][f"project/{PROJECT}"].append(binding(CUSTOM + AUTH_ROLE, [DATA]))
+    harness = Harness(tmp_path, initial, shell)
+    update = ["gcloud", "iam", "roles", "update", AUTH_ROLE, f"--project={PROJECT}",
+              f"--permissions={','.join(AUTH_PERMISSIONS)}", "--stage=GA"]
+    dry = harness.run("--auth-only", "--dry-run")
+    assert dry.code == 0 and dry.printed == [update] and not dry.writes, dry.err
+    assert harness.state() == initial and not dry.starts and not dry.sleeps
+    run = harness.run("--auth-only")
+    assert run.code == 0 and run.ran == [update], run.err
+    expected = copy.deepcopy(initial)
+    expected["roles"][AUTH_ROLE]["permissions"] = AUTH_PERMISSIONS
+    assert harness.state() == expected and not run.starts and not run.sleeps
+    again = harness.run("--auth-only")
+    assert again.code == 0 and not again.writes and not again.printed
+    assert harness.state() == expected and not again.starts and not again.sleeps
+
+
+@pytest.mark.parametrize("args", [("--auth-only", "--auth-only"), ("--auth-only", "--setup-only"),
+                                  ("--redeploy-web", "--auth-only")])
+def test_auth_only_rejects_other_setup_modes_before_tools(tmp_path, args):
+    run = Harness(tmp_path, live_state()).run(*args)
+    assert run.code != 0 and run.calls == [] and "Usage:" in run.err
+
+
+@pytest.mark.parametrize("change", [{"account": ""}, {"project_number": "1"}])
+def test_auth_only_checks_google_identity_and_exact_project_before_writes(tmp_path, change):
+    run = Harness(tmp_path, {**live_state(), **change}).run("--auth-only")
+    assert run.code == 1 and run.writes == [] and not run.starts
+
+
+def test_auth_only_failed_role_change_cannot_bind_unreconciled_role(tmp_path):
+    initial = live_state()
+    initial["roles"][AUTH_ROLE] = {"stage": "GA", "deleted": False,
+                                    "permissions": ["firebaseauth.users.delete"]}
+    initial["fail"] = ["update"]
+    harness = Harness(tmp_path, initial)
+    run = harness.run("--auth-only")
+    assert run.code == 1 and len(run.writes) == 1 and run.ran[0][1:4] == ["iam", "roles", "update"]
+    assert harness.state() == initial and not run.starts
+    assert "1 failure(s)" in run.out
+
+
+def test_auth_only_failed_grant_stops_without_other_setup(tmp_path):
+    initial = live_state()
+    initial["roles"][AUTH_ROLE] = {"stage": "GA", "deleted": False, "permissions": AUTH_PERMISSIONS}
+    initial["fail"] = ["add-iam-policy-binding"]
+    harness = Harness(tmp_path, initial)
+    run = harness.run("--auth-only")
+    assert run.code == 1 and run.ran == [AUTH_GRANT] and harness.state() == initial
+    assert not run.starts and not run.sleeps and "1 failure(s)" in run.out
+
+
+def intake_harness(tmp_path, metadata="PIN\tapi\tspecimen-worker-actor-uid\t1\n"
+        "PIN\tapi\tspecimen-collection-bindings\t1\nPIN\tworker\tspecimen-collection-bindings\t1\n"
+        "JOB\tintake\tspecimen-intake", shell=SHELLS[0]):
+    harness = Harness(tmp_path, {**live_state(), "gh_signed_in": False}, shell)
+    (tmp_path / "bin/gh").unlink()
+    (tmp_path / "intake-metadata").write_text(metadata)
+    uv = tmp_path / "bin/uv"
+    uv.write_text('#!/bin/sh\ncat "$FAKE_ROOT/intake-metadata"\n')
+    uv.chmod(0o755)
+    return harness
+
+
+@pytest.mark.parametrize("shell", SHELLS)
+def test_intake_only_defaults_are_minimal_idempotent_and_start_nothing(tmp_path, shell):
+    harness = intake_harness(tmp_path, shell=shell)
+    run = harness.run("--intake-only")
+    assert run.code == 0, run.err
+    state = harness.state()
+    assert state["roles"]["specimenIntakeSecretCreate"]["permissions"] == ["secretmanager.secrets.create"]
+    assert state["roles"]["specimenIntakeTokenVersions"]["permissions"] == [
+        "secretmanager.versions.access", "secretmanager.versions.add", "secretmanager.versions.destroy",
+        "secretmanager.versions.get", "secretmanager.versions.list"]
+    added = [row for row in state["policies"][f"project/{PROJECT}"] if row["role"].startswith(CUSTOM + "specimenIntake")]
+    assert len(added) == 2 and all(row["members"] == [API] for row in added)
+    create = next(row for row in added if row["role"].endswith("Create"))
+    assert create["condition"] is None
+    restricted = next(row for row in added if row["role"].endswith("Versions"))["condition"]["expression"]
+    assert restricted == INTAKE_TOKEN_CONDITION
+    assert ".matches(" not in restricted
+    assert not run.starts and not run.sleeps
+    assert "older shared executions have finished" in run.out
+    assert all(not any(word in command for word in ("deploy", "execute", "delete", "set-iam-policy")) for command in run.ran)
+    again = harness.run("--intake-only")
+    assert again.code == 0 and not again.writes, again.err
+
+
+def test_intake_only_dry_run_changes_nothing_and_emits_only_bounded_commands(tmp_path):
+    harness = intake_harness(tmp_path)
+    before = harness.state()
+    run = harness.run("--intake-only", "--dry-run")
+    assert run.code == 0 and not run.writes and harness.state() == before, run.err
+    assert len(run.printed) >= 4 and not run.starts
+    assert all(command[0] == "gcloud" for command in run.printed)
+
+
+def test_intake_version_namespace_is_service_type_and_project_scoped(tmp_path):
+    harness = intake_harness(tmp_path)
+    run = harness.run("--intake-only")
+    assert run.code == 0, run.err
+    state = harness.state()
+    role = CUSTOM + "specimenIntakeTokenVersions"
+    permissions = state["roles"]["specimenIntakeTokenVersions"]["permissions"]
+    assert permissions == ["secretmanager.versions.access", "secretmanager.versions.add",
+        "secretmanager.versions.destroy", "secretmanager.versions.get", "secretmanager.versions.list"]
+    bindings = [row for row in state["policies"][f"project/{PROJECT}"] if row["role"] == role]
+    assert len(bindings) == 1 and bindings[0]["members"] == [API]
+    expression = bindings[0]["condition"]["expression"]
+    assert expression == INTAKE_TOKEN_CONDITION and ".matches(" not in expression
+    match = re.fullmatch(
+        r'resource\.service == "([^"]+)" && '
+        r'\(resource\.type == "([^"]+)" \|\| resource\.type == "([^"]+)"\) && '
+        r'resource\.name\.startsWith\("([^"]+)"\)',
+        expression,
+    )
+    assert match is not None
+    service, secret_type, version_type, prefix = match.groups()
+
+    def allows(resource, resource_type=secret_type, resource_service=service):
+        # Model only the three documented clauses above, not a Google CEL
+        # engine. The actual emitted expression must also pass live IAM lint.
+        return (resource_service == service and resource_type in {secret_type, version_type}
+            and resource.startswith(prefix))
+
+    parent = "projects/716045864126/secrets/specimen-intake-00000000-0000-0000-0000-000000000001"
+    assert allows(parent) and allows(parent + "/versions/1", version_type)
+    assert allows(parent + "/versions/2", version_type)
+    for resource, resource_type in ((parent, secret_type), (parent + "/versions/1", version_type)):
+        assert not allows(resource, resource_type, "storage.googleapis.com")
+        assert not allows(resource, resource_type, "secretmanager.googleapis.com.evil")
+        assert not allows(resource, "storage.googleapis.com/Object")
+        assert not allows(resource, "secretmanager.googleapis.com/Other")
+    refused = [parent.replace("716045864126", project)
+        for project in ("another-project", PROJECT, "7160458641260")]
+    refused += [parent.replace("specimen-intake-", prefix)
+        for prefix in ("specimen-intake", "specimen-intakeother-", "other-specimen-intake-")]
+    refused += [f"projects/716045864126/secrets/{name}{suffix}"
+        for name in ("specimen-google-drive-client", "specimen-dropbox-client", "specimen-cloud-import-config",
+                     "specimen-external-emails", "specimen-collection-job-routes", "specimen-collection-bindings",
+                     "specimen-worker-actor-uid", "huggingface-runtime-token", "specimen-worker-logfire")
+        for suffix in ("", "/versions/1")]
+    assert all(not allows(resource, resource_type) for resource in refused
+        for resource_type in (secret_type, version_type))
+    # IAM admits this entire namespace. UUID and positive numeric-version
+    # restrictions belong to SecretManagerTokens, not to this prefix grant.
+    assert allows(prefix + "not-a-uuid")
+    assert allows(parent + "/versions/latest", version_type)
+    assert allows(parent + "/versions/0", version_type)
+    assert not any(row["role"] == role for key, rows in state["policies"].items()
+        if key != f"project/{PROJECT}" for row in rows)
+    assert not run.starts
+
+
+def test_intake_only_grants_exact_config_versions_and_private_job_invokers(tmp_path):
+    metadata = "\n".join(["PIN\tapi\tspecimen-cloud-import-config\t2", "PIN\tworker\tspecimen-collection-job-routes\t3",
+        "PIN\trelease\tspecimen-collection-job-routes\t3", "PIN\tapi\tspecimen-google-drive-client\t4",
+        "JOB\tintake\tspecimen-intake-e2e", "JOB\tworker\tspecimen-worker-e2e"])
+    harness = intake_harness(tmp_path, metadata)
+    run = harness.run("--intake-only")
+    assert run.code == 0, run.err
+    state = harness.state()
+    config = state["policies"]["secret/specimen-cloud-import-config"]
+    assert config == [binding(ACCESSOR, [API], pin("specimen-cloud-import-config", 2))]
+    route = state["policies"]["secret/specimen-collection-job-routes"]
+    assert route == [binding(ACCESSOR, [WORKER, RELEASE], pin("specimen-collection-job-routes", 3))]
+    assert state["policies"]["job/specimen-intake-e2e"] == [binding("roles/run.invoker", [API])]
+    worker = state["policies"]["job/specimen-worker-e2e"]
+    assert worker == [binding("roles/run.invoker", [API, WORKER]), binding(CUSTOM + "specimenWorkerRead", [API])]
+    assert not run.starts and not any("secretmanager.admin" in str(command) for command in run.ran)
+
+
+@pytest.mark.parametrize("version", [2, 7])
+def test_intake_only_advances_binding_reads_for_api_and_worker_without_broadening(tmp_path, version):
+    name = "specimen-collection-bindings"
+    metadata = f"PIN\tapi\t{name}\t{version}\nPIN\tworker\t{name}\t{version}"
+    harness = intake_harness(tmp_path, metadata)
+    before = harness.state()["policies"][f"secret/{name}"]
+    dry = harness.run("--intake-only", "--dry-run")
+    assert dry.code == 0 and not dry.writes and not dry.starts, dry.err
+    assert harness.state()["policies"][f"secret/{name}"] == before
+    run = harness.run("--intake-only")
+    assert run.code == 0 and not run.starts, run.err
+    assert harness.state()["policies"][f"secret/{name}"] == before + [
+        binding(ACCESSOR, [API, WORKER], pin(name, version))]
+    again = harness.run("--intake-only")
+    assert again.code == 0 and not again.writes and not again.starts, again.err
+
+
+@pytest.mark.parametrize("args", [("--intake-only", "--intake-only"), ("--intake-only", "--auth-only"),
+                                  ("--setup-only", "--intake-only"), ("--intake-only", "--redeploy-web")])
+def test_intake_only_rejects_other_setup_modes_before_tools(tmp_path, args):
+    run = intake_harness(tmp_path).run(*args)
+    assert run.code != 0 and not run.calls and "Usage:" in run.err
+
+
+def test_copied_intake_mode_requires_checkout_before_any_cloud_read(tmp_path):
+    harness = intake_harness(tmp_path)
+    copied = tmp_path / "owner_setup.sh"
+    copied.write_text(SCRIPT.read_text())
+    run = harness.run("--intake-only", script=copied)
+    assert run.code != 0 and not run.calls and "requires the repository checkout" in run.err
+
+
+def test_intake_only_enables_explicit_provider_apis_once_and_never_starts_a_job(tmp_path):
+    harness = intake_harness(tmp_path, "API\tdrive.googleapis.com\nAPI\tpicker.googleapis.com")
+    dry = harness.run("--intake-only", "--dry-run")
+    assert dry.code == 0 and not dry.writes, dry.err
+    assert [row for row in dry.printed if row[1:3] == ["services", "enable"]] == [
+        ["gcloud", "services", "enable", "drive.googleapis.com", f"--project={PROJECT}"],
+        ["gcloud", "services", "enable", "picker.googleapis.com", f"--project={PROJECT}"]]
+    apply = harness.run("--intake-only")
+    assert apply.code == 0 and harness.state()["enabled_provider_apis"] == ["drive.googleapis.com", "picker.googleapis.com"], apply.err
+    again = harness.run("--intake-only")
+    assert again.code == 0 and not again.writes and not again.starts, again.err
+
+
+@pytest.mark.parametrize("args", [("--intake-config-dir", "/private/config"),
+                                  ("--intake-only", "--intake-config-dir"),
+                                  ("--intake-only", "--intake-config-dir", "relative/config")])
+def test_private_configuration_directory_requires_explicit_intake_mode_and_absolute_path(tmp_path, args):
+    run = intake_harness(tmp_path).run(*args)
+    assert run.code != 0 and not run.calls and "Usage:" in run.err
+
+
+def test_refused_configuration_bundle_precedes_every_iam_write(tmp_path):
+    harness = intake_harness(tmp_path)
+    (tmp_path / "bin/uv").write_text('#!/bin/sh\ncase "$*" in *intake_config.py*) exit 1;; esac\ncat "$FAKE_ROOT/intake-metadata"\n')
+    run = harness.run("--intake-only", "--intake-config-dir", str(tmp_path))
+    assert run.code != 0 and not run.writes and not run.starts, run.err
+    assert not any(call["argv"][:2] == ["iam", "roles"] for call in run.calls)
+
+
+@pytest.mark.parametrize("args", [("--intake-picker-key",), ("--intake-only", "--intake-picker-key"),
+    ("--intake-picker-key", "--intake-config-dir", "/private/config"),
+    ("--intake-only", "--intake-config-dir", "/private/config", "--intake-picker-key", "--intake-picker-key")])
+def test_picker_key_requires_explicit_intake_mode_and_configuration_directory(tmp_path, args):
+    run = intake_harness(tmp_path).run(*args)
+    assert run.code != 0 and not run.calls and "Usage:" in run.err
+
+
+def test_picker_key_helper_receives_dry_run_and_precedes_setup_grants(tmp_path):
+    harness = intake_harness(tmp_path)
+    uv = tmp_path / "bin/uv"
+    uv.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$FAKE_ROOT/uv-invocations"\n'
+        'case "$*" in *intake_picker_key.py*) exit 0;; esac\ncat "$FAKE_ROOT/intake-metadata"\n')
+    run = harness.run("--intake-only", "--intake-config-dir", str(tmp_path), "--intake-picker-key", "--dry-run")
+    assert run.code == 0 and not run.writes and not run.starts, run.err
+    calls = (tmp_path / "uv-invocations").read_text().splitlines()
+    assert len(calls) == 2 and "intake_picker_key.py" in calls[0] and "deploy_models.py" in calls[1]
+    assert f"--directory {tmp_path} --dry-run" in calls[0] and "intake_config.py" not in calls[0]
+
+
+def test_picker_key_failure_precedes_every_iam_write(tmp_path):
+    harness = intake_harness(tmp_path)
+    (tmp_path / "bin/uv").write_text('#!/bin/sh\ncase "$*" in *intake_picker_key.py*) exit 1;; esac\n'
+        'cat "$FAKE_ROOT/intake-metadata"\n')
+    run = harness.run("--intake-only", "--intake-config-dir", str(tmp_path), "--intake-picker-key")
+    assert run.code != 0 and not run.writes and not run.starts, run.err
+    assert not any(call["argv"][:2] == ["iam", "roles"] for call in run.calls)
+
+
+def test_intake_setup_skips_missing_job_until_its_first_protected_definition(tmp_path):
+    harness = intake_harness(tmp_path)
+    state = harness.state()
+    state["jobs"] = []
+    harness.save(state)
+    run = harness.run("--intake-only")
+    assert run.code == 0 and not run.starts, run.err
+    assert "does not exist yet" in run.out
+    assert not any(command[1:4] == ["run", "jobs", "add-iam-policy-binding"] for command in run.ran)
+    assert any(row["role"] == ACCESSOR and API in row["members"]
+        and row["condition"] == pin("specimen-worker-actor-uid", 1)
+        for row in harness.state()["policies"]["secret/specimen-worker-actor-uid"])
 
 
 def grants(run):
@@ -1015,9 +1440,11 @@ def grants(run):
     return found
 
 
-# What the script grants beyond the committed standing table, and the two rows of the table it leaves alone.
+# Current grants that were added when the simple owner setup replaced the retired standing table.
 SAM_LISTING = (f"bucket/{BUCKET}", SAM, "roles/storage.legacyBucketReader", None, None)
-ADDED = {("job/specimen-worker", RELEASE, CUSTOM + "specimenWorkerExecution", None, None),
+ADDED = {("job/specimen-intake", API, "roles/run.invoker", None, None),
+         ("secret/specimen-worker-actor-uid", API, ACCESSOR, *list(pin("specimen-worker-actor-uid", 1).values())[:2]),
+         ("job/specimen-worker", RELEASE, CUSTOM + "specimenWorkerExecution", None, None),
          (f"bucket/{BUCKET}", API, CUSTOM + "specimenResearchCaptureRead", CAPTURE_READ["title"], CAPTURE_READ["expression"]),
          ("job/specimen-worker", API, CUSTOM + "specimenWorkerRead", None, None),
          (f"bucket/{BUCKET}", DATA, CUSTOM + "specimenGeoreferenceDatasets", GEO["title"], GEO["expression"]),
@@ -1027,8 +1454,6 @@ ADDED = {("job/specimen-worker", RELEASE, CUSTOM + "specimenWorkerExecution", No
          SAM_LISTING,
          *((f"service-account/{name}@{PROJECT}.iam.gserviceaccount.com", PLANE + name, "roles/iam.workloadIdentityUser",
             None, None) for name in PLANES)}
-LEFT_ALONE = {(f"project/{PROJECT}", DATA, CUSTOM + "specimenDataSourceBackup", None, None),
-              (f"project/{PROJECT}", BUILD, CUSTOM + "specimenDataInventoryProjectRead", None, None)}
 # The worker's and SAM 3's settings belong to their own change (#236) and move with it. For these two accounts the
 # script is held to this list of its own and to the shape rules of shape_problems, never to equality with the
 # settings; everything else (the release identities, the data release, the API runtime, SAM 3's bucket listing) is
@@ -1040,11 +1465,64 @@ THEIR_GRANTS = {
       for member in THEIRS for role in ("roles/storage.objectViewer", "roles/storage.objectCreator")),
     *((f"secret/{secret}", member, ACCESSOR, *list(pin(secret, version).values())[:2])
       for member, secret, version in LIVE_PINS if member in THEIRS and secret != MAPS_KEY)}
-# The research harness's create and get, for the worker alone. The standing table the next test compares with is the
-# retired release process's (scripts/ci/owner_grants.py), which scripts/ci/RETIRED.md keeps unchanged, so this pair
-# is held to this file and to the test that writes it out, not to that table.
+# The research harness's create and get, for the worker alone. These are held directly here and by the test that
+# writes them out; the retired release process's duplicate standing-grant table has been removed.
 RESEARCH_ROWS = {(f"bucket/{BUCKET}", WORKER, role, RESEARCH["title"], RESEARCH["expression"])
                  for role in ("roles/storage.objectViewer", "roles/storage.objectCreator")}
+
+
+def expected_grant(resource, member, role, held=None):
+    """A literal test-oracle row, independent of owner_setup.sh and iam.py."""
+    return (resource, member, role, held and held["title"], held and held["expression"])
+
+
+# The complete fresh-project grant table. This replaces the cross-check against
+# the retired owner_grants.py module with an in-file oracle, so deleting that
+# duplicate implementation cannot silently delete a standing grant from the
+# active setup. In particular, worker/SAM rows and every pinned secret version
+# remain exact rather than being judged only by shape.
+EXPECTED_FRESH_GRANTS = {
+    expected_grant("repository/specimen-runtime", BUILD, "roles/artifactregistry.writer"),
+    expected_grant("repository/specimen-runtime", RELEASE, "roles/artifactregistry.reader"),
+    expected_grant("repository/specimen-runtime", RELEASE, CUSTOM + "specimenRuntimeImageTags"),
+    *(expected_grant(f"service-account/{EMAIL(name)}", RELEASE, "roles/iam.serviceAccountUser")
+      for name in ("api-runtime", "worker-runtime", "sam-runtime")),
+    *(expected_grant(f"service-account/{name}@{PROJECT}.iam.gserviceaccount.com", PLANE + name,
+                     "roles/iam.workloadIdentityUser") for name in PLANES),
+    *(expected_grant(f"project/{PROJECT}", DATA, CUSTOM + role, SQL if role == "specimenDataInventorySqlConnect" else None)
+      for role in ("specimenDataSchemaPublish", "specimenDataStorageRules", "specimenDataInventoryProjectRead",
+                   "specimenDataInventorySqlConnect", "specimenDataBootstrapRows")),
+    *(expected_grant(f"project/{PROJECT}", RELEASE, CUSTOM + role)
+      for role in ("specimenRuntimeRelease", "specimenDataInventoryProjectRead", "specimenRuntimeInvokerPolicy")),
+    expected_grant(f"project/{PROJECT}", API, CUSTOM + "specimenRuntimeConnector"),
+    expected_grant(f"project/{PROJECT}", API, CUSTOM + "specimenApiUserLookup"),
+    expected_grant(f"project/{PROJECT}", WORKER, CUSTOM + "specimenRuntimeConnector"),
+    *(expected_grant(f"bucket/{BUCKET}", member, role, APP)
+      for member in (API, WORKER, SAM)
+      for role in ("roles/storage.objectViewer", "roles/storage.objectCreator")),
+    expected_grant(f"bucket/{BUCKET}", API, "roles/storage.objectViewer", SLIDES),
+    *(expected_grant(f"bucket/{BUCKET}", WORKER, role, RESEARCH)
+      for role in ("roles/storage.objectViewer", "roles/storage.objectCreator")),
+    expected_grant(f"bucket/{BUCKET}", DATA, CUSTOM + "specimenGeoreferenceDatasets", GEO),
+    expected_grant(f"bucket/{BUCKET}", API, CUSTOM + "specimenResearchCaptureRead", CAPTURE_READ),
+    expected_grant(f"bucket/{BUCKET}", SAM, "roles/storage.legacyBucketReader"),
+    *(expected_grant(f"secret/{secret}", member, ACCESSOR, pin(secret, version))
+      for member, secret, version in (
+          (API, "specimen-worker-logfire", 1),
+          (API, "specimen-source-registry", 1),
+          (API, "specimen-collection-bindings", 1),
+          (WORKER, "huggingface-runtime-token", 2),
+          (WORKER, "specimen-worker-logfire", 1),
+          (WORKER, "specimen-worker-actor-uid", 1),
+          (WORKER, "specimen-collection-bindings", 1),
+          (SAM, "specimen-worker-logfire", 1),
+          (DATA, "specimen-worker-actor-uid", 1),
+      )),
+    expected_grant("job/specimen-worker", RELEASE, CUSTOM + "specimenWorkerExecution"),
+    expected_grant("job/specimen-worker", API, CUSTOM + "specimenWorkerRead"),
+    expected_grant("job/specimen-intake", API, "roles/run.invoker"),
+    expected_grant("secret/specimen-worker-actor-uid", API, ACCESSOR, pin("specimen-worker-actor-uid", 1)),
+}
 # The settings may ask for these; the script must not grant them, each for its own reason.
 NOT_GRANTED = {
     MAPS_KEY: "retired by the owner; #236 removes it from the worker's settings",
@@ -1125,14 +1603,19 @@ def test_fresh_project_gets_every_role_and_pins_every_secret_read(fresh, setting
         "specimenDataSchemaPublish", "specimenDataStorageRules", "specimenDataInventoryProjectRead",
         "specimenDataInventorySqlConnect", "specimenDataBootstrapRows", "specimenGeoreferenceDatasets", "specimenRuntimeRelease",
         "specimenRuntimeInvokerPolicy", "specimenWorkerExecution", "specimenWorkerRead", "specimenResearchCaptureRead",
-        "specimenRuntimeConnector", "specimenApiUserLookup"]
+        "specimenRuntimeConnector", "specimenApiUserLookup", "specimenRuntimeImageTags"]
     assert run.conditions()["condition-1-specimen_source_inventory_only.yaml"] == SQL  # with its live description
     granted = grants(run)
-    # Strict, against the settings: the API runtime reads exactly its secrets at their pinned versions, and the
-    # data release its one.
+    # This self-contained setup fixture represents its original core baseline.
+    # Optional intake activation and the binding-version advance use the
+    # separate --intake-only metadata path, checked above with exact versions.
     assert f"serviceAccount:{settings.API['service_account']}" == API
-    api = {(f"secret/{secret}", API, ACCESSOR, *list(pin(secret, settings.SECRET_VERSIONS[secret]).values())[:2])
-           for secret in settings.API["secret_env"].values()}
+    optional = set(getattr(settings, "OPTIONAL_SECRET_VERSIONS", {}))
+    core_pins = {secret: settings.SECRET_VERSIONS[secret]
+                 for secret in settings.API["secret_env"].values() if secret not in optional}
+    core_pins["specimen-collection-bindings"] = 1
+    api = {(f"secret/{secret}", API, ACCESSOR, *list(pin(secret, version).values())[:2])
+           for secret, version in core_pins.items()}
     assert {grant for grant in owned(granted) if grant[0].startswith("secret/")} == api | {
         grant for grant in ADDED if grant[0].startswith("secret/")}
     # Strict, against this file: what the script grants the worker and SAM 3 today, so a lost line is noticed.
@@ -1140,6 +1623,10 @@ def test_fresh_project_gets_every_role_and_pins_every_secret_read(fresh, setting
     # Shape, against the settings: for those two accounts the settings may move without this script.
     assert shape_problems(granted, settings) == []
     assert "the listing grant limited to the checkpoint prefix is not made here" in run.out
+
+
+def test_fresh_project_grants_the_complete_literal_standing_table(fresh):
+    assert grants(fresh[1]) == EXPECTED_FRESH_GRANTS
 
 
 def test_shape_rules_name_what_is_wrong():
@@ -1161,25 +1648,6 @@ def test_shape_rules_name_what_is_wrong():
     for grant, words in wrong.items():
         assert [problem for problem in shape_problems({grant}, settings) if words in problem], grant
     assert shape_problems(THEIR_GRANTS | RESEARCH_ROWS | ADDED, settings) == []
-
-
-def test_fresh_project_grants_match_the_standing_table_for_what_this_change_owns(fresh, settings):
-    table = ci_module("owner_grants")
-    standing = {(f"{grant.resource[0]}/{grant.resource[1]}", grant.member, grant.role,
-                 *(reversed(grant.condition) if grant.condition else (None, None)))
-                for grant in (*table.STANDING, *table.runtime_grants(settings)[0])}
-    theirs = {grant for grant in standing if grant[1] in THEIRS}
-    granted = grants(fresh[1])
-    assert LEFT_ALONE <= standing
-    # Strict: the release identities, the data release and the API runtime, row for row.
-    assert owned(granted) == (standing - theirs - LEFT_ALONE) | ADDED
-    # Not strict: the table's rows for the worker and SAM 3 follow their own change. The script stays inside them
-    # (apart from its pinned secret reads, which shape_problems judges), and may leave rows out: on main the
-    # retired Maps key, on #236 the checkpoint listing.
-    assert {grant for grant in granted - owned(granted) if grant[2] != ACCESSOR} - RESEARCH_ROWS <= theirs
-    for name, (_, _, permissions) in table.ROLES.items():
-        added = ["run.jobs.getIamPolicy"] if name == "specimenRuntimeRelease" else []
-        assert sorted([*permissions, *added]) == ROLES[name]
 
 
 def test_the_worker_alone_gets_create_and_get_on_the_three_research_prefixes_and_no_wider_grant(fresh):
@@ -1374,7 +1842,7 @@ def test_first_morning_waits_for_new_access_retries_once_and_rebuilds_the_site(t
         f"web app: PASS {RUNS}400", f"web app: the site now serves commit {COMMIT}",
         "web app: the site now points at the API"]
     assert run.ran[-3:] == [NARROW, UNWIDEN, RERUN] and run.ran.index(START_RUNTIME) == len(run.ran) - 4
-    assert stages(run) == ["  Setup: PASS (29 changed, 39 already in place)", f"  Data release: PASS {RUNS}502",
+    assert stages(run) == ["  Setup: PASS (35 changed, 39 already in place)", f"  Data release: PASS {RUNS}502",
                            f"  Runtime release: PASS {RUNS}503",
                            f"  Web app: PASS {RUNS}400 (the site points at the API)"]
     assert "To read the log" not in run.summary and "--redeploy-web" not in run.summary
@@ -1428,7 +1896,7 @@ def test_dry_run_prints_the_starts_and_starts_nothing(tmp_path):
     assert run.writes == [] and run.sleeps == [] and harness.state() == state
     assert run.printed == [*EXPECTED, START_DATA, START_RUNTIME, RERUN]
     assert "  Would wait 120 seconds for the new access to take effect" in run.out.splitlines()
-    assert stages(run) == ["  Setup: WOULD RUN (27 change(s))", "  Data release: WOULD RUN",
+    assert stages(run) == ["  Setup: WOULD RUN (33 change(s))", "  Data release: WOULD RUN",
                            "  Runtime release: WOULD RUN", f"  Web app: WOULD RUN {RUNS}400"]
     # A build would run, so the site is not read now: the check would follow that build.
     assert "web app: after that build the live site would be checked for the API address" in run.out.splitlines()
@@ -1493,12 +1961,20 @@ def test_runs_with_no_terminal_from_a_lone_copy_outside_the_repository(tmp_path)
     steady = re.compile(r"owner-setup\.\w+")
     assert steady.sub("owner-setup", run.out) == steady.sub("owner-setup", usual.out)
     text = SCRIPT.read_text()
-    # Nothing relative to its own location or to a checkout, and nothing about a terminal's size.
-    assert not re.findall(r"\$0\b|BASH_SOURCE|\bdirname\b|\bgit\b|\btput\b|\bstty\b|COLUMNS", text)
+    # Only the explicitly selected intake mode locates its checkout. The
+    # original modes still work from this lone copy, as exercised above.
+    locator = '    INTAKE_REPOSITORY_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)'
+    assert text.count(locator) == 1
+    assert not re.findall(r"\$0\b|BASH_SOURCE|\bdirname\b|\bgit\b|\btput\b|\bstty\b|COLUMNS", text.replace(locator, ""))
     # Every read in the script takes its lines from a file or a variable, never from the caller.
     reads = [line.strip() for line in text.splitlines() if re.search(r"(?:^|;|IFS=)\s*read\b", line)]
     assert reads == ["while IFS= read -r line; do"] * 3
-    assert len(re.findall(r'^ *done <<?<? "\$', text, re.MULTILINE)) == 3
+    # The additional tab-separated intake reader also consumes a captured
+    # variable, never the caller's input.
+    assert text.count('  while IFS="$TAB" read -r kind who name version; do') == 1
+    metadata_end = '  done <<< "$metadata"'
+    assert text.count(metadata_end) == 1
+    assert len(re.findall(r'^ *done <<?<? "\$', text.replace(metadata_end, ""), re.MULTILINE)) == 3
 
 
 def program_reads(run):
@@ -1621,7 +2097,7 @@ def test_setup_only_before_the_merge_applies_the_setup_and_touches_no_workflow(t
     assert not [call for call in run.calls if call["tool"] == "gh" and call["argv"][0] in ("workflow", "run")]
     assert run.sleeps == [] and not [call for call in run.calls if call["tool"] == "curl"]
     assert run.summary.split("Stages:\n", 1)[1].splitlines()[:5] == [
-        "  Setup: PASS (27 changed, 39 already in place)", "  Data release: SKIPPED (--setup-only)",
+        "  Setup: PASS (33 changed, 39 already in place)", "  Data release: SKIPPED (--setup-only)",
         "  Runtime release: SKIPPED (--setup-only)", "  Web app: SKIPPED (--setup-only)",
         "State: SETUP DONE, RELEASES NOT STARTED (--setup-only)"]
     assert run.summary.split("Next steps:\n", 1)[1].splitlines() == [
@@ -1649,3 +2125,87 @@ def test_another_shell_is_told_to_use_bash_before_anything_runs(tmp_path, shell)
                         "echo 'run this script with bash: bash scripts/ops/owner_setup.sh' >&2",
                         "return 2 2> /dev/null || exit 2", ";;"]
     assert code[5:7] == ["esac", "set -euo pipefail"]
+
+
+def registry_writes(run):
+    return [argv for argv in run.ran if argv[:3] == ["gcloud", "artifacts", "repositories"]]
+
+
+def test_the_registry_gets_movable_tags_and_the_cleanup_policy_in_dry_run_mode_once(tmp_path):
+    harness = Harness(tmp_path, live_state())
+    run = harness.run("--setup-only")
+    assert run.code == 0, run.err
+    assert registry_writes(run) == [IMAGE_TAGS[1], SET_CLEANUP, LET_TAGS_MOVE]
+    [sent] = [call["policy_text"] for call in run.writes if "policy_text" in call]
+    assert json.loads(sent) == [
+        {"name": "keep-newest", "action": {"type": "KEEP"}, "mostRecentVersions": {"keepCount": 5}},
+        {"name": "keep-deployed", "action": {"type": "KEEP"},
+         "condition": {"tagState": "TAGGED", "tagPrefixes": ["deployed", "rollback"]}},
+        {"name": "delete-old", "action": {"type": "DELETE"}, "condition": {"tagState": "ANY", "olderThan": "1d"}}]
+    held = harness.state()["registry"]
+    assert (held["immutable"], held["dry_run"], sorted(held["policies"])) == (
+        False, True, ["delete-old", "keep-deployed", "keep-newest"])
+    assert "set the cleanup policy of specimen-runtime in dry-run mode (nothing is deleted)" in run.out
+    again = harness.run("--setup-only")
+    assert again.code == 0 and again.writes == []
+    assert "ok: the cleanup policy of specimen-runtime is the committed one, in dry-run mode" in again.out
+
+
+def test_a_live_policy_that_deletes_or_differs_is_set_back_to_the_committed_dry_run(tmp_path):
+    harness = Harness(tmp_path, live_state())
+    assert harness.run("--setup-only").code == 0
+    for change in ({"dry_run": False}, {"policies": {"keep-newest": {"id": "keep-newest", "action": "KEEP",
+                                                                       "mostRecentVersions": {"keepCount": 1}}}}):
+        state = harness.state()
+        state["registry"].update(change)
+        harness.save(state)
+        run = harness.run("--setup-only")
+        assert run.code == 0 and registry_writes(run) == [SET_CLEANUP], run.err
+        assert harness.state()["registry"]["dry_run"] is True
+    assert "--no-dry-run" not in SCRIPT.read_text()
+
+
+@pytest.mark.parametrize("failing, done", [("add-iam-policy-binding", []), ("set-cleanup-policies", [SET_CLEANUP])])
+def test_no_cleanup_policy_before_the_release_can_tag_and_tags_move_only_after_dry_run_holds(tmp_path, failing, done):
+    state = live_state()
+    state["roles"]["specimenRuntimeImageTags"] = {"stage": "GA", "deleted": False,
+                                                  "permissions": ROLES["specimenRuntimeImageTags"]}
+    if failing == "set-cleanup-policies":
+        state["policies"]["repository/specimen-runtime"].append(
+            binding(CUSTOM + "specimenRuntimeImageTags", [RELEASE]))
+    harness = Harness(tmp_path, {**state, "fail": [failing]})
+    run = harness.run("--setup-only")
+    assert run.code == 1
+    assert [argv for argv in registry_writes(run) if "add-iam-policy-binding" not in argv] == done
+    assert harness.state()["registry"] == {"immutable": True, "dry_run": False, "policies": {}}
+    if not done:
+        assert "WARNING: the cleanup policy of specimen-runtime is not set" in run.out
+
+
+def test_a_deleting_policy_set_elsewhere_goes_to_dry_run_before_its_tags_can_move(tmp_path):
+    harness = Harness(tmp_path, live_state())
+    assert harness.run("--setup-only").code == 0
+    state = harness.state()
+    state["registry"].update(immutable=True, dry_run=False)  # immutability is what stops this policy deleting
+    harness.save({**state, "fail": ["set-cleanup-policies"]})
+    run = harness.run("--setup-only")
+    assert run.code == 1 and registry_writes(run) == [SET_CLEANUP]
+    assert harness.state()["registry"]["immutable"] is True
+    harness.save({**harness.state(), "fail": []})
+    run = harness.run("--setup-only")
+    assert run.code == 0 and registry_writes(run) == [SET_CLEANUP, LET_TAGS_MOVE]
+    assert (harness.state()["registry"]["dry_run"], harness.state()["registry"]["immutable"]) == (True, False)
+
+
+def test_a_tags_role_that_cannot_be_set_to_its_two_permissions_is_not_bound_and_the_registry_is_left_alone(tmp_path):
+    state = live_state()
+    state["roles"]["specimenRuntimeImageTags"] = {"stage": "GA", "deleted": False, "permissions": [
+        "artifactregistry.tags.create", "artifactregistry.tags.update", "artifactregistry.versions.delete"]}
+    harness = Harness(tmp_path, {**state, "fail": ["update"]})
+    run = harness.run("--setup-only")
+    assert run.code == 1
+    assert [argv[:5] for argv in run.ran if "specimenRuntimeImageTags" in " ".join(argv)] == [
+        ["gcloud", "iam", "roles", "update", "specimenRuntimeImageTags"]]
+    assert registry_writes(run) == []
+    assert harness.state()["registry"] == {"immutable": True, "dry_run": False, "policies": {}}
+    assert "WARNING: the image registry is left as it is: the role specimenRuntimeImageTags could not be set" in run.out

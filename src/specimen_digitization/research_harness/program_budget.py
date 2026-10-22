@@ -14,9 +14,10 @@ from specimen_digitization.application.lane_allowance import LegacyLedgerUnavail
 
 from .persistence import DurableEffectBroker, HeldUnknown
 
-# G9: the owner's USD 25 ceiling, cumulative. The research broker below refuses a larger
-# allowance; lane.queue, ProgramLedger.reserve and ProgramAllowance do not check it.
-MAX_PROGRAM_ALLOWANCE_MICROS = 25_000_000
+# G9: the owner's USD 30 ceiling, cumulative (raised from USD 25 on 2026-10-17). The
+# research broker below refuses a larger allowance; lane.queue, ProgramLedger.reserve and
+# ProgramAllowance do not check it.
+MAX_PROGRAM_ALLOWANCE_MICROS = 30_000_000
 
 
 class ProgramEffectBroker(DurableEffectBroker):
@@ -24,12 +25,17 @@ class ProgramEffectBroker(DurableEffectBroker):
         super().__init__(store, blobs)
         self.binding_guard = binding_guard
         self.authorization = copy.deepcopy(send_authorization)
+        # Monthly caps of the organization and the collection (TENANT_BUDGETS.md)
+        # are enforced by the ordinary step chain only; this broker sends
+        # nothing while one applies (before_send).
+        self.repository = repository
+        self.tenant_scope = Scope(organization_id=scope.organization_id, collection_id=scope.collection_id)
         policy = run.profile.execution
         self.allowance = policy.program_allowance_micros
         self.ledger = None if self.allowance is None else ProgramLedger(repository, Scope(
             organization_id=scope.organization_id, collection_id=policy.program_ledger_collection))
-        # This broker refuses an allowance above G9's USD 25. The pilot's own allowance
-        # (G30, USD 15 in the published profile) sits inside it.
+        # This broker refuses an allowance above G9's USD 30. The pilot's own allowance
+        # (G30, USD 28 in the published profile) sits inside it.
         if self.allowance is not None and self.allowance > MAX_PROGRAM_ALLOWANCE_MICROS:
             raise HeldUnknown("program_allowance_ledger_unavailable")
 
@@ -66,7 +72,23 @@ class ProgramEffectBroker(DurableEffectBroker):
     def send_authorization(self, execution_class):
         return copy.deepcopy(self.authorization) if execution_class == "live" else None
 
+    def refuse_capped(self):
+        """No send while a monthly cap applies, or the caps cannot be read: this
+        broker's research effects reserve on no monthly ledger, so it fails
+        closed instead of spending past one."""
+        from specimen_digitization.application.tenant_budget import (
+            UNAVAILABLE, TenantBudgetUnavailable, applies,
+        )
+
+        try:
+            capped = applies(self.repository, self.tenant_scope)
+        except TenantBudgetUnavailable:
+            capped = True
+        if capped:
+            raise HeldUnknown(UNAVAILABLE)
+
     async def before_send(self, scope, intent):
+        await asyncio.to_thread(self.refuse_capped)
         if self.binding_guard is not None:
             await self.binding_guard()
         await asyncio.to_thread(self.charge,
@@ -162,8 +184,8 @@ def reserve_ordinary_liability(repository, principal, specimen, step, cost, *, a
 def settle_ordinary_liability(repository, principal, specimen, step, *, attempt=None, state_backend=None):
     """After record_step, settle only its complete known provider usage.
 
-    SAM's request-duration estimate and unknown calls have cost_basis=reserved;
-    neither can refund any liability. A call refused before any work
+    A SAM call without its instance report and unknown calls have
+    cost_basis=reserved; neither can refund any liability. A call refused before any work
     (cost_basis=refused, lane_costs.record_refused) is a known zero and settles.
     Original seed costs remain immutable.
     """

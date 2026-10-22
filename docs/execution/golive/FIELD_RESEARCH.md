@@ -310,6 +310,39 @@ handover runs field research instead of the six specialists:
    GVP name, as before; a reply that leaves out all of it is malformed, as
    above.
 
+   **A county's Wikidata lookup reads its places' classes** (the owner's
+   ruling below, "County: the country's second-level unit"). After the
+   search, the entities and their labels, it reads the subclass-of (P279)
+   statements of its places' instance-of (P31) classes, then of the
+   classes those name, in at most two more requests of up to 50 classes
+   each, each sent once and never retried (`sources.CLASS_READS`,
+   `CLASS_READ_ATTEMPTS`, `ApprovedSources._levels`; a refused read was
+   sent three times before Codex's review of 9f5319ca;
+   `georef_wikidata.classes_params`, `parse_superclasses`,
+   `unread_classes`, `levels_reached`). A chain ends at Wikidata's
+   first-level (Q10864048) or second-level (Q12357832) administrative
+   division; Q13220204, the second-level class's former id, redirects to
+   Q12357832, and `wbgetentities` files the target under the id asked,
+   which is read as that class. A place whose chains reach the second-level
+   division and not the first-level one has "second-level administrative
+   division" among its kinds (`sources._place`). One whose chains reach the
+   first-level division, alone or with the second, has "first-level
+   administrative division" among its kinds instead, and is at no county's
+   level whatever its other kinds say (`agreement.at_level`; a place
+   labelled "county" whose class reaches the first level settled County
+   before Codex's review of 9f5319ca); a province stays at a province's
+   level. Probed on 2026-10-12:
+   Yepocapa's "municipality of Guatemala" reaches it in one read; Cook
+   County's "county of Illinois", through "county of the United States",
+   in two; the Philippines' "province of the Philippines" reaches the
+   first-level division. A longer chain is not followed. Each response read
+   is stored with the lookup's others, and one evidence record names them
+   all. A read with no usable answer (a refusal, a body that is not the
+   classes asked) ends the reading: the lookup stands on its other
+   responses and no place gets a level from it. Only the county's lookup
+   reads classes; its answer is cached apart from another field's answer
+   to the same query, whose responses it shares.
+
    **A source that cannot be reached** (a lookup whose last attempt was rate
    limited, timed out, was refused or redirected, failed on the server or
    came back unreadable, as above; a refused query is not one) does not
@@ -348,7 +381,20 @@ handover runs field research instead of the six specialists:
      review ("The label writes a longer scientific name than this value.").
      A keyed line's "taxon:", an author and year, a sex sign or "sp. 1" are
      no longer name. Other fields' candidates are not checked against their
-     quotes.
+     quotes. For a place field (country, province or state, county, city), a
+     candidate or a reader's verbatim that names no place, nothing but unit
+     words and punctuation by the place comparison key ("Prov.", "Co."), is
+     no literal of the field (`agreement.names_no_place`): it is neither cut
+     nor extended by an answer and is no reader's text in the agreement
+     rules below. It still shows that its reading writes the field, for the
+     parents check of step 5 (`step._place_texts`): a county or a city under
+     a province written "Davao, Prov." settles only inside that province once
+     it settles (NO_PROVINCE). And it still counts as text the organiser
+     found for rule A's condition 5. The second rerun of 2026-10-18 had f35af3a5's
+     organiser give the province "Prov.", cut from "Davao, Prov.": the
+     answer "Davao, Prov." was refused as extending it and "Prov." as no
+     place asked of it, so the field fell back; "Davao, Prov." now settles
+     as text read from the transcript.
    - **Or text read from the transcript** (the coordinator's ruling of
      2026-10-09, after the real runs of that day: 105526328's collecting
      date "IV-24-48", which both readers of its label write and parse_date
@@ -373,7 +419,40 @@ handover runs field research instead of the six specialists:
      "6400" of "6400'" as metres). It may cut or extend no candidate of
      that reading ("Sept. '46" beside the candidate "3 Sept. '46", "San
      Pedro Sacatepequez" beside the candidate "San Pedro"): the answer is
-     then refused as above. A date or an elevation so read is never one end
+     then refused as above.
+     Precise location, the label's verbatim locality, is the one exception
+     (`agreement.ACROSS_LINES`; the coordinator's request of 2026-10-18,
+     after the third rerun, where two of its experts fell back). Labels
+     often write a locality over consecutive lines, and then its literal
+     may run over them: a run of whole words over consecutive lines of
+     each reading the answer names, starting at a word's edge on its first
+     line and ending at one on its last, with no blank line
+     (`agreement.runs_across_lines`, `agreement.written_runs`). Its value
+     keeps the line breaks as the readings write them. An answer that
+     gives a space for a line break (or a line break for a space) is read
+     as the text every reading it names writes so (`agreement.across_lines`,
+     in the expert's check and in the step): e98a924c's both readers write
+     "CNHM. E Slope Mt." over "McKinley, Davao Prov.", and the answer "E
+     Slope Mt. McKinley, Davao Prov." is their "E Slope Mt.\nMcKinley,
+     Davao Prov.". Readers that break the lines at different words write no
+     one text, and the answer is sent back. Such a literal may hold whole
+     candidates, the organiser's lines of one locality joined in their order
+     on the label (2b02009d's decided reading writes "Seliban Riv." over
+     "Mt. Apo", given as two candidates), but it still cuts none: it is no
+     piece of a candidate, and no place of a candidate in the reading lies
+     partly inside it (`agreement._cut_candidate`). Nor does it extend one
+     (round 1 of #379's review, finding 3): a line of it that holds a
+     candidate holds no other letter or digit, only punctuation and spaces
+     between its candidates, so "Seliban Riv." over "near Mt. Apo" beside
+     the candidate "Mt. Apo" is refused, as "near Mt. Apo" on one line is. A
+     line holding no candidate may join them. Those candidates are
+     then parts of it, not rival texts of the label (`agreement.labels`),
+     and where the label has no decided transcript every reader must write
+     it, line breaks, letter case and spacing aside. Every other check holds
+     as on one line: it holds no date, elevation or range of them
+     (`_holds_another_kind`), and every reading it names writes it. Every
+     other field, the place fields among them, keeps its literal on one
+     line. A date or an elevation so read is never one end
      of a range (`agreement._part_of_range`, PR #300's review and finding 1
      of its review of 6fd595b3b): where a reading it is read from writes
      it, the comma- or semicolon-separated part of the line holding it may
@@ -518,13 +597,36 @@ handover runs field research instead of the six specialists:
      105526329's precise location "Yepocapa, 4800ft.", read from the
      transcript, goes to review beside the elevation "4800ft." (the brief
      leaves elevations out of the locality), while "Volcan Barva" beside
-     "2000 msnm" settles. An organiser's candidate is never refused here,
-     and two fields that both settle the same text from the transcript
+     "2000 msnm" settles. An organiser's candidate is never refused here
+     (but for the one case below), and two fields that both settle the same text from the transcript
      (105526328's "trap" as the habitat and as the method) both go to
      review. A field whose answer is refused on its own does not claim:
      a date and a collection code that both read "IV-24-48" settle the
      date, since the code holds a date (below) and settles nothing, and
      the code goes to review as text the date holds.
+     One overlap goes the other way (the live rerun on 616ae010 of
+     2026-10-18): a place read from the transcript whose text another
+     field's value, settled in the same attempt, overlaps only partly (at
+     each overlap neither text holds the other: `step._partly`) settles,
+     and that other field goes to review, whether its answer gave a
+     candidate or text read from the transcript, with a reason of its own
+     naming the place: "This text runs into the value found for <field>."
+     (`step.RUNS_INTO`; until round 1 of #380's review it was given the
+     reason above, which says its text was read from the transcript and is
+     the place's value, neither of which need be true). A label line often
+     begins with another field's text and runs on into the locality. Then
+     the place's expert leaves that text
+     out, while the other field's answer runs on into the locality's words.
+     e98a924c's label 2 begins "CNHM. E Slope Mt." over "McKinley, Davao
+     Prov.". The organiser filed the whole first line as the collection
+     code, whose expert kept it, and the precise location's expert read
+     "E Slope Mt." / "McKinley, Davao Prov.". The locality went to review
+     until then; now it settles, and the collection code, which holds the
+     locality's words (its brief says a place is no code), goes to review.
+     A place that holds another field's whole text ("CNHM. E Slope Mt." /
+     "McKinley, Davao Prov." beside the code "CNHM."), or lies wholly
+     inside it, still goes to review, as does one beside a value settled
+     before this attempt or by a person, which is not researched again.
    - **Text plainly of another kind** (the answer check and the step,
      `agreement._holds_another_kind`; finding 2 of the review of
      6fd595b3b). A place field (country, province or state, county, city,
@@ -706,8 +808,13 @@ handover runs field research instead of the six specialists:
    - **Readers and labels that disagree (G20, G27, G32).** Whatever state the
      organiser gave the field, each label that writes it settles on its own:
      a label with a decided transcript on its decided reading's one candidate
-     literal (a label whose decided reading writes nothing for the field takes
-     no part); a label whose readers each write the same text, letter case
+     literal, or, when that reading has several texts for the field (the
+     organiser's, and the answer's text read from the transcript: 48a71d53's
+     "Mindanao," and "Davao Prov."), only through the field's approved
+     sources as for readers that differ (below), on one of its candidate
+     literals (a label whose decided
+     reading writes nothing for the field takes no part); a label whose
+     readers each write the same text, letter case
      and spacing aside, on its first reader's spelling (readers that differ
      only so agree, the coordinator's ruling of 2026-10-09: texts compare
      after NFC, casefolding and removing every space and line break,
@@ -721,7 +828,19 @@ handover runs field research instead of the six specialists:
      answer about it, and every other has a captured no_match answer
      about it and no success or ambiguous one. An error, a timeout or a text
      never asked about is not a no-match; a later gazetteer reply that step
-     4 says is still read as no match is one. For a place field (country,
+     4 says is still read as no match is one. For a place field, a text its
+     gazetteers found only as another kind of place than the field's counts
+     as found by none too (`agreement.found_only_elsewhere`; the batch
+     rerun of 2026-10-17, where 48a71d53's and cb903c0e's province went to
+     review beside "Mindanao,", an island): every Getty TGN, Wikidata or NGA
+     success or ambiguous answer about it lists candidates, those of two or
+     more of these gazetteers hold one of its name (one answer's list may be
+     cut short: Wikidata's holds at most seven), each of those has a kind,
+     and none of that name or one letter from it is at the field's level.
+     GEOLocate's answers count
+     only for a city, where any candidate keeps the text; an abbreviated
+     text ("Ill.") never counts so, as it may stand for a name no source was
+     asked. For a place field (country,
      province or state, county, city) such a label also settles when every
      text its readers write is confirmed and one authority_id confirms them
      all: the readers name that place ("Yepocapa," and "Yepocapa", both
@@ -738,7 +857,19 @@ handover runs field research instead of the six specialists:
      GBIF's decided candidate for the whole name it writes (a success
      answer), as the one candidate at a place field's level when it has that
      name (a success or ambiguous answer; see Places), or, for precise
-     location, as a success answer's candidate of that name; a place source
+     location, as a success answer's candidate of that name. A place text
+     written as an abbreviation is also confirmed as the one candidate at
+     the field's level of an answer asked an expansion its letters fit
+     (P4 below, the rule a value settles on such an expansion by), whatever
+     that candidate's name: 3781e440's reader 2B writes "USA: Ill. Coles
+     Co." and 2A "U.S.B.I.L.: Coles Co.,", and Wikidata's answers for
+     "United States of America" and "Illinois" confirm 2B's "USA" and
+     "Ill." (the third rerun of 2026-10-18; until then only a candidate of
+     the text's own name did, and the state went to review, `DIFFER`).
+     Initials so confirmed still settle only with another place inside them
+     (Initials, below). An answer that cites only the lookup of "USA" itself,
+     whose one nation is "United States", is sent back to cite the answer
+     asked the expansion. A place source
      was asked about a text when the text is the query's first
      comma-separated part: the only name a gazetteer searches (the part
      before the first comma) and the place GEOLocate looks for. The rest of
@@ -777,9 +908,18 @@ handover runs field research instead of the six specialists:
      (political entities)" or "counties"; "inhabited places", "cities",
      "towns" or "villages"), Wikidata's instance-of labels ("country",
      "sovereign state"; "province", "former province", "department", "state";
-     "county"; "city", "town", "village", "human settlement",
-     "municipality", each also as "... of ..."), NGA's feature codes
-     ("A.PCL..."; "A.ADM1"; "A.ADM2"; "P...."). GEOLocate settles only a
+     "county", "second-level administrative division"; "city", "town",
+     "village", "human settlement", "municipality", each also as "... of
+     ..."), NGA's feature codes ("A.PCL..."; "A.ADM1"; "A.ADM2"; "P....").
+     A county's or a province's Wikidata lookup (`sources.LEVEL_FIELDS`)
+     names "second-level administrative division" among a place's kinds
+     when its classes reach that class, and "first-level administrative
+     division" when they reach that one (step 4), so Wikidata's municipio
+     Yepocapa, "municipality of Guatemala", is at a city's level and, for a
+     county, at a county's level too, and Bahia, "federative unit of
+     Brazil", is at a province's level for a province (until the second
+     rerun of 2026-10-18 only a county's lookup read the classes, and
+     19f0f1f6's province "Bahia" fell back). GEOLocate settles only a
      city, with all its candidates at a city's level: for a country, a
      province or state, or a county its candidate is a part of the query
      itself (its country, its state or county part, or else its place part),
@@ -898,6 +1038,24 @@ handover runs field research instead of the six specialists:
        inside it: that field's settling candidate names it among its
        parents, by record, or by its text, value or expansion
        (`step._corroborate`, once every place is in, from the city up).
+       Or else when another place the label writes below it (the
+       organiser's text for a province, county, city or precise location)
+       lies inside it by the attempt's answers about that text: among the
+       Getty TGN, Wikidata and NGA answers about it, those of two or more
+       of these gazetteers hold candidates of its name that name a parent
+       (one answer's list may be cut short: Wikidata's holds at most
+       seven), and every such candidate in those answers lies inside it
+       (`step._placed_inside`; a candidate that names no parent, a ship or
+       a film, is left aside, and GEOLocate's parents come from the query,
+       so its answers count for nothing). The value then also cites those
+       answers and its reason ends 'The initials "P.I." read as "Philippine
+       Islands" because the label's "Mt. Apo" lies inside it: each place of
+       that name that the Wikidata and NGA GEOnet Names Server answers
+       about it put somewhere is there.' (2b02009d, whose only places below
+       "P.I." were the island "Mindanao", which NGA also holds as villages
+       in Honduras and Guatemala, and "Mt. Apo", each of whose namesakes
+       with a parent in the Wikidata and NGA answers is in the
+       Philippines.)
        Otherwise the field is ambiguous, for review, with a reason naming
        the initials ('The initials "P.I." fit "Philippine Islands", but no
        other place on the label was found inside it, so the initials alone
@@ -979,7 +1137,69 @@ handover runs field research instead of the six specialists:
        Wikidata's one department for "San Pedro", in Paraguay, never settles
        a Guatemalan province. A country needs no parent. A place that waits
        for a country whose research failed is researched again with it on
-       the retry;
+       the retry. A country that no answer settled holds no place back when
+       the reading writes none, writes the place's own misfiled text there,
+       or when the Getty TGN, Wikidata and NGA answers of any field confirm
+       every country text of every reading of the record as one nation
+       (`agreement.confirmed_place`: each text confirmed as above, of its own
+       name or through an expansion, and every candidate at a nation's level
+       of an answer about it or its expansion that same nation), and the
+       place lies in that nation (`step._confirmed_country`). A country
+       field left with no value and no text is then derived from the place
+       (`derive.fill`, as for a label that writes no country), and one left
+       ambiguous may be (the country derivation below); the text never
+       supplies the value. 3781e440's country expert never cited Wikidata's
+       answer for "United States of America" (only its answer for "USA"
+       itself and the no-match answers for "U.S.B.I.L."), every one of its
+       answers was refused, and its county was refused `NO_COUNTRY`; "USA" is confirmed as the
+       United States, so Illinois and Coles County settle and derive it.
+       Two readers who write "USA" and "Canada" leave the places for review,
+       whether or not the organiser filed "Canada" (round 1 of #379's
+       review, finding 2). The step reads each line of any reading that
+       writes a country, province or county text of the record, and, on
+       a label whose readers all have the same number of lines, the line at
+       the same place (by its index) of every other reader of that label,
+       so reader 1B's "Canada" over "Ill." over "Coles Co.", beside 1A's
+       filed "USA" over the same two lines, is read too (round 1 of #380's
+       review, finding 3). Readers whose line counts differ (one reads a
+       printed header the other skips, or joins two lines) would pair the
+       wrong lines, so each then has only its own place lines read (round
+       1 of #381's review, finding 2). On each, it sets aside
+       what the fields hold, where the line writes it: every field's
+       organiser candidates, and the literals and verbatims of every
+       supported value, never of a value left unsettled, so the country
+       expert's own unresolved "Canada" holds nothing (finding 2). It then
+       weighs what is left group by group, split at commas, semicolons,
+       colons, brackets and slashes, after setting aside each date,
+       elevation or range a group holds ("1948" of "Canada 1948", "1200 ft"
+       of "Canada 1200 ft"; finding 4). A group keeps the country check in
+       force unless what is left of it holds no letter, is only unit words,
+       is only words that name no place (`step._residue_words`: what the
+       elevation and date tables read around a number, their headings,
+       approximate words, elevation words, units, months and range
+       joiners, and a collector's or a determiner's mark, so "alt." of
+       "alt. 1200 m", "coll." of "coll. 12.vi.1948" and "leg." beside a
+       collector's name hold nothing back; round 1 of #381's review,
+       finding 1), was found by none of the sources asked (3781e440's
+       "U.S.B.I.L."), names that same nation by one of its names or an
+       abbreviation of one by the letter rule ("United States", "U.S.",
+       "US"; finding 3), or is confirmed as that nation
+       (`step._unplaced_text`);
+     - a county also needs the province its reading writes to have a
+       settled value ("The province the label gives is not settled, so
+       this county cannot be confirmed inside it.", `agreement.NO_PROVINCE`;
+       the step passes the place fields the reading writes whose field has
+       no supported value as `unsettled`), and is never that settled
+       province itself: not its record, and its literal is none of the
+       province's texts, values or expansions compared with letter case,
+       accents and punctuation aside and unit words kept
+       (`georef_locality.fold`; "The label gives this place as the
+       province, and a province is never also the county.",
+       `agreement.IS_THE_PROVINCE`). So "Chimaltenango" written once as the
+       department, or "Davao Prov." as the province, is no county, while
+       "Iowa Co." in the state Iowa may be. A province settled from another
+       reader's spelling of the same label is settled, and is not checked
+       as that reading's province, as before;
      - a near spelling, of any place field, settles only on G34's whole
        condition, read on the larger places (the coordinator's ruling of
        2026-10-09): every place field the reading writes above the field
@@ -1049,6 +1269,53 @@ handover runs field research instead of the six specialists:
      The city Yepocapa the reading also writes lies below the province and
      is not checked as its parent. Until 2026-10-09 it was, and the real run
      of that day left the province for review.
+   - **County: the country's second-level unit (owner, 2026-10-11).** Asked
+     whether County should hold the municipio for Latin American labels
+     (Yepocapa, Guatemala), the owner answered: "however the local
+     government does it so if that is the equivalent then yes"
+     (schema-harness-plan.md, "What the owner has said"). A county is the
+     place a source puts at its country's second level, whatever the
+     country calls it: Getty TGN's "second level subdivisions (political
+     entities)" or "counties", NGA's A.ADM2, Wikidata's "county" or
+     "second-level administrative division" (step 4). No table of
+     countries says which unit that is. The county brief says so, and that
+     a town and the second-level unit around it often share a name: the
+     county settles on that unit when a source confirms it inside the
+     label's province and country, and the city still settles on the town
+     (the city brief says so too). Before, the brief said "A
+     municipality, a city, an island or a province is not a county", and
+     105526329's county ("Yepocapa, 4800ft / Chimaltenago, / Guatemala")
+     was absent while its city settled as Yepocapa. On the recorded
+     answers that label's county settles on Wikidata's municipio Yepocapa
+     (Q1523937) or NGA's (A.ADM2), and its city on NGA's town (P.PPLA2):
+     one text, two places at two levels; two place fields may share text
+     (`agreement.may_share_text`, unchanged). The rules that keep a county
+     from being invented:
+     - its place settles only as any place does (above): one candidate at
+       a county's level in a cited answer about the label's own text, with
+       the parents rule, which for a county also needs the province its
+       reading writes settled and never takes that province itself;
+     - a literal for which an answer of one of the county's sources, asked
+       about it, has a candidate of its name at a province's level settles
+       no county, unless the literal writes a county or municipality unit
+       word ("<Name> Co.", "Mun. <Name>"; `agreement.writes_county_unit`,
+       the words of `admin_markers.ADMIN_MARKERS` that mark a county): the
+       label may name that first-level unit, and the sources cannot tell
+       which ("The sources also find this name as a province or state, so
+       they cannot tell which the label means.",
+       `agreement.first_level_namesake`, `FIRST_LEVEL_TOO`, ambiguous). NGA
+       holds Chimaltenango as a department (A.ADM1) and as a municipio
+       (A.ADM2), so on a label that writes only the department a county
+       answer that cites NGA's municipio is refused;
+     - a Philippine "Davao Prov." stays the province: NGA's recorded answer
+       for "Davao Province" is Davao del Norte at the first level (A.ADM1),
+       Getty TGN's recorded record of it types it "provinces, first level
+       subdivisions (political entities)", and Wikidata's class "province
+       of the Philippines" is a first-level administrative division, so in
+       NGA's and Wikidata's recorded answers for "Davao Province" no
+       candidate is at a county's level; an answer that held it at the
+       second level too would still meet the province's own text
+       (`IS_THE_PROVINCE`).
    - **The taxon.** A taxon is GBIF's decision for the whole name its
      candidate literal writes: the cited success answer's query is the
      scientific-name parser's query for that literal (the genus, any
@@ -1127,11 +1394,13 @@ handover runs field research instead of the six specialists:
    | `evidence_harness_blocked:elapsed_budget_exhausted` | Evidence check time limit reached | An evidence check reached its time limit. |
    | `cost_budget_exhausted` | Cost limit reached | Processing stopped at a cost limit. |
    | `program_allowance_exhausted` | Spending allowance reached | Processing stopped at the program's spending allowance. |
+   | `tenant_budget_exhausted` | Monthly cost limit reached | Processing stopped at a monthly cost limit set for the organization or a collection. |
    | `pilot_launch_budget_exhausted` | Pilot cost limit reached | The pilot's cost limit would be crossed. |
    | `pilot_cohort_reading_budget_insufficient` | Reading cost limit too low | The cost limit does not cover the planned readings. |
    | `approved_cost_budget_unavailable` | Cost settings not available | The approved cost settings for this run are not available. |
    | `research_budget_state_unavailable` | Saved cost totals not readable | The saved cost totals for this record could not be read. |
    | `program_allowance_ledger_unavailable` | Allowance totals not readable | The program's spending totals could not be read. |
+   | `tenant_budget_unavailable` | Monthly totals not readable | The monthly spending limits or totals could not be read. |
    | `program_allowance_unavailable` | Spending allowance not set up | The program's spending allowance is not set up for this collection. |
    | `pilot_run_budget_not_approved` | Run limits do not fit the pilot | The run's approved limits do not fit the pilot launch. |
    | `pilot_stage_cost_reservations_mismatch` | Stage cost settings differ | The run's stage cost settings differ from the pilot launch. |
@@ -1183,7 +1452,11 @@ handover runs field research instead of the six specialists:
    holds no more of the shared program allowance than it has left: when that
    is less than the run's headroom, the meter's cap is what is left, and a
    field that does not fit goes to review. Only when the program allowance
-   cannot pay for one expert request is the record blocked, as before. A setup
+   cannot pay for one expert request is the record blocked, as before. Field
+   research the run's own limits other than money (steps, external requests,
+   model units, active time) leave no room for is not blocked: the step is
+   given up on unsent and the record goes to review, its unchecked fields
+   for a person (HARNESS.md, "Field research at a run limit"). A setup
    error before any request settles to nothing; research cut short by an
    error, or a step that overran its deadline, settles to what the meter spent.
 9. **Time.** Research stops a minute before the step's deadline (210 s of the
@@ -1629,7 +1902,9 @@ elevation is derived first, and only for a field a person has not decided):
    (label_lacks_value), with no failure, in this attempt; or, for a precise
    location, its expert's answer gives only an administrative marker
    beside the places settled (below, "An administrative marker is no
-   precise location"). Every field but
+   precise location"); or, for a county or a city, its every text is a
+   settled place's above it (below, "A county or a city that is only a
+   settled place's text"). Every field but
    the identified-by IRN gets its expert (step 2), so the answer is the
    model's; no lookup is required, since a field such as the habitat has no
    source to search. The shared brief has the expert answer
@@ -1640,7 +1915,14 @@ elevation is derived first, and only for a field a person has not decided):
    and date-identified briefs say so for their fields. (In the real run of
    2026-10-09 105526326's city and 105526329's date identified were answered
    sources_cannot_resolve where the labels lack them.)
-   The resolver's fallback, put in place of an answer the expert never gave
+   The resolver's fallback qualifies only for a county or a city whose
+   every text is a settled place's above it (below), where the names the
+   expert's lookups asked about stand for what it tried. Its reason, when every answer the
+   expert gave failed its checks, is "None of the expert's answers passed
+   the checks against the readings and the sources' answers.", and no
+   fallback's reason ends with a note of a source the expert could not
+   reach, as it is no answer of the expert's (the second rerun of
+   2026-10-18 read such notes as Getty TGN's fault). Otherwise the resolver's fallback, put in place of an answer the expert never gave
    (out of attempts with no checked answer when asked once more, or answers
    that failed their checks), is sources_cannot_resolve, so it never
    qualifies. An expert's answer when asked once more is its own and
@@ -1697,7 +1979,14 @@ elevation is derived first, and only for a field a person has not decided):
    precise location "E. slope Mt. McKinley", or the town "Yepocapa" as a
    precise location beside the settled city "Yepocapa". "Lee" beside the
    city "Leesburg", or "Cook County" inside the precise location "Cook
-   County Forest Preserve", does not count. For a precise location, the
+   County Forest Preserve", does not count. For a county or a city, a
+   text also counts as absent when every place it stands, less the
+   punctuation around it, lies inside where a settled place above it
+   stands, each of that place's texts only in a reading that writes it once,
+   and a reader's verbatim it keeps only when it names that place
+   (`step._places_above`, `step._within`): 48a71d53's "Davao Prov.",
+   which the organiser offered as the county, under its settled province
+   "Davao Prov.". For a precise location, the
    texts still left count as absent when, beside the places settled, they
    write only an administrative marker next to the settled place of its
    level, or readers differ only in one (below): the organiser's
@@ -1867,6 +2156,56 @@ beside a settled place is the marker check's alone: "Yepocapa, Mun." is
 not present where the profile lists the precise location
 (`_no_finer_place`) and settles as its text where it does not, as above.
 "Yepocapa" also settles when the city did not settle.
+
+**A county or a city that is only a settled place's text (the batch rerun
+of 2026-10-17).** 93e61763's, 9cc24b07's, d3fb389f's and f35af3a5's
+county went to review although their labels name no county: the county's
+expert answered the province line ("Chimaltenango,", "Davao, Prov."),
+whose name its sources also hold at the second level, as several
+possibilities. A written place is one field's: a province is never also
+the county (`agreement.IS_THE_PROVINCE`). Once every place is in (after
+`step._repeats_a_place`), a county, then a city, researched in this
+attempt whose expert's answer left it ambiguous or unresolved (an answer
+and no failure, not label_lacks_value, not finalized without a model call; the resolver's
+fallback too, when its expert asked at least one source and every name its
+lookups asked about, the query's first comma-separated part, is taken as an
+option of its answer: f35af3a5's city in the second rerun of 2026-10-18 asked
+about "Davao", cut from the settled province "Davao, Prov.", and "Davao
+City", a name the label does not write, while a fallback that asked about a
+town the label writes, "Tagum", keeps the field) is made what
+label_lacks_value makes it
+when every text the label gives it is the text of a settled place above it
+(`step._only_a_place_above`, `step._held_above`): not present, citing the
+answer's sources, its reason 'The readings write no county of their own:
+"Chimaltenango," is the text of the Province/State field.' followed by the
+expert's explanation; the rows its value added and its transcript_literal
+finding are dropped. This holds whether or not every source the expert
+asked answered, since the text is the settled place's either way. Its
+trace keeps the code of a step check that refused the expert's resolved
+answer first (`first_level_too`, `is_the_province`), and otherwise names
+"place_above_text_only". The texts are the organiser's and the answer's
+literal and options. One that stands in the readings is the place's text
+where every place it stands, less the punctuation around it, lies inside
+where that place's text stands: its literal, and each reader's verbatim it
+keeps when that verbatim names the place (by the place comparison key the
+literal, value or an expansion, or one letter from one: 93e61763's
+"Chimaltenago"; never another reader's other text the field keeps, as
+48a71d53's province keeps 1B's "Mindanao" beside its literal "Davao
+Prov."), each only in a reading that writes it once, so the second
+"Chimaltenango" of "Chimaltenango, Chimaltenango" is no province's. An option no reading
+writes is the place's when it is one of the place's names, or one letter
+from one (9cc24b07's "Chimaltenango Department" for the province written
+"Chimaltenago"); one whose words a reading writes otherwise is a text of
+the label no place above holds, which keeps the field; and any other is a
+source's name for a place the label does not write (f35af3a5's "Davao
+City"), which is left aside. At least one text must be the place's. Rule
+A then judges it as a field whose expert found none: when it clears, its
+reason starts 'Not on the label: the readings write no county of their
+own;', its check row's excerpt says the readings write only the text of a
+settled place above it (its record names that place's field), and the
+clearance rules accept that excerpt for a county or a city. A county or a
+city with a text no settled place above holds, or with no place above
+settled, keeps its expert's answer.
 
 **A taxon with no genus (B).** A taxon whose label names no genus for its
 morphocode ("sp. 30" with a sex sign, and no genus written beside it)
@@ -2204,6 +2543,96 @@ the retry researches only the fields that did not settle (a
 province, county or city that waited for a country that did not settle
 is among them). A field marked not on the label is not settled, so the
 retry researches it again, and it then cites only the row the retry writes.
+
+An operator can explicitly **Reassess locations** from the Processing panel
+when a completed run still has unsettled automatic locations and a research
+attempt remains. This researches only country, province/state, county, city
+and precise location together, using the existing run and saved readings.
+It can reconsider earlier machine assignments when fresh qualified source
+evidence supports a different hierarchy. Human selections and independently
+source-backed parents remain protected. A partial or unavailable source cannot
+replace a supported hierarchy with a mixture of incompatible old and new
+values. Parents derived from a human-selected location remain constraints too;
+a stale dependent parent may still need separate review. Earlier values and
+evidence remain in history. The action records its
+reason and scope, consumes an ordinary research attempt and retains all usage,
+prices and spending limits; it supplies no geographic values. Ordinary Retry
+continues to preserve supported fields.
+
+Location reconciliation shares captured source answers across every grounded
+location literal, regardless of which expert requested the lookup. Distinct
+source-typed administrative text constrains compatible parent chains; qualified
+parents then narrow their children. An ambiguous town cannot choose a county,
+and conflicting written administrative places or distinct authority matches
+remain unresolved. This uses the answers already captured during the attempt;
+it makes no additional lookup and does not reopen an exhausted attempt.
+
+A blank ambiguous country can be derived from qualified administrative parents
+when every retained country alternative (including other labels and readers)
+has a fresh, directly matching gazetteer record at a recognized lower level,
+and no matching record has a recognized country level. Unmodeled source kinds
+provide neither level proof nor country counterproof; an alternative with no
+recognized lower-level proof stays ambiguous. Human decisions, actual country
+disputes, unknown alternatives and incompatible parent countries still block
+replacement. If derivation cannot complete, the original ambiguity is retained.
+An explicitly selected authority record supplies its own ancestry; another
+same-name record cannot supply parents for it. This changes no attempt or
+spending authorization and does not apply archived answers to a live record.
+
+Two kinds of country alternative no longer hold that derivation back (the
+third rerun of 2026-10-18, `agreement.set_aside`, `agreement.confirmed_place`):
+- text no reading a field may settle on writes. Every reading that writes it
+  is either a decided label's other reader whose decided reading does not
+  write it (G19: that reader is evidence only, `agreement.evidence_only`),
+  or one of the two readers of a label with no decided transcript where the
+  other reader writes other words at that very point (`agreement.disputed`):
+  each run of the text lies wholly inside the token differences of the two
+  readings (`application.first_pass.reading_differences`, the differences
+  the label's first pass judges), each with text on the other side; that
+  text is neither the text's place name nor one letter from it; it is
+  written, as whole words, in one of the other reader's texts for a field
+  of another kind than a place (the organiser's candidates and those
+  fields' literals, `step._claimed_texts`): a taxon, a collector ("Chas."),
+  a date ("1945"); and the other reader writes the text nowhere. Another
+  place field's text there is never such text (round 1 of #379's review,
+  finding 1): "Mexico" where the other reader writes "Texas", that
+  reader's province, is two readings of one place, and the country stays
+  for review. Words of another kind are not a place's reading of that ink,
+  so they leave the country text one reader's word, uncorroborated, while
+  the country itself is derived from places settled on their own.
+  d10333ff's determination label had no decided transcript in three runs
+  (its first pass reached its token cap once and chose no reading twice):
+  reader 3A writes "Panama" where 3B writes "Panorpa", 3B's taxon. Its label
+  1 settles Edgar County (and, in two of the runs, Illinois), and the
+  country is derived as the United States. A reader that writes the text too, writes it with other
+  accents or one letter off, leaves the line out, or writes there words no
+  field holds keeps the country for review, as do both readers writing
+  "Panama";
+- text the gazetteers confirm as the very nation every newly settled child
+  lies in ("USA" beside Coles County).
+
+Such text still counts as its label's text everywhere else (G20 and G32).
+
+On 2026-10-16 the owner authorized one additional same-run location reassessment
+for specimen `ebfc6171-bf2f-56b8-a35b-442798810461`, run
+`e7b00556-f006-4be7-9bd8-82ebf41173be`, in organization
+`e4b2a17f-c28b-4e13-8273-c8297083d215` and collection
+`200d7057-23fa-41ab-875b-682c8ba218c9`. The earlier third attempt exposed the
+shared-source reconciliation defect fixed by PR349. The reviewed server
+exception admits only the existing explicit action from count three to count
+four for this exact identity. Its authorization identifier is
+`owner-2026-10-16-ebfc-location-attempt-4`, recorded with the existing action
+audit and location-only queue marker. The original execution policy remains
+pinned at three attempts, with USD1 per run and USD16 shared; earlier attempts,
+usage, prices, readings, checkpoints and reviewer decisions remain retained.
+
+The worker validates the exact prospective fourth marker before reserving or
+sending work. Exhausted field research without that authorization is given up
+unsent, including ordinary Retry/Resume after the fourth. The normal intent
+save counts the fourth before dispatch; failure or history restore cannot
+replenish it. Source protection, final-attempt handling and all money limits
+continue to apply. This exception provides no fifth attempt or additional
+attempt for another record or processing stage.
 
 If `SPECIMEN_RESEARCH_HARNESS` is rolled back to "on", a run field research
 left `retry_scheduled` (`field_research_timeout`, `field_research_model_error`,

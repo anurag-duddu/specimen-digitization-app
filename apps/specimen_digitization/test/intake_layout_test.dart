@@ -36,6 +36,7 @@ Future<void> pumpIntake(
   Size size, {
   bool selectedFile = false,
   double textScale = 1,
+  bool dark = false,
 }) async {
   SharedPreferences.setMockInitialValues(<String, Object>{});
   tester.view.devicePixelRatio = 1;
@@ -48,7 +49,7 @@ Future<void> pumpIntake(
       : null;
   await tester.pumpWidget(
     MaterialApp(
-      theme: AppTheme.light(),
+      theme: dark ? AppTheme.dark() : AppTheme.light(),
       home: Scaffold(
         body: IntakeScreen(
           repository: TestRepository(),
@@ -162,10 +163,11 @@ void main() {
     );
     await tester.ensureVisible(sensitivity);
     await tester.pumpAndSettle();
-    final bool before = tester.widget<UiCheckbox>(sensitivity).value ?? false;
+    expect(tester.widget(sensitivity), isA<UiSwitch>());
+    final bool before = tester.widget<UiSwitch>(sensitivity).value;
     await tester.tap(sensitivity);
     await tester.pumpAndSettle();
-    expect(tester.widget<UiCheckbox>(sensitivity).value, !before);
+    expect(tester.widget<UiSwitch>(sensitivity).value, !before);
     await tester.ensureVisible(upload);
     await tester.pumpAndSettle();
     expect(upload.hitTestable(), findsOneWidget);
@@ -173,17 +175,18 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('desktop offers files and does not offer unavailable camera', (
+  testWidgets('desktop offers files and a capability-checked webcam path', (
     WidgetTester tester,
   ) async {
     final previousPlatform = debugDefaultTargetPlatformOverride;
     try {
       debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
       await pumpIntake(tester, const Size(1200, 1400));
-      expect(
-        find.byKey(const ValueKey<String>('intake-take-photograph')),
-        findsNothing,
+      final Finder camera = find.byKey(
+        const ValueKey<String>('intake-take-photograph'),
       );
+      expect(camera.hitTestable(), findsOneWidget);
+      expect(tester.widget<UiButton>(camera).onPressed, isNotNull);
       final Finder files = find.byKey(
         const ValueKey<String>('intake-choose-files'),
       );

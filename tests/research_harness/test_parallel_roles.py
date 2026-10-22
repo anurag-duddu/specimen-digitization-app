@@ -62,9 +62,10 @@ def forced_windows(monkeypatch, k):
     monkeypatch.setattr(engine_mod.ResearchEngine, "run", run)
 
 
-# Each scripted model response takes this long, so that the first requests of a window's two roles
-# are both in flight (and both reserved) before either answers, however busy the machine is.
-MODEL_DELAY_SECONDS = 0.4
+# A zero-delay asyncio sleep yields to the companion role without making an
+# offline test wait on wall time. The overlap assertions below prove that both
+# first requests were in flight; they are the contract, not a timer duration.
+MODEL_DELAY_SECONDS = 0
 
 
 def scripted_with(rig, *, replace=None, delay=MODEL_DELAY_SECONDS, role_delays=None):

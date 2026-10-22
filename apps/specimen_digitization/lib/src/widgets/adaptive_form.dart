@@ -43,8 +43,8 @@ const String modalDismissLabel = 'Close';
 /// body rather than to the route.
 const String adaptiveFormLabel = 'Form';
 
-/// Shows [builder] as a sheet on a compact window and as a dialog everywhere
-/// else.
+/// Shows [builder] as a sheet where the window is stacked and as a dialog
+/// where it is docked (`presentsAsSheet`, 05 section 3.7).
 ///
 /// [width] applies to the dialog form only; the sheet is always full width.
 /// Set [dismissible] to false when the form has unsaved input, and handle the
@@ -57,7 +57,7 @@ Future<T?> showAdaptiveForm<T>(
   bool dismissible = true,
   String? semanticsLabel,
 }) {
-  final bool sheet = isCompactWindow(context);
+  final bool sheet = presentsAsSheet(context);
   return showUiModal<T>(
     context: context,
     semanticsLabel: semanticsLabel ?? adaptiveFormLabel,
@@ -68,8 +68,8 @@ Future<T?> showAdaptiveForm<T>(
   );
 }
 
-/// A titled modal: a sheet on a compact window and a dialog on a wider one,
-/// whose [body] owns its own scroll view.
+/// A titled modal: a sheet where the window is stacked and a dialog where it
+/// is docked, whose [body] owns its own scroll view.
 ///
 /// The body owns scrolling in both forms. Adding a modal scroll view would
 /// give that inner view an unbounded main axis and can clip its final action
@@ -82,7 +82,7 @@ Future<T?> showAdaptiveModal<T>(
   UiModalActionBuilder? secondaryAction,
   String? semanticsLabel,
   bool dismissible = true,
-}) => isCompactWindow(context)
+}) => presentsAsSheet(context)
     ? UiSheet.show<T>(
         context: context,
         title: title,

@@ -16,7 +16,6 @@ import 'package:specimen_digitization/src/screens/intake/manifest_panel.dart';
 import 'package:specimen_digitization/src/widgets/upload_item.dart';
 import 'package:specimen_digitization/src/widgets/not_calibrated_chip.dart';
 
-import 'ui_finders.dart';
 import 'widgets/harness.dart';
 
 ManifestEntry entryIn(
@@ -55,6 +54,7 @@ Future<void> pumpManifest(
   bool stopping = false,
   VoidCallback? onStop,
   void Function(ManifestEntry)? onRemove,
+  void Function(ManifestEntry)? onRetry,
   Size size = const Size(700, 1600),
 }) => pumpComponent(
   tester,
@@ -68,13 +68,28 @@ Future<void> pumpManifest(
       onStop: onStop ?? () {},
       onRemove: onRemove ?? (ManifestEntry _) {},
       onServerCheck: (ManifestEntry _) {},
+      onRetry: onRetry,
     ),
   ),
   size: size,
+  reduceMotion: true,
 );
 
 void main() {
-  group('the eight upload states each draw their own chip', () {
+  group('the Intake queue states each name their progress', () {
+    const labels = <UploadState, String>{
+      UploadState.ready: 'Ready',
+      UploadState.checking: 'Sending',
+      UploadState.uploading: 'Sending',
+      UploadState.accepted: 'Saved',
+      UploadState.processing: 'Saved',
+      UploadState.inMainQueue: 'Sent',
+      UploadState.processingBlocked: 'Saved',
+      UploadState.duplicate: 'Duplicate',
+      UploadState.interrupted: 'Not sent',
+      UploadState.skipped: 'Not added',
+      UploadState.failed: 'Not sent',
+    };
     for (final UploadState state in UploadState.values) {
       testWidgets('${state.name} renders as "${state.label}"', (
         WidgetTester tester,
@@ -87,11 +102,11 @@ void main() {
         expect(
           find.descendant(
             of: find.byType(IntakeManifestRow),
-            matching: find.text(state.label),
+            matching: find.text(labels[state]!),
           ),
           findsOneWidget,
         );
-        expect(find.text('A stated reason.'), findsOneWidget);
+        expect(find.text('A stated reason.'), findsNothing);
       });
     }
   });
@@ -106,7 +121,9 @@ void main() {
     expect(ring.value, closeTo(0.42, 0.0001));
   });
 
-  testWidgets('no other state draws a ring', (WidgetTester tester) async {
+  testWidgets('no other state claims a measured fraction', (
+    WidgetTester tester,
+  ) async {
     for (final UploadState state in UploadState.values.where(
       (UploadState s) => s != UploadState.uploading,
     )) {
@@ -114,8 +131,10 @@ void main() {
         entryIn(state, progress: 0.42),
       ]);
       expect(
-        find.byType(UiProgress),
-        findsNothing,
+        tester
+            .widgetList<UiProgress>(find.byType(UiProgress))
+            .where((indicator) => indicator.value != null),
+        isEmpty,
         reason: '${state.name} must not claim a measured fraction',
       );
     }
@@ -128,23 +147,23 @@ void main() {
       ManifestEntry.skipped(
         digest: 'size:huge.tif:99',
         name: 'huge.tif',
-        why: 'This file is over 25 MB.',
+        why: 'Over 25 MB. Choose a smaller photo.',
       ),
     ]);
     expect(find.text('huge.tif'), findsOneWidget);
-    expect(find.text('Skipped'), findsOneWidget);
-    expect(find.text('This file is over 25 MB.'), findsOneWidget);
+    expect(find.text('Not added'), findsOneWidget);
+    expect(find.text('Over 25 MB. Choose a smaller photo.'), findsOneWidget);
     // The reason belongs to the file, not to a screen level banner.
     expect(
       find.descendant(
         of: find.byType(IntakeManifestRow),
-        matching: find.text('This file is over 25 MB.'),
+        matching: find.text('Over 25 MB. Choose a smaller photo.'),
       ),
       findsOneWidget,
     );
   });
 
-  testWidgets('the remove control is live until the server takes the file', (
+  testWidgets('ready and finished Intake rows can be dismissed', (
     WidgetTester tester,
   ) async {
     final List<ManifestEntry> removed = <ManifestEntry>[];
@@ -162,15 +181,81 @@ void main() {
       ready,
       accepted,
     ], onRemove: removed.add);
-    final List<UiIconButton> buttons = tester
-        .widgetList<UiIconButton>(uiIconButton(UploadItem.removeLabel))
-        .toList();
-    expect(buttons.length, 2);
-    expect(buttons.first.onPressed, isNotNull);
-    expect(buttons.last.onPressed, isNull);
-    await tester.tap(uiIconButton(UploadItem.removeLabel).first);
+    expect(find.byType(UiMenuTrigger), findsOneWidget);
+    expect(find.text('Dismiss'), findsOneWidget);
+    await tester.tap(find.byType(UiMenuTrigger));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Remove'));
     await tester.pumpAndSettle();
     expect(removed, <ManifestEntry>[ready]);
+  });
+
+  testWidgets('completed processing can be dismissed from Intake', (
+    WidgetTester tester,
+  ) async {
+    final List<ManifestEntry> removed = <ManifestEntry>[];
+    final ManifestEntry handedOff = entryIn(
+      UploadState.inMainQueue,
+      name: 'finished.png',
+      digest: 'handoff-digest',
+      withFile: false,
+    );
+    await pumpManifest(tester, <ManifestEntry>[
+      handedOff,
+    ], onRemove: removed.add);
+
+    expect(find.text('Sent'), findsOneWidget);
+    expect(find.byType(UiButton), findsNothing);
+    expect(removed, isEmpty);
+  });
+
+  testWidgets('post-hand-off processing never offers retry in Intake', (
+    WidgetTester tester,
+  ) async {
+    final List<ManifestEntry> retried = <ManifestEntry>[];
+    final ManifestEntry blocked = entryIn(
+      UploadState.processingBlocked,
+      digest: 'blocked-digest',
+      withFile: false,
+    );
+    blocked.specimen = Specimen(<String, dynamic>{
+      'specimen_id': 'blocked-1',
+      'status': 'processing_blocked',
+      'available_actions': <String>['retry'],
+    });
+    await pumpManifest(tester, <ManifestEntry>[blocked], onRetry: retried.add);
+
+    expect(find.text('Retry processing'), findsNothing);
+    expect(retried, isEmpty);
+
+    blocked.specimen = Specimen(<String, dynamic>{
+      'specimen_id': 'blocked-1',
+      'status': 'processing_blocked',
+      'available_actions': <String>[],
+    });
+    await pumpManifest(tester, <ManifestEntry>[blocked], onRetry: retried.add);
+    expect(find.text('Retry processing'), findsNothing);
+  });
+
+  testWidgets('processing rows use the shared Intake summary', (
+    WidgetTester tester,
+  ) async {
+    await pumpManifest(tester, <ManifestEntry>[
+      entryIn(UploadState.processing, digest: 'processing-digest'),
+      entryIn(UploadState.inMainQueue, digest: 'handoff-digest'),
+      entryIn(UploadState.processingBlocked, digest: 'blocked-digest'),
+    ]);
+    expect(find.text('2 to fix · 1 sent'), findsOneWidget);
+  });
+
+  test('the summary keeps unknown hand-offs out of sent counts', () {
+    expect(
+      ingestionQueueLine(<ManifestEntry>[
+        entryIn(UploadState.accepted, digest: 'accepted-digest'),
+        entryIn(UploadState.processing, digest: 'processing-digest'),
+      ]),
+      '2 to fix',
+    );
   });
 
   testWidgets('Stop is offered only while a batch is running', (
@@ -178,7 +263,7 @@ void main() {
   ) async {
     var stops = 0;
     await pumpManifest(tester, <ManifestEntry>[entryIn(UploadState.ready)]);
-    expect(find.text('Stop'), findsNothing);
+    expect(find.text('Stop sending'), findsNothing);
 
     await pumpManifest(
       tester,
@@ -186,7 +271,7 @@ void main() {
       busy: true,
       onStop: () => stops++,
     );
-    await tester.tap(find.text('Stop'));
+    await tester.tap(find.text('Stop sending'));
     await tester.pumpAndSettle();
     expect(stops, 1);
 
@@ -197,10 +282,7 @@ void main() {
       stopping: true,
     );
     expect(find.text('Stopping'), findsOneWidget);
-    expect(
-      find.text('Stopping. The file already sending finishes first.'),
-      findsOneWidget,
-    );
+    expect(find.text('Stopping. Current photo finishes.'), findsOneWidget);
   });
 
   testWidgets('an empty manifest says so rather than showing nothing', (
@@ -209,7 +291,7 @@ void main() {
     await pumpManifest(tester, <ManifestEntry>[]);
     expect(find.text(IntakeManifest.emptyTitle), findsOneWidget);
     expect(find.text(IntakeManifest.emptyBody), findsOneWidget);
-    expect(find.text('No files selected yet'), findsOneWidget);
+    expect(find.text('No photos'), findsOneWidget);
   });
 
   testWidgets('local measurements are three labelled values and a caveat', (
@@ -225,7 +307,7 @@ void main() {
     );
     await pumpManifest(tester, <ManifestEntry>[entry]);
     expect(find.text('Not calibrated'), findsNothing);
-    await tester.tap(find.text('File details'));
+    await tester.tap(find.text('specimen.png'));
     await tester.pumpAndSettle();
     for (final String label in CaptureQualitySummary.labels) {
       expect(find.text(label), findsOneWidget);
@@ -262,23 +344,21 @@ void main() {
     // One node for the whole account, so a reader hears the sentence once
     // rather than three tiles and then the sentence again.
     expect(
-      find.bySemanticsLabel(
-        '8 of 11 uploaded, 1 already in collection, 1 failed',
-      ),
+      find.bySemanticsLabel('9 to fix · 1 ready · 1 duplicate'),
       findsOneWidget,
     );
     handle.dispose();
   });
 
   group('the batch progress line', () {
-    test('reads "8 of 12 uploaded, 1 skipped"', () {
+    test('counts unknown hand-offs and local refusals before ready photos', () {
       final List<ManifestEntry> entries = <ManifestEntry>[
         for (int i = 0; i < 8; i++)
           entryIn(UploadState.accepted, digest: 'a$i'),
         for (int i = 0; i < 3; i++) entryIn(UploadState.ready, digest: 'r$i'),
         entryIn(UploadState.skipped, digest: 's0'),
       ];
-      expect(batchProgressLine(entries), '8 of 12 uploaded, 1 skipped');
+      expect(batchProgressLine(entries), '9 to fix · 3 ready');
     });
 
     test('names duplicates, interruptions and failures when they exist', () {
@@ -289,7 +369,7 @@ void main() {
           entryIn(UploadState.interrupted, digest: 'c'),
           entryIn(UploadState.failed, digest: 'd'),
         ]),
-        '1 of 4 uploaded, 1 already in collection, 1 interrupted, 1 failed',
+        '3 to fix · 1 duplicate',
       );
     });
 
@@ -298,12 +378,12 @@ void main() {
         batchProgressLine(<ManifestEntry>[
           entryIn(UploadState.accepted, digest: 'a'),
         ]),
-        '1 of 1 uploaded',
+        '1 to fix',
       );
     });
 
     test('an empty batch says so', () {
-      expect(batchProgressLine(<ManifestEntry>[]), 'No files selected yet');
+      expect(batchProgressLine(<ManifestEntry>[]), 'No photos');
     });
   });
 
@@ -313,14 +393,14 @@ void main() {
         batchCompleteLine(<ManifestEntry>[
           entryIn(UploadState.accepted, digest: 'a'),
         ]),
-        'Batch admission finished for 1 photograph. Check the queue for processing status.',
+        '1 to fix',
       );
       expect(
         batchCompleteLine(<ManifestEntry>[
           entryIn(UploadState.accepted, digest: 'a'),
           entryIn(UploadState.duplicate, digest: 'b'),
         ]),
-        'Batch admission finished for 2 photographs. Check the queue for processing status.',
+        '1 to fix · 1 duplicate',
       );
     });
   });

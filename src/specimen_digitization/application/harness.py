@@ -27,7 +27,12 @@ from .organiser import (
     format_locator,
     request_text,
 )
-from .reliability import run_agent_bounded
+from .reliability import (
+    ReadingStopped,
+    reported_usage,
+    run_agent_bounded,
+    stopped_usage,
+)
 
 COMPETING = "Competing source-supported extraction candidates"
 LEAD = "Only the other reader's reading states a value: kept as evidence, not as the value"
@@ -253,6 +258,39 @@ def _settle(fields, key: str, items: list[_Kept], names) -> None:
     old.evidence_ids.extend(ids)
 
 
+# The organiser's extraction given up on (Workflow, step "parse"; HARNESS.md 3,
+# Failures): a warning beside the record, `extraction_given_up:<code>`. The run
+# goes on without the extraction's candidates; its fields are researched from
+# the readings as before, and what does not settle goes to review.
+EXTRACTION_GIVEN_UP = "extraction_given_up"
+EXTRACTION_GIVEN_UP_RULES = "extraction-given-up-v1"
+
+
+def give_up_extraction(run, code: str) -> None:
+    """Record that the run gave up on the organiser's extraction, with the code
+    its last attempt failed with (or the budget that left no room for it). One
+    warning finding per run; a finding never routes the record by itself."""
+    from .domain import RunFinding
+
+    run.findings = [f for f in run.findings if f.rule_id != EXTRACTION_GIVEN_UP] + [
+        RunFinding(
+            rule_id=EXTRACTION_GIVEN_UP,
+            rule_version=EXTRACTION_GIVEN_UP_RULES,
+            severity="warning",
+            reason_code=f"{EXTRACTION_GIVEN_UP}:{code}",
+        )
+    ]
+
+
+def extraction_given_up(run) -> bool:
+    """Whether the run gave up on its extraction: ``parse`` then makes no call."""
+    return any(f.rule_id == EXTRACTION_GIVEN_UP for f in run.findings)
+
+
+# An extraction stopped by its limits (extract_with_agent).
+EXTRACTION_USAGE_LIMIT = "extraction_usage_limit"
+
+
 def extract_with_agent(gateway, blobs, specimen):
     run = specimen.run
     prompt = ResolvedPrompt.model_validate(
@@ -269,12 +307,20 @@ def extract_with_agent(gateway, blobs, specimen):
     # Prompt and messages follow the configured capture mode (G3).
     agent.instrument = agent_instrumentation()
     readings = extraction_readings(run)
-    result = run_agent_bounded(
-        agent,
-        request_text(run.profile.mandatory_fields, labelled(readings)),
-        usage_limits=UsageLimits(request_limit=2, total_tokens_limit=16000),
-        timeout_seconds=run.profile.execution.external_timeout_seconds,
-    )
+    from pydantic_ai.exceptions import UsageLimitExceeded
+
+    try:
+        result = run_agent_bounded(
+            agent,
+            request_text(run.profile.mandatory_fields, labelled(readings)),
+            usage_limits=UsageLimits(request_limit=2, total_tokens_limit=16000),
+            timeout_seconds=run.profile.execution.external_timeout_seconds,
+        )
+    except UsageLimitExceeded as exc:
+        # Stopped by its token limits or cut off at its output cap: a known
+        # outcome with no answer, as a reader's is (#153). The workflow gives
+        # the extraction up and the run goes on (Workflow, step "parse").
+        raise ReadingStopped(EXTRACTION_USAGE_LIMIT, stopped_usage(exc)) from exc
     run.usage.tokens += result.usage.input_tokens + result.usage.output_tokens
     raw = ModelMessagesTypeAdapter.dump_json(
         [m for m in result.all_messages() if m.kind == "response"]
@@ -288,3 +334,6 @@ def extract_with_agent(gateway, blobs, specimen):
         hashlib.sha256(raw).hexdigest(),
         readings,
     )
+    # Its input and output tokens apart, so its cost can be priced (lane_costs).
+    # Completed: the output tool's return, queued after the answer, was never sent.
+    return reported_usage(result.all_messages(), result.usage, completed=True)

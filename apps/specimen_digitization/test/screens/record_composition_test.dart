@@ -58,13 +58,12 @@ void main() {
       await tester.tap(labelReview);
       await tester.pumpAndSettle();
 
-      expect(nativeNavigation(), findsOneWidget);
+      expect(nativeNavigation(), findsNothing);
       final Rect content = contentAboveNativeNavigation(tester);
-      final Rect navigation = tester.getRect(nativeNavigation());
       final Rect evidence = tester.getRect(find.byKey(evidenceScrollKey));
       final Rect decision = tester.getRect(find.byType(WorkbenchDecisionBar));
-      expect(content.bottom, navigation.top);
-      expect(navigation.bottom, lessThanOrEqualTo(phone.height));
+      expect(content.top, 44);
+      expect(content.bottom, phone.height - 34);
       expect(evidence.top, greaterThanOrEqualTo(content.top));
       expect(evidence.height, greaterThan(0));
       expect(evidence.bottom, lessThanOrEqualTo(decision.top));
@@ -124,19 +123,13 @@ void main() {
           final ({double share, String parts, List<String> problems}) chrome =
               chromeNow(phone.height);
           expect(chrome.problems, isEmpty, reason: chrome.problems.join(' '));
-          expect(nativeNavigation(), findsOneWidget);
-          final Element bar = nativeNavigation().evaluate().single;
+          expect(nativeNavigation(), findsNothing);
           final regions = pinnedRegionsIn(compositionElements());
-          expect(
-            regions.where((element) => identical(element, bar)),
-            hasLength(1),
-          );
           final decisions = regions.where(
             (element) => element.widget is WorkbenchDecisionBar,
           );
           expect(decisions, hasLength(1));
-          final double reserved =
-              pinnedExtent(bar)! + pinnedExtent(decisions.single)!;
+          final double reserved = pinnedExtent(decisions.single)!;
           expect(chrome.share * phone.height, greaterThanOrEqualTo(reserved));
           final Rect content = contentAboveNativeNavigation(tester);
           final Rect decision = tester.getRect(

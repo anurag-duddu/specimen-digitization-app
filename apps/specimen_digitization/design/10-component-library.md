@@ -78,6 +78,7 @@ apps/specimen_digitization/packages/specimen_ui/
   CHANGELOG.md
   LICENSES/OFL-Geist.txt
   assets/fonts/GeistVF.ttf, GeistMonoVF.ttf
+  assets/google-sign-in/       Google's G, Google Sans Medium and their licence, for UiGoogleSignInButton only
   lib/specimen_ui.dart         barrel: exports foundation, primitives, controls
   lib/gallery.dart             barrel: exports UiGallery (debug only)
   lib/testing.dart             barrel: the glass pane counters, for test harnesses
@@ -494,6 +495,93 @@ the disc of 09 section 1. It is the one widget in the package that reads
 and `UiSheet` adopt it for their actions and patterns use it for form footers,
 so no screen writes its own `Row` of buttons.
 
+**`UiGoogleSignInButton`.** Added 2026-10-17. Google's "Sign in with Google"
+button as one component of the system, drawn identically on every platform.
+Before it, the button was a private widget in the application that padded its
+content by `defaultTargetPlatform` (16 and 12 on iOS, 12 and 10 elsewhere), drew
+a 4 dp rectangle, and held four sizes as constants, which 09 section 2
+principle 5 ("Behaviour adapts, identity does not") and the platform and
+named-size gates forbid. The owner decided it in the coordinator Claude Code
+session on 2026-10-17 at about 17:41Z: "Make the Google button one design-system
+component that looks the same on every platform while following Google's
+branding". Where sign-in with Google is offered stays the application's
+decision and is not this control's.
+
+Anatomy, from Google's "Sign in with Google branding guidelines"
+(<https://developers.google.com/identity/branding-guidelines>, the custom
+button section, updated 2026-07-07): the rectangular variant, 40 high at normal
+text, a 1 dp outline drawn inside the edge, the standard colour "G" in a
+20 by 20 box, the label in Google Sans Medium 14/20, and paddings of 12 before
+the G, 10 between the G and
+the label and 12 after it. Fill, outline and label colour are Google's Light
+theme in a light window and its Dark theme in a dark one (`GoogleSignInPalette`).
+The label is "Sign in with Google", one of the three the page recommends, and
+never "Google" alone. Every measurement is a named constant of
+`GoogleSignInBrand` in `foundation/google_sign_in_brand.dart`, each with the
+figure of the page it comes from: a third party's brand is not ours to retune,
+so it is not a token, and the foundation is where the package gate
+(`no_literal_geometry`) already allows a size to be a number. The component
+itself writes none, and reads no platform: no `kIsWeb`, no
+`defaultTargetPlatform`, no `Platform`, no theme `platform`. A test pumps it on
+every `TargetPlatform`, in both modes, and compares size, semantics and pixels.
+
+The page prints two figures. This component draws the one it labels "Android &
+Web (mobile + desktop)" everywhere, iPhone included, and does not read the one
+for iOS (44 high, paddings of 16, 12 and 16, Roboto Medium), because one look on
+every platform was the decision. The page does not say whether Google's brand
+review accepts the first figure in an iPhone app; that is not verified.
+
+The page pre-approves both "Rectangular" and "Pill". The owner required one
+shared appearance across platforms, not a pill or an intrinsic width. The
+component uses the rectangular variant, with the 4 px corner radius in Google's
+HTML configurator (checked 2026-10-17), so it fits the form's rectangular
+controls. It draws `RoundedRectangleBorder` from the named brand radius. The
+product's own command buttons retain their 8 dp superellipse; Google's font,
+logo and colours remain distinct. `Pressable` accepts an optional focus-shape
+override for this rounded rectangle; omitting it preserves every existing
+control's focus contour.
+
+Behaviour is the control contract. It is a `Pressable`, so the hit box is 48 dp
+with the 40 dp button inside it, the focus ring follows its rounded
+rectangle, hover and press lift the button toward its label colour at 8 and 12
+percent in light and 10 and 14 in dark (Google's colours at rest are unchanged),
+and the press layer takes its duration from `ui.motion`, so
+`MediaQuery.disableAnimations` snaps it. The component starts no animation of
+its own. Semantics `button`, label "Sign in with Google", the G excluded.
+`busy` refuses activation, keeps focus and keeps the enabled paint, as
+`UiButton.loading` does. A disabled button (null `onPressed`, not busy) gives
+`disabledReason` on its hint and on a tooltip, and is painted from the system's
+disabled tokens as `UiButton`'s is (03 section 3.6): the label in
+`disabled.content`, the 1 dp outline in `disabled.outline`, on Google's own fill,
+with the G drawn exactly as enabled. No opacity touches the button: 03 section
+3.6 rejects Material's 38 percent by name because it measures under 3:1 here,
+and an alpha over the G would change the colour the page says is not to change.
+The page does not describe a disabled button, so these are the system's
+choices, not Google's. Measured with the WCAG 2.2 formulas in the component's
+test: light, the label is 5.74:1 on Google's `#FFFFFF` and the outline 3.95:1 on
+it, 3.78:1 on `ground` and 3.95:1 on `paper`; dark, the label is 7.81:1 on
+Google's `#131314` and the outline 4.70:1 on it, 4.78:1 on `ground` and 4.50:1
+on `paper`. The floors are 4.5:1 for the label and 3:1 for the outline. Its
+licence is registered beside Geist's in `UiFonts.registerLicense`, so Google
+Sans is listed on the application's licence page.
+
+The brand shape remains distinct from the product superellipse. Its label
+wraps onto a second line at a width or text size that does not hold it, where
+every other label ends in
+an ellipsis, because an ellipsis cuts Google's call to action to "Sign in with
+Go"; clause 13 is therefore not claimed and the contract test leaves it off.
+The G keeps 20 by 20 at every text size. Its height grows to at least 60 at
+200 percent, and further when the label wraps. Its boundary fills a bounded
+parent width, aligning with the login field and primary action. In an unbounded
+parent it takes its intrinsic width. As in the HTML configurator's default wide
+layout, the G stays 12 dp from the start; after its 10 dp gap, the label is
+centred in the remaining space with 12 dp at the end. These insets mirror in
+RTL. Expanding the boundary never stretches the artwork.
+It is not on the actions gallery page yet: adding a specimen
+moves the family goldens in all their combinations, and this change is the
+component and its adoption. Retires the private `_GoogleSignInButton` of
+`lib/src/google_sign_in_option.dart`.
+
 ### 4.2 Inputs family
 
 **`UiField`.** Label above in `type.label` `ink.secondary`; the field itself
@@ -779,6 +867,13 @@ it floats in, and two sentences are three lines at 200 percent text on a short
 window, so the dialog needed the same thing the sheet has. The application's
 filter form was carrying the difference as a height cap of its own.
 
+Amended 2026-10-17: `UiDialog.showAdaptive`, `showUiModal` and the toast's
+corner read `WindowArrangement` (05 section 1, "one arrangement per window")
+through `presentsAsSheet` rather than the compact width class, so a modal is
+a sheet wherever the shell draws the tab bar: a phone on its side, a window
+under 768 dp, a tablet at 200 percent text. `isCompactWindow` and
+`compactWindowMax` stay, and answer the width class only.
+
 ### 4.4 Navigation family
 
 **`UiPillNav`.** The reference's floating row: a `glass.floating` capsule of
@@ -808,6 +903,92 @@ every text scale, so what gives is the capsule: it scrolls through
 destination is scrolled into view when it changes. The pill overflowed by 56
 dp at 200 dp before this, which the gallery matrix counted six times.
 
+**`UiTabBar`.** Added 2026-10-17. The compact window's bottom navigation, one
+component on every platform. A docked, full width bar flush to the bottom edge:
+a solid `paper` ground, a top line of exactly one physical pixel
+(1 / device pixel ratio) in `boundary`, and no pill, no indicator, no
+elevation, no surface tint and no glass. Its content height, excluding the
+system inset, is `max(56, 32 + textScaler.scale(16) + 4)`: 56 dp at normal text
+and 68 dp at 200 percent, so it grows with the reviewer's text size and never
+clips a label. The resting 56 is the token `space.tabBar` (03 section 5.2,
+`size.tabbar`), beside `space.topBar` and decided separately from it: the HIG
+tab bar's 49 pt plus room for Dynamic Type, above the 48 dp Material and WCAG
+target. The rest are named in `UiTabBarStyle`: 32 is the 24 dp glyph and one
+8 dp step of air; 16 is the line the label sits in, scaled with
+the text; the 4 is the gap the cell pads under the label. The 4 is in the
+formula so the glyph keeps its 4 dp of air above it and 4 dp below it at every
+text scale; a first version without it put the glyph about 3 dp under the top
+line at 200 percent (corrected 2026-10-17, same day), and normal text is
+unchanged because 56 governs there. Below the content the bar pads by `MediaQuery.viewPaddingOf(context).bottom`
+(the home indicator on an iPhone, the gesture or three button bar on Android)
+with the `paper` ground running under it. That inset is the only part that
+varies with the device: behaviour adapts, identity does not (09 section 2
+principle 5).
+
+Two to five equal cells, the whole cell being the hit target (48 by 48 at
+least at every density and text scale). A cell is the stock iOS bar's anatomy
+rebuilt in our parts: a 4 dp pad under a column that ends at the inset, the
+glyph centred in the height the label leaves, the label under it. The glyph is
+the destination's Phosphor glyph at 24 in `regular` and `ink.secondary`; the
+current destination is `fill` and `ink` (09 section 7). The label is always
+drawn: `label.small`, sentence case, one line, the same colour as its glyph. On
+a change the two glyph weights and the label colour cross-fade over
+`navigationGlide` (09 section 8), which is zero under reduced motion. Semantics
+are the pill's: `tab` per cell with `selected`, inside a `tabBar` group, the
+label in the node. `Left` and `Right` move focus (wrapping, mirrored under
+RTL), `Enter` and `Space` select, and the focus ring is drawn inside the cell
+because the bar touches the screen's edges and its neighbours.
+
+Narrow windows (amended 2026-10-17). Equal cells are only equal while each
+keeps its 48 dp hit box (`UiTabBarStyle.cellMin`, 10 section 2 clause 2). Where
+the bar's width divided by its destinations would fall under that, five
+destinations in a 200 dp column being 40 dp cells, the bar lays its cells at 48
+dp inside the library's `EdgeFadedRow`, the way `UiPillNav` does (11 section
+3.3, the compact variant of a navigation row): it scrolls, the edge with more
+beyond it fades, and the current destination is in view from the first frame
+and is scrolled into view when it changes. A bar can open on any destination, so
+the row is built already scrolled to it: `EdgeFadedRow.revealInitially`, with
+the row's own `extent` (48 dp times the destinations), sets the scroll
+controller's initial offset from that and the width the row is given before the
+row is first laid out and painted, with no jump after the first frame; it is
+off by default, so `UiTabs` and `UiPillNav` are unchanged, and the row is put
+back on its destination if its width changes. (The first version of this
+arrangement did it in a post frame callback, after the first frame had painted;
+corrected 2026-10-17.) Otherwise the cells are equal and nothing scrolls, so
+a two destination bar on a phone is exactly as before. In the scrolling form the
+`tabBar` group sits inside the scroller, because a scroller publishes a node
+and every child of a `tabBar` node has to be a tab; arrow keys also scroll the
+cell they focus into view, because `FocusNode.requestFocus` does not; and the
+focus ring is still drawn inside the cell. A label the cell cannot hold ends in
+an ellipsis and carries the whole word in a `UiTooltip` (10 section 2 clause
+15), on hover and on a long press, armed only on a cut label. The tooltip is
+around the cell and not in `UiLabel.tooltip`: a tooltip's own tap handler is
+the innermost, so inside the cell it took the tap on the word and the tab
+selected nothing. The cell's semantics label already carries the whole word and
+the open pane is kept out of semantics (`UiTooltip.excludeSemantics`, off by
+default for every other caller): the pane's semantics live beneath the portal,
+inside the `MergeSemantics` the cell needs, and would give the tab its word
+twice and a tooltip of its own while the tooltip is open. So a tab reads once,
+open or closed. `UiTabBar` takes an optional `iconKeyOf` so a shell or a
+test can find and measure a glyph without the bar knowing about either. It retires `CupertinoTabBar` and
+the compact `NavigationBar` from the shell: `AppShell` draws `UiTabBar` on
+every platform at the compact window class and no longer branches on
+`defaultTargetPlatform`. `UiPillNav` stays in the library for a window that
+wants a floating capsule; compact phones do not use it.
+
+Why. The shell drew `CupertinoTabBar` on iOS and Material's `NavigationBar`
+(a 32 dp pill indicator, 64 dp of content) on Android, which copied each
+platform's stock widget and put two products' identities in one app. The owner,
+in a Claude Code session on 2026-10-17: "btw ios nav behaves perfectly but
+android has too much padding/space". And, in the same session: "are you sure it
+is following desired guidelines given flutter we are cross-platform and brand
+focsed less native focused but still tream guidelines seriously not copy".
+Source for both sentences: the owner's messages in the Claude Code session of
+2026-10-17. The target is therefore the iPhone's proportions, which he called
+perfect, rebuilt as our own anatomy so the two platforms are the same bar.
+Bottom tabs on phones, rather than a sidebar or drawer, stay as the owner
+corrected on 2026-09-29.
+
 **`UiRail`.** For medium windows: a 72 dp column of the same discs, top-aligned
 under the mark; extended form at expanded width shows `label.small` under each
 disc. Retires `NavigationRail`.
@@ -824,6 +1005,17 @@ is composed as `space.targetMin + space.s6`, a 48 dp hit box with 12 dp of
 gutter, rather than read from `space.rail`, which is the v1 rail at 80 and
 still belongs to the screens that have not moved. Arrow keys move `Up` and
 `Down` and leave the cross axis alone, per the amendment to clause 3.
+
+Amended 2026-10-17: the application draws it. The docked shell's destinations
+were a hand-built column of `Pressable` rows from 2026-10-01, with their own
+arrow keys, a literal 6 percent `ink` fill and a radius of their own, while
+this entry had no caller. `AppShell` now puts `UiRail` at the head of its rail
+column in `UiScaffold.nav` (placement `edge`, below), with the list pane's
+toggle, the environment and
+the account under it on the rail's centre line. The rail takes an optional
+`semanticsLabel`, the tab list's name, because the shell's column was named
+"Workspace navigation" and a record beside it has tabs of its own; a rail
+without one publishes an unnamed tab list as before.
 
 **`UiSidebar`.** For large windows: 280 dp, `glass.flat`, the mark and product
 name, destinations as `UiListRow` with the 3 dp leading bar on the current one,
@@ -880,6 +1072,38 @@ the line box of `type.title` floored at the density height rather than the
 density height alone (11 section 2.2), which is 56 and 48 unchanged at scale
 1.0.
 
+Amended 2026-10-17, the workspace form. `UiTopBar` takes a `form`:
+`UiTopBarForm.page`, everything above and the default, or
+`UiTopBarForm.workspace`, the compact shell's header. The shell used to declare
+the collection switcher and the account row twice, once inside the Specimens
+list on `paper` and once above Intake on `ground`, so on a phone the status
+strip met the header on a different ground on one tab and not the other. The
+owner, in a Claude Code session on 2026-10-17: "why does the insects dropdown
+backround behave differently? has it been created twice? that whole top thing I
+thought is same ?" and "i hope we arent duplicating and hand-codring hardcoding.
+we should have a working design system + ui components given we're on flutter
+at a cross-platform level with behaviors in different circumstances". It is one
+bar now, for the Specimens list, Intake and the screens under Intake. The
+workspace form is opaque `paper` (14 section 3: shell chrome is `paper`) and
+the ground covers the bar's whole box, **the top safe inset included**, so the
+status strip and the bar are one surface on every tab and every platform. It is
+the top edge mirror of `UiTabBar`, which paints its ground under the bottom
+inset: the platform only decides how tall the inset is, and the component
+decides what is painted in it, so no shell pads a strip itself. The geometry is
+the one the owner called accurate on Specimens, now declared in
+`UiTopBarStyle` instead of written at two call sites: a 64 dp bar under the
+inset (a 48 dp control with `space.s2` of air above and below, growing with the
+control at larger text), a `space.s2` gutter at both ends, actions that touch
+because their own 48 dp hit boxes are the spacing, and a `leading` slot that
+takes what the actions leave and sits at the start, so a long collection name
+is cut by its control rather than overflowing. The page form is unchanged: it
+is still transparent at rest, `glass.flat` once content scrolls under it, 56 dp
+(48 pointer) with a 16 dp gutter. The workspace form reads no scroll state and
+draws no glass, so it adds nothing to the pane budget. The shell's one builder
+is `AppShell._compactTopBar`; the docked sidebar's own header, a different
+composition on large windows, reuses the same `_CollectionSwitcher` widget and
+has no account or environment control of its own.
+
 **`UiScaffold`.** The page frame: paints `ground` and the sky preset via
 `FieldLayer`, then `topBar`, `banner` slot, `body`, `actionBar` slot (sticky,
 `glass.floating`, above the nav), `nav` slot (pill, rail or sidebar chosen by
@@ -926,6 +1150,28 @@ entrance to the start of the exit. And `UiScaffoldSlots` carries the bar's
 title and leading beside the whole bar, `setTitle` and `setLeading`, which the
 frame hands to the `UiTopBar` in the slot through `UiTopBarAsk`, an inherited
 widget the bar reads itself; the application's `ShellChrome` retired onto it.
+
+Amended 2026-10-17: a navigation beside the body keeps the bottom safe area.
+Everything below the top bar has the window's padding removed, and the rail
+and the sidebar run to the bottom edge, so a control at the foot of either had
+no inset to clear the home indicator with. The frame now hands the column the
+bottom inset (not the keyboard) and nothing else. A column with a control at
+its foot spends it. `UiSidebar`'s footer does not yet, and nothing draws a
+sidebar today.
+
+Amended 2026-10-17, again: a third placement, `UiNavPlacement.edge`. The
+navigation runs the window's full height at the start side, and the top bar,
+the band and the body sit beside it, so a band that comes and goes never moves
+the navigation, and the column takes the top, start and bottom insets while the
+frame beside it takes none at the start. `beside` keeps the wave 1 arrangement
+above, the bar and the band across the full width. The application's docked
+shell asks for `edge`: with `beside`, its band (an error, a blocker, and the
+4 dp progress strip of every record and page load) pushed the rail and the list
+pane down and back, which the independent review of #359 found and the shell
+before `UiRail` never did. `edge` is never inferred, and the frame keeps one
+shape whether or not `nav` is set, so a shell that draws the navigation at one
+window class and not at another keeps the page and its state across the
+change.
 
 Three files hold the navigation family's shared parts and are not in the
 layout of section 1.2: `nav_destination.dart`, the one destination model all
@@ -1017,6 +1263,13 @@ surface toward its opposite" correction wave 0 made to the state layer itself,
 and it is visible on `paper`, on `ground` and under a field in both modes. The
 control is outside the semantics tree.
 
+Amended 2026-10-17: the application's `SkeletonBar`, `SkeletonRow` and
+`SkeletonBlock` are gone. Two were this control under another name; the
+third, three bars at 60, 40 and 80 percent, was a row shape of its own, and
+its call sites draw `UiSkeleton.row()` now, which is a list row's shape: right
+for the source lists, approximate for the record's loading inspector, whose
+field rows have no leading block.
+
 **`UiEmptyState`.** Glyph 40 `light`, `type.title`, one sentence `body`,
 at most one `UiButton`. Sits on the sky, no glass. Carried from v1.
 
@@ -1024,6 +1277,23 @@ Amended in wave 1: the action slot is typed `UiButton?` rather than the
 `Widget?` section 11 asks for, because "at most one `UiButton`" is a rule and
 a type states a rule better than a comment does. This is the one slot in the
 family narrow enough to be worth it.
+
+Amended 2026-10-17: the application draws it directly. Its `EmptyState` in
+`lib/src/widgets/empty_state.dart` wrapped this control in a second centre,
+reading width cap and 24 by 48 dp padding, so every empty state carried the
+padding twice, and the queue's filtered views drew a bare line of grey text
+instead of an empty state at all. Both are gone: every call site passes a
+`UiIcons` entry to `UiEmptyState`, and the queue's four empty views (needs a
+human, deferred, cleared, any other view) are `UiEmptyState` with a one
+sentence body and no action. The control asserts that an action it is given
+can be pressed, the rule the application's wrapper used to keep: a button
+that does nothing is not "one way out of it". `test/widgets/
+empty_states_on_specimen_ui_test.dart` fails if the application declares a
+class named like either control again. The glyph rule above is not met by
+these call sites and was not before: only `UiIcons.noResults` has a `light`
+form, `IconSpec.resolve` changes the glyph only for `fill`, so the wrapper's
+`weight: light` drew the regular glyph too; the pixels are the same. A light
+form for the other registry entries is a follow-up.
 
 **`UiDataTile`.** The reference's numeral tile on `glass.flat`, `radius.tile`:
 `label` at top-start in `type.label` `ink.secondary`, numeral in
@@ -1094,7 +1364,8 @@ percent, or an image. Semantics `image` with the person's name.
 | `QueueRow`, `SourceObjectRow`, `UploadItem` | `UiListRow` | Selection mode via the row's selectable variant |
 | `SelectionBar` | `glass.floating` capsule with `UiButton`s and a count | Anchored like the toast layer |
 | `EnvironmentBanner` | `UiBanner` | Same copy, `flask` glyph |
-| `Thumbnail`, `RegionOverlay`, `InFlightGlyph`, `MotionReveal`, `MeasuredHeight`, `Skeleton`, `EmptyState`, `KeyCap`, `AdaptiveForm` | tokens, `UiSkeleton`, `UiEmptyState`, `UiKeyCap`, `ModalRoutes` | `AdaptiveForm` delegates to `showUiModal` |
+| `Thumbnail`, `RegionOverlay`, `InFlightGlyph`, `MotionReveal`, `MeasuredHeight`, `KeyCap`, `AdaptiveForm` | tokens, `UiKeyCap`, `ModalRoutes` | `AdaptiveForm` delegates to `showUiModal` |
+| `Skeleton`, `EmptyState` (retired 2026-10-17) | `UiSkeleton`, `UiEmptyState`, drawn directly | No application wrapper; see 4.5 |
 
 ## 6. The gallery
 
@@ -1226,6 +1497,11 @@ control, which is what one vocabulary exists to prevent (section 0, property
 | `no_stand_ins` | No `TODO(fe/` marker under the package's `lib/` | none |
 | `no_fallback_text_style` | Every gallery page and every overlay pumped under `WidgetsApp`; no `RenderParagraph` carries the framework fallback style or a double underline (11 section 5) | none |
 | `fit_matrix` | The golden matrix of 11 section 3.5: four window classes by three text scales by two modes per family page, plus the Fit page | none |
+| `no_cupertino` | Read as syntax trees, over the application's `lib/` and that of every package under `packages/` (the design system's among them): no import or export of `package:flutter/cupertino.dart` (conditional URIs included), no identifier containing `Cupertino` (interpolations included), and none of Flutter's `.adaptive` constructors, `Icons.adaptive` or `showAdaptive*` functions, also through an import prefix, named exactly so a product's own `adaptive` is not counted; one exemption, `CupertinoRouteTransitionMixin` in `_WorkspacePageRoute.buildTransitions` of `app_router.dart`, behind a one-name `show` on every cupertino directive (04 row 18; 09 section 2 principle 5) | none |
+| `no_platform_branching` | Read as syntax trees, over the same files: `kIsWeb`, `kIsWasm`, `defaultTargetPlatform`, `TargetPlatform` as a type or value, `Platform` from `dart:io`, `Theme.of(context).platform` or the `.platform` of a theme held in a variable (initialised from `Theme.of`, typed `ThemeData`, or named for a theme), a scroll behaviour's `getPlatform`, `identical(0, 0.0)` and `0.0 is int`, a conditional import or export, and `debugDefaultTargetPlatformOverride`, only in the declarations the test names, each with exact counts per kind and the exact places that read it, a read counting in the declaration's own library, its parts included, and in every file that can see it through imports and exports, with or without an import prefix | none; the capability list is the allowance |
+| `no_named_pixels` | Read as syntax trees: a number above 1, evaluated (hex, `280 * 1`, `35 * 8`), named by any declarator, field, local, getter, parameterless function, constructor initializer (`: width = 280`), parameter default (`{double width = 280}`, `this.gutter = 24`, handed on through an initializer list, or a `super.` default named for a dimension), list, set, map or record of `double`, or `int` read through `.toDouble()`, when that name reaches layout, through arithmetic, a conditional or a switch's case: a dimension argument or variable, a geometry constructor, a comparison with a measured size, a sum with a measured size or a spacing token, being divided by a size, or another named size. A factor (`x * 2`, `width * padding`), a ratio a size is divided by (`width / aspectRatio`) and a list index are not sizes; a timeout, a zoom limit or a gesture threshold is not a layout use | per-file, shrink-only, held to the exact count |
+| `no_alpha_literals` | Read as syntax trees: a number written as the opacity of `withValues(alpha:)`, `withOpacity`, `withAlpha`, `stateLayer`, `Color.fromARGB`, `Color.fromRGBO`, `Color.from`, `HSLColor.fromAHSL`, `HSVColor.fromAHSV` or the amount of `Color.lerp` under `lib/`, `0` included, written with or without `const`, or a name for one: a constant, a final, or a one-expression getter, function or method with no parameters, in the same file, a public one anywhere in the application, or the default of the parameter it is read in. No `opacity:` argument is read (`Opacity`, `AnimatedOpacity`, `FadeTransition`, `Image`): today they hold visibility toggles and animations | per-file, shrink-only, held to the exact count |
+| `exemptions_owner_approved` | Every allowance and ban list in the source gates, and the gate's own registry, evaluated from the pull request base's copy and this change's, the registry read in the base under its fixed name `allowances` and compared with the list the test runs, so renaming it fails: a new entry, a higher count, a wider capability, a changed exemption, scalar or threshold, an entry removed from a ban list, and an allowance dropped, renamed or regranted in the registry carry `// owner-approved: YYYY-MM-DD "the owner's exact words"` on the entry or its declaration, and a sign-off licenses one change: a quotation already on the base's copy licenses nothing further | the base is the record; a gate file the base lacks holds only the 2026-10-17 brief's inventory unsigned |
 
 **Amendment, fit (2026-09-16, 11 sections 1 and 2.2).** `no_literal_geometry`
 is now a census of every static size rather than four sample patterns, and it
@@ -1256,6 +1532,51 @@ and a cooldown), so the resolution there is one named constant in the file that
 owns the policy rather than a motion token; the package's three are interaction
 delays that 10 section 4.3 fixes and `foundation/motion.dart` says belong to
 it.
+
+**Amendment, holes in the gates (2026-10-17).** The gates above held while a
+stock `CupertinoTabBar` shipped on iOS behind a `defaultTargetPlatform` switch
+in the shell, with tests asserting it, because no gate read the Cupertino
+library or the platform, and a size or an opacity given a name
+(`static const double switcherMaxWidth = 280`, `ink.withValues(alpha: .06)`)
+passed the geometry and colour gates. The five rows added to the table close
+those four routes and put every named allowance, every ban list and the
+sign-off gate's own registry under the owner's sign-off. The first version
+read text through the prose mask; its reviews (PR #358) showed legal Dart
+passing it, so the gates read syntax trees from `package:analyzer`, a
+test-only dependency. Their record is the pull request base, read with
+`git show` (CI checks out two commits and sets `GATE_BASE`; a developer's run
+fetches `origin/main` first). The two backlogs start at the tree as it stood
+that day, 19 named sizes over 14 files and 4 opacities over 4, and only
+shrink. The tests live in `apps/specimen_digitization/test/theme/` and share
+`gate_support.dart`.
+
+Not enforced by these gates, and left to review:
+
+- whether an `owner-approved:` quotation is really the owner's: the gate
+  checks that one is present, dated, quoted and new to the change, not who
+  wrote it;
+- a change to a gate's own patterns, rules and scanners, which tightens or
+  loosens what every list means;
+- the geometry gates' `paint` allowance, which is a function rather than a
+  list;
+- a platform fact passed as an argument into a callee (`web: kIsWeb`), and a
+  platform-derived value handed on through state rather than a read of its
+  declaration;
+- a size passed as an argument to a product function (`photo(320)`), a size
+  or an opacity named outside the application, and a private name for an
+  opacity declared in another file;
+- a size given by an enum's constructor arguments (`wide(280)`), assigned or
+  cascaded (`..strokeWidth = stroke`), passed to a constructor the pixel gate
+  does not list (`FixedColumnWidth`), or an `int` made a double other than by
+  `.toDouble()` (`rail * 1.0`);
+- any `opacity:` argument (`Opacity`, `AnimatedOpacity`, `FadeTransition`,
+  `Image`);
+- upstream code vendored under `third_party/`, which the Cupertino and
+  platform gates do not read;
+- the design system's own controls under the two number gates, which read the
+  application only;
+- a full colour built from numbers (`Color.fromRGBO(r, g, b, a)`), which is
+  the colour gate's (`Color(0x` only today).
 
 ## 9. Definition of done for a component
 

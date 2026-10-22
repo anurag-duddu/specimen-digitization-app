@@ -5,7 +5,8 @@
 > supersede parts of this document for the go-live program. Each superseded
 > clause keeps its original text and carries a dated note naming the decision.
 > The [go-live amendment](#go-live-amendment-2026-09-23-g9) at the end records
-> the USD 25 ceiling. [`golive/RELEASE.md`](golive/RELEASE.md) lists the code
+> the USD 25 ceiling; the [amendment of 2026-10-17](#amendment-2026-10-17-g9-and-g30)
+> raises it to USD 30 (G9). [`golive/RELEASE.md`](golive/RELEASE.md) lists the code
 > that still enforces a superseded clause until a later go-live pull request
 > changes it.
 
@@ -207,3 +208,47 @@ coordinating session tracks the total and asks the owner before spending passes
 USD 30, and no code can enforce it. The research broker (`ProgramEffectBroker`
 in `research_harness/program_budget.py`) refuses an allowance above USD 25; no
 other code checks that cap.
+
+## Amendment, 2026-10-16 (G30)
+
+The owner explicitly approved "Approve $16 cumulative ceiling" in the Illinois
+location-harness session, in response to a proposal to raise the shared model
+allowance from USD 15 to USD 16 through a reviewed PR, preserving all recorded
+usage. The published allowance is 16000000 micro-units. Cumulative charges and
+reservations are retained; the USD 1 specimen-run limit, the research broker's
+USD 25 cap and the broader envelope above are unchanged. See the dated approval
+in [`golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator).
+
+## Amendment, 2026-10-17 (G9 and G30)
+
+The owner raised G9's cumulative ceiling from USD 25 to USD 30 and the shared
+model allowance from USD 16 to USD 28, through one reviewed PR, preserving all
+recorded usage. The owner's words, sent 2026-10-17 in Claude Code desktop
+session 475c3298, each a reply to a question there, quoted exactly:
+
+- "Approve raising the cumulative program allowance from $16 to $28 so the 11-record batch can run. Do it through a reviewed PR, then run Start new run on those 11 and report what settles."
+- "I approve raising the G9 ceiling from $25 to $30 (the recorded envelope) and the program allowance from $16 to $28, both through one reviewed PR, then run the 11-record batch."
+- "Yes. I know the safety check flagged it. Make the two edits in this session yourself: MAX_PROGRAM_ALLOWANCE_MICROS 25_000_000 to 30_000_000 in research_harness/program_budget.py, and allowance_micros 16000000 to 28000000 in published.json. Then finish the docs, tests and log, review, and open the PR"
+
+The published allowance is 28000000 micro-units and the research broker's cap
+(`MAX_PROGRAM_ALLOWANCE_MICROS` in `research_harness/program_budget.py`) is
+30000000. The amendments above state the cap, the ceiling and the allowance as
+they were on their dates. Cumulative charges and reservations are retained; the
+USD 1 specimen-run limit is unchanged. See the dated approval in
+[`golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator).
+Whether the Cloud Billing budget alert is moved from USD 25 to USD 30 is Not
+confirmed (owner to check).
+
+## Amendment, 2026-10-17 (cost settlement)
+
+The 2026-10-05 correction above holds every SAM call at its full reservation,
+because request seconds do not measure the instance's billed life. `specimen-sam`
+is billed by instance, idle time included. SAM 3 now reports each request's
+instance time: its own seconds, and the instance's idle seconds before it. A
+call settles at that, at Cloud Run's instance-based rates. The instance's start,
+its CPU boost and its last idle wait are charged to its first call (PLAN 4.3,
+note of 2026-10-17). A call without that report still keeps its full
+reservation, and warm idle time past what Cloud Run allows a scaled-to-zero
+instance stays with the infrastructure ceiling. Failed model calls whose
+provider reported their tokens now settle at those tokens. Reservations, the
+USD 1 specimen-run limit and the USD 28 allowance are unchanged.

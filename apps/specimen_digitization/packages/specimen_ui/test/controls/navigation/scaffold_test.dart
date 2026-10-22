@@ -14,6 +14,7 @@ const Size _window = Size(420, 820);
 
 Widget _page({
   Widget? topBar,
+  Widget? header,
   Widget? banner,
   Widget? body,
   Widget? actionBar,
@@ -39,6 +40,7 @@ Widget _page({
       size: size,
       child: UiScaffold(
         topBar: topBar,
+        header: header,
         banner: banner,
         body: body,
         actionBar: actionBar,
@@ -137,6 +139,65 @@ class _PublisherState extends State<_Publisher> {
 }
 
 void main() {
+  for (final withTopBar in <bool>[false, true]) {
+    testWidgets(
+      'a safe-area header clears the top inset once, top bar=$withTopBar',
+      (WidgetTester tester) async {
+        const headerContent = ValueKey<String>('header-content');
+        await tester.pumpWidget(
+          uiHarness(
+            size: _window,
+            child: _page(
+              padding: const EdgeInsets.only(top: 44, bottom: 34),
+              header: const SafeArea(
+                bottom: false,
+                child: SizedBox(key: headerContent, height: 48),
+              ),
+              topBar: withTopBar ? const UiTopBar(title: 'Intake') : null,
+              body: const _MeasuredBody(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final headerBounds = tester.getRect(find.byKey(headerContent));
+        final bodyBounds = tester.getRect(find.byType(_MeasuredBody));
+        expect(headerBounds.top, 44);
+        expect(
+          withTopBar
+              ? tester.getRect(find.byType(UiTopBar)).top
+              : bodyBounds.top,
+          headerBounds.bottom,
+          reason: 'the workspace header already clears the status bar',
+        );
+        if (withTopBar) {
+          expect(bodyBounds.top, tester.getRect(find.byType(UiTopBar)).bottom);
+        }
+        expect(
+          MediaQuery.paddingOf(tester.element(find.byType(_MeasuredBody))).top,
+          0,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets('a page without top chrome still clears the status bar', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      uiHarness(
+        size: _window,
+        child: _page(
+          padding: const EdgeInsets.only(top: 44, bottom: 34),
+          body: const _MeasuredBody(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.getRect(find.byType(_MeasuredBody)).top, 44);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('a page can ask the field layer to keep a rectangle clear', (
     WidgetTester tester,
   ) async {
@@ -458,6 +519,197 @@ void main() {
           'a floating pill is over the body, so the body keeps its full '
           'height and pads its content with the published inset instead',
     );
+  });
+
+  testWidgets('a column beside the body keeps the bottom safe area', (
+    WidgetTester tester,
+  ) async {
+    // The rail runs to the window's bottom edge, so whatever sits at its foot
+    // has to clear the home indicator; everything else below the bar still
+    // has the padding removed, so nothing insets twice.
+    late EdgeInsets nav;
+    late EdgeInsets body;
+    await tester.pumpWidget(
+      uiHarness(
+        size: const Size(1024, 768),
+        child: _page(
+          size: const Size(1024, 768),
+          padding: const EdgeInsets.only(left: 30, top: 24, bottom: 20),
+          nav: UiRail(
+            destinations: threeDestinations,
+            currentIndex: 0,
+            onSelect: (int _) {},
+            leading: Builder(
+              builder: (BuildContext context) {
+                nav = MediaQuery.paddingOf(context);
+                return const SizedBox.shrink();
+              },
+            ),
+          ),
+          body: Builder(
+            builder: (BuildContext context) {
+              body = MediaQuery.paddingOf(context);
+              return const SizedBox.expand();
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(nav, const EdgeInsets.only(bottom: 20));
+    expect(body, EdgeInsets.zero);
+  });
+
+  group('an edge navigation', () {
+    const Size window = Size(1024, 768);
+    const ValueKey<String> navKey = ValueKey<String>('nav');
+    const ValueKey<String> bandKey = ValueKey<String>('band');
+    const ValueKey<String> bodyKey = ValueKey<String>('body');
+    late EdgeInsets navPadding;
+    late EdgeInsets bodyPadding;
+
+    Future<void> pump(
+      WidgetTester tester, {
+      required TextDirection direction,
+      required EdgeInsets padding,
+      bool band = true,
+      bool nav = true,
+    }) {
+      // The view itself, not only the media query, so the frame is laid out
+      // in the window it claims.
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = window;
+      addTearDown(tester.view.reset);
+      return tester.pumpWidget(
+        uiHarness(
+          size: window,
+          textDirection: direction,
+          child: Builder(
+            builder: (BuildContext context) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(size: window, padding: padding, viewPadding: padding),
+              child: SizedBox.fromSize(
+                size: window,
+                child: UiScaffold(
+                  navPlacement: UiNavPlacement.edge,
+                  banner: band
+                      ? const SizedBox(
+                          key: bandKey,
+                          width: double.infinity,
+                          height: 40,
+                        )
+                      : null,
+                  nav: nav
+                      ? Builder(
+                          builder: (BuildContext context) {
+                            navPadding = MediaQuery.paddingOf(context);
+                            return const SizedBox(key: navKey, width: 72);
+                          },
+                        )
+                      : null,
+                  body: Builder(
+                    builder: (BuildContext context) {
+                      bodyPadding = MediaQuery.paddingOf(context);
+                      return const SizedBox.expand(key: bodyKey);
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    testWidgets('runs the full height, with the band and the body beside it', (
+      WidgetTester tester,
+    ) async {
+      await pump(
+        tester,
+        direction: TextDirection.ltr,
+        padding: const EdgeInsets.only(left: 30, top: 24, bottom: 20),
+      );
+      await tester.pumpAndSettle();
+      final Rect nav = tester.getRect(find.byKey(navKey));
+      expect(nav.top, 0, reason: 'from the window\'s top edge');
+      expect(nav.bottom, window.height, reason: 'to its bottom edge');
+      expect(nav.left, 0);
+      final Rect band = tester.getRect(find.byKey(bandKey));
+      expect(band.left, nav.right, reason: 'the band spans the page only');
+      expect(band.right, window.width);
+      expect(tester.getRect(find.byKey(bodyKey)).left, nav.right);
+      // The column takes the top, start and bottom insets; the frame beside
+      // it takes none at the start and none at the top below the band.
+      expect(navPadding, const EdgeInsets.only(left: 30, top: 24, bottom: 20));
+      expect(bodyPadding, EdgeInsets.zero);
+    });
+
+    testWidgets('a band that comes and goes never moves it', (
+      WidgetTester tester,
+    ) async {
+      await pump(
+        tester,
+        direction: TextDirection.ltr,
+        padding: EdgeInsets.zero,
+        band: false,
+      );
+      await tester.pumpAndSettle();
+      final Rect without = tester.getRect(find.byKey(navKey));
+      await pump(
+        tester,
+        direction: TextDirection.ltr,
+        padding: EdgeInsets.zero,
+      );
+      await tester.pumpAndSettle();
+      expect(tester.getRect(find.byKey(navKey)), without);
+      expect(tester.getRect(find.byKey(bandKey)).height, 40);
+    });
+
+    testWidgets('sits at the start in right to left and takes that inset', (
+      WidgetTester tester,
+    ) async {
+      await pump(
+        tester,
+        direction: TextDirection.rtl,
+        padding: const EdgeInsets.only(right: 30, top: 24, bottom: 20),
+      );
+      await tester.pumpAndSettle();
+      final Rect nav = tester.getRect(find.byKey(navKey));
+      expect(nav.right, window.width);
+      expect(nav.top, 0);
+      expect(tester.getRect(find.byKey(bandKey)).right, nav.left);
+      expect(navPadding, const EdgeInsets.only(right: 30, top: 24, bottom: 20));
+      expect(bodyPadding, EdgeInsets.zero);
+    });
+
+    testWidgets('keeps the body when the navigation comes and goes', (
+      WidgetTester tester,
+    ) async {
+      await pump(
+        tester,
+        direction: TextDirection.ltr,
+        padding: EdgeInsets.zero,
+      );
+      await tester.pumpAndSettle();
+      final Element before = tester.element(find.byKey(bodyKey));
+      await pump(
+        tester,
+        direction: TextDirection.ltr,
+        padding: EdgeInsets.zero,
+        nav: false,
+      );
+      await tester.pumpAndSettle();
+      expect(tester.element(find.byKey(bodyKey)), same(before));
+      expect(tester.getRect(find.byKey(bodyKey)).left, 0);
+      await pump(
+        tester,
+        direction: TextDirection.ltr,
+        padding: EdgeInsets.zero,
+      );
+      await tester.pumpAndSettle();
+      expect(tester.element(find.byKey(bodyKey)), same(before));
+    });
   });
 
   testWidgets('a sidebar is placed beside the body too', (

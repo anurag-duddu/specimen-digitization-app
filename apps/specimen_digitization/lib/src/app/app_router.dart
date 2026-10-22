@@ -7,6 +7,8 @@
 /// screen, keeping the location it was trying to reach.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/cupertino.dart' show CupertinoRouteTransitionMixin;
 import 'package:flutter/widgets.dart';
@@ -15,10 +17,15 @@ import 'package:specimen_ui/gallery.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import '../auth.dart';
+import '../costs.dart';
 import '../email_verification.dart';
 import '../intake.dart';
+import '../screens/intake/bulk_intake_repository.dart';
+import '../screens/intake/bulk_intake_screen.dart';
 import '../magic_link.dart';
 import '../models.dart';
+import '../screens/costs/costs_access.dart';
+import '../screens/costs/costs_screen.dart';
 import '../screens/queue/queue_screen.dart';
 import '../screens/queue/workbench_screen.dart';
 import '../screens/sources/source_controller.dart';
@@ -29,7 +36,6 @@ import '../widgets/widgets.dart';
 import '../workspace.dart';
 import 'help_screen.dart';
 import 'routes.dart';
-import 'shell.dart';
 import 'session_notifier.dart';
 import 'setup_screen.dart';
 
@@ -42,6 +48,7 @@ GoRouter buildAppRouter({
   WorkspaceController? controller,
   String? setupMessage,
   MagicLinkController? magicLink,
+  Future<void> Function()? reloadApp,
   bool synthetic = false,
   String initialLocation = AppRoutes.setup,
   List<NavigatorObserver> observers = const <NavigatorObserver>[],
@@ -302,6 +309,7 @@ GoRouter buildAppRouter({
                   session: session,
                   setupMessage: setupMessage,
                   controller: controller,
+                  reloadApp: reloadApp,
                 ),
               ),
         ),
@@ -309,6 +317,31 @@ GoRouter buildAppRouter({
           path: AppRoutes.help,
           pageBuilder: (BuildContext context, GoRouterState state) =>
               helpPage(context),
+        ),
+        GoRoute(
+          path: AppRoutes.costs,
+          pageBuilder: (BuildContext context, GoRouterState state) {
+            final MotionTokens motion = context.ui.motion;
+            return CustomTransitionPage<void>(
+              key: state.pageKey,
+              transitionDuration: motion.quick,
+              reverseTransitionDuration: motion.quick,
+              child: _CostsRoute(environment: environment),
+              transitionsBuilder:
+                  (
+                    BuildContext context,
+                    Animation<double> animation,
+                    Animation<double> secondary,
+                    Widget child,
+                  ) => FadeTransition(
+                    opacity: CurvedAnimation(
+                      parent: animation,
+                      curve: MotionTokens.standardCurve,
+                    ),
+                    child: child,
+                  ),
+            );
+          },
         ),
         if (!kReleaseMode)
           GoRoute(
@@ -447,7 +480,7 @@ class _WorkspacePageRoute<T> extends PageRoute<T> {
     // Keep the presentation ancestry stable across phone/tablet changes.
     // Replacing this wrapper would dispose the live review and its drafts.
     child: ColoredBox(
-      color: AppSidebarScope.maybeOf(context)?.mobileNavigation == true
+      color: WindowArrangement.of(context).isStacked
           ? context.ui.color.ground
           : context.ui.color.ground.withValues(alpha: 0),
       child: _page.child,
@@ -461,7 +494,7 @@ class _WorkspacePageRoute<T> extends PageRoute<T> {
     Widget child,
   ) {
     if (defaultTargetPlatform == TargetPlatform.iOS &&
-        AppSidebarScope.maybeOf(context)?.mobileNavigation == true) {
+        WindowArrangement.of(context).isStacked) {
       return CupertinoRouteTransitionMixin.buildPageTransitions<T>(
         this,
         context,
@@ -476,6 +509,99 @@ class _WorkspacePageRoute<T> extends PageRoute<T> {
       secondaryAnimation,
       child,
     );
+  }
+}
+
+/// What the organization's work costs, for an administrator.
+///
+/// A page of its own rather than a screen of the collection frame: the costs
+/// belong to the organization, so the route names no collection and the frame's
+/// rail and sidebar have nothing to say about it. The way out is the top bar's
+/// back, which returns to wherever the administrator came from.
+///
+/// Every state asks `costAccessFor` before it draws a figure or makes a
+/// request, so an account that is not an administrator reaches a sentence and
+/// never the server (a refusal there would be the session's, not the page's).
+class _CostsRoute extends StatelessWidget {
+  const _CostsRoute({required this.environment});
+
+  final String environment;
+
+  /// What the back control is called to a screen reader.
+  static const String backLabel = 'Go back';
+
+  @override
+  Widget build(BuildContext context) {
+    final WorkspaceController controller = WorkspaceScope.of(context);
+    final Widget page = UiScaffold(
+      topBar: UiTopBar(
+        leading: UiIconButton(
+          icon: UiIcons.back,
+          semanticsLabel: backLabel,
+          tooltip: backLabel,
+          onPressed: () => _leave(context, controller),
+        ),
+        title: CostsScreenCopy.title,
+      ),
+      body: _body(controller),
+    );
+    return _EnvironmentFrame(
+      environment: environment,
+      // The band above takes the status bar's inset in its own safe area, and
+      // the top bar below it would take it a second time, as a gap the height
+      // of the status bar between the two. Where there is no band the bar is
+      // the first thing under the status bar and keeps its inset.
+      child: EnvironmentBanner.showsBand(environment)
+          ? MediaQuery.removePadding(
+              context: context,
+              removeTop: true,
+              child: page,
+            )
+          : page,
+    );
+  }
+
+  Widget _body(WorkspaceController controller) {
+    if (!controller.scopesLoaded) {
+      return const Center(
+        child: LoadingAnnouncement(thing: 'your access', visible: true),
+      );
+    }
+    final ({CostRepository repository, String organizationId})? access =
+        costAccessFor(controller);
+    if (access != null) {
+      return CostsScreen(
+        key: ValueKey<String>(access.organizationId),
+        repository: access.repository,
+        organizationId: access.organizationId,
+      );
+    }
+    // Two different absences, and neither is a failure: an account that is not
+    // an administrator, and a build that has no costs to show.
+    if (costOrganizationFor(controller) == null) {
+      return const UiEmptyState(
+        icon: UiIcons.locked,
+        title: CostsScreenCopy.forbiddenTitle,
+        body: CostsScreenCopy.forbiddenBody,
+      );
+    }
+    return const UiEmptyState(
+      icon: UiIcons.syncProblem,
+      title: CostsScreenCopy.unavailableTitle,
+      body: CostsScreenCopy.unavailableBuildBody,
+    );
+  }
+
+  /// Back to where the administrator came from, or to the queue when the page
+  /// was the first thing opened (a bookmark, a reload).
+  void _leave(BuildContext context, WorkspaceController controller) {
+    final GoRouter router = GoRouter.of(context);
+    if (router.canPop()) {
+      router.pop();
+      return;
+    }
+    final String? key = controller.defaultRouteKey;
+    router.go(key == null ? AppRoutes.setup : AppRoutes.queueOf(key));
   }
 }
 
@@ -497,6 +623,13 @@ class _SourcesRoute extends StatelessWidget {
       );
     }
     final SourceRepository? repository = sourcesIn(controller.repository);
+    if (controller.repository is BulkIntakeRepository &&
+        const bool.fromEnvironment(
+          'BULK_INTAKE_ENABLED',
+          defaultValue: !kReleaseMode,
+        )) {
+      return const _IntakeRoute(initialProvider: 'storage');
+    }
     if (repository == null) return const _NoSourceSupport();
     return SourcesScreen(
       key: ValueKey<String>(scope.key),
@@ -564,6 +697,16 @@ class _SourceRouteState extends State<_SourceRoute> {
       );
     }
     final SourceRepository? repository = sourcesIn(controller.repository);
+    if (controller.repository is BulkIntakeRepository &&
+        const bool.fromEnvironment(
+          'BULK_INTAKE_ENABLED',
+          defaultValue: !kReleaseMode,
+        )) {
+      return _IntakeRoute(
+        initialProvider: 'storage',
+        initialSourceId: widget.sourceId,
+      );
+    }
     if (repository == null) return const _NoSourceSupport();
     final SourceBrowseController browse = _controllerFor(repository, scope);
     return FutureBuilder<List<RegisteredSource>>(
@@ -584,8 +727,8 @@ class _SourceRouteState extends State<_SourceRoute> {
                 .where((RegisteredSource s) => s.id == widget.sourceId)
                 .firstOrNull;
             if (found == null) {
-              return EmptyState(
-                icon: UiIcons.queue.defaultGlyph,
+              return const UiEmptyState(
+                icon: UiIcons.queue,
                 title: 'Source not found',
                 body: 'This source is not registered to the open collection.',
               );
@@ -607,8 +750,8 @@ class _NoSourceSupport extends StatelessWidget {
   const _NoSourceSupport();
 
   @override
-  Widget build(BuildContext context) => EmptyState(
-    icon: UiIcons.queue.defaultGlyph,
+  Widget build(BuildContext context) => const UiEmptyState(
+    icon: UiIcons.queue,
     title: 'Sources not available',
     body: 'This build reads uploads only. Add photographs from Intake.',
   );
@@ -644,7 +787,7 @@ class _EnvironmentFrame extends StatelessWidget {
             child: SafeArea(
               bottom: false,
               child: UiBandForm(
-                form: WindowClass.of(context).isCompact
+                form: WindowArrangement.of(context).isStacked
                     ? UiBannerForm.strip
                     : UiBannerForm.full,
                 child: EnvironmentBanner(environment: environment),
@@ -686,7 +829,8 @@ class _LeaveVerificationState extends State<_LeaveVerification> {
 
 /// Intake, wired to the open collection.
 class _IntakeRoute extends StatelessWidget {
-  const _IntakeRoute();
+  const _IntakeRoute({this.initialProvider, this.initialSourceId});
+  final String? initialProvider, initialSourceId;
 
   @override
   Widget build(BuildContext context) {
@@ -697,12 +841,49 @@ class _IntakeRoute extends StatelessWidget {
         child: LoadingAnnouncement(thing: 'the collection', visible: true),
       );
     }
+    final repository = controller.repository;
+    if (repository is BulkIntakeRepository &&
+        const bool.fromEnvironment(
+          'BULK_INTAKE_ENABLED',
+          defaultValue: !kReleaseMode,
+        )) {
+      return BulkIntakeScreen(
+        key: ValueKey('${controller.session.userId}:${scope.key}'),
+        repository: repository as BulkIntakeRepository,
+        scope: scope,
+        userId: controller.session.userId,
+        initialProvider: initialProvider,
+        initialSourceId: initialSourceId,
+        onViewSpecimens: () {
+          unawaited(controller.clearFilters(disposition: ''));
+          GoRouter.of(
+            context,
+          ).go(AppRoutes.queueOf(Uri.encodeComponent(scope.key)));
+        },
+      );
+    }
     return IntakeScreen(
       key: ValueKey<String>(scope.key),
       repository: controller.repository,
       scope: scope,
       userId: controller.session.userId,
       onComplete: () => controller.refresh(quiet: true),
+      accessVerified: true,
+      restoreAccess: () async {
+        final userId = controller.session.userId;
+        await controller.checkAccess();
+        return controller.session.signedIn &&
+            controller.session.userId == userId &&
+            controller.scopesVerified &&
+            controller.scopes.any((allowed) => allowed.key == scope.key);
+      },
+      onViewSpecimens: () {
+        // Newly handed-off photos have no review disposition yet.
+        unawaited(controller.clearFilters(disposition: ''));
+        GoRouter.of(
+          context,
+        ).go(AppRoutes.queueOf(Uri.encodeComponent(scope.key)));
+      },
       // Hidden rather than disabled where the build serves no sources.
       onBrowseSources: sourcesIn(controller.repository) == null
           ? null

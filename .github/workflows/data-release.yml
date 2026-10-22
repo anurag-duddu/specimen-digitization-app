@@ -44,6 +44,8 @@ jobs:
           node-version: "22"
       - name: Install the pinned Cloud SQL connector and PostgreSQL client
         run: npm install --prefix "$RUNNER_TEMP/release-node" --no-audit --no-fund --ignore-scripts @google-cloud/cloud-sql-connector@1.9.1 pg@8.19.0
+      - name: Install the pinned Firebase Auth CLI
+        run: npm install --prefix "$RUNNER_TEMP/auth-cli" --no-audit --no-fund --ignore-scripts firebase-tools@15.8.0
       - name: Authenticate as the data release identity
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
@@ -53,8 +55,14 @@ jobs:
       - name: Release the database, Data Connect and Storage rules
         env:
           RELEASE_NODE_MODULES: ${{ runner.temp }}/release-node/node_modules
-          # The owner's first-rows artifact, the only GitHub secret this workflow reads. scripts/ops/owner_setup.sh sets it.
+          # Private provisioning identifiers; absent optional artifacts leave existing rows unchanged.
           DATA_BOOTSTRAP_ARTIFACT_B64: ${{ secrets.DATA_BOOTSTRAP_ARTIFACT_B64 }}
+          INTAKE_E2E_BOOTSTRAP_B64: ${{ secrets.INTAKE_E2E_BOOTSTRAP_B64 }}
         run: uv run python scripts/release/data_release.py
       - name: Publish the ten pinned georeferencing datasets
         run: uv run python scripts/release/georef_datasets.py
+      - name: Enable and verify Google alongside email sign-in
+        env:
+          AUTH_RELEASE_ENVIRONMENT: data-production
+          AUTH_RELEASE_CLI: ${{ runner.temp }}/auth-cli/node_modules/.bin/firebase
+        run: uv run python scripts/release/provision_auth.py

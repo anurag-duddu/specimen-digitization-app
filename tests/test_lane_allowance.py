@@ -33,7 +33,7 @@ from specimen_digitization.application.lane_allowance import (
 )
 from specimen_digitization.application.profile_runtime import published_risk_registry
 from specimen_digitization.application.reliability import AdapterFailure
-from specimen_digitization.application.storage import Conflict, LocalBlobs
+from specimen_digitization.application.storage import Conflict, LocalBlobs, digest
 
 from test_lane_drain import NonSensitiveMember
 from test_lane_profile import USER, ProductionLikeAdapters
@@ -46,8 +46,8 @@ PUBLISHED = (
 SCOPE = Scope(organization_id=SYNTHETIC_ORG, collection_id=SYNTHETIC_COLLECTION)
 OTHER_COLLECTION = "00000000-0000-4000-8000-0000000000c9"
 MOMENT = datetime(2026, 9, 23, 12, 0, tzinfo=timezone.utc)
-# The pilot profile's program allowance: G30, USD 15 (raised from USD 5 on 2026-10-09).
-ALLOWANCE = 15_000_000
+# The pilot profile's program allowance: owner-approved G30 increase to USD 28 (2026-10-17).
+ALLOWANCE = 28_000_000
 
 
 def lab(tmp_path, adapters=ProductionLikeAdapters, repository=None):
@@ -227,6 +227,93 @@ class CountingAdapters(ProductionLikeAdapters):
     def segment(self, specimen):
         self.segments += 1
         return super().segment(specimen)
+
+
+def test_retry_after_allowance_increase_keeps_completed_paid_work(tmp_path):
+    from specimen_digitization.application.first_pass import synthetic_decision
+
+    class ThreeLabels(CountingAdapters):
+        def __init__(self, *args):
+            super().__init__(*args)
+            self.alternate = SYNTHETIC_TEXT + "\ncounty: different"
+            self.readings = self.comparisons = 0
+
+        def segment(self, specimen):
+            region = super().segment(specimen)[0]
+            return [
+                region.model_copy(update={"id": f"label-{n}", "order": n})
+                for n in range(3)
+            ]
+
+        def transcribe(self, specimen, region, route):
+            self.readings += 1
+            return super().transcribe(specimen, region, route)
+
+        def first_pass(self, specimen, region, readings):
+            self.comparisons += 1
+            decision = synthetic_decision(self.blobs, region, readings)
+            return decision.model_copy(update={"call": decision.call.model_copy(update={
+                "route_id": specimen.run.profile.first_pass_route,
+                "input_tokens": 1_000, "output_tokens": 40,
+            })})
+
+    app, repository = lab(tmp_path, adapters=ThreeLabels)
+    seed(repository, 0)
+    specimen_id = uploaded(app)
+    workflow = app.state.workflow
+    specimen = repository.get(SCOPE, specimen_id)
+    specimen.run.profile.execution.program_allowance_micros = 16_000_000
+    repository.save(
+        principal(), specimen, specimen.version, "old-policy", digest("old-policy")
+    )
+    for _ in range(12):
+        specimen = workflow.step(principal(), specimen_id)
+        if workflow.next_step(specimen.run).startswith("first_pass:"):
+            break
+    assert len(specimen.run.observations) == 6
+    assert workflow.adapters.segments == 1 and workflow.adapters.readings == 6
+    next_step = workflow.next_step(specimen.run)
+    assert next_step.startswith("first_pass:")
+
+    # Other runs have consumed the rest of the old ceiling. This offline ledger
+    # retains their cumulative usage and this run's settled segment/readers.
+    ledger = ProgramLedger(repository, SCOPE)
+    current = ledger.read()
+    repository.put_document(
+        SCOPE, LEDGER_KIND, ledger.ident,
+        {**current, "reserved_total_micros": 16_000_000 - 1}, current["revision"],
+    )
+    blocked = workflow.step(principal(), specimen_id)
+    assert (blocked.run.stage, blocked.run.blocker) == (
+        "processing_blocked", "program_allowance_exhausted",
+    )
+    assert workflow.adapters.comparisons == 0
+    before = blocked.run.model_dump(mode="json")
+    cumulative = ledger.read()
+
+    response = action(
+        TestClient(app, raise_server_exceptions=False), specimen_id,
+        "retry", "owner-approved-allowance-increase",
+    )
+    assert response.status_code == 200, response.text
+    resumed = repository.get(SCOPE, specimen_id).run
+    assert resumed.profile.execution.program_allowance_micros == ALLOWANCE
+    assert (resumed.id, resumed.stage, resumed.blocker) == (blocked.run.id, "pending", None)
+    assert workflow.next_step(resumed) == next_step
+    for key in ("completed_steps", "attempts", "paid_calls", "usage", "regions", "observations"):
+        assert resumed.model_dump(mode="json")[key] == before[key]
+    assert ledger.read() == cumulative
+
+    progressed = workflow.step(principal(), specimen_id).run
+    assert progressed.blocker is None and next_step in progressed.completed_steps
+    assert progressed.id == resumed.id
+    assert (
+        workflow.adapters.segments, workflow.adapters.readings, workflow.adapters.comparisons
+    ) == (1, 6, 1)
+    assert progressed.paid_calls[:len(blocked.run.paid_calls)] == blocked.run.paid_calls
+    assert ledger.read()["reserved_total_micros"] == (
+        cumulative["reserved_total_micros"] + progressed.paid_calls[-1]["cost_micros"]
+    )
 
 
 def test_a_step_that_would_cross_the_allowance_is_not_called(tmp_path):

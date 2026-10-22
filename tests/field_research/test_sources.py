@@ -1886,7 +1886,9 @@ async def test_a_gazetteer_chain_retries_a_failed_step(tmp_path):
     tools, server, _, _ = make(tmp_path, reply)
     answer = await tools.lookup("wikidata", "Davao Province", field_key="province_state")
     assert answer.status is LookupStatus.SUCCESS
-    assert len(server.requests) == 4
+    # The refused search, its retry, the entities, and one read of the place's
+    # classes, which a province's lookup makes as a county's does (LEVEL_FIELDS).
+    assert len(server.requests) == 5
 
 
 @pytest.mark.asyncio
@@ -1990,3 +1992,246 @@ async def test_the_evidence_passes_the_integrity_check(tmp_path, damaged):
     (tmp_path / "blobs" / answers[damaged].evidence.raw_ref).write_bytes(b"changed")
     with pytest.raises(EvidenceIntegrityError):
         verify_evidence(record, blobs)
+
+
+# --- A county's Wikidata lookup: the level, read from the subclass chain ---
+# The owner, 2026-10-11, asked whether County should hold a Guatemalan
+# municipio: "however the local government does it so if that is the
+# equivalent then yes". Wikidata gives Yepocapa (Q1523937) the instance-of
+# "municipality of Guatemala", a subclass of its second-level
+# administrative division (Q12357832); a US county's class reaches it in
+# two steps ("county of Illinois", "county of the United States").
+
+
+def county_gazetteers(reply=None, *, classes=None):
+    """The recorded gazetteer answers (`gazetteers`), with Wikidata's
+    recorded county lookups (wikidata_county.json): its searches for
+    "Yepocapa" and "Cook County", their entities and labels, and every
+    class a county's lookup reads (`classes` replaces that reply). Every
+    class asked must be recorded."""
+    base = reply or gazetteers()
+    county = recorded("wikidata_county.json")
+
+    def answer(request):
+        params = dict(request.url.params)
+        if request.url.host != "www.wikidata.org":
+            return base(request)
+        if "search" in params:
+            return county["search"].get(params["search"]) or base(request)
+        if params.get("props") == "claims":
+            if classes is not None:
+                return classes(request)
+            ids = params["ids"].split("|")
+            assert set(ids) <= set(county["classes"]), sorted(set(ids) - set(county["classes"]))
+            return {"entities": {key: county["classes"][key] for key in ids}}
+        found = base(request)
+        ids = set(params["ids"].split("|"))
+        extra = county["labels"] if params["props"] == "labels" else county["entities"]
+        return {"entities": found["entities"] | {key: value for key, value in extra.items() if key in ids}}
+
+    return answer
+
+
+SECOND_LEVEL_KIND = "second-level administrative division"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("query", "kinds", "county", "requests"),
+    [
+        # The municipio and the town of one name: only the municipio is a county.
+        ("Yepocapa", {
+            "wikidata:Q1523937": "municipality of Guatemala, " + SECOND_LEVEL_KIND,
+            "wikidata:Q25173824": "human settlement",
+            "wikidata:Q12645389": "dialect",
+        }, ["wikidata:Q1523937"], 5),
+        # Three US counties of the name, two classes up; New South Wales's
+        # cadastral county reaches no second level in two reads, and is at a
+        # county's level only by its "county of" kind, as before.
+        ("Cook County", {
+            "wikidata:Q108418": "county of Illinois, " + SECOND_LEVEL_KIND,
+            "wikidata:Q156619": "county of Minnesota, " + SECOND_LEVEL_KIND,
+            "wikidata:Q156431": "county of Georgia, " + SECOND_LEVEL_KIND,
+            "wikidata:Q5166896": "county of New South Wales",
+            "wikidata:Q915866": "public university, public educational institution of the United States",
+            "wikidata:Q12109474": "film",
+            "wikidata:Q6237101": "hospital",
+        }, ["wikidata:Q108418", "wikidata:Q156619", "wikidata:Q156431", "wikidata:Q5166896"], 5),
+        # A Philippine province: its class is a first-level administrative division,
+        # which its kinds name (Codex's review of 9f5319ca).
+        ("Davao Province", {
+            "wikidata:Q15095071": "former province of the Philippines, province of the Philippines, "
+            "first-level administrative division",
+        }, [], 5),
+    ],
+)
+async def test_a_countys_wikidata_lookup_reads_each_places_level_from_its_classes(
+    tmp_path, query, kinds, county, requests
+):
+    from specimen_digitization.field_research import agreement
+
+    tools, server, _, blobs = make(tmp_path, county_gazetteers())
+    answer = await tools.lookup("wikidata", query, field_key="county")
+    assert {item.authority_id: item.kind for item in answer.candidates} == kinds
+    assert [item.authority_id for item in agreement.at_level("county", answer)] == county
+    # The search, the entities, their labels, then two reads of classes; one
+    # record names every stored response.
+    assert len(server.requests) == requests
+    reads = [dict(request.url.params) for _, request in server.requests[3:]]
+    assert [params["props"] for params in reads] == ["claims"] * (requests - 3)
+    record = json.loads(stored(blobs, answer.evidence))
+    assert len(record["exchanges"]) == requests
+    for exchange in record["exchanges"]:
+        assert hashlib.sha256(blobs.get(exchange["raw_ref"])).hexdigest() == exchange["sha256"]
+
+
+@pytest.mark.asyncio
+async def test_only_a_countys_wikidata_lookup_reads_the_classes(tmp_path):
+    """A city's lookup of the same name reads no class and names no level; a
+    county's is an answer of its own, and sends only its two reads of
+    classes, the other three responses being the city's."""
+    tools, server, _, _ = make(tmp_path, county_gazetteers())
+    city = await tools.lookup("wikidata", "Yepocapa", field_key="city")
+    assert len(server.requests) == 3
+    assert {item.authority_id: item.kind for item in city.candidates}["wikidata:Q1523937"] == (
+        "municipality of Guatemala")
+    county = await tools.lookup("wikidata", "Yepocapa", field_key="county")
+    assert len(server.requests) == 5
+    assert {item.authority_id: item.kind for item in county.candidates}["wikidata:Q1523937"] == (
+        "municipality of Guatemala, " + SECOND_LEVEL_KIND)
+    again = await tools.lookup("wikidata", "Yepocapa", field_key="county")
+    assert again.evidence == county.evidence and len(server.requests) == 5
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [
+    httpx.Response(503, text="unavailable"),
+    httpx.Response(200, json={"entities": {"Q1872284": {"id": "Q999", "claims": {}}}}),
+    httpx.Response(200, text="not json"),
+], ids=["refused", "another-entity", "not-json"])
+async def test_a_class_read_that_fails_leaves_the_countys_lookup_standing_with_no_level(tmp_path, failure):
+    """A read of classes that gets no usable answer ends the reading: the
+    lookup stands on what the other responses gave, and no place is given a
+    level."""
+    tools, _, _, blobs = make(tmp_path, county_gazetteers(classes=lambda request: failure))
+    answer = await tools.lookup("wikidata", "Yepocapa", field_key="county")
+    assert answer.status is LookupStatus.AMBIGUOUS
+    assert {item.authority_id: item.kind for item in answer.candidates}["wikidata:Q1523937"] == (
+        "municipality of Guatemala")
+    assert len(json.loads(stored(blobs, answer.evidence))["exchanges"]) == 3
+
+
+def test_a_redirected_class_is_read_as_the_class_it_redirects_to():
+    """Q13220204, once "second-level administrative country subdivision",
+    redirects to Q12357832 (probed 2026-10-12): wbgetentities files the
+    target under the id asked, naming the redirect."""
+    classes = recorded("wikidata_county.json")["classes"]
+    body = json.dumps({"entities": {"Q13220204": classes["Q13220204"]}}).encode()
+    assert wikidata.parse_superclasses(200, body) == (LookupStatus.SUCCESS, {"Q13220204": ("Q1799794",)})
+    assert wikidata.levels_reached(["Q13220204"], {}) == {wikidata.SECOND_LEVEL}
+    # Another entity under an id that names no redirect to it is no answer.
+    wrong = json.dumps({"entities": {"Q1": {"id": "Q2", "claims": {}}}}).encode()
+    assert wikidata.parse_superclasses(200, wrong) == (LookupStatus.MALFORMED, {})
+
+
+FIRST_LEVEL_KIND = "first-level administrative division"
+
+
+def test_a_place_whose_classes_reach_both_levels_is_at_neither():
+    """A place whose classes reach the first-level and the second-level
+    division alike is given no county's kind: its level is not one. It is
+    named with the first-level class instead (Codex's review of 9f5319ca)."""
+    from specimen_digitization.application.georef_places import Place, Ref
+
+    superclasses = {"Q1": ("Q2", wikidata.SECOND_LEVEL), "Q2": (wikidata.FIRST_LEVEL,)}
+    assert wikidata.levels_reached(["Q1"], superclasses) == {wikidata.FIRST_LEVEL, wikidata.SECOND_LEVEL}
+    place = Place(source="wikidata", record_id="Q9", name="Somewhere", kinds=(Ref("Q1", "unit of somewhere"),))
+    both = approved_sources._place("wikidata", place, wikidata.levels_reached(["Q1"], superclasses))
+    one = approved_sources._place("wikidata", place, frozenset({wikidata.SECOND_LEVEL}))
+    assert (both.kind, one.kind) == ("unit of somewhere, " + FIRST_LEVEL_KIND,
+        "unit of somewhere, " + SECOND_LEVEL_KIND)
+
+
+@pytest.mark.parametrize("levels", [
+    frozenset({wikidata.FIRST_LEVEL, wikidata.SECOND_LEVEL}), frozenset({wikidata.FIRST_LEVEL})],
+    ids=["both-levels", "first-level-only"])
+def test_a_county_kind_whose_classes_reach_the_first_level_is_at_no_county_s_level(levels):
+    """Codex's review of 9f5319ca: a Wikidata place labelled "county" whose
+    classes reach the first-level division (alone or with the second) kept
+    its "county" kind, and settled County. It is at no county's level now."""
+    from types import SimpleNamespace
+
+    from specimen_digitization.application.georef_places import Place, Ref
+    from specimen_digitization.field_research import agreement
+
+    place = Place(source="wikidata", record_id="Q9", name="Somewhere", kinds=(Ref("Q1", "county"),))
+    answer = SimpleNamespace(source_id="wikidata", candidates=[approved_sources._place("wikidata", place, levels)])
+    assert agreement.at_level("county", answer) == []
+    # The control: the same kind with only the second level, or with no class read, is a county's.
+    for read in (frozenset({wikidata.SECOND_LEVEL}), frozenset()):
+        answer = SimpleNamespace(source_id="wikidata", candidates=[approved_sources._place("wikidata", place, read)])
+        assert [c.authority_id for c in agreement.at_level("county", answer)] == ["wikidata:Q9"]
+
+
+@pytest.mark.asyncio
+async def test_a_provinces_wikidata_lookup_reads_its_places_levels_as_a_countys_does(tmp_path):
+    """19f0f1f6's province "Bahia" (the second rerun of 2026-10-18): Wikidata
+    names Bahia only "federative unit of Brazil", a kind no province's level
+    in agreement.PLACE_LEVELS knows, while its class chain reaches the
+    first-level division. A county's lookup read that chain, a province's did
+    not, so the province never settled on it. A province's lookup reads it
+    now (LEVEL_FIELDS); a city's still does not."""
+    tools, _, _, _ = make(tmp_path, county_gazetteers())
+
+    def kinds(answer):
+        return {candidate.authority_id: candidate.kind for candidate in answer.candidates}
+
+    county = await tools.lookup("wikidata", "Yepocapa", field_key="county")
+    province = await tools.lookup("wikidata", "Yepocapa", field_key="province_state")
+    city = await tools.lookup("wikidata", "Yepocapa", field_key="city")
+    assert kinds(province) == kinds(county)
+    assert any(SECOND_LEVEL_KIND in (kind or "") for kind in kinds(province).values())
+    assert not any(SECOND_LEVEL_KIND in (kind or "") for kind in kinds(city).values())
+
+
+def test_a_first_level_unit_named_by_its_own_class_is_at_a_provinces_level_by_its_chain():
+    """Why a province's lookup reads the chain: "federative unit of Brazil"
+    alone is at no province's level, and with the first-level class that its
+    chain reaches it is."""
+    from types import SimpleNamespace
+
+    from specimen_digitization.application.georef_places import Place, Ref
+    from specimen_digitization.field_research import agreement
+
+    place = Place(source="wikidata", record_id="Q40430", name="Bahia", kinds=(Ref("Q1", "federative unit of Brazil"),))
+    for read, found in ((frozenset(), []), (frozenset({wikidata.FIRST_LEVEL}), ["wikidata:Q40430"])):
+        answer = SimpleNamespace(source_id="wikidata", candidates=[approved_sources._place("wikidata", place, read)])
+        assert [c.authority_id for c in agreement.at_level("province_state", answer)] == found
+
+
+def test_a_first_level_class_leaves_a_province_at_its_level():
+    """The control: the first-level class's name does not move a province
+    off a province's level (as on 9f5319ca)."""
+    from types import SimpleNamespace
+
+    from specimen_digitization.application.georef_places import Place, Ref
+    from specimen_digitization.field_research import agreement
+
+    place = Place(source="wikidata", record_id="Q8", name="Davao", kinds=(Ref("Q2", "province of the Philippines"),))
+    candidate = approved_sources._place("wikidata", place, frozenset({wikidata.FIRST_LEVEL}))
+    answer = SimpleNamespace(source_id="wikidata", candidates=[candidate])
+    assert [c.authority_id for c in agreement.at_level("province_state", answer)] == ["wikidata:Q8"]
+    assert agreement.at_level("county", answer) == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [httpx.Response(503, text="unavailable"), httpx.Response(429)],
+    ids=["server-error", "rate-limited"])
+async def test_a_refused_class_read_is_sent_once(tmp_path, failure):
+    """Codex's review of 9f5319ca: a read of classes answered 503 was sent
+    three times (ATTEMPTS), six requests in all; a county's lookup sends at
+    most CLASS_READS more than its three, and a refused read ends them."""
+    tools, server, _, _ = make(tmp_path, county_gazetteers(classes=lambda request: failure))
+    answer = await tools.lookup("wikidata", "Yepocapa", field_key="county")
+    assert answer.status is LookupStatus.AMBIGUOUS
+    assert len(server.requests) == 4

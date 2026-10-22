@@ -326,11 +326,10 @@ def test_two_first_pass_refusals_cost_nothing_and_the_third_attempt_is_sent(
 @pytest.mark.parametrize(
     ("failure", "blocker", "outcome", "sent"),
     [
-        # A server error may follow a billed answer: its outcome is unknown.
-        ("http_503", "external_outcome_unknown", "unknown", 1),
+        # A comparison is safe to retry; its unknown bill remains fully held.
+        ("http_503", "model_provider_error", "failed", 1),
         # HTTP 402 is a transient provider failure, not a refusal.
         ("http_402", "model_provider_error", "failed", 1),
-        ("malformed", "model_malformed_response", "failed", 2),
         # A 429 to the output retry follows an answer that was billed.
         ("answer_then_429", "model_rate_limited", "failed", 2),
     ],
@@ -347,7 +346,8 @@ def test_a_first_pass_failure_other_than_a_refusal_holds_its_whole_reservation(
     step = "first_pass:" + run.regions[0].id
     assert run.blocker == blocker and requests(tmp_path, "first_pass") == sent
     [call] = [c for c in run.paid_calls if c["step"] == step]
-    assert ledger_rows([call]) == [(1, outcome, "reserved", FIRST_PASS_RESERVATION, None, None)]
+    failure_code = "model_provider_error" if failure == "http_503" else None
+    assert ledger_rows([call]) == [(1, outcome, "reserved", FIRST_PASS_RESERVATION, None, failure_code)]
     assert run.usage.reserved_cost_micros == SAM_RESERVATION + FIRST_PASS_RESERVATION
     assert ProgramLedger(workflow.repository, SCOPE).read()["reserved_total_micros"] == (
         run.usage.reserved_cost_micros
@@ -359,10 +359,51 @@ def test_a_first_pass_failure_other_than_a_refusal_holds_its_whole_reservation(
     }
 
 
-def test_a_first_pass_refused_after_its_deadline_stays_reserved(tmp_path, monkeypatch):
-    # Past its effect timeout a first pass's outcome is unknown (the deadline
-    # override), so even a 429 releases nothing: the run, the program ledger
-    # and the research state all keep its whole reservation.
+def test_a_malformed_first_pass_is_given_up_at_once_and_the_record_goes_to_review(
+    tmp_path, monkeypatch
+):
+    # 2026-10-12, specimen 19f0f1f6: GLM's answer stayed malformed after its
+    # output retry ("Exceeded maximum output retries (1)") and the run blocked as
+    # model_malformed_response with no way on. A malformed answer is a known,
+    # billed outcome: the first pass is given up on at once, not asked again.
+    # Its provider reported both requests' tokens, so it costs what they cost
+    # (2026-10-17: 19f0f1f6's malformed attempt was held at 318,670, against
+    # 1,424 at its tokens; its other attempt, a 504, stays held).
+    from test_first_pass_given_up import given_up_findings
+
+    adapters = ChildLab(LocalBlobs(tmp_path / "blobs"), first_passes=1)
+    workflow, principal, ident, backend = lab(tmp_path, monkeypatch, adapters, "malformed")
+
+    specimen = workflow.drain(principal, ident)
+
+    run = specimen.run
+    step = "first_pass:" + run.regions[0].id
+    assert (run.stage, run.blocker, run.disposition) == ("finalized", None, Disposition.REVIEW)
+    assert run.attempts[step] == 1 and requests(tmp_path, "first_pass") == 2
+    assert given_up_findings(run) == [
+        ("first_pass_given_up", "warning", f"first_pass_given_up:{run.regions[0].id}:model_malformed_response")
+    ]
+    [call] = [c for c in run.paid_calls if c["step"] == step]
+    # Two answers of 1,000 in and 40 out at GLM's 0.15 and 0.50 per million.
+    usage = {"input_tokens": 2_000, "output_tokens": 80}
+    assert ledger_rows([call]) == [(1, "failed", "computed", 340, usage, "model_malformed_response")]
+    assert research_state(backend, specimen)["ordinary_reservations"][f"{step}:1"] == {
+        "reserved_micros": FIRST_PASS_RESERVATION,
+        "settled_micros": 340,
+    }
+    # The rest of its reservation is given back on the run and the program ledger.
+    held = [c for c in run.paid_calls if c["cost_basis"] == "reserved"]
+    assert [c["step"] for c in held] == ["segment"]
+    assert run.usage.reserved_cost_micros == sum(c["cost_micros"] for c in run.paid_calls)
+    assert ProgramLedger(workflow.repository, SCOPE).read()["reserved_total_micros"] == (
+        run.usage.reserved_cost_micros
+    )
+
+
+def test_a_first_pass_refused_after_its_deadline_keeps_its_known_refusal(tmp_path, monkeypatch):
+    # The comparison is repeatable. A known first-request 429 still proves a
+    # zero bill past its elapsed deadline, as it does for a reader. A 503 has
+    # no such proof and remains fully reserved in the test above.
     adapters = ChildLab(LocalBlobs(tmp_path / "blobs"), first_passes=1, late=True)
     workflow, principal, ident, backend = lab(tmp_path, monkeypatch, adapters, "http_429")
     workflow.monotonic = lambda: adapters.elapsed[0]
@@ -372,17 +413,17 @@ def test_a_first_pass_refused_after_its_deadline_stays_reserved(tmp_path, monkey
     run = specimen.run
     step = "first_pass:" + run.regions[0].id
     assert requests(tmp_path, "first_pass") == 1
-    assert (run.stage, run.blocker) == ("processing_blocked", "external_outcome_unknown")
-    assert run.reasons == ["external_stage_deadline_exceeded"]
+    assert (run.stage, run.blocker) == ("retry_scheduled", "model_rate_limited")
+    assert "external_stage_deadline_exceeded" not in run.reasons
     [call] = [c for c in run.paid_calls if c["step"] == step]
-    assert ledger_rows([call]) == [(1, "unknown", "reserved", FIRST_PASS_RESERVATION, None, None)]
-    assert run.usage.reserved_cost_micros == SAM_RESERVATION + FIRST_PASS_RESERVATION
+    assert ledger_rows([call]) == [(1, "failed", "refused", 0, None, "model_rate_limited")]
+    assert run.usage.reserved_cost_micros == SAM_RESERVATION
     assert ProgramLedger(workflow.repository, SCOPE).read()["reserved_total_micros"] == (
-        SAM_RESERVATION + FIRST_PASS_RESERVATION
+        SAM_RESERVATION
     )
     assert research_state(backend, specimen)["ordinary_reservations"][f"{step}:1"] == {
         "reserved_micros": FIRST_PASS_RESERVATION,
-        "settled_micros": None,
+        "settled_micros": 0,
     }
 
 
@@ -444,7 +485,9 @@ def test_a_reading_refused_with_429_costs_nothing_on_every_attempt(tmp_path, mon
 
 def test_the_organisers_refused_call_costs_nothing(tmp_path, monkeypatch):
     # `parse` makes one model call (extract_with_agent); a 429 to it is refused
-    # on every attempt here, so the run stops when its retries run out.
+    # on every attempt here. After its last attempt the extraction is given up
+    # on and the run goes on to its disposition (2026-10-12; it used to stop as
+    # retry_budget_exhausted:model_rate_limited).
     adapters = ChildOrganiser(LocalBlobs(tmp_path / "blobs"))
     workflow, principal, ident, backend = lab(tmp_path, monkeypatch, adapters, "http_429")
 
@@ -453,7 +496,11 @@ def test_the_organisers_refused_call_costs_nothing(tmp_path, monkeypatch):
     run = last.run
     assert [d.run.blocker for d in retried] == ["model_rate_limited"] * 2
     assert requests(tmp_path, "extract") == 3
-    assert run.dead_letter and run.blocker == "retry_budget_exhausted:model_rate_limited"
+    assert not run.dead_letter and run.blocker is None
+    assert (run.stage, run.disposition) == ("finalized", Disposition.REVIEW)
+    assert [f.reason_code for f in run.findings if f.rule_id == "extraction_given_up"] == [
+        "extraction_given_up:model_rate_limited"
+    ]
     calls = [c for c in run.paid_calls if c["step"] == "parse"]
     assert ledger_rows(calls) == [
         (n, "failed", "refused", 0, None, "model_rate_limited") for n in (1, 2, 3)

@@ -83,6 +83,14 @@ class and resolves to the nearest smaller class that is set:
 and 3 on large. Scaffolds, screens and patterns choose arrangements with these
 two. A control never reads either.
 
+Amended 2026-10-17: chrome reads a third, `WindowArrangement`, in the same
+file. It is the shell's rule for when a window is stacked (the tab bar, sheets,
+the strip band) and when it docks (the rail, dialogs, the full band): width
+multiplied by the text scale against 768 and 1100, and height against 600 (05
+section 1, "one arrangement per window"). Content keeps reading the window
+class. The text scale is in it because the docked list pane grows with the
+text.
+
 ### 3.2 Density
 
 Unchanged from 09 section 6. Density is the spacing modifier. It never changes
@@ -115,6 +123,7 @@ titles, help text, banner text) is not a label and wraps as content should.
 | `UiButton` | label plus glyph plus padding | none: a button keeps its width and the parent arranges | ellipsis; the tooltip carries the label |
 | `UiChip` | label plus glyph plus padding | none | ellipsis |
 | `UiTabs`, navigation rows | sum of labels | a scrolling row with edge fades | ellipsis |
+| `UiTabBar` (added 2026-10-17) | 48 dp a destination | equal cells; under 48 dp a cell, 48 dp cells in a scrolling row with edge fades | ellipsis, the whole word in a tooltip |
 | `UiTopBar` | leading plus title plus actions | title ellipsis; actions beyond two collapse into an overflow menu | title ellipsis |
 | `UiDataTile` | numeral plus unit | the numeral steps down one display role at a time to `display.medium` | `FittedBox` on the numeral |
 | `UiListRow` | title plus trailing | trailing drops its label and keeps its glyph; then the trailing moves under the title, on a line of its own; the title takes two lines (it is content) | title ellipsis |

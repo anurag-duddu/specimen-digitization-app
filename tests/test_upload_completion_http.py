@@ -15,6 +15,8 @@ import pytest
 
 from specimen_digitization.application.api import SYNTHETIC_COLLECTION, SYNTHETIC_ORG
 
+from process_fixture_support import owned_process
+
 PREFIX = f"/v1/organizations/{SYNTHETIC_ORG}"
 
 
@@ -24,7 +26,7 @@ def tcp_client(tmp_path, request):
         reservation.bind(("127.0.0.1", 0))
         port = reservation.getsockname()[1]
     token = secrets.token_urlsafe(32)
-    process = subprocess.Popen(
+    with owned_process(
         [
             str(Path(".venv/bin/specimen-api").resolve()),
             "--mode",
@@ -39,8 +41,7 @@ def tcp_client(tmp_path, request):
         env=dict(os.environ, SPECIMEN_SYNTHETIC_TOKEN=token),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
-    )
-    try:
+    ):
         with httpx.Client(
             base_url=f"http://127.0.0.1:{port}",
             headers={
@@ -59,9 +60,6 @@ def tcp_client(tmp_path, request):
             else:
                 pytest.fail("API did not start")
             yield client
-    finally:
-        process.terminate()
-        process.wait(timeout=10)
 
 
 def upload(client, truncated=False):
