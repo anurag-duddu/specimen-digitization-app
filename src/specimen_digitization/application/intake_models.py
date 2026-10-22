@@ -1,7 +1,7 @@
 """Private bulk intake contracts. A saved photo is not a submitted specimen."""
 
 from typing import Literal
-from pydantic import Field
+from pydantic import Field, model_validator
 from .domain import Record
 
 MAX_PHOTOS = 500
@@ -49,6 +49,18 @@ class DraftItemInput(Record):
     photo_sensitive: bool = Field(default=False, strict=True)
     source: SourceReference
     replaces_id: str | None = Field(default=None, max_length=100)
+
+
+class SourceItemsInput(Record):
+    items: list[DraftItemInput] = Field(min_length=1, max_length=50)
+
+    @model_validator(mode='after')
+    def remote_items(self):
+        if len({item.client_id for item in self.items}) != len(self.items):
+            raise ValueError('Each photo needs a distinct client identity')
+        if any(item.source.provider in {'camera', 'files'} or item.replaces_id for item in self.items):
+            raise ValueError('Bulk admission accepts new source photos only')
+        return self
 
 
 class DraftItem(Record):

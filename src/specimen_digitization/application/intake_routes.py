@@ -4,7 +4,7 @@ from fastapi.responses import Response
 from pydantic import Field
 from starlette.concurrency import run_in_threadpool
 from .domain import Record
-from .intake_models import DraftInput, DraftItemInput, DraftEdit, SubmitInput
+from .intake_models import DraftInput, DraftItemInput, DraftEdit, SubmitInput, SourceItemsInput
 
 
 class Revision(Record):
@@ -33,6 +33,7 @@ def install_intake_routes(app, prefix, service, *, identity, principal, local_dr
     def capabilities(organization_id: str, collection_id: str, user=Depends(identity)):
         p = access(organization_id, collection_id, user)
         return dict(version=1, max_photos=500, max_bytes=25_000_000,
+            bulk_source_admission=True, durable_picker_selection=True,
             providers=service.sources.capabilities(p) if service.sources else [],
             worker_configured=bool(service.dispatch_intake or local_drain))
 
@@ -67,6 +68,23 @@ def install_intake_routes(app, prefix, service, *, identity, principal, local_dr
         result = service.add_item(p, draft_id, body)
         wake(p, background_tasks)
         return public_item(result)
+
+    def source_batch(organization_id, collection_id, draft_id, body, background, user, *, reconcile=False):
+        p = access(organization_id, collection_id, user)
+        method = service.reconcile_sources if reconcile else service.add_sources
+        result = method(p, draft_id, body.items)
+        wake(p, background)
+        return dict(result, items=[public_item(item) for item in result['items']])
+
+    @app.post(root + '/drafts/{draft_id}/items/bulk')
+    def add_sources(organization_id: str, collection_id: str, draft_id: str, body: SourceItemsInput,
+                    background_tasks: BackgroundTasks, user=Depends(identity)):
+        return source_batch(organization_id, collection_id, draft_id, body, background_tasks, user)
+
+    @app.post(root + '/drafts/{draft_id}/items/reconcile')
+    def reconcile_sources(organization_id: str, collection_id: str, draft_id: str, body: SourceItemsInput,
+                          background_tasks: BackgroundTasks, user=Depends(identity)):
+        return source_batch(organization_id, collection_id, draft_id, body, background_tasks, user, reconcile=True)
 
     @app.post(root + '/drafts/{draft_id}/edit')
     def edit(organization_id: str, collection_id: str, draft_id: str, body: DraftEdit, user=Depends(identity)):

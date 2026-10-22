@@ -21,6 +21,14 @@ String intakeClientId() => List.generate(
   (_) => Random.secure().nextInt(256),
 ).map((value) => value.toRadixString(16).padLeft(2, '0')).join();
 
+typedef _PreparedPhoto = ({
+  XFile file,
+  int size,
+  String? hash,
+  Json? previous,
+  Object? failure,
+});
+
 class BulkIntakeController extends ChangeNotifier {
   BulkIntakeController({
     required this.repository,
@@ -58,14 +66,40 @@ class BulkIntakeController extends ChangeNotifier {
   Json capabilities = {};
   String? error;
   bool loading = true, submitting = false;
-  bool _disposed = false, _polling = false;
+  bool _disposed = false, _viewActive = true, _pollAgain = false;
+  bool preparingFiles = false, addingSources = false;
+  bool _sourceBulkRoutesMissing = false;
+  int preparationCompleted = 0, preparationTotal = 0;
+  int sourceAddCompleted = 0, sourceAddTotal = 0;
+  String get preparationLabel =>
+      'Preparing $preparationCompleted of $preparationTotal photos';
+  String get sourceAddLabel =>
+      'Adding $sourceAddCompleted of $sourceAddTotal photos';
+  int _viewGeneration = 0, _readRevision = 0, _progressPages = 1;
+  String? _progressId;
+  final Map<String, IntakeSubmissionProgress> _progress = {};
+  final Map<String, int> _progressGenerations = {};
+  final Map<String, String> _progressErrors = {};
+  Future<void>? _pollTask;
   String? _draftClientId;
+  String get sourceContextKey {
+    if (_draftClientId != null) return 'local:$_draftClientId';
+    if (draft != null) return 'draft:${draft!.id}';
+    return 'local:${_draftClientId ??= intakeClientId()}';
+  }
+
   final Set<String> selected = {};
   List<String> lastRemoved = [];
   final Map<String, XFile> _files = {};
   final Map<String, Json> _local = {};
+  final Map<String, Json> _pendingSources = {};
+  final Map<String, String> _sourceIdentityIndex = {};
+  String? _sourceIndexDraft;
+  int _sourceRevision = 0, _sourceIndexRevision = -1;
+  final Set<String> _queuedTransfers = {};
   final LinkedHashMap<String, Future<Uint8List>> _previews = LinkedHashMap();
   Future<void> _admissions = Future.value();
+  Future<void> _mutations = Future.value();
   Future<void> _transfers = Future.value();
   Future<void> _previewTail = Future.value();
   Timer? _timer;
@@ -114,12 +148,20 @@ class BulkIntakeController extends ChangeNotifier {
     if (!_disposed) {
       setDraftLeaveWarning(!hasDurableLocalFiles && hasPendingLocalTransfers);
     }
-    if (!_disposed) notifyListeners();
+    if (!_disposed) {
+      if (_pollTask == null) _schedulePoll();
+      notifyListeners();
+    }
   }
 
   String message(Object e) => e is ApiFailure
       ? e.message
       : 'Could not save this change. Retry when your connection is available.';
+  void _invalidateReads() {
+    _readRevision++;
+    if (_pollTask != null) _pollAgain = true;
+  }
+
   Future<Json> call(
     String method,
     String path, {
@@ -127,13 +169,22 @@ class BulkIntakeController extends ChangeNotifier {
     Map<String, String>? query,
   }) async {
     if (_disposed) throw StateError('Intake account changed');
-    final result = await repository.intakeRequest(
-      scope,
-      method,
-      path,
-      body: body,
-      query: query,
-    );
+    Future<Json> send() =>
+        repository.intakeRequest(scope, method, path, body: body, query: query);
+    // Admission, edits and Submit share a draft CAS. File transfers may keep
+    // moving, but this controller never sends competing manifest mutations.
+    final Future<Json> request;
+    if (method == 'GET') {
+      request = send();
+    } else {
+      request = _mutations.then((_) {
+        if (_disposed) throw StateError('Intake account changed');
+        _invalidateReads();
+        return send().whenComplete(_invalidateReads);
+      });
+      _mutations = request.then<void>((_) {}, onError: (Object _) {});
+    }
+    final result = await request;
     if (_disposed) throw StateError('Intake account changed');
     return result;
   }
@@ -147,6 +198,10 @@ class BulkIntakeController extends ChangeNotifier {
         final state = jsonDecode(saved) as Map;
         _draftClientId = state['client_id'] as String?;
         restoredId = state['active_draft_id'] as String?;
+        for (final row in objects(state['sources'])) {
+          _pendingSources[row['client_id'] as String] = row;
+        }
+        _sourceRevision++;
         for (final raw in (state['files'] as List? ?? [])) {
           final row = Map<String, dynamic>.from(raw as Map);
           _local[row['client_id'] as String] = row;
@@ -190,9 +245,7 @@ class BulkIntakeController extends ChangeNotifier {
     } finally {
       loading = false;
       changed();
-      if (!_disposed) {
-        _timer = Timer.periodic(intakePollInterval, (_) => poll());
-      }
+      _schedulePoll();
     }
   }
 
@@ -205,20 +258,37 @@ class BulkIntakeController extends ChangeNotifier {
         'client_id': _draftClientId,
         'active_draft_id': draft?.id,
         'files': _local.values.toList(),
+        'sources': _pendingSources.values.toList(),
       }),
     );
   }
 
-  Future<void> refreshLists() async {
-    drafts = await _pages('/drafts');
-    submissions =
-        (await _pages('/submissions')).map(IntakeSubmission.new).toList()..sort(
+  Future<void> refreshLists({bool Function()? isCurrent}) async {
+    final revision = _readRevision, generation = _viewGeneration;
+    bool current() =>
+        !_disposed &&
+        revision == _readRevision &&
+        generation == _viewGeneration &&
+        isCurrent?.call() != false;
+    final nextDrafts = await _pages('/drafts', isCurrent: current);
+    if (!current()) return;
+    final nextSubmissions =
+        (await _pages(
+          '/submissions',
+          isCurrent: current,
+        )).map(IntakeSubmission.new).toList()..sort(
           (a, b) =>
               '${b.data['created_at']}'.compareTo('${a.data['created_at']}'),
         );
+    if (!current()) return;
+    drafts = nextDrafts;
+    submissions = nextSubmissions;
+    if (nextDrafts.map(_pruneSourceReceipts).fold(false, (a, b) => a || b)) {
+      await _persist();
+    }
   }
 
-  Future<List<Json>> _pages(String path) async {
+  Future<List<Json>> _pages(String path, {bool Function()? isCurrent}) async {
     final rows = <Json>[];
     String? after;
     do {
@@ -229,19 +299,40 @@ class BulkIntakeController extends ChangeNotifier {
       );
       rows.addAll(objects(page['items']));
       after = page['next_cursor']?.toString();
-    } while (after != null && !_disposed);
+    } while (after != null && !_disposed && isCurrent?.call() != false);
     return rows;
   }
 
-  Future<void> refreshDraft() async {
+  Future<void> refreshDraft({bool Function()? isCurrent}) async {
     final id = draft?.id;
     if (id == null) return;
-    final current = IntakeDraft(await call('GET', '/drafts/$id'));
+    final revision = _readRevision, generation = _viewGeneration;
+    bool current() =>
+        !_disposed &&
+        draft?.id == id &&
+        revision == _readRevision &&
+        generation == _viewGeneration &&
+        isCurrent?.call() != false;
+    final nextDraft = IntakeDraft(await call('GET', '/drafts/$id'));
+    if (!current()) return;
     final rows = (await _pages(
       '/drafts/$id/items',
+      isCurrent: current,
     )).map(IntakeDraftItem.new).toList();
-    if (_disposed || draft?.id != id) return;
-    draft = current;
+    if (!current()) return;
+    draft = nextDraft;
+    var receiptsChanged = false;
+    for (final item in rows) {
+      final receipt = _pendingSources[item.data['client_id']];
+      if (receipt != null &&
+          (receipt['draft_id'] == id ||
+              receipt['draft_id'] == item.data['draft_id']) &&
+          receipt['item_id'] != item.id) {
+        receipt['item_id'] = item.id;
+        receipt['confirmed'] = true;
+        receiptsChanged = true;
+      }
+    }
     items = [
       ...rows,
       for (final row in _local.values)
@@ -270,20 +361,170 @@ class BulkIntakeController extends ChangeNotifier {
       }
     }
     selected.removeWhere((id) => !visible.any((item) => item.id == id));
+    if (receiptsChanged) await _persist();
     changed();
   }
 
-  Future<void> poll() async {
-    if (_polling || _disposed || loading) return;
-    _polling = true;
+  bool get _needsDraftPoll =>
+      draft != null &&
+      visible.any(
+        (item) =>
+            !item.id.startsWith('local:') &&
+            const ['waiting', 'transferring', 'checking'].contains(item.state),
+      );
+  bool get _needsPoll => _progressId != null
+      ? (_progress[_progressId]?.batch.active ?? true)
+      : _needsDraftPoll;
+
+  void setViewActive(bool active) {
+    if (_viewActive == active || _disposed) return;
+    _viewActive = active;
+    _viewGeneration++;
+    _timer?.cancel();
+    if (active) {
+      if (_pollTask != null) {
+        _pollAgain = true;
+      } else {
+        unawaited(poll(force: true));
+      }
+    }
+  }
+
+  void _schedulePoll() {
+    _timer?.cancel();
+    if (_disposed || !_viewActive || loading || !_needsPoll) return;
+    _timer = Timer(intakePollInterval, () => unawaited(poll()));
+  }
+
+  IntakeSubmissionProgress? progressFor(String id) => _progress[id];
+  String? progressErrorFor(String id) => _progressErrors[id];
+
+  Future<void> observeSubmission(String id) {
+    if (_progressId != id) {
+      _progressId = id;
+      _progressPages = 1;
+    }
+    return _refreshCurrentView();
+  }
+
+  Future<void> _refreshCurrentView() {
+    _viewGeneration++;
+    final previous = _pollTask;
+    if (previous == null) return poll(force: true);
+    _pollAgain = true;
+    return previous.then((_) => poll(force: true));
+  }
+
+  void stopObservingSubmission(String id) {
+    if (_progressId != id) return;
+    _progressId = null;
+    _viewGeneration++;
+    _schedulePoll();
+  }
+
+  Future<void> loadMoreProgress(String id) {
+    if (_progressId != id || _progress[id]?.hasMore != true) {
+      return Future.value();
+    }
+    _progressPages++;
+    return _refreshCurrentView();
+  }
+
+  Future<List<IntakeSubmissionItem>> progressItemsForAction(String id) async {
+    if (_disposed || _progressId != id || !_viewActive) {
+      throw StateError('Intake view changed');
+    }
+    final visiblePages = _progressPages;
+    // Repair is an explicit action on the entire submission, including rows
+    // beyond the current page. Ordinary polling keeps its current page bound.
+    _progressPages = 5;
     try {
-      if (hasUnsaved && draft != null) await refreshDraft();
-      if (submissions.any((s) => s.active)) await refreshLists();
-      changed();
-    } catch (_) {
-      // Keep the last confirmed queue; polling never invents a failure/success.
+      await _refreshCurrentView();
+      if (_disposed ||
+          _progressId != id ||
+          !_viewActive ||
+          _progressErrors[id] != null ||
+          _progressGenerations[id] != _viewGeneration ||
+          _progress[id]?.hasMore != false) {
+        throw const ApiFailure('Refresh this submission before retrying.');
+      }
+      return List.of(_progress[id]?.items ?? const []);
     } finally {
-      _polling = false;
+      if (_progressId == id) _progressPages = visiblePages;
+    }
+  }
+
+  Future<void> poll({bool force = false}) {
+    if (_disposed || !_viewActive || loading) return Future.value();
+    if (_pollTask != null) return _pollTask!;
+    if (!force && !_needsPoll) return Future.value();
+    _timer?.cancel();
+    _pollAgain = false;
+    final generation = _viewGeneration, revision = _readRevision;
+    bool current() =>
+        !_disposed &&
+        _viewActive &&
+        generation == _viewGeneration &&
+        revision == _readRevision;
+    final task = _reconcileView(current, force: force);
+    _pollTask = task;
+    return task.whenComplete(() {
+      _pollTask = null;
+      if (_pollAgain && _viewActive && !_disposed) {
+        _pollAgain = false;
+        unawaited(poll(force: true));
+      } else {
+        _schedulePoll();
+      }
+    });
+  }
+
+  Future<void> _reconcileView(
+    bool Function() current, {
+    required bool force,
+  }) async {
+    final id = _progressId;
+    try {
+      if (id != null) {
+        final batch = IntakeSubmission(await call('GET', '/submissions/$id'));
+        if (!current()) return;
+        final rows = <IntakeSubmissionItem>[];
+        String? after;
+        for (var pageIndex = 0; pageIndex < _progressPages; pageIndex++) {
+          final page = await call(
+            'GET',
+            '/submissions/$id/items',
+            query: {'limit': '100', 'after': ?after},
+          );
+          if (!current()) return;
+          rows.addAll(objects(page['items']).map(IntakeSubmissionItem.new));
+          after = page['next_cursor']?.toString();
+          if (after == null) break;
+        }
+        await reconcileFinishedTransfers(rows);
+        if (!current()) return;
+        _progress[id] = IntakeSubmissionProgress(
+          batch: batch,
+          items: rows,
+          hasMore: after != null,
+        );
+        _progressGenerations[id] = _viewGeneration;
+        _progressErrors.remove(id);
+        final index = submissions.indexWhere((row) => row.id == id);
+        if (index >= 0) submissions[index] = batch;
+      } else {
+        if (draft != null && (force || _needsDraftPoll)) {
+          await refreshDraft(isCurrent: current);
+        }
+        if (force && current()) await refreshLists(isCurrent: current);
+      }
+      if (current()) changed();
+    } catch (failure) {
+      // Keep the last confirmed queue; polling never invents a failure/success.
+      if (id != null && current()) {
+        _progressErrors[id] = message(failure);
+        changed();
+      }
     }
   }
 
@@ -309,20 +550,14 @@ class BulkIntakeController extends ChangeNotifier {
     String? replacesId,
   }) {
     final admission = _admissions.then((_) async {
+      if (_disposed || files.isEmpty) return;
       _draftClientId ??= intakeClientId();
+      preparingFiles = true;
+      preparationCompleted = 0;
+      preparationTotal = files.length;
+      changed();
       final matched = <String>{};
-      final prepared =
-          <
-            ({
-              XFile file,
-              int size,
-              String? hash,
-              Json? previous,
-              Object? failure,
-            })
-          >[];
-      for (final file in files) {
-        if (_disposed) return;
+      Future<_PreparedPhoto> prepare(XFile file) async {
         try {
           final size = await file.length();
           if (size == 0 || size > 25000000) {
@@ -348,50 +583,41 @@ class BulkIntakeController extends ChangeNotifier {
                     )
                     .firstOrNull;
           if (previous != null) matched.add(previous['client_id'] as String);
-          prepared.add((
+          return (
             file: file,
             size: size,
             hash: hash,
             previous: previous,
             failure: null,
-          ));
-        } catch (e) {
-          prepared.add((
+          );
+        } catch (failure) {
+          return (
             file: file,
             size: 0,
             hash: null,
             previous: null,
-            failure: e,
-          ));
+            failure: failure,
+          );
         }
       }
-      final additions = prepared.where((row) => row.previous == null).length;
-      if (visible.length + additions - (replacesId == null ? 0 : 1) > 500) {
-        error =
-            'A batch holds up to 500 photos. Choose fewer files or start another batch.';
-        changed();
-        if (camera) throw ApiFailure(error!, code: 'batch_limit');
-        return;
-      }
-      for (final photo in prepared) {
+
+      Future<void> publish(_PreparedPhoto photo) async {
         if (_disposed) return;
-        final file = photo.file;
-        final id = intakeClientId();
+        final file = photo.file, id = intakeClientId();
         try {
           if (photo.failure != null) throw photo.failure!;
-          final size = photo.size, hash = photo.hash!;
           final previous = photo.previous;
           final clientId = previous?['client_id'] as String? ?? id;
           final retained = await retainDraftFile(file, _owner, clientId);
           final row = <String, dynamic>{
-            ...?(previous),
+            ...?previous,
             'client_id': clientId,
             'batch_client_id': previous?['batch_client_id'] ?? _draftClientId,
             if (draft != null) 'draft_id': draft!.id,
             'path': retained.path,
             'filename': file.name,
-            'size_bytes': size,
-            'sha256': hash,
+            'size_bytes': photo.size,
+            'sha256': photo.hash,
             'media_type': _mediaType(file),
             'photo_sensitive': previous?['photo_sensitive'] ?? sensitive,
             'replaces_id': ?replacesId,
@@ -403,7 +629,7 @@ class BulkIntakeController extends ChangeNotifier {
           _local[clientId] = row;
           _files[clientId] = retained;
           if (!items.any(
-            (i) => i.id == row['item_id'] || i.id == 'local:$clientId',
+            (item) => item.id == row['item_id'] || item.id == 'local:$clientId',
           )) {
             items.add(
               IntakeDraftItem({
@@ -416,18 +642,55 @@ class BulkIntakeController extends ChangeNotifier {
           await _persist();
           changed();
           _queueTransfer(row);
-        } catch (e) {
+        } catch (failure) {
           if (camera) rethrow;
           items.add(
             IntakeDraftItem({
               'id': 'local:$id',
               'filename': file.name,
               'state': 'needs_attention',
-              'error': {'message': message(e)},
+              'error': {'message': message(failure)},
             }),
           );
-          changed();
         }
+        preparationCompleted++;
+        changed();
+        // Give the first prepared photo and progress a frame before hashing
+        // another original, including when file/persistence futures are fast.
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      try {
+        // Only an ambiguous near-capacity reselection needs all hashes first.
+        // Ordinary batches publish their first retained file immediately.
+        if (visible.length + files.length - (replacesId == null ? 0 : 1) >
+            500) {
+          final prepared = <_PreparedPhoto>[];
+          for (final file in files) {
+            if (_disposed) return;
+            prepared.add(await prepare(file));
+          }
+          final additions = prepared
+              .where((photo) => photo.previous == null)
+              .length;
+          if (visible.length + additions - (replacesId == null ? 0 : 1) > 500) {
+            error =
+                'A batch holds up to 500 photos. Choose fewer files or start another batch.';
+            if (camera) throw ApiFailure(error!, code: 'batch_limit');
+            return;
+          }
+          for (final photo in prepared) {
+            await publish(photo);
+          }
+        } else {
+          for (final file in files) {
+            if (_disposed) return;
+            await publish(await prepare(file));
+          }
+        }
+      } finally {
+        preparingFiles = false;
+        changed();
       }
     });
     // A failed capture must reach its caller without poisoning later retries.
@@ -448,13 +711,17 @@ class BulkIntakeController extends ChangeNotifier {
   }
 
   void _queueTransfer(Json row) {
+    final clientId = row['client_id'] as String;
+    if (!_queuedTransfers.add(clientId)) return;
     _transfers = _transfers.then((_) async {
-      if (_disposed || row['removed'] == true) return;
       try {
+        if (_disposed || row['removed'] == true) return;
         await _transfer(row);
         error = null;
       } catch (e) {
         error = message(e);
+      } finally {
+        _queuedTransfers.remove(clientId);
       }
       changed();
     });
@@ -566,13 +833,18 @@ class BulkIntakeController extends ChangeNotifier {
           builder.add(bytes);
         }
         if (_disposed || row['removed'] == true) return;
-        item = await repository.intakeRequest(
-          scope,
-          'PUT',
-          '/items/${row['item_id']}/content',
-          offset: offset,
-          bytes: builder.takeBytes(),
-        );
+        _invalidateReads();
+        try {
+          item = await repository.intakeRequest(
+            scope,
+            'PUT',
+            '/items/${row['item_id']}/content',
+            offset: offset,
+            bytes: builder.takeBytes(),
+          );
+        } finally {
+          _invalidateReads();
+        }
         final next = (item['offset'] as num).toInt();
         if (next <= offset || next > size) {
           throw const ApiFailure(
@@ -648,51 +920,290 @@ class BulkIntakeController extends ChangeNotifier {
     changed();
   }
 
-  Future<void> addSource(List<Json> photos) async {
-    for (final photo in photos) {
-      photo['client_id'] ??= intakeClientId();
-    }
-    final admitted = items.map((item) => item.data['client_id']).toSet();
-    final additions = photos
-        .where((photo) => !admitted.contains(photo['client_id']))
-        .length;
-    if (visible.length + additions > 500) {
-      error =
-          'Choose up to ${500 - visible.length} more photos for this batch.';
-      changed();
-      return;
-    }
-    try {
-      error = null;
-      await ensureDraft();
-      for (final photo in photos) {
-        final item = await call(
-          'POST',
-          '/drafts/${draft!.id}/items',
-          body: photo,
-        );
-        if (!items.any((existing) => existing.id == item['id'])) {
-          items.add(
-            IntakeDraftItem({
-              ...item,
-              'photo_sensitive': item['sensitive'],
-              'included': true,
-            }),
-          );
-          changed();
-        }
+  String _sourceIdentity(Json input, {bool includeClientId = true}) {
+    Object? canonical(Object? value) {
+      if (value is Map) {
+        final keys = value.keys.map((key) => key as String).toList()..sort();
+        return {for (final key in keys) key: canonical(value[key])};
       }
-    } catch (e) {
-      error = message(e);
-    } finally {
-      // Reconcile a lost acknowledgement once, including partial success.
+      if (value is List) return value.map(canonical).toList();
+      return value;
+    }
+
+    return jsonEncode(
+      canonical({
+        for (final entry in input.entries)
+          if (includeClientId || entry.key != 'client_id')
+            entry.key: entry.value,
+      }),
+    );
+  }
+
+  String? retainedSourceClientId(Json input) {
+    final id = draft?.id;
+    if (id == null) return null;
+    if (_sourceIndexDraft != id || _sourceIndexRevision != _sourceRevision) {
+      _sourceIdentityIndex.clear();
+      for (final row in _pendingSources.values) {
+        if (row['draft_id'] != id) continue;
+        _sourceIdentityIndex[_sourceIdentity(
+              Map<String, dynamic>.from(row['body'] as Map),
+              includeClientId: false,
+            )] =
+            row['client_id'] as String;
+      }
+      _sourceIndexDraft = id;
+      _sourceIndexRevision = _sourceRevision;
+    }
+    final retained =
+        _sourceIdentityIndex[_sourceIdentity(input, includeClientId: false)];
+    return retained != null && !sourceClientIdRemoved(retained)
+        ? retained
+        : null;
+  }
+
+  bool sourceClientIdRemoved(String id) =>
+      items.any((item) => item.data['client_id'] == id && item.removed);
+
+  bool _pruneSourceReceipts(Json value) {
+    if (!const ['submitted', 'discarded'].contains(value['state'])) {
+      return false;
+    }
+    final terminalIds = {
+      for (final entry in objects(value['submitted_entries'])) entry['id'],
+      for (final entry in objects(value['entries']))
+        if (value['state'] == 'discarded' || entry['removed'] == true)
+          entry['id'],
+    };
+    final before = _pendingSources.length;
+    _pendingSources.removeWhere(
+      (_, row) =>
+          terminalIds.contains(row['item_id']) ||
+          (row['draft_id'] == value['id'] && value['state'] == 'discarded'),
+    );
+    if (_pendingSources.length == before) return false;
+    _sourceRevision++;
+    return true;
+  }
+
+  Future<Json> _sourceResponse(
+    String draftId,
+    List<Json> inputs, {
+    required bool reconcile,
+  }) async {
+    if (capabilities['bulk_source_admission'] == true &&
+        !_sourceBulkRoutesMissing) {
       try {
-        await refreshDraft();
-      } catch (e) {
-        error ??= message(e);
+        return await call(
+          'POST',
+          '/drafts/$draftId/items/${reconcile ? 'reconcile' : 'bulk'}',
+          body: {'items': inputs},
+        );
+      } on ApiFailure catch (failure) {
+        if (!const [404, 405].contains(failure.status)) rethrow;
+        _sourceBulkRoutesMissing = true;
       }
-      changed();
     }
+    // An older runtime still supports exact idempotent item registration.
+    // Advance one photo at a time so each acknowledged identity is persisted.
+    final item = await call(
+      'POST',
+      '/drafts/$draftId/items',
+      body: inputs.first,
+    );
+    final manifest = await call('GET', '/drafts/$draftId');
+    final entry = objects(
+      manifest['entries'],
+    ).where((row) => row['id'] == item['id']).firstOrNull;
+    if (entry == null) {
+      throw const ApiFailure(
+        'Refresh to reconcile the photo already added.',
+        code: 'admission_reconciliation',
+      );
+    }
+    return {
+      'items': [
+        {...item, ...entry, 'id': item['id']},
+      ],
+      'pending_client_ids': [
+        for (final input in inputs.skip(1)) input['client_id'],
+      ],
+      'draft_revision': manifest['revision'],
+    };
+  }
+
+  Future<void> addSource(List<Json> photos) {
+    final admission = _admissions.then((_) async {
+      if (_disposed || photos.isEmpty) return;
+      addingSources = true;
+      sourceAddCompleted = 0;
+      sourceAddTotal = photos.length;
+      error = null;
+      changed();
+      String? draftId;
+      try {
+        for (final photo in photos) {
+          if (photo['client_id'] case final String id) {
+            if (sourceClientIdRemoved(id)) photo.remove('client_id');
+          }
+          final retained = retainedSourceClientId(photo);
+          if (!_pendingSources.containsKey(photo['client_id']) &&
+              retained != null) {
+            photo['client_id'] = retained;
+          }
+          photo['client_id'] ??= intakeClientId();
+        }
+        final ids = photos.map((photo) => photo['client_id']).toSet();
+        if (ids.length != photos.length) {
+          throw const ApiFailure(
+            'Choose each photo once for this batch.',
+            code: 'duplicate_client_id',
+          );
+        }
+        final admitted = items.map((item) => item.data['client_id']).toSet();
+        if (visible.length + ids.where((id) => !admitted.contains(id)).length >
+            500) {
+          throw ApiFailure(
+            'Choose up to ${500 - visible.length} more photos for this batch.',
+            code: 'batch_limit',
+          );
+        }
+        await ensureDraft();
+        draftId = draft!.id;
+        final inputs = photos
+            .map(
+              (photo) => Map<String, dynamic>.from(
+                jsonDecode(jsonEncode(photo)) as Map,
+              ),
+            )
+            .toList();
+        for (final input in inputs) {
+          final id = input['client_id'] as String;
+          final previous = _pendingSources[id];
+          if (previous != null &&
+              (previous['draft_id'] != draftId ||
+                  _sourceIdentity(
+                        Map<String, dynamic>.from(previous['body'] as Map),
+                      ) !=
+                      _sourceIdentity(input))) {
+            throw const ApiFailure(
+              'This photo selection changed. Choose it again before adding.',
+              code: 'source_changed',
+            );
+          }
+          _pendingSources[id] = {
+            ...?previous,
+            'client_id': id,
+            'draft_id': draftId,
+            'body': input,
+            'attempted': previous?['attempted'] == true,
+          };
+        }
+        _sourceRevision++;
+        // Persist the exact original request, not a regenerated source identity.
+        await _persist();
+        final confirmed = <String>{};
+        for (var start = 0; start < inputs.length; start += 50) {
+          var pending = inputs.sublist(start, min(start + 50, inputs.length));
+          final reconcileFirst = pending.any(
+            (input) =>
+                admitted.contains(input['client_id']) ||
+                _pendingSources[input['client_id']]?['attempted'] == true,
+          );
+          var reconcile = reconcileFirst;
+          while (pending.isNotEmpty) {
+            if (_disposed) return;
+            for (final input in pending) {
+              _pendingSources[input['client_id']]?['attempted'] = true;
+            }
+            await _persist();
+            Json response;
+            Object? interrupted;
+            try {
+              response = await _sourceResponse(
+                draftId,
+                pending,
+                reconcile: reconcile,
+              );
+            } catch (failure) {
+              if (reconcile) rethrow;
+              interrupted = failure;
+              response = await _sourceResponse(
+                draftId,
+                pending,
+                reconcile: true,
+              );
+            }
+            final wanted = {
+              for (final input in pending) input['client_id'] as String: input,
+            };
+            final returned = objects(response['items']);
+            final remaining = (response['pending_client_ids'] as List?)
+                ?.cast<String>();
+            final found = returned.map((item) => item['client_id']).toList();
+            if (remaining == null ||
+                found.any((id) => !wanted.containsKey(id)) ||
+                found.toSet().length != found.length ||
+                remaining.toSet().length != remaining.length ||
+                remaining.any(
+                  (id) => !wanted.containsKey(id) || found.contains(id),
+                ) ||
+                found.length + remaining.length != wanted.length ||
+                returned.any((item) => item['id'] is! String)) {
+              throw const ApiFailure(
+                'Refresh to reconcile the photos already added.',
+                code: 'admission_reconciliation',
+              );
+            }
+            for (final item in returned) {
+              final clientId = item['client_id'] as String;
+              confirmed.add(clientId);
+              _pendingSources[clientId]?['confirmed'] = true;
+              _pendingSources[clientId]?['item_id'] = item['id'];
+              final value = IntakeDraftItem({
+                ...item,
+                'photo_sensitive': item['photo_sensitive'] ?? item['sensitive'],
+                'included': item['included'] ?? true,
+              });
+              final index = items.indexWhere(
+                (existing) => existing.id == value.id,
+              );
+              if (index < 0) {
+                items.add(value);
+              } else {
+                items[index] = value;
+              }
+            }
+            sourceAddCompleted = confirmed.length;
+            await _persist();
+            changed();
+            if (remaining.isNotEmpty && interrupted != null) throw interrupted;
+            if (remaining.isNotEmpty && returned.isEmpty && !reconcile) {
+              throw const ApiFailure(
+                'Adding paused before the next photo. Retry to continue.',
+                code: 'admission_paused',
+              );
+            }
+            pending = [for (final id in remaining) wanted[id]!];
+            reconcile = false;
+          }
+        }
+      } catch (failure) {
+        error = message(failure);
+      } finally {
+        if (draftId != null && draft?.id == draftId && !_disposed) {
+          try {
+            await refreshDraft();
+          } catch (failure) {
+            error ??= message(failure);
+          }
+        }
+        addingSources = false;
+        changed();
+      }
+    });
+    _admissions = admission.catchError((Object _) {});
+    return admission;
   }
 
   void select(String id, bool value) {
@@ -767,7 +1278,13 @@ class BulkIntakeController extends ChangeNotifier {
   }
 
   Future<IntakeSubmission?> submit() async {
-    if (submitting || draft == null || readyCount == 0) return null;
+    if (submitting ||
+        preparingFiles ||
+        addingSources ||
+        draft == null ||
+        readyCount == 0) {
+      return null;
+    }
     submitting = true;
     error = null;
     changed();
@@ -801,6 +1318,14 @@ class BulkIntakeController extends ChangeNotifier {
         '/drafts/${draft!.id}/submit',
         body: {'expected_revision': current['revision'], 'item_ids': chosen},
       );
+      _pruneSourceReceipts({
+        ...current,
+        'state': 'submitted',
+        'submitted_entries': [
+          for (final entry in objects(current['entries']))
+            if (chosen.contains(entry['id'])) entry,
+        ],
+      });
       final remaining = result['remaining_draft_id'] as String?;
       _local.removeWhere(
         (_, row) => chosen.contains(row['item_id']) && row['saved'] == true,
@@ -825,8 +1350,8 @@ class BulkIntakeController extends ChangeNotifier {
     }
   }
 
-  Future<void> openDraft(Json value) async {
-    await _admissions;
+  Future<void> openDraft(Json value) => _changeDraft(() async {
+    _viewGeneration++;
     final localId = value['local_client_id'] as String?;
     if (localId != null) {
       draft = null;
@@ -858,7 +1383,7 @@ class BulkIntakeController extends ChangeNotifier {
     await refreshDraft();
     await _persist();
     changed();
-  }
+  });
 
   Future<void> reselectSubmission(
     String submissionId,
@@ -944,9 +1469,20 @@ class BulkIntakeController extends ChangeNotifier {
     }
   }
 
-  Future<void> newDraft() async {
-    await _admissions;
+  Future<void> _changeDraft(Future<void> Function() change) {
+    final update = _admissions.then((_) async {
+      if (_disposed) return;
+      await change();
+    });
+    _admissions = update.catchError((Object _) {});
+    return update;
+  }
+
+  Future<void> newDraft() => _changeDraft(_newDraft);
+
+  Future<void> _newDraft() async {
     await _persist();
+    _viewGeneration++;
     draft = null;
     _draftClientId = intakeClientId();
     items = [];
@@ -956,7 +1492,7 @@ class BulkIntakeController extends ChangeNotifier {
     changed();
   }
 
-  Future<void> discardDraft() async {
+  Future<void> discardDraft() => _changeDraft(() async {
     final current = draft;
     if (current != null) {
       final latest = await call('GET', '/drafts/${current.id}');
@@ -965,6 +1501,7 @@ class BulkIntakeController extends ChangeNotifier {
         '/drafts/${current.id}/discard',
         body: {'expected_revision': latest['revision']},
       );
+      _pruneSourceReceipts({...latest, 'state': 'discarded'});
     }
     final localIds = _local.entries
         .where(
@@ -980,8 +1517,14 @@ class BulkIntakeController extends ChangeNotifier {
       _files.remove(id);
       await releaseDraftFile(row['path'] as String);
     }
-    await newDraft();
+    await _newDraft();
     await refreshLists();
+  });
+
+  void invalidatePreview(IntakeDraftItem item, {bool full = false}) {
+    _previews.remove(
+      '${item.id}:${item.data['state']}:${item.data['revision']}:$full',
+    );
   }
 
   Future<Uint8List> preview(IntakeDraftItem item, {bool full = false}) {
@@ -1004,7 +1547,7 @@ class BulkIntakeController extends ChangeNotifier {
           )
           .firstOrNull;
       final file = row == null ? null : _files[row['client_id']];
-      if (file == null) throw StateError('Preview awaits saved content');
+      if (file == null) throw const IntakePreviewPending();
       // Only one original is decoded at a time, even when many tiles mount.
       final previous = _previewTail;
       final gate = Completer<void>();

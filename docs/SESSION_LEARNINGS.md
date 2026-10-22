@@ -24130,3 +24130,194 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   - (e) A textually clean merge of main can still conflict with a change of shape: after each merge, grep every reader of the changed structure (here `ordinary_effects` in the new caps code).
   - Validation, round 2: `tests/test_lane_allowance_archive.py` 16 passed; red on `51f53b06`, 5 failed on their own assertions (the cap ledger kept 400 entries in its head; the archived replay was refused as exhausted; a never-archived head read 16 archive ids, one per reservation; both marked race cases need the mark). Full Python suite on `9df3a282`: 16,747 passed, 48 skipped, 2 failed: `test_sam3_runtime.py::test_sam_total_deadline_durable_unknown_and_no_retry[success]` (load, as in round 1) and `test_cohort_reading_barrier.py::test_complete_cohort_reservation_precedes_reader_and_survives_restart`, which passed alone at load 6 and touches neither ledger. After the last commit, the 14 ledger, tenant budget and cost-cap files: 191 passed.
   - G51, round 2: APPROVE of `7a7f4306` and `10709c9f` (docs deltas) and of `9df3a282` (code, https://github.com/anurag-duddu/specimen-digitization-app/pull/388#issuecomment-6304268993), no blocking findings. Its four non-blocking findings: the mark's deployment precondition (now in the doc), an unmarked-head race test (added), the read cost on marked heads (in the PR body), the warning text (now "ledger archiving deferred").
+- Fix-forward [PR #398](https://github.com/anurag-duddu/specimen-digitization-app/pull/398)
+  uses exact head `b05647f4b02770f4e389d9819a7723d6d50f646a`, tree
+  `01a1095a80d57e1d28f6ebd1028b04b10cb85f8b`, based on merged main
+  `6873e6d70f05edfc7d692917507a728db1665cb5`. Commit and pre-push hooks
+  passed. Independent `/root/release_review` approved that exact two-path head
+  under G51 with no unresolved P1/P2 or security findings.
+- Exact-head [CI `39671122436`](https://github.com/anurag-duddu/specimen-digitization-app/actions/runs/39671122436)
+  and [runtime candidate `39671122454`](https://github.com/anurag-duddu/specimen-digitization-app/actions/runs/39671122454)
+  succeeded, including all twelve Python shards, the three required contexts,
+  real SQL/Storage contracts and both native compile checks. These native
+  checks do not establish actual-device or distributed-build acceptance.
+- Fresh pre-merge reads confirm main is still `6873e6d7`, strict required
+  contexts and administrator enforcement remain enabled, conversation resolution
+  is required, force pushes remain disabled, and all four active production
+  environments accept only `main`. PR #398 is clean/mergeable with zero
+  unresolved review threads. Merge uses the ordinary protected path without
+  an admin override. This append is intentionally uncommitted; preserve it
+  with the actual post-release outcome and do not prune this worktree.
+
+- PR #398 merged normally at `c9040b83b4ccd5f4507bd53f44ab4694e81cd021`
+  (`2026-10-21T21:12:02Z`). Its tree
+  `01a1095a80d57e1d28f6ebd1028b04b10cb85f8b` exactly matches the
+  independently approved/tested candidate; parents are previous main `6873e6d7`
+  and approved head `b05647f4`. The post-merge Hosting failure from PR #397 was
+  fixed through this ordinary PR, with no bypass or substituted hand deployment.
+- All protected main releases succeeded for that exact merge:
+  [Hosting `39676823376`](https://github.com/anurag-duddu/specimen-digitization-app/actions/runs/39676823376),
+  [Data `39676823233`](https://github.com/anurag-duddu/specimen-digitization-app/actions/runs/39676823233),
+  [Runtime `39676823286`](https://github.com/anurag-duddu/specimen-digitization-app/actions/runs/39676823286).
+  Main runtime candidate `39676823270` also passed. Runtime API smoke, both
+  private definition/policy steps and registry cleanup passed; queued-work
+  processing and its restore step were skipped. This release ran no model job.
+- Independent public smoke commands exited 0. Hosting's actual marker identifies
+  `c9040b83b4ccd5f4507bd53f44ab4694e81cd021`, run `39676823376`,
+  attempt `1`, built at `2026-10-21T21:23:54Z`; the strict four-argument smoke
+  qualified that exact identity. API `/version` reports the same full source SHA
+  in production mode (HTTP 200), `/health/ready` answers ready (200), and an
+  unauthenticated `/v1/session` answers exactly 401. Authentic private evidence:
+  `/private/tmp/specimen-pr398-public-hosting-smoke.log`,
+  `/private/tmp/specimen-pr398-public-api-smoke.log`,
+  `/private/tmp/specimen-pr398-public-deployment.json`,
+  `/private/tmp/specimen-pr398-public-api-version.json`, and
+  `/private/tmp/specimen-pr398-runtime-c904-steps.json`.
+- Protected reliability release is complete. No app/browser operation, import,
+  Submit, paid model call, actor/budget configuration change or provider-folder
+  edit occurred in this follow-through. Root's ten-original demo folders and
+  prior accepted two-photo Gmail E2E were preserved; actual native-device
+  acceptance is not established by these compile checks. This post-release
+  append remains intentionally uncommitted on `codex/fix-stage-cost-fixture-clock`;
+  retain this worktree and append, with no cleanup that could lose them.
+- Closeout recorded at `2026-10-21T21:26:46.709192+00:00`.
+
+### 2026-10-21 — connector workspace and bulk-intake polish, research through verification
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, root coordinator, branch
+  `codex/intake-connector-polish`, worktree `5da8`, baseline
+  `c9040b83b4ccd5f4507bd53f44ab4694e81cd021`. The preceding PR398 closeout
+  append was preserved. Current PR, merged commit and polish deployment:
+  Not confirmed at this pre-verification entry.
+- The owner requested Mobbin research, one relevant direction and a written plan
+  before building, with autonomous reversible implementation and release.
+  Inspected Air, Claude, ChatGPT, Attio, Canva, Dropbox and Frame.io flows;
+  selected Air's bulk asset import workspace as the primary reference. The
+  before-code plan and exact observed references are in
+  `docs/execution/INTAKE_CONNECTOR_POLISH_20261021.md`. Live baseline audit used
+  the Gmail account in the designated E2E collection, without importing or
+  submitting anything. Provider demo folders and specimen Queue were preserved.
+- Implementation: shared `UiImportWorkspace`, source rail/compact selector,
+  lazy file lists, named folders, scoped filtering/selection, automatic selection
+  of eligible Picker results, retained same-batch/account context, per-link
+  recovery, progress and accessible preview retry. Controller admission uses
+  bounded requests and original persisted identities; hidden/terminal progress
+  views stop periodic reads. Existing intake workers now continue Picker checking
+  independently of the UI. Explicit capability flags retain legacy API behavior
+  during independent Hosting/runtime rollout. No new OAuth scopes, IAM grants,
+  schema, provider configuration or workflow changes.
+- Focused evidence: backend five-module suite 140 passed (two existing warnings),
+  `/private/tmp/specimen-intake-polish-backend-preflight-focused.log`; root
+  workspace/connector/source-recovery suite 54 passed,
+  `/private/tmp/intake-polish-workspace-final-fixed.log`; controller six-suite
+  rerun 63 passed, `/private/tmp/specimen-intake-polish-controller-final-rerun.log`;
+  shared workspace/dialog contracts 15 passed earlier in
+  `/private/tmp/intake-workspace-component.log`. Fifteen new full-shell renders
+  cover phone/tablet/desktop, light/dark, 200% text, connection, storage-empty and
+  link partial-failure states. Root inspected rendered states. These are
+  controlled transport/rendering results, not provider/device acceptance.
+- Independent reviewer `/root/polish_independent_review` inspected the entire
+  diff, owning permission/persistence sources and desktop/200% phone PNGs.
+  Findings fixed before verification: preflight membership latency could consume
+  the admission budget forever; removed photos reused removed manifest IDs;
+  historical source receipts accumulated indefinitely. Strongest-permission
+  batching, post-preflight admission budgeting, confirmed-removed re-admission,
+  and authoritative terminal-receipt pruning address those cases. Additional
+  checks cover lost replies, remaining drafts, stale progress snapshots,
+  serialized draft switches and legacy endpoint compatibility. Exact-head G51
+  verdict and full canonical verification remain Not confirmed at this entry.
+- Reusable constraints: preserve exact source/version/body identities across
+  uncertain replies, but never reuse a confirmed removed admission; source UI
+  memory must include the local/server batch identity, not a shared null/new key.
+  Link-list edits must prune removed URLs and changed-account rows while retaining
+  unchanged successes and explicit deselections. A provider retry must not reset
+  active leases or persisted backoff. Keep source permission preflight outside a
+  cooperative progress budget, while still authorizing every owner/object.
+- Failed approaches: `SliverFillRemaining` queried intrinsic sizes through a
+  LayoutBuilder-backed button; replaced it with a bounded minimum-height adapter.
+  A broad desktop test input finder also matched shell search; scoped it to the
+  link field. Pending remote photos initially showed Retry preview; distinguished
+  not-yet-saved content from real fetch failure, retaining the existing goldens.
+  Direct subset Dart analysis hit an SDK linter NullAwareElement internal error;
+  full normal Flutter analysis is pending, with no lint suppression introduced.
+- Controlled local admission measurements reduced 500 calls to 10 (50 per chunk).
+  SQLite timings in the plan are not live-network claims. Registered storage
+  pagination still relists inventory; optimizing it and recursive scans needs a
+  safe snapshot/resumable-scan contract. Existing complete-list limits remain.
+  Real provider smoke after release, physical camera, managed-account policy,
+  VoiceOver/TalkBack and 500-original device memory acceptance: Not confirmed
+  by this polish's fixture evidence. No scientific processing was started here.
+- Follow-up before the canonical run: normal full `flutter analyze --no-pub
+  --fatal-infos` passed with no issues; the earlier direct subset analyzer crash
+  was not reproduced by the required invocation. Final activity rerun 12 passed
+  after tightening the stale-action fence. Evidence:
+  `/private/tmp/specimen-intake-polish-flutter-analyze-final-rerun.log` and
+  `/private/tmp/specimen-intake-polish-activity-final.log`. Source frozen for
+  canonical verification; no existing golden baseline was changed.
+- Final compatibility correction (2026-10-21, same task/branch): independent
+  review found cached capability flags could leave an open client using GET-only
+  Retry after a runtime upgrade. Explicit selection Retry now probes POST and
+  falls back only on 404/405, with the original account/Picker/generation fences.
+  Tests cover both old-server statuses, stale capability flags, and no fallback
+  on authorization, conflict, server or network failures. The first canonical
+  run was intentionally interrupted (exit 130, before completion) for this fix;
+  it is not counted as passed. The final connector/workspace/source-recovery
+  suites passed 61 tests without updating goldens; evidence:
+  `/private/tmp/intake-polish-final-retry-focused.log`.
+- Canonical verification completed successfully on the frozen implementation:
+  `scripts/ci/verify.sh` exit 0, evidence
+  `/private/tmp/specimen-intake-polish-verify-final.log`. Python: 19,244 passed,
+  50 skipped, all 19,294 collected tests reconciled exactly once across six
+  shards. Design system: 1,312 passed. App: 3,572 passed, seven skipped.
+  Both analyzers, UI writing, formatting, secret/policy checks, actual optimized
+  dart2js OAuth adapter in isolated Chrome, release web build and all declared
+  route/security-header smoke checks passed. No existing goldens were changed.
+  This is local canonical evidence, not deployed/provider acceptance. Independent
+  reviewer confirmed the final Retry correction resolved with no new finding;
+  exact committed-head verdict and protected CI/release remain next.
+- Post-release real-provider browser verification currently cannot proceed:
+  the Mac is locked. An unlock request is pending with the user. This does not
+  block the authorized PR/protected-release work and does not establish personal
+  or institutional provider acceptance for this new build.
+- PR/review follow-up (2026-10-21, same task): committed implementation as
+  `9c3a5548b6110ed617802633ea0a3c4d3c42c04f`, PR #399
+  <https://github.com/anurag-duddu/specimen-digitization-app/pull/399>.
+  Independent reviewer `/root/polish_independent_review` issued **G51 APPROVED**
+  for that exact head against `c9040b83b4ccd5f4507bd53f44ab4694e81cd021`,
+  confirming the clean committed diff, resolved findings and canonical evidence.
+  Reviewer did not rerun tests. Hosted CI/CD run `39693627001` and runtime
+  candidate run `39693626999` are in progress; merge/release not yet confirmed.
+  This append is local closeout evidence after the reviewed implementation commit.
+- Hosted attempt 1 follow-up: PR #399 CI/CD run `39693627001` failed the
+  unchanged `test_complete_cohort_reservation_precedes_reader_and_survives_restart`
+  in Python shard 6. Its local fixture freezes wall time but leaves effect
+  monotonic time real; synchronous fixture work exceeded its persisted one-second
+  budget on the runner. The production deadline and unresolved-liability guard
+  correctly blocked it. Relevant cohort/workflow/launch files are byte-identical
+  to the base. Original focused test passed locally, while a controlled 1.01-second
+  fixture clock advance reproduced the exact deadline/held-liability behavior.
+  Evidence: `/private/tmp/intake-polish-pr399-shard6-clean.log` and
+  `/private/tmp/intake-polish-cohort-deadline-diagnosis.log`. Fixing the fixture's
+  clock consistency and adding explicit late-result/restart coverage; production
+  barriers, one-second policy and required checks remain unchanged. Earlier G51
+  approval applies only to `9c3a5548`; the amended head needs fresh review/CI.
+- Fixture correction completed only in `tests/test_cohort_reading_barrier.py`:
+  all constructed/restarted fixture workflows now receive the existing simulated
+  clock for elapsed effects. No production file or timeout changed. New negative
+  coverage advances 1.01 seconds, verifies the deadline block, retained 165-cost
+  liability/two claims, no accepted late observation and no replay/next-member
+  dispatch after SQLite restart. The original one-off single-worker override is
+  now centralized. Independent reviewer found no issue in this correction.
+  Cohort barrier, stage-cost reservations and evidence-pilot suites: 77 passed,
+  three existing warnings (33.52s), evidence
+  `/private/tmp/intake-polish-cohort-clock-focused.log`. Full canonical rerun
+  begins next on the frozen amended tree; earlier full run remains accurately
+  recorded for the preceding implementation head.
+- Full amended-tree canonical run completed with exit 0:
+  `/private/tmp/specimen-intake-polish-verify-cohort-fix.log`. Python: 19,245
+  passed, 50 skipped, all 19,295 collected tests reconciled exactly once across
+  six shards. Design system: 1,312 passed. App: 3,572 passed, seven skipped.
+  Both analyzers, policy/secret/format/UI-writing gates, compiled OAuth browser
+  contract, release web build and route/security-header smoke passed again.
+  Ready to commit the fixture-only correction, renew exact-head review and run
+  hosted CI again; production release remains not confirmed.
