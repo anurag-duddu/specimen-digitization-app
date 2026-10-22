@@ -520,12 +520,25 @@ new number off it.
 
 ### 4.4 Intake and capture
 
-Cloud-source sheets use a connector progression: Connect → provider consent →
+The shared import workspace uses a connector progression: Connect → provider consent →
 photo selection. Before connection, show one brief description and one Connect
 action. After connection, keep the account in one compact row; put switching,
 disconnect/reconnect, and optional Google folder access in its overflow menu.
 Use a single-choice selector only when accounts need choosing. Folder-wide
 selection and opt-in subfolders belong in a collapsed Folder options disclosure.
+
+**Connector polish, 2026-10-21.** `UiImportWorkspace` owns one title, close action,
+source navigation and bounded content region. Desktop uses a source rail;
+compact/large-text windows use a labeled source selector. The provider pane owns
+its scrolling file list and persistent selection footer (scrolling at very short
+heights). Use named folder navigation, lazy file rows, a filter explicitly scoped
+to loaded files and Select visible photos. Google Picker returns selected photos;
+do not require selecting the same batch twice. Add N photos returns to private
+batch review, while Submit remains its separate primary action. Keep filename and
+selection on one row, with secondary text for unavailable files. Show operation
+progress during checking/adding instead of replacing the workspace with a spinner.
+Full-shell responsive/light/dark/200%-text renders live in
+`test/intake_workspace_test.dart`, alongside connector failure contracts.
 
 After a confirmed failure, show the reason and Retry. Put administrator guidance
 and Copy administrator details in a collapsed Administrator help disclosure.

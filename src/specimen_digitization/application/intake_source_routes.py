@@ -73,6 +73,7 @@ def install_source_routes(app, prefix, service, manager, *, identity, principal,
         return service.sources.providers[doc['provider']]
 
     selection_rows = PickerSelection(service, provider, clock=manager.clock) if manager else None
+    service.selection = selection_rows
 
     def native_selection(p, pending, *, advance=True):
         # An authenticated completion retains the IDs before exchange. Polling
@@ -80,7 +81,7 @@ def install_source_routes(app, prefix, service, manager, *, identity, principal,
         if pending['state'] == 'authorized':
             pending = selection_rows.begin(p, pending, pending['picked_file_ids'], pending['id'])
         if advance and pending['state'] == 'selecting':
-            pending = selection_rows.advance(p, pending['id'])
+            pending = selection_rows.status(p, pending)
         return selection_reply(pending)
 
     @app.post(root + '/source-preview')
@@ -307,11 +308,20 @@ def install_source_routes(app, prefix, service, manager, *, identity, principal,
 
     @app.get(root + '/connections/{connection_id}/picker/{picker_id}')
     def picker_status(organization_id: str, collection_id: str, connection_id: str, picker_id: str, user=Depends(identity)):
+        return picker_progress(organization_id, collection_id, connection_id, picker_id, user)
+
+    @app.post(root + '/connections/{connection_id}/picker/{picker_id}/retry')
+    def picker_retry(organization_id: str, collection_id: str, connection_id: str, picker_id: str, user=Depends(identity)):
+        return picker_progress(organization_id, collection_id, connection_id, picker_id, user, retry=True)
+
+    def picker_progress(organization_id, collection_id, connection_id, picker_id, user, *, retry=False):
         p = access(organization_id, collection_id, user)
         pending = service.read(p, 'intake_oauth', picker_id)
         native = pending['purpose'] == 'oauth' and pending.get('native_picker')
         if pending['connection_id'] != connection_id or (pending['purpose'] != 'picker' and not native):
             raise ValueError('Invalid picker session')
+        if retry and pending['state'] == 'selecting':
+            return selection_reply(selection_rows.retry(p, pending))
         if native:
             if pending['state'] == 'exchanging':
                 try:
@@ -322,7 +332,7 @@ def install_source_routes(app, prefix, service, manager, *, identity, principal,
                 pending = service.read(p, 'intake_oauth', picker_id)
             return native_selection(p, pending)
         if pending['state'] == 'selecting':
-            pending = selection_rows.advance(p, pending['id'])
+            pending = selection_rows.status(p, pending)
         return selection_reply(pending)
 
     @app.post('/v1/intake/picker/bootstrap')

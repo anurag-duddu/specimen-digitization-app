@@ -79,17 +79,20 @@ selected provider account; multiple connections are never silently substituted.
 Drive and Dropbox start with one short description and **Connect**, continue
 through provider consent, and immediately open photo selection. Google reuses the
 user-opened sign-in popup for Picker; Dropbox opens its folder browser in the
-source sheet. Native clients use Google's system-browser Picker during OAuth
+shared import workspace. Native clients use Google's system-browser Picker during OAuth
 (`trigger_onepick=true`), with `drive.file` as the only requested scope. The
 provider returns selected file IDs to the HTTPS callback; the app then completes
 the connection with its original session proof. Returning native users choose
 files through that same provider flow, preserving the saved account identity.
-The server retains all selected IDs before checking metadata. Authenticated polls
-check at most five files with a cooperative three-second budget between files,
-checkpointing each result and showing processed/total progress. Provider credential
-reconciliation and a single request can take longer; a lost reply resumes from the
-saved cursor. Reconnecting the same account preserves this selection and its
-partial results. Selection does not create a draft or submit a specimen.
+The server retains all selected IDs before checking metadata. The existing intake
+worker advances selection in bounded chunks of at most 50 files, with a cooperative
+three-second budget between files and a fenced checkpoint after each result.
+Configured production status polls observe this durable work; closing the dialog
+does not stop it. Provider requests can outlast the cooperative budget. Leases,
+persisted backoff and four attempts bound retries; explicit Retry requeues the
+retained IDs after active leases and retry deadlines expire. Reconnecting the same
+account preserves this selection and its partial results. Selection does not
+create a draft or submit a specimen.
 Returning users see their saved account and photo selection. A
 single connected account is selected automatically; multiple accounts require an
 explicit choice. Keep account switching, disconnect/reconnect, and Google's
@@ -100,6 +103,32 @@ Do not repeat privacy explanations, account-management buttons, or permission
 choices around the import action. Import links starts with the link field; only
 providers found in entered links expose connection/account controls. Direct
 image links do not show unrelated connectors.
+
+The shared workspace uses source navigation on desktop and a labeled selector on
+compact windows. The file region scrolls independently with lazy rows, named
+folder navigation, a filter explicitly scoped to loaded files, and a persistent
+selection count/Add action. At very short heights the footer scrolls into reach.
+Google's returned eligible selection is already selected. Closing/reopening within
+the same draft retains source context; starting another batch does not inherit it.
+Link checking retains unchanged successes and explicit deselections; removing a
+link or changing its account removes the corresponding old selection.
+
+Source admission uses `/drafts/{id}/items/bulk` in chunks of at most 50, with one
+draft manifest CAS per chunk. `/drafts/{id}/items/reconcile` resolves exact retained
+request identities after uncertain replies, repairs missing staging jobs, and
+never dispatches scientific work. Clients retain original bodies and IDs across
+restart, including acknowledged rows, so retry cannot duplicate a partial batch.
+Existing single-item clients remain compatible. Submit stays the explicit
+scientific-processing boundary.
+
+Clients opt into bulk admission only when the server advertises
+`bulk_source_admission`. Explicit selection retry probes the POST retry route,
+falling back to the legacy status read only on 404/405; cached capabilities must
+not strand exhausted work after a runtime upgrade. During independent
+Hosting/runtime rollout, the existing idempotent single-item and status paths
+remain usable. Admission normalizes and authorizes the entire
+chunk before its cooperative write budget starts; equivalent permission checks
+are batched without skipping current membership, owner or per-object validation.
 
 After a failed attempt, show the confirmed reason and Retry. Administrator
 instructions and copying are under **Administrator help**, initially collapsed.

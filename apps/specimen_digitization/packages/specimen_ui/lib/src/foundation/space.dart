@@ -112,6 +112,12 @@ class UiSpace {
   /// Maximum width of a centred dialog (10 section 3).
   double get dialogMax => 560;
 
+  /// A multi-step file workspace, with room for source navigation and files.
+  double get importWorkspaceMax => 1040;
+
+  /// Bounded height of an import workspace on a large window.
+  double get importWorkspaceHeight => 800;
+
   /// Every step of the grid, by name. The gallery page walks this.
   Map<String, double> get steps => <String, double>{
     's0': s0,
