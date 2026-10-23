@@ -77,6 +77,9 @@ dependency_overrides:
   firebase_core_web: 3.10.0
 
 dev_dependencies:
+  # Exercise the installed iOS picker and preference failure contracts.
+  file_selector_ios: 0.5.3+6
+  shared_preferences_platform_interface: 2.4.2
   flutter_test:
     sdk: flutter
 
