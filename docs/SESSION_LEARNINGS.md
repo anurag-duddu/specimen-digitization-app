@@ -24796,3 +24796,27 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   Safari, VoiceOver/TalkBack and managed-account approval scenarios are also
   Not confirmed; automated coverage is not substituted for those device results.
   Merge, protected deployment and mobile distribution remain separate outcomes.
+
+### 2026-10-23 — PR402 hosted gates and physical mobile-web sign-in (task01a149fc)
+
+- Same task, worktree and codex/intake-cross-platform branch. Independent G51
+  review approved exact implementation head bee3d7aea52f9177fabe0f428275ae6eb530458a.
+  PR402 CI/CD39918712634 and runtime candidate39918712605 completed all applicable
+  checks successfully; Hosting deployment is correctly skipped for the PR.
+- Physical Android Chrome on specimen-digitization.web.app initially displayed
+  an older cached sign-in shell. A normal browser Reload updated it without
+  clearing site data. Gmail Google sign-in then reached the real Intake E2E
+  collection and its specimen list; intake navigation also succeeded. Evidence:
+  connector-polish-20261021/android-mobile-web-signin-20261023.png. This exercised
+  current production084b387f9, not an unshipped PR web build.
+- The alternate specimen-digitization.firebaseapp.com app shell accepted Google
+  sign-in but App Check token acquisition failed before collection access was
+  requested, including after Reload. Both hosts use the same public Enterprise
+  site key; the live allowed-domain configuration is Not confirmed. Canonical
+  web.app success narrows the issue but does not prove a domain-allowlist cause.
+  gcloud read-only key inspection and the existing browser admin session both
+  require renewed Google verification. No App Check protection was disabled.
+- Camera viewfinder opened on the physical Android, but no capture was taken;
+  this does not establish real-camera acceptance. iOS provisioning and remaining
+  physical acceptance limitations in the preceding entry remain unresolved.
+  Protected release, alternate-host investigation and device acceptance continue.
