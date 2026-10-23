@@ -29,7 +29,12 @@ typedef _PreparedPhoto = ({
   Object? failure,
 });
 
-typedef _UncertainPhoto = ({Json row, XFile retained, String? previousPath});
+typedef _UncertainPhoto = ({
+  Json row,
+  XFile retained,
+  String? previousPath,
+  String sourcePath,
+});
 
 class _DraftPersistenceUncertain extends StateError {
   _DraftPersistenceUncertain()
@@ -99,7 +104,8 @@ class BulkIntakeController extends ChangeNotifier {
   List<String> lastRemoved = [];
   final Map<String, XFile> _files = {};
   final Map<String, Json> _local = {};
-  final Map<String, _UncertainPhoto> _uncertainPhotos = {};
+  final Map<Object, _UncertainPhoto> _uncertainPhotos = {};
+  final Map<Object, _UncertainPhoto> _resolvedPhotos = {};
   final Map<String, Json> _pendingSources = {};
   final Map<String, String> _sourceIdentityIndex = {};
   String? _sourceIndexDraft;
@@ -264,15 +270,10 @@ class BulkIntakeController extends ChangeNotifier {
         if (retainedFile != null) throw StateError('Intake account changed');
         return;
       }
-      if (_uncertainPhotos.isNotEmpty &&
-          !_uncertainPhotos.values.any(
-            (photo) =>
-                photo.row['client_id'] == retainedFile?['client_id'] &&
-                photo.row['path'] == retainedFile?['path'],
-          )) {
-        throw StateError('Confirm the previous photo save before continuing');
-      }
       final prefs = await SharedPreferences.getInstance();
+      if (_uncertainPhotos.isNotEmpty) {
+        await _reconcileUncertainFrom(prefs, queueConfirmed: true);
+      }
       final files = {..._local};
       if (retainedFile != null) {
         files[retainedFile['client_id'] as String] = retainedFile;
@@ -318,6 +319,108 @@ class BulkIntakeController extends ChangeNotifier {
     });
     _persistence = write.catchError((Object _) {});
     return write;
+  }
+
+  Future<Map<String, Json>> _reconcileUncertain({bool queueConfirmed = true}) {
+    final resolve = _persistence.then((_) async {
+      if (_disposed) throw StateError('Intake account changed');
+      if (_uncertainPhotos.isEmpty) return <String, Json>{};
+      final prefs = await SharedPreferences.getInstance();
+      return _reconcileUncertainFrom(prefs, queueConfirmed: queueConfirmed);
+    });
+    _persistence = resolve.then<void>((_) {}, onError: (Object _) {});
+    return resolve;
+  }
+
+  Future<Map<String, Json>> _reconcileUncertainFrom(
+    SharedPreferences prefs, {
+    required bool queueConfirmed,
+  }) async {
+    try {
+      await prefs.reload();
+    } catch (_) {
+      throw _DraftPersistenceUncertain();
+    }
+    final List<Json> hostFiles;
+    try {
+      final saved = prefs.getString(_key);
+      hostFiles = saved == null
+          ? <Json>[]
+          : objects((jsonDecode(saved) as Map)['files']);
+    } catch (_) {
+      // Corrupt or unreadable host metadata cannot prove an uncertain file is
+      // safe to discard.
+      throw _DraftPersistenceUncertain();
+    }
+    final confirmed = <String, Json>{};
+    for (final pending in _uncertainPhotos.entries.toList()) {
+      final photo = pending.value;
+      final clientId = photo.row['client_id'] as String;
+      final host = hostFiles
+          .where(
+            (row) =>
+                row['client_id'] == clientId &&
+                row['path'] == photo.retained.path &&
+                row['sha256'] == photo.row['sha256'],
+          )
+          .firstOrNull;
+      if (host != null) {
+        _local[clientId] = host;
+        _files[clientId] = photo.retained;
+        _resolvedPhotos.removeWhere(
+          (_, known) => known.row['client_id'] == clientId,
+        );
+        final active = draft == null
+            ? host['batch_client_id'] == _draftClientId
+            : host['draft_id'] == draft!.id;
+        if (active &&
+            !items.any(
+              (item) =>
+                  item.id == 'local:$clientId' || item.id == host['item_id'],
+            )) {
+          items.add(
+            IntakeDraftItem({
+              ...host,
+              'id': 'local:$clientId',
+              'state': 'waiting',
+            }),
+          );
+        }
+        confirmed[clientId] = host;
+        _resolvedPhotos[pending.key] = photo;
+        final previousPath = photo.previousPath;
+        if (previousPath != null &&
+            previousPath != photo.retained.path &&
+            !hostFiles.any((row) => row['path'] == previousPath)) {
+          try {
+            await releaseDraftFile(previousPath);
+          } catch (_) {
+            // The confirmed retained file remains the recovery source.
+          }
+        }
+        if (queueConfirmed) _queueTransfer(host);
+      } else {
+        try {
+          await releaseDraftFile(photo.retained.path);
+        } catch (_) {
+          // A stale orphan is safer than interrupting a confirmed host read.
+        }
+      }
+      _uncertainPhotos.remove(pending.key);
+    }
+    if (confirmed.isNotEmpty) changed();
+    return confirmed;
+  }
+
+  void _queueResolvedExcept(Object? attemptKey) {
+    for (final entry in _resolvedPhotos.entries) {
+      if (entry.key == attemptKey) continue;
+      final id = entry.value.row['client_id'] as String;
+      final row = _local[id];
+      if (row != null && row['saved'] != true && _files.containsKey(id)) {
+        _queueTransfer(row);
+      }
+    }
   }
 
   Future<void> refreshLists({bool Function()? isCurrent}) async {
@@ -605,6 +708,7 @@ class BulkIntakeController extends ChangeNotifier {
     bool camera = false,
     bool sensitive = false,
     String? replacesId,
+    Object? captureAttempt,
   }) {
     final admission = _admissions.then((_) async {
       if (_disposed || files.isEmpty) return;
@@ -661,64 +765,108 @@ class BulkIntakeController extends ChangeNotifier {
       Future<void> publish(_PreparedPhoto photo) async {
         if (_disposed) return;
         final file = photo.file, id = intakeClientId();
+        final attemptKey = captureAttempt ?? file.path;
         XFile? retained;
         late Json row;
         String? previousPath;
         var committed = false;
         try {
           if (photo.failure != null) throw photo.failure!;
-          final previous = photo.previous;
-          final uncertain = _uncertainPhotos[file.path];
-          final clientId =
-              uncertain?.row['client_id'] as String? ??
-              previous?['client_id'] as String? ??
-              id;
-          if (uncertain != null) {
-            retained = uncertain.retained;
-            row = uncertain.row;
-            previousPath = uncertain.previousPath;
-          } else {
-            // A reselection may reuse the previous client identity. Keep its
-            // earlier bytes intact until replacement metadata is durable.
-            retained = await retainDraftFile(
-              file,
-              _owner,
-              previous == null ? clientId : '$clientId-${intakeClientId()}',
-            );
-            previousPath = previous?['path'] as String?;
-            row = <String, dynamic>{
-              ...?previous,
-              'client_id': clientId,
-              'batch_client_id': previous?['batch_client_id'] ?? _draftClientId,
-              if (draft != null) 'draft_id': draft!.id,
-              'path': retained.path,
-              'filename': file.name,
-              'size_bytes': photo.size,
-              'sha256': photo.hash,
-              'media_type': _mediaType(file),
-              'photo_sensitive': previous?['photo_sensitive'] ?? sensitive,
-              'replaces_id': ?replacesId,
-              'source':
-                  previous?['source'] ??
-                  {'provider': camera ? 'camera' : 'files'},
-              'saved': false,
-            };
+          final pending =
+              _uncertainPhotos[attemptKey] ?? _resolvedPhotos[attemptKey];
+          if (_uncertainPhotos.isNotEmpty) {
+            await _reconcileUncertain(queueConfirmed: false);
           }
+          _queueResolvedExcept(attemptKey);
+          final pendingId = pending?.row['client_id'] as String?;
+          final confirmed = pendingId == null ? null : _local[pendingId];
+          if (pending != null &&
+              pending.sourcePath == file.path &&
+              confirmed?['path'] == pending.retained.path) {
+            // The original was committed; its lost acknowledgement was the
+            // only failure. Return it once, without another write or item.
+            _queueTransfer(confirmed!);
+            _resolvedPhotos.remove(attemptKey);
+            preparationCompleted++;
+            changed();
+            return;
+          }
+          final prior = photo.previous ?? confirmed ?? pending?.row;
+          final registered =
+              prior != null &&
+              prior['sha256'] != photo.hash &&
+              (prior['registration'] != null ||
+                  prior['item_id'] != null ||
+                  prior['saved'] == true ||
+                  (pendingId != null && _queuedTransfers.contains(pendingId)));
+          // Once registration might have reached the server, its client ID
+          // and hash are immutable. A retake gets a fresh identity.
+          final previous = registered ? null : prior;
+          final clientId = previous?['client_id'] as String? ?? id;
+          final registeredReplacementId = registered && prior != null
+              ? prior['item_id'] as String?
+              : null;
+          final replacementTarget = replacesId ?? registeredReplacementId;
+          final reusesVisible =
+              previous != null &&
+              visible.any(
+                (item) =>
+                    item.id == 'local:$clientId' ||
+                    item.id == previous['item_id'],
+              );
+          final replacesVisible =
+              replacementTarget != null &&
+              visible.any((item) => item.id == replacementTarget);
+          if (visible.length >= 500 && !reusesVisible && !replacesVisible) {
+            error =
+                'A batch holds up to 500 photos. Choose fewer files or start another batch.';
+            throw ApiFailure(error!, code: 'batch_limit');
+          }
+          // A retry or retake may reuse the previous client identity. Keep
+          // those bytes intact until replacement metadata is durable.
+          retained = await retainDraftFile(
+            file,
+            _owner,
+            previous == null ? clientId : '$clientId-${intakeClientId()}',
+          );
+          previousPath = previous?['path'] as String?;
+          row = <String, dynamic>{
+            ...?previous,
+            'client_id': clientId,
+            'batch_client_id': previous?['batch_client_id'] ?? _draftClientId,
+            if (draft != null) 'draft_id': draft!.id,
+            'path': retained.path,
+            'filename': file.name,
+            'size_bytes': photo.size,
+            'sha256': photo.hash,
+            'media_type': _mediaType(file),
+            'photo_sensitive': previous?['photo_sensitive'] ?? sensitive,
+            'replaces_id': ?replacementTarget,
+            'source':
+                previous?['source'] ??
+                {'provider': camera ? 'camera' : 'files'},
+            'saved': false,
+          };
           await _persist(retainedFile: row);
           committed = true;
-          _uncertainPhotos.remove(file.path);
+          _resolvedPhotos.removeWhere(
+            (key, photo) =>
+                key == attemptKey || photo.row['client_id'] == clientId,
+          );
           if (_disposed) return;
           _files[clientId] = retained;
-          if (!items.any(
+          final existing = items.indexWhere(
             (item) => item.id == row['item_id'] || item.id == 'local:$clientId',
-          )) {
-            items.add(
-              IntakeDraftItem({
-                ...row,
-                'id': 'local:$clientId',
-                'state': 'waiting',
-              }),
-            );
+          );
+          final visibleRow = IntakeDraftItem({
+            ...row,
+            'id': 'local:$clientId',
+            'state': 'waiting',
+          });
+          if (existing < 0) {
+            items.add(visibleRow);
+          } else {
+            items[existing] = visibleRow;
           }
           changed();
           _queueTransfer(row);
@@ -732,21 +880,35 @@ class BulkIntakeController extends ChangeNotifier {
         } catch (failure) {
           if (!committed && retained != null) {
             if (failure is _DraftPersistenceUncertain) {
-              _uncertainPhotos[file.path] = (
+              _uncertainPhotos[attemptKey] = (
                 row: row,
                 retained: retained,
                 previousPath: previousPath,
+                sourcePath: file.path,
               );
             } else {
-              _uncertainPhotos.remove(file.path);
+              _uncertainPhotos.remove(attemptKey);
               try {
                 await releaseDraftFile(retained.path);
               } catch (_) {
                 // A failed cleanup must not hide the failed admission.
               }
+              final prior = row['client_id'] as String?;
+              final confirmed = prior == null ? null : _local[prior];
+              if (confirmed != null && confirmed['path'] != retained.path) {
+                final priorFile = _files[prior];
+                if (priorFile != null) {
+                  _resolvedPhotos[attemptKey] = (
+                    row: confirmed,
+                    retained: priorFile,
+                    previousPath: null,
+                    sourcePath: priorFile.path,
+                  );
+                }
+              }
             }
           }
-          if (camera) rethrow;
+          if (camera || failure is _DraftPersistenceUncertain) rethrow;
           if (retained != null && !committed) {
             // The file is still selectable; a synthetic failed item would
             // become a duplicate when the user retries this same original.
@@ -770,10 +932,31 @@ class BulkIntakeController extends ChangeNotifier {
       }
 
       try {
+        // A committed photo whose acknowledgement was lost must count before
+        // this batch admits another file. The same capture attempt can still
+        // acknowledge or replace that visible photo at the limit.
+        if (_uncertainPhotos.isNotEmpty) {
+          await _reconcileUncertain(queueConfirmed: false);
+        }
+        final attemptKey = files.length == 1
+            ? captureAttempt ?? files.single.path
+            : null;
+        final pending = attemptKey == null ? null : _resolvedPhotos[attemptKey];
+        final pendingId = pending?.row['client_id'];
+        final attemptReplacesVisible =
+            pendingId != null &&
+            visible.any(
+              (item) =>
+                  item.id == 'local:$pendingId' ||
+                  item.id == _local[pendingId]?['item_id'],
+            );
+        final replacementCredit = replacesId != null || attemptReplacesVisible
+            ? 1
+            : 0;
+        _queueResolvedExcept(attemptKey);
         // Only an ambiguous near-capacity reselection needs all hashes first.
         // Ordinary batches publish their first retained file immediately.
-        if (visible.length + files.length - (replacesId == null ? 0 : 1) >
-            500) {
+        if (visible.length + files.length - replacementCredit > 500) {
           final prepared = <_PreparedPhoto>[];
           for (final file in files) {
             if (_disposed) return;
@@ -782,7 +965,7 @@ class BulkIntakeController extends ChangeNotifier {
           final additions = prepared
               .where((photo) => photo.previous == null)
               .length;
-          if (visible.length + additions - (replacesId == null ? 0 : 1) > 500) {
+          if (visible.length + additions - replacementCredit > 500) {
             error =
                 'A batch holds up to 500 photos. Choose fewer files or start another batch.';
             if (camera) throw ApiFailure(error!, code: 'batch_limit');
@@ -1011,6 +1194,7 @@ class BulkIntakeController extends ChangeNotifier {
   Future<void> retrySaving() async {
     error = null;
     try {
+      await _reconcileUncertain();
       capabilities = await call('GET', '/capabilities');
       for (final item in visible.where(
         (i) => i.state == 'needs_attention' && !i.id.startsWith('local:'),
@@ -1591,6 +1775,8 @@ class BulkIntakeController extends ChangeNotifier {
 
   Future<void> _newDraft() async {
     await _persist();
+    _queueResolvedExcept(null);
+    _resolvedPhotos.clear();
     _viewGeneration++;
     draft = null;
     _draftClientId = intakeClientId();

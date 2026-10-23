@@ -15,6 +15,8 @@ class FailingDraftPreferences extends InMemorySharedPreferencesStore {
   FailingDraftPreferences() : super.empty();
   String? failure;
   bool failNextRead = false;
+  int readCount = 0;
+  int? failOnReadNumber;
   Completer<void>? pause;
   Completer<void>? entered;
 
@@ -39,8 +41,10 @@ class FailingDraftPreferences extends InMemorySharedPreferencesStore {
 
   @override
   Future<Map<String, Object>> getAll() async {
-    if (failNextRead) {
+    readCount++;
+    if (failNextRead || readCount == failOnReadNumber) {
       failNextRead = false;
+      failOnReadNumber = null;
       throw StateError('Reload unavailable');
     }
     return super.getAll();
@@ -69,6 +73,85 @@ class OfflineIntake implements BulkIntakeRepository {
     String id, {
     bool full = false,
   }) async => throw StateError('Offline');
+}
+
+class RegisteringIntake extends OfflineIntake {
+  final List<Json> registrations = [];
+  final Map<String, Json> items = {};
+  final Completer<void> twoRegistrations = Completer<void>();
+  Completer<void>? pauseRegistration;
+  Completer<void>? registrationEntered;
+
+  Json get draft => {
+    'id': 'draft',
+    'state': 'draft',
+    'revision': 1,
+    'created_at': '2026-10-23',
+    'entries': [
+      for (final item in items.values)
+        {
+          'id': item['id'],
+          'included': true,
+          'photo_sensitive': item['photo_sensitive'],
+          'removed': false,
+        },
+    ],
+  };
+
+  @override
+  Future<Json> intakeRequest(
+    CollectionScope scope,
+    String method,
+    String path, {
+    Json? body,
+    Map<String, String>? query,
+    Uint8List? bytes,
+    int? offset,
+  }) async {
+    calls.add('$method $path');
+    if (path == '/capabilities') return {};
+    if (path == '/drafts' && method == 'POST') return draft;
+    if (path == '/drafts') {
+      return {
+        'items': items.isEmpty ? <Json>[] : [draft],
+        'next_cursor': null,
+      };
+    }
+    if (path == '/submissions') return {'items': <Json>[], 'next_cursor': null};
+    if (path == '/drafts/draft') return draft;
+    if (path == '/drafts/draft/items' && method == 'GET') {
+      return {'items': items.values.toList(), 'next_cursor': null};
+    }
+    if (path == '/drafts/draft/items' && method == 'POST') {
+      registrationEntered?.complete();
+      await pauseRegistration?.future;
+      registrations.add(Map<String, dynamic>.from(body!));
+      if (registrations.length == 2 && !twoRegistrations.isCompleted) {
+        twoRegistrations.complete();
+      }
+      final item = <String, dynamic>{
+        ...body,
+        'id': 'item-${registrations.length}',
+        'draft_id': 'draft',
+        'offset': 0,
+        'state': 'transferring',
+        'included': true,
+      };
+      items[item['id'] as String] = item;
+      return item;
+    }
+    if (path.startsWith('/items/')) {
+      final id = path.split('/')[2];
+      final item = items[id]!;
+      if (path.endsWith('/content')) {
+        item['offset'] = offset! + bytes!.length;
+      } else if (path.endsWith('/save')) {
+        item['state'] = 'ready';
+      }
+      return item;
+    }
+    throw StateError('Unexpected request: $method $path');
+  }
 }
 
 class SubmittedRecovery extends OfflineIntake {
@@ -375,6 +458,506 @@ void main() {
       expect(recovered.visible.length, 1);
       expect(recovered.needsReselection, isFalse);
       recovered.dispose();
+    },
+  );
+
+  test(
+    'unknown ACK resolves after camera closes and new draft opens',
+    () async {
+      final store = FailingDraftPreferences();
+      SharedPreferences.resetStatic();
+      SharedPreferencesStorePlatform.instance = store;
+      final source = File('${directory.path}/closed-camera.png');
+      await source.writeAsBytes([1, 2, 3, 4]);
+      final controller = BulkIntakeController(
+        repository: OfflineIntake(),
+        scope: scope,
+        userId: 'owner',
+      );
+      await controller.initialize();
+      store.failure = 'commit-throw';
+      store.failNextRead = true;
+      await expectLater(
+        controller.addFiles([XFile(source.path)], camera: true),
+        throwsStateError,
+      );
+      final accepted = (await storedFiles()).single;
+      await source.delete();
+      await controller.retrySaving();
+      expect(controller.visible.length, 1);
+      expect(await File(accepted['path'] as String).exists(), isTrue);
+      final next = File('${directory.path}/next-camera.png');
+      await next.writeAsBytes([9, 8, 7, 6]);
+      await controller.addFiles([XFile(next.path)], camera: true);
+      expect(controller.visible.length, 2);
+      expect((await storedFiles()).length, 2);
+      await controller.newDraft();
+      expect(controller.visible, isEmpty);
+      expect(
+        controller.savedDrafts.any((draft) => draft['local_client_id'] != null),
+        isTrue,
+      );
+      controller.dispose();
+    },
+  );
+
+  test('reconciliation keeps a photo out of another opened draft', () async {
+    final store = FailingDraftPreferences();
+    SharedPreferences.resetStatic();
+    SharedPreferencesStorePlatform.instance = store;
+    final other = File('${directory.path}/other-draft.png');
+    final uncertain = File('${directory.path}/uncertain-draft.png');
+    await other.writeAsBytes([1, 2, 3, 4]);
+    await uncertain.writeAsBytes([5, 6, 7, 8]);
+    final controller = BulkIntakeController(
+      repository: OfflineIntake(),
+      scope: scope,
+      userId: 'owner',
+    );
+    await controller.initialize();
+    await controller.addFiles([XFile(other.path)], camera: true);
+    final otherRow = (await storedFiles()).single;
+    await controller.newDraft();
+    store.failure = 'commit-throw';
+    store.failNextRead = true;
+    await expectLater(
+      controller.addFiles([XFile(uncertain.path)], camera: true),
+      throwsStateError,
+    );
+    await controller.openDraft({
+      'local_client_id': otherRow['batch_client_id'],
+    });
+    expect(controller.visible.length, 1);
+    expect(controller.visible.single.data['filename'], 'other-draft.png');
+    expect((await storedFiles()).length, 2);
+    controller.dispose();
+  });
+
+  test(
+    'new camera route cannot replace an uncertain earlier specimen',
+    () async {
+      final store = FailingDraftPreferences();
+      SharedPreferences.resetStatic();
+      SharedPreferencesStorePlatform.instance = store;
+      final first = File('${directory.path}/first-route.png');
+      final second = File('${directory.path}/second-route.png');
+      await first.writeAsBytes([1, 2, 3, 4]);
+      await second.writeAsBytes([5, 6, 7, 8]);
+      final controller = BulkIntakeController(
+        repository: OfflineIntake(),
+        scope: scope,
+        userId: 'owner',
+      );
+      await controller.initialize();
+      store.failure = 'commit-throw';
+      store.failNextRead = true;
+      await expectLater(
+        controller.addFiles(
+          [XFile(first.path)],
+          camera: true,
+          captureAttempt: Object(),
+        ),
+        throwsStateError,
+      );
+      final original = (await storedFiles()).single;
+      await first.delete();
+      await controller.addFiles(
+        [XFile(second.path)],
+        camera: true,
+        captureAttempt: Object(),
+      );
+      final rows = await storedFiles();
+      expect(rows.length, 2);
+      expect(rows.map((row) => row['client_id']).toSet().length, 2);
+      expect(await File(original['path'] as String).readAsBytes(), [
+        1,
+        2,
+        3,
+        4,
+      ]);
+      expect(controller.visible.length, 2);
+      controller.dispose();
+    },
+  );
+
+  test('unknown committed photo counts before the 500-photo limit', () async {
+    final store = FailingDraftPreferences();
+    SharedPreferences.resetStatic();
+    SharedPreferencesStorePlatform.instance = store;
+    final first = File('${directory.path}/limit-first.png');
+    final second = File('${directory.path}/limit-second.png');
+    await first.writeAsBytes([1, 2, 3, 4]);
+    await second.writeAsBytes([5, 6, 7, 8]);
+    final controller = BulkIntakeController(
+      repository: OfflineIntake(),
+      scope: scope,
+      userId: 'owner',
+    );
+    await controller.initialize();
+    controller.items = [
+      for (var i = 0; i < 499; i++)
+        IntakeDraftItem({'id': 'existing-$i', 'state': 'waiting'}),
+    ];
+    final attempt = Object();
+    store.failure = 'commit-throw';
+    store.failNextRead = true;
+    await expectLater(
+      controller.addFiles(
+        [XFile(first.path)],
+        camera: true,
+        captureAttempt: attempt,
+      ),
+      throwsStateError,
+    );
+    expect(controller.visible.length, 499);
+    await expectLater(
+      controller.addFiles(
+        [XFile(second.path)],
+        camera: true,
+        captureAttempt: Object(),
+      ),
+      throwsA(isA<ApiFailure>().having((e) => e.code, 'code', 'batch_limit')),
+    );
+    expect(controller.visible.length, 500);
+    expect((await storedFiles()).length, 1);
+    await controller.addFiles(
+      [XFile(first.path)],
+      camera: true,
+      captureAttempt: attempt,
+    );
+    expect(controller.visible.length, 500);
+    expect((await storedFiles()).length, 1);
+    controller.dispose();
+  });
+
+  test('a later capture also starts transfer of a reconciled photo', () async {
+    final store = FailingDraftPreferences();
+    SharedPreferences.resetStatic();
+    SharedPreferencesStorePlatform.instance = store;
+    final repository = RegisteringIntake();
+    final first = File('${directory.path}/first-online.png');
+    final second = File('${directory.path}/second-online.png');
+    await first.writeAsBytes([1, 2, 3, 4]);
+    await second.writeAsBytes([5, 6, 7, 8]);
+    final controller = BulkIntakeController(
+      repository: repository,
+      scope: scope,
+      userId: 'owner',
+    );
+    await controller.initialize();
+    store.failure = 'commit-throw';
+    store.failNextRead = true;
+    await expectLater(
+      controller.addFiles(
+        [XFile(first.path)],
+        camera: true,
+        captureAttempt: Object(),
+      ),
+      throwsStateError,
+    );
+    await controller.addFiles(
+      [XFile(second.path)],
+      camera: true,
+      captureAttempt: Object(),
+    );
+    await repository.twoRegistrations.future.timeout(
+      const Duration(seconds: 2),
+    );
+    expect(repository.registrations.length, 2);
+    expect(
+      repository.registrations.map((row) => row['client_id']).toSet().length,
+      2,
+    );
+    controller.dispose();
+  });
+
+  test(
+    'retake at capacity waits for an in-flight registration identity',
+    () async {
+      final store = FailingDraftPreferences();
+      SharedPreferences.resetStatic();
+      SharedPreferencesStorePlatform.instance = store;
+      final repository = RegisteringIntake();
+      final originalFile = File('${directory.path}/queued-original.png');
+      final retakeFile = File('${directory.path}/queued-retake.png');
+      await originalFile.writeAsBytes([1, 2, 3, 4]);
+      await retakeFile.writeAsBytes([5, 6, 7, 8]);
+      final controller = BulkIntakeController(
+        repository: repository,
+        scope: scope,
+        userId: 'owner',
+      );
+      await controller.initialize();
+      controller.items = [
+        for (var i = 0; i < 499; i++)
+          IntakeDraftItem({'id': 'existing-$i', 'state': 'waiting'}),
+      ];
+      final attempt = Object();
+      store.failure = 'commit-throw';
+      store.failNextRead = true;
+      await expectLater(
+        controller.addFiles(
+          [XFile(originalFile.path)],
+          camera: true,
+          captureAttempt: attempt,
+        ),
+        throwsStateError,
+      );
+      final original = (await storedFiles()).single;
+      repository.pauseRegistration = Completer<void>();
+      repository.registrationEntered = Completer<void>();
+      final retry = controller.retrySaving();
+      await repository.registrationEntered!.future.timeout(
+        const Duration(seconds: 2),
+      );
+      expect(controller.visible.length, 500);
+      await expectLater(
+        controller.addFiles(
+          [XFile(retakeFile.path)],
+          camera: true,
+          captureAttempt: attempt,
+        ),
+        throwsA(isA<ApiFailure>().having((e) => e.code, 'code', 'batch_limit')),
+      );
+      expect((await storedFiles()).single['path'], original['path']);
+      expect(await File(original['path'] as String).readAsBytes(), [
+        1,
+        2,
+        3,
+        4,
+      ]);
+      expect(controller.visible.length, 500);
+      repository.pauseRegistration!.complete();
+      repository.pauseRegistration = null;
+      await retry;
+      expect(repository.registrations.length, 1);
+      controller.dispose();
+    },
+  );
+
+  test('retake after remote registration uses a new client identity', () async {
+    final store = FailingDraftPreferences();
+    SharedPreferences.resetStatic();
+    SharedPreferencesStorePlatform.instance = store;
+    final repository = RegisteringIntake();
+    final first = File('${directory.path}/first-camera.png');
+    final retake = File('${directory.path}/retake-camera.png');
+    await first.writeAsBytes([1, 2, 3, 4]);
+    await retake.writeAsBytes([5, 6, 7, 8]);
+    final controller = BulkIntakeController(
+      repository: repository,
+      scope: scope,
+      userId: 'owner',
+    );
+    await controller.initialize();
+    final attempt = Object();
+    store.failure = 'commit-throw';
+    store.failNextRead = true;
+    await expectLater(
+      controller.addFiles(
+        [XFile(first.path)],
+        camera: true,
+        captureAttempt: attempt,
+      ),
+      throwsStateError,
+    );
+    await controller.retrySaving();
+    expect(repository.registrations.length, 1);
+    final original = repository.registrations.single;
+    await controller.addFiles(
+      [XFile(retake.path)],
+      camera: true,
+      captureAttempt: attempt,
+    );
+    await controller.retrySaving();
+    expect(repository.registrations.length, 2);
+    expect(
+      repository.registrations.last['client_id'],
+      isNot(original['client_id']),
+    );
+    expect(repository.registrations.last['sha256'], isNot(original['sha256']));
+    expect(repository.registrations.last['replaces_id'], 'item-1');
+    controller.dispose();
+  });
+
+  test('retake after unknown ACK replaces the committed photo once', () async {
+    final store = FailingDraftPreferences();
+    SharedPreferences.resetStatic();
+    SharedPreferencesStorePlatform.instance = store;
+    final firstSource = File('${directory.path}/first-camera.png');
+    final retake = File('${directory.path}/retake-camera.png');
+    await firstSource.writeAsBytes([1, 2, 3, 4]);
+    await retake.writeAsBytes([5, 6, 7, 8]);
+    final controller = BulkIntakeController(
+      repository: OfflineIntake(),
+      scope: scope,
+      userId: 'owner',
+    );
+    await controller.initialize();
+    final attempt = Object();
+    store.failure = 'commit-throw';
+    store.failNextRead = true;
+    await expectLater(
+      controller.addFiles(
+        [XFile(firstSource.path)],
+        camera: true,
+        captureAttempt: attempt,
+      ),
+      throwsStateError,
+    );
+    final original = (await storedFiles()).single;
+    await firstSource.delete();
+    store.failure = 'false';
+    await expectLater(
+      controller.addFiles(
+        [XFile(retake.path)],
+        camera: true,
+        captureAttempt: attempt,
+      ),
+      throwsStateError,
+    );
+    expect((await storedFiles()).single['path'], original['path']);
+    expect(await File(original['path'] as String).readAsBytes(), [1, 2, 3, 4]);
+    expect(controller.visible.length, 1);
+    await controller.addFiles(
+      [XFile(retake.path)],
+      camera: true,
+      captureAttempt: attempt,
+    );
+    final replacement = (await storedFiles()).single;
+    expect(replacement['client_id'], original['client_id']);
+    expect(replacement['path'], isNot(original['path']));
+    expect(await File(replacement['path'] as String).readAsBytes(), [
+      5,
+      6,
+      7,
+      8,
+    ]);
+    expect(await File(original['path'] as String).exists(), isFalse);
+    expect(controller.visible.length, 1);
+    controller.dispose();
+  });
+
+  test(
+    'uncertain retake keeps both bytes until replacement is confirmed',
+    () async {
+      final store = FailingDraftPreferences();
+      SharedPreferences.resetStatic();
+      SharedPreferencesStorePlatform.instance = store;
+      final firstSource = File('${directory.path}/first-camera.png');
+      final retake = File('${directory.path}/retake-camera.png');
+      await firstSource.writeAsBytes([1, 2, 3, 4]);
+      await retake.writeAsBytes([5, 6, 7, 8]);
+      final controller = BulkIntakeController(
+        repository: OfflineIntake(),
+        scope: scope,
+        userId: 'owner',
+      );
+      await controller.initialize();
+      final attempt = Object();
+      store.failure = 'commit-throw';
+      store.failNextRead = true;
+      await expectLater(
+        controller.addFiles(
+          [XFile(firstSource.path)],
+          camera: true,
+          captureAttempt: attempt,
+        ),
+        throwsStateError,
+      );
+      final original = (await storedFiles()).single;
+      store.failure = 'commit-throw';
+      store.failOnReadNumber = store.readCount + 2;
+      await expectLater(
+        controller.addFiles(
+          [XFile(retake.path)],
+          camera: true,
+          captureAttempt: attempt,
+        ),
+        throwsStateError,
+      );
+      final replacement = (await storedFiles()).single;
+      expect(replacement['client_id'], original['client_id']);
+      expect(replacement['path'], isNot(original['path']));
+      expect(await File(original['path'] as String).readAsBytes(), [
+        1,
+        2,
+        3,
+        4,
+      ]);
+      expect(await File(replacement['path'] as String).readAsBytes(), [
+        5,
+        6,
+        7,
+        8,
+      ]);
+
+      await controller.retrySaving();
+      expect(controller.visible.length, 1);
+      expect(await File(original['path'] as String).exists(), isFalse);
+      expect(await File(replacement['path'] as String).readAsBytes(), [
+        5,
+        6,
+        7,
+        8,
+      ]);
+      controller.dispose();
+    },
+  );
+
+  test(
+    'later failed edit and retry preserve committed uncertain bytes',
+    () async {
+      final store = FailingDraftPreferences();
+      SharedPreferences.resetStatic();
+      SharedPreferencesStorePlatform.instance = store;
+      final firstSource = File('${directory.path}/first.png');
+      final uncertainSource = File('${directory.path}/uncertain.png');
+      await firstSource.writeAsBytes([1, 2, 3, 4]);
+      await uncertainSource.writeAsBytes([5, 6, 7, 8]);
+      final controller = BulkIntakeController(
+        repository: OfflineIntake(),
+        scope: scope,
+        userId: 'owner',
+      );
+      await controller.initialize();
+      await controller.addFiles([XFile(firstSource.path)], camera: true);
+      final firstId = controller.visible.single.id;
+      store.failure = 'commit-throw';
+      store.failNextRead = true;
+      await expectLater(
+        controller.addFiles([XFile(uncertainSource.path)], camera: true),
+        throwsStateError,
+      );
+      final before = await storedFiles();
+      final uncertain = before.singleWhere(
+        (row) => row['filename'] == 'uncertain.png',
+      );
+      store.failure = 'false';
+      await expectLater(
+        controller.edit('sensitive', value: true, ids: [firstId]),
+        throwsStateError,
+      );
+      expect(controller.visible.length, 2);
+      expect(await File(uncertain['path'] as String).readAsBytes(), [
+        5,
+        6,
+        7,
+        8,
+      ]);
+      expect((await storedFiles()).length, 2);
+      // The camera callback can retry its original even after an unrelated
+      // snapshot failed. It must recognize the already committed identity.
+      await controller.addFiles([XFile(uncertainSource.path)], camera: true);
+      expect(controller.visible.length, 2);
+      expect((await storedFiles()).length, 2);
+      expect(await File(uncertain['path'] as String).readAsBytes(), [
+        5,
+        6,
+        7,
+        8,
+      ]);
+      controller.dispose();
     },
   );
 

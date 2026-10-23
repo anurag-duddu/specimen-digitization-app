@@ -133,8 +133,12 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen>
       CaptureScreen.route(
         widget.cameraFactory ?? () async => PlatformCaptureCamera(),
         bulkDraft: true,
-        onCapturedDurably: (photo) =>
-            c.addFiles([photo.file], camera: true, sensitive: photo.sensitive),
+        onCapturedDurably: (photo) => c.addFiles(
+          [photo.file],
+          camera: true,
+          sensitive: photo.sensitive,
+          captureAttempt: photo.admissionAttempt,
+        ),
         batchTray: (context) => SizedBox(
           height: context.ui.space.s16,
           child: ListView.builder(
@@ -155,7 +159,8 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen>
         ),
         activity: c,
         activitySnapshot: () => CaptureActivity(
-          label: '${c.visible.length} photos in your batch · ${c.saveLabel}',
+          label:
+              '${c.visible.length} ${c.visible.length == 1 ? 'photo' : 'photos'} in your batch · ${c.saveLabel}',
         ),
       ),
     );
@@ -363,7 +368,7 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen>
                               Text(
                                 c.visible.isEmpty
                                     ? 'Add photos'
-                                    : '${c.visible.length} photos',
+                                    : '${c.visible.length} ${c.visible.length == 1 ? 'photo' : 'photos'}',
                                 style: ui.type.titleLarge,
                               ),
                               Semantics(
@@ -525,11 +530,12 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen>
                             Text(
                               c.readyCount == c.visible.length
                                   ? 'Submit starts processing.'
-                                  : '${c.visible.length - c.readyCount} photos will remain in your draft.',
+                                  : '${c.visible.length - c.readyCount} ${c.visible.length - c.readyCount == 1 ? 'photo' : 'photos'} will remain in your draft.',
                               style: ui.type.bodySmall,
                             ),
                             UiButton(
-                              label: 'Submit ${c.readyCount} photos',
+                              label:
+                                  'Submit ${c.readyCount} ${c.readyCount == 1 ? 'photo' : 'photos'}',
                               leading: UiIcons.cloudUpload,
                               loading: c.submitting,
                               onPressed:
@@ -785,6 +791,7 @@ class _BulkPhotoInspectorState extends State<BulkPhotoInspector> {
               camera: true,
               sensitive: photo.sensitive,
               replacesId: item.id,
+              captureAttempt: photo.admissionAttempt,
             );
             replaced = true;
             if (mounted) Navigator.of(context).pop();

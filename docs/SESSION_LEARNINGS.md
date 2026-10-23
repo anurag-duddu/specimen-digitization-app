@@ -24698,3 +24698,39 @@ approvals were requested together; cloud setup remained unapplied when recorded.
 - Independent exact-head review, remaining canonical gates, protected release,
   real native installation/signing, capture/provider/submit device acceptance,
   and physical Safari/Chrome acceptance remain pending at this checkpoint.
+
+### 2026-10-23 — Cross-platform recovery review and Android provider checkpoint (task01a149fc)
+
+- Same task/worktree/branch as the preceding entry; first implementation commit
+  1e3db26f51d65bde0979b64a854b3729889bc4f8. Independent review found that uncertain
+  capture saves needed recovery beyond retrying one source path. Follow-up now
+  scopes admission attempts to one camera route, reconciles acknowledged host
+  metadata, preserves registered/in-flight item identity, keeps recovery within
+  its original draft, resumes confirmed transfers, and checks actual prospective
+  capacity before retaining a replacement. Fresh captures after reopening must
+  not be inferred to be retakes. Targeted recovery/parser27 and adjacent97 tests
+  passed; source reviewer approved the five changed blobs pending commit freeze.
+- Canonical run specimen-cross-platform-verify-final.log passed pre-commit, all
+  six Python shards and design-system gates, then failed its Flutter parse gate
+  because the controller was being edited during that run. Flutter result was
+  3623 passed,7 skipped,1 failed. The source was repaired and focused parser tests
+  passed; this is not a canonical pass. The next run uses frozen source.
+- Installed Android build11 over the existing app on Nothing A142/API36 with
+  adb install -r; package/signature and installed data retained. Gmail email-link
+  sign-in reached the live Intake E2E collection. Saved demo draft328/330 restored
+  with real thumbnails and remains unsubmitted. A separate test draft now holds
+  real Drive327 and Dropbox326, both visibly Saved; no Submit yet at checkpoint.
+- Physical Drive selected content reached the native app, but a stale Auth Tab
+  remained above it after Google Picker launched a nested browser task. Closing
+  that old tab exposed the successful result. Follow-up brings the original app
+  task forward after recording the callback, preserving the existing Flutter
+  engine. Reviewer approved source; automatic-return device retest is pending.
+  Dropbox reauthentication with unchanged existing read-only scopes returned
+  automatically and browsed the real demo folder; this used build11, not the
+  pending callback/recovery follow-up. Provider originals were not modified.
+- Unsigned iOS compilation is successful, but the installed personal-team
+  provisioning profile lacks com.apple.developer.associated-domains required by
+  Runner.entitlements and expires2026-10-24. Physical iOS installation and E2E
+  remain Not confirmed. No entitlement, bundle identity, account or installed
+  data was removed to work around provisioning. Final stable canonical run,
+  exact-head review, physical callback/submit acceptance and release remain open.
