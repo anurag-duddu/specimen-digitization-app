@@ -426,7 +426,7 @@ abstract final class UiIcons {
   /// A declared language.
   static const IconSpec language = IconSpec(PhosphorIconsRegular.translate);
 
-  /// The registry key of the pin mark.
+  /// The registry key of the owner-supplied interlocking brand mark.
   ///
   /// The mark is an asset, not a Phosphor glyph (09 section 9), so it has no
   /// [IconSpec] and is absent from [all]. Slot E6 draws it. It is named here

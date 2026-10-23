@@ -1,36 +1,18 @@
-# Launcher icons for Android, iOS and web (09 section 9).
-#
-# Every source here is rendered by tool/brand/render_mark.py from one
-# geometry. Regenerate with:
-#
-#   uv run --with pillow python tool/brand/render_mark.py
-#   dart run flutter_launcher_icons
-#
-# The two maskable web icons and the favicon this writes are replaced
-# afterwards by a second pass of the renderer; assets/brand/README.md says why.
-
+# The owner's interlocking mark on Paper. The platform supplies its own mask.
+# See assets/brand/README.md for the pinned vector-rendering command and order.
 flutter_launcher_icons:
-  # iOS and the legacy Android launcher: an accent superellipse whose corners
-  # carry ground. Opaque already, so remove_alpha_ios has nothing to strip and
-  # background_color_ios never comes into it.
   image_path: "assets/brand/icon-1024.png"
 
   android: true
-  # The project builds against flutter.minSdkVersion, which is 24 on Flutter
-  # 3.38.5. The package would otherwise assume 21 and write an extra set of
-  # legacy icons for API levels this application does not support.
+  # Keep the application's existing minimum supported Android version.
   min_sdk_android: 24
-  adaptive_icon_background: "#7B61FF"
+  adaptive_icon_background: "#FAF9F6"
   adaptive_icon_foreground: "assets/brand/icon-foreground-1024.png"
-  # The foreground is already drawn for the safe zone: the pin is 44 percent
-  # of the central 66 percent of the canvas, which is the icon a launcher mask
-  # shows. The package's default of 16 would inset that a second time and the
-  # pin would land at 30 percent of the visible icon rather than 44.
+  # The canonical mark is already sized to the central 66 percent safe frame.
   adaptive_icon_foreground_inset: 0
 
   ios: true
-  # The App Store rejects an icon with an alpha channel. The source has none;
-  # this is the guard that keeps it that way.
+  # The source is opaque Paper; iOS rejects an alpha channel in an app icon.
   remove_alpha_ios: true
 
   web:

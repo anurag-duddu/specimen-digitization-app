@@ -168,14 +168,39 @@ List<WidgetbookComponent> get foundationAssetComponents => [
     useCases: [
       story(
         'Owned mark and wordmark slot',
-        'Specimen identity replaces reference company logos. Host-supplied partner logos remain content slots with accessible names.',
-        (_) => const Wrap(
-          spacing: 24,
-          runSpacing: 24,
-          crossAxisAlignment: WrapCrossAlignment.center,
+        'The interlocking mark from the supplied brand reference. The app icon places the same artwork on Paper.',
+        (context) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            UiMark(label: 'Specimen digitization', size: 64),
-            Text('Specimen\nDigitization'),
+            Wrap(
+              spacing: context.ui.space.s4,
+              runSpacing: context.ui.space.s4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                const UiMark(label: 'Specimen Digitization logo', size: 96),
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Specimen', style: context.ui.type.title),
+                    Text('Digitization', style: context.ui.type.body),
+                  ],
+                ),
+              ],
+            ),
+            SizedBox(height: context.ui.space.s8),
+            Text('App icon', style: context.ui.type.label),
+            SizedBox(height: context.ui.space.s3),
+            Container(
+              decoration: ShapeDecoration(
+                color: context.ui.brand.paper,
+                shape: Squircle.border(context.ui.space.s6),
+              ),
+              child: const UiMark.appIcon(
+                label: 'Specimen Digitization app icon',
+                size: 128,
+              ),
+            ),
           ],
         ),
       ),

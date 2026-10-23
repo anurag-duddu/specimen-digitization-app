@@ -566,7 +566,7 @@
         "UiMark",
         "UiSocialProofSection"
       ],
-      "mapping": "Specimen owned identity replaces Untitled and sample-company marks. Partner/company marks are host-supplied accessible widgets with neutral named fallbacks; this is a reusable logo-content slot, not copied third-party artwork.",
+      "mapping": "The owner's three-ribbon interlocking Specimen mark replaces Untitled and sample-company marks. The retained owner primary/app-icon crops define the canonical SVG trace; Flutter paths and platform artwork derive from that source. UiMark.appIcon preserves the separate Amber-tip treatment on Paper. Partner/company marks are host-supplied accessible widgets with neutral named fallbacks; this is a reusable logo-content slot, not copied third-party artwork.",
       "remainingGaps": [
         "Full combinatorial visual parity, manual assistive technology and physical device acceptance are not confirmed."
       ]

@@ -194,23 +194,32 @@ without motion. Brand gradients are static; no drifting field, animated blur,
 parallax or decorative pulse is added. Primary actions cannot submit twice
 while busy.
 
-## 9. The retained mark and app icon
+## 9. The supplied mark and app icon
 
-The existing pin geometry remains: 24 dp disc, 16 dp pin, 2 dp shaft, 5 dp
-head, with the whole pin one dp above the geometric centre. The pin's box is
-y=3 through y=19, head centre y=5.5 and shaft end y=18 before its round cap.
-The disc is Iris; the pin is Obsidian. The monochrome version reads the
-mode's paper/ink roles in Flutter.
+The owner selected the interlocking three-ribbon mark from `SD_brand.png` on
+23 October 2026. The two outer ribbons are Obsidian and the inner fold carries
+the Amber/Iris gradient. The lower ribbon has an open counter. The former
+pin-in-a-disc was not the supplied identity and is retired.
 
-The app icon is a superellipse at exponent five. The pin is 44 percent of
-the visible icon frame: the central 66 percent of Android adaptive art and
-80 percent of maskable web art. Android 12 splash art places the disc inside
-the central two thirds so the platform mask preserves its head and tip.
-These are compatibility geometries, not a reinterpretation of the supplied
-brand logo. The mark does not animate or rotate.
+`design/brand-reference/owner-primary-mark.png` and `owner-app-icon.png` retain
+the owner's selected crops. `assets/brand/specimen-mark.svg` is the scalable
+trace and the single geometry source. `tool/brand/generate_flutter_mark.py`
+generates the Flutter paths; `tool/brand/render_mark.py` generates raster assets
+from that same SVG. Preserve the silhouette, open counter and gradient fold;
+do not substitute a Phosphor glyph or invent a new symbol.
 
-`assets/brand/pin.svg`, `foundation/mark.dart` and
-`tool/brand/render_mark.py` describe the same geometry.
+The app icon places the same mark on a Paper rounded square. Its middle ribbon
+ends in Amber, matching the separate app-icon crop; the primary mark ends in
+Obsidian. Both gradients include a muted fold shade derived from the same
+Amber, Iris and Obsidian seeds, not an additional interface color role.
+`UiMark.appIcon` selects the app-icon treatment for a caller-supplied Paper
+plate. Native/adaptive and maskable browser assets keep it within platform safe
+zones. Flutter dark
+surfaces use Paper outer ribbons for contrast, and the monochrome variant uses
+the current ink role for all three ribbons. The shape never mirrors, rotates
+or animates.
+
+`foundation/mark.dart` remains the shared runtime entry point.
 [The brand asset README](../assets/brand/README.md) documents regeneration and
 its platform checks. Native/browser backgrounds use the same Paper and
 Obsidian seeds as Flutter.
