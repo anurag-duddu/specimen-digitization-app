@@ -3,10 +3,23 @@
 One compare-and-set ledger adds every paid step's reservation before the call,
 alongside the run's own budget. A step whose reservation would cross the
 allowance is not called. Only a known, matching call receipt releases its own unused reservation.
+
+The ledger's head document holds the total and the effects it has not archived.
+Every save also stores the whole document as a version row (SaveDocumentV2), so
+a head that kept every effect grew those rows with the square of the program's
+paid steps (2,003 versions, 197 MB of JSON by 2026-10-20). A charge still writes
+the total and its effect together in one head save. After an ordinary save past
+HEAD_EFFECTS, effects move to one archive document each and leave the head
+(docs/execution/PROGRAM_LEDGER_ARCHIVE.md). An archive holds an
+effect before the head lets go of it and only ever moves forward (held, then
+settled), so an effect is the head's while the head holds it and its archive's
+after: read after the head, an archive is never older than that head. The
+monthly cap ledgers (tenant_budget.TenantLedger) archive the same way.
 """
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import NAMESPACE_URL, uuid5
@@ -15,10 +28,15 @@ from .domain import Scope
 from .lane_worker import stored_integer
 from .storage import Conflict, Missing, canonical_json
 
+LOGGER = logging.getLogger(__name__)
 LEDGER_KIND = "worker_cursor"  # The worker's own state documents, one actor only.
 ATTEMPTS = 5  # Collections may share the ledger; a conflict is read and retried.
 EXHAUSTED = "program_allowance_exhausted"
 UNAVAILABLE = "program_allowance_ledger_unavailable"
+ORDINARY, RESEARCH = "ordinary_effects", "research_effects"
+HEAD_EFFECTS = 16  # The head archives its effects once it holds more than this.
+ARCHIVE_BATCH = 64  # Effects archived per pass; a long legacy head drains over several.
+_UNARCHIVED = object()
 
 
 @dataclass(frozen=True)
@@ -31,7 +49,109 @@ class LegacyLedgerUnavailable(RuntimeError):
     """Missing original cumulative ledger is a typed operational HOLD."""
 
 
-class ProgramLedger:
+def _rank(family, effect):
+    """An effect's state, held 0 then settled 1; None when it cannot be archived."""
+    if not isinstance(effect, dict):
+        return None
+    if family == ORDINARY:
+        return 0 if effect.get("settled_micros") is None else 1
+    return {"held": 0, "settled": 1}.get(effect.get("status"))
+
+
+class ArchivedEffects:
+    """A head ledger whose effects past HEAD_EFFECTS move to archives (module
+    docstring). The ledger has ``repository``, ``scope``, ``ident`` and ``read()``;
+    the program's ledger and each monthly cap ledger (tenant_budget) are such."""
+
+    def archive_id(self, family, key):
+        """The one archive document of an effect, derived like the head's own id."""
+        return str(uuid5(NAMESPACE_URL, f"processing-lane-allowance-effect:{self.ident}/{family}/{key}"))
+
+    def effect(self, family, key, current=None):
+        """One effect: the head's while it holds it, else its archive's, else None.
+
+        The head is read first: an effect leaves it only once its archive holds
+        the same state, and an archive never moves back. A head that has never
+        let go of an effect carries no ``archives`` mark, so nothing is read.
+        """
+        current = self.read() if current is None else current
+        effects = current.get(family, {})
+        if not isinstance(effects, dict):
+            raise LegacyLedgerUnavailable(UNAVAILABLE)
+        if key in effects:
+            return effects[key]
+        if current.get("archives") is not True:
+            return None
+        try:
+            stored = self.repository.document(self.scope, LEDGER_KIND, self.archive_id(family, key))
+        except Missing:
+            return None
+        if ((stored.get("ledger"), stored.get("family"), stored.get("key")) != (self.ident, family, key)
+            or _rank(family, stored.get("effect")) is None):
+            raise LegacyLedgerUnavailable(UNAVAILABLE)
+        return stored["effect"]
+
+    def _archive_one(self, family, key, effect):
+        """Write one effect's state to its archive; True once the archive holds exactly it."""
+        rank = _rank(family, effect)
+        if rank is None:
+            return False  # A malformed effect stays in the head, which refuses it.
+        ident = self.archive_id(family, key)
+        payload = {"sensitive": False, "ledger": self.ident, "family": family, "key": key, "effect": effect}
+        try:
+            self.repository.put_document(self.scope, LEDGER_KIND, ident, payload, 0)
+            return True
+        except Conflict:
+            stored = self.repository.document(self.scope, LEDGER_KIND, ident)
+        if (stored.get("ledger"), stored.get("family"), stored.get("key")) != (self.ident, family, key):
+            return False
+        if stored.get("effect") == effect:
+            return True
+        # Only a held archive moves, forward to the settled state of the same charge.
+        if (_rank(family, stored.get("effect")) != 0 or rank != 1 or (family == ORDINARY and any(
+                stored["effect"].get(name) != effect.get(name) for name in ("reserved_micros", "allowance_micros")))):
+            return False
+        try:
+            self.repository.put_document(self.scope, LEDGER_KIND, ident, payload, stored_integer(stored["revision"]))
+        except Conflict:
+            return False
+        return True
+
+    def _archive(self, head):
+        """After a charge: past HEAD_EFFECTS, archive effects and drop them from the head.
+
+        The charge is already saved, so a failure here is only logged: every
+        effect not dropped stays in the head, which remains authoritative. Only
+        an effect still equal to its archived state leaves the head.
+        """
+        try:
+            pending = [(family, key, effect) for family in (ORDINARY, RESEARCH)
+                for key, effect in head.get(family, {}).items()]
+            if len(pending) <= HEAD_EFFECTS:
+                return
+            # A malformed effect stays in the head, which refuses it; it must not
+            # take a batch place every pass and hold the rest back.
+            batch = [item for item in pending if _rank(item[0], item[2]) is not None][:ARCHIVE_BATCH]
+            archived = {(family, key): effect for family, key, effect in batch
+                if self._archive_one(family, key, effect)}
+            for _ in range(ATTEMPTS):
+                kept = {family: {key: effect for key, effect in head[family].items()
+                        if archived.get((family, key), _UNARCHIVED) != effect}
+                    for family in (ORDINARY, RESEARCH) if family in head}
+                if all(len(kept[family]) == len(head[family]) for family in kept):
+                    return
+                try:
+                    # The only save that drops effects marks the head, for good.
+                    self.repository.put_document(self.scope, LEDGER_KIND, self.ident,
+                        {**head, **kept, "archives": True}, head["revision"])
+                    return
+                except Conflict:
+                    head = self.read()
+        except Exception as exc:  # noqa: BLE001 - archiving is housekeeping; the charge stands
+            LOGGER.warning("ledger archiving deferred: %s", type(exc).__name__)
+
+
+class ProgramLedger(ArchivedEffects):
     def __init__(self, repository, scope, *, clock=None):
         self.repository, self.scope = repository, scope
         self.clock = clock or (lambda: datetime.now(timezone.utc))
@@ -79,10 +199,10 @@ class ProgramLedger:
         for _ in range(ATTEMPTS):
             try:
                 current = self.read()
-                entries = dict(current.get("ordinary_effects", {}))
+                entries = dict(current.get(ORDINARY, {}))
+                previous = self.effect(ORDINARY, key, current)
             except (Conflict, LegacyLedgerUnavailable, TypeError, ValueError):
                 return Reservation(UNAVAILABLE, None)
-            previous = entries.get(key)
             if previous is not None:
                 if (not isinstance(previous, dict) or any(previous.get(name) != value
                     for name, value in envelope.items())):
@@ -99,9 +219,10 @@ class ProgramLedger:
             try:
                 stored = self.repository.put_document(self.scope, LEDGER_KIND, self.ident,
                     {**current, "sensitive": False, "reserved_total_micros": total,
-                        "last": last, "ordinary_effects": entries}, current["revision"])
+                        "last": last, ORDINARY: entries}, current["revision"])
             except Conflict:
                 continue
+            self._archive(stored)
             return Reservation(None, self._position({**current, "reserved_total_micros": total,
                 "revision": stored["revision"]}, allowance_micros))
         return Reservation(UNAVAILABLE, None)
@@ -121,10 +242,10 @@ class ProgramLedger:
         for _ in range(ATTEMPTS):
             try:
                 current = self.read()
-                entries = dict(current.get("ordinary_effects", {}))
+                entries = dict(current.get(ORDINARY, {}))
+                previous = self.effect(ORDINARY, key, current)
             except (Conflict, LegacyLedgerUnavailable, TypeError, ValueError):
                 return None
-            previous = entries.get(key)
             if (not isinstance(previous, dict) or previous.get("reserved_micros") != reserved
                 or previous.get("allowance_micros") != allowance_micros):
                 return None
@@ -139,9 +260,10 @@ class ProgramLedger:
             try:
                 stored = self.repository.put_document(self.scope, LEDGER_KIND, self.ident,
                     {**current, "sensitive": False, "reserved_total_micros": total,
-                        "last": last, "ordinary_effects": entries}, current["revision"])
+                        "last": last, ORDINARY: entries}, current["revision"])
             except Conflict:
                 continue
+            self._archive(stored)
             return self._position({**current, "reserved_total_micros": total,
                 "revision": stored["revision"]}, allowance_micros)
         return None
@@ -158,8 +280,8 @@ class ProgramLedger:
             raise ValueError("Invalid research program liability")
         for _ in range(ATTEMPTS):
             current = self.read()
-            entries = dict(current.get("research_effects", {}))
-            previous = entries.get(key)
+            entries = dict(current.get(RESEARCH, {}))
+            previous = self.effect(RESEARCH, key, current)
             if (not historical and not settle and current["reserved_total_micros"] > allowance_micros):
                 raise LegacyLedgerUnavailable(EXHAUSTED)
             if previous is not None:
@@ -181,8 +303,10 @@ class ProgramLedger:
                 raise LegacyLedgerUnavailable(EXHAUSTED)
             entries[key] = {"micros": micros, "status": "settled" if settle else "held"}
             try:
+                # A research charge runs inside its send's lease, so it does not
+                # wait for archiving; the next ordinary save archives both families.
                 self.repository.put_document(self.scope, LEDGER_KIND, self.ident,
-                    {**current, "research_effects": entries, "reserved_total_micros": total}, current["revision"])
+                    {**current, RESEARCH: entries, "reserved_total_micros": total}, current["revision"])
                 return
             except Conflict:
                 continue
