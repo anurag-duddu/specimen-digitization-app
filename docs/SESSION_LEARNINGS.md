@@ -24488,6 +24488,76 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   remaining actionable findings, including origin middleware/frame policy and
   token containment. Commit/exact-head G51 approval and protected GitHub checks
   follow; live nested Google acceptance is still Not confirmed at this point.
+- Committed `dae93552d8eb8c62129916c38244ddc65cad8179` and opened PR #400
+  (`https://github.com/anurag-duddu/specimen-digitization-app/pull/400`).
+  Independent reviewer `/root/polish_independent_review` issued exact-head G51
+  APPROVED against `473b48ea93258b9ea9c26b71f152c732087441e4`, confirming the
+  committed source, clean worktree at review, append-only log preservation and
+  complete canonical results. Hosted PR run `39729386256` and runtime candidate
+  run `39729386261` are pending. Merge, protected deployment and live nested
+  Google acceptance are distinct and Not confirmed here.
+- Before merge: PR #400 remains exactly approved head `dae93552d8eb8c62129916c38244ddc65cad8179`,
+  GitHub reports CLEAN/MERGEABLE, all three protected checks are SUCCESS, and
+  all other hosted PR checks have completed successfully. CI/CD `39729386256`
+  includes full Python exact-once reconciliation, actual SQL/Storage engine
+  tier, web checks/build and Android/iOS builds; runtime candidate
+  `39729386261` is successful. Native builds are compile evidence only.
+  Proceeding with the authorized protected merge; production/live acceptance
+  remains separate until main workflows and public markers pass.
+- PR #400 merged as `357f9d0dee7dd4b397adfde3f4f6d3228e553941` at
+  `2026-10-22T05:54:22Z`. Protected main workflows started: CI/CD
+  `39730702189`, Data release `39730702278`, Runtime release `39730702201`,
+  and runtime candidate `39730702287`. A started workflow is not deployment;
+  awaiting exact-SHA production markers and successful smoke results.
+- All three main releases completed successfully on merge `357f9d0dee7dd4b397adfde3f4f6d3228e553941`:
+  Hosting `39730702189` attempt 1, Data `39730702278`, Runtime `39730702201`.
+  Public deployment.json matches SHA/run/attempt; API /version matches SHA and
+  production mode; protected Hosting and runtime smoke checks succeeded.
+- Live acceptance FAILED after deployment: actual Gmail Intake E2E still
+  restored its two saved photos, and connected Choose photos opened inline
+  without a new window, but Google /picker returned HTTP403. Screenshot:
+  `/private/tmp/intake-drive-inline-google403-20261022.png`. Cancel returned
+  cleanly; a recorded retry reproduced403. No Submit or provider-original
+  modification occurred. Therefore deployed does not mean working/accepted.
+- Diagnosis used visible Chrome Network metadata only, with credential-bearing
+  URL values suppressed: raw toUri produced protocol/origin/oauth_token/
+  developerKey/multiselectEnabled/nav but omitted appId, hostId and rpcService.
+  Inspection of the public Google SDK confirmed build() supplies appId/hostId/
+  relay/ifls, then Picker registers RPC and adds rpcService/rpctoken/thirdParty;
+  toUri alone serializes the incomplete builder. This matches the actual403.
+  Google's iframe example did not establish sufficient live compatibility.
+  Fix forward using the fully initialized SDK Picker inside the same API frame;
+  do not widen permissions/referrers or weaken sandbox based on this failure.
+- Fix-forward branch `codex/intake-drive-sdk-inline` starts from deployed
+  `357f9d0dee7dd4b397adfde3f4f6d3228e553941`; written implementation decision
+  appended to `docs/execution/INTAKE_DRIVE_INLINE_20261022.md` before edits.
+  The SDK's fully initialized dialog is constructed inside the same API frame,
+  readiness waits for its LOADED callback, and cleanup exceptions cannot suppress
+  terminal notifications. No key, scope, sandbox, parent-origin or IAM change.
+- Executed the actual public Google SDK with sentinel credentials in isolated
+  Chrome and blocked outbound provider requests. Raw toUri omits appId and RPC
+  fields; constructed Picker includes appId/hostId/parent/ifls/rpcService/
+  rpctoken/thirdParty/usegapi, registers RPC and forwards LOADED; dispose exists.
+  Fresh builds with real wrapper CSS at 900x560,390x260,280x240 start at origin
+  and allow scrolling to right/bottom edges. An earlier negative-top measurement
+  carried scroll between cases; fresh-instance measurements corrected that
+  harness artifact. Log `/private/tmp/specimen-picker-sdk-characterization.log`.
+  This characterizes SDK behavior, not account or provider acceptance.
+- Focused backend suite passed148 tests (27 embed cases,14 executable page-JS
+  scenarios), one existing Starlette warning; log
+  `/private/tmp/specimen-picker-sdk-inline-combined.log`. The new protocol
+  regression fails the old page at missing appId and passes the repair. Source
+  review has no findings; corrected compact evidence and exact-head review are
+  being confirmed. Full canonical gate follows on the frozen correction.
+- Correction canonical `scripts/ci/verify.sh` exited0 on the frozen tree;
+  `/private/tmp/specimen-drive-sdk-inline-verify.log`. Six Python shards passed
+  19,272 tests /50 skips, all19,322 collected nodes reconciled exactly once;
+  design system1,312 passed; app3,594 passed/7skipped; both analyzers clean;
+  optimized browser20checks, formatting633files/0changes, release web build and
+  route/security smoke passed. Independent reviewer cleared final source and
+  fresh compact-SDK measurements with no findings. Current main remains base
+  `357f9d0dee7dd4b397adfde3f4f6d3228e553941`. Exact-head approval and hosted
+  checks follow; live repaired Google selection remains Not confirmed.
 
 ## 2026-10-11 - A denial banner carries only its cause and fix, in the app's words
 

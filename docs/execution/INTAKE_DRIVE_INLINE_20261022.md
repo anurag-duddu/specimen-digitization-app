@@ -72,3 +72,29 @@ custom all-Drive browser with a selected-file-only grant.
   merge and all three releases, public web/API SHA verification. No hand deploy,
   permission expansion or required-check bypass. Append actual outcome and any
   remaining native/provider limitations to SESSION_LEARNINGS.md.
+
+## Live-provider correction: initialize the complete SDK Picker
+
+The first protected release of this plan opened the iframe in the correct
+workspace, but actual Google selection returned HTTP403. The visible request
+omitted appId, hostId and rpcService. Public SDK inspection established that
+`toUri()` serializes the builder without the application/RPC initialization done
+by `build()`, despite the guide's raw-URI example. Local stubs had incorrectly
+accepted the incomplete integration.
+
+Before the correction, the implementation decision is:
+
+- Construct the fully initialized Picker with `build()` and show it **inside the
+  existing API-origin iframe**. This SDK dialog is within the page and must not
+  open a browser window. Use documented sizing for the available frame.
+- Retain exact app-origin/session binding, isolated provider credentials,
+  sandbox, restricted keys, existing scopes and authoritative reconciliation.
+- Treat the SDK's loaded event as readiness; iframe load alone also fires for a
+  Google403 page and must not claim a usable chooser.
+- Add a regression matching the actual SDK distinction: raw serialization lacks
+  application/RPC fields and callback registration; construction supplies them.
+  Preserve executable cancellation/error/selection/expiry coverage.
+- Repeat focused tests, required canonical verification, exact-head review and
+  protected releases. Confirm genuine Gmail rendering, selection, cancellation
+  and retry before declaring this correction accepted. Retain the two-photo
+  private draft and do not Submit.
