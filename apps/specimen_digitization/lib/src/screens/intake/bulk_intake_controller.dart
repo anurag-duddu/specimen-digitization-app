@@ -803,7 +803,7 @@ class BulkIntakeController extends ChangeNotifier {
           // and hash are immutable. A retake gets a fresh identity.
           final previous = registered ? null : prior;
           final clientId = previous?['client_id'] as String? ?? id;
-          final registeredReplacementId = registered && prior != null
+          final registeredReplacementId = registered
               ? prior['item_id'] as String?
               : null;
           final replacementTarget = replacesId ?? registeredReplacementId;

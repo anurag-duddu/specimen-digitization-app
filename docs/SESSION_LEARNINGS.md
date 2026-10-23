@@ -24749,3 +24749,50 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   Current canonical run began before this preview fix; remaining checks may see
   the final source, so it is not exact-head evidence without rerunning the earlier
   affected gates. Final verification and physical preview retest remain pending.
+
+### 2026-10-23 — Native Android intake handoff and final local gates (task01a149fc)
+
+- Same task/worktree/branch; implementation heads1e3db26f5,05fee3fcd,ca7e18396.
+  Independent G51 reviewer approved the full branch atca7e1839639596932ad73424139300dc0f531850
+  and the two subsequent analyzer corrections: remove a redundant null check
+  implied by registered, and accept captureAttempt in the retake test override.
+  Exact final commit acknowledgement follows commit creation.
+- Canonical scripts/ci/verify.sh at specimen-cross-platform-verify-frozen.log
+  passed all six unchanged Python shards:1839/2183/3280/4592/3889/3489 passed,
+  27/4/7/1/3/8 skipped, then stopped on the two analyzer findings above. This
+  invocation is not a pass. After fixing them, reran all affected/remaining
+  gates with frozen source: all-files pre-commit, UI strings, both fatal-info
+  analyzers, design-system1312 tests, application3631 tests with7 skipped,
+  actual dart2js/Chrome OAuth and inline-Picker contract probe, Dart format,
+  release web build, and loopback route/security-header smoke. All passed.
+  Formatter also corrected the ignored local Firebase SDK configuration;
+  no SDK credentials/configuration were added to tracked files. Logs are in
+  /private/tmp/specimen-cross-platform-remaining-gates.log and
+  /private/tmp/specimen-cross-platform-web-final.log. All required local gate
+  stages passed across these runs; no assertions, goldens or checks were waived.
+- Physical Nothing A142/API36 build12 verified Google Picker selection returns
+  automatically to the native source sheet after the nested Chrome task. No
+  manual Auth Tab close or app switch was needed. Existing Gmail consent scopes
+  remained unchanged. Prior build11 separately verified Dropbox authorization,
+  folder browsing and selection against the live account.
+- Build13 fromca7e18396 installed in place with preserved signer/package/data;
+  APK SHA2562dc8f6a1d3b1b55b2c0dc5477da140e410721361acb62405acb333d87c2d3461.
+  Restored the real mixed-source327/326 draft. Next-photo review now clears stale
+  pixels immediately and loads the correctly named photo. Submitted this separate
+  two-photo batch once; intake progress showed0of2 waiting, then2of2 finished and
+  2sent to pipeline. Both appeared in the existing specimen list and327 opened
+  its scientific review screen. This confirms intake handoff, not completion of
+  every scientific processing stage. Original demo328/330 was reopened afterward
+  and remains Saved/unsubmitted. Provider originals were untouched.
+- Screenshots: connector-polish-20261021/android-drive-return-20261023.png,
+  android-review-next-loading-20261023.png, android-submission-start-20261023.png,
+  android-two-sent-to-pipeline-20261023.png and
+  android-original-demo-preserved-20261023.png under this task's visualizations.
+- iOS native code compiled in the unsigned generic iPhoneOS build, but the only
+  available same-identity Personal Team profile lacks Associated Domains and
+  expires2026-10-24. Physical iOS installation/provider/camera/submit acceptance
+  is Not confirmed. No entitlement was removed, app identity changed or installed
+  app erased. Thirty real camera captures,100/500 real-source batches, physical
+  Safari, VoiceOver/TalkBack and managed-account approval scenarios are also
+  Not confirmed; automated coverage is not substituted for those device results.
+  Merge, protected deployment and mobile distribution remain separate outcomes.
