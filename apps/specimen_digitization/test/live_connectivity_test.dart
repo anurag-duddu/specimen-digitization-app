@@ -156,7 +156,7 @@ void main() {
       final WorkspaceError failure = controller.error!;
       expect(failure.clearsAccess, isTrue);
       expect(failure.actionLabel, 'Check access again');
-      expect(failure.message, contains('could not be verified'));
+      expect(failure.message, serverRefusalMessage);
 
       // Nothing editable survives a denial.
       expect(controller.items, isEmpty);
@@ -170,11 +170,10 @@ void main() {
         // `email_verification_required` for a cryptographically verified
         // identity whose address is not verified. The client normally never
         // reaches this, because `auth.dart` gates on the local flag before it
-        // calls the API at all; it reaches it when that flag is stale. The
-        // banner does not say "verify your address" in so many words, and its
-        // recovery is the access recheck, which refreshes the user and routes
-        // to the verification screen. Recorded rather than reworded here: the
-        // sentence is the entry screens' to own.
+        // calls the API at all; it reaches it when that flag is stale. Its
+        // recovery is the access recheck. The banner gives the server refusal
+        // sentence rather than the service's own: the server words a refusal
+        // for its log, and can send a bare code (`denial_banner_test.dart`).
         final WorkspaceController controller = await failedQueue(
           (http.Request request) async => http.Response(
             error(
@@ -187,11 +186,7 @@ void main() {
         final WorkspaceError failure = controller.error!;
         expect(failure.clearsAccess, isTrue);
         expect(failure.actionLabel, 'Check access again');
-        expect(
-          failure.message,
-          contains('Verify your museum address before continuing.'),
-          reason: 'the service said what was wrong and the banner dropped it',
-        );
+        expect(failure.message, serverRefusalMessage);
       },
     );
 

@@ -36,6 +36,11 @@ enum WorkspaceDestination {
   intake,
 }
 
+/// The banner for a refusal the server worded. Its text is written for the
+/// server's log or is a bare code, so it never reaches the banner itself.
+const String serverRefusalMessage =
+    'The server refused access. Check access again, or ask an administrator.';
+
 /// A screen level failure: what happened, and the one action that recovers it
 /// (screen blueprints, section 11).
 @immutable
@@ -1644,15 +1649,16 @@ class WorkspaceController extends ChangeNotifier {
       final canReload =
           failure?.code == 'app_check_unavailable' && reloadApp != null;
       return WorkspaceError(
+        // A refusal lands on the setup screen, whose title already says
+        // collection access could not be verified. The banner carries only
+        // the cause and its fix, in this app's words: the refusal's own
+        // message, or for one the server worded, the server refusal sentence.
         message: session is LocalFixtureSession
-            ? 'The local server did not authorize this request. Your collection '
-                  'access is unverified, so sign out and sign in with the '
-                  'current fixture token.'
-            // App verification's messages already say access was not
-            // checked. Another sentence would break the banner budget.
-            : failure!.code == 'app_check_unavailable'
-            ? failure.message
-            : '${failure.message} Your collection access could not be verified.',
+            ? 'The local server did not authorize this request. Sign out, '
+                  'then sign in with the current fixture token.'
+            : failure!.fromServer
+            ? serverRefusalMessage
+            : failure.message,
         actionLabel: canReload ? 'Reload app' : 'Check access again',
         action: canReload ? reloadApp! : checkAccess,
         clearsAccess: true,
