@@ -693,8 +693,8 @@ def report_caps(caps_answer, collections, month, groups):
     """The cost report's caps for ``month`` (api.py, GET .../costs): positions
     from the caps as ``repository.tenant_caps`` returns them, the report's
     ``collections`` ({"collection_id", "parent_id"}) and CostTotalsV1's
-    ``groups``. Spent is the month's cost entries, settled and held. None when
-    no cap is set."""
+    ``groups``. Spent is the month's paid-call cost entries, settled and held;
+    allocation rows are left out. None when no cap is set."""
     from .cost_ledger import _amount
 
     caps = {}
@@ -707,7 +707,9 @@ def report_caps(caps_answer, collections, month, groups):
         return None
     spent = {}
     for group in groups:
-        if group["month"] == month:
+        # Paid calls only: a cap governs a run's reservations, and shared-cost
+        # allocation rows (cost_allocation), credits among them, are no run's.
+        if group["month"] == month and group.get("source") == "paid_call":
             ident = _uuid(group["collection_id"])
             spent[ident] = spent.get(ident, 0) + _amount(group)["cost_micros"]
     return cap_positions(caps, {item["collection_id"]: item["parent_id"] for item in collections},

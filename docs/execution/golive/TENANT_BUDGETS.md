@@ -243,8 +243,10 @@ an active admin row in that collection, otherwise 503 with the message
 and each collection's `cap` with the cap's position for the current UTC month,
 whatever range was asked for: `{"monthly_cap_micros", "month", "spent_micros",
 "remaining_micros"}`, null where no cap is set (`tenant_budget.report_caps`).
-Spent is that month's cost entries, settled and held, and a collection's
-counts every descendant's. It can trail the worker's ledger by reservations in
+Spent is that month's paid-call cost entries, settled and held, and a
+collection's counts every descendant's; the shared-cost allocation rows
+(COST_METER.md, "Shared Google costs"), credits among them, are no run's
+reservation and are left out. It can trail the worker's ledger by reservations in
 flight, which the ledger holds before a cost entry exists. The caps are read
 as the membership the PUT route acts as, the caller's first active admin
 membership in the organization; when the range does not include the current

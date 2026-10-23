@@ -884,8 +884,15 @@ def create_app(
         if not callable(totals):
             raise OperationalBlock("cost_meter_unavailable")
         read = totals(organization_id, first, last)
+        # How far the shared Google costs are allocated (cost_allocation); null
+        # for a repository without the allocation read.
+        status, meter = getattr(repository, "cost_allocation_status", None), None
         try:
-            report = cost_report(organization_id, first, last, read["collections"], read["groups"])
+            if callable(status):
+                from .cost_allocation import meter as allocation_meter
+
+                meter = allocation_meter(status(organization_id)["latest_occurred_at"], datetime.now(timezone.utc))
+            report = cost_report(organization_id, first, last, read["collections"], read["groups"], meter)
         except (ValueError, KeyError, TypeError) as exc:
             code = "cost_collection_tree_invalid" if str(exc) == "collection_tree_cycle" else "cost_meter_unavailable"
             raise OperationalBlock(code) from exc
