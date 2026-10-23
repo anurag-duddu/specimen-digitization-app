@@ -133,16 +133,15 @@ class NavDisc extends StatelessWidget {
     );
 
     if (!showLabel) {
-      // A disc draws no words, so the label reaches a reviewer two ways at
-      // once. `UiTooltip` draws it after a 400 ms hover and on a long press,
-      // which is the pointer and touch answer; `Semantics(tooltip:)` carries
-      // the same string to the platform, and `MergeSemantics` folds it into
-      // the control's own node, so a screen reader reads one destination
-      // rather than a tooltip and a tab.
+      // The tab's semantics label already names its destination. Keep the
+      // visual hover/long-press tooltip out of semantics so native bridges
+      // do not announce that name twice, at rest or while the pane is open.
+      // Merge the wrapper into the tab so it stays a direct tab-list child.
       control = MergeSemantics(
-        child: Semantics(
-          tooltip: destination.label,
-          child: UiTooltip(message: destination.label, child: control),
+        child: UiTooltip(
+          message: destination.label,
+          excludeSemantics: true,
+          child: control,
         ),
       );
     }

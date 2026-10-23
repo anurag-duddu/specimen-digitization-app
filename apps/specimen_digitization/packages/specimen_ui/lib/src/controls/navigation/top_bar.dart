@@ -68,7 +68,6 @@ class UiTopBarAction extends StatelessWidget {
   Widget build(BuildContext context) => UiIconButton(
     icon: icon,
     semanticsLabel: label,
-    tooltip: label,
     onPressed: onPressed,
     disabledReason: disabledReason,
   );

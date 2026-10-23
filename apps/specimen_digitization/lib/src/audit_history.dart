@@ -375,7 +375,7 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Semantics(header: true, child: Text(title, style: ui.type.title)),
+        UiSectionHeader(title: title, role: UiSectionHeaderRole.card),
         SizedBox(height: ui.space.s2),
         ...children,
       ],

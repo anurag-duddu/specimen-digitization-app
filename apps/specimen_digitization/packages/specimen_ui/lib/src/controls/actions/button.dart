@@ -227,8 +227,9 @@ class UiButtonStyle {
 ///
 /// The label is a verb first, two to four words, with no trailing punctuation
 /// (02 section 4.3). Supply [busyLabel] for a pending action; the button reserves
-/// its label and progress geometry before work begins. Without a busy label or
-/// leading glyph, a slim local progress mark preserves the visible action.
+/// the larger complete content width and centers only visible elements.
+/// Without a busy label or leading glyph, a slim local progress mark preserves
+/// the visible action.
 class UiButton extends StatelessWidget {
   /// A button labelled [label] that does [onPressed].
   const UiButton({
@@ -279,11 +280,14 @@ class UiButton extends StatelessWidget {
   final bool loading;
 
   /// The visible pending label. Keep [label] unchanged when starting work.
-  /// Supplying this reserves the wider label and a leading progress slot in
-  /// both states, so neighboring actions stay in place.
+  /// Supplying this reserves the larger complete row in both states, so
+  /// neighboring actions stay in place. The idle label stays centered without
+  /// an empty progress slot; the ring appears only while loading.
   final String? busyLabel;
 
   bool get _hasLeadingSlot => leading != null || busyLabel != null;
+  bool get _showsLeadingSlot =>
+      leading != null || (loading && busyLabel != null);
   String get _visibleLabel => loading ? (busyLabel ?? label) : label;
 
   /// What the ring would be called if anything read it.
@@ -343,19 +347,27 @@ class UiButton extends StatelessWidget {
     UiThemeData ui,
     UiButtonStyle style,
   ) {
-    // The leading slot is a fixed box in both states, so a button that starts
-    // loading is exactly as wide as it was (10 section 4.1).
-    final double slot = ui.space.iconInline + style.gap;
     return math.max(
       UiDensity.hitBox,
-      math.max(
-            measureLabel(context, label, style.label).width,
-            measureLabel(context, busyLabel ?? label, style.label).width,
-          ) +
-          (_hasLeadingSlot ? slot : 0) +
-          (trailing != null ? slot : 0) +
-          style.padding.horizontal,
+      _contentWidth(context, ui, style) + style.padding.horizontal,
     );
+  }
+
+  double _contentWidth(
+    BuildContext context,
+    UiThemeData ui,
+    UiButtonStyle style,
+  ) {
+    // Reserve complete states, not a hidden icon beside the idle label or
+    // the widest text box inside the visible row. Each row centers itself.
+    final double slot = ui.space.iconInline + style.gap;
+    final double resting =
+        measureLabel(context, label, style.label).width +
+        (leading != null ? slot : 0);
+    final double pending =
+        measureLabel(context, busyLabel ?? label, style.label).width +
+        (_hasLeadingSlot ? slot : 0);
+    return math.max(resting, pending) + (trailing != null ? slot : 0);
   }
 
   @override
@@ -368,11 +380,9 @@ class UiButton extends StatelessWidget {
       loading: loading,
       textScaler: MediaQuery.textScalerOf(context),
     );
-    // 11 section 3.3 gives a button no compact variant: it keeps its width and
-    // the parent arranges it. One declared variant is therefore the whole of
-    // its fit policy, and `lastResort` is the moment the parent gave it less
-    // than it needs. The label then ends in an ellipsis, which `UiLabel` does,
-    // and the tooltip carries the whole of it, which is this.
+    // The parent arranges buttons using their preferred complete width. When
+    // it gives one less room, decorative glyphs and then padding give way;
+    // the label ellipsises and this tooltip exposes the complete action.
     return FitBuilder(
       variants: <FitVariant>[
         FitVariant(
@@ -390,7 +400,7 @@ class UiButton extends StatelessWidget {
             // control is what the pointer is over, and a tap has to reach the
             // button underneath rather than the tooltip on top of it.
             return lastResort
-                ? UiTooltip(message: label, child: capsule)
+                ? UiTooltip(message: _visibleLabel, child: capsule)
                 : capsule;
           },
         ),
@@ -428,77 +438,7 @@ class UiButton extends StatelessWidget {
           ),
           child: ConstrainedBox(
             constraints: BoxConstraints(minHeight: style.minHeight),
-            child: Padding(
-              padding: style.padding,
-              child: Stack(
-                alignment: Alignment.center,
-                children: <Widget>[
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: <Widget>[
-                      if (_hasLeadingSlot) ...<Widget>[
-                        _LeadingSlot(
-                          size: ui.space.iconInline,
-                          child: loading
-                              ? UiProgress.ring(
-                                  semanticsLabel: _workingLabel,
-                                  size: UiProgressSize.small,
-                                  color: foreground,
-                                )
-                              : leading == null
-                              ? const SizedBox.shrink()
-                              : UiIcon(
-                                  leading!,
-                                  size: UiIconSize.inline,
-                                  color: foreground,
-                                ),
-                        ),
-                        SizedBox(width: style.gap),
-                      ],
-                      Flexible(
-                        child: SizedBox(
-                          width: math.max(
-                            measureLabel(context, label, style.label).width,
-                            measureLabel(
-                              context,
-                              busyLabel ?? label,
-                              style.label,
-                            ).width,
-                          ),
-                          child: UiLabel(
-                            _visibleLabel,
-                            style: style.label.copyWith(color: foreground),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ),
-                      if (trailing != null) ...<Widget>[
-                        SizedBox(width: style.gap),
-                        UiIcon(
-                          trailing!,
-                          size: UiIconSize.inline,
-                          color: foreground,
-                        ),
-                      ],
-                    ],
-                  ),
-                  if (loading && !_hasLeadingSlot)
-                    Positioned(
-                      bottom: -ui.space.s1,
-                      left: 0,
-                      right: 0,
-                      child: SizedBox(
-                        height: ui.shape.stroke.emphasis,
-                        child: UiProgress.bar(
-                          semanticsLabel: _workingLabel,
-                          color: foreground,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
+            child: _content(context, ui, style, foreground),
           ),
         );
         if (!expand) return visual;
@@ -511,6 +451,98 @@ class UiButton extends StatelessWidget {
       },
     );
   }
+
+  Widget _content(
+    BuildContext context,
+    UiThemeData ui,
+    UiButtonStyle style,
+    Color foreground,
+  ) => LayoutBuilder(
+    builder: (context, constraints) {
+      final requestedPadding = style.padding.resolve(
+        Directionality.of(context),
+      );
+      final minimumLabel = measureLabel(context, '…', style.label).width;
+      final inset = constraints.hasBoundedWidth
+          ? math.min(
+              requestedPadding.left,
+              math.max(0.0, (constraints.maxWidth - minimumLabel) / 2),
+            )
+          : requestedPadding.left;
+      final available = constraints.maxWidth - inset * 2;
+      final slot = ui.space.iconInline + style.gap;
+      var showLeading = _showsLeadingSlot;
+      var showTrailing = trailing != null;
+      double requiredWidth() =>
+          minimumLabel + (showLeading ? slot : 0) + (showTrailing ? slot : 0);
+      // Decorative glyphs give way before the action becomes unreadable in
+      // a tight host. Busy semantics and the local progress bar remain.
+      if (requiredWidth() > available) showTrailing = false;
+      if (requiredWidth() > available) showLeading = false;
+      return Padding(
+        padding: EdgeInsets.symmetric(horizontal: inset),
+        child: Stack(
+          alignment: Alignment.center,
+          children: <Widget>[
+            SizedBox(
+              width: _contentWidth(context, ui, style),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: <Widget>[
+                  if (showLeading) ...<Widget>[
+                    _LeadingSlot(
+                      size: ui.space.iconInline,
+                      child: loading
+                          ? UiProgress.ring(
+                              semanticsLabel: _workingLabel,
+                              size: UiProgressSize.small,
+                              color: foreground,
+                            )
+                          : UiIcon(
+                              leading!,
+                              size: UiIconSize.inline,
+                              color: foreground,
+                            ),
+                    ),
+                    SizedBox(width: style.gap),
+                  ],
+                  Flexible(
+                    child: UiLabel(
+                      _visibleLabel,
+                      style: style.label.copyWith(color: foreground),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  if (showTrailing) ...<Widget>[
+                    SizedBox(width: style.gap),
+                    UiIcon(
+                      trailing!,
+                      size: UiIconSize.inline,
+                      color: foreground,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            if (loading && !showLeading)
+              Positioned(
+                bottom: ui.space.s1,
+                left: 0,
+                right: 0,
+                child: SizedBox(
+                  height: ui.shape.stroke.emphasis,
+                  child: UiProgress.bar(
+                    semanticsLabel: _workingLabel,
+                    color: foreground,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      );
+    },
+  );
 }
 
 /// A fixed box for the leading glyph, so the ring and the glyph occupy the

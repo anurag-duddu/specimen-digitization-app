@@ -170,19 +170,10 @@ class _SourcesHeader extends StatelessWidget {
   final VoidCallback? onUpload;
 
   @override
-  Widget build(BuildContext context) => Wrap(
-    alignment: WrapAlignment.spaceBetween,
-    crossAxisAlignment: WrapCrossAlignment.center,
-    spacing: context.ui.space.s4,
-    runSpacing: context.ui.space.s2,
-    children: [
-      Semantics(
-        header: true,
-        child: Text(
-          SourcesScreen.title,
-          style: context.ui.type.headline.copyWith(color: context.ui.color.ink),
-        ),
-      ),
+  Widget build(BuildContext context) => UiSectionHeader(
+    title: SourcesScreen.title,
+    role: UiSectionHeaderRole.page,
+    actions: [
       if (onUpload != null)
         UiButton(
           label: SourcesScreenCopy.uploadLabel,

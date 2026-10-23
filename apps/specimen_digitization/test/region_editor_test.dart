@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/region_editor.dart';
 import 'package:specimen_digitization/src/source_pixels.dart';
+import 'package:specimen_digitization/src/theme/app_theme.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import 'ui_finders.dart';
@@ -55,6 +56,62 @@ Widget opener(String label, Future<void> Function(BuildContext) onPressed) =>
     );
 
 void main() {
+  for (final dark in [false, true]) {
+    testWidgets(
+      '${dark ? 'dark' : 'light'} region handles retain the accessible accent casing',
+      (tester) async {
+        useWindow(tester, largeWindow);
+        await tester.pumpWidget(
+          workbenchHost(
+            RegionEditorBody(
+              regions: const <Json>[
+                <String, dynamic>{
+                  'region_id': 'synthetic-region',
+                  'bbox': <int>[100, 52, 700, 312],
+                  'order': 0,
+                },
+              ],
+              asset: <String, dynamic>{
+                'width': 1000,
+                'height': 520,
+                'preview_bytes': File(
+                  'test/fixtures/synthetic-wide-label.png',
+                ).readAsBytesSync(),
+              },
+            ),
+            theme: dark ? AppTheme.dark() : AppTheme.light(),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final handles = find.bySemanticsLabel(
+          RegExp('Label 1 (top|bottom) (left|right) corner'),
+        );
+        expect(handles, findsNWidgets(4));
+        for (final element in handles.evaluate()) {
+          final handle = find.byElementPredicate((value) => value == element);
+          final box = tester.widget<DecoratedBox>(
+            find.descendant(of: handle, matching: find.byType(DecoratedBox)),
+          );
+          final decoration = box.decoration as ShapeDecoration;
+          final casing = (decoration.shape as OutlinedBorder).side.color;
+          final colors = element.ui.color;
+          expect(decoration.color, colors.accent);
+          expect(casing, colors.onAccent);
+          final luminances = <double>[
+            decoration.color!.computeLuminance(),
+            casing.computeLuminance(),
+          ]..sort();
+          expect(
+            (luminances.last + 0.05) / (luminances.first + 0.05),
+            greaterThanOrEqualTo(4.5),
+            reason:
+                'The selected marker must remain distinct on source pixels.',
+          );
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
   testWidgets(
     'label rotation retains original bounds and invalid edits cannot save',
     (tester) async {

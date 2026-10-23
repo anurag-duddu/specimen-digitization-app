@@ -1,10 +1,6 @@
-// The mark's specimen sheet (09 section 9).
-//
-// Both variants at the three sizes the product draws the mark at: 24, the
-// size 09 states it at; 40, a decorative glyph's size (09 section 7); and 96,
-// where the geometry is large enough to read by eye. Light and dark, because
-// the monochrome variant inverts with the mode while the accent one does not,
-// and that difference is the thing a reviewer is being shown.
+// All three treatments of the supplied mark at 24, 40 and 96 dp.
+// Primary and mono adapt to the theme; app-icon artwork keeps Obsidian and
+// its Amber tip on a Paper plate in both modes.
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -13,21 +9,36 @@ import 'package:specimen_ui/specimen_ui.dart';
 import '../harness/control_contract.dart';
 
 const Key _sheet = Key('mark specimen');
-const Size _window = Size(280, 280);
+const Size _window = Size(320, 420);
 const List<double> _sizes = <double>[24, 40, 96];
 const double _gutter = 24;
 
-Widget _row({required bool mono}) => Row(
-  mainAxisAlignment: MainAxisAlignment.center,
-  children: <Widget>[
-    for (final double size in _sizes) ...<Widget>[
-      if (size != _sizes.first) const SizedBox(width: _gutter),
-      if (mono)
-        UiMark.mono(label: 'Specimen Digitization', size: size)
-      else
-        UiMark(label: 'Specimen Digitization', size: size),
+Widget _row(UiMarkVariant variant) => Builder(
+  builder: (context) => Row(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: <Widget>[
+      for (final double size in _sizes) ...<Widget>[
+        if (size != _sizes.first) const SizedBox(width: _gutter),
+        switch (variant) {
+          UiMarkVariant.accent => UiMark(label: 'Primary mark', size: size),
+          UiMarkVariant.mono => UiMark.mono(
+            label: 'Monochrome mark',
+            size: size,
+          ),
+          UiMarkVariant.appIcon => DecoratedBox(
+            decoration: BoxDecoration(
+              color: context.ui.brand.paper,
+              borderRadius: BorderRadius.circular(context.ui.shape.tile),
+            ),
+            child: Padding(
+              padding: EdgeInsets.all(context.ui.space.s3),
+              child: UiMark.appIcon(label: 'App icon', size: size),
+            ),
+          ),
+        },
+      ],
     ],
-  ],
+  ),
 );
 
 Widget _specimen() => Center(
@@ -35,9 +46,11 @@ Widget _specimen() => Center(
   child: Column(
     mainAxisSize: MainAxisSize.min,
     children: <Widget>[
-      _row(mono: false),
+      _row(UiMarkVariant.accent),
       const SizedBox(height: _gutter),
-      _row(mono: true),
+      _row(UiMarkVariant.mono),
+      const SizedBox(height: _gutter),
+      _row(UiMarkVariant.appIcon),
     ],
   ),
 );

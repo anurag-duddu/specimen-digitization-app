@@ -83,6 +83,28 @@ class IconSpec {
 
 /// Every meaning the product can draw.
 abstract final class UiIcons {
+  /// A pointer in design-review annotations.
+  static const IconSpec designPointer = IconSpec(PhosphorIconsRegular.cursor);
+
+  /// A draggable region in design-review annotations.
+  static const IconSpec designDrag = IconSpec(
+    PhosphorIconsRegular.arrowsOutCardinal,
+  );
+
+  /// A hand interaction in design-review annotations.
+  static const IconSpec designHand = IconSpec(PhosphorIconsRegular.hand);
+
+  /// An explicit rating, with a filled form for the chosen value.
+  static const IconSpec rating = IconSpec(
+    PhosphorIconsRegular.star,
+    filled: PhosphorIconsFill.star,
+  );
+
+  /// Payment-method identity; never implies a payment service is connected.
+  static const IconSpec payment = IconSpec(PhosphorIconsRegular.creditCard);
+
+  /// A source file's format.
+  static const IconSpec fileType = IconSpec(PhosphorIconsRegular.file);
   // Navigation destinations. Regular, and fill when current.
 
   /// The queue destination; also the empty-queue glyph.
@@ -404,7 +426,7 @@ abstract final class UiIcons {
   /// A declared language.
   static const IconSpec language = IconSpec(PhosphorIconsRegular.translate);
 
-  /// The registry key of the pin mark.
+  /// The registry key of the owner-supplied interlocking brand mark.
   ///
   /// The mark is an asset, not a Phosphor glyph (09 section 9), so it has no
   /// [IconSpec] and is absent from [all]. Slot E6 draws it. It is named here
@@ -415,6 +437,12 @@ abstract final class UiIcons {
 
   /// Every entry, by registry key.
   static const Map<String, IconSpec> byKey = <String, IconSpec>{
+    'rating': rating,
+    'design-pointer': designPointer,
+    'design-drag': designDrag,
+    'design-hand': designHand,
+    'payment': payment,
+    'fileType': fileType,
     'queue': queue,
     'intake': intake,
     'sources': sources,

@@ -356,43 +356,14 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen>
                   children: [
                     Padding(
                       padding: EdgeInsets.all(ui.space.s4),
-                      child: Wrap(
-                        alignment: WrapAlignment.spaceBetween,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        spacing: ui.space.s3,
-                        runSpacing: ui.space.s2,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                c.visible.isEmpty
-                                    ? 'Add photos'
-                                    : '${c.visible.length} ${c.visible.length == 1 ? 'photo' : 'photos'}',
-                                style: ui.type.titleLarge,
-                              ),
-                              Semantics(
-                                liveRegion: true,
-                                child: Text(
-                                  c.saveLabel,
-                                  style: ui.type.bodySmall,
-                                ),
-                              ),
-                              if (c.preparingFiles || c.addingSources)
-                                Semantics(
-                                  liveRegion: true,
-                                  child: Text(
-                                    c.preparingFiles
-                                        ? c.preparationLabel
-                                        : c.sourceAddLabel,
-                                    style: ui.type.bodySmall,
-                                  ),
-                                ),
-                            ],
-                          ),
-                          Wrap(
-                            spacing: ui.space.s2,
-                            children: [
+                          UiSectionHeader(
+                            title: c.visible.isEmpty
+                                ? 'Add photos'
+                                : '${c.visible.length} ${c.visible.length == 1 ? 'photo' : 'photos'}',
+                            actions: [
                               UiButton(
                                 label: 'Your batches',
                                 variant: UiButtonVariant.ghost,
@@ -407,6 +378,28 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen>
                                 ),
                             ],
                           ),
+                          SizedBox(height: ui.space.s2),
+                          Semantics(
+                            liveRegion: true,
+                            child: Text(
+                              c.saveLabel,
+                              style: ui.type.bodySmall.copyWith(
+                                color: ui.color.inkSecondary,
+                              ),
+                            ),
+                          ),
+                          if (c.preparingFiles || c.addingSources)
+                            Semantics(
+                              liveRegion: true,
+                              child: Text(
+                                c.preparingFiles
+                                    ? c.preparationLabel
+                                    : c.sourceAddLabel,
+                                style: ui.type.bodySmall.copyWith(
+                                  color: ui.color.inkSecondary,
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                     ),

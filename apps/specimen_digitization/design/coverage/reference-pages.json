@@ -1,0 +1,387 @@
+{
+  "referenceFileId": "fIfKyBB3UUanoV9lZoTBx9",
+  "source": "Figma MCP get_metadata",
+  "retrieved": "2026-10-22",
+  "pages": [
+    {
+      "id": "1480:0",
+      "name": "Getting started (you can delete this)"
+    },
+    {
+      "id": "2210:441096",
+      "name": "Thumbnail"
+    },
+    {
+      "id": "1624:431457",
+      "name": "––––––––––"
+    },
+    {
+      "id": "925:34508",
+      "name": "FOUNDATIONS"
+    },
+    {
+      "id": "1023:36350",
+      "name": "↳ Colors ✨ NEW ✨"
+    },
+    {
+      "id": "18:1951",
+      "name": "↳ Typography"
+    },
+    {
+      "id": "1083:118533",
+      "name": "↳ Logos"
+    },
+    {
+      "id": "3463:407484",
+      "name": "↳ Icons"
+    },
+    {
+      "id": "1025:31781",
+      "name": "↳ Misc icons ✨ NEW ✨"
+    },
+    {
+      "id": "1030:33573",
+      "name": "↳ Shadows & blurs"
+    },
+    {
+      "id": "1051:0",
+      "name": "↳ Grids & spacing"
+    },
+    {
+      "id": "1053:41971",
+      "name": "↳ Portfolio mockups"
+    },
+    {
+      "id": "1054:557",
+      "name": "↳ Design annotations"
+    },
+    {
+      "id": "1030:33572",
+      "name": "SHARED COMPONENTS"
+    },
+    {
+      "id": "1:1183",
+      "name": "↳ Buttons"
+    },
+    {
+      "id": "16:399",
+      "name": "↳ Button groups"
+    },
+    {
+      "id": "12:539",
+      "name": "↳ Badges ✨ NEW ✨"
+    },
+    {
+      "id": "3306:403749",
+      "name": "↳ Tags"
+    },
+    {
+      "id": "18:0",
+      "name": "↳ Dropdowns"
+    },
+    {
+      "id": "85:1269",
+      "name": "↳ Inputs"
+    },
+    {
+      "id": "1102:4631",
+      "name": "↳ Toggles"
+    },
+    {
+      "id": "1097:63638",
+      "name": "↳ Checkboxes"
+    },
+    {
+      "id": "122:3484",
+      "name": "↳ Checkbox groups"
+    },
+    {
+      "id": "18:1350",
+      "name": "↳ Avatars ✨ NEW ✨"
+    },
+    {
+      "id": "1052:485",
+      "name": "↳ Tooltips"
+    },
+    {
+      "id": "1154:89940",
+      "name": "↳ Progress indicators"
+    },
+    {
+      "id": "1086:1423",
+      "name": "↳ Sliders"
+    },
+    {
+      "id": "1238:52",
+      "name": "SHARED ASSETS"
+    },
+    {
+      "id": "134:3146",
+      "name": "↳ Log in and sign up pages  ✨ NEW ✨"
+    },
+    {
+      "id": "1176:99947",
+      "name": "↳ 404 pages  ✨ NEW ✨"
+    },
+    {
+      "id": "1226:360",
+      "name": "↳ Email templates"
+    },
+    {
+      "id": "1291:157819",
+      "name": "↳ Miscellaneous assets"
+    },
+    {
+      "id": "4938:371336",
+      "name": "↳ Background elements ✨ NEW ✨"
+    },
+    {
+      "id": "1624:431456",
+      "name": "––––––––––"
+    },
+    {
+      "id": "1622:261458",
+      "name": "✨ MARKETING WEBSITE EXAMPLES (you can move to a separate file)"
+    },
+    {
+      "id": "1622:261460",
+      "name": "✨ Landing pages"
+    },
+    {
+      "id": "1622:261461",
+      "name": "✨ Pricing pages"
+    },
+    {
+      "id": "1622:261459",
+      "name": "✨ Blogs"
+    },
+    {
+      "id": "1631:330597",
+      "name": "✨ Blog posts"
+    },
+    {
+      "id": "1622:261463",
+      "name": "✨ About pages"
+    },
+    {
+      "id": "1622:261464",
+      "name": "✨ Contact pages"
+    },
+    {
+      "id": "1639:514589",
+      "name": "✨ Team pages"
+    },
+    {
+      "id": "1622:261466",
+      "name": "✨ Legal pages"
+    },
+    {
+      "id": "1622:261465",
+      "name": "✨ FAQ pages"
+    },
+    {
+      "id": "1623:261469",
+      "name": "✨ Log in and sign up pages"
+    },
+    {
+      "id": "1623:261468",
+      "name": "✨ 404 pages"
+    },
+    {
+      "id": "1622:261457",
+      "name": "MARKETING WEBSITE COMPONENTS"
+    },
+    {
+      "id": "683:17952",
+      "name": "↳ Header navigation"
+    },
+    {
+      "id": "739:496",
+      "name": "↳ Header sections"
+    },
+    {
+      "id": "736:22481",
+      "name": "↳ Features sections"
+    },
+    {
+      "id": "708:20673",
+      "name": "↳ Pricing sections"
+    },
+    {
+      "id": "645:15070",
+      "name": "↳ CTA sections"
+    },
+    {
+      "id": "291:164",
+      "name": "↳ Metrics sections"
+    },
+    {
+      "id": "641:15058",
+      "name": "↳ Newsletter CTA sections"
+    },
+    {
+      "id": "648:16272",
+      "name": "↳ Testimonial sections"
+    },
+    {
+      "id": "286:15521",
+      "name": "↳ Social proof sections"
+    },
+    {
+      "id": "665:1107",
+      "name": "↳ Blog sections ✨ NEW ✨"
+    },
+    {
+      "id": "647:15097",
+      "name": "↳ Content"
+    },
+    {
+      "id": "673:20368",
+      "name": "↳ Contact sections"
+    },
+    {
+      "id": "673:16258",
+      "name": "↳ Team sections"
+    },
+    {
+      "id": "1458:239246",
+      "name": "↳ Careers sections"
+    },
+    {
+      "id": "282:168",
+      "name": "↳ FAQ sections"
+    },
+    {
+      "id": "278:13503",
+      "name": "↳ Footers"
+    },
+    {
+      "id": "1624:424681",
+      "name": "↳ Banners"
+    },
+    {
+      "id": "1624:431458",
+      "name": "––––––––––"
+    },
+    {
+      "id": "1664:398801",
+      "name": "✨ APPLICATION EXAMPLES (you can move to a separate file)"
+    },
+    {
+      "id": "1686:419019",
+      "name": "✨ Dashboards"
+    },
+    {
+      "id": "1664:398802",
+      "name": "✨ Settings pages"
+    },
+    {
+      "id": "1686:419020",
+      "name": "✨ Informational pages"
+    },
+    {
+      "id": "1215:104942",
+      "name": "APPLICATION COMPONENTS"
+    },
+    {
+      "id": "185:2718",
+      "name": "↳ Page headers"
+    },
+    {
+      "id": "223:8525",
+      "name": "↳ Card headers"
+    },
+    {
+      "id": "190:4871",
+      "name": "↳ Section headers ✨ NEW ✨"
+    },
+    {
+      "id": "3275:371793",
+      "name": "↳ Section footers"
+    },
+    {
+      "id": "82:1862",
+      "name": "↳ Application navigation"
+    },
+    {
+      "id": "172:4293",
+      "name": "↳ Modals ✨ NEW ✨"
+    },
+    {
+      "id": "3307:403757",
+      "name": "↳ Command menus ✨ NEW ✨"
+    },
+    {
+      "id": "1050:146949",
+      "name": "↳ Charts ✨ NEW ✨"
+    },
+    {
+      "id": "185:279",
+      "name": "↳ Metrics ✨ NEW ✨"
+    },
+    {
+      "id": "231:922",
+      "name": "↳ Slideout menus"
+    },
+    {
+      "id": "127:2907",
+      "name": "↳ Inline CTAs"
+    },
+    {
+      "id": "225:7288",
+      "name": "↳ Pagination"
+    },
+    {
+      "id": "53:1288",
+      "name": "↳ Progress steps ✨ NEW ✨"
+    },
+    {
+      "id": "253:14231",
+      "name": "↳ Activity feeds ✨ NEW ✨"
+    },
+    {
+      "id": "1251:12271",
+      "name": "↳ Messaging"
+    },
+    {
+      "id": "43:0",
+      "name": "↳ Tabs ✨ NEW ✨"
+    },
+    {
+      "id": "214:0",
+      "name": "↳ Tables"
+    },
+    {
+      "id": "43:3087",
+      "name": "↳ Breadcrumbs"
+    },
+    {
+      "id": "176:4256",
+      "name": "↳ Alerts & notifications ✨ NEW ✨"
+    },
+    {
+      "id": "1143:85678",
+      "name": "↳ Date pickers"
+    },
+    {
+      "id": "1157:90306",
+      "name": "↳ File upload ✨ NEW ✨"
+    },
+    {
+      "id": "780:0",
+      "name": "↳ Content dividers"
+    },
+    {
+      "id": "1172:32",
+      "name": "↳ Loading indicators"
+    },
+    {
+      "id": "1172:31",
+      "name": "↳ Empty states ✨ NEW ✨"
+    },
+    {
+      "id": "1221:106300",
+      "name": "↳ Code snippets"
+    }
+  ]
+}

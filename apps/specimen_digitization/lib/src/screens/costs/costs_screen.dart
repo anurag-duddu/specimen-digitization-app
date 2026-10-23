@@ -474,10 +474,8 @@ class _CostsScreenState extends State<CostsScreen> {
     ];
   }
 
-  Widget _heading(UiThemeData ui, String text) => Semantics(
-    header: true,
-    child: Text(text, style: ui.type.title.copyWith(color: ui.color.ink)),
-  );
+  Widget _heading(UiThemeData ui, String text) =>
+      UiSectionHeader(title: text, role: UiSectionHeaderRole.card);
 
   /// A slice the meter recorded nothing for: words, in the place a figure
   /// would be.

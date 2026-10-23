@@ -1,6 +1,6 @@
 // `UiToast`, `UiToastHost` and `UiToasts` (10 section 4.3).
 
-import 'package:flutter/semantics.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_ui/specimen_ui.dart';
@@ -333,5 +333,67 @@ void main() {
         },
       ),
     );
+  });
+
+  testWidgets('wrapped toast content and action stay inside the painted shape', (
+    WidgetTester tester,
+  ) async {
+    for (final TextDirection direction in TextDirection.values) {
+      for (final double width in <double>[240, 280, 320]) {
+        await tester.pumpWidget(
+          uiHarness(
+            textScaler: const TextScaler.linear(2),
+            textDirection: direction,
+            child: Center(
+              child: SizedBox(
+                width: width,
+                child: const UiToast(
+                  data: UiToastData(
+                    message: _second,
+                    actionLabel: 'Retry upload',
+                    onAction: _noop,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final Finder surface = find
+            .descendant(
+              of: find.byType(UiToast),
+              matching: find.byWidgetPredicate(
+                (Widget widget) =>
+                    widget is DecoratedBox &&
+                    widget.decoration is ShapeDecoration,
+              ),
+            )
+            .first;
+        final RenderBox clip = tester.renderObject<RenderBox>(surface);
+        final ShapeDecoration decoration =
+            tester.widget<DecoratedBox>(surface).decoration as ShapeDecoration;
+        final Path visible = decoration.shape.getOuterPath(
+          Offset.zero & clip.size,
+          textDirection: direction,
+        );
+        for (final String text in <String>[_second, 'Retry upload']) {
+          final Rect bounds = tester.getRect(find.text(text));
+          for (final Offset point in <Offset>[
+            bounds.topLeft + const Offset(1, 1),
+            bounds.topRight + const Offset(-1, 1),
+            bounds.bottomLeft + const Offset(1, -1),
+            bounds.bottomRight - const Offset(1, 1),
+          ]) {
+            expect(
+              visible.contains(clip.globalToLocal(point)),
+              isTrue,
+              reason:
+                  '$text at $width, $direction must not be clipped by the surface',
+            );
+          }
+        }
+        expect(tester.takeException(), isNull);
+      }
+    }
   });
 }

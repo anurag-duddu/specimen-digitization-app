@@ -6,10 +6,10 @@ import 'package:flutter/widgets.dart';
 import '../../foundation/glass.dart';
 import '../../foundation/motion.dart';
 import '../../foundation/theme.dart';
+import '../../foundation/type.dart';
 import '../../primitives/fit.dart';
 import '../../primitives/glass_surface.dart';
 import '../../primitives/surface.dart';
-import '../../primitives/label.dart';
 
 /// The resolved paint of one tile.
 @immutable
@@ -96,11 +96,10 @@ class UiDataTileStyle {
         tick: ui.motion.reduced ? MotionTokens.quickRaw : ui.motion.numeralTick,
       );
 
-  /// The height a tile with a label and a numeral and no footer occupies.
+  /// The base height for a single-line label and a numeral with no footer.
   ///
-  /// Derived from the tokens rather than measured, so `UiSkeleton.tile` holds
-  /// open exactly the space the tile will take and the layout does not move
-  /// when the placeholder becomes the content.
+  /// Derived from the tokens for `UiSkeleton.tile`. A wrapped title or larger
+  /// text scale grows the real content beyond this initial placeholder.
   static double labelAndNumeralHeight(UiThemeData ui) {
     final UiDataTileStyle style = resolve(ui);
     return ui.density.tilePadding * 2 +
@@ -198,7 +197,11 @@ class UiDataTile extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        UiLabel(label, style: style.label),
+        Text(
+          label,
+          style: style.label,
+          strutStyle: UiType.strutOf(style.label),
+        ),
         SizedBox(height: style.labelGap),
         _measurement(ui, style, measure),
         if (under != null) ...<Widget>[

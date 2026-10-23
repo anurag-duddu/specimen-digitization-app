@@ -142,7 +142,6 @@ class _HelpBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
     final WorkspaceController? controller = _controllerOf(context);
-    final TextStyle section = ui.type.title.copyWith(color: ui.color.ink);
     final TextStyle body = ui.type.body.copyWith(color: ui.color.ink);
 
     return Column(
@@ -157,12 +156,7 @@ class _HelpBody extends StatelessWidget {
           ),
           child: Row(
             children: <Widget>[
-              Expanded(
-                child: Text(
-                  'Help',
-                  style: ui.type.titleLarge.copyWith(color: ui.color.ink),
-                ),
-              ),
+              Expanded(child: const UiSectionHeader(title: 'Help')),
               UiIconButton(
                 icon: UiIcons.close,
                 semanticsLabel: HelpScreen.closeLabel,
@@ -182,25 +176,25 @@ class _HelpBody extends StatelessWidget {
           child: ListView(
             padding: EdgeInsetsDirectional.all(ui.space.s4),
             children: <Widget>[
-              Text('Keyboard shortcuts', style: section),
+              const UiSectionHeader(
+                title: 'Keyboard shortcuts',
+                role: UiSectionHeaderRole.card,
+              ),
               SizedBox(height: ui.space.s2),
               for (final MapEntry<String, String> entry
                   in queueShortcuts.entries)
                 Padding(
                   padding: EdgeInsetsDirectional.only(bottom: ui.space.s2),
-                  child: MergeSemantics(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        UiKeyCap(label: entry.key),
-                        SizedBox(width: ui.space.s2),
-                        Expanded(child: Text(entry.value, style: body)),
-                      ],
-                    ),
+                  child: _ShortcutRow(
+                    keys: entry.key,
+                    description: entry.value,
                   ),
                 ),
               SizedBox(height: ui.space.s6),
-              Text('A first review', style: section),
+              const UiSectionHeader(
+                title: 'A first review',
+                role: UiSectionHeaderRole.card,
+              ),
               SizedBox(height: ui.space.s2),
               for (final (int i, String step) in reviewWalkthrough.indexed)
                 Padding(
@@ -210,7 +204,10 @@ class _HelpBody extends StatelessWidget {
                   ),
                 ),
               SizedBox(height: ui.space.s6),
-              Text('Glossary', style: section),
+              const UiSectionHeader(
+                title: 'Glossary',
+                role: UiSectionHeaderRole.card,
+              ),
               SizedBox(height: ui.space.s2),
               // One sentence per word, from `glossary.dart`, which is the
               // same text the term itself opens where it appears
@@ -236,7 +233,10 @@ class _HelpBody extends StatelessWidget {
                   ),
                 ),
               SizedBox(height: ui.space.s6),
-              Text('This build', style: section),
+              const UiSectionHeader(
+                title: 'This build',
+                role: UiSectionHeaderRole.card,
+              ),
               SizedBox(height: ui.space.s2),
               Text(
                 'Environment: ${environmentLabel(controller?.environment ?? '')}',
@@ -252,11 +252,17 @@ class _HelpBody extends StatelessWidget {
                 value: controller?.repository.mode ?? 'none',
               ),
               SizedBox(height: ui.space.s6),
-              Text('Motion', style: section),
+              const UiSectionHeader(
+                title: 'Motion',
+                role: UiSectionHeaderRole.card,
+              ),
               SizedBox(height: ui.space.s2),
               const ReduceMotionSetting(),
               SizedBox(height: ui.space.s6),
-              Text('Report a problem', style: section),
+              const UiSectionHeader(
+                title: 'Report a problem',
+                role: UiSectionHeaderRole.card,
+              ),
               SizedBox(height: ui.space.s2),
               Text(
                 'Write to the contact below, with the build line above and '
@@ -264,7 +270,10 @@ class _HelpBody extends StatelessWidget {
                 style: body,
               ),
               SizedBox(height: ui.space.s6),
-              Text('Administrator contact', style: section),
+              const UiSectionHeader(
+                title: 'Administrator contact',
+                role: UiSectionHeaderRole.card,
+              ),
               SizedBox(height: ui.space.s2),
               // Read from the collection document, which is the only place
               // the server publishes one (pass criterion 10.3).
@@ -285,6 +294,47 @@ class _HelpBody extends StatelessWidget {
     final WorkspaceScope? scope = context
         .getInheritedWidgetOfExactType<WorkspaceScope>();
     return scope?.notifier;
+  }
+}
+
+/// Shortcut instructions wrap into a vertical pair when a large key label
+/// would leave too little room for its meaning. The key itself stays readable.
+class _ShortcutRow extends StatelessWidget {
+  const _ShortcutRow({required this.keys, required this.description});
+  final String keys;
+  final String description;
+
+  @override
+  Widget build(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    final Widget keyCap = UiKeyCap(label: keys);
+    final Widget meaning = Text(description, style: ui.type.body);
+    return MergeSemantics(
+      child: LayoutBuilder(
+        builder: (BuildContext context, BoxConstraints constraints) {
+          final double scale = MediaQuery.textScalerOf(context).scale(16) / 16;
+          if (constraints.maxWidth < ui.space.readingMax * scale) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                keyCap,
+                SizedBox(height: ui.space.s1),
+                meaning,
+              ],
+            );
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              keyCap,
+              SizedBox(width: ui.space.s2),
+              Expanded(child: meaning),
+            ],
+          );
+        },
+      ),
+    );
   }
 }
 

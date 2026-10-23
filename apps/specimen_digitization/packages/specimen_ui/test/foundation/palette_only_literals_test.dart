@@ -45,10 +45,10 @@ void main() {
       _colorLiteral
           .allMatches(withoutComments(palette.readAsStringSync()))
           .length,
-      greaterThan(50),
+      greaterThan(30),
       reason:
-          'if the palette holds almost no literal, either this gate is '
-          'scanning the wrong path or the token table has moved',
+          'the consolidated brand and semantic families still need a value table; '
+          'an empty or moved table must not silently pass this gate',
     );
   });
 

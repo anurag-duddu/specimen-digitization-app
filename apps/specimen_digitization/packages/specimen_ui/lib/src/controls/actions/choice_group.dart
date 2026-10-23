@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart';
 import '../../foundation/density.dart';
 import '../../foundation/icons.dart';
 import '../../foundation/theme.dart';
+import '../../primitives/fit.dart';
 import '../../primitives/label.dart';
 import '../../primitives/pressable.dart';
 import '../../primitives/squircle.dart';
@@ -207,6 +208,12 @@ class _UiChoiceGroupState<T> extends State<UiChoiceGroup<T>> {
     final ui = context.ui;
     final choice = widget.choices[index];
     final selected = choice.value == widget.value;
+    // Preserve the complete selected width, but center only what is visible.
+    // An unselected option has no empty check slot beside its label.
+    final contentWidth =
+        measureLabel(context, choice.label, ui.type.label).width +
+        ui.space.iconInline +
+        ui.space.s1;
     Widget target(ValueChanged<String>? report) => Pressable(
       semanticsLabel: choice.semanticsLabel ?? choice.label,
       role: PressableRole.radio,
@@ -238,28 +245,29 @@ class _UiChoiceGroupState<T> extends State<UiChoiceGroup<T>> {
                 horizontal: ui.space.s2,
                 vertical: ui.space.s2,
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SizedBox(
-                    width: ui.space.iconInline,
-                    height: ui.space.iconInline,
-                    child: selected
-                        ? UiIcon(
-                            UiIcons.check,
-                            size: UiIconSize.inline,
-                            color: ink,
-                          )
-                        : null,
-                  ),
-                  SizedBox(width: ui.space.s1),
-                  Flexible(
-                    child: UiLabel(
-                      choice.label,
-                      style: ui.type.label.copyWith(color: ink),
+              child: SizedBox(
+                width: contentWidth,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (selected) ...[
+                      UiIcon(
+                        UiIcons.check,
+                        size: UiIconSize.inline,
+                        color: ink,
+                      ),
+                      SizedBox(width: ui.space.s1),
+                    ],
+                    Flexible(
+                      child: UiLabel(
+                        choice.label,
+                        style: ui.type.label.copyWith(color: ink),
+                        textAlign: TextAlign.center,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

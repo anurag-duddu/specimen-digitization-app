@@ -221,10 +221,10 @@ void main() {
       );
       expect(
         data.tooltip,
-        entry.value.label,
+        isEmpty,
         reason:
-            'a disc draws no words, so the label has to reach a pointer '
-            'reviewer as a tooltip (10 section 4.4)',
+            'the visual tooltip repeats the name already carried by the '
+            'tab label and must not repeat it to a screen reader',
       );
     }
     handle.dispose();
