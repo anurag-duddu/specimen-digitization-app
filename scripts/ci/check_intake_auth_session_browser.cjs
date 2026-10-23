@@ -84,7 +84,14 @@ class DevTools {
 async function serve(script) {
   const server = http.createServer((request, response) => {
     response.setHeader('Cache-Control', 'no-store');
-    if (request.url === '/fixture.js' && script) {
+    if (request.url === '/picker-fixture') {
+      response.setHeader('Content-Type', 'text/html');
+      response.end(`<!doctype html><title>Synthetic embedded Picker</title>
+        <script>window.addEventListener('message', event => {
+          if (event.data.fixtureSend) parent.postMessage(event.data.fixtureSend, event.origin);
+          if (event.data.fixtureBarrier) parent.postMessage({fixtureBarrier:event.data.fixtureBarrier}, event.origin);
+        });</script>`);
+    } else if (request.url === '/fixture.js' && script) {
       response.setHeader('Content-Type', 'text/javascript');
       response.end(script);
     } else {
@@ -221,12 +228,12 @@ async function serve(script) {
     assert.deepEqual((await state()).response, accepted);
     assert.deepEqual(client.exceptions, [], 'Compiled callback must complete without SecurityError');
     assert.ok((await client.targets()).some(target => target.targetId === popup.targetId),
-      'Drive keepOpen must preserve the authenticated popup');
+      'The legacy keepOpen contract must preserve the authenticated popup');
     await client.evaluate(app, 'window.intakeAuthBrowserClose()');
     await until(async () => !(await client.targets()).some(target => target.targetId === popup.targetId),
       'explicit popup cleanup');
 
-    // Non-Picker OAuth retains its existing default of closing after success.
+    // OAuth closes after success before the new in-app Picker is mounted.
     const beforeDefault = new Set((await client.targets()).map(target => target.targetId));
     await client.evaluate(app,
       `window.intakeAuthBrowserStart(${JSON.stringify(url.href)}, false)`, true);
@@ -240,6 +247,80 @@ async function serve(script) {
     await until(async () => !(await client.targets()).some(target => target.targetId === defaultPopup.targetId),
       'default popup cleanup');
     assert.equal(await listenerCount(), 0, 'Successful callbacks must remove their listeners');
+
+    // Exercise the production iframe bridge, including actual cross-origin
+    // WindowProxy identity. This is an isolated protocol contract, not Google
+    // provider acceptance. File selection must never create a browser window.
+    const pickerUrl = `${callback.origin}/picker-fixture`;
+    const pagesBeforePicker = (await client.targets()).filter(target => target.type === 'page').length;
+    await client.evaluate(app, `window.intakePickerBrowserStart(${JSON.stringify(pickerUrl)}, "picker-one")`);
+    async function pickerLoaded(id = 'intake-picker-fixture') {
+      await until(() => client.evaluate(app,
+        `document.getElementById(${JSON.stringify(id)})?.contentWindow != null`), 'embedded Picker window');
+      // A child-generated barrier proves the actual document script is ready.
+      const sequence = ++barrier;
+      await until(async () => {
+        await client.evaluate(app,
+          `document.getElementById(${JSON.stringify(id)}).contentWindow.postMessage({fixtureBarrier:${sequence}}, "*")`);
+        return (await state()).barrier === sequence;
+      }, 'embedded Picker document ready');
+    }
+    await pickerLoaded();
+    assert.equal(await client.evaluate(app, `(() => {
+      try { void document.getElementById('intake-picker-fixture').contentWindow.document; return false; }
+      catch (e) { return e.name === 'SecurityError'; }
+    })()`), true, 'Picker must be a real cross-origin isolated document');
+    assert.equal((await client.targets()).filter(target => target.type === 'page').length,
+      pagesBeforePicker, 'Choosing files must not open any browser window');
+    assert.equal(await listenerCount(), 1);
+    async function pickerMessage(message, id = 'intake-picker-fixture') {
+      const sequence = ++barrier;
+      await client.evaluate(app,
+        `document.getElementById(${JSON.stringify(id)}).contentWindow.postMessage(` +
+        `${JSON.stringify({fixtureSend: message, fixtureBarrier: sequence})}, "*")`);
+      await until(async () => (await state()).barrier === sequence, 'Picker message barrier');
+      assert.deepEqual(client.exceptions, [], 'Picker message guard must not throw');
+    }
+    const pickerEvent = action => ({type: 'specimen-intake-picker', picker_id: 'picker-one', action});
+    await pickerMessage({...pickerEvent('selected'), picker_id: 'stale-picker'});
+    await pickerMessage({...pickerEvent('selected'), type: 'unrelated'});
+    await pickerMessage(pickerEvent('unknown-action'));
+    await pickerMessage({...pickerEvent('selected'), token: 'synthetic-extra-field'});
+    await client.evaluate(app, `window.dispatchEvent(new MessageEvent("message", {` +
+      `origin:${JSON.stringify(callback.origin)}, source:null, data:${JSON.stringify(pickerEvent('selected'))}}))`);
+    assert.deepEqual((await state()).pickerActions, [], 'Wrong session/type/action must be ignored');
+    await client.evaluate(app, `(() => {
+      const other = document.createElement('iframe'); other.id = 'rogue-picker';
+      other.src = ${JSON.stringify(pickerUrl)}; document.body.append(other);
+    })()`);
+    await pickerLoaded('rogue-picker');
+    await pickerMessage(pickerEvent('selected'), 'rogue-picker');
+    assert.deepEqual((await state()).pickerActions, [], 'Another frame on the same API origin must be ignored');
+    await client.evaluate(app, `document.getElementById('rogue-picker').remove()`);
+    await client.evaluate(app, `new Promise(resolve => {
+      const frame = document.getElementById('intake-picker-fixture');
+      frame.onload = resolve; frame.src = ${JSON.stringify(`${main.origin}/picker-fixture`)};
+    })`);
+    await pickerMessage(pickerEvent('selected'));
+    assert.deepEqual((await state()).pickerActions, [], 'Correct iframe at the wrong origin must be ignored');
+    await client.evaluate(app, `new Promise(resolve => {
+      const frame = document.getElementById('intake-picker-fixture');
+      frame.onload = resolve; frame.src = ${JSON.stringify(pickerUrl)};
+    })`);
+    for (const action of ['ready', 'selected', 'cancelled', 'error']) await pickerMessage(pickerEvent(action));
+    assert.deepEqual((await state()).pickerActions, ['ready', 'selected', 'cancelled', 'error']);
+    await client.evaluate(app, 'window.intakePickerBrowserClose()');
+    assert.equal(await listenerCount(), 0, 'Closing a Picker must remove its message listener');
+    assert.equal(await client.evaluate(app, `document.getElementById('intake-picker-fixture') === null`),
+      true, 'Closing a Picker must remove its isolated document');
+    await client.evaluate(app, `window.intakePickerBrowserStart(${JSON.stringify(pickerUrl)}, "picker-two")`);
+    await pickerLoaded();
+    await pickerMessage(pickerEvent('selected'));
+    assert.deepEqual((await state()).pickerActions, [], 'Retry must reject prior picker identity');
+    await pickerMessage({...pickerEvent('ready'), picker_id: 'picker-two'});
+    assert.deepEqual((await state()).pickerActions, ['ready']);
+    await client.evaluate(app, 'window.intakePickerBrowserClose()');
+    assert.equal(await listenerCount(), 0);
 
     // Advance Chrome's test clock through the real ten-minute production limit;
     // no shorter timeout or clock seam is added to the production adapter.
@@ -295,7 +376,10 @@ async function serve(script) {
         wrongStateRejected: true, nullSourceRejected: true, validCallbackCompleted: true,
         pickerKeptOpen: true, defaultPopupClosed: true, tenMinuteConsentWindowPreserved: true,
         expiryHasConnectRecovery: true, expiredPopupClosed: true, listenersRemoved: true,
-        expiredStateRejectedAfterRetry: true, freshRetryCompleted: true}}));
+        expiredStateRejectedAfterRetry: true, freshRetryCompleted: true,
+        pickerInlineWithoutPopup: true, pickerCrossOriginIsolated: true,
+        pickerWrongOriginSourceSessionRejected: true, pickerLifecycleDelivered: true,
+        pickerFrameAndListenerRemoved: true, pickerStaleRetryRejected: true}}));
   } catch (error) {
     console.error(error);
     if (client?.exceptions.length) console.error(JSON.stringify({browserExceptions: client.exceptions}));

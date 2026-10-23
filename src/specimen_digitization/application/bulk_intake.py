@@ -29,12 +29,14 @@ def problem(code, message, action='retry', retryable=True):
 class IntakeService:
     def __init__(self, repository, blobs, *, authorize, classify, queue_specimen,
                  dispatch_pipeline, dispatch_intake=None, sources=None, codec_policy=None,
-                 synthetic=False, clock=time.time):
+                 synthetic=False, clock=time.time, monotonic=time.monotonic):
         self.repo, self.blobs = repository, blobs
         self.authorize, self.classify = authorize, classify
         self.queue_specimen, self.dispatch_pipeline = queue_specimen, dispatch_pipeline
         self.dispatch_intake, self.sources = dispatch_intake, sources
         self.codec_policy, self.synthetic, self.clock = codec_policy, synthetic, clock
+        self.monotonic = monotonic
+        self.selection = None
 
     def read(self, p, kind, id):
         doc = self.repo.document(p.scope, kind, id)
@@ -53,7 +55,11 @@ class IntakeService:
             for row in rows:
                 if row.get('owner_id') != p.user_id:
                     raise Missing('Intake item unavailable')
-                self.classify(p, row.get('sensitive', True))
+            if rows:
+                # One current membership check for the strongest requirement in
+                # this page is equivalent to checking every row separately.
+                self.classify(p, any(row.get('sensitive', True) is not False for row in rows))
+            for row in rows:
                 result[row['id']] = row
         return result
 
@@ -165,6 +171,105 @@ class IntakeService:
         if body.source.provider not in {'camera', 'files'}:
             self.enqueue(p, id, 'stage')
         return item
+
+    def source_inputs(self, p, draft_id, bodies):
+        """Normalize the immutable request exactly as single-item admission does."""
+        from .intake_models import SourceItemsInput
+        bodies = SourceItemsInput(items=bodies).items
+        normalized, storage_policies = [], {}
+        for body in bodies:
+            source = body.source
+            # Registry policy is immutable for this process and scoped to this
+            # principal's collection. Object validation still runs per item.
+            if source.provider == 'storage' and source.source_id in storage_policies:
+                policy = storage_policies[source.source_id]
+            else:
+                policy = bool(self.sources and self.sources.required_sensitive(p, source))
+                if source.provider == 'storage':
+                    storage_policies[source.source_id] = policy
+            if policy:
+                body = body.model_copy(update={'photo_sensitive': True})
+            normalized.append((ident(draft_id, body.client_id), body, policy, digest(body.model_dump())))
+        self.classify(p, any(body.photo_sensitive for _, body, _, _ in normalized))
+        return normalized
+
+    def source_matches(self, p, draft, normalized):
+        rows = self.read_many(p, 'intake_item', [row[0] for row in normalized])
+        for id, _, _, request in normalized:
+            if id in rows and (rows[id]['draft_id'] != draft['id'] or rows[id]['request_digest'] != request):
+                raise Conflict('Photo identity was reused for different content')
+        return rows
+
+    def source_reply(self, p, draft, normalized, rows):
+        """Repair the private staging outbox before acknowledging attached items."""
+        entries = {entry['id']: entry for entry in draft['entries']}
+        if any(id in entries and id not in rows for id, _, _, _ in normalized):
+            raise Missing('An admitted photo is unavailable')
+        attached = [rows[id] for id, _, _, _ in normalized if id in rows and id in entries]
+        if draft['state'] == 'discarded':
+            raise Conflict('This batch has already been discarded')
+        if draft['state'] == 'submitted':
+            for item in attached:
+                self.item_draft(p, item)
+        pending_stage = [item for item in attached if item['state'] not in {'ready', 'needs_attention'}]
+        jobs = []
+        for item in pending_stage:
+            try:
+                job = self.repo.document(p.scope, 'intake_job', ident(item['id'], 'stage'))
+                if job['owner_id'] != p.user_id or job['target'] != item['id'] or job['operation'] != 'stage':
+                    raise Conflict('Intake job identity changed')
+            except Missing:
+                job = self.enqueue(p, item['id'], 'stage', wake=False)
+            jobs.append(job)
+        if jobs:
+            self.wake_job(p, jobs[0])
+        return dict(items=[dict(item, **{key: value for key, value in entries[item['id']].items() if key != 'id'})
+                          for item in attached],
+            pending_client_ids=[body.client_id for id, body, _, _ in normalized if id not in entries],
+            draft_revision=draft['revision'])
+
+    def reconcile_sources(self, p, draft_id, bodies):
+        draft = self.draft(p, draft_id)
+        normalized = self.source_inputs(p, draft_id, bodies)
+        return self.source_reply(p, draft, normalized, self.source_matches(p, draft, normalized))
+
+    def add_sources(self, p, draft_id, bodies):
+        """Prepare at most fifty originals and attach one prefix with a single CAS.
+
+        Independent item records can survive a lost write or manifest conflict.
+        They are not admitted until the draft CAS commits; exact retries reuse
+        them. Complete preflight precedes the cooperative preparation budget,
+        which is checked between items after at least one safe addition.
+        """
+        draft = self.draft(p, draft_id)
+        normalized = self.source_inputs(p, draft_id, bodies)
+        rows = self.source_matches(p, draft, normalized)
+        attached = {entry['id'] for entry in draft['entries']}
+        additions = [row for row in normalized if row[0] not in attached]
+        if additions and draft['state'] != 'draft':
+            raise Conflict('This batch has already been submitted or discarded')
+        if sum(not entry['removed'] for entry in draft['entries']) + len(additions) > MAX_PHOTOS:
+            raise ValueError('A batch holds up to 500 photos. Start another batch.')
+        prepared = []
+        started = self.monotonic()
+        for id, body, policy, request in additions:
+            if prepared and self.monotonic() - started >= 3:
+                break
+            if self.sources is None:
+                raise ValueError('This source is not configured')
+            self.sources.validate(p, body.source)
+            if id not in rows:
+                rows[id] = self.save(p, 'intake_item', DraftItem(id=id, client_id=body.client_id, draft_id=draft_id,
+                    owner_id=p.user_id, collection_id=p.scope.collection_id,
+                    filename=body.filename, media_type=body.media_type, size_bytes=body.size_bytes,
+                    sha256=body.sha256, source=body.source, request_digest=request,
+                    sensitive=body.photo_sensitive, policy_sensitive=policy).model_dump())
+            prepared.append(dict(id=id, photo_sensitive=body.photo_sensitive, included=True, removed=False))
+        if prepared:
+            draft['entries'].extend(prepared)
+            draft['sensitive'] = draft['sensitive'] or any(entry['photo_sensitive'] for entry in prepared)
+            draft = self.save(p, 'intake_draft', draft)
+        return self.source_reply(p, draft, normalized, rows)
 
     def edit(self, p, id, body):
         draft = self.draft(p, id, mutable=True)
@@ -350,7 +455,7 @@ class IntakeService:
             self.enqueue(p, id, 'submit')
         return dict(submission, remaining_draft_id=draft['remaining_draft_id'])
 
-    def enqueue(self, p, target, operation):
+    def enqueue(self, p, target, operation, *, wake=True):
         id = ident(target, operation)
         for attempt in range(8):
             try:
@@ -365,6 +470,11 @@ class IntakeService:
             except Conflict:
                 if attempt == 7:
                     raise
+        if not wake:
+            return job
+        return self.wake_job(p, job)
+
+    def wake_job(self, p, job):
         try:
             dispatch = self.wake(p) if self.dispatch_intake else dict(
                 status='local' if self.synthetic else 'unconfigured')

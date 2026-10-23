@@ -193,6 +193,22 @@ Future<T?> showUiModal<T>({
   sheet: presentsAsSheet(context),
 );
 
+/// Opens a bounded file workspace using the standard modal focus and scrim.
+/// Compact windows use the full available width, with safe-area/IME avoidance.
+Future<T?> showUiImportWorkspace<T>({
+  required BuildContext context,
+  required WidgetBuilder builder,
+  String semanticsLabel = 'Add photos',
+}) => _show<T>(
+  context: context,
+  builder: builder,
+  semanticsLabel: semanticsLabel,
+  dismissLabel: 'Close photo sources',
+  dismissible: true,
+  sheet: presentsAsSheet(context),
+  workspace: true,
+);
+
 Future<T?> _show<T>({
   required BuildContext context,
   required WidgetBuilder builder,
@@ -200,6 +216,7 @@ Future<T?> _show<T>({
   required String? dismissLabel,
   required bool dismissible,
   required bool sheet,
+  bool workspace = false,
 }) {
   final UiThemeData ui = context.ui;
   final NavigatorState navigator = Navigator.of(context, rootNavigator: true);
@@ -225,6 +242,7 @@ Future<T?> _show<T>({
           Animation<double> secondary,
         ) => _ModalFrame(
           sheet: sheet,
+          workspace: workspace,
           semanticsLabel: semanticsLabel,
           dismissLabel: dismissLabel,
           dismissible: dismissible,
@@ -275,6 +293,7 @@ Future<T?> _show<T>({
 class _ModalFrame extends StatelessWidget {
   const _ModalFrame({
     required this.sheet,
+    this.workspace = false,
     required this.semanticsLabel,
     required this.dismissLabel,
     required this.dismissible,
@@ -282,6 +301,7 @@ class _ModalFrame extends StatelessWidget {
   });
 
   final bool sheet;
+  final bool workspace;
   final String semanticsLabel;
   final String? dismissLabel;
   final bool dismissible;
@@ -376,7 +396,11 @@ class _ModalFrame extends StatelessWidget {
                       // enforces against the incoming constraints.
                       constraints: BoxConstraints(
                         minWidth: sheet ? double.infinity : 0,
-                        maxWidth: sheet ? double.infinity : ui.space.dialogMax,
+                        maxWidth: sheet
+                            ? double.infinity
+                            : workspace
+                            ? ui.space.importWorkspaceMax
+                            : ui.space.dialogMax,
                       ),
                       child: FocusScope(
                         autofocus: true,

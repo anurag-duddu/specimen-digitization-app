@@ -172,14 +172,15 @@ void main() {
 
   test('release, profile, and web builds ignore debug requests', () async {
     for (final values in [
-      (name: 'release', web: false, debugBuild: false),
-      (name: 'profile', web: false, debugBuild: false),
-      (name: 'web debug', web: true, debugBuild: true),
+      (name: 'release', web: false, debugBuild: false, profileBuild: false),
+      (name: 'profile', web: false, debugBuild: false, profileBuild: true),
+      (name: 'web debug', web: true, debugBuild: true, profileBuild: false),
     ]) {
       await activateProductionAppCheck(
         configured,
         web: values.web,
         debugBuild: values.debugBuild,
+        profileBuild: values.profileBuild,
         androidDebugRequested: true,
         appleDebugRequested: true,
         activate:
@@ -202,6 +203,41 @@ void main() {
                 providerWeb,
                 values.web ? isA<ReCaptchaEnterpriseProvider>() : isNull,
                 reason: values.name,
+              );
+            },
+      );
+    }
+  });
+
+  test('Apple Profile testing requires its separate opt-in', () async {
+    for (final values in [
+      (web: false, debugBuild: false, profileBuild: true, enabled: true),
+      (web: false, debugBuild: false, profileBuild: false, enabled: false),
+      (web: false, debugBuild: true, profileBuild: false, enabled: false),
+      (web: true, debugBuild: false, profileBuild: true, enabled: false),
+    ]) {
+      await activateProductionAppCheck(
+        configured,
+        web: values.web,
+        debugBuild: values.debugBuild,
+        profileBuild: values.profileBuild,
+        appleProfileDebugRequested: true,
+        activate:
+            ({
+              providerWeb,
+              required providerAndroid,
+              required providerApple,
+            }) async {
+              expect(providerAndroid, isA<AndroidPlayIntegrityProvider>());
+              expect(
+                providerApple,
+                values.enabled
+                    ? isA<AppleDebugProvider>()
+                    : isA<AppleDeviceCheckProvider>(),
+              );
+              expect(
+                providerWeb,
+                values.web ? isA<ReCaptchaEnterpriseProvider>() : isNull,
               );
             },
       );

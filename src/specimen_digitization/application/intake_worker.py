@@ -33,7 +33,35 @@ class IntakeWorker:
                 service.authorize(p)
                 if job['operation'] == 'stage':
                     service.stage(p, job['target'])
-                else:
+                elif job['operation'] == 'selection':
+                    if service.selection is None:
+                        raise RuntimeError('Picker verification is not configured')
+                    stop = min(deadline or float('inf'), service.clock() + 120)
+                    result = service.read(p, 'intake_oauth', job['target'])
+                    while result['state'] == 'selecting' and service.clock() < stop:
+                        before = result['selection_cursor']
+                        result = service.selection.advance(p, job['target'], deadline=stop)
+                        if (result['selection_cursor'] == before or result.get('selection_error')
+                                or result.get('selection_retry_at', 0) > service.clock()):
+                            break
+                    if result['state'] == 'selecting':
+                        error = result.get('selection_error')
+                        retry_at = max(service.clock() + 1,
+                            result.get('selection_retry_at', 0), result.get('selection_lease_until', 0))
+                        state = 'waiting'
+                        if error and not error.get('retryable'):
+                            state = 'awaiting_authorization'
+                            connection = service.read(p, 'intake_connection', result['connection_id'])
+                            job['authorization_revision'] = connection['revision']
+                        elif error:
+                            attempts = job.get('attempts', 0) + 1
+                            job['attempts'] = attempts
+                            state = 'waiting' if attempts < 4 else 'needs_attention'
+                            retry_at = max(retry_at, service.clock() + min(300, 5 * 2 ** attempts))
+                        job.update(state=state, lease_until=0, next_attempt=retry_at, error=error)
+                        service.save(p, 'intake_job', job)
+                        continue
+                elif job['operation'] == 'submit':
                     if job.get('draft_id'):
                         service._materialize_submission(p, service.draft(p, job['draft_id']), wake=False)
                     result = service.process_submission(p, job['target'], deadline=min(
@@ -47,6 +75,8 @@ class IntakeWorker:
                             lease_until=0, next_attempt=service.clock() + 10)
                         service.save(p, 'intake_job', job)
                         continue
+                else:
+                    raise ValueError('Unknown intake operation')
                 job.update(state='done', lease_until=0)
             except Conflict:
                 job.update(lease_until=0, next_attempt=service.clock() + 5)

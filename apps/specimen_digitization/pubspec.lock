@@ -257,7 +257,7 @@ packages:
     source: hosted
     version: "0.5.2+6"
   file_selector_ios:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: file_selector_ios
       sha256: "97269e5307a0ab813b1fa2430bada0a96e0afb74848417f8676f64ba5de0051c"
@@ -879,7 +879,7 @@ packages:
     source: hosted
     version: "2.4.1"
   shared_preferences_platform_interface:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: shared_preferences_platform_interface
       sha256: "649dc798a33931919ea356c4305c2d1f81619ea6e92244070b520187b5140ef9"

@@ -22,6 +22,10 @@ abstract interface class BulkIntakeRepository {
   });
 }
 
+class IntakePreviewPending implements Exception {
+  const IntakePreviewPending();
+}
+
 class IntakeDraft {
   const IntakeDraft(this.data);
   final Json data;
@@ -73,6 +77,17 @@ class IntakeSubmissionItem {
         ? (offset / size).clamp(0, 1)
         : null;
   }
+}
+
+class IntakeSubmissionProgress {
+  const IntakeSubmissionProgress({
+    required this.batch,
+    required this.items,
+    required this.hasMore,
+  });
+  final IntakeSubmission batch;
+  final List<IntakeSubmissionItem> items;
+  final bool hasMore;
 }
 
 class IntakeProviderConnection {

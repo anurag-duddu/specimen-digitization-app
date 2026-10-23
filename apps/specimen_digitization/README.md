@@ -55,6 +55,23 @@ flutter run -d chrome
 `lib/firebase_options.dart` is gitignored. Copy `lib/firebase_options.ci.dart`
 over it for a credential free local build; never commit the real one.
 
+### Personal iPhone testing
+
+A manually installed Flutter Debug build needs debugger support to launch.
+Use a Profile build when testing launch from the Home Screen without the Mac.
+For an authorized personal device that cannot use production Apple attestation,
+`--profile --dart-define=SPECIMEN_APPLE_PROFILE_APP_CHECK_DEBUG=true` selects the
+Firebase debug provider. The device's debug token must already be registered
+for the intended Firebase app; never put that token in source or build flags.
+
+This option is off by default, applies only to native Profile builds, and is
+ignored by Release builds. The existing `SPECIMEN_APPLE_APP_CHECK_DEBUG` option
+remains Debug-only. Normal builds retain DeviceCheck. A local test build still
+needs a matching signing identity and provisioning profile, and expires with
+that profile; it is not a distribution build. Preserve the app bundle ID,
+keychain group, and installed data when replacing a test build. Do not remove
+production entitlements from the tracked project to accommodate local signing.
+
 ### The gallery
 
 Visit `/gallery`. It renders every token and every control in every variant,
