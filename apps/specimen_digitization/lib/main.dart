@@ -42,6 +42,9 @@ Future<void> main() async {
   const appleAppCheckDebug = bool.fromEnvironment(
     'SPECIMEN_APPLE_APP_CHECK_DEBUG',
   );
+  const appleProfileAppCheckDebug = bool.fromEnvironment(
+    'SPECIMEN_APPLE_PROFILE_APP_CHECK_DEBUG',
+  );
   const config = ConnectionConfig(
     apiUrl: apiUrl,
     siteKey: String.fromEnvironment('SPECIMEN_RECAPTCHA_SITE_KEY'),
@@ -74,8 +77,10 @@ Future<void> main() async {
           config,
           web: kIsWeb,
           debugBuild: kDebugMode,
+          profileBuild: kProfileMode,
           androidDebugRequested: androidAppCheckDebug,
           appleDebugRequested: appleAppCheckDebug,
+          appleProfileDebugRequested: appleProfileAppCheckDebug,
         ),
         createRepository: (uri, session) => ApiSpecimenRepository(
           baseUrl: uri,
