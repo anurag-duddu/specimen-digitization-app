@@ -225,13 +225,14 @@ def test_lost_cancel_response_is_idempotently_reconciled(inline, monkeypatch):
 
 
 @pytest.mark.parametrize('scenario', ['selected', 'cancelled', 'error', 'selection_lost', 'cancel_lost',
-    'bootstrap_error', 'gapi_error', 'expiry', 'load_timeout', 'pagehide', 'legacy'])
+    'bootstrap_error', 'gapi_error', 'expiry', 'load_timeout', 'picker_http_error',
+    'pagehide_loading', 'pagehide', 'teardown_error', 'legacy'])
 def test_actual_api_page_script_keeps_credentials_isolated_and_clears_lifecycle(inline, scenario):
     c = inline
     page = c.client.get('/v1/intake/picker' if scenario == 'legacy' else c.result['url']).text
     script = re.search(r'<script nonce="[^"]+">(.*?)</script>', page, re.S).group(1)
-    # Run the actual generated script with a local Google/DOM contract. Real
-    # provider rendering and cross-origin browser enforcement are separate gates.
+    # Run the actual generated script with the SDK's observed URL/RPC lifecycle
+    # contract. This remains synthetic, not real provider rendering/acceptance.
     result = subprocess.run(['node', '-e', _PAGE_CONTRACT], input=json.dumps({
         'script': script, 'scenario': scenario, 'id': c.result['id']}), text=True,
         capture_output=True, timeout=10, check=False)
@@ -244,29 +245,55 @@ const vm=require('node:vm'),assert=require('node:assert/strict');
 let input='';process.stdin.on('data',part=>input+=part);process.stdin.on('end',async()=>{
  try{
   const {script,scenario,id}=JSON.parse(input),legacy=scenario==='legacy';
-  const events=[],requests=[],frames=[],handlers={},timers=new Map(),seen={};
-  const status={hidden:false,textContent:''};let callback,nextTimer=1;
+  const events=[],requests=[],frames=[],handlers={},timers=new Map(),registrations=new Map(),seen={};
+  const status={hidden:false,textContent:''};let nextTimer=1;
   const config={token:'fixture-provider-access',state:'fixture-selection-capability',key:'fixture-key',app:'123',
    return_origin:legacy?null:'https://app.example',id,expires_in:600};
   class DocsView{setMimeTypes(value){seen.types=value;return this;}setMode(value){seen.mode=value;return this;}}
+  // Characterized against Google's public gapi.lb.en.etOqPKhAhvg.O Picker SDK,
+  // fetched 2026-10-22. Raw toUri only serializes builder parameters. build adds
+  // host/app/relay fields, then Picker supplies RPC identity and registers the
+  // callback. Preserve this distinction: a token-bearing raw URL is incomplete.
   class PickerBuilder{
-   addView(){return this;}setOAuthToken(value){seen.token=value;return this;}
-   setDeveloperKey(){return this;}setAppId(){return this;}
-   setOrigin(value){seen.origin=value;return this;}enableFeature(){return this;}
-   setCallback(fn){callback=fn;return this;}
-   toUri(){seen.uri=true;return {toString:()=> 'https://docs.google.com/picker?oauth_token='+seen.token};}
-   build(){seen.dialog=true;return {setVisible:value=>seen.visible=value};}
+   constructor(){this.params=new URLSearchParams({protocol:'gadgets'});}
+   addView(){return this;}setOAuthToken(value){this.params.set('oauth_token',value);return this;}
+   setDeveloperKey(value){this.params.set('developerKey',value);return this;}
+   setAppId(value){this.app=value;return this;}
+   setOrigin(value){this.params.set('origin',value);return this;}
+   enableFeature(){this.params.set('multiselectEnabled','true');return this;}
+   setCallback(fn){this.callback=fn;return this;}
+   setSize(width,height){seen.preferredSize=[width,height];return this;}
+   toUri(){this.params.set('nav','fixture-list-view');return new URL('https://docs.google.com/picker?'+this.params);}
+   build(){
+    this.params.set('hostId','api.example');
+    if(this.app&&this.params.has('oauth_token'))this.params.set('appId',this.app);
+    this.params.set('parent','https://api.example/favicon.ico');this.params.set('ifls','123456');
+    const uri=this.toUri();uri.searchParams.set('rpcService','fixture-rpc');
+    uri.searchParams.set('rpctoken','fixture-rpc-token');uri.hash='rpctoken=fixture-rpc-token';
+    uri.searchParams.set('thirdParty','true');
+    registrations.set('fixture-rpc',this.callback);
+    const frame={src:uri.toString(),remove(){this.removed=true;}};frames.push(frame);
+    return {setVisible(value){seen.visible=value;if(!value&&scenario==='teardown_error')throw Error('SDK hide failed');},dispose(){
+     seen.disposed=true;frame.remove();registrations.delete('fixture-rpc');
+     if(scenario==='teardown_error')throw Error('SDK disposal failed');
+    }};
+   }
   }
-  const context={URLSearchParams,AbortController,Error,Math,
+  // Prove that this double cannot bless the prior raw-URI integration.
+  const raw=new PickerBuilder().setAppId('123').setOAuthToken('fixture-token').setCallback(()=>{}).toUri();
+  for(const key of ['appId','hostId','parent','rpcService','rpctoken','thirdParty'])assert.equal(raw.searchParams.has(key),false);
+  assert.equal(registrations.size,0);
+  const context={URL,URLSearchParams,AbortController,Error,Math,
    location:{hash:'#state=fixture-parent-capability',origin:'https://api.example'},
    history:{replaceState(){seen.hashCleared=true;}},
    setTimeout(fn,ms){const key=nextTimer++;timers.set(key,{fn,ms});return key;},clearTimeout(key){timers.delete(key);},
-   window:{parent:{postMessage(payload,target){events.push({payload:JSON.parse(JSON.stringify(payload)),target});}},
+   window:{innerWidth:900,innerHeight:560,
+    parent:{postMessage(payload,target){events.push({payload:JSON.parse(JSON.stringify(payload)),target});}},
     addEventListener(name,fn){handlers[name]=fn;}},
-   document:{getElementById(name){return name==='status'?status:{appendChild(frame){frames.push(frame);frame.onload();}};},
+   document:{getElementById(name){return name==='status'?status:{appendChild(frame){frames.push(frame);frame.onload?.();}};},
     createElement(name){assert.equal(name,'iframe');return {remove(){this.removed=true;}};}},
    google:{picker:{DocsView,PickerBuilder,DocsViewMode:{LIST:'list'},Feature:{MULTISELECT_ENABLED:'multi'},
-    Action:{PICKED:'picked',CANCEL:'cancel',ERROR:'error'}}},
+    Action:{PICKED:'picked',CANCEL:'cancel',ERROR:'error',LOADED:'loaded'}}},
    gapi:{load(name,options){assert.equal(name,'picker');scenario==='gapi_error'?options.onerror():options.callback();}},
    async fetch(path,options){
     const body=JSON.parse(options.body);requests.push({path,body});
@@ -279,32 +306,55 @@ let input='';process.stdin.on('data',part=>input+=part);process.stdin.on('end',a
   vm.createContext(context);vm.runInContext(script,context);
   if(scenario==='load_timeout')timers.values().next().value.fn();
   else await vm.runInContext('loaded()',context);
+  let callback;
   if(!['load_timeout','bootstrap_error','gapi_error'].includes(scenario)){
-   assert.equal(seen.mode,'list');assert.equal(seen.origin,legacy?'https://api.example':'https://app.example');
-   assert.equal(seen.token,'fixture-provider-access');assert.equal(seen.hashCleared,true);
-   if(legacy){assert.equal(seen.dialog,true);assert.equal(seen.uri,undefined);}
-   else{assert.equal(seen.dialog,undefined);assert.equal(seen.uri,true);assert.equal(frames.length,1);
-    assert.match(frames[0].src,/^https:\/\/docs.google.com\/picker\?/);assert.equal(frames[0].title,'Google Drive photo selection');}
-   if(scenario==='expiry'){[...timers.values()].find(t=>t.ms===600000).fn();}
-   else if(scenario==='pagehide'){handlers.pagehide();}
-   else{const action=['selected','selection_lost','legacy'].includes(scenario)?'picked':scenario==='error'?'error':'cancel';
-    await callback({action,docs:[{id:'one',private:'not-forwarded'}]});}
+   assert.equal(seen.mode,'list');assert.equal(seen.hashCleared,true);assert.equal(frames.length,1);
+   const uri=new URL(frames[0].src),params=uri.searchParams;
+   assert.equal(uri.origin,'https://docs.google.com');assert.equal(uri.pathname,'/picker');
+   assert.equal(params.get('protocol'),'gadgets');assert.equal(params.get('appId'),'123');
+   assert.equal(params.get('hostId'),'api.example');assert.equal(params.get('parent'),'https://api.example/favicon.ico');
+   assert.equal(params.get('origin'),legacy?'https://api.example':'https://app.example');
+   assert.equal(params.get('oauth_token'),'fixture-provider-access');assert.equal(params.get('developerKey'),'fixture-key');
+   assert.equal(params.get('thirdParty'),'true');assert.ok(params.get('ifls'));
+   assert.ok(params.get('rpctoken'));assert.equal(new URLSearchParams(uri.hash.slice(1)).get('rpctoken'),params.get('rpctoken'));
+   callback=registrations.get(params.get('rpcService'));assert.equal(typeof callback,'function');
+   assert.equal(seen.visible,true);
+   assert.deepEqual(seen.preferredSize,legacy?undefined:[900,560]);
+   // A loaded HTTP document (including Google's 403 page) is not SDK readiness.
+   frames[0].onload?.();await callback({action:undefined});
+   assert.equal(events.length,0);assert.equal(status.hidden,false);
+   assert.ok([...timers.values()].some(t=>t.ms===30000),'load guard remains until RPC');
+   if(scenario==='picker_http_error'){[...timers.values()].find(t=>t.ms===30000).fn();}
+   else if(scenario==='pagehide_loading'){handlers.pagehide();}
+   else{
+    await callback({action:'loaded'});await callback({action:'loaded'});
+    assert.equal(events.length,legacy?0:1,'ready is emitted once through registered SDK callback');
+    assert.equal(status.hidden,true);assert.ok(![...timers.values()].some(t=>t.ms===30000));
+    if(scenario==='expiry'){[...timers.values()].find(t=>t.ms===600000).fn();}
+    else if(scenario==='pagehide'){handlers.pagehide();}
+    else{const action=['selected','selection_lost','teardown_error','legacy'].includes(scenario)?'picked':scenario==='error'?'error':'cancel';
+     await callback({action,docs:[{id:'one',private:'not-forwarded'}]});}
+   }
+   assert.equal(seen.visible,false);assert.equal(seen.disposed,true);assert.equal(registrations.size,0);
   }
-  const terminal=['selected','legacy'].includes(scenario)?'selected':scenario==='cancelled'?'cancelled':'error';
+  const terminal=['selected','teardown_error','legacy'].includes(scenario)?'selected':scenario==='cancelled'?'cancelled':'error';
   if(!legacy){
    for(const event of events){assert.equal(event.target,'https://app.example');
     assert.deepEqual(Object.keys(event.payload).sort(),['action','picker_id','type']);
     assert.equal(event.payload.type,'specimen-intake-picker');assert.equal(event.payload.picker_id,id);}
-   assert.equal(events.at(-1).payload.action,scenario==='pagehide'?'ready':terminal);
+   if(scenario==='pagehide_loading')assert.equal(events.length,0);
+   else assert.equal(events.at(-1).payload.action,scenario==='pagehide'?'ready':terminal);
    assert.ok(!JSON.stringify(events).includes('fixture-provider-access'));
    assert.ok(!JSON.stringify(events).includes('fixture-selection-capability'));
   }else assert.equal(events.length,0);
   assert.ok(frames.every(frame=>frame.removed));assert.equal(timers.size,0);
-  const previous=requests.length;if(callback)await callback({action:'picked',docs:[{id:'late'}]});
+  const previous=requests.length,previousEvents=events.length;
+  if(callback){await callback({action:'loaded'});await callback({action:'picked',docs:[{id:'late'}]});}
   assert.equal(requests.length,previous,'terminal session ignores stale callbacks');
+  assert.equal(events.length,previousEvents,'terminal session ignores late ready');
   if(requests[0])assert.deepEqual(requests[0].body,legacy?{state:'fixture-parent-capability'}:
    {state:'fixture-parent-capability',return_origin:'https://app.example',picker_id:id});
-  if(requests[1]&&['selected','selection_lost','legacy'].includes(scenario))
+  if(requests[1]&&['selected','selection_lost','teardown_error','legacy'].includes(scenario))
    assert.deepEqual(requests[1].body,{state:'fixture-selection-capability',action:'selected',ids:['one']});
   assert.ok(!status.textContent.includes('untrusted transport details'));
   process.stdout.write('isolated lifecycle passed\n');
