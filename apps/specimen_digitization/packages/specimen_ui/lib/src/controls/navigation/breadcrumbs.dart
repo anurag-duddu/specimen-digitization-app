@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../foundation/icons.dart';
 import '../../foundation/theme.dart';
+import '../../primitives/fit.dart';
 import '../../primitives/pressable.dart';
 
 /// One ancestor or the current location.
@@ -134,10 +135,9 @@ class UiBreadcrumbs extends StatelessWidget {
         final width = constraints.hasBoundedWidth
             ? constraints.maxWidth
             : ui.space.readingMax;
-        final labelWidth = math.max(
-          ui.space.s0,
-          width - ui.space.iconSmall - ui.space.s2,
-        );
+        final separatorWidth = divider == UiBreadcrumbDivider.slash
+            ? measureLabel(context, '/', ui.type.bodySmall).width
+            : ui.space.iconSmall;
         return Wrap(
           spacing: ui.space.s2,
           runSpacing: ui.space.s1,
@@ -167,7 +167,12 @@ class UiBreadcrumbs extends StatelessWidget {
                     SizedBox(width: ui.space.s2),
                   ],
                   ConstrainedBox(
-                    constraints: BoxConstraints(maxWidth: labelWidth),
+                    constraints: BoxConstraints(
+                      maxWidth: math.max(
+                        ui.space.s0,
+                        width - (i == 0 ? 0 : separatorWidth + ui.space.s2),
+                      ),
+                    ),
                     child: i == items.length - 1 || items[i].onSelected == null
                         ? Semantics(
                             value: i == items.length - 1

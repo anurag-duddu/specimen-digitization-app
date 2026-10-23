@@ -1,6 +1,8 @@
 /// The text field (10 section 4.2, `UiField`).
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
@@ -10,6 +12,7 @@ import '../../foundation/theme.dart';
 import '../../foundation/type.dart';
 import '../../primitives/announcer.dart';
 import '../../primitives/field_core.dart';
+import '../../primitives/fit.dart';
 import '../../primitives/pressable.dart';
 import '../../primitives/squircle.dart';
 
@@ -365,51 +368,84 @@ class UiFieldBox extends StatelessWidget {
                   EdgeInsetsDirectional.symmetric(vertical: ui.space.s3),
                 )
               : style.padding,
-          child: Row(
-            crossAxisAlignment: multiline
-                ? CrossAxisAlignment.start
-                : CrossAxisAlignment.center,
-            children: <Widget>[
-              if (leading != null) ...<Widget>[
-                UiIcon(
-                  leading!,
-                  size: UiIconSize.inline,
-                  color: style.glyph.resolve(states),
-                ),
-                SizedBox(width: ui.space.s2),
-              ],
-              if (prefixText != null) ...[
-                Flexible(
-                  child: ExcludeSemantics(
-                    child: Text(
-                      prefixText!,
-                      style: style.text.copyWith(
-                        color: style.glyph.resolve(states),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final affixCount =
+                  (prefixText == null ? 0 : 1) + (suffixText == null ? 0 : 1);
+              final fixedWidth =
+                  (leading == null ? 0 : ui.space.iconInline + ui.space.s2) +
+                  (trailing == null ? 0 : UiDensity.hitBox) +
+                  affixCount * ui.space.s2;
+              final usable = math.max(0.0, constraints.maxWidth - fixedWidth);
+              final editorMinimum = math.min(
+                usable,
+                math.max(UiDensity.hitBox, usable / 3),
+              );
+              final affixBudget = usable - editorMinimum;
+              final prefixWidth = prefixText == null
+                  ? 0.0
+                  : measureLabel(context, prefixText!, style.text).width;
+              final suffixWidth = suffixText == null
+                  ? 0.0
+                  : measureLabel(context, suffixText!, style.text).width;
+              // Affixes use their natural width when it fits. If both are
+              // long, share the remaining budget; a short counterpart gives
+              // its unused share back instead of forcing needless wrapping.
+              double affixMaximum(double ownWidth, double otherWidth) =>
+                  math.min(
+                    ownWidth,
+                    math.max(affixBudget / 2, affixBudget - otherWidth),
+                  );
+              return Row(
+                crossAxisAlignment: multiline
+                    ? CrossAxisAlignment.start
+                    : CrossAxisAlignment.center,
+                children: <Widget>[
+                  if (leading != null) ...<Widget>[
+                    UiIcon(
+                      leading!,
+                      size: UiIconSize.inline,
+                      color: style.glyph.resolve(states),
+                    ),
+                    SizedBox(width: ui.space.s2),
+                  ],
+                  if (prefixText != null) ...[
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: affixMaximum(prefixWidth, suffixWidth),
+                      ),
+                      child: ExcludeSemantics(
+                        child: Text(
+                          prefixText!,
+                          style: style.text.copyWith(
+                            color: style.glyph.resolve(states),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
-                SizedBox(width: ui.space.s2),
-              ],
-              Expanded(
-                flex: prefixText != null || suffixText != null ? 3 : 1,
-                child: child,
-              ),
-              if (suffixText != null) ...[
-                SizedBox(width: ui.space.s2),
-                Flexible(
-                  child: ExcludeSemantics(
-                    child: Text(
-                      suffixText!,
-                      style: style.text.copyWith(
-                        color: style.glyph.resolve(states),
+                    SizedBox(width: ui.space.s2),
+                  ],
+                  Expanded(child: child),
+                  if (suffixText != null) ...[
+                    SizedBox(width: ui.space.s2),
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: affixMaximum(suffixWidth, prefixWidth),
+                      ),
+                      child: ExcludeSemantics(
+                        child: Text(
+                          suffixText!,
+                          style: style.text.copyWith(
+                            color: style.glyph.resolve(states),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
-              ],
-              if (trailing != null) const SizedBox(width: UiDensity.hitBox),
-            ],
+                  ],
+                  if (trailing != null) const SizedBox(width: UiDensity.hitBox),
+                ],
+              );
+            },
           ),
         ),
       ),

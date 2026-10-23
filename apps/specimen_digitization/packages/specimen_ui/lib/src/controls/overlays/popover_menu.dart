@@ -2,6 +2,7 @@
 library;
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
@@ -10,6 +11,7 @@ import 'package:flutter/widgets.dart';
 import '../../foundation/density.dart';
 import '../../foundation/icons.dart';
 import '../../foundation/theme.dart';
+import '../../primitives/fit.dart';
 import '../../primitives/label.dart';
 import '../../primitives/popover.dart';
 import '../../primitives/pressable.dart';
@@ -556,22 +558,53 @@ class _MenuItem extends StatelessWidget {
                     SizedBox(width: style.gap),
                   ],
                   Expanded(
-                    child: Text(
-                      item.label,
-                      style: style.label.copyWith(color: foreground),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final Widget label = Text(
+                          item.label,
+                          style: style.label.copyWith(color: foreground),
+                        );
+                        if (item.shortcut == null) return label;
+                        final TextStyle shortcutStyle = style.shortcut.copyWith(
+                          color: states.contains(WidgetState.disabled)
+                              ? ui.color.disabledContent
+                              : style.shortcutColor,
+                        );
+                        final Widget shortcut = Text(
+                          item.shortcut!,
+                          style: shortcutStyle,
+                        );
+                        final double labelRoom = math.min(
+                          ui.space.labelMin,
+                          measureLabel(context, item.label, style.label).width,
+                        );
+                        final double shortcutWidth = measureLabel(
+                          context,
+                          item.shortcut!,
+                          shortcutStyle,
+                        ).width;
+                        if (labelRoom + style.gap + shortcutWidth >
+                            constraints.maxWidth) {
+                          return Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              label,
+                              SizedBox(height: ui.space.s1),
+                              shortcut,
+                            ],
+                          );
+                        }
+                        return Row(
+                          children: [
+                            Expanded(child: label),
+                            SizedBox(width: style.gap),
+                            UiLabel(item.shortcut!, style: shortcutStyle),
+                          ],
+                        );
+                      },
                     ),
                   ),
-                  if (item.shortcut != null) ...<Widget>[
-                    SizedBox(width: style.gap),
-                    UiLabel(
-                      item.shortcut!,
-                      style: style.shortcut.copyWith(
-                        color: states.contains(WidgetState.disabled)
-                            ? ui.color.disabledContent
-                            : style.shortcutColor,
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),

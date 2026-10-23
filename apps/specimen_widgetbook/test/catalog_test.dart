@@ -10,6 +10,28 @@ import 'package:specimen_widgetbook/inventory.dart';
 import 'package:widgetbook/widgetbook.dart';
 
 void main() {
+  testWidgets(
+    'button preview defaults to visible content without a hidden pending label',
+    (tester) async {
+      final root = WidgetbookRoot(children: specimenCatalog);
+      final useCase = root.leaves.whereType<WidgetbookUseCase>().singleWhere(
+        (item) => item.name == 'primary · lg · Focused',
+      );
+      final state = await _showStory(tester, useCase.path);
+      final button = tester.widget<UiButton>(find.byType(UiButton));
+      expect(button.busyLabel, isNull);
+      expect(button.leading, isNull);
+      expect(button.trailing, isNull);
+      expect(button.expand, isFalse);
+      expect(button.label, 'Save correction');
+      await tester.tap(find.text('Save correction'));
+      await tester.pumpAndSettle();
+      expect(find.text('Saved correction · 1 actions'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+      state.dispose();
+    },
+  );
+
   test(
     'catalog paths are unique and every public control has a documented slot',
     () {

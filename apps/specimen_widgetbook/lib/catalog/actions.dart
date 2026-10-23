@@ -333,7 +333,21 @@ class _ButtonExampleState extends State<_ButtonExample> {
     );
     final icon = context.knobs.object.dropdown(
       label: 'Icon placement',
-      options: ['None', 'Leading', 'Trailing'],
+      options: ['None', 'Leading', 'Trailing', 'Both'],
+    );
+    final separateLoadingLabel = context.knobs.boolean(
+      label: 'Separate loading label',
+      initialValue: false,
+    );
+    final pendingLabel = separateLoadingLabel
+        ? context.knobs.string(
+            label: 'Loading label',
+            initialValue: 'Saving correction',
+          )
+        : null;
+    final expand = context.knobs.boolean(
+      label: 'Fill available width',
+      initialValue: false,
     );
     return ActionExample(
       builder: (_, report) => Align(
@@ -342,10 +356,11 @@ class _ButtonExampleState extends State<_ButtonExample> {
           label: label,
           variant: widget.variant,
           size: widget.size,
-          leading: icon == 'Leading' ? UiIcons.add : null,
-          trailing: icon == 'Trailing' ? UiIcons.next : null,
+          leading: icon == 'Leading' || icon == 'Both' ? UiIcons.add : null,
+          trailing: icon == 'Trailing' || icon == 'Both' ? UiIcons.next : null,
+          expand: expand,
           loading: widget.state == 'Loading',
-          busyLabel: 'Saving correction',
+          busyLabel: pendingLabel,
           disabledReason: widget.state == 'Disabled'
               ? 'You have read access to this record.'
               : null,

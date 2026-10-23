@@ -1,10 +1,13 @@
 /// General-purpose action and annotation variants for the component library.
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/widgets.dart';
 import '../../foundation/color.dart';
 import '../../foundation/icons.dart';
 import '../../foundation/theme.dart';
+import '../../primitives/fit.dart';
 import '../../primitives/pressable.dart';
 import '../data/progress.dart';
 import '../inputs/checkbox.dart';
@@ -159,10 +162,7 @@ class UiActionButton extends StatelessWidget {
             : ui.color.paper.withValues(alpha: 0);
         return Container(
           constraints: BoxConstraints(minHeight: height),
-          padding: EdgeInsets.symmetric(
-            horizontal: iconOnly ? ui.space.s3 : ui.space.s4,
-            vertical: ui.space.s2,
-          ),
+          padding: EdgeInsets.symmetric(vertical: ui.space.s2),
           decoration: BoxDecoration(
             color: fill,
             borderRadius: BorderRadius.circular(ui.shape.inner),
@@ -172,10 +172,57 @@ class UiActionButton extends StatelessWidget {
                   )
                 : null,
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: <Widget>[
+          child: _content(context, foreground),
+        );
+      },
+    );
+    if (iconOnly) {
+      control = MergeSemantics(
+        child: UiTooltip(
+          message: disabledReason ?? label,
+          excludeSemantics: true,
+          child: control,
+        ),
+      );
+    }
+    return control;
+  }
+
+  Widget _content(BuildContext context, Color foreground) {
+    final ui = context.ui;
+    final leadingWidth = busy
+        ? UiProgressSize.small.diameter
+        : leadingDot
+        ? ui.space.s2
+        : ui.space.iconInline;
+    final minimumContent = iconOnly
+        ? leadingWidth
+        : measureLabel(context, '…', ui.type.label).width;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final requestedInset = iconOnly ? ui.space.s3 : ui.space.s4;
+        final inset = constraints.hasBoundedWidth
+            ? math.min(
+                requestedInset,
+                math.max(0.0, (constraints.maxWidth - minimumContent) / 2),
+              )
+            : requestedInset;
+        final available = constraints.maxWidth - inset * 2;
+        var showLeading = busy || leadingDot || leading != null;
+        var showTrailing = !iconOnly && trailing != null;
+        double requiredWidth() =>
+            minimumContent +
+            (showLeading ? leadingWidth + ui.space.s2 : 0) +
+            (showTrailing ? ui.space.iconInline + ui.space.s2 : 0);
+        // Preserve the readable action before decorative content in a narrow
+        // host. Icon-only commands keep the icon that identifies the action.
+        if (!iconOnly && requiredWidth() > available) showTrailing = false;
+        if (!iconOnly && requiredWidth() > available) showLeading = false;
+        final row = Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            if (showLeading)
               if (busy)
                 UiProgress.ring(
                   semanticsLabel: '$label in progress',
@@ -191,43 +238,51 @@ class UiActionButton extends StatelessWidget {
                     color: foreground,
                   ),
                 )
-              else if (leading != null)
+              else
                 UiIcon(leading!, color: foreground, size: UiIconSize.inline),
-              if (!iconOnly) ...<Widget>[
-                if (busy || leading != null || leadingDot)
-                  SizedBox(width: ui.space.s2),
-                Flexible(
-                  child: Text(
-                    label,
-                    textAlign: TextAlign.center,
-                    style: ui.type.label.copyWith(
-                      color: foreground,
-                      decoration: hierarchy == UiActionHierarchy.link
-                          ? TextDecoration.underline
-                          : null,
-                    ),
+            if (!iconOnly) ...[
+              if (showLeading) SizedBox(width: ui.space.s2),
+              Flexible(
+                child: Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: ui.type.label.copyWith(
+                    color: foreground,
+                    decoration: hierarchy == UiActionHierarchy.link
+                        ? TextDecoration.underline
+                        : null,
                   ),
                 ),
-                if (trailing != null) ...[
-                  SizedBox(width: ui.space.s2),
-                  UiIcon(trailing!, color: foreground, size: UiIconSize.inline),
-                ],
+              ),
+              if (showTrailing) ...[
+                SizedBox(width: ui.space.s2),
+                UiIcon(trailing!, color: foreground, size: UiIconSize.inline),
               ],
             ],
-          ),
+          ],
+        );
+        return Padding(
+          padding: EdgeInsets.symmetric(horizontal: inset),
+          child: busy && !showLeading
+              ? Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    row,
+                    SizedBox(height: ui.space.s1),
+                    SizedBox(
+                      width: available,
+                      height: ui.space.s1,
+                      child: UiProgress.bar(
+                        semanticsLabel: '$label in progress',
+                        color: foreground,
+                      ),
+                    ),
+                  ],
+                )
+              : row,
         );
       },
     );
-    if (iconOnly) {
-      control = MergeSemantics(
-        child: UiTooltip(
-          message: disabledReason ?? label,
-          excludeSemantics: true,
-          child: control,
-        ),
-      );
-    }
-    return control;
   }
 }
 
@@ -514,54 +569,69 @@ class UiTag extends StatelessWidget {
         start: ui.space.s2,
         end: onRemove == null ? ui.space.s2 : 0,
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          if (leading != null) ...[
-            ExcludeSemantics(child: leading!),
-            SizedBox(width: ui.space.s2),
-          ],
-          Flexible(
-            child: selected == null
-                ? Padding(
-                    padding: EdgeInsets.symmetric(
-                      vertical: size == UiAnnotationSize.small
-                          ? ui.space.s1
-                          : size == UiAnnotationSize.large
-                          ? ui.space.s3
-                          : ui.space.s2,
-                    ),
-                    child: Text(
-                      label,
-                      style: size == UiAnnotationSize.small
-                          ? ui.type.labelSmall
-                          : ui.type.label,
-                    ),
-                  )
-                : UiCheckbox(
-                    label: label,
-                    value: selected,
-                    onChanged: enabled ? onSelected : null,
-                    disabledReason: disabledReason,
-                  ),
-          ),
-          if (count != null) ...[
-            SizedBox(width: ui.space.s2),
-            Semantics(
-              label: '$count items',
-              child: ExcludeSemantics(
-                child: Text('$count', style: ui.type.labelSmall),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // A short count keeps its natural width. Only a long count is capped
+          // so the flexible label still has room to wrap beside it.
+          final countMaxWidth =
+              (constraints.maxWidth -
+                      (onRemove == null ? 0 : ui.space.targetMin) -
+                      ui.space.s2)
+                  .clamp(0.0, double.infinity) /
+              2;
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              if (leading != null) ...[
+                ExcludeSemantics(child: leading!),
+                SizedBox(width: ui.space.s2),
+              ],
+              Flexible(
+                child: selected == null
+                    ? Padding(
+                        padding: EdgeInsets.symmetric(
+                          vertical: size == UiAnnotationSize.small
+                              ? ui.space.s1
+                              : size == UiAnnotationSize.large
+                              ? ui.space.s3
+                              : ui.space.s2,
+                        ),
+                        child: Text(
+                          label,
+                          style: size == UiAnnotationSize.small
+                              ? ui.type.labelSmall
+                              : ui.type.label,
+                        ),
+                      )
+                    : UiCheckbox(
+                        label: label,
+                        value: selected,
+                        onChanged: enabled ? onSelected : null,
+                        disabledReason: disabledReason,
+                      ),
               ),
-            ),
-          ],
-          if (onRemove != null)
-            UiIconButton(
-              icon: UiIcons.close,
-              semanticsLabel: 'Remove $label',
-              onPressed: enabled ? onRemove : null,
-              disabledReason: disabledReason,
-            ),
-        ],
+              if (count != null) ...[
+                SizedBox(width: ui.space.s2),
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: countMaxWidth),
+                  child: Semantics(
+                    label: '$count items',
+                    child: ExcludeSemantics(
+                      child: Text('$count', style: ui.type.labelSmall),
+                    ),
+                  ),
+                ),
+              ],
+              if (onRemove != null)
+                UiIconButton(
+                  icon: UiIcons.close,
+                  semanticsLabel: 'Remove $label',
+                  onPressed: enabled ? onRemove : null,
+                  disabledReason: disabledReason,
+                ),
+            ],
+          );
+        },
       ),
     );
   }

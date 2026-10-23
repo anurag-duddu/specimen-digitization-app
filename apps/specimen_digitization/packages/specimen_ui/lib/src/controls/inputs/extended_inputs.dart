@@ -365,32 +365,49 @@ class UiInputGroup extends StatelessWidget {
     builder: (context, constraints) {
       final children = <Widget>[?leading, field, ?trailing];
       final gap = context.ui.space.s2;
-      if (constraints.maxWidth < 560 ||
-          MediaQuery.textScalerOf(context).scale(16) > 24) {
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (int i = 0; i < children.length; i++) ...[
-              if (i > 0) SizedBox(height: gap),
-              children[i],
+      // Editors need a finite width even when this group is placed in a Row.
+      final width = constraints.hasBoundedWidth
+          ? constraints.maxWidth
+          : context.ui.space.readingMax;
+      if (width < 560 || MediaQuery.textScalerOf(context).scale(16) > 24) {
+        return SizedBox(
+          width: width,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (int i = 0; i < children.length; i++) ...[
+                if (i > 0) SizedBox(height: gap),
+                children[i],
+              ],
             ],
-          ],
+          ),
         );
       }
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          if (leading != null) ...[
-            Flexible(child: leading!),
-            SizedBox(width: gap),
+      final sideCount = children.length - 1;
+      final sideMax = (width - sideCount * gap) / (3 + sideCount);
+      return SizedBox(
+        width: width,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            if (leading != null) ...[
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: sideMax),
+                child: leading!,
+              ),
+              SizedBox(width: gap),
+            ],
+            Expanded(child: field),
+            if (trailing != null) ...[
+              SizedBox(width: gap),
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: sideMax),
+                child: trailing!,
+              ),
+            ],
           ],
-          Expanded(flex: 3, child: field),
-          if (trailing != null) ...[
-            SizedBox(width: gap),
-            Flexible(child: trailing!),
-          ],
-        ],
+        ),
       );
     },
   );

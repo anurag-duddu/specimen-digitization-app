@@ -1,11 +1,14 @@
 /// Structured application navigation with disclosure, sections and account slots.
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../foundation/icons.dart';
 import '../../foundation/theme.dart';
+import '../../primitives/fit.dart';
 import '../../primitives/pressable.dart';
 
 /// A destination or expandable group in an application menu.
@@ -375,33 +378,7 @@ class _UiNavigationMenuState extends State<UiNavigationMenu> {
                   UiIcon(item.icon!, color: ink),
                   SizedBox(width: ui.space.s3),
                 ],
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        item.label,
-                        style: ui.type.label.copyWith(color: ink),
-                      ),
-                      if (item.description != null)
-                        Text(
-                          item.description!,
-                          style: ui.type.bodySmall.copyWith(
-                            color: ui.color.inkSecondary,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                if (item.badge != null)
-                  Padding(
-                    padding: EdgeInsetsDirectional.only(start: ui.space.s2),
-                    child: Text(
-                      item.badge!,
-                      style: ui.type.labelSmall.copyWith(color: ink),
-                    ),
-                  ),
+                Expanded(child: _itemContent(item, ink)),
                 if (item.children.isNotEmpty)
                   Padding(
                     padding: EdgeInsetsDirectional.only(start: ui.space.s2),
@@ -415,6 +392,58 @@ class _UiNavigationMenuState extends State<UiNavigationMenu> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _itemContent(UiNavigationItem item, Color ink) {
+    final ui = context.ui;
+    final Widget copy = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(item.label, style: ui.type.label.copyWith(color: ink)),
+        if (item.description != null)
+          Text(
+            item.description!,
+            style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+          ),
+      ],
+    );
+    if (item.badge == null) return copy;
+    final Widget badge = Text(
+      item.badge!,
+      style: ui.type.labelSmall.copyWith(color: ink),
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double labelRoom = math.min(
+          ui.space.labelMin,
+          measureLabel(context, item.label, ui.type.label).width,
+        );
+        final double badgeWidth = measureLabel(
+          context,
+          item.badge!,
+          ui.type.labelSmall,
+        ).width;
+        if (labelRoom + ui.space.s2 + badgeWidth > constraints.maxWidth) {
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              copy,
+              SizedBox(height: ui.space.s1),
+              badge,
+            ],
+          );
+        }
+        return Row(
+          children: [
+            Expanded(child: copy),
+            SizedBox(width: ui.space.s2),
+            badge,
+          ],
+        );
+      },
     );
   }
 }

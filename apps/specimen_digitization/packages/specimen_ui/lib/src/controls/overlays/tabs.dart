@@ -16,6 +16,7 @@ import '../../primitives/edge_fade.dart';
 import '../../primitives/fit.dart';
 import '../../primitives/label.dart';
 import '../../primitives/pressable.dart';
+import 'tooltip.dart';
 
 /// Label sizing; both retain the accessible minimum interaction target.
 enum UiTabsSize {
@@ -539,38 +540,87 @@ class _UiTabsState extends State<UiTabs> {
             padding: widget.axis == Axis.vertical
                 ? EdgeInsets.all(ui.space.s3)
                 : style.slotPadding,
-            child: Row(
-              mainAxisAlignment: widget.axis == Axis.horizontal
-                  ? MainAxisAlignment.center
-                  : MainAxisAlignment.start,
-              children: [
-                if (tab.icon != null) ...[
-                  ExcludeSemantics(
-                    child: UiIcon(
-                      tab.icon!,
-                      size: UiIconSize.inline,
-                      color: ink,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final Widget label = UiLabel(
+                  tab.label,
+                  style: style.labelStyle.copyWith(color: ink),
+                  textAlign: widget.axis == Axis.horizontal
+                      ? TextAlign.center
+                      : TextAlign.start,
+                  tooltip: (context, message, child) => UiTooltip(
+                    message: message,
+                    excludeSemantics: true,
+                    child: child,
+                  ),
+                );
+                final Widget? badge = tab.badge == null
+                    ? null
+                    : Text(
+                        tab.badge!,
+                        style: ui.type.labelSmall.copyWith(color: ink),
+                      );
+                final List<Widget> leading = [
+                  if (tab.icon != null) ...[
+                    ExcludeSemantics(
+                      child: UiIcon(
+                        tab.icon!,
+                        size: UiIconSize.inline,
+                        color: ink,
+                      ),
                     ),
-                  ),
-                  SizedBox(width: ui.space.s2),
-                ],
-                Flexible(
-                  child: UiLabel(
-                    tab.label,
-                    style: style.labelStyle.copyWith(color: ink),
-                    textAlign: widget.axis == Axis.horizontal
-                        ? TextAlign.center
-                        : TextAlign.start,
-                  ),
-                ),
-                if (tab.badge != null) ...[
-                  SizedBox(width: ui.space.s2),
-                  Text(
-                    tab.badge!,
-                    style: ui.type.labelSmall.copyWith(color: ink),
-                  ),
-                ],
-              ],
+                    SizedBox(width: ui.space.s2),
+                  ],
+                ];
+                if (widget.axis == Axis.vertical && badge != null) {
+                  final double needed =
+                      (tab.icon == null
+                          ? 0
+                          : ui.space.iconInline + ui.space.s2) +
+                      math.min(
+                        ui.space.labelMin,
+                        measureLabel(
+                          context,
+                          tab.label,
+                          style.labelStyle,
+                        ).width,
+                      ) +
+                      ui.space.s2 +
+                      measureLabel(
+                        context,
+                        tab.badge!,
+                        ui.type.labelSmall,
+                      ).width;
+                  if (needed > constraints.maxWidth) {
+                    return Row(
+                      children: [
+                        ...leading,
+                        Expanded(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              label,
+                              SizedBox(height: ui.space.s1),
+                              badge,
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  }
+                }
+                return Row(
+                  mainAxisAlignment: widget.axis == Axis.horizontal
+                      ? MainAxisAlignment.center
+                      : MainAxisAlignment.start,
+                  children: [
+                    ...leading,
+                    Flexible(child: label),
+                    if (badge != null) ...[SizedBox(width: ui.space.s2), badge],
+                  ],
+                );
+              },
             ),
           ),
         ),

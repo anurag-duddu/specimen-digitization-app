@@ -1,6 +1,8 @@
 /// Joined commands with independent selection and availability.
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
@@ -153,18 +155,23 @@ class _UiButtonGroupState extends State<UiButtonGroup> {
     final List<double> widths = widget.items
         .map((item) {
           if (widget.iconOnly) return UiDensity.hitBox;
-          return measureLabel(context, item.label, ui.type.label).width +
-              ui.space.s4 * 2 +
-              (item.icon == null && !item.leadingDot
-                  ? 0
-                  : ui.space.iconInline + ui.space.s2);
+          return math.max(
+            UiDensity.hitBox,
+            measureLabel(context, item.label, ui.type.label).width +
+                ui.space.s3 * 2 +
+                (item.icon == null && !item.leadingDot
+                    ? 0
+                    : ui.space.iconInline + ui.space.s2),
+          );
         })
         .toList(growable: false);
     return LayoutBuilder(
       builder: (context, constraints) {
         final bool vertical =
             constraints.hasBoundedWidth &&
-            widths.fold<double>(0, (a, b) => a + b) > constraints.maxWidth;
+            widths.fold<double>(0, (a, b) => a + b) +
+                    ui.shape.stroke.hairline * (widget.items.length + 1) >
+                constraints.maxWidth;
         final List<Widget> children = <Widget>[];
         for (int i = 0; i < widget.items.length; i++) {
           final UiButtonGroupItem item = widget.items[i];
