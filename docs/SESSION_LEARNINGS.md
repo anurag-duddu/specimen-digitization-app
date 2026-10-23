@@ -24734,3 +24734,18 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   remain Not confirmed. No entitlement, bundle identity, account or installed
   data was removed to work around provisioning. Final stable canonical run,
   exact-head review, physical callback/submit acceptance and release remain open.
+
+### 2026-10-23 — Physical review caught stale preview pixels (task01a149fc)
+
+- On Android build11, next-photo navigation updated the filename before the new
+  bytes arrived, leaving the prior photo visible temporarily. FutureBuilder's
+  retained snapshot and gapless image playback caused misleading review state.
+  Each preview load now keys its FutureBuilder generation and clears prior
+  decoded pixels. Delayed item/controller swaps plus existing retry behavior
+  passed13 activity tests; parser5 passed and analyzer was clean. Independent
+  review approved the two changed blobs atop05fee3fcd4f7041e7f7204353fa5615af5f8896c.
+- Build12 of05fee3f installed in place and restored Gmail plus the saved326/327
+  test draft. Its SHA256 is1da752d856a4f1713fbc96010a6ff617bd0af50bcba4aeda067cf710dfbe08bf.
+  Current canonical run began before this preview fix; remaining checks may see
+  the final source, so it is not exact-head evidence without rerunning the earlier
+  affected gates. Final verification and physical preview retest remain pending.

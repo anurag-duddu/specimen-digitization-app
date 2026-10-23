@@ -695,10 +695,12 @@ class BulkPhotoPreview extends StatefulWidget {
 
 class _BulkPhotoPreviewState extends State<BulkPhotoPreview> {
   late Future<Uint8List> _preview;
+  int _previewGeneration = 0;
   String get _identity =>
       '${widget.item.id}:${widget.item.state}:${widget.item.data['revision']}:${widget.full}';
   late String _loadedIdentity;
   void _load() {
+    _previewGeneration++;
     _loadedIdentity = _identity;
     _preview = widget.controller.preview(widget.item, full: widget.full);
   }
@@ -720,13 +722,14 @@ class _BulkPhotoPreviewState extends State<BulkPhotoPreview> {
 
   @override
   Widget build(BuildContext context) => FutureBuilder<Uint8List>(
+    key: ValueKey(_previewGeneration),
     future: _preview,
     builder: (context, snapshot) {
       if (snapshot.hasData) {
         return Image.memory(
           snapshot.data!,
           fit: BoxFit.contain,
-          gaplessPlayback: true,
+          gaplessPlayback: false,
           excludeFromSemantics: true,
         );
       }
