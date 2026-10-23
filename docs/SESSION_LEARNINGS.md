@@ -24883,3 +24883,57 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   this worktree, local device configuration and evidence. Only the fully merged
   codex/intake-cross-platform branch is eligible for pruning after ancestry and
   remote checks; no unrelated worktrees or branches are eligible.
+
+
+### 2026-10-23 — Manual iPhone build15 installation and sign-in inspection (task01a149fc)
+
+- Task01a149fc-3649-75c1-a121-11c19de12cb8 continues in worktree5da8 on
+  codex/intake-mobile-acceptance, HEAD5dfbdf924, following deployed PR402 merge
+  47aa86f39008db3617f6e38d24d661ac1da4bdf3. This corrects the preceding entry's
+  physical-install blocker: the existing free Personal Team can install a
+  supervised Debug test artifact for the same bundle identity. It does not
+  establish production signing, Associated Domains or standalone distribution.
+- User explicitly connected the iPhone and requested the manual path. Built
+  exact current source without tracked changes: Flutter iOS Debug1.0.0(15),
+  --no-codesign --no-pub, production API URL, explicit Apple debug App Check and
+  personal-demo flags, and native Google sign-in flags. No release/debug guards
+  were broadened. The existing profile and signing identity were used without
+  purchasing membership or changing account provisioning.
+- Signed a private copy at /private/tmp/specimen-iphone-manual-build15/Runner.app
+  with the existing Personal Team HM3L7UN9RZ and matching profile/keychain group.
+  The private signing entitlements omit unsupported Associated Domains; tracked
+  Runner.entitlements remains unchanged. Deep strict codesign verification
+  passed. Profile expires2026-10-24T20:54:59Z. Runner executable SHA256:
+  e9e0ad40196abea66a4d108c2cc2c900b56e93a3782af7d960d1ce60c7d595d7.
+  Profile SHA256:
+  533e9ea02ea3479deb0a6178a4539bf03759956dea88077f5e8d8ea7728daeca.
+- Installed in place on paired iPhone14ProMax/iOS27.0.1, preserving the existing
+  org.fieldmuseum.specimenDigitization app container and keychain. Started
+  suspended with devicectl, attached LLDB, then continued. The new native intake
+  screen rendered with the old Field Museum session and Insects collection.
+  No capture, import or Submit was performed in that collection. Debug build
+  use requires debugger supervision; standalone launch is Not confirmed.
+- Signed out through the app to exercise the authorized Gmail E2E account.
+  Native Google sign-in opened the system consent prompt and Google account
+  chooser. Existing Gmail account was displayed. Account-row and close actions
+  did not advance through iPhone Mirroring, while app navigation and mirroring
+  App Switcher worked. Requested a direct phone tap to distinguish a mirroring
+  input issue from a device/app failure; authenticated iOS Gmail return and
+  provider import remain Not confirmed at this checkpoint.
+- Logs are local under /private/tmp/specimen-iphone-manual-build15/ and
+  /private/tmp/specimen-iphone-manual-build15.log. Do not publish unfiltered
+  debugger/app logs. Default-sandbox signing inspection returned misleading
+  unavailable-authority/profile errors; explicit host inspection succeeded.
+- Inspected the Infinative Chrome profile and existing Google project-admin
+  session. Firebase admin redirects to Google Welcome/password verification,
+  although the specimen app's own session is valid. Read-only gcloud inspection
+  still requires reauthentication. No password, live configuration, IAM, secret,
+  provider credential or production deployment was changed for this work.
+- Independent device_acceptance lane audited build15 read-only: actual Google
+  client IDs and reversed callback scheme match; google_sign_in_ios6.3.5
+  registers application and scene delegates. Its Google SDK sign-in is separate
+  from IntakeAuthChannel. No configuration defect was found explaining both
+  unresponsive account rows and the system close button. Root confirmed the
+  SafariViewService process exists. This does not establish a successful native
+  callback; direct physical input remains the next diagnostic. No source fix
+  was invented from the Mirroring-only observation.
