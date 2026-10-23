@@ -24820,3 +24820,227 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   this does not establish real-camera acceptance. iOS provisioning and remaining
   physical acceptance limitations in the preceding entry remain unresolved.
   Protected release, alternate-host investigation and device acceptance continue.
+
+### 2026-10-23 — PR402 protected release and Android/mobile-web acceptance (task01a149fc)
+
+- Task01a149fc-3649-75c1-a121-11c19de12cb8, worktree5da8. PR402 merged
+  codex/intake-cross-platform at47aa86f39008db3617f6e38d24d661ac1da4bdf3.
+  Independent G51 review approved exact final head6c2142d93e18e72b28a7d3a936de51a5e4106e42;
+  final PR CI/CD39920466880 and runtime candidate39920466951 passed, with no
+  unresolved review threads. No required gate, assertion or protection was waived.
+- All three protected main releases succeeded on that merge SHA: Hosting
+  39922006687 attempt1, data39922006700 and runtime39922006691. Hosting public
+  verification and runtime API smoke passed. Independently ran smoke_hosting.sh
+  with the exact SHA/run/attempt; it passed. Public deployment.json reports
+  commitSha47aa86f39008db3617f6e38d24d661ac1da4bdf3, runId39922006687,
+  runAttempt1, builtAt2026-10-23T08:13:54Z. API /version reports the same source_sha,
+  api-runtime-v1, production. Web/backend release is complete; native distribution
+  and complete physical acceptance are separate outcomes.
+- Built Android debug build14 from the exact merge and installed in place on
+  Nothing A142/API36, packageorg.fieldmuseum.specimen_digitization. Local and
+  on-device APK SHA256 both match
+  50b16c00d1c33b24b6e5c88ce9c4d06860a316af8daa577258701817f819aa9d.
+  Existing signer, original installation, application data and Gmail session
+  were preserved. The app restored the original328/330 draft as2photos Saved
+  and reopened the earlier327/326 submission as2of2finished,2senttopipeline.
+  This post-install check did not submit another batch. Build log:
+  /private/tmp/specimen-cross-platform-android-14.log.
+- Physical Android Chrome reloaded canonical specimen-digitization.web.app
+  after the release. Gmail session and original328/330 draft restored. The real
+  inline Google Picker loaded, selected325 and returned to source review with
+  1available,0unavailable,1selected and Add1photo. Closed source review without
+  adding; original draft remains2Saved/unsubmitted. Earlier mobile-web Dropbox
+  browsing selected the ten-file demo folder successfully but did not add it.
+  That Dropbox check preceded this release; do not relabel it exact-release E2E.
+- New screenshots under this task's bulk-intake-research/connector-polish-20261021:
+  android-build14-restored-20261023.png, android-build14-progress-20261023.png,
+  android-mobile-web-released-restored-20261023.png and
+  android-mobile-web-released-drive-20261023.png. Existing native mixed-source
+  Submit/progress/pipeline evidence is recorded in the preceding entries.
+- iOS remains blocked for physical installation: Xcode exposes one configured
+  Apple account and one cached Personal Team with isFreeProvisioningTeam=true.
+  Its same-bundle profile lacks Associated Domains and expires2026-10-24.
+  No paid team is exposed in that inventory; membership elsewhere is Not
+  confirmed. Unsigned native compilation passed, but this is not physical iOS
+  acceptance. Need legitimate provisioning for the existing identity with its
+  required entitlement. Did not remove the entitlement, alter identity, erase
+  the installed app or purchase membership.
+- Unresolved: alternate firebaseapp.com App Check failure needs renewed existing
+  project-admin verification before live configuration inspection. Canonical
+  web.app works. Two Dropbox connection choices have identical displayed email
+  labels; actual stable account IDs were not compared. Source inspection shows
+  Use another account can allocate another connection before provider identity
+  is known. Follow-up should converge new callbacks using a private CAS identity
+  claim scoped by owner/collection/provider/access/stable account ID, before
+  storing candidate credentials; retain old referenced connection IDs. Do not
+  silently merge or disconnect existing rows or copy secret references across
+  connection IDs. No production credential or connection mutation was made for
+  this finding.
+- Thirty real captures,100/500 real-source batches, physical iOS/Safari,
+  VoiceOver/TalkBack and managed-account policy acceptance remain Not confirmed.
+  Viewfinder opening and automated tests do not establish these outcomes.
+  Continue on codex/intake-mobile-acceptance from the deployed merge, preserving
+  this worktree, local device configuration and evidence. Only the fully merged
+  codex/intake-cross-platform branch is eligible for pruning after ancestry and
+  remote checks; no unrelated worktrees or branches are eligible.
+
+
+### 2026-10-23 — Manual iPhone build15 installation and sign-in inspection (task01a149fc)
+
+- Task01a149fc-3649-75c1-a121-11c19de12cb8 continues in worktree5da8 on
+  codex/intake-mobile-acceptance, HEAD5dfbdf924, following deployed PR402 merge
+  47aa86f39008db3617f6e38d24d661ac1da4bdf3. This corrects the preceding entry's
+  physical-install blocker: the existing free Personal Team can install a
+  supervised Debug test artifact for the same bundle identity. It does not
+  establish production signing, Associated Domains or standalone distribution.
+- User explicitly connected the iPhone and requested the manual path. Built
+  exact current source without tracked changes: Flutter iOS Debug1.0.0(15),
+  --no-codesign --no-pub, production API URL, explicit Apple debug App Check and
+  personal-demo flags, and native Google sign-in flags. No release/debug guards
+  were broadened. The existing profile and signing identity were used without
+  purchasing membership or changing account provisioning.
+- Signed a private copy at /private/tmp/specimen-iphone-manual-build15/Runner.app
+  with the existing Personal Team HM3L7UN9RZ and matching profile/keychain group.
+  The private signing entitlements omit unsupported Associated Domains; tracked
+  Runner.entitlements remains unchanged. Deep strict codesign verification
+  passed. Profile expires2026-10-24T20:54:59Z. Runner executable SHA256:
+  e9e0ad40196abea66a4d108c2cc2c900b56e93a3782af7d960d1ce60c7d595d7.
+  Profile SHA256:
+  533e9ea02ea3479deb0a6178a4539bf03759956dea88077f5e8d8ea7728daeca.
+- Installed in place on paired iPhone14ProMax/iOS27.0.1, preserving the existing
+  org.fieldmuseum.specimenDigitization app container and keychain. Started
+  suspended with devicectl, attached LLDB, then continued. The new native intake
+  screen rendered with the old Field Museum session and Insects collection.
+  No capture, import or Submit was performed in that collection. Debug build
+  use requires debugger supervision; standalone launch is Not confirmed.
+- Signed out through the app to exercise the authorized Gmail E2E account.
+  Native Google sign-in opened the system consent prompt and Google account
+  chooser. Existing Gmail account was displayed. Account-row and close actions
+  did not advance through iPhone Mirroring, while app navigation and mirroring
+  App Switcher worked. Requested a direct phone tap to distinguish a mirroring
+  input issue from a device/app failure; authenticated iOS Gmail return and
+  provider import remain Not confirmed at this checkpoint.
+- Logs are local under /private/tmp/specimen-iphone-manual-build15/ and
+  /private/tmp/specimen-iphone-manual-build15.log. Do not publish unfiltered
+  debugger/app logs. Default-sandbox signing inspection returned misleading
+  unavailable-authority/profile errors; explicit host inspection succeeded.
+- Inspected the Infinative Chrome profile and existing Google project-admin
+  session. Firebase admin redirects to Google Welcome/password verification,
+  although the specimen app's own session is valid. Read-only gcloud inspection
+  still requires reauthentication. No password, live configuration, IAM, secret,
+  provider credential or production deployment was changed for this work.
+- Independent device_acceptance lane audited build15 read-only: actual Google
+  client IDs and reversed callback scheme match; google_sign_in_ios6.3.5
+  registers application and scene delegates. Its Google SDK sign-in is separate
+  from IntakeAuthChannel. No configuration defect was found explaining both
+  unresponsive account rows and the system close button. Root confirmed the
+  SafariViewService process exists. This does not establish a successful native
+  callback; direct physical input remains the next diagnostic. No source fix
+  was invented from the Mirroring-only observation.
+
+
+### 2026-10-23 — iPhone splash diagnosis and standalone Profile build16 (task01a149fc)
+
+- Task01a149fc-3649-75c1-a121-11c19de12cb8, worktree5da8,
+  codex/intake-mobile-acceptance from ba2de4bfc, continues the preceding build15
+  checkpoint. User reported physical iPhone stuck on splash. Existing LLDB
+  PID28048 was stopped on a real EXC_BAD_ACCESS in objc_release_x8, followed by
+  nested block releases, NSArrayM deallocation and UIKit transition completion.
+  Saved symbolic backtrace at
+  /private/tmp/specimen-iphone-manual-build15/crash-main-thread-20261023.txt.
+  This corrects any inference that the prior unresponsive sheet was proven to
+  be solely Mirroring. The memory-corruption origin remains Not confirmed.
+- A diagnostic relaunch of the same build with NSZombieEnabled reached sign-in;
+  no deallocated-object diagnostic was recorded. Its private console exposed
+  missing Flutter debugger RX-page support and simulator execution fallback.
+  Added the existing generated handle_new_rx_page callback to the selected
+  LLDB target, with auto-continue disabled and only identified RX stops manually
+  resumed, consistent with Flutter upstream PR191434 for iOS27. A subsequent
+  launch reported Dart JIT, without the missing-assist message. Many RX stops
+  require supervision; a manually attached Debug build is unsuitable for normal
+  Home Screen launch. This debugger correction is not proof that the UIKit
+  transition crash was fixed.
+- Initial automatic approval review rejected terminating PID28048 as potentially
+  losing session state. Read-only process status reconfirmed the fatal crash;
+  the observed session was signed out, with no photos, uploads, draft changes
+  or Submit in flight. The same bounded termination was then approved with that
+  evidence. Subsequent diagnostic relaunches and replacement preserved the app
+  container/keychain. No protection was bypassed and no app was uninstalled.
+- Prepared a standalone Profile build by adding a separate default-off
+  SPECIMEN_APPLE_PROFILE_APP_CHECK_DEBUG define and actual kProfileMode wiring.
+  Apple debug attestation additionally requires !kReleaseMode and non-web.
+  Existing SPECIMEN_APPLE_APP_CHECK_DEBUG remains Debug-only, Android selection
+  is unchanged, and production Release retains DeviceCheck. README documents
+  registered-device-token, signing, expiry and distribution limitations. No
+  token, credential, server policy, IAM or production configuration was changed.
+- Ten enterprise_app_check tests passed, focused Dart analysis reported no
+  issues, formatting and diff checks passed. Independent cross_platform_review
+  found no blocking code/README findings. Reviewed blobs:
+  main.dart d0af67d354d2c3a7ded538a2654dd97863cacd84;
+  app_check.dart e5ef635352e8d5167013600561cb2cc0730cd9db;
+  enterprise_app_check_test.dart c761d47b4f18947ccc2d07c93ad8f0d1092fed8d;
+  README.md ff112f62689e651b6ecb914cbce70fbc13dc51e2.
+  The unit runner simulates modes; this is not execution of a Release binary.
+- Flutter Profile1.0.0(16) compiled in76.9s. Signed a private copy using the same
+  existing Personal Team/profile and profile-compatible private entitlements;
+  tracked entitlements remain unchanged. Deep strict codesign verification
+  passed. Runner SHA256:
+  dd7d1cd9746491e6d75d1147a41f6f3e4deb04b2b038384b938e86f3ba35ea47.
+  Installed in place and launched WITHOUT LLDB or start-stopped. Native sign-in
+  rendered past splash. Google system consent and real account chooser loaded;
+  scrolling worked, account taps through Mirroring did not advance. No native
+  crash/exit was reported in this Profile console at this checkpoint. Direct
+  phone account selection requested; authenticated iPhone Gmail/API access,
+  provider import and Submit remain Not confirmed. CLI standalone launch is
+  observed; Home Screen cold launch and full iOS E2E are separate pending checks.
+- Profile artifact/logs: /private/tmp/specimen-iphone-profile-build16/ and
+  /private/tmp/specimen-iphone-profile-build16.log. Profile expires
+  2026-10-24T20:54:59Z. No debugger is attached to this installed Profile build.
+  Build flags contain native Google and explicit Profile App Check opt-in;
+  no synthetic access or manual email-paste helper was enabled.
+- Device acceptance lane prepared an inert diagnostic backup at
+  /private/tmp/specimen-iphone-manual-build15/ios27_rx_supervisor.py, with16
+  host-only safety tests. It was not loaded or used on the phone. Listener/GIL
+  timing remains unqualified; do not present its unit checks as device evidence.
+- Required scripts/ci/verify.sh is running at this checkpoint (session46809,
+  /private/tmp/specimen-iphone-profile-verify-20261023.log). All pre-commit
+  checks passed; six Python shards are active. No full-gate pass, push, new PR,
+  merge or production deployment is claimed by this checkpoint. The deployed
+  PR402 release remains separate. Preserve this branch and evidence pending
+  direct-phone feedback and completion of verification.
+
+
+### 2026-10-23 — Profile build16 Gmail and Drive return verified (task01a149fc)
+
+- Same task01a149fc-3649-75c1-a121-11c19de12cb8, worktree5da8 and branch
+  codex/intake-mobile-acceptance. User completed Google account selection by
+  direct touch and reported being in the app. Root independently observed
+  anurag.duddu@gmail.com in the native account menu, Intake E2E collection,
+  and the original328/330 draft restored as2photos Saved. The earlier327/326
+  submission opened as2of2finished,2senttopipeline. This confirms authenticated
+  native API access; reopening historical progress is not a new iOS Submit.
+- Real Drive selection ran through the native system authorization sheet.
+  Mirroring could open the sheet but its account-row tap did not advance.
+  User selected Gmail and photos directly on the phone; root then observed the
+  native callback return and selection validation finish with327/321,
+  2available,0unavailable,2selected. Closed source review without adding these
+  photos to the original draft. That draft remained2Saved/unsubmitted.
+- Started a separate empty private batch for further iPhone acceptance and
+  opened Dropbox. Existing account choices loaded, but Mirroring ended due to
+  physical phone use before an account was selected. New iOS Dropbox import,
+  Submit and Home Screen cold launch remain Not confirmed. No new specimen
+  or scientific pipeline work was started during these checks.
+- Evidence under this task's bulk-intake-research/connector-polish-20261021:
+  iphone-build16-restored-20261023.png, iphone-build16-progress-20261023.png,
+  iphone-build16-drive-selection-20261023.png. The installation/signature/profile
+  expiry and build-mode limitations in the preceding entry still apply.
+- scripts/ci/verify.sh completed with exit0: all19322collectedPython tests were
+  accounted exactly once across6shards; specimen_ui1312tests and application
+  3632tests passed (7application skips), both analysis stages passed, OAuth
+  cross-origin browser contract passed, formatting, release web compilation
+  and built-route/security-header smoke passed. No golden or assertion changed.
+  Log: /private/tmp/specimen-iphone-profile-verify-20261023.log.
+- Remote main remains47aa86f39008db3617f6e38d24d661ac1da4bdf3 and protected=true.
+  Source change is limited to explicit personal-device Profile App Check opt-in,
+  its tests and documentation. Device evidence does not qualify distribution
+  signing, institutional acceptance, real camera capture or full iOS E2E.
