@@ -16,12 +16,8 @@ import '../../region_editor.dart' show uiFullScreenRoute;
 import '../../widgets/product_modal.dart';
 import 'bulk_intake_controller.dart';
 import 'bulk_intake_repository.dart';
+import 'intake_file_types.dart';
 import 'intake_import_workspace.dart';
-
-const _photoTypes = XTypeGroup(
-  label: 'Photos',
-  extensions: ['jpg', 'jpeg', 'png', 'tif', 'tiff', 'heic', 'heif', 'dng'],
-);
 
 String intakeStateLabel(String state) => switch (state) {
   'ready' => 'Saved',
@@ -124,7 +120,7 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen>
     try {
       final files =
           await (widget.pickFiles?.call() ??
-              openFiles(acceptedTypeGroups: const [_photoTypes]));
+              openFiles(acceptedTypeGroups: const [intakePhotoTypes]));
       await c.addFiles(files);
     } catch (e) {
       c.error = c.message(e);
@@ -137,8 +133,12 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen>
       CaptureScreen.route(
         widget.cameraFactory ?? () async => PlatformCaptureCamera(),
         bulkDraft: true,
-        onCapturedDurably: (photo) =>
-            c.addFiles([photo.file], camera: true, sensitive: photo.sensitive),
+        onCapturedDurably: (photo) => c.addFiles(
+          [photo.file],
+          camera: true,
+          sensitive: photo.sensitive,
+          captureAttempt: photo.admissionAttempt,
+        ),
         batchTray: (context) => SizedBox(
           height: context.ui.space.s16,
           child: ListView.builder(
@@ -159,7 +159,8 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen>
         ),
         activity: c,
         activitySnapshot: () => CaptureActivity(
-          label: '${c.visible.length} photos in your batch · ${c.saveLabel}',
+          label:
+              '${c.visible.length} ${c.visible.length == 1 ? 'photo' : 'photos'} in your batch · ${c.saveLabel}',
         ),
       ),
     );
@@ -361,7 +362,7 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen>
                           UiSectionHeader(
                             title: c.visible.isEmpty
                                 ? 'Add photos'
-                                : '${c.visible.length} photos',
+                                : '${c.visible.length} ${c.visible.length == 1 ? 'photo' : 'photos'}',
                             actions: [
                               UiButton(
                                 label: 'Your batches',
@@ -522,11 +523,12 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen>
                             Text(
                               c.readyCount == c.visible.length
                                   ? 'Submit starts processing.'
-                                  : '${c.visible.length - c.readyCount} photos will remain in your draft.',
+                                  : '${c.visible.length - c.readyCount} ${c.visible.length - c.readyCount == 1 ? 'photo' : 'photos'} will remain in your draft.',
                               style: ui.type.bodySmall,
                             ),
                             UiButton(
-                              label: 'Submit ${c.readyCount} photos',
+                              label:
+                                  'Submit ${c.readyCount} ${c.readyCount == 1 ? 'photo' : 'photos'}',
                               leading: UiIcons.cloudUpload,
                               loading: c.submitting,
                               onPressed:
@@ -686,10 +688,12 @@ class BulkPhotoPreview extends StatefulWidget {
 
 class _BulkPhotoPreviewState extends State<BulkPhotoPreview> {
   late Future<Uint8List> _preview;
+  int _previewGeneration = 0;
   String get _identity =>
       '${widget.item.id}:${widget.item.state}:${widget.item.data['revision']}:${widget.full}';
   late String _loadedIdentity;
   void _load() {
+    _previewGeneration++;
     _loadedIdentity = _identity;
     _preview = widget.controller.preview(widget.item, full: widget.full);
   }
@@ -711,13 +715,14 @@ class _BulkPhotoPreviewState extends State<BulkPhotoPreview> {
 
   @override
   Widget build(BuildContext context) => FutureBuilder<Uint8List>(
+    key: ValueKey(_previewGeneration),
     future: _preview,
     builder: (context, snapshot) {
       if (snapshot.hasData) {
         return Image.memory(
           snapshot.data!,
           fit: BoxFit.contain,
-          gaplessPlayback: true,
+          gaplessPlayback: false,
           excludeFromSemantics: true,
         );
       }
@@ -782,6 +787,7 @@ class _BulkPhotoInspectorState extends State<BulkPhotoInspector> {
               camera: true,
               sensitive: photo.sensitive,
               replacesId: item.id,
+              captureAttempt: photo.admissionAttempt,
             );
             replaced = true;
             if (mounted) Navigator.of(context).pop();
@@ -792,7 +798,7 @@ class _BulkPhotoInspectorState extends State<BulkPhotoInspector> {
       if (result?.needsFallback == true) {
         final file =
             await (widget.pickReplacementFile?.call() ??
-                openFile(acceptedTypeGroups: const [_photoTypes]));
+                openFile(acceptedTypeGroups: const [intakePhotoTypes]));
         if (!mounted || file == null) return;
         await widget.controller.addFiles(
           [file],
@@ -1053,21 +1059,7 @@ class _BulkIntakeProgressState extends State<BulkIntakeProgress> {
     setState(() => reselecting = true);
     try {
       final files = await openFiles(
-        acceptedTypeGroups: [
-          const XTypeGroup(
-            label: 'Photos',
-            extensions: [
-              'jpg',
-              'jpeg',
-              'png',
-              'tif',
-              'tiff',
-              'heic',
-              'heif',
-              'dng',
-            ],
-          ),
-        ],
+        acceptedTypeGroups: const [intakePhotoTypes],
       );
       if (files.isEmpty) return;
       await widget.controller.reselectSubmission(widget.submissionId, files);

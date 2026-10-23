@@ -7,6 +7,7 @@ import 'package:specimen_digitization/src/screens/intake/bulk_intake_controller.
 import 'package:specimen_digitization/src/screens/intake/bulk_intake_repository.dart';
 import 'package:specimen_digitization/src/screens/intake/intake_auth_session.dart';
 import 'package:specimen_digitization/src/screens/intake/intake_source_picker.dart';
+import 'package:specimen_digitization/src/screens/intake/intake_picker_host.dart';
 import 'package:specimen_digitization/src/theme/app_theme.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
@@ -20,10 +21,13 @@ class ConnectorRepository implements BulkIntakeRepository {
   String? emptyAccount;
   bool loseCompletionReply = false;
   bool deferNativeSelection = false;
+  bool persistAuthorizationState = false;
   ApiFailure? retryFailure;
   int authorizations = 0;
   final List<Json> pickerReplies = [];
   final Map<String, List<Json>> pickerRepliesById = {};
+  final List<Json> cancelReplies = [];
+  late ConnectorPickerHost host;
   bool nestedFolders = false;
   Completer<Json>? delayedPoll;
   String delayedConnection = 'first';
@@ -80,6 +84,13 @@ class ConnectorRepository implements BulkIntakeRepository {
               ? 'native-picker'
               : 'native-picker-$authorizations',
       };
+      if (persistAuthorizationState) {
+        final previous = accounts
+            .where((row) => row['id'] == pending!['id'])
+            .firstOrNull;
+        accounts.removeWhere((row) => row['id'] == pending!['id']);
+        accounts.add({...?previous, ...pending!});
+      }
       return pending!;
     }
     if (path == '/connections/complete') {
@@ -160,9 +171,24 @@ class ConnectorRepository implements BulkIntakeRepository {
           details: {'action': 'retry'},
         );
       }
-      return {'id': 'picker', 'url': 'https://api.example/picker'};
+      final origin = body?['return_origin'] as String?;
+      return {
+        'id': 'picker',
+        'url': Uri.https(
+          'api.example',
+          '/v1/intake/picker',
+          origin == null
+              ? null
+              : {'embed_origin': origin, 'picker_id': 'picker'},
+        ).replace(fragment: 'state=opaque-picker-capability').toString(),
+      };
     }
     if (path.contains('/picker/')) {
+      if (path.endsWith('/cancel')) {
+        return cancelReplies.isEmpty
+            ? {'state': 'cancelled'}
+            : cancelReplies.removeAt(0);
+      }
       if (path.endsWith('/retry') && retryFailure != null) throw retryFailure!;
       final parts = path.split('/');
       final id = path.endsWith('/retry') ? parts[parts.length - 2] : parts.last;
@@ -211,6 +237,65 @@ class ConnectorSession implements IntakeAuthSession {
   void close() => closed = true;
 }
 
+class ConnectorPickerHost extends IntakePickerHost {
+  ConnectorPickerHost({this.native = false});
+  final bool native;
+  final List<ConnectorFrame> frames = [];
+  int disposedFrames = 0;
+  bool Function()? consentClosed;
+  @override
+  String? get returnOrigin => native ? null : 'https://app.example';
+  @override
+  Widget buildFrame({
+    required String url,
+    required String pickerId,
+    required ValueChanged<String> onEvent,
+    required ValueChanged<String> onFailure,
+  }) => ConnectorFrame(
+    key: ValueKey(pickerId),
+    host: this,
+    url: url,
+    pickerId: pickerId,
+    onEvent: onEvent,
+    onFailure: onFailure,
+  );
+}
+
+class ConnectorFrame extends StatefulWidget {
+  const ConnectorFrame({
+    super.key,
+    required this.host,
+    required this.url,
+    required this.pickerId,
+    required this.onEvent,
+    required this.onFailure,
+  });
+  final ConnectorPickerHost host;
+  final String url, pickerId;
+  final ValueChanged<String> onEvent, onFailure;
+  @override
+  State<ConnectorFrame> createState() => _ConnectorFrameState();
+}
+
+class _ConnectorFrameState extends State<ConnectorFrame> {
+  @override
+  void initState() {
+    super.initState();
+    expect(widget.host.consentClosed?.call(), isNot(false));
+    widget.host.frames.add(widget);
+  }
+
+  @override
+  void dispose() {
+    widget.host.disposedFrames++;
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      const Center(child: Text('Inline Drive fixture'));
+}
+
 Future<List<ConnectorSession>> mount(
   WidgetTester tester,
   ConnectorRepository repository,
@@ -218,8 +303,14 @@ Future<List<ConnectorSession>> mount(
   double scale = 1,
   bool native = false,
   bool durablePicker = true,
+  ConnectorSession Function()? sessionFactory,
+  ValueNotifier<bool>? active,
 }) async {
   final sessions = <ConnectorSession>[];
+  final activity = active ?? ValueNotifier(true);
+  if (active == null) addTearDown(activity.dispose);
+  repository.host = ConnectorPickerHost(native: native)
+    ..consentClosed = () => sessions.every((session) => session.closed);
   final controller = BulkIntakeController(
     repository: repository,
     scope: const CollectionScope(
@@ -244,14 +335,21 @@ Future<List<ConnectorSession>> mount(
             textScaler: TextScaler.linear(scale),
           ),
           child: SingleChildScrollView(
-            child: IntakeSourcePicker(
-              controller: controller,
-              provider: provider,
-              authSessionFactory: () {
-                final session = ConnectorSession(native: native);
-                sessions.add(session);
-                return session;
-              },
+            child: ValueListenableBuilder<bool>(
+              valueListenable: activity,
+              builder: (context, active, _) => IntakeSourcePicker(
+                controller: controller,
+                provider: provider,
+                active: active,
+                pickerHost: repository.host,
+                authSessionFactory: () {
+                  final session =
+                      sessionFactory?.call() ??
+                      ConnectorSession(native: native);
+                  sessions.add(session);
+                  return session;
+                },
+              ),
             ),
           ),
         ),
@@ -492,15 +590,17 @@ void main() {
       await openOptions(tester, 'Google Drive');
       await tester.tap(find.text('Choose photos'));
       await tester.pumpAndSettle();
-      expect(sessions.single.pickerUrl, isNotNull);
+      expect(sessions, isEmpty);
+      expect(find.byType(ConnectorFrame), findsOneWidget);
       expect(find.text('Back to All files'), findsNothing);
       expect(find.text('Load more files'), findsNothing);
       expect(find.text('Folder options'), findsNothing);
+      await press(tester, 'Back to selected photos');
       expect(find.text('Add 1 photo'), findsOneWidget);
       await openOptions(tester, 'Google Drive');
       await tester.tap(find.text('Browse folders'));
       await tester.pumpAndSettle();
-      expect(sessions.single.closed, isTrue);
+      expect(repository.host.disposedFrames, 1);
       expect(
         repository.calls.any((c) => c.$1 == 'POST' && c.$2 == '/connections'),
         isFalse,
@@ -775,27 +875,27 @@ void main() {
     },
   );
 
-  testWidgets(
-    'Google consent continues immediately into Picker using the same popup',
-    (tester) async {
-      final repository = ConnectorRepository();
-      final sessions = await mount(tester, repository, 'google_drive');
-      await press(tester, 'Connect Google Drive');
-      expect(find.text('Connected'), findsOneWidget);
-      expect(find.text('new@example.test'), findsOneWidget);
-      expect(sessions, hasLength(1));
-      expect(sessions.single.keepOpen, isTrue);
-      expect(sessions.single.pickerUrl, 'https://api.example/picker');
-      expect(sessions.single.closed, isFalse);
-      final create = repository.calls.firstWhere(
-        (c) => c.$1 == 'POST' && c.$2 == '/connections',
-      );
-      expect(create.$3!['access'], 'files');
-      expect(repository.calls.any((c) => c.$2.endsWith('/browse')), isFalse);
-      await tester.pumpWidget(const SizedBox());
-      expect(sessions.single.closed, isTrue);
-    },
-  );
+  testWidgets('Google consent closes before selection continues inline', (
+    tester,
+  ) async {
+    final repository = ConnectorRepository();
+    final sessions = await mount(tester, repository, 'google_drive');
+    await press(tester, 'Connect Google Drive');
+    expect(find.text('Connected'), findsOneWidget);
+    expect(find.text('new@example.test'), findsOneWidget);
+    expect(sessions, hasLength(1));
+    expect(sessions.single.keepOpen, isFalse);
+    expect(sessions.single.pickerUrl, isNull);
+    expect(sessions.single.closed, isTrue);
+    expect(find.byType(ConnectorFrame), findsOneWidget);
+    final create = repository.calls.firstWhere(
+      (c) => c.$1 == 'POST' && c.$2 == '/connections',
+    );
+    expect(create.$3!['access'], 'files');
+    expect(repository.calls.any((c) => c.$2.endsWith('/browse')), isFalse);
+    await tester.pumpWidget(const SizedBox());
+    expect(sessions.single.closed, isTrue);
+  });
 
   testWidgets('Dropbox consent immediately browses photos and closes sign-in', (
     tester,
@@ -1127,7 +1227,7 @@ void main() {
   );
 
   testWidgets(
-    'Picker failure closes popup and Retry uses the already connected account',
+    'Picker failure keeps consent closed and Retry uses the connected account inline',
     (tester) async {
       final repository = ConnectorRepository()..failPicker = true;
       final sessions = await mount(tester, repository, 'google_drive');
@@ -1136,8 +1236,8 @@ void main() {
       expect(find.text('Connected'), findsOneWidget);
       repository.failPicker = false;
       await press(tester, 'Retry');
-      expect(sessions, hasLength(2));
-      expect(sessions.last.pickerUrl, isNotNull);
+      expect(sessions, hasLength(1));
+      expect(find.byType(ConnectorFrame), findsOneWidget);
       expect(
         repository.calls.where((c) => c.$1 == 'POST' && c.$2 == '/connections'),
         hasLength(1),

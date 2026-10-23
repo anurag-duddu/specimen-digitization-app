@@ -62,6 +62,9 @@ uv run python scripts/ci/check_ui_strings.py \
 # gates are the ones that fail first: a token that loses contrast or a
 # primitive that breaks the control contract should not need a screen test to
 # surface it.
+cd "$flutter_root"
+flutter pub get --enforce-lockfile
+
 cd "$design_system_root"
 flutter pub get
 flutter analyze --fatal-infos
@@ -77,7 +80,6 @@ flutter test
 flutter build web --release
 
 cd "$flutter_root"
-flutter pub get --enforce-lockfile
 flutter analyze --fatal-infos
 flutter test
 

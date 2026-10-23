@@ -28,6 +28,7 @@ import 'screens/intake/capture_card.dart';
 import 'screens/intake/manifest_entry.dart';
 import 'screens/intake/manifest_panel.dart';
 import 'screens/intake/intake_status.dart';
+import 'screens/intake/intake_file_types.dart';
 import 'screens/intake/intake_transfer_session.dart';
 import 'widgets/motion_reveal.dart';
 import 'widgets/upload_item.dart';
@@ -371,24 +372,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
       ? await widget.pickFiles!()
       : widget.pickImages != null
       ? await widget.pickImages!(false)
-      : await openFiles(
-          acceptedTypeGroups: <XTypeGroup>[
-            const XTypeGroup(
-              label: 'Photos',
-              extensions: <String>[
-                'jpg',
-                'jpeg',
-                'png',
-                'heic',
-                'heif',
-                'tif',
-                'tiff',
-                'dng',
-              ],
-              uniformTypeIdentifiers: <String>['public.image'],
-            ),
-          ],
-        );
+      : await openFiles(acceptedTypeGroups: const [intakePhotoTypes]);
 
   Future<void> _takePhotograph() => _collect(camera: true, load: _capture);
 

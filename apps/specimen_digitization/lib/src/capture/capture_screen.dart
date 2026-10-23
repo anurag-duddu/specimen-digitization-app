@@ -53,10 +53,17 @@ class CaptureActivity {
 /// An accepted photo and the sensitivity selected when it was taken or reviewed.
 @immutable
 class CapturedPhoto {
-  const CapturedPhoto({required this.file, required this.sensitive});
+  const CapturedPhoto({
+    required this.file,
+    required this.sensitive,
+    this.admissionAttempt,
+  });
 
   final XFile file;
   final bool sensitive;
+
+  /// Stable across a failed save and its retake, scoped to this camera route.
+  final Object? admissionAttempt;
 }
 
 /// What the capture route hands back to the intake screen.
@@ -273,6 +280,7 @@ class _CaptureScreenState extends State<CaptureScreen>
   bool _foreground = true;
   int _cameraGeneration = 0;
   int _acceptedCount = 0;
+  Object _admissionAttempt = Object();
   XFile? _lastAccepted;
   final _lastShotMenu = PopoverController();
   Rect _crop = const Rect.fromLTWH(0.06, 0.06, 0.88, 0.88);
@@ -650,11 +658,16 @@ class _CaptureScreenState extends State<CaptureScreen>
     required bool sensitive,
   }) async {
     _lastShotMenu.close();
+    final attempt = _admissionAttempt;
     final ValueChanged<XFile>? onAccepted = widget.onAccepted;
     final ValueChanged<CapturedPhoto>? onCaptured = widget.onCaptured;
     try {
       await widget.onCapturedDurably?.call(
-        CapturedPhoto(file: file, sensitive: sensitive),
+        CapturedPhoto(
+          file: file,
+          sensitive: sensitive,
+          admissionAttempt: attempt,
+        ),
       );
     } catch (_) {
       final dimensions = await captureDimensions(bytes);
@@ -670,6 +683,7 @@ class _CaptureScreenState extends State<CaptureScreen>
       return;
     }
     if (!mounted) return;
+    _admissionAttempt = Object();
     setState(() {
       _acceptedCount++;
       _lastAccepted = file;
@@ -690,7 +704,13 @@ class _CaptureScreenState extends State<CaptureScreen>
       _editError = null;
     });
     onAccepted?.call(file);
-    onCaptured?.call(CapturedPhoto(file: file, sensitive: sensitive));
+    onCaptured?.call(
+      CapturedPhoto(
+        file: file,
+        sensitive: sensitive,
+        admissionAttempt: attempt,
+      ),
+    );
   }
 
   void _setAutoIngest(bool value) {
