@@ -24820,3 +24820,66 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   this does not establish real-camera acceptance. iOS provisioning and remaining
   physical acceptance limitations in the preceding entry remain unresolved.
   Protected release, alternate-host investigation and device acceptance continue.
+
+### 2026-10-23 — PR402 protected release and Android/mobile-web acceptance (task01a149fc)
+
+- Task01a149fc-3649-75c1-a121-11c19de12cb8, worktree5da8. PR402 merged
+  codex/intake-cross-platform at47aa86f39008db3617f6e38d24d661ac1da4bdf3.
+  Independent G51 review approved exact final head6c2142d93e18e72b28a7d3a936de51a5e4106e42;
+  final PR CI/CD39920466880 and runtime candidate39920466951 passed, with no
+  unresolved review threads. No required gate, assertion or protection was waived.
+- All three protected main releases succeeded on that merge SHA: Hosting
+  39922006687 attempt1, data39922006700 and runtime39922006691. Hosting public
+  verification and runtime API smoke passed. Independently ran smoke_hosting.sh
+  with the exact SHA/run/attempt; it passed. Public deployment.json reports
+  commitSha47aa86f39008db3617f6e38d24d661ac1da4bdf3, runId39922006687,
+  runAttempt1, builtAt2026-10-23T08:13:54Z. API /version reports the same source_sha,
+  api-runtime-v1, production. Web/backend release is complete; native distribution
+  and complete physical acceptance are separate outcomes.
+- Built Android debug build14 from the exact merge and installed in place on
+  Nothing A142/API36, packageorg.fieldmuseum.specimen_digitization. Local and
+  on-device APK SHA256 both match
+  50b16c00d1c33b24b6e5c88ce9c4d06860a316af8daa577258701817f819aa9d.
+  Existing signer, original installation, application data and Gmail session
+  were preserved. The app restored the original328/330 draft as2photos Saved
+  and reopened the earlier327/326 submission as2of2finished,2senttopipeline.
+  This post-install check did not submit another batch. Build log:
+  /private/tmp/specimen-cross-platform-android-14.log.
+- Physical Android Chrome reloaded canonical specimen-digitization.web.app
+  after the release. Gmail session and original328/330 draft restored. The real
+  inline Google Picker loaded, selected325 and returned to source review with
+  1available,0unavailable,1selected and Add1photo. Closed source review without
+  adding; original draft remains2Saved/unsubmitted. Earlier mobile-web Dropbox
+  browsing selected the ten-file demo folder successfully but did not add it.
+  That Dropbox check preceded this release; do not relabel it exact-release E2E.
+- New screenshots under this task's bulk-intake-research/connector-polish-20261021:
+  android-build14-restored-20261023.png, android-build14-progress-20261023.png,
+  android-mobile-web-released-restored-20261023.png and
+  android-mobile-web-released-drive-20261023.png. Existing native mixed-source
+  Submit/progress/pipeline evidence is recorded in the preceding entries.
+- iOS remains blocked for physical installation: Xcode exposes one configured
+  Apple account and one cached Personal Team with isFreeProvisioningTeam=true.
+  Its same-bundle profile lacks Associated Domains and expires2026-10-24.
+  No paid team is exposed in that inventory; membership elsewhere is Not
+  confirmed. Unsigned native compilation passed, but this is not physical iOS
+  acceptance. Need legitimate provisioning for the existing identity with its
+  required entitlement. Did not remove the entitlement, alter identity, erase
+  the installed app or purchase membership.
+- Unresolved: alternate firebaseapp.com App Check failure needs renewed existing
+  project-admin verification before live configuration inspection. Canonical
+  web.app works. Two Dropbox connection choices have identical displayed email
+  labels; actual stable account IDs were not compared. Source inspection shows
+  Use another account can allocate another connection before provider identity
+  is known. Follow-up should converge new callbacks using a private CAS identity
+  claim scoped by owner/collection/provider/access/stable account ID, before
+  storing candidate credentials; retain old referenced connection IDs. Do not
+  silently merge or disconnect existing rows or copy secret references across
+  connection IDs. No production credential or connection mutation was made for
+  this finding.
+- Thirty real captures,100/500 real-source batches, physical iOS/Safari,
+  VoiceOver/TalkBack and managed-account policy acceptance remain Not confirmed.
+  Viewfinder opening and automated tests do not establish these outcomes.
+  Continue on codex/intake-mobile-acceptance from the deployed merge, preserving
+  this worktree, local device configuration and evidence. Only the fully merged
+  codex/intake-cross-platform branch is eligible for pruning after ancestry and
+  remote checks; no unrelated worktrees or branches are eligible.
