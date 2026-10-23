@@ -16,12 +16,8 @@ import '../../region_editor.dart' show uiFullScreenRoute;
 import '../../widgets/product_modal.dart';
 import 'bulk_intake_controller.dart';
 import 'bulk_intake_repository.dart';
+import 'intake_file_types.dart';
 import 'intake_import_workspace.dart';
-
-const _photoTypes = XTypeGroup(
-  label: 'Photos',
-  extensions: ['jpg', 'jpeg', 'png', 'tif', 'tiff', 'heic', 'heif', 'dng'],
-);
 
 String intakeStateLabel(String state) => switch (state) {
   'ready' => 'Saved',
@@ -124,7 +120,7 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen>
     try {
       final files =
           await (widget.pickFiles?.call() ??
-              openFiles(acceptedTypeGroups: const [_photoTypes]));
+              openFiles(acceptedTypeGroups: const [intakePhotoTypes]));
       await c.addFiles(files);
     } catch (e) {
       c.error = c.message(e);
@@ -799,7 +795,7 @@ class _BulkPhotoInspectorState extends State<BulkPhotoInspector> {
       if (result?.needsFallback == true) {
         final file =
             await (widget.pickReplacementFile?.call() ??
-                openFile(acceptedTypeGroups: const [_photoTypes]));
+                openFile(acceptedTypeGroups: const [intakePhotoTypes]));
         if (!mounted || file == null) return;
         await widget.controller.addFiles(
           [file],
@@ -1060,21 +1056,7 @@ class _BulkIntakeProgressState extends State<BulkIntakeProgress> {
     setState(() => reselecting = true);
     try {
       final files = await openFiles(
-        acceptedTypeGroups: [
-          const XTypeGroup(
-            label: 'Photos',
-            extensions: [
-              'jpg',
-              'jpeg',
-              'png',
-              'tif',
-              'tiff',
-              'heic',
-              'heif',
-              'dng',
-            ],
-          ),
-        ],
+        acceptedTypeGroups: const [intakePhotoTypes],
       );
       if (files.isEmpty) return;
       await widget.controller.reselectSubmission(widget.submissionId, files);

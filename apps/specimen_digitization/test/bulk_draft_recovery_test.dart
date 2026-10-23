@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:crypto/crypto.dart';
@@ -5,9 +6,46 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/screens/intake/bulk_intake_controller.dart';
 import 'package:specimen_digitization/src/screens/intake/bulk_intake_repository.dart';
+
+class FailingDraftPreferences extends InMemorySharedPreferencesStore {
+  FailingDraftPreferences() : super.empty();
+  String? failure;
+  bool failNextRead = false;
+  Completer<void>? pause;
+  Completer<void>? entered;
+
+  @override
+  Future<bool> setValue(String type, String key, Object value) async {
+    if (key.contains('bulk-intake-v1:') && pause != null) {
+      entered?.complete();
+      await pause!.future;
+    }
+    if (key.contains('bulk-intake-v1:') && failure != null) {
+      final current = failure;
+      failure = null;
+      if (current == 'commit-throw') {
+        await super.setValue(type, key, value);
+        throw StateError('Acknowledgement lost');
+      }
+      if (current == 'throw') throw StateError('Storage full');
+      return false;
+    }
+    return super.setValue(type, key, value);
+  }
+
+  @override
+  Future<Map<String, Object>> getAll() async {
+    if (failNextRead) {
+      failNextRead = false;
+      throw StateError('Reload unavailable');
+    }
+    return super.getAll();
+  }
+}
 
 class OfflineIntake implements BulkIntakeRepository {
   final List<String> calls = [];
@@ -124,6 +162,272 @@ void main() {
     );
     return objects((jsonDecode(prefs.getString(key)!) as Map)['files']);
   }
+
+  for (final failure in ['false', 'throw']) {
+    test(
+      'failed $failure metadata ACK keeps prior captures and permits one retry',
+      () async {
+        final store = FailingDraftPreferences();
+        SharedPreferences.resetStatic();
+        SharedPreferencesStorePlatform.instance = store;
+        final source = File('${directory.path}/camera.png');
+        await source.writeAsBytes([1, 2, 3, 4]);
+        final controller = BulkIntakeController(
+          repository: OfflineIntake(),
+          scope: scope,
+          userId: 'owner',
+        );
+        await controller.initialize();
+        await controller.addFiles([XFile(source.path)], camera: true);
+        final firstId = (await storedFiles()).single['client_id'];
+        store.failure = failure;
+        await expectLater(
+          controller.addFiles([XFile(source.path)], camera: true),
+          throwsStateError,
+        );
+        expect(controller.visible.length, 1);
+        expect((await storedFiles()).single['client_id'], firstId);
+        final retained = await Directory(
+          '${directory.path}/intake',
+        ).list(recursive: true).where((entry) => entry is File).toList();
+        expect(retained.length, 1);
+        // A rejected write does not poison either serial queue.
+        await controller.addFiles(
+          [XFile(source.path)],
+          camera: true,
+          sensitive: true,
+        );
+        expect(controller.visible.length, 2);
+        expect((await storedFiles()).length, 2);
+        controller.dispose();
+        await source.delete();
+        // Reload from the host store rather than the optimistic plugin cache.
+        SharedPreferences.resetStatic();
+        final recovered = BulkIntakeController(
+          repository: OfflineIntake(),
+          scope: scope,
+          userId: 'owner',
+        );
+        await recovered.initialize();
+        expect(recovered.visible.length, 2);
+        expect(recovered.needsReselection, isFalse);
+        expect(recovered.visible.where((item) => item.sensitive).length, 1);
+        recovered.dispose();
+      },
+    );
+  }
+
+  test(
+    'failed reselection preserves earlier retained bytes and identity',
+    () async {
+      final store = FailingDraftPreferences();
+      SharedPreferences.resetStatic();
+      SharedPreferencesStorePlatform.instance = store;
+      final source = File('${directory.path}/camera.png');
+      await source.writeAsBytes([1, 2, 3, 4]);
+      final first = BulkIntakeController(
+        repository: OfflineIntake(),
+        scope: scope,
+        userId: 'owner',
+      );
+      await first.initialize();
+      await first.addFiles([XFile(source.path)], camera: true);
+      final original = (await storedFiles()).single;
+      final oldPath = original['path'] as String;
+      first.dispose();
+
+      // The file is unavailable while restoring, then becomes available before
+      // reselection. The old path must still survive a rejected metadata save.
+      await File(oldPath).delete();
+      SharedPreferences.resetStatic();
+      final recovered = BulkIntakeController(
+        repository: OfflineIntake(),
+        scope: scope,
+        userId: 'owner',
+      );
+      await recovered.initialize();
+      expect(recovered.needsReselection, isTrue);
+      await File(oldPath).writeAsBytes([1, 2, 3, 4]);
+      store.failure = 'false';
+      await recovered.addFiles([XFile(source.path)]);
+      expect(recovered.visible.length, 1);
+      expect((await storedFiles()).single['path'], oldPath);
+      expect(await File(oldPath).readAsBytes(), [1, 2, 3, 4]);
+
+      await recovered.addFiles([XFile(source.path)]);
+      final replacement = (await storedFiles()).single;
+      expect(replacement['client_id'], original['client_id']);
+      expect(replacement['path'], isNot(oldPath));
+      expect(await File(replacement['path'] as String).readAsBytes(), [
+        1,
+        2,
+        3,
+        4,
+      ]);
+      expect(await File(oldPath).exists(), isFalse);
+      expect(recovered.visible.length, 1);
+      recovered.dispose();
+    },
+  );
+
+  test(
+    'disposal during metadata ACK keeps durable row off stale controller',
+    () async {
+      final store = FailingDraftPreferences();
+      SharedPreferences.resetStatic();
+      SharedPreferencesStorePlatform.instance = store;
+      final source = File('${directory.path}/camera.png');
+      await source.writeAsBytes([1, 2, 3, 4]);
+      final controller = BulkIntakeController(
+        repository: OfflineIntake(),
+        scope: scope,
+        userId: 'owner',
+      );
+      await controller.initialize();
+      store.pause = Completer<void>();
+      store.entered = Completer<void>();
+      final admission = controller.addFiles([XFile(source.path)], camera: true);
+      await store.entered!.future;
+      controller.dispose();
+      store.pause!.complete();
+      await admission;
+      expect(controller.visible, isEmpty);
+      expect((await storedFiles()).length, 1);
+      SharedPreferences.resetStatic();
+      final recovered = BulkIntakeController(
+        repository: OfflineIntake(),
+        scope: scope,
+        userId: 'owner',
+      );
+      await recovered.initialize();
+      expect(recovered.visible.length, 1);
+      expect(recovered.needsReselection, isFalse);
+      recovered.dispose();
+    },
+  );
+
+  test('persisted metadata with lost ACK admits exactly one photo', () async {
+    final store = FailingDraftPreferences();
+    SharedPreferences.resetStatic();
+    SharedPreferencesStorePlatform.instance = store;
+    final source = File('${directory.path}/camera.png');
+    await source.writeAsBytes([1, 2, 3, 4]);
+    final controller = BulkIntakeController(
+      repository: OfflineIntake(),
+      scope: scope,
+      userId: 'owner',
+    );
+    await controller.initialize();
+    store.failure = 'commit-throw';
+    await controller.addFiles([XFile(source.path)], camera: true);
+    expect(controller.visible.length, 1);
+    expect((await storedFiles()).length, 1);
+    controller.dispose();
+    SharedPreferences.resetStatic();
+    final recovered = BulkIntakeController(
+      repository: OfflineIntake(),
+      scope: scope,
+      userId: 'owner',
+    );
+    await recovered.initialize();
+    expect(recovered.visible.length, 1);
+    expect(recovered.needsReselection, isFalse);
+    recovered.dispose();
+  });
+
+  test(
+    'unknown ACK retains bytes and retry reuses the same identity',
+    () async {
+      final store = FailingDraftPreferences();
+      SharedPreferences.resetStatic();
+      SharedPreferencesStorePlatform.instance = store;
+      final source = File('${directory.path}/camera.png');
+      await source.writeAsBytes([1, 2, 3, 4]);
+      final controller = BulkIntakeController(
+        repository: OfflineIntake(),
+        scope: scope,
+        userId: 'owner',
+      );
+      await controller.initialize();
+      store.failure = 'commit-throw';
+      store.failNextRead = true;
+      await expectLater(
+        controller.addFiles([XFile(source.path)], camera: true),
+        throwsStateError,
+      );
+      expect(controller.visible, isEmpty);
+      final first = (await storedFiles()).single;
+      expect(await File(first['path'] as String).readAsBytes(), [1, 2, 3, 4]);
+
+      await controller.addFiles([XFile(source.path)], camera: true);
+      expect(controller.visible.length, 1);
+      final retried = (await storedFiles()).single;
+      expect(retried['client_id'], first['client_id']);
+      expect(retried['path'], first['path']);
+      controller.dispose();
+      SharedPreferences.resetStatic();
+      final recovered = BulkIntakeController(
+        repository: OfflineIntake(),
+        scope: scope,
+        userId: 'owner',
+      );
+      await recovered.initialize();
+      expect(recovered.visible.length, 1);
+      expect(recovered.needsReselection, isFalse);
+      recovered.dispose();
+    },
+  );
+
+  test(
+    'thirty retained captures survive restart without their temporary originals',
+    () async {
+      final repo = OfflineIntake();
+      final controller = BulkIntakeController(
+        repository: repo,
+        scope: scope,
+        userId: 'owner',
+      );
+      await controller.initialize();
+      for (var index = 0; index < 30; index++) {
+        final source = File('${directory.path}/capture-$index.png');
+        await source.writeAsBytes([1, 2, 3, index]);
+        await controller.addFiles(
+          [XFile(source.path)],
+          camera: true,
+          sensitive: index.isEven,
+        );
+        await source.delete();
+      }
+      expect(controller.visible.length, 30);
+      final prefs = await SharedPreferences.getInstance();
+      final snapshot = {
+        for (final key in prefs.getKeys()) key: prefs.get(key)!,
+      };
+      final rows = await storedFiles();
+      expect(rows.map((row) => row['client_id']).toSet().length, 30);
+      controller.dispose();
+      SharedPreferences.setMockInitialValues(snapshot);
+      final recovered = BulkIntakeController(
+        repository: repo,
+        scope: scope,
+        userId: 'owner',
+      );
+      await recovered.initialize();
+      expect(recovered.visible.length, 30);
+      expect(recovered.needsReselection, isFalse);
+      expect(recovered.visible.where((item) => item.sensitive).length, 15);
+      for (var index = 0; index < rows.length; index++) {
+        expect(await File(rows[index]['path'] as String).readAsBytes(), [
+          1,
+          2,
+          3,
+          index,
+        ]);
+      }
+      expect(repo.calls.any((request) => request.contains('/submit')), isFalse);
+      recovered.dispose();
+    },
+  );
 
   test(
     'native capture survives original deletion and stays private across accounts',

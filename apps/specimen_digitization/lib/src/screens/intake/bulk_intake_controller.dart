@@ -29,6 +29,13 @@ typedef _PreparedPhoto = ({
   Object? failure,
 });
 
+typedef _UncertainPhoto = ({Json row, XFile retained, String? previousPath});
+
+class _DraftPersistenceUncertain extends StateError {
+  _DraftPersistenceUncertain()
+    : super('Could not confirm whether draft metadata was saved');
+}
+
 class BulkIntakeController extends ChangeNotifier {
   BulkIntakeController({
     required this.repository,
@@ -92,6 +99,7 @@ class BulkIntakeController extends ChangeNotifier {
   List<String> lastRemoved = [];
   final Map<String, XFile> _files = {};
   final Map<String, Json> _local = {};
+  final Map<String, _UncertainPhoto> _uncertainPhotos = {};
   final Map<String, Json> _pendingSources = {};
   final Map<String, String> _sourceIdentityIndex = {};
   String? _sourceIndexDraft;
@@ -102,6 +110,7 @@ class BulkIntakeController extends ChangeNotifier {
   Future<void> _mutations = Future.value();
   Future<void> _transfers = Future.value();
   Future<void> _previewTail = Future.value();
+  Future<void> _persistence = Future.value();
   Timer? _timer;
   String get _owner => '$userId:${scope.key}';
   String get _key => 'bulk-intake-v1:${sha256.convert(utf8.encode(_owner))}';
@@ -249,18 +258,66 @@ class BulkIntakeController extends ChangeNotifier {
     }
   }
 
-  Future<void> _persist() async {
-    if (_disposed) return;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      _key,
-      jsonEncode({
+  Future<void> _persist({Json? retainedFile}) {
+    final write = _persistence.then((_) async {
+      if (_disposed) {
+        if (retainedFile != null) throw StateError('Intake account changed');
+        return;
+      }
+      if (_uncertainPhotos.isNotEmpty &&
+          !_uncertainPhotos.values.any(
+            (photo) =>
+                photo.row['client_id'] == retainedFile?['client_id'] &&
+                photo.row['path'] == retainedFile?['path'],
+          )) {
+        throw StateError('Confirm the previous photo save before continuing');
+      }
+      final prefs = await SharedPreferences.getInstance();
+      final files = {..._local};
+      if (retainedFile != null) {
+        files[retainedFile['client_id'] as String] = retainedFile;
+      }
+      final snapshot = jsonEncode({
         'client_id': _draftClientId,
         'active_draft_id': draft?.id,
-        'files': _local.values.toList(),
+        'files': files.values.toList(),
         'sources': _pendingSources.values.toList(),
-      }),
-    );
+      });
+      Object? failure;
+      StackTrace? failureStack;
+      try {
+        if (!await prefs.setString(_key, snapshot)) {
+          failure = StateError('Draft metadata was not saved');
+        }
+      } catch (error, stack) {
+        failure = error;
+        failureStack = stack;
+      }
+      if (failure != null) {
+        // A host may commit the value, then lose its acknowledgement. Reload
+        // the host state rather than trusting the optimistic legacy cache.
+        try {
+          await prefs.reload();
+        } catch (_) {
+          // The outcome is unknown. Keep retained bytes for a later retry or
+          // restart; deleting them could strand a committed metadata row.
+          throw _DraftPersistenceUncertain();
+        }
+        if (prefs.getString(_key) != snapshot) {
+          if (failureStack != null) {
+            Error.throwWithStackTrace(failure, failureStack);
+          }
+          throw failure;
+        }
+      }
+      // Publish a new file only after the metadata write has been accepted.
+      // Commit within this queue so later snapshots include the new identity.
+      if (retainedFile != null && !_disposed) {
+        _local[retainedFile['client_id'] as String] = retainedFile;
+      }
+    });
+    _persistence = write.catchError((Object _) {});
+    return write;
   }
 
   Future<void> refreshLists({bool Function()? isCurrent}) async {
@@ -604,29 +661,53 @@ class BulkIntakeController extends ChangeNotifier {
       Future<void> publish(_PreparedPhoto photo) async {
         if (_disposed) return;
         final file = photo.file, id = intakeClientId();
+        XFile? retained;
+        late Json row;
+        String? previousPath;
+        var committed = false;
         try {
           if (photo.failure != null) throw photo.failure!;
           final previous = photo.previous;
-          final clientId = previous?['client_id'] as String? ?? id;
-          final retained = await retainDraftFile(file, _owner, clientId);
-          final row = <String, dynamic>{
-            ...?previous,
-            'client_id': clientId,
-            'batch_client_id': previous?['batch_client_id'] ?? _draftClientId,
-            if (draft != null) 'draft_id': draft!.id,
-            'path': retained.path,
-            'filename': file.name,
-            'size_bytes': photo.size,
-            'sha256': photo.hash,
-            'media_type': _mediaType(file),
-            'photo_sensitive': previous?['photo_sensitive'] ?? sensitive,
-            'replaces_id': ?replacesId,
-            'source':
-                previous?['source'] ??
-                {'provider': camera ? 'camera' : 'files'},
-            'saved': false,
-          };
-          _local[clientId] = row;
+          final uncertain = _uncertainPhotos[file.path];
+          final clientId =
+              uncertain?.row['client_id'] as String? ??
+              previous?['client_id'] as String? ??
+              id;
+          if (uncertain != null) {
+            retained = uncertain.retained;
+            row = uncertain.row;
+            previousPath = uncertain.previousPath;
+          } else {
+            // A reselection may reuse the previous client identity. Keep its
+            // earlier bytes intact until replacement metadata is durable.
+            retained = await retainDraftFile(
+              file,
+              _owner,
+              previous == null ? clientId : '$clientId-${intakeClientId()}',
+            );
+            previousPath = previous?['path'] as String?;
+            row = <String, dynamic>{
+              ...?previous,
+              'client_id': clientId,
+              'batch_client_id': previous?['batch_client_id'] ?? _draftClientId,
+              if (draft != null) 'draft_id': draft!.id,
+              'path': retained.path,
+              'filename': file.name,
+              'size_bytes': photo.size,
+              'sha256': photo.hash,
+              'media_type': _mediaType(file),
+              'photo_sensitive': previous?['photo_sensitive'] ?? sensitive,
+              'replaces_id': ?replacesId,
+              'source':
+                  previous?['source'] ??
+                  {'provider': camera ? 'camera' : 'files'},
+              'saved': false,
+            };
+          }
+          await _persist(retainedFile: row);
+          committed = true;
+          _uncertainPhotos.remove(file.path);
+          if (_disposed) return;
           _files[clientId] = retained;
           if (!items.any(
             (item) => item.id == row['item_id'] || item.id == 'local:$clientId',
@@ -639,19 +720,47 @@ class BulkIntakeController extends ChangeNotifier {
               }),
             );
           }
-          await _persist();
           changed();
           _queueTransfer(row);
+          if (previousPath != null && previousPath != retained.path) {
+            try {
+              await releaseDraftFile(previousPath);
+            } catch (_) {
+              // The newly acknowledged path remains the recovery source.
+            }
+          }
         } catch (failure) {
+          if (!committed && retained != null) {
+            if (failure is _DraftPersistenceUncertain) {
+              _uncertainPhotos[file.path] = (
+                row: row,
+                retained: retained,
+                previousPath: previousPath,
+              );
+            } else {
+              _uncertainPhotos.remove(file.path);
+              try {
+                await releaseDraftFile(retained.path);
+              } catch (_) {
+                // A failed cleanup must not hide the failed admission.
+              }
+            }
+          }
           if (camera) rethrow;
-          items.add(
-            IntakeDraftItem({
-              'id': 'local:$id',
-              'filename': file.name,
-              'state': 'needs_attention',
-              'error': {'message': message(failure)},
-            }),
-          );
+          if (retained != null && !committed) {
+            // The file is still selectable; a synthetic failed item would
+            // become a duplicate when the user retries this same original.
+            error = message(failure);
+          } else {
+            items.add(
+              IntakeDraftItem({
+                'id': 'local:$id',
+                'filename': file.name,
+                'state': 'needs_attention',
+                'error': {'message': message(failure)},
+              }),
+            );
+          }
         }
         preparationCompleted++;
         changed();

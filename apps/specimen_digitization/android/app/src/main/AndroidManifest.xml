@@ -52,6 +52,18 @@
                     android:host="specimen-digitization.firebaseapp.com"
                     android:pathPrefix="/__/auth/links" />
             </intent-filter>
+        </activity>
+        <!-- Auth Tab returns through ActivityResult. Its Custom Tab fallback
+             delivers this exact callback to the existing mediator activity. -->
+        <activity
+            android:name=".IntakeAuthActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+        <activity
+            android:name=".IntakeAuthCallbackActivity"
+            android:exported="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.NoDisplay">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
