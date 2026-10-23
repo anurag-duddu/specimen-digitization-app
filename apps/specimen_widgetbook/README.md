@@ -5,7 +5,9 @@ use local demonstration state. It has no Firebase configuration, app session or
 production backend connection.
 
 ```sh
-cd apps/specimen_widgetbook
+cd apps/specimen_digitization
+flutter pub get --enforce-lockfile
+cd ../specimen_widgetbook
 flutter pub get --enforce-lockfile
 flutter run -d chrome --web-port 5199
 ```
@@ -32,6 +34,27 @@ The catalog is split by family in `lib/catalog/`. Components are registered in
 implementations. Keep use-case names stable for shareable URLs. Every story
 explains its purpose and interaction contract. Reference sheets preserve the
 older `/gallery` comparisons while individually named stories manage components.
+
+Edit controls, foundations and tokens in
+`apps/specimen_digitization/packages/specimen_ui/lib/`. The application and
+Widgetbook both depend directly on that same directory, so shared changes flow
+into both builds without copying components or publishing a package. The catalog's
+`shared_package_source_test.dart` checks the resolved package and library paths
+for both targets and rejects cached packages, copies or redirected libraries.
+Install the locked dependencies for both targets before running the catalog tests.
+
+Keep stories in `lib/catalog/` as examples of those shared controls. Knobs only
+change a story's local demonstration inputs; they do not edit the shared widget,
+its defaults or application data. After a shared source edit, hot reload each
+running app and Widgetbook target. Restart or rebuild when a change affects
+initialization, assets or native code. Each target then uses the same updated
+implementation with its own state and configuration.
+
+Run the shared package, catalog and application checks before delivery. CI tests
+both consumers against the shared source, and release builds compile those same
+files. Web delivery follows the protected repository release workflows; native
+apps receive the change in their next rebuilt and distributed binary. Local hot
+reload and Widgetbook previews do not update an already deployed or installed app.
 
 Brand authority is `SD_brand.png`: Amber–Iris hero, Iris secondary, Obsidian,
 Paper and Mist. Functional status colours communicate outcomes. Phosphor is the
@@ -62,12 +85,13 @@ blog sorting and pagination, and remembered-session preference contracts. Blog,
 Article and Team pages compose the complete demonstrated journeys. All examples
 use synthetic content and local callbacks.
 
-Current local validation for the expanded catalog (23 October 2026):
+Historical validation recorded for the expanded catalog on 23 October 2026,
+before subsequent component refinements and release work:
 
-- All 38 Widgetbook checks pass, including all 911 examples at default knobs in
+- All 38 Widgetbook checks passed, including all 911 examples at default knobs in
   five environments: 320, 390, 768, 1180 and 1440 dp, with light/dark, 200% text,
   RTL and touch/pointer coverage. This does not exercise every knob combination.
-- The shared package passes 1,656 tests, including exact golden comparisons.
+- The shared package passed 1,656 tests, including exact golden comparisons.
   The continuation repairs menu and table-help focus, disabled-row navigation,
   long-list keyboard selection, large-text values and full disclosure questions,
   bounded carousels, and story-owned toast lifetime. Package goldens are unchanged.
@@ -75,14 +99,14 @@ Current local validation for the expanded catalog (23 October 2026):
   to show the full disclosure title; surrounding interface and fixed footer are
   unchanged. Comparisons remain exact. Detailed integration evidence is recorded in
   `docs/SESSION_LEARNINGS.md` at the repository root.
-- The integrated application passes all 3,657 tests, with seven existing opt-in
+- The integrated application passed all 3,657 tests, with seven existing opt-in
   live-backend tests skipped. Shared-package, catalog and application analysis
-  report no issues. Two additional 390 dp/200% text regressions prove full
+  reported no issues. Two additional 390 dp/200% text regressions showed full
   workbench field/history endpoints remain reachable through actual scrolling
   and the fixed approval action opens its confirmation sheet; the 13-case
-  focused rerun, including the documentation typography gate, also passes.
-- Fresh iPhone/iPad simulator and Android emulator checks passed against the
-  frozen current source: hero actions, FAQ filtering/expansion/no-results/reset,
+  focused rerun, including the documentation typography gate, also passed.
+- iPhone/iPad simulator and Android emulator checks passed against the
+  source frozen at that point: hero actions, FAQ filtering/expansion/no-results/reset,
   both remembered-session preferences and completed receipts, and dark-mode
   header navigation. All 21 screenshots were retained, runtime errors were
   absent, and copied runtime files were verified byte-identical to source.
@@ -100,14 +124,18 @@ Current local validation for the expanded catalog (23 October 2026):
   actual browser OAuth contract, formatting, both web release builds and local
   route/security-header smoke checks. The run resumed at unchanged remaining
   gates after formatter-only corrections; it was not one uninterrupted run.
-  Scanner findings were repaired without weakening coverage. The current request
-  authorizes implementation and catalog work, not merging or deploying it.
-- Current package/catalog analysis, formatting, all repository security/policy
-  checks and UI writing checks pass. The final web release catalog builds and
-  runs locally on port 5199. Browser checks exercised FAQ search/reset and full
+  Scanner findings were repaired without weakening coverage.
+- At the end of that continuation, package/catalog analysis, formatting, all
+  repository security/policy checks and UI writing checks passed. The web release
+  catalog built and ran locally on port 5199. Browser checks exercised FAQ search/reset and full
   questions, journal sorting, and the completed remembered-session receipt.
-  The final application web release also builds; all 11 declared routes and five
-  security headers pass the local artifact smoke check.
+  The application web release also built; all 11 declared routes and five
+  security headers passed the local artifact smoke check.
+
+The current request authorizes integration and release across the application
+and platforms. That authorization does not turn the historical checks above into
+validation of later source changes. Current delivery must follow
+`docs/DEPLOYMENT.md` at the repository root and be verified on the released commit.
 
 Viewport and platform controls are simulations. They demonstrate layout and
 adaptive behavior; physical device interaction, browser accessibility testing,
