@@ -1,0 +1,223 @@
+# The cost meter's allocation of shared Google costs (docs/execution/golive/COST_METER.md).
+# Service-only: Python binds actorUid to verified_actor_uid. Every native statement repeats
+# the membership join, and the membership response dependency keeps the checked read and
+# the native DML in separate planner steps (research_binding_v2.gql).
+#
+# The measures one billing day's split needs, for EVERY collection of the deployment: ids
+# and numbers only (counts, seconds, bytes, micro-USD), never a record id or content, for
+# server code calling as an active operator, reviewer, manager or admin of the collection
+# it names. Sensitive records count in these numbers too. The platform worker so sees
+# other tenants' aggregate numbers; nothing reaches a client. Per collection, for the day
+# [$dayStart, $dayEnd) and for the invoice month so far [$monthStart, $dayEnd): the saves
+# (request receipts), the calling actor's processing seconds (the gap before each of its
+# saves, at most $gapSeconds, counted to the collection of the save that ends it), the SAM 3
+# request seconds and direct micro-USD of the paid-call ledger, and at $dayEnd the bytes of
+# its source assets and the specimens it holds. Returned as JSON text, sums as text.
+query CostAllocationInputsV1($organizationId: UUID!, $collectionId: UUID!, $actorUid: String!, $dayStart: Timestamp!, $dayEnd: Timestamp!, $monthStart: Timestamp!, $gapSeconds: Int!) @auth(level: NO_ACCESS) {
+  organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
+  collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true && this.role in ['operator', 'reviewer', 'manager', 'admin'] && vars.gapSeconds > 0 && vars.gapSeconds <= 3600") { active role }
+  inputs: _selectFirst(sql: """
+    WITH member AS MATERIALIZED (
+      SELECT 1 AS admitted FROM public.organization_member om
+      JOIN public.collection_member cm ON cm.organization_id=om.organization_id AND cm.uid=om.uid
+      WHERE om.organization_id=$1 AND om.uid=$3 AND om.active AND cm.collection_id=$2 AND cm.active
+        AND cm.role IN ('operator','reviewer','manager','admin')
+        AND $4::timestamptz < $5::timestamptz AND $5::timestamptz <= $4::timestamptz + interval '26 hours'
+        AND $6::timestamptz <= $4::timestamptz AND $4::timestamptz <= $6::timestamptz + interval '31 days'
+        AND $7::integer BETWEEN 1 AND 3600
+      LIMIT 1
+    ),
+    cols AS MATERIALIZED (
+      SELECT c.organization_id, c.id AS collection_id FROM public.collection c WHERE EXISTS (SELECT 1 FROM member)
+    ),
+    receipts AS MATERIALIZED (
+      SELECT r.organization_id, r.collection_id, r.actor_uid, r.operation, r.idempotency_key, r.created_at
+      FROM public.request_receipt r
+      WHERE EXISTS (SELECT 1 FROM member)
+        AND r.created_at >= $6::timestamptz - make_interval(secs => $7::integer) AND r.created_at < $5::timestamptz
+    ),
+    saves AS MATERIALIZED (
+      SELECT organization_id, collection_id, count(*) FILTER (WHERE created_at >= $4::timestamptz) AS day_saves,
+        count(*) AS month_saves
+      FROM receipts WHERE created_at >= $6::timestamptz GROUP BY organization_id, collection_id
+    ),
+    gaps AS MATERIALIZED (
+      SELECT organization_id, collection_id, created_at,
+        LEAST(EXTRACT(EPOCH FROM created_at - lag(created_at) OVER (
+          ORDER BY created_at, organization_id, collection_id, operation, idempotency_key)), $7::integer) AS seconds
+      FROM receipts WHERE actor_uid=$3
+    ),
+    worker AS MATERIALIZED (
+      SELECT organization_id, collection_id, sum(seconds) FILTER (WHERE created_at >= $4::timestamptz) AS day_seconds,
+        sum(seconds) AS month_seconds
+      FROM gaps WHERE created_at >= $6::timestamptz GROUP BY organization_id, collection_id
+    ),
+    sam_calls AS MATERIALIZED (
+      SELECT e.organization_id, e.collection_id, e.occurred_at, e.cost_micros,
+        CASE WHEN jsonb_typeof(e.usage->'instance'->'request_seconds')='number' THEN (e.usage->'instance'->>'request_seconds')::numeric
+          WHEN jsonb_typeof(e.usage->'seconds')='number' THEN (e.usage->>'seconds')::numeric ELSE 0 END AS seconds
+      FROM public.cost_entry e
+      WHERE EXISTS (SELECT 1 FROM member) AND e.source='paid_call' AND e.kind='service' AND e.resource='sam3'
+        AND e.occurred_at >= $6::timestamptz AND e.occurred_at < $5::timestamptz
+    ),
+    sam AS MATERIALIZED (
+      SELECT organization_id, collection_id, sum(seconds) FILTER (WHERE occurred_at >= $4::timestamptz) AS day_seconds,
+        sum(seconds) AS month_seconds, sum(cost_micros) FILTER (WHERE occurred_at >= $4::timestamptz) AS day_micros
+      FROM sam_calls GROUP BY organization_id, collection_id
+    ),
+    assets AS MATERIALIZED (
+      SELECT a.organization_id, a.collection_id, sum(a.byte_size) AS bytes FROM public.source_asset a
+      WHERE EXISTS (SELECT 1 FROM member) AND a.created_at < $5::timestamptz GROUP BY a.organization_id, a.collection_id
+    ),
+    held AS MATERIALIZED (
+      SELECT s.organization_id, s.collection_id, count(*) AS specimens FROM public.specimen s
+      WHERE EXISTS (SELECT 1 FROM member) AND s.created_at < $5::timestamptz GROUP BY s.organization_id, s.collection_id
+    )
+    SELECT jsonb_build_object(
+      'admitted', EXISTS (SELECT 1 FROM member),
+      'collections', COALESCE((SELECT jsonb_agg(jsonb_build_object(
+          'organization_id', c.organization_id::text, 'collection_id', c.collection_id::text,
+          'saves', COALESCE(s.day_saves, 0)::text, 'month_saves', COALESCE(s.month_saves, 0)::text,
+          'worker_seconds', COALESCE(w.day_seconds, 0)::text, 'month_worker_seconds', COALESCE(w.month_seconds, 0)::text,
+          'sam_seconds', COALESCE(m.day_seconds, 0)::text, 'month_sam_seconds', COALESCE(m.month_seconds, 0)::text,
+          'sam_direct_micros', COALESCE(m.day_micros, 0)::text,
+          'asset_bytes', COALESCE(a.bytes, 0)::text, 'specimens', COALESCE(h.specimens, 0)::text)
+          ORDER BY c.organization_id::text, c.collection_id::text)
+        FROM cols c
+        LEFT JOIN saves s ON s.organization_id=c.organization_id AND s.collection_id=c.collection_id
+        LEFT JOIN worker w ON w.organization_id=c.organization_id AND w.collection_id=c.collection_id
+        LEFT JOIN sam m ON m.organization_id=c.organization_id AND m.collection_id=c.collection_id
+        LEFT JOIN assets a ON a.organization_id=c.organization_id AND a.collection_id=c.collection_id
+        LEFT JOIN held h ON h.organization_id=c.organization_id AND h.collection_id=c.collection_id), '[]'::jsonb)
+    )::text AS inputs_json
+    """, params: [$organizationId, $collectionId, $actorUid, $dayStart, $dayEnd, $monthStart, $gapSeconds])
+}
+
+# One collection's allocation rows, upserted by their deterministic ids, for an active
+# operator, reviewer, manager or admin of that collection. All or nothing: any malformed
+# row (another scope, a specimen or run, a step other than allocation:<resource>, an
+# unknown stage or method, an id that is not the row's derived id, an occurrence that is
+# not its billing day's start in the zone its details name, a month that is not that
+# time's UTC month) writes no row, and the @check then refuses the call. Only
+# sam-residual may be negative, and a free-allowance credit is zero or negative with a
+# zero list cost. A row whose values are unchanged keeps its updatedAt.
+mutation UpsertCostAllocationsV1($organizationId: UUID!, $collectionId: UUID!, $actorUid: String!, $rowsJson: String!) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true && response.query.organizationMember.active == true && this.role in ['operator', 'reviewer', 'manager', 'admin']") { active role }
+  }
+  upserted: _execute(sql: """
+    WITH args AS (SELECT $4::jsonb AS doc),
+    admitted AS MATERIALIZED (
+      SELECT 1 AS admitted FROM public.organization_member om
+      JOIN public.collection_member cm ON cm.organization_id=om.organization_id AND cm.uid=om.uid
+      WHERE om.organization_id=$1 AND om.uid=$3 AND om.active AND cm.collection_id=$2 AND cm.active
+        AND cm.role IN ('operator','reviewer','manager','admin')
+      LIMIT 1
+    ),
+    incoming AS MATERIALIZED (
+      SELECT e.r FROM args CROSS JOIN LATERAL jsonb_array_elements(
+        CASE WHEN jsonb_typeof(args.doc)='array' THEN args.doc ELSE '[]'::jsonb END) AS e(r)
+    ),
+    checked AS MATERIALIZED (
+      SELECT r, COALESCE(jsonb_typeof(r)='object'
+        AND jsonb_typeof(r->'id')='string'
+        AND r->>'organization_id'=$1::text AND r->>'collection_id'=$2::text
+        AND r->>'source'='allocation' AND r->>'kind'='allocation'
+        AND COALESCE(jsonb_typeof(r->'specimen_id'),'null')='null' AND COALESCE(jsonb_typeof(r->'run_id'),'null')='null'
+        AND jsonb_typeof(r->'resource')='string' AND length(r->>'resource') BETWEEN 1 AND 200
+        AND jsonb_typeof(r->'step')='string' AND r->>'step'='allocation:'||(r->>'resource')
+        AND r->>'stage' IN ('label_finding','worker','api','storage','database')
+        AND jsonb_typeof(r->'attempt')='number' AND r->>'attempt'='1'
+        AND jsonb_typeof(r->'ordinal')='number' AND r->>'ordinal'='0'
+        AND r->>'provider'='google_cloud'
+        AND COALESCE(jsonb_typeof(r->'usage'),'null') IN ('object','null')
+        AND COALESCE(jsonb_typeof(r->'reserved_micros'),'null')='null'
+        AND jsonb_typeof(r->'cost_micros')='number' AND (r->>'cost_micros') ~ '^-?(0|[1-9][0-9]{0,14})$'
+        AND jsonb_typeof(r->'list_cost_micros')='number' AND (r->>'list_cost_micros') ~ '^-?(0|[1-9][0-9]{0,14})$'
+        AND r->>'cost_basis'='allocated'
+        AND COALESCE(jsonb_typeof(r->'outcome'),'null')='null' AND COALESCE(jsonb_typeof(r->'failure_code'),'null')='null'
+        AND jsonb_typeof(r->'price_list_version')='string' AND length(r->>'price_list_version') BETWEEN 1 AND 64
+        AND jsonb_typeof(r->'price_list_as_of')='string' AND length(r->>'price_list_as_of') BETWEEN 1 AND 64
+        AND jsonb_typeof(r->'billing_day')='string' AND (r->>'billing_day') ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'
+        AND jsonb_typeof(r->'occurred_at')='string'
+        AND (r->>'occurred_at') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]{1,6})?(Z|[+-][0-9]{2}:[0-9]{2})$'
+        AND jsonb_typeof(r->'month')='string' AND (r->>'month') ~ '^[0-9]{4}-[0-9]{2}$'
+        AND r->>'allocation_method_id' IN ('worker-processing-time','sam-residual','api-requests','storage-bytes',
+          'database-specimens','free-allowance')
+        AND jsonb_typeof(r->'allocation_method_details')='object'
+        AND jsonb_typeof(r->'allocation_method_details'->'time_zone')='string'
+        AND (r->'allocation_method_details'->>'time_zone') ~ '^[A-Za-z]+(/[A-Za-z_]+)+$', false) AS shaped
+      FROM incoming
+    ),
+    verified AS MATERIALIZED (
+      SELECT r, CASE WHEN shaped THEN
+          (r->>'id')=public.uuid_generate_v5('cc7d6cad-7ceb-55e7-9831-a83a5b2f8e85'::uuid,
+            'cost-allocation/'||(r->>'billing_day')||'/'||(r->>'resource')||'/'||$2::text||'/'||(r->>'allocation_method_id'))::text
+          AND ((r->>'billing_day')::date::timestamp AT TIME ZONE (r->'allocation_method_details'->>'time_zone'))
+            =(r->>'occurred_at')::timestamptz
+          AND to_char(((r->>'occurred_at')::timestamptz) AT TIME ZONE 'UTC','YYYY-MM')=r->>'month'
+          AND CASE WHEN r->>'allocation_method_id'='free-allowance'
+            THEN (r->>'list_cost_micros')::bigint=0 AND (r->>'cost_micros')::bigint<=0
+            ELSE (r->>'cost_micros')=(r->>'list_cost_micros')
+              AND ((r->>'cost_micros')::bigint>=0 OR r->>'allocation_method_id'='sam-residual') END
+        ELSE false END AS ok
+      FROM checked
+    ),
+    verdict AS MATERIALIZED (
+      SELECT count(*) BETWEEN 1 AND 500 AND bool_and(ok) AND count(DISTINCT r->>'id')=count(*)
+        AND EXISTS (SELECT 1 FROM admitted) AS ok
+      FROM verified
+    )
+    INSERT INTO public.cost_entry AS existing (
+      organization_id,collection_id,id,source,specimen_id,run_id,step,stage,attempt,kind,ordinal,
+      provider,resource,usage,reserved_micros,cost_micros,list_cost_micros,cost_basis,outcome,failure_code,
+      price_list_version,price_list_as_of,occurred_at,month,allocation_method_id,allocation_method_details,
+      created_at,updated_at
+    ) SELECT $1,$2,(r->>'id')::uuid,'allocation',NULL,NULL,r->>'step',r->>'stage',1,'allocation',0,
+      'google_cloud',r->>'resource',CASE WHEN jsonb_typeof(r->'usage')='object' THEN r->'usage' END,NULL,
+      (r->>'cost_micros')::bigint,(r->>'list_cost_micros')::bigint,'allocated',NULL,NULL,
+      r->>'price_list_version',r->>'price_list_as_of',(r->>'occurred_at')::timestamptz,r->>'month',
+      r->>'allocation_method_id',r->'allocation_method_details',statement_timestamp(),statement_timestamp()
+    FROM verified WHERE (SELECT ok FROM verdict)
+    ON CONFLICT (organization_id,collection_id,id) DO UPDATE SET
+      step=EXCLUDED.step,stage=EXCLUDED.stage,resource=EXCLUDED.resource,usage=EXCLUDED.usage,
+      cost_micros=EXCLUDED.cost_micros,list_cost_micros=EXCLUDED.list_cost_micros,
+      price_list_version=EXCLUDED.price_list_version,price_list_as_of=EXCLUDED.price_list_as_of,
+      occurred_at=EXCLUDED.occurred_at,month=EXCLUDED.month,allocation_method_id=EXCLUDED.allocation_method_id,
+      allocation_method_details=EXCLUDED.allocation_method_details,
+      updated_at=CASE WHEN (existing.step,existing.stage,existing.resource,existing.usage,existing.cost_micros,
+          existing.list_cost_micros,existing.price_list_version,existing.price_list_as_of,existing.occurred_at,
+          existing.month,existing.allocation_method_id,existing.allocation_method_details)
+        IS DISTINCT FROM (EXCLUDED.step,EXCLUDED.stage,EXCLUDED.resource,EXCLUDED.usage,EXCLUDED.cost_micros,
+          EXCLUDED.list_cost_micros,EXCLUDED.price_list_version,EXCLUDED.price_list_as_of,EXCLUDED.occurred_at,
+          EXCLUDED.month,EXCLUDED.allocation_method_id,EXCLUDED.allocation_method_details)
+        THEN EXCLUDED.updated_at ELSE existing.updated_at END
+    WHERE existing.source='allocation'
+    """, params: [$organizationId, $collectionId, $actorUid, $rowsJson]) @check(expr: "this > 0", message: "cost allocations refused")
+}
+
+# How far allocation has run for the organization, for an administrator of any of its
+# collections: the latest occurredAt of its allocation rows (a billing day's start, in
+# UTC) and how many there are.
+query CostAllocationStatusV1($organizationId: UUID!, $actorUid: String!) @auth(level: NO_ACCESS) {
+  organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
+  admin: collectionMembers(where: {organizationId: {eq: $organizationId}, uid: {eq: $actorUid}, active: {eq: true}, role: {eq: "admin"}}, limit: 1) @check(expr: "this.size() == 1") { collectionId }
+  status: _selectFirst(sql: """
+    WITH admin AS MATERIALIZED (
+      SELECT 1 AS admitted FROM public.organization_member om
+      JOIN public.collection_member cm ON cm.organization_id=om.organization_id AND cm.uid=om.uid
+      WHERE om.organization_id=$1 AND om.uid=$2 AND om.active AND cm.active AND cm.role='admin'
+      LIMIT 1
+    ),
+    allocated AS MATERIALIZED (
+      SELECT max(e.occurred_at) AS latest, count(*) AS entries FROM public.cost_entry e
+      WHERE e.organization_id=$1 AND e.source='allocation' AND EXISTS (SELECT 1 FROM admin)
+    )
+    SELECT jsonb_build_object(
+      'admitted', EXISTS (SELECT 1 FROM admin),
+      'latest_occurred_at', (SELECT to_char(a.latest AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM allocated a),
+      'entries', (SELECT a.entries::text FROM allocated a)
+    )::text AS status_json
+    """, params: [$organizationId, $actorUid])
+}

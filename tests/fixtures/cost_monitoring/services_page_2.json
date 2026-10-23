@@ -1,0 +1,35 @@
+{
+  "timeSeries": [
+    {
+      "metric": {"type": "run.googleapis.com/container/billable_instance_time"},
+      "resource": {
+        "type": "cloud_run_revision",
+        "labels": {"project_id": "specimen-digitization", "service_name": "specimen-sam",
+                   "revision_name": "specimen-sam-00042-b7k", "location": "us-east4",
+                   "configuration_name": "specimen-sam"}
+      },
+      "metricKind": "DELTA",
+      "valueType": "DOUBLE",
+      "points": [
+        {"interval": {"startTime": "2026-10-19T10:00:00Z", "endTime": "2026-10-19T11:00:00Z"},
+         "value": {"doubleValue": 99.5}}
+      ]
+    },
+    {
+      "metric": {"type": "run.googleapis.com/container/billable_instance_time"},
+      "resource": {
+        "type": "cloud_run_revision",
+        "labels": {"project_id": "specimen-digitization", "service_name": "specimen-api",
+                   "revision_name": "specimen-api-00107-z4m", "location": "us-east4",
+                   "configuration_name": "specimen-api"}
+      },
+      "metricKind": "DELTA",
+      "valueType": "DOUBLE",
+      "points": [
+        {"interval": {"startTime": "2026-10-19T09:00:00.000000000Z", "endTime": "2026-10-19T10:00:00.000000000Z"},
+         "value": {"doubleValue": 41.3}}
+      ]
+    }
+  ],
+  "unit": "s"
+}

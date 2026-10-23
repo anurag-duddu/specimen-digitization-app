@@ -1328,7 +1328,7 @@ admin rights on the repository. It is idempotent: each step reads the live
 state first and changes only what is missing, so running it again is safe. It
 prints every command before running it, asks no questions and needs no
 terminal. The owner runs it; an agent runs it only when the owner has
-authorized that run first-hand. The setup part does eight things.
+authorized that run first-hand. The setup part does nine things.
 
 1. It removes four expired, time-limited role bindings left on the data
    release identity, each matched by its exact condition.
@@ -1360,16 +1360,30 @@ authorized that run first-hand. The setup part does eight things.
    identity on the `specimen-runtime` repository, tags that can move, and the
    committed cleanup policy in dry-run mode. Each part waits for the one
    before it to hold.
-5. It widens the condition of the three release providers to accept
+5. It sets up the cost meter's shared-cost split
+   (`docs/execution/golive/COST_METER.md`, "Shared Google costs"): the custom
+   role `specimenCostMeterRead`, holding only `monitoring.timeSeries.list`,
+   bound on the project to `specimen-worker-runtime`, so the worker can list
+   the project's Cloud Monitoring time series and do nothing else in
+   Monitoring; and the
+   user-defined counter log-based metric
+   `specimen_api_requests_by_organization` over `specimen-api`'s request logs,
+   labelled with the organization id in the request path. The same step alone
+   is `bash scripts/ops/owner_setup.sh --cost-meter-only` (add `--dry-run` to
+   inspect first); it needs `gcloud` signed in as a project owner, not `gh`,
+   and starts no release. Until it has run, the worker's allocation logs
+   `cost_allocation_monitoring_unavailable` once per execution and writes
+   nothing.
+6. It widens the condition of the three release providers to accept
    `workflow_dispatch` as well as `push`, and changes nothing else in it. The
    Hosting provider is not touched.
-6. It sets the repository variables `SPECIMEN_API_BASE_URL` and
+7. It sets the repository variables `SPECIMEN_API_BASE_URL` and
    `SPECIMEN_RECAPTCHA_SITE_KEY`, described next.
-7. It sets the `DATA_BOOTSTRAP_ARTIFACT_B64` secret in `data-production` from
+8. It sets the `DATA_BOOTSTRAP_ARTIFACT_B64` secret in `data-production` from
    the owner's private artifact file when that file is on the machine. The
    value goes through a pipe and is never printed. GitHub cannot show a
    secret, so this one step repeats on every run.
-8. It prints, and does not remove, what the retired process left behind: the
+9. It prints, and does not remove, what the retired process left behind: the
    `RELEASE_*` variables and the unused secrets of `data-production`, the
    `data-initialization-production` environment with its provider and service
    account, and the roles nothing uses any more.
