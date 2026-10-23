@@ -1,8 +1,9 @@
 # Specimen design system: brand restoration and component standard
 
-Status: expanded component inventory implemented; all local verification gates
-and isolated native smoke checks passed. Independent source and representative
-visual review cleared the reported findings. Owner direction: 2026-10-22.
+Status: expanded component inventory implemented; the direct-render continuation
+has passed shared-package, catalog and application suites and native simulator
+and emulator checks. Independent source and representative visual review cleared
+the reported findings. Owner direction: 2026-10-22.
 
 The owner requested equivalent component coverage from the supplied Untitled UI
 library, adapted to the Specimen brand and managed in Widgetbook.
@@ -32,28 +33,58 @@ upload identity, radar labels, asynchronous message delivery and incomplete moda
 anatomy. Those findings are repaired and their probes pass. Subsequent full
 integration checks identified tooltip metadata/placement and default tab-layout
 regressions; the original contracts and visual placement have been restored.
-All four findings from the final independent review have also been fixed and
+All four findings from the initial final independent review have also been fixed and
 independently cleared. The full package suite was rerun after those repairs.
+
+The continuation directly inspected 31 selected marketing/reference-page frames.
+It added missing announcement, benefit, byline, featured/sidebar, grouped-career,
+search, sorting and recovery slots; complete Blog, Article and Team compositions;
+and an explicit host-owned remembered-session preference. Additional adversarial
+and actual browser checks repaired focus return, long-list selection, disabled
+navigation, large-text values, carousel behavior, stale story callbacks and
+truncated disclosure questions. Counts and registration alone did not reveal
+these issues. The new tests exercise the actual behaviors and visible text.
 
 | Current local validation | Result |
 | --- | --- |
-| Shared package | 1,597 tests passed after final review fixes and weekday-label refinement |
-| Widgetbook | 29 checks passed, including all 911 examples at default knobs across five environments |
-| Application | 3,657 tests passed; seven existing opt-in live-backend tests skipped |
-| Application visual and accessibility references | Existing golden images and semantics fixtures passed unchanged during the exhaustive expansion |
+| Shared package | 1,656 tests passed, including exact golden comparisons |
+| Widgetbook | 38 checks passed, including all 911 examples at default knobs across five environments |
+| Application | 3,657 tests passed; seven existing opt-in live-backend tests skipped; 13 focused cases passed including two additional large-text scroll regressions |
+| Application visual and accessibility references | Six compact 200% text images reviewed independently for complete disclosure titles; other images and semantics fixtures unchanged |
+| Release artifacts | Both web builds pass; current application artifact passes all 11 declared routes and five security headers locally |
 
-The expanded catalog was built and launched in an isolated iPad simulator. Light
+Final application testing exposed the intended disclosure-wrap change in six
+compact workbench images. Coordinator and independent reviewer inspected all six
+baseline/current/difference triples. The full title adds 40 px of scrollable
+content height; the upper interface and fixed footer are pixel-identical. Only
+those six images were adopted. Exact comparison, assertions and tolerances remain
+unchanged; this does not waive an unexplained visual mismatch. Two new interaction
+regressions confirm Fields and History content moves fully into view through
+actual swipes at 390 dp/200% text and that the fixed approval action still opens
+its confirmation sheet.
+
+Before this continuation, the catalog was built and launched in an isolated iPad simulator. Light
 and dark rendering, a paired-calendar range from 15 September to 10 October, and
 successful application of that range were inspected; the Dart MCP reported no
 runtime errors. The expanded catalog also built and passed isolated Flutter Driver
 smoke checks in an iPhone simulator and Android emulator: the brand hero rendered,
 a real tap produced its callback receipt, and the resulting screenshots were
 reviewed. These are simulator/emulator observations, not physical-device or
-manual screen-reader acceptance. These native checks precede the final Mon–Sun
+manual screen-reader acceptance. These native checks precede the final Mon to Sun
 weekday-label refinement; all 12 affected header images were subsequently
 reviewed independently and the package/catalog suites passed.
 
-All gates defined by `scripts/ci/verify.sh` passed locally. Verification ran in
+The current continuation additionally passed the same seven interactive checks
+on isolated iPhone/iPad simulators and an Android emulator: hero action, FAQ
+filter/expand/no-results/reset, remembered and session-only synthetic submissions,
+and dark header navigation. All 21 screenshots were retained and reviewed, runtime
+errors were absent, and all 182 copied runtime files matched the frozen source.
+Catalog viewports were 320 dp on phones and 768 dp on the tablet. Temporary apps
+and devices were stopped; the installed product app and physical phone were
+untouched. This qualifies those local flows, not physical-device or manual
+assistive-technology acceptance.
+
+The baseline implementation passed the gates in `scripts/ci/verify.sh`. Verification ran in
 segments: the script passed security/policy, all 19,295 collected Python tests
 (19,245 passed, 50 skipped), UI writing and the package suite, then stopped at
 Widgetbook formatting. After standard formatting, its unchanged remaining gates

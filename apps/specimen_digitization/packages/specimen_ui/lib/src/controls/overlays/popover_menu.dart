@@ -388,6 +388,7 @@ class UiMenuTrigger extends StatefulWidget {
 
 class _UiMenuTriggerState extends State<UiMenuTrigger> {
   final PopoverController _controller = PopoverController();
+  final FocusNode _triggerFocus = FocusNode(debugLabel: 'Menu trigger');
 
   @override
   void initState() {
@@ -400,13 +401,35 @@ class _UiMenuTriggerState extends State<UiMenuTrigger> {
     _controller
       ..removeListener(_openChanged)
       ..dispose();
+    _triggerFocus.dispose();
     super.dispose();
   }
 
   void _openChanged() {
     if (!mounted) return;
     setState(() {});
+    if (!_controller.isOpen) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted &&
+            !_controller.isOpen &&
+            _triggerFocus.context != null &&
+            _triggerFocus.canRequestFocus) {
+          _triggerFocus.requestFocus();
+        }
+      });
+    }
     widget.onOpenChanged?.call(_controller.isOpen);
+  }
+
+  void _toggle() {
+    if (!_controller.isOpen) {
+      // Pointer activation does not necessarily move keyboard focus. Make the
+      // real trigger the saved return target, including menus with no enabled
+      // item to autofocus, so Escape belongs to this open menu.
+      _triggerFocus.requestFocus();
+      FocusManager.instance.applyFocusChangesIfNeeded();
+    }
+    _controller.toggle();
   }
 
   @override
@@ -419,7 +442,8 @@ class _UiMenuTriggerState extends State<UiMenuTrigger> {
       semanticsLabel: widget.menuLabel,
       child: Pressable(
         semanticsLabel: widget.semanticsLabel,
-        onPressed: _controller.toggle,
+        focusNode: _triggerFocus,
+        onPressed: _toggle,
         radius: ui.shape.inner,
         selected: _controller.isOpen,
         builder: (BuildContext context, Set<WidgetState> states) =>
@@ -532,7 +556,7 @@ class _MenuItem extends StatelessWidget {
                     SizedBox(width: style.gap),
                   ],
                   Expanded(
-                    child: UiLabel(
+                    child: Text(
                       item.label,
                       style: style.label.copyWith(color: foreground),
                     ),

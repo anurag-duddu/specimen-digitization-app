@@ -60,6 +60,7 @@ class UiMarketingSection extends StatelessWidget {
   const UiMarketingSection({
     super.key,
     required this.title,
+    this.leading,
     this.eyebrow,
     this.description,
     this.media,
@@ -71,6 +72,9 @@ class UiMarketingSection extends StatelessWidget {
 
   /// Section heading, exposed to assistive technology.
   final String title;
+
+  /// Optional explanatory visual before the heading, such as a Phosphor icon.
+  final Widget? leading;
 
   /// Optional contextual label.
   final String? eyebrow;
@@ -103,6 +107,7 @@ class UiMarketingSection extends StatelessWidget {
           ? CrossAxisAlignment.center
           : CrossAxisAlignment.start,
       children: [
+        if (leading != null) ...[leading!, SizedBox(height: ui.space.s4)],
         if (eyebrow != null) ...[
           Text(
             eyebrow!,

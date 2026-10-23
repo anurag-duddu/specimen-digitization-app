@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "referenceFileId": "fIfKyBB3UUanoV9lZoTBx9",
   "sourceInventory": "reference-pages.json",
-  "updated": "2026-10-22",
+  "updated": "2026-10-23",
   "coverageLevel": "page_and_story_registration",
   "parityStatus": "not_approved",
   "scope": "All 95 source pages: 83 component or example pages and 12 explicit reference-file setup, section-label or separator pages. Registered components may represent on-brand adaptations, not every reference instance.",
@@ -512,7 +512,6 @@
         "marketing/uiauthlayout"
       ],
       "pendingValidation": [
-        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
         "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
         "Manual assistive-technology and physical-device acceptance are not confirmed.",
         "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
@@ -531,7 +530,6 @@
         "marketing/uierrorpage"
       ],
       "pendingValidation": [
-        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
         "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
         "Manual assistive-technology and physical-device acceptance are not confirmed.",
         "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
@@ -550,7 +548,6 @@
         "marketing/uiemailtemplate"
       ],
       "pendingValidation": [
-        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
         "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
         "Manual assistive-technology and physical-device acceptance are not confirmed.",
         "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
@@ -572,7 +569,6 @@
         "marketing/uipaymentcardmockup"
       ],
       "pendingValidation": [
-        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
         "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
         "Manual assistive-technology and physical-device acceptance are not confirmed.",
         "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
@@ -591,7 +587,6 @@
         "marketing/uibrandpattern"
       ],
       "pendingValidation": [
-        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
         "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
         "Manual assistive-technology and physical-device acceptance are not confirmed.",
         "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
@@ -633,7 +628,6 @@
       ],
       "pendingValidation": [
         "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
-        "Example-page metadata and composed catalog examples are mapped; every source page instance has not been individually visually compared.",
         "Manual assistive-technology and physical-device acceptance are not confirmed.",
         "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
       ]
@@ -652,7 +646,6 @@
       ],
       "pendingValidation": [
         "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
-        "Example-page metadata and composed catalog examples are mapped; every source page instance has not been individually visually compared.",
         "Manual assistive-technology and physical-device acceptance are not confirmed.",
         "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
       ]
@@ -671,7 +664,6 @@
       ],
       "pendingValidation": [
         "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
-        "Example-page metadata and composed catalog examples are mapped; every source page instance has not been individually visually compared.",
         "Manual assistive-technology and physical-device acceptance are not confirmed.",
         "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
       ]
@@ -690,7 +682,6 @@
       ],
       "pendingValidation": [
         "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
-        "Example-page metadata and composed catalog examples are mapped; every source page instance has not been individually visually compared.",
         "Manual assistive-technology and physical-device acceptance are not confirmed.",
         "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
       ]
@@ -709,7 +700,6 @@
       ],
       "pendingValidation": [
         "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
-        "Example-page metadata and composed catalog examples are mapped; every source page instance has not been individually visually compared.",
         "Manual assistive-technology and physical-device acceptance are not confirmed.",
         "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
       ]
@@ -728,7 +718,6 @@
       ],
       "pendingValidation": [
         "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
-        "Example-page metadata and composed catalog examples are mapped; every source page instance has not been individually visually compared.",
         "Manual assistive-technology and physical-device acceptance are not confirmed.",
         "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
       ]
@@ -747,7 +736,6 @@
       ],
       "pendingValidation": [
         "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
-        "Example-page metadata and composed catalog examples are mapped; every source page instance has not been individually visually compared.",
         "Manual assistive-technology and physical-device acceptance are not confirmed.",
         "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
       ]
@@ -766,7 +754,6 @@
       ],
       "pendingValidation": [
         "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
-        "Example-page metadata and composed catalog examples are mapped; every source page instance has not been individually visually compared.",
         "Manual assistive-technology and physical-device acceptance are not confirmed.",
         "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
       ]
@@ -785,7 +772,6 @@
       ],
       "pendingValidation": [
         "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
-        "Example-page metadata and composed catalog examples are mapped; every source page instance has not been individually visually compared.",
         "Manual assistive-technology and physical-device acceptance are not confirmed.",
         "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
       ]
@@ -804,7 +790,6 @@
       ],
       "pendingValidation": [
         "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
-        "Example-page metadata and composed catalog examples are mapped; every source page instance has not been individually visually compared.",
         "Manual assistive-technology and physical-device acceptance are not confirmed.",
         "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
       ]
@@ -823,7 +808,6 @@
       ],
       "pendingValidation": [
         "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
-        "Example-page metadata and composed catalog examples are mapped; every source page instance has not been individually visually compared.",
         "Manual assistive-technology and physical-device acceptance are not confirmed.",
         "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
       ]
@@ -852,7 +836,6 @@
         "marketing/uimegamenucontent"
       ],
       "pendingValidation": [
-        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
         "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
         "Manual assistive-technology and physical-device acceptance are not confirmed.",
         "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
@@ -873,7 +856,6 @@
         "marketing/uiherosection"
       ],
       "pendingValidation": [
-        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
         "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
         "Manual assistive-technology and physical-device acceptance are not confirmed.",
         "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
@@ -894,7 +876,6 @@
         "marketing/uifeatureshowcase"
       ],
       "pendingValidation": [
-        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
         "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
         "Manual assistive-technology and physical-device acceptance are not confirmed.",
         "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
@@ -933,7 +914,6 @@
         "marketing/uicalltoactionsection"
       ],
       "pendingValidation": [
-        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
         "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
         "Manual assistive-technology and physical-device acceptance are not confirmed.",
         "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
@@ -952,7 +932,6 @@
         "marketing/uimetricssection"
       ],
       "pendingValidation": [
-        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
         "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
         "Manual assistive-technology and physical-device acceptance are not confirmed.",
         "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
@@ -972,7 +951,6 @@
         "marketing/uinewslettersection"
       ],
       "pendingValidation": [
-        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
         "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
         "Manual assistive-technology and physical-device acceptance are not confirmed.",
         "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
@@ -991,7 +969,6 @@
         "marketing/uitestimonialsection"
       ],
       "pendingValidation": [
-        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
         "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
         "Manual assistive-technology and physical-device acceptance are not confirmed.",
         "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
@@ -1010,7 +987,6 @@
         "marketing/uisocialproofsection"
       ],
       "pendingValidation": [
-        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
         "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
         "Manual assistive-technology and physical-device acceptance are not confirmed.",
         "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
@@ -1030,7 +1006,6 @@
         "marketing/uiblogsection"
       ],
       "pendingValidation": [
-        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
         "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
         "Manual assistive-technology and physical-device acceptance are not confirmed.",
         "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
@@ -1051,7 +1026,6 @@
         "marketing/uieditorialquote"
       ],
       "pendingValidation": [
-        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
         "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
         "Manual assistive-technology and physical-device acceptance are not confirmed.",
         "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
@@ -1091,7 +1065,6 @@
         "marketing/uiteamsection"
       ],
       "pendingValidation": [
-        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
         "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
         "Manual assistive-technology and physical-device acceptance are not confirmed.",
         "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
@@ -1111,7 +1084,6 @@
         "marketing/uicareerssection"
       ],
       "pendingValidation": [
-        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
         "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
         "Manual assistive-technology and physical-device acceptance are not confirmed.",
         "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
@@ -1130,7 +1102,6 @@
         "marketing/uifaqsection"
       ],
       "pendingValidation": [
-        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
         "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
         "Manual assistive-technology and physical-device acceptance are not confirmed.",
         "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
@@ -1149,7 +1120,6 @@
         "marketing/uimarketingfooter"
       ],
       "pendingValidation": [
-        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
         "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
         "Manual assistive-technology and physical-device acceptance are not confirmed.",
         "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
@@ -1168,7 +1138,6 @@
         "marketing/uiannouncementbanner"
       ],
       "pendingValidation": [
-        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
         "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
         "Manual assistive-technology and physical-device acceptance are not confirmed.",
         "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."

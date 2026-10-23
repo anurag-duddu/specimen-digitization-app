@@ -399,27 +399,34 @@ class _UiComboboxState<T> extends State<UiCombobox<T>> {
                             style: ui.type.bodySmall,
                           ),
                         )
-                      : ListView(
-                          shrinkWrap: true,
-                          children: <Widget>[
-                            for (
-                              int i = 0;
-                              i < options.length;
-                              i++
-                            ) ...<Widget>[
-                              if (options[i].group != null &&
-                                  (i == 0 ||
-                                      options[i - 1].group != options[i].group))
-                                Padding(
-                                  padding: EdgeInsets.all(ui.space.s2),
-                                  child: Text(
-                                    options[i].group!,
-                                    style: ui.type.labelSmall,
+                      : SingleChildScrollView(
+                          // These named keyboard targets must remain mounted
+                          // when they are outside the viewport. Lazy children
+                          // have no context for focus or ensureVisible.
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: <Widget>[
+                              for (
+                                int i = 0;
+                                i < options.length;
+                                i++
+                              ) ...<Widget>[
+                                if (options[i].group != null &&
+                                    (i == 0 ||
+                                        options[i - 1].group !=
+                                            options[i].group))
+                                  Padding(
+                                    padding: EdgeInsets.all(ui.space.s2),
+                                    child: Text(
+                                      options[i].group!,
+                                      style: ui.type.labelSmall,
+                                    ),
                                   ),
-                                ),
-                              _option(options[i]),
+                                _option(options[i]),
+                              ],
                             ],
-                          ],
+                          ),
                         ),
                 ),
               ],

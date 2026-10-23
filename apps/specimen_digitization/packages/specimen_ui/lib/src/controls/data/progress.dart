@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../foundation/motion.dart';
 import '../../foundation/theme.dart';
+import '../../primitives/fit.dart';
 
 /// Base ring diameters from section 4.5 plus standalone loading.
 enum UiProgressSize {
@@ -526,6 +527,8 @@ enum UiProgressLabelPosition {
 /// [value] is rendered exactly as reported; corrections can move backwards.
 /// Use [UiProgress] for monotonic transfer progress. No completion is inferred.
 /// Floating labels stay within the track allocation, including at 0/100%.
+/// Values move below their track when the requested text size cannot fit beside
+/// or inside it; the reported value is never reduced in size or clipped.
 class UiProgressDisplay extends StatelessWidget {
   /// Creates the component with explicit caller-owned configuration.
   const UiProgressDisplay({
@@ -569,6 +572,7 @@ class UiProgressDisplay extends StatelessWidget {
       text,
       style: ui.type.label.copyWith(color: ui.color.ink),
     );
+    final metricSize = measureLabel(context, text, ui.type.label);
     Widget body;
     if (form == UiProgressDisplayForm.bar) {
       final track = SizedBox(
@@ -600,12 +604,30 @@ class UiProgressDisplay extends StatelessWidget {
         child: metric,
       );
       body = labelPosition == UiProgressLabelPosition.trailing
-          ? Row(
-              children: <Widget>[
-                Expanded(child: track),
-                SizedBox(width: ui.space.s3),
-                metric,
-              ],
+          ? LayoutBuilder(
+              builder: (context, constraints) {
+                final fits =
+                    !constraints.hasBoundedWidth ||
+                    metricSize.width + ui.space.s3 + ui.space.targetMin <=
+                        constraints.maxWidth;
+                return fits
+                    ? Row(
+                        children: <Widget>[
+                          Expanded(child: track),
+                          SizedBox(width: ui.space.s3),
+                          metric,
+                        ],
+                      )
+                    : Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: <Widget>[
+                          track,
+                          SizedBox(height: ui.space.s2),
+                          metric,
+                        ],
+                      );
+              },
             )
           : Column(
               mainAxisSize: MainAxisSize.min,
@@ -634,6 +656,10 @@ class UiProgressDisplay extends StatelessWidget {
             constraints.hasBoundedWidth ? constraints.maxWidth : diameter,
           );
           final height = half ? width / 2 + ui.space.s2 : width;
+          final centered =
+              labelPosition == UiProgressLabelPosition.center &&
+              metricSize.width <= width - ui.space.s3 * 2 &&
+              metricSize.height <= height - ui.space.s3 * 2;
           return Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
@@ -654,7 +680,7 @@ class UiProgressDisplay extends StatelessWidget {
                         ),
                       ),
                     ),
-                    if (labelPosition == UiProgressLabelPosition.center)
+                    if (centered)
                       Padding(
                         padding: EdgeInsets.all(ui.space.s3),
                         child: metric,
@@ -663,7 +689,7 @@ class UiProgressDisplay extends StatelessWidget {
                 ),
               ),
               if (labelPosition != UiProgressLabelPosition.none &&
-                  labelPosition != UiProgressLabelPosition.center) ...[
+                  !centered) ...[
                 SizedBox(height: ui.space.s2),
                 metric,
               ],

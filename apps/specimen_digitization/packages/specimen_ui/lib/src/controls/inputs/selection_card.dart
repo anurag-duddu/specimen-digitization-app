@@ -138,9 +138,13 @@ class _UiSelectionCardsState<T> extends State<UiSelectionCards<T>> {
     if (widget.onChanged == null || event is! KeyDownEvent) {
       return KeyEventResult.ignored;
     }
-    final enabled = widget.options.where((o) => o.enabled).toList();
-    final index = enabled.indexWhere((o) => _nodes[o.value]?.hasFocus ?? false);
-    if (index < 0 || enabled.isEmpty) return KeyEventResult.ignored;
+    // Disabled choices with a reason remain focusable for discovery. Locate
+    // the current card before filtering destinations, otherwise their arrows
+    // bypass this group's selection behavior or cannot move at all.
+    final index = widget.options.indexWhere(
+      (o) => _nodes[o.value]?.hasFocus ?? false,
+    );
+    if (index < 0) return KeyEventResult.ignored;
     final rtl = Directionality.of(context) == TextDirection.rtl;
     final int? delta = switch (event.logicalKey) {
       LogicalKeyboardKey.arrowDown => 1,
@@ -150,10 +154,17 @@ class _UiSelectionCardsState<T> extends State<UiSelectionCards<T>> {
       _ => null,
     };
     if (delta == null) return KeyEventResult.ignored;
-    final next = enabled[(index + delta) % enabled.length];
-    _nodes[next.value]?.requestFocus();
-    if (widget.mode == UiSelectionMode.single) _select(next.value);
-    return KeyEventResult.handled;
+    for (int distance = 1; distance <= widget.options.length; distance++) {
+      final next =
+          widget.options[(index + delta * distance) % widget.options.length];
+      final focus = _nodes[next.value];
+      if (next.enabled && focus != null && focus.canRequestFocus) {
+        focus.requestFocus();
+        if (widget.mode == UiSelectionMode.single) _select(next.value);
+        return KeyEventResult.handled;
+      }
+    }
+    return KeyEventResult.ignored;
   }
 
   @override

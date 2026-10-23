@@ -12,8 +12,10 @@ import '../../foundation/type.dart';
 import '../../primitives/pressable.dart';
 import '../../primitives/focus_ring.dart';
 import '../../primitives/surface.dart';
+import '../../primitives/popover.dart';
+import '../actions/button.dart';
+import '../actions/icon_button.dart';
 import '../inputs/checkbox.dart';
-import '../overlays/tooltip.dart';
 import 'empty_state.dart';
 import 'hairline.dart';
 import 'progress.dart';
@@ -77,7 +79,8 @@ class UiDataColumn<T> {
   /// Relative allocation, including when the table scrolls horizontally.
   final int flex;
 
-  /// Definition available on hover or focus without changing the sort action.
+  /// Definition exposed by a separate help control on hover, focus or activation.
+  /// Opening help never changes the sort order.
   final String? helpText;
 
   /// Whether sorting is currently available for this column.
@@ -499,8 +502,9 @@ class UiDataTable<T> extends StatelessWidget {
         active && sortDirection == UiSortDirection.ascending
         ? UiSortDirection.descending
         : UiSortDirection.ascending;
+    final bool hasHelp = column.helpText?.trim().isNotEmpty ?? false;
     final Widget content = Padding(
-      padding: style.cellPadding,
+      padding: hasHelp ? EdgeInsets.zero : style.cellPadding,
       child: Row(
         mainAxisAlignment: column.numeric
             ? MainAxisAlignment.end
@@ -522,23 +526,122 @@ class UiDataTable<T> extends StatelessWidget {
         ],
       ),
     );
-    Widget withHelp(Widget child) => column.helpText == null
-        ? child
-        : UiTooltip(message: column.helpText!, child: child);
-    if (!column.sortable) {
-      return withHelp(Semantics(header: true, child: content));
-    }
-    return withHelp(
-      Semantics(
-        header: true,
-        child: Pressable(
-          semanticsLabel: 'Sort by ${column.label}',
-          semanticsValue: active
-              ? 'Sorted ${sortDirection.name}'
-              : 'Not sorted',
-          onPressed: enabled ? () => onSort!(column.id, next) : null,
-          builder: (BuildContext context, Set<WidgetState> states) => content,
+    final Widget heading = column.sortable
+        ? Semantics(
+            header: true,
+            child: Pressable(
+              semanticsLabel: 'Sort by ${column.label}',
+              semanticsValue: active
+                  ? 'Sorted ${sortDirection.name}'
+                  : 'Not sorted',
+              onPressed: enabled ? () => onSort!(column.id, next) : null,
+              builder: (BuildContext context, Set<WidgetState> states) =>
+                  content,
+            ),
+          )
+        : Semantics(header: true, child: content);
+    if (!hasHelp) return heading;
+    return Padding(
+      padding: style.cellPadding,
+      child: Row(
+        children: [
+          Expanded(child: heading),
+          SizedBox(width: style.gap),
+          _TableColumnHelp(
+            key: ValueKey(column.id),
+            label: column.label,
+            message: column.helpText!,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TableColumnHelp extends StatefulWidget {
+  const _TableColumnHelp({
+    super.key,
+    required this.label,
+    required this.message,
+  });
+
+  final String label;
+  final String message;
+
+  @override
+  State<_TableColumnHelp> createState() => _TableColumnHelpState();
+}
+
+class _TableColumnHelpState extends State<_TableColumnHelp> {
+  final PopoverController _controller = PopoverController();
+  final FocusNode _triggerFocus = FocusNode();
+  final FocusNode _closeFocus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_focusChanged);
+  }
+
+  void _focusChanged() {
+    final open = _controller.isOpen;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _controller.isOpen != open) return;
+      final target = open ? _closeFocus : _triggerFocus;
+      if (target.context != null && target.canRequestFocus) {
+        target.requestFocus();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_focusChanged);
+    _controller.dispose();
+    _triggerFocus.dispose();
+    _closeFocus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ui = context.ui;
+    return Popover(
+      controller: _controller,
+      surface: PopoverSurface.paper,
+      flipWhenClipped: true,
+      semanticsLabel: 'About ${widget.label}',
+      overlayBuilder: (_) => ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: ui.space.readingMax / 2),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: EdgeInsets.all(ui.space.s3),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.message,
+                  style: ui.type.bodySmall.copyWith(color: ui.color.ink),
+                ),
+                SizedBox(height: ui.space.s2),
+                UiButton(
+                  label: 'Close help',
+                  variant: UiButtonVariant.ghost,
+                  focusNode: _closeFocus,
+                  onPressed: _controller.close,
+                ),
+              ],
+            ),
+          ),
         ),
+      ),
+      child: UiIconButton(
+        icon: UiIcons.info,
+        semanticsLabel: 'About ${widget.label}',
+        tooltip: widget.message,
+        focusNode: _triggerFocus,
+        onPressed: _controller.toggle,
       ),
     );
   }

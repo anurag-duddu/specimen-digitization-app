@@ -100,7 +100,12 @@ class _UiVerificationCodeState extends State<UiVerificationCode> {
   @override
   void didUpdateWidget(UiVerificationCode old) {
     super.didUpdateWidget(old);
-    if (widget.value.length < widget.length) _completed = null;
+    if (widget.value.length < widget.length ||
+        (old.value != widget.value && widget.value != _completed)) {
+      // An accepted echo keeps completion deduplicated. A genuinely different
+      // host value starts a new edit, even when that value is already complete.
+      _completed = null;
+    }
     if (old.length != widget.length) {
       _reset();
       return;

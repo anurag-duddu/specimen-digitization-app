@@ -4,6 +4,7 @@ library;
 import 'dart:math' as math;
 import 'package:flutter/widgets.dart';
 import '../../foundation/theme.dart';
+import '../../primitives/fit.dart';
 import 'chart.dart';
 
 /// Visual encodings supported by [UiDataVisualization].
@@ -324,38 +325,58 @@ class UiDataVisualization extends StatelessWidget {
       children: [
         if (showAxes && !radial && yAxisLabel != null)
           Text(yAxisLabel!, style: style.label),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (showAxes && !radial)
-              SizedBox(
-                height: style.height,
-                child: Padding(
-                  padding: EdgeInsets.symmetric(vertical: style.inset),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(tick(high), style: style.label),
-                      Text(tick((low + high) / 2), style: style.label),
-                      Text(tick(low), style: style.label),
-                    ],
-                  ),
-                ),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final axis = showAxes && !radial;
+            final ticks = [tick(high), tick((low + high) / 2), tick(low)];
+            final axisWidth = axis
+                ? ticks.fold<double>(
+                    0,
+                    (width, text) => math.max(
+                      width,
+                      measureLabel(
+                        context,
+                        text,
+                        style.label,
+                      ).width.ceilToDouble(),
+                    ),
+                  )
+                : 0.0;
+            final categoryWidth =
+                ui.space.targetMin * MediaQuery.textScalerOf(context).scale(1);
+            final plotWidth = math.max(
+              0.0,
+              math.max(
+                constraints.maxWidth - axisWidth,
+                axis ? math.max(2, categories.length) * categoryWidth : 0.0,
               ),
-            Expanded(
-              child: LayoutBuilder(
-                builder: (context, c) => SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: SizedBox(
-                    width: !radial && showAxes
-                        ? math.max(
-                            c.maxWidth,
-                            categories.length *
-                                ui.space.targetMin *
-                                MediaQuery.textScalerOf(context).scale(1),
-                          )
-                        : c.maxWidth,
+            );
+            // The axis and plot share a scrollable canvas. A long range label
+            // must not consume the plot's whole allocation or overflow a card.
+            return SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (axis)
+                    SizedBox(
+                      width: axisWidth,
+                      height: style.height,
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: style.inset),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            for (final value in ticks)
+                              Text(value, style: style.label),
+                          ],
+                        ),
+                      ),
+                    ),
+                  SizedBox(
+                    width: plotWidth,
                     child: Column(
                       children: [
                         ExcludeSemantics(
@@ -376,7 +397,7 @@ class UiDataVisualization extends StatelessWidget {
                             ),
                           ),
                         ),
-                        if (showAxes && !radial)
+                        if (axis)
                           Padding(
                             padding: EdgeInsets.symmetric(
                               horizontal: style.inset,
@@ -398,10 +419,10 @@ class UiDataVisualization extends StatelessWidget {
                       ],
                     ),
                   ),
-                ),
+                ],
               ),
-            ),
-          ],
+            );
+          },
         ),
         if (showAxes && !radial && xAxisLabel != null)
           Text(xAxisLabel!, textAlign: TextAlign.center, style: style.label),

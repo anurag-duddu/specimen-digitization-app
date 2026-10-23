@@ -106,21 +106,31 @@ class SpecimenPreview extends StatefulWidget {
 }
 
 class _SpecimenPreviewState extends State<SpecimenPreview> {
-  final _navigator = GlobalKey<NavigatorState>();
+  var _navigator = GlobalKey<NavigatorState>();
+  String? _storyPath;
   @override
-  Widget build(BuildContext context) => UiModalNavigator(
-    navigatorKey: _navigator,
-    child: Navigator(
-      key: _navigator,
-      pages: [
-        MaterialPage<void>(
-          child: ColoredBox(
-            color: context.ui.color.ground,
-            child: UiToastHost(child: SafeArea(child: widget.child)),
+  Widget build(BuildContext context) {
+    final path = WidgetbookState.of(context).path;
+    if (_storyPath != path) {
+      _storyPath = path;
+      // Routes, queued toasts and callbacks belong to the selected story.
+      // Knob and environment changes keep the same story-owned navigator.
+      _navigator = GlobalKey<NavigatorState>();
+    }
+    return UiModalNavigator(
+      navigatorKey: _navigator,
+      child: Navigator(
+        key: _navigator,
+        pages: [
+          MaterialPage<void>(
+            child: ColoredBox(
+              color: context.ui.color.ground,
+              child: UiToastHost(child: SafeArea(child: widget.child)),
+            ),
           ),
-        ),
-      ],
-      onDidRemovePage: (_) {},
-    ),
-  );
+        ],
+        onDidRemovePage: (_) {},
+      ),
+    );
+  }
 }

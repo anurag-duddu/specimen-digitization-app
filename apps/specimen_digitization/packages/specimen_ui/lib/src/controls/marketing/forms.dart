@@ -536,6 +536,7 @@ class UiAuthSubmission {
     required this.password,
     required this.name,
     required this.code,
+    this.rememberSession,
   });
 
   /// Submitted stage.
@@ -552,6 +553,10 @@ class UiAuthSubmission {
 
   /// One-time code, trimmed only.
   final String code;
+
+  /// Explicit sign-in preference; null means the form did not offer a choice.
+  /// The host decides whether and how this affects session persistence.
+  final bool? rememberSession;
 }
 
 /// Auth form with correct autofill/keyboard modes, visibility and async states.
@@ -570,6 +575,9 @@ class UiAuthForm extends StatefulWidget {
     this.passwordHelp,
     this.validatePassword,
     this.enabled = true,
+    this.rememberSession,
+    this.onRememberSessionChanged,
+    this.rememberSessionLabel = 'Remember me',
   });
 
   /// Current stage.
@@ -595,6 +603,17 @@ class UiAuthForm extends StatefulWidget {
 
   /// Enables editing/submission.
   final bool enabled;
+
+  /// Controlled sign-in preference. Null hides the choice; other stages omit it.
+  /// The form never changes session persistence or stores this value itself.
+  final bool? rememberSession;
+
+  /// Requests a new preference; the host must echo it through [rememberSession].
+  /// Null keeps a supplied preference visible but read-only.
+  final ValueChanged<bool>? onRememberSessionChanged;
+
+  /// Host-localized label for the optional sign-in preference.
+  final String rememberSessionLabel;
   @override
   State<UiAuthForm> createState() => _UiAuthFormState();
 }
@@ -687,6 +706,9 @@ class _UiAuthFormState extends State<UiAuthForm> {
       password: _password.text,
       name: _name.text.trim(),
       code: _code.text.trim(),
+      rememberSession: widget.mode == UiAuthMode.signIn
+          ? widget.rememberSession
+          : null,
     );
     setState(() => _busy = true);
     try {
@@ -780,6 +802,13 @@ class _UiAuthFormState extends State<UiAuthForm> {
               autofillHints: const [AutofillHints.oneTimeCode],
               textInputAction: TextInputAction.done,
               onSubmitted: (_) => _submit(),
+            ),
+          if (widget.mode == UiAuthMode.signIn &&
+              widget.rememberSession != null)
+            UiCheckbox(
+              label: widget.rememberSessionLabel,
+              value: widget.rememberSession,
+              onChanged: enabled ? widget.onRememberSessionChanged : null,
             ),
           if (_error != null)
             Semantics(

@@ -186,7 +186,7 @@ class _UiNavigationMenuState extends State<UiNavigationMenu> {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }
-    final rows = _visible.where((row) => row.item.enabled).toList();
+    final rows = _visible;
     final current = rows.indexWhere(
       (row) => _nodes[row.item.id]?.hasFocus ?? false,
     );
@@ -196,13 +196,27 @@ class _UiNavigationMenuState extends State<UiNavigationMenu> {
     if (key == LogicalKeyboardKey.arrowDown ||
         key == LogicalKeyboardKey.arrowUp) {
       final step = key == LogicalKeyboardKey.arrowDown ? 1 : -1;
-      _focus(rows[(current + step).clamp(0, rows.length - 1)].item.id);
+      for (
+        var next = current + step;
+        next >= 0 && next < rows.length;
+        next += step
+      ) {
+        if (rows[next].item.enabled) {
+          _focus(rows[next].item.id);
+          break;
+        }
+      }
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.home || key == LogicalKeyboardKey.end) {
-      _focus(
-        key == LogicalKeyboardKey.home ? rows.first.item.id : rows.last.item.id,
-      );
+      final destinations = rows.where((row) => row.item.enabled);
+      if (destinations.isNotEmpty) {
+        _focus(
+          key == LogicalKeyboardKey.home
+              ? destinations.first.item.id
+              : destinations.last.item.id,
+        );
+      }
       return KeyEventResult.handled;
     }
     final rtl = Directionality.of(context) == TextDirection.rtl;
@@ -213,16 +227,25 @@ class _UiNavigationMenuState extends State<UiNavigationMenu> {
         ? LogicalKeyboardKey.arrowRight
         : LogicalKeyboardKey.arrowLeft;
     final row = rows[current];
-    if (key == forward && row.item.children.isNotEmpty) {
+    if (key == forward && row.item.enabled && row.item.children.isNotEmpty) {
       if (!widget.expandedIds.contains(row.item.id)) {
         _expand(row.item, true);
-      } else if (current + 1 < rows.length) {
-        _focus(rows[current + 1].item.id);
+      } else {
+        for (
+          var next = current + 1;
+          next < rows.length && rows[next].depth > row.depth;
+          next++
+        ) {
+          if (rows[next].item.enabled) {
+            _focus(rows[next].item.id);
+            break;
+          }
+        }
       }
       return KeyEventResult.handled;
     }
     if (key == backward) {
-      if (widget.expandedIds.contains(row.item.id)) {
+      if (row.item.enabled && widget.expandedIds.contains(row.item.id)) {
         _expand(row.item, false);
       } else if (row.parent != null) {
         _focus(row.parent!);

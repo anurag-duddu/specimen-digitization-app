@@ -391,10 +391,12 @@ class _HeaderAnatomyExample extends StatefulWidget {
 
 class _HeaderAnatomyExampleState extends State<_HeaderAnatomyExample> {
   final selected = ValueNotifier(0);
+  final _helpFocus = FocusNode(debugLabel: 'About collection records');
   String receipt = 'All records';
   @override
   void dispose() {
     selected.dispose();
+    _helpFocus.dispose();
     super.dispose();
   }
 
@@ -410,9 +412,25 @@ class _HeaderAnatomyExampleState extends State<_HeaderAnatomyExample> {
           role: UiSectionHeaderRole.card,
           supporting: 'Review complete original evidence.',
           leading: widget.avatar ? const UiAvatar(name: 'Field Museum') : null,
-          help: const UiTooltip(
-            message: 'Includes all records in this collection',
-            child: UiIcon(UiIcons.info),
+          help: UiIconButton(
+            icon: UiIcons.info,
+            focusNode: _helpFocus,
+            semanticsLabel: 'About collection records',
+            tooltip: 'Includes all records in this collection',
+            onPressed: () {
+              _helpFocus.requestFocus();
+              FocusManager.instance.applyFocusChangesIfNeeded();
+              UiDialog.showAdaptive<void>(
+                context: context,
+                title: 'Collection records',
+                body: (_) =>
+                    const Text('Includes all records in this collection'),
+                primaryAction: (dialogContext) => UiButton(
+                  label: 'Close help',
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                ),
+              );
+            },
           ),
           toolbar: widget.command == 'Search'
               ? UiSearchField(

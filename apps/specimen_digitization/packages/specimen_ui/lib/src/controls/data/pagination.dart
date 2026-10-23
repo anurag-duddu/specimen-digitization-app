@@ -437,6 +437,7 @@ class UiCarousel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final rtl = Directionality.of(context) == TextDirection.rtl;
+    final enabled = onChanged != null && children.length > 1;
     assert(children.isEmpty ? index == 0 : index < children.length);
     if (children.isEmpty) {
       return Text(
@@ -448,27 +449,33 @@ class UiCarousel extends StatelessWidget {
     }
     return CallbackShortcuts(
       bindings: {
-        const SingleActivator(LogicalKeyboardKey.arrowRight): () =>
-            _request(index + (rtl ? -1 : 1)),
-        const SingleActivator(LogicalKeyboardKey.arrowLeft): () =>
-            _request(index + (rtl ? 1 : -1)),
-        const SingleActivator(LogicalKeyboardKey.home): () => _request(0),
-        const SingleActivator(LogicalKeyboardKey.end): () =>
-            _request(children.length - 1),
+        if (enabled) ...{
+          const SingleActivator(LogicalKeyboardKey.arrowRight): () =>
+              _request(index + (rtl ? -1 : 1)),
+          const SingleActivator(LogicalKeyboardKey.arrowLeft): () =>
+              _request(index + (rtl ? 1 : -1)),
+          const SingleActivator(LogicalKeyboardKey.home): () => _request(0),
+          const SingleActivator(LogicalKeyboardKey.end): () =>
+              _request(children.length - 1),
+        },
       },
       child: Focus(
+        canRequestFocus: enabled,
+        skipTraversal: !enabled,
         child: Semantics(
           container: true,
           label: label,
           child: LayoutBuilder(
             builder: (context, constraints) {
               final media = GestureDetector(
-                onHorizontalDragEnd: (details) {
-                  final velocity = details.primaryVelocity ?? 0;
-                  if (velocity != 0) {
-                    _request(index + ((velocity < 0) != rtl ? 1 : -1));
-                  }
-                },
+                onHorizontalDragEnd: !enabled
+                    ? null
+                    : (details) {
+                        final velocity = details.primaryVelocity ?? 0;
+                        if (velocity != 0) {
+                          _request(index + ((velocity < 0) != rtl ? 1 : -1));
+                        }
+                      },
                 child: AspectRatio(
                   aspectRatio: aspectRatio,
                   child: ClipRect(child: children[index]),
@@ -490,12 +497,20 @@ class UiCarousel extends StatelessWidget {
                         : (p) => _request(p - 1),
                     semanticsLabel: '$label pages',
                   ),
-                  UiPageIndicator(
-                    index: index,
-                    count: children.length,
-                    onChanged: onChanged,
-                    style: indicatorStyle,
-                  ),
+                  if (constraints.hasBoundedHeight)
+                    _CarouselIndicators(
+                      index: index,
+                      count: children.length,
+                      onChanged: onChanged,
+                      style: indicatorStyle,
+                    )
+                  else
+                    UiPageIndicator(
+                      index: index,
+                      count: children.length,
+                      onChanged: onChanged,
+                      style: indicatorStyle,
+                    ),
                 ],
               );
             },
@@ -504,4 +519,79 @@ class UiCarousel extends StatelessWidget {
       ),
     );
   }
+}
+
+// A bounded gallery must reserve space for its media. Keep its indicators on
+// one scrollable row instead of letting a long list consume every pixel of
+// height. Controlled page changes keep the active mark inside the viewport.
+class _CarouselIndicators extends StatefulWidget {
+  const _CarouselIndicators({
+    required this.index,
+    required this.count,
+    required this.onChanged,
+    required this.style,
+  });
+
+  final int index;
+  final int count;
+  final ValueChanged<int>? onChanged;
+  final UiPageIndicatorStyle style;
+
+  @override
+  State<_CarouselIndicators> createState() => _CarouselIndicatorsState();
+}
+
+class _CarouselIndicatorsState extends State<_CarouselIndicators> {
+  final ScrollController _scroll = ScrollController();
+
+  void _reveal() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scroll.hasClients) return;
+      final target = context.ui.space.targetMin;
+      final position = _scroll.position;
+      final destination =
+          (widget.index + .5) * target - position.viewportDimension / 2;
+      _scroll.jumpTo(
+        destination.clamp(position.minScrollExtent, position.maxScrollExtent),
+      );
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _reveal();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _reveal();
+  }
+
+  @override
+  void didUpdateWidget(_CarouselIndicators oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.index != widget.index || oldWidget.count != widget.count) {
+      _reveal();
+    }
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => SingleChildScrollView(
+    controller: _scroll,
+    scrollDirection: Axis.horizontal,
+    child: UiPageIndicator(
+      index: widget.index,
+      count: widget.count,
+      onChanged: widget.onChanged,
+      style: widget.style,
+    ),
+  );
 }

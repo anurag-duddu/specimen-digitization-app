@@ -58,13 +58,13 @@ class _ActionExampleState extends State<ActionExample> {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      widget.builder(
-        context,
-        (value) => setState(() {
+      widget.builder(context, (value) {
+        if (!mounted) return;
+        setState(() {
           _receipt = value;
           _count++;
-        }),
-      ),
+        });
+      }),
       SizedBox(height: context.ui.space.s4),
       Semantics(
         liveRegion: true,

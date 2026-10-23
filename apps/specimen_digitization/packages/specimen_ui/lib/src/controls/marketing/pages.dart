@@ -57,6 +57,7 @@ class UiHeroSection extends StatelessWidget {
   const UiHeroSection({
     super.key,
     required this.title,
+    this.announcement,
     this.eyebrow,
     this.description,
     this.actions = const [],
@@ -68,6 +69,10 @@ class UiHeroSection extends StatelessWidget {
 
   /// Primary page heading.
   final String title;
+
+  /// Optional announcement, badge or link before the heading.
+  /// Supply a real owned control when the announcement is actionable.
+  final Widget? announcement;
 
   /// Optional introductory label.
   final String? eyebrow;
@@ -92,6 +97,7 @@ class UiHeroSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) => UiMarketingSection(
     title: title,
+    leading: announcement,
     eyebrow: eyebrow,
     description: description,
     actions: actions,
@@ -180,6 +186,7 @@ class UiErrorPage extends StatelessWidget {
     required this.actions,
     this.code = '404',
     this.illustration,
+    this.recovery,
     this.layout = UiSectionLayout.centered,
   });
 
@@ -198,6 +205,10 @@ class UiErrorPage extends StatelessWidget {
   /// Host-provided visual, not required for understanding the error.
   final Widget? illustration;
 
+  /// Search, recovery form or contextual links owned by the host.
+  /// The supplied control keeps its own state, labels and callbacks.
+  final Widget? recovery;
+
   /// Text/illustration arrangement.
   final UiSectionLayout layout;
   @override
@@ -208,6 +219,7 @@ class UiErrorPage extends StatelessWidget {
     actions: actions,
     media: illustration,
     layout: layout,
+    child: recovery,
   );
 }
 
@@ -273,6 +285,7 @@ class UiEmailTemplate extends StatelessWidget {
   final Widget? summary;
 
   /// Actual host preview actions.
+  /// They follow the body and optional summary, before the footer.
   final List<UiMarketingAction> actions;
 
   /// Legal, unsubscribe and sender information supplied by the host.
@@ -297,10 +310,11 @@ class UiEmailTemplate extends StatelessWidget {
               layout: centered
                   ? UiSectionLayout.centered
                   : UiSectionLayout.start,
-              actions: actions,
               child: UiSelectionArea(child: body),
             ),
             ?summary,
+            if (actions.isNotEmpty)
+              MarketingActions(actions: actions, centered: centered),
             footer,
           ],
         ),

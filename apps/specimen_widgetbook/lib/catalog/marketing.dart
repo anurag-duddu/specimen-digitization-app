@@ -184,8 +184,21 @@ class _MarketingDemoState extends State<_MarketingDemo> {
   var _volume = 0.7;
   var _mediaError = true;
   var _location = 'north';
+  var _sort = 'newest';
+  var _journalPage = 1;
+  var _faqQuery = '';
+  var _recoveryQuery = '';
+  String? _recoveryResult;
+  var _rememberSession = false;
+  final _faqController = TextEditingController();
   String _receipt = 'No action yet';
   final _sectionKey = GlobalKey();
+  @override
+  void dispose() {
+    _faqController.dispose();
+    super.dispose();
+  }
+
   void _report(String value) => setState(() => _receipt = value);
   UiMarketingAction _action(String label, {bool primary = false}) =>
       UiMarketingAction(
@@ -196,10 +209,12 @@ class _MarketingDemoState extends State<_MarketingDemo> {
   Future<String?> _submit(Object value) async {
     await Future<void>.delayed(const Duration(milliseconds: 500));
     if (!mounted) return null;
+    final preference =
+        value is UiAuthSubmission && value.rememberSession != null
+        ? ' · Session preference: ${value.rememberSession! ? 'remember' : 'this session only'}'
+        : '';
     _report(
-      _fail
-          ? 'Synthetic request failed; retry is available'
-          : 'Synthetic request accepted',
+      '${_fail ? 'Synthetic request failed; retry is available' : 'Synthetic request accepted'}$preference',
     );
     return _fail ? 'This synthetic request failed. Try again.' : null;
   }
@@ -288,15 +303,25 @@ class _MarketingDemoState extends State<_MarketingDemo> {
     String title,
     String category, {
     UiArticleLayout layout = UiArticleLayout.card,
+    String published = '22 October 2026',
   }) => UiArticleCard(
     title: title,
     category: category,
     description:
         'A synthetic editorial example about preserving and understanding museum collections.',
-    metadata: 'Sample author · 22 October 2026 · 4 min read',
+    metadata: '$published · 4 min read',
+    author: _author,
     media: _visual('Synthetic editorial illustration'),
     onRead: () => _report('Opened $title'),
     layout: layout,
+  );
+  Widget get _author => Wrap(
+    spacing: context.ui.space.s2,
+    crossAxisAlignment: WrapCrossAlignment.center,
+    children: [
+      const UiAvatar(name: 'Sample author'),
+      Text('Sample author', style: context.ui.type.label),
+    ],
   );
   UiTeamMemberCard _person(
     String name, {
@@ -347,6 +372,192 @@ class _MarketingDemoState extends State<_MarketingDemo> {
       child,
     ],
   );
+
+  Widget _journal({
+    UiBlogLayout layout = UiBlogLayout.grid,
+    bool page = false,
+  }) {
+    final records =
+        <({String title, String category, int order})>[
+              (title: 'Reading the record', category: 'Research', order: 4),
+              (
+                title: 'A shared review practice',
+                category: 'Practice',
+                order: 3,
+              ),
+              if (_more || page) ...[
+                (
+                  title: 'Connecting collection histories',
+                  category: 'Research',
+                  order: 2,
+                ),
+                (
+                  title: 'Preserving label detail',
+                  category: 'Practice',
+                  order: 1,
+                ),
+              ],
+            ]
+            .where((item) => _category == 'All' || item.category == _category)
+            .toList()
+          ..sort(
+            (a, b) => _sort == 'newest'
+                ? b.order.compareTo(a.order)
+                : a.order.compareTo(b.order),
+          );
+    final pageCount = (records.length / 2).ceil();
+    final visible = page
+        ? records.skip((_journalPage - 1) * 2).take(2)
+        : records;
+    return UiBlogSection(
+      title: page ? 'Collection journal' : 'From the collection',
+      eyebrow: 'The journal',
+      description: 'Stories and practical methods from synthetic collections.',
+      featured: page || layout == UiBlogLayout.sidebar
+          ? _article(
+              'Inside a living collection',
+              'Research',
+              layout: UiArticleLayout.horizontal,
+            )
+          : null,
+      layout: layout,
+      selectedIndex: _selected,
+      onSelected: (value) => setState(() => _selected = value),
+      sidebar: layout == UiBlogLayout.sidebar
+          ? UiEmailCapture(onSubmit: _submit, submitLabel: 'Follow the journal')
+          : null,
+      categories: const ['All', 'Research', 'Practice'],
+      selectedCategory: _category,
+      onCategoryChanged: (value) => setState(() {
+        _category = value;
+        _selected = 0;
+        _journalPage = 1;
+      }),
+      toolbar: UiSelect<String>(
+        label: 'Sort articles',
+        placeholder: 'Choose article order',
+        value: _sort,
+        options: const [
+          UiSelectOption(value: 'newest', label: 'Most recent'),
+          UiSelectOption(value: 'oldest', label: 'Oldest first'),
+        ],
+        onChanged: (value) => setState(() {
+          _sort = value;
+          _journalPage = 1;
+          _selected = 0;
+        }),
+      ),
+      articles: [
+        for (final record in visible)
+          _article(
+            record.title,
+            record.category,
+            published: '${18 + record.order} October 2026',
+          ),
+      ],
+      footer: page
+          ? UiPagination(
+              page: pageCount == 0 ? 0 : _journalPage,
+              pageCount: pageCount,
+              semanticsLabel: 'Journal pages',
+              onChanged: (value) => setState(() => _journalPage = value),
+            )
+          : UiButton(
+              label: _more ? 'All examples loaded' : 'Load more articles',
+              onPressed: _more ? null : () => setState(() => _more = true),
+            ),
+    );
+  }
+
+  Widget _searchableFaq({bool accordion = true}) {
+    const questions = [
+      (
+        'access',
+        'How does access work?',
+        'The host controls collection membership and permissions.',
+      ),
+      (
+        'evidence',
+        'Where does the evidence live?',
+        'Evidence remains linked to its source and collection.',
+      ),
+      (
+        'export',
+        'Can records be exported?',
+        'Export capabilities depend on the host application and your access.',
+      ),
+    ];
+    final query = _faqQuery.trim().toLowerCase();
+    return UiFaqSection(
+      title: 'How can we help?',
+      accordion: accordion,
+      search: UiSearchField(
+        label: 'Search questions',
+        hintText: 'Search questions and answers',
+        clearLabel: 'Clear question search',
+        controller: _faqController,
+        onChanged: (value) => setState(() => _faqQuery = value),
+      ),
+      items: [
+        for (final item in questions)
+          if ('${item.$2} ${item.$3}'.toLowerCase().contains(query))
+            UiFaqItem(id: item.$1, question: item.$2, answer: Text(item.$3)),
+      ],
+      emptyState: Column(
+        children: [
+          const Text('No questions match this search.'),
+          UiButton(
+            label: 'Show all questions',
+            onPressed: () {
+              _faqController.clear();
+              setState(() => _faqQuery = '');
+            },
+          ),
+        ],
+      ),
+      footer: UiCallToActionSection(
+        title: 'Still have a question?',
+        actions: [_action('Contact support')],
+      ),
+    );
+  }
+
+  void _searchRecovery() => setState(() {
+    final query = _recoveryQuery.trim().toLowerCase();
+    _recoveryResult = query.isEmpty
+        ? 'Enter a collection or guide to search.'
+        : 'Collection guides'.toLowerCase().contains(query)
+        ? 'Collection guides'
+        : 'No sample destinations match this search.';
+  });
+
+  Widget get _recoverySearch => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      UiSearchField(
+        label: 'Search destinations',
+        hintText: 'Search collections or guides',
+        clearLabel: 'Clear destination search',
+        onChanged: (value) => setState(() => _recoveryQuery = value),
+        onSubmitted: (_) => _searchRecovery(),
+      ),
+      SizedBox(height: context.ui.space.s3),
+      UiButton(label: 'Search destinations', onPressed: _searchRecovery),
+      if (_recoveryResult != null)
+        Semantics(
+          liveRegion: true,
+          child: _recoveryResult == 'Collection guides'
+              ? UiButton(
+                  label: 'Open collection guides',
+                  variant: UiButtonVariant.ghost,
+                  onPressed: () =>
+                      _report('Collection guides opened in this preview'),
+                )
+              : Text(_recoveryResult!),
+        ),
+    ],
+  );
+
   Widget _buildCase() {
     final v = widget.variant;
     switch (widget.kind) {
@@ -383,6 +594,12 @@ class _MarketingDemoState extends State<_MarketingDemo> {
               UiFeatureShowcaseItem(
                 title: feature.title,
                 description: feature.description,
+                icon: feature.icon,
+                benefits: const [
+                  'Keep original source evidence accessible',
+                  'Review observations with your team',
+                  'Preserve the reason for each decision',
+                ],
                 media: _visual('Product visual for ${feature.title}'),
                 actions: [_action('Explore ${feature.title}')],
               ),
@@ -468,6 +685,11 @@ class _MarketingDemoState extends State<_MarketingDemo> {
         return UiSectionGrid(children: _features);
       case 'UiHeroSection':
         return UiHeroSection(
+          announcement: UiButton(
+            label: 'New: the collection journal',
+            variant: UiButtonVariant.secondary,
+            onPressed: () => _report('Collection journal announcement opened'),
+          ),
           title: 'From specimens to knowledge.',
           eyebrow: 'Specimen Digitization',
           description: 'Digitize, enrich, and explore your collections.',
@@ -538,9 +760,12 @@ class _MarketingDemoState extends State<_MarketingDemo> {
         );
       case 'UiMetricsSection':
         return UiMetricsSection(
+          eyebrow: 'A shared collection',
+          description: 'Example measures with context for every value.',
           title: 'Synthetic collection measures',
           cards: v == 1,
           centered: v != 2,
+          layout: v == 2 ? UiSectionLayout.split : null,
           media: v == 2 ? _visual('Measure context visual') : null,
           metrics: const [
             UiMarketingMetric(
@@ -581,6 +806,8 @@ class _MarketingDemoState extends State<_MarketingDemo> {
       case 'UiTestimonialSection':
         return UiTestimonialSection(
           title: 'Collection perspectives',
+          description: 'Synthetic voices illustrating the quotation anatomy.',
+          actions: [_action('Read collection stories')],
           items: _quotes,
           selectedIndex: v == 1 ? null : _selected,
           onSelected: (value) => setState(() => _selected = value),
@@ -610,42 +837,12 @@ class _MarketingDemoState extends State<_MarketingDemo> {
           layout: UiArticleLayout.values[v],
         );
       case 'UiBlogSection':
-        return UiBlogSection(
-          title: 'From the collection',
-          layout: UiBlogLayout.values[v],
-          selectedIndex: _selected,
-          onSelected: (value) => setState(() => _selected = value),
-          sidebar: v == 2
-              ? UiEmailCapture(
-                  onSubmit: _submit,
-                  submitLabel: 'Follow the journal',
-                )
-              : null,
-          categories: const ['All', 'Research', 'Practice'],
-          selectedCategory: _category,
-          onCategoryChanged: (value) => setState(() {
-            _category = value;
-            _selected = 0;
-          }),
-          articles: [
-            if (_category != 'Practice')
-              _article('Reading the record', 'Research'),
-            if (_category != 'Research')
-              _article('A shared review practice', 'Practice'),
-            if (_more)
-              _article(
-                'Connecting collection histories',
-                _category == 'All' ? 'Research' : _category,
-              ),
-          ],
-          footer: UiButton(
-            label: _more ? 'All examples loaded' : 'Load more articles',
-            onPressed: _more ? null : () => setState(() => _more = true),
-          ),
-        );
+        return _journal(layout: UiBlogLayout.values[v]);
       case 'UiContentSection':
         return UiContentSection(
           title: 'The story behind a specimen',
+          category: 'Research',
+          byline: _author,
           description: 'A synthetic editorial layout.',
           media: _visual('Article figure'),
           caption: 'Synthetic figure caption.',
@@ -774,42 +971,9 @@ class _MarketingDemoState extends State<_MarketingDemo> {
       case 'UiCareerCard':
         return _job('Collection specialist', framed: v == 0);
       case 'UiCareersSection':
-        return UiCareersSection(
-          title: 'Build knowledge with us',
-          description: 'Synthetic vacancies only.',
-          departments: const ['All teams', 'Collections', 'Engineering'],
-          selectedDepartment: _department,
-          onDepartmentChanged: (value) => setState(() => _department = value),
-          jobs: [
-            if (_department != 'Engineering') _job('Collection specialist'),
-            if (_department != 'Collections') _job('Product engineer'),
-          ],
-        );
+        return _careers;
       case 'UiFaqSection':
-        return UiFaqSection(
-          title: 'Frequently asked questions',
-          accordion: v == 0,
-          items: const [
-            UiFaqItem(
-              id: 'evidence',
-              question: 'Where does the evidence live?',
-              answer: Text(
-                'Evidence remains linked to its source and collection.',
-              ),
-            ),
-            UiFaqItem(
-              id: 'export',
-              question: 'Can records be exported?',
-              answer: Text(
-                'Export capabilities depend on the host application and your access.',
-              ),
-            ),
-          ],
-          footer: UiButton(
-            label: 'Contact support',
-            onPressed: () => _report('Support requested'),
-          ),
-        );
+        return _searchableFaq(accordion: v == 0);
       case 'UiMarketingFooter':
         return UiMarketingFooter(
           identity: Text('Specimen', style: context.ui.type.title),
@@ -826,12 +990,20 @@ class _MarketingDemoState extends State<_MarketingDemo> {
                     links: [_action('Guides'), _action('Accessibility')],
                   ),
                 ],
+          callToAction: v == 1
+              ? UiCallToActionSection(
+                  title: 'Keep your collection connected',
+                  actions: _actions,
+                )
+              : null,
           newsletter: v == 1 ? UiEmailCapture(onSubmit: _submit) : null,
           actions: [_action('Privacy'), _action('Terms')],
         );
       case 'UiAnnouncementBanner':
         return _visible
             ? UiAnnouncementBanner(
+                title: 'A new way to explore',
+                icon: UiIcons.collection,
                 message: 'Explore the new collection workspace.',
                 actions: v == 2
                     ? []
@@ -863,6 +1035,11 @@ class _MarketingDemoState extends State<_MarketingDemo> {
         return _formControls(
           UiAuthForm(
             mode: UiAuthMode.values[v],
+            rememberSession: UiAuthMode.values[v] == UiAuthMode.signIn
+                ? _rememberSession
+                : null,
+            onRememberSessionChanged: (value) =>
+                setState(() => _rememberSession = value),
             onSubmit: _submit,
             passwordHelp: policyHelp,
             validatePassword: (value) =>
@@ -877,6 +1054,7 @@ class _MarketingDemoState extends State<_MarketingDemo> {
               : 'This collection is unavailable',
           description: 'Check the address or return to your collections.',
           code: v == 0 ? '404' : 'Unavailable',
+          recovery: _recoverySearch,
           actions: _actions,
           layout: v == 0 ? UiSectionLayout.centered : UiSectionLayout.split,
           illustration: v == 1 ? _visual('Decorative recovery visual') : null,
@@ -1017,21 +1195,51 @@ class _MarketingDemoState extends State<_MarketingDemo> {
         ]);
       case 2:
         sections.addAll([
-          UiBlogSection(
-            title: 'Collection journal',
-            articles: [
-              _article('Reading the record', 'Research'),
-              _article('A shared practice', 'Practice'),
-            ],
+          _journal(page: true),
+          UiCallToActionSection(
+            title: 'Bring your collection into the story',
+            actions: _actions,
           ),
           UiNewsletterSection(title: 'Follow the journal', onSubmit: _submit),
         ]);
       case 3:
-        sections.add(
+        sections.addAll([
           UiContentSection(
             title: 'The story behind a specimen',
+            category: 'Research',
+            byline: _author,
             description: 'Synthetic long-form example.',
-            media: _visual('Article image'),
+            media: Column(
+              children: [
+                UiCarousel(
+                  label: 'Article figures',
+                  index: _selected,
+                  onChanged: (value) => setState(() => _selected = value),
+                  children: [
+                    for (final (index, label) in const [
+                      'Original specimen photograph',
+                      'Source label detail',
+                      'Collection context',
+                    ].indexed)
+                      Semantics(
+                        image: true,
+                        label: label,
+                        child: UiBrandPattern(
+                          style: UiBrandPatternStyle.values[index],
+                        ),
+                      ),
+                  ],
+                ),
+                SizedBox(height: context.ui.space.s3),
+                Text(
+                  const [
+                    'Original specimen photograph',
+                    'Source label detail',
+                    'Collection context',
+                  ][_selected],
+                ),
+              ],
+            ),
             body: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -1046,11 +1254,29 @@ class _MarketingDemoState extends State<_MarketingDemo> {
                 const Text(
                   'Document uncertainty and keep original evidence accessible.',
                 ),
+                UiEditorialFigure(
+                  alternative: 'Synthetic collection context diagram',
+                  caption:
+                      'The original evidence remains linked to each observation.',
+                  child: const UiBrandPattern(),
+                ),
               ],
             ),
             actions: [_action('Copy article link')],
           ),
-        );
+          UiBlogSection(
+            title: 'Related collection stories',
+            articles: [
+              _article('A shared review practice', 'Practice'),
+              _article('Connecting collection histories', 'Research'),
+            ],
+          ),
+          UiCallToActionSection(
+            title: 'Keep the evidence connected',
+            actions: _actions,
+          ),
+          UiNewsletterSection(title: 'Follow the journal', onSubmit: _submit),
+        ]);
       case 4:
         sections.addAll([
           UiHeroSection(
@@ -1113,21 +1339,30 @@ class _MarketingDemoState extends State<_MarketingDemo> {
           ),
         ]);
       case 6:
-        sections.add(
+        sections.addAll([
           UiTeamSection(
             title: 'Our example team',
             description: 'Synthetic directory.',
-            members: [_person('Alex Example'), _person('Sam Example')],
-            actions: [_action('Open roles')],
+            members: [
+              _person('Alex Example'),
+              _person('Sam Example'),
+              _person('Jordan Example'),
+            ],
+            actions: [
+              UiMarketingAction(
+                'View open roles',
+                onPressed: () {
+                  final target = _sectionKey.currentContext;
+                  if (target != null) Scrollable.ensureVisible(target);
+                },
+              ),
+            ],
           ),
-        );
+          KeyedSubtree(key: _sectionKey, child: _careers),
+          UiNewsletterSection(title: 'Notes from the team', onSubmit: _submit),
+        ]);
       case 7:
-        sections.add(
-          UiCareersSection(
-            title: 'Work with collections',
-            jobs: [_job('Collection specialist'), _job('Product engineer')],
-          ),
-        );
+        sections.add(_careers);
       case 8:
         sections.add(
           UiContentSection(
@@ -1152,30 +1387,20 @@ class _MarketingDemoState extends State<_MarketingDemo> {
           ),
         );
       case 9:
-        sections.add(
-          UiFaqSection(
-            title: 'How can we help?',
-            items: const [
-              UiFaqItem(
-                id: 'access',
-                question: 'How does access work?',
-                answer: Text(
-                  'The host controls collection membership and permissions.',
-                ),
-              ),
-            ],
-            footer: UiCallToActionSection(
-              title: 'Still have a question?',
-              actions: [_action('Contact support')],
-            ),
-          ),
-        );
+        sections.add(_searchableFaq());
       case 10:
         sections.add(
           UiAuthLayout(
             title: 'Welcome to Specimen',
             description: 'Synthetic email-first authentication preview.',
-            form: UiAuthForm(mode: UiAuthMode.emailLink, onSubmit: _submit),
+            form: UiAuthForm(
+              mode: UiAuthMode.signIn,
+              rememberSession: _rememberSession,
+              onRememberSessionChanged: (value) =>
+                  setState(() => _rememberSession = value),
+              onSubmit: _submit,
+              otherActions: [_action('Recover account')],
+            ),
             media: _visual('Collection visual'),
             layout: UiSectionLayout.split,
           ),
@@ -1185,6 +1410,7 @@ class _MarketingDemoState extends State<_MarketingDemo> {
           UiErrorPage(
             title: 'This page could not be found',
             description: 'Check the address or return to the collection.',
+            recovery: _recoverySearch,
             actions: _actions,
           ),
         );
@@ -1222,6 +1448,24 @@ class _MarketingDemoState extends State<_MarketingDemo> {
           'The host controls membership and permissions for each collection.',
         ),
       ),
+    ],
+  );
+
+  Widget get _careers => UiCareersSection(
+    title: 'Build knowledge with us',
+    description: 'Synthetic vacancies organized by the people doing the work.',
+    media: _visual('Collaboration in the collection'),
+    departments: const ['All teams', 'Collections', 'Engineering'],
+    selectedDepartment: _department,
+    onDepartmentChanged: (value) => setState(() => _department = value),
+    groups: [
+      if (_department != 'Engineering')
+        UiCareerGroup(
+          title: 'Collections',
+          jobs: [_job('Collection specialist')],
+        ),
+      if (_department != 'Collections')
+        UiCareerGroup(title: 'Engineering', jobs: [_job('Product engineer')]),
     ],
   );
 

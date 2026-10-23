@@ -1,11 +1,14 @@
 /// The person disc (10 section 4.5, `UiAvatar`).
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/widgets.dart';
 
 import '../../foundation/theme.dart';
 import '../../foundation/icons.dart';
 import '../../primitives/label.dart';
+import '../../primitives/fit.dart';
 import '../actions/icon_button.dart';
 
 /// Identity diameters from compact supporting rows through profile headers.
@@ -261,6 +264,8 @@ class UiAvatarPerson {
 ///
 /// The complete membership is announced once, even when only a subset fits.
 /// The add control has its own 48 dp target and accessible name.
+/// The overflow count grows into a pill at large text sizes, with fewer photos
+/// shown as needed. It retains the user's text size and can wrap independently.
 class UiAvatarGroup extends StatelessWidget {
   /// Creates the component with explicit caller-owned configuration.
   const UiAvatarGroup({
@@ -296,34 +301,69 @@ class UiAvatarGroup extends StatelessWidget {
     final ui = context.ui;
     return LayoutBuilder(
       builder: (context, constraints) {
-        final available = constraints.hasBoundedWidth
-            ? constraints.maxWidth -
-                  (onAdd == null ? 0 : ui.space.targetMin + ui.space.s2)
-            : size.diameter * (maxVisible + 1);
+        final maxWidth = constraints.hasBoundedWidth
+            ? constraints.maxWidth
+            : double.infinity;
+        final reserved = onAdd == null ? 0 : ui.space.targetMin + ui.space.s2;
+        final readableCount =
+            measureLabel(context, '+${people.length}', ui.type.label).width +
+            ui.space.s2 * 2;
+        // Keep the add action beside the group when possible. At large text
+        // sizes let it wrap instead of squeezing the complete overflow count.
+        final available =
+            maxWidth - reserved >= math.max(size.diameter, readableCount)
+            ? maxWidth - reserved
+            : maxWidth;
         final step = size.diameter * .75;
-        final capacity = ((available - size.diameter) / step).floor() + 1;
-        final fit = capacity.clamp(1, maxVisible + 1);
-        final visibleLimit = people.length > fit ? fit - 1 : fit;
-        final count = people.length.clamp(0, maxVisible.clamp(0, visibleLimit));
+        Size overflowSize(int hidden) {
+          final painter = TextPainter(
+            text: TextSpan(text: '+$hidden', style: ui.type.label),
+            textDirection: Directionality.of(context),
+            textScaler: MediaQuery.textScalerOf(context),
+          )..layout(maxWidth: math.max(0, available - ui.space.s2 * 2));
+          final result = Size(
+            math.min(
+              available,
+              math.max(size.diameter, painter.width + ui.space.s2 * 2),
+            ),
+            math.max(size.diameter, painter.height + ui.space.s1 * 2),
+          );
+          painter.dispose();
+          return result;
+        }
+
+        int count = math.min(people.length, maxVisible);
+        double groupWidth(int shown, Size overflow) => shown == people.length
+            ? (shown == 0 ? 0 : size.diameter + (shown - 1) * step)
+            : shown * step + overflow.width;
+        Size overflow = overflowSize(people.length - count);
+        while (count > 0 && groupWidth(count, overflow) > available) {
+          count--;
+          overflow = overflowSize(people.length - count);
+        }
         final hidden = people.length - count;
         final slots = count + (hidden > 0 ? 1 : 0);
+        final height = hidden > 0 ? overflow.height : size.diameter;
         final group = Semantics(
           label: '$label: ${people.map((p) => p.name).join(', ')}',
           excludeSemantics: true,
           child: SizedBox(
-            width: slots == 0 ? 0 : size.diameter + (slots - 1) * step,
-            height: size.diameter,
+            width: groupWidth(count, overflow),
+            height: height,
             child: Stack(
               children: <Widget>[
                 for (int i = 0; i < slots; i++)
                   PositionedDirectional(
                     start: i * step,
+                    top: i < count ? (height - size.diameter) / 2 : 0,
                     child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: ui.color.paper,
-                          width: ui.shape.stroke.emphasis,
+                      decoration: ShapeDecoration(
+                        color: i < count ? null : ui.color.matte,
+                        shape: StadiumBorder(
+                          side: BorderSide(
+                            color: ui.color.paper,
+                            width: ui.shape.stroke.emphasis,
+                          ),
                         ),
                       ),
                       child: i < count
@@ -332,15 +372,20 @@ class UiAvatarGroup extends StatelessWidget {
                               image: people[i].image,
                               size: size,
                             )
-                          : SizedBox.square(
-                              dimension: size.diameter,
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: ui.color.matte,
+                          : SizedBox(
+                              width: overflow.width,
+                              height: overflow.height,
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: ui.space.s2,
+                                  vertical: ui.space.s1,
                                 ),
                                 child: Center(
-                                  child: Text('+$hidden', style: ui.type.label),
+                                  child: Text(
+                                    '+$hidden',
+                                    style: ui.type.label,
+                                    textAlign: TextAlign.center,
+                                  ),
                                 ),
                               ),
                             ),

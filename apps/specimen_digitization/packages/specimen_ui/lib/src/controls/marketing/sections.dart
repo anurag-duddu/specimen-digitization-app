@@ -703,6 +703,9 @@ class UiMetricsSection extends StatelessWidget {
     this.cards = false,
     this.centered = true,
     this.media,
+    this.eyebrow,
+    this.description,
+    this.layout,
   });
 
   /// Section heading.
@@ -719,10 +722,22 @@ class UiMetricsSection extends StatelessWidget {
 
   /// Optional supporting evidence or illustration.
   final Widget? media;
+
+  /// Optional context above the metric section heading.
+  final String? eyebrow;
+
+  /// Explanation of the section's measurements.
+  final String? description;
+
+  /// Optional text/media composition; null retains [centered]'s arrangement.
+  final UiSectionLayout? layout;
   @override
   Widget build(BuildContext context) => UiMarketingSection(
     title: title,
-    layout: centered ? UiSectionLayout.centered : UiSectionLayout.start,
+    eyebrow: eyebrow,
+    description: description,
+    layout:
+        layout ?? (centered ? UiSectionLayout.centered : UiSectionLayout.start),
     media: media,
     child: UiSectionGrid(
       columns: 4,
@@ -802,6 +817,8 @@ class UiTestimonialSection extends StatelessWidget {
     this.selectedIndex,
     this.onSelected,
     this.layout = UiSectionLayout.centered,
+    this.description,
+    this.actions = const [],
   });
 
   /// Section heading.
@@ -818,6 +835,12 @@ class UiTestimonialSection extends StatelessWidget {
 
   /// Quote and portrait relationship.
   final UiSectionLayout layout;
+
+  /// Introductory copy before the quote collection.
+  final String? description;
+
+  /// Customer-story, contact or other host-owned section commands.
+  final List<UiMarketingAction> actions;
   Widget _quote(BuildContext context, UiTestimonial item) => UiMarketingSection(
     title: '“${item.quote}”',
     description: '${item.author}${item.role == null ? "" : " · ${item.role}"}',
@@ -835,6 +858,8 @@ class UiTestimonialSection extends StatelessWidget {
         : selectedIndex!.clamp(0, items.length - 1);
     return UiMarketingSection(
       title: title,
+      description: description,
+      actions: actions,
       child: active == null
           ? UiSectionGrid(
               columns: 2,
@@ -970,6 +995,7 @@ class UiArticleCard extends StatelessWidget {
     required this.description,
     this.category,
     this.metadata,
+    this.author,
     this.media,
     this.onRead,
     this.layout = UiArticleLayout.vertical,
@@ -987,6 +1013,9 @@ class UiArticleCard extends StatelessWidget {
   /// Author, publication date and reading-time string.
   final String? metadata;
 
+  /// Structured author identity, such as an avatar with name and publication date.
+  final Widget? author;
+
   /// Photograph or illustration with host-supplied semantics.
   final Widget? media;
 
@@ -997,14 +1026,21 @@ class UiArticleCard extends StatelessWidget {
   final UiArticleLayout layout;
   @override
   Widget build(BuildContext context) {
+    final attribution = author == null && metadata == null
+        ? null
+        : MarketingStack(
+            children: [
+              ?author,
+              if (metadata != null)
+                Text(metadata!, style: context.ui.type.bodySmall),
+            ],
+          );
     final heading = UiMarketingSection(
       title: title,
       eyebrow: category,
       description: description,
       actions: [UiMarketingAction('Read $title', onPressed: onRead)],
-      child: metadata == null
-          ? null
-          : Text(metadata!, style: context.ui.type.bodySmall),
+      child: attribution,
     );
     if (layout == UiArticleLayout.horizontal) {
       return UiMarketingSection(
@@ -1014,9 +1050,7 @@ class UiArticleCard extends StatelessWidget {
         media: media,
         layout: UiSectionLayout.splitReversed,
         actions: [UiMarketingAction('Read $title', onPressed: onRead)],
-        child: metadata == null
-            ? null
-            : Text(metadata!, style: context.ui.type.bodySmall),
+        child: attribution,
       );
     }
     final content = MarketingStack(children: [?media, heading]);
@@ -1061,6 +1095,10 @@ class UiBlogSection extends StatelessWidget {
     this.sidebar,
     this.selectedIndex = 0,
     this.onSelected,
+    this.toolbar,
+    this.eyebrow,
+    this.description,
+    this.featured,
   });
 
   /// Grid, featured, sidebar or carousel composition.
@@ -1068,6 +1106,19 @@ class UiBlogSection extends StatelessWidget {
 
   /// Optional search, newsletter or supporting navigation beside the results.
   final Widget? sidebar;
+
+  /// Caller-owned sort, search or display controls above the article results.
+  final Widget? toolbar;
+
+  /// Context above the collection heading.
+  final String? eyebrow;
+
+  /// Introductory copy before the featured article and results.
+  final String? description;
+
+  /// Independent leading article, including when results use a sidebar.
+  /// The host excludes this article from [articles] to avoid duplicate results.
+  final UiArticleCard? featured;
 
   /// Zero-based active article for [UiBlogLayout.carousel].
   final int selectedIndex;
@@ -1124,7 +1175,9 @@ class UiBlogSection extends StatelessWidget {
         : selectedIndex.clamp(0, articles.length - 1);
     final results = MarketingStack(
       children: [
-        if (layout == UiBlogLayout.featured && articles.isNotEmpty) ...[
+        if (layout == UiBlogLayout.featured &&
+            featured == null &&
+            articles.isNotEmpty) ...[
           articles.first,
           UiSectionGrid(children: articles.skip(1).toList()),
         ] else if (layout == UiBlogLayout.carousel && articles.isNotEmpty) ...[
@@ -1144,25 +1197,33 @@ class UiBlogSection extends StatelessWidget {
     );
     return UiMarketingSection(
       title: title,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final wide =
-              constraints.maxWidth >=
-              context.ui.space.importWorkspaceMax *
-                  MediaQuery.textScalerOf(context).scale(16) /
-                  16;
-          if (layout == UiBlogLayout.sidebar && wide) {
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: filters),
-                SizedBox(width: context.ui.space.s8),
-                Expanded(flex: 3, child: results),
-              ],
-            );
-          }
-          return MarketingStack(children: [filters, results]);
-        },
+      eyebrow: eyebrow,
+      description: description,
+      child: MarketingStack(
+        children: [
+          ?featured,
+          ?toolbar,
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final wide =
+                  constraints.maxWidth >=
+                  context.ui.space.importWorkspaceMax *
+                      MediaQuery.textScalerOf(context).scale(16) /
+                      16;
+              if (layout == UiBlogLayout.sidebar && wide) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: filters),
+                    SizedBox(width: context.ui.space.s8),
+                    Expanded(flex: 3, child: results),
+                  ],
+                );
+              }
+              return MarketingStack(children: [filters, results]);
+            },
+          ),
+        ],
       ),
     );
   }
@@ -1180,6 +1241,8 @@ class UiContentSection extends StatelessWidget {
     this.caption,
     this.contents = const [],
     this.actions = const [],
+    this.category,
+    this.byline,
   });
 
   /// Article heading.
@@ -1187,6 +1250,12 @@ class UiContentSection extends StatelessWidget {
 
   /// Introductory summary.
   final String? description;
+
+  /// Article category or publication context above the title.
+  final String? category;
+
+  /// Structured author, portrait and publication details before the main figure.
+  final Widget? byline;
 
   /// Host-supplied structured content.
   final Widget body;
@@ -1205,9 +1274,11 @@ class UiContentSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) => UiMarketingSection(
     title: title,
+    eyebrow: category,
     description: description,
     child: MarketingStack(
       children: [
+        ?byline,
         ?media,
         if (caption != null) Text(caption!, style: context.ui.type.bodySmall),
         LayoutBuilder(
@@ -1543,17 +1614,32 @@ class UiCareerCard extends StatelessWidget {
   );
 }
 
+/// A department heading and its current vacancies.
+@immutable
+class UiCareerGroup {
+  /// The host supplies actual department membership and filtered vacancies.
+  const UiCareerGroup({required this.title, required this.jobs});
+
+  /// Department name, exposed as a section heading.
+  final String title;
+
+  /// Vacancies in this department, in reading order.
+  final List<UiCareerCard> jobs;
+}
+
 /// Careers collection grouped by department, with a controlled filter.
 class UiCareersSection extends StatelessWidget {
   /// Host owns the filtered vacancy set and application destinations.
   const UiCareersSection({
     super.key,
     required this.title,
-    required this.jobs,
+    this.jobs = const [],
     this.description,
     this.departments = const [],
     this.selectedDepartment,
     this.onDepartmentChanged,
+    this.media,
+    this.groups = const [],
   });
 
   /// Section heading.
@@ -1564,6 +1650,12 @@ class UiCareersSection extends StatelessWidget {
 
   /// Current vacancies.
   final List<UiCareerCard> jobs;
+
+  /// Optional introductory photograph or culture/benefits content.
+  final Widget? media;
+
+  /// Department headings with host-owned vacancy membership.
+  final List<UiCareerGroup> groups;
 
   /// Department choices.
   final List<String> departments;
@@ -1579,6 +1671,7 @@ class UiCareersSection extends StatelessWidget {
     description: description,
     child: MarketingStack(
       children: [
+        ?media,
         Wrap(
           spacing: context.ui.space.s2,
           runSpacing: context.ui.space.s2,
@@ -1599,6 +1692,16 @@ class UiCareersSection extends StatelessWidget {
           ],
         ),
         ...jobs,
+        for (final group in groups)
+          MarketingStack(
+            children: [
+              Semantics(
+                header: true,
+                child: Text(group.title, style: context.ui.type.title),
+              ),
+              ...group.jobs,
+            ],
+          ),
       ],
     ),
   );
@@ -1634,6 +1737,8 @@ class UiFaqSection extends StatelessWidget {
     this.accordion = true,
     this.footer,
     this.description,
+    this.search,
+    this.emptyState,
   });
 
   /// Section heading.
@@ -1641,6 +1746,12 @@ class UiFaqSection extends StatelessWidget {
 
   /// Introductory copy.
   final String? description;
+
+  /// Host-owned search/filter control. The host supplies the matching [items].
+  final Widget? search;
+
+  /// Optional no-results content shown when the supplied item list is empty.
+  final Widget? emptyState;
 
   /// Questions and stable identities.
   final List<UiFaqItem> items;
@@ -1656,6 +1767,8 @@ class UiFaqSection extends StatelessWidget {
     description: description,
     child: MarketingStack(
       children: [
+        ?search,
+        if (items.isEmpty) ?emptyState,
         if (accordion)
           for (final item in items)
             UiDisclosure(
@@ -1695,6 +1808,7 @@ class UiMarketingFooter extends StatelessWidget {
     this.groups = const [],
     this.newsletter,
     this.actions = const [],
+    this.callToAction,
   });
 
   /// Brand identity.
@@ -1711,12 +1825,16 @@ class UiMarketingFooter extends StatelessWidget {
 
   /// Legal/social/app-download destinations.
   final List<UiMarketingAction> actions;
+
+  /// Optional closing section before identity and grouped destinations.
+  final Widget? callToAction;
   @override
   Widget build(BuildContext context) => Surface(
     hairline: true,
     padding: EdgeInsets.all(context.ui.space.s6),
     child: MarketingStack(
       children: [
+        ?callToAction,
         identity,
         ?newsletter,
         UiSectionGrid(
@@ -1765,10 +1883,18 @@ class UiAnnouncementBanner extends StatelessWidget {
     this.form,
     this.floating = false,
     this.dismissLabel = 'Dismiss announcement',
+    this.title,
+    this.icon,
   });
 
   /// Announcement text.
   final String message;
+
+  /// Optional heading, independently styled above the supporting [message].
+  final String? title;
+
+  /// Optional Phosphor icon accompanying the heading and message.
+  final IconSpec? icon;
 
   /// Principal/secondary commands.
   final List<UiMarketingAction> actions;
@@ -1794,7 +1920,23 @@ class UiAnnouncementBanner extends StatelessWidget {
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(child: Text(message, style: context.ui.type.body)),
+            if (icon != null) ...[
+              UiIcon(icon!, color: context.ui.brand.secondary.content),
+              SizedBox(width: context.ui.space.s3),
+            ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (title != null) ...[
+                    Text(title!, style: context.ui.type.label),
+                    SizedBox(height: context.ui.space.s1),
+                  ],
+                  Text(message, style: context.ui.type.body),
+                ],
+              ),
+            ),
             if (onDismiss != null)
               UiIconButton(
                 icon: UiIcons.close,
@@ -1858,6 +2000,16 @@ class _MarketingMenuTriggerState extends State<_MarketingMenuTrigger> {
   final _controller = PopoverController();
   final _focus = FocusNode();
 
+  void _toggle() {
+    if (!_controller.isOpen) {
+      // A pointer does not necessarily move focus. The overlay must begin in
+      // this trigger's focus lineage so Escape also works for pointer opens.
+      _focus.requestFocus();
+      FocusManager.instance.applyFocusChangesIfNeeded();
+    }
+    _controller.toggle();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1904,7 +2056,7 @@ class _MarketingMenuTriggerState extends State<_MarketingMenuTrigger> {
           leading: UiIcons.expand,
           focusNode: _focus,
           variant: UiButtonVariant.ghost,
-          onPressed: _controller.toggle,
+          onPressed: _toggle,
         ),
       ),
     ),
@@ -1920,6 +2072,8 @@ class UiFeatureShowcaseItem {
     required this.description,
     required this.media,
     this.actions = const [],
+    this.icon,
+    this.benefits = const [],
   });
 
   /// Feature heading.
@@ -1933,6 +2087,12 @@ class UiFeatureShowcaseItem {
 
   /// Commands relevant to this feature.
   final List<UiMarketingAction> actions;
+
+  /// Optional Phosphor heading icon.
+  final IconSpec? icon;
+
+  /// Explicit supporting benefits, displayed as a readable checked list.
+  final List<String> benefits;
 }
 
 /// Alternating text/media feature rows, stacking in reading order on mobile.
@@ -1958,12 +2118,34 @@ class UiFeatureShowcase extends StatelessWidget {
         if (i > 0) SizedBox(height: context.ui.space.s16),
         UiMarketingSection(
           title: items[i].title,
+          leading: items[i].icon == null
+              ? null
+              : UiIcon(
+                  items[i].icon!,
+                  size: UiIconSize.display,
+                  color: context.ui.brand.secondary.content,
+                ),
           description: items[i].description,
           media: items[i].media,
           actions: items[i].actions,
           layout: alternating && i.isOdd
               ? UiSectionLayout.splitReversed
               : UiSectionLayout.split,
+          child: items[i].benefits.isEmpty
+              ? null
+              : MarketingStack(
+                  children: [
+                    for (final benefit in items[i].benefits)
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const UiIcon(UiIcons.check),
+                          SizedBox(width: context.ui.space.s2),
+                          Expanded(child: Text(benefit)),
+                        ],
+                      ),
+                  ],
+                ),
         ),
       ],
     ],
