@@ -79,6 +79,7 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker>
   @override
   void initState() {
     super.initState();
+    foreground = isVisible(WidgetsBinding.instance.lifecycleState);
     WidgetsBinding.instance.addObserver(this);
     c.addListener(controllerChanged);
     restoreSource();
@@ -105,16 +106,26 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker>
     super.didUpdateWidget(oldWidget);
     if (widget.active != oldWidget.active) {
       generation++;
-      if (!widget.active) detachInlinePicker();
+      if (!widget.active) {
+        detachInlinePicker();
+        authSession?.close();
+      }
       if (widget.active) unawaited(poll());
     }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    foreground = state == AppLifecycleState.resumed;
+    foreground = isVisible(state);
     if (foreground) unawaited(poll());
   }
+
+  // Inactive also covers a visible desktop window without keyboard focus and
+  // transient system sheets. Only hidden/paused views should stop reconciling.
+  static bool isVisible(AppLifecycleState? state) =>
+      state != AppLifecycleState.hidden &&
+      state != AppLifecycleState.paused &&
+      state != AppLifecycleState.detached;
 
   void controllerChanged() {
     if (mounted) setState(() {});
@@ -203,7 +214,7 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker>
     String label = 'Loading photos…',
   }) async {
     if (busy) return;
-    generation++;
+    final epoch = ++generation;
     setState(() {
       busy = true;
       phase = label;
@@ -216,7 +227,7 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker>
     try {
       await action();
     } catch (e) {
-      if (mounted) {
+      if (mounted && generation == epoch) {
         setState(() {
           message = c.message(e);
           recoveryAction = e is ApiFailure
@@ -369,6 +380,9 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker>
     String? reconnectId,
     IntakeAuthSession? initiatingSession,
   }) async {
+    final epoch = generation;
+    final controller = c;
+    final contextKey = c.sourceContextKey;
     final retained = selectionToResume;
     final resumeSelection =
         retained != null &&
@@ -385,6 +399,13 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker>
         connect(access, provider: name, reconnectId: reconnectId);
     final session = initiatingSession ?? newAuthSession();
     authSession = session;
+    bool current() =>
+        mounted &&
+        widget.active &&
+        generation == epoch &&
+        identical(c, controller) &&
+        c.sourceContextKey == contextKey &&
+        identical(authSession, session);
     final proof = intakeClientId() + intakeClientId();
     try {
       final result = await c.call(
@@ -398,7 +419,7 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker>
           'reconnect_id': ?reconnectId,
         },
       );
-      if (!mounted) return;
+      if (!current()) return;
       setState(() => rememberConnection(result, showError: false));
       final continueToPicker =
           name == 'google_drive' &&
@@ -411,13 +432,13 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker>
       );
       // Consent owns its popup; file selection has a separate inline lifetime.
       session.close();
-      if (!mounted) return;
+      if (!current()) return;
       final completed = await c.call(
         'POST',
         '/connections/complete',
         body: {...response, 'session_proof': proof},
       );
-      if (!mounted) return;
+      if (!current()) return;
       setState(() => rememberConnection(completed));
       if (completed['state'] == 'connected') {
         reconnectAction = null;
@@ -449,10 +470,38 @@ class _IntakeSourcePickerState extends State<IntakeSourcePicker>
           await browse();
         }
       }
+    } on ApiFailure catch (failure) {
+      if (failure.code != 'authorization_cancelled') rethrow;
+      if (!current()) return;
+      final cancelledConnection = connectionId;
+      Json? confirmed;
+      if (cancelledConnection != null) {
+        try {
+          confirmed = await c.call('GET', '/connections/$cancelledConnection');
+        } catch (_) {
+          // The initiating request may have changed the server's authorization
+          // state. Keep that last confirmed state, never restore stale Connected.
+        }
+      }
+      if (!current()) return;
+      setState(() {
+        closePicker(keepSelection: resumeSelection);
+        if (resumeSelection) pickerId = retained.pickerId;
+        if (confirmed != null) {
+          rememberConnection(confirmed, showError: false);
+        }
+        if (activeConnection?['state'] == 'connected') {
+          reconnectAction = null;
+        }
+        message = null;
+        recoveryAction = null;
+      });
     } finally {
       session.close();
-      authSession = null;
-      connectingProvider = null;
+      if (identical(authSession, session)) {
+        authSession = null;
+        connectingProvider = null;
+      }
     }
   }
 

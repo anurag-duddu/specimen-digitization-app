@@ -121,6 +121,20 @@ class ProgressRepository extends BulkFixtureRepository {
   }
 }
 
+class HeldPreviewRepository extends ProgressRepository {
+  final Map<String, Completer<Uint8List>> held = {};
+
+  @override
+  Future<Uint8List> intakePreview(
+    CollectionScope scope,
+    String itemId, {
+    bool full = false,
+  }) async {
+    previewCalls++;
+    return held[itemId]?.future ?? goldenPreviewBytes;
+  }
+}
+
 class HeldDraftRepository extends InterruptedSourceRepository {
   bool hold = false;
   final started = Completer<void>(), release = Completer<void>();
@@ -490,6 +504,62 @@ void main() {
       expect(find.byType(Image), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+  testWidgets(
+    'photo and controller changes clear old pixels until their preview arrives',
+    (tester) async {
+      final firstRepository = HeldPreviewRepository();
+      final secondRepository = HeldPreviewRepository();
+      firstRepository.held['second'] = Completer<Uint8List>();
+      secondRepository.held['second'] = Completer<Uint8List>();
+      final firstController = controllerFor(firstRepository);
+      final secondController = controllerFor(secondRepository);
+      addTearDown(firstController.dispose);
+      addTearDown(secondController.dispose);
+      const first = IntakeDraftItem({
+        'id': 'first',
+        'state': 'ready',
+        'revision': 1,
+      });
+      const second = IntakeDraftItem({
+        'id': 'second',
+        'state': 'ready',
+        'revision': 1,
+      });
+      Widget preview(BulkIntakeController controller, IntakeDraftItem item) =>
+          SizedBox(
+            width: 84,
+            height: 84,
+            child: BulkPhotoPreview(controller: controller, item: item),
+          );
+
+      await pumpComponent(tester, preview(firstController, first));
+      expect(find.byType(Image), findsOneWidget);
+
+      await pumpComponent(tester, preview(firstController, second));
+      expect(firstRepository.previewCalls, 2);
+      expect(find.byType(Image), findsNothing);
+      expect(find.byType(UiIcon), findsOneWidget);
+      final secondBytes = Uint8List.fromList(goldenPreviewBytes);
+      firstRepository.held['second']!.complete(secondBytes);
+      await tester.pumpAndSettle();
+      expect(
+        (tester.widget<Image>(find.byType(Image)).image as MemoryImage).bytes,
+        same(secondBytes),
+      );
+
+      await pumpComponent(tester, preview(secondController, second));
+      expect(secondRepository.previewCalls, 1);
+      expect(find.byType(Image), findsNothing);
+      final replacementBytes = Uint8List.fromList(goldenPreviewBytes);
+      secondRepository.held['second']!.complete(replacementBytes);
+      await tester.pumpAndSettle();
+      expect(
+        (tester.widget<Image>(find.byType(Image)).image as MemoryImage).bytes,
+        same(replacementBytes),
+      );
+      expect(tester.takeException(), isNull);
     },
   );
   testWidgets(

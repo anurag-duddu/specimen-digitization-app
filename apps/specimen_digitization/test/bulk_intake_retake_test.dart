@@ -42,6 +42,7 @@ class ReplacementController extends BulkIntakeController {
     bool camera = false,
     bool sensitive = false,
     String? replacesId,
+    Object? captureAttempt,
   }) async {
     replacements = files;
     replacedId = replacesId;

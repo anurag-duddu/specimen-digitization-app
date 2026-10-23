@@ -24558,6 +24558,268 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   fresh compact-SDK measurements with no findings. Current main remains base
   `357f9d0dee7dd4b397adfde3f4f6d3228e553941`. Exact-head approval and hosted
   checks follow; live repaired Google selection remains Not confirmed.
+- Correction committed as `a4ea58056d1e9b2011da8d64cd6f7e01c2df4f91` and opened
+  PR #401 (`https://github.com/anurag-duddu/specimen-digitization-app/pull/401`).
+  `/root/polish_independent_review` issued G51 APPROVED for that exact head
+  against deployed `357f9d0dee7dd4b397adfde3f4f6d3228e553941`, verifying the
+  clean four-file scope, append-only log/plan changes, and the complete canonical
+  results above. Pre-push hooks passed. Hosted checks and protected release are
+  pending; actual Google selection remains Not confirmed after the prior403.
+- While PR #401 checks ran, live Gmail Dropbox browsing on deployed PR #400
+  loaded all10 demo photos inline with0 unavailable. Selected demo321, switched
+  to Drive and back, and confirmed its selection persisted. Cleared only that
+  temporary selection, closed the panel, and confirmed Saved2photos remains
+  demo328/330; no Add/Submit or provider-original mutation occurred. This
+  validates existing Dropbox behavior, not the still-pending Drive correction.
+- Before merge: PR #401 is CLEAN/MERGEABLE at the independently approved exact
+  head `a4ea58056d1e9b2011da8d64cd6f7e01c2df4f91`, base unchanged at
+  `357f9d0dee7dd4b397adfde3f4f6d3228e553941`. CI/CD `39736633342` and runtime
+  candidate `39736633298` completed successfully; every required check and
+  supplementary database/storage/native check passed. Native build success is
+  compile evidence only. Proceeding with protected merge; deployment and actual
+  repaired Google selection remain separate and Not confirmed here.
+- After the user's resume on October22 local, PR #401 merged at
+  `2026-10-23T00:39:19Z` as `084b387f950cf2c255c04849f08998cb84d1096e`.
+  Main protected runs: Hosting CI/CD `39879397457`, Data `39879397403`,
+  Runtime `39879397420`; runtime candidate `39879397409`. These runs are
+  started, not yet a confirmed release or live-provider acceptance.
+- Corrected API `/version` reports `084b387f950cf2c255c04849f08998cb84d1096e`
+  in production; Data `39879397403` and Runtime `39879397420` succeeded.
+  Hosting remains pending. Real Gmail Choose photos now renders the actual
+  Google file list within the existing import pane, without the former403 or
+  a detached window. Screenshot saved under connector-polish-20261021 as
+  `drive-inline-live-20261022.png`. Selection handoff remains Not confirmed:
+  concurrent Chrome window changes interrupted that step. Saved2photos remains
+  unchanged; no Submit or provider-original mutation occurred.
+- Production release complete at `084b387f950cf2c255c04849f08998cb84d1096e`:
+  Hosting `39879397457` attempt1, Data `39879397403`, and Runtime `39879397420`
+  all SUCCESS. Public deployment.json matches SHA/run/attempt; API /version
+  matches SHA and production mode. Hosting `Verify the public site` and runtime
+  `Smoke the public API` succeeded. This confirms deployment, not full live
+  chooser acceptance. The actual corrected API rendered real Gmail files inline;
+  selecting/returning to review, cancel/reopen and refreshed matching-web checks
+  remain Not confirmed because concurrent Chrome window changes interrupted
+  native automation. An availability question is pending; no permissions or
+  credentials were widened. Only this append-only closeout log is uncommitted;
+  feature branches/worktree are retained for the outstanding live acceptance.
+- Follow-up after the user made Chrome available: hard-refreshed the production
+  Gmail Intake E2E app and restored Saved2photos (328/330). Real inline Google
+  Picker selected demo330, returned through server validation (1 available,
+  0 unavailable), and opened its actual specimen-image preview. Google's Cancel
+  settled back to that selected item; reopening loaded real files again, and
+  the app's Back to selected photos returned without losing the selection.
+  Proof `drive-inline-selected-preview-live-20261022.png` under the existing
+  connector-polish-20261021 visualization directory. No detached chooser,
+  permission expansion, Add-to-draft or Submit was used in this correction.
+- Live chooser acceptance is now confirmed for Gmail on the released web/API:
+  Drive -> Dropbox -> Drive retained the selected demo330; closing the panel
+  left Saved2photos exactly328/330 and the existing specimen Queue unchanged.
+  Selected-list proof `drive-inline-selection-verified-live-20261022.png` saved
+  beside the preview proof. This confirms the inline chooser correction, not a
+  new scientific submission, institutional approval, or physical-device run.
+- Cleanup reconciliation: fetched origin/main at released merge084b387f;
+  remote `codex/intake-drive-inline` remains dae93552 and
+  `codex/intake-drive-sdk-inline` remains a4ea58056; both exact heads are
+  ancestors of origin/main and their PRs400/401 are merged. Only the appended
+  SESSION_LEARNINGS.md is uncommitted. Pruning only those two remote branches
+  with exact-head leases; retaining this checkout/local branches and its log so
+  no uncommitted or unrelated work is lost.
+- Cleanup correction: the leased remote deletion reported both refs already
+  absent; a fresh `git ls-remote --heads` confirmed neither exists. The earlier
+  normal fetch retained stale tracking refs. No remote branch was deleted by
+  this attempt; removing only those two stale local remote-tracking refs.
+- Mobile follow-up for task01a149fc, same5da8 checkout/branch and released
+  merge084b387f: source inspection confirms inline Google Picker is web-only;
+  native iOS/Android still use LaunchMode.externalApplication and the
+  specimenintake callback. Connected physical-device inventory found iPhone
+  installed1.0.0(8), Android1.0.0(10), Android updated October17. No native
+  build was installed or device UI acceptance completed in this follow-up.
+  iPhone Mirroring reported iPhone in Use; native acceptance is Not confirmed.
+- Live Gmail mobile-web emulation at393x852 (Chrome iPhone16 preset) rendered
+  the real Google list, selected demo330, returned to server validation, and
+  displayed the actual image preview within phone width. Checking0of1 persisted
+  while DevTools was open; closing DevTools/restoring app focus immediately
+  showed the completed selection. Lifecycle polling pauses outside resumed
+  app state by source; causality beyond that observation is Not confirmed.
+  Reopened emulation and confirmed1available/0unavailable and working preview.
+  Proofs drive-mobile-web-emulated-20261022.png and
+  drive-mobile-preview-emulated-20261022.png in connector-polish-20261021.
+  These are real-provider browser-emulation checks, not Safari or physical
+  Android/iPhone acceptance. Native external-browser selection remains a UX
+  difference, not evidence of a failed native callback.
+- Closed preview/source panel, disabled emulation, and closed DevTools.
+  Saved2photos328/330 remains unchanged; no Add/Submit or provider mutation.
+  A read-only Cloud Run execution query could not run because the existing CLI
+  session requires reauthentication; no credentials/configuration were changed.
+  No application code changed for the mobile assessment; prior full verification
+  remains the source gate, not new physical-mobile evidence. Follow-up remains:
+  current native builds, real-phone provider handoff/cancellation/recovery,
+  capture/review/submit, and mobile Safari/Chrome acceptance.
+
+### 2026-10-23 — Cross-platform intake implementation (task01a149fc)
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, worktree5da8, branch
+  `codex/intake-cross-platform`, base084b387f950cf2c255c04849f08998cb84d1096e.
+  Written plan: docs/execution/INTAKE_CROSS_PLATFORM_20261022.md. Scope is the
+  shipped iOS/Android/web targets; native desktop hosts are not present.
+- Shared image filters now include iOS UTIs for bulk selection/reselection.
+  Capture admission acknowledges durable metadata before adding a review item.
+  Failed acknowledgements reconcile against host storage; uncertain outcomes
+  retain bytes and stable identity for retry instead of deleting a possibly
+  committed file. Prior retained bytes survive replacement failure. iOS camera
+  restriction errors follow the permission-recovery path.
+- Native connector transport uses ASWebAuthenticationSession (iOS15 compatible)
+  and AndroidX Auth Tab with Custom Tab fallback. Completion/cancellation/expiry
+  and exact initiating state are fenced; late callbacks cannot complete a newer
+  connection. Native Google uses the supported OAuth-triggered Picker; web keeps
+  its inline SDK Picker. Google disallows native Picker inside an embedded
+  WebView. Credentials stay server-side and no provider scope was expanded.
+- Source lifecycle now permits visible inactive polling, pauses when hidden,
+  and reconciles on resume. Route/account/source changes close authorization.
+  Cancellation re-reads authoritative connection state: the server may persist
+  needs_authorization on initiation, so restoring stale Connected would be wrong.
+  Existing source selections remain intact.
+- Validation before freeze: combined focused suite68 passed (auth, connector,
+  lifecycle, file types, permission classification and file-backed recovery).
+  Capture agent separately passed43 relevant cases including30 captures/restart
+  and commit-then-lost-ACK retry. Android debug APK compiled at build11; signer
+  SHA256 matches the installed build10, package identity unchanged. No install
+  yet. Unsigned generic iPhoneOS Xcode build succeeded and compiled AppDelegate;
+  Flutter's wrapper failed at signing/provisioning. No iOS entitlement was
+  removed to get a build. Physical native/provider acceptance is Not confirmed.
+- Initial canonical verify passed pre-commit/Python/design-system gates, then
+  stopped on one unnecessary non-null assertion in cancellation reconciliation.
+  Removed that assertion without behavior changes; full verification restarted
+  at /private/tmp/specimen-cross-platform-verify-final.log. Android's first build
+  caught an invalid platform theme; corrected to Theme.NoDisplay and rebuilt.
+  SDK configuration was fetched for existing registered Firebase native apps and
+  written only to ignored local build files. No production IAM, app registration,
+  provider-original or saved Gmail demo draft was changed.
+- Independent exact-head review, remaining canonical gates, protected release,
+  real native installation/signing, capture/provider/submit device acceptance,
+  and physical Safari/Chrome acceptance remain pending at this checkpoint.
+
+### 2026-10-23 — Cross-platform recovery review and Android provider checkpoint (task01a149fc)
+
+- Same task/worktree/branch as the preceding entry; first implementation commit
+  1e3db26f51d65bde0979b64a854b3729889bc4f8. Independent review found that uncertain
+  capture saves needed recovery beyond retrying one source path. Follow-up now
+  scopes admission attempts to one camera route, reconciles acknowledged host
+  metadata, preserves registered/in-flight item identity, keeps recovery within
+  its original draft, resumes confirmed transfers, and checks actual prospective
+  capacity before retaining a replacement. Fresh captures after reopening must
+  not be inferred to be retakes. Targeted recovery/parser27 and adjacent97 tests
+  passed; source reviewer approved the five changed blobs pending commit freeze.
+- Canonical run specimen-cross-platform-verify-final.log passed pre-commit, all
+  six Python shards and design-system gates, then failed its Flutter parse gate
+  because the controller was being edited during that run. Flutter result was
+  3623 passed,7 skipped,1 failed. The source was repaired and focused parser tests
+  passed; this is not a canonical pass. The next run uses frozen source.
+- Installed Android build11 over the existing app on Nothing A142/API36 with
+  adb install -r; package/signature and installed data retained. Gmail email-link
+  sign-in reached the live Intake E2E collection. Saved demo draft328/330 restored
+  with real thumbnails and remains unsubmitted. A separate test draft now holds
+  real Drive327 and Dropbox326, both visibly Saved; no Submit yet at checkpoint.
+- Physical Drive selected content reached the native app, but a stale Auth Tab
+  remained above it after Google Picker launched a nested browser task. Closing
+  that old tab exposed the successful result. Follow-up brings the original app
+  task forward after recording the callback, preserving the existing Flutter
+  engine. Reviewer approved source; automatic-return device retest is pending.
+  Dropbox reauthentication with unchanged existing read-only scopes returned
+  automatically and browsed the real demo folder; this used build11, not the
+  pending callback/recovery follow-up. Provider originals were not modified.
+- Unsigned iOS compilation is successful, but the installed personal-team
+  provisioning profile lacks com.apple.developer.associated-domains required by
+  Runner.entitlements and expires2026-10-24. Physical iOS installation and E2E
+  remain Not confirmed. No entitlement, bundle identity, account or installed
+  data was removed to work around provisioning. Final stable canonical run,
+  exact-head review, physical callback/submit acceptance and release remain open.
+
+### 2026-10-23 — Physical review caught stale preview pixels (task01a149fc)
+
+- On Android build11, next-photo navigation updated the filename before the new
+  bytes arrived, leaving the prior photo visible temporarily. FutureBuilder's
+  retained snapshot and gapless image playback caused misleading review state.
+  Each preview load now keys its FutureBuilder generation and clears prior
+  decoded pixels. Delayed item/controller swaps plus existing retry behavior
+  passed13 activity tests; parser5 passed and analyzer was clean. Independent
+  review approved the two changed blobs atop05fee3fcd4f7041e7f7204353fa5615af5f8896c.
+- Build12 of05fee3f installed in place and restored Gmail plus the saved326/327
+  test draft. Its SHA256 is1da752d856a4f1713fbc96010a6ff617bd0af50bcba4aeda067cf710dfbe08bf.
+  Current canonical run began before this preview fix; remaining checks may see
+  the final source, so it is not exact-head evidence without rerunning the earlier
+  affected gates. Final verification and physical preview retest remain pending.
+
+### 2026-10-23 — Native Android intake handoff and final local gates (task01a149fc)
+
+- Same task/worktree/branch; implementation heads1e3db26f5,05fee3fcd,ca7e18396.
+  Independent G51 reviewer approved the full branch atca7e1839639596932ad73424139300dc0f531850
+  and the two subsequent analyzer corrections: remove a redundant null check
+  implied by registered, and accept captureAttempt in the retake test override.
+  Exact final commit acknowledgement follows commit creation.
+- Canonical scripts/ci/verify.sh at specimen-cross-platform-verify-frozen.log
+  passed all six unchanged Python shards:1839/2183/3280/4592/3889/3489 passed,
+  27/4/7/1/3/8 skipped, then stopped on the two analyzer findings above. This
+  invocation is not a pass. After fixing them, reran all affected/remaining
+  gates with frozen source: all-files pre-commit, UI strings, both fatal-info
+  analyzers, design-system1312 tests, application3631 tests with7 skipped,
+  actual dart2js/Chrome OAuth and inline-Picker contract probe, Dart format,
+  release web build, and loopback route/security-header smoke. All passed.
+  Formatter also corrected the ignored local Firebase SDK configuration;
+  no SDK credentials/configuration were added to tracked files. Logs are in
+  /private/tmp/specimen-cross-platform-remaining-gates.log and
+  /private/tmp/specimen-cross-platform-web-final.log. All required local gate
+  stages passed across these runs; no assertions, goldens or checks were waived.
+- Physical Nothing A142/API36 build12 verified Google Picker selection returns
+  automatically to the native source sheet after the nested Chrome task. No
+  manual Auth Tab close or app switch was needed. Existing Gmail consent scopes
+  remained unchanged. Prior build11 separately verified Dropbox authorization,
+  folder browsing and selection against the live account.
+- Build13 fromca7e18396 installed in place with preserved signer/package/data;
+  APK SHA2562dc8f6a1d3b1b55b2c0dc5477da140e410721361acb62405acb333d87c2d3461.
+  Restored the real mixed-source327/326 draft. Next-photo review now clears stale
+  pixels immediately and loads the correctly named photo. Submitted this separate
+  two-photo batch once; intake progress showed0of2 waiting, then2of2 finished and
+  2sent to pipeline. Both appeared in the existing specimen list and327 opened
+  its scientific review screen. This confirms intake handoff, not completion of
+  every scientific processing stage. Original demo328/330 was reopened afterward
+  and remains Saved/unsubmitted. Provider originals were untouched.
+- Screenshots: connector-polish-20261021/android-drive-return-20261023.png,
+  android-review-next-loading-20261023.png, android-submission-start-20261023.png,
+  android-two-sent-to-pipeline-20261023.png and
+  android-original-demo-preserved-20261023.png under this task's visualizations.
+- iOS native code compiled in the unsigned generic iPhoneOS build, but the only
+  available same-identity Personal Team profile lacks Associated Domains and
+  expires2026-10-24. Physical iOS installation/provider/camera/submit acceptance
+  is Not confirmed. No entitlement was removed, app identity changed or installed
+  app erased. Thirty real camera captures,100/500 real-source batches, physical
+  Safari, VoiceOver/TalkBack and managed-account approval scenarios are also
+  Not confirmed; automated coverage is not substituted for those device results.
+  Merge, protected deployment and mobile distribution remain separate outcomes.
+
+### 2026-10-23 — PR402 hosted gates and physical mobile-web sign-in (task01a149fc)
+
+- Same task, worktree and codex/intake-cross-platform branch. Independent G51
+  review approved exact implementation head bee3d7aea52f9177fabe0f428275ae6eb530458a.
+  PR402 CI/CD39918712634 and runtime candidate39918712605 completed all applicable
+  checks successfully; Hosting deployment is correctly skipped for the PR.
+- Physical Android Chrome on specimen-digitization.web.app initially displayed
+  an older cached sign-in shell. A normal browser Reload updated it without
+  clearing site data. Gmail Google sign-in then reached the real Intake E2E
+  collection and its specimen list; intake navigation also succeeded. Evidence:
+  connector-polish-20261021/android-mobile-web-signin-20261023.png. This exercised
+  current production084b387f9, not an unshipped PR web build.
+- The alternate specimen-digitization.firebaseapp.com app shell accepted Google
+  sign-in but App Check token acquisition failed before collection access was
+  requested, including after Reload. Both hosts use the same public Enterprise
+  site key; the live allowed-domain configuration is Not confirmed. Canonical
+  web.app success narrows the issue but does not prove a domain-allowlist cause.
+  gcloud read-only key inspection and the existing browser admin session both
+  require renewed Google verification. No App Check protection was disabled.
+- Camera viewfinder opened on the physical Android, but no capture was taken;
+  this does not establish real-camera acceptance. iOS provisioning and remaining
+  physical acceptance limitations in the preceding entry remain unresolved.
+  Protected release, alternate-host investigation and device acceptance continue.
 
 ## 2026-10-11 - A denial banner carries only its cause and fix, in the app's words
 

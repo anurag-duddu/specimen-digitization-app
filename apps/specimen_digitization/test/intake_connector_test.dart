@@ -21,6 +21,7 @@ class ConnectorRepository implements BulkIntakeRepository {
   String? emptyAccount;
   bool loseCompletionReply = false;
   bool deferNativeSelection = false;
+  bool persistAuthorizationState = false;
   ApiFailure? retryFailure;
   int authorizations = 0;
   final List<Json> pickerReplies = [];
@@ -83,6 +84,13 @@ class ConnectorRepository implements BulkIntakeRepository {
               ? 'native-picker'
               : 'native-picker-$authorizations',
       };
+      if (persistAuthorizationState) {
+        final previous = accounts
+            .where((row) => row['id'] == pending!['id'])
+            .firstOrNull;
+        accounts.removeWhere((row) => row['id'] == pending!['id']);
+        accounts.add({...?previous, ...pending!});
+      }
       return pending!;
     }
     if (path == '/connections/complete') {
@@ -295,8 +303,12 @@ Future<List<ConnectorSession>> mount(
   double scale = 1,
   bool native = false,
   bool durablePicker = true,
+  ConnectorSession Function()? sessionFactory,
+  ValueNotifier<bool>? active,
 }) async {
   final sessions = <ConnectorSession>[];
+  final activity = active ?? ValueNotifier(true);
+  if (active == null) addTearDown(activity.dispose);
   repository.host = ConnectorPickerHost(native: native)
     ..consentClosed = () => sessions.every((session) => session.closed);
   final controller = BulkIntakeController(
@@ -323,15 +335,21 @@ Future<List<ConnectorSession>> mount(
             textScaler: TextScaler.linear(scale),
           ),
           child: SingleChildScrollView(
-            child: IntakeSourcePicker(
-              controller: controller,
-              provider: provider,
-              pickerHost: repository.host,
-              authSessionFactory: () {
-                final session = ConnectorSession(native: native);
-                sessions.add(session);
-                return session;
-              },
+            child: ValueListenableBuilder<bool>(
+              valueListenable: activity,
+              builder: (context, active, _) => IntakeSourcePicker(
+                controller: controller,
+                provider: provider,
+                active: active,
+                pickerHost: repository.host,
+                authSessionFactory: () {
+                  final session =
+                      sessionFactory?.call() ??
+                      ConnectorSession(native: native);
+                  sessions.add(session);
+                  return session;
+                },
+              ),
             ),
           ),
         ),
